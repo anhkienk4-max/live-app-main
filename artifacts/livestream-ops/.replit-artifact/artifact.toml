@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "LiveStream Operations Management"
+version = "1.0.0"
+id = "artifacts/livestream-ops"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25777
+
+[services.development]
+run = "pnpm --filter @workspace/livestream-ops run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/livestream-ops", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/livestream-ops/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25777"
+BASE_PATH = "/"

@@ -1,0 +1,308 @@
+import { User, Brand, Platform, Campaign, Shift, Report, DashboardUpdate, SwapRequest } from '@/lib/types/database.types'
+import { addDays, subDays, format } from 'date-fns'
+
+const today = new Date()
+
+// Mock Users
+export const mockUsers: User[] = [
+  {
+    id: '1',
+    email: 'admin@livestream.com',
+    full_name: 'Admin User',
+    avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
+    phone: '+1234567890',
+    role: 'admin',
+    department: 'Management',
+    status: 'active',
+    join_date: '2024-01-01',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: '2',
+    email: 'leader@livestream.com',
+    full_name: 'Team Leader',
+    avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=leader',
+    phone: '+1234567891',
+    role: 'leader',
+    department: 'Operations',
+    status: 'active',
+    join_date: '2024-02-01',
+    created_at: '2024-02-01T00:00:00Z',
+    updated_at: '2024-02-01T00:00:00Z',
+  },
+  {
+    id: '3',
+    email: 'host1@livestream.com',
+    full_name: 'Sarah Johnson',
+    avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=sarah',
+    phone: '+1234567892',
+    role: 'staff',
+    department: 'Live Host',
+    status: 'active',
+    join_date: '2024-03-01',
+    created_at: '2024-03-01T00:00:00Z',
+    updated_at: '2024-03-01T00:00:00Z',
+  },
+  {
+    id: '4',
+    email: 'host2@livestream.com',
+    full_name: 'Michael Chen',
+    avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=michael',
+    phone: '+1234567893',
+    role: 'staff',
+    department: 'Live Host',
+    status: 'active',
+    join_date: '2024-03-15',
+    created_at: '2024-03-15T00:00:00Z',
+    updated_at: '2024-03-15T00:00:00Z',
+  },
+  {
+    id: '5',
+    email: 'support1@livestream.com',
+    full_name: 'Emily Davis',
+    avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=emily',
+    phone: '+1234567894',
+    role: 'staff',
+    department: 'Live Support',
+    status: 'active',
+    join_date: '2024-04-01',
+    created_at: '2024-04-01T00:00:00Z',
+    updated_at: '2024-04-01T00:00:00Z',
+  },
+]
+
+// Mock Brands
+export const mockBrands: Brand[] = [
+  {
+    id: 'b1',
+    name: 'TechGear Pro',
+    logo_url: 'https://api.dicebear.com/7.x/shapes/svg?seed=techgear',
+    color: '#2563EB',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'b2',
+    name: 'Fashion Nova',
+    logo_url: 'https://api.dicebear.com/7.x/shapes/svg?seed=fashion',
+    color: '#EC4899',
+    created_at: '2024-01-15T00:00:00Z',
+    updated_at: '2024-01-15T00:00:00Z',
+  },
+  {
+    id: 'b3',
+    name: 'Beauty Essentials',
+    logo_url: 'https://api.dicebear.com/7.x/shapes/svg?seed=beauty',
+    color: '#8B5CF6',
+    created_at: '2024-02-01T00:00:00Z',
+    updated_at: '2024-02-01T00:00:00Z',
+  },
+  {
+    id: 'b4',
+    name: 'Home Living',
+    logo_url: 'https://api.dicebear.com/7.x/shapes/svg?seed=home',
+    color: '#10B981',
+    created_at: '2024-02-15T00:00:00Z',
+    updated_at: '2024-02-15T00:00:00Z',
+  },
+]
+
+// Mock Platforms
+export const mockPlatforms: Platform[] = [
+  {
+    id: 'p1',
+    name: 'TikTok Shop',
+    icon: 'tiktok',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'p2',
+    name: 'Shopee Live',
+    icon: 'shopee',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'p3',
+    name: 'Lazada Live',
+    icon: 'lazada',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'p4',
+    name: 'Facebook Live',
+    icon: 'facebook',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  },
+]
+
+// Mock Campaigns
+export const mockCampaigns: Campaign[] = [
+  {
+    id: 'c1',
+    name: 'Summer Sale 2024',
+    brand_id: 'b1',
+    start_date: '2024-06-01',
+    end_date: '2024-08-31',
+    type: 'seasonal',
+    notes: 'Major summer promotion',
+    created_at: '2024-05-01T00:00:00Z',
+    updated_at: '2024-05-01T00:00:00Z',
+  },
+  {
+    id: 'c2',
+    name: 'Fashion Week Special',
+    brand_id: 'b2',
+    start_date: '2024-09-01',
+    end_date: '2024-09-30',
+    type: 'event',
+    notes: 'Fashion week tie-in',
+    created_at: '2024-08-01T00:00:00Z',
+    updated_at: '2024-08-01T00:00:00Z',
+  },
+  {
+    id: 'c3',
+    name: 'Beauty Launch',
+    brand_id: 'b3',
+    start_date: format(subDays(today, 30), 'yyyy-MM-dd'),
+    end_date: format(addDays(today, 30), 'yyyy-MM-dd'),
+    type: 'launch',
+    notes: 'New product launch campaign',
+    created_at: format(subDays(today, 45), "yyyy-MM-dd'T'HH:mm:ss'Z'"),
+    updated_at: format(subDays(today, 45), "yyyy-MM-dd'T'HH:mm:ss'Z'"),
+  },
+]
+
+// Mock Shifts
+export const mockShifts: Shift[] = [
+  {
+    id: 's1',
+    date: format(today, 'yyyy-MM-dd'),
+    start_time: '10:00',
+    end_time: '12:00',
+    brand_id: 'b1',
+    platform_id: 'p1',
+    campaign_id: 'c1',
+    host_id: '3',
+    support_id: '5',
+    status: 'scheduled',
+    live_link: 'https://tiktok.com/live/123',
+    product_notes: 'TechGear Pro headphones + accessories',
+    created_at: format(subDays(today, 2), "yyyy-MM-dd'T'HH:mm:ss'Z'"),
+    updated_at: format(subDays(today, 2), "yyyy-MM-dd'T'HH:mm:ss'Z'"),
+  },
+  {
+    id: 's2',
+    date: format(today, 'yyyy-MM-dd'),
+    start_time: '14:00',
+    end_time: '17:00',
+    brand_id: 'b2',
+    platform_id: 'p2',
+    campaign_id: 'c2',
+    host_id: '4',
+    support_id: '5',
+    status: 'live',
+    live_link: 'https://shopee.com/live/456',
+    product_notes: 'Summer fashion collection',
+    created_at: format(subDays(today, 1), "yyyy-MM-dd'T'HH:mm:ss'Z'"),
+    updated_at: format(today, "yyyy-MM-dd'T'HH:mm:ss'Z'"),
+  },
+  {
+    id: 's3',
+    date: format(addDays(today, 1), 'yyyy-MM-dd'),
+    start_time: '09:00',
+    end_time: '11:00',
+    brand_id: 'b3',
+    platform_id: 'p3',
+    campaign_id: 'c3',
+    host_id: '3',
+    status: 'scheduled',
+    product_notes: 'Beauty essentials showcase',
+    created_at: format(subDays(today, 3), "yyyy-MM-dd'T'HH:mm:ss'Z'"),
+    updated_at: format(subDays(today, 3), "yyyy-MM-dd'T'HH:mm:ss'Z'"),
+  },
+  {
+    id: 's4',
+    date: format(subDays(today, 1), 'yyyy-MM-dd'),
+    start_time: '15:00',
+    end_time: '18:00',
+    brand_id: 'b4',
+    platform_id: 'p4',
+    host_id: '4',
+    support_id: '5',
+    status: 'completed',
+    product_notes: 'Home living products',
+    created_at: format(subDays(today, 5), "yyyy-MM-dd'T'HH:mm:ss'Z'"),
+    updated_at: format(subDays(today, 1), "yyyy-MM-dd'T'HH:mm:ss'Z'"),
+  },
+]
+
+// Mock Reports
+export const mockReports: Report[] = [
+  {
+    id: 'r1',
+    shift_id: 's4',
+    revenue: 8500.00,
+    orders: 142,
+    peak_viewer: 1200,
+    average_viewer: 890,
+    likes: 5600,
+    comments: 342,
+    shares: 89,
+    top_products: ['Home Living Sofa Set', 'Kitchen Organizer'],
+    insights_good: 'Strong engagement on home decor items',
+    insights_improvement: 'Start product demos earlier in the session',
+    replay_url: 'https://facebook.com/replay/123',
+    dashboard_url: 'https://seller.facebook.com/dashboard',
+    created_at: format(subDays(today, 1), "yyyy-MM-dd'T'HH:mm:ss'Z'"),
+    updated_at: format(subDays(today, 1), "yyyy-MM-dd'T'HH:mm:ss'Z'"),
+  },
+]
+
+// Mock Dashboard Updates
+export const mockDashboardUpdates: DashboardUpdate[] = [
+  {
+    id: 'du1',
+    shift_id: 's2',
+    time: format(today, "yyyy-MM-dd'T'14:00:00'Z'"),
+    revenue: 2500.00,
+    orders: 45,
+    peak_viewers: 850,
+    current_viewers: 720,
+    screenshot_url: 'https://placehold.co/800x600/2563EB/white?text=Dashboard+14:00',
+    notes: 'Live started strong',
+    created_at: format(today, "yyyy-MM-dd'T'14:00:00'Z'"),
+    updated_at: format(today, "yyyy-MM-dd'T'14:00:00'Z'"),
+  },
+  {
+    id: 'du2',
+    shift_id: 's2',
+    time: format(today, "yyyy-MM-dd'T'14:30:00'Z'"),
+    revenue: 5200.00,
+    orders: 89,
+    peak_viewers: 950,
+    current_viewers: 890,
+    screenshot_url: 'https://placehold.co/800x600/2563EB/white?text=Dashboard+14:30',
+    notes: 'Peak performance',
+    created_at: format(today, "yyyy-MM-dd'T'14:30:00'Z'"),
+    updated_at: format(today, "yyyy-MM-dd'T'14:30:00'Z'"),
+  },
+]
+
+// Mock Swap Requests
+export const mockSwapRequests: SwapRequest[] = [
+  {
+    id: 'sw1',
+    shift_id: 's3',
+    requester_id: '3',
+    new_host_id: '4',
+    reason: 'Family emergency',
+    status: 'pending',
+    created_at: format(today, "yyyy-MM-dd'T'10:00:00'Z'"),
+    updated_at: format(today, "yyyy-MM-dd'T'10:00:00'Z'"),
+  },
+]
