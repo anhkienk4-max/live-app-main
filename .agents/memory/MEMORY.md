@@ -1,0 +1,2 @@
+- [LiveStream Ops arch](livestream-ops-arch.md) — DashboardLayout lives only in App.tsx, never imported by pages; pages are plain components wrapped externally.
+- [Brand KB completeness](brand-kb-fields.md) — Brand KB fields: introduction, tone_of_voice, usp, product_information, key_messages, dos, donts, important_notes, training_documents, drive_links. No `description` or `product_categories`.

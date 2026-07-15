@@ -1,9 +1,12 @@
-import { User, Brand, Platform, Campaign, Shift, Report, DashboardUpdate, SwapRequest } from '@/lib/types/database.types'
+import {
+  User, Brand, Platform, Campaign, Shift, Report, DashboardUpdate,
+  SwapRequest, AnalyticsEntry
+} from '@/lib/types/database.types'
 import { addDays, subDays, format } from 'date-fns'
 
 const today = new Date()
 
-// Mock Users
+// ─── Users ────────────────────────────────────────────────────────────────────
 export const mockUsers: User[] = [
   {
     id: '1',
@@ -11,7 +14,9 @@ export const mockUsers: User[] = [
     full_name: 'Admin User',
     avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
     phone: '+1234567890',
+    permission: 'admin',
     role: 'admin',
+    operational_roles: [],
     department: 'Management',
     status: 'active',
     join_date: '2024-01-01',
@@ -24,7 +29,9 @@ export const mockUsers: User[] = [
     full_name: 'Team Leader',
     avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=leader',
     phone: '+1234567891',
+    permission: 'leader',
     role: 'leader',
+    operational_roles: ['host'],
     department: 'Operations',
     status: 'active',
     join_date: '2024-02-01',
@@ -37,7 +44,9 @@ export const mockUsers: User[] = [
     full_name: 'Sarah Johnson',
     avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=sarah',
     phone: '+1234567892',
-    role: 'staff',
+    permission: 'member',
+    role: 'member',
+    operational_roles: ['host'],
     department: 'Live Host',
     status: 'active',
     join_date: '2024-03-01',
@@ -50,7 +59,9 @@ export const mockUsers: User[] = [
     full_name: 'Michael Chen',
     avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=michael',
     phone: '+1234567893',
-    role: 'staff',
+    permission: 'member',
+    role: 'member',
+    operational_roles: ['host', 'support'],
     department: 'Live Host',
     status: 'active',
     join_date: '2024-03-15',
@@ -63,22 +74,55 @@ export const mockUsers: User[] = [
     full_name: 'Emily Davis',
     avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=emily',
     phone: '+1234567894',
-    role: 'staff',
+    permission: 'member',
+    role: 'member',
+    operational_roles: ['support'],
     department: 'Live Support',
     status: 'active',
     join_date: '2024-04-01',
     created_at: '2024-04-01T00:00:00Z',
     updated_at: '2024-04-01T00:00:00Z',
   },
+  {
+    id: '6',
+    email: 'tech1@livestream.com',
+    full_name: 'Kevin Tran',
+    avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=kevin',
+    phone: '+1234567895',
+    permission: 'member',
+    role: 'member',
+    operational_roles: ['technical'],
+    department: 'Technical',
+    status: 'active',
+    join_date: '2024-04-15',
+    created_at: '2024-04-15T00:00:00Z',
+    updated_at: '2024-04-15T00:00:00Z',
+  },
 ]
 
-// Mock Brands
+// ─── Brands ───────────────────────────────────────────────────────────────────
 export const mockBrands: Brand[] = [
   {
     id: 'b1',
     name: 'TechGear Pro',
     logo_url: 'https://api.dicebear.com/7.x/shapes/svg?seed=techgear',
     color: '#2563EB',
+    introduction: 'TechGear Pro is a leading consumer electronics brand specialising in audio, wearables, and smart home accessories. Founded in 2019, we ship to 30+ countries.',
+    tone_of_voice: 'Professional yet approachable. Confident, innovative, jargon-free. Speak like a knowledgeable friend, not a salesperson.',
+    usp: 'Premium audio quality at mid-range prices. Every product ships with a 2-year warranty and 30-day money-back guarantee.',
+    product_information: 'Core lines: TG Headphones (S, Pro, Max), TG Earbuds (Lite, Air), TG SmartWatch (Active, Classic). All Bluetooth 5.3, IPX4 rated.',
+    key_messages: '1. Best-in-class sound at honest prices\n2. Built to last — 2-year warranty standard\n3. Free same-day shipping on orders over $50',
+    dos: 'Demonstrate real product use. Compare to premium brands on value. Show packaging quality. Mention warranty unprompted.',
+    donts: 'Never compare negatively to specific competitor brands by name. Avoid over-promising battery life. No political content.',
+    important_notes: 'Flash sale pricing active every Friday 8–10 PM. Always check inventory sheet before going live. Minimum order voucher: TECH10 (10% off ≥$80).',
+    training_documents: [
+      { id: 'td1', title: 'Product Knowledge Guide Q2 2025', url: 'https://drive.google.com/file/d/example1', type: 'pdf' },
+      { id: 'td2', title: 'Livestream Script Templates', url: 'https://drive.google.com/file/d/example2', type: 'doc' },
+    ],
+    drive_links: [
+      { id: 'dl1', title: 'TechGear Brand Assets (Logos, Banners)', url: 'https://drive.google.com/drive/folders/example1' },
+      { id: 'dl2', title: 'Pricing & Inventory Sheet', url: 'https://docs.google.com/spreadsheets/d/example1' },
+    ],
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
   },
@@ -87,6 +131,18 @@ export const mockBrands: Brand[] = [
     name: 'Fashion Nova',
     logo_url: 'https://api.dicebear.com/7.x/shapes/svg?seed=fashion',
     color: '#EC4899',
+    introduction: 'Fashion Nova is a trend-led clothing brand targeting 18–35 year-olds. New collections drop every week.',
+    tone_of_voice: 'Bold, fun, inclusive. Use Gen-Z-friendly language. Keep it energetic and celebratory.',
+    usp: 'On-trend styles at accessible prices. New arrivals every Monday. Free returns within 14 days.',
+    product_information: 'Collections: Urban Basics, Night Out, Festival, Work Chic. Sizes XXS–5XL. Ships within 2 business days.',
+    key_messages: '1. Fresh styles every week\n2. Inclusive sizing — XXS to 5XL\n3. Free returns, no questions asked',
+    dos: 'Model the clothes. Show multiple styling options per item. Celebrate body positivity. Use trending music (check approved list).',
+    donts: 'No body-shaming language. Do not promise restock dates. No comparison to fast-fashion competitors.',
+    important_notes: 'New drop Mondays at 12 PM. VIP early access code: NOVAVIP. Check approved music list before going live.',
+    training_documents: [],
+    drive_links: [
+      { id: 'dl3', title: 'Seasonal Lookbooks', url: 'https://drive.google.com/drive/folders/example2' },
+    ],
     created_at: '2024-01-15T00:00:00Z',
     updated_at: '2024-01-15T00:00:00Z',
   },
@@ -95,6 +151,18 @@ export const mockBrands: Brand[] = [
     name: 'Beauty Essentials',
     logo_url: 'https://api.dicebear.com/7.x/shapes/svg?seed=beauty',
     color: '#8B5CF6',
+    introduction: 'Clean beauty brand focusing on cruelty-free, vegan skincare and cosmetics. All products are dermatologist-tested.',
+    tone_of_voice: 'Warm, educational, empowering. Explain ingredients simply. Build trust through transparency.',
+    usp: '100% cruelty-free and vegan. Dermatologist tested. Fragrance-free core line.',
+    product_information: 'Lines: Glow Serum (Vitamin C, Niacinamide, Retinol), Hydra Cream, SPF50 Tinted Moisturiser, Clean Colour Cosmetics.',
+    key_messages: '1. Clean ingredients you can pronounce\n2. Tested by dermatologists\n3. Suitable for sensitive skin',
+    dos: 'Demo on skin live. Explain key ingredients. Mention dermatologist-tested claim. Share before/after where available.',
+    donts: 'No medical claims. No "cures" language. Do not apply to broken skin on camera.',
+    important_notes: 'Patch test reminder mandatory for new SKUs. Refrigerate Vitamin C serum — mention this. Bundle discount: BUY2GET15.',
+    training_documents: [
+      { id: 'td3', title: 'Ingredient Encyclopedia', url: 'https://drive.google.com/file/d/example3', type: 'pdf' },
+    ],
+    drive_links: [],
     created_at: '2024-02-01T00:00:00Z',
     updated_at: '2024-02-01T00:00:00Z',
   },
@@ -103,17 +171,45 @@ export const mockBrands: Brand[] = [
     name: 'Home Living',
     logo_url: 'https://api.dicebear.com/7.x/shapes/svg?seed=home',
     color: '#10B981',
+    introduction: 'Home Living curates practical and stylish home furnishings and kitchenware for modern apartments.',
+    tone_of_voice: 'Calm, aspirational, practical. Speak to the desire for a beautiful, functional home without the premium price tag.',
+    usp: 'Scandinavian-inspired design at high-street prices. Free assembly guides. 1-year product warranty.',
+    product_information: 'Categories: Storage & Organisation, Bedroom, Kitchen, Living Room Décor, Outdoor. Flat-pack where applicable.',
+    key_messages: '1. Beautiful homes on a budget\n2. Easy flat-pack assembly\n3. Styles to suit every taste',
+    dos: 'Show items in context (styled room setup). Demonstrate storage capacity. Compare size to common objects.',
+    donts: 'Do not promise custom sizing. No delivery date guarantees. Avoid white background only — style the shot.',
+    important_notes: 'Bundle sets always outperform singles in this category. Mention "perfect housewarming gift" trigger phrase. Oversized items: confirm shipping zone first.',
+    training_documents: [],
+    drive_links: [
+      { id: 'dl4', title: 'Product Dimension Sheets', url: 'https://docs.google.com/spreadsheets/d/example2' },
+    ],
     created_at: '2024-02-15T00:00:00Z',
     updated_at: '2024-02-15T00:00:00Z',
   },
 ]
 
-// Mock Platforms
+// ─── Platforms ────────────────────────────────────────────────────────────────
 export const mockPlatforms: Platform[] = [
   {
     id: 'p1',
     name: 'TikTok Shop',
     icon: 'tiktok',
+    policies: 'TikTok Shop requires all sellers to comply with its Community Guidelines and Commerce Policy. Products must have accurate descriptions. Prohibited items include weapons, adult content, and controlled substances.',
+    livestream_rules: '1. No misleading claims about products\n2. Hosts must be clearly identifiable\n3. Price displayed must match checkout price\n4. No background music without licence\n5. Minimum 720p video quality required',
+    official_documents: [
+      { id: 'pd1', title: 'TikTok Shop Seller Policy 2025', url: 'https://seller-ph.tiktok.com/university/essay?knowledge_id=10001' },
+      { id: 'pd2', title: 'Livestream Commerce Guidelines', url: 'https://seller-ph.tiktok.com/university/essay?knowledge_id=10002' },
+    ],
+    penalty_rules: 'Violation Level 1 (warning): incorrect pricing, misleading descriptions\nViolation Level 2 (suspension 7d): prohibited product claims\nViolation Level 3 (permanent ban): counterfeit goods, fraud\nStrikes reset every 90 days for Level 1.',
+    faq: [
+      { id: 'fq1', question: 'How long can a single livestream run?', answer: 'Up to 4 hours per session with no limit on daily sessions.' },
+      { id: 'fq2', question: 'Can I go live from a mobile device?', answer: 'Yes. TikTok app v26+ supports LIVE Shopping. Desktop streaming requires OBS + RTMP key.' },
+      { id: 'fq3', question: 'What is the commission rate?', answer: 'Default: 5% of GMV. Category rates vary — electronics 3%, fashion 8%. Check seller portal for your category.' },
+    ],
+    useful_links: [
+      { id: 'ul1', title: 'TikTok Seller Center', url: 'https://seller-ph.tiktok.com' },
+      { id: 'ul2', title: 'TikTok LIVE Analytics', url: 'https://seller-ph.tiktok.com/live-center' },
+    ],
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
   },
@@ -121,6 +217,19 @@ export const mockPlatforms: Platform[] = [
     id: 'p2',
     name: 'Shopee Live',
     icon: 'shopee',
+    policies: 'Shopee Live participants must follow Shopee Marketplace policies. All products streamed must be active listings on the seller\'s Shopee store.',
+    livestream_rules: '1. Minimum 30-minute session recommended\n2. Use Shopee\'s in-app product link feature only\n3. Vouchers must be pre-created in Seller Centre\n4. Do not direct viewers to external checkout\n5. Session rating affects search ranking',
+    official_documents: [
+      { id: 'pd3', title: 'Shopee Live Seller Guide', url: 'https://seller.shopee.ph/edu/article/live' },
+    ],
+    penalty_rules: 'Shopee uses a demerit points system:\n• 1–5 points: warning email\n• 6–10 points: listing removal\n• 11+ points: account suspension review\nPoints expire after 180 days.',
+    faq: [
+      { id: 'fq4', question: 'How do I add product links during a live?', answer: 'Use the "+" button in the live interface to add up to 20 pinned products. Products must be from your own store.' },
+      { id: 'fq5', question: 'Does Shopee boost live streams?', answer: 'Yes. Sessions with 3+ products, 30+ mins duration, and consistent scheduling receive algorithmic boost.' },
+    ],
+    useful_links: [
+      { id: 'ul3', title: 'Shopee Seller Centre', url: 'https://seller.shopee.ph' },
+    ],
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
   },
@@ -128,6 +237,14 @@ export const mockPlatforms: Platform[] = [
     id: 'p3',
     name: 'Lazada Live',
     icon: 'lazada',
+    policies: 'Lazada Live is available to qualified LazMall and official store sellers. Application required via Lazada Seller Centre.',
+    livestream_rules: '1. Minimum seller rating of 4.5 required\n2. Product listings must be complete with all attributes\n3. No competitor brand mentions\n4. Affiliate links must be disclosed',
+    official_documents: [],
+    penalty_rules: 'First violation: 24h streaming suspension\nSecond violation: 7-day suspension\nThird violation: permanent live ban',
+    faq: [],
+    useful_links: [
+      { id: 'ul4', title: 'Lazada Seller Centre', url: 'https://sellercenter.lazada.com.ph' },
+    ],
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
   },
@@ -135,12 +252,25 @@ export const mockPlatforms: Platform[] = [
     id: 'p4',
     name: 'Facebook Live',
     icon: 'facebook',
+    policies: 'Facebook Live Commerce operates under Meta\'s Commerce Policies and Community Standards. Sellers must use Facebook Shops for tagging products.',
+    livestream_rules: '1. Products must be tagged via Facebook Shops\n2. Comply with Meta advertising standards\n3. No spam engagement tactics\n4. Audio must be original or licensed',
+    official_documents: [
+      { id: 'pd4', title: 'Meta Commerce Policy', url: 'https://www.facebook.com/policies/commerce' },
+    ],
+    penalty_rules: 'Meta uses a content strike system. Commerce violations result in:\n• Content removal\n• Restricted checkout access (30d, 90d, permanent)',
+    faq: [
+      { id: 'fq6', question: 'What resolution should I stream at?', answer: '1080p recommended. Minimum 720p. Use 30fps for product demos, 60fps for fashion.' },
+    ],
+    useful_links: [
+      { id: 'ul5', title: 'Facebook Shops Manager', url: 'https://www.facebook.com/commerce_manager' },
+      { id: 'ul6', title: 'Meta Business Suite', url: 'https://business.facebook.com' },
+    ],
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
   },
 ]
 
-// Mock Campaigns
+// ─── Campaigns ────────────────────────────────────────────────────────────────
 export const mockCampaigns: Campaign[] = [
   {
     id: 'c1',
@@ -150,6 +280,8 @@ export const mockCampaigns: Campaign[] = [
     end_date: '2024-08-31',
     type: 'seasonal',
     notes: 'Major summer promotion',
+    campaign_url: 'https://techgearpro.com/summer2024',
+    imported_from: 'manual',
     created_at: '2024-05-01T00:00:00Z',
     updated_at: '2024-05-01T00:00:00Z',
   },
@@ -161,6 +293,8 @@ export const mockCampaigns: Campaign[] = [
     end_date: '2024-09-30',
     type: 'event',
     notes: 'Fashion week tie-in',
+    campaign_url: 'https://fashionnova.com/fashionweek',
+    imported_from: 'manual',
     created_at: '2024-08-01T00:00:00Z',
     updated_at: '2024-08-01T00:00:00Z',
   },
@@ -172,12 +306,13 @@ export const mockCampaigns: Campaign[] = [
     end_date: format(addDays(today, 30), 'yyyy-MM-dd'),
     type: 'launch',
     notes: 'New product launch campaign',
+    imported_from: 'excel',
     created_at: format(subDays(today, 45), "yyyy-MM-dd'T'HH:mm:ss'Z'"),
     updated_at: format(subDays(today, 45), "yyyy-MM-dd'T'HH:mm:ss'Z'"),
   },
 ]
 
-// Mock Shifts
+// ─── Shifts ───────────────────────────────────────────────────────────────────
 export const mockShifts: Shift[] = [
   {
     id: 's1',
@@ -189,9 +324,11 @@ export const mockShifts: Shift[] = [
     campaign_id: 'c1',
     host_id: '3',
     support_id: '5',
+    technical_id: '6',
     status: 'scheduled',
     live_link: 'https://tiktok.com/live/123',
     product_notes: 'TechGear Pro headphones + accessories',
+    imported_from: 'manual',
     created_at: format(subDays(today, 2), "yyyy-MM-dd'T'HH:mm:ss'Z'"),
     updated_at: format(subDays(today, 2), "yyyy-MM-dd'T'HH:mm:ss'Z'"),
   },
@@ -205,9 +342,11 @@ export const mockShifts: Shift[] = [
     campaign_id: 'c2',
     host_id: '4',
     support_id: '5',
+    technical_id: '6',
     status: 'live',
     live_link: 'https://shopee.com/live/456',
     product_notes: 'Summer fashion collection',
+    imported_from: 'manual',
     created_at: format(subDays(today, 1), "yyyy-MM-dd'T'HH:mm:ss'Z'"),
     updated_at: format(today, "yyyy-MM-dd'T'HH:mm:ss'Z'"),
   },
@@ -220,8 +359,10 @@ export const mockShifts: Shift[] = [
     platform_id: 'p3',
     campaign_id: 'c3',
     host_id: '3',
+    technical_id: '6',
     status: 'scheduled',
     product_notes: 'Beauty essentials showcase',
+    imported_from: 'google_sheets',
     created_at: format(subDays(today, 3), "yyyy-MM-dd'T'HH:mm:ss'Z'"),
     updated_at: format(subDays(today, 3), "yyyy-MM-dd'T'HH:mm:ss'Z'"),
   },
@@ -234,14 +375,16 @@ export const mockShifts: Shift[] = [
     platform_id: 'p4',
     host_id: '4',
     support_id: '5',
+    technical_id: '6',
     status: 'completed',
     product_notes: 'Home living products',
+    imported_from: 'manual',
     created_at: format(subDays(today, 5), "yyyy-MM-dd'T'HH:mm:ss'Z'"),
     updated_at: format(subDays(today, 1), "yyyy-MM-dd'T'HH:mm:ss'Z'"),
   },
 ]
 
-// Mock Reports
+// ─── Reports ──────────────────────────────────────────────────────────────────
 export const mockReports: Report[] = [
   {
     id: 'r1',
@@ -263,7 +406,7 @@ export const mockReports: Report[] = [
   },
 ]
 
-// Mock Dashboard Updates
+// ─── Dashboard Updates ────────────────────────────────────────────────────────
 export const mockDashboardUpdates: DashboardUpdate[] = [
   {
     id: 'du1',
@@ -293,16 +436,70 @@ export const mockDashboardUpdates: DashboardUpdate[] = [
   },
 ]
 
-// Mock Swap Requests
+// ─── Analytics Entries (OCR Workflow) ─────────────────────────────────────────
+export const mockAnalyticsEntries: AnalyticsEntry[] = [
+  {
+    id: 'ae1',
+    shift_id: 's4',
+    screenshot_url: 'https://placehold.co/800x600/10B981/white?text=Dashboard+Screenshot',
+    ocr_status: 'confirmed',
+    extracted_data: { revenue: 8500, orders: 142, peak_viewers: 1200, likes: 5600, comments: 342 },
+    confirmed_data: { revenue: 8500, orders: 142, peak_viewers: 1200, likes: 5600, comments: 342 },
+    reviewed_by: '1',
+    reviewed_at: format(subDays(today, 1), "yyyy-MM-dd'T'18:30:00'Z'"),
+    created_at: format(subDays(today, 1), "yyyy-MM-dd'T'18:00:00'Z'"),
+    updated_at: format(subDays(today, 1), "yyyy-MM-dd'T'18:30:00'Z'"),
+  },
+  {
+    id: 'ae2',
+    shift_id: 's2',
+    screenshot_url: 'https://placehold.co/800x600/2563EB/white?text=Live+Dashboard',
+    ocr_status: 'pending_review',
+    extracted_data: { revenue: 5200, orders: 89, peak_viewers: 950 },
+    notes: 'Screenshot taken at 14:30 — peak moment',
+    created_at: format(today, "yyyy-MM-dd'T'14:30:00'Z'"),
+    updated_at: format(today, "yyyy-MM-dd'T'14:30:00'Z'"),
+  },
+]
+
+// ─── Swap Requests ────────────────────────────────────────────────────────────
 export const mockSwapRequests: SwapRequest[] = [
   {
     id: 'sw1',
     shift_id: 's3',
     requester_id: '3',
+    role_slot: 'host',
+    new_assignee_id: '4',
     new_host_id: '4',
     reason: 'Family emergency',
     status: 'pending',
     created_at: format(today, "yyyy-MM-dd'T'10:00:00'Z'"),
     updated_at: format(today, "yyyy-MM-dd'T'10:00:00'Z'"),
+  },
+  {
+    id: 'sw2',
+    shift_id: 's1',
+    requester_id: '5',
+    role_slot: 'support',
+    new_assignee_id: '4',
+    new_support_id: '4',
+    reason: 'Doctor appointment',
+    status: 'approved',
+    approved_by: '2',
+    approved_at: format(subDays(today, 1), "yyyy-MM-dd'T'09:00:00'Z'"),
+    created_at: format(subDays(today, 2), "yyyy-MM-dd'T'15:00:00'Z'"),
+    updated_at: format(subDays(today, 1), "yyyy-MM-dd'T'09:00:00'Z'"),
+  },
+  {
+    id: 'sw3',
+    shift_id: 's4',
+    requester_id: '6',
+    role_slot: 'technical',
+    reason: 'Schedule conflict',
+    status: 'rejected',
+    approved_by: '2',
+    approved_at: format(subDays(today, 1), "yyyy-MM-dd'T'11:00:00'Z'"),
+    created_at: format(subDays(today, 2), "yyyy-MM-dd'T'10:00:00'Z'"),
+    updated_at: format(subDays(today, 1), "yyyy-MM-dd'T'11:00:00'Z'"),
   },
 ]

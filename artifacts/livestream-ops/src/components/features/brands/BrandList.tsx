@@ -12,6 +12,28 @@ import { useToast } from '@/components/ui/toast'
 import { AlertDialog } from '@/components/ui/alert-dialog'
 import { BrandFormDialog } from './BrandFormDialog'
 
+// ── Compute Knowledge-Base completeness ───────────────────────────────────────
+function kbCompleteness(brand: Brand): { score: number; total: number; label: string; color: string } {
+  const checks: Array<boolean> = [
+    !!brand.introduction,
+    !!brand.tone_of_voice,
+    !!brand.usp,
+    !!brand.product_information,
+    !!brand.key_messages,
+    !!brand.dos,
+    !!brand.donts,
+    !!brand.important_notes,
+    !!(brand.training_documents && brand.training_documents.length > 0),
+    !!(brand.drive_links && brand.drive_links.length > 0),
+  ]
+  const score = checks.filter(Boolean).length
+  const total = checks.length
+  const pct = Math.round((score / total) * 100)
+  const label = pct === 100 ? 'Complete' : pct >= 60 ? 'Partial' : 'Minimal'
+  const color = pct === 100 ? 'bg-green-100 text-green-700' : pct >= 60 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'
+  return { score, total, label, color }
+}
+
 export function BrandList() {
   const [brands, setBrands] = React.useState<Brand[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -171,10 +193,27 @@ export function BrandList() {
                   </div>
                 </div>
                 <h3 className="font-semibold text-lg text-gray-900 mb-2">{brand.name}</h3>
-                <div className="flex items-center gap-2 text-sm text-gray-500">
+                <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
                   <div className="w-4 h-4 rounded border" style={{ backgroundColor: brand.color || '#2563EB' }} />
                   {brand.color || '#2563EB'}
                 </div>
+                {(() => {
+                  const kb = kbCompleteness(brand)
+                  return (
+                    <div className="mt-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs text-gray-500">KB</span>
+                        <Badge className={`text-xs py-0 px-2 ${kb.color}`}>{kb.label}</Badge>
+                      </div>
+                      <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-current rounded-full transition-all"
+                          style={{ width: `${Math.round((kb.score / kb.total) * 100)}%`,
+                            backgroundColor: kb.color.includes('green') ? '#16a34a' : kb.color.includes('yellow') ? '#ca8a04' : '#dc2626' }} />
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">{kb.score}/{kb.total} fields filled</p>
+                    </div>
+                  )
+                })()}
               </CardContent>
             </Card>
           ))}

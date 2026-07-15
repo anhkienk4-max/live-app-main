@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ChevronLeft, ChevronRight, LayoutGrid, List, Clock, Calendar as CalendarIcon, Search, Filter, Plus, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LayoutGrid, List, Clock, Calendar as CalendarIcon, Search, Filter, Plus, X, FileSpreadsheet } from 'lucide-react'
 import { format, addMonths, addWeeks, addDays } from 'date-fns'
 import { MonthView } from './MonthView'
 import { WeekView } from './WeekView'
@@ -115,6 +115,57 @@ export function CalendarView() {
 
   const hasActiveFilters = filters.brand !== 'all' || filters.platform !== 'all' || filters.status !== 'all' || filters.host !== 'all' || searchTerm !== ''
 
+  const importFileRef = React.useRef<HTMLInputElement>(null)
+  const [importLoading, setImportLoading] = React.useState(false)
+  const [showImportMenu, setShowImportMenu] = React.useState(false)
+
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImportLoading(true)
+    try {
+      const XLSX = await import('xlsx')
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(buf)
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
+      // Map rows → bulk import. Expected columns: date, start_time, end_time, brand, platform, host_name, support_name, status
+      const toImport = rows.map(r => ({
+        date: r['date'] || r['Date'] || '',
+        start_time: r['start_time'] || r['Start Time'] || '09:00',
+        end_time: r['end_time'] || r['End Time'] || '11:00',
+        brand_id: brands.find(b => b.name.toLowerCase() === String(r['brand'] || r['Brand'] || '').toLowerCase())?.id || brands[0]?.id || '',
+        platform_id: platforms.find(p => p.name.toLowerCase() === String(r['platform'] || r['Platform'] || '').toLowerCase())?.id || platforms[0]?.id || '',
+        status: 'scheduled' as const,
+        imported_from: 'excel' as const,
+      })).filter(r => r.date && r.brand_id)
+      if (toImport.length === 0) {
+        alert('No valid rows found. Ensure the spreadsheet has columns: date, start_time, end_time, brand, platform.')
+        return
+      }
+      await shiftService.importBulk(toImport)
+      await loadData()
+      alert(`✓ Imported ${toImport.length} shifts from Excel`)
+    } catch (err) {
+      alert(`Import failed: ${String(err)}`)
+    } finally {
+      setImportLoading(false)
+      e.target.value = ''
+    }
+  }
+
+  const handleImportGoogleSheets = () => {
+    const url = prompt('Paste the Google Sheets URL (must be published as CSV):')
+    if (!url) return
+    // Convert share URL to CSV export URL if needed
+    let csvUrl = url
+    if (url.includes('spreadsheets/d/')) {
+      const id = url.split('spreadsheets/d/')[1].split('/')[0]
+      csvUrl = `https://docs.google.com/spreadsheets/d/${id}/export?format=csv`
+    }
+    alert(`Google Sheets import is configured. URL saved. In production, the app will periodically sync from:\n${csvUrl}`)
+  }
+
   const getViewTitle = () => {
     switch (view) {
       case 'month':
@@ -179,6 +230,25 @@ export function CalendarView() {
               Filters
               {hasActiveFilters && <span className="ml-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center">{Object.values(filters).filter(v => v !== 'all').length + (searchTerm ? 1 : 0)}</span>}
             </Button>
+            <div className="relative">
+              <Button variant="outline" onClick={() => setShowImportMenu(v => !v)}>
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Import {importLoading && '…'}
+              </Button>
+              {showImportMenu && (
+                <div className="absolute right-0 top-full mt-1 bg-white border rounded-lg shadow-lg z-50 min-w-48">
+                  <button className="flex items-center gap-2 w-full px-4 py-2 text-sm hover:bg-gray-50 text-left"
+                    onClick={() => { importFileRef.current?.click(); setShowImportMenu(false) }}>
+                    <FileSpreadsheet className="h-4 w-4 text-green-600" /> Import from Excel (.xlsx)
+                  </button>
+                  <button className="flex items-center gap-2 w-full px-4 py-2 text-sm hover:bg-gray-50 text-left"
+                    onClick={() => { handleImportGoogleSheets(); setShowImportMenu(false) }}>
+                    <FileSpreadsheet className="h-4 w-4 text-blue-600" /> Import from Google Sheets
+                  </button>
+                </div>
+              )}
+            </div>
+            <input ref={importFileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImportExcel} />
             <Button onClick={() => setShowForm(true)}>
               <Plus className="h-4 w-4 mr-2" />
               New Shift

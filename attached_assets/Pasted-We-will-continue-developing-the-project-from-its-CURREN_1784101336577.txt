@@ -1,0 +1,221 @@
+We will continue developing the project from its CURRENT state.
+
+The project has already been imported into Replit.
+
+You have already indexed the codebase and the preview is running correctly.
+
+DO NOT analyze the project again.
+
+DO NOT regenerate existing modules.
+
+DO NOT redesign the application.
+
+Continue from the existing implementation only.
+
+------------------------------------------------
+
+From now on, act as the Lead Software Engineer responsible for this project.
+
+Your responsibilities:
+
+- Extend existing modules.
+- Improve business workflows.
+- Fix bugs immediately when discovered.
+- Refactor only when necessary.
+- Preserve the current architecture.
+- Keep the UI/UX consistent.
+
+Always inspect related files before editing.
+
+Never replace working implementations.
+
+------------------------------------------------
+
+NEW BUSINESS REQUIREMENTS
+
+The following requirements replace the old assumptions and must be integrated into the existing project.
+
+1. Calendar
+- Support importing livestream schedules from Google Sheets.
+- Support importing schedules from Excel.
+- Leader imports schedules.
+- Hosts, Supports and Technical staff register for available shifts.
+- Manual shift creation becomes optional.
+
+2. Staff
+Separate:
+- System Permission
+    - Admin
+    - Leader
+    - Member
+
+from
+
+Operational Roles
+- Host
+- Support
+- Technical
+
+A staff member may have multiple operational roles.
+
+3. Shift
+Each shift contains:
+- Host
+- Support
+- Technical
+
+Update every related module.
+
+4. Brand
+Each Brand becomes a knowledge base.
+
+Add:
+- Brand introduction
+- Tone of voice
+- USP
+- Product information
+- Key messages
+- Do & Don't
+- Important notes
+- Training documents
+- Drive links
+
+5. Platform
+
+Store:
+
+- Platform policies
+- Livestream rules
+- Official documents
+- Penalty rules
+- FAQ
+- Useful links
+
+6. Campaign
+
+Support:
+
+- Campaign URL
+- Excel Import
+
+Future-ready for API integration.
+
+7. Reports
+
+Images must be categorized.
+
+Examples:
+
+Dashboard
+
+Livestream
+
+Host
+
+Support
+
+Technical
+
+Voucher
+
+Product
+
+Other
+
+Prepare storage architecture for Supabase.
+
+8. Analytics
+
+Analytics never requires manual input.
+
+Future workflow:
+
+Dashboard Screenshot
+
+↓
+
+OCR
+
+↓
+
+Preview
+
+↓
+
+User edits if necessary
+
+↓
+
+Confirm
+
+↓
+
+Save
+
+↓
+
+Analytics auto updates.
+
+For now build the workflow and data structure.
+
+OCR implementation comes later.
+
+9. Swap
+
+Support:
+
+Export Excel
+
+Export Google Sheets
+
+Swap history.
+
+10. Settings
+
+Create a Settings module.
+
+Include:
+
+Language
+
+Theme
+
+Timezone
+
+Company
+
+Notification
+
+Google Sheets
+
+Supabase
+
+AI
+
+Backup
+
+Import / Export
+
+------------------------------------------------
+
+Development Rules
+
+Work continuously.
+
+Finish one milestone before starting another.
+
+Self review after each milestone.
+
+Fix issues immediately.
+
+Do not ask for confirmation after every feature.
+
+Only stop when:
+
+- credentials are required
+
+- a critical business decision is needed
+
+- the current milestone is completely finished
+
+Start with the highest-impact unfinished feature.
