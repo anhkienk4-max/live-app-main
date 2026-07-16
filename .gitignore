@@ -9,7 +9,21 @@ out-tsc
 .expo-shared
 
 # dependencies
-node_modules
+node_modules/
+.pnpm-store/
+
+# Next.js and generated build output
+.next/
+out/
+
+# environment files
+.env
+.env.local
+.env.*.local
+
+# generated reports and migration snapshots kept locally only
+test_reports/
+.migration-backup/
 
 # IDEs and editors
 /.idea
@@ -26,6 +40,12 @@ node_modules
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
+.vscode/
+
+# local assistant/editor configuration and imported attachments
+.gitconfig
+attached_assets/
+package.workspace-backup.json
 
 # misc
 /.sass-cache
@@ -36,6 +56,9 @@ npm-debug.log
 yarn-error.log
 testem.log
 /typings
+*.log
+*.tmp
+*.temp
 
 # System Files
 .DS_Store
@@ -47,3 +70,6 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+.replit-cache/
+.replit-tmp/
+.upm/
