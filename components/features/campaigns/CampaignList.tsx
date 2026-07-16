@@ -101,7 +101,7 @@ export function CampaignList() {
           }}>
             <Pencil className="h-4 w-4" />
           </Button>
-          {row.campaign_url && <Button asChild variant="ghost" size="icon"><a href={row.campaign_url} target="_blank" rel="noopener noreferrer" aria-label="Open campaign"><ExternalLink className="h-4 w-4" /></a></Button>}
+          {row.campaign_url && <Button render={<a href={row.campaign_url} target="_blank" rel="noopener noreferrer" aria-label="Open campaign" />} variant="ghost" size="icon"><ExternalLink className="h-4 w-4" /></Button>}
           <Button variant="ghost" size="icon" onClick={() => setDeleteId(row.id)}>
             <Trash2 className="h-4 w-4 text-red-600" />
           </Button>
@@ -204,5 +204,5 @@ export function CampaignList() {
 function CampaignUrlPreview({ url }: { url: string }) {
   const [failed, setFailed] = React.useState(false)
   React.useEffect(() => setFailed(false), [url])
-  return <div className="col-span-2 rounded-lg border bg-muted/30 p-3 text-sm"><div className="flex items-center justify-between gap-3"><div><p className="font-medium">Campaign URL preview</p><p className="mt-1 text-muted-foreground">Some platforms prevent embedding. The external link remains available as a fallback.</p></div><Button asChild variant="outline" size="sm"><a href={url} target="_blank" rel="noopener noreferrer"><ExternalLink className="mr-2 h-4 w-4" />Open Campaign</a></Button></div>{!failed && <iframe title="Campaign URL preview" src={url} className="mt-3 h-56 w-full rounded border bg-white" sandbox="allow-scripts allow-same-origin allow-popups" onError={() => setFailed(true)} />}{failed && <p className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-amber-800">This platform blocked the embedded preview. Open the campaign in a new tab.</p>}</div>
+  return <div className="col-span-2 rounded-lg border bg-muted/30 p-3 text-sm"><div className="flex items-center justify-between gap-3"><div><p className="font-medium">Campaign URL preview</p><p className="mt-1 text-muted-foreground">Some platforms prevent embedding. The external link remains available as a fallback.</p></div><Button render={<a href={url} target="_blank" rel="noopener noreferrer" />} variant="outline" size="sm"><ExternalLink className="mr-2 h-4 w-4" />Open Campaign</Button></div>{!failed && <iframe title="Campaign URL preview" src={url} className="mt-3 h-56 w-full rounded border bg-white" sandbox="allow-scripts allow-same-origin allow-popups" onError={() => setFailed(true)} />}{failed && <p className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-amber-800">This platform blocked the embedded preview. Open the campaign in a new tab.</p>}</div>
 }

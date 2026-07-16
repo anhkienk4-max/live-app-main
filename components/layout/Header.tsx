@@ -6,6 +6,7 @@ import { Bell, LogOut } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -68,28 +69,30 @@ export function Header({ user }: HeaderProps) {
             <Button type="button" variant="outline" size="sm" onClick={() => setLanguage(language === 'en' ? 'vi' : 'en')} aria-label={t('language')}>{language === 'en' ? 'VI' : 'EN'}</Button>
 
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-10 w-10 rounded-full" data-testid="user-menu-btn">
-                  <Avatar className="h-10 w-10">
-                    <AvatarImage src={user?.user_metadata?.avatar_url} alt={user?.user_metadata?.full_name || user?.email} />
-                    <AvatarFallback className="bg-gradient-to-br from-blue-600 to-blue-700 text-white">
-                      {initials}
-                    </AvatarFallback>
-                  </Avatar>
-                </Button>
+              <DropdownMenuTrigger
+                render={<Button variant="ghost" className="relative h-10 w-10 rounded-full" data-testid="user-menu-btn" />}
+              >
+                <Avatar className="h-10 w-10">
+                  <AvatarImage src={user?.user_metadata?.avatar_url} alt={user?.user_metadata?.full_name || user?.email} />
+                  <AvatarFallback className="bg-gradient-to-br from-blue-600 to-blue-700 text-white">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-56" align="end">
-                <DropdownMenuLabel className="font-normal">
-                  <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none">{user?.user_metadata?.full_name || 'User'}</p>
-                    <p className="text-xs leading-none text-gray-500">{user?.email}</p>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut} data-testid="signout-btn">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>{t('signOut')}</span>
-                </DropdownMenuItem>
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none">{user?.user_metadata?.full_name || 'User'}</p>
+                      <p className="text-xs leading-none text-gray-500">{user?.email}</p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut} data-testid="signout-btn">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>{t('signOut')}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
