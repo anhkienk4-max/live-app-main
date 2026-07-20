@@ -1,20 +1,32 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
-import { Globe } from 'lucide-react'
+import { Eye, EyeOff, Globe, Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useTranslation } from '@/lib/i18n'
+import { mockAuthService } from '@/lib/services/mockAuthService'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showPassword, setShowPassword] = useState(false)
   const router = useRouter()
-  const useMockData = process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true'
+  const { language, setLanguage, t } = useTranslation()
+  const useMockData = process.env.NEXT_PUBLIC_USE_MOCK_DATA !== 'false'
+
+  const authStatusMessage = (status?: string) => {
+    if (status === 'pending_email_verification') return t('pendingEmailVerification')
+    if (status === 'pending_approval') return t('pendingAdminApproval')
+    if (status === 'rejected') return t('accountRejected')
+    return t('invalidEmailOrPassword')
+  }
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -22,16 +34,19 @@ export default function LoginPage() {
     setError(null)
 
     if (useMockData) {
-      // Mock auth - just redirect to dashboard
-      setTimeout(() => {
+      const result = await mockAuthService.signInEmail(email, password)
+      if (result.ok) {
         router.push('/')
         router.refresh()
-      }, 500)
+        return
+      }
+      setError(authStatusMessage(result.status))
+      setLoading(false)
       return
     }
 
     // Real Supabase auth will be implemented here
-    setError('Supabase not configured. Using mock data.')
+    setError(t('supabaseNotConfigured'))
     setLoading(false)
   }
 
@@ -40,16 +55,19 @@ export default function LoginPage() {
     setError(null)
 
     if (useMockData) {
-      // Mock auth - just redirect to dashboard
-      setTimeout(() => {
+      const result = await mockAuthService.signInWithGoogle(email)
+      if (result.ok) {
         router.push('/')
         router.refresh()
-      }, 500)
+        return
+      }
+      setError(authStatusMessage(result.status))
+      setLoading(false)
       return
     }
 
     // Real Supabase Google OAuth will be implemented here
-    setError('Supabase not configured. Using mock data.')
+    setError(t('supabaseNotConfigured'))
     setLoading(false)
   }
 
@@ -67,12 +85,12 @@ export default function LoginPage() {
               LiveStream Ops
             </CardTitle>
             <CardDescription className="text-base mt-2">
-              Sign in to manage your live operations
+              {t('loginSubtitle')}
             </CardDescription>
             {useMockData && (
               <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
                 <p className="text-xs text-blue-700 font-medium">
-                  🔧 Demo Mode: Click any button to continue
+                  🔧 {t('demoModeHelp')}
                 </p>
               </div>
             )}
@@ -87,7 +105,7 @@ export default function LoginPage() {
             data-testid="google-login-btn"
           >
             <Globe className="mr-2 h-5 w-5" />
-            Continue with Google
+            {t('continueWithGoogle')}
           </Button>
 
           <div className="relative">
@@ -96,7 +114,7 @@ export default function LoginPage() {
             </div>
             <div className="relative flex justify-center text-xs uppercase">
               <span className="bg-white px-4 text-gray-500 font-medium">
-                Or continue with email
+                {t('continueWithEmail')}
               </span>
             </div>
           </div>
@@ -104,7 +122,7 @@ export default function LoginPage() {
           <form onSubmit={handleEmailLogin} className="space-y-4">
             <div className="space-y-2">
               <label htmlFor="email" className="text-sm font-medium text-gray-700">
-                Email
+                {t('email')}
               </label>
               <Input
                 id="email"
@@ -119,18 +137,23 @@ export default function LoginPage() {
             </div>
             <div className="space-y-2">
               <label htmlFor="password" className="text-sm font-medium text-gray-700">
-                Password
+                {t('password')}
               </label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="h-11"
-                data-testid="password-input"
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="h-11 pr-11"
+                  data-testid="password-input"
+                />
+                <Button type="button" variant="ghost" size="icon-sm" className="absolute right-1 top-1.5" aria-label={showPassword ? t('hidePassword') : t('showPassword')} onClick={() => setShowPassword(value => !value)}>
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
             </div>
             {error && (
               <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg border border-red-100" data-testid="login-error">
@@ -143,9 +166,22 @@ export default function LoginPage() {
               className="w-full h-11 text-base font-medium bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 transition-all"
               data-testid="email-login-btn"
             >
-              {loading ? 'Signing in...' : 'Sign in'}
+              {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t('signingIn')}</> : t('signIn')}
             </Button>
           </form>
+          <div className="space-y-3 text-center text-sm">
+            <button type="button" className="text-blue-700 hover:underline" onClick={() => setError(t('passwordResetMockHelp'))}>{t('forgotPassword')}</button>
+            <p className="text-gray-600">{t('noAccount')} <Link className="font-semibold text-blue-700 hover:underline" href="/register">{t('signUp')}</Link></p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full"
+            onClick={() => setLanguage(language === 'en' ? 'vi' : 'en')}
+          >
+            <Globe className="mr-2 h-4 w-4" />
+            {language === 'en' ? t('vietnamese') : t('english')}
+          </Button>
         </CardContent>
       </Card>
     </div>

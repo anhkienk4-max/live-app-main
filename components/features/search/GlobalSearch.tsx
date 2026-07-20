@@ -8,6 +8,7 @@ import { shiftService, userService, brandService, campaignService } from '@/lib/
 import { Search, Calendar, User, Briefcase, Tag, Clock } from 'lucide-react'
 import { format } from 'date-fns'
 import { useRouter } from 'next/navigation'
+import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 
 interface SearchResult {
   id: string
@@ -73,7 +74,7 @@ export function GlobalSearch() {
               id: shift.id,
               type: 'shift',
               title: `${brand?.name || 'Unknown'} - ${format(new Date(shift.date), 'MMM d')}`,
-              subtitle: `${shift.start_time} - ${shift.end_time}`,
+              subtitle: formatShiftTimeRange(shift),
               url: '/calendar',
               icon: <Calendar className="h-4 w-4" />,
               badge: shift.status
@@ -156,7 +157,7 @@ export function GlobalSearch() {
 
       {/* Search Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl p-0 gap-0">
+        <DialogContent size="md" className="gap-0 p-0">
           <div className="p-4 border-b">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />

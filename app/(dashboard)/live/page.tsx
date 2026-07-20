@@ -1,8 +1,9 @@
 import { LazyLiveMonitoringDashboard } from '@/lib/utils/lazyComponents'
+import { LocalizedPageHeading } from '@/lib/i18n'
 export default function LivePage() {
   return (
     <div className="space-y-6">
-      <div><h1 className="text-3xl font-bold">Live Monitoring</h1><p className="text-gray-600">Operational command center for active livestreams</p></div>
+      <LocalizedPageHeading title="liveMonitor" subtitle="liveSubtitle" />
       <LazyLiveMonitoringDashboard />
     </div>
   )

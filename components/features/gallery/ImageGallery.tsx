@@ -81,7 +81,7 @@ export function ImageGallery({ images, initialIndex = 0 }: ImageGalleryProps) {
       {/* Lightbox */}
       {selectedIndex !== null && (
         <Dialog open={selectedIndex !== null} onOpenChange={closeLightbox}>
-          <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 bg-black border-0">
+          <DialogContent size="full" className="border-0 bg-black p-0">
             <div className="relative w-full h-[95vh] flex items-center justify-center">
               {/* Close Button */}
               <Button

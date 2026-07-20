@@ -4,6 +4,7 @@ import * as React from 'react'
 import { Shift, Brand, Platform } from '@/lib/types/database.types'
 import { Badge } from '@/components/ui/badge'
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth, isSameDay, isToday } from 'date-fns'
+import { resolveShiftDateTime } from '@/lib/utils/shiftUtils'
 
 interface MonthViewProps {
   currentDate: Date
@@ -75,7 +76,7 @@ export function MonthView({ currentDate, shifts, brands, platforms, onShiftClick
                       style={{ backgroundColor: getBrandColor(shift.brand_id) + '20', borderLeft: `3px solid ${getBrandColor(shift.brand_id)}` }}
                       onClick={() => onShiftClick?.(shift)}
                     >
-                      <div className="font-medium truncate">{shift.start_time}</div>
+                      <div className="font-medium truncate">{shift.start_time}{resolveShiftDateTime(shift.date, shift.start_time, shift.end_time)?.crossesMidnight ? ' → +1' : ''}</div>
                       <Badge variant={shift.status === 'live' ? 'destructive' : 'secondary'} className="text-[10px] py-0">
                         {shift.status}
                       </Badge>

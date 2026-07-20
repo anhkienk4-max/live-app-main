@@ -8,7 +8,7 @@ export const DASHBOARD_REALTIME_INSIGHTS_PROMPT = `You are monitoring a live e-c
 **Current Metrics:**
 - Current Viewers: {current_viewers}
 - Peak Viewers: {peak_viewers}
-- Revenue So Far: ${revenue}
+- Revenue So Far: {revenue} VND
 - Orders: {orders}
 - Time Elapsed: {elapsed_minutes} minutes
 - Scheduled Duration: {total_minutes} minutes
@@ -31,13 +31,13 @@ export const DASHBOARD_ALERT_PROMPT = `Generate an alert message for the operati
 export const DASHBOARD_PERFORMANCE_COMPARISON_PROMPT = `Compare this live session's performance to historical averages:
 
 **Current Session:**
-- Revenue: ${current_revenue}
+- Revenue: {current_revenue} VND
 - Viewers: {current_viewers}
 - Orders: {current_orders}
 - Duration: {current_duration} minutes
 
 **Historical Average (Same Brand & Platform):**
-- Average Revenue: ${avg_revenue}
+- Average Revenue: {avg_revenue} VND
 - Average Viewers: {avg_viewers}
 - Average Orders: {avg_orders}
 

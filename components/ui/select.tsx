@@ -6,7 +6,56 @@ import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "@/lib/utils"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
-const Select = SelectPrimitive.Root
+type SelectRootProps = SelectPrimitive.Root.Props<string>
+type SelectChangeDetails = Parameters<NonNullable<SelectRootProps["onValueChange"]>>[1]
+
+type SelectProps = Omit<SelectRootProps, "onValueChange"> & {
+  onValueChange?: (value: string, eventDetails: SelectChangeDetails) => void
+}
+
+function nodeText(node: React.ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node)
+  if (Array.isArray(node)) return node.map(nodeText).join("")
+  if (React.isValidElement<{ children?: React.ReactNode }>(node)) {
+    return nodeText(node.props.children)
+  }
+  return ""
+}
+
+function collectSelectLabels(node: React.ReactNode, labels: Map<string, string>) {
+  React.Children.forEach(node, child => {
+    if (!React.isValidElement<{ value?: unknown; children?: React.ReactNode }>(child)) return
+    if (child.type === SelectItem && typeof child.props.value === "string") {
+      labels.set(child.props.value, nodeText(child.props.children).trim())
+      return
+    }
+    collectSelectLabels(child.props.children, labels)
+  })
+}
+
+function Select({ onValueChange, itemToStringLabel, children, ...props }: SelectProps) {
+  const labels = React.useMemo(() => {
+    const next = new Map<string, string>()
+    collectSelectLabels(children, next)
+    return next
+  }, [children])
+
+  return (
+    <SelectPrimitive.Root
+      {...props}
+      itemToStringLabel={(value) => {
+        const suppliedLabel = itemToStringLabel?.(value)
+        if (suppliedLabel && suppliedLabel !== String(value)) return suppliedLabel
+        return labels.get(String(value)) || ""
+      }}
+      onValueChange={(value, eventDetails) => {
+        if (value !== null) onValueChange?.(value, eventDetails)
+      }}
+    >
+      {children}
+    </SelectPrimitive.Root>
+  )
+}
 
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (

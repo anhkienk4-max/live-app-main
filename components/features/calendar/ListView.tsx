@@ -4,6 +4,7 @@ import { Shift, Brand, Platform, User } from '@/lib/types/database.types'
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import { Calendar } from 'lucide-react'
+import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 
 interface ListViewProps {
   shifts: Shift[]
@@ -47,7 +48,7 @@ export function ListView({ shifts, brands, platforms, users, onShiftClick }: Lis
               <div className="text-sm font-semibold min-w-[110px]">
                 {format(new Date(shift.date), 'MMM d, yyyy')}
               </div>
-              <div className="text-sm font-medium min-w-[100px]">{shift.start_time} - {shift.end_time}</div>
+              <div className="min-w-[150px] text-sm font-medium">{formatShiftTimeRange(shift)}</div>
               <div className="text-sm font-semibold text-gray-900">{getBrandName(shift.brand_id)}</div>
               <div className="text-sm text-gray-600">{getPlatformName(shift.platform_id)}</div>
               <div className="text-sm text-gray-500">

@@ -4,6 +4,7 @@ import { Shift, Brand, Platform, User } from '@/lib/types/database.types'
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import { Clock, User as UserIcon } from 'lucide-react'
+import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 
 interface DayViewProps {
   currentDate: Date
@@ -43,7 +44,7 @@ export function DayView({ currentDate, shifts, brands, platforms, users, onShift
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
-                    <span className="text-lg font-semibold">{shift.start_time} - {shift.end_time}</span>
+                    <span className="text-lg font-semibold">{formatShiftTimeRange(shift)}</span>
                     <Badge variant={shift.status === 'live' ? 'destructive' : shift.status === 'completed' ? 'default' : 'secondary'}>
                       {shift.status}
                     </Badge>

@@ -1,8 +1,8 @@
 'use client'
 
 import * as React from 'react'
-import { swapRequestService } from '@/lib/services/dataService'
-import { Shift, User, Brand, Platform } from '@/lib/types/database.types'
+import { isStaffedRegistration, shiftRegistrationService, swapRequestService } from '@/lib/services/dataService'
+import { Shift, User, Brand, Platform, OperationalRole } from '@/lib/types/database.types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -10,6 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/components/ui/toast'
 import { Loader2 } from 'lucide-react'
 import { format } from 'date-fns'
+import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useTranslation } from '@/lib/i18n'
+import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 
 interface SwapRequestFormModalProps {
   open: boolean
@@ -41,7 +44,7 @@ export function SwapRequestFormModal({
 }: SwapRequestFormModalProps) {
   const [formData, setFormData] = React.useState<FormData>({
     shift_id: '',
-    requester_id: '3', // Mock current user
+    requester_id: '',
     new_host_id: '',
     new_support_id: '',
     new_technical_id: '',
@@ -49,27 +52,41 @@ export function SwapRequestFormModal({
   })
   const [submitting, setSubmitting] = React.useState(false)
   const [errors, setErrors] = React.useState<Partial<FormData>>({})
+  const [registeredRoles, setRegisteredRoles] = React.useState<Record<string, OperationalRole[]>>({})
   const { toast } = useToast()
+  const { currentUser } = useCurrentUser()
+  const { t } = useTranslation()
 
   React.useEffect(() => {
-    if (open) {
+    if (open && currentUser) {
       setFormData({
         shift_id: shifts[0]?.id || '',
-        requester_id: '3',
+        requester_id: currentUser.id,
         new_host_id: '',
         new_support_id: '',
         new_technical_id: '',
         reason: ''
       })
       setErrors({})
+      void shiftRegistrationService.getForUser(currentUser.id).then(registrations => {
+        const next: Record<string, OperationalRole[]> = {}
+        registrations.filter(isStaffedRegistration).forEach(registration => {
+          ;(next[registration.shift_id] ??= []).push(registration.operational_role)
+        })
+        setRegisteredRoles(next)
+      })
     }
-  }, [open, shifts])
+  }, [currentUser, open, shifts])
 
   const validateForm = (): boolean => {
     const newErrors: Partial<FormData> = {}
 
     if (!formData.shift_id) newErrors.shift_id = 'Please select a shift'
-    if (!formData.new_host_id && !formData.new_support_id && !formData.new_technical_id) newErrors.new_host_id = 'Select at least one replacement role'
+    const selectedRoles = [formData.new_host_id, formData.new_support_id, formData.new_technical_id].filter(Boolean)
+    if (selectedRoles.length === 0) newErrors.new_host_id = 'Select one replacement role'
+    if (selectedRoles.length > 1) newErrors.new_host_id = 'Create one request per operational role'
+    const selectedRole: OperationalRole = formData.new_host_id ? 'host' : formData.new_support_id ? 'support' : 'technical'
+    if (selectedRoles.length === 1 && !availableRoles.includes(selectedRole)) newErrors.new_host_id = 'You can only swap a role assigned to you.'
     if (!formData.reason.trim()) newErrors.reason = 'Reason is required'
     if (formData.reason.trim().length < 10) newErrors.reason = 'Please provide a detailed reason (min 10 characters)'
 
@@ -92,9 +109,17 @@ export function SwapRequestFormModal({
     setSubmitting(true)
 
     try {
+      const operationalRole = formData.new_host_id ? 'host' : formData.new_support_id ? 'support' : 'technical'
+      const replacementStaffId = formData.new_host_id || formData.new_support_id || formData.new_technical_id
+      const selectedShift = shifts.find(shift => shift.id === formData.shift_id)
+      const originalStaffId = operationalRole === 'host' ? selectedShift?.host_id : operationalRole === 'support' ? selectedShift?.support_id : selectedShift?.technical_id
+      if (!currentUser || currentUser.id !== formData.requester_id) throw new Error(t('permissionDenied'))
       await swapRequestService.create({
         shift_id: formData.shift_id,
         requester_id: formData.requester_id,
+        operational_role: operationalRole,
+        original_staff_id: originalStaffId,
+        replacement_staff_id: replacementStaffId,
         new_host_id: formData.new_host_id || undefined,
         new_support_id: formData.new_support_id || undefined,
         new_technical_id: formData.new_technical_id || undefined,
@@ -111,7 +136,7 @@ export function SwapRequestFormModal({
     } catch (error) {
       toast({ 
         title: 'Submission Failed', 
-        description: 'Failed to submit swap request. Please try again.',
+        description: error instanceof Error ? error.message : 'Failed to submit swap request. Please try again.',
         variant: 'destructive' 
       })
     } finally {
@@ -124,10 +149,23 @@ export function SwapRequestFormModal({
   const byRole = (role: 'host' | 'support' | 'technical') => users.filter(u => u.status === 'active' && (u.operational_roles?.includes(role) || (role === 'host' && u.department === 'Live Host') || (role === 'support' && u.department === 'Live Support')))
 
   const selectedShift = shifts.find(s => s.id === formData.shift_id)
+  const availableRoles = React.useMemo(() => {
+    if (!selectedShift || !currentUser) return []
+    const roles = new Set<OperationalRole>(registeredRoles[selectedShift.id] || [])
+    if (selectedShift.host_id === currentUser.id) roles.add('host')
+    if (selectedShift.support_id === currentUser.id) roles.add('support')
+    if (selectedShift.technical_id === currentUser.id) roles.add('technical')
+    return [...roles]
+  }, [currentUser, registeredRoles, selectedShift])
+  const replacementField: Record<OperationalRole, 'new_host_id' | 'new_support_id' | 'new_technical_id'> = {
+    host: 'new_host_id',
+    support: 'new_support_id',
+    technical: 'new_technical_id',
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent size="lg" className="overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Request Shift Swap</DialogTitle>
           <DialogDescription>
@@ -141,7 +179,7 @@ export function SwapRequestFormModal({
             <label className="text-sm font-medium mb-2 block">
               Select Your Shift <span className="text-red-500">*</span>
             </label>
-            <Select value={formData.shift_id} onValueChange={(value) => setFormData({ ...formData, shift_id: value })}>
+            <Select value={formData.shift_id} onValueChange={(value) => setFormData({ ...formData, shift_id: value, new_host_id: '', new_support_id: '', new_technical_id: '' })}>
               <SelectTrigger className={errors.shift_id ? 'border-red-500' : ''}>
                 <SelectValue placeholder="Choose a shift..." />
               </SelectTrigger>
@@ -149,7 +187,7 @@ export function SwapRequestFormModal({
                 {shifts.map((shift) => (
                   <SelectItem key={shift.id} value={shift.id}>
                     {getBrandName(shift.brand_id)} - {getPlatformName(shift.platform_id)} 
-                    ({format(new Date(shift.date), 'MMM d')}, {shift.start_time} - {shift.end_time})
+                    ({format(new Date(`${shift.date}T00:00:00`), 'MMM d')}, {formatShiftTimeRange(shift)})
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -176,7 +214,7 @@ export function SwapRequestFormModal({
                 </div>
                 <div>
                   <span className="text-blue-700">Time:</span>
-                  <span className="font-medium ml-2">{selectedShift.start_time} - {selectedShift.end_time}</span>
+                  <span className="font-medium ml-2">{formatShiftTimeRange(selectedShift)}</span>
                 </div>
               </div>
             </div>
@@ -184,28 +222,12 @@ export function SwapRequestFormModal({
 
           {/* Replacement team selection */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <div>
-            <label className="text-sm font-medium mb-2 block">
-              Proposed Replacement Host <span className="text-red-500">*</span>
-            </label>
-            <Select value={formData.new_host_id || 'none'} onValueChange={(value) => setFormData({ ...formData, new_host_id: value === 'none' ? '' : value })}>
-              <SelectTrigger className={errors.new_host_id ? 'border-red-500' : ''}>
-                <SelectValue placeholder="Choose a replacement host..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No host change</SelectItem>
-                {byRole('host').map((host) => (
-                  <SelectItem key={host.id} value={host.id}>
-                    {host.full_name} ({host.email})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.new_host_id && <div className="text-xs text-red-500 mt-1">{errors.new_host_id}</div>}
-            {errors.new_host_id && <div className="text-xs text-red-500 mt-1">{errors.new_host_id}</div>}
-          </div>
-          <div><label className="text-sm font-medium mb-2 block">Replacement Support</label><Select value={formData.new_support_id || 'none'} onValueChange={(value) => setFormData({ ...formData, new_support_id: value === 'none' ? '' : value })}><SelectTrigger><SelectValue placeholder="Keep current support" /></SelectTrigger><SelectContent><SelectItem value="none">No support change</SelectItem>{byRole('support').map(user => <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>)}</SelectContent></Select></div>
-          <div><label className="text-sm font-medium mb-2 block">Replacement Technical</label><Select value={formData.new_technical_id || 'none'} onValueChange={(value) => setFormData({ ...formData, new_technical_id: value === 'none' ? '' : value })}><SelectTrigger><SelectValue placeholder="Keep current technical" /></SelectTrigger><SelectContent><SelectItem value="none">No technical change</SelectItem>{byRole('technical').map(user => <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>)}</SelectContent></Select></div>
+          {availableRoles.map(role => {
+            const field = replacementField[role]
+            return <div key={role}><label className="text-sm font-medium mb-2 block">{t('replacementStaff')} · {t(role)}</label><Select value={formData[field] || 'none'} onValueChange={(value) => setFormData(current => ({ ...current, [field]: value === 'none' ? '' : value }))}><SelectTrigger className={errors.new_host_id ? 'border-red-500' : ''}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">—</SelectItem>{byRole(role).filter(user => user.id !== currentUser?.id).map(user => <SelectItem key={user.id} value={user.id}>{user.full_name} ({user.email})</SelectItem>)}</SelectContent></Select></div>
+          })}
+          {availableRoles.length === 0 && <p className="text-sm text-muted-foreground">{t('noMyShifts')}</p>}
+          {errors.new_host_id && <div className="text-xs text-red-500 mt-1 md:col-span-3">{errors.new_host_id}</div>}
           </div>
 
           {/* Reason */}

@@ -9,6 +9,9 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/components/ui/toast'
+import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { hasPermission } from '@/lib/permissions'
+import { useTranslation } from '@/lib/i18n'
 
 interface StaffFormDialogProps {
   open: boolean
@@ -31,6 +34,8 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
     avatar_url: '',
   })
   const { toast } = useToast()
+  const { currentUser } = useCurrentUser()
+  const { t } = useTranslation()
 
   React.useEffect(() => {
     if (staff) {
@@ -71,26 +76,36 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
-
+    if (!currentUser || !hasPermission(currentUser, 'staff.manage')) {
+      toast({ title: t('error'), description: t('permissionDenied'), variant: 'destructive' })
+      return
+    }
     try {
+      const normalizedEmail = formData.email.trim().toLowerCase()
+      const existing = await userService.getAll()
+      if (!formData.full_name.trim() || !normalizedEmail || existing.some(user => user.id !== staff?.id && user.email.toLowerCase() === normalizedEmail)) {
+        toast({ title: t('error'), description: t('validationError'), variant: 'destructive' })
+        return
+      }
+      setLoading(true)
+      const payload = { ...formData, full_name: formData.full_name.trim(), email: normalizedEmail }
       if (staff) {
-        await userService.update(staff.id, formData)
-        toast({ title: 'Success', description: 'Staff member updated successfully', variant: 'success' })
+        await userService.update(staff.id, payload)
+        toast({ title: t('success'), description: t('staffUpdated'), variant: 'success' })
       } else {
         // Generate avatar URL if not provided
-        const avatarUrl = formData.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${formData.email}`
+        const avatarUrl = formData.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${normalizedEmail}`
         await userService.create({
-          ...formData,
+          ...payload,
           avatar_url: avatarUrl,
           join_date: new Date().toISOString().split('T')[0],
         })
-        toast({ title: 'Success', description: 'Staff member created successfully', variant: 'success' })
+        toast({ title: t('success'), description: t('staffCreated'), variant: 'success' })
       }
       onSuccess()
       onOpenChange(false)
     } catch (error) {
-      toast({ title: 'Error', description: 'Failed to save staff member', variant: 'destructive' })
+      toast({ title: t('error'), description: t('staffSaveFailed'), variant: 'destructive' })
     } finally {
       setLoading(false)
     }
@@ -98,18 +113,18 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent size="lg" className="overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{staff ? 'Edit Staff Member' : 'Add New Staff Member'}</DialogTitle>
+          <DialogTitle>{staff ? t('editStaff') : t('addNewStaff')}</DialogTitle>
           <DialogDescription>
-            {staff ? 'Update staff member information' : 'Add a new team member to your organization'}
+            {staff ? t('updateStaffInfo') : t('addStaffInfo')}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Full Name *</label>
+              <label className="text-sm font-medium">{t('fullName')} *</label>
               <Input
                 required
                 value={formData.full_name}
@@ -119,7 +134,7 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Email *</label>
+              <label className="text-sm font-medium">{t('email')} *</label>
               <Input
                 required
                 type="email"
@@ -130,7 +145,7 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Phone</label>
+              <label className="text-sm font-medium">{t('phone')}</label>
               <Input
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
@@ -139,7 +154,7 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Department</label>
+              <label className="text-sm font-medium">{t('department')}</label>
               <Input
                 value={formData.department}
                 onChange={(e) => setFormData({ ...formData, department: e.target.value })}
@@ -148,40 +163,40 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">System Permission *</label>
+              <label className="text-sm font-medium">{t('systemPermissions')} *</label>
               <Select value={formData.system_permission} onValueChange={(value: SystemPermission) => setFormData({ ...formData, system_permission: value, role: value === 'member' ? 'staff' : value })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="member">Member</SelectItem>
-                  <SelectItem value="leader">Leader</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="member">{t('memberSettings')}</SelectItem>
+                  <SelectItem value="leader">{t('leaderSettings')}</SelectItem>
+                  <SelectItem value="admin">{t('adminSettings')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Status *</label>
+              <label className="text-sm font-medium">{t('status')} *</label>
               <Select value={formData.status} onValueChange={(value: 'active' | 'inactive') => setFormData({ ...formData, status: value })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="active">{t('active')}</SelectItem>
+                  <SelectItem value="inactive">{t('inactive')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Operational Roles</label>
+            <label className="text-sm font-medium">{t('operationalRoles')}</label>
             <div className="flex flex-wrap gap-4 rounded-lg border p-3">
               {(['host', 'support', 'technical'] as OperationalRole[]).map(role => (
                 <label key={role} className="flex items-center gap-2 text-sm capitalize">
                   <Checkbox checked={formData.operational_roles.includes(role)} onCheckedChange={() => toggleOperationalRole(role)} />
-                  {role}
+                  {t(role)}
                 </label>
               ))}
             </div>
@@ -189,10 +204,10 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-              Cancel
+              {t('cancel')}
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? 'Saving...' : staff ? 'Update' : 'Create'}
+              {loading ? t('loading') : staff ? t('update') : t('create')}
             </Button>
           </DialogFooter>
         </form>

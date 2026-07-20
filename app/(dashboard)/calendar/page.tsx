@@ -1,11 +1,11 @@
-import { LazyCalendarView } from '@/lib/utils/lazyComponents'
+import { CalendarWorkspace } from '@/components/features/calendar/CalendarWorkspace'
 import { LocalizedPageHeading } from '@/lib/i18n'
 
 export default function CalendarPage() {
   return (
-    <div className="space-y-6" data-testid="calendar-page">
+    <div className="min-w-0 space-y-6" data-testid="calendar-page">
       <LocalizedPageHeading title="calendar" subtitle="calendarSubtitle" />
-      <LazyCalendarView />
+      <CalendarWorkspace />
     </div>
   )
 }

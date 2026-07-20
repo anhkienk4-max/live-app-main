@@ -1,7 +1,6 @@
 import { Header } from '@/components/layout/Header'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { BottomNav } from '@/components/layout/BottomNav'
-import { LanguageProvider } from '@/lib/i18n'
 
 export default async function DashboardLayout({
   children,
@@ -18,17 +17,17 @@ export default async function DashboardLayout({
   }
 
   return (
-    <LanguageProvider><div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="flex h-screen overflow-hidden bg-gray-50">
       <Sidebar />
-      <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header user={mockUser} />
-        <main className="flex-1 overflow-y-auto pb-20 md:pb-8">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <main className="min-w-0 flex-1 overflow-y-auto pb-20 md:pb-8">
+          <div className="w-full min-w-0 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
             {children}
           </div>
         </main>
         <BottomNav />
       </div>
-    </div></LanguageProvider>
+    </div>
   )
 }

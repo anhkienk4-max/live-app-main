@@ -4,6 +4,7 @@
  */
 
 import { ChatMessage } from './types'
+import { formatCurrency as formatApplicationCurrency } from '@/lib/utils/currency'
 
 /**
  * Create a system message
@@ -65,10 +66,7 @@ export function formatNumber(num: number): string {
  * Format currency for prompts
  */
 export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(amount)
+  return formatApplicationCurrency(amount)
 }
 
 /**

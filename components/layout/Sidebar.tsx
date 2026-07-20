@@ -2,9 +2,11 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Calendar, Radio, FileText, User, Settings, Users, Package, Megaphone, BarChart3, RefreshCw } from 'lucide-react'
+import { Home, Calendar, Radio, FileText, User, Settings, Users, Package, Megaphone, BarChart3, RefreshCw, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
+import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { hasAnyPermission } from '@/lib/permissions'
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: Home },
@@ -17,6 +19,7 @@ const navigation = [
   { name: 'Brands', href: '/brands', icon: Package },
   { name: 'Platforms', href: '/platforms', icon: Megaphone },
   { name: 'Campaigns', href: '/campaigns', icon: Megaphone },
+  { name: 'Audit', href: '/audit', icon: History, restricted: true },
   { name: 'Settings', href: '/settings', icon: Settings },
   { name: 'Profile', href: '/profile', icon: User },
 ]
@@ -24,6 +27,7 @@ const navigation = [
 export function Sidebar() {
   const pathname = usePathname()
   const { t } = useTranslation()
+  const { currentUser } = useCurrentUser()
 
   return (
     <aside className="hidden md:flex md:flex-shrink-0">
@@ -40,7 +44,7 @@ export function Sidebar() {
             </h1>
           </div>
           <nav className="mt-5 flex-1 px-3 space-y-1">
-            {navigation.map((item) => {
+            {navigation.filter(item => !item.restricted || (currentUser && hasAnyPermission(currentUser, ['audit.view', 'audit.view_team']))).map((item) => {
               const isActive = pathname === item.href
               const Icon = item.icon
               return (
@@ -61,7 +65,7 @@ export function Sidebar() {
                       isActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-500'
                     )}
                   />
-                  {t(item.name.toLowerCase() as Parameters<typeof t>[0])}
+                  {item.name === 'Audit' ? 'Audit History' : t(item.name.toLowerCase() as Parameters<typeof t>[0])}
                 </Link>
               )
             })}

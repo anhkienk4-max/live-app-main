@@ -21,7 +21,7 @@ export const SHIFT_OPTIMIZATION_PROMPT = `Optimize the shift schedule based on t
 **Constraints:**
 - Staff availability: {staff_availability}
 - Peak viewing hours: {peak_hours}
-- Budget: ${budget}
+- Budget: {budget} VND
 
 **Staff Performance Data:**
 {staff_performance}
@@ -50,7 +50,7 @@ export const SHIFT_RECURRING_TEMPLATE_PROMPT = `Generate an optimal recurring sh
 - Platform: {platform}
 - Frequency: {frequency}
 - Expected audience: {expected_audience}
-- Budget per shift: ${budget_per_shift}
+- Budget per shift: {budget_per_shift} VND
 
 **Historical Performance (Same Brand/Platform):**
 {historical_performance}

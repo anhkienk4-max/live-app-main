@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { format } from 'date-fns'
 import { CheckCircle, XCircle, Clock, User as UserIcon, Calendar, Briefcase } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
+import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 
 interface SwapDetailModalProps {
   open: boolean
@@ -19,6 +20,7 @@ interface SwapDetailModalProps {
   newHost?: User
   brands: Brand[]
   platforms: Platform[]
+  canReview?: boolean
   onApprove: () => void
   onReject: () => void
 }
@@ -32,6 +34,7 @@ export function SwapDetailModal({
   newHost,
   brands, 
   platforms,
+  canReview = false,
   onApprove,
   onReject
 }: SwapDetailModalProps) {
@@ -78,7 +81,7 @@ export function SwapDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent size="lg" className="overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center justify-between">
             <DialogTitle className="text-2xl">Swap Request Details</DialogTitle>
@@ -110,7 +113,7 @@ export function SwapDetailModal({
                       </div>
                       <div>
                         <span className="text-gray-600">Time:</span>
-                        <span className="font-medium ml-2">{shift.start_time} - {shift.end_time}</span>
+                        <span className="font-medium ml-2">{formatShiftTimeRange(shift)}</span>
                       </div>
                       <div>
                         <span className="text-gray-600">Status:</span>
@@ -204,7 +207,7 @@ export function SwapDetailModal({
         </div>
 
         {/* Actions */}
-        {swap.status === 'pending' && (
+        {swap.status === 'pending' && canReview && (
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Close
@@ -227,7 +230,7 @@ export function SwapDetailModal({
           </DialogFooter>
         )}
 
-        {swap.status !== 'pending' && (
+        {(swap.status !== 'pending' || !canReview) && (
           <DialogFooter>
             <Button onClick={() => onOpenChange(false)}>
               Close

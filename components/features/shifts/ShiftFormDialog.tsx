@@ -2,8 +2,8 @@
 
 import * as React from 'react'
 import { shiftService } from '@/lib/services/dataService'
-import { Shift, Brand, Platform, Campaign, User } from '@/lib/types/database.types'
-import { ShiftTemplate, RecurrenceRule, detectConflicts, generateRecurringShifts, calculateDuration, formatDuration } from '@/lib/utils/shiftUtils'
+import { Shift, Brand, Platform, Campaign, User, ShiftStatus } from '@/lib/types/database.types'
+import { ShiftTemplate, RecurrenceRule, detectConflicts, generateRecurringShifts, formatDuration, resolveShiftDateTime } from '@/lib/utils/shiftUtils'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -46,6 +46,7 @@ export function ShiftFormDialog({
   const [previewShifts, setPreviewShifts] = React.useState<any[]>([])
   
   const [formData, setFormData] = React.useState({
+    title: '',
     date: '',
     start_time: '',
     end_time: '',
@@ -55,7 +56,12 @@ export function ShiftFormDialog({
     host_id: '',
     support_id: '',
     technical_id: '',
-    status: 'scheduled' as 'scheduled' | 'live' | 'completed' | 'cancelled',
+    required_host_count: 1,
+    required_support_count: 1,
+    required_technical_count: 1,
+    registration_locked: false,
+    allow_multi_role: false,
+    status: 'scheduled' as ShiftStatus,
     live_link: '',
     product_notes: ''
   })
@@ -73,6 +79,7 @@ export function ShiftFormDialog({
   React.useEffect(() => {
     if (shift) {
       setFormData({
+        title: shift.title || '',
         date: shift.date,
         start_time: shift.start_time,
         end_time: shift.end_time,
@@ -82,12 +89,18 @@ export function ShiftFormDialog({
         host_id: shift.host_id || '',
         support_id: shift.support_id || '',
         technical_id: shift.technical_id || '',
+        required_host_count: shift.required_host_count ?? 1,
+        required_support_count: shift.required_support_count ?? 1,
+        required_technical_count: shift.required_technical_count ?? 1,
+        registration_locked: shift.registration_locked ?? false,
+        allow_multi_role: shift.allow_multi_role ?? false,
         status: shift.status,
         live_link: shift.live_link || '',
         product_notes: shift.product_notes || ''
       })
     } else if (duplicateFrom) {
       setFormData({
+        title: duplicateFrom.title || '',
         date: '',
         start_time: duplicateFrom.start_time,
         end_time: duplicateFrom.end_time,
@@ -97,12 +110,18 @@ export function ShiftFormDialog({
         host_id: duplicateFrom.host_id || '',
         support_id: duplicateFrom.support_id || '',
         technical_id: duplicateFrom.technical_id || '',
+        required_host_count: duplicateFrom.required_host_count ?? 1,
+        required_support_count: duplicateFrom.required_support_count ?? 1,
+        required_technical_count: duplicateFrom.required_technical_count ?? 1,
+        registration_locked: false,
+        allow_multi_role: duplicateFrom.allow_multi_role ?? false,
         status: 'scheduled',
         live_link: '',
         product_notes: duplicateFrom.product_notes || ''
       })
     } else {
       setFormData({
+        title: '',
         date: '',
         start_time: '09:00',
         end_time: '13:00',
@@ -112,6 +131,11 @@ export function ShiftFormDialog({
         host_id: '',
         support_id: '',
         technical_id: '',
+        required_host_count: 1,
+        required_support_count: 1,
+        required_technical_count: 1,
+        registration_locked: false,
+        allow_multi_role: false,
         status: 'scheduled',
         live_link: '',
         product_notes: ''
@@ -165,6 +189,11 @@ export function ShiftFormDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const resolvedDateTime = resolveShiftDateTime(formData.date, formData.start_time, formData.end_time)
+    if (!resolvedDateTime?.valid) {
+      toast({ title: 'Invalid shift time', description: resolvedDateTime?.error || 'Enter a valid date and time.', variant: 'destructive' })
+      return
+    }
     
     if (conflicts.length > 0 && !confirm('Conflicts detected. Continue anyway?')) {
       return
@@ -196,11 +225,12 @@ export function ShiftFormDialog({
     }
   }
 
-  const duration = calculateDuration(formData.start_time, formData.end_time)
+  const resolvedDateTime = resolveShiftDateTime(formData.date, formData.start_time, formData.end_time)
+  const duration = resolvedDateTime?.durationMinutes ?? 0
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent size="xl" className="overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {shift ? 'Edit Shift' : duplicateFrom ? 'Duplicate Shift' : 'Create New Shift'}
@@ -232,6 +262,15 @@ export function ShiftFormDialog({
           )}
 
           {/* Basic Fields */}
+          <div>
+            <label className="text-sm font-medium">Shift title *</label>
+            <Input
+              required
+              value={formData.title}
+              onChange={(event) => setFormData({ ...formData, title: event.target.value })}
+              placeholder="Morning livestream"
+            />
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium">Date *</label>
@@ -243,7 +282,9 @@ export function ShiftFormDialog({
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="scheduled">Scheduled</SelectItem>
+                  <SelectItem value="preparing">Preparing</SelectItem>
                   <SelectItem value="live">Live</SelectItem>
+                  <SelectItem value="paused">Paused</SelectItem>
                   <SelectItem value="completed">Completed</SelectItem>
                   <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
@@ -257,6 +298,9 @@ export function ShiftFormDialog({
               <label className="text-sm font-medium">End Time *</label>
               <Input required type="time" value={formData.end_time} onChange={(e) => setFormData({ ...formData, end_time: e.target.value })} />
               <p className="text-xs text-gray-500 mt-1">Duration: {formatDuration(duration)}</p>
+              {resolvedDateTime?.crossesMidnight && <p className="mt-1 text-xs font-medium text-indigo-700">Ends next day: {format(resolvedDateTime.endAt, 'dd/MM/yyyy')}</p>}
+              {resolvedDateTime?.warning && <p className="mt-1 text-xs text-amber-700">{resolvedDateTime.warning}</p>}
+              {resolvedDateTime && !resolvedDateTime.valid && <p className="mt-1 text-xs text-red-700">{resolvedDateTime.error}</p>}
             </div>
           </div>
 
@@ -288,6 +332,43 @@ export function ShiftFormDialog({
                   {campaigns.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          {/* Required role capacity */}
+          <div>
+            <h3 className="mb-2 text-sm font-medium">Required staffing</h3>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="text-sm text-gray-600">Host</label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="20"
+                  value={formData.required_host_count}
+                  onChange={(event) => setFormData({ ...formData, required_host_count: Number(event.target.value) })}
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">Support</label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="20"
+                  value={formData.required_support_count}
+                  onChange={(event) => setFormData({ ...formData, required_support_count: Number(event.target.value) })}
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">Technical</label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="20"
+                  value={formData.required_technical_count}
+                  onChange={(event) => setFormData({ ...formData, required_technical_count: Number(event.target.value) })}
+                />
+              </div>
             </div>
           </div>
 

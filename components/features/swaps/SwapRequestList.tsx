@@ -1,335 +1,171 @@
 'use client'
 
 import * as React from 'react'
-import { swapRequestService, shiftService, userService, brandService, platformService } from '@/lib/services/dataService'
-import { SwapRequest, Shift, User, Brand, Platform } from '@/lib/types/database.types'
+import { CheckCircle, Download, FileSpreadsheet, Plus, RotateCcw, XCircle } from 'lucide-react'
+import { format } from 'date-fns'
+import {
+  brandService,
+  campaignService,
+  isStaffedRegistration,
+  platformService,
+  shiftRegistrationService,
+  shiftService,
+  swapRequestService,
+  userService,
+} from '@/lib/services/dataService'
+import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Shift, SwapRequest, User } from '@/lib/types/database.types'
+import { hasPermission } from '@/lib/permissions'
+import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useTranslation } from '@/lib/i18n'
+import { downloadSwapRequestTemplate, exportSwapsToExcel } from '@/lib/utils/excelUtils'
+import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { format } from 'date-fns'
-import { RefreshCw, Plus, Search, Filter, CheckCircle, XCircle, Clock } from 'lucide-react'
-import { SwapRequestFormModal } from './SwapRequestFormModal'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useToast } from '@/components/ui/toast'
 import { SwapDetailModal } from './SwapDetailModal'
+import { SwapRequestFormModal } from './SwapRequestFormModal'
+import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
+import { HistoryPagination } from '@/components/ui/history-pagination'
+
+type Filters = { start: string; end: string; requester: string; brand: string; campaign: string; role: string; status: string }
+const initialFilters: Filters = { start: '', end: '', requester: 'all', brand: 'all', campaign: 'all', role: 'all', status: 'all' }
 
 export function SwapRequestList() {
+  const { currentUser, loading: userLoading } = useCurrentUser()
+  const { t } = useTranslation()
+  const { toast } = useToast()
   const [swaps, setSwaps] = React.useState<SwapRequest[]>([])
   const [shifts, setShifts] = React.useState<Shift[]>([])
   const [users, setUsers] = React.useState<User[]>([])
   const [brands, setBrands] = React.useState<Brand[]>([])
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
-  const [loading, setLoading] = React.useState(true)
-  const [searchTerm, setSearchTerm] = React.useState('')
-  const [statusFilter, setStatusFilter] = React.useState<'all' | 'pending' | 'approved' | 'rejected'>('all')
-  const [selectedSwap, setSelectedSwap] = React.useState<SwapRequest | null>(null)
+  const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
+  const [filters, setFilters] = React.useState<Filters>(initialFilters)
   const [showForm, setShowForm] = React.useState(false)
+  const [selectedSwap, setSelectedSwap] = React.useState<SwapRequest | null>(null)
+  const [myShiftIds, setMyShiftIds] = React.useState<Set<string>>(new Set())
+  const [loading, setLoading] = React.useState(true)
+  const [cancelTarget, setCancelTarget] = React.useState<SwapRequest | null>(null)
+  const [page, setPage] = React.useState(1)
+  const [pageSize, setPageSize] = React.useState(10)
 
-  React.useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
-    setLoading(true)
-    const [swapsData, shiftsData, usersData, brandsData, platformsData] = await Promise.all([
-      swapRequestService.getAll(),
-      shiftService.getAll(),
-      userService.getAll(),
-      brandService.getAll(),
-      platformService.getAll()
+  const loadData = React.useCallback(async () => {
+    const [loadedSwaps, loadedShifts, loadedUsers, loadedBrands, loadedPlatforms, loadedCampaigns] = await Promise.all([
+      swapRequestService.getAll(), shiftService.getAll(), userService.getAll(), brandService.getAll(), platformService.getAll(), campaignService.getAll(),
     ])
-    setSwaps(swapsData)
-    setShifts(shiftsData)
-    setUsers(usersData)
-    setBrands(brandsData)
-    setPlatforms(platformsData)
-    setLoading(false)
-  }
+    setSwaps(loadedSwaps); setShifts(loadedShifts); setUsers(loadedUsers); setBrands(loadedBrands); setPlatforms(loadedPlatforms); setCampaigns(loadedCampaigns); setLoading(false)
+  }, [])
+  React.useEffect(() => { void loadData() }, [loadData])
+  React.useEffect(() => {
+    if (!currentUser) return
+    void shiftRegistrationService.getForUser(currentUser.id).then(registrations => {
+      setMyShiftIds(new Set(registrations.filter(isStaffedRegistration).map(registration => registration.shift_id)))
+    })
+  }, [currentUser])
 
-  const getShift = (shiftId: string) => shifts.find(s => s.id === shiftId)
-  const getUser = (userId: string) => users.find(u => u.id === userId)
-  const getBrandName = (brandId: string) => brands.find(b => b.id === brandId)?.name || 'Unknown'
-  const getPlatformName = (platformId: string) => platforms.find(p => p.id === platformId)?.name || 'Unknown'
-
-  const filteredSwaps = swaps.filter(swap => {
-    if (statusFilter !== 'all' && swap.status !== statusFilter) return false
-    if (!searchTerm) return true
-    
-    const requester = getUser(swap.requester_id)
-    const shift = getShift(swap.shift_id)
-    const searchLower = searchTerm.toLowerCase()
-    
-    return (
-      requester?.full_name.toLowerCase().includes(searchLower) ||
-      swap.reason.toLowerCase().includes(searchLower) ||
-      (shift && getBrandName(shift.brand_id).toLowerCase().includes(searchLower))
-    )
+  const shiftById = new Map(shifts.map(shift => [shift.id, shift]))
+  const nameFor = (items: Array<{ id: string; name: string }>, id?: string) => id ? items.find(item => item.id === id)?.name || '—' : '—'
+  const userName = (id?: string) => id ? users.find(user => user.id === id)?.full_name || '—' : '—'
+  const roleFor = (swap: SwapRequest): OperationalRole => swap.operational_role || (swap.new_support_id ? 'support' : swap.new_technical_id ? 'technical' : 'host')
+  const replacementFor = (swap: SwapRequest) => swap.replacement_staff_id || swap.new_host_id || swap.new_support_id || swap.new_technical_id
+  const filtered = swaps.filter(swap => {
+    const shift = shiftById.get(swap.shift_id)
+    if (!shift) return false
+    return (!filters.start || shift.date >= filters.start) &&
+      (!filters.end || shift.date <= filters.end) &&
+      (filters.requester === 'all' || swap.requester_id === filters.requester) &&
+      (filters.brand === 'all' || shift.brand_id === filters.brand) &&
+      (filters.campaign === 'all' || shift.campaign_id === filters.campaign) &&
+      (filters.role === 'all' || roleFor(swap) === filters.role) &&
+      (filters.status === 'all' || swap.status === filters.status)
   })
-
-  const stats = React.useMemo(() => {
-    return {
-      total: swaps.length,
-      pending: swaps.filter(s => s.status === 'pending').length,
-      approved: swaps.filter(s => s.status === 'approved').length,
-      rejected: swaps.filter(s => s.status === 'rejected').length
-    }
-  }, [swaps])
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800'
-      case 'approved': return 'bg-green-100 text-green-800'
-      case 'rejected': return 'bg-red-100 text-red-800'
-      default: return 'bg-gray-100 text-gray-800'
-    }
+  React.useEffect(() => setPage(1), [filters])
+  const visibleSwaps = filtered.slice((page - 1) * pageSize, page * pageSize)
+  const exportMaps = {
+    users: new Map(users.map(user => [user.id, user.full_name])),
+    brands: new Map(brands.map(brand => [brand.id, brand.name])),
+    campaigns: new Map(campaigns.map(campaign => [campaign.id, campaign.name])),
   }
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'pending': return <Clock className="h-4 w-4" />
-      case 'approved': return <CheckCircle className="h-4 w-4" />
-      case 'rejected': return <XCircle className="h-4 w-4" />
-      default: return null
+  const runReview = async (swap: SwapRequest, action: 'approve' | 'reject') => {
+    if (!currentUser) return
+    try {
+      if (action === 'approve') await swapRequestService.approve(swap.id, currentUser.id)
+      else await swapRequestService.reject(swap.id, currentUser.id)
+      toast({ title: t('success'), description: t(action === 'approve' ? 'approved' : 'rejected'), variant: 'success' })
+      await loadData()
+    } catch (error) {
+      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
     }
   }
 
-  if (loading) {
-    return <div className="text-center py-12">Loading swap requests...</div>
+  const cancelImpact: DeletionImpact | null = cancelTarget ? {
+    entity_type: 'swap_request',
+    entity_id: cancelTarget.id,
+    entity_name: `Swap request · ${roleFor(cancelTarget)}`,
+    action: 'soft_delete',
+    consequence: 'The pending request will be cancelled and retained in audit history.',
+    reversible: false,
+    related_records: [{ entity_type: 'shift', entity_id: cancelTarget.shift_id, entity_name: shiftById.get(cancelTarget.shift_id)?.title || cancelTarget.shift_id }],
+  } : null
+
+  const cancelSwap = async (reason: string) => {
+    if (!currentUser || !cancelTarget) return
+    try {
+      await swapRequestService.cancel(cancelTarget.id, currentUser.id, reason)
+      toast({ title: 'Swap request cancelled', variant: 'success' })
+      setCancelTarget(null)
+      await loadData()
+    } catch (error) {
+      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+      throw error
+    }
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-4">
-        <Card className="cursor-pointer" onClick={() => setStatusFilter('all')}>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Total Requests</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="text-3xl font-bold">{stats.total}</div>
-              <RefreshCw className="h-8 w-8 text-gray-600" />
-            </div>
-          </CardContent>
-        </Card>
+  if (loading || userLoading) return <div className="py-12 text-center">{t('loading')}</div>
 
-        <Card className="cursor-pointer" onClick={() => setStatusFilter('pending')}>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Pending</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="text-3xl font-bold text-yellow-600">{stats.pending}</div>
-              <Clock className="h-8 w-8 text-yellow-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="cursor-pointer" onClick={() => setStatusFilter('approved')}>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Approved</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="text-3xl font-bold text-green-600">{stats.approved}</div>
-              <CheckCircle className="h-8 w-8 text-green-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="cursor-pointer" onClick={() => setStatusFilter('rejected')}>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Rejected</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="text-3xl font-bold text-red-600">{stats.rejected}</div>
-              <XCircle className="h-8 w-8 text-red-600" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Controls */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Search by requester, reason, or brand..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <div className="flex gap-2">
-              {statusFilter !== 'all' && (
-                <Button variant="outline" onClick={() => setStatusFilter('all')}>
-                  Clear Filter
-                </Button>
-              )}
-              <Button onClick={() => setShowForm(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Request Swap
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Swap Requests */}
-      {filteredSwaps.length === 0 ? (
-        <Card className="p-12">
-          <div className="text-center">
-            <RefreshCw className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-            <div className="text-lg font-medium text-gray-600">No Swap Requests Found</div>
-            <div className="text-sm text-gray-500 mt-2">
-              {searchTerm ? 'Try adjusting your search criteria' : 'Create a new swap request to get started'}
-            </div>
-          </div>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {filteredSwaps.map((swap) => {
-            const shift = getShift(swap.shift_id)
-            const requester = getUser(swap.requester_id)
-            const newHost = swap.new_host_id ? getUser(swap.new_host_id) : null
-            
-            if (!shift || !requester) return null
-
-            return (
-              <Card 
-                key={swap.id} 
-                className="cursor-pointer hover:shadow-lg transition-all"
-                onClick={() => setSelectedSwap(swap)}
-              >
-                <CardContent className="pt-6">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-3">
-                        <Badge className={getStatusColor(swap.status)}>
-                          <span className="flex items-center gap-1">
-                            {getStatusIcon(swap.status)}
-                            {swap.status.toUpperCase()}
-                          </span>
-                        </Badge>
-                        <span className="text-sm text-gray-600">
-                          {format(new Date(swap.created_at), 'MMM d, yyyy h:mm a')}
-                        </span>
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="font-semibold text-lg">
-                          {getBrandName(shift.brand_id)} - {getPlatformName(shift.platform_id)}
-                        </div>
-                        <div className="text-sm text-gray-600">
-                          {format(new Date(shift.date), 'MMMM d, yyyy')} • {shift.start_time} - {shift.end_time}
-                        </div>
-                        <div className="flex items-center gap-4 text-sm">
-                          <div>
-                            <span className="text-gray-600">Requester:</span>
-                            <span className="font-medium ml-1">{requester.full_name}</span>
-                          </div>
-                          {newHost && (
-                            <div>
-                              <span className="text-gray-600">Proposed Host:</span>
-                              <span className="font-medium ml-1">{newHost.full_name}</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="bg-gray-50 p-3 rounded-lg">
-                          <div className="text-xs text-gray-600 mb-1">Reason</div>
-                          <div className="text-sm">{swap.reason}</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {swap.status === 'pending' && (
-                      <div className="flex gap-2 ml-4">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-green-600 border-green-600 hover:bg-green-50"
-                          onClick={async (e) => {
-                            e.stopPropagation()
-                            await swapRequestService.approve(swap.id, '1') // Mock admin user
-                            loadData()
-                          }}
-                        >
-                          <CheckCircle className="h-4 w-4 mr-1" />
-                          Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-red-600 border-red-600 hover:bg-red-50"
-                          onClick={async (e) => {
-                            e.stopPropagation()
-                            await swapRequestService.reject(swap.id, '1') // Mock admin user
-                            loadData()
-                          }}
-                        >
-                          <XCircle className="h-4 w-4 mr-1" />
-                          Reject
-                        </Button>
-                      </div>
-                    )}
-
-                    {swap.status !== 'pending' && swap.approved_by && (
-                      <div className="ml-4 text-sm text-gray-600">
-                        <div>Reviewed by</div>
-                        <div className="font-medium">{getUser(swap.approved_by)?.full_name}</div>
-                        {swap.approved_at && (
-                          <div className="text-xs">{format(new Date(swap.approved_at), 'MMM d, h:mm a')}</div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Modals */}
-      {showForm && (
-        <SwapRequestFormModal
-          open={showForm}
-          onOpenChange={setShowForm}
-          shifts={shifts.filter(s => s.status === 'scheduled')}
-          users={users}
-          brands={brands}
-          platforms={platforms}
-          onSuccess={() => {
-            loadData()
-            setShowForm(false)
-          }}
-        />
-      )}
-
-      {selectedSwap && (
-        <SwapDetailModal
-          open={!!selectedSwap}
-          onOpenChange={(open) => !open && setSelectedSwap(null)}
-          swap={selectedSwap}
-          shift={getShift(selectedSwap.shift_id)!}
-          requester={getUser(selectedSwap.requester_id)!}
-          newHost={selectedSwap.new_host_id ? getUser(selectedSwap.new_host_id) : undefined}
-          brands={brands}
-          platforms={platforms}
-          onApprove={async () => {
-            await swapRequestService.approve(selectedSwap.id, '1')
-            loadData()
-            setSelectedSwap(null)
-          }}
-          onReject={async () => {
-            await swapRequestService.reject(selectedSwap.id, '1')
-            loadData()
-            setSelectedSwap(null)
-          }}
-        />
-      )}
+  return <div className="space-y-6">
+    <div className="grid gap-4 sm:grid-cols-4">
+      {(['pending','approved','rejected'] as const).map(status => <Card key={status}><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">{t(status)}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{filtered.filter(swap => swap.status === status).length}</p></CardContent></Card>)}
+      <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">{t('all')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{filtered.length}</p></CardContent></Card>
     </div>
-  )
+
+    <Card><CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><CardTitle>{t('filters')}</CardTitle>{currentUser && hasPermission(currentUser, 'swaps.request') && <Button onClick={() => setShowForm(true)}><Plus className="mr-2 h-4 w-4" />{t('swapsTitle')}</Button>}</div></CardHeader><CardContent className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-4">
+        <label className="text-xs font-medium">{t('startDate')}<Input className="mt-1" type="date" value={filters.start} onChange={event => setFilters(current => ({ ...current, start: event.target.value }))} /></label>
+        <label className="text-xs font-medium">{t('endDate')}<Input className="mt-1" type="date" value={filters.end} onChange={event => setFilters(current => ({ ...current, end: event.target.value }))} /></label>
+        <EntityFilter label={t('requester')} value={filters.requester} options={users.map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, requester: value }))} />
+        <EntityFilter label={t('brand')} value={filters.brand} options={brands} onChange={value => setFilters(current => ({ ...current, brand: value }))} />
+        <EntityFilter label={t('campaign')} value={filters.campaign} options={campaigns} onChange={value => setFilters(current => ({ ...current, campaign: value }))} />
+        <label className="text-xs font-medium">{t('role')}<Select value={filters.role} onValueChange={value => setFilters(current => ({ ...current, role: value }))}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{(['host','support','technical'] as OperationalRole[]).map(role => <SelectItem key={role} value={role}>{t(role)}</SelectItem>)}</SelectContent></Select></label>
+        <label className="text-xs font-medium">{t('status')}<Select value={filters.status} onValueChange={value => setFilters(current => ({ ...current, status: value }))}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{(['pending','approved','rejected'] as const).map(status => <SelectItem key={status} value={status}>{t(status)}</SelectItem>)}</SelectContent></Select></label>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" onClick={() => setFilters(initialFilters)}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button>
+        {currentUser && hasPermission(currentUser, 'swaps.export') && <>
+          <Button variant="outline" disabled={!filtered.length} onClick={() => exportSwapsToExcel(filtered, shifts, exportMaps.users, exportMaps.brands, exportMaps.campaigns)}><FileSpreadsheet className="mr-2 h-4 w-4" />{t('exportFilteredSwaps')}</Button>
+          <Button variant="outline" disabled={!swaps.some(swap => swap.status !== 'pending')} onClick={() => exportSwapsToExcel(swaps.filter(swap => swap.status !== 'pending'), shifts, exportMaps.users, exportMaps.brands, exportMaps.campaigns, 'swap_history.xlsx')}><Download className="mr-2 h-4 w-4" />{t('exportSwapHistory')}</Button>
+          <Button variant="outline" onClick={downloadSwapRequestTemplate}><Download className="mr-2 h-4 w-4" />{t('downloadSwapTemplate')}</Button>
+        </>}
+      </div>
+    </CardContent></Card>
+
+    {filtered.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noSwaps')}</CardContent></Card> : <Card className="overflow-hidden"><CardContent className="p-0"><div className="max-h-[60vh] space-y-3 overflow-auto p-4">{visibleSwaps.map(swap => {
+      const shift = shiftById.get(swap.shift_id)
+      if (!shift) return null
+      return <Card key={swap.id}><CardContent className="flex flex-wrap items-start justify-between gap-4 pt-5"><div className="space-y-2"><div className="flex items-center gap-2"><Badge className={swap.status === 'approved' ? 'bg-green-100 text-green-800' : swap.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'}>{t(swap.status)}</Badge><span className="text-xs text-muted-foreground">{format(new Date(swap.created_at), 'dd/MM/yyyy HH:mm')}</span></div><p className="font-semibold">{nameFor(brands, shift.brand_id)} · {nameFor(platforms, shift.platform_id)}</p><p className="text-sm text-muted-foreground">{shift.date} · {formatShiftTimeRange(shift)} · {nameFor(campaigns, shift.campaign_id)}</p><div className="grid gap-2 text-sm sm:grid-cols-3"><Value label={t('role')} value={t(roleFor(swap))} /><Value label={t('originalStaff')} value={userName(swap.original_staff_id || swap.requester_id)} /><Value label={t('replacementStaff')} value={userName(replacementFor(swap))} /></div><p className="rounded bg-muted/50 p-2 text-sm">{swap.reason}</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={() => setSelectedSwap(swap)}>{t('viewDetails')}</Button>{swap.status === 'pending' && currentUser?.id === swap.requester_id && <Button size="sm" variant="outline" onClick={() => setCancelTarget(swap)}><XCircle className="mr-1 h-4 w-4" />Cancel request</Button>}{swap.status === 'pending' && currentUser && hasPermission(currentUser, 'swaps.approve') && <><Button size="sm" onClick={() => void runReview(swap, 'approve')}><CheckCircle className="mr-1 h-4 w-4" />{t('approve')}</Button><Button size="sm" variant="outline" onClick={() => void runReview(swap, 'reject')}><XCircle className="mr-1 h-4 w-4" />{t('reject')}</Button></>}</div></CardContent></Card>
+    })}</div><HistoryPagination page={page} pageSize={pageSize} total={filtered.length} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1) }} /></CardContent></Card>}
+
+    {showForm && currentUser && <SwapRequestFormModal open={showForm} onOpenChange={setShowForm} shifts={shifts.filter(shift => shift.status === 'scheduled' && (myShiftIds.has(shift.id) || shift.host_id === currentUser.id || shift.support_id === currentUser.id || shift.technical_id === currentUser.id))} users={users} brands={brands} platforms={platforms} onSuccess={() => { void loadData(); setShowForm(false) }} />}
+    {selectedSwap && <SwapDetailModal open swap={selectedSwap} shift={shiftById.get(selectedSwap.shift_id)!} requester={users.find(user => user.id === selectedSwap.requester_id)!} newHost={users.find(user => user.id === replacementFor(selectedSwap))} brands={brands} platforms={platforms} canReview={Boolean(currentUser && hasPermission(currentUser, 'swaps.approve'))} onOpenChange={open => !open && setSelectedSwap(null)} onApprove={() => runReview(selectedSwap, 'approve')} onReject={() => runReview(selectedSwap, 'reject')} />}
+    <LifecycleActionDialog open={Boolean(cancelTarget)} onOpenChange={open => !open && setCancelTarget(null)} title="Cancel swap request" impact={cancelImpact} confirmText="Cancel request" onConfirm={cancelSwap} />
+  </div>
 }
+
+function EntityFilter({ label, value, options, onChange }: { label: string; value: string; options: Array<{ id: string; name: string }>; onChange: (value: string) => void }) {
+  const { t } = useTranslation()
+  return <label className="text-xs font-medium">{label}<Select value={value} onValueChange={onChange}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{options.map(option => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}</SelectContent></Select></label>
+}
+function Value({ label, value }: { label: string; value: string }) { return <div><p className="text-xs text-muted-foreground">{label}</p><p className="font-medium">{value}</p></div> }

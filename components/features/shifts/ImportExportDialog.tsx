@@ -83,7 +83,7 @@ export function ImportExportDialog({ open, onOpenChange, shifts, brands, platfor
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent size="xl" className="overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Import / Export Shifts</DialogTitle>
           <DialogDescription>Upload or download shift schedules in Excel format</DialogDescription>

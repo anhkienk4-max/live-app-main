@@ -14,7 +14,7 @@ Analyze the following live session metrics and provide a concise professional su
 - Duration: {start_time} - {end_time}
 
 **Performance Metrics:**
-- Total Revenue: ${revenue}
+- Total Revenue: {revenue} VND
 - Total Orders: {orders}
 - Peak Viewers: {peak_viewers}
 - Average Viewers: {avg_viewers}
@@ -28,14 +28,14 @@ Analyze the following live session metrics and provide a concise professional su
 export const REPORT_INSIGHTS_GOOD_PROMPT = `Based on the following live session performance data, identify 3-5 key positive highlights:
 
 **Metrics:**
-- Revenue: ${revenue}
+- Revenue: {revenue} VND
 - Orders: {orders}
 - Peak Viewers: {peak_viewers}
 - Average Viewers: {avg_viewers}
 - Engagement Rate: {engagement_rate}%
 
 **Context:**
-- Previous session average revenue: ${prev_avg_revenue}
+- Previous session average revenue: {prev_avg_revenue} VND
 - Previous session average viewers: {prev_avg_viewers}
 
 Provide bullet points of what went well and why.`
@@ -43,7 +43,7 @@ Provide bullet points of what went well and why.`
 export const REPORT_INSIGHTS_IMPROVEMENT_PROMPT = `Based on the following live session data, suggest 3-5 actionable improvements:
 
 **Metrics:**
-- Revenue: ${revenue}
+- Revenue: {revenue} VND
 - Orders: {orders}
 - Peak Viewers: {peak_viewers}
 - Average Viewers: {avg_viewers}

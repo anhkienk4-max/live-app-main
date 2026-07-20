@@ -3,6 +3,7 @@
 import { Shift, Brand, Platform, User } from '@/lib/types/database.types'
 import { Badge } from '@/components/ui/badge'
 import { format, startOfWeek, addDays } from 'date-fns'
+import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 
 interface WeekViewProps {
   currentDate: Date
@@ -42,7 +43,7 @@ export function WeekView({ currentDate, shifts, brands, platforms, onShiftClick 
                   style={{ backgroundColor: getBrandColor(shift.brand_id) + '15', borderLeft: `4px solid ${getBrandColor(shift.brand_id)}` }}
                   onClick={() => onShiftClick?.(shift)}
                 >
-                  <div className="font-medium">{shift.start_time} - {shift.end_time}</div>
+                  <div className="font-medium">{formatShiftTimeRange(shift)}</div>
                   <div className="text-xs truncate text-gray-700">{getBrandName(shift.brand_id)}</div>
                   <Badge variant={shift.status === 'live' ? 'destructive' : 'secondary'} className="text-[10px] mt-1">
                     {shift.status}

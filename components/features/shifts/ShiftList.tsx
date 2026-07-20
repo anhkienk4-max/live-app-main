@@ -3,19 +3,21 @@
 import * as React from 'react'
 import { shiftService, brandService, platformService, campaignService, userService } from '@/lib/services/dataService'
 import { templateService } from '@/lib/services/templateService'
-import { Shift, Brand, Platform, Campaign, User } from '@/lib/types/database.types'
-import { ShiftTemplate } from '@/lib/utils/shiftUtils'
+import { Shift, Brand, Platform, Campaign, User, DeletionImpact } from '@/lib/types/database.types'
+import { formatShiftTimeRange, ShiftTemplate } from '@/lib/utils/shiftUtils'
 import { DataTable, Column } from '@/components/ui/data-table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Plus, Pencil, Trash2, Copy, Upload, Download, Filter } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
-import { AlertDialog } from '@/components/ui/alert-dialog'
+import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { ShiftFormDialog } from './ShiftFormDialog'
 import { BulkActionsToolbar } from './BulkActionsToolbar'
 import { ImportExportDialog } from './ImportExportDialog'
 import { format } from 'date-fns'
+import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { hasPermission } from '@/lib/permissions'
 
 export function ShiftList() {
   const [shifts, setShifts] = React.useState<Shift[]>([])
@@ -29,6 +31,8 @@ export function ShiftList() {
   const [selectedShift, setSelectedShift] = React.useState<Shift | null>(null)
   const [duplicateShift, setDuplicateShift] = React.useState<Shift | null>(null)
   const [deleteId, setDeleteId] = React.useState<string | null>(null)
+  const [deleteIds, setDeleteIds] = React.useState<string[]>([])
+  const [deleteImpact, setDeleteImpact] = React.useState<DeletionImpact | null>(null)
   const [isFormOpen, setIsFormOpen] = React.useState(false)
   const [isImportExportOpen, setIsImportExportOpen] = React.useState(false)
   
@@ -36,6 +40,8 @@ export function ShiftList() {
   const [showBulkActions, setShowBulkActions] = React.useState(false)
   
   const { toast } = useToast()
+  const { currentUser } = useCurrentUser()
+  const canManage = Boolean(currentUser && hasPermission(currentUser, 'shifts.assign_staff'))
 
   const loadData = React.useCallback(async () => {
     setLoading(true)
@@ -58,21 +64,34 @@ export function ShiftList() {
 
   React.useEffect(() => { loadData() }, [loadData])
 
-  const handleDelete = async (id: string) => {
-    const success = await shiftService.delete(id)
-    if (success) {
-      toast({ title: 'Success', description: 'Shift deleted', variant: 'success' })
-      loadData()
-    }
+  const requestDelete = async (ids: string[]) => {
+    const impacts = (await Promise.all(ids.map(id => shiftService.getDeletionImpact(id)))).filter((impact): impact is DeletionImpact => Boolean(impact))
+    if (impacts.length === 0) return
+    setDeleteIds(ids)
+    setDeleteId(ids.length === 1 ? ids[0] : 'bulk')
+    setDeleteImpact(ids.length === 1 ? impacts[0] : {
+      entity_type: 'shift',
+      entity_id: 'bulk',
+      entity_name: `${ids.length} selected shifts`,
+      action: impacts.some(impact => impact.action === 'soft_delete') ? 'soft_delete' : 'delete',
+      consequence: 'Each shift will follow its own policy: empty future shifts are deleted; shifts with history are cancelled and soft-deleted.',
+      reversible: impacts.some(impact => impact.reversible),
+      related_records: impacts.flatMap(impact => impact.related_records),
+    })
   }
 
-  const handleBulkDelete = async (ids: string[]) => {
-    for (const id of ids) {
-      await shiftService.delete(id)
+  const handleDelete = async (reason: string) => {
+    if (!currentUser) return
+    try {
+      for (const id of deleteIds) await shiftService.remove(id, currentUser.id, reason)
+      toast({ title: 'Success', description: deleteIds.length === 1 ? 'Shift lifecycle updated' : `${deleteIds.length} shifts processed`, variant: 'success' })
+      setSelectedIds(new Set())
+      setShowBulkActions(false)
+      await loadData()
+    } catch (error) {
+      toast({ title: 'Action failed', description: error instanceof Error ? error.message : 'Unknown error', variant: 'destructive' })
+      throw error
     }
-    toast({ title: 'Success', description: `${ids.length} shifts deleted`, variant: 'success' })
-    setSelectedIds(new Set())
-    loadData()
   }
 
   const handleEdit = (shift: Shift) => {
@@ -140,7 +159,7 @@ export function ShiftList() {
     },
     {
       header: 'Time',
-      accessor: (row) => `${row.start_time} - ${row.end_time}`
+      accessor: (row) => formatShiftTimeRange(row)
     },
     {
       header: 'Brand',
@@ -190,9 +209,9 @@ export function ShiftList() {
           <Button variant="ghost" size="icon" onClick={() => handleDuplicate(row)} data-testid={`duplicate-shift-${row.id}`}>
             <Copy className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => setDeleteId(row.id)} data-testid={`delete-shift-${row.id}`}>
+          {canManage && <Button variant="ghost" size="icon" aria-label="Delete or cancel shift" title="Delete or cancel shift" onClick={() => void requestDelete([row.id])} data-testid={`delete-shift-${row.id}`}>
             <Trash2 className="h-4 w-4 text-red-600" />
-          </Button>
+          </Button>}
         </div>
       )
     }
@@ -222,7 +241,7 @@ export function ShiftList() {
       {showBulkActions && (
         <BulkActionsToolbar
           selectedCount={selectedIds.size}
-          onBulkDelete={() => handleBulkDelete(Array.from(selectedIds))}
+          onBulkDelete={() => void requestDelete(Array.from(selectedIds))}
           onDeselectAll={() => { setSelectedIds(new Set()); setShowBulkActions(false) }}
           shifts={shifts.filter(s => selectedIds.has(s.id))}
           onUpdate={loadData}
@@ -260,13 +279,13 @@ export function ShiftList() {
         onSuccess={loadData}
       />
 
-      <AlertDialog
+      <LifecycleActionDialog
         open={!!deleteId}
-        onOpenChange={(open) => !open && setDeleteId(null)}
-        title="Delete Shift"
-        description="Are you sure you want to delete this shift?"
-        onConfirm={() => deleteId && handleDelete(deleteId)}
-        variant="destructive"
+        onOpenChange={(open) => { if (!open) { setDeleteId(null); setDeleteIds([]); setDeleteImpact(null) } }}
+        title={deleteImpact?.action === 'delete' ? 'Delete shift' : 'Cancel and archive shift'}
+        impact={deleteImpact}
+        confirmText={deleteImpact?.action === 'delete' ? 'Delete' : 'Cancel shift'}
+        onConfirm={handleDelete}
       />
     </>
   )

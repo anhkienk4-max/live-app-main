@@ -49,7 +49,7 @@ export const ANALYTICS_CAMPAIGN_EFFECTIVENESS_PROMPT = `Evaluate campaign perfor
 {campaign_data}
 
 **Baseline (No Campaign):**
-- Average Revenue: ${baseline_revenue}
+- Average Revenue: {baseline_revenue} VND
 - Average Orders: {baseline_orders}
 - Average Viewers: {baseline_viewers}
 

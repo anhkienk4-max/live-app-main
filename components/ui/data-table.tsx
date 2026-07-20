@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select'
 
 export interface Column<T> {
-  header: string
+  header: React.ReactNode | (() => React.ReactNode)
   accessor: keyof T | ((row: T) => React.ReactNode)
   cell?: (value: any, row: T) => React.ReactNode
 }
@@ -19,6 +19,7 @@ interface DataTableProps<T> {
   searchPlaceholder?: string
   onSearch?: (query: string) => void
   filterComponent?: React.ReactNode
+  searchableText?: (row: T) => string
   emptyMessage?: string
   pageSize?: number
 }
@@ -29,6 +30,7 @@ export function DataTable<T extends { id: string }>({
   searchPlaceholder = 'Search...',
   onSearch,
   filterComponent,
+  searchableText,
   emptyMessage = 'No data available',
   pageSize = 10,
 }: DataTableProps<T>) {
@@ -40,13 +42,14 @@ export function DataTable<T extends { id: string }>({
     if (!searchQuery) return data
     
     return data.filter(row => {
+      if (searchableText?.(row).toLowerCase().includes(searchQuery.toLowerCase())) return true
       return columns.some(col => {
         if (typeof col.accessor === 'function') return false
         const value = row[col.accessor]
         return String(value).toLowerCase().includes(searchQuery.toLowerCase())
       })
     })
-  }, [data, searchQuery, columns])
+  }, [data, searchQuery, columns, searchableText])
 
   const totalPages = Math.ceil(filteredData.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
@@ -77,12 +80,14 @@ export function DataTable<T extends { id: string }>({
         {filterComponent}
       </div>
 
-      <div className="rounded-lg border bg-white shadow-sm">
+      <div className="max-w-full overflow-x-auto rounded-lg border bg-white shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>
               {columns.map((col, i) => (
-                <TableHead key={i}>{col.header}</TableHead>
+                <TableHead key={i}>
+                  {typeof col.header === 'function' ? col.header() : col.header}
+                </TableHead>
               ))}
             </TableRow>
           </TableHeader>
@@ -103,7 +108,7 @@ export function DataTable<T extends { id: string }>({
                         : row[col.accessor]
                     return (
                       <TableCell key={i}>
-                        {col.cell ? col.cell(value, row) : value}
+                        {col.cell ? col.cell(value, row) : (value as React.ReactNode)}
                       </TableCell>
                     )
                   })}

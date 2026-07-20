@@ -1,5 +1,5 @@
-import { Shift } from '@/lib/types/database.types'
-import { addDays, addWeeks, addMonths, format, parseISO, isAfter, isBefore, parse } from 'date-fns'
+import type { Shift } from '@/lib/types/database.types'
+import { addDays, addMonths, format, parseISO, isAfter } from 'date-fns'
 
 export interface RecurrenceRule {
   frequency: 'daily' | 'weekly' | 'monthly' | 'custom' | 'none'
@@ -32,6 +32,134 @@ export interface ShiftConflict {
   type: 'host' | 'support' | 'technical' | 'duplicate' | 'time'
   message: string
   conflictingShift?: Shift
+}
+
+export interface ResolvedShiftDateTime {
+  startAt: Date
+  endAt: Date
+  startAtLocal: string
+  endAtLocal: string
+  startDate: string
+  endDate: string
+  crossesMidnight: boolean
+  durationMinutes: number
+  timezone: string
+  valid: boolean
+  error?: string
+  warning?: string
+}
+
+const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/
+const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
+export const MAX_SHIFT_CAPACITY = 100
+
+export function normalizeCapacity(
+  value: unknown,
+  defaultValue = 1,
+  maximum = MAX_SHIFT_CAPACITY,
+): number | null {
+  if (value === null || value === undefined || String(value).trim() === '') {
+    return defaultValue
+  }
+  const parsed = Number(String(value).trim())
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > maximum) return null
+  return parsed
+}
+
+/**
+ * Resolves a shift in workspace-local time. Local datetime strings intentionally
+ * omit a UTC suffix so the shift's business date is never moved by serialization.
+ */
+export function resolveShiftDateTime(
+  date: string,
+  startTime: string,
+  endTime: string,
+  timezone = 'Asia/Ho_Chi_Minh',
+): ResolvedShiftDateTime | null {
+  const dateMatch = date.match(DATE_PATTERN)
+  const startMatch = startTime.match(TIME_PATTERN)
+  const endMatch = endTime.match(TIME_PATTERN)
+  if (!dateMatch || !startMatch || !endMatch) return null
+
+  const [, yearText, monthText, dayText] = dateMatch
+  const startMinutes = Number(startMatch[1]) * 60 + Number(startMatch[2])
+  const endMinutes = Number(endMatch[1]) * 60 + Number(endMatch[2])
+  const crossesMidnight = endMinutes < startMinutes
+  const durationMinutes = crossesMidnight
+    ? 24 * 60 - startMinutes + endMinutes
+    : endMinutes - startMinutes
+  const startAt = new Date(
+    Number(yearText),
+    Number(monthText) - 1,
+    Number(dayText),
+    Number(startMatch[1]),
+    Number(startMatch[2]),
+    0,
+    0,
+  )
+  const endAt = new Date(
+    Number(yearText),
+    Number(monthText) - 1,
+    Number(dayText) + (crossesMidnight ? 1 : 0),
+    Number(endMatch[1]),
+    Number(endMatch[2]),
+    0,
+    0,
+  )
+  const validDate = startAt.getFullYear() === Number(yearText) &&
+    startAt.getMonth() === Number(monthText) - 1 &&
+    startAt.getDate() === Number(dayText)
+  const valid = validDate && durationMinutes > 0 && durationMinutes <= 24 * 60
+  const endDate = formatLocalDate(endAt)
+
+  return {
+    startAt,
+    endAt,
+    startAtLocal: `${date}T${startTime}:00`,
+    endAtLocal: `${endDate}T${endTime}:00`,
+    startDate: date,
+    endDate,
+    crossesMidnight,
+    durationMinutes,
+    timezone,
+    valid,
+    error: !validDate
+      ? 'Shift date is invalid.'
+      : durationMinutes === 0
+        ? 'Start time and end time cannot be the same.'
+        : durationMinutes > 24 * 60
+          ? 'Shift duration cannot exceed 24 hours.'
+          : undefined,
+    warning: durationMinutes >= 20 * 60
+      ? 'Shift duration is close to 24 hours. Please confirm the times.'
+      : undefined,
+  }
+}
+
+export function shiftDateTimeFields(date: string, startTime: string, endTime: string) {
+  const resolved = resolveShiftDateTime(date, startTime, endTime)
+  if (!resolved?.valid) return null
+  return {
+    start_at: resolved.startAtLocal,
+    end_at: resolved.endAtLocal,
+    end_date: resolved.endDate,
+    crosses_midnight: resolved.crossesMidnight,
+    duration_minutes: resolved.durationMinutes,
+  }
+}
+
+export function formatShiftTimeRange(shift: Pick<Shift, 'date' | 'start_time' | 'end_time'>): string {
+  const resolved = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time)
+  return `${shift.start_time} - ${shift.end_time}${resolved?.crossesMidnight ? ' (+1 day)' : ''}`
+}
+
+export function formatShiftEndDate(shift: Pick<Shift, 'date' | 'start_time' | 'end_time'>): string | null {
+  const resolved = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time)
+  return resolved?.crossesMidnight ? resolved.endDate : null
+}
+
+function formatLocalDate(value: Date): string {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
 }
 
 // Generate recurring shifts
@@ -104,33 +232,27 @@ export function detectConflicts(
 ): ShiftConflict[] {
   const conflicts: ShiftConflict[] = []
   
-  // Parse times
-  const newStart = parse(newShift.start_time, 'HH:mm', new Date())
-  const newEnd = parse(newShift.end_time, 'HH:mm', new Date())
-
-  // Check if end time is before start time
-  if (isBefore(newEnd, newStart)) {
+  const resolvedNew = resolveShiftDateTime(newShift.date, newShift.start_time, newShift.end_time)
+  if (!resolvedNew?.valid) {
     conflicts.push({
       type: 'time',
-      message: 'End time must be after start time',
+      message: resolvedNew?.error || 'Shift date or time is invalid',
     })
+    return conflicts
+  }
+  if (resolvedNew.warning) {
+    conflicts.push({ type: 'time', message: resolvedNew.warning })
   }
 
   existingShifts.forEach(shift => {
     // Skip if same shift (for updates)
     if (shift.id === excludeShiftId) return
     
-    // Only check same date
-    if (shift.date !== newShift.date) return
-
-    const existingStart = parse(shift.start_time, 'HH:mm', new Date())
-    const existingEnd = parse(shift.end_time, 'HH:mm', new Date())
-
-    // Check time overlap
-    const hasOverlap = 
-      (newStart >= existingStart && newStart < existingEnd) ||
-      (newEnd > existingStart && newEnd <= existingEnd) ||
-      (newStart <= existingStart && newEnd >= existingEnd)
+    const resolvedExisting = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time)
+    if (!resolvedExisting?.valid) return
+    const hasOverlap =
+      resolvedNew.startAt < resolvedExisting.endAt &&
+      resolvedNew.endAt > resolvedExisting.startAt
 
     if (!hasOverlap) return
 
@@ -164,6 +286,7 @@ export function detectConflicts(
     if (
       shift.brand_id === newShift.brand_id &&
       shift.platform_id === newShift.platform_id &&
+      shift.date === newShift.date &&
       shift.start_time === newShift.start_time &&
       shift.end_time === newShift.end_time
     ) {
@@ -180,10 +303,7 @@ export function detectConflicts(
 
 // Calculate shift duration
 export function calculateDuration(startTime: string, endTime: string): number {
-  const start = parse(startTime, 'HH:mm', new Date())
-  const end = parse(endTime, 'HH:mm', new Date())
-  const diffMs = end.getTime() - start.getTime()
-  return Math.floor(diffMs / (1000 * 60)) // minutes
+  return resolveShiftDateTime('2000-01-01', startTime, endTime)?.durationMinutes ?? 0
 }
 
 // Format duration for display

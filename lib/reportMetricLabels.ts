@@ -1,0 +1,62 @@
+import type { TranslationKey } from '@/lib/i18n'
+import type { OcrMetricStatus, ReportMetricKey } from '@/lib/types/database.types'
+
+export const metricTranslationKeys: Record<ReportMetricKey, TranslationKey> = {
+  revenue: 'metricRevenue',
+  gmv: 'metricGmv',
+  orders: 'metricOrders',
+  buyers: 'metricBuyers',
+  items_sold: 'metricItemsSold',
+  total_views: 'metricTotalViews',
+  engaged_viewers: 'metricEngagedViewers',
+  peak_concurrent_viewers: 'metricPeakConcurrentViewers',
+  average_view_duration_seconds: 'metricAverageViewDuration',
+  product_clicks: 'metricProductClicks',
+  ctr: 'metricCtr',
+  conversion_rate: 'metricConversionRate',
+  average_order_value: 'metricAverageOrderValue',
+  likes: 'metricLikes',
+  comments: 'metricComments',
+  shares: 'metricShares',
+  new_followers: 'metricNewFollowers',
+  live_duration_seconds: 'metricLiveDuration',
+  started_at: 'metricStartedAt',
+  ended_at: 'metricEndedAt',
+  current_viewers: 'metricCurrentViewers',
+  impressions: 'metricImpressions',
+  gmv_per_hour: 'metricGmvPerHour',
+  gpm: 'metricGpm',
+  click_rate: 'metricClickRate',
+  live_ctr: 'metricLiveCtr',
+  advertising_cost: 'metricAdvertisingCost',
+  sku_orders: 'metricSkuOrders',
+  ctor: 'metricCtor',
+  roi_gmv_max: 'metricRoiGmvMax',
+  sales: 'metricSales',
+  add_to_cart: 'metricAddToCart',
+  estimated_gmv: 'metricEstimatedGmv',
+  comment_rate: 'metricCommentRate',
+  average_basket_size: 'metricAverageBasketSize',
+  pcu: 'metricPcu',
+  click_to_order_rate: 'metricClickToOrderRate',
+  total_viewers: 'metricTotalViewers',
+}
+
+export const metricHelpTranslationKeys: Partial<Record<ReportMetricKey, TranslationKey>> = {
+  gpm: 'metricGpmHelp',
+  pcu: 'metricPcuHelp',
+  ctr: 'metricCtrHelp',
+  live_ctr: 'metricCtrHelp',
+  click_rate: 'metricCtrHelp',
+  ctor: 'metricCtorHelp',
+  click_to_order_rate: 'metricCtorHelp',
+}
+
+export const metricStatusTranslationKeys: Record<OcrMetricStatus, TranslationKey> = {
+  accepted: 'statusAccepted',
+  review_required: 'statusReviewRequired',
+  rejected: 'statusRejected',
+  manual: 'statusManual',
+  empty: 'statusEmpty',
+  confirmed: 'statusConfirmed',
+}

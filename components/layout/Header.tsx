@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Bell, LogOut } from 'lucide-react'
+import { LogOut } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +16,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { GlobalSearch } from '@/components/features/search/GlobalSearch'
 import { NotificationCenter } from '@/components/features/notifications/NotificationCenter'
 import { useTranslation } from '@/lib/i18n'
+import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 
 interface HeaderProps {
   user?: {
@@ -30,6 +31,14 @@ interface HeaderProps {
 export function Header({ user }: HeaderProps) {
   const router = useRouter()
   const { language, setLanguage, t } = useTranslation()
+  const { currentUser } = useCurrentUser()
+  const displayUser = currentUser ? {
+    email: currentUser.email,
+    user_metadata: {
+      full_name: currentUser.full_name,
+      avatar_url: currentUser.avatar_url,
+    },
+  } : user
 
   const handleSignOut = async () => {
     // In mock mode, just redirect to login
@@ -37,11 +46,11 @@ export function Header({ user }: HeaderProps) {
     router.refresh()
   }
 
-  const initials = user?.user_metadata?.full_name
+  const initials = displayUser?.user_metadata?.full_name
     ?.split(' ')
     .map((n) => n[0])
     .join('')
-    .toUpperCase() || user?.email?.[0].toUpperCase() || 'U'
+    .toUpperCase() || displayUser?.email?.[0].toUpperCase() || 'U'
 
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
@@ -73,7 +82,7 @@ export function Header({ user }: HeaderProps) {
                 render={<Button variant="ghost" className="relative h-10 w-10 rounded-full" data-testid="user-menu-btn" />}
               >
                 <Avatar className="h-10 w-10">
-                  <AvatarImage src={user?.user_metadata?.avatar_url} alt={user?.user_metadata?.full_name || user?.email} />
+                  <AvatarImage src={displayUser?.user_metadata?.avatar_url} alt={displayUser?.user_metadata?.full_name || displayUser?.email} />
                   <AvatarFallback className="bg-gradient-to-br from-blue-600 to-blue-700 text-white">
                     {initials}
                   </AvatarFallback>
@@ -83,8 +92,8 @@ export function Header({ user }: HeaderProps) {
                 <DropdownMenuGroup>
                   <DropdownMenuLabel className="font-normal">
                     <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium leading-none">{user?.user_metadata?.full_name || 'User'}</p>
-                      <p className="text-xs leading-none text-gray-500">{user?.email}</p>
+                      <p className="text-sm font-medium leading-none">{displayUser?.user_metadata?.full_name || 'User'}</p>
+                      <p className="text-xs leading-none text-gray-500">{displayUser?.email}</p>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
