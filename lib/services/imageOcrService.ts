@@ -1,4 +1,59 @@
 import type { OcrCropBox, OcrImageRecognition, ReportDashboardPlatform } from '@/lib/types/database.types'
+import {
+  isLegacyOcrApiSuccess,
+  isOcrApiSuccess,
+  type OcrApiFailure,
+  type OcrApiResponse,
+} from '@/lib/services/ocrApiContract'
+
+export class OcrApiResponseError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly contentType: string,
+    readonly code?: string,
+  ) {
+    super(message)
+    this.name = 'OcrApiResponseError'
+  }
+}
+
+export async function parseOcrApiResponse(response: Response): Promise<OcrImageRecognition> {
+  const contentType = response.headers.get('content-type')?.toLowerCase() || ''
+  const responseText = await response.text()
+
+  if (!contentType.includes('application/json')) {
+    throw new OcrApiResponseError(
+      `OCR API returned an unexpected non-JSON response (status ${response.status}).`,
+      response.status,
+      contentType,
+    )
+  }
+
+  let payload: OcrApiResponse | OcrImageRecognition
+  try {
+    payload = JSON.parse(responseText) as OcrApiResponse | OcrImageRecognition
+  } catch {
+    throw new OcrApiResponseError(
+      `OCR API returned invalid JSON (status ${response.status}).`,
+      response.status,
+      contentType,
+    )
+  }
+
+  if (response.ok && isOcrApiSuccess(payload)) return payload.data
+  // Keep compatibility with an already-running server during a rolling deployment.
+  if (response.ok && isLegacyOcrApiSuccess(payload)) return payload
+
+  const failure = payload as Partial<OcrApiFailure>
+  const message = failure.error?.message || `Image recognition failed (status ${response.status}).`
+  throw new OcrApiResponseError(
+    message,
+    response.status,
+    contentType,
+    failure.error?.code,
+  )
+}
 
 export async function recognizeDashboardImage(
   imageUrl: string,
@@ -19,9 +74,5 @@ export async function recognizeDashboardImage(
     method: 'POST',
     body: formData,
   })
-  const payload = await response.json() as OcrImageRecognition | { error?: string }
-  if (!response.ok || !('engine' in payload)) {
-    throw new Error('error' in payload && payload.error ? payload.error : 'Image recognition failed.')
-  }
-  return payload
+  return parseOcrApiResponse(response)
 }

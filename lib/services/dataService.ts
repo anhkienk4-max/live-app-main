@@ -1451,6 +1451,17 @@ export const ocrService = {
         const recognition = await recognizeDashboardImage(imageUrl, platform, cropBox)
         return mapDashboardImageRecognition(platform, recognition)
       } catch (error) {
+        if (rawOutput?.trim()) {
+          const localReview = parseDashboardOcrText(platform, rawOutput)
+          if (Object.keys(localReview.metrics).length > 0) {
+            return {
+              ...localReview,
+              error_message: `Image OCR API was unavailable. Metrics were populated from the available OCR text. ${
+                error instanceof Error ? error.message : 'Image recognition failed.'
+              }`,
+            }
+          }
+        }
         return {
           status: 'failed',
           source_platform: platform,

@@ -164,6 +164,9 @@ export function ReportFormModal({
         cropBox,
       )
       setReview(candidate)
+      if (candidate.raw_output?.trim()) {
+        setRawOcrText(current => current.trim() ? current : candidate.raw_output || '')
+      }
       setMetrics(current => mergeMetricValues(current, reviewInputValues(candidate)))
       setEditingMetrics(true)
       toast({

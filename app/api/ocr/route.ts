@@ -11,10 +11,12 @@ import type {
   OcrRecognizedWord,
   ReportDashboardPlatform,
 } from '@/lib/types/database.types'
+import { ocrErrorResponse, ocrSuccessResponse } from '@/lib/services/ocrApiContract'
 import { clampOcrCrop, defaultOcrCrop } from '@/lib/utils/ocrImage'
 import { platformMetricLayouts, type LayoutMetricCell } from '@/lib/utils/ocrMetrics'
 
 export const runtime = 'nodejs'
+export const maxDuration = 60
 
 const maxImageBytes = 10 * 1024 * 1024
 const supportedPlatforms = new Set<ReportDashboardPlatform>(['shopee_live', 'tiktok_shop'])
@@ -27,22 +29,22 @@ export async function POST(request: Request) {
     const platform = String(formData.get('platform') || 'other') as ReportDashboardPlatform
 
     if (!(image instanceof File)) {
-      return Response.json({ error: 'An image file is required.' }, { status: 400 })
+      return ocrErrorResponse('IMAGE_REQUIRED', 'An image file is required.', 400)
     }
     if (!image.type.startsWith('image/')) {
-      return Response.json({ error: 'Only image files can be processed.' }, { status: 415 })
+      return ocrErrorResponse('UNSUPPORTED_FILE', 'Only image files can be processed.', 415)
     }
     if (image.size > maxImageBytes) {
-      return Response.json({ error: 'The dashboard image must be 10 MB or smaller.' }, { status: 413 })
+      return ocrErrorResponse('IMAGE_TOO_LARGE', 'The dashboard image must be 10 MB or smaller.', 413)
     }
     if (!supportedPlatforms.has(platform)) {
-      return Response.json({ error: 'Select TikTok Shop or Shopee Live before scanning.' }, { status: 400 })
+      return ocrErrorResponse('UNSUPPORTED_PLATFORM', 'Select TikTok Shop or Shopee Live before scanning.', 400)
     }
 
     const imageBytes = Buffer.from(await image.arrayBuffer())
     const metadata = await sharp(imageBytes).metadata()
     if (!metadata.width || !metadata.height) {
-      return Response.json({ error: 'The dashboard image dimensions could not be read.' }, { status: 422 })
+      return ocrErrorResponse('INVALID_IMAGE', 'The dashboard image dimensions could not be read.', 422)
     }
 
     const requestedCrop = parseCropBox(formData.get('crop'))
@@ -127,14 +129,19 @@ export async function POST(request: Request) {
         original_dimensions: { width: metadata.width, height: metadata.height },
         processed_dimensions: { width: processedWidth, height: processedHeight },
       }
-      return Response.json(response)
+      return ocrSuccessResponse(response)
     } finally {
       await worker.terminate()
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Image recognition failed.'
     console.error('Dashboard OCR failed:', message)
-    return Response.json({ error: message }, { status: 500 })
+    const timedOut = /timed?\s*out|timeout/i.test(message)
+    return ocrErrorResponse(
+      timedOut ? 'OCR_TIMEOUT' : 'OCR_PROCESSING_FAILED',
+      timedOut ? 'Image recognition timed out.' : 'Image recognition failed.',
+      timedOut ? 504 : 500,
+    )
   }
 }
 
