@@ -241,6 +241,7 @@ export function buildOcrMetric(
   originalLabel: string,
   rawValue: string,
   confidence: OcrMetricValue['confidence'],
+  source: NonNullable<OcrMetricValue['source']> = 'trusted_text',
 ): [ReportMetricKey, OcrMetricValue] | null {
   const key = mapOcrLabel(platform, originalLabel)
   if (!key) return null
@@ -258,7 +259,7 @@ export function buildOcrMetric(
     raw_value: rawValue,
     normalized_key: key,
     unit: inferMetricUnit(key, rawValue),
-    source: 'trusted_text',
+    source,
     status: 'review_required',
   }]
 }
@@ -266,6 +267,7 @@ export function buildOcrMetric(
 export function parseDashboardOcrText(
   platform: ReportDashboardPlatform,
   rawOutput: string,
+  source: NonNullable<OcrMetricValue['source']> = 'trusted_text',
 ): OcrReviewData {
   const metrics: OcrReviewData['metrics'] = {}
   const unmappedFields: NonNullable<OcrReviewData['unmapped_fields']> = []
@@ -279,10 +281,10 @@ export function parseDashboardOcrText(
     const separator = splitTrustedTextLine(platform, line)
     const nextLine = lines[index + 1]
     const nextLineCandidate = !separator && mapOcrLabel(platform, line) && nextLine
-      ? buildOcrMetric(platform, line, nextLine, 'medium')
+      ? buildOcrMetric(platform, line, nextLine, 'medium', source)
       : null
     const candidate = separator
-      ? buildOcrMetric(platform, separator.label, separator.value, 'medium')
+      ? buildOcrMetric(platform, separator.label, separator.value, 'medium', source)
       : nextLineCandidate
 
     if (nextLineCandidate) index += 1
@@ -291,7 +293,7 @@ export function parseDashboardOcrText(
         original_label: line,
         original_value: '',
         confidence: 'low',
-        source: 'trusted_text',
+        source,
         rejection_reason: 'The trusted text line has no recognizable label/value pair.',
       })
       continue
@@ -301,7 +303,7 @@ export function parseDashboardOcrText(
         original_label: separator?.label || line,
         original_value: separator?.value || nextLine || '',
         confidence: 'low',
-        source: 'trusted_text',
+        source,
         rejection_reason: `No ${platform} metric label matched this trusted text field.`,
       })
       continue
@@ -501,17 +503,58 @@ function applyImageTextFallback(
   rawText: string,
   metrics: OcrReviewData['metrics'],
 ) {
-  const fallback = parseDashboardOcrText(platform, rawText)
+  const fallback = parseDashboardOcrText(platform, rawText, 'local_tesseract_text')
   for (const [key, candidate] of Object.entries(fallback.metrics) as Array<[ReportMetricKey, OcrMetricValue]>) {
     if (!metricHasUsableValue(candidate)) continue
     const existing = metrics[key]
     if (existing && existing.status !== 'rejected' && metricHasUsableValue(existing)) continue
     metrics[key] = {
       ...candidate,
-      source: 'image_ocr',
+      source: 'local_tesseract_text',
       label_source: 'ocr_text',
     }
   }
+}
+
+export function buildDashboardOcrReviewFromRecognition(
+  platform: ReportDashboardPlatform,
+  recognition: OcrImageRecognition,
+): OcrReviewData {
+  // Parse the text carried by this recognition result directly. This deliberately
+  // does not depend on React state, word boxes, card output, or confidence data.
+  const textCandidates = [...new Set([
+    recognition.text.trim(),
+    recognition.pass_output.label.trim(),
+  ].filter(Boolean))]
+  const selectedTextCandidate = textCandidates
+    .map(text => ({
+      text,
+      review: parseDashboardOcrText(platform, text, 'local_tesseract_text'),
+    }))
+    .sort((left, right) =>
+      Object.keys(right.review.metrics).length - Object.keys(left.review.metrics).length,
+    )[0]
+  const recognizedText = selectedTextCandidate?.text || ''
+  const review = mapDashboardImageRecognition(platform, {
+    ...recognition,
+    text: recognizedText,
+  })
+  const parsedTextReview = selectedTextCandidate?.review
+    || parseDashboardOcrText(platform, recognizedText, 'local_tesseract_text')
+
+  for (const [key, candidate] of Object.entries(parsedTextReview.metrics) as Array<[ReportMetricKey, OcrMetricValue]>) {
+    if (!metricHasUsableValue(candidate)) continue
+    const existing = review.metrics[key]
+    if (existing && existing.status !== 'rejected' && metricHasUsableValue(existing)) continue
+    review.metrics[key] = candidate
+  }
+
+  if (Object.keys(review.metrics).length > 0) {
+    review.status = 'review_required'
+    review.error_message = undefined
+  }
+  review.raw_output = recognizedText || review.raw_output
+  return review
 }
 
 function metricHasUsableValue(metric: OcrMetricValue) {

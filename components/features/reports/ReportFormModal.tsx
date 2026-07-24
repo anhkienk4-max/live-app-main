@@ -124,7 +124,9 @@ export function ReportFormModal({
     setRawOcrText('')
     setMetricFilter('data')
     setShowReviewWarning(false)
-  }, [completedShifts, open, platforms])
+  // Opening the modal initializes a fresh draft. Prop-array identity changes
+  // while it is open must not erase OCR candidates or autofilled metrics.
+  }, [open])
 
   const changeShift = (value: string) => {
     const nextShift = completedShifts.find(shift => shift.id === value)
@@ -163,11 +165,27 @@ export function ReportFormModal({
         dashboardImage?.url,
         cropBox,
       )
+      const incomingMetricValues = reviewInputValues(candidate)
       setReview(candidate)
       if (candidate.raw_output?.trim()) {
         setRawOcrText(current => current.trim() ? current : candidate.raw_output || '')
       }
-      setMetrics(current => mergeMetricValues(current, reviewInputValues(candidate)))
+      setMetrics(current => {
+        const merged = mergeMetricValues(current, incomingMetricValues)
+        if (
+          process.env.NODE_ENV !== 'production'
+          || process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true'
+        ) {
+          console.debug('[OCR pipeline:form merge]', {
+            platform: dashboardPlatform,
+            candidateCount: Object.keys(candidate.metrics).length,
+            beforeMerge: incomingMetricValues,
+            afterMerge: merged,
+            renderedMetricKeys: [...commonReportMetricKeys, ...platformMetricKeys[dashboardPlatform]],
+          })
+        }
+        return merged
+      })
       setEditingMetrics(true)
       toast({
         title: candidate.status === 'unavailable' ? t('dashboardImageRequired') : t('metricReviewRequired'),

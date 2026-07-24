@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 
 import { POST } from '../app/api/ocr/route.ts'
+import { OcrMetricReviewField } from '../components/features/reports/OcrMetricReviewField.tsx'
+import { LanguageProvider } from '../lib/i18n.tsx'
 import { ocrService } from '../lib/services/dataService.ts'
 import {
   OcrApiResponseError,
@@ -12,6 +16,7 @@ import {
   ocrSuccessResponse,
 } from '../lib/services/ocrApiContract.ts'
 import type { OcrImageRecognition } from '../lib/types/database.types.ts'
+import { buildDashboardOcrReviewFromRecognition } from '../lib/utils/ocrMetrics.ts'
 import { mergeMetricValues, reviewInputValues } from '../lib/utils/ocrReview.ts'
 
 const recognition: OcrImageRecognition = {
@@ -157,3 +162,81 @@ test('raw Tesseract text autofills metrics when the image OCR API returns HTML',
   }
 })
 
+test('fresh Shopee recognition text creates candidates and autofill without API card or word data', () => {
+  const previousRawTextState = ''
+  const recognizedText = [
+    'Sales: 21.281.718,00',
+    'Orders: 109',
+    'PCU: 107',
+  ].join('\n')
+  const freshRecognition: OcrImageRecognition = {
+    ...recognition,
+    text: 'OCR completed',
+    pass_output: {
+      label: recognizedText,
+      numeric: '',
+      card: undefined,
+    },
+    confidence: 0,
+    words: [],
+  }
+
+  // This is the production service path: parse the fresh recognition result,
+  // never the previous (still empty) React raw-text state.
+  const review = buildDashboardOcrReviewFromRecognition('shopee_live', freshRecognition)
+  const autofill = reviewInputValues(review)
+  const existingReportState = {
+    replayUrl: 'https://example.test/replay',
+    insightsGood: 'Do not replace',
+    metrics: { revenue: '50' },
+  }
+  const nextReportState = {
+    ...existingReportState,
+    metrics: mergeMetricValues(existingReportState.metrics, autofill),
+  }
+
+  assert.equal(previousRawTextState, '')
+  assert.equal(review.raw_output, recognizedText)
+  assert.deepEqual(Object.keys(review.metrics).sort(), ['orders', 'pcu', 'sales'])
+  assert.equal(Object.keys(review.metrics).length, 3)
+  assert.equal(review.metrics.sales?.value, 21281718)
+  assert.equal(review.metrics.orders?.value, 109)
+  assert.equal(review.metrics.pcu?.value, 107)
+  assert.equal(review.metrics.sales?.source, 'local_tesseract_text')
+  assert.equal(review.metrics.orders?.source, 'local_tesseract_text')
+  assert.equal(review.metrics.pcu?.source, 'local_tesseract_text')
+  assert.equal(review.metrics.sales?.bounding_box, undefined)
+  assert.deepEqual(autofill, {
+    sales: '21281718',
+    orders: '109',
+    pcu: '107',
+  })
+  assert.equal(nextReportState.metrics.sales, '21281718')
+  assert.equal(nextReportState.metrics.orders, '109')
+  assert.equal(nextReportState.metrics.pcu, '107')
+  assert.equal(nextReportState.metrics.revenue, '50')
+  assert.equal(nextReportState.replayUrl, existingReportState.replayUrl)
+  assert.equal(nextReportState.insightsGood, existingReportState.insightsGood)
+
+  const renderedCandidates = renderToStaticMarkup(createElement(
+    LanguageProvider,
+    null,
+    createElement('div', null, ...(['sales', 'orders', 'pcu'] as const).map(key =>
+      createElement(OcrMetricReviewField, {
+        key,
+        metricKey: key,
+        metric: review.metrics[key],
+        value: autofill[key] || '',
+        editable: true,
+        canReview: false,
+        onChange: () => undefined,
+      }),
+    )),
+  ))
+  assert.match(renderedCandidates, /data-testid="ocr-metric-sales"/)
+  assert.match(renderedCandidates, /data-testid="ocr-metric-orders"/)
+  assert.match(renderedCandidates, /data-testid="ocr-metric-pcu"/)
+  assert.match(renderedCandidates, /value="21281718"/)
+  assert.match(renderedCandidates, /value="109"/)
+  assert.match(renderedCandidates, /value="107"/)
+})

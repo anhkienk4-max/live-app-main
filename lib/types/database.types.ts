@@ -405,7 +405,7 @@ export interface OcrMetricValue {
   normalized_key?: ReportMetricKey
   unit?: string
   bounding_box?: { x: number; y: number; width: number; height: number }
-  source?: 'image_ocr' | 'trusted_text' | 'manual' | 'imported'
+  source?: 'image_ocr' | 'local_tesseract_text' | 'trusted_text' | 'manual' | 'imported'
   status?: OcrMetricStatus
   rejection_reason?: string
   label_confidence?: number
@@ -440,7 +440,7 @@ export interface OcrReviewData {
     normalized_key?: ReportMetricKey
     confidence: OcrConfidence
     bounding_box?: { x: number; y: number; width: number; height: number }
-    source?: 'image_ocr' | 'trusted_text' | 'manual' | 'imported'
+    source?: 'image_ocr' | 'local_tesseract_text' | 'trusted_text' | 'manual' | 'imported'
     rejection_reason?: string
   }>
   raw_output?: string

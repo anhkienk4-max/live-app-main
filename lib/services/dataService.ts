@@ -25,7 +25,7 @@ import {
   DeletionImpact,
   ReportRevision,
 } from '@/lib/types/database.types'
-import { mapDashboardImageRecognition, parseDashboardOcrText } from '@/lib/utils/ocrMetrics'
+import { buildDashboardOcrReviewFromRecognition, parseDashboardOcrText } from '@/lib/utils/ocrMetrics'
 import { recognizeDashboardImage } from '@/lib/services/imageOcrService'
 import { DEFAULT_REQUIRED_STAFF_COUNT, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
 import { toCanonicalScheduleImportPreviewRow } from '@/lib/utils/scheduleImportPreview'
@@ -1449,7 +1449,20 @@ export const ocrService = {
     if (imageUrl) {
       try {
         const recognition = await recognizeDashboardImage(imageUrl, platform, cropBox)
-        return mapDashboardImageRecognition(platform, recognition)
+        const review = buildDashboardOcrReviewFromRecognition(platform, recognition)
+        const recognizedText = review.raw_output || ''
+        logOcrPipeline('recognized', {
+          platform,
+          recognizedText,
+          rawTextLength: recognizedText.length,
+          parser: 'parseDashboardOcrText',
+          parserOutputKeys: Object.keys(review.metrics),
+          normalizedValues: Object.fromEntries(
+            Object.entries(review.metrics).map(([key, metric]) => [key, metric?.value ?? metric?.candidate_value]),
+          ),
+          candidateCount: Object.keys(review.metrics).length,
+        })
+        return review
       } catch (error) {
         if (rawOutput?.trim()) {
           const localReview = parseDashboardOcrText(platform, rawOutput)
@@ -1483,6 +1496,14 @@ export const ocrService = {
     }
     return parseDashboardOcrText(platform, rawOutput)
   },
+}
+
+function logOcrPipeline(stage: string, details: Record<string, unknown>) {
+  if (
+    process.env.NODE_ENV === 'production'
+    && process.env.NEXT_PUBLIC_USE_MOCK_DATA !== 'true'
+  ) return
+  console.debug(`[OCR pipeline:${stage}]`, details)
 }
 
 // Dashboard Update Service

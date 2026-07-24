@@ -51,7 +51,7 @@ export function OcrMetricReviewField({
     ? t('manualInput')
     : metric?.source === 'image_ocr'
       ? t('imageOcr')
-      : metric?.source === 'trusted_text'
+      : metric?.source === 'trusted_text' || metric?.source === 'local_tesseract_text'
         ? t('trustedOcrText')
         : t('unknownSource')
   const valuePass = metric?.value_source_pass === 'label'
