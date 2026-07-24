@@ -11,7 +11,18 @@ import {
   User,
 } from '@/lib/types/database.types'
 import { getExcelCurrencyNumberFormat } from '@/lib/utils/currency'
-import { MAX_SHIFT_CAPACITY, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
+import {
+  DEFAULT_SHIFT_STAFFING,
+  MAX_SHIFT_CAPACITY,
+  resolveShiftDateTime,
+  shiftDateTimeFields,
+} from '@/lib/utils/shiftUtils'
+import {
+  normalizeScheduleImportSourceRow,
+  previewStaffingFields,
+  toCanonicalScheduleImportPreviewRow,
+  validateStaffingValues,
+} from '@/lib/utils/scheduleImportPreview'
 
 export interface ImportError {
   row: number
@@ -53,9 +64,7 @@ const scheduleHeaders = {
   platform: ['platform', 'nen tang', 'kenh'],
   campaign: ['campaign', 'chien dich'],
   title: ['shift name', 'shift title', 'ten ca', 'ca'],
-  hostCount: ['required host count', 'required host', 'so host', 'host'],
-  supportCount: ['required support count', 'required support', 'so support', 'support', 'ho tro'],
-  technicalCount: ['required technical count', 'required technical', 'so technical', 'technical', 'ky thuat'],
+  studio: ['studio', 'live studio', 'studio name', 'room', 'live room', 'phong live', 'phong livestream', 'ten studio', 'phong quay'],
   notes: ['notes', 'note', 'ghi chu'],
 } as const
 
@@ -64,6 +73,8 @@ const normalizeLookup = (value: unknown) => String(value ?? '')
   .replace(/[\u0300-\u036f]/g, '')
   .replace(/đ/g, 'd')
   .replace(/Đ/g, 'D')
+  .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+  .replace(/[_-]+/g, ' ')
   .replace(/\s+/g, ' ')
   .trim()
   .toLowerCase()
@@ -74,6 +85,15 @@ const valueFor = (row: ScheduleSheetRow, aliases: readonly string[]) => {
   )
   const alias = aliases.find(candidate => Object.prototype.hasOwnProperty.call(normalized, candidate))
   return alias ? normalized[alias] : undefined
+}
+
+const entityIdFor = (items: Map<string, string>, value: string) => {
+  const caseFolded = value.trim().toLowerCase()
+  const normalized = normalizeLookup(value)
+  for (const [name, id] of items) {
+    if (name.trim().toLowerCase() === caseFolded || normalizeLookup(name) === normalized) return id
+  }
+  return undefined
 }
 
 const normalizeDate = (value: unknown): string => {
@@ -134,31 +154,34 @@ export function parseScheduleRows(
   const candidates: Array<Omit<Shift, 'id' | 'created_at' | 'updated_at'>> = []
 
   sourceRows.forEach((source, index) => {
+    const normalizedSource = normalizeScheduleImportSourceRow(source)
     const rowNumber = index + 2
-    const rowText = Object.values(source).map(value => String(value ?? '')).join(' ').replace(/\s+/g, ' ').trim()
+    const rowText = Object.values(normalizedSource).map(value => String(value ?? '')).join(' ').replace(/\s+/g, ' ').trim()
     if (/^total\s*week\s*[1-4]\b/i.test(normalizeLookup(rowText))) return
-    const date = normalizeDate(valueFor(source, scheduleHeaders.date))
-    const [rangeStart, rangeEnd] = normalizeTimeRange(valueFor(source, scheduleHeaders.timeRange))
-    const startTime = normalizeTime(valueFor(source, scheduleHeaders.startTime)) || rangeStart
-    const endTime = normalizeTime(valueFor(source, scheduleHeaders.endTime)) || rangeEnd
-    const brandName = String(valueFor(source, scheduleHeaders.brand) ?? '').trim()
-    const rawPlatformName = String(valueFor(source, scheduleHeaders.platform) ?? '').trim()
+    const date = normalizeDate(valueFor(normalizedSource, scheduleHeaders.date))
+    const [rangeStart, rangeEnd] = normalizeTimeRange(valueFor(normalizedSource, scheduleHeaders.timeRange))
+    const startTime = normalizeTime(valueFor(normalizedSource, scheduleHeaders.startTime)) || rangeStart
+    const endTime = normalizeTime(valueFor(normalizedSource, scheduleHeaders.endTime)) || rangeEnd
+    const brandName = String(valueFor(normalizedSource, scheduleHeaders.brand) ?? '').trim()
+    const rawPlatformName = String(valueFor(normalizedSource, scheduleHeaders.platform) ?? '').trim()
     const platformAlias = normalizeLookup(rawPlatformName)
     const platformName = ['shp', 'shopee'].includes(platformAlias)
       ? 'Shopee Live'
       : ['tts', 'tiktok', 'tt shop', 'tiktok shop'].includes(platformAlias)
         ? 'TikTok Shop'
         : rawPlatformName
-    const campaignName = String(valueFor(source, scheduleHeaders.campaign) ?? '').trim()
-    const suppliedTitle = String(valueFor(source, scheduleHeaders.title) ?? '').trim()
+    const campaignName = String(valueFor(normalizedSource, scheduleHeaders.campaign) ?? '').trim()
+    const suppliedTitle = String(valueFor(normalizedSource, scheduleHeaders.title) ?? '').trim()
     const title = suppliedTitle || (brandName && platformName ? `${brandName} – ${platformName}` : brandName)
-    const notes = String(valueFor(source, scheduleHeaders.notes) ?? '').trim()
-    const rawHostCount = valueFor(source, scheduleHeaders.hostCount)
-    const rawSupportCount = valueFor(source, scheduleHeaders.supportCount)
-    const rawTechnicalCount = valueFor(source, scheduleHeaders.technicalCount)
-    const hostCount = normalizeCapacity(rawHostCount)
-    const supportCount = normalizeCapacity(rawSupportCount)
-    const technicalCount = normalizeCapacity(rawTechnicalCount)
+    const rawStudio = String(valueFor(normalizedSource, scheduleHeaders.studio) ?? '')
+    const studio = rawStudio.trim()
+    const notes = String(valueFor(normalizedSource, scheduleHeaders.notes) ?? '').trim()
+    const staffingValues = {
+      required_host_count: normalizedSource.required_host_count,
+      required_support_count: normalizedSource.required_support_count,
+      required_technical_count: normalizedSource.required_technical_count,
+    }
+    const validatedStaffing = validateStaffingValues(staffingValues)
     const rowErrors: string[] = []
     const rowWarnings: string[] = []
 
@@ -177,16 +200,20 @@ export function parseScheduleRows(
     if (!brandName) rowErrors.push('Brand is required.')
     if (!platformName) rowErrors.push('Platform is required.')
     if (!title) rowErrors.push('Shift title is required.')
-    if (hostCount === null) rowErrors.push(`Required Host count must be a whole number from 0 to ${MAX_SHIFT_CAPACITY}.`)
-    if (supportCount === null) rowErrors.push(`Required Support count must be a whole number from 0 to ${MAX_SHIFT_CAPACITY}.`)
-    if (technicalCount === null) rowErrors.push(`Required Technical count must be a whole number from 0 to ${MAX_SHIFT_CAPACITY}.`)
+    const staffingLabels = {
+      required_host_count: 'Host',
+      required_support_count: 'Support',
+      required_technical_count: 'Technical',
+    } as const
+    previewStaffingFields.forEach(field => {
+      if (validatedStaffing[field] === null) {
+        rowErrors.push(`Required ${staffingLabels[field]} count must be a whole number from 1 to ${MAX_SHIFT_CAPACITY}.`)
+      }
+    })
 
-    const normalizedBrands = new Map([...maps.brands].map(([name, id]) => [normalizeLookup(name), id]))
-    const normalizedPlatforms = new Map([...maps.platforms].map(([name, id]) => [normalizeLookup(name), id]))
-    const normalizedCampaigns = new Map([...maps.campaigns].map(([name, id]) => [normalizeLookup(name), id]))
-    const brandId = normalizedBrands.get(normalizeLookup(brandName))
-    const platformId = normalizedPlatforms.get(normalizeLookup(platformName))
-    const campaignId = campaignName ? normalizedCampaigns.get(normalizeLookup(campaignName)) : undefined
+    const brandId = entityIdFor(maps.brands, brandName)
+    const platformId = entityIdFor(maps.platforms, platformName)
+    const campaignId = campaignName ? entityIdFor(maps.campaigns, campaignName) : undefined
     if (brandName && !brandId) rowErrors.push(`Brand "${brandName}" was not found.`)
     if (platformName && !platformId) rowErrors.push(`Platform "${platformName}" was not found.`)
     if (campaignName && !campaignId) rowErrors.push(`Campaign "${campaignName}" was not found.`)
@@ -201,9 +228,10 @@ export function parseScheduleRows(
         platform_id: platformId,
         campaign_id: campaignId,
         title,
-        required_host_count: hostCount!,
-        required_support_count: supportCount!,
-        required_technical_count: technicalCount!,
+        studio: studio || undefined,
+        required_host_count: validatedStaffing.required_host_count!,
+        required_support_count: validatedStaffing.required_support_count!,
+        required_technical_count: validatedStaffing.required_technical_count!,
         registration_locked: false,
         allow_multi_role: false,
         status: 'scheduled',
@@ -219,7 +247,7 @@ export function parseScheduleRows(
     rowErrors.forEach(message => errors.push({ row: rowNumber, field: 'row', message }))
     rowWarnings.forEach(message => warnings.push({ row: rowNumber, field: 'duplicate', message }))
     previews.push({
-      row: {
+      row: toCanonicalScheduleImportPreviewRow({
         row_number: rowNumber,
         date,
         start_time: startTime,
@@ -231,13 +259,12 @@ export function parseScheduleRows(
         platform_name: platformName,
         campaign_name: campaignName || undefined,
         title,
-        required_host_count: hostCount ?? String(rawHostCount ?? '').trim(),
-        required_support_count: supportCount ?? String(rawSupportCount ?? '').trim(),
-        required_technical_count: technicalCount ?? String(rawTechnicalCount ?? '').trim(),
+        studio: studio || undefined,
+        ...staffingValues,
         notes: notes || undefined,
         warnings: rowWarnings,
         errors: rowErrors,
-      },
+      }),
       shift,
     })
   })
@@ -302,6 +329,7 @@ const mockGoogleRows: ScheduleSheetRow[] = [{
   Platform: 'TikTok Shop',
   Campaign: 'Flash Sale Week',
   'Shift title': 'Imported Google Sheets shift',
+  Studio: 'Studio A',
   'Required Host count': 1,
   'Required Support count': 1,
   'Required Technical count': 1,
@@ -379,6 +407,7 @@ export function downloadScheduleImportErrors(result: ImportResult): void {
         Platform: preview.row.platform_name,
         Campaign: preview.row.campaign_name || '',
         Title: preview.row.title,
+        Studio: preview.row.studio || '',
         Errors: preview.row.errors.join('\n'),
         Warnings: preview.row.warnings.join('\n'),
       })),
@@ -407,6 +436,7 @@ export function exportShiftsToExcel(
       Brand: brands.get(shift.brand_id) || shift.brand_id,
       Platform: platforms.get(shift.platform_id) || shift.platform_id,
       Campaign: shift.campaign_id ? campaigns.get(shift.campaign_id) || shift.campaign_id : '',
+      Studio: shift.studio || '',
       Host: shift.host_id ? users.get(shift.host_id) || shift.host_id : '',
       Support: shift.support_id ? users.get(shift.support_id) || shift.support_id : '',
       Technical: shift.technical_id ? users.get(shift.technical_id) || shift.technical_id : '',
@@ -431,6 +461,7 @@ export function exportShiftStaffingToExcel(
     name: 'Staffing',
     rows: registrations.map(registration => ({
       'Shift ID': shift.id,
+      Studio: shift.studio || '',
       'Start Date': shift.date,
       'End Date': resolved?.endDate || shift.date,
       Time: `${shift.start_time}-${shift.end_time}`,
@@ -447,8 +478,8 @@ export function exportShiftStaffingToExcel(
   }])
 }
 
-export function downloadExcelTemplate(): void {
-  writeWorkbook('shift_import_template.xlsx', [
+export function buildScheduleImportTemplateSheets() {
+  return [
     {
       name: 'Schedule',
       rows: [{
@@ -459,9 +490,10 @@ export function downloadExcelTemplate(): void {
         Platform: 'TikTok Shop',
         Campaign: 'Flash Sale Week',
         'Shift title': 'Morning product live',
-        'Required Host count': 1,
-        'Required Support count': 1,
-        'Required Technical count': 1,
+        Studio: 'Studio A',
+        'Required Host count': DEFAULT_SHIFT_STAFFING.required_host_count,
+        'Required Support count': DEFAULT_SHIFT_STAFFING.required_support_count,
+        'Required Technical count': DEFAULT_SHIFT_STAFFING.required_technical_count,
         Notes: 'Product focus and setup notes',
       }],
     },
@@ -473,11 +505,16 @@ export function downloadExcelTemplate(): void {
         { Field: 'Brand / Platform', Format: 'Existing name', Required: 'Yes' },
         { Field: 'Campaign', Format: 'Existing name', Required: 'No' },
         { Field: 'Shift title', Format: 'Text', Required: 'Yes' },
-        { Field: 'Required role counts', Format: 'Whole number >= 0', Required: 'Yes' },
+        { Field: 'Studio', Format: 'Text', Required: 'No' },
+        { Field: 'Required role counts', Format: 'Whole number >= 1 (defaults to 1 when blank)', Required: 'Yes' },
         { Field: 'Notes', Format: 'Text', Required: 'No' },
       ],
     },
-  ])
+  ]
+}
+
+export function downloadExcelTemplate(): void {
+  writeWorkbook('shift_import_template.xlsx', buildScheduleImportTemplateSheets())
 }
 
 type ReportExportContext = {
@@ -490,7 +527,7 @@ type ReportExportContext = {
   registrations?: ShiftRegistration[]
 }
 
-const reportRows = (reports: Report[], context: ReportExportContext) => reports.map(report => {
+export const buildReportExportRows = (reports: Report[], context: ReportExportContext) => reports.map(report => {
   const shift = context.shifts.find(candidate => candidate.id === report.shift_id)
   const resolved = shift ? resolveShiftDateTime(shift.date, shift.start_time, shift.end_time) : null
   const campaign = context.campaigns.find(candidate => candidate.id === shift?.campaign_id)
@@ -514,6 +551,7 @@ const reportRows = (reports: Report[], context: ReportExportContext) => reports.
     Brand: shift ? context.brands.get(shift.brand_id) || shift.brand_id : '',
     Platform: shift ? context.platforms.get(shift.platform_id) || shift.platform_id : '',
     Campaign: campaign?.name || '',
+    Studio: shift?.studio || '',
     Host: assignedNames('host', shift?.host_id),
     Support: assignedNames('support', shift?.support_id),
     Technical: assignedNames('technical', shift?.technical_id),
@@ -532,13 +570,22 @@ const reportRows = (reports: Report[], context: ReportExportContext) => reports.
     'Confirmed By': userName(report.confirmed_by),
     'Submitted At': report.created_at,
     'Submitted By': userName(report.submitted_by),
+    'Traffic Throughout the Session': report.final_recap?.traffic_summary || '',
+    'Platform Vouchers': report.final_recap?.platform_vouchers || '',
+    'Shop Vouchers': report.final_recap?.shop_vouchers || '',
+    'Best-performing Time Slots': report.final_recap?.best_performing_time_slots || '',
+    'Customer Interest in Products and Gifts': report.final_recap?.customer_product_gift_interest || '',
+    'Main Customer Comment Topics': report.final_recap?.main_comment_topics || '',
+    'Live Pricing Feedback': report.final_recap?.live_price_feedback || '',
+    'Top-selling Products': report.final_recap?.top_selling_products || '',
+    'Issues Encountered During the Live': report.final_recap?.live_issues || '',
   }
 })
 
 export function exportReportsToExcel(reports: Report[], context: ReportExportContext): void {
   writeWorkbook(`reports_filtered_${format(new Date(), 'yyyy-MM-dd')}.xlsx`, [{
     name: 'Reports',
-    rows: reportRows(reports, context),
+    rows: buildReportExportRows(reports, context),
     currencyColumns: ['Revenue', 'GMV', 'Average Order Value'],
   }])
 }
@@ -546,7 +593,7 @@ export function exportReportsToExcel(reports: Report[], context: ReportExportCon
 export function exportReportDetailToExcel(report: Report, context: ReportExportContext): void {
   writeWorkbook(`report_${report.id}.xlsx`, [{
     name: 'Report',
-    rows: reportRows([report], context),
+    rows: buildReportExportRows([report], context),
     currencyColumns: ['Revenue', 'GMV', 'Average Order Value'],
   }])
 }
@@ -589,6 +636,15 @@ export function downloadReportTemplate(): void {
       'Live Duration Minutes': 0,
       'What Went Well': '',
       'Improvement Areas': '',
+      'Traffic Throughout the Session': '',
+      'Platform Vouchers': '',
+      'Shop Vouchers': '',
+      'Best-performing Time Slots': '',
+      'Customer Interest in Products and Gifts': '',
+      'Main Customer Comment Topics': '',
+      'Live Pricing Feedback': '',
+      'Top-selling Products': '',
+      'Issues Encountered During the Live': '',
     }],
   }])
 }

@@ -13,6 +13,7 @@ import {
   OcrCropBox,
   ShiftRegistration,
   ScheduleImportBatch,
+  ScheduleImportRow,
   ScheduleImportSource,
   PersonalSettings,
   OperationalSettings,
@@ -26,7 +27,8 @@ import {
 } from '@/lib/types/database.types'
 import { mapDashboardImageRecognition, parseDashboardOcrText } from '@/lib/utils/ocrMetrics'
 import { recognizeDashboardImage } from '@/lib/services/imageOcrService'
-import { normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
+import { DEFAULT_REQUIRED_STAFF_COUNT, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
+import { toCanonicalScheduleImportPreviewRow } from '@/lib/utils/scheduleImportPreview'
 import { recordAuditEvent } from '@/lib/services/auditService'
 import { resolveSystemPermission } from '@/lib/permissions'
 import {
@@ -79,6 +81,7 @@ const appendReportRevision = (
       average_viewer: report.average_viewer,
     },
     ocr_review: report.ocr_review ? structuredClone(report.ocr_review) : undefined,
+    final_recap: report.final_recap ? { ...report.final_recap } : undefined,
     image_references: reportImages
       .filter(image => image.report_id === report.id && !image.deleted_at)
       .map(image => image.id),
@@ -124,6 +127,18 @@ const roleRequiredField: Record<OperationalRole, 'required_host_count' | 'requir
 }
 
 const nowIso = () => new Date().toISOString()
+const syncMockAuthAccount = (user: User) => {
+  if (typeof window === 'undefined') return
+  try {
+    const raw = window.localStorage.getItem('livestream-ops-mock-auth-accounts')
+    if (!raw) return
+    const accounts = JSON.parse(raw) as Array<{ user: User; password_verifier?: string }>
+    const updated = accounts.map(account => account.user.id === user.id ? { ...account, user: { ...account.user, ...user } } : account)
+    window.localStorage.setItem('livestream-ops-mock-auth-accounts', JSON.stringify(updated))
+  } catch {
+    // Ignore storage sync errors for mock auth state.
+  }
+}
 const actorFor = (actorId = currentUserService.getId()) =>
   users.find(user => user.id === actorId) || users[0]
 const audit = (
@@ -234,9 +249,9 @@ let operationalSettings: OperationalSettings = {
   swap_approval_required: true,
   require_report_review: true,
   report_reminder_hours: 12,
-  default_host_count: 1,
-  default_support_count: 1,
-  default_technical_count: 1,
+  default_host_count: DEFAULT_REQUIRED_STAFF_COUNT,
+  default_support_count: DEFAULT_REQUIRED_STAFF_COUNT,
+  default_technical_count: DEFAULT_REQUIRED_STAFF_COUNT,
 }
 
 let personalSettings = new Map<string, PersonalSettings>()
@@ -296,6 +311,7 @@ export const userService = {
       updated_at: new Date().toISOString(),
     }
     users.push(newUser)
+    syncMockAuthAccount(newUser)
     audit('staff', 'create', 'staff', newUser.id, newUser.full_name, { actorId: currentUserService.getId(), after: { ...newUser } })
     return Promise.resolve(newUser)
   },
@@ -305,8 +321,53 @@ export const userService = {
     if (index === -1) return Promise.resolve(null)
     const before = { ...users[index] }
     users[index] = { ...users[index], ...data, updated_at: new Date().toISOString() }
+    syncMockAuthAccount(users[index])
     audit('staff', 'update', 'staff', id, users[index].full_name, { before, after: { ...users[index] } })
     return Promise.resolve(users[index])
+  },
+
+  async approvePendingAccount(id: string, actorId = currentUserService.getId()): Promise<User | null> {
+    const index = users.findIndex(u => u.id === id)
+    if (index === -1) return null
+    if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can approve pending accounts.')
+    const before = { ...users[index] }
+    users[index] = {
+      ...users[index],
+      status: 'active',
+      account_status: 'active',
+      email_verified: true,
+      updated_at: nowIso(),
+    }
+    syncMockAuthAccount(users[index])
+    audit('staff', 'account_approved', 'account', id, users[index].full_name, {
+      actorId,
+      before,
+      after: { ...users[index] },
+      reason: 'Approved by admin',
+    })
+    return users[index]
+  },
+
+  async rejectPendingAccount(id: string, actorId = currentUserService.getId()): Promise<User | null> {
+    const index = users.findIndex(u => u.id === id)
+    if (index === -1) return null
+    if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can reject pending accounts.')
+    const before = { ...users[index] }
+    users[index] = {
+      ...users[index],
+      status: 'inactive',
+      account_status: 'rejected',
+      email_verified: true,
+      updated_at: nowIso(),
+    }
+    syncMockAuthAccount(users[index])
+    audit('staff', 'account_rejected', 'account', id, users[index].full_name, {
+      actorId,
+      before,
+      after: { ...users[index] },
+      reason: 'Rejected by admin',
+    })
+    return users[index]
   },
 
   async archive(id: string, actorId = currentUserService.getId(), reason = 'Deactivated by administrator'): Promise<User | null> {
@@ -593,13 +654,19 @@ export const shiftService = {
   async create(data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>): Promise<Shift> {
     const dateTime = shiftDateTimeFields(data.date, data.start_time, data.end_time)
     if (!dateTime) throw new Error('Shift date or duration is invalid.')
+    const requiredHostCount = normalizeCapacity(data.required_host_count, operationalSettings.default_host_count)
+    const requiredSupportCount = normalizeCapacity(data.required_support_count, operationalSettings.default_support_count)
+    const requiredTechnicalCount = normalizeCapacity(data.required_technical_count, operationalSettings.default_technical_count)
+    if (requiredHostCount === null || requiredSupportCount === null || requiredTechnicalCount === null) {
+      throw new Error('Required staffing counts must be non-negative whole numbers within the allowed capacity.')
+    }
     const newShift: Shift = {
       registration_locked: false,
       allow_multi_role: operationalSettings.allow_multi_role_per_shift,
       ...data,
-      required_host_count: normalizeCapacity(data.required_host_count, operationalSettings.default_host_count) ?? operationalSettings.default_host_count,
-      required_support_count: normalizeCapacity(data.required_support_count, operationalSettings.default_support_count) ?? operationalSettings.default_support_count,
-      required_technical_count: normalizeCapacity(data.required_technical_count, operationalSettings.default_technical_count) ?? operationalSettings.default_technical_count,
+      required_host_count: requiredHostCount,
+      required_support_count: requiredSupportCount,
+      required_technical_count: requiredTechnicalCount,
       ...dateTime,
       id: generateId(),
       created_at: new Date().toISOString(),
@@ -644,7 +711,20 @@ export const shiftService = {
     const candidate = { ...shifts[index], ...data }
     const dateTime = shiftDateTimeFields(candidate.date, candidate.start_time, candidate.end_time)
     if (!dateTime) throw new Error('Shift date or duration is invalid.')
-    shifts[index] = { ...candidate, ...dateTime, updated_at: new Date().toISOString() }
+    const requiredHostCount = normalizeCapacity(candidate.required_host_count, operationalSettings.default_host_count)
+    const requiredSupportCount = normalizeCapacity(candidate.required_support_count, operationalSettings.default_support_count)
+    const requiredTechnicalCount = normalizeCapacity(candidate.required_technical_count, operationalSettings.default_technical_count)
+    if (requiredHostCount === null || requiredSupportCount === null || requiredTechnicalCount === null) {
+      throw new Error('Required staffing counts must be non-negative whole numbers within the allowed capacity.')
+    }
+    shifts[index] = {
+      ...candidate,
+      required_host_count: requiredHostCount,
+      required_support_count: requiredSupportCount,
+      required_technical_count: requiredTechnicalCount,
+      ...dateTime,
+      updated_at: new Date().toISOString(),
+    }
     const action = data.registration_locked === true
       ? 'lock'
       : data.registration_locked === false
@@ -1570,7 +1650,12 @@ export const swapRequestService = {
 
 export const scheduleImportService = {
   async getAll(): Promise<ScheduleImportBatch[]> {
-    return Promise.resolve([...scheduleImports].sort((a, b) => b.created_at.localeCompare(a.created_at)))
+    return Promise.resolve(scheduleImports
+      .map(batch => ({
+        ...batch,
+        preview_rows: batch.preview_rows?.map(toCanonicalScheduleImportPreviewRow),
+      }))
+      .sort((a, b) => b.created_at.localeCompare(a.created_at)))
   },
 
   async createPreview(
@@ -1578,6 +1663,7 @@ export const scheduleImportService = {
     sourceName: string,
     summary: Pick<ScheduleImportBatch, 'total_rows' | 'valid_rows' | 'invalid_rows' | 'warning_rows'>,
     createdBy: string,
+    previewRows?: ScheduleImportRow[],
   ): Promise<ScheduleImportBatch> {
     const batch: ScheduleImportBatch = {
       id: generateId(),
@@ -1585,6 +1671,7 @@ export const scheduleImportService = {
       source_name: sourceName,
       status: 'previewed',
       ...summary,
+      preview_rows: previewRows?.map(toCanonicalScheduleImportPreviewRow),
       created_by: createdBy,
       created_at: nowIso(),
     }
@@ -1608,10 +1695,17 @@ export const scheduleImportService = {
   async updatePreview(
     id: string,
     summary: Pick<ScheduleImportBatch, 'total_rows' | 'valid_rows' | 'invalid_rows' | 'warning_rows'>,
+    previewRows?: ScheduleImportRow[],
   ): Promise<ScheduleImportBatch | null> {
     const index = scheduleImports.findIndex(batch => batch.id === id)
     if (index === -1 || scheduleImports[index].status !== 'previewed') return null
-    scheduleImports[index] = { ...scheduleImports[index], ...summary }
+    scheduleImports[index] = {
+      ...scheduleImports[index],
+      ...summary,
+      preview_rows: previewRows
+        ? previewRows.map(toCanonicalScheduleImportPreviewRow)
+        : scheduleImports[index].preview_rows?.map(toCanonicalScheduleImportPreviewRow),
+    }
     return Promise.resolve(scheduleImports[index])
   },
 

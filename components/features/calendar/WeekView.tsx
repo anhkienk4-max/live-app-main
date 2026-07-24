@@ -4,6 +4,7 @@ import { Shift, Brand, Platform, User } from '@/lib/types/database.types'
 import { Badge } from '@/components/ui/badge'
 import { format, startOfWeek, addDays } from 'date-fns'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { useTranslation } from '@/lib/i18n'
 
 interface WeekViewProps {
   currentDate: Date
@@ -14,6 +15,7 @@ interface WeekViewProps {
 }
 
 export function WeekView({ currentDate, shifts, brands, platforms, onShiftClick }: WeekViewProps) {
+  const { t } = useTranslation()
   const weekStart = startOfWeek(currentDate)
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
   
@@ -45,6 +47,7 @@ export function WeekView({ currentDate, shifts, brands, platforms, onShiftClick 
                 >
                   <div className="font-medium">{formatShiftTimeRange(shift)}</div>
                   <div className="text-xs truncate text-gray-700">{getBrandName(shift.brand_id)}</div>
+                  <div className="truncate text-[11px] text-gray-600">{t('studio')}: {shift.studio || t('notUpdated')}</div>
                   <Badge variant={shift.status === 'live' ? 'destructive' : 'secondary'} className="text-[10px] mt-1">
                     {shift.status}
                   </Badge>

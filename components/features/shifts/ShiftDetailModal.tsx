@@ -197,6 +197,10 @@ export function ShiftDetailModal({
                     <div className="text-sm text-gray-600 mb-1">Campaign</div>
                     <div className="font-semibold">{getCampaignName(shift.campaign_id)}</div>
                   </div>
+                  <div className="col-span-2">
+                    <div className="text-sm text-gray-600 mb-1">{t('studio')}</div>
+                    <div className="font-semibold">{shift.studio || t('notUpdated')}</div>
+                  </div>
                 </div>
               </CardContent>
             </Card>

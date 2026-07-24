@@ -1,8 +1,8 @@
 'use client'
 
 import * as React from 'react'
-import { shiftRegistrationService, shiftService, brandService, platformService, campaignService, userService, isStaffedRegistration } from '@/lib/services/dataService'
-import { Shift, Brand, Platform, Campaign, User, OperationalRole, ShiftRegistration } from '@/lib/types/database.types'
+import { shiftRegistrationService, shiftService, brandService, platformService, campaignService, userService, reportService, isStaffedRegistration } from '@/lib/services/dataService'
+import { Shift, Brand, Platform, Campaign, User, OperationalRole, ShiftRegistration, Report } from '@/lib/types/database.types'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -14,7 +14,9 @@ import { WeekView } from './WeekView'
 import { DayView } from './DayView'
 import { ListView } from './ListView'
 import { ShiftFormModal } from '../shifts/ShiftFormModal'
+import { ShiftFormDialog } from '../shifts/ShiftFormDialog'
 import { ShiftDetailModal } from '../shifts/ShiftDetailModal'
+import { DaySessionsDialog } from './DaySessionsDialog'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
@@ -32,9 +34,12 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
   const [users, setUsers] = React.useState<User[]>([])
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
+  const [reports, setReports] = React.useState<Report[]>([])
   const [loading, setLoading] = React.useState(true)
   const [showForm, setShowForm] = React.useState(false)
   const [selectedShift, setSelectedShift] = React.useState<Shift | null>(null)
+  const [selectedDay, setSelectedDay] = React.useState<Date | null>(null)
+  const [editingShift, setEditingShift] = React.useState<Shift | null>(null)
   const [showFilters, setShowFilters] = React.useState(false)
   const [searchTerm, setSearchTerm] = React.useState('')
   const [filters, setFilters] = React.useState({
@@ -56,13 +61,14 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   }, [createRequest])
 
   const loadData = async () => {
-    const [shiftsData, brandsData, platformsData, campaignsData, usersData, registrationsData] = await Promise.all([
+    const [shiftsData, brandsData, platformsData, campaignsData, usersData, registrationsData, reportsData] = await Promise.all([
       shiftService.getAll(),
       brandService.getAll(),
       platformService.getAll(),
       campaignService.getAll(),
       userService.getAll(),
       shiftRegistrationService.getAll(),
+      reportService.getAll(),
     ])
     setShifts(shiftsData)
     setBrands(brandsData)
@@ -70,6 +76,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     setCampaigns(campaignsData)
     setUsers(usersData)
     setRegistrations(registrationsData)
+    setReports(reportsData)
     setLoading(false)
   }
 
@@ -348,7 +355,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
 
       {/* Calendar Views */}
       <Card className="min-w-0 overflow-hidden p-3 sm:p-6">
-        {view === 'month' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} onShiftClick={setSelectedShift} /></div></div>}
+        {view === 'month' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} onShiftClick={setSelectedShift} onDayClick={setSelectedDay} /></div></div>}
         {view === 'week' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} onShiftClick={setSelectedShift} /></div></div>}
         {view === 'day' && <DayView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} users={users} onShiftClick={setSelectedShift} />}
         {view === 'list' && <ListView shifts={filteredShifts} brands={brands} platforms={platforms} users={users} onShiftClick={setSelectedShift} />}
@@ -369,6 +376,47 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           }}
         />
       )}
+
+      {editingShift && (
+        <ShiftFormDialog
+          open={!!editingShift}
+          onOpenChange={(open) => !open && setEditingShift(null)}
+          shift={editingShift}
+          duplicateFrom={null}
+          brands={brands}
+          platforms={platforms}
+          campaigns={campaigns}
+          users={users}
+          templates={[]}
+          onSuccess={() => {
+            void loadData()
+            setEditingShift(null)
+          }}
+        />
+      )}
+
+      <DaySessionsDialog
+        open={!!selectedDay}
+        date={selectedDay}
+        shifts={filteredShifts}
+        brands={brands}
+        platforms={platforms}
+        campaigns={campaigns}
+        users={users}
+        registrations={registrations}
+        reports={reports}
+        currentUser={currentUser}
+        onOpenChange={(open) => !open && setSelectedDay(null)}
+        onViewShift={(shift) => {
+          setSelectedDay(null)
+          setSelectedShift(shift)
+        }}
+        onEditShift={(shift) => {
+          setSelectedDay(null)
+          setEditingShift(shift)
+        }}
+        onChanged={loadData}
+      />
 
       {selectedShift && (
         <ShiftDetailModal

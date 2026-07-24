@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Link2, Moon, Upload } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Link2, Moon, Plus, Upload } from 'lucide-react'
 import {
   brandService,
   campaignService,
@@ -33,8 +33,38 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/toast'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { HistoryPagination } from '@/components/ui/history-pagination'
+import { DEFAULT_SHIFT_STAFFING } from '@/lib/utils/shiftUtils'
+import {
+  buildScheduleImportPreviewSourceRow,
+  getScheduleImportSourceField,
+  normalizeScheduleImportResult,
+  normalizeScheduleImportSourceRow,
+  previewStaffingFields,
+} from '@/lib/utils/scheduleImportPreview'
 
 type Source = { type: 'excel' | 'google_sheets'; name: string }
+
+export function ScheduleImportStaffingInput({
+  field,
+  value,
+  onChange,
+}: {
+  field: typeof previewStaffingFields[number]
+  value: number | string
+  onChange: (value: string) => void
+}) {
+  return (
+    <Input
+      className="w-20"
+      data-testid={`schedule-preview-${field}`}
+      min="1"
+      onChange={event => onChange(event.target.value)}
+      step="1"
+      type="number"
+      value={value}
+    />
+  )
+}
 
 export function ScheduleImportPanel({ onImported }: { onImported?: () => void }) {
   const { currentUser, loading: userLoading } = useCurrentUser()
@@ -74,15 +104,16 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   }), [brands, campaigns, platforms])
 
   const recordPreview = async (next: ImportResult, nextSource: Source) => {
-    setResult(next)
+    const normalizedNext = normalizeScheduleImportResult(next)
+    setResult(normalizedNext)
     setSource(nextSource)
     const createdBy = currentUser?.id || currentUserService.getId()
     const created = await scheduleImportService.createPreview(nextSource.type, nextSource.name, {
-      total_rows: next.totalRows,
-      valid_rows: next.validRows,
-      invalid_rows: next.invalidRows,
-      warning_rows: next.warningRows,
-    }, createdBy)
+      total_rows: normalizedNext.totalRows,
+      valid_rows: normalizedNext.validRows,
+      invalid_rows: normalizedNext.invalidRows,
+      warning_rows: normalizedNext.warningRows,
+    }, createdBy, normalizedNext.rows.map(preview => preview.row))
     setBatch(created)
   }
 
@@ -113,30 +144,17 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     }
   }
 
-  const updateRow = (index: number, field: string, value: string) => {
-    if (!result) return
-    const sourceRows = result.rows.map((preview, rowIndex) => {
-      const row = preview.row
-      const next = rowIndex === index ? { ...row, [field]: value } : row
-      return {
-        Date: next.date,
-        'Start time': next.start_time,
-        'End time': next.end_time,
-        Brand: next.brand_name,
-        Platform: next.platform_name,
-        Campaign: next.campaign_name || '',
-        'Shift title': next.title,
-        'Required Host count': next.required_host_count,
-        'Required Support count': next.required_support_count,
-        'Required Technical count': next.required_technical_count,
-        Notes: next.notes || '',
-      }
-    })
-    const nextResult = parseScheduleRows(sourceRows, {
-      brands: new Map([...maps.brands].map(([name, id]) => [name.toLowerCase(), id])),
-      platforms: new Map([...maps.platforms].map(([name, id]) => [name.toLowerCase(), id])),
-      campaigns: new Map([...maps.campaigns].map(([name, id]) => [name.toLowerCase(), id])),
-    }, existingShifts)
+  const sourceRowsFromPreview = React.useCallback(() => {
+    if (!result) return []
+    return result.rows.map(preview => buildScheduleImportPreviewSourceRow(preview.row))
+  }, [result])
+
+  const applySourceRows = (sourceRows: Record<string, unknown>[]) => {
+    const nextResult = normalizeScheduleImportResult(parseScheduleRows(sourceRows, {
+      brands: maps.brands,
+      platforms: maps.platforms,
+      campaigns: maps.campaigns,
+    }, existingShifts))
     setResult(nextResult)
     if (batch) {
       void scheduleImportService.updatePreview(batch.id, {
@@ -144,8 +162,35 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
         valid_rows: nextResult.validRows,
         invalid_rows: nextResult.invalidRows,
         warning_rows: nextResult.warningRows,
-      })
+      }, nextResult.rows.map(preview => preview.row))
     }
+  }
+
+  const updateRow = (index: number, field: string, value: string) => {
+    const sourceRows = sourceRowsFromPreview()
+    if (!sourceRows.length) return
+    sourceRows[index] = { ...sourceRows[index], [getScheduleImportSourceField(field)]: value }
+    applySourceRows(sourceRows)
+  }
+
+  const addPreviewRow = () => {
+    applySourceRows([
+      ...sourceRowsFromPreview(),
+      normalizeScheduleImportSourceRow({
+        Date: '',
+        'Start time': '09:00',
+        'End time': '13:00',
+        Brand: '',
+        Platform: '',
+        Campaign: '',
+        'Shift title': '',
+        Studio: '',
+        required_host_count: DEFAULT_SHIFT_STAFFING.required_host_count,
+        required_support_count: DEFAULT_SHIFT_STAFFING.required_support_count,
+        required_technical_count: DEFAULT_SHIFT_STAFFING.required_technical_count,
+        Notes: '',
+      }),
+    ])
   }
 
   const confirmImport = async () => {
@@ -244,11 +289,14 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                   </Button>
                 ))}
               </div>
-              {(result.errors.length > 0 || result.warnings.length > 0) && <Button size="sm" variant="outline" onClick={() => downloadScheduleImportErrors(result)}><Download className="mr-2 h-4 w-4" />Download errors</Button>}
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={addPreviewRow}><Plus className="mr-2 h-4 w-4" />{t('addImportRow')}</Button>
+                {(result.errors.length > 0 || result.warnings.length > 0) && <Button size="sm" variant="outline" onClick={() => downloadScheduleImportErrors(result)}><Download className="mr-2 h-4 w-4" />Download errors</Button>}
+              </div>
             </div>
             <div className="max-h-[560px] overflow-auto rounded-lg border">
-              <table className="min-w-[1180px] w-full text-sm">
-                <thead className="sticky top-0 z-10 bg-background"><tr className="border-b text-left"><th className="p-2">#</th><th className="p-2">{t('date')}</th><th className="p-2">{t('time')}</th><th className="p-2">{t('brand')}</th><th className="p-2">{t('platform')}</th><th className="p-2">{t('campaign')}</th><th className="p-2">{t('shiftTitle')}</th><th className="p-2">{t('host')}</th><th className="p-2">{t('support')}</th><th className="p-2">{t('technical')}</th><th className="min-w-64 p-2">{t('status')}</th></tr></thead>
+              <table className="min-w-[1300px] w-full text-sm">
+                <thead className="sticky top-0 z-10 bg-background"><tr className="border-b text-left"><th className="p-2">#</th><th className="p-2">{t('date')}</th><th className="p-2">{t('time')}</th><th className="p-2">{t('brand')}</th><th className="p-2">{t('platform')}</th><th className="p-2">{t('campaign')}</th><th className="p-2">{t('shiftTitle')}</th><th className="p-2">{t('studio')}</th><th className="p-2">{t('requiredHostCount')}</th><th className="p-2">{t('requiredSupportCount')}</th><th className="p-2">{t('requiredTechnicalCount')}</th><th className="min-w-64 p-2">{t('status')}</th></tr></thead>
                 <tbody>
                   {result.rows.map((preview, index) => ({ preview, index })).filter(({ preview }) =>
                     previewFilter === 'all' ||
@@ -264,7 +312,16 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                       <td className="p-2"><PreviewEntitySelect value={preview.row.platform_name} onChange={value => updateRow(index, 'platform_name', value)} options={platforms} /></td>
                       <td className="p-2"><PreviewEntitySelect optional value={preview.row.campaign_name || ''} onChange={value => updateRow(index, 'campaign_name', value)} options={campaigns} /></td>
                       <td className="p-2"><Input className="w-48" value={preview.row.title} onChange={event => updateRow(index, 'title', event.target.value)} /></td>
-                      {(['required_host_count', 'required_support_count', 'required_technical_count'] as const).map(field => <td className="p-2" key={field}><Input className="w-20" min="0" type="number" value={preview.row[field]} onChange={event => updateRow(index, field, event.target.value)} /></td>)}
+                      <td className="p-2"><Input className="w-36" value={preview.row.studio || ''} onChange={event => updateRow(index, 'studio', event.target.value)} /></td>
+                      {previewStaffingFields.map(field => (
+                        <td className="p-2" key={field}>
+                          <ScheduleImportStaffingInput
+                            field={field}
+                            value={preview.row[field]}
+                            onChange={value => updateRow(index, field, value)}
+                          />
+                        </td>
+                      ))}
                       <td className="p-2">
                         {preview.row.errors.length === 0 && preview.row.warnings.length === 0 && <CheckCircle2 className="h-5 w-5 text-green-600" />}
                         {preview.row.errors.map(message => <p key={message} className="mb-1 text-xs text-red-700">{message}</p>)}

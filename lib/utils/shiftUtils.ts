@@ -16,6 +16,7 @@ export interface ShiftTemplate {
   brand_id: string
   platform_id: string
   campaign_id?: string
+  studio?: string
   host_id?: string
   support_id?: string
   technical_id?: string
@@ -52,17 +53,29 @@ export interface ResolvedShiftDateTime {
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
 export const MAX_SHIFT_CAPACITY = 100
+export const DEFAULT_REQUIRED_STAFF_COUNT = 1
+export const DEFAULT_SHIFT_STAFFING = {
+  required_host_count: DEFAULT_REQUIRED_STAFF_COUNT,
+  required_support_count: DEFAULT_REQUIRED_STAFF_COUNT,
+  required_technical_count: DEFAULT_REQUIRED_STAFF_COUNT,
+} as const
 
 export function normalizeCapacity(
   value: unknown,
-  defaultValue = 1,
+  defaultValue = DEFAULT_REQUIRED_STAFF_COUNT,
   maximum = MAX_SHIFT_CAPACITY,
 ): number | null {
-  if (value === null || value === undefined || String(value).trim() === '') {
+  if (
+    value === null ||
+    value === undefined ||
+    String(value).trim() === '' ||
+    (typeof value === 'number' && Number.isNaN(value))
+  ) {
     return defaultValue
   }
   const parsed = Number(String(value).trim())
   if (!Number.isInteger(parsed) || parsed < 0 || parsed > maximum) return null
+  if (parsed === 0) return defaultValue
   return parsed
 }
 

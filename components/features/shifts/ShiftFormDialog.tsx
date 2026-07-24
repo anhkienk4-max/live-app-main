@@ -3,7 +3,16 @@
 import * as React from 'react'
 import { shiftService } from '@/lib/services/dataService'
 import { Shift, Brand, Platform, Campaign, User, ShiftStatus } from '@/lib/types/database.types'
-import { ShiftTemplate, RecurrenceRule, detectConflicts, generateRecurringShifts, formatDuration, resolveShiftDateTime } from '@/lib/utils/shiftUtils'
+import {
+  DEFAULT_SHIFT_STAFFING,
+  ShiftTemplate,
+  RecurrenceRule,
+  detectConflicts,
+  generateRecurringShifts,
+  formatDuration,
+  normalizeCapacity,
+  resolveShiftDateTime,
+} from '@/lib/utils/shiftUtils'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,6 +23,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/components/ui/toast'
 import { AlertCircle, Sparkles } from 'lucide-react'
 import { format } from 'date-fns'
+import { useTranslation } from '@/lib/i18n'
 
 interface ShiftFormDialogProps {
   open: boolean
@@ -26,6 +36,28 @@ interface ShiftFormDialogProps {
   users: User[]
   templates: ShiftTemplate[]
   onSuccess: () => void
+}
+
+interface ShiftFormState {
+  title: string
+  date: string
+  start_time: string
+  end_time: string
+  brand_id: string
+  platform_id: string
+  campaign_id: string
+  studio: string
+  host_id: string
+  support_id: string
+  technical_id: string
+  required_host_count: number
+  required_support_count: number
+  required_technical_count: number
+  registration_locked: boolean
+  allow_multi_role: boolean
+  status: ShiftStatus
+  live_link: string
+  product_notes: string
 }
 
 export function ShiftFormDialog({
@@ -45,7 +77,7 @@ export function ShiftFormDialog({
   const [conflicts, setConflicts] = React.useState<any[]>([])
   const [previewShifts, setPreviewShifts] = React.useState<any[]>([])
   
-  const [formData, setFormData] = React.useState({
+  const [formData, setFormData] = React.useState<ShiftFormState>({
     title: '',
     date: '',
     start_time: '',
@@ -53,15 +85,16 @@ export function ShiftFormDialog({
     brand_id: '',
     platform_id: '',
     campaign_id: '',
+    studio: '',
     host_id: '',
     support_id: '',
     technical_id: '',
-    required_host_count: 1,
-    required_support_count: 1,
-    required_technical_count: 1,
+    required_host_count: DEFAULT_SHIFT_STAFFING.required_host_count,
+    required_support_count: DEFAULT_SHIFT_STAFFING.required_support_count,
+    required_technical_count: DEFAULT_SHIFT_STAFFING.required_technical_count,
     registration_locked: false,
     allow_multi_role: false,
-    status: 'scheduled' as ShiftStatus,
+    status: 'scheduled',
     live_link: '',
     product_notes: ''
   })
@@ -75,6 +108,7 @@ export function ShiftFormDialog({
   })
 
   const { toast } = useToast()
+  const { t } = useTranslation()
 
   React.useEffect(() => {
     if (shift) {
@@ -86,12 +120,13 @@ export function ShiftFormDialog({
         brand_id: shift.brand_id,
         platform_id: shift.platform_id,
         campaign_id: shift.campaign_id || '',
+        studio: shift.studio || '',
         host_id: shift.host_id || '',
         support_id: shift.support_id || '',
         technical_id: shift.technical_id || '',
-        required_host_count: shift.required_host_count ?? 1,
-        required_support_count: shift.required_support_count ?? 1,
-        required_technical_count: shift.required_technical_count ?? 1,
+        required_host_count: normalizeCapacity(shift.required_host_count) ?? DEFAULT_SHIFT_STAFFING.required_host_count,
+        required_support_count: normalizeCapacity(shift.required_support_count) ?? DEFAULT_SHIFT_STAFFING.required_support_count,
+        required_technical_count: normalizeCapacity(shift.required_technical_count) ?? DEFAULT_SHIFT_STAFFING.required_technical_count,
         registration_locked: shift.registration_locked ?? false,
         allow_multi_role: shift.allow_multi_role ?? false,
         status: shift.status,
@@ -107,12 +142,13 @@ export function ShiftFormDialog({
         brand_id: duplicateFrom.brand_id,
         platform_id: duplicateFrom.platform_id,
         campaign_id: duplicateFrom.campaign_id || '',
+        studio: duplicateFrom.studio || '',
         host_id: duplicateFrom.host_id || '',
         support_id: duplicateFrom.support_id || '',
         technical_id: duplicateFrom.technical_id || '',
-        required_host_count: duplicateFrom.required_host_count ?? 1,
-        required_support_count: duplicateFrom.required_support_count ?? 1,
-        required_technical_count: duplicateFrom.required_technical_count ?? 1,
+        required_host_count: normalizeCapacity(duplicateFrom.required_host_count) ?? DEFAULT_SHIFT_STAFFING.required_host_count,
+        required_support_count: normalizeCapacity(duplicateFrom.required_support_count) ?? DEFAULT_SHIFT_STAFFING.required_support_count,
+        required_technical_count: normalizeCapacity(duplicateFrom.required_technical_count) ?? DEFAULT_SHIFT_STAFFING.required_technical_count,
         registration_locked: false,
         allow_multi_role: duplicateFrom.allow_multi_role ?? false,
         status: 'scheduled',
@@ -128,12 +164,11 @@ export function ShiftFormDialog({
         brand_id: '',
         platform_id: '',
         campaign_id: '',
+        studio: '',
         host_id: '',
         support_id: '',
         technical_id: '',
-        required_host_count: 1,
-        required_support_count: 1,
-        required_technical_count: 1,
+        ...DEFAULT_SHIFT_STAFFING,
         registration_locked: false,
         allow_multi_role: false,
         status: 'scheduled',
@@ -165,6 +200,7 @@ export function ShiftFormDialog({
         brand_id: template.brand_id,
         platform_id: template.platform_id,
         campaign_id: template.campaign_id || '',
+        studio: template.studio || '',
         host_id: template.host_id || '',
         support_id: template.support_id || '',
         technical_id: template.technical_id || '',
@@ -335,6 +371,15 @@ export function ShiftFormDialog({
             </div>
           </div>
 
+          <div>
+            <label className="text-sm font-medium">{t('studio')}</label>
+            <Input
+              value={formData.studio}
+              onChange={(event) => setFormData({ ...formData, studio: event.target.value })}
+              placeholder={t('studioPlaceholder')}
+            />
+          </div>
+
           {/* Required role capacity */}
           <div>
             <h3 className="mb-2 text-sm font-medium">Required staffing</h3>
@@ -344,9 +389,14 @@ export function ShiftFormDialog({
                 <Input
                   type="number"
                   min="0"
+                  step="1"
                   max="20"
                   value={formData.required_host_count}
-                  onChange={(event) => setFormData({ ...formData, required_host_count: Number(event.target.value) })}
+                  onChange={(event) => {
+                    const nextValue = event.target.value
+                    const normalized = normalizeCapacity(nextValue === '' ? undefined : nextValue, DEFAULT_SHIFT_STAFFING.required_host_count)
+                    setFormData({ ...formData, required_host_count: normalized ?? DEFAULT_SHIFT_STAFFING.required_host_count })
+                  }}
                 />
               </div>
               <div>
@@ -354,9 +404,14 @@ export function ShiftFormDialog({
                 <Input
                   type="number"
                   min="0"
+                  step="1"
                   max="20"
                   value={formData.required_support_count}
-                  onChange={(event) => setFormData({ ...formData, required_support_count: Number(event.target.value) })}
+                  onChange={(event) => {
+                    const nextValue = event.target.value
+                    const normalized = normalizeCapacity(nextValue === '' ? undefined : nextValue, DEFAULT_SHIFT_STAFFING.required_support_count)
+                    setFormData({ ...formData, required_support_count: normalized ?? DEFAULT_SHIFT_STAFFING.required_support_count })
+                  }}
                 />
               </div>
               <div>
@@ -364,9 +419,14 @@ export function ShiftFormDialog({
                 <Input
                   type="number"
                   min="0"
+                  step="1"
                   max="20"
                   value={formData.required_technical_count}
-                  onChange={(event) => setFormData({ ...formData, required_technical_count: Number(event.target.value) })}
+                  onChange={(event) => {
+                    const nextValue = event.target.value
+                    const normalized = normalizeCapacity(nextValue === '' ? undefined : nextValue, DEFAULT_SHIFT_STAFFING.required_technical_count)
+                    setFormData({ ...formData, required_technical_count: normalized ?? DEFAULT_SHIFT_STAFFING.required_technical_count })
+                  }}
                 />
               </div>
             </div>

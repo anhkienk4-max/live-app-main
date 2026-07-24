@@ -66,7 +66,8 @@ export default function RegisterPage() {
             <div className="space-y-4 text-center" data-testid="registration-status">
               <CheckCircle2 className="mx-auto h-12 w-12 text-green-600" />
               <h2 className="text-xl font-semibold">{t('registrationSuccess')}</h2>
-              <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{t('pendingEmailVerification')}</p>
+              <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{t('emailAutoVerifiedMock')}</p>
+              <p className="text-sm text-muted-foreground">{t('pendingAdminApproval')}</p>
               <p className="text-xs text-muted-foreground">{t('mockVerificationHelp')}</p>
               <Button render={<Link href="/login" />} className="w-full">{t('signIn')}</Button>
             </div>

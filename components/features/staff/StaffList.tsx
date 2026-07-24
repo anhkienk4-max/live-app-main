@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Eye, Pencil, Power, PowerOff, UserPlus } from 'lucide-react'
+import { CheckCircle2, Eye, Pencil, Power, PowerOff, UserPlus, XCircle } from 'lucide-react'
 import { isStaffedRegistration, shiftRegistrationService, shiftService, userService } from '@/lib/services/dataService'
 import { OperationalRole, Shift, ShiftRegistration, SystemPermission, User } from '@/lib/types/database.types'
 import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
@@ -57,6 +57,20 @@ export function StaffList() {
   }, [])
 
   React.useEffect(() => { void loadStaff() }, [loadStaff])
+
+  const approveAccount = async (user: User) => {
+    if (!canManage) return
+    await userService.approvePendingAccount(user.id, currentUser?.id)
+    toast({ title: t('success'), description: t('accountApprovedByAdmin'), variant: 'success' })
+    await loadStaff()
+  }
+
+  const rejectAccount = async (user: User) => {
+    if (!canManage) return
+    await userService.rejectPendingAccount(user.id, currentUser?.id)
+    toast({ title: t('success'), description: t('accountRejectedByAdmin'), variant: 'success' })
+    await loadStaff()
+  }
 
   const visibleStaff = React.useMemo(() => {
     const permitted = resolveSystemPermission(currentUser) === 'member'
@@ -140,6 +154,10 @@ export function StaffList() {
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="icon" aria-label={t('viewDetails')} onClick={() => setDetailStaff(row)}><Eye className="h-4 w-4" /></Button>
           {canManage && <>
+            {row.account_status === 'pending_approval' && <>
+              <Button variant="ghost" size="icon" aria-label={t('approvePendingAccount')} onClick={() => void approveAccount(row)} data-testid={`approve-staff-${row.id}`}><CheckCircle2 className="h-4 w-4 text-green-600" /></Button>
+              <Button variant="ghost" size="icon" aria-label={t('rejectPendingAccount')} onClick={() => void rejectAccount(row)} data-testid={`reject-staff-${row.id}`}><XCircle className="h-4 w-4 text-red-600" /></Button>
+            </>}
             <Button variant="ghost" size="icon" aria-label={t('edit')} onClick={() => { setSelectedStaff(row); setIsFormOpen(true) }} data-testid={`edit-staff-${row.id}`}><Pencil className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" aria-label={t(row.status === 'active' ? 'deactivate' : 'activate')} onClick={() => setStatusTarget(row)} data-testid={`toggle-staff-${row.id}`}>
               {row.status === 'active' ? <PowerOff className="h-4 w-4 text-amber-600" /> : <Power className="h-4 w-4 text-green-600" />}

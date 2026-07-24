@@ -15,8 +15,24 @@ export function metricInputValue(metric?: OcrMetricValue) {
 
 export function reviewInputValues(review: OcrReviewData) {
   return Object.fromEntries(
-    Object.entries(review.metrics).map(([key, metric]) => [key, metricInputValue(metric)]),
+    Object.entries(review.metrics).flatMap(([key, metric]) => {
+      const value = metricInputValue(metric)
+      return value === '' ? [] : [[key, value]]
+    }),
   ) as Partial<Record<ReportMetricKey, string>>
+}
+
+export function mergeMetricValues(
+  current: Partial<Record<ReportMetricKey, string>>,
+  incoming: Partial<Record<ReportMetricKey, string>>,
+): Partial<Record<ReportMetricKey, string>> {
+  const usableIncoming = Object.fromEntries(
+    Object.entries(incoming).filter(([, value]) => value !== undefined && value !== ''),
+  ) as Partial<Record<ReportMetricKey, string>>
+  return {
+    ...current,
+    ...usableIncoming,
+  }
 }
 
 export function parseReviewInput(key: ReportMetricKey, value: string): ReportMetricValue {

@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import { Clock, User as UserIcon } from 'lucide-react'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { useTranslation } from '@/lib/i18n'
 
 interface DayViewProps {
   currentDate: Date
@@ -16,6 +17,7 @@ interface DayViewProps {
 }
 
 export function DayView({ currentDate, shifts, brands, platforms, users, onShiftClick }: DayViewProps) {
+  const { t } = useTranslation()
   const dateStr = format(currentDate, 'yyyy-MM-dd')
   const dayShifts = shifts.filter(s => s.date === dateStr).sort((a, b) => a.start_time.localeCompare(b.start_time))
   
@@ -57,6 +59,10 @@ export function DayView({ currentDate, shifts, brands, platforms, users, onShift
                     <div>
                       <span className="font-medium">Platform:</span>
                       <span className="ml-2">{getPlatformName(shift.platform_id)}</span>
+                    </div>
+                    <div>
+                      <span className="font-medium">{t('studio')}:</span>
+                      <span className="ml-2">{shift.studio || t('notUpdated')}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-6 text-sm">

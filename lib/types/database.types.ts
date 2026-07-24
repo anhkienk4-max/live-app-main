@@ -53,6 +53,7 @@ export type AuditAction =
   | 'remove_upload'
   | 'account_registered'
   | 'email_verified'
+  | 'email_auto_verified_mock'
   | 'account_approved'
   | 'account_rejected'
   | 'role_assigned'
@@ -214,6 +215,7 @@ export interface Shift extends LifecycleMetadata {
   platform_id: string
   campaign_id?: string
   title?: string
+  studio?: string
   host_id?: string
   support_id?: string
   technical_id?: string
@@ -256,6 +258,18 @@ export interface DashboardUpdate extends LifecycleMetadata {
   updated_at: string
 }
 
+export interface FinalReportRecap {
+  traffic_summary?: string
+  platform_vouchers?: string
+  shop_vouchers?: string
+  best_performing_time_slots?: string
+  customer_product_gift_interest?: string
+  main_comment_topics?: string
+  live_price_feedback?: string
+  top_selling_products?: string
+  live_issues?: string
+}
+
 export interface Report extends LifecycleMetadata {
   id: string
   shift_id: string
@@ -269,6 +283,7 @@ export interface Report extends LifecycleMetadata {
   top_products?: string[]
   insights_good?: string
   insights_improvement?: string
+  final_recap?: FinalReportRecap
   replay_url?: string
   dashboard_url?: string
   confirmed_at?: string
@@ -313,6 +328,7 @@ export interface ReportRevision {
     average_viewer: number
   }
   ocr_review?: OcrReviewData
+  final_recap?: FinalReportRecap
   image_references: string[]
 }
 
@@ -530,6 +546,7 @@ export interface ScheduleImportRow {
   platform_name: string
   campaign_name?: string
   title: string
+  studio?: string
   required_host_count: number | string
   required_support_count: number | string
   required_technical_count: number | string
@@ -547,6 +564,7 @@ export interface ScheduleImportBatch extends LifecycleMetadata {
   valid_rows: number
   invalid_rows: number
   warning_rows: number
+  preview_rows?: ScheduleImportRow[]
   created_by: string
   created_at: string
   confirmed_at?: string

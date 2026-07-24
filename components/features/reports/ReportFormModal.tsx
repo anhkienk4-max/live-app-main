@@ -7,6 +7,7 @@ import { ocrService, reportImageService, reportService } from '@/lib/services/da
 import {
   Brand,
   Campaign,
+  FinalReportRecap,
   NormalizedReportMetrics,
   OcrCropBox,
   OcrReviewData,
@@ -24,6 +25,7 @@ import {
   confirmAllReviewMetrics,
   confirmReviewMetric,
   markMetricManual,
+  mergeMetricValues,
   metricMatchesFilter,
   resetMetricToOcr,
   reviewInputValues,
@@ -45,6 +47,11 @@ import { useToast } from '@/components/ui/toast'
 import { OcrCropPreview } from '@/components/features/reports/OcrCropPreview'
 import { OcrMetricFilterBar, OcrMetricReviewField } from '@/components/features/reports/OcrMetricReviewField'
 import { AlertDialog } from '@/components/ui/alert-dialog'
+import {
+  emptyFinalReportRecap,
+  finalReportRecapFields,
+  normalizeFinalReportRecap,
+} from '@/lib/utils/finalReportRecap'
 
 const imageCategories: ReportImageCategory[] = ['dashboard', 'livestream', 'host', 'support', 'technical', 'voucher', 'product', 'other']
 const emptyReview = (): OcrReviewData => ({ status: 'waiting', metrics: {} })
@@ -88,6 +95,7 @@ export function ReportFormModal({
   const [dashboardUrl, setDashboardUrl] = React.useState('')
   const [insightsGood, setInsightsGood] = React.useState('')
   const [insightsImprovement, setInsightsImprovement] = React.useState('')
+  const [finalRecap, setFinalRecap] = React.useState<FinalReportRecap>(emptyFinalReportRecap)
   const [reviewing, setReviewing] = React.useState(false)
   const [submitting, setSubmitting] = React.useState(false)
   const [rawOcrText, setRawOcrText] = React.useState('')
@@ -112,6 +120,7 @@ export function ReportFormModal({
     setDashboardUrl('')
     setInsightsGood('')
     setInsightsImprovement('')
+    setFinalRecap(emptyFinalReportRecap())
     setRawOcrText('')
     setMetricFilter('data')
     setShowReviewWarning(false)
@@ -155,7 +164,7 @@ export function ReportFormModal({
         cropBox,
       )
       setReview(candidate)
-      setMetrics(reviewInputValues(candidate))
+      setMetrics(current => mergeMetricValues(current, reviewInputValues(candidate)))
       setEditingMetrics(true)
       toast({
         title: candidate.status === 'unavailable' ? t('dashboardImageRequired') : t('metricReviewRequired'),
@@ -306,6 +315,7 @@ export function ReportFormModal({
         ocr_review: review,
         insights_good: insightsGood || undefined,
         insights_improvement: insightsImprovement || undefined,
+        final_recap: normalizeFinalReportRecap(finalRecap),
         replay_url: replayUrl || undefined,
         dashboard_url: dashboardUrl || undefined,
         metrics_confirmed: false,
@@ -410,6 +420,32 @@ export function ReportFormModal({
           </section>
 
           <div className="grid gap-4 md:grid-cols-2"><label className="text-sm font-medium">{t('replayUrl')}<Input className="mt-1" type="url" value={replayUrl} onChange={event => setReplayUrl(event.target.value)} /></label><label className="text-sm font-medium">{t('dashboardUrl')}<Input className="mt-1" type="url" value={dashboardUrl} onChange={event => setDashboardUrl(event.target.value)} /></label><label className="text-sm font-medium">{t('whatWentWell')}<Textarea className="mt-1" value={insightsGood} onChange={event => setInsightsGood(event.target.value)} /></label><label className="text-sm font-medium">{t('improvementAreas')}<Textarea className="mt-1" value={insightsImprovement} onChange={event => setInsightsImprovement(event.target.value)} /></label></div>
+
+          {selectedShift && (
+            <section className="space-y-4 rounded-lg border p-4">
+              <div>
+                <h3 className="font-semibold">{t('endOfLiveRecap')}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">{t('endOfLiveRecapHelp')}</p>
+              </div>
+              <div className="grid gap-4 lg:grid-cols-2">
+                {finalReportRecapFields.map(field => (
+                  <label className="text-sm font-medium" key={field.key}>
+                    {t(field.translationKey)}
+                    <Textarea
+                      className="mt-1 min-h-28"
+                      data-testid={`final-recap-${field.key}`}
+                      placeholder={t(field.placeholderKey)}
+                      value={finalRecap[field.key] || ''}
+                      onChange={event => setFinalRecap(current => ({
+                        ...current,
+                        [field.key]: event.target.value,
+                      }))}
+                    />
+                  </label>
+                ))}
+              </div>
+            </section>
+          )}
           <DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>{t('cancel')}</Button><Button type="submit" disabled={submitting}>{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t('saveFinalReport')}</Button></DialogFooter>
         </form>
       </DialogContent>

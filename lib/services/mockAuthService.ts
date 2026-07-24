@@ -3,10 +3,11 @@
 import type { AccountStatus, User } from '@/lib/types/database.types'
 import { recordAuditEvent } from '@/lib/services/auditService'
 import { mockUsers } from '@/lib/services/mockData'
+import { userService } from '@/lib/services/dataService'
 
 type StoredMockAccount = {
   user: User
-  password_digest?: string
+  password_verifier?: string
 }
 
 type AuthResult =
@@ -44,7 +45,7 @@ const auditActor = (user?: User, email?: string): Pick<User, 'id' | 'full_name' 
   }
 
 const recordAuthAudit = (
-  action: 'account_registered' | 'email_verified' | 'login_success' | 'login_failed',
+  action: 'account_registered' | 'email_verified' | 'email_auto_verified_mock' | 'account_approved' | 'account_rejected' | 'login_success' | 'login_failed',
   actor: ReturnType<typeof auditActor>,
   after?: Record<string, unknown>,
 ) => {
@@ -59,6 +60,14 @@ const recordAuthAudit = (
     status: action === 'login_failed' ? 'failed' : 'success',
     after,
   })
+}
+
+const persistAccount = async (user: User, password?: string) => {
+  const accounts = readAccounts()
+  const nextAccount: StoredMockAccount = { user }
+  if (password) nextAccount.password_verifier = await digest(password)
+  accounts.push(nextAccount)
+  writeAccounts(accounts)
 }
 
 export const mockAuthService = {
@@ -78,44 +87,48 @@ export const mockAuthService = {
       return { ok: false, code: 'duplicate_email' }
     }
     const now = new Date().toISOString()
-    const user: User = {
-      id: `self-${crypto.randomUUID()}`,
+    const user = await userService.create({
       email: normalizedEmail,
       full_name: fullName.trim(),
       role: 'staff',
       system_permission: 'member',
       operational_roles: [],
       status: 'inactive',
-      account_status: 'pending_email_verification',
-      email_verified: false,
+      account_status: 'pending_approval',
+      email_verified: true,
       auth_provider: 'email',
       join_date: now.slice(0, 10),
-      created_at: now,
-      updated_at: now,
-    }
-    accounts.push({ user, password_digest: await digest(password) })
-    writeAccounts(accounts)
+    })
+    await persistAccount(user, password)
     recordAuthAudit('account_registered', auditActor(user), {
       email: user.email,
       role: user.system_permission,
       account_status: user.account_status,
-      email_verified: false,
+      email_verified: user.email_verified,
       auth_provider: 'email',
     })
-    return { ok: true, user, status: 'pending_email_verification' }
+    recordAuthAudit('email_auto_verified_mock', auditActor(user), { provider: 'email' })
+    return { ok: true, user, status: 'pending_approval' }
   },
 
   async signInEmail(email: string, password: string): Promise<AuthResult> {
     const normalizedEmail = normalizeEmail(email)
     const stored = readAccounts().find(account => account.user.email.toLowerCase() === normalizedEmail)
     if (stored) {
-      const matches = stored.password_digest === await digest(password)
+      if (!stored.password_verifier) {
+        recordAuthAudit('login_failed', auditActor(stored.user), { reason: 'missing_password_verifier' })
+        return { ok: false, code: 'invalid_credentials' }
+      }
+      const matches = stored.password_verifier === await digest(password)
       if (!matches) {
         recordAuthAudit('login_failed', auditActor(stored.user), { reason: 'invalid_credentials' })
         return { ok: false, code: 'invalid_credentials' }
       }
       const status = stored.user.account_status || 'pending_approval'
-      if (status !== 'active') return { ok: false, code: 'invalid_credentials', status }
+      if (status !== 'active') {
+        recordAuthAudit('login_failed', auditActor(stored.user), { reason: status })
+        return { ok: false, code: 'invalid_credentials', status }
+      }
       recordAuthAudit('login_success', auditActor(stored.user), { provider: 'email' })
       return { ok: true, user: stored.user, status }
     }
@@ -148,8 +161,7 @@ export const mockAuthService = {
     }
 
     const now = new Date().toISOString()
-    const user: User = {
-      id: `google-${crypto.randomUUID()}`,
+    const user = await userService.create({
       email: normalizedEmail,
       full_name: normalizedEmail.split('@')[0].replace(/[._-]+/g, ' '),
       role: 'staff',
@@ -160,11 +172,8 @@ export const mockAuthService = {
       email_verified: true,
       auth_provider: 'google',
       join_date: now.slice(0, 10),
-      created_at: now,
-      updated_at: now,
-    }
-    accounts.push({ user })
-    writeAccounts(accounts)
+    })
+    await persistAccount(user)
     recordAuthAudit('account_registered', auditActor(user), {
       email: user.email,
       role: user.system_permission,
@@ -172,7 +181,7 @@ export const mockAuthService = {
       email_verified: true,
       auth_provider: 'google',
     })
-    recordAuthAudit('email_verified', auditActor(user), { provider: 'google' })
+    recordAuthAudit('email_auto_verified_mock', auditActor(user), { provider: 'google' })
     return { ok: false, code: 'invalid_credentials', status: 'pending_approval' }
   },
 }

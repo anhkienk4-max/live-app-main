@@ -1,0 +1,342 @@
+'use client'
+
+import * as React from 'react'
+import { format } from 'date-fns'
+import { enUS, vi } from 'date-fns/locale'
+import { ExternalLink, FileText, Lock, LockOpen, Pencil, Radio, UserPlus } from 'lucide-react'
+import {
+  Brand,
+  Campaign,
+  OperationalRole,
+  Platform,
+  Report,
+  Shift,
+  ShiftRegistration,
+  User,
+} from '@/lib/types/database.types'
+import {
+  isStaffedRegistration,
+  shiftRegistrationService,
+  shiftService,
+} from '@/lib/services/dataService'
+import { hasPermission } from '@/lib/permissions'
+import { formatShiftEndDate, formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { useTranslation } from '@/lib/i18n'
+import { useToast } from '@/components/ui/toast'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+
+interface DaySessionsDialogProps {
+  open: boolean
+  date: Date | null
+  shifts: Shift[]
+  brands: Brand[]
+  platforms: Platform[]
+  campaigns: Campaign[]
+  users: User[]
+  registrations: ShiftRegistration[]
+  reports: Report[]
+  currentUser: User | null
+  onOpenChange: (open: boolean) => void
+  onViewShift: (shift: Shift) => void
+  onEditShift: (shift: Shift) => void
+  onChanged: () => Promise<void> | void
+}
+
+export function DaySessionsDialog({
+  open,
+  date,
+  shifts,
+  brands,
+  platforms,
+  campaigns,
+  users,
+  registrations,
+  reports,
+  currentUser,
+  onOpenChange,
+  onViewShift,
+  onEditShift,
+  onChanged,
+}: DaySessionsDialogProps) {
+  const { language, t } = useTranslation()
+  const { toast } = useToast()
+  const [busyAction, setBusyAction] = React.useState('')
+  const locale = language === 'vi' ? vi : enUS
+  const dateValue = date ? format(date, 'yyyy-MM-dd') : ''
+  const dayShifts = shifts
+    .filter(shift => shift.date === dateValue)
+    .sort((left, right) => left.start_time.localeCompare(right.start_time))
+
+  const entityName = (items: Array<{ id: string; name: string }>, id?: string) =>
+    id ? items.find(item => item.id === id)?.name || t('notUpdated') : t('notUpdated')
+  const userName = (id?: string) =>
+    id ? users.find(user => user.id === id)?.full_name || t('notUpdated') : t('notUpdated')
+  const roleNames = (shift: Shift, role: OperationalRole) => {
+    const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
+    const ids = new Set([
+      ...(assignment ? [assignment] : []),
+      ...registrations
+        .filter(registration =>
+          registration.shift_id === shift.id &&
+          registration.operational_role === role &&
+          isStaffedRegistration(registration),
+        )
+        .map(registration => registration.user_id),
+    ])
+    return [...ids].map(userName).join(', ') || t('notUpdated')
+  }
+
+  const runAction = async (key: string, action: () => Promise<unknown>, successMessage: string) => {
+    setBusyAction(key)
+    try {
+      await action()
+      await onChanged()
+      toast({ title: t('success'), description: successMessage, variant: 'success' })
+    } catch (error) {
+      toast({
+        title: t('error'),
+        description: error instanceof Error ? error.message : t('validationError'),
+        variant: 'destructive',
+      })
+    } finally {
+      setBusyAction('')
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="h-[80vh] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:w-[calc(100vw-2rem)] sm:max-w-[900px]" size="lg">
+        <DialogHeader>
+          <DialogTitle>
+            {t('liveSessionsOn', {
+              date: date
+                ? format(date, language === 'vi' ? 'dd/MM/yyyy' : 'MM/dd/yyyy', { locale })
+                : '',
+            })}
+          </DialogTitle>
+        </DialogHeader>
+        <DialogBody className="space-y-4 pb-1">
+          {dayShifts.length === 0 && (
+            <div className="py-16 text-center text-muted-foreground">{t('noSessionsForDay')}</div>
+          )}
+          {dayShifts.map(shift => {
+            const report = reports.find(candidate => candidate.shift_id === shift.id)
+            const myRegistrations = currentUser
+              ? registrations.filter(registration =>
+                  registration.shift_id === shift.id &&
+                  registration.user_id === currentUser.id &&
+                  (registration.status === 'pending' || isStaffedRegistration(registration)),
+                )
+              : []
+            const pendingRegistrations = registrations.filter(registration =>
+              registration.shift_id === shift.id && registration.status === 'pending',
+            )
+            const canRegister = Boolean(
+              currentUser &&
+              hasPermission(currentUser, 'shifts.register') &&
+              shift.status === 'scheduled' &&
+              !shift.registration_locked &&
+              myRegistrations.length === 0,
+            )
+            const registrationStatus = myRegistrations.length
+              ? myRegistrations.map(registration =>
+                  `${t(registration.operational_role)}: ${
+                    registration.status === 'manually_assigned'
+                      ? t('manuallyAssigned')
+                      : t(registration.status)
+                  }`,
+                ).join(', ')
+              : shift.registration_locked
+                ? t('registrationClosed')
+                : t('available')
+
+            return (
+              <Card className="overflow-hidden" key={shift.id}>
+                <CardContent className="space-y-4 pt-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <h3 className="truncate text-base font-semibold" title={shift.title}>
+                        {shift.title || `${entityName(brands, shift.brand_id)} live`}
+                      </h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {shift.date} · {formatShiftTimeRange(shift)}
+                      </p>
+                      {shift.crosses_midnight && (
+                        <p className="text-xs text-indigo-700">{t('endsNextDay')}: {formatShiftEndDate(shift)}</p>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant={shift.status === 'live' ? 'destructive' : 'outline'}>
+                        {shift.status === 'live' ? t('liveStatus') : t(shift.status)}
+                      </Badge>
+                      <Badge variant="secondary">{registrationStatus}</Badge>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                    <Info label={t('brand')} value={entityName(brands, shift.brand_id)} />
+                    <Info label={t('platform')} value={entityName(platforms, shift.platform_id)} />
+                    <Info label={t('campaign')} value={entityName(campaigns, shift.campaign_id)} />
+                    <Info label={t('studio')} value={shift.studio || t('notUpdated')} />
+                    <Info label={t('host')} value={roleNames(shift, 'host')} />
+                    <Info label={t('support')} value={roleNames(shift, 'support')} />
+                    <Info label={t('technical')} value={roleNames(shift, 'technical')} />
+                    <Info
+                      label={t('reportStatus')}
+                      value={report
+                        ? report.status === 'in_review'
+                          ? t('inReview')
+                          : t(report.status || (report.metrics_confirmed ? 'confirmed' : 'draft'))
+                        : t('notUpdated')}
+                    />
+                  </div>
+
+                  {shift.live_link && (
+                    <a
+                      className="inline-flex max-w-full items-center gap-1 truncate text-sm text-blue-700 underline-offset-4 hover:underline"
+                      href={shift.live_link}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      <ExternalLink className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{t('liveUrl')}: {shift.live_link}</span>
+                    </a>
+                  )}
+
+                  {pendingRegistrations.length > 0 && currentUser && hasPermission(currentUser, 'shifts.approve_registration') && (
+                    <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+                      {pendingRegistrations.map(registration => (
+                        <div className="flex flex-wrap items-center justify-between gap-2" key={registration.id}>
+                          <p className="text-sm">{userName(registration.user_id)} · {t(registration.operational_role)}</p>
+                          <div className="flex gap-2">
+                            <Button
+                              disabled={Boolean(busyAction)}
+                              onClick={() => void runAction(
+                                `approve-${registration.id}`,
+                                () => shiftRegistrationService.approve(registration.id, currentUser.id),
+                                t('registrationApproved'),
+                              )}
+                              size="xs"
+                            >
+                              {t('approve')}
+                            </Button>
+                            <Button
+                              disabled={Boolean(busyAction)}
+                              onClick={() => void runAction(
+                                `reject-${registration.id}`,
+                                () => shiftRegistrationService.reject(registration.id, currentUser.id),
+                                t('rejected'),
+                              )}
+                              size="xs"
+                              variant="outline"
+                            >
+                              {t('reject')}
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={() => onViewShift(shift)} size="sm" variant="outline">
+                      {t('viewShiftDetail')}
+                    </Button>
+                    {['preparing', 'live', 'paused'].includes(shift.status) && (
+                      <Button onClick={() => window.location.assign('/live')} size="sm" variant="outline">
+                        <Radio className="mr-1 h-4 w-4" />{t('openLiveMonitor')}
+                      </Button>
+                    )}
+                    {shift.status === 'completed' && (
+                      <Button onClick={() => window.location.assign('/reports')} size="sm" variant="outline">
+                        <FileText className="mr-1 h-4 w-4" />{t('openFinalReport')}
+                      </Button>
+                    )}
+                    {canRegister && currentUser?.operational_roles?.map(role => (
+                      <Button
+                        disabled={Boolean(busyAction)}
+                        key={role}
+                        onClick={() => void runAction(
+                          `register-${shift.id}-${role}`,
+                          () => shiftRegistrationService.register(shift.id, currentUser.id, role),
+                          t('registrationPending'),
+                        )}
+                        size="sm"
+                      >
+                        {t('registerForRole', { role: t(role) })}
+                      </Button>
+                    ))}
+                    {myRegistrations.map(registration => (
+                      <Button
+                        disabled={Boolean(busyAction) || Boolean(shift.registration_locked)}
+                        key={registration.id}
+                        onClick={() => void runAction(
+                          `cancel-${registration.id}`,
+                          () => shiftRegistrationService.cancel(registration.id, currentUser!.id),
+                          t('registrationCancelled'),
+                        )}
+                        size="sm"
+                        variant="outline"
+                      >
+                        {t('cancelRegistration')} · {t(registration.operational_role)}
+                      </Button>
+                    ))}
+                    {currentUser && hasPermission(currentUser, 'shifts.assign_staff') && (
+                      <>
+                        <Button onClick={() => onEditShift(shift)} size="sm" variant="outline">
+                          <Pencil className="mr-1 h-4 w-4" />{t('editShift')}
+                        </Button>
+                        <Button onClick={() => onViewShift(shift)} size="sm" variant="outline">
+                          <UserPlus className="mr-1 h-4 w-4" />{t('manageStaff')}
+                        </Button>
+                      </>
+                    )}
+                    {currentUser && hasPermission(currentUser, 'shifts.lock') && shift.status === 'scheduled' && (
+                      shift.registration_locked
+                        ? <Button
+                            disabled={Boolean(busyAction)}
+                            onClick={() => void runAction(
+                              `reopen-${shift.id}`,
+                              () => shiftService.reopen(shift.id),
+                              t('reopenShift'),
+                            )}
+                            size="sm"
+                            variant="outline"
+                          >
+                            <LockOpen className="mr-1 h-4 w-4" />{t('reopenShift')}
+                          </Button>
+                        : <Button
+                            disabled={Boolean(busyAction)}
+                            onClick={() => void runAction(
+                              `lock-${shift.id}`,
+                              () => shiftService.lock(shift.id),
+                              t('lockShift'),
+                            )}
+                            size="sm"
+                            variant="outline"
+                          >
+                            <Lock className="mr-1 h-4 w-4" />{t('lockShift')}
+                          </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="truncate font-medium" title={value}>{value}</p>
+    </div>
+  )
+}

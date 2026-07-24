@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Report, Shift, Brand, Platform, User, Campaign, OcrReviewData, ShiftRegistration, NormalizedReportMetrics, ReportMetricKey, ReportImageCategory } from '@/lib/types/database.types'
+import { Report, Shift, Brand, Platform, User, Campaign, FinalReportRecap, OcrReviewData, ShiftRegistration, NormalizedReportMetrics, ReportMetricKey, ReportImageCategory } from '@/lib/types/database.types'
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -42,6 +42,11 @@ import { OcrCropPreview } from '@/components/features/reports/OcrCropPreview'
 import { OcrMetricFilterBar, OcrMetricReviewField } from '@/components/features/reports/OcrMetricReviewField'
 import { AlertDialog } from '@/components/ui/alert-dialog'
 import { HistoryPagination } from '@/components/ui/history-pagination'
+import {
+  emptyFinalReportRecap,
+  finalReportRecapFields,
+  normalizeFinalReportRecap,
+} from '@/lib/utils/finalReportRecap'
 
 interface ReportDetailModalProps {
   open: boolean
@@ -54,6 +59,26 @@ interface ReportDetailModalProps {
   campaigns?: Campaign[]
   registrations?: ShiftRegistration[]
   onUpdated?: () => void
+}
+
+export function FinalReportRecapReadOnly({ recap }: { recap?: FinalReportRecap }) {
+  const { t } = useTranslation()
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      {finalReportRecapFields.map(field => (
+        <div className="min-w-0" key={field.key}>
+          <p className="text-sm font-medium">{t(field.translationKey)}</p>
+          <p
+            className="mt-1 whitespace-pre-wrap rounded-lg bg-muted/50 p-3 text-sm"
+            data-testid={`final-recap-${field.key}`}
+          >
+            {recap?.[field.key] || t('noInsightsProvided')}
+          </p>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export function ReportDetailModal({ 
@@ -73,6 +98,10 @@ export function ReportDetailModal({
   const { t } = useTranslation()
   const { toast } = useToast()
   const [reviewNotes, setReviewNotes] = React.useState('')
+  const [finalRecap, setFinalRecap] = React.useState<FinalReportRecap>({
+    ...emptyFinalReportRecap(),
+    ...report.final_recap,
+  })
   const [busy, setBusy] = React.useState(false)
   const reportMetricValues = React.useMemo(() => initialMetricValues(report), [report])
   const [metrics, setMetrics] = React.useState<Partial<Record<ReportMetricKey, string>>>(reportMetricValues)
@@ -88,6 +117,14 @@ export function ReportDetailModal({
   const uploadInputRef = React.useRef<HTMLInputElement>(null)
   const dashboardImage = images.find(image => image.image_type === 'dashboard')
   React.useEffect(() => { if (open) void reportImageService.getByReport(report.id).then(setImages) }, [open, report.id])
+  React.useEffect(() => {
+    if (open) {
+      setFinalRecap({
+        ...emptyFinalReportRecap(),
+        ...report.final_recap,
+      })
+    }
+  }, [open, report])
   const getBrandName = (id: string) => brands.find(b => b.id === id)?.name || t('noData')
   const getBrandColor = (id: string) => brands.find(b => b.id === id)?.color || '#2563EB'
   const getPlatformName = (id: string) => platforms.find(p => p.id === id)?.name || t('noData')
@@ -131,6 +168,7 @@ export function ReportDetailModal({
         platform_metrics: platformSpecific,
         review_notes: reviewNotes || undefined,
         ocr_review: reviewData,
+        final_recap: normalizeFinalReportRecap(finalRecap),
       }, reviewData, currentUser.id)
       toast({ title: t('confirmed'), description: t('confirmedOnly'), variant: 'success' })
       onUpdated?.()
@@ -158,6 +196,7 @@ export function ReportDetailModal({
         metrics_confirmed: false,
         review_notes: reviewNotes || undefined,
         ocr_review: reviewData,
+        final_recap: normalizeFinalReportRecap(finalRecap),
       }, currentUser.id, reviewNotes || 'Saved report draft revision')
       toast({ title: t('saveDraftRevision'), variant: 'success' })
       onUpdated?.()
@@ -299,6 +338,21 @@ export function ReportDetailModal({
   )
   const revisions = [...(report.revisions || [])].reverse()
   const visibleRevisions = revisions.slice((revisionPage - 1) * revisionPageSize, revisionPage * revisionPageSize)
+  const currentUserAssigned = Boolean(currentUser && (
+    shift.host_id === currentUser.id ||
+    shift.support_id === currentUser.id ||
+    shift.technical_id === currentUser.id ||
+    registrations.some(registration =>
+      registration.shift_id === shift.id &&
+      registration.user_id === currentUser.id &&
+      (registration.status === 'approved' || registration.status === 'manually_assigned')
+    )
+  ))
+  const canEditFinalRecap = Boolean(
+    currentUser &&
+    !report.metrics_confirmed &&
+    (hasPermission(currentUser, 'reports.review') || report.submitted_by === currentUser.id || currentUserAssigned),
+  )
 
   const setMetric = (key: ReportMetricKey, value: string) => {
     setMetrics(current => ({ ...current, [key]: value }))
@@ -555,6 +609,40 @@ export function ReportDetailModal({
                 </CardContent>
               </Card>
             </div>
+            <Card>
+              <CardContent className="space-y-4 pt-6">
+                <div>
+                  <h3 className="font-semibold">{t('endOfLiveRecap')}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{t('endOfLiveRecapHelp')}</p>
+                </div>
+                {canEditFinalRecap
+                  ? <div className="grid gap-4 lg:grid-cols-2">
+                      {finalReportRecapFields.map(field => (
+                        <label className="min-w-0 text-sm font-medium" key={field.key}>
+                          {t(field.translationKey)}
+                          <Textarea
+                            className="mt-1 min-h-28"
+                            data-testid={`final-recap-${field.key}`}
+                            placeholder={t(field.placeholderKey)}
+                            value={finalRecap[field.key] || ''}
+                            onChange={event => setFinalRecap(current => ({
+                              ...current,
+                              [field.key]: event.target.value,
+                            }))}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  : <FinalReportRecapReadOnly recap={report.final_recap} />}
+                {canEditFinalRecap && (
+                  <div className="flex justify-end">
+                    <Button disabled={busy} onClick={() => void saveDraft()}>
+                      <Pencil className="mr-2 h-4 w-4" />{t('saveRecap')}
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="details" className="space-y-6">

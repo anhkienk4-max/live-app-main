@@ -78,33 +78,44 @@ const aliases: Record<ReportDashboardPlatform, Record<string, ReportMetricKey>> 
   },
   shopee_live: {
     sales: 'sales',
+    sale: 'sales',
     'doanh thu': 'sales',
     'engaged viewer': 'engaged_viewers',
+    'engaged viewers': 'engaged_viewers',
     'nguoi xem tuong tac': 'engaged_viewers',
     comments: 'comments',
+    comment: 'comments',
     'binh luan': 'comments',
     atc: 'add_to_cart',
     'add to cart': 'add_to_cart',
     'total views': 'total_views',
+    'total view': 'total_views',
     'tong luot xem': 'total_views',
     'avg viewing duration': 'average_view_duration_seconds',
+    'avg. viewing duration': 'average_view_duration_seconds',
     'thoi luong xem tb': 'average_view_duration_seconds',
     'comments rate': 'comment_rate',
+    'comment rate': 'comment_rate',
     'ty le binh luan': 'comment_rate',
     gpm: 'gpm',
     orders: 'orders',
+    order: 'orders',
     'don hang': 'orders',
     abs: 'average_basket_size',
     'average basket size': 'average_basket_size',
     'total viewers': 'total_viewers',
+    'total viewer': 'total_viewers',
     'tong nguoi xem': 'total_viewers',
     pcu: 'pcu',
     ctr: 'ctr',
     'click to order rate': 'click_to_order_rate',
+    'click to order': 'click_to_order_rate',
     'click to order rate co': 'click_to_order_rate',
     buyers: 'buyers',
+    buyer: 'buyers',
     'nguoi mua': 'buyers',
     'items sold': 'items_sold',
+    'item sold': 'items_sold',
     'san pham da ban': 'items_sold',
     likes: 'likes',
     thich: 'likes',
@@ -233,9 +244,14 @@ export function buildOcrMetric(
 ): [ReportMetricKey, OcrMetricValue] | null {
   const key = mapOcrLabel(platform, originalLabel)
   if (!key) return null
+  const parsedValue = parseOcrValue(rawValue)
+  if (
+    parsedValue === null ||
+    (typeof parsedValue === 'number' && !Number.isFinite(parsedValue))
+  ) return null
   return [key, {
-    value: parseOcrValue(rawValue),
-    candidate_value: parseOcrValue(rawValue),
+    value: parsedValue,
+    candidate_value: parsedValue,
     confidence,
     needs_review: true,
     original_label: originalLabel,
@@ -258,24 +274,32 @@ export function parseDashboardOcrText(
     .map(line => line.trim())
     .filter(Boolean)
 
-  for (const line of lines) {
-    const separator = line.match(/^(.+?)\s*(?::|=|\t)\s*(.+)$/)
-    if (!separator) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
+    const separator = splitTrustedTextLine(platform, line)
+    const nextLine = lines[index + 1]
+    const nextLineCandidate = !separator && mapOcrLabel(platform, line) && nextLine
+      ? buildOcrMetric(platform, line, nextLine, 'medium')
+      : null
+    const candidate = separator
+      ? buildOcrMetric(platform, separator.label, separator.value, 'medium')
+      : nextLineCandidate
+
+    if (nextLineCandidate) index += 1
+    if (!separator && !nextLineCandidate) {
       unmappedFields.push({
         original_label: line,
         original_value: '',
         confidence: 'low',
         source: 'trusted_text',
-        rejection_reason: 'The trusted text line has no label/value separator.',
+        rejection_reason: 'The trusted text line has no recognizable label/value pair.',
       })
       continue
     }
-    const [, label, value] = separator
-    const candidate = buildOcrMetric(platform, label.trim(), value.trim(), 'medium')
     if (!candidate) {
       unmappedFields.push({
-        original_label: label.trim(),
-        original_value: value.trim(),
+        original_label: separator?.label || line,
+        original_value: separator?.value || nextLine || '',
         confidence: 'low',
         source: 'trusted_text',
         rejection_reason: `No ${platform} metric label matched this trusted text field.`,
@@ -369,6 +393,8 @@ export function mapDashboardImageRecognition(
     applyPlatformLayoutCandidates(platform, recognition, metrics, consumedWords)
   }
 
+  applyCardOutputCandidates(platform, recognition.pass_output.card, metrics)
+  applyImageTextFallback(platform, recognition.text, metrics)
   applyCrossMetricSanity(metrics)
 
   for (const line of lines) {
@@ -403,6 +429,96 @@ export function mapDashboardImageRecognition(
     raw_output: formatRecognitionOutput(recognition),
     error_message: recognition.text.trim() ? undefined : 'The OCR engine did not find readable text in this image.',
   }
+}
+
+function splitTrustedTextLine(
+  platform: ReportDashboardPlatform,
+  line: string,
+): { label: string; value: string } | null {
+  const separated = line.match(/^(.+?)\s*(?::|=|\t)\s*(.+)$/)
+  if (separated) {
+    const label = cleanTrustedTextLabel(separated[1])
+    if (mapOcrLabel(platform, label)) return { label, value: separated[2].trim() }
+  }
+
+  const numericStart = line.search(/-?\d/)
+  if (numericStart <= 0) return null
+  const label = cleanTrustedTextLabel(line.slice(0, numericStart).replace(/[\s:=|-]+$/g, ''))
+  const value = line.slice(numericStart).trim()
+  return mapOcrLabel(platform, label) ? { label, value } : null
+}
+
+function cleanTrustedTextLabel(label: string) {
+  return label
+    .replace(/\(\s*(?:vnd|usd|\$|₫|đ)\s*\)/gi, '')
+    .trim()
+}
+
+function applyCardOutputCandidates(
+  platform: ReportDashboardPlatform,
+  cardOutput: Record<string, string[]> | undefined,
+  metrics: OcrReviewData['metrics'],
+) {
+  if (!cardOutput) return
+  const allowedKeys = new Set<ReportMetricKey>([
+    ...commonReportMetricKeys,
+    ...platformMetricKeys[platform],
+  ])
+
+  for (const [rawKey, values] of Object.entries(cardOutput)) {
+    const key = rawKey as ReportMetricKey
+    if (!allowedKeys.has(key)) continue
+    const rawValue = values.find(value => {
+      const parsedValue = parseOcrValue(value)
+      return !validateMetricCandidate(key, parsedValue, value)
+    })
+    if (rawValue === undefined) continue
+    const parsedValue = parseOcrValue(rawValue)
+    if (parsedValue === null || (typeof parsedValue === 'number' && !Number.isFinite(parsedValue))) continue
+    const existing = metrics[key]
+    if (existing && existing.status !== 'rejected' && metricHasUsableValue(existing)) continue
+    metrics[key] = {
+      value: parsedValue,
+      candidate_value: parsedValue,
+      confidence: 'medium',
+      needs_review: true,
+      original_label: platformMetricLayouts[platform as Exclude<ReportDashboardPlatform, 'other'>]
+        ?.find(cell => cell.key === key)?.label || rawKey,
+      raw_value: rawValue,
+      normalized_key: key,
+      unit: inferMetricUnit(key, rawValue),
+      source: 'image_ocr',
+      status: 'review_required',
+      label_confidence: 100,
+      label_source: 'platform_layout',
+      value_source_pass: 'card',
+    }
+  }
+}
+
+function applyImageTextFallback(
+  platform: ReportDashboardPlatform,
+  rawText: string,
+  metrics: OcrReviewData['metrics'],
+) {
+  const fallback = parseDashboardOcrText(platform, rawText)
+  for (const [key, candidate] of Object.entries(fallback.metrics) as Array<[ReportMetricKey, OcrMetricValue]>) {
+    if (!metricHasUsableValue(candidate)) continue
+    const existing = metrics[key]
+    if (existing && existing.status !== 'rejected' && metricHasUsableValue(existing)) continue
+    metrics[key] = {
+      ...candidate,
+      source: 'image_ocr',
+      label_source: 'ocr_text',
+    }
+  }
+}
+
+function metricHasUsableValue(metric: OcrMetricValue) {
+  const value = metric.value ?? metric.candidate_value
+  return value !== null &&
+    value !== undefined &&
+    (typeof value !== 'number' || Number.isFinite(value))
 }
 
 function formatRecognitionOutput(recognition: OcrImageRecognition) {

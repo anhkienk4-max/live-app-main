@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import { Calendar } from 'lucide-react'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { useTranslation } from '@/lib/i18n'
 
 interface ListViewProps {
   shifts: Shift[]
@@ -15,6 +16,7 @@ interface ListViewProps {
 }
 
 export function ListView({ shifts, brands, platforms, users, onShiftClick }: ListViewProps) {
+  const { t } = useTranslation()
   const getBrandName = (brandId: string) => brands.find(b => b.id === brandId)?.name || 'Unknown'
   const getPlatformName = (platformId: string) => platforms.find(p => p.id === platformId)?.name || 'Unknown'
   const getBrandColor = (brandId: string) => brands.find(b => b.id === brandId)?.color || '#2563EB'
@@ -51,6 +53,7 @@ export function ListView({ shifts, brands, platforms, users, onShiftClick }: Lis
               <div className="min-w-[150px] text-sm font-medium">{formatShiftTimeRange(shift)}</div>
               <div className="text-sm font-semibold text-gray-900">{getBrandName(shift.brand_id)}</div>
               <div className="text-sm text-gray-600">{getPlatformName(shift.platform_id)}</div>
+              <div className="text-sm text-gray-500"><span className="font-medium">{t('studio')}:</span> {shift.studio || t('notUpdated')}</div>
               <div className="text-sm text-gray-500">
                 <span className="font-medium">Host:</span> {getUserName(shift.host_id)}
               </div>
