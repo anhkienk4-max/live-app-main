@@ -6,6 +6,7 @@ export type OcrApiErrorCode =
   | 'IMAGE_TOO_LARGE'
   | 'UNSUPPORTED_PLATFORM'
   | 'INVALID_IMAGE'
+  | 'OCR_SERVER_FAILED'
   | 'OCR_PROCESSING_FAILED'
   | 'OCR_TIMEOUT'
 

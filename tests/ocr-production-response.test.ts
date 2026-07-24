@@ -162,6 +162,44 @@ test('raw Tesseract text autofills metrics when the image OCR API returns HTML',
   }
 })
 
+test('JSON 503 from server OCR still autofills from available local raw text', async () => {
+  const originalFetch = globalThis.fetch
+  let callCount = 0
+  globalThis.fetch = async () => {
+    callCount += 1
+    if (callCount === 1) {
+      return new Response(new Blob(['image-bytes'], { type: 'image/png' }), {
+        status: 200,
+        headers: { 'content-type': 'image/png' },
+      })
+    }
+    return new Response(JSON.stringify({
+      ok: false,
+      error: {
+        code: 'OCR_SERVER_FAILED',
+        message: 'Server OCR unavailable; local browser OCR fallback was used.',
+      },
+    }), {
+      status: 503,
+      headers: { 'content-type': 'application/json' },
+    })
+  }
+
+  try {
+    const review = await ocrService.extractDashboardMetrics(
+      'shopee_live',
+      'Sales: 21.281.718,00\nOrders: 109\nPCU: 107',
+      'blob:dashboard-image',
+    )
+    assert.equal(callCount, 2)
+    assert.equal(review.metrics.sales?.value, 21281718)
+    assert.equal(review.metrics.orders?.value, 109)
+    assert.equal(review.metrics.pcu?.value, 107)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('fresh Shopee recognition text creates candidates and autofill without API card or word data', () => {
   const previousRawTextState = ''
   const recognizedText = [
