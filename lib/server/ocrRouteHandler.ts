@@ -230,12 +230,13 @@ async function recognizeMetricCards(
   })
 
   for (const cell of platformMetricLayouts[platform]) {
-    const crop = toMetricCellCrop(cell, imageWidth, imageHeight)
+    const crop = toMetricCellCrop(cell, imageWidth, imageHeight, platform)
+    const resizeScale = platform === 'tiktok_shop' ? 7 : 5
     const basePipeline = () => dependencies.sharp(imageBytes)
       .extract(crop)
       .resize({
-        width: crop.width * 5,
-        height: crop.height * 5,
+        width: crop.width * resizeScale,
+        height: crop.height * resizeScale,
         fit: 'fill',
         kernel: dependencies.sharp.kernel.lanczos3,
       })
@@ -246,7 +247,7 @@ async function recognizeMetricCards(
     const primaryImage = await basePipeline().png().toBuffer()
     const primaryResult = await worker.recognize(primaryImage, { rotateAuto: false }, { text: true })
     const primaryText = normalizeCardText(primaryResult.data.text)
-    const variants = [{ text: primaryText, confidence: primaryResult.data.confidence }]
+    const variants = [{ text: primaryText, confidence: primaryResult.data.confidence, crop }]
 
     if (!/\d/.test(primaryText) || primaryResult.data.confidence < 60) {
       const thresholdImage = await basePipeline().threshold(175).png().toBuffer()
@@ -254,6 +255,33 @@ async function recognizeMetricCards(
       variants.push({
         text: normalizeCardText(thresholdResult.data.text),
         confidence: thresholdResult.data.confidence,
+        crop,
+      })
+    }
+    if (
+      platform === 'tiktok_shop'
+      && ['total_views', 'advertising_cost', 'roi_gmv_max', 'estimated_gmv'].includes(cell.key)
+    ) {
+      const legacyCrop = toMetricCellCrop(cell, imageWidth, imageHeight, platform, true)
+      const legacyImage = await dependencies.sharp(imageBytes)
+        .extract(legacyCrop)
+        .resize({
+          width: legacyCrop.width * 5,
+          height: legacyCrop.height * 5,
+          fit: 'fill',
+          kernel: dependencies.sharp.kernel.lanczos3,
+        })
+        .grayscale()
+        .normalize()
+        .sharpen({ sigma: 1.1 })
+        .negate()
+        .png()
+        .toBuffer()
+      const legacyResult = await worker.recognize(legacyImage, { rotateAuto: false }, { text: true })
+      variants.push({
+        text: normalizeCardText(legacyResult.data.text),
+        confidence: legacyResult.data.confidence,
+        crop: legacyCrop,
       })
     }
 
@@ -270,11 +298,19 @@ async function recognizeMetricCards(
         source: 'image_ocr',
         pass: 'card',
         bounding_box: {
-          x: crop.left,
-          y: crop.top,
-          width: crop.width,
-          height: crop.height,
+          x: variant.crop.left,
+          y: variant.crop.top,
+          width: variant.crop.width,
+          height: variant.crop.height,
         },
+        x0: variant.crop.left,
+        y0: variant.crop.top,
+        x1: variant.crop.left + variant.crop.width,
+        y1: variant.crop.top + variant.crop.height,
+        centerX: variant.crop.left + variant.crop.width / 2,
+        centerY: variant.crop.top + variant.crop.height / 2,
+        width: variant.crop.width,
+        height: variant.crop.height,
       })
     })
   }
@@ -290,9 +326,14 @@ function toMetricCellCrop(
   cell: LayoutMetricCell,
   imageWidth: number,
   imageHeight: number,
+  platform: Exclude<ReportDashboardPlatform, 'other'>,
+  useFullHeight = false,
 ) {
   const width = Math.max(1, Math.round(cell.width * imageWidth))
-  const height = Math.max(1, Math.round(cell.height * imageHeight))
+  const valueHeight = platform === 'tiktok_shop' && cell.key !== 'gmv' && !useFullHeight
+    ? Math.min(cell.height, .038)
+    : cell.height
+  const height = Math.max(1, Math.round(valueHeight * imageHeight))
   const left = Math.max(0, Math.min(imageWidth - width, Math.round(cell.x * imageWidth - width / 2)))
   const top = Math.max(0, Math.min(imageHeight - height, Math.round(cell.y * imageHeight - height / 2)))
   return { left, top, width, height }
@@ -342,22 +383,31 @@ function flattenWords(
   return (blocks || []).flatMap((block, blockIndex) =>
     block.paragraphs.flatMap((paragraph, paragraphIndex) =>
       paragraph.lines.flatMap((line, lineIndex) =>
-        line.words.map(word => ({
-          text: word.text,
-          confidence: word.confidence,
-          line_id: `${pass}:${blockIndex}:${paragraphIndex}:${lineIndex}`,
-          block_index: blockIndex,
-          line_index: lineIndex,
-          platform,
-          source: 'image_ocr',
-          pass,
-          bounding_box: {
-            x: crop.left + word.bbox.x0 / preprocessScale,
-            y: crop.top + word.bbox.y0 / preprocessScale,
-            width: (word.bbox.x1 - word.bbox.x0) / preprocessScale,
-            height: (word.bbox.y1 - word.bbox.y0) / preprocessScale,
-          },
-        })),
+        line.words.map(word => {
+          const x0 = crop.left + word.bbox.x0 / preprocessScale
+          const y0 = crop.top + word.bbox.y0 / preprocessScale
+          const width = (word.bbox.x1 - word.bbox.x0) / preprocessScale
+          const height = (word.bbox.y1 - word.bbox.y0) / preprocessScale
+          return {
+            text: word.text,
+            confidence: word.confidence,
+            line_id: `${pass}:${blockIndex}:${paragraphIndex}:${lineIndex}`,
+            block_index: blockIndex,
+            line_index: lineIndex,
+            platform,
+            source: 'image_ocr' as const,
+            pass,
+            bounding_box: { x: x0, y: y0, width, height },
+            x0,
+            y0,
+            x1: x0 + width,
+            y1: y0 + height,
+            centerX: x0 + width / 2,
+            centerY: y0 + height / 2,
+            width,
+            height,
+          }
+        }),
       ),
     ),
   )
