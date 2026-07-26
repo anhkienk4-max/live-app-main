@@ -141,10 +141,131 @@ test('zero values remain zero and NaN values are excluded', () => {
 test('localized numbers parse correctly', () => {
   assert.equal(parseOcrValue('21.281.718,00'), 21281718)
   assert.equal(parseOcrValue('18,530,950.00'), 18530950)
+  assert.equal(parseOcrValue('1.604.714,07'), 1604714.07)
+  assert.equal(parseOcrValue('195.245,12'), 195245.12)
+  assert.equal(parseOcrValue('0,4%'), 0.4)
   assert.equal(parseOcrValue('6,2%'), 6.2)
   assert.equal(parseOcrValue('00:00:31'), 31)
+  assert.equal(parseOcrValue('00:02:31'), 151)
+  assert.equal(parseOcrValue('02:01:46'), 7306)
   assert.equal(parseOcrValue('1.64M'), 1640000)
   assert.equal(parseOcrValue('25.86K'), 25860)
+})
+
+test('full Shopee exact text maps every label only to its canonical metric', () => {
+  const review = parseDashboardOcrText('shopee_live', [
+    'Sales: 21.281.718,00',
+    'Engaged Viewer: 521',
+    'Comments: 51',
+    'ATC: 436',
+    'Total Views: 13.262',
+    'Avg. Viewing Duration: 00:00:25',
+    'Comments Rate: 0,4%',
+    'GPM: 1.604.714,07',
+    'Orders: 109',
+    'ABS: 195.245,12',
+    'Total Viewers: 8.380',
+    'PCU: 107',
+    'CTR: 8,4%',
+    'Click to Order Rate: 9,8%',
+    'Buyers: 104',
+    'Items Sold: 116',
+  ].join('\n'), 'raw_text_exact')
+  const values = reviewInputValues(review)
+
+  assert.deepEqual(values, {
+    sales: '21281718',
+    engaged_viewers: '521',
+    comments: '51',
+    add_to_cart: '436',
+    total_views: '13262',
+    average_view_duration_seconds: '25',
+    comment_rate: '0.4',
+    gpm: '1604714.07',
+    orders: '109',
+    average_basket_size: '195245.12',
+    total_viewers: '8380',
+    pcu: '107',
+    ctr: '8.4',
+    click_to_order_rate: '9.8',
+    buyers: '104',
+    items_sold: '116',
+  })
+  assert.equal(Object.keys(review.metrics).length, 16)
+  assert.equal(review.metrics.pcu?.normalized_key, 'pcu')
+  assert.equal(review.metrics.buyers?.normalized_key, 'buyers')
+  assert.equal(review.metrics.gpm?.normalized_key, 'gpm')
+  assert.equal(review.metrics.comment_rate?.normalized_key, 'comment_rate')
+  assert.equal(Object.values(review.metrics).every(metric => metric?.source === 'raw_text_exact'), true)
+})
+
+test('exact Shopee text has priority over conflicting word-box and spatial guesses', () => {
+  const word = (
+    text: string,
+    x: number,
+    y: number,
+    pass: 'label' | 'numeric',
+    lineId: string,
+  ) => ({
+    text,
+    confidence: 95,
+    line_id: lineId,
+    block_index: 0,
+    line_index: 0,
+    platform: 'shopee_live' as const,
+    source: 'image_ocr' as const,
+    pass,
+    bounding_box: { x, y, width: Math.max(20, text.length * 8), height: 18 },
+  })
+  const exactText = [
+    'PCU: 107',
+    'Buyers: 104',
+    'GPM: 1.604.714,07',
+    'Comments Rate: 0,4%',
+  ].join('\n')
+  const review = mapDashboardImageRecognition('shopee_live', {
+    engine: 'tesseract.js',
+    language: 'eng+vie',
+    text: exactText,
+    pass_output: { label: exactText, numeric: '' },
+    confidence: 95,
+    words: [
+      word('Buyers', 100, 100, 'label', 'buyer-label'),
+      word('107', 165, 100, 'numeric', 'wrong-buyer-value'),
+      word('Comments', 300, 100, 'label', 'comment-rate-label'),
+      word('Rate', 375, 100, 'label', 'comment-rate-label'),
+      word('1.604.714,07', 420, 100, 'numeric', 'wrong-rate-value'),
+    ],
+    crop_box: { left: 0, top: 0, width: 1, height: 1 },
+    original_dimensions: { width: 1000, height: 500 },
+    processed_dimensions: { width: 2000, height: 1000 },
+  })
+
+  assert.equal(review.metrics.pcu?.value, 107)
+  assert.equal(review.metrics.pcu?.source, 'raw_text_exact')
+  assert.equal(review.metrics.buyers?.value, 104)
+  assert.equal(review.metrics.buyers?.source, 'raw_text_exact')
+  assert.equal(review.metrics.gpm?.value, 1604714.07)
+  assert.equal(review.metrics.gpm?.source, 'raw_text_exact')
+  assert.equal(review.metrics.comment_rate?.value, 0.4)
+  assert.equal(review.metrics.comment_rate?.source, 'raw_text_exact')
+  assert.notEqual(review.metrics.buyers?.value, 107)
+  assert.notEqual(review.metrics.comment_rate?.value, 1604714.07)
+})
+
+test('partial exact Shopee OCR creates only sales, orders, and PCU candidates', () => {
+  const review = parseDashboardOcrText(
+    'shopee_live',
+    'Sales: 21.281.718,00\nOrders: 109\nPCU: 107',
+    'raw_text_exact',
+  )
+  assert.deepEqual(reviewInputValues(review), {
+    sales: '21281718',
+    orders: '109',
+    pcu: '107',
+  })
+  assert.deepEqual(Object.keys(review.metrics).sort(), ['orders', 'pcu', 'sales'])
+  assert.equal(review.metrics.buyers, undefined)
 })
 
 test('host missing or blank defaults to one and invalid host values fail validation', () => {

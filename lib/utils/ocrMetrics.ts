@@ -118,6 +118,14 @@ const shopeeTemplateLabels: Readonly<Partial<Record<ReportMetricKey, string>>> =
   items_sold: 'Items Sold',
 }
 
+const shopeeCorrectedLabels: Readonly<Partial<Record<ReportMetricKey, string>>> = {
+  ...shopeeTemplateLabels,
+  sales: 'Sales (đ)',
+  gpm: 'GPM (đ)',
+  average_basket_size: 'ABS (đ)',
+  click_to_order_rate: 'Click to Order Rate (CO)',
+}
+
 const aliases: Record<ReportDashboardPlatform, Record<string, ReportMetricKey>> = {
   tiktok_shop: {
     'gmv da ghi nhan': 'gmv',
@@ -797,6 +805,9 @@ export function parsePlatformOcrText({
       : platform
   const parsedReview = parseDashboardOcrText(canonicalPlatform, rawText, 'raw_text_exact')
   const candidateInputs: MetricCandidateInput[] = []
+  const existingReview = existingCandidates && 'metrics' in existingCandidates
+    ? existingCandidates
+    : undefined
   const existingMetrics = existingCandidates
     ? 'metrics' in existingCandidates
       ? existingCandidates.metrics
@@ -822,6 +833,8 @@ export function parsePlatformOcrText({
     metrics: candidates,
     discarded_conflicts: selection.discardedConflicts,
     missing_metric_keys: selection.missingKeys,
+    raw_output: existingReview?.raw_output || parsedReview.raw_output,
+    raw_diagnostic_output: existingReview?.raw_diagnostic_output,
     unmapped_fields: [
       ...(existingCandidates && 'metrics' in existingCandidates ? existingCandidates.unmapped_fields || [] : []),
       ...(parsedReview.unmapped_fields || []),
@@ -976,6 +989,21 @@ export function mapDashboardImageRecognition(
   const selection = selectBestMetricCandidates(candidateInputs, expectedKeys)
   const metrics: OcrReviewData['metrics'] = selection.selectedByKey
   applyCrossMetricSanity(metrics)
+  if (platform !== 'other') {
+    for (const [key, metric] of Object.entries(metrics) as Array<[ReportMetricKey, OcrMetricValue | undefined]>) {
+      if (!metric) continue
+      const normalizedValue = metric.value ?? metric.candidate_value
+      metric.raw_ocr_label ??= recognition.pass_output.card_labels?.[key]?.find(Boolean)
+        || metric.original_label
+        || ''
+      metric.corrected_source_label ??= correctedPlatformMetricLabel(platform, key)
+      metric.raw_ocr_value ??= metric.raw_value || ''
+      metric.normalized_value ??= normalizedValue
+      if (normalizedValue !== undefined) {
+        metric.corrected_display_value ??= formatCorrectedMetricValue(platform, key, normalizedValue)
+      }
+    }
+  }
 
   for (const line of lines) {
     const remaining = line.words.filter(word => !consumedWords.has(word))
@@ -1015,7 +1043,10 @@ export function mapDashboardImageRecognition(
     discarded_conflicts: selection.discardedConflicts,
     missing_metric_keys: selection.missingKeys,
     unmapped_fields: filterKnownMetricUnmappedFields(platform, unmappedFields, expectedKeys),
-    raw_output: formatRecognitionOutput(recognition),
+    raw_output: platform === 'other'
+      ? recognition.text.trim()
+      : formatCorrectedDashboardOcrText(platform, metrics),
+    raw_diagnostic_output: formatRecognitionOutput(recognition),
     error_message: recognition.text.trim() ? undefined : 'The OCR engine did not find readable text in this image.',
   }
 }
@@ -1354,6 +1385,17 @@ function preferredPlatformMetricLabel(
     || key
 }
 
+function correctedPlatformMetricLabel(
+  platform: Exclude<ReportDashboardPlatform, 'other'>,
+  key: ReportMetricKey,
+) {
+  if (platform === 'shopee_live' && shopeeCorrectedLabels[key]) {
+    return shopeeCorrectedLabels[key]!
+  }
+  return platformMetricLayouts[platform].find(cell => cell.key === key)?.label
+    || preferredPlatformMetricLabel(platform, key)
+}
+
 function isSequentialValueCompatible(
   platform: ReportDashboardPlatform,
   key: ReportMetricKey,
@@ -1444,17 +1486,34 @@ function applyCardOutputCandidates(
       const shapeScore = layoutCell
         ? layoutValueShapeScore(layoutCell.valueKind, normalizedRaw, parsedValue)
         : 1
+      const rawQualityScore = layoutCell
+        ? layoutCardRawQualityScore(layoutCell, value)
+        : 1
       const cardWord = findCardValueWord(key, value, recognition)
       return [{
         value,
         normalizedRaw,
         parsedValue,
         shapeScore,
+        rawQualityScore,
         cardWord,
-        selectionScore: shapeScore * 10 + variantIndex * .01 + (cardWord?.confidence || 0) / 100_000,
+        selectionScore:
+          shapeScore * 10
+          + rawQualityScore * 2
+          + (cardWord?.confidence || 0) / 100
+          + variantIndex * .001,
       }]
     })
-    const viableCandidates = cardCandidates
+    const consensusCandidates = cardCandidates.map(candidate => ({
+      ...candidate,
+      supportCount: cardCandidates.filter(other =>
+        metricValuesEqual(other.parsedValue, candidate.parsedValue),
+      ).length,
+      selectionScore: candidate.selectionScore + cardCandidates.filter(other =>
+        metricValuesEqual(other.parsedValue, candidate.parsedValue),
+      ).length * 3,
+    }))
+    const viableCandidates = consensusCandidates
       .map(candidate => ({
         ...candidate,
         supportingWord: findCardValueWordSupport(platform, key, candidate.parsedValue, recognition),
@@ -1488,6 +1547,22 @@ function applyCardOutputCandidates(
       collectMetricCandidate(candidates, key, {
         value: parsedValue,
         candidate_value: parsedValue,
+        normalized_value: parsedValue,
+        raw_ocr_label: recognition.pass_output.card_labels?.[key]?.find(Boolean) || '',
+        corrected_source_label: layoutCell
+          ? correctedPlatformMetricLabel(
+            platform as Exclude<ReportDashboardPlatform, 'other'>,
+            key,
+          )
+          : rawKey,
+        raw_ocr_value: rawValue,
+        corrected_display_value: layoutCell
+          ? formatCorrectedMetricValue(
+            platform as Exclude<ReportDashboardPlatform, 'other'>,
+            key,
+            parsedValue,
+          )
+          : String(parsedValue),
         confidence: clearPair ? 'high' : 'medium',
         needs_review: !clearPair,
         original_label: layoutCell?.label || rawKey,
@@ -1545,6 +1620,104 @@ function normalizeLayoutCardValue(
     }
   }
   return `${normalized}${suffix || ''}`
+}
+
+function layoutCardRawQualityScore(cell: LayoutMetricCell, rawValue: string) {
+  const trimmed = rawValue.trim()
+  if (!trimmed || !/\d/.test(trimmed)) return 0
+  if (/\d\s+\d/.test(trimmed)) return .15
+  if (cell.valueKind === 'percentage') {
+    if (/^\d{1,3}[.,]\d{1,2}\s*%?$/.test(trimmed)) return 1
+    if (/^\d{2,3}\s*%?$/.test(trimmed) && cell.displayFormat?.decimalPlaces) return .85
+    return .35
+  }
+  if (cell.valueKind === 'duration') {
+    return /^(?:\d{1,2}:)?\d{1,3}:\d{2}$/.test(trimmed) ? 1 : .45
+  }
+  if (cell.valueKind === 'compact') {
+    if (/^\d+[:;]\d+$/.test(trimmed) && cell.displayFormat?.decimalPlaces) return 1.05
+    return /^\d+(?:[.,]\d+)?[KM]$/i.test(trimmed) ? 1 : .45
+  }
+  if (cell.valueKind === 'currency') {
+    return /^\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?$/.test(trimmed)
+      ? 1
+      : /^\d+(?:[.,]\d+)?$/.test(trimmed)
+        ? .75
+        : .3
+  }
+  return /^\d+(?:[.,]\d+)?$/.test(trimmed) ? 1 : .4
+}
+
+function formatCorrectedMetricValue(
+  platform: Exclude<ReportDashboardPlatform, 'other'>,
+  key: ReportMetricKey,
+  value: ReportMetricValue,
+) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return String(value ?? '')
+  const cell = platformMetricLayouts[platform].find(candidate => candidate.key === key)
+  if (!cell) return String(value)
+  if (cell.valueKind === 'duration') {
+    if (platform === 'shopee_live') {
+      const totalSeconds = Math.max(0, Math.round(value))
+      const hours = Math.floor(totalSeconds / 3600)
+      const minutes = Math.floor((totalSeconds % 3600) / 60)
+      const seconds = totalSeconds % 60
+      return [hours, minutes, seconds].map(part => String(part).padStart(2, '0')).join(':')
+    }
+    return `${Math.max(0, Math.round(value))}s`
+  }
+  if (cell.valueKind === 'compact' && cell.displayFormat?.compactSuffix) {
+    const divisor = cell.displayFormat.compactSuffix === 'M' ? 1_000_000 : 1_000
+    return `${formatViDecimal(
+      value / divisor,
+      cell.displayFormat.decimalPlaces ?? 2,
+      cell.displayFormat.decimalPlaces ?? 2,
+    )}${cell.displayFormat.compactSuffix}`
+  }
+  if (cell.valueKind === 'percentage') {
+    const decimals = cell.displayFormat?.decimalPlaces
+      ?? Math.min(2, decimalPlaces(value))
+    return `${formatViDecimal(value, decimals, decimals)}%`
+  }
+  if (cell.valueKind === 'currency') {
+    return formatViDecimal(value, platform === 'shopee_live' ? 2 : 0, platform === 'shopee_live' ? 2 : 0)
+  }
+  if (cell.valueKind === 'ratio') {
+    return formatViDecimal(value, 0, cell.displayFormat?.decimalPlaces ?? 2)
+  }
+  return formatViDecimal(value, 0, 0)
+}
+
+function decimalPlaces(value: number) {
+  const decimal = String(value).split('.')[1]
+  return decimal?.length || 0
+}
+
+function formatViDecimal(value: number, minimumFractionDigits: number, maximumFractionDigits: number) {
+  return new Intl.NumberFormat('vi-VN', {
+    minimumFractionDigits,
+    maximumFractionDigits,
+    useGrouping: true,
+  }).format(value)
+}
+
+export function formatCorrectedDashboardOcrText(
+  platform: ReportDashboardPlatform,
+  metrics: OcrReviewData['metrics'],
+) {
+  if (platform === 'other') return ''
+  const orderedKeys = platform === 'shopee_live'
+    ? shopeeMainMetricKeys
+    : tiktokCentralMetricKeys
+  return orderedKeys.flatMap(key => {
+    const metric = metrics[key]
+    const value = metric?.value ?? metric?.candidate_value
+    if (value === null || value === undefined) return []
+    const label = correctedPlatformMetricLabel(platform, key)
+    const display = metric?.corrected_display_value
+      || formatCorrectedMetricValue(platform, key, value)
+    return [`${label}: ${display}`]
+  }).join('\n')
 }
 
 function findCardValueWord(
@@ -1640,7 +1813,8 @@ export function buildDashboardOcrReviewFromRecognition(
     if (review.status !== 'confirmed') review.status = 'review_required'
     review.error_message = undefined
   }
-  review.raw_output = recognizedText || review.raw_output
+  review.raw_output ||= recognizedText
+  review.raw_diagnostic_output ||= formatRecognitionOutput(recognition)
   return review
 }
 
@@ -1667,6 +1841,11 @@ function metricValuesEqual(left: ReportMetricValue | undefined, right: ReportMet
 }
 
 function formatRecognitionOutput(recognition: OcrImageRecognition) {
+  const cardLabelOutput = recognition.pass_output.card_labels
+    ? Object.entries(recognition.pass_output.card_labels)
+      .map(([key, values]) => `${key}: ${values.filter(Boolean).join(' | ') || '—'}`)
+      .join('\n')
+    : ''
   const cardOutput = recognition.pass_output.card
     ? Object.entries(recognition.pass_output.card)
       .map(([key, values]) => `${key}: ${values.filter(Boolean).join(' | ') || '—'}`)
@@ -1677,6 +1856,7 @@ function formatRecognitionOutput(recognition: OcrImageRecognition) {
     recognition.pass_output.label,
     '[numeric pass]',
     recognition.pass_output.numeric,
+    cardLabelOutput ? `[card label pass]\n${cardLabelOutput}` : '',
     cardOutput ? `[card pass]\n${cardOutput}` : '',
   ].filter(Boolean).join('\n\n')
 }
@@ -1731,9 +1911,10 @@ function applyPlatformLayoutCandidates(
       const signature = `${words[0].pass}:${rawValue}:${words[0].bounding_box.x}:${words[0].bounding_box.y}`
       if (seen.has(signature)) return []
       seen.add(signature)
-      const parsedValue = parseOcrValue(rawValue)
-      const sanityError = validateMetricCandidate(cell.key, parsedValue, rawValue)
-      const shapeScore = layoutValueShapeScore(cell.valueKind, rawValue, parsedValue)
+      const normalizedRaw = normalizeLayoutCardValue(cell, rawValue)
+      const parsedValue = parseOcrValue(normalizedRaw)
+      const sanityError = validateMetricCandidate(cell.key, parsedValue, normalizedRaw)
+      const shapeScore = layoutValueShapeScore(cell.valueKind, normalizedRaw, parsedValue)
       if (sanityError || shapeScore <= 0) return []
       const box = unionBoundingBoxes(words)
       const centerX = (box.x + box.width / 2) / dimensions.width
@@ -1750,6 +1931,7 @@ function applyPlatformLayoutCandidates(
       return [{
         words,
         rawValue,
+        normalizedRaw,
         parsedValue,
         spatialScore,
         valueConfidence,
@@ -1799,7 +1981,11 @@ function applyPlatformLayoutCandidates(
         pair_score: pairScore,
         source: 'spatial_fallback',
         status: accepted ? 'confirmed' : 'review_required',
-        rejection_reason: accepted ? undefined : 'The platform card was located, but OCR value confidence is below the auto-fill threshold.',
+        rejection_reason: candidate.normalizedRaw !== candidate.rawValue
+          ? 'The displayed value format was repaired using the identified KPI card.'
+          : accepted
+            ? undefined
+            : 'The platform card was located, but OCR value confidence is below the auto-fill threshold.',
         label_confidence: 100,
         value_confidence: candidate.valueConfidence,
         spatial_score: candidate.spatialScore,

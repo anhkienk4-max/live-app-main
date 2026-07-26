@@ -130,7 +130,7 @@ export function LiveMonitoringDashboard() {
               <div className="grid grid-cols-3 gap-2 text-sm"><Value label={t('host')} value={roleNames(shift, 'host')} /><Value label={t('support')} value={roleNames(shift, 'support')} /><Value label={t('technical')} value={roleNames(shift, 'technical')} /></div>
               <div className="grid grid-cols-3 gap-2 border-t pt-3"><Value label={t('revenue')} value={latest ? formatCurrency(latest.revenue) : '—'} /><Value label={t('orders')} value={latest ? latest.orders.toLocaleString() : '—'} /><Value label={t('viewers')} value={latest ? latest.current_viewers.toLocaleString() : '—'} /></div>
               {latest && <p className="flex items-center gap-2 text-xs text-muted-foreground"><Clock className="h-3 w-3" />{format(new Date(latest.time), 'HH:mm dd/MM/yyyy')}</p>}
-              <div className="flex gap-2"><Button className="flex-1" variant="outline" onClick={() => setSelectedShift(shift)}>{t('viewDetails')}</Button>{(shift.status === 'live' || shift.status === 'preparing' || shift.status === 'paused') && <Button className="flex-1" onClick={() => setUpdateShift(shift)}>{t('submitDashboardUpdate')}</Button>}</div>
+              <div className="flex gap-2"><Button className="flex-1" variant="outline" onClick={() => setSelectedShift(shift)} data-testid={`open-live-session-${shift.id}`}>{t('viewDetails')}</Button>{(shift.status === 'live' || shift.status === 'preparing' || shift.status === 'paused') && <Button className="flex-1" onClick={() => setUpdateShift(shift)} data-testid={`open-live-dashboard-update-${shift.id}`}>{t('submitDashboardUpdate')}</Button>}</div>
             </CardContent></Card>
           })}
         </div>

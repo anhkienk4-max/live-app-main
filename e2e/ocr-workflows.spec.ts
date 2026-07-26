@@ -204,6 +204,46 @@ async function assertValuesSurviveRerender(page: Page, expected: ExpectedMetrics
   await assertRenderedMetrics(page, expected)
 }
 
+async function assertShopeeCorrectedText(
+  correctedText: Locator,
+  rawDiagnostics: Locator,
+) {
+  const expectedLines = [
+    'Sales (đ): 21.281.718,00',
+    'Comments Rate: 0,4%',
+    'GPM (đ): 1.604.714,07',
+    'Orders: 109',
+    'ABS (đ): 195.245,12',
+    'Total Viewers: 8.380',
+    'CTR: 8,4%',
+  ]
+  const value = await correctedText.inputValue()
+  for (const line of expectedLines) expect(value).toContain(line)
+  for (const noisy of ['21 281.71 8,00', 'L2', 'ABS (0)', '04x', '84x']) {
+    expect(value).not.toContain(noisy)
+  }
+  await expect(rawDiagnostics).toBeVisible()
+  await rawDiagnostics.locator('summary').click()
+  await expect(rawDiagnostics.locator('pre')).toBeVisible()
+}
+
+async function assertTikTokCorrectedText(
+  correctedText: Locator,
+  rawDiagnostics: Locator,
+) {
+  const value = await correctedText.inputValue()
+  for (const label of tiktokKnownLabels) expect(value).toContain(`${label}:`)
+  expect(value).toContain('GMV đã ghi nhận: 8.761.919')
+  expect(value).toContain('Tỷ lệ nhấn: 2,52%')
+  expect(value).toContain('Thời lượng xem TB: 40s')
+  expect(value).toContain('GMV ước tính: 8,98M')
+  expect(value).not.toContain('[label pass]')
+  expect(value).not.toContain('[card pass]')
+  await expect(rawDiagnostics).toBeVisible()
+  await rawDiagnostics.locator('summary').click()
+  await expect(rawDiagnostics.locator('pre')).toBeVisible()
+}
+
 async function openTikTokFinalReport(page: Page) {
   await gotoAppRoute(page, '/live')
   await expect(page.getByTestId('open-live-session-s1')).toBeVisible()
@@ -245,6 +285,10 @@ test('Shopee Final Report uploads a real dashboard and autofills all 16 main KPI
     shopeeMetrics,
     shopeeKnownLabels,
   )
+  await assertShopeeCorrectedText(
+    page.getByTestId('report-ocr-corrected-text'),
+    page.getByTestId('report-ocr-raw-diagnostics'),
+  )
 })
 
 test('Shopee Live Dashboard Update uploads a real dashboard and autofills all 16 main KPIs', async ({ page }) => {
@@ -258,6 +302,10 @@ test('Shopee Live Dashboard Update uploads a real dashboard and autofills all 16
     shopeeMetrics,
     shopeeKnownLabels,
   )
+  await assertShopeeCorrectedText(
+    page.getByTestId('live-ocr-corrected-text'),
+    page.getByTestId('live-ocr-raw-diagnostics'),
+  )
 })
 
 test('TikTok Final Report uploads a real dashboard and autofills all 19 KPIs', async ({ page }) => {
@@ -270,6 +318,10 @@ test('TikTok Final Report uploads a real dashboard and autofills all 19 KPIs', a
     tiktokMetrics,
     tiktokKnownLabels,
   )
+  await assertTikTokCorrectedText(
+    page.getByTestId('report-ocr-corrected-text'),
+    page.getByTestId('report-ocr-raw-diagnostics'),
+  )
 })
 
 test('TikTok Live Dashboard Update uploads a real dashboard and autofills all 19 KPIs', async ({ page }) => {
@@ -281,5 +333,9 @@ test('TikTok Live Dashboard Update uploads a real dashboard and autofills all 19
     fixturePath('tiktok-dashboard.jpg'),
     tiktokMetrics,
     tiktokKnownLabels,
+  )
+  await assertTikTokCorrectedText(
+    page.getByTestId('live-ocr-corrected-text'),
+    page.getByTestId('live-ocr-raw-diagnostics'),
   )
 })

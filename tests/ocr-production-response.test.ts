@@ -240,9 +240,9 @@ test('fresh Shopee recognition text creates candidates and autofill without API 
   assert.equal(review.metrics.sales?.value, 21281718)
   assert.equal(review.metrics.orders?.value, 109)
   assert.equal(review.metrics.pcu?.value, 107)
-  assert.equal(review.metrics.sales?.source, 'local_tesseract_text')
-  assert.equal(review.metrics.orders?.source, 'local_tesseract_text')
-  assert.equal(review.metrics.pcu?.source, 'local_tesseract_text')
+  assert.equal(review.metrics.sales?.source, 'raw_text_exact')
+  assert.equal(review.metrics.orders?.source, 'raw_text_exact')
+  assert.equal(review.metrics.pcu?.source, 'raw_text_exact')
   assert.equal(review.metrics.sales?.bounding_box, undefined)
   assert.deepEqual(autofill, {
     sales: '21281718',
