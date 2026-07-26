@@ -7,6 +7,14 @@ import type {
   ReportMetricKey,
   ReportMetricValue,
 } from '@/lib/types/database.types'
+import {
+  isCanonicalMetricKey,
+  selectBestMetricCandidates,
+  shopeeMainMetricKeys,
+  shopeeSupplementaryMetricKeys,
+  tiktokCentralMetricKeys,
+  type MetricCandidateInput,
+} from '@/lib/utils/ocrCanonical'
 
 export const commonReportMetricKeys: ReportMetricKey[] = [
   'revenue', 'gmv', 'orders', 'buyers', 'items_sold', 'total_views',
@@ -27,6 +35,87 @@ export const platformMetricKeys: Record<ReportDashboardPlatform, ReportMetricKey
     'click_to_order_rate', 'total_viewers', 'gpm',
   ],
   other: [],
+}
+
+// Keys are normalized by normalizeOcrLabel before lookup. Keep every Shopee
+// label in this single strict map so similar KPI names cannot share a value.
+export const shopeeLabelToMetric: Readonly<Record<string, ReportMetricKey>> = {
+  sales: 'sales',
+  sale: 'sales',
+  revenue: 'sales',
+  'doanh thu': 'sales',
+  'engaged viewer': 'engaged_viewers',
+  'engaged viewers': 'engaged_viewers',
+  'nguoi xem tuong tac': 'engaged_viewers',
+  comments: 'comments',
+  comment: 'comments',
+  'binh luan': 'comments',
+  atc: 'add_to_cart',
+  'add to cart': 'add_to_cart',
+  'total views': 'total_views',
+  'total view': 'total_views',
+  'tong luot xem': 'total_views',
+  'avg viewing duration': 'average_view_duration_seconds',
+  'average viewing duration': 'average_view_duration_seconds',
+  'viewing duration': 'average_view_duration_seconds',
+  'thoi luong xem tb': 'average_view_duration_seconds',
+  'comments rate': 'comment_rate',
+  'comment rate': 'comment_rate',
+  'ty le binh luan': 'comment_rate',
+  gpm: 'gpm',
+  orders: 'orders',
+  order: 'orders',
+  'don hang': 'orders',
+  abs: 'average_basket_size',
+  'average basket size': 'average_basket_size',
+  'total viewers': 'total_viewers',
+  'total viewer': 'total_viewers',
+  'tong nguoi xem': 'total_viewers',
+  pcu: 'pcu',
+  ctr: 'ctr',
+  'click to order rate': 'click_to_order_rate',
+  'click to order': 'click_to_order_rate',
+  'click to order rate co': 'click_to_order_rate',
+  buyers: 'buyers',
+  buyer: 'buyers',
+  'nguoi mua': 'buyers',
+  'items sold': 'items_sold',
+  'item sold': 'items_sold',
+  'san pham da ban': 'items_sold',
+  likes: 'likes',
+  thich: 'likes',
+  shares: 'shares',
+  'luot chia se': 'shares',
+  'start at': 'started_at',
+  'bat dau luc': 'started_at',
+  duration: 'live_duration_seconds',
+  'thoi luong': 'live_duration_seconds',
+}
+
+export const shopeeTemplateMetricOrder: readonly ReportMetricKey[] = shopeeMainMetricKeys
+
+export const shopeeDashboardMetricOrder: readonly ReportMetricKey[] = [
+  ...shopeeMainMetricKeys,
+  ...shopeeSupplementaryMetricKeys,
+]
+
+const shopeeTemplateLabels: Readonly<Partial<Record<ReportMetricKey, string>>> = {
+  sales: 'Sales',
+  engaged_viewers: 'Engaged Viewer',
+  comments: 'Comments',
+  add_to_cart: 'ATC',
+  total_views: 'Total Views',
+  average_view_duration_seconds: 'Avg. Viewing Duration',
+  comment_rate: 'Comments Rate',
+  gpm: 'GPM',
+  orders: 'Orders',
+  average_basket_size: 'ABS',
+  total_viewers: 'Total Viewers',
+  pcu: 'PCU',
+  ctr: 'CTR',
+  click_to_order_rate: 'Click to Order Rate',
+  buyers: 'Buyers',
+  items_sold: 'Items Sold',
 }
 
 const aliases: Record<ReportDashboardPlatform, Record<string, ReportMetricKey>> = {
@@ -76,57 +165,179 @@ const aliases: Record<ReportDashboardPlatform, Record<string, ReportMetricKey>> 
     aov: 'average_order_value',
     'average order value': 'average_order_value',
   },
-  shopee_live: {
-    sales: 'sales',
-    sale: 'sales',
-    'doanh thu': 'sales',
-    'engaged viewer': 'engaged_viewers',
-    'engaged viewers': 'engaged_viewers',
-    'nguoi xem tuong tac': 'engaged_viewers',
-    comments: 'comments',
-    comment: 'comments',
-    'binh luan': 'comments',
-    atc: 'add_to_cart',
-    'add to cart': 'add_to_cart',
-    'total views': 'total_views',
-    'total view': 'total_views',
-    'tong luot xem': 'total_views',
-    'avg viewing duration': 'average_view_duration_seconds',
-    'avg. viewing duration': 'average_view_duration_seconds',
-    'thoi luong xem tb': 'average_view_duration_seconds',
-    'comments rate': 'comment_rate',
-    'comment rate': 'comment_rate',
-    'ty le binh luan': 'comment_rate',
-    gpm: 'gpm',
-    orders: 'orders',
-    order: 'orders',
-    'don hang': 'orders',
-    abs: 'average_basket_size',
-    'average basket size': 'average_basket_size',
-    'total viewers': 'total_viewers',
-    'total viewer': 'total_viewers',
-    'tong nguoi xem': 'total_viewers',
-    pcu: 'pcu',
-    ctr: 'ctr',
-    'click to order rate': 'click_to_order_rate',
-    'click to order': 'click_to_order_rate',
-    'click to order rate co': 'click_to_order_rate',
-    buyers: 'buyers',
-    buyer: 'buyers',
-    'nguoi mua': 'buyers',
-    'items sold': 'items_sold',
-    'item sold': 'items_sold',
-    'san pham da ban': 'items_sold',
-    likes: 'likes',
-    thich: 'likes',
-    shares: 'shares',
-    'luot chia se': 'shares',
-    'start at': 'started_at',
-    'bat dau luc': 'started_at',
-    duration: 'live_duration_seconds',
-    'thoi luong': 'live_duration_seconds',
-  },
+  shopee_live: shopeeLabelToMetric,
   other: {},
+}
+
+export type PlatformOcrValueType =
+  | 'integer_count'
+  | 'currency'
+  | 'decimal_number'
+  | 'percentage'
+  | 'duration'
+  | 'rate'
+  | 'text'
+
+export type PlatformOcrSection = {
+  id: string
+  metricOrder: readonly ReportMetricKey[]
+  anchors: readonly ReportMetricKey[]
+}
+
+export type PlatformOcrContextualMistake = {
+  normalizedText: string
+  metric: ReportMetricKey
+  section: string
+  previous?: ReportMetricKey
+  next?: ReportMetricKey
+}
+
+export type PlatformOcrConfig = {
+  platform: Exclude<ReportDashboardPlatform, 'other'>
+  aliases: Readonly<Record<string, ReportMetricKey>>
+  metricOrder: readonly ReportMetricKey[]
+  valueTypes: Readonly<Partial<Record<ReportMetricKey, PlatformOcrValueType>>>
+  sections: readonly PlatformOcrSection[]
+  sequenceOrders?: ReadonlyArray<{ id: string; metricOrder: readonly ReportMetricKey[] }>
+  optionalMetrics: readonly ReportMetricKey[]
+  commonMistakes: readonly PlatformOcrContextualMistake[]
+  finalReportFields: readonly ReportMetricKey[]
+  liveUpdateFields: readonly ReportMetricKey[]
+}
+
+const shopeeMetricValueTypes: PlatformOcrConfig['valueTypes'] = {
+  sales: 'currency',
+  revenue: 'currency',
+  engaged_viewers: 'integer_count',
+  comments: 'integer_count',
+  add_to_cart: 'integer_count',
+  total_views: 'integer_count',
+  average_view_duration_seconds: 'duration',
+  comment_rate: 'percentage',
+  gpm: 'currency',
+  orders: 'integer_count',
+  average_basket_size: 'currency',
+  total_viewers: 'integer_count',
+  pcu: 'integer_count',
+  ctr: 'percentage',
+  click_to_order_rate: 'percentage',
+  buyers: 'integer_count',
+  items_sold: 'integer_count',
+  likes: 'integer_count',
+  shares: 'integer_count',
+}
+
+const tiktokMetricOrder: readonly ReportMetricKey[] = tiktokCentralMetricKeys
+
+const tiktokMetricValueTypes: PlatformOcrConfig['valueTypes'] = {
+  gmv: 'currency',
+  items_sold: 'integer_count',
+  current_viewers: 'integer_count',
+  impressions: 'integer_count',
+  total_views: 'integer_count',
+  advertising_cost: 'currency',
+  click_rate: 'percentage',
+  roi_gmv_max: 'rate',
+  ctor: 'percentage',
+  average_view_duration_seconds: 'duration',
+  new_followers: 'integer_count',
+  buyers: 'integer_count',
+  sku_orders: 'integer_count',
+  comments: 'integer_count',
+  product_clicks: 'integer_count',
+  average_order_value: 'currency',
+  live_ctr: 'percentage',
+  shares: 'integer_count',
+  estimated_gmv: 'currency',
+  likes: 'integer_count',
+}
+
+export const platformOcrConfigs: Readonly<Record<Exclude<ReportDashboardPlatform, 'other'>, PlatformOcrConfig>> = {
+  shopee_live: {
+    platform: 'shopee_live',
+    aliases: shopeeLabelToMetric,
+    metricOrder: shopeeDashboardMetricOrder,
+    valueTypes: shopeeMetricValueTypes,
+    sections: [
+      {
+        id: 'headline',
+        metricOrder: ['sales', 'engaged_viewers', 'comments', 'add_to_cart'],
+        anchors: ['sales', 'engaged_viewers'],
+      },
+      {
+        id: 'performance',
+        metricOrder: [
+          'total_views',
+          'average_view_duration_seconds',
+          'comment_rate',
+          'gpm',
+          'orders',
+          'average_basket_size',
+        ],
+        anchors: ['total_views', 'average_view_duration_seconds', 'gpm'],
+      },
+      {
+        id: 'conversion',
+        metricOrder: ['total_viewers', 'pcu', 'ctr', 'click_to_order_rate', 'buyers', 'items_sold'],
+        anchors: ['total_viewers', 'pcu', 'click_to_order_rate'],
+      },
+      {
+        id: 'social_live',
+        metricOrder: ['likes', 'shares', 'live_duration_seconds'],
+        anchors: ['likes', 'shares', 'live_duration_seconds'],
+      },
+    ],
+    sequenceOrders: [{ id: 'core_dashboard', metricOrder: shopeeTemplateMetricOrder }],
+    optionalMetrics: ['revenue'],
+    commonMistakes: [
+      {
+        normalizedText: 'l2',
+        metric: 'orders',
+        section: 'performance',
+        previous: 'gpm',
+        next: 'average_basket_size',
+      },
+    ],
+    finalReportFields: shopeeDashboardMetricOrder,
+    liveUpdateFields: shopeeDashboardMetricOrder,
+  },
+  tiktok_shop: {
+    platform: 'tiktok_shop',
+    aliases: aliases.tiktok_shop,
+    metricOrder: tiktokMetricOrder,
+    valueTypes: tiktokMetricValueTypes,
+    sections: [
+      {
+        id: 'headline',
+        metricOrder: ['gmv', 'items_sold', 'current_viewers'],
+        anchors: ['gmv', 'items_sold'],
+      },
+      {
+        id: 'traffic',
+        metricOrder: ['impressions', 'total_views', 'advertising_cost', 'click_rate'],
+        anchors: ['impressions', 'total_views', 'click_rate'],
+      },
+      {
+        id: 'efficiency',
+        metricOrder: ['roi_gmv_max', 'ctor', 'average_view_duration_seconds', 'new_followers'],
+        anchors: ['roi_gmv_max', 'average_view_duration_seconds'],
+      },
+      {
+        id: 'conversion',
+        metricOrder: ['buyers', 'sku_orders', 'comments', 'product_clicks'],
+        anchors: ['buyers', 'sku_orders', 'product_clicks'],
+      },
+      {
+        id: 'value',
+        metricOrder: ['average_order_value', 'live_ctr', 'shares', 'estimated_gmv'],
+        anchors: ['average_order_value', 'live_ctr', 'estimated_gmv'],
+      },
+    ],
+    optionalMetrics: ['likes', 'gmv_per_hour', 'gpm'],
+    commonMistakes: [],
+    finalReportFields: tiktokMetricOrder,
+    liveUpdateFields: tiktokMetricOrder,
+  },
 }
 
 export type LayoutValueKind = 'count' | 'currency' | 'compact' | 'duration' | 'percentage' | 'ratio'
@@ -138,6 +349,10 @@ export type LayoutMetricCell = {
   width: number
   height: number
   valueKind: LayoutValueKind
+  displayFormat?: {
+    compactSuffix?: 'K' | 'M'
+    decimalPlaces?: number
+  }
 }
 
 // Normalized against the original screenshot dimensions. These regions describe
@@ -150,26 +365,29 @@ export const platformMetricLayouts: Record<Exclude<ReportDashboardPlatform, 'oth
     { key: 'add_to_cart', label: 'ATC', x: .648, y: .374, width: .08, height: .05, valueKind: 'count' },
     { key: 'total_views', label: 'Total Views', x: .175, y: .465, width: .09, height: .05, valueKind: 'count' },
     { key: 'average_view_duration_seconds', label: 'Avg. Viewing Duration', x: .277, y: .465, width: .10, height: .05, valueKind: 'duration' },
-    { key: 'comment_rate', label: 'Comments Rate', x: .386, y: .465, width: .08, height: .05, valueKind: 'percentage' },
+    { key: 'comment_rate', label: 'Comments Rate', x: .386, y: .465, width: .08, height: .05, valueKind: 'percentage', displayFormat: { decimalPlaces: 1 } },
     { key: 'gpm', label: 'GPM', x: .488, y: .465, width: .12, height: .05, valueKind: 'currency' },
     { key: 'orders', label: 'Orders', x: .598, y: .465, width: .075, height: .05, valueKind: 'count' },
     { key: 'average_basket_size', label: 'ABS', x: .700, y: .465, width: .12, height: .05, valueKind: 'currency' },
     { key: 'total_viewers', label: 'Total Viewers', x: .175, y: .525, width: .09, height: .05, valueKind: 'count' },
     { key: 'pcu', label: 'PCU', x: .277, y: .525, width: .075, height: .05, valueKind: 'count' },
-    { key: 'ctr', label: 'CTR', x: .386, y: .525, width: .08, height: .05, valueKind: 'percentage' },
-    { key: 'click_to_order_rate', label: 'Click to Order Rate', x: .488, y: .525, width: .08, height: .05, valueKind: 'percentage' },
+    { key: 'ctr', label: 'CTR', x: .386, y: .525, width: .08, height: .05, valueKind: 'percentage', displayFormat: { decimalPlaces: 1 } },
+    { key: 'click_to_order_rate', label: 'Click to Order Rate', x: .488, y: .525, width: .08, height: .05, valueKind: 'percentage', displayFormat: { decimalPlaces: 1 } },
     { key: 'buyers', label: 'Buyers', x: .598, y: .525, width: .075, height: .05, valueKind: 'count' },
     { key: 'items_sold', label: 'Items Sold', x: .700, y: .525, width: .075, height: .05, valueKind: 'count' },
+    { key: 'likes', label: 'Likes', x: .806, y: .745, width: .065, height: .06, valueKind: 'count' },
+    { key: 'shares', label: 'Shares', x: .872, y: .745, width: .065, height: .06, valueKind: 'count' },
+    { key: 'live_duration_seconds', label: 'Duration', x: .905, y: .846, width: .11, height: .05, valueKind: 'duration' },
   ],
   tiktok_shop: [
     { key: 'gmv', label: 'GMV đã ghi nhận', x: .510, y: .187, width: .24, height: .085, valueKind: 'currency' },
     { key: 'items_sold', label: 'Số món bán ra từ sự kiện', x: .508, y: .240, width: .075, height: .045, valueKind: 'count' },
     { key: 'current_viewers', label: 'Người xem hiện tại', x: .647, y: .240, width: .06, height: .045, valueKind: 'count' },
-    { key: 'impressions', label: 'Lượt hiển thị', x: .264, y: .329, width: .08, height: .05, valueKind: 'compact' },
-    { key: 'total_views', label: 'Lượt xem', x: .398, y: .329, width: .08, height: .05, valueKind: 'compact' },
-    { key: 'advertising_cost', label: 'Chi phí quảng cáo', x: .537, y: .329, width: .08, height: .05, valueKind: 'compact' },
-    { key: 'click_rate', label: 'Tỷ lệ nhấn', x: .676, y: .329, width: .08, height: .05, valueKind: 'percentage' },
-    { key: 'roi_gmv_max', label: 'ROI GMV Max', x: .264, y: .413, width: .08, height: .05, valueKind: 'ratio' },
+    { key: 'impressions', label: 'Lượt hiển thị', x: .264, y: .329, width: .08, height: .05, valueKind: 'compact', displayFormat: { compactSuffix: 'K', decimalPlaces: 2 } },
+    { key: 'total_views', label: 'Lượt xem', x: .398, y: .329, width: .08, height: .05, valueKind: 'compact', displayFormat: { compactSuffix: 'K', decimalPlaces: 2 } },
+    { key: 'advertising_cost', label: 'Chi phí quảng cáo', x: .537, y: .329, width: .08, height: .05, valueKind: 'compact', displayFormat: { compactSuffix: 'M', decimalPlaces: 2 } },
+    { key: 'click_rate', label: 'Tỷ lệ nhấn', x: .676, y: .329, width: .08, height: .05, valueKind: 'percentage', displayFormat: { decimalPlaces: 2 } },
+    { key: 'roi_gmv_max', label: 'ROI GMV Max', x: .264, y: .413, width: .08, height: .05, valueKind: 'ratio', displayFormat: { decimalPlaces: 2 } },
     { key: 'ctor', label: 'CTOR', x: .398, y: .413, width: .08, height: .05, valueKind: 'percentage' },
     { key: 'average_view_duration_seconds', label: 'Thời lượng xem TB', x: .537, y: .413, width: .08, height: .05, valueKind: 'duration' },
     { key: 'new_followers', label: 'Người theo dõi mới', x: .676, y: .413, width: .07, height: .05, valueKind: 'count' },
@@ -177,14 +395,15 @@ export const platformMetricLayouts: Record<Exclude<ReportDashboardPlatform, 'oth
     { key: 'sku_orders', label: 'Đơn hàng SKU đã ghi nhận', x: .398, y: .497, width: .07, height: .05, valueKind: 'count' },
     { key: 'comments', label: 'Bình luận', x: .537, y: .497, width: .07, height: .05, valueKind: 'count' },
     { key: 'product_clicks', label: 'Lượt nhấp vào sản phẩm', x: .676, y: .497, width: .07, height: .05, valueKind: 'count' },
-    { key: 'average_order_value', label: 'AOV', x: .264, y: .583, width: .09, height: .05, valueKind: 'compact' },
+    { key: 'average_order_value', label: 'AOV', x: .264, y: .583, width: .09, height: .05, valueKind: 'compact', displayFormat: { compactSuffix: 'K', decimalPlaces: 2 } },
     { key: 'live_ctr', label: 'CTR của LIVE', x: .398, y: .583, width: .09, height: .05, valueKind: 'percentage' },
     { key: 'shares', label: 'Lượt chia sẻ', x: .537, y: .583, width: .07, height: .05, valueKind: 'count' },
-    { key: 'estimated_gmv', label: 'GMV ước tính', x: .676, y: .583, width: .08, height: .05, valueKind: 'compact' },
+    { key: 'estimated_gmv', label: 'GMV ước tính', x: .676, y: .583, width: .08, height: .05, valueKind: 'compact', displayFormat: { compactSuffix: 'M', decimalPlaces: 2 } },
   ],
 }
 
 export const normalizeOcrLabel = (label: string) => label
+  .normalize('NFKC')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
   .replace(/[Đđ]/g, 'd')
@@ -193,8 +412,65 @@ export const normalizeOcrLabel = (label: string) => label
   .replace(/[^a-z0-9]+/g, ' ')
   .trim()
 
-export function mapOcrLabel(platform: ReportDashboardPlatform, label: string): ReportMetricKey | undefined {
-  return aliases[platform][normalizeOcrLabel(label)]
+export function mapOcrLabel(
+  platform: ReportDashboardPlatform,
+  label: string,
+  expectedKeys?: Iterable<ReportMetricKey>,
+): ReportMetricKey | undefined {
+  const platformAliases = aliases[platform]
+  const normalized = normalizeOcrLabel(cleanTrustedTextLabel(label))
+  if (!normalized) return undefined
+  const expected = expectedKeys ? new Set(expectedKeys) : null
+  const candidates = [
+    normalized,
+    normalized.replace(/^(?:i|l|1)\s+/, ''),
+    normalized.replace(/\s+(?:d|vnd|usd)$/, ''),
+  ]
+
+  for (const candidate of candidates) {
+    const exact = platformAliases[candidate]
+    if (exact && (!expected || expected.has(exact))) return exact
+  }
+
+  const allowedAliases = Object.entries(platformAliases)
+    .filter((entry): entry is [string, ReportMetricKey] => !expected || expected.has(entry[1]))
+  const prefixSuffixMatches = allowedAliases.filter(([alias]) => {
+    if (alias.length < 4) return false
+    return candidates.some(candidate =>
+      candidate.startsWith(`${alias} `)
+      || candidate.endsWith(` ${alias}`),
+    )
+  })
+  const uniquePrefixSuffix = uniqueMetricKey(prefixSuffixMatches)
+  if (uniquePrefixSuffix) return uniquePrefixSuffix
+
+  const candidateTokens = new Set(normalized.split(' ').filter(Boolean))
+  const tokenMatches = allowedAliases.filter(([alias]) => {
+    const aliasTokens = alias.split(' ').filter(Boolean)
+    if (aliasTokens.length < 2 || candidateTokens.size > aliasTokens.length + 2) return false
+    const overlap = aliasTokens.filter(token => candidateTokens.has(token)).length
+    return overlap / aliasTokens.length >= .8
+  })
+  const uniqueTokenMatch = uniqueMetricKey(tokenMatches)
+  if (uniqueTokenMatch) return uniqueTokenMatch
+
+  if (!expected) return undefined
+  const fuzzyMatches = allowedAliases
+    .filter(([alias]) => alias.length >= 4 && normalized.length >= 4)
+    .map(([alias, key]) => ({ key, score: stringSimilarity(normalized, alias) }))
+    .sort((left, right) => right.score - left.score)
+  const best = fuzzyMatches[0]
+  const competing = fuzzyMatches.find(candidate => candidate.key !== best?.key)
+  return best
+    && best.score >= .86
+    && (!competing || best.score - competing.score >= .06)
+    ? best.key
+    : undefined
+}
+
+function uniqueMetricKey(matches: Array<[string, ReportMetricKey]>) {
+  const keys = [...new Set(matches.map(([, key]) => key))]
+  return keys.length === 1 ? keys[0] : undefined
 }
 
 export function parseOcrValue(raw: string): ReportMetricValue {
@@ -236,31 +512,51 @@ export function parseOcrValue(raw: string): ReportMetricValue {
   return Number.isFinite(parsed) ? parsed * multiplier : original
 }
 
+function parseMetricOcrValue(key: ReportMetricKey, raw: string): ReportMetricValue {
+  if (key === 'average_view_duration_seconds' || key === 'live_duration_seconds') {
+    const shortDuration = raw.trim().match(/^(\d{1,3}):(\d{2})$/)
+    if (shortDuration) return Number(shortDuration[1]) * 60 + Number(shortDuration[2])
+    const secondsDuration = raw.trim().match(/^(\d+(?:[.,]\d+)?)\s*(?:s|sec|secs|second|seconds)$/i)
+    if (secondsDuration) {
+      const seconds = Number(secondsDuration[1].replace(',', '.'))
+      return Number.isFinite(seconds) ? seconds : null
+    }
+  }
+  const normalizedRaw = isPercentageMetric(key)
+    ? raw.trim().replace(/([xX°ºoO])\s*$/, '%')
+    : raw
+  return parseOcrValue(normalizedRaw)
+}
+
 export function buildOcrMetric(
   platform: ReportDashboardPlatform,
   originalLabel: string,
   rawValue: string,
   confidence: OcrMetricValue['confidence'],
   source: NonNullable<OcrMetricValue['source']> = 'trusted_text',
+  status: NonNullable<OcrMetricValue['status']> = 'review_required',
+  normalizedKey?: ReportMetricKey,
 ): [ReportMetricKey, OcrMetricValue] | null {
-  const key = mapOcrLabel(platform, originalLabel)
+  const key = normalizedKey || mapOcrLabel(platform, originalLabel)
   if (!key) return null
-  const parsedValue = parseOcrValue(rawValue)
+  const parsedValue = parseMetricOcrValue(key, rawValue)
   if (
     parsedValue === null ||
-    (typeof parsedValue === 'number' && !Number.isFinite(parsedValue))
+    (typeof parsedValue === 'number' && !Number.isFinite(parsedValue)) ||
+    validateMetricCandidate(key, parsedValue, rawValue)
   ) return null
   return [key, {
     value: parsedValue,
     candidate_value: parsedValue,
+    normalized_value: parsedValue,
     confidence,
-    needs_review: true,
+    needs_review: status !== 'confirmed' && status !== 'accepted',
     original_label: originalLabel,
     raw_value: rawValue,
     normalized_key: key,
     unit: inferMetricUnit(key, rawValue),
     source,
-    status: 'review_required',
+    status,
   }]
 }
 
@@ -269,54 +565,302 @@ export function parseDashboardOcrText(
   rawOutput: string,
   source: NonNullable<OcrMetricValue['source']> = 'trusted_text',
 ): OcrReviewData {
-  const metrics: OcrReviewData['metrics'] = {}
+  const candidateInputs: MetricCandidateInput[] = []
   const unmappedFields: NonNullable<OcrReviewData['unmapped_fields']> = []
   const lines = rawOutput
     .split(/\r?\n/)
-    .map(line => line.trim())
+    .map(line => normalizeTrustedTextLine(line))
     .filter(Boolean)
+  const consumed = new Set<number>()
+
+  // Priority 1: an exact label and value on the same OCR line.
+  for (let index = 0; index < lines.length; index += 1) {
+    const separated = splitTrustedTextLine(platform, lines[index])
+    if (!separated) continue
+    consumed.add(index)
+    const candidate = buildOcrMetric(
+      platform,
+      separated.label,
+      separated.value,
+      'medium',
+      source,
+      'review_required',
+    )
+    if (candidate) {
+      collectMetricCandidate(candidateInputs, candidate[0], candidate[1])
+    } else {
+      addUnmappedTextField(unmappedFields, separated.label, separated.value, source)
+    }
+  }
+
+  const semanticLines = lines.flatMap((line, index): SequentialSemanticLine[] => {
+    if (consumed.has(index)) return []
+    const key = mapOcrLabelWithContext(platform, lines, index)
+    if (key) return [{ index, line, type: 'label', key }]
+    const value = parseStandaloneOcrValue(platform, line)
+    return value === null ? [] : [{ index, line, type: 'value', value }]
+  })
+
+  // Priority 2: an isolated label immediately followed by a compatible value.
+  for (let index = 0; index < semanticLines.length - 1; index += 1) {
+    const label = semanticLines[index]
+    const value = semanticLines[index + 1]
+    if (label.type !== 'label' || value.type !== 'value') continue
+    const previousIsLabel = semanticLines[index - 1]?.type === 'label'
+    const physicallyAdjacent = value.index === label.index + 1
+    if (previousIsLabel || !physicallyAdjacent || !isSequentialValueCompatible(platform, label.key, value.line)) continue
+    const candidate = buildOcrMetric(
+      platform,
+      label.line,
+      value.line,
+      'medium',
+      source,
+      'review_required',
+      label.key,
+    )
+    if (!candidate) continue
+    collectMetricCandidate(candidateInputs, candidate[0], candidate[1])
+    consumed.add(label.index)
+    consumed.add(value.index)
+  }
+
+  // Priority 3: consecutive label blocks followed by sequential value blocks.
+  const remainingSemanticLines = semanticLines.filter(line => !consumed.has(line.index))
+  for (let index = 0; index < remainingSemanticLines.length;) {
+    if (remainingSemanticLines[index].type !== 'label') {
+      index += 1
+      continue
+    }
+    const labels: SequentialLabelLine[] = []
+    while (remainingSemanticLines[index]?.type === 'label') {
+      labels.push(remainingSemanticLines[index] as SequentialLabelLine)
+      index += 1
+    }
+    const values: SequentialValueLine[] = []
+    while (remainingSemanticLines[index]?.type === 'value') {
+      values.push(remainingSemanticLines[index] as SequentialValueLine)
+      index += 1
+    }
+    if (labels.length < 2 || values.length === 0) continue
+
+    const sequentialPairs = pairSequentialLabelValueBlock(platform, labels, values)
+    for (const [label, value] of sequentialPairs) {
+      const candidate = buildOcrMetric(
+        platform,
+        label.line,
+        value.line,
+        'low',
+        'raw_text_sequence',
+        'review_required',
+        label.key,
+      )
+      if (!candidate) continue
+      collectMetricCandidate(candidateInputs, candidate[0], candidate[1])
+      consumed.add(label.index)
+      consumed.add(value.index)
+    }
+
+    // Priority 4: platform section/card order can recover omitted labels without
+    // shifting a value outside the section that owns it.
+    for (const { label, value, inferredLabel, sectionId } of pairPlatformTemplateOrder(platform, labels, values)) {
+      const candidate = buildOcrMetric(
+        platform,
+        label.line,
+        value.line,
+        'low',
+        'raw_text_sequence',
+        'review_required',
+        label.key,
+      )
+      if (!candidate) continue
+      if (inferredLabel) {
+        candidate[1].conflict_warning = `${label.line} was inferred from the ${platform} ${sectionId} KPI order because OCR omitted the label.`
+      }
+      collectMetricCandidate(candidateInputs, candidate[0], candidate[1])
+      consumed.add(label.index)
+      consumed.add(value.index)
+    }
+  }
+
+  // Priority 5: some OCR layouts emit a value block before its label block.
+  const reverseSemanticLines = semanticLines.filter(line => !consumed.has(line.index))
+  for (let index = 0; index < reverseSemanticLines.length;) {
+    if (reverseSemanticLines[index].type !== 'value') {
+      index += 1
+      continue
+    }
+    const values: SequentialValueLine[] = []
+    while (reverseSemanticLines[index]?.type === 'value') {
+      values.push(reverseSemanticLines[index] as SequentialValueLine)
+      index += 1
+    }
+    const labels: SequentialLabelLine[] = []
+    while (reverseSemanticLines[index]?.type === 'label') {
+      labels.push(reverseSemanticLines[index] as SequentialLabelLine)
+      index += 1
+    }
+    if (values.length === 0 || labels.length < 2) continue
+    const pairs = [
+      ...pairSequentialLabelValueBlock(platform, labels, values),
+      ...pairPlatformTemplateOrder(platform, labels, values).map(({ label, value }) => [label, value] as [SequentialLabelLine, SequentialValueLine]),
+    ]
+    for (const [label, value] of pairs) {
+      const candidate = buildOcrMetric(
+        platform,
+        label.line,
+        value.line,
+        'low',
+        'raw_text_sequence',
+        'review_required',
+        label.key,
+      )
+      if (!candidate) continue
+      collectMetricCandidate(candidateInputs, candidate[0], candidate[1])
+      consumed.add(label.index)
+      consumed.add(value.index)
+    }
+  }
 
   for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index]
-    const separator = splitTrustedTextLine(platform, line)
-    const nextLine = lines[index + 1]
-    const nextLineCandidate = !separator && mapOcrLabel(platform, line) && nextLine
-      ? buildOcrMetric(platform, line, nextLine, 'medium', source)
-      : null
-    const candidate = separator
-      ? buildOcrMetric(platform, separator.label, separator.value, 'medium', source)
-      : nextLineCandidate
-
-    if (nextLineCandidate) index += 1
-    if (!separator && !nextLineCandidate) {
-      unmappedFields.push({
-        original_label: line,
-        original_value: '',
-        confidence: 'low',
-        source,
-        rejection_reason: 'The trusted text line has no recognizable label/value pair.',
-      })
+    if (consumed.has(index)) continue
+    const key = mapOcrLabelWithContext(platform, lines, index)
+    const value = parseStandaloneOcrValue(platform, lines[index])
+    if (!key && value === null) {
+      if (!/^\[(?:label|numeric|card) pass\]$/i.test(lines[index])) {
+        addUnmappedTextField(
+          unmappedFields,
+          lines[index],
+          '',
+          source,
+          'The OCR line is not a recognized metric label or value.',
+        )
+      }
       continue
     }
-    if (!candidate) {
-      unmappedFields.push({
-        original_label: separator?.label || line,
-        original_value: separator?.value || nextLine || '',
-        confidence: 'low',
-        source,
-        rejection_reason: `No ${platform} metric label matched this trusted text field.`,
-      })
-      continue
-    }
-    metrics[candidate[0]] = candidate[1]
+    addUnmappedTextField(
+      unmappedFields,
+      key ? lines[index] : `Unmapped OCR value (line ${index + 1})`,
+      key ? '' : lines[index],
+      key ? source : 'raw_text_sequence',
+      key
+        ? 'The OCR label has no unambiguous compatible value.'
+        : 'The OCR value has no unambiguous compatible label.',
+    )
   }
+
+  const expectedKeys = platform === 'other'
+    ? []
+    : platformOcrConfigs[platform].metricOrder.filter(isCanonicalMetricKey)
+  const selection = selectBestMetricCandidates(candidateInputs, expectedKeys)
+  const metrics: OcrReviewData['metrics'] = selection.selectedByKey
+  applyCrossMetricSanity(metrics)
 
   return {
     status: 'review_required',
     source_platform: platform,
     metrics,
-    unmapped_fields: unmappedFields,
+    discarded_conflicts: selection.discardedConflicts,
+    missing_metric_keys: selection.missingKeys,
+    unmapped_fields: filterKnownMetricUnmappedFields(platform, unmappedFields, expectedKeys),
     raw_output: rawOutput,
+  }
+}
+
+export type PlatformOcrIdentifier = ReportDashboardPlatform | 'shopee' | 'tts'
+export type ExistingOcrCandidates = OcrReviewData | OcrReviewData['metrics']
+
+export interface ParsePlatformOcrTextOptions {
+  platform: PlatformOcrIdentifier
+  rawText: string
+  existingCandidates?: ExistingOcrCandidates
+}
+
+export interface PlatformOcrParseResult {
+  metrics: Partial<Record<ReportMetricKey, ReportMetricValue>>
+  candidates: OcrReviewData['metrics']
+  appliedKeys: ReportMetricKey[]
+  reviewRequiredKeys: ReportMetricKey[]
+  unmappedLines: string[]
+  warnings: string[]
+  review: OcrReviewData
+}
+
+export function parsePlatformOcrText({
+  platform,
+  rawText,
+  existingCandidates,
+}: ParsePlatformOcrTextOptions): PlatformOcrParseResult {
+  const canonicalPlatform = platform === 'shopee'
+    ? 'shopee_live'
+    : platform === 'tts'
+      ? 'tiktok_shop'
+      : platform
+  const parsedReview = parseDashboardOcrText(canonicalPlatform, rawText, 'raw_text_exact')
+  const candidateInputs: MetricCandidateInput[] = []
+  const existingMetrics = existingCandidates
+    ? 'metrics' in existingCandidates
+      ? existingCandidates.metrics
+      : existingCandidates
+    : {}
+  for (const [key, candidate] of Object.entries(existingMetrics) as Array<[ReportMetricKey, OcrMetricValue | undefined]>) {
+    if (candidate) collectMetricCandidate(candidateInputs, key, { ...candidate })
+  }
+  for (const [key, candidate] of Object.entries(parsedReview.metrics) as Array<[ReportMetricKey, OcrMetricValue | undefined]>) {
+    if (candidate) collectMetricCandidate(candidateInputs, key, { ...candidate })
+  }
+  const expectedKeys = canonicalPlatform === 'other'
+    ? []
+    : platformOcrConfigs[canonicalPlatform].metricOrder.filter(isCanonicalMetricKey)
+  const selection = selectBestMetricCandidates(candidateInputs, expectedKeys)
+  const candidates: OcrReviewData['metrics'] = selection.selectedByKey
+
+  const review: OcrReviewData = {
+    ...parsedReview,
+    status: Object.values(candidates).some(candidate => metricHasUsableValue(candidate!))
+      ? 'review_required'
+      : parsedReview.status,
+    metrics: candidates,
+    discarded_conflicts: selection.discardedConflicts,
+    missing_metric_keys: selection.missingKeys,
+    unmapped_fields: [
+      ...(existingCandidates && 'metrics' in existingCandidates ? existingCandidates.unmapped_fields || [] : []),
+      ...(parsedReview.unmapped_fields || []),
+    ],
+  }
+  const allowedKeys = canonicalPlatform === 'other'
+    ? new Set<ReportMetricKey>()
+    : new Set(platformOcrConfigs[canonicalPlatform].finalReportFields)
+  const metrics: Partial<Record<ReportMetricKey, ReportMetricValue>> = {}
+  const appliedKeys: ReportMetricKey[] = []
+  const reviewRequiredKeys: ReportMetricKey[] = []
+  for (const [key, candidate] of Object.entries(candidates) as Array<[ReportMetricKey, OcrMetricValue | undefined]>) {
+    if (!candidate || !allowedKeys.has(key) || !metricHasUsableValue(candidate)) continue
+    const value = candidate.value ?? candidate.candidate_value
+    if (value === null || value === undefined) continue
+    metrics[key] = value
+    appliedKeys.push(key)
+    if (
+      candidate.status === 'review_required'
+      || candidate.status === 'low_confidence'
+      || candidate.needs_review
+    ) reviewRequiredKeys.push(key)
+  }
+  const unmappedLines = (review.unmapped_fields || []).map(field =>
+    [field.original_label, field.original_value].filter(Boolean).join(': '),
+  )
+  const warnings = [...new Set([
+    ...Object.values(candidates).flatMap(candidate => candidate?.conflict_warning ? [candidate.conflict_warning] : []),
+    ...Object.values(candidates).flatMap(candidate => candidate?.rejection_reason ? [candidate.rejection_reason] : []),
+    ...(review.error_message ? [review.error_message] : []),
+  ])]
+  return {
+    metrics,
+    candidates,
+    appliedKeys,
+    reviewRequiredKeys,
+    unmappedLines,
+    warnings,
+    review,
   }
 }
 
@@ -324,13 +868,15 @@ export function mapDashboardImageRecognition(
   platform: ReportDashboardPlatform,
   recognition: OcrImageRecognition,
 ): OcrReviewData {
-  const metrics: OcrReviewData['metrics'] = {}
+  const candidateInputs: MetricCandidateInput[] = []
   const unmappedFields: NonNullable<OcrReviewData['unmapped_fields']> = []
   const consumedWords = new Set<OcrRecognizedWord>()
   const lines = groupRecognizedWords(recognition.words)
   const aliasesByLength = Object.entries(aliases[platform])
     .map(([label, key]) => ({ label, key, tokens: label.split(' ') }))
     .sort((left, right) => right.tokens.length - left.tokens.length)
+
+  applyCardOutputCandidates(platform, recognition, candidateInputs, consumedWords)
 
   for (const line of lines.filter(candidate => candidate.pass === 'label')) {
     const searchableWords = line.words.filter(word => normalizeOcrLabel(word.text))
@@ -352,6 +898,18 @@ export function mapDashboardImageRecognition(
       if (labelConfidence < 65) continue
       const pairedValue = findMetricValueWord(lines, line, labelWords, consumedWords)
       if (!pairedValue) continue
+      const expectedCell = platform === 'other'
+        ? undefined
+        : platformMetricLayouts[platform].find(cell => cell.key === alias.key)
+      if (
+        expectedCell
+        && !wordIsInsideLayoutCell(
+          pairedValue.word,
+          expectedCell,
+          recognition.original_dimensions,
+          1.2,
+        )
+      ) continue
 
       const parsedValue = parseOcrValue(pairedValue.word.text)
       const sanityError = validateMetricCandidate(alias.key, parsedValue, pairedValue.word.text)
@@ -362,7 +920,13 @@ export function mapDashboardImageRecognition(
         match.similarity * 100,
       )
       const confidence = confidenceFromScore(confidenceNumber)
-      const accepted = confidence === 'high' && !sanityError
+      const exactLabel = match.similarity >= .95
+      const accepted = confidence === 'high'
+        && exactLabel
+        && pairedValue.competingValues === 0
+        && !sanityError
+      const labelBox = unionBoundingBoxes(labelWords)
+      const valueBox = pairedValue.word.bounding_box
       const candidate: OcrMetricValue = {
         value: sanityError ? null : parsedValue,
         candidate_value: parsedValue,
@@ -373,8 +937,18 @@ export function mapDashboardImageRecognition(
         normalized_key: alias.key,
         unit: inferMetricUnit(alias.key, pairedValue.word.text),
         bounding_box: unionBoundingBoxes([...labelWords, pairedValue.word]),
-        source: 'image_ocr',
-        status: sanityError ? 'rejected' : accepted ? 'accepted' : 'review_required',
+        label_box: labelBox,
+        value_box: valueBox,
+        pairing_reason: accepted
+          ? 'Exact label and value occupy the same platform KPI card.'
+          : pairedValue.competingValues > 0
+            ? 'Multiple nearby values compete for this label.'
+            : 'Label and value were paired by bounded spatial proximity.',
+        pair_score: confidenceNumber / 100,
+        source: match.similarity >= 0.95 && pairedValue.pairing !== 'spatial'
+          ? 'word_box_exact'
+          : 'spatial_fallback',
+        status: sanityError ? 'rejected' : accepted ? 'confirmed' : 'review_required',
         rejection_reason: sanityError || (accepted ? undefined : 'Image OCR confidence or spatial pairing is below the auto-fill threshold.'),
         label_confidence: labelConfidence,
         value_confidence: pairedValue.word.confidence,
@@ -382,21 +956,25 @@ export function mapDashboardImageRecognition(
         label_source: 'ocr_text',
         value_source_pass: pairedValue.word.pass,
       }
-      const existing = metrics[alias.key]
-      if (!existing || confidenceNumber > candidateScore(existing)) {
-        metrics[alias.key] = candidate
-      }
+      collectMetricCandidate(candidateInputs, alias.key, candidate)
       labelWords.forEach(word => consumedWords.add(word))
       consumedWords.add(pairedValue.word)
     }
   }
 
   if (platform !== 'other') {
-    applyPlatformLayoutCandidates(platform, recognition, metrics, consumedWords)
+    applyPlatformLayoutCandidates(platform, recognition, candidateInputs, consumedWords)
   }
+  // Raw text is intentionally last. Browser/Tesseract reading order is unstable
+  // for these dashboards, so text may fill gaps but cannot replace grounded
+  // card, word-box, or normalized-grid candidates.
+  applyExactRawTextCandidates(platform, recognition.text, candidateInputs)
 
-  applyCardOutputCandidates(platform, recognition.pass_output.card, metrics)
-  applyImageTextFallback(platform, recognition.text, metrics)
+  const expectedKeys = platform === 'other'
+    ? []
+    : platformOcrConfigs[platform].metricOrder.filter(isCanonicalMetricKey)
+  const selection = selectBestMetricCandidates(candidateInputs, expectedKeys)
+  const metrics: OcrReviewData['metrics'] = selection.selectedByKey
   applyCrossMetricSanity(metrics)
 
   for (const line of lines) {
@@ -412,13 +990,20 @@ export function mapDashboardImageRecognition(
       original_value: remaining.slice(Math.max(firstNumeric, 0)).map(word => word.text).join(' '),
       confidence: confidenceFromScore(Math.min(...remaining.map(word => word.confidence))),
       bounding_box: unionBoundingBoxes(remaining),
-      source: 'image_ocr',
+      source: 'spatial_fallback',
       rejection_reason: `No spatially valid ${platform} label/value pair matched this cropped KPI text.`,
     })
   }
 
+  const allExpectedMetricsConfirmed = expectedKeys.length > 0 && expectedKeys.every(key =>
+    metrics[key]?.status === 'confirmed' && metricHasUsableValue(metrics[key]!),
+  )
   return {
-    status: recognition.text.trim() ? 'review_required' : 'failed',
+    status: allExpectedMetricsConfirmed
+      ? 'confirmed'
+      : recognition.text.trim() || recognition.words.length
+        ? 'review_required'
+        : 'failed',
     source_platform: platform,
     engine: recognition.engine,
     recognition_language: recognition.language,
@@ -427,9 +1012,127 @@ export function mapDashboardImageRecognition(
     original_dimensions: recognition.original_dimensions,
     processed_dimensions: recognition.processed_dimensions,
     metrics,
-    unmapped_fields: unmappedFields,
+    discarded_conflicts: selection.discardedConflicts,
+    missing_metric_keys: selection.missingKeys,
+    unmapped_fields: filterKnownMetricUnmappedFields(platform, unmappedFields, expectedKeys),
     raw_output: formatRecognitionOutput(recognition),
     error_message: recognition.text.trim() ? undefined : 'The OCR engine did not find readable text in this image.',
+  }
+}
+
+export interface SpatialOcrMetricCandidate {
+  canonical_key: ReportMetricKey
+  raw_label: string
+  raw_value: string
+  normalized_value: ReportMetricValue
+  label_box?: OcrMetricValue['label_box']
+  value_box?: OcrMetricValue['value_box']
+  source: NonNullable<OcrMetricValue['source']> | 'missing'
+  confidence: OcrMetricValue['confidence']
+  status: 'confirmed' | 'review_required' | 'missing'
+  pairing_reason: string
+  pair_score: number
+}
+
+export interface SpatialOcrExtractionResult {
+  metrics: OcrReviewData['metrics']
+  candidates: SpatialOcrMetricCandidate[]
+  unmatchedLabels: string[]
+  unmatchedValues: string[]
+  diagnostics: {
+    sourcePriority: readonly string[]
+    confirmed: number
+    reviewRequired: number
+    missing: number
+  }
+}
+
+export function extractPlatformMetricsFromSpatialOcr({
+  platform,
+  imageWidth,
+  imageHeight,
+  words,
+  lines = [],
+  cardOutput,
+}: {
+  platform: Exclude<ReportDashboardPlatform, 'other'>
+  imageWidth: number
+  imageHeight: number
+  words: OcrRecognizedWord[]
+  lines?: OcrRecognizedWord[][]
+  cardOutput?: Record<string, string[]>
+}): SpatialOcrExtractionResult {
+  const spatialWords = words.length ? words : lines.flat()
+  const review = mapDashboardImageRecognition(platform, {
+    engine: 'tesseract.js',
+    language: 'eng+vie',
+    text: '',
+    pass_output: {
+      label: '',
+      numeric: '',
+      card: cardOutput,
+    },
+    confidence: spatialWords.length
+      ? spatialWords.reduce((sum, word) => sum + word.confidence, 0) / spatialWords.length
+      : 0,
+    words: spatialWords,
+    crop_box: { left: 0, top: 0, width: 1, height: 1 },
+    original_dimensions: { width: imageWidth, height: imageHeight },
+    processed_dimensions: { width: imageWidth, height: imageHeight },
+  })
+  const expectedKeys = platformOcrConfigs[platform].metricOrder
+  const candidates = expectedKeys.map(key => {
+    const metric = review.metrics[key]
+    if (!metric || !metricHasUsableValue(metric)) {
+      return {
+        canonical_key: key,
+        raw_label: preferredPlatformMetricLabel(platform, key),
+        raw_value: '',
+        normalized_value: null,
+        source: 'missing' as const,
+        confidence: 'low' as const,
+        status: 'missing' as const,
+        pairing_reason: 'No spatially valid value was recognized in the expected KPI region.',
+        pair_score: 0,
+      }
+    }
+    return {
+      canonical_key: key,
+      raw_label: metric.original_label || preferredPlatformMetricLabel(platform, key),
+      raw_value: metric.raw_value || '',
+      normalized_value: metric.value ?? metric.candidate_value ?? null,
+      label_box: metric.label_box,
+      value_box: metric.value_box || metric.bounding_box,
+      source: metric.source || 'image_ocr',
+      confidence: metric.confidence,
+      status: metric.status === 'confirmed' || metric.status === 'accepted'
+        ? 'confirmed' as const
+        : 'review_required' as const,
+      pairing_reason: metric.pairing_reason || 'Spatial OCR candidate requires review.',
+      pair_score: metric.pair_score ?? candidateScore(metric) / 100,
+    }
+  })
+  return {
+    metrics: review.metrics,
+    candidates,
+    unmatchedLabels: (review.unmapped_fields || [])
+      .map(field => field.original_label)
+      .filter(Boolean),
+    unmatchedValues: (review.unmapped_fields || [])
+      .map(field => field.original_value)
+      .filter(Boolean),
+    diagnostics: {
+      sourcePriority: [
+        'same_card',
+        'label_value_proximity',
+        'platform_grid',
+        'raw_text_same_line',
+        'raw_text_sequence',
+      ],
+      confirmed: candidates.filter(candidate => candidate.status === 'confirmed').length,
+      reviewRequired: candidates.filter(candidate => candidate.status === 'review_required').length,
+      missing: candidates.filter(candidate => candidate.status === 'missing').length,
+    },
   }
 }
 
@@ -456,11 +1159,273 @@ function cleanTrustedTextLabel(label: string) {
     .trim()
 }
 
+function normalizeTrustedTextLine(line: string) {
+  const normalized = line
+    .normalize('NFKC')
+    .replace(/\u00a0/g, ' ')
+    .replace(/^[\s|!¦•·▪►▶◆◇]+/, '')
+    .replace(/[‐‑‒–—]+/g, '-')
+    .replace(/\s*\|\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!normalized) return ''
+  if (/^(?:[-_=~*.]{3,}|[<>]{1,2}|\d+\s*\/\s*\d+)$/u.test(normalized)) return ''
+  if (/^(?:next|previous|back|close|page\s+\d+)$/i.test(normalized)) return ''
+  if (!/[\p{L}\p{N}]/u.test(normalized)) return ''
+  return normalized
+}
+
+function mapOcrLabelWithContext(
+  platform: ReportDashboardPlatform,
+  lines: string[],
+  index: number,
+) {
+  const direct = mapOcrLabel(platform, lines[index])
+  if (direct || platform === 'other') return direct
+  const config = platformOcrConfigs[platform]
+  const normalizedText = normalizeOcrLabel(lines[index])
+  const mistakes = config.commonMistakes.filter(mistake => mistake.normalizedText === normalizedText)
+
+  const previous = findNearbyMappedLabel(platform, lines, index, -1)
+  const next = findNearbyMappedLabel(platform, lines, index, 1)
+  const contextualMistake = mistakes.find(mistake => {
+    const section = config.sections.find(candidate => candidate.id === mistake.section)
+    return section
+      && section.metricOrder.includes(mistake.metric)
+      && (!mistake.previous || previous === mistake.previous)
+      && (!mistake.next || next === mistake.next)
+  })?.metric
+  if (contextualMistake) return contextualMistake
+
+  const nearbySection = config.sections.find(section =>
+    (previous && section.metricOrder.includes(previous))
+    || (next && section.metricOrder.includes(next)),
+  )
+  return nearbySection
+    ? mapOcrLabel(platform, lines[index], nearbySection.metricOrder)
+    : undefined
+}
+
+function findNearbyMappedLabel(
+  platform: ReportDashboardPlatform,
+  lines: string[],
+  start: number,
+  direction: -1 | 1,
+) {
+  for (
+    let index = start + direction, distance = 1;
+    index >= 0 && index < lines.length && distance <= 4;
+    index += direction, distance += 1
+  ) {
+    const key = mapOcrLabel(platform, lines[index])
+    if (key) return key
+    if (parseStandaloneOcrValue(platform, lines[index]) !== null) break
+  }
+  return undefined
+}
+
+type SequentialLabelLine = {
+  index: number
+  line: string
+  type: 'label'
+  key: ReportMetricKey
+}
+
+type SequentialValueLine = {
+  index: number
+  line: string
+  type: 'value'
+  value: ReportMetricValue
+}
+
+type SequentialSemanticLine = SequentialLabelLine | SequentialValueLine
+
+function parseStandaloneOcrValue(
+  platform: ReportDashboardPlatform,
+  line: string,
+): ReportMetricValue {
+  if (!/\d/.test(line) || splitTrustedTextLine(platform, line)) return null
+  const parsed = parseOcrValue(line)
+  return typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : null
+}
+
+function pairSequentialLabelValueBlock(
+  platform: ReportDashboardPlatform,
+  labels: SequentialLabelLine[],
+  values: SequentialValueLine[],
+): Array<[SequentialLabelLine, SequentialValueLine]> {
+  if (labels.length === values.length) {
+    return labels.flatMap((label, index) =>
+      isSequentialValueCompatible(platform, label.key, values[index].line)
+        ? [[label, values[index]]]
+        : [],
+    )
+  }
+
+  // If a value is missing or extra, retain only mutual one-to-one type matches.
+  // Ambiguous count/currency shifts stay unmapped for manual review.
+  const compatibleValuesByLabel = labels.map(label =>
+    values.filter(value => isSequentialValueCompatible(platform, label.key, value.line)),
+  )
+  const compatibleLabelsByValue = values.map(value =>
+    labels.filter(label => isSequentialValueCompatible(platform, label.key, value.line)),
+  )
+  const pairs = labels.flatMap((label, labelIndex) => {
+    const compatibleValues = compatibleValuesByLabel[labelIndex]
+    if (compatibleValues.length !== 1) return []
+    const value = compatibleValues[0]
+    const valueIndex = values.indexOf(value)
+    return compatibleLabelsByValue[valueIndex].length === 1
+      ? [[label, value] as [SequentialLabelLine, SequentialValueLine]]
+      : []
+  })
+  return pairs.filter((pair, index) =>
+    index === 0
+    || pairs[index - 1][0].index < pair[0].index
+      && pairs[index - 1][1].index < pair[1].index,
+  )
+}
+
+function pairPlatformTemplateOrder(
+  platform: ReportDashboardPlatform,
+  labels: SequentialLabelLine[],
+  values: SequentialValueLine[],
+) {
+  if (platform === 'other') return []
+  const config = platformOcrConfigs[platform]
+  const templates = [
+    ...config.sections.map(section => ({
+      id: section.id,
+      order: section.metricOrder,
+      minimumRecognizedLabels: Math.min(2, section.metricOrder.length),
+    })),
+    ...(config.sequenceOrders || []).map(sequence => ({
+      id: sequence.id,
+      order: sequence.metricOrder,
+      minimumRecognizedLabels: Math.min(3, sequence.metricOrder.length),
+    })),
+    {
+      id: 'dashboard',
+      order: config.metricOrder,
+      minimumRecognizedLabels: Math.min(3, config.metricOrder.length),
+    },
+  ]
+  const recognizedKeys = labels.map(label => label.key)
+  const selectedTemplate = templates.find(template => {
+    if (values.length !== template.order.length || labels.length < template.minimumRecognizedLabels) return false
+    if (!recognizedKeys.every(key => template.order.includes(key))) return false
+    let cursor = 0
+    return recognizedKeys.every(key => {
+      const index = template.order.indexOf(key, cursor)
+      if (index < 0) return false
+      cursor = index + 1
+      return true
+    })
+  })
+  if (!selectedTemplate) return []
+
+  const labelByKey = new Map(labels.map(label => [label.key, label]))
+  return selectedTemplate.order.flatMap((key, index) => {
+    const value = values[index]
+    if (!value || !isSequentialValueCompatible(platform, key, value.line)) return []
+    const recognizedLabel = labelByKey.get(key)
+    const label: SequentialLabelLine = recognizedLabel || {
+      index: value.index,
+      line: preferredPlatformMetricLabel(platform, key),
+      type: 'label',
+      key,
+    }
+    return [{
+      label,
+      value,
+      inferredLabel: !recognizedLabel,
+      sectionId: selectedTemplate.id,
+    }]
+  })
+}
+
+function preferredPlatformMetricLabel(
+  platform: Exclude<ReportDashboardPlatform, 'other'>,
+  key: ReportMetricKey,
+) {
+  if (platform === 'shopee_live' && shopeeTemplateLabels[key]) return shopeeTemplateLabels[key]!
+  return Object.entries(platformOcrConfigs[platform].aliases)
+    .find(([, candidateKey]) => candidateKey === key)?.[0]
+    || key
+}
+
+function isSequentialValueCompatible(
+  platform: ReportDashboardPlatform,
+  key: ReportMetricKey,
+  rawValue: string,
+) {
+  const parsedValue = parseMetricOcrValue(key, rawValue)
+  if (validateMetricCandidate(key, parsedValue, rawValue)) return false
+  if (typeof parsedValue !== 'number' || !Number.isFinite(parsedValue)) return false
+  if (platform === 'other') return true
+  const kind = platformOcrConfigs[platform].valueTypes[key]
+  if (!kind) return false
+  const hasPercent = /(?:%|[xX°ºoO])\s*$/.test(rawValue.trim())
+  const isDuration = isDurationOcrToken(rawValue)
+  const hasCurrency = /₫|đ|vnd|usd|\$/i.test(rawValue)
+  if (kind === 'percentage') return !isDuration && !hasCurrency && parsedValue >= 0 && parsedValue <= 100
+  if (kind === 'duration') return isDuration
+  if (hasPercent || isDuration) return false
+  if (kind === 'integer_count') return !hasCurrency && Number.isInteger(parsedValue)
+  return true
+}
+
+function isPercentageMetric(key: ReportMetricKey) {
+  return [
+    'ctr',
+    'conversion_rate',
+    'click_rate',
+    'live_ctr',
+    'ctor',
+    'comment_rate',
+    'click_to_order_rate',
+  ].includes(key)
+}
+
+function isDurationOcrToken(rawValue: string) {
+  const trimmed = rawValue.trim()
+  return /^(?:\d{1,2}:)?\d{1,3}:\d{2}$/.test(trimmed)
+    || /^\d+(?:[.,]\d+)?\s*(?:s|sec|secs|second|seconds)$/i.test(trimmed)
+}
+
+function addUnmappedTextField(
+  unmappedFields: NonNullable<OcrReviewData['unmapped_fields']>,
+  label: string,
+  value: string,
+  source: NonNullable<OcrMetricValue['source']>,
+  reason = 'The OCR text has no recognizable valid label/value pair.',
+) {
+  unmappedFields.push({
+    original_label: label,
+    original_value: value,
+    confidence: 'low',
+    source,
+    rejection_reason: reason,
+  })
+}
+
+function filterKnownMetricUnmappedFields(
+  platform: ReportDashboardPlatform,
+  fields: NonNullable<OcrReviewData['unmapped_fields']>,
+  expectedKeys: readonly ReportMetricKey[],
+) {
+  return fields.filter(field =>
+    !mapOcrLabel(platform, field.original_label, expectedKeys),
+  )
+}
+
 function applyCardOutputCandidates(
   platform: ReportDashboardPlatform,
-  cardOutput: Record<string, string[]> | undefined,
-  metrics: OcrReviewData['metrics'],
+  recognition: OcrImageRecognition,
+  candidates: MetricCandidateInput[],
+  consumedWords: Set<OcrRecognizedWord>,
 ) {
+  const cardOutput = recognition.pass_output.card
   if (!cardOutput) return
   const allowedKeys = new Set<ReportMetricKey>([
     ...commonReportMetricKeys,
@@ -470,50 +1435,182 @@ function applyCardOutputCandidates(
   for (const [rawKey, values] of Object.entries(cardOutput)) {
     const key = rawKey as ReportMetricKey
     if (!allowedKeys.has(key)) continue
-    const rawValue = values.find(value => {
-      const parsedValue = parseOcrValue(value)
-      return !validateMetricCandidate(key, parsedValue, value)
+    const layoutCell = platformMetricLayouts[platform as Exclude<ReportDashboardPlatform, 'other'>]
+      ?.find(cell => cell.key === key)
+    const cardCandidates = values.flatMap((value, variantIndex) => {
+      const normalizedRaw = normalizeLayoutCardValue(layoutCell, value)
+      const parsedValue = parseOcrValue(normalizedRaw)
+      if (validateMetricCandidate(key, parsedValue, normalizedRaw)) return []
+      const shapeScore = layoutCell
+        ? layoutValueShapeScore(layoutCell.valueKind, normalizedRaw, parsedValue)
+        : 1
+      const cardWord = findCardValueWord(key, value, recognition)
+      return [{
+        value,
+        normalizedRaw,
+        parsedValue,
+        shapeScore,
+        cardWord,
+        selectionScore: shapeScore * 10 + variantIndex * .01 + (cardWord?.confidence || 0) / 100_000,
+      }]
     })
-    if (rawValue === undefined) continue
-    const parsedValue = parseOcrValue(rawValue)
-    if (parsedValue === null || (typeof parsedValue === 'number' && !Number.isFinite(parsedValue))) continue
-    const existing = metrics[key]
-    if (existing && existing.status !== 'rejected' && metricHasUsableValue(existing)) continue
-    metrics[key] = {
-      value: parsedValue,
-      candidate_value: parsedValue,
-      confidence: 'medium',
-      needs_review: true,
-      original_label: platformMetricLayouts[platform as Exclude<ReportDashboardPlatform, 'other'>]
-        ?.find(cell => cell.key === key)?.label || rawKey,
-      raw_value: rawValue,
-      normalized_key: key,
-      unit: inferMetricUnit(key, rawValue),
-      source: 'image_ocr',
-      status: 'review_required',
-      label_confidence: 100,
-      label_source: 'platform_layout',
-      value_source_pass: 'card',
+    const viableCandidates = cardCandidates
+      .map(candidate => ({
+        ...candidate,
+        supportingWord: findCardValueWordSupport(platform, key, candidate.parsedValue, recognition),
+        conflictingWord: findConflictingCardValueWord(platform, key, candidate.parsedValue, recognition),
+      }))
+      .filter(candidate =>
+        candidate.shapeScore >= 0.75
+        && !(
+          platform === 'shopee_live'
+          && candidate.conflictingWord
+          && !candidate.supportingWord
+        )
+        && (
+          candidate.cardWord
+          || candidate.supportingWord
+          || recognition.words.every(word => word.pass === 'card')
+        ),
+      )
+    for (const candidate of viableCandidates) {
+      const rawValue = candidate.value
+      const parsedValue = candidate.parsedValue
+      if (parsedValue === null || (typeof parsedValue === 'number' && !Number.isFinite(parsedValue))) continue
+      const repaired = candidate.normalizedRaw !== rawValue.trim()
+      const clearPair = Boolean(
+        !repaired
+        && (candidate.cardWord?.confidence || candidate.supportingWord?.confidence || 0) >= 85
+        && candidate.shapeScore >= .85,
+      )
+      const valueEvidence = candidate.cardWord || candidate.supportingWord
+      const valueBox = valueEvidence?.bounding_box
+      collectMetricCandidate(candidates, key, {
+        value: parsedValue,
+        candidate_value: parsedValue,
+        confidence: clearPair ? 'high' : 'medium',
+        needs_review: !clearPair,
+        original_label: layoutCell?.label || rawKey,
+        raw_value: rawValue,
+        normalized_key: key,
+        unit: inferMetricUnit(key, candidate.normalizedRaw),
+        bounding_box: valueBox,
+        value_box: valueBox,
+        pairing_reason: repaired
+          ? 'Card value format was normalized using the declared grid-cell display format.'
+          : clearPair
+            ? 'Card OCR value is independently supported inside the same KPI grid cell.'
+            : 'Card OCR found a typed value, but independent word-box evidence is incomplete.',
+        pair_score: candidate.selectionScore,
+        source: 'card_exact',
+        status: clearPair ? 'confirmed' : 'review_required',
+        rejection_reason: repaired ? 'The displayed value format was repaired and must be reviewed.' : undefined,
+        label_confidence: 100,
+        label_source: 'platform_layout',
+        value_confidence: valueEvidence?.confidence,
+        spatial_score: clearPair ? 1 : undefined,
+        value_source_pass: 'card',
+      })
+      if (candidate.cardWord) consumedWords.add(candidate.cardWord)
     }
   }
 }
 
-function applyImageTextFallback(
-  platform: ReportDashboardPlatform,
-  rawText: string,
-  metrics: OcrReviewData['metrics'],
+function normalizeLayoutCardValue(
+  cell: LayoutMetricCell | undefined,
+  rawValue: string,
 ) {
-  const fallback = parseDashboardOcrText(platform, rawText, 'local_tesseract_text')
-  for (const [key, candidate] of Object.entries(fallback.metrics) as Array<[ReportMetricKey, OcrMetricValue]>) {
-    if (!metricHasUsableValue(candidate)) continue
-    const existing = metrics[key]
-    if (existing && existing.status !== 'rejected' && metricHasUsableValue(existing)) continue
-    metrics[key] = {
-      ...candidate,
-      source: 'local_tesseract_text',
-      label_source: 'ocr_text',
+  const trimmed = rawValue.trim()
+  if (cell?.valueKind === 'duration' && /^\d{1,5}[:;]$/.test(trimmed)) {
+    return `${trimmed.slice(0, -1)}s`
+  }
+  const format = cell?.displayFormat
+  if (!format) return trimmed
+  let normalized = trimmed.replace(/([0-9])[:;]([0-9])/g, '$1.$2')
+  const suffix = format.compactSuffix
+  if (suffix) {
+    const suffixPattern = new RegExp(`${suffix}$`, 'i')
+    normalized = normalized.replace(suffixPattern, '')
+    if (format.decimalPlaces && suffixPattern.test(normalized)) {
+      normalized = normalized.replace(
+        suffixPattern,
+        '1'.repeat(format.decimalPlaces),
+      )
     }
   }
+  if (format.decimalPlaces && !/[.,]/.test(normalized)) {
+    const digits = normalized.replace(/\D/g, '')
+    if (digits.length > format.decimalPlaces) {
+      normalized = `${digits.slice(0, -format.decimalPlaces)}.${digits.slice(-format.decimalPlaces)}`
+    }
+  }
+  return `${normalized}${suffix || ''}`
+}
+
+function findCardValueWord(
+  key: ReportMetricKey,
+  rawValue: string,
+  recognition: OcrImageRecognition,
+) {
+  return recognition.words.find(word =>
+    word.pass === 'card'
+    && word.line_id.startsWith(`card:${key}:`)
+    && word.text === rawValue,
+  )
+}
+
+function applyExactRawTextCandidates(
+  platform: ReportDashboardPlatform,
+  rawText: string,
+  candidates: MetricCandidateInput[],
+) {
+  const exactReview = parseDashboardOcrText(platform, rawText, 'raw_text_exact')
+  for (const [key, candidate] of Object.entries(exactReview.metrics) as Array<[ReportMetricKey, OcrMetricValue]>) {
+    if (!metricHasUsableValue(candidate)) continue
+    collectMetricCandidate(candidates, key, {
+      ...candidate,
+      label_source: 'ocr_text',
+    })
+  }
+}
+
+function findCardValueWordSupport(
+  platform: ReportDashboardPlatform,
+  key: ReportMetricKey,
+  value: ReportMetricValue,
+  recognition: OcrImageRecognition,
+) {
+  const independentWords = recognition.words.filter(word => word.pass !== 'card')
+  if (!independentWords.length) return undefined
+  const cell = platformMetricLayouts[platform as Exclude<ReportDashboardPlatform, 'other'>]
+    ?.find(candidate => candidate.key === key)
+  if (!cell || !recognition.original_dimensions.width || !recognition.original_dimensions.height) return undefined
+  return independentWords.find(word =>
+    wordIsInsideLayoutCell(word, cell, recognition.original_dimensions)
+    && metricValuesEqual(parseLayoutEvidenceValue(cell, word.text), value),
+  )
+}
+
+function findConflictingCardValueWord(
+  platform: ReportDashboardPlatform,
+  key: ReportMetricKey,
+  value: ReportMetricValue,
+  recognition: OcrImageRecognition,
+) {
+  const cell = platformMetricLayouts[platform as Exclude<ReportDashboardPlatform, 'other'>]
+    ?.find(candidate => candidate.key === key)
+  if (!cell) return undefined
+  return recognition.words.find(word =>
+    word.pass !== 'card'
+    && word.confidence >= 85
+    && wordIsInsideLayoutCell(word, cell, recognition.original_dimensions)
+    && parseLayoutEvidenceValue(cell, word.text) !== null
+    && !metricValuesEqual(parseLayoutEvidenceValue(cell, word.text), value),
+  )
+}
+
+function parseLayoutEvidenceValue(cell: LayoutMetricCell, rawValue: string) {
+  return parseOcrValue(normalizeLayoutCardValue(cell, rawValue))
 }
 
 export function buildDashboardOcrReviewFromRecognition(
@@ -529,7 +1626,7 @@ export function buildDashboardOcrReviewFromRecognition(
   const selectedTextCandidate = textCandidates
     .map(text => ({
       text,
-      review: parseDashboardOcrText(platform, text, 'local_tesseract_text'),
+      review: parseDashboardOcrText(platform, text, 'raw_text_exact'),
     }))
     .sort((left, right) =>
       Object.keys(right.review.metrics).length - Object.keys(left.review.metrics).length,
@@ -539,18 +1636,8 @@ export function buildDashboardOcrReviewFromRecognition(
     ...recognition,
     text: recognizedText,
   })
-  const parsedTextReview = selectedTextCandidate?.review
-    || parseDashboardOcrText(platform, recognizedText, 'local_tesseract_text')
-
-  for (const [key, candidate] of Object.entries(parsedTextReview.metrics) as Array<[ReportMetricKey, OcrMetricValue]>) {
-    if (!metricHasUsableValue(candidate)) continue
-    const existing = review.metrics[key]
-    if (existing && existing.status !== 'rejected' && metricHasUsableValue(existing)) continue
-    review.metrics[key] = candidate
-  }
-
   if (Object.keys(review.metrics).length > 0) {
-    review.status = 'review_required'
+    if (review.status !== 'confirmed') review.status = 'review_required'
     review.error_message = undefined
   }
   review.raw_output = recognizedText || review.raw_output
@@ -562,6 +1649,21 @@ function metricHasUsableValue(metric: OcrMetricValue) {
   return value !== null &&
     value !== undefined &&
     (typeof value !== 'number' || Number.isFinite(value))
+}
+
+function collectMetricCandidate(
+  candidates: MetricCandidateInput[],
+  key: ReportMetricKey,
+  metric: OcrMetricValue,
+) {
+  if (isCanonicalMetricKey(key)) candidates.push({ key, metric })
+}
+
+function metricValuesEqual(left: ReportMetricValue | undefined, right: ReportMetricValue | undefined) {
+  if (typeof left === 'number' && typeof right === 'number') {
+    return Math.abs(left - right) < Number.EPSILON
+  }
+  return left === right
 }
 
 function formatRecognitionOutput(recognition: OcrImageRecognition) {
@@ -599,19 +1701,17 @@ function groupRecognizedWords(words: OcrRecognizedWord[]) {
 function applyPlatformLayoutCandidates(
   platform: Exclude<ReportDashboardPlatform, 'other'>,
   recognition: OcrImageRecognition,
-  metrics: OcrReviewData['metrics'],
+  candidateInputs: MetricCandidateInput[],
   consumedWords: Set<OcrRecognizedWord>,
 ) {
   const dimensions = recognition.original_dimensions
   if (!dimensions.width || !dimensions.height) return
 
   for (const cell of platformMetricLayouts[platform]) {
+    const labelMatch = findLayoutLabelWords(platform, cell, recognition.words, dimensions)
     const wordsInCell = recognition.words.filter(word => {
       if (!/\d/.test(word.text)) return false
-      const centerX = (word.bounding_box.x + word.bounding_box.width / 2) / dimensions.width
-      const centerY = (word.bounding_box.y + word.bounding_box.height / 2) / dimensions.height
-      return Math.abs(centerX - cell.x) <= cell.width / 2 &&
-        Math.abs(centerY - cell.y) <= cell.height / 2
+      return wordIsInsideLayoutCell(word, cell, dimensions)
     })
     if (!wordsInCell.length) continue
 
@@ -658,37 +1758,111 @@ function applyPlatformLayoutCandidates(
       }]
     }).sort((left, right) => right.selectionScore - left.selectionScore)
 
-    const selected = candidates[0]
-    if (!selected) continue
-    const confidenceNumber = Math.min(selected.valueConfidence, selected.spatialScore * 100)
-    const confidence = confidenceFromScore(confidenceNumber)
-    const sanityError = validateMetricCandidate(cell.key, selected.parsedValue, selected.rawValue)
-    const accepted = confidence === 'high' && !sanityError
-    const layoutCandidate: OcrMetricValue = {
-      value: sanityError ? null : selected.parsedValue,
-      candidate_value: selected.parsedValue,
-      confidence,
-      needs_review: !accepted,
-      original_label: cell.label,
-      raw_value: selected.rawValue,
-      normalized_key: cell.key,
-      unit: inferMetricUnit(cell.key, selected.rawValue),
-      bounding_box: unionBoundingBoxes(selected.words),
-      source: 'image_ocr',
-      status: sanityError ? 'rejected' : accepted ? 'accepted' : 'review_required',
-      rejection_reason: sanityError || (accepted ? undefined : 'The platform card was located, but OCR value confidence is below the auto-fill threshold.'),
-      label_confidence: 100,
-      value_confidence: selected.valueConfidence,
-      spatial_score: selected.spatialScore,
-      label_source: 'platform_layout',
-      value_source_pass: selected.pass,
+    if (!candidates.length) continue
+    for (const candidate of candidates) {
+      const competingValues = candidates.filter(other =>
+        other !== candidate
+        && !metricValuesEqual(other.parsedValue, candidate.parsedValue)
+        && candidate.selectionScore - other.selectionScore < .12,
+      ).length
+      const confidenceNumber = Math.min(candidate.valueConfidence, candidate.spatialScore * 100)
+      const confidence = confidenceFromScore(confidenceNumber)
+      const accepted = confidence === 'high'
+        && Boolean(labelMatch && labelMatch.similarity >= .95)
+        && competingValues === 0
+      const valueBox = unionBoundingBoxes(candidate.words)
+      const pairScore = Math.min(
+        1,
+        candidate.selectionScore + (labelMatch ? labelMatch.similarity * .1 : 0),
+      )
+      collectMetricCandidate(candidateInputs, cell.key, {
+        value: candidate.parsedValue,
+        candidate_value: candidate.parsedValue,
+        confidence,
+        needs_review: !accepted,
+        original_label: cell.label,
+        raw_value: candidate.rawValue,
+        normalized_key: cell.key,
+        unit: inferMetricUnit(cell.key, candidate.rawValue),
+        bounding_box: labelMatch
+          ? unionBoundingBoxes([...labelMatch.words, ...candidate.words])
+          : valueBox,
+        label_box: labelMatch ? unionBoundingBoxes(labelMatch.words) : undefined,
+        value_box: valueBox,
+        pairing_reason: accepted
+          ? 'Exact label and value were found in the same normalized platform grid cell.'
+          : competingValues > 0
+            ? 'The platform grid cell contains competing OCR values.'
+            : labelMatch
+              ? 'The value is in the expected grid cell, but OCR confidence needs review.'
+              : 'The value was inferred from the platform grid position without a readable label.',
+        pair_score: pairScore,
+        source: 'spatial_fallback',
+        status: accepted ? 'confirmed' : 'review_required',
+        rejection_reason: accepted ? undefined : 'The platform card was located, but OCR value confidence is below the auto-fill threshold.',
+        label_confidence: 100,
+        value_confidence: candidate.valueConfidence,
+        spatial_score: candidate.spatialScore,
+        label_source: 'platform_layout',
+        value_source_pass: candidate.pass,
+      })
     }
-    const existing = metrics[cell.key]
-    if (!existing || candidateScore(layoutCandidate) >= candidateScore(existing)) {
-      metrics[cell.key] = layoutCandidate
-    }
-    wordsInCell.forEach(word => consumedWords.add(word))
+    candidates[0].words.forEach(word => consumedWords.add(word))
+    labelMatch?.words.forEach(word => consumedWords.add(word))
   }
+}
+
+function findLayoutLabelWords(
+  platform: Exclude<ReportDashboardPlatform, 'other'>,
+  cell: LayoutMetricCell,
+  words: OcrRecognizedWord[],
+  dimensions: { width: number; height: number },
+) {
+  const metricAliases = Object.entries(aliases[platform])
+    .filter((entry): entry is [string, ReportMetricKey] => entry[1] === cell.key)
+    .map(([label]) => ({ label, tokens: label.split(' ') }))
+    .sort((left, right) => right.tokens.length - left.tokens.length)
+  const lines = groupRecognizedWords(words.filter(word => word.pass === 'label'))
+  return lines.flatMap(line => {
+    const searchableWords = line.words.filter(word => normalizeOcrLabel(word.text))
+    const normalizedWords = searchableWords.map(word => normalizeOcrLabel(word.text))
+    return metricAliases.flatMap(alias => {
+      const match = findFuzzyTokenSequence(normalizedWords, alias.tokens)
+      if (!match || match.similarity < .82) return []
+      const matchedWords = searchableWords.slice(match.start, match.start + alias.tokens.length)
+      if (!matchedWords.length) return []
+      const box = unionBoundingBoxes(matchedWords)
+      const centerX = (box.x + box.width / 2) / dimensions.width
+      const centerY = (box.y + box.height / 2) / dimensions.height
+      const horizontalLimit = Math.max(cell.width * .75, .045)
+      const aboveValue = centerY <= cell.y + cell.height / 2
+        && centerY >= cell.y - Math.max(cell.height * 1.5, .055)
+      if (Math.abs(centerX - cell.x) > horizontalLimit || !aboveValue) return []
+      return [{
+        words: matchedWords,
+        similarity: match.similarity,
+        distance: Math.hypot(
+          (centerX - cell.x) / horizontalLimit,
+          (cell.y - centerY) / Math.max(cell.height * 1.5, .055),
+        ),
+      }]
+    })
+  }).sort((left, right) =>
+    right.similarity - left.similarity || left.distance - right.distance,
+  )[0]
+}
+
+function wordIsInsideLayoutCell(
+  word: OcrRecognizedWord,
+  cell: LayoutMetricCell,
+  dimensions: { width: number; height: number },
+  expansion = 1,
+) {
+  if (!dimensions.width || !dimensions.height) return false
+  const centerX = (word.bounding_box.x + word.bounding_box.width / 2) / dimensions.width
+  const centerY = (word.bounding_box.y + word.bounding_box.height / 2) / dimensions.height
+  return Math.abs(centerX - cell.x) <= cell.width * expansion / 2
+    && Math.abs(centerY - cell.y) <= cell.height * expansion / 2
 }
 
 function layoutPassBonus(
@@ -747,7 +1921,7 @@ function findMetricValueWord(
   const labelRight = labelBox.x + labelBox.width
   const labelCenterY = labelBox.y + labelBox.height / 2
   const labelBottom = labelBox.y + labelBox.height
-  return lines
+  const candidates = lines
     .flatMap(line => line.words)
     .filter(word => /\d/.test(word.text) && !consumedWords.has(word))
     .map(word => {
@@ -757,20 +1931,43 @@ function findMetricValueWord(
       const horizontalGap = Math.abs(centerX - labelCenterX)
       const rightGap = word.bounding_box.x - labelRight
       const sameLine = Math.abs(centerY - labelCenterY) <= Math.max(labelBox.height, word.bounding_box.height)
-      const spatialScore = sameLine && rightGap >= -5 && rightGap <= 160
+        && rightGap >= -5
+        && rightGap <= 120
+      const sameColumn = verticalGap >= -3
+        && verticalGap <= 70
+        && horizontalGap <= Math.max(35, labelBox.width * 0.35)
+      const spatialFallback = verticalGap >= 0
+        && verticalGap <= 60
+        && horizontalGap <= Math.max(50, labelBox.width * 0.45)
+      const spatialScore = sameLine
         ? rightGap <= 40
           ? 1
-          : 1 - Math.min(0.5, (rightGap - 40) / 240)
-        : verticalGap >= -5 && verticalGap <= 90 && horizontalGap <= Math.max(55, labelBox.width * 0.55)
-          ? 1 - Math.min(1, (verticalGap / 90) * 0.55 + (horizontalGap / Math.max(55, labelBox.width * 0.55)) * 0.45)
-          : 0
-      return { word, spatialScore }
+          : 1 - Math.min(0.45, (rightGap - 40) / 180)
+        : sameColumn
+          ? 1 - Math.min(0.3, (verticalGap / 70) * 0.2 + (horizontalGap / Math.max(35, labelBox.width * 0.35)) * 0.1)
+          : spatialFallback
+            ? 0.7
+            : 0
+      return {
+        word,
+        spatialScore,
+        pairing: sameLine ? 'same_line' as const : sameColumn ? 'same_column' as const : 'spatial' as const,
+      }
     })
     .filter(candidate => candidate.spatialScore >= 0.65)
     .sort((left, right) =>
       (right.spatialScore + (right.word.pass === 'numeric' ? 0.05 : 0)) -
       (left.spatialScore + (left.word.pass === 'numeric' ? 0.05 : 0)),
-    )[0]
+    )
+  const selected = candidates[0]
+  if (!selected) return undefined
+  const selectedValue = parseOcrValue(selected.word.text)
+  const competingValues = candidates.filter(candidate =>
+    candidate !== selected
+    && !metricValuesEqual(parseOcrValue(candidate.word.text), selectedValue)
+    && selected.spatialScore - candidate.spatialScore < .12,
+  ).length
+  return { ...selected, competingValues }
 }
 
 function unionBoundingBoxes(words: OcrRecognizedWord[]) {
@@ -824,6 +2021,10 @@ function validateMetricCandidate(
     'ctr', 'conversion_rate', 'click_rate', 'live_ctr', 'ctor', 'comment_rate', 'click_to_order_rate',
   ])
   const durationMetrics = new Set<ReportMetricKey>(['average_view_duration_seconds', 'live_duration_seconds'])
+  const currencyMetrics = new Set<ReportMetricKey>([
+    'revenue', 'gmv', 'sales', 'gpm', 'average_basket_size',
+    'average_order_value', 'gmv_per_hour', 'advertising_cost', 'estimated_gmv',
+  ])
   const countMetrics = new Set<ReportMetricKey>([
     'orders', 'buyers', 'items_sold', 'total_views', 'engaged_viewers', 'peak_concurrent_viewers',
     'product_clicks', 'likes', 'comments', 'shares', 'new_followers', 'current_viewers',
@@ -831,9 +2032,18 @@ function validateMetricCandidate(
   ])
 
   if (percentageMetrics.has(key) && value > 100) return 'Percentage metrics must be between 0 and 100.'
+  if (percentageMetrics.has(key) && /₫|đ|vnd|usd|\$/i.test(rawValue)) return 'A currency token cannot be mapped into a percentage metric.'
+  if (percentageMetrics.has(key) && isDurationOcrToken(rawValue)) return 'A duration token cannot be mapped into a percentage metric.'
   if (durationMetrics.has(key) && value > 86_400) return 'Duration metrics must be between 0 and 86,400 seconds.'
+  if (durationMetrics.has(key) && !isDurationOcrToken(rawValue)) return 'A duration metric must use HH:MM:SS, MM:SS, or seconds.'
   if (countMetrics.has(key) && !Number.isInteger(value)) return 'Count metrics must be whole numbers.'
+  if (countMetrics.has(key) && /(?:%|[xX°ºoO])\s*$/.test(rawValue.trim())) return 'A percentage token cannot be mapped into a count metric.'
+  if (countMetrics.has(key) && isDurationOcrToken(rawValue)) return 'A duration token cannot be mapped into a count metric.'
+  if (countMetrics.has(key) && /₫|đ|usd/i.test(rawValue)) return 'A currency token cannot be mapped into a count metric.'
   if (countMetrics.has(key) && /₫|đ|vnd|\$/i.test(rawValue)) return 'A currency token cannot be mapped into a count metric.'
+  if (currencyMetrics.has(key) && (/(?:%|[xX°ºoO])\s*$/.test(rawValue.trim()) || isDurationOcrToken(rawValue))) {
+    return 'A percentage or duration token cannot be mapped into a currency metric.'
+  }
   return null
 }
 
@@ -863,7 +2073,7 @@ function applyCrossMetricSanity(metrics: OcrReviewData['metrics']) {
 }
 
 function inferMetricUnit(key: ReportMetricKey, rawValue: string): string {
-  if (rawValue.includes('%')) return 'percent'
+  if (isPercentageMetric(key) || rawValue.includes('%')) return 'percent'
   if (/₫|đ|vnd/i.test(rawValue) || [
     'revenue', 'gmv', 'sales', 'gpm', 'average_basket_size',
     'average_order_value', 'gmv_per_hour', 'advertising_cost', 'estimated_gmv',

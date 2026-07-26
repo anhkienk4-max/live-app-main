@@ -1,5 +1,6 @@
 'use client'
 
+import React from 'react'
 import { AlertTriangle, Check, Pencil, RotateCcw, Trash2 } from 'lucide-react'
 import type { OcrMetricValue, ReportMetricKey } from '@/lib/types/database.types'
 import type { OcrMetricFilter } from '@/lib/utils/ocrReview'
@@ -42,18 +43,24 @@ export function OcrMetricReviewField({
   const { t } = useTranslation()
   const status = metric?.status || (value ? 'manual' : 'empty')
   const inputKind = getReportMetricInputKind(metricKey)
-  const needsReview = status === 'review_required' || metric?.needs_review
+  const needsReview = status === 'review_required' || status === 'low_confidence' || metric?.needs_review
   const helpKey = metricHelpTranslationKeys[metricKey]
   const confidence = metric?.value_confidence == null
     ? metric?.confidence
     : `${Math.round(metric.value_confidence)}%`
-  const source = metric?.source === 'manual'
-    ? t('manualInput')
-    : metric?.source === 'image_ocr'
-      ? t('imageOcr')
-      : metric?.source === 'trusted_text' || metric?.source === 'local_tesseract_text'
-        ? t('trustedOcrText')
-        : t('unknownSource')
+  const source = metric?.source === 'raw_text_exact'
+    || metric?.source === 'raw_text_sequence'
+    || metric?.source === 'card_exact'
+    || metric?.source === 'word_box_exact'
+    || metric?.source === 'spatial_fallback'
+    ? metric.source
+    : metric?.source === 'manual'
+      ? t('manualInput')
+      : metric?.source === 'image_ocr'
+        ? t('imageOcr')
+        : metric?.source === 'trusted_text' || metric?.source === 'local_tesseract_text'
+          ? t('trustedOcrText')
+          : t('unknownSource')
   const valuePass = metric?.value_source_pass === 'label'
     ? t('labelPass')
     : metric?.value_source_pass === 'numeric'
@@ -81,6 +88,7 @@ export function OcrMetricReviewField({
       </div>
       <Input
         id={`ocr-metric-input-${metricKey}`}
+        data-testid={`ocr-metric-input-${metricKey}`}
         className="mt-2"
         {...getReportMetricInputProps(metricKey)}
         value={value}
@@ -101,8 +109,10 @@ export function OcrMetricReviewField({
         <div className="mt-2 space-y-1 text-xs text-muted-foreground">
           <p>{t('originalLabel')}: {metric.original_label || '—'}</p>
           <p>{t('originalValue')}: {metric.raw_value || '—'} · {t('confidence')}: {confidence || '—'}</p>
+          <p>{t(metricTranslationKeys[metric.normalized_key || metricKey])} ({metric.normalized_key || metricKey})</p>
           <p>{t('source')}: {source} · {t('labelSource')}: {metric.label_source === 'platform_layout' ? t('platformLayout') : t('ocrText')}</p>
           <p>{t('valuePass')}: {valuePass}</p>
+          {metric.conflict_warning && <p className="text-amber-700">{metric.conflict_warning}</p>}
         </div>
       )}
       {canReview && metric && status !== 'rejected' && (
@@ -133,5 +143,5 @@ export function OcrMetricFilterBar({
     { value: 'review_required', label: t('reviewRequiredCount', { count: reviewCount }) },
     { value: 'confirmed', label: t('confirmedMetrics') },
   ]
-  return <div className="flex flex-wrap gap-1 rounded-lg border p-1">{options.map(option => <Button type="button" size="xs" variant={value === option.value ? 'secondary' : 'ghost'} onClick={() => onChange(option.value)} key={option.value}>{option.label}</Button>)}</div>
+  return <div className="flex flex-wrap gap-1 rounded-lg border p-1">{options.map(option => <Button type="button" size="xs" variant={value === option.value ? 'secondary' : 'ghost'} onClick={() => onChange(option.value)} data-testid={`ocr-metric-filter-${option.value}`} key={option.value}>{option.label}</Button>)}</div>
 }

@@ -21,7 +21,7 @@ import { useToast } from '@/components/ui/toast'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { exportReportDetailToExcel } from '@/lib/utils/excelUtils'
-import { commonReportMetricKeys, numericMetric, platformMetricKeys } from '@/lib/utils/ocrMetrics'
+import { numericMetric } from '@/lib/utils/ocrMetrics'
 import {
   clearReviewMetric,
   confirmAllReviewMetrics,
@@ -33,6 +33,15 @@ import {
   reviewRequiredCount,
   type OcrMetricFilter,
 } from '@/lib/utils/ocrReview'
+import {
+  isCanonicalMetricKey,
+  metricValueToInput,
+  parseMetricInputValue,
+  platformCanonicalMetricKeys,
+  type CanonicalMetricKey,
+  type MetricState,
+} from '@/lib/utils/ocrCanonical'
+import { serializeCanonicalMetrics } from '@/lib/utils/ocrMetricSerialization'
 import { metricTranslationKeys } from '@/lib/reportMetricLabels'
 import { defaultOcrCrop } from '@/lib/utils/ocrImage'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
@@ -104,7 +113,7 @@ export function ReportDetailModal({
   })
   const [busy, setBusy] = React.useState(false)
   const reportMetricValues = React.useMemo(() => initialMetricValues(report), [report])
-  const [metrics, setMetrics] = React.useState<Partial<Record<ReportMetricKey, string>>>(reportMetricValues)
+  const [metricValues, setMetricValues] = React.useState<MetricState>(reportMetricValues)
   const [reviewData, setReviewData] = React.useState<OcrReviewData>(report.ocr_review || { status: 'review_required', metrics: {} })
   const [editingMetrics, setEditingMetrics] = React.useState(false)
   const [removeImageTarget, setRemoveImageTarget] = React.useState<ReportImage | null>(null)
@@ -143,8 +152,8 @@ export function ReportDetailModal({
     }
     setBusy(true)
     try {
-      const normalized = buildMetricMap(commonReportMetricKeys, metrics)
-      const platformSpecific = buildMetricMap(platformMetricKeys[report.dashboard_platform || 'other'], metrics)
+      const normalized = serializeCanonicalMetrics(report.dashboard_platform || 'other', metricValues)
+      const platformSpecific = normalized
       const revenue = numberValue(normalized.revenue) ?? numberValue(platformSpecific.sales) ?? numberValue(normalized.gmv) ?? report.revenue
       const orders = numberValue(normalized.orders) ?? report.orders
       const viewers = numberValue(normalized.engaged_viewers) ?? numberValue(platformSpecific.total_viewers) ?? numberValue(normalized.total_views) ?? report.viewers ?? report.average_viewer
@@ -181,8 +190,8 @@ export function ReportDetailModal({
 
   const saveDraft = async () => {
     if (!currentUser) return
-    const normalized = buildMetricMap(commonReportMetricKeys, metrics)
-    const platformSpecific = buildMetricMap(platformMetricKeys[report.dashboard_platform || 'other'], metrics)
+    const normalized = serializeCanonicalMetrics(report.dashboard_platform || 'other', metricValues)
+    const platformSpecific = normalized
     setBusy(true)
     try {
       await reportService.update(report.id, {
@@ -245,7 +254,7 @@ export function ReportDetailModal({
       )
       if (currentUser) await reportService.recordOcrRun(report.id, currentUser.id, next, true)
       setReviewData(next)
-      setMetrics(current => ({ ...current, ...reviewInputValues(next) }))
+      setMetricValues(current => ({ ...current, ...reviewInputValues(next) }))
       setEditingMetrics(false)
     } catch (error) {
       setReviewData({ status: 'failed', source_platform: platform, metrics: {}, error_message: t('ocrFailedHelp') })
@@ -262,7 +271,7 @@ export function ReportDetailModal({
       toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
       return
     }
-    setMetrics(reportMetricValues)
+    setMetricValues(reportMetricValues)
     setReviewData(report.ocr_review || { status: 'review_required', metrics: {} })
     setEditingMetrics(false)
   }
@@ -331,10 +340,10 @@ export function ReportDetailModal({
     }
   }
 
-  const metricKeys = [...commonReportMetricKeys, ...platformMetricKeys[report.dashboard_platform || 'other']]
+  const metricKeys = [...platformCanonicalMetricKeys(report.dashboard_platform || 'other')]
   const unresolvedCount = reviewRequiredCount(reviewData)
   const filteredMetricKeys = metricKeys.filter(key =>
-    metricMatchesFilter(metricFilter, metrics[key] || '', reviewData.metrics[key]),
+    metricMatchesFilter(metricFilter, metricValues[key], reviewData.metrics[key]),
   )
   const revisions = [...(report.revisions || [])].reverse()
   const visibleRevisions = revisions.slice((revisionPage - 1) * revisionPageSize, revisionPage * revisionPageSize)
@@ -354,33 +363,33 @@ export function ReportDetailModal({
     (hasPermission(currentUser, 'reports.review') || report.submitted_by === currentUser.id || currentUserAssigned),
   )
 
-  const setMetric = (key: ReportMetricKey, value: string) => {
-    setMetrics(current => ({ ...current, [key]: value }))
+  const setMetric = (key: CanonicalMetricKey, value: string) => {
+    setMetricValues(current => ({ ...current, [key]: parseMetricInputValue(value) }))
     setReviewData(current => markMetricManual(current, key, value, currentUser?.id || 'unknown'))
   }
 
-  const confirmMetric = (key: ReportMetricKey) => {
+  const confirmMetric = (key: CanonicalMetricKey) => {
     if (!currentUser) return
-    setReviewData(current => confirmReviewMetric(current, key, metrics[key] || '', currentUser.id))
+    setReviewData(current => confirmReviewMetric(current, key, metricValues[key] ?? null, currentUser.id))
   }
 
-  const resetMetric = (key: ReportMetricKey) => {
+  const resetMetric = (key: CanonicalMetricKey) => {
     setReviewData(current => {
       const next = resetMetricToOcr(current, key)
-      setMetrics(values => ({ ...values, [key]: reviewInputValues(next)[key] || '' }))
+      setMetricValues(values => ({ ...values, [key]: reviewInputValues(next)[key] ?? null }))
       return next
     })
   }
 
-  const clearMetric = (key: ReportMetricKey) => {
+  const clearMetric = (key: CanonicalMetricKey) => {
     if (!currentUser) return
-    setMetrics(current => ({ ...current, [key]: '' }))
+    setMetricValues(current => ({ ...current, [key]: null }))
     setReviewData(current => clearReviewMetric(current, key, currentUser.id))
   }
 
   const confirmAllMetrics = () => {
     if (!currentUser) return
-    setReviewData(current => confirmAllReviewMetrics(current, metrics, currentUser.id))
+    setReviewData(current => confirmAllReviewMetrics(current, metricValues, currentUser.id))
   }
 
   return (<>
@@ -408,7 +417,7 @@ export function ReportDetailModal({
           <Card className="border-amber-200">
             <CardContent className="space-y-4 pt-5">
               <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2"><h3 className="font-semibold">{t('reportOcrReview')}</h3><Badge variant="outline">{reviewData.status === 'review_required' ? t('statusReviewRequired') : reviewData.status === 'confirmed' ? t('statusConfirmed') : reviewData.status === 'failed' ? t('error') : reviewData.status === 'processing' ? t('loading') : reviewData.status === 'unavailable' ? t('manualInput') : t('pending')}</Badge></div><p className="text-sm text-muted-foreground">{t('ocrReviewHelp')}</p></div><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => void resetExtracted()}><RotateCcw className="mr-2 h-4 w-4" />{t('resetResults')}</Button><Button type="button" variant="outline" onClick={() => setEditingMetrics(value => !value)}><Pencil className="mr-2 h-4 w-4" />{editingMetrics ? t('finishEditing') : t('editOcrMetrics')}</Button><Button type="button" variant="outline" disabled={reviewData.status === 'processing'} onClick={() => void rerunOcr()}><ScanText className="mr-2 h-4 w-4" />{t('rescanOcr')}</Button></div></div>
-              {dashboardImage && <><OcrCropPreview imageUrl={dashboardImage.image_url} platform={report.dashboard_platform || 'other'} value={reviewData.crop_box || defaultOcrCrop(report.dashboard_platform || 'other')} onChange={() => undefined} disabled />{reviewData.raw_output && <details className="rounded-lg bg-muted/50 p-3 text-xs"><summary className="cursor-pointer font-medium">{t('rawOcrOutput')}</summary><pre className="mt-2 whitespace-pre-wrap break-words">{reviewData.raw_output}</pre></details>}</>}
+              {dashboardImage && <><OcrCropPreview imageUrl={dashboardImage.image_url} platform={report.dashboard_platform || 'other'} value={reviewData.crop_box || defaultOcrCrop(report.dashboard_platform || 'other')} onChange={() => undefined} review={reviewData} disabled />{reviewData.raw_output && <details className="rounded-lg bg-muted/50 p-3 text-xs"><summary className="cursor-pointer font-medium">{t('rawOcrOutput')}</summary><pre className="mt-2 whitespace-pre-wrap break-words">{reviewData.raw_output}</pre></details>}</>}
               {unresolvedCount > 0 && <p className="flex items-center gap-2 text-sm text-amber-800"><AlertTriangle className="h-4 w-4" />{t('reportReviewWarning', { count: unresolvedCount })}</p>}
               <OcrMetricFilterBar value={metricFilter} onChange={setMetricFilter} reviewCount={unresolvedCount} />
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -416,7 +425,7 @@ export function ReportDetailModal({
                   key={field}
                   metricKey={field}
                   metric={reviewData.metrics[field]}
-                  value={metrics[field] || ''}
+                  value={metricValueToInput(metricValues[field])}
                   editable={editingMetrics}
                   canReview
                   onChange={value => setMetric(field, value)}
@@ -521,7 +530,7 @@ export function ReportDetailModal({
                     <ThumbsUp className="h-6 w-6 text-blue-600" />
                     <div>
                       <div className="text-sm text-gray-600">{t('metricLikes')}</div>
-                      <div className="text-xl font-bold">{report.likes}</div>
+                      <div className="text-xl font-bold">{report.likes?.toLocaleString() ?? '—'}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -726,37 +735,48 @@ export function ReportDetailModal({
   </>)
 }
 
-function initialMetricValues(report: Report): Partial<Record<ReportMetricKey, string>> {
+function initialMetricValues(report: Report): MetricState {
   const extractedValues = report.ocr_review ? reviewInputValues(report.ocr_review) : {}
+  const legacy = report.dashboard_platform === 'shopee_live'
+    ? {
+        sales: report.revenue,
+        orders: report.orders,
+        total_viewers: report.viewers ?? report.average_viewer,
+        pcu: report.peak_viewer,
+        add_to_cart: report.product_clicks,
+        ctr: report.ctr,
+        click_to_order_rate: report.cvr,
+        average_basket_size: report.average_order_value,
+        live_duration_seconds: report.live_duration_minutes == null ? null : report.live_duration_minutes * 60,
+        likes: report.likes,
+        comments: report.comments,
+        shares: report.shares,
+      }
+    : {
+        gmv: report.gmv ?? report.revenue,
+        sku_orders: report.orders,
+        current_viewers: report.peak_viewer,
+        total_views: report.viewers ?? report.average_viewer,
+        product_clicks: report.product_clicks,
+        live_ctr: report.ctr,
+        ctor: report.cvr,
+        average_order_value: report.average_order_value,
+        comments: report.comments,
+        shares: report.shares,
+      }
   const normalized = {
-    revenue: report.revenue,
-    gmv: report.gmv ?? report.revenue,
-    orders: report.orders,
-    engaged_viewers: report.viewers ?? report.average_viewer,
-    peak_concurrent_viewers: report.peak_viewer,
-    product_clicks: report.product_clicks,
-    ctr: report.ctr,
-    conversion_rate: report.cvr,
-    average_order_value: report.average_order_value,
-    live_duration_seconds: report.live_duration_minutes == null ? null : report.live_duration_minutes * 60,
-    likes: report.likes,
-    comments: report.comments,
-    shares: report.shares,
+    ...legacy,
     ...report.normalized_metrics,
     ...report.platform_metrics,
     ...extractedValues,
   }
-  return Object.fromEntries(Object.entries(normalized).map(([key, value]) => [key, value == null ? '' : String(value)]))
-}
-
-function buildMetricMap(keys: ReportMetricKey[], values: Partial<Record<ReportMetricKey, string>>): NormalizedReportMetrics {
-  return Object.fromEntries(keys.map(key => {
-    const value = values[key]?.trim() || ''
-    if (!value) return [key, null]
-    if (key === 'started_at' || key === 'ended_at') return [key, value]
-    const parsed = Number(value)
-    return [key, Number.isFinite(parsed) ? parsed : null]
-  }))
+  return Object.fromEntries(
+    Object.entries(normalized).flatMap(([key, value]) =>
+      isCanonicalMetricKey(key) && typeof value === 'number' && Number.isFinite(value)
+        ? [[key, value]]
+        : [],
+    ),
+  )
 }
 
 const numberValue = (value: NormalizedReportMetrics[ReportMetricKey]) => numericMetric(value)

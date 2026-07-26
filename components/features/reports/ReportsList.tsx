@@ -222,7 +222,7 @@ export function ReportsList() {
       {currentUser && hasPermission(currentUser, 'reports.submit') && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
           <div><p className="font-semibold">{t('finalReportWorkflow')}</p><p className="text-sm text-muted-foreground">{completedShifts.length ? t('reportDraftReady', { count: completedShifts.length }) : t('noReportDraftReady')}</p></div>
-          <Button onClick={() => setShowForm(true)} disabled={!completedShifts.length}><Plus className="mr-2 h-4 w-4" />{t('createFinalReport')}</Button>
+          <Button onClick={() => setShowForm(true)} disabled={!completedShifts.length} data-testid="open-final-report-modal"><Plus className="mr-2 h-4 w-4" />{t('createFinalReport')}</Button>
         </div>
       )}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

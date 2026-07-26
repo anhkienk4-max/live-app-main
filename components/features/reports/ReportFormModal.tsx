@@ -8,30 +8,43 @@ import {
   Brand,
   Campaign,
   FinalReportRecap,
-  NormalizedReportMetrics,
   OcrCropBox,
   OcrReviewData,
   Platform,
   ReportDashboardPlatform,
   ReportImageCategory,
-  ReportMetricKey,
   Shift,
   ShiftRegistration,
   User,
 } from '@/lib/types/database.types'
-import { commonReportMetricKeys, numericMetric, parseOcrValue, platformMetricKeys } from '@/lib/utils/ocrMetrics'
+import { parseOcrValue } from '@/lib/utils/ocrMetrics'
 import {
+  canonicalizeOcrReview,
+  clearOcrDerivedMetricState,
   clearReviewMetric,
   confirmAllReviewMetrics,
   confirmReviewMetric,
   markMetricManual,
-  mergeMetricValues,
   metricMatchesFilter,
+  ocrCandidateMetricKeys,
+  parseAndApplyOcrText,
   resetMetricToOcr,
   reviewInputValues,
   reviewRequiredCount,
   type OcrMetricFilter,
+  type OcrTextApplicationResult,
 } from '@/lib/utils/ocrReview'
+import {
+  applySelectedMetricsToState,
+  parseMetricInputValue,
+  platformCanonicalMetricKeys,
+  shopeeMainMetricKeys,
+  shopeeSupplementaryMetricKeys,
+  tiktokCentralMetricKeys,
+  type CanonicalMetricKey,
+  type MetricState,
+} from '@/lib/utils/ocrCanonical'
+import { serializeFinalReportMetricState } from '@/lib/utils/ocrMetricSerialization'
 import { metricTranslationKeys } from '@/lib/reportMetricLabels'
 import { defaultOcrCrop } from '@/lib/utils/ocrImage'
 import { hasPermission } from '@/lib/permissions'
@@ -45,7 +58,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import { OcrCropPreview } from '@/components/features/reports/OcrCropPreview'
-import { OcrMetricFilterBar, OcrMetricReviewField } from '@/components/features/reports/OcrMetricReviewField'
+import { OcrMetricFilterBar } from '@/components/features/reports/OcrMetricReviewField'
+import { OcrTextApplicationSummary } from '@/components/features/reports/OcrTextApplicationSummary'
+import { OcrBoundMetricFields } from '@/components/features/reports/OcrBoundMetricFields'
+import { OcrCandidateDiagnosticsTable } from '@/components/features/reports/OcrCandidateDiagnosticsTable'
 import { AlertDialog } from '@/components/ui/alert-dialog'
 import {
   emptyFinalReportRecap,
@@ -82,10 +98,12 @@ export function ReportFormModal({
   const { t } = useTranslation()
   const { toast } = useToast()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const manualMetricKeysRef = React.useRef(new Set<CanonicalMetricKey>())
+  const ocrDerivedMetricKeysRef = React.useRef(new Set<CanonicalMetricKey>())
   const [shiftId, setShiftId] = React.useState('')
   const [dashboardPlatform, setDashboardPlatform] = React.useState<ReportDashboardPlatform>('other')
   const [cropBox, setCropBox] = React.useState<OcrCropBox>(defaultOcrCrop('other'))
-  const [metrics, setMetrics] = React.useState<Partial<Record<ReportMetricKey, string>>>({})
+  const [metricValues, setMetricValues] = React.useState<MetricState>({})
   const [review, setReview] = React.useState<OcrReviewData>(emptyReview)
   const [ocrAcknowledged, setOcrAcknowledged] = React.useState(false)
   const [editingMetrics, setEditingMetrics] = React.useState(false)
@@ -99,6 +117,7 @@ export function ReportFormModal({
   const [reviewing, setReviewing] = React.useState(false)
   const [submitting, setSubmitting] = React.useState(false)
   const [rawOcrText, setRawOcrText] = React.useState('')
+  const [ocrApplicationResult, setOcrApplicationResult] = React.useState<OcrTextApplicationResult | null>(null)
   const [metricFilter, setMetricFilter] = React.useState<OcrMetricFilter>('data')
   const [showReviewWarning, setShowReviewWarning] = React.useState(false)
 
@@ -111,7 +130,9 @@ export function ReportFormModal({
     setShiftId(initialShift?.id || '')
     setDashboardPlatform(initialPlatform)
     setCropBox(defaultOcrCrop(initialPlatform))
-    setMetrics({})
+    setMetricValues({})
+    manualMetricKeysRef.current.clear()
+    ocrDerivedMetricKeysRef.current.clear()
     setReview(emptyReview())
     setOcrAcknowledged(false)
     setEditingMetrics(false)
@@ -122,6 +143,7 @@ export function ReportFormModal({
     setInsightsImprovement('')
     setFinalRecap(emptyFinalReportRecap())
     setRawOcrText('')
+    setOcrApplicationResult(null)
     setMetricFilter('data')
     setShowReviewWarning(false)
   // Opening the modal initializes a fresh draft. Prop-array identity changes
@@ -134,14 +156,67 @@ export function ReportFormModal({
     setShiftId(value)
     setDashboardPlatform(nextPlatform)
     setCropBox(defaultOcrCrop(nextPlatform))
-    resetExtracted()
+    resetDraftMetrics()
+  }
+
+  const resetDraftMetrics = () => {
+    setMetricValues({})
+    manualMetricKeysRef.current.clear()
+    ocrDerivedMetricKeysRef.current.clear()
+    setReview(emptyReview())
+    setOcrApplicationResult(null)
+    setOcrAcknowledged(false)
+    setEditingMetrics(false)
   }
 
   const resetExtracted = () => {
-    setMetrics({})
+    setMetricValues(current => clearOcrDerivedMetricState(
+      current,
+      ocrDerivedMetricKeysRef.current,
+      manualMetricKeysRef.current,
+    ))
+    ocrDerivedMetricKeysRef.current.clear()
     setReview(emptyReview())
+    setOcrApplicationResult(null)
     setOcrAcknowledged(false)
-    setEditingMetrics(false)
+    setEditingMetrics(manualMetricKeysRef.current.size > 0)
+  }
+
+  const applyRawOcrText = (
+    text = rawOcrText,
+    reviewOverride?: OcrReviewData,
+  ) => {
+    if (!text.trim() || dashboardPlatform === 'other') return null
+    const result = parseAndApplyOcrText({
+      platform: dashboardPlatform,
+      rawText: text,
+      currentMetrics: metricValues,
+      overwriteOcrValues: true,
+      protectedKeys: manualMetricKeysRef.current,
+      existingCandidates: reviewOverride,
+    })
+    setMetricValues(current => parseAndApplyOcrText({
+      platform: dashboardPlatform,
+      rawText: text,
+      currentMetrics: current,
+      overwriteOcrValues: true,
+      protectedKeys: manualMetricKeysRef.current,
+      existingCandidates: reviewOverride,
+    }).metrics)
+    result.appliedKeys.forEach(key => ocrDerivedMetricKeysRef.current.add(key))
+    setReview(result.review)
+    setOcrApplicationResult(result)
+    setOcrAcknowledged(false)
+    setEditingMetrics(true)
+    toast({
+      title: t('ocrResults'),
+      description: t('ocrApplySummary', {
+        applied: result.appliedKeys.length,
+        review: result.reviewRequiredKeys.length,
+      }),
+      variant: result.appliedKeys.length > 0 ? 'success' : 'destructive',
+    })
+    return result
   }
 
   const runOcrReview = async () => {
@@ -156,42 +231,43 @@ export function ReportFormModal({
     setReviewing(true)
     setOcrAcknowledged(false)
     setEditingMetrics(false)
+    const overwriteManualEdits = review.status !== 'waiting' && review.status !== 'processing'
     setReview({ status: 'processing', source_platform: dashboardPlatform, metrics: {} })
     try {
       const dashboardImage = images.find(image => image.type === 'dashboard')
-      const candidate = await ocrService.extractDashboardMetrics(
+      const candidate = canonicalizeOcrReview(await ocrService.extractDashboardMetrics(
         dashboardPlatform,
         rawOcrText || undefined,
         dashboardImage?.url,
         cropBox,
-      )
-      const incomingMetricValues = reviewInputValues(candidate)
-      setReview(candidate)
-      if (candidate.raw_output?.trim()) {
-        setRawOcrText(current => current.trim() ? current : candidate.raw_output || '')
-      }
-      setMetrics(current => {
-        const merged = mergeMetricValues(current, incomingMetricValues)
-        if (
-          process.env.NODE_ENV !== 'production'
-          || process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true'
-        ) {
-          console.debug('[OCR pipeline:form merge]', {
-            platform: dashboardPlatform,
-            candidateCount: Object.keys(candidate.metrics).length,
-            beforeMerge: incomingMetricValues,
-            afterMerge: merged,
-            renderedMetricKeys: [...commonReportMetricKeys, ...platformMetricKeys[dashboardPlatform]],
+      ))
+      const incomingMetricKeys = ocrCandidateMetricKeys(candidate)
+      const recognizedText = rawOcrText.trim() || candidate.raw_output?.trim() || ''
+      if (recognizedText) {
+        setRawOcrText(recognizedText)
+        applyRawOcrText(recognizedText, candidate)
+      } else {
+        setReview(candidate)
+        setMetricValues(current => {
+          const merged = applySelectedMetricsToState(current, candidate, {
+            protectedKeys: manualMetricKeysRef.current,
+            overwriteProtected: overwriteManualEdits,
           })
-        }
-        return merged
-      })
+          incomingMetricKeys.forEach(key => ocrDerivedMetricKeysRef.current.add(key))
+          if (overwriteManualEdits) {
+            incomingMetricKeys.forEach(key => manualMetricKeysRef.current.delete(key))
+          }
+          return merged
+        })
+      }
       setEditingMetrics(true)
-      toast({
-        title: candidate.status === 'unavailable' ? t('dashboardImageRequired') : t('metricReviewRequired'),
-        description: candidate.status === 'unavailable' ? t('ocrUnavailableHelp') : t('ocrReviewHelp'),
-        variant: candidate.status === 'unavailable' ? 'destructive' : 'success',
-      })
+      if (!recognizedText) {
+        toast({
+          title: candidate.status === 'unavailable' ? t('dashboardImageRequired') : t('metricReviewRequired'),
+          description: candidate.status === 'unavailable' ? t('ocrUnavailableHelp') : t('ocrReviewHelp'),
+          variant: candidate.status === 'unavailable' ? 'destructive' : 'success',
+        })
+      }
     } catch (error) {
       setReview({ status: 'failed', source_platform: dashboardPlatform, metrics: {}, error_message: error instanceof Error ? error.message : t('ocrFailed') })
     } finally {
@@ -199,44 +275,53 @@ export function ReportFormModal({
     }
   }
 
-  const setMetric = (key: ReportMetricKey, value: string) => {
-    setMetrics(current => ({ ...current, [key]: value }))
+  const setMetric = (key: CanonicalMetricKey, value: string) => {
+    manualMetricKeysRef.current.add(key)
+    setMetricValues(current => ({ ...current, [key]: parseMetricInputValue(value) }))
     setOcrAcknowledged(false)
     setReview(current => markMetricManual(current, key, value, currentUser?.id || 'unknown'))
   }
 
-  const confirmMetric = (key: ReportMetricKey) => {
+  const confirmMetric = (key: CanonicalMetricKey) => {
     if (!currentUser) return
-    setReview(current => confirmReviewMetric(current, key, metrics[key] || '', currentUser.id))
+    setReview(current => confirmReviewMetric(current, key, metricValues[key] ?? null, currentUser.id))
   }
 
-  const resetMetric = (key: ReportMetricKey) => {
+  const resetMetric = (key: CanonicalMetricKey) => {
     setReview(current => {
       const next = resetMetricToOcr(current, key)
-      setMetrics(values => ({ ...values, [key]: reviewInputValues(next)[key] || '' }))
+      const value = reviewInputValues(next)[key] ?? ''
+      manualMetricKeysRef.current.delete(key)
+      ocrDerivedMetricKeysRef.current.add(key)
+      setMetricValues(values => ({ ...values, [key]: value }))
       return next
     })
     setOcrAcknowledged(false)
   }
 
-  const clearMetric = (key: ReportMetricKey) => {
+  const clearMetric = (key: CanonicalMetricKey) => {
     if (!currentUser) return
-    setMetrics(current => ({ ...current, [key]: '' }))
+    manualMetricKeysRef.current.add(key)
+    setMetricValues(current => ({ ...current, [key]: null }))
     setReview(current => clearReviewMetric(current, key, currentUser.id))
     setOcrAcknowledged(false)
   }
 
   const confirmAllMetrics = () => {
     if (!currentUser) return
-    setReview(current => confirmAllReviewMetrics(current, metrics, currentUser.id))
+    setReview(current => confirmAllReviewMetrics(current, metricValues, currentUser.id))
     setOcrAcknowledged(true)
   }
 
-  const mapUnmappedField = (index: number, key: ReportMetricKey) => {
+  const mapUnmappedField = (index: number, key: CanonicalMetricKey) => {
     const field = review.unmapped_fields?.[index]
     if (!field) return
     const parsed = parseOcrValue(field.original_value)
-    setMetrics(current => ({ ...current, [key]: parsed == null ? '' : String(parsed) }))
+    manualMetricKeysRef.current.add(key)
+    setMetricValues(current => ({
+      ...current,
+      [key]: typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : null,
+    }))
     setReview(current => ({
       ...current,
       metrics: {
@@ -304,34 +389,15 @@ export function ReportFormModal({
 
   const persistDraft = async () => {
     if (!currentUser || !selectedShift) return
-    const normalized = buildMetrics(commonReportMetricKeys, metrics)
-    const platformSpecific = buildMetrics(platformMetricKeys[dashboardPlatform], metrics)
-    const revenue = numberFrom(normalized.revenue) ?? numberFrom(platformSpecific.sales) ?? numberFrom(normalized.gmv) ?? 0
-    const orders = numberFrom(normalized.orders) ?? 0
-    const viewers = numberFrom(normalized.engaged_viewers) ?? numberFrom(platformSpecific.total_viewers) ?? numberFrom(normalized.total_views) ?? 0
-    const durationSeconds = numberFrom(normalized.live_duration_seconds)
+    if (dashboardPlatform === 'other') return
 
     setSubmitting(true)
     try {
+      const serializedMetrics = serializeFinalReportMetricState(dashboardPlatform, metricValues)
       const report = await reportService.create({
         shift_id: selectedShift.id,
-        revenue,
-        orders,
-        peak_viewer: numberFrom(normalized.peak_concurrent_viewers) ?? numberFrom(platformSpecific.pcu) ?? 0,
-        average_viewer: viewers,
-        viewers,
-        likes: numberFrom(normalized.likes) ?? 0,
-        comments: numberFrom(normalized.comments) ?? 0,
-        shares: numberFrom(normalized.shares) ?? 0,
-        gmv: numberFrom(normalized.gmv) ?? revenue,
-        product_clicks: numberFrom(normalized.product_clicks) ?? numberFrom(platformSpecific.add_to_cart) ?? 0,
-        ctr: numberFrom(normalized.ctr) ?? 0,
-        cvr: numberFrom(normalized.conversion_rate) ?? numberFrom(platformSpecific.click_to_order_rate) ?? 0,
-        average_order_value: numberFrom(normalized.average_order_value) ?? numberFrom(platformSpecific.average_basket_size) ?? 0,
-        live_duration_minutes: durationSeconds == null ? 0 : durationSeconds / 60,
+        ...serializedMetrics,
         dashboard_platform: dashboardPlatform,
-        normalized_metrics: normalized,
-        platform_metrics: platformSpecific,
         raw_ocr_output: review.raw_output,
         ocr_review: review,
         insights_good: insightsGood || undefined,
@@ -364,10 +430,21 @@ export function ReportFormModal({
     ;(result[image.type] ??= []).push(image)
     return result
   }, {})
-  const visibleMetricKeys = [...commonReportMetricKeys, ...platformMetricKeys[dashboardPlatform]]
+  const visibleMetricKeys = [...platformCanonicalMetricKeys(dashboardPlatform)]
+  const mainMetricKeys = dashboardPlatform === 'shopee_live'
+    ? shopeeMainMetricKeys
+    : dashboardPlatform === 'tiktok_shop'
+      ? tiktokCentralMetricKeys
+      : []
+  const supplementaryMetricKeys = dashboardPlatform === 'shopee_live'
+    ? shopeeSupplementaryMetricKeys
+    : []
   const lowConfidence = reviewRequiredCount(review)
-  const filteredMetricKeys = visibleMetricKeys.filter(key =>
-    metricMatchesFilter(metricFilter, metrics[key] || '', review.metrics[key]),
+  const filteredMainMetricKeys = mainMetricKeys.filter(key =>
+    metricMatchesFilter(metricFilter, metricValues[key], review.metrics[key]),
+  )
+  const filteredSupplementaryMetricKeys = supplementaryMetricKeys.filter(key =>
+    metricMatchesFilter(metricFilter, metricValues[key], review.metrics[key]),
   )
   const dashboardImage = images.find(image => image.type === 'dashboard')
   const inferredPlatform = inferDashboardPlatform(selectedShift, platforms)
@@ -382,7 +459,7 @@ export function ReportFormModal({
         <form onSubmit={submit} className="space-y-6">
           <div className="grid gap-4 lg:grid-cols-2">
             <label className="text-sm font-medium">{t('liveOrCompletedShift')} *<Select value={shiftId} onValueChange={changeShift}><SelectTrigger className="mt-1 w-full"><SelectValue placeholder={t('chooseLiveOrCompletedShift')} /></SelectTrigger><SelectContent>{completedShifts.map(shift => <SelectItem key={shift.id} value={shift.id}>{entityName(brands, shift.brand_id)} · {entityName(platforms, shift.platform_id)} · {format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} {shift.start_time} · {t(shift.status)}</SelectItem>)}</SelectContent></Select></label>
-            <label className="text-sm font-medium">{t('platformDashboardType')} *<Select value={dashboardPlatform} disabled={inferredPlatform !== 'other'} onValueChange={value => { const next = value as ReportDashboardPlatform; setDashboardPlatform(next); setCropBox(defaultOcrCrop(next)); resetExtracted() }}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="tiktok_shop">TikTok Shop</SelectItem><SelectItem value="shopee_live">Shopee Live</SelectItem>{inferredPlatform === 'other' && <SelectItem value="other">{t('selectDashboardPlatform')}</SelectItem>}</SelectContent></Select></label>
+            <label className="text-sm font-medium">{t('platformDashboardType')} *<Select value={dashboardPlatform} disabled={inferredPlatform !== 'other'} onValueChange={value => { const next = value as ReportDashboardPlatform; setDashboardPlatform(next); setCropBox(defaultOcrCrop(next)); resetExtracted() }}><SelectTrigger className="mt-1 w-full" data-testid="report-platform-selector"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="tiktok_shop">TikTok Shop</SelectItem><SelectItem value="shopee_live">Shopee Live</SelectItem>{inferredPlatform === 'other' && <SelectItem value="other">{t('selectDashboardPlatform')}</SelectItem>}</SelectContent></Select></label>
           </div>
 
           {selectedShift && (
@@ -397,44 +474,75 @@ export function ReportFormModal({
           <section className="space-y-4 rounded-lg border p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div><h3 className="font-semibold">{t('uploadDashboardEvidence')}</h3><p className="text-sm text-muted-foreground">{t('dashboardEvidenceHelp')}</p></div>
-              <div className="flex flex-wrap gap-2"><Select value={category} onValueChange={value => setCategory(value as ReportImageCategory)}><SelectTrigger className="w-40"><SelectValue /></SelectTrigger><SelectContent>{imageCategories.map(item => <SelectItem key={item} value={item}>{t(item)}</SelectItem>)}</SelectContent></Select><Button type="button" onClick={() => fileInputRef.current?.click()}><Upload className="mr-2 h-4 w-4" />{t('uploadDashboard')}</Button><input ref={fileInputRef} className="sr-only" type="file" accept="image/*" multiple onChange={addImages} /></div>
+              <div className="flex flex-wrap gap-2"><Select value={category} onValueChange={value => setCategory(value as ReportImageCategory)}><SelectTrigger className="w-40"><SelectValue /></SelectTrigger><SelectContent>{imageCategories.map(item => <SelectItem key={item} value={item}>{t(item)}</SelectItem>)}</SelectContent></Select><Button type="button" onClick={() => fileInputRef.current?.click()}><Upload className="mr-2 h-4 w-4" />{t('uploadDashboard')}</Button><input ref={fileInputRef} className="sr-only" type="file" accept="image/*" multiple onChange={addImages} data-testid="report-dashboard-image-upload" /></div>
             </div>
             {Object.entries(grouped).map(([type, categoryImages]) => <div key={type}><p className="mb-2 text-sm font-medium capitalize">{t(type as ReportImageCategory)} ({categoryImages.length})</p><div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">{categoryImages.map(image => <div className="relative min-w-0" key={image.url}><img src={image.url} alt={image.name} className="aspect-video w-full rounded border object-cover" /><p className="truncate pt-1 text-xs">{image.name}</p><Button aria-label={`${t('removeImage')} ${image.name}`} type="button" size="icon" variant="destructive" className="absolute -right-2 -top-2 h-6 w-6" onClick={() => removeImage(image)}><X className="h-3 w-3" /></Button></div>)}</div></div>)}
           </section>
 
           <section className="space-y-4 rounded-lg border border-dashed p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{t('ocrReview')}</h3><OcrStatus status={review.status} /></div><p className="mt-1 text-sm text-muted-foreground">{t('ocrReviewHelp')}</p>{review.engine && <p className="mt-1 text-xs text-muted-foreground">{t('engine')}: {review.engine} · {t('recognitionLanguage')}: {review.recognition_language} · {t('overallConfidence')}: {review.overall_confidence?.toFixed(1) ?? '—'}%</p>}</div>
+              <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{t('ocrReview')}</h3><span data-testid="report-ocr-completion-status" data-ocr-status={review.status}><OcrStatus status={review.status} /></span></div><p className="mt-1 text-sm text-muted-foreground">{t('ocrReviewHelp')}</p>{review.engine && <p className="mt-1 text-xs text-muted-foreground">{t('engine')}: {review.engine} · {t('recognitionLanguage')}: {review.recognition_language} · {t('overallConfidence')}: {review.overall_confidence?.toFixed(1) ?? '—'}%</p>}</div>
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="outline" onClick={resetExtracted} disabled={reviewing}><RotateCcw className="mr-2 h-4 w-4" />{t('resetResults')}</Button>
                 {review.status === 'review_required' && <Button type="button" variant="outline" onClick={() => setEditingMetrics(value => !value)}><Pencil className="mr-2 h-4 w-4" />{editingMetrics ? t('finishEditing') : t('editOcrMetrics')}</Button>}
-                <Button type="button" onClick={runOcrReview} disabled={reviewing}>{reviewing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />}{review.status === 'review_required' ? t('rescanOcr') : t('scanOcr')}</Button>
+                <Button type="button" onClick={runOcrReview} disabled={reviewing} data-testid="report-run-ocr-button">{reviewing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />}{review.status === 'review_required' ? t('rescanOcr') : t('scanOcr')}</Button>
               </div>
             </div>
-            {dashboardImage && <OcrCropPreview imageUrl={dashboardImage.url} platform={dashboardPlatform} value={cropBox} onChange={value => { setCropBox(value); resetExtracted() }} disabled={reviewing} />}
+            {dashboardImage && <OcrCropPreview imageUrl={dashboardImage.url} platform={dashboardPlatform} value={cropBox} onChange={value => { setCropBox(value); resetExtracted() }} review={review} disabled={reviewing} />}
             <label className="block text-sm font-medium">{t('trustedOcrText')} ({t('optional')})
               <Textarea className="mt-1 min-h-32 font-mono text-xs" value={rawOcrText} onChange={event => setRawOcrText(event.target.value)} placeholder={'Sales: 21.281.718,00\nEngaged Viewer: 521\nOrders: 109'} />
             </label>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!rawOcrText.trim() || dashboardPlatform === 'other' || reviewing}
+              onClick={() => applyRawOcrText()}
+              data-testid="apply-report-ocr-text"
+            >
+              <ScanText className="mr-2 h-4 w-4" />{t('applyOcrData')}
+            </Button>
+            <OcrTextApplicationSummary result={ocrApplicationResult} />
+            <OcrCandidateDiagnosticsTable review={review} />
             {lowConfidence > 0 && <p className="flex items-center gap-2 text-sm text-amber-700"><AlertTriangle className="h-4 w-4" />{t('lowConfidenceCount', { count: lowConfidence })}</p>}
             {review.status === 'failed' && <p className="text-sm text-red-700">{review.error_message}</p>}
             {(review.status === 'review_required' || review.status === 'unavailable') && <>
               <OcrMetricFilterBar value={metricFilter} onChange={setMetricFilter} reviewCount={lowConfidence} />
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {filteredMetricKeys.map(key => <OcrMetricReviewField
-                  key={key}
-                  metricKey={key}
-                  metric={review.metrics[key]}
-                  value={metrics[key] || ''}
+              <div data-testid="ocr-main-metrics" data-ocr-platform={dashboardPlatform}>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <OcrBoundMetricFields
+                  metricKeys={filteredMainMetricKeys}
+                  values={metricValues}
+                  review={review}
                   editable={editingMetrics}
                   canReview={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}
-                  onChange={value => setMetric(key, value)}
+                  onChange={setMetric}
                   onEdit={() => setEditingMetrics(true)}
-                  onConfirm={() => confirmMetric(key)}
-                  onReset={() => resetMetric(key)}
-                  onClear={() => clearMetric(key)}
-                />)}
+                  onConfirm={confirmMetric}
+                  onReset={resetMetric}
+                  onClear={clearMetric}
+                />
+                </div>
               </div>
-              {review.unmapped_fields && review.unmapped_fields.length > 0 && <div className="rounded-lg border border-amber-300 bg-amber-50 p-3"><h4 className="font-semibold text-amber-900">{t('rejectedUnmappedOcrFields')}</h4><div className="mt-2 space-y-2">{review.unmapped_fields.map((field, index) => <div className="grid gap-2 rounded border border-amber-200 bg-white p-2 sm:grid-cols-[minmax(180px,1fr)_minmax(220px,.8fr)] sm:items-center" key={`${field.original_label}-${index}`}><div className="text-sm text-amber-900"><p>{t('originalLabel')}: {field.original_label} · {t('originalValue')}: {field.original_value || '—'}</p><p className="text-xs">{t('source')}: {field.source || t('unknownSource')}{field.rejection_reason ? ` · ${t('unmappedMetricHelp')}` : ''}</p></div><Select onValueChange={value => mapUnmappedField(index, value as ReportMetricKey)}><SelectTrigger><SelectValue placeholder={t('mapToNormalizedMetric')} /></SelectTrigger><SelectContent>{visibleMetricKeys.map(key => <SelectItem value={key} key={key}>{t(metricTranslationKeys[key])}</SelectItem>)}</SelectContent></Select></div>)}</div></div>}
+              {filteredSupplementaryMetricKeys.length > 0 && (
+                <div data-testid="ocr-supplementary-metrics">
+                  <h4 className="mb-2 text-sm font-semibold">{t('platformSpecificMetrics')}</h4>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <OcrBoundMetricFields
+                      metricKeys={filteredSupplementaryMetricKeys}
+                      values={metricValues}
+                      review={review}
+                      editable={editingMetrics}
+                      canReview={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}
+                      onChange={setMetric}
+                      onEdit={() => setEditingMetrics(true)}
+                      onConfirm={confirmMetric}
+                      onReset={resetMetric}
+                      onClear={clearMetric}
+                    />
+                  </div>
+                </div>
+              )}
+              {review.unmapped_fields && review.unmapped_fields.length > 0 && <div className="rounded-lg border border-amber-300 bg-amber-50 p-3" data-testid="report-ocr-unmapped-section"><h4 className="font-semibold text-amber-900">{t('rejectedUnmappedOcrFields')}</h4><div className="mt-2 space-y-2">{review.unmapped_fields.map((field, index) => <div className="grid gap-2 rounded border border-amber-200 bg-white p-2 sm:grid-cols-[minmax(180px,1fr)_minmax(220px,.8fr)] sm:items-center" key={`${field.original_label}-${index}`} data-testid="ocr-unmapped-field" data-ocr-original-label={field.original_label}><div className="text-sm text-amber-900"><p>{t('originalLabel')}: {field.original_label} · {t('originalValue')}: {field.original_value || '—'}</p><p className="text-xs">{t('source')}: {field.source || t('unknownSource')}{field.rejection_reason ? ` · ${t('unmappedMetricHelp')}` : ''}</p></div><Select onValueChange={value => mapUnmappedField(index, value as CanonicalMetricKey)}><SelectTrigger><SelectValue placeholder={t('mapToNormalizedMetric')} /></SelectTrigger><SelectContent>{visibleMetricKeys.map(key => <SelectItem value={key} key={key}>{t(metricTranslationKeys[key])}</SelectItem>)}</SelectContent></Select></div>)}</div></div>}
               {review.raw_output && <details className="rounded-lg bg-muted/50 p-3 text-sm"><summary className="cursor-pointer font-medium">{t('rawOcrOutput')}</summary><pre className="mt-3 whitespace-pre-wrap break-words text-xs">{review.raw_output}</pre></details>}
               <div className="flex justify-end"><Button type="button" variant={ocrAcknowledged ? 'outline' : 'default'} onClick={confirmAllMetrics}><Check className="mr-2 h-4 w-4" />{ocrAcknowledged ? t('metricsReviewedForDraft') : t('confirmAllReviewed')}</Button></div>
             </>}
@@ -490,18 +598,6 @@ function inferDashboardPlatform(shift: Shift | undefined, platforms: Platform[])
   return 'other'
 }
 
-function parseMetricInput(key: ReportMetricKey, value: string): number | string | null {
-  if (!value.trim()) return null
-  if (key === 'started_at' || key === 'ended_at') return value.trim()
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : null
-}
-
-function buildMetrics(keys: ReportMetricKey[], values: Partial<Record<ReportMetricKey, string>>): NormalizedReportMetrics {
-  return Object.fromEntries(keys.map(key => [key, parseMetricInput(key, values[key] || '')]))
-}
-
-const numberFrom = (value: NormalizedReportMetrics[ReportMetricKey]) => numericMetric(value)
 const entityName = (items: Array<{ id: string; name: string }>, id?: string) => items.find(item => item.id === id)?.name || '—'
 
 function Entity({ label, value }: { label: string; value: string }) {
