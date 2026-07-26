@@ -55,6 +55,7 @@ export const metricHelpTranslationKeys: Partial<Record<ReportMetricKey, Translat
 export const metricStatusTranslationKeys: Record<OcrMetricStatus, TranslationKey> = {
   accepted: 'statusAccepted',
   review_required: 'statusReviewRequired',
+  low_confidence: 'statusLowConfidence',
   rejected: 'statusRejected',
   manual: 'statusManual',
   empty: 'statusEmpty',
