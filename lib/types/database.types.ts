@@ -348,6 +348,29 @@ export interface ReportImage extends LifecycleMetadata {
 
 export type ReportImageCategory = 'dashboard' | 'livestream' | 'host' | 'support' | 'technical' | 'voucher' | 'product' | 'other'
 
+export type LiveReportImageCategory =
+  | 'key_visual'
+  | 'live_session'
+  | 'other'
+
+export interface LiveReportImage {
+  id: string
+  report_id?: string
+  category: LiveReportImageCategory
+  title?: string
+  description?: string
+  captured_at?: string
+  file_url: string
+  thumbnail_url?: string
+  file_name: string
+  mime_type: string
+  size_bytes: number
+  sort_order: number
+  is_cover: boolean
+  uploaded_by?: string
+  created_at: string
+}
+
 export type OcrConfidence = 'high' | 'medium' | 'low'
 export type OcrMetricStatus = 'confirmed' | 'accepted' | 'review_required' | 'low_confidence' | 'rejected' | 'manual' | 'empty'
 

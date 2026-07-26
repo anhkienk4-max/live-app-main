@@ -24,6 +24,7 @@ import {
   AuditRelatedRecord,
   DeletionImpact,
   ReportRevision,
+  LiveReportImage,
 } from '@/lib/types/database.types'
 import { buildDashboardOcrReviewFromRecognition, parseDashboardOcrText } from '@/lib/utils/ocrMetrics'
 import { recognizeDashboardImage } from '@/lib/services/imageOcrService'
@@ -31,6 +32,15 @@ import { DEFAULT_REQUIRED_STAFF_COUNT, normalizeCapacity, resolveShiftDateTime, 
 import { toCanonicalScheduleImportPreviewRow } from '@/lib/utils/scheduleImportPreview'
 import { recordAuditEvent } from '@/lib/services/auditService'
 import { resolveSystemPermission } from '@/lib/permissions'
+import {
+  liveReportImageCategories,
+  maximumLiveReportImages,
+  revokeLiveReportImageObjectUrl,
+  sanitizeLiveReportImageFileName,
+  sortedLiveReportImages,
+  validateLiveReportImageFile,
+  validateLiveReportImageMetadata,
+} from '@/lib/utils/liveReportImages'
 import {
   mockUsers,
   mockBrands,
@@ -53,6 +63,7 @@ let shifts: Shift[] = mockShifts.map(shift => ({
 }))
 let reports = [...mockReports]
 let reportImages: ReportImage[] = []
+let liveReportImages: LiveReportImage[] = []
 let dashboardUpdates = [...mockDashboardUpdates]
 let swapRequests = [...mockSwapRequests]
 let scheduleImports: ScheduleImportBatch[] = []
@@ -84,7 +95,10 @@ const appendReportRevision = (
     final_recap: report.final_recap ? { ...report.final_recap } : undefined,
     image_references: reportImages
       .filter(image => image.report_id === report.id && !image.deleted_at)
-      .map(image => image.id),
+      .map(image => image.id)
+      .concat(liveReportImages
+        .filter(image => image.report_id === report.id)
+        .map(image => image.id)),
   }
   report.version_number = version
   report.revisions = [...(report.revisions || []), revision]
@@ -1435,6 +1449,191 @@ export const reportImageService = {
       return groups
     }, {})
   },
+}
+
+// Metadata-only live-session gallery. Components currently provide blob URLs;
+// a future upload Route Handler will replace them with OneDrive URLs while this
+// service contract remains stable.
+export const liveReportImageService = {
+  async getByReport(reportId: string): Promise<LiveReportImage[]> {
+    return sortedLiveReportImages(
+      liveReportImages.filter(image => image.report_id === reportId),
+    )
+  },
+
+  async create(
+    data: Omit<LiveReportImage, 'id' | 'created_at'> & { report_id: string },
+    actorId: string,
+  ): Promise<LiveReportImage> {
+    const report = requireEditableImageReport(data.report_id, actorId)
+    const reportImageCount = liveReportImages.filter(
+      image => image.report_id === data.report_id,
+    ).length
+    if (reportImageCount >= maximumLiveReportImages) {
+      throw new Error('A report can contain at most 30 live-session images.')
+    }
+    if (!liveReportImageCategories.includes(data.category)) {
+      throw new Error('The image category is invalid.')
+    }
+    const fileName = sanitizeLiveReportImageFileName(data.file_name)
+    const fileError = validateLiveReportImageFile({
+      name: fileName,
+      type: data.mime_type,
+      size: data.size_bytes,
+    }, reportImageCount)
+    if (fileError) throw new Error(`Invalid live-session image: ${fileError.code}.`)
+    const metadataError = validateLiveReportImageMetadata(data)
+    if (metadataError) throw new Error(`Invalid image metadata: ${metadataError.code}.`)
+    if (!isSafeMockImageUrl(data.file_url)) throw new Error('The image URL is invalid.')
+
+    const existing = liveReportImages.filter(image => image.report_id === data.report_id)
+    const shouldCover = data.is_cover || existing.length === 0
+    if (shouldCover) {
+      liveReportImages = liveReportImages.map(image =>
+        image.report_id === data.report_id ? { ...image, is_cover: false } : image,
+      )
+    }
+    const image: LiveReportImage = {
+      ...data,
+      id: generateId(),
+      file_name: fileName,
+      title: data.title?.trim() || undefined,
+      description: data.description?.trim() || undefined,
+      captured_at: data.captured_at || undefined,
+      sort_order: existing.length,
+      is_cover: shouldCover,
+      uploaded_by: actorId,
+      created_at: nowIso(),
+    }
+    liveReportImages.push(image)
+    appendReportRevision(report, 'upload_image', actorId, `Uploaded ${image.file_name}`)
+    audit('reports', 'upload', 'live_report_image', image.id, image.file_name, {
+      actorId,
+      after: { ...image },
+      source: 'upload',
+      relatedRecords: [{
+        entity_type: 'report',
+        entity_id: report.id,
+        entity_name: `Report ${report.id}`,
+      }],
+    })
+    return image
+  },
+
+  async updateMetadata(
+    id: string,
+    patch: Pick<
+      LiveReportImage,
+      'category' | 'title' | 'description' | 'captured_at'
+    >,
+    actorId: string,
+  ): Promise<LiveReportImage> {
+    const index = liveReportImages.findIndex(image => image.id === id)
+    if (index === -1) throw new Error('Image was not found.')
+    const current = liveReportImages[index]
+    const report = requireEditableImageReport(current.report_id || '', actorId)
+    if (!liveReportImageCategories.includes(patch.category)) {
+      throw new Error('The image category is invalid.')
+    }
+    const metadataError = validateLiveReportImageMetadata(patch)
+    if (metadataError) throw new Error(`Invalid image metadata: ${metadataError.code}.`)
+    liveReportImages[index] = {
+      ...current,
+      category: patch.category,
+      title: patch.title?.trim() || undefined,
+      description: patch.description?.trim() || undefined,
+      captured_at: patch.captured_at || undefined,
+    }
+    appendReportRevision(report, 'save', actorId, `Updated ${current.file_name}`)
+    return liveReportImages[index]
+  },
+
+  async setCover(id: string, actorId: string): Promise<LiveReportImage[]> {
+    const image = liveReportImages.find(candidate => candidate.id === id)
+    if (!image?.report_id) throw new Error('Image was not found.')
+    const report = requireEditableImageReport(image.report_id, actorId)
+    liveReportImages = liveReportImages.map(candidate =>
+      candidate.report_id === image.report_id
+        ? { ...candidate, is_cover: candidate.id === id }
+        : candidate,
+    )
+    appendReportRevision(report, 'save', actorId, `Set ${image.file_name} as report cover`)
+    return this.getByReport(image.report_id)
+  },
+
+  async reorder(
+    reportId: string,
+    orderedIds: readonly string[],
+    actorId: string,
+  ): Promise<LiveReportImage[]> {
+    const report = requireEditableImageReport(reportId, actorId)
+    const current = liveReportImages.filter(image => image.report_id === reportId)
+    if (
+      orderedIds.length !== current.length
+      || new Set(orderedIds).size !== current.length
+      || current.some(image => !orderedIds.includes(image.id))
+    ) {
+      throw new Error('The image order is invalid.')
+    }
+    const order = new Map(orderedIds.map((id, index) => [id, index]))
+    liveReportImages = liveReportImages.map(image =>
+      image.report_id === reportId
+        ? { ...image, sort_order: order.get(image.id) ?? image.sort_order }
+        : image,
+    )
+    appendReportRevision(report, 'save', actorId, 'Reordered live-session images')
+    return this.getByReport(reportId)
+  },
+
+  async remove(id: string, actorId: string): Promise<LiveReportImage[]> {
+    const index = liveReportImages.findIndex(image => image.id === id)
+    if (index === -1) throw new Error('Image was not found.')
+    const image = liveReportImages[index]
+    if (!image.report_id) throw new Error('The image is not attached to a report.')
+    const report = requireEditableImageReport(image.report_id, actorId)
+    liveReportImages.splice(index, 1)
+    const remaining = liveReportImages
+      .filter(candidate => candidate.report_id === image.report_id)
+      .sort((left, right) => left.sort_order - right.sort_order)
+    remaining.forEach((candidate, sortOrder) => {
+      candidate.sort_order = sortOrder
+    })
+    if (image.is_cover && remaining.length > 0) remaining[0].is_cover = true
+    if (typeof window !== 'undefined') revokeLiveReportImageObjectUrl(image)
+    appendReportRevision(report, 'remove_image', actorId, `Removed ${image.file_name}`)
+    audit('reports', 'remove_upload', 'live_report_image', image.id, image.file_name, {
+      actorId,
+      before: { ...image },
+      source: 'upload',
+      entityExists: false,
+    })
+    return this.getByReport(image.report_id)
+  },
+}
+
+function requireEditableImageReport(reportId: string, actorId: string) {
+  const report = reports.find(candidate => candidate.id === reportId)
+  if (!report) throw new Error('Report was not found.')
+  const actor = users.find(user => user.id === actorId)
+  if (!actor) throw new Error('The current user could not be verified.')
+  const canReview = resolveSystemPermission(actor) !== 'member'
+  const ownsReport = report.submitted_by === actorId
+  if (!canReview && !ownsReport) {
+    throw new Error('You do not have permission to edit report images.')
+  }
+  if (report.metrics_confirmed || report.status === 'confirmed') {
+    throw new Error('Reopen the confirmed report before changing report images.')
+  }
+  return report
+}
+
+function isSafeMockImageUrl(value: string) {
+  try {
+    const protocol = new URL(value).protocol
+    return protocol === 'blob:' || protocol === 'https:'
+  } catch {
+    return false
+  }
 }
 
 // Local OCR boundary. Image bytes are recognized by the Tesseract.js route;

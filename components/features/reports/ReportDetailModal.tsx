@@ -1,15 +1,14 @@
 'use client'
 
 import * as React from 'react'
-import { Report, Shift, Brand, Platform, User, Campaign, FinalReportRecap, OcrReviewData, ShiftRegistration, NormalizedReportMetrics, ReportMetricKey, ReportImageCategory } from '@/lib/types/database.types'
+import { Report, Shift, Brand, Platform, User, Campaign, FinalReportRecap, OcrReviewData, ShiftRegistration, NormalizedReportMetrics, ReportMetricKey, LiveReportImage } from '@/lib/types/database.types'
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { ocrService, reportImageService, reportService } from '@/lib/services/dataService'
+import { liveReportImageService, ocrService, reportImageService, reportService } from '@/lib/services/dataService'
 import { ReportImage } from '@/lib/types/database.types'
-import { ImageGallery } from '@/components/features/gallery/ImageGallery'
 import { format } from 'date-fns'
 import { AlertTriangle, DollarSign, TrendingUp, Users, ThumbsUp, MessageCircle, Share2, ExternalLink, Star, Download, Check, X, Pencil, RotateCcw, ScanText, Trash2, History, LockOpen, Upload } from 'lucide-react'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
@@ -46,7 +45,6 @@ import { metricTranslationKeys } from '@/lib/reportMetricLabels'
 import { defaultOcrCrop } from '@/lib/utils/ocrImage'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { DeletionImpact } from '@/lib/types/database.types'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { OcrCropPreview } from '@/components/features/reports/OcrCropPreview'
 import { OcrMetricFilterBar, OcrMetricReviewField } from '@/components/features/reports/OcrMetricReviewField'
 import { AlertDialog } from '@/components/ui/alert-dialog'
@@ -56,6 +54,11 @@ import {
   finalReportRecapFields,
   normalizeFinalReportRecap,
 } from '@/lib/utils/finalReportRecap'
+import { LiveReportImageEditor, LiveReportImageGallery } from '@/components/features/reports/LiveReportImageGallery'
+import {
+  moveLiveReportImage,
+  resolveLiveReportImagePermissions,
+} from '@/lib/utils/liveReportImages'
 
 interface ReportDetailModalProps {
   open: boolean
@@ -103,6 +106,7 @@ export function ReportDetailModal({
   onUpdated,
 }: ReportDetailModalProps) {
   const [images, setImages] = React.useState<ReportImage[]>([])
+  const [liveImages, setLiveImages] = React.useState<LiveReportImage[]>([])
   const { currentUser } = useCurrentUser()
   const { t } = useTranslation()
   const { toast } = useToast()
@@ -118,7 +122,6 @@ export function ReportDetailModal({
   const [editingMetrics, setEditingMetrics] = React.useState(false)
   const [removeImageTarget, setRemoveImageTarget] = React.useState<ReportImage | null>(null)
   const [showReopen, setShowReopen] = React.useState(false)
-  const [uploadCategory, setUploadCategory] = React.useState<ReportImageCategory>('dashboard')
   const [metricFilter, setMetricFilter] = React.useState<OcrMetricFilter>('data')
   const [showConfirmWarning, setShowConfirmWarning] = React.useState(false)
   const [revisionPage, setRevisionPage] = React.useState(1)
@@ -126,6 +129,7 @@ export function ReportDetailModal({
   const uploadInputRef = React.useRef<HTMLInputElement>(null)
   const dashboardImage = images.find(image => image.image_type === 'dashboard')
   React.useEffect(() => { if (open) void reportImageService.getByReport(report.id).then(setImages) }, [open, report.id])
+  React.useEffect(() => { if (open) void liveReportImageService.getByReport(report.id).then(setLiveImages) }, [open, report.id])
   React.useEffect(() => {
     if (open) {
       setFinalRecap({
@@ -325,7 +329,7 @@ export function ReportDetailModal({
       const created = await Promise.all(files.map(file => reportImageService.create({
         report_id: report.id,
         image_url: URL.createObjectURL(file),
-        image_type: uploadCategory,
+        image_type: 'dashboard',
         original_name: file.name,
         mime_type: file.type,
         size_bytes: file.size,
@@ -337,6 +341,74 @@ export function ReportDetailModal({
       toast({ title: t('uploadFailed'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
     } finally {
       event.target.value = ''
+    }
+  }
+
+  const addLiveImages = async (incoming: LiveReportImage[]) => {
+    if (!currentUser) return
+    try {
+      await Promise.all(incoming.map(image => liveReportImageService.create({
+        report_id: report.id,
+        category: image.category,
+        title: image.title,
+        description: image.description,
+        captured_at: image.captured_at,
+        file_url: image.file_url,
+        thumbnail_url: image.thumbnail_url,
+        file_name: image.file_name,
+        mime_type: image.mime_type,
+        size_bytes: image.size_bytes,
+        sort_order: image.sort_order,
+        is_cover: image.is_cover,
+        uploaded_by: currentUser.id,
+      }, currentUser.id)))
+      setLiveImages(await liveReportImageService.getByReport(report.id))
+      toast({ title: t('evidenceUploaded'), description: t('evidenceUploadedHelp', { count: incoming.length }), variant: 'success' })
+    } catch (error) {
+      toast({ title: t('uploadFailed'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+      throw error
+    }
+  }
+
+  const updateLiveImage = async (
+    image: LiveReportImage,
+    patch: Pick<LiveReportImage, 'category' | 'title' | 'description' | 'captured_at'>,
+  ) => {
+    if (!currentUser) return
+    try {
+      await liveReportImageService.updateMetadata(image.id, patch, currentUser.id)
+      setLiveImages(await liveReportImageService.getByReport(report.id))
+    } catch (error) {
+      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+    }
+  }
+
+  const deleteLiveImage = async (image: LiveReportImage) => {
+    if (!currentUser) return
+    try {
+      setLiveImages(await liveReportImageService.remove(image.id, currentUser.id))
+      toast({ title: t('imageRemoved'), variant: 'success' })
+    } catch (error) {
+      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+    }
+  }
+
+  const reorderLiveImage = async (image: LiveReportImage, direction: -1 | 1) => {
+    if (!currentUser) return
+    try {
+      const next = moveLiveReportImage(liveImages, image.id, direction)
+      setLiveImages(await liveReportImageService.reorder(report.id, next.map(candidate => candidate.id), currentUser.id))
+    } catch (error) {
+      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+    }
+  }
+
+  const setLiveImageCover = async (image: LiveReportImage) => {
+    if (!currentUser) return
+    try {
+      setLiveImages(await liveReportImageService.setCover(image.id, currentUser.id))
+    } catch (error) {
+      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
     }
   }
 
@@ -362,6 +434,11 @@ export function ReportDetailModal({
     !report.metrics_confirmed &&
     (hasPermission(currentUser, 'reports.review') || report.submitted_by === currentUser.id || currentUserAssigned),
   )
+  const liveImagePermissions = resolveLiveReportImagePermissions({
+    reportConfirmed: report.metrics_confirmed || report.status === 'confirmed',
+    isSubmitter: Boolean(currentUser && report.submitted_by === currentUser.id),
+    canReview: Boolean(currentUser && hasPermission(currentUser, 'reports.review')),
+  })
 
   const setMetric = (key: CanonicalMetricKey, value: string) => {
     setMetricValues(current => ({ ...current, [key]: parseMetricInputValue(value) }))
@@ -711,8 +788,74 @@ export function ReportDetailModal({
             </Card>
           </TabsContent>
           <TabsContent value="images" className="space-y-4">
-            {!report.metrics_confirmed && currentUser && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"><div><p className="font-medium">{t('addEvidenceToRevision')}</p><p className="text-xs text-muted-foreground">{t('draftEvidenceUploadHelp')}</p></div><div className="flex flex-wrap gap-2"><Select value={uploadCategory} onValueChange={value => setUploadCategory(value as ReportImageCategory)}><SelectTrigger className="w-40"><SelectValue /></SelectTrigger><SelectContent>{(['dashboard', 'livestream', 'host', 'support', 'technical', 'voucher', 'product', 'other'] as ReportImageCategory[]).map(category => <SelectItem key={category} value={category}>{t(category)}</SelectItem>)}</SelectContent></Select><Button onClick={() => uploadInputRef.current?.click()}><Upload className="mr-2 h-4 w-4" />{t('uploadImage')}</Button><input ref={uploadInputRef} className="sr-only" type="file" accept="image/*" multiple onChange={uploadImages} /></div></div>}
-            {images.length === 0 ? <p className="text-sm text-gray-500">{t('noEvidenceImages')}</p> : Object.entries(images.reduce<Record<string, ReportImage[]>>((groups, image) => { (groups[image.image_type] ??= []).push(image); return groups }, {})).map(([category, categoryImages]) => <Card key={category}><CardContent className="pt-6"><h3 className="mb-3 font-semibold capitalize">{t(category as ReportImage['image_type'])} ({categoryImages.length})</h3><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{categoryImages.map(image => <div className="space-y-2 rounded-lg border p-2" key={image.id}><ImageGallery images={[image.image_url]} /><div className="flex items-center justify-between gap-2"><p className="min-w-0 truncate text-xs">{image.original_name || image.image_type}</p>{!report.metrics_confirmed && <Button size="icon-sm" variant="ghost" aria-label={t('removeUploadedReportImage')} title={t('removeUploadedReportImage')} onClick={() => setRemoveImageTarget(image)}><Trash2 className="h-4 w-4 text-red-600" /></Button>}</div></div>)}</div></CardContent></Card>)}
+            {liveImagePermissions.canEdit && (
+              <LiveReportImageEditor
+                images={liveImages}
+                uploadedBy={currentUser?.id}
+                editable
+                canDelete={liveImagePermissions.canDelete}
+                canReorderAndSetCover={liveImagePermissions.canReorderAndSetCover}
+                onAdd={addLiveImages}
+                onUpdate={updateLiveImage}
+                onDelete={deleteLiveImage}
+                onMove={reorderLiveImage}
+                onSetCover={setLiveImageCover}
+              />
+            )}
+            <LiveReportImageGallery images={liveImages} />
+
+            <Card>
+              <CardContent className="space-y-4 pt-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium">{t('uploadDashboardEvidence')}</p>
+                    <p className="text-xs text-muted-foreground">{t('dashboardEvidenceHelp')}</p>
+                  </div>
+                  {liveImagePermissions.canEdit && (
+                    <>
+                      <Button onClick={() => uploadInputRef.current?.click()}>
+                        <Upload className="mr-2 h-4 w-4" />{t('uploadDashboard')}
+                      </Button>
+                      <input
+                        ref={uploadInputRef}
+                        className="sr-only"
+                        type="file"
+                        accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                        multiple
+                        onChange={uploadImages}
+                      />
+                    </>
+                  )}
+                </div>
+                {images.filter(image => image.image_type === 'dashboard').length === 0
+                  ? <p className="text-sm text-gray-500">{t('noEvidenceImages')}</p>
+                  : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {images.filter(image => image.image_type === 'dashboard').map(image => (
+                        <div className="space-y-2 rounded-lg border p-2" key={image.id}>
+                          <img
+                            src={image.image_url}
+                            alt={image.original_name || image.image_type}
+                            className="aspect-video w-full rounded-md object-cover"
+                          />
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="min-w-0 truncate text-xs">{image.original_name || image.image_type}</p>
+                            {liveImagePermissions.canEdit && (
+                              <Button
+                                size="icon-sm"
+                                variant="ghost"
+                                aria-label={t('removeUploadedReportImage')}
+                                title={t('removeUploadedReportImage')}
+                                onClick={() => setRemoveImageTarget(image)}
+                              >
+                                <Trash2 className="h-4 w-4 text-red-600" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>}
+              </CardContent>
+            </Card>
           </TabsContent>
           <TabsContent value="versions" className="space-y-3">
             <Card className="overflow-hidden"><CardContent className="p-0"><div className="max-h-[55vh] space-y-3 overflow-auto p-6"><h3 className="mb-4 flex items-center gap-2 font-semibold"><History className="h-4 w-4" />{t('reportVersionHistory')}</h3>{visibleRevisions.map(revision => <div className="rounded-lg border p-3" key={revision.version}><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-medium">{t('version')} {revision.version} · {revision.event.replaceAll('_', ' ')}</p><p className="text-xs text-muted-foreground">{format(new Date(revision.created_at), 'dd/MM/yyyy HH:mm')} · {getUserName(revision.created_by)}</p></div><Badge variant="outline">{revision.status}</Badge></div>{revision.reason && <p className="mt-2 text-sm">{revision.reason}</p>}<div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4"><div>{t('metricRevenue')}: {formatCurrency(revision.metrics.revenue)}</div><div>{t('metricOrders')}: {revision.metrics.orders}</div><div>{t('peak')}: {revision.metrics.peak_viewer}</div><div>{t('reportImages')}: {revision.image_references.length}</div></div></div>)}{!revisions.length && <p className="text-sm text-muted-foreground">{t('noRevisionSnapshots')}</p>}</div><HistoryPagination page={revisionPage} pageSize={revisionPageSize} total={revisions.length} onPageChange={setRevisionPage} onPageSizeChange={size => { setRevisionPageSize(size); setRevisionPage(1) }} /></CardContent></Card>

@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { format } from 'date-fns'
 import { AlertTriangle, Check, Loader2, Pencil, RotateCcw, ScanText, Upload, X } from 'lucide-react'
-import { ocrService, reportImageService, reportService } from '@/lib/services/dataService'
+import { liveReportImageService, ocrService, reportImageService, reportService } from '@/lib/services/dataService'
 import {
   Brand,
   Campaign,
@@ -12,6 +12,7 @@ import {
   OcrReviewData,
   Platform,
   ReportDashboardPlatform,
+  LiveReportImage,
   ReportImageCategory,
   Shift,
   ShiftRegistration,
@@ -68,8 +69,15 @@ import {
   finalReportRecapFields,
   normalizeFinalReportRecap,
 } from '@/lib/utils/finalReportRecap'
+import {
+  moveLiveReportImage,
+  removeLiveReportImage,
+  revokeLiveReportImageObjectUrl,
+  setLiveReportCover,
+  updateLiveReportImageMetadata,
+} from '@/lib/utils/liveReportImages'
+import { LiveReportImageEditor } from '@/components/features/reports/LiveReportImageGallery'
 
-const imageCategories: ReportImageCategory[] = ['dashboard', 'livestream', 'host', 'support', 'technical', 'voucher', 'product', 'other']
 const emptyReview = (): OcrReviewData => ({ status: 'waiting', metrics: {} })
 type PendingImage = { url: string; name: string; type: ReportImageCategory; mime: string; size: number }
 
@@ -98,6 +106,8 @@ export function ReportFormModal({
   const { t } = useTranslation()
   const { toast } = useToast()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const liveImagesRef = React.useRef<LiveReportImage[]>([])
+  const persistedLiveImageUrlsRef = React.useRef(new Set<string>())
   const manualMetricKeysRef = React.useRef(new Set<CanonicalMetricKey>())
   const ocrDerivedMetricKeysRef = React.useRef(new Set<CanonicalMetricKey>())
   const [shiftId, setShiftId] = React.useState('')
@@ -108,7 +118,7 @@ export function ReportFormModal({
   const [ocrAcknowledged, setOcrAcknowledged] = React.useState(false)
   const [editingMetrics, setEditingMetrics] = React.useState(false)
   const [images, setImages] = React.useState<PendingImage[]>([])
-  const [category, setCategory] = React.useState<ReportImageCategory>('dashboard')
+  const [liveImages, setLiveImages] = React.useState<LiveReportImage[]>([])
   const [replayUrl, setReplayUrl] = React.useState('')
   const [dashboardUrl, setDashboardUrl] = React.useState('')
   const [insightsGood, setInsightsGood] = React.useState('')
@@ -124,7 +134,14 @@ export function ReportFormModal({
   const selectedShift = completedShifts.find(shift => shift.id === shiftId)
 
   React.useEffect(() => {
-    if (!open) return
+    if (!open) {
+      liveImagesRef.current
+        .filter(image => !persistedLiveImageUrlsRef.current.has(image.file_url))
+        .forEach(image => revokeLiveReportImageObjectUrl(image))
+      liveImagesRef.current = []
+      setLiveImages([])
+      return
+    }
     const initialShift = completedShifts[0]
     const initialPlatform = inferDashboardPlatform(initialShift, platforms)
     setShiftId(initialShift?.id || '')
@@ -137,6 +154,11 @@ export function ReportFormModal({
     setOcrAcknowledged(false)
     setEditingMetrics(false)
     setImages([])
+    liveImagesRef.current
+      .filter(image => !persistedLiveImageUrlsRef.current.has(image.file_url))
+      .forEach(image => revokeLiveReportImageObjectUrl(image))
+    persistedLiveImageUrlsRef.current.clear()
+    setLiveImages([])
     setReplayUrl('')
     setDashboardUrl('')
     setInsightsGood('')
@@ -149,6 +171,16 @@ export function ReportFormModal({
   // Opening the modal initializes a fresh draft. Prop-array identity changes
   // while it is open must not erase OCR candidates or autofilled metrics.
   }, [open])
+
+  React.useEffect(() => {
+    liveImagesRef.current = liveImages
+  }, [liveImages])
+
+  React.useEffect(() => () => {
+    liveImagesRef.current
+      .filter(image => !persistedLiveImageUrlsRef.current.has(image.file_url))
+      .forEach(image => revokeLiveReportImageObjectUrl(image))
+  }, [])
 
   const changeShift = (value: string) => {
     const nextShift = completedShifts.find(shift => shift.id === value)
@@ -346,7 +378,7 @@ export function ReportFormModal({
     const files = Array.from(event.target.files ?? [])
     if (files.length) {
       setImages(current => [...current, ...files.map(file => ({
-        url: URL.createObjectURL(file), name: file.name, type: category, mime: file.type, size: file.size,
+        url: URL.createObjectURL(file), name: file.name, type: 'dashboard' as const, mime: file.type, size: file.size,
       }))])
     }
     event.target.value = ''
@@ -417,6 +449,24 @@ export function ReportFormModal({
         mime_type: image.mime,
         size_bytes: image.size,
       })))
+      await Promise.all([...liveImages]
+        .sort((left, right) => left.sort_order - right.sort_order)
+        .map(image => liveReportImageService.create({
+          report_id: report.id,
+          category: image.category,
+          title: image.title,
+          description: image.description,
+          captured_at: image.captured_at,
+          file_url: image.file_url,
+          thumbnail_url: image.thumbnail_url,
+          file_name: image.file_name,
+          mime_type: image.mime_type,
+          size_bytes: image.size_bytes,
+          sort_order: image.sort_order,
+          is_cover: image.is_cover,
+          uploaded_by: currentUser.id,
+        }, currentUser.id)))
+      liveImages.forEach(image => persistedLiveImageUrlsRef.current.add(image.file_url))
       toast({ title: t('submitted'), description: t('finalReportSavedHelp'), variant: 'success' })
       onSuccess()
     } catch (error) {
@@ -426,10 +476,6 @@ export function ReportFormModal({
     }
   }
 
-  const grouped = images.reduce<Record<string, PendingImage[]>>((result, image) => {
-    ;(result[image.type] ??= []).push(image)
-    return result
-  }, {})
   const visibleMetricKeys = [...platformCanonicalMetricKeys(dashboardPlatform)]
   const mainMetricKeys = dashboardPlatform === 'shopee_live'
     ? shopeeMainMetricKeys
@@ -474,9 +520,9 @@ export function ReportFormModal({
           <section className="space-y-4 rounded-lg border p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div><h3 className="font-semibold">{t('uploadDashboardEvidence')}</h3><p className="text-sm text-muted-foreground">{t('dashboardEvidenceHelp')}</p></div>
-              <div className="flex flex-wrap gap-2"><Select value={category} onValueChange={value => setCategory(value as ReportImageCategory)}><SelectTrigger className="w-40"><SelectValue /></SelectTrigger><SelectContent>{imageCategories.map(item => <SelectItem key={item} value={item}>{t(item)}</SelectItem>)}</SelectContent></Select><Button type="button" onClick={() => fileInputRef.current?.click()}><Upload className="mr-2 h-4 w-4" />{t('uploadDashboard')}</Button><input ref={fileInputRef} className="sr-only" type="file" accept="image/*" multiple onChange={addImages} data-testid="report-dashboard-image-upload" /></div>
+              <div className="flex flex-wrap gap-2"><Button type="button" onClick={() => fileInputRef.current?.click()}><Upload className="mr-2 h-4 w-4" />{t('uploadDashboard')}</Button><input ref={fileInputRef} className="sr-only" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple onChange={addImages} data-testid="report-dashboard-image-upload" /></div>
             </div>
-            {Object.entries(grouped).map(([type, categoryImages]) => <div key={type}><p className="mb-2 text-sm font-medium capitalize">{t(type as ReportImageCategory)} ({categoryImages.length})</p><div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">{categoryImages.map(image => <div className="relative min-w-0" key={image.url}><img src={image.url} alt={image.name} className="aspect-video w-full rounded border object-cover" /><p className="truncate pt-1 text-xs">{image.name}</p><Button aria-label={`${t('removeImage')} ${image.name}`} type="button" size="icon" variant="destructive" className="absolute -right-2 -top-2 h-6 w-6" onClick={() => removeImage(image)}><X className="h-3 w-3" /></Button></div>)}</div></div>)}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">{images.map(image => <div className="relative min-w-0" key={image.url}><img src={image.url} alt={image.name} className="aspect-video w-full rounded border object-cover" /><p className="truncate pt-1 text-xs">{image.name}</p><Button aria-label={`${t('removeImage')} ${image.name}`} type="button" size="icon" variant="destructive" className="absolute -right-2 -top-2 h-6 w-6" onClick={() => removeImage(image)}><X className="h-3 w-3" /></Button></div>)}</div>
           </section>
 
           <section className="space-y-4 rounded-lg border border-dashed p-4">
@@ -548,7 +594,34 @@ export function ReportFormModal({
             </>}
           </section>
 
-          <div className="grid gap-4 md:grid-cols-2"><label className="text-sm font-medium">{t('replayUrl')}<Input className="mt-1" type="url" value={replayUrl} onChange={event => setReplayUrl(event.target.value)} /></label><label className="text-sm font-medium">{t('dashboardUrl')}<Input className="mt-1" type="url" value={dashboardUrl} onChange={event => setDashboardUrl(event.target.value)} /></label><label className="text-sm font-medium">{t('whatWentWell')}<Textarea className="mt-1" value={insightsGood} onChange={event => setInsightsGood(event.target.value)} /></label><label className="text-sm font-medium">{t('improvementAreas')}<Textarea className="mt-1" value={insightsImprovement} onChange={event => setInsightsImprovement(event.target.value)} /></label></div>
+          <LiveReportImageEditor
+            images={liveImages}
+            uploadedBy={currentUser?.id}
+            editable={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}
+            canDelete={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}
+            canReorderAndSetCover={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}
+            onAdd={incoming => setLiveImages(current => [...current, ...incoming])}
+            onUpdate={(image, patch) => {
+              const result = updateLiveReportImageMetadata(liveImages, image.id, patch)
+              if (result.error) {
+                toast({ title: t('validationError'), variant: 'destructive' })
+                return
+              }
+              setLiveImages(result.images)
+            }}
+            onDelete={image => {
+              const result = removeLiveReportImage(liveImages, image.id)
+              if (result.removed) revokeLiveReportImageObjectUrl(result.removed)
+              setLiveImages(result.images)
+            }}
+            onMove={(image, direction) => setLiveImages(current => moveLiveReportImage(current, image.id, direction))}
+            onSetCover={image => setLiveImages(current => setLiveReportCover(current, image.id))}
+          />
+
+          <section className="space-y-4 rounded-lg border p-4" data-testid="final-report-notes-section">
+            <h3 className="font-semibold">{t('notes')}</h3>
+            <div className="grid gap-4 md:grid-cols-2"><label className="text-sm font-medium">{t('replayUrl')}<Input className="mt-1" type="url" value={replayUrl} onChange={event => setReplayUrl(event.target.value)} /></label><label className="text-sm font-medium">{t('dashboardUrl')}<Input className="mt-1" type="url" value={dashboardUrl} onChange={event => setDashboardUrl(event.target.value)} /></label><label className="text-sm font-medium">{t('whatWentWell')}<Textarea className="mt-1" value={insightsGood} onChange={event => setInsightsGood(event.target.value)} /></label><label className="text-sm font-medium">{t('improvementAreas')}<Textarea className="mt-1" value={insightsImprovement} onChange={event => setInsightsImprovement(event.target.value)} /></label></div>
+          </section>
 
           {selectedShift && (
             <section className="space-y-4 rounded-lg border p-4">
