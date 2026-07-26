@@ -229,6 +229,7 @@ export interface Shift extends LifecycleMetadata {
   status: ShiftStatus
   live_link?: string
   product_notes?: string
+  updated_by?: string
   created_at: string
   updated_at: string
 }
@@ -277,7 +278,7 @@ export interface Report extends LifecycleMetadata {
   orders: number
   peak_viewer: number
   average_viewer: number
-  likes: number
+  likes?: number
   comments: number
   shares: number
   top_products?: string[]
@@ -348,7 +349,7 @@ export interface ReportImage extends LifecycleMetadata {
 export type ReportImageCategory = 'dashboard' | 'livestream' | 'host' | 'support' | 'technical' | 'voucher' | 'product' | 'other'
 
 export type OcrConfidence = 'high' | 'medium' | 'low'
-export type OcrMetricStatus = 'confirmed' | 'accepted' | 'review_required' | 'rejected' | 'manual' | 'empty'
+export type OcrMetricStatus = 'confirmed' | 'accepted' | 'review_required' | 'low_confidence' | 'rejected' | 'manual' | 'empty'
 
 export type ReportDashboardPlatform = 'tiktok_shop' | 'shopee_live' | 'other'
 
@@ -398,6 +399,11 @@ export type NormalizedReportMetrics = Partial<Record<ReportMetricKey, ReportMetr
 export interface OcrMetricValue {
   value: ReportMetricValue
   candidate_value?: ReportMetricValue
+  normalized_value?: ReportMetricValue
+  raw_ocr_label?: string
+  corrected_source_label?: string
+  raw_ocr_value?: string
+  corrected_display_value?: string
   confidence: OcrConfidence
   needs_review: boolean
   original_label?: string
@@ -405,7 +411,21 @@ export interface OcrMetricValue {
   normalized_key?: ReportMetricKey
   unit?: string
   bounding_box?: { x: number; y: number; width: number; height: number }
-  source?: 'image_ocr' | 'local_tesseract_text' | 'trusted_text' | 'manual' | 'imported'
+  label_box?: { x: number; y: number; width: number; height: number }
+  value_box?: { x: number; y: number; width: number; height: number }
+  pairing_reason?: string
+  pair_score?: number
+  source?:
+    | 'raw_text_exact'
+    | 'raw_text_sequence'
+    | 'card_exact'
+    | 'word_box_exact'
+    | 'spatial_fallback'
+    | 'image_ocr'
+    | 'local_tesseract_text'
+    | 'trusted_text'
+    | 'manual'
+    | 'imported'
   status?: OcrMetricStatus
   rejection_reason?: string
   label_confidence?: number
@@ -413,6 +433,7 @@ export interface OcrMetricValue {
   spatial_score?: number
   label_source?: 'ocr_text' | 'platform_layout'
   value_source_pass?: 'label' | 'numeric' | 'card'
+  conflict_warning?: string
   confirmed_by?: string
   confirmed_at?: string
   manual_edit?: {
@@ -434,16 +455,36 @@ export interface OcrReviewData {
   original_dimensions?: { width: number; height: number }
   processed_dimensions?: { width: number; height: number }
   metrics: Partial<Record<ReportMetricKey, OcrMetricValue>>
+  discarded_conflicts?: Array<{
+    canonical_key: ReportMetricKey
+    selected_source?: OcrMetricValue['source']
+    discarded_source?: OcrMetricValue['source']
+    selected_value?: ReportMetricValue
+    discarded_value?: ReportMetricValue
+    reason: string
+  }>
+  missing_metric_keys?: ReportMetricKey[]
   unmapped_fields?: Array<{
     original_label: string
     original_value: string
     normalized_key?: ReportMetricKey
     confidence: OcrConfidence
     bounding_box?: { x: number; y: number; width: number; height: number }
-    source?: 'image_ocr' | 'local_tesseract_text' | 'trusted_text' | 'manual' | 'imported'
+    source?:
+      | 'raw_text_exact'
+      | 'raw_text_sequence'
+      | 'card_exact'
+      | 'word_box_exact'
+      | 'spatial_fallback'
+      | 'image_ocr'
+      | 'local_tesseract_text'
+      | 'trusted_text'
+      | 'manual'
+      | 'imported'
     rejection_reason?: string
   }>
   raw_output?: string
+  raw_diagnostic_output?: string | null
   error_message?: string
 }
 
@@ -464,6 +505,14 @@ export interface OcrRecognizedWord {
   source: 'image_ocr'
   pass: 'label' | 'numeric' | 'card'
   bounding_box: { x: number; y: number; width: number; height: number }
+  x0?: number
+  y0?: number
+  x1?: number
+  y1?: number
+  centerX?: number
+  centerY?: number
+  width?: number
+  height?: number
 }
 
 export interface OcrImageRecognition {
@@ -474,6 +523,7 @@ export interface OcrImageRecognition {
     label: string
     numeric: string
     card?: Record<string, string[]>
+    card_labels?: Record<string, string[]>
   }
   confidence: number
   words: OcrRecognizedWord[]
