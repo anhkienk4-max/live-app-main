@@ -153,6 +153,8 @@ export function OcrCropPreview({
               selected_roi: regionDiagnostics.selected_roi,
               normalized_roi_dimensions: regionDiagnostics.normalized_roi_dimensions,
               perspective_correction_applied: regionDiagnostics.perspective_correction_applied,
+              ambiguous: regionDiagnostics.ambiguous,
+              selection_required: regionDiagnostics.selection_required,
               selection_reason: regionDiagnostics.selection_reason,
               fallback_usage: regionDiagnostics.fallback_usage,
             }, null, 2)}

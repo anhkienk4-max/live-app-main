@@ -19,6 +19,11 @@ import {
   normalizeMetricCellToRoi,
   roiCellBoundingBox,
 } from '@/lib/utils/ocrRegionGeometry'
+import {
+  buildOcrLabelWindows,
+  groupOcrWordLines,
+  type OcrWordLine,
+} from '@/lib/utils/ocrLabelGeometry'
 
 export const commonReportMetricKeys: ReportMetricKey[] = [
   'revenue', 'gmv', 'orders', 'buyers', 'items_sold', 'total_views',
@@ -496,8 +501,9 @@ export function parseOcrValue(raw: string): ReportMetricValue {
     return original
   }
 
-  const suffix = original.match(/([KM])\s*%?$/i)?.[1]?.toUpperCase()
-  const multiplier = suffix === 'K' ? 1_000 : suffix === 'M' ? 1_000_000 : 1
+  const compact = parseCompactOcrNumber(original)
+  if (compact) return compact.value
+
   let numeric = original
     .replace(/[₫đ$€£¥₱]/gi, '')
     .replace(/[^\d,.\-]/g, '')
@@ -521,7 +527,61 @@ export function parseOcrValue(raw: string): ReportMetricValue {
   }
 
   const parsed = Number(numeric)
-  return Number.isFinite(parsed) ? parsed * multiplier : original
+  return Number.isFinite(parsed) ? parsed : original
+}
+
+export interface CompactOcrNumber {
+  value: number
+  normalized: string
+  suffix: 'K' | 'M'
+  decimalSeparator?: '.' | ','
+  separatorInferred: boolean
+  ambiguous: boolean
+}
+
+/**
+ * Parses compact dashboard numbers without assuming a locale. A K/M suffix
+ * makes a single dot or comma a decimal separator; repeated or malformed
+ * punctuation is retained as review-required ambiguity instead of silently
+ * dropping digits.
+ */
+export function parseCompactOcrNumber(raw: string): CompactOcrNumber | null {
+  const compact = raw.trim().replace(/\s+/g, '').match(/^(-?\d[\d.,]*)([KM])$/i)
+  if (!compact) return null
+  const suffix = compact[2].toUpperCase() as 'K' | 'M'
+  const multiplier = suffix === 'K' ? 1_000 : 1_000_000
+  const numeric = compact[1]
+  const separators = [...numeric.matchAll(/[.,]/g)]
+  const lastSeparator = separators.at(-1)
+  const decimalSeparator = lastSeparator?.[0] as '.' | ',' | undefined
+  const trailingDigits = lastSeparator
+    ? numeric.slice((lastSeparator.index || 0) + 1).replace(/\D/g, '').length
+    : 0
+  const ambiguous = separators.length > 1
+    && (
+      new Set(separators.map(separator => separator[0])).size === 1
+      || trailingDigits === 0
+      || trailingDigits > 3
+    )
+  const digitsBeforeDecimal = lastSeparator
+    ? numeric.slice(0, lastSeparator.index).replace(/[.,]/g, '')
+    : numeric
+  const digitsAfterDecimal = lastSeparator
+    ? numeric.slice((lastSeparator.index || 0) + 1).replace(/[.,]/g, '')
+    : ''
+  const normalized = lastSeparator && digitsAfterDecimal
+    ? `${digitsBeforeDecimal}.${digitsAfterDecimal}`
+    : digitsBeforeDecimal
+  const parsed = Number(normalized)
+  if (!Number.isFinite(parsed)) return null
+  return {
+    value: parsed * multiplier,
+    normalized: `${normalized}${suffix}`,
+    suffix,
+    decimalSeparator,
+    separatorInferred: Boolean(decimalSeparator),
+    ambiguous,
+  }
 }
 
 function parseMetricOcrValue(
@@ -928,41 +988,61 @@ export function mapDashboardImageRecognition(
   const unmappedFields: NonNullable<OcrReviewData['unmapped_fields']> = []
   const consumedWords = new Set<OcrRecognizedWord>()
   const lines = groupRecognizedWords(recognition.words)
-  const aliasesByLength = Object.entries(aliases[platform])
-    .map(([label, key]) => ({ label, key, tokens: label.split(' ') }))
-    .sort((left, right) => right.tokens.length - left.tokens.length)
+  const labelWindows = buildOcrLabelWindows(recognition.words.filter(word =>
+    word.pass === 'label'
+    && !word.line_id.startsWith('card-label:'),
+  ))
+  const recognizedLabelOwners = findRecognizedMetricLabels(platform, labelWindows)
+  const selectedRegion = recognition.region_diagnostics?.dashboard_candidates.find(candidate =>
+    candidate.id === recognition.region_diagnostics?.selected_candidate_id,
+  )
+  const recognizedWordHeights = recognition.words
+    .map(word => word.bounding_box.height)
+    .filter(height => Number.isFinite(height) && height > 0)
+    .sort((left, right) => left - right)
+  const observedTextScale = recognizedWordHeights.length
+    ? recognizedWordHeights[Math.floor(recognizedWordHeights.length / 2)] / 16
+    : 1
+  const spatialScale = Math.max(
+    .45,
+    Math.min(
+      3,
+      selectedRegion
+        ? selectedRegion.bounding_box.width / 1_000
+        : observedTextScale,
+    ),
+  )
 
   applyCardOutputCandidates(platform, recognition, candidateInputs, consumedWords)
 
-  for (const line of lines.filter(candidate =>
-    candidate.pass === 'label'
-    && !candidate.id.startsWith('card-label:'),
-  )) {
-    const searchableWords = line.words.filter(word => normalizeOcrLabel(word.text))
-    const normalizedWords = searchableWords.map(word => normalizeOcrLabel(word.text))
-    const lineMatches = aliasesByLength
-      .map(alias => ({ alias, match: findFuzzyTokenSequence(normalizedWords, alias.tokens) }))
-      .filter((candidate): candidate is { alias: typeof aliasesByLength[number]; match: { start: number; similarity: number } } =>
-        Boolean(candidate.match && candidate.match.similarity >= 0.82),
-      )
-      .sort((left, right) =>
-        right.match.similarity - left.match.similarity ||
-        right.alias.tokens.length - left.alias.tokens.length,
-      )
-    for (const { alias, match } of lineMatches) {
-
-      const labelWords = searchableWords.slice(match.start, match.start + alias.tokens.length)
+  for (const owner of recognizedLabelOwners) {
+      const alias = { key: owner.key }
+      const match = { similarity: owner.similarity }
+      const labelWords = owner.words
       if (labelWords.some(word => consumedWords.has(word))) continue
       const labelConfidence = Math.min(...labelWords.map(word => word.confidence))
       if (labelConfidence < 65) continue
-      const pairedValue = findMetricValueWord(lines, line, labelWords, consumedWords)
+      const pairedValue = findMetricValueWord(
+        lines,
+        owner.window,
+        labelWords,
+        consumedWords,
+        spatialScale,
+      )
       if (!pairedValue) continue
+      if (
+        platform === 'tiktok_shop'
+        && valueBelongsToCloserMetricLabel(
+          platform,
+          owner,
+          pairedValue.word,
+          recognizedLabelOwners,
+          spatialScale,
+        )
+      ) continue
       const expectedCell = platform === 'other'
         ? undefined
         : platformMetricLayouts[platform].find(cell => cell.key === alias.key)
-      const selectedRegion = recognition.region_diagnostics?.dashboard_candidates.find(candidate =>
-        candidate.id === recognition.region_diagnostics?.selected_candidate_id,
-      )
       const selectedRegionValueBox = expectedCell && selectedRegion && platform === 'shopee_live'
         ? roiCellBoundingBox(
           selectedRegion,
@@ -991,6 +1071,7 @@ export function mapDashboardImageRecognition(
         ? undefined
         : platformMetricLayouts[platform].find(cell => cell.key === alias.key)
       const normalizedShapeValue = normalizeLayoutCardValue(layoutCell, pairedValue.word.text)
+      const compactMetadata = parseCompactOcrNumber(normalizedShapeValue)
       const valueShapeScore = layoutCell
         ? layoutValueShapeScore(layoutCell.valueKind, normalizedShapeValue, parsedValue)
         : 1
@@ -1009,6 +1090,7 @@ export function mapDashboardImageRecognition(
         && exactLabel
         && pairedValue.competingValues === 0
         && !sanityError
+        && !compactMetadata?.ambiguous
       const labelBox = unionBoundingBoxes(labelWords)
       const valueBox = pairedValue.word.bounding_box
       const candidate: OcrMetricValue = {
@@ -1023,7 +1105,9 @@ export function mapDashboardImageRecognition(
         bounding_box: unionBoundingBoxes([...labelWords, pairedValue.word]),
         label_box: labelBox,
         value_box: valueBox,
-        pairing_reason: accepted
+        pairing_reason: compactMetadata?.ambiguous
+          ? 'Compact-number punctuation is ambiguous and requires review.'
+          : accepted
           ? 'Exact label and value occupy the same platform KPI card.'
           : pairedValue.competingValues > 0
             ? 'Multiple nearby values compete for this label.'
@@ -1033,7 +1117,12 @@ export function mapDashboardImageRecognition(
           ? 'word_box_exact'
           : 'spatial_fallback',
         status: sanityError ? 'rejected' : accepted ? 'confirmed' : 'review_required',
-        rejection_reason: sanityError || (accepted ? undefined : 'Image OCR confidence or spatial pairing is below the auto-fill threshold.'),
+        rejection_reason: sanityError
+          || (compactMetadata?.ambiguous
+            ? 'Compact-number punctuation is ambiguous and must be reviewed.'
+            : accepted
+              ? undefined
+              : 'Image OCR confidence or spatial pairing is below the auto-fill threshold.'),
         label_confidence: labelConfidence,
         value_confidence: pairedValue.word.confidence,
         spatial_score: pairedValue.spatialScore,
@@ -1043,7 +1132,6 @@ export function mapDashboardImageRecognition(
       collectMetricCandidate(candidateInputs, alias.key, candidate)
       labelWords.forEach(word => consumedWords.add(word))
       consumedWords.add(pairedValue.word)
-    }
   }
 
   if (platform !== 'other' && !recognition.region_diagnostics?.selected_candidate_id) {
@@ -1562,6 +1650,7 @@ function applyCardOutputCandidates(
     const cardCandidates = cardValues.flatMap((value, variantIndex) => {
       const normalizedRaw = normalizeLayoutCardValue(layoutCell, value)
       const parsedValue = parseOcrValue(normalizedRaw)
+      const compactMetadata = parseCompactOcrNumber(normalizedRaw)
       if (validateMetricCandidate(key, parsedValue, normalizedRaw)) return []
       const shapeScore = layoutCell
         ? layoutValueShapeScore(layoutCell.valueKind, normalizedRaw, parsedValue)
@@ -1574,6 +1663,7 @@ function applyCardOutputCandidates(
         value,
         normalizedRaw,
         parsedValue,
+        compactMetadata,
         shapeScore,
         rawQualityScore,
         cardWord,
@@ -1627,10 +1717,12 @@ function applyCardOutputCandidates(
       const parsedValue = candidate.parsedValue
       if (parsedValue === null || (typeof parsedValue === 'number' && !Number.isFinite(parsedValue))) continue
       const repaired = candidate.normalizedRaw !== rawValue.trim()
+      const ambiguousCompact = candidate.compactMetadata?.ambiguous || false
       const independentValueConfidence = candidate.supportingWord?.confidence
         || (candidate.supportCount >= 2 ? candidate.cardWord?.confidence : undefined)
       const clearPair = Boolean(
         !repaired
+        && !ambiguousCompact
         && (independentValueConfidence || 0) >= 85
         && candidate.shapeScore >= .85,
       )
@@ -1663,7 +1755,9 @@ function applyCardOutputCandidates(
         unit: inferMetricUnit(key, candidate.normalizedRaw),
         bounding_box: valueBox,
         value_box: valueBox,
-        pairing_reason: repaired
+        pairing_reason: ambiguousCompact
+          ? 'Compact-number punctuation is ambiguous and requires review.'
+          : repaired
           ? 'Card value format was normalized using the declared grid-cell display format.'
           : clearPair
             ? 'Card OCR value is independently supported inside the same KPI grid cell.'
@@ -1675,7 +1769,11 @@ function applyCardOutputCandidates(
             ? 'word_box_exact'
             : 'card_exact',
         status: clearPair ? 'confirmed' : 'review_required',
-        rejection_reason: repaired ? 'The displayed value format was repaired and must be reviewed.' : undefined,
+        rejection_reason: ambiguousCompact
+          ? 'Compact-number punctuation is ambiguous and must be reviewed.'
+          : repaired
+            ? 'The displayed value format was repaired and must be reviewed.'
+            : undefined,
         label_confidence: 100,
         label_source: anchoredCard && !(platform === 'tiktok_shop' && repaired)
           ? 'ocr_text'
@@ -2037,6 +2135,8 @@ function formatRecognitionOutput(recognition: OcrImageRecognition) {
       selected_roi: recognition.region_diagnostics.selected_roi,
       normalized_roi_dimensions: recognition.region_diagnostics.normalized_roi_dimensions,
       perspective_correction_applied: recognition.region_diagnostics.perspective_correction_applied,
+      ambiguous: recognition.region_diagnostics.ambiguous,
+      selection_required: recognition.region_diagnostics.selection_required,
       selection_reason: recognition.region_diagnostics.selection_reason,
       fallback_usage: recognition.region_diagnostics.fallback_usage,
     }, null, 2)
@@ -2063,20 +2163,95 @@ function formatRecognitionOutput(recognition: OcrImageRecognition) {
 }
 
 function groupRecognizedWords(words: OcrRecognizedWord[]) {
-  const grouped = new Map<string, OcrRecognizedWord[]>()
-  for (const word of words) {
-    const lineWords = grouped.get(word.line_id) || []
-    lineWords.push(word)
-    grouped.set(word.line_id, lineWords)
+  return groupOcrWordLines(words)
+}
+
+type RecognizedMetricLabel = {
+  key: ReportMetricKey
+  words: OcrRecognizedWord[]
+  window: OcrWordLine
+  similarity: number
+}
+
+function findRecognizedMetricLabels(
+  platform: ReportDashboardPlatform,
+  windows: OcrWordLine[],
+): RecognizedMetricLabel[] {
+  const metricAliases = Object.entries(aliases[platform])
+    .map(([label, key]) => ({ key, tokens: label.split(' ') }))
+    .sort((left, right) => right.tokens.length - left.tokens.length)
+  const seen = new Set<string>()
+  return windows.flatMap(window => {
+    const searchableWords = window.words.filter(word => normalizeOcrLabel(word.text))
+    const normalizedWords = searchableWords.map(word => normalizeOcrLabel(word.text))
+    return metricAliases.flatMap(alias => {
+      const match = findFuzzyTokenSequence(normalizedWords, alias.tokens)
+      if (!match || match.similarity < .82) return []
+      const matchedWords = searchableWords.slice(match.start, match.start + alias.tokens.length)
+      if (!matchedWords.length) return []
+      const signature = `${alias.key}:${matchedWords.map(word =>
+        `${word.line_id}:${word.line_index}:${word.bounding_box.x}:${word.bounding_box.y}`,
+      ).join('|')}`
+      if (seen.has(signature)) return []
+      seen.add(signature)
+      return [{
+        key: alias.key,
+        words: matchedWords,
+        window,
+        similarity: match.similarity,
+      }]
+    })
+  }).sort((left, right) =>
+    right.similarity - left.similarity
+    || right.words.length - left.words.length,
+  )
+}
+
+function valueBelongsToCloserMetricLabel(
+  platform: ReportDashboardPlatform,
+  selected: RecognizedMetricLabel,
+  valueWord: OcrRecognizedWord,
+  labels: RecognizedMetricLabel[],
+  spatialScale: number,
+) {
+  const selectedDistance = labelValueOwnershipDistance(
+    unionBoundingBoxes(selected.words),
+    valueWord,
+    spatialScale,
+  )
+  return labels.some(candidate => {
+    if (candidate === selected || candidate.key === selected.key) return false
+    const parsed = parseMetricOcrValue(platform, candidate.key, valueWord.text)
+    if (validateMetricCandidate(candidate.key, parsed, valueWord.text)) return false
+    const candidateDistance = labelValueOwnershipDistance(
+      unionBoundingBoxes(candidate.words),
+      valueWord,
+      spatialScale,
+    )
+    return candidateDistance + .14 < selectedDistance
+  })
+}
+
+function labelValueOwnershipDistance(
+  labelBox: { x: number; y: number; width: number; height: number },
+  valueWord: OcrRecognizedWord,
+  spatialScale: number,
+) {
+  const labelCenterX = labelBox.x + labelBox.width / 2
+  const labelCenterY = labelBox.y + labelBox.height / 2
+  const valueCenterX = valueWord.bounding_box.x + valueWord.bounding_box.width / 2
+  const valueCenterY = valueWord.bounding_box.y + valueWord.bounding_box.height / 2
+  const belowGap = Math.max(0, valueWord.bounding_box.y - (labelBox.y + labelBox.height))
+  const sameLine = Math.abs(valueCenterY - labelCenterY)
+    <= Math.max(labelBox.height, valueWord.bounding_box.height) * 1.2
+  if (sameLine) {
+    const rightGap = Math.max(0, valueWord.bounding_box.x - (labelBox.x + labelBox.width))
+    return rightGap / Math.max(40 * spatialScale, labelBox.width)
   }
-  return [...grouped.entries()]
-    .map(([id, lineWords]) => ({
-      id,
-      pass: lineWords[0].pass,
-      words: lineWords.sort((left, right) => left.bounding_box.x - right.bounding_box.x),
-      top: Math.min(...lineWords.map(word => word.bounding_box.y)),
-    }))
-    .sort((left, right) => left.top - right.top)
+  return Math.hypot(
+    Math.abs(valueCenterX - labelCenterX) / Math.max(35 * spatialScale, labelBox.width * .5),
+    belowGap / Math.max(55 * spatialScale, labelBox.height * 3),
+  )
 }
 
 function applyPlatformLayoutCandidates(
@@ -2362,6 +2537,7 @@ function findMetricValueWord(
   labelLine: ReturnType<typeof groupRecognizedWords>[number],
   labelWords: OcrRecognizedWord[],
   consumedWords: Set<OcrRecognizedWord>,
+  spatialScale = 1,
 ) {
   const labelBox = unionBoundingBoxes(labelWords)
   const labelCenterX = labelBox.x + labelBox.width / 2
@@ -2378,20 +2554,27 @@ function findMetricValueWord(
       const horizontalGap = Math.abs(centerX - labelCenterX)
       const rightGap = word.bounding_box.x - labelRight
       const sameLine = Math.abs(centerY - labelCenterY) <= Math.max(labelBox.height, word.bounding_box.height)
-        && rightGap >= -5
-        && rightGap <= 120
-      const sameColumn = verticalGap >= -3
-        && verticalGap <= 70
-        && horizontalGap <= Math.max(35, labelBox.width * 0.35)
+        && rightGap >= -5 * spatialScale
+        && rightGap <= 120 * spatialScale
+      const sameColumn = verticalGap >= -3 * spatialScale
+        && verticalGap <= 70 * spatialScale
+        && horizontalGap <= Math.max(35 * spatialScale, labelBox.width * 0.35)
       const spatialFallback = verticalGap >= 0
-        && verticalGap <= 60
-        && horizontalGap <= Math.max(50, labelBox.width * 0.45)
+        && verticalGap <= 60 * spatialScale
+        && horizontalGap <= Math.max(50 * spatialScale, labelBox.width * 0.45)
       const spatialScore = sameLine
-        ? rightGap <= 40
+        ? rightGap <= 40 * spatialScale
           ? 1
-          : 1 - Math.min(0.45, (rightGap - 40) / 180)
+          : 1 - Math.min(
+            0.45,
+            (rightGap - 40 * spatialScale) / (180 * spatialScale),
+          )
         : sameColumn
-          ? 1 - Math.min(0.3, (verticalGap / 70) * 0.2 + (horizontalGap / Math.max(35, labelBox.width * 0.35)) * 0.1)
+          ? 1 - Math.min(
+            0.3,
+            (verticalGap / (70 * spatialScale)) * 0.2
+            + (horizontalGap / Math.max(35 * spatialScale, labelBox.width * 0.35)) * 0.1,
+          )
           : spatialFallback
             ? 0.7
             : 0

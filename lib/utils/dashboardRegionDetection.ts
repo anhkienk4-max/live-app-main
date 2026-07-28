@@ -18,6 +18,7 @@ import {
   normalizeMetricCellToRoi,
   roiPointToImage,
 } from '@/lib/utils/ocrRegionGeometry'
+import { buildOcrLabelWindows } from '@/lib/utils/ocrLabelGeometry'
 export { roiCellBoundingBox, roiPointToImage } from '@/lib/utils/ocrRegionGeometry'
 
 type Platform = Exclude<ReportDashboardPlatform, 'other'>
@@ -29,6 +30,7 @@ type AnchorMatch = {
   point: OcrPoint
   confidence: number
   wordIds: string[]
+  boundingBox: { x: number; y: number; width: number; height: number }
 }
 
 type SimilarityTransform = {
@@ -141,6 +143,17 @@ export function detectDashboardRegions({
     ? strongestVisual
     : platformCandidates[0]
   const second = platformCandidates.find(candidate => candidate !== top)
+  const competitivePeer = top
+    ? platformCandidates.find(candidate =>
+      candidate !== top
+      && candidate.platform === top.platform
+      && intersectionOverUnion(candidate.bounding_box, top.bounding_box) < .1
+      && candidate.anchor_count >= Math.max(4, top.anchor_count - 2)
+      && candidate.confidence >= top.confidence - .15
+      && candidate.area_ratio >= top.area_ratio * .65
+      && candidate.area_ratio <= top.area_ratio * 1.55,
+    )
+    : undefined
   const visualAreaDominant = Boolean(
     top
     && second
@@ -150,20 +163,45 @@ export function detectDashboardRegions({
     && top.confidence >= .76
     && top.area_ratio >= second.area_ratio * 1.2,
   )
+  const cleanRoiBeatsBoundaryCandidate = Boolean(
+    top
+    && second
+    && top.anchor_count >= 4
+    && top.confidence >= .52
+    && top.confidence > second.confidence
+    && !candidateTouchesImageBoundary(top, imageWidth, imageHeight)
+    && candidateTouchesImageBoundary(second, imageWidth, imageHeight),
+  )
+  const anchoredAreaDominant = Boolean(
+    top
+    && second
+    && top.platform === second.platform
+    && top.anchor_count >= 4
+    && top.anchor_count >= second.anchor_count
+    && top.confidence >= second.confidence
+    && top.area_ratio >= second.area_ratio * 1.5,
+  )
   const anchoredScoreDominant = Boolean(
     top
     && top.anchor_count >= 4
-    && top.confidence >= .64
     && (
-      !second
-      || top.confidence - second.confidence >= .08
-      || top.anchor_count >= second.anchor_count + 2
+      cleanRoiBeatsBoundaryCandidate
+      || (
+        top.confidence >= .64
+        && (
+          !second
+          || top.confidence - second.confidence >= .08
+          || top.anchor_count >= second.anchor_count + 2
+        )
+      )
     ),
   )
   const dominant = Boolean(
     top
+    && !competitivePeer
     && (
       visualAreaDominant
+      || anchoredAreaDominant
       || anchoredScoreDominant
       || (
         top.confidence >= .68
@@ -197,6 +235,18 @@ export function detectDashboardRegions({
       selectionReason,
     ),
   }
+}
+
+function candidateTouchesImageBoundary(
+  candidate: OcrDashboardCandidate,
+  imageWidth: number,
+  imageHeight: number,
+) {
+  const box = candidate.bounding_box
+  return box.x <= 1
+    || box.y <= 1
+    || box.x + box.width >= imageWidth - 1
+    || box.y + box.height >= imageHeight - 1
 }
 
 export function detectVisualDashboardHints(
@@ -272,18 +322,10 @@ export function detectVisualDashboardHints(
 }
 
 function detectAnchorMatches(words: OcrRecognizedWord[]): AnchorMatch[] {
-  const lines = new Map<string, OcrRecognizedWord[]>()
-  words
-    .filter(word => word.pass === 'label')
-    .forEach(word => {
-      const current = lines.get(word.line_id) || []
-      current.push(word)
-      lines.set(word.line_id, current)
-    })
-
   const matches: AnchorMatch[] = []
-  for (const lineWords of lines.values()) {
-    const ordered = [...lineWords].sort((left, right) => left.bounding_box.x - right.bounding_box.x)
+  const windows = buildOcrLabelWindows(words.filter(word => word.pass === 'label'))
+  for (const window of windows) {
+    const ordered = window.words
     const normalizedWords = ordered.map(word => normalizeOcrLabel(word.text))
     for (const platform of ['shopee_live', 'tiktok_shop'] as const) {
       const aliases = Object.entries(platformOcrConfigs[platform].aliases)
@@ -325,6 +367,7 @@ function detectAnchorMatches(words: OcrRecognizedWord[]): AnchorMatch[] {
           point: { x: box.x + box.width / 2, y: box.y + box.height / 2 },
           confidence: Math.min(...matchedWords.map(word => word.confidence)) * match.similarity,
           wordIds: matchedWords.map(word => `${word.line_id}:${word.line_index}:${word.text}`),
+          boundingBox: box,
         }
         matches.push(candidate)
         selectedKeys.add(alias.key)
@@ -398,7 +441,8 @@ function detectPlatformCandidates(
       const inliers = collectTransformInliers(usable, canonicalByKey, seed.transform, tolerance)
       const uniqueKeys = new Set(inliers.map(inlier => inlier.key))
       if (uniqueKeys.size < 2 || !inliers.some(inlier => signatureKeys.has(inlier.key))) continue
-      const fittedAffine = inliers.length >= 3
+      const minimumAffineAnchors = platform === 'tiktok_shop' ? 5 : 3
+      const fittedAffine = inliers.length >= minimumAffineAnchors
         ? affineFromMatches(inliers, canonicalByKey)
         : null
       const stableBaseline = fittedAffine || seed.transform
@@ -458,13 +502,19 @@ function detectPlatformCandidates(
         : box
       const candidateAreaRatio = polygonArea(candidateQuad) / Math.max(1, imageWidth * imageHeight)
       const candidateAspectRatio = averageQuadAspectRatio(candidateQuad)
-      const confidence = Math.min(
+      const touchesBoundary = candidateBox.x <= 1
+        || candidateBox.y <= 1
+        || candidateBox.x + candidateBox.width >= imageWidth - 1
+        || candidateBox.y + candidateBox.height >= imageHeight - 1
+      const boundaryPenalty = touchesBoundary && candidateAreaRatio < .55 ? .12 : 0
+      const confidence = Math.max(0, Math.min(
         1,
         uniqueKeys.size / 8 * .45
         + readability * .25
         + areaScore * .15
-        + visualScore * .15,
-      )
+        + visualScore * .15
+        - boundaryPenalty,
+      ))
       candidates.push({
         id: `${Math.round(candidateBox.x)}-${Math.round(candidateBox.y)}-${Math.round(candidateBox.width)}-${Math.round(candidateBox.height)}`,
         platform,
@@ -488,6 +538,13 @@ function detectPlatformCandidates(
               : 'anchor_similarity',
         perspective_correction_applied: isPerspectiveQuad(candidateQuad),
       })
+  }
+  if (platform === 'tiktok_shop') {
+    candidates.push(...detectTikTokStructuralCandidates(
+      anchors,
+      imageWidth,
+      imageHeight,
+    ))
   }
   for (const hint of visualHints) {
     if (platform !== 'shopee_live') continue
@@ -527,6 +584,158 @@ function detectPlatformCandidates(
     })
   }
   return candidates
+}
+
+function detectTikTokStructuralCandidates(
+  anchors: AnchorMatch[],
+  imageWidth: number,
+  imageHeight: number,
+): OcrDashboardCandidate[] {
+  const signatureKeys = new Set<ReportMetricKey>([
+    'gmv',
+    'advertising_cost',
+    'roi_gmv_max',
+    'sku_orders',
+    'average_order_value',
+    'estimated_gmv',
+  ])
+  const deduplicated = anchors.filter((anchor, index) =>
+    anchors.findIndex(candidate =>
+      candidate.key === anchor.key
+      && distance(candidate.point, anchor.point) <= Math.max(
+        8,
+        Math.max(candidate.boundingBox.height, anchor.boundingBox.height) * 1.5,
+      ),
+    ) === index,
+  )
+  const adjacencyThreshold = .245
+  const unseen = new Set(deduplicated.map((_, index) => index))
+  const clusters: AnchorMatch[][] = []
+
+  while (unseen.size) {
+    const start = unseen.values().next().value as number
+    unseen.delete(start)
+    const indexes = [start]
+    const cluster: AnchorMatch[] = []
+    while (indexes.length) {
+      const currentIndex = indexes.pop()!
+      const current = deduplicated[currentIndex]
+      cluster.push(current)
+      for (const candidateIndex of [...unseen]) {
+        const candidate = deduplicated[candidateIndex]
+        const normalizedDistance = Math.hypot(
+          (candidate.point.x - current.point.x) / Math.max(1, imageWidth),
+          (candidate.point.y - current.point.y) / Math.max(1, imageHeight),
+        )
+        if (normalizedDistance > adjacencyThreshold) continue
+        unseen.delete(candidateIndex)
+        indexes.push(candidateIndex)
+      }
+    }
+    clusters.push(cluster)
+  }
+
+  return clusters.flatMap((cluster, clusterIndex) => {
+    const bestByKey = new Map<ReportMetricKey, AnchorMatch>()
+    for (const anchor of cluster) {
+      const previous = bestByKey.get(anchor.key)
+      if (!previous || anchor.confidence > previous.confidence) bestByKey.set(anchor.key, anchor)
+    }
+    const unique = [...bestByKey.values()]
+    if (unique.length < 3 || !unique.some(anchor => signatureKeys.has(anchor.key))) return []
+
+    const rowConsistency = tiktokRowConsistency(unique)
+    if (rowConsistency < .48) return []
+    const bounds = {
+      left: Math.min(...unique.map(anchor => anchor.boundingBox.x)),
+      top: Math.min(...unique.map(anchor => anchor.boundingBox.y)),
+      right: Math.max(...unique.map(anchor => anchor.boundingBox.x + anchor.boundingBox.width)),
+      bottom: Math.max(...unique.map(anchor => anchor.boundingBox.y + anchor.boundingBox.height)),
+    }
+    const spanWidth = Math.max(1, bounds.right - bounds.left)
+    const spanHeight = Math.max(1, bounds.bottom - bounds.top)
+    const box = clampBoundingBox({
+      x: bounds.left - spanWidth * .12,
+      y: bounds.top - spanHeight * .14,
+      width: spanWidth * 1.44,
+      height: spanHeight * 1.48,
+    }, imageWidth, imageHeight)
+    const aspectRatio = box.width / Math.max(1, box.height)
+    const areaRatio = box.width * box.height / Math.max(1, imageWidth * imageHeight)
+    if (aspectRatio < 1.2 || aspectRatio > 2.9 || areaRatio < .02 || areaRatio > 1) return []
+
+    const readability = unique.reduce((sum, anchor) => sum + anchor.confidence, 0)
+      / unique.length / 100
+    const completeness = unique.length / platformRoiMetricLayouts.tiktok_shop.length
+    const confidence = Math.min(
+      .86,
+      .38
+      + Math.min(.24, unique.length / 19 * .5)
+      + readability * .12
+      + rowConsistency * .12
+      + Math.min(.06, areaRatio * .25),
+    )
+    return [{
+      id: `cluster-${clusterIndex}-${Math.round(box.x)}-${Math.round(box.y)}-${Math.round(box.width)}-${Math.round(box.height)}`,
+      platform: 'tiktok_shop' as const,
+      crop_box: toCropBox(box, imageWidth, imageHeight),
+      bounding_box: box,
+      quadrilateral: boxQuadrilateral(box),
+      confidence,
+      anchor_labels: unique.map(anchor => anchor.label),
+      anchor_keys: unique.map(anchor => anchor.key),
+      anchor_count: unique.length,
+      kpi_completeness: completeness,
+      area_ratio: areaRatio,
+      aspect_ratio: aspectRatio,
+      ocr_readability: readability,
+      source_method: 'anchor_cluster' as const,
+      perspective_correction_applied: false,
+    }]
+  })
+}
+
+const tiktokMetricRows: Partial<Record<ReportMetricKey, number>> = {
+  gmv: 0,
+  items_sold: 1,
+  current_viewers: 1,
+  impressions: 2,
+  total_views: 2,
+  advertising_cost: 2,
+  click_rate: 2,
+  roi_gmv_max: 3,
+  ctor: 3,
+  average_view_duration_seconds: 3,
+  new_followers: 3,
+  buyers: 4,
+  sku_orders: 4,
+  comments: 4,
+  product_clicks: 4,
+  average_order_value: 5,
+  live_ctr: 5,
+  shares: 5,
+  estimated_gmv: 5,
+}
+
+function tiktokRowConsistency(anchors: AnchorMatch[]) {
+  const points = anchors.flatMap(anchor => {
+    const row = tiktokMetricRows[anchor.key]
+    return row === undefined ? [] : [{ row, y: anchor.point.y }]
+  })
+  if (points.length < 3) return 0
+  const meanRow = average(points.map(point => point.row))
+  const meanY = average(points.map(point => point.y))
+  const rowVariance = points.reduce((sum, point) => sum + (point.row - meanRow) ** 2, 0)
+  if (rowVariance <= Number.EPSILON) return 0
+  const slope = points.reduce(
+    (sum, point) => sum + (point.row - meanRow) * (point.y - meanY),
+    0,
+  ) / rowVariance
+  if (slope <= 0) return 0
+  const residual = points.reduce((sum, point) =>
+    sum + Math.abs(point.y - (meanY + slope * (point.row - meanRow))),
+  0) / points.length
+  return Math.max(0, 1 - residual / Math.max(12, Math.abs(slope) * 1.6))
 }
 
 function manualCropCandidate(

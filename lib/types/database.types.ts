@@ -538,7 +538,7 @@ export interface OcrDashboardCandidate {
   area_ratio: number
   aspect_ratio: number
   ocr_readability: number
-  source_method: 'anchor_similarity' | 'anchor_affine' | 'anchor_homography' | 'anchor_and_color' | 'color_contour' | 'manual_crop' | 'legacy_layout'
+  source_method: 'anchor_similarity' | 'anchor_affine' | 'anchor_homography' | 'anchor_and_color' | 'anchor_cluster' | 'color_contour' | 'manual_crop' | 'legacy_layout'
   perspective_correction_applied: boolean
 }
 
