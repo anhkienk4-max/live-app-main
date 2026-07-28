@@ -113,6 +113,14 @@ async function runReportOcr(
   await expect(page.locator('img[src^="blob:"]').first()).toBeVisible()
   await page.getByTestId('report-run-ocr-button').click()
   await waitForOcrCompletion(page.getByTestId('report-ocr-completion-status'))
+  const regionDiagnostics = page.getByTestId('ocr-region-diagnostics')
+  if (await regionDiagnostics.count()) {
+    console.info(`[report-region] ${await regionDiagnostics.locator('pre').textContent()}`)
+  }
+  const rawDiagnostics = page.getByTestId('report-ocr-raw-diagnostics')
+  if (await rawDiagnostics.count()) {
+    console.info(`[report-ocr] ${await rawDiagnostics.locator('pre').textContent()}`)
+  }
 
   await applyOcrTextOnlyIfImageAutofillIsIncomplete(
     page,

@@ -16,8 +16,9 @@ import {
   ocrSuccessResponse,
 } from '../lib/services/ocrApiContract.ts'
 import type { OcrImageRecognition } from '../lib/types/database.types.ts'
+import { applySelectedMetricsToState } from '../lib/utils/ocrCanonical.ts'
 import { buildDashboardOcrReviewFromRecognition } from '../lib/utils/ocrMetrics.ts'
-import { mergeMetricValues, reviewInputValues } from '../lib/utils/ocrReview.ts'
+import { reviewInputValues } from '../lib/utils/ocrReview.ts'
 
 const recognition: OcrImageRecognition = {
   engine: 'tesseract.js',
@@ -141,21 +142,18 @@ test('raw Tesseract text autofills metrics when the image OCR API returns HTML',
     const existingFormState = {
       replayUrl: 'https://example.test/replay',
       notes: 'Keep this note',
-      metrics: { revenue: '10', orders: '7' },
+      metrics: { revenue: 10, orders: 7 },
     }
     const nextFormState = {
       ...existingFormState,
-      metrics: mergeMetricValues(
-        existingFormState.metrics,
-        reviewInputValues(review),
-      ),
+      metrics: applySelectedMetricsToState(existingFormState.metrics, review),
     }
 
     assert.equal(nextFormState.replayUrl, existingFormState.replayUrl)
     assert.equal(nextFormState.notes, existingFormState.notes)
-    assert.equal(nextFormState.metrics.revenue, '10')
-    assert.equal(nextFormState.metrics.sales, '21281718')
-    assert.equal(nextFormState.metrics.comments, '0')
+    assert.equal(nextFormState.metrics.revenue, 10)
+    assert.equal(nextFormState.metrics.sales, 21281718)
+    assert.equal(nextFormState.metrics.comments, 0)
     assert.equal('average_basket_size' in nextFormState.metrics, false)
   } finally {
     globalThis.fetch = originalFetch
@@ -226,15 +224,20 @@ test('fresh Shopee recognition text creates candidates and autofill without API 
   const existingReportState = {
     replayUrl: 'https://example.test/replay',
     insightsGood: 'Do not replace',
-    metrics: { revenue: '50' },
+    metrics: { revenue: 50 },
   }
   const nextReportState = {
     ...existingReportState,
-    metrics: mergeMetricValues(existingReportState.metrics, autofill),
+    metrics: applySelectedMetricsToState(existingReportState.metrics, review),
   }
 
   assert.equal(previousRawTextState, '')
-  assert.equal(review.raw_output, recognizedText)
+  assert.equal(review.raw_output, [
+    'Sales (đ): 21.281.718,00',
+    'Orders: 109',
+    'PCU: 107',
+  ].join('\n'))
+  assert.match(review.raw_diagnostic_output || '', /Sales: 21\.281\.718,00/)
   assert.deepEqual(Object.keys(review.metrics).sort(), ['orders', 'pcu', 'sales'])
   assert.equal(Object.keys(review.metrics).length, 3)
   assert.equal(review.metrics.sales?.value, 21281718)
@@ -245,14 +248,14 @@ test('fresh Shopee recognition text creates candidates and autofill without API 
   assert.equal(review.metrics.pcu?.source, 'raw_text_exact')
   assert.equal(review.metrics.sales?.bounding_box, undefined)
   assert.deepEqual(autofill, {
-    sales: '21281718',
-    orders: '109',
-    pcu: '107',
+    sales: 21281718,
+    orders: 109,
+    pcu: 107,
   })
-  assert.equal(nextReportState.metrics.sales, '21281718')
-  assert.equal(nextReportState.metrics.orders, '109')
-  assert.equal(nextReportState.metrics.pcu, '107')
-  assert.equal(nextReportState.metrics.revenue, '50')
+  assert.equal(nextReportState.metrics.sales, 21281718)
+  assert.equal(nextReportState.metrics.orders, 109)
+  assert.equal(nextReportState.metrics.pcu, 107)
+  assert.equal(nextReportState.metrics.revenue, 50)
   assert.equal(nextReportState.replayUrl, existingReportState.replayUrl)
   assert.equal(nextReportState.insightsGood, existingReportState.insightsGood)
 

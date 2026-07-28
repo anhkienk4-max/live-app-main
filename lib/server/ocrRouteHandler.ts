@@ -1,12 +1,18 @@
 import type {
   OcrCropBox,
+  OcrDashboardCandidate,
   OcrImageRecognition,
   OcrRecognizedWord,
   ReportDashboardPlatform,
 } from '@/lib/types/database.types'
 import { ocrErrorResponse, ocrSuccessResponse } from '@/lib/services/ocrApiContract'
 import { clampOcrCrop, defaultOcrCrop } from '@/lib/utils/ocrImage'
-import { platformMetricLayouts, type LayoutMetricCell } from '@/lib/utils/ocrMetrics'
+import { type LayoutMetricCell } from '@/lib/utils/ocrMetrics'
+import {
+  detectDashboardRegions,
+  platformRoiMetricLayouts,
+  roiCellBoundingBox,
+} from '@/lib/utils/dashboardRegionDetection'
 
 const maxImageBytes = 10 * 1024 * 1024
 const supportedPlatforms = new Set<ReportDashboardPlatform>(['shopee_live', 'tiktok_shop'])
@@ -159,19 +165,29 @@ export function createOcrPostHandler(options?: {
           { rotateAuto: false },
           { text: true, blocks: true },
         )
-        const cardRecognition = await recognizeMetricCards(
-          dependencies,
-          worker,
-          imageBytes,
-          platform as Exclude<ReportDashboardPlatform, 'other'>,
-          metadata.width,
-          metadata.height,
-        )
-
-        const words = mergePassWords([
+        const passWords = mergePassWords([
           ...flattenWords(labelResult.data.blocks, 'label', platform, pixelCrop),
           ...flattenWords(numericResult.data.blocks, 'numeric', platform, pixelCrop),
-        ]).concat(cardRecognition.words)
+        ])
+        const regionResult = detectDashboardRegions({
+          words: passWords,
+          imageWidth: metadata.width,
+          imageHeight: metadata.height,
+          requestedPlatform: platform,
+          requestedCrop: cropBox,
+        })
+        const cardRecognition = regionResult.selected
+          ? await recognizeMetricCards(
+            dependencies,
+            worker,
+            imageBytes,
+            platform as Exclude<ReportDashboardPlatform, 'other'>,
+            metadata.width,
+            metadata.height,
+            regionResult.selected,
+          )
+          : { output: {}, words: [] }
+        const words = passWords.concat(cardRecognition.words)
         const response: OcrImageRecognition = {
           engine: 'tesseract.js',
           language: 'eng+vie',
@@ -186,6 +202,7 @@ export function createOcrPostHandler(options?: {
           crop_box: cropBox,
           original_dimensions: { width: metadata.width, height: metadata.height },
           processed_dimensions: { width: processedWidth, height: processedHeight },
+          region_diagnostics: regionResult.diagnostics,
         }
         return ocrSuccessResponse(response)
       } finally {
@@ -218,6 +235,7 @@ async function recognizeMetricCards(
   platform: Exclude<ReportDashboardPlatform, 'other'>,
   imageWidth: number,
   imageHeight: number,
+  region: OcrDashboardCandidate,
 ) {
   const output: Record<string, string[]> = {}
   const words: OcrRecognizedWord[] = []
@@ -229,8 +247,8 @@ async function recognizeMetricCards(
     user_defined_dpi: '300',
   })
 
-  for (const cell of platformMetricLayouts[platform]) {
-    const crop = toMetricCellCrop(cell, imageWidth, imageHeight, platform)
+  for (const cell of platformRoiMetricLayouts[platform]) {
+    const crop = toRegionMetricCellCrop(region, cell, imageWidth, imageHeight)
     const resizeScale = platform === 'tiktok_shop' ? 7 : 5
     const basePipeline = () => dependencies.sharp(imageBytes)
       .extract(crop)
@@ -258,33 +276,6 @@ async function recognizeMetricCards(
         crop,
       })
     }
-    if (
-      platform === 'tiktok_shop'
-      && ['total_views', 'advertising_cost', 'roi_gmv_max', 'estimated_gmv'].includes(cell.key)
-    ) {
-      const legacyCrop = toMetricCellCrop(cell, imageWidth, imageHeight, platform, true)
-      const legacyImage = await dependencies.sharp(imageBytes)
-        .extract(legacyCrop)
-        .resize({
-          width: legacyCrop.width * 5,
-          height: legacyCrop.height * 5,
-          fit: 'fill',
-          kernel: dependencies.sharp.kernel.lanczos3,
-        })
-        .grayscale()
-        .normalize()
-        .sharpen({ sigma: 1.1 })
-        .negate()
-        .png()
-        .toBuffer()
-      const legacyResult = await worker.recognize(legacyImage, { rotateAuto: false }, { text: true })
-      variants.push({
-        text: normalizeCardText(legacyResult.data.text),
-        confidence: legacyResult.data.confidence,
-        crop: legacyCrop,
-      })
-    }
-
     output[cell.key] = variants.map(variant => variant.text)
     variants.forEach((variant, variantIndex) => {
       if (!/\d/.test(variant.text)) return
@@ -322,20 +313,17 @@ function normalizeCardText(value: string) {
   return value.trim().replace(/\s+/g, ' ')
 }
 
-function toMetricCellCrop(
+function toRegionMetricCellCrop(
+  region: OcrDashboardCandidate,
   cell: LayoutMetricCell,
   imageWidth: number,
   imageHeight: number,
-  platform: Exclude<ReportDashboardPlatform, 'other'>,
-  useFullHeight = false,
 ) {
-  const width = Math.max(1, Math.round(cell.width * imageWidth))
-  const valueHeight = platform === 'tiktok_shop' && cell.key !== 'gmv' && !useFullHeight
-    ? Math.min(cell.height, .038)
-    : cell.height
-  const height = Math.max(1, Math.round(valueHeight * imageHeight))
-  const left = Math.max(0, Math.min(imageWidth - width, Math.round(cell.x * imageWidth - width / 2)))
-  const top = Math.max(0, Math.min(imageHeight - height, Math.round(cell.y * imageHeight - height / 2)))
+  const box = roiCellBoundingBox(region, cell, 'value')
+  const left = Math.max(0, Math.min(imageWidth - 1, Math.floor(box.x)))
+  const top = Math.max(0, Math.min(imageHeight - 1, Math.floor(box.y)))
+  const width = Math.max(1, Math.min(imageWidth - left, Math.ceil(box.x + box.width) - left))
+  const height = Math.max(1, Math.min(imageHeight - top, Math.ceil(box.y + box.height) - top))
   return { left, top, width, height }
 }
 

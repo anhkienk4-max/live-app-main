@@ -64,6 +64,24 @@ export type MetricValue = number | null
 export type MetricState = Partial<Record<CanonicalMetricKey, MetricValue>>
 
 const canonicalMetricKeySet = new Set<ReportMetricKey>(canonicalMetricKeys)
+const integerCountMetricKeys = new Set<CanonicalMetricKey>([
+  'engaged_viewers',
+  'comments',
+  'add_to_cart',
+  'total_views',
+  'orders',
+  'total_viewers',
+  'pcu',
+  'buyers',
+  'items_sold',
+  'likes',
+  'shares',
+  'current_viewers',
+  'impressions',
+  'new_followers',
+  'sku_orders',
+  'product_clicks',
+])
 
 export function isCanonicalMetricKey(key: string): key is CanonicalMetricKey {
   return canonicalMetricKeySet.has(key as ReportMetricKey)
@@ -99,9 +117,18 @@ export interface MetricCandidateSelection {
 
 const sourcePriority = (metric: OcrMetricValue) => {
   if (metric.source === 'manual' || metric.source === 'imported') return 6
-  if (metric.source === 'card_exact') return 5
-  if (metric.source === 'spatial_fallback' && metric.label_source === 'platform_layout') return 4
-  if (metric.source === 'word_box_exact' || metric.source === 'spatial_fallback') return 3
+  // A readable label paired with a nearby type-compatible value is the
+  // strongest OCR evidence. Grid/card geometry is intentionally secondary so
+  // viewport and layout changes cannot silently override semantic anchors.
+  if (metric.source === 'word_box_exact') return 5
+  if (metric.source === 'spatial_fallback' && metric.label_source === 'ocr_text') return 4.5
+  if (metric.source === 'card_exact') return 4
+  if (
+    metric.source === 'spatial_fallback'
+    && metric.rejection_reason?.includes('displayed value format was repaired')
+  ) return 1.75
+  if (metric.source === 'spatial_fallback' && metric.label_source === 'platform_layout') return 3.5
+  if (metric.source === 'spatial_fallback') return 3
   if (
     metric.source === 'raw_text_exact'
     || metric.source === 'trusted_text'
@@ -122,6 +149,7 @@ const statusRank = (status: OcrMetricValue['status']) => {
 }
 
 const usableValue = (metric: OcrMetricValue) => {
+  if (metric.status === 'rejected' || metric.status === 'empty') return false
   const value = metric.value ?? metric.candidate_value
   return value !== null
     && value !== undefined
@@ -151,6 +179,74 @@ const metricValuesEqual = (left: ReportMetricValue | undefined, right: ReportMet
     ? Math.abs(left - right) < Number.EPSILON
     : left === right
 
+const metricValueSignature = (metric: OcrMetricValue) => {
+  const value = metricValue(metric)
+  return typeof value === 'number'
+    ? `number:${value}`
+    : `${typeof value}:${String(value ?? '')}`
+}
+
+const evidenceChannel = (metric: OcrMetricValue) => {
+  if (metric.source === 'manual' || metric.source === 'imported') return metric.source
+  if (
+    metric.source === 'raw_text_exact'
+    || metric.source === 'raw_text_sequence'
+    || metric.source === 'trusted_text'
+    || metric.source === 'local_tesseract_text'
+  ) return 'raw_text'
+  if (metric.value_source_pass === 'label') return 'label_pass'
+  if (metric.value_source_pass === 'numeric') return 'numeric_pass'
+  if (metric.value_source_pass === 'card') return 'card_pass'
+  return metric.source || 'unknown'
+}
+
+const isRepeatedGlyphRecovery = (
+  key: CanonicalMetricKey,
+  candidate: MetricCandidateInput,
+  allCandidates: readonly MetricCandidateInput[],
+) => {
+  if (!integerCountMetricKeys.has(key) || evidenceChannel(candidate.metric) !== 'card_pass') return false
+  const value = metricValue(candidate.metric)
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return false
+  const expanded = String(value)
+  return allCandidates.some(other => {
+    if (other === candidate || evidenceChannel(other.metric) === 'card_pass') return false
+    const otherValue = metricValue(other.metric)
+    if (typeof otherValue !== 'number' || !Number.isInteger(otherValue) || otherValue < 0) return false
+    const compressed = String(otherValue)
+    if (expanded.length !== compressed.length + 1) return false
+    return [...expanded].some((glyph, index) =>
+      (glyph === expanded[index - 1] || glyph === expanded[index + 1])
+      && `${expanded.slice(0, index)}${expanded.slice(index + 1)}` === compressed,
+    )
+  })
+}
+
+const isCardInsertionArtifact = (
+  key: CanonicalMetricKey,
+  candidate: MetricCandidateInput,
+  allCandidates: readonly MetricCandidateInput[],
+) => {
+  if (
+    !integerCountMetricKeys.has(key)
+    || evidenceChannel(candidate.metric) !== 'card_pass'
+    || isRepeatedGlyphRecovery(key, candidate, allCandidates)
+  ) return false
+  const value = metricValue(candidate.metric)
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return false
+  const expanded = String(value)
+  return allCandidates.some(other => {
+    if (other === candidate || evidenceChannel(other.metric) === 'card_pass') return false
+    const otherValue = metricValue(other.metric)
+    if (typeof otherValue !== 'number' || !Number.isInteger(otherValue) || otherValue < 0) return false
+    const compressed = String(otherValue)
+    if (expanded.length !== compressed.length + 1) return false
+    return [...expanded].some((_, index) =>
+      `${expanded.slice(0, index)}${expanded.slice(index + 1)}` === compressed,
+    )
+  })
+}
+
 export function selectBestMetricCandidates(
   candidates: readonly MetricCandidateInput[],
   expectedKeys: readonly CanonicalMetricKey[] = canonicalMetricKeys,
@@ -159,9 +255,33 @@ export function selectBestMetricCandidates(
   const discardedConflicts: DiscardedMetricConflict[] = []
 
   for (const key of expectedKeys) {
-    const ranked = candidates
+    const keyCandidates = candidates
       .filter(candidate => candidate.key === key && usableValue(candidate.metric))
-      .sort(compareCandidates)
+    const supportByValue = new Map<string, Set<string>>()
+    for (const candidate of keyCandidates) {
+      const signature = metricValueSignature(candidate.metric)
+      const channels = supportByValue.get(signature) || new Set<string>()
+      channels.add(evidenceChannel(candidate.metric))
+      supportByValue.set(signature, channels)
+    }
+    const ranked = keyCandidates.sort((left, right) => {
+      const protectedLeft = sourcePriority(left.metric) >= 6
+      const protectedRight = sourcePriority(right.metric) >= 6
+      if (protectedLeft || protectedRight) return compareCandidates(left, right)
+      const repeatedGlyphLeft = isRepeatedGlyphRecovery(key, left, keyCandidates)
+      const repeatedGlyphRight = isRepeatedGlyphRecovery(key, right, keyCandidates)
+      if (repeatedGlyphLeft !== repeatedGlyphRight) {
+        return Number(repeatedGlyphRight) - Number(repeatedGlyphLeft)
+      }
+      const insertionArtifactLeft = isCardInsertionArtifact(key, left, keyCandidates)
+      const insertionArtifactRight = isCardInsertionArtifact(key, right, keyCandidates)
+      if (insertionArtifactLeft !== insertionArtifactRight) {
+        return Number(insertionArtifactLeft) - Number(insertionArtifactRight)
+      }
+      const leftSupport = supportByValue.get(metricValueSignature(left.metric))?.size || 0
+      const rightSupport = supportByValue.get(metricValueSignature(right.metric))?.size || 0
+      return rightSupport - leftSupport || compareCandidates(left, right)
+    })
     const selected = ranked[0]
     if (!selected) continue
     selectedByKey[key] = selected.metric

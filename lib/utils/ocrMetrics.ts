@@ -15,6 +15,10 @@ import {
   tiktokCentralMetricKeys,
   type MetricCandidateInput,
 } from '@/lib/utils/ocrCanonical'
+import {
+  normalizeMetricCellToRoi,
+  roiCellBoundingBox,
+} from '@/lib/utils/ocrRegionGeometry'
 
 export const commonReportMetricKeys: ReportMetricKey[] = [
   'revenue', 'gmv', 'orders', 'buyers', 'items_sold', 'total_views',
@@ -367,16 +371,16 @@ export type LayoutMetricCell = {
 // the value area of each fixed KPI card, not an OCR reading order.
 export const platformMetricLayouts: Record<Exclude<ReportDashboardPlatform, 'other'>, LayoutMetricCell[]> = {
   shopee_live: [
-    { key: 'sales', label: 'Sales', x: .437, y: .284, width: .24, height: .075, valueKind: 'currency' },
+    { key: 'sales', label: 'Sales', x: .437, y: .284, width: .24, height: .075, valueKind: 'currency', displayFormat: { decimalPlaces: 2 } },
     { key: 'engaged_viewers', label: 'Engaged Viewer', x: .225, y: .374, width: .10, height: .05, valueKind: 'count' },
     { key: 'comments', label: 'Comments', x: .437, y: .374, width: .08, height: .05, valueKind: 'count' },
     { key: 'add_to_cart', label: 'ATC', x: .648, y: .374, width: .08, height: .05, valueKind: 'count' },
     { key: 'total_views', label: 'Total Views', x: .175, y: .465, width: .09, height: .05, valueKind: 'count' },
     { key: 'average_view_duration_seconds', label: 'Avg. Viewing Duration', x: .277, y: .465, width: .10, height: .05, valueKind: 'duration' },
     { key: 'comment_rate', label: 'Comments Rate', x: .386, y: .465, width: .08, height: .05, valueKind: 'percentage', displayFormat: { decimalPlaces: 1 } },
-    { key: 'gpm', label: 'GPM', x: .488, y: .465, width: .12, height: .05, valueKind: 'currency' },
+    { key: 'gpm', label: 'GPM', x: .488, y: .465, width: .12, height: .05, valueKind: 'currency', displayFormat: { decimalPlaces: 2 } },
     { key: 'orders', label: 'Orders', x: .598, y: .465, width: .075, height: .05, valueKind: 'count' },
-    { key: 'average_basket_size', label: 'ABS', x: .700, y: .465, width: .12, height: .05, valueKind: 'currency' },
+    { key: 'average_basket_size', label: 'ABS', x: .700, y: .465, width: .12, height: .05, valueKind: 'currency', displayFormat: { decimalPlaces: 2 } },
     { key: 'total_viewers', label: 'Total Viewers', x: .175, y: .525, width: .09, height: .05, valueKind: 'count' },
     { key: 'pcu', label: 'PCU', x: .277, y: .525, width: .075, height: .05, valueKind: 'count' },
     { key: 'ctr', label: 'CTR', x: .386, y: .525, width: .08, height: .05, valueKind: 'percentage', displayFormat: { decimalPlaces: 1 } },
@@ -520,7 +524,11 @@ export function parseOcrValue(raw: string): ReportMetricValue {
   return Number.isFinite(parsed) ? parsed * multiplier : original
 }
 
-function parseMetricOcrValue(key: ReportMetricKey, raw: string): ReportMetricValue {
+function parseMetricOcrValue(
+  platform: ReportDashboardPlatform,
+  key: ReportMetricKey,
+  raw: string,
+): ReportMetricValue {
   if (key === 'average_view_duration_seconds' || key === 'live_duration_seconds') {
     const shortDuration = raw.trim().match(/^(\d{1,3}):(\d{2})$/)
     if (shortDuration) return Number(shortDuration[1]) * 60 + Number(shortDuration[2])
@@ -533,7 +541,10 @@ function parseMetricOcrValue(key: ReportMetricKey, raw: string): ReportMetricVal
   const normalizedRaw = isPercentageMetric(key)
     ? raw.trim().replace(/([xX°ºoO])\s*$/, '%')
     : raw
-  return parseOcrValue(normalizedRaw)
+  const declaredLayout = platform === 'other'
+    ? undefined
+    : platformMetricLayouts[platform].find(cell => cell.key === key)
+  return parseOcrValue(normalizeLayoutCardValue(declaredLayout, normalizedRaw))
 }
 
 export function buildOcrMetric(
@@ -547,7 +558,7 @@ export function buildOcrMetric(
 ): [ReportMetricKey, OcrMetricValue] | null {
   const key = normalizedKey || mapOcrLabel(platform, originalLabel)
   if (!key) return null
-  const parsedValue = parseMetricOcrValue(key, rawValue)
+  const parsedValue = parseMetricOcrValue(platform, key, rawValue)
   if (
     parsedValue === null ||
     (typeof parsedValue === 'number' && !Number.isFinite(parsedValue)) ||
@@ -835,6 +846,15 @@ export function parsePlatformOcrText({
     missing_metric_keys: selection.missingKeys,
     raw_output: existingReview?.raw_output || parsedReview.raw_output,
     raw_diagnostic_output: existingReview?.raw_diagnostic_output,
+    source_platform: existingReview?.source_platform || parsedReview.source_platform,
+    engine: existingReview?.engine || parsedReview.engine,
+    recognition_language: existingReview?.recognition_language || parsedReview.recognition_language,
+    overall_confidence: existingReview?.overall_confidence ?? parsedReview.overall_confidence,
+    crop_box: existingReview?.crop_box || parsedReview.crop_box,
+    original_dimensions: existingReview?.original_dimensions || parsedReview.original_dimensions,
+    processed_dimensions: existingReview?.processed_dimensions || parsedReview.processed_dimensions,
+    region_diagnostics: existingReview?.region_diagnostics || parsedReview.region_diagnostics,
+    error_message: existingReview?.error_message || parsedReview.error_message,
     unmapped_fields: [
       ...(existingCandidates && 'metrics' in existingCandidates ? existingCandidates.unmapped_fields || [] : []),
       ...(parsedReview.unmapped_fields || []),
@@ -881,6 +901,29 @@ export function mapDashboardImageRecognition(
   platform: ReportDashboardPlatform,
   recognition: OcrImageRecognition,
 ): OcrReviewData {
+  if (recognition.region_diagnostics?.selection_required) {
+    const expectedKeys = platform === 'other'
+      ? []
+      : platformOcrConfigs[platform].metricOrder.filter(isCanonicalMetricKey)
+    return {
+      status: 'review_required',
+      source_platform: platform,
+      engine: recognition.engine,
+      recognition_language: recognition.language,
+      overall_confidence: recognition.confidence,
+      crop_box: recognition.crop_box,
+      original_dimensions: recognition.original_dimensions,
+      processed_dimensions: recognition.processed_dimensions,
+      region_diagnostics: recognition.region_diagnostics,
+      metrics: {},
+      missing_metric_keys: expectedKeys,
+      raw_output: '',
+      raw_diagnostic_output: formatRecognitionOutput(recognition),
+      error_message: recognition.region_diagnostics.ambiguous
+        ? 'Several dashboard regions are similarly strong. Select one region and retry OCR.'
+        : 'A dashboard region could not be selected confidently. Adjust the region and retry OCR.',
+    }
+  }
   const candidateInputs: MetricCandidateInput[] = []
   const unmappedFields: NonNullable<OcrReviewData['unmapped_fields']> = []
   const consumedWords = new Set<OcrRecognizedWord>()
@@ -891,7 +934,10 @@ export function mapDashboardImageRecognition(
 
   applyCardOutputCandidates(platform, recognition, candidateInputs, consumedWords)
 
-  for (const line of lines.filter(candidate => candidate.pass === 'label')) {
+  for (const line of lines.filter(candidate =>
+    candidate.pass === 'label'
+    && !candidate.id.startsWith('card-label:'),
+  )) {
     const searchableWords = line.words.filter(word => normalizeOcrLabel(word.text))
     const normalizedWords = searchableWords.map(word => normalizeOcrLabel(word.text))
     const lineMatches = aliasesByLength
@@ -914,18 +960,43 @@ export function mapDashboardImageRecognition(
       const expectedCell = platform === 'other'
         ? undefined
         : platformMetricLayouts[platform].find(cell => cell.key === alias.key)
+      const selectedRegion = recognition.region_diagnostics?.dashboard_candidates.find(candidate =>
+        candidate.id === recognition.region_diagnostics?.selected_candidate_id,
+      )
+      const selectedRegionValueBox = expectedCell && selectedRegion && platform === 'shopee_live'
+        ? roiCellBoundingBox(
+          selectedRegion,
+          normalizeMetricCellToRoi(platform, expectedCell),
+          'value',
+        )
+        : undefined
       if (
         expectedCell
-        && !wordIsInsideLayoutCell(
-          pairedValue.word,
-          expectedCell,
-          recognition.original_dimensions,
-          1.2,
+        && (
+          selectedRegionValueBox
+            ? !wordCenterIsInsideBox(pairedValue.word, selectedRegionValueBox, 1.25)
+            : selectedRegion
+              ? false
+              : !wordIsInsideLayoutCell(
+                pairedValue.word,
+                expectedCell,
+                recognition.original_dimensions,
+                1.2,
+              )
         )
       ) continue
 
-      const parsedValue = parseOcrValue(pairedValue.word.text)
-      const sanityError = validateMetricCandidate(alias.key, parsedValue, pairedValue.word.text)
+      const parsedValue = parseMetricOcrValue(platform, alias.key, pairedValue.word.text)
+      const layoutCell = platform === 'other'
+        ? undefined
+        : platformMetricLayouts[platform].find(cell => cell.key === alias.key)
+      const normalizedShapeValue = normalizeLayoutCardValue(layoutCell, pairedValue.word.text)
+      const valueShapeScore = layoutCell
+        ? layoutValueShapeScore(layoutCell.valueKind, normalizedShapeValue, parsedValue)
+        : 1
+      const sanityError = valueShapeScore < .75
+        ? 'The OCR value shape is incompatible with the declared KPI type.'
+        : validateMetricCandidate(alias.key, parsedValue, normalizedShapeValue)
       const confidenceNumber = Math.min(
         labelConfidence,
         pairedValue.word.confidence,
@@ -975,7 +1046,7 @@ export function mapDashboardImageRecognition(
     }
   }
 
-  if (platform !== 'other') {
+  if (platform !== 'other' && !recognition.region_diagnostics?.selected_candidate_id) {
     applyPlatformLayoutCandidates(platform, recognition, candidateInputs, consumedWords)
   }
   // Raw text is intentionally last. Browser/Tesseract reading order is unstable
@@ -1039,6 +1110,7 @@ export function mapDashboardImageRecognition(
     crop_box: recognition.crop_box,
     original_dimensions: recognition.original_dimensions,
     processed_dimensions: recognition.processed_dimensions,
+    region_diagnostics: recognition.region_diagnostics,
     metrics,
     discarded_conflicts: selection.discardedConflicts,
     missing_metric_keys: selection.missingKeys,
@@ -1401,7 +1473,7 @@ function isSequentialValueCompatible(
   key: ReportMetricKey,
   rawValue: string,
 ) {
-  const parsedValue = parseMetricOcrValue(key, rawValue)
+  const parsedValue = parseMetricOcrValue(platform, key, rawValue)
   if (validateMetricCandidate(key, parsedValue, rawValue)) return false
   if (typeof parsedValue !== 'number' || !Number.isFinite(parsedValue)) return false
   if (platform === 'other') return true
@@ -1479,7 +1551,15 @@ function applyCardOutputCandidates(
     if (!allowedKeys.has(key)) continue
     const layoutCell = platformMetricLayouts[platform as Exclude<ReportDashboardPlatform, 'other'>]
       ?.find(cell => cell.key === key)
-    const cardCandidates = values.flatMap((value, variantIndex) => {
+    const cardLabels = recognition.pass_output.card_labels?.[key] || []
+    const anchoredCard = cardLabels.some(label =>
+      mapOcrLabel(platform, label, [key]) === key,
+    )
+    const reconstructedCompact = reconstructCompactOcrValue(layoutCell, values)
+    const cardValues = reconstructedCompact && !values.includes(reconstructedCompact)
+      ? [reconstructedCompact, ...values]
+      : values
+    const cardCandidates = cardValues.flatMap((value, variantIndex) => {
       const normalizedRaw = normalizeLayoutCardValue(layoutCell, value)
       const parsedValue = parseOcrValue(normalizedRaw)
       if (validateMetricCandidate(key, parsedValue, normalizedRaw)) return []
@@ -1497,11 +1577,12 @@ function applyCardOutputCandidates(
         shapeScore,
         rawQualityScore,
         cardWord,
+        variantIndex,
         selectionScore:
           shapeScore * 10
           + rawQualityScore * 2
           + (cardWord?.confidence || 0) / 100
-          + variantIndex * .001,
+          - variantIndex * .05,
       }]
     })
     const consensusCandidates = cardCandidates.map(candidate => ({
@@ -1519,16 +1600,25 @@ function applyCardOutputCandidates(
         supportingWord: findCardValueWordSupport(platform, key, candidate.parsedValue, recognition),
         conflictingWord: findConflictingCardValueWord(platform, key, candidate.parsedValue, recognition),
       }))
+      .map(candidate => ({
+        ...candidate,
+        selectionScore:
+          candidate.selectionScore
+          + (candidate.supportingWord ? 4 : 0)
+          - (candidate.conflictingWord && !candidate.supportingWord ? 2 : 0),
+      }))
       .filter(candidate =>
         candidate.shapeScore >= 0.75
         && !(
           platform === 'shopee_live'
+          && !recognition.region_diagnostics?.selected_candidate_id
           && candidate.conflictingWord
           && !candidate.supportingWord
         )
         && (
           candidate.cardWord
           || candidate.supportingWord
+          || anchoredCard
           || recognition.words.every(word => word.pass === 'card')
         ),
       )
@@ -1537,9 +1627,11 @@ function applyCardOutputCandidates(
       const parsedValue = candidate.parsedValue
       if (parsedValue === null || (typeof parsedValue === 'number' && !Number.isFinite(parsedValue))) continue
       const repaired = candidate.normalizedRaw !== rawValue.trim()
+      const independentValueConfidence = candidate.supportingWord?.confidence
+        || (candidate.supportCount >= 2 ? candidate.cardWord?.confidence : undefined)
       const clearPair = Boolean(
         !repaired
-        && (candidate.cardWord?.confidence || candidate.supportingWord?.confidence || 0) >= 85
+        && (independentValueConfidence || 0) >= 85
         && candidate.shapeScore >= .85,
       )
       const valueEvidence = candidate.cardWord || candidate.supportingWord
@@ -1577,11 +1669,17 @@ function applyCardOutputCandidates(
             ? 'Card OCR value is independently supported inside the same KPI grid cell.'
             : 'Card OCR found a typed value, but independent word-box evidence is incomplete.',
         pair_score: candidate.selectionScore,
-        source: 'card_exact',
+        source: platform === 'tiktok_shop' && repaired
+          ? 'spatial_fallback'
+          : anchoredCard
+            ? 'word_box_exact'
+            : 'card_exact',
         status: clearPair ? 'confirmed' : 'review_required',
         rejection_reason: repaired ? 'The displayed value format was repaired and must be reviewed.' : undefined,
         label_confidence: 100,
-        label_source: 'platform_layout',
+        label_source: anchoredCard && !(platform === 'tiktok_shop' && repaired)
+          ? 'ocr_text'
+          : 'platform_layout',
         value_confidence: valueEvidence?.confidence,
         spatial_score: clearPair ? 1 : undefined,
         value_source_pass: 'card',
@@ -1596,27 +1694,61 @@ function normalizeLayoutCardValue(
   rawValue: string,
 ) {
   const trimmed = rawValue.trim()
-  if (cell?.valueKind === 'duration' && /^\d{1,5}[:;]$/.test(trimmed)) {
-    return `${trimmed.slice(0, -1)}s`
+  const glyphNormalized = /\d/.test(trimmed)
+    ? trimmed
+      .replace(/[Óó]/g, '6')
+      .replace(
+        cell?.valueKind === 'compact' ? /[xX«]\s*$/ : /$^/,
+        cell?.displayFormat?.compactSuffix || 'K',
+      )
+    : trimmed
+  if (cell?.valueKind === 'duration' && /^\d{1,5}[:;]$/.test(glyphNormalized)) {
+    return `${glyphNormalized.slice(0, -1)}s`
   }
   const format = cell?.displayFormat
-  if (!format) return trimmed
-  let normalized = trimmed.replace(/([0-9])[:;]([0-9])/g, '$1.$2')
+  if (!format) return glyphNormalized
+  let normalized = glyphNormalized.replace(/([0-9])[:;]([0-9])/g, '$1.$2')
   const suffix = format.compactSuffix
   if (suffix) {
     const suffixPattern = new RegExp(`${suffix}$`, 'i')
     normalized = normalized.replace(suffixPattern, '')
-    if (format.decimalPlaces && suffixPattern.test(normalized)) {
-      normalized = normalized.replace(
-        suffixPattern,
-        '1'.repeat(format.decimalPlaces),
-      )
-    }
   }
-  if (format.decimalPlaces && !/[.,]/.test(normalized)) {
+  const declaredDecimalPlaces = format.decimalPlaces
+  if (declaredDecimalPlaces) {
     const digits = normalized.replace(/\D/g, '')
-    if (digits.length > format.decimalPlaces) {
-      normalized = `${digits.slice(0, -format.decimalPlaces)}.${digits.slice(-format.decimalPlaces)}`
+    const separators = [...normalized.matchAll(/[.,]/g)].map(match => match.index || 0)
+    const lastSeparator = separators.at(-1)
+    const trailingDigits = lastSeparator === undefined
+      ? 0
+      : normalized.slice(lastSeparator + 1).replace(/\D/g, '').length
+    const needsDeclaredDecimal = cell.valueKind !== 'currency'
+      && digits.length > declaredDecimalPlaces
+      && (
+        separators.length === 0
+        || trailingDigits === 0
+      )
+    const malformedCurrencySeparators = cell.valueKind === 'currency'
+      && digits.length > declaredDecimalPlaces
+      && (
+        separators.length >= 2 && trailingDigits === declaredDecimalPlaces
+        || separators.length === 1 && trailingDigits > declaredDecimalPlaces + 1
+      )
+    const inferredBoundedPercentage = cell.valueKind === 'percentage'
+      && separators.length === 0
+      && Number(digits) / (10 ** declaredDecimalPlaces) > 100
+      ? Array.from(
+        { length: Math.max(0, digits.length - declaredDecimalPlaces - 1) },
+        (_, index) => declaredDecimalPlaces + index + 1,
+      ).map(inferredPlaces => Number(digits) / (10 ** inferredPlaces))
+        .find(inferredValue => inferredValue <= 100)
+      : undefined
+    if (inferredBoundedPercentage !== undefined) {
+      const decimalScale = 10 ** declaredDecimalPlaces
+      normalized = String(
+        Math.round((inferredBoundedPercentage + Number.EPSILON) * decimalScale) / decimalScale,
+      )
+    } else if (needsDeclaredDecimal || malformedCurrencySeparators) {
+      normalized = `${digits.slice(0, -declaredDecimalPlaces)}.${digits.slice(-declaredDecimalPlaces)}`
     }
   }
   return `${normalized}${suffix || ''}`
@@ -1635,7 +1767,7 @@ function layoutCardRawQualityScore(cell: LayoutMetricCell, rawValue: string) {
     return /^(?:\d{1,2}:)?\d{1,3}:\d{2}$/.test(trimmed) ? 1 : .45
   }
   if (cell.valueKind === 'compact') {
-    if (/^\d+[:;]\d+$/.test(trimmed) && cell.displayFormat?.decimalPlaces) return 1.05
+    if (/^\d+[:;]\d+$/.test(trimmed) && cell.displayFormat?.decimalPlaces) return 1.25
     return /^\d+(?:[.,]\d+)?[KM]$/i.test(trimmed) ? 1 : .45
   }
   if (cell.valueKind === 'currency') {
@@ -1646,6 +1778,27 @@ function layoutCardRawQualityScore(cell: LayoutMetricCell, rawValue: string) {
         : .3
   }
   return /^\d+(?:[.,]\d+)?$/.test(trimmed) ? 1 : .4
+}
+
+export function reconstructCompactOcrValue(
+  cell: LayoutMetricCell | undefined,
+  values: readonly string[],
+) {
+  const suffix = cell?.displayFormat?.compactSuffix
+  const decimalPlaces = cell?.displayFormat?.decimalPlaces
+  if (cell?.valueKind !== 'compact' || !suffix || !decimalPlaces) return undefined
+  const repeatedSuffix = new RegExp(`${suffix}+$`, 'i')
+  const headed = values
+    .map(value => value.replace(/\s+/g, '').replace(repeatedSuffix, suffix))
+    .find(value => new RegExp(`^\\d{1,2}${suffix}$`, 'i').test(value))
+  const fractional = values
+    .map(value => value.replace(/\s+/g, ''))
+    .find(value =>
+      !/[KM]/i.test(value)
+      && value.replace(/\D/g, '').length === decimalPlaces,
+    )
+  if (!headed || !fractional) return undefined
+  return `${headed.replace(/\D/g, '')}.${fractional.replace(/\D/g, '')}${suffix}`
 }
 
 function formatCorrectedMetricValue(
@@ -1740,6 +1893,17 @@ function applyExactRawTextCandidates(
   const exactReview = parseDashboardOcrText(platform, rawText, 'raw_text_exact')
   for (const [key, candidate] of Object.entries(exactReview.metrics) as Array<[ReportMetricKey, OcrMetricValue]>) {
     if (!metricHasUsableValue(candidate)) continue
+    const layoutCell = platform === 'other'
+      ? undefined
+      : platformMetricLayouts[platform].find(cell => cell.key === key)
+    const rawValue = candidate.raw_value || ''
+    const normalizedRaw = normalizeLayoutCardValue(layoutCell, rawValue)
+    const value = candidate.value ?? candidate.candidate_value
+    if (value === undefined) continue
+    if (
+      layoutCell
+      && layoutValueShapeScore(layoutCell.valueKind, normalizedRaw, value) < .75
+    ) continue
     collectMetricCandidate(candidates, key, {
       ...candidate,
       label_source: 'ocr_text',
@@ -1759,7 +1923,12 @@ function findCardValueWordSupport(
     ?.find(candidate => candidate.key === key)
   if (!cell || !recognition.original_dimensions.width || !recognition.original_dimensions.height) return undefined
   return independentWords.find(word =>
-    wordIsInsideLayoutCell(word, cell, recognition.original_dimensions)
+    wordIsInsideRecognizedMetricCell(
+      platform as Exclude<ReportDashboardPlatform, 'other'>,
+      word,
+      cell,
+      recognition,
+    )
     && metricValuesEqual(parseLayoutEvidenceValue(cell, word.text), value),
   )
 }
@@ -1776,7 +1945,12 @@ function findConflictingCardValueWord(
   return recognition.words.find(word =>
     word.pass !== 'card'
     && word.confidence >= 85
-    && wordIsInsideLayoutCell(word, cell, recognition.original_dimensions)
+    && wordIsInsideRecognizedMetricCell(
+      platform as Exclude<ReportDashboardPlatform, 'other'>,
+      word,
+      cell,
+      recognition,
+    )
     && parseLayoutEvidenceValue(cell, word.text) !== null
     && !metricValuesEqual(parseLayoutEvidenceValue(cell, word.text), value),
   )
@@ -1841,6 +2015,32 @@ function metricValuesEqual(left: ReportMetricValue | undefined, right: ReportMet
 }
 
 function formatRecognitionOutput(recognition: OcrImageRecognition) {
+  const regionOutput = recognition.region_diagnostics
+    ? JSON.stringify({
+      original_dimensions: recognition.region_diagnostics.original_dimensions,
+      platform_candidates: recognition.region_diagnostics.platform_candidates,
+      dashboard_candidates: recognition.region_diagnostics.dashboard_candidates.map(candidate => ({
+        id: candidate.id,
+        platform: candidate.platform,
+        bounding_box: candidate.bounding_box,
+        quadrilateral: candidate.quadrilateral,
+        confidence: candidate.confidence,
+        anchor_count: candidate.anchor_count,
+        anchors: candidate.anchor_keys,
+        area_ratio: candidate.area_ratio,
+        aspect_ratio: candidate.aspect_ratio,
+        ocr_readability: candidate.ocr_readability,
+        source_method: candidate.source_method,
+        perspective_correction_applied: candidate.perspective_correction_applied,
+      })),
+      selected_candidate_id: recognition.region_diagnostics.selected_candidate_id,
+      selected_roi: recognition.region_diagnostics.selected_roi,
+      normalized_roi_dimensions: recognition.region_diagnostics.normalized_roi_dimensions,
+      perspective_correction_applied: recognition.region_diagnostics.perspective_correction_applied,
+      selection_reason: recognition.region_diagnostics.selection_reason,
+      fallback_usage: recognition.region_diagnostics.fallback_usage,
+    }, null, 2)
+    : ''
   const cardLabelOutput = recognition.pass_output.card_labels
     ? Object.entries(recognition.pass_output.card_labels)
       .map(([key, values]) => `${key}: ${values.filter(Boolean).join(' | ') || '—'}`)
@@ -1852,6 +2052,7 @@ function formatRecognitionOutput(recognition: OcrImageRecognition) {
       .join('\n')
     : ''
   return [
+    regionOutput ? `[region detection]\n${regionOutput}` : '',
     '[label pass]',
     recognition.pass_output.label,
     '[numeric pass]',
@@ -1888,10 +2089,11 @@ function applyPlatformLayoutCandidates(
   if (!dimensions.width || !dimensions.height) return
 
   for (const cell of platformMetricLayouts[platform]) {
-    const labelMatch = findLayoutLabelWords(platform, cell, recognition.words, dimensions)
+    const expectedValueBox = recognizedMetricCellBox(platform, cell, recognition)
+    const labelMatch = findLayoutLabelWords(platform, cell, recognition)
     const wordsInCell = recognition.words.filter(word => {
       if (!/\d/.test(word.text)) return false
-      return wordIsInsideLayoutCell(word, cell, dimensions)
+      return wordCenterIsInsideBox(word, expectedValueBox)
     })
     if (!wordsInCell.length) continue
 
@@ -1917,11 +2119,13 @@ function applyPlatformLayoutCandidates(
       const shapeScore = layoutValueShapeScore(cell.valueKind, normalizedRaw, parsedValue)
       if (sanityError || shapeScore <= 0) return []
       const box = unionBoundingBoxes(words)
-      const centerX = (box.x + box.width / 2) / dimensions.width
-      const centerY = (box.y + box.height / 2) / dimensions.height
+      const centerX = box.x + box.width / 2
+      const centerY = box.y + box.height / 2
+      const expectedCenterX = expectedValueBox.x + expectedValueBox.width / 2
+      const expectedCenterY = expectedValueBox.y + expectedValueBox.height / 2
       const relativeDistance = Math.hypot(
-        (centerX - cell.x) / Math.max(cell.width / 2, .001),
-        (centerY - cell.y) / Math.max(cell.height / 2, .001),
+        (centerX - expectedCenterX) / Math.max(expectedValueBox.width / 2, 1),
+        (centerY - expectedCenterY) / Math.max(expectedValueBox.height / 2, 1),
       )
       const rawSpatialScore = 1 - Math.min(1, relativeDistance) * .35
       const spatialScore = words[0].pass === 'card' ? Math.min(.95, rawSpatialScore) : rawSpatialScore
@@ -2001,9 +2205,13 @@ function applyPlatformLayoutCandidates(
 function findLayoutLabelWords(
   platform: Exclude<ReportDashboardPlatform, 'other'>,
   cell: LayoutMetricCell,
-  words: OcrRecognizedWord[],
-  dimensions: { width: number; height: number },
+  recognition: OcrImageRecognition,
 ) {
+  const words = recognition.words
+  const dimensions = recognition.original_dimensions
+  const expectedValueBox = recognizedMetricCellBox(platform, cell, recognition)
+  const expectedCenterX = expectedValueBox.x + expectedValueBox.width / 2
+  const expectedCenterY = expectedValueBox.y + expectedValueBox.height / 2
   const metricAliases = Object.entries(aliases[platform])
     .filter((entry): entry is [string, ReportMetricKey] => entry[1] === cell.key)
     .map(([label]) => ({ label, tokens: label.split(' ') }))
@@ -2018,24 +2226,62 @@ function findLayoutLabelWords(
       const matchedWords = searchableWords.slice(match.start, match.start + alias.tokens.length)
       if (!matchedWords.length) return []
       const box = unionBoundingBoxes(matchedWords)
-      const centerX = (box.x + box.width / 2) / dimensions.width
-      const centerY = (box.y + box.height / 2) / dimensions.height
-      const horizontalLimit = Math.max(cell.width * .75, .045)
-      const aboveValue = centerY <= cell.y + cell.height / 2
-        && centerY >= cell.y - Math.max(cell.height * 1.5, .055)
-      if (Math.abs(centerX - cell.x) > horizontalLimit || !aboveValue) return []
+      const centerX = box.x + box.width / 2
+      const centerY = box.y + box.height / 2
+      const horizontalLimit = Math.max(expectedValueBox.width * .75, dimensions.width * .045)
+      const verticalLimit = Math.max(expectedValueBox.height * 1.5, dimensions.height * .055)
+      const aboveValue = centerY <= expectedCenterY + expectedValueBox.height / 2
+        && centerY >= expectedCenterY - verticalLimit
+      if (Math.abs(centerX - expectedCenterX) > horizontalLimit || !aboveValue) return []
       return [{
         words: matchedWords,
         similarity: match.similarity,
         distance: Math.hypot(
-          (centerX - cell.x) / horizontalLimit,
-          (cell.y - centerY) / Math.max(cell.height * 1.5, .055),
+          (centerX - expectedCenterX) / horizontalLimit,
+          (expectedCenterY - centerY) / verticalLimit,
         ),
       }]
     })
   }).sort((left, right) =>
     right.similarity - left.similarity || left.distance - right.distance,
   )[0]
+}
+
+function recognizedMetricCellBox(
+  platform: Exclude<ReportDashboardPlatform, 'other'>,
+  cell: LayoutMetricCell,
+  recognition: OcrImageRecognition,
+) {
+  const selectedRegion = recognition.region_diagnostics?.dashboard_candidates.find(candidate =>
+    candidate.id === recognition.region_diagnostics?.selected_candidate_id,
+  )
+  if (selectedRegion) {
+    return roiCellBoundingBox(
+      selectedRegion,
+      normalizeMetricCellToRoi(platform, cell),
+      'value',
+    )
+  }
+  return {
+    x: (cell.x - cell.width / 2) * recognition.original_dimensions.width,
+    y: (cell.y - cell.height / 2) * recognition.original_dimensions.height,
+    width: cell.width * recognition.original_dimensions.width,
+    height: cell.height * recognition.original_dimensions.height,
+  }
+}
+
+function wordIsInsideRecognizedMetricCell(
+  platform: Exclude<ReportDashboardPlatform, 'other'>,
+  word: OcrRecognizedWord,
+  cell: LayoutMetricCell,
+  recognition: OcrImageRecognition,
+  expansion = 1,
+) {
+  return wordCenterIsInsideBox(
+    word,
+    recognizedMetricCellBox(platform, cell, recognition),
+    expansion,
+  )
 }
 
 function wordIsInsideLayoutCell(
@@ -2049,6 +2295,21 @@ function wordIsInsideLayoutCell(
   const centerY = (word.bounding_box.y + word.bounding_box.height / 2) / dimensions.height
   return Math.abs(centerX - cell.x) <= cell.width * expansion / 2
     && Math.abs(centerY - cell.y) <= cell.height * expansion / 2
+}
+
+function wordCenterIsInsideBox(
+  word: OcrRecognizedWord,
+  box: { x: number; y: number; width: number; height: number },
+  expansion = 1,
+) {
+  const centerX = word.bounding_box.x + word.bounding_box.width / 2
+  const centerY = word.bounding_box.y + word.bounding_box.height / 2
+  const halfWidth = box.width * expansion / 2
+  const halfHeight = box.height * expansion / 2
+  const boxCenterX = box.x + box.width / 2
+  const boxCenterY = box.y + box.height / 2
+  return Math.abs(centerX - boxCenterX) <= halfWidth
+    && Math.abs(centerY - boxCenterY) <= halfHeight
 }
 
 function layoutPassBonus(
@@ -2142,13 +2403,26 @@ function findMetricValueWord(
     })
     .filter(candidate => candidate.spatialScore >= 0.65)
     .sort((left, right) =>
-      (right.spatialScore + (right.word.pass === 'numeric' ? 0.05 : 0)) -
-      (left.spatialScore + (left.word.pass === 'numeric' ? 0.05 : 0)),
+      (
+        right.spatialScore
+        + (right.word.pass === 'numeric' ? .05 : right.word.pass === 'label' ? .04 : 0)
+      ) - (
+        left.spatialScore
+        + (left.word.pass === 'numeric' ? .05 : left.word.pass === 'label' ? .04 : 0)
+      ),
     )
-  const selected = candidates[0]
+  // Keep label/value pairing inside the same OCR pass whenever that pass
+  // produced a viable value. A value from an isolated card crop can be closer
+  // in absolute pixels, but it belongs to a different recognition coordinate
+  // context and is already evaluated independently by applyCardOutputCandidates.
+  const samePassCandidates = candidates.filter(candidate =>
+    candidate.word.pass === labelLine.pass,
+  )
+  const rankedCandidates = samePassCandidates.length > 0 ? samePassCandidates : candidates
+  const selected = rankedCandidates[0]
   if (!selected) return undefined
   const selectedValue = parseOcrValue(selected.word.text)
-  const competingValues = candidates.filter(candidate =>
+  const competingValues = rankedCandidates.filter(candidate =>
     candidate !== selected
     && !metricValuesEqual(parseOcrValue(candidate.word.text), selectedValue)
     && selected.spatialScore - candidate.spatialScore < .12,

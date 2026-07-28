@@ -400,7 +400,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
                 <SelectContent><SelectItem value="tiktok_shop">TikTok Shop</SelectItem><SelectItem value="shopee_live">Shopee Live</SelectItem></SelectContent>
               </Select>
             </label>
-            {formData.screenshot_url && <div className="mt-3"><OcrCropPreview imageUrl={formData.screenshot_url} platform={dashboardPlatform} value={cropBox} onChange={setCropBox} review={ocrReview} disabled={scanning} /></div>}
+            {formData.screenshot_url && <div className="mt-3"><OcrCropPreview imageUrl={formData.screenshot_url} platform={dashboardPlatform} value={cropBox} onChange={setCropBox} onRetry={scanScreenshot} review={ocrReview} disabled={scanning} /></div>}
             <div className="mt-3 flex flex-wrap gap-2">
               <Button type="button" variant="outline" disabled={!formData.screenshot_url || scanning} onClick={scanScreenshot} data-testid="live-run-ocr-button">{scanning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />}{ocrReview ? t('rescanOcr') : t('scanOcr')}</Button>
               {ocrReview && <Button type="button" variant="ghost" onClick={resetOcrResults}><RefreshCw className="mr-2 h-4 w-4" />{t('resetResults')}</Button>}

@@ -189,6 +189,65 @@ test('candidate selector is deterministic and raw sequence cannot overwrite same
   assert.equal(forward.discardedConflicts.length, 1)
 })
 
+test('candidate selector recovers a repeated count glyph preserved by the isolated card pass', () => {
+  const candidates = [
+    {
+      key: 'pcu' as const,
+      metric: {
+        value: 1,
+        confidence: 'high' as const,
+        needs_review: false,
+        source: 'word_box_exact' as const,
+        status: 'confirmed' as const,
+        value_source_pass: 'label' as const,
+      },
+    },
+    {
+      key: 'pcu' as const,
+      metric: {
+        value: 11,
+        confidence: 'high' as const,
+        needs_review: false,
+        source: 'word_box_exact' as const,
+        status: 'confirmed' as const,
+        value_source_pass: 'card' as const,
+      },
+    },
+  ]
+
+  const selection = selectBestMetricCandidates(candidates, ['pcu'])
+  assert.equal(selection.selectedByKey.pcu?.value, 11)
+})
+
+test('a card-pass value with one inserted glyph cannot override its semantic count value', () => {
+  const selection = selectBestMetricCandidates([
+    {
+      key: 'total_viewers',
+      metric: {
+        value: 81380,
+        confidence: 'medium',
+        needs_review: true,
+        source: 'word_box_exact',
+        status: 'review_required',
+        value_source_pass: 'card',
+      },
+    },
+    {
+      key: 'total_viewers',
+      metric: {
+        value: 8380,
+        confidence: 'high',
+        needs_review: false,
+        source: 'raw_text_exact',
+        status: 'confirmed',
+        value_source_pass: 'label',
+      },
+    },
+  ], ['total_viewers'])
+
+  assert.equal(selection.selectedByKey.total_viewers?.value, 8380)
+})
+
 test('submit adapters preserve missing metrics as undefined and never synthesize zero', () => {
   const canonical = serializeCanonicalMetrics('tiktok_shop', {
     gmv: 8761919,

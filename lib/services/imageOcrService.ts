@@ -1,5 +1,6 @@
 import type {
   OcrCropBox,
+  OcrDashboardCandidate,
   OcrImageRecognition,
   OcrRecognizedWord,
   ReportDashboardPlatform,
@@ -12,9 +13,17 @@ import {
 } from '@/lib/services/ocrApiContract'
 import { clampOcrCrop, defaultOcrCrop } from '@/lib/utils/ocrImage'
 import {
-  platformMetricLayouts,
+  reconstructCompactOcrValue,
   type LayoutMetricCell,
 } from '@/lib/utils/ocrMetrics'
+import {
+  detectDashboardRegions,
+  detectVisualDashboardHints,
+  platformRoiMetricLayouts,
+  roiCellBoundingBox,
+  roiPointToImage,
+  type DashboardVisualHint,
+} from '@/lib/utils/dashboardRegionDetection'
 
 export class OcrApiResponseError extends Error {
   constructor(
@@ -124,23 +133,22 @@ async function recognizeDashboardImageInBrowser(
     import('tesseract.js'),
     createImageBitmap(imageBlob),
   ])
-  const cropBox = clampOcrCrop(requestedCrop || defaultOcrCrop(platform))
   const originalWidth = bitmap.width
   const originalHeight = bitmap.height
-  const left = Math.max(0, Math.floor(cropBox.left * originalWidth))
-  const top = Math.max(0, Math.floor(cropBox.top * originalHeight))
-  const width = Math.max(1, Math.min(originalWidth - left, Math.round(cropBox.width * originalWidth)))
-  const height = Math.max(1, Math.min(originalHeight - top, Math.round(cropBox.height * originalHeight)))
-  const browserPreprocessScale = 2
+  const requested = clampOcrCrop(requestedCrop || defaultOcrCrop(platform))
+  const browserPreprocessScale = Math.max(
+    1,
+    Math.min(2, 2800 / Math.max(originalWidth, originalHeight)),
+  )
   const canvas = document.createElement('canvas')
-  canvas.width = width * browserPreprocessScale
-  canvas.height = height * browserPreprocessScale
+  canvas.width = Math.max(1, Math.round(originalWidth * browserPreprocessScale))
+  canvas.height = Math.max(1, Math.round(originalHeight * browserPreprocessScale))
   const context = canvas.getContext('2d')
   if (!context) {
     bitmap.close()
     throw new Error('Browser OCR canvas is unavailable.')
   }
-  context.drawImage(bitmap, left, top, width, height, 0, 0, canvas.width, canvas.height)
+  context.drawImage(bitmap, 0, 0, originalWidth, originalHeight, 0, 0, canvas.width, canvas.height)
 
   const worker = await createWorker('eng+vie', OEM.LSTM_ONLY)
   try {
@@ -155,30 +163,111 @@ async function recognizeDashboardImageInBrowser(
       { text: true, blocks: true },
     )
     const text = result.data.text.trim()
-    const labelWords = mapBrowserTesseractBlocksToWords(
+    const fullImageWords = mapBrowserTesseractBlocksToWords(
       result.data.blocks,
       platform,
-      { left, top },
+      { left: 0, top: 0 },
       browserPreprocessScale,
     )
-    const cardRecognition = platform === 'other'
-      ? { output: undefined, labels: undefined, words: [] }
-      : await recognizeMetricCardsInBrowser(worker, bitmap, platform, PSM)
+    const visualHints = browserVisualHints(bitmap)
+    const regionResult = detectDashboardRegions({
+      words: fullImageWords,
+      imageWidth: originalWidth,
+      imageHeight: originalHeight,
+      requestedPlatform: platform,
+      requestedCrop: requested,
+      visualHints,
+    })
+    const selected = regionResult.selected
+    let selectedText = text
+    let selectedWords = fullImageWords
+    let cardRecognition: Awaited<ReturnType<typeof recognizeMetricCardsInBrowser>> = {
+      output: {},
+      labels: {},
+      words: [],
+    }
+
+    if (selected && platform !== 'other') {
+      const normalizedDimensions = regionResult.diagnostics.normalized_roi_dimensions
+        || { width: 1600, height: 900 }
+      const normalizedCanvas = createNormalizedRoiCanvas(
+        bitmap,
+        selected,
+        normalizedDimensions.width,
+        normalizedDimensions.height,
+      )
+      await worker.setParameters({
+        tessedit_pageseg_mode: PSM.SPARSE_TEXT,
+        preserve_interword_spaces: '1',
+        user_defined_dpi: '300',
+      })
+      const normalizedResult = await worker.recognize(
+        normalizedCanvas,
+        { rotateAuto: false },
+        { text: true, blocks: true },
+      )
+      const normalizedWords = mapNormalizedBrowserTesseractBlocksToWords(
+        normalizedResult.data.blocks,
+        platform,
+        selected,
+        normalizedCanvas.width,
+        normalizedCanvas.height,
+      )
+      const adaptiveRoi = createBrowserAdaptiveMetricCanvas(
+        normalizedCanvas,
+        {
+          left: 0,
+          top: 0,
+          width: normalizedCanvas.width,
+          height: normalizedCanvas.height,
+        },
+        1,
+        true,
+      )
+      const adaptiveResult = await worker.recognize(
+        adaptiveRoi,
+        { rotateAuto: false },
+        { text: true, blocks: true },
+      )
+      const adaptiveWords = mapNormalizedBrowserTesseractBlocksToWords(
+        adaptiveResult.data.blocks,
+        platform,
+        selected,
+        normalizedCanvas.width,
+        normalizedCanvas.height,
+        'roi-adaptive',
+      )
+      selectedText = [
+        normalizedResult.data.text.trim(),
+        adaptiveResult.data.text.trim(),
+      ].filter(Boolean).join('\n') || text
+      selectedWords = [...normalizedWords, ...adaptiveWords]
+      cardRecognition = await recognizeMetricCardsInBrowser(
+        worker,
+        bitmap,
+        normalizedCanvas,
+        selected,
+        platform,
+        PSM,
+      )
+    }
+
     return {
       engine: 'tesseract.js',
       language: 'eng+vie',
-      text,
+      text: selectedText,
       pass_output: {
-        label: text,
+        label: selectedText,
         numeric: '',
         card: cardRecognition.output,
         card_labels: cardRecognition.labels,
       },
       confidence: result.data.confidence,
-      words: [...labelWords, ...cardRecognition.words],
-      crop_box: cropBox,
+      words: [...selectedWords, ...cardRecognition.words],
+      crop_box: selected?.crop_box || requested,
       original_dimensions: { width: originalWidth, height: originalHeight },
       processed_dimensions: { width: canvas.width, height: canvas.height },
+      region_diagnostics: regionResult.diagnostics,
     }
   } finally {
     bitmap.close()
@@ -191,7 +280,9 @@ type BrowserPsm = typeof import('tesseract.js')['PSM']
 
 async function recognizeMetricCardsInBrowser(
   worker: BrowserOcrWorker,
-  bitmap: ImageBitmap,
+  originalBitmap: ImageBitmap,
+  normalizedCanvas: HTMLCanvasElement,
+  candidate: OcrDashboardCandidate,
   platform: Exclude<ReportDashboardPlatform, 'other'>,
   psm: BrowserPsm,
 ) {
@@ -199,15 +290,35 @@ async function recognizeMetricCardsInBrowser(
   const labels: Record<string, string[]> = {}
   const words: OcrRecognizedWord[] = []
 
-  for (const cell of platformMetricLayouts[platform]) {
-    const labelCrop = browserMetricLabelCrop(cell, bitmap.width, bitmap.height, platform)
+  for (const cell of platformRoiMetricLayouts[platform]) {
+    // Shopee social/live-preview metrics sit outside the orange KPI panel. They
+    // remain available through anchor text, but are not cropped from this ROI.
+    if (cell.x < 0 || cell.x > 1 || cell.y < 0 || cell.y > 1) continue
+    const labelOriginalBox = roiCellBoundingBox(candidate, cell, 'label')
+    const labelOriginalCrop = {
+      left: labelOriginalBox.x,
+      top: labelOriginalBox.y,
+      width: labelOriginalBox.width,
+      height: labelOriginalBox.height,
+    }
+    const labelCrop = candidate.perspective_correction_applied
+      ? browserMetricLabelCrop(
+        cell,
+        normalizedCanvas.width,
+        normalizedCanvas.height,
+        platform,
+      )
+      : labelOriginalCrop
+    const cardSource = candidate.perspective_correction_applied
+      ? normalizedCanvas
+      : originalBitmap
     await worker.setParameters({
       tessedit_pageseg_mode: psm.SINGLE_LINE,
       tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ()-/.đĐ',
       preserve_interword_spaces: '1',
       user_defined_dpi: '300',
     })
-    const labelCanvas = createBrowserMetricCanvas(bitmap, labelCrop, 3)
+    const labelCanvas = createBrowserMetricCanvas(cardSource, labelCrop, 3)
     const labelResult = await worker.recognize(
       labelCanvas,
       { rotateAuto: false },
@@ -220,13 +331,27 @@ async function recognizeMetricCardsInBrowser(
         rawLabel,
         labelResult.data.confidence,
         `card-label:${cell.key}:0`,
-        labelCrop,
+        labelOriginalCrop,
         platform,
         'label',
       ))
     }
 
-    const crop = browserMetricCellCrop(cell, bitmap.width, bitmap.height, platform)
+    const originalBox = roiCellBoundingBox(candidate, cell, 'value')
+    const originalCrop = {
+      left: originalBox.x,
+      top: originalBox.y,
+      width: originalBox.width,
+      height: originalBox.height,
+    }
+    const crop = candidate.perspective_correction_applied
+      ? browserMetricCellCrop(
+        cell,
+        normalizedCanvas.width,
+        normalizedCanvas.height,
+        platform,
+      )
+      : originalCrop
     const scale = platform === 'tiktok_shop' ? 7 : 5
     await worker.setParameters({
       tessedit_pageseg_mode: browserValuePsm(cell, psm),
@@ -234,7 +359,7 @@ async function recognizeMetricCardsInBrowser(
       preserve_interword_spaces: '1',
       user_defined_dpi: '300',
     })
-    const primaryCanvas = createBrowserMetricCanvas(bitmap, crop, scale)
+    const primaryCanvas = createBrowserMetricCanvas(cardSource, crop, scale)
     const primaryResult = await worker.recognize(
       primaryCanvas,
       { rotateAuto: false },
@@ -243,7 +368,7 @@ async function recognizeMetricCardsInBrowser(
     const variants = [{
       text: normalizeBrowserCardText(primaryResult.data.text),
       confidence: primaryResult.data.confidence,
-      crop,
+      crop: originalCrop,
     }]
     const alwaysThreshold = platform === 'tiktok_shop'
       ? ['click_rate', 'average_order_value', 'live_ctr'].includes(cell.key)
@@ -256,7 +381,7 @@ async function recognizeMetricCardsInBrowser(
         preserve_interword_spaces: '1',
         user_defined_dpi: '300',
       })
-      const thresholdCanvas = createBrowserMetricCanvas(bitmap, crop, scale, 175)
+      const thresholdCanvas = createBrowserMetricCanvas(cardSource, crop, scale, 175)
       const thresholdResult = await worker.recognize(
         thresholdCanvas,
         { rotateAuto: false },
@@ -265,9 +390,9 @@ async function recognizeMetricCardsInBrowser(
       variants.push({
         text: normalizeBrowserCardText(thresholdResult.data.text),
         confidence: thresholdResult.data.confidence,
-        crop,
+        crop: originalCrop,
       })
-      const adaptiveCanvas = createBrowserAdaptiveMetricCanvas(bitmap, crop, scale, true)
+      const adaptiveCanvas = createBrowserAdaptiveMetricCanvas(cardSource, crop, scale, true)
       const adaptiveResult = await worker.recognize(
         adaptiveCanvas,
         { rotateAuto: false },
@@ -276,10 +401,10 @@ async function recognizeMetricCardsInBrowser(
       variants.push({
         text: normalizeBrowserCardText(adaptiveResult.data.text),
         confidence: adaptiveResult.data.confidence,
-        crop,
+        crop: originalCrop,
       })
       if (!/\d/.test(adaptiveResult.data.text) || adaptiveResult.data.confidence < 60) {
-        const normalAdaptiveCanvas = createBrowserAdaptiveMetricCanvas(bitmap, crop, scale, false)
+        const normalAdaptiveCanvas = createBrowserAdaptiveMetricCanvas(cardSource, crop, scale, false)
         const normalAdaptiveResult = await worker.recognize(
           normalAdaptiveCanvas,
           { rotateAuto: false },
@@ -288,28 +413,16 @@ async function recognizeMetricCardsInBrowser(
         variants.push({
           text: normalizeBrowserCardText(normalAdaptiveResult.data.text),
           confidence: normalAdaptiveResult.data.confidence,
-          crop,
+          crop: originalCrop,
         })
       }
     }
-    if (
-      platform === 'tiktok_shop'
-      && ['total_views', 'advertising_cost', 'roi_gmv_max', 'estimated_gmv'].includes(cell.key)
-    ) {
-      const legacyCrop = browserMetricCellCrop(cell, bitmap.width, bitmap.height, platform, true)
-      const legacyCanvas = createBrowserMetricCanvas(bitmap, legacyCrop, 5)
-      const legacyResult = await worker.recognize(
-        legacyCanvas,
-        { rotateAuto: false },
-        { text: true },
-      )
-      variants.push({
-        text: normalizeBrowserCardText(legacyResult.data.text),
-        confidence: legacyResult.data.confidence,
-        crop: legacyCrop,
-      })
-    }
-    const rankedVariants = [...variants].sort((left, right) => left.confidence - right.confidence)
+    const reconstructedCompact = reconstructCompactCardValue(cell, variants)
+    if (reconstructedCompact) variants.unshift(reconstructedCompact)
+    // Keep the least-destructive pass first. Threshold and adaptive variants
+    // are recovery evidence and receive a later-pass penalty in candidate
+    // scoring unless the primary value is structurally invalid.
+    const rankedVariants = variants
     output[cell.key] = rankedVariants.map(variant => variant.text)
     rankedVariants.forEach((variant, variantIndex) => {
       if (!/\d/.test(variant.text)) return
@@ -342,6 +455,23 @@ async function recognizeMetricCardsInBrowser(
   return { output, labels, words }
 }
 
+function reconstructCompactCardValue(
+  cell: LayoutMetricCell,
+  variants: Array<{
+    text: string
+    confidence: number
+    crop: { left: number; top: number; width: number; height: number }
+  }>,
+) {
+  const text = reconstructCompactOcrValue(cell, variants.map(variant => variant.text))
+  if (!text) return null
+  return {
+    text,
+    confidence: Math.min(...variants.map(variant => variant.confidence)),
+    crop: variants[0].crop,
+  }
+}
+
 function browserValueWhitelist(cell: LayoutMetricCell) {
   if (cell.valueKind === 'count') return '0123456789'
   if (cell.valueKind === 'percentage') return '0123456789.,%'
@@ -351,7 +481,7 @@ function browserValueWhitelist(cell: LayoutMetricCell) {
 }
 
 function browserValuePsm(cell: LayoutMetricCell, psm: BrowserPsm) {
-  return ['currency', 'compact', 'ratio'].includes(cell.valueKind)
+  return ['currency', 'ratio'].includes(cell.valueKind)
     ? psm.SINGLE_LINE
     : psm.SINGLE_WORD
 }
@@ -399,8 +529,10 @@ function browserMetricCellCrop(
 ) {
   const width = Math.max(1, Math.round(cell.width * imageWidth))
   const normalizedHeight = platform === 'tiktok_shop' && cell.key !== 'gmv' && !useFullHeight
-    ? Math.min(cell.height, .038)
-    : cell.height
+    ? Math.min(cell.height, .07)
+    : platform === 'shopee_live'
+      ? Math.min(cell.height, cell.key === 'sales' ? .16 : .09)
+      : cell.height
   const height = Math.max(1, Math.round(normalizedHeight * imageHeight))
   const left = Math.max(0, Math.min(
     imageWidth - width,
@@ -421,8 +553,8 @@ function browserMetricLabelCrop(
 ) {
   const widthMultiplier = platform === 'tiktok_shop' ? 1.55 : 1.35
   const normalizedWidth = Math.min(.22, cell.width * widthMultiplier)
-  const normalizedHeight = platform === 'tiktok_shop' ? .032 : .027
-  const centerY = cell.y - (platform === 'tiktok_shop' ? .033 : .030)
+  const normalizedHeight = platform === 'tiktok_shop' ? .045 : .055
+  const centerY = cell.y - (platform === 'tiktok_shop' ? .055 : .075)
   const width = Math.max(1, Math.round(normalizedWidth * imageWidth))
   const height = Math.max(1, Math.round(normalizedHeight * imageHeight))
   const left = Math.max(0, Math.min(
@@ -437,7 +569,7 @@ function browserMetricLabelCrop(
 }
 
 function createBrowserMetricCanvas(
-  bitmap: ImageBitmap,
+  bitmap: CanvasImageSource,
   crop: { left: number; top: number; width: number; height: number },
   scale: number,
   threshold?: number,
@@ -466,7 +598,10 @@ function createBrowserMetricCanvas(
       + image.data[offset + 2] * .114,
     )
     const inverted = 255 - gray
-    const value = threshold === undefined ? inverted : inverted >= threshold ? 255 : 0
+    // Dashboard KPI text is light on a colored/dark panel. A fixed threshold
+    // must therefore keep bright glyphs black on a white background; comparing
+    // the inverted value selected the background instead and erased digits.
+    const value = threshold === undefined ? inverted : gray >= threshold ? 0 : 255
     image.data[offset] = value
     image.data[offset + 1] = value
     image.data[offset + 2] = value
@@ -477,7 +612,7 @@ function createBrowserMetricCanvas(
 }
 
 function createBrowserAdaptiveMetricCanvas(
-  bitmap: ImageBitmap,
+  bitmap: CanvasImageSource,
   crop: { left: number; top: number; width: number; height: number },
   scale: number,
   lightText: boolean,
@@ -566,6 +701,160 @@ function createBrowserAdaptiveMetricCanvas(
 
 function normalizeBrowserCardText(value: string) {
   return value.trim().replace(/\s+/g, ' ')
+}
+
+function browserVisualHints(bitmap: ImageBitmap): DashboardVisualHint[] {
+  const scale = Math.min(1, 1200 / Math.max(bitmap.width, bitmap.height))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale))
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale))
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+  if (!context) return []
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  const image = context.getImageData(0, 0, canvas.width, canvas.height)
+  return detectVisualDashboardHints(image.data, canvas.width, canvas.height)
+    .map(hint => ({
+      ...hint,
+      bounding_box: {
+        x: hint.bounding_box.x / scale,
+        y: hint.bounding_box.y / scale,
+        width: hint.bounding_box.width / scale,
+        height: hint.bounding_box.height / scale,
+      },
+      quadrilateral: hint.quadrilateral?.map(point => ({
+        x: point.x / scale,
+        y: point.y / scale,
+      })) as DashboardVisualHint['quadrilateral'],
+    }))
+}
+
+function createNormalizedRoiCanvas(
+  bitmap: ImageBitmap,
+  candidate: OcrDashboardCandidate,
+  targetWidth: number,
+  targetHeight: number,
+) {
+  const sourceBox = candidate.bounding_box
+  const sourceCanvas = document.createElement('canvas')
+  sourceCanvas.width = Math.max(1, Math.ceil(sourceBox.width))
+  sourceCanvas.height = Math.max(1, Math.ceil(sourceBox.height))
+  const sourceContext = sourceCanvas.getContext('2d', { willReadFrequently: true })
+  if (!sourceContext) throw new Error('Browser OCR ROI source canvas is unavailable.')
+  sourceContext.drawImage(
+    bitmap,
+    sourceBox.x,
+    sourceBox.y,
+    sourceBox.width,
+    sourceBox.height,
+    0,
+    0,
+    sourceCanvas.width,
+    sourceCanvas.height,
+  )
+  const source = sourceContext.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height)
+  const targetCanvas = document.createElement('canvas')
+  targetCanvas.width = targetWidth
+  targetCanvas.height = targetHeight
+  const targetContext = targetCanvas.getContext('2d', { willReadFrequently: true })
+  if (!targetContext) throw new Error('Browser OCR normalized ROI canvas is unavailable.')
+  const target = targetContext.createImageData(targetWidth, targetHeight)
+
+  for (let y = 0; y < targetHeight; y += 1) {
+    const normalizedY = (y + .5) / targetHeight
+    for (let x = 0; x < targetWidth; x += 1) {
+      const normalizedX = (x + .5) / targetWidth
+      const sourcePoint = roiPointToImage(candidate, normalizedX, normalizedY)
+      const sourceX = Math.max(
+        0,
+        Math.min(sourceCanvas.width - 1, sourcePoint.x - sourceBox.x),
+      )
+      const sourceY = Math.max(
+        0,
+        Math.min(sourceCanvas.height - 1, sourcePoint.y - sourceBox.y),
+      )
+      const targetOffset = (y * targetWidth + x) * 4
+      const left = Math.floor(sourceX)
+      const top = Math.floor(sourceY)
+      const right = Math.min(sourceCanvas.width - 1, left + 1)
+      const bottom = Math.min(sourceCanvas.height - 1, top + 1)
+      const horizontalWeight = sourceX - left
+      const verticalWeight = sourceY - top
+      const offsets = [
+        (top * sourceCanvas.width + left) * 4,
+        (top * sourceCanvas.width + right) * 4,
+        (bottom * sourceCanvas.width + left) * 4,
+        (bottom * sourceCanvas.width + right) * 4,
+      ]
+      const weights = [
+        (1 - horizontalWeight) * (1 - verticalWeight),
+        horizontalWeight * (1 - verticalWeight),
+        (1 - horizontalWeight) * verticalWeight,
+        horizontalWeight * verticalWeight,
+      ]
+      for (let channel = 0; channel < 4; channel += 1) {
+        target.data[targetOffset + channel] = Math.round(offsets.reduce(
+          (sum, sourceOffset, index) =>
+            sum + source.data[sourceOffset + channel] * weights[index],
+          0,
+        ))
+      }
+    }
+  }
+  targetContext.putImageData(target, 0, 0)
+  return targetCanvas
+}
+
+function mapNormalizedBrowserTesseractBlocksToWords(
+  blocks: BrowserTesseractBlock[] | null,
+  platform: Exclude<ReportDashboardPlatform, 'other'>,
+  candidate: OcrDashboardCandidate,
+  normalizedWidth: number,
+  normalizedHeight: number,
+  linePrefix = 'roi-label',
+): OcrRecognizedWord[] {
+  if (!blocks?.length || !normalizedWidth || !normalizedHeight) return []
+  return blocks.flatMap((block, blockIndex) =>
+    block.paragraphs.flatMap((paragraph, paragraphIndex) =>
+      paragraph.lines.flatMap((line, lineIndex) =>
+        line.words.flatMap(word => {
+          const text = word.text.trim()
+          if (!text) return []
+          const corners = [
+            roiPointToImage(candidate, word.bbox.x0 / normalizedWidth, word.bbox.y0 / normalizedHeight),
+            roiPointToImage(candidate, word.bbox.x1 / normalizedWidth, word.bbox.y0 / normalizedHeight),
+            roiPointToImage(candidate, word.bbox.x1 / normalizedWidth, word.bbox.y1 / normalizedHeight),
+            roiPointToImage(candidate, word.bbox.x0 / normalizedWidth, word.bbox.y1 / normalizedHeight),
+          ]
+          const left = Math.min(...corners.map(point => point.x))
+          const top = Math.min(...corners.map(point => point.y))
+          const right = Math.max(...corners.map(point => point.x))
+          const bottom = Math.max(...corners.map(point => point.y))
+          const width = right - left
+          const height = bottom - top
+          if (![left, top, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return []
+          return [{
+            text,
+            confidence: word.confidence,
+            line_id: `${linePrefix}:${blockIndex}:${paragraphIndex}:${lineIndex}`,
+            block_index: blockIndex,
+            line_index: lineIndex,
+            platform,
+            source: 'image_ocr' as const,
+            pass: 'label' as const,
+            bounding_box: { x: left, y: top, width, height },
+            x0: left,
+            y0: top,
+            x1: right,
+            y1: bottom,
+            centerX: left + width / 2,
+            centerY: top + height / 2,
+            width,
+            height,
+          }]
+        }),
+      ),
+    ),
+  )
 }
 
 interface BrowserTesseractBlock {

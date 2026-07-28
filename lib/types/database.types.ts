@@ -477,6 +477,7 @@ export interface OcrReviewData {
   crop_box?: OcrCropBox
   original_dimensions?: { width: number; height: number }
   processed_dimensions?: { width: number; height: number }
+  region_diagnostics?: OcrRegionDiagnostics
   metrics: Partial<Record<ReportMetricKey, OcrMetricValue>>
   discarded_conflicts?: Array<{
     canonical_key: ReportMetricKey
@@ -518,6 +519,47 @@ export interface OcrCropBox {
   height: number
 }
 
+export interface OcrPoint {
+  x: number
+  y: number
+}
+
+export interface OcrDashboardCandidate {
+  id: string
+  platform: Exclude<ReportDashboardPlatform, 'other'>
+  crop_box: OcrCropBox
+  bounding_box: { x: number; y: number; width: number; height: number }
+  quadrilateral: [OcrPoint, OcrPoint, OcrPoint, OcrPoint]
+  confidence: number
+  anchor_labels: string[]
+  anchor_keys: ReportMetricKey[]
+  anchor_count: number
+  kpi_completeness: number
+  area_ratio: number
+  aspect_ratio: number
+  ocr_readability: number
+  source_method: 'anchor_similarity' | 'anchor_affine' | 'anchor_homography' | 'anchor_and_color' | 'color_contour' | 'manual_crop' | 'legacy_layout'
+  perspective_correction_applied: boolean
+}
+
+export interface OcrRegionDiagnostics {
+  original_dimensions: { width: number; height: number }
+  platform_candidates: Array<{
+    platform: Exclude<ReportDashboardPlatform, 'other'>
+    anchor_count: number
+    confidence: number
+  }>
+  dashboard_candidates: OcrDashboardCandidate[]
+  selected_candidate_id?: string
+  selected_roi?: OcrCropBox
+  normalized_roi_dimensions?: { width: number; height: number }
+  perspective_correction_applied: boolean
+  ambiguous: boolean
+  selection_required: boolean
+  selection_reason: 'dominant_candidate' | 'manual_crop' | 'ambiguous_candidates' | 'low_confidence' | 'no_candidate' | 'legacy_fallback'
+  fallback_usage?: 'none' | 'legacy_full_image_layout'
+}
+
 export interface OcrRecognizedWord {
   text: string
   confidence: number
@@ -553,6 +595,7 @@ export interface OcrImageRecognition {
   crop_box: OcrCropBox
   original_dimensions: { width: number; height: number }
   processed_dimensions: { width: number; height: number }
+  region_diagnostics?: OcrRegionDiagnostics
 }
 
 export interface SwapRequest extends LifecycleMetadata {

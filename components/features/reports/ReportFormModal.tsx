@@ -529,7 +529,7 @@ export function ReportFormModal({
                 <Button type="button" onClick={runOcrReview} disabled={reviewing} data-testid="report-run-ocr-button">{reviewing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />}{review.status === 'review_required' ? t('rescanOcr') : t('scanOcr')}</Button>
               </div>
             </div>
-            {dashboardImage && <OcrCropPreview imageUrl={dashboardImage.url} platform={dashboardPlatform} value={cropBox} onChange={value => { setCropBox(value); resetExtracted() }} review={review} disabled={reviewing} />}
+            {dashboardImage && <OcrCropPreview imageUrl={dashboardImage.url} platform={dashboardPlatform} value={cropBox} onChange={setCropBox} onRetry={runOcrReview} review={review} disabled={reviewing} />}
             <label className="block text-sm font-medium">{t('trustedOcrText')} ({t('optional')})
               <Textarea className="mt-1 min-h-32 font-mono text-xs" value={rawOcrText} onChange={event => setRawOcrText(event.target.value)} placeholder={'Sales: 21.281.718,00\nEngaged Viewer: 521\nOrders: 109'} data-testid="report-ocr-corrected-text" />
             </label>

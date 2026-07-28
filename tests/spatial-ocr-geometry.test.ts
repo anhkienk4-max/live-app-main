@@ -12,6 +12,7 @@ import type {
   ReportMetricKey,
 } from '../lib/types/database.types.ts'
 import {
+  buildOcrMetric,
   extractPlatformMetricsFromSpatialOcr,
   mapDashboardImageRecognition,
   platformMetricLayouts,
@@ -255,12 +256,12 @@ test('spatial card evidence overrides conflicting flattened Shopee text', () => 
 test('TikTok card variants preserve the dashboard display format before normalization', () => {
   const cardOutput = {
     total_views: ['251K', '2:31'],
-    advertising_cost: ['2mm', '21m'],
+    advertising_cost: ['2mm', '21m', '11'],
     click_rate: ['252%'],
     roi_gmv_max: ['495'],
     average_view_duration_seconds: ['40:'],
-    average_order_value: ['165.52k', '165.32k'],
-    live_ctr: ['26,62%', '36.62%'],
+    average_order_value: ['165.52k', '16532k', '165.32k', '16532k'],
+    live_ctr: ['26,62%', '36.62%', '36,62%'],
     estimated_gmv: ['898m'],
   }
   const words = Object.entries(cardOutput).flatMap(([rawKey, variants]) => {
@@ -326,6 +327,22 @@ test('a weak Shopee card reading cannot replace a strong conflicting word inside
 
   assert.equal(extracted.metrics.items_sold?.value, 116)
   assert.notEqual(extracted.metrics.items_sold?.source, 'card_exact')
+})
+
+test('Shopee percentage repair uses the declared precision only when the default reading exceeds 100', () => {
+  const repaired = buildOcrMetric(
+    'shopee_live',
+    'Click to Order Rate',
+    '1145',
+    'medium',
+    'trusted_text',
+    'review_required',
+    'click_to_order_rate',
+  )
+
+  assert.ok(repaired)
+  assert.equal(repaired[1].value, 11.5)
+  assert.equal(repaired[1].status, 'review_required')
 })
 
 test('spatial candidates render into the shared Final Report and Live Update metric inputs', () => {
