@@ -9,6 +9,7 @@ import { detectDashboardRegions } from '../lib/utils/dashboardRegionDetection.ts
 import {
   buildOcrMetric,
   mapDashboardImageRecognition,
+  parseDashboardOcrText,
   parseCompactOcrNumber,
 } from '../lib/utils/ocrMetrics.ts'
 import { reviewInputValues } from '../lib/utils/ocrReview.ts'
@@ -99,6 +100,80 @@ test('TikTok compact numbers preserve K/M magnitude for dot and comma locales', 
   assert.equal(parseCompactOcrNumber('8..98M')?.ambiguous, true)
 })
 
+test('TikTok normalized ROI text keeps traffic-card values in label order', () => {
+  const review = parseDashboardOcrText('tiktok_shop', [
+    'Lượt hiển thị',
+    'Lượt xem',
+    'Chi phí quảng cáo',
+    'Tỷ lệ nhấn',
+    '91.95K',
+    '2.31K',
+    '2.11M',
+    '2.52%',
+  ].join('\n'))
+  const values = reviewInputValues(review)
+  assert.equal(values.impressions, 91950)
+  assert.equal(values.total_views, 2310)
+  assert.equal(values.advertising_cost, 2110000)
+  assert.equal(values.click_rate, 2.52)
+})
+
+test('TikTok count-or-compact cards preserve a suffix split from its numeric token', () => {
+  const dimensions = { width: 2200, height: 1300 }
+  const words = customLayoutWords({ left: 310, top: 130, width: 1460, height: 850 })
+  const currentViewerValue = words.findIndex(word =>
+    word.line_id === 'layout:current_viewers:value',
+  )
+  assert.ok(currentViewerValue >= 0)
+  const original = words[currentViewerValue]
+  words.splice(
+    currentViewerValue,
+    1,
+    recognizedWord(
+      '1.23',
+      original.bounding_box.x,
+      original.bounding_box.y,
+      original.bounding_box.width - 12,
+      original.bounding_box.height,
+      'numeric',
+      'layout:current_viewers:value',
+    ),
+    recognizedWord(
+      'K',
+      original.bounding_box.x + original.bounding_box.width - 10,
+      original.bounding_box.y,
+      10,
+      original.bounding_box.height,
+      'numeric',
+      'layout:current_viewers:value',
+      1,
+    ),
+  )
+
+  const regions = detectDashboardRegions({
+    words,
+    imageWidth: dimensions.width,
+    imageHeight: dimensions.height,
+    requestedPlatform: 'tiktok_shop',
+  })
+  assert.ok(regions.selected)
+  const review = mapDashboardImageRecognition('tiktok_shop', {
+    engine: 'tesseract.js',
+    language: 'eng+vie',
+    text: '',
+    pass_output: { label: '', numeric: '' },
+    confidence: 96,
+    words,
+    crop_box: regions.selected.crop_box,
+    original_dimensions: dimensions,
+    processed_dimensions: dimensions,
+    region_diagnostics: regions.diagnostics,
+  })
+
+  assert.equal(reviewInputValues(review).current_viewers, 1230)
+  assert.equal(reviewInputValues(review).click_rate, expected.click_rate)
+})
+
 test('TikTok structural ROI and label proximity survive shifted cards, changed spacing, and wrapped labels', () => {
   const dimensions = { width: 2200, height: 1300 }
   const words = customLayoutWords({ left: 310, top: 130, width: 1460, height: 850 })
@@ -186,6 +261,22 @@ test('TikTok zero values are preserved and incompatible candidates are rejected'
     'word_box_exact',
     'confirmed',
   ), null)
+  assert.equal(buildOcrMetric(
+    'tiktok_shop',
+    'Estimated GMV',
+    'not-a-number',
+    'high',
+    'word_box_exact',
+    'confirmed',
+  ), null)
+  assert.equal(buildOcrMetric(
+    'tiktok_shop',
+    'Current Viewers',
+    '1.23K',
+    'high',
+    'word_box_exact',
+    'confirmed',
+  )?.[1].value, 1230)
 })
 
 function customLayoutWords(

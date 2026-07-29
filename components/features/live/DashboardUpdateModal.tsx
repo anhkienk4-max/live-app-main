@@ -247,14 +247,16 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
         formData.screenshot_url,
         cropBox,
       ))
+      const incomingMetricKeys = ocrCandidateMetricKeys(review)
       const recognizedText = rawOcrText.trim() || review.raw_output?.trim() || ''
       if (recognizedText) {
         setRawOcrText(recognizedText)
+      }
+      if (incomingMetricKeys.length === 0 && recognizedText) {
         applyRawOcrText(recognizedText, review)
         return
       }
       setOcrReview(review)
-      const incomingMetricKeys = ocrCandidateMetricKeys(review)
       if (incomingMetricKeys.length === 0 && (review.status === 'unavailable' || review.status === 'failed')) {
         toast({ title: t('ocrResults'), description: t('ocrUnavailableHelp'), variant: 'destructive' })
         return

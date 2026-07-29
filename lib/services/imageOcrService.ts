@@ -180,11 +180,13 @@ async function recognizeDashboardImageInBrowser(
     })
     const selected = regionResult.selected
     let selectedText = text
+    let normalizedStrategyText = text
     let selectedWords = fullImageWords
     let cardRecognition: Awaited<ReturnType<typeof recognizeMetricCardsInBrowser>> = {
       output: {},
       labels: {},
       words: [],
+      diagnostics: {},
     }
 
     if (selected && platform !== 'other') {
@@ -213,6 +215,7 @@ async function recognizeDashboardImageInBrowser(
         normalizedCanvas.width,
         normalizedCanvas.height,
       )
+      normalizedStrategyText = normalizedResult.data.text.trim()
       const adaptiveRoi = createBrowserAdaptiveMetricCanvas(
         normalizedCanvas,
         {
@@ -261,6 +264,11 @@ async function recognizeDashboardImageInBrowser(
         numeric: '',
         card: cardRecognition.output,
         card_labels: cardRecognition.labels,
+        card_diagnostics: cardRecognition.diagnostics,
+        strategy_text: {
+          normalized_roi: normalizedStrategyText,
+          legacy_relative: text,
+        },
       },
       confidence: result.data.confidence,
       words: [...selectedWords, ...cardRecognition.words],
@@ -288,6 +296,7 @@ async function recognizeMetricCardsInBrowser(
 ) {
   const output: Record<string, string[]> = {}
   const labels: Record<string, string[]> = {}
+  const diagnostics: NonNullable<OcrImageRecognition['pass_output']['card_diagnostics']> = {}
   const words: OcrRecognizedWord[] = []
 
   for (const cell of platformRoiMetricLayouts[platform]) {
@@ -369,7 +378,30 @@ async function recognizeMetricCardsInBrowser(
       text: normalizeBrowserCardText(primaryResult.data.text),
       confidence: primaryResult.data.confidence,
       crop: originalCrop,
+      preprocessingPass: 'inverted_grayscale',
     }]
+    const useColorPass = platform === 'tiktok_shop' && [
+      'current_viewers',
+      'advertising_cost',
+      'ctor',
+      'buyers',
+      'live_ctr',
+      'estimated_gmv',
+    ].includes(cell.key)
+    if (useColorPass) {
+      const colorCanvas = createBrowserOriginalMetricCanvas(cardSource, crop, scale)
+      const colorResult = await worker.recognize(
+        colorCanvas,
+        { rotateAuto: false },
+        { text: true },
+      )
+      variants.push({
+        text: normalizeBrowserCardText(colorResult.data.text),
+        confidence: colorResult.data.confidence,
+        crop: originalCrop,
+        preprocessingPass: 'original_color',
+      })
+    }
     const alwaysThreshold = platform === 'tiktok_shop'
       ? ['click_rate', 'average_order_value', 'live_ctr'].includes(cell.key)
       : ['sales', 'comment_rate', 'gpm', 'ctr'].includes(cell.key)
@@ -391,6 +423,7 @@ async function recognizeMetricCardsInBrowser(
         text: normalizeBrowserCardText(thresholdResult.data.text),
         confidence: thresholdResult.data.confidence,
         crop: originalCrop,
+        preprocessingPass: 'fixed_threshold',
       })
       const adaptiveCanvas = createBrowserAdaptiveMetricCanvas(cardSource, crop, scale, true)
       const adaptiveResult = await worker.recognize(
@@ -402,6 +435,7 @@ async function recognizeMetricCardsInBrowser(
         text: normalizeBrowserCardText(adaptiveResult.data.text),
         confidence: adaptiveResult.data.confidence,
         crop: originalCrop,
+        preprocessingPass: 'adaptive_light_text',
       })
       if (!/\d/.test(adaptiveResult.data.text) || adaptiveResult.data.confidence < 60) {
         const normalAdaptiveCanvas = createBrowserAdaptiveMetricCanvas(cardSource, crop, scale, false)
@@ -414,6 +448,7 @@ async function recognizeMetricCardsInBrowser(
           text: normalizeBrowserCardText(normalAdaptiveResult.data.text),
           confidence: normalAdaptiveResult.data.confidence,
           crop: originalCrop,
+          preprocessingPass: 'adaptive_dark_text',
         })
       }
     }
@@ -424,6 +459,17 @@ async function recognizeMetricCardsInBrowser(
     // scoring unless the primary value is structurally invalid.
     const rankedVariants = variants
     output[cell.key] = rankedVariants.map(variant => variant.text)
+    diagnostics[cell.key] = rankedVariants.map(variant => ({
+      text: variant.text,
+      confidence: variant.confidence,
+      preprocessing_pass: variant.preprocessingPass,
+      bounding_box: {
+        x: variant.crop.left,
+        y: variant.crop.top,
+        width: variant.crop.width,
+        height: variant.crop.height,
+      },
+    }))
     rankedVariants.forEach((variant, variantIndex) => {
       if (!/\d/.test(variant.text)) return
       words.push({
@@ -452,7 +498,7 @@ async function recognizeMetricCardsInBrowser(
       })
     })
   }
-  return { output, labels, words }
+  return { output, labels, diagnostics, words }
 }
 
 function reconstructCompactCardValue(
@@ -461,6 +507,7 @@ function reconstructCompactCardValue(
     text: string
     confidence: number
     crop: { left: number; top: number; width: number; height: number }
+    preprocessingPass: string
   }>,
 ) {
   const text = reconstructCompactOcrValue(cell, variants.map(variant => variant.text))
@@ -469,11 +516,13 @@ function reconstructCompactCardValue(
     text,
     confidence: Math.min(...variants.map(variant => variant.confidence)),
     crop: variants[0].crop,
+    preprocessingPass: 'geometry_compact_reconstruction',
   }
 }
 
 function browserValueWhitelist(cell: LayoutMetricCell) {
   if (cell.valueKind === 'count') return '0123456789'
+  if (cell.valueKind === 'count_or_compact') return '0123456789.,KkMm'
   if (cell.valueKind === 'percentage') return '0123456789.,%'
   if (cell.valueKind === 'duration') return '0123456789:'
   if (cell.valueKind === 'compact') return '0123456789.,KkMm'
@@ -481,7 +530,7 @@ function browserValueWhitelist(cell: LayoutMetricCell) {
 }
 
 function browserValuePsm(cell: LayoutMetricCell, psm: BrowserPsm) {
-  return ['currency', 'ratio'].includes(cell.valueKind)
+  return ['currency', 'ratio', 'compact', 'count_or_compact'].includes(cell.valueKind)
     ? psm.SINGLE_LINE
     : psm.SINGLE_WORD
 }
@@ -608,6 +657,32 @@ function createBrowserMetricCanvas(
     image.data[offset + 3] = 255
   }
   context.putImageData(image, 0, 0)
+  return canvas
+}
+
+function createBrowserOriginalMetricCanvas(
+  bitmap: CanvasImageSource,
+  crop: { left: number; top: number; width: number; height: number },
+  scale: number,
+) {
+  const canvas = document.createElement('canvas')
+  canvas.width = crop.width * scale
+  canvas.height = crop.height * scale
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Browser OCR color card canvas is unavailable.')
+  context.filter = 'contrast(135%)'
+  context.drawImage(
+    bitmap,
+    crop.left,
+    crop.top,
+    crop.width,
+    crop.height,
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  )
+  context.filter = 'none'
   return canvas
 }
 

@@ -6,6 +6,7 @@ import type {
   OcrRegionDiagnostics,
   ReportDashboardPlatform,
   ReportMetricKey,
+  TikTokLayoutFamily,
 } from '@/lib/types/database.types'
 import { isFullImageOcrCrop } from '@/lib/utils/ocrImage'
 import {
@@ -95,7 +96,14 @@ export function detectDashboardRegions({
       visualHints.filter(hint => hint.platform === platform),
     ))
 
-  const candidates = deduplicateCandidates(detected)
+  const deduplicated = deduplicateCandidates(detected)
+  const candidates = deduplicated
+    .map(candidate => candidate.platform === 'tiktok_shop'
+      ? {
+        ...candidate,
+        layout_family: classifyTikTokLayoutFamily(candidate, deduplicated, imageWidth, imageHeight),
+      }
+      : candidate)
     .sort(compareCandidates)
     .map((candidate, index) => ({ ...candidate, id: `${candidate.platform}-${index + 1}-${candidate.id}` }))
 
@@ -540,7 +548,7 @@ function detectPlatformCandidates(
       })
   }
   if (platform === 'tiktok_shop') {
-    candidates.push(...detectTikTokStructuralCandidates(
+    candidates.push(...TikTokLayoutDetector.detectStructuralCandidates(
       anchors,
       imageWidth,
       imageHeight,
@@ -584,6 +592,39 @@ function detectPlatformCandidates(
     })
   }
   return candidates
+}
+
+export const TikTokLayoutDetector = {
+  detectStructuralCandidates: detectTikTokStructuralCandidates,
+  classify: classifyTikTokLayoutFamily,
+}
+
+function classifyTikTokLayoutFamily(
+  candidate: OcrDashboardCandidate,
+  candidates: readonly OcrDashboardCandidate[],
+  imageWidth: number,
+  imageHeight: number,
+): TikTokLayoutFamily {
+  if (candidate.perspective_correction_applied) return 'camera_perspective'
+  const similarlyStrongSeparateCandidate = candidates.some(peer =>
+    peer !== candidate
+    && peer.platform === 'tiktok_shop'
+    && peer.anchor_count >= Math.max(6, candidate.anchor_count - 2)
+    && peer.confidence >= candidate.confidence - .12
+    && intersectionOverUnion(peer.bounding_box, candidate.bounding_box) < .15,
+  )
+  if (similarlyStrongSeparateCandidate) return 'composite_duplicate'
+  if (candidate.source_method === 'manual_crop') return 'cropped_kpi_panel'
+  const box = candidate.bounding_box
+  const boundaryTouches = [
+    box.x <= 2,
+    box.y <= 2,
+    box.x + box.width >= imageWidth - 2,
+    box.y + box.height >= imageHeight - 2,
+  ].filter(Boolean).length
+  if (candidate.area_ratio >= .55 || boundaryTouches >= 3) return 'cropped_kpi_panel'
+  if (candidate.aspect_ratio >= 2.15) return 'wide_desktop'
+  return 'standard'
 }
 
 function detectTikTokStructuralCandidates(
@@ -774,6 +815,7 @@ function manualCropCandidate(
       : 0,
     source_method: 'manual_crop',
     perspective_correction_applied: false,
+    layout_family: platform === 'tiktok_shop' ? 'cropped_kpi_panel' : undefined,
   }
 }
 

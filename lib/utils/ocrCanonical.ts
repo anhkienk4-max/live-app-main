@@ -188,6 +188,7 @@ const metricValueSignature = (metric: OcrMetricValue) => {
 
 const evidenceChannel = (metric: OcrMetricValue) => {
   if (metric.source === 'manual' || metric.source === 'imported') return metric.source
+  if (metric.strategy) return metric.strategy
   if (
     metric.source === 'raw_text_exact'
     || metric.source === 'raw_text_sequence'
@@ -200,17 +201,22 @@ const evidenceChannel = (metric: OcrMetricValue) => {
   return metric.source || 'unknown'
 }
 
+const isCardPassMetric = (metric: OcrMetricValue) =>
+  metric.value_source_pass === 'card'
+  || metric.strategy === 'anchor_card'
+  || evidenceChannel(metric) === 'card_pass'
+
 const isRepeatedGlyphRecovery = (
   key: CanonicalMetricKey,
   candidate: MetricCandidateInput,
   allCandidates: readonly MetricCandidateInput[],
 ) => {
-  if (!integerCountMetricKeys.has(key) || evidenceChannel(candidate.metric) !== 'card_pass') return false
+  if (!integerCountMetricKeys.has(key) || !isCardPassMetric(candidate.metric)) return false
   const value = metricValue(candidate.metric)
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return false
   const expanded = String(value)
   return allCandidates.some(other => {
-    if (other === candidate || evidenceChannel(other.metric) === 'card_pass') return false
+    if (other === candidate || isCardPassMetric(other.metric)) return false
     const otherValue = metricValue(other.metric)
     if (typeof otherValue !== 'number' || !Number.isInteger(otherValue) || otherValue < 0) return false
     const compressed = String(otherValue)
@@ -229,14 +235,14 @@ const isCardInsertionArtifact = (
 ) => {
   if (
     !integerCountMetricKeys.has(key)
-    || evidenceChannel(candidate.metric) !== 'card_pass'
+    || !isCardPassMetric(candidate.metric)
     || isRepeatedGlyphRecovery(key, candidate, allCandidates)
   ) return false
   const value = metricValue(candidate.metric)
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return false
   const expanded = String(value)
   return allCandidates.some(other => {
-    if (other === candidate || evidenceChannel(other.metric) === 'card_pass') return false
+    if (other === candidate || isCardPassMetric(other.metric)) return false
     const otherValue = metricValue(other.metric)
     if (typeof otherValue !== 'number' || !Number.isInteger(otherValue) || otherValue < 0) return false
     const compressed = String(otherValue)
@@ -284,7 +290,27 @@ export function selectBestMetricCandidates(
     })
     const selected = ranked[0]
     if (!selected) continue
-    selectedByKey[key] = selected.metric
+    const selectedSignature = metricValueSignature(selected.metric)
+    const selectedSupport = supportByValue.get(selectedSignature)?.size || 0
+    const competingSupport = ranked.slice(1).reduce((highest, candidate) => {
+      if (metricValuesEqual(metricValue(selected.metric), metricValue(candidate.metric))) return highest
+      return Math.max(
+        highest,
+        supportByValue.get(metricValueSignature(candidate.metric))?.size || 0,
+      )
+    }, 0)
+    const consensusConfirmed = selectedSupport >= 2 && selectedSupport > competingSupport
+    selectedByKey[key] = consensusConfirmed
+      ? {
+        ...selected.metric,
+        status: 'confirmed',
+        confidence: 'high',
+        needs_review: false,
+        conflict_warning: undefined,
+        rejection_reason: undefined,
+        pairing_reason: `Selected because ${selectedSupport} independent OCR strategies agree.`,
+      }
+      : selected.metric
     for (const discarded of ranked.slice(1)) {
       if (metricValuesEqual(metricValue(selected.metric), metricValue(discarded.metric))) continue
       discardedConflicts.push({

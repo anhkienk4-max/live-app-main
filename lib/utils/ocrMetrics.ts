@@ -13,7 +13,9 @@ import {
   shopeeMainMetricKeys,
   shopeeSupplementaryMetricKeys,
   tiktokCentralMetricKeys,
+  type CanonicalMetricKey,
   type MetricCandidateInput,
+  type MetricCandidateSelection,
 } from '@/lib/utils/ocrCanonical'
 import {
   normalizeMetricCellToRoi,
@@ -357,7 +359,14 @@ export const platformOcrConfigs: Readonly<Record<Exclude<ReportDashboardPlatform
   },
 }
 
-export type LayoutValueKind = 'count' | 'currency' | 'compact' | 'duration' | 'percentage' | 'ratio'
+export type LayoutValueKind =
+  | 'count'
+  | 'count_or_compact'
+  | 'currency'
+  | 'compact'
+  | 'duration'
+  | 'percentage'
+  | 'ratio'
 export type LayoutMetricCell = {
   key: ReportMetricKey
   label: string
@@ -399,7 +408,7 @@ export const platformMetricLayouts: Record<Exclude<ReportDashboardPlatform, 'oth
   tiktok_shop: [
     { key: 'gmv', label: 'GMV đã ghi nhận', x: .510, y: .187, width: .24, height: .085, valueKind: 'currency' },
     { key: 'items_sold', label: 'Số món bán ra từ sự kiện', x: .508, y: .240, width: .075, height: .045, valueKind: 'count' },
-    { key: 'current_viewers', label: 'Người xem hiện tại', x: .647, y: .240, width: .06, height: .045, valueKind: 'count' },
+    { key: 'current_viewers', label: 'Người xem hiện tại', x: .647, y: .240, width: .06, height: .045, valueKind: 'count_or_compact' },
     { key: 'impressions', label: 'Lượt hiển thị', x: .264, y: .329, width: .08, height: .05, valueKind: 'compact', displayFormat: { compactSuffix: 'K', decimalPlaces: 2 } },
     { key: 'total_views', label: 'Lượt xem', x: .398, y: .329, width: .08, height: .05, valueKind: 'compact', displayFormat: { compactSuffix: 'K', decimalPlaces: 2 } },
     { key: 'advertising_cost', label: 'Chi phí quảng cáo', x: .537, y: .329, width: .08, height: .05, valueKind: 'compact', displayFormat: { compactSuffix: 'M', decimalPlaces: 2 } },
@@ -830,7 +839,9 @@ export function parseDashboardOcrText(
   const expectedKeys = platform === 'other'
     ? []
     : platformOcrConfigs[platform].metricOrder.filter(isCanonicalMetricKey)
-  const selection = selectBestMetricCandidates(candidateInputs, expectedKeys)
+  const selection = platform === 'tiktok_shop'
+    ? selectTikTokHybridMetricCandidates(candidateInputs, expectedKeys)
+    : selectBestMetricCandidates(candidateInputs, expectedKeys)
   const metrics: OcrReviewData['metrics'] = selection.selectedByKey
   applyCrossMetricSanity(metrics)
 
@@ -893,7 +904,9 @@ export function parsePlatformOcrText({
   const expectedKeys = canonicalPlatform === 'other'
     ? []
     : platformOcrConfigs[canonicalPlatform].metricOrder.filter(isCanonicalMetricKey)
-  const selection = selectBestMetricCandidates(candidateInputs, expectedKeys)
+  const selection = platform === 'tiktok_shop'
+    ? selectTikTokHybridMetricCandidates(candidateInputs, expectedKeys)
+    : selectBestMetricCandidates(candidateInputs, expectedKeys)
   const candidates: OcrReviewData['metrics'] = selection.selectedByKey
 
   const review: OcrReviewData = {
@@ -1128,24 +1141,75 @@ export function mapDashboardImageRecognition(
         spatial_score: pairedValue.spatialScore,
         label_source: 'ocr_text',
         value_source_pass: pairedValue.word.pass,
+        strategy: 'normalized_roi',
+        preprocessing_pass: pairedValue.word.line_id.includes('roi-adaptive')
+          ? 'adaptive_roi'
+          : 'normalized_roi',
+        supporting_word_boxes: [labelBox, valueBox],
       }
       collectMetricCandidate(candidateInputs, alias.key, candidate)
       labelWords.forEach(word => consumedWords.add(word))
-      consumedWords.add(pairedValue.word)
+      for (const supportingWord of pairedValue.supportingWords || [pairedValue.word]) {
+        consumedWords.add(supportingWord)
+      }
   }
 
-  if (platform !== 'other' && !recognition.region_diagnostics?.selected_candidate_id) {
+  if (
+    platform !== 'other'
+    && (
+      platform === 'shopee_live'
+      || !recognition.region_diagnostics?.selected_candidate_id
+    )
+  ) {
     applyPlatformLayoutCandidates(platform, recognition, candidateInputs, consumedWords)
   }
   // Raw text is intentionally last. Browser/Tesseract reading order is unstable
   // for these dashboards, so text may fill gaps but cannot replace grounded
   // card, word-box, or normalized-grid candidates.
-  applyExactRawTextCandidates(platform, recognition.text, candidateInputs)
+  const normalizedStrategyText = recognition.pass_output.strategy_text?.normalized_roi
+    || recognition.text
+  applyExactRawTextCandidates(
+    platform,
+    normalizedStrategyText,
+    candidateInputs,
+    'normalized_roi',
+  )
+  if (recognition.text && recognition.text !== normalizedStrategyText) {
+    applyExactRawTextCandidates(
+      platform,
+      recognition.text,
+      candidateInputs,
+      'normalized_roi',
+    )
+  }
+  if (
+    recognition.pass_output.label
+    && recognition.pass_output.label !== normalizedStrategyText
+    && recognition.pass_output.label !== recognition.text
+  ) {
+    applyExactRawTextCandidates(
+      platform,
+      recognition.pass_output.label,
+      candidateInputs,
+      'normalized_roi',
+    )
+  }
+  const legacyStrategyText = recognition.pass_output.strategy_text?.legacy_relative
+  if (legacyStrategyText && legacyStrategyText !== normalizedStrategyText) {
+    applyExactRawTextCandidates(
+      platform,
+      legacyStrategyText,
+      candidateInputs,
+      'legacy_relative',
+    )
+  }
 
   const expectedKeys = platform === 'other'
     ? []
     : platformOcrConfigs[platform].metricOrder.filter(isCanonicalMetricKey)
-  const selection = selectBestMetricCandidates(candidateInputs, expectedKeys)
+  const selection = platform === 'tiktok_shop'
+    ? selectTikTokHybridMetricCandidates(candidateInputs, expectedKeys)
+    : selectBestMetricCandidates(candidateInputs, expectedKeys)
   const metrics: OcrReviewData['metrics'] = selection.selectedByKey
   applyCrossMetricSanity(metrics)
   if (platform !== 'other') {
@@ -1728,6 +1792,9 @@ function applyCardOutputCandidates(
       )
       const valueEvidence = candidate.cardWord || candidate.supportingWord
       const valueBox = valueEvidence?.bounding_box
+      const cardDiagnostic = recognition.pass_output.card_diagnostics?.[key]?.find(
+        diagnostic => diagnostic.text === rawValue,
+      )
       collectMetricCandidate(candidates, key, {
         value: parsedValue,
         candidate_value: parsedValue,
@@ -1781,6 +1848,13 @@ function applyCardOutputCandidates(
         value_confidence: valueEvidence?.confidence,
         spatial_score: clearPair ? 1 : undefined,
         value_source_pass: 'card',
+        strategy: 'anchor_card',
+        preprocessing_pass: cardDiagnostic?.preprocessing_pass,
+        supporting_word_boxes: cardDiagnostic
+          ? [cardDiagnostic.bounding_box]
+          : valueBox
+            ? [valueBox]
+            : undefined,
       })
       if (candidate.cardWord) consumedWords.add(candidate.cardWord)
     }
@@ -1792,16 +1866,28 @@ function normalizeLayoutCardValue(
   rawValue: string,
 ) {
   const trimmed = rawValue.trim()
-  const glyphNormalized = /\d/.test(trimmed)
+  let glyphNormalized = /\d/.test(trimmed)
     ? trimmed
       .replace(/[Óó]/g, '6')
+      .replace(/^[sS](?=\d)/, '5')
+      .replace(/(?<=\d)[oO](?=\d|$)/g, '0')
       .replace(
         cell?.valueKind === 'compact' ? /[xX«]\s*$/ : /$^/,
         cell?.displayFormat?.compactSuffix || 'K',
       )
     : trimmed
+  if (cell?.valueKind === 'compact' && cell.displayFormat?.compactSuffix && /\d/.test(glyphNormalized)) {
+    const suffix = cell.displayFormat.compactSuffix
+    glyphNormalized = glyphNormalized.replace(
+      new RegExp(`([\\d.,])${suffix === 'M' ? 'm[nma]*' : 'k[kx]*'}$`, 'i'),
+      `$1${suffix}`,
+    )
+  }
   if (cell?.valueKind === 'duration' && /^\d{1,5}[:;]$/.test(glyphNormalized)) {
     return `${glyphNormalized.slice(0, -1)}s`
+  }
+  if (cell?.valueKind === 'count_or_compact') {
+    return glyphNormalized.replace(/^[a-z]+\s*(?=\d)/i, '')
   }
   const format = cell?.displayFormat
   if (!format) return glyphNormalized
@@ -1868,6 +1954,9 @@ function layoutCardRawQualityScore(cell: LayoutMetricCell, rawValue: string) {
     if (/^\d+[:;]\d+$/.test(trimmed) && cell.displayFormat?.decimalPlaces) return 1.25
     return /^\d+(?:[.,]\d+)?[KM]$/i.test(trimmed) ? 1 : .45
   }
+  if (cell.valueKind === 'count_or_compact') {
+    return /^\d+(?:[.,]\d+)?[KM]?$/i.test(trimmed) ? 1 : .4
+  }
   if (cell.valueKind === 'currency') {
     return /^\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?$/.test(trimmed)
       ? 1
@@ -1896,7 +1985,13 @@ export function reconstructCompactOcrValue(
       && value.replace(/\D/g, '').length === decimalPlaces,
     )
   if (!headed || !fractional) return undefined
-  return `${headed.replace(/\D/g, '')}.${fractional.replace(/\D/g, '')}${suffix}`
+  const headedDigits = headed.replace(/\D/g, '')
+  const fractionalDigits = fractional.replace(/\D/g, '')
+  const integerDigits = headedDigits.length > 1
+    && headedDigits.endsWith(fractionalDigits.slice(0, 1))
+    ? headedDigits.slice(0, -1)
+    : headedDigits
+  return `${integerDigits}.${fractionalDigits}${suffix}`
 }
 
 function formatCorrectedMetricValue(
@@ -1987,6 +2082,7 @@ function applyExactRawTextCandidates(
   platform: ReportDashboardPlatform,
   rawText: string,
   candidates: MetricCandidateInput[],
+  strategy: NonNullable<OcrMetricValue['strategy']>,
 ) {
   const exactReview = parseDashboardOcrText(platform, rawText, 'raw_text_exact')
   for (const [key, candidate] of Object.entries(exactReview.metrics) as Array<[ReportMetricKey, OcrMetricValue]>) {
@@ -2005,6 +2101,10 @@ function applyExactRawTextCandidates(
     collectMetricCandidate(candidates, key, {
       ...candidate,
       label_source: 'ocr_text',
+      strategy,
+      preprocessing_pass: strategy === 'legacy_relative'
+        ? 'original_full_image'
+        : 'normalized_roi',
     })
   }
 }
@@ -2105,6 +2205,230 @@ function collectMetricCandidate(
   if (isCanonicalMetricKey(key)) candidates.push({ key, metric })
 }
 
+function isTikTokReliableEvidenceCandidate(candidate: MetricCandidateInput) {
+  return candidate.metric.strategy !== 'legacy_relative'
+    && candidate.metric.preprocessing_pass !== 'adaptive_roi'
+}
+
+function isTikTokAgreementCandidate(candidate: MetricCandidateInput) {
+  if (!isTikTokReliableEvidenceCandidate(candidate)) return false
+  if (candidate.metric.preprocessing_pass === 'geometry_compact_reconstruction') return true
+  if (candidate.metric.strategy !== 'anchor_card') return true
+  return (candidate.metric.value_confidence || 0) >= 30
+}
+
+function selectTikTokHybridMetricCandidates(
+  candidates: readonly MetricCandidateInput[],
+  expectedKeys: readonly CanonicalMetricKey[],
+): MetricCandidateSelection {
+  const baseline = selectBestMetricCandidates(candidates, expectedKeys)
+  const selectedByKey: MetricCandidateSelection['selectedByKey'] = {}
+  const discardedConflicts: MetricCandidateSelection['discardedConflicts'] = []
+
+  for (const key of expectedKeys) {
+    const keyCandidates = candidates.filter(candidate =>
+      candidate.key === key && metricHasUsableValue(candidate.metric),
+    )
+    if (!keyCandidates.length) continue
+    const grouped = new Map<string, MetricCandidateInput[]>()
+    for (const candidate of keyCandidates) {
+      const value = candidate.metric.value ?? candidate.metric.candidate_value
+      const signature = typeof value === 'number'
+        ? `number:${value}`
+        : `${typeof value}:${String(value ?? '')}`
+      const entries = grouped.get(signature) || []
+      entries.push(candidate)
+      grouped.set(signature, entries)
+    }
+    const rankedGroups = [...grouped.values()]
+      .map(group => ({
+        group,
+        score: tiktokStrategyGroupScore(key, group),
+      }))
+      .sort((left, right) => right.score - left.score)
+    const winner = rankedGroups[0]
+    if (!winner) continue
+    const selected = selectBestMetricCandidates(winner.group, [key]).selectedByKey[key]
+    if (!selected) continue
+    const runnerUp = rankedGroups[1]
+    const channels = new Set(winner.group.map(candidate =>
+      candidate.metric.strategy || 'unclassified',
+    ))
+    const reliableWinnerCandidates = winner.group.filter(isTikTokReliableEvidenceCandidate)
+    const agreementWinnerCandidates = reliableWinnerCandidates.filter(isTikTokAgreementCandidate)
+    const reliableChannels = new Set(agreementWinnerCandidates
+      .map(candidate => candidate.metric.strategy || 'unclassified'))
+    const preprocessingPasses = new Set(agreementWinnerCandidates.flatMap(candidate =>
+      candidate.metric.preprocessing_pass ? [candidate.metric.preprocessing_pass] : [],
+    ))
+    const strategyCandidates = keyCandidates.flatMap(candidate =>
+      candidate.metric.strategy
+        ? [{
+          strategy: candidate.metric.strategy,
+          raw_text: candidate.metric.raw_value || candidate.metric.raw_ocr_value || '',
+          value_candidate: candidate.metric.value ?? candidate.metric.candidate_value ?? null,
+          confidence: candidate.metric.confidence,
+          card_ownership: key,
+          preprocessing_pass: candidate.metric.preprocessing_pass,
+          supporting_word_boxes: candidate.metric.supporting_word_boxes,
+          rejection_reason: candidate.metric.rejection_reason,
+        }]
+        : [],
+    )
+    const decisive = !runnerUp || winner.score - runnerUp.score >= .35
+    const hasConsensus = reliableChannels.size >= 2 || preprocessingPasses.size >= 2
+    const evidenceSummary = winner.group.map(candidate =>
+      `${candidate.metric.strategy || 'unclassified'}`
+      + `/${candidate.metric.preprocessing_pass || 'unknown'}`
+      + `=${candidate.metric.raw_value || candidate.metric.raw_ocr_value || ''}`,
+    ).join(', ')
+    selectedByKey[key] = hasConsensus && decisive
+      ? {
+        ...selected,
+        status: 'confirmed',
+        confidence: 'high',
+        needs_review: false,
+        conflict_warning: undefined,
+        rejection_reason: undefined,
+        strategy_candidates: strategyCandidates,
+        pairing_reason: `TikTok hybrid consensus selected this value from ${channels.size} strategy channel(s) and ${Math.max(1, preprocessingPasses.size)} preprocessing pass(es): ${evidenceSummary}.`,
+      }
+      : {
+        ...selected,
+        status: 'review_required',
+        needs_review: true,
+        conflict_warning: decisive
+          ? selected.conflict_warning
+          : 'TikTok OCR strategies produced similarly strong conflicting values.',
+        strategy_candidates: strategyCandidates,
+      }
+
+    const selectedValue = selected.value ?? selected.candidate_value
+    for (const discardedGroup of rankedGroups.slice(1)) {
+      const discarded = selectBestMetricCandidates(discardedGroup.group, [key]).selectedByKey[key]
+      if (!discarded) continue
+      discardedConflicts.push({
+        canonical_key: key,
+        selected_source: selected.source,
+        discarded_source: discarded.source,
+        selected_value: selectedValue,
+        discarded_value: discarded.value ?? discarded.candidate_value,
+        reason: `TikTok hybrid evidence score ${winner.score.toFixed(2)} exceeded ${discardedGroup.score.toFixed(2)} using strategy ownership, value shape, preprocessing agreement, and confidence.`,
+      })
+    }
+  }
+
+  return {
+    selectedByKey: {
+      ...baseline.selectedByKey,
+      ...selectedByKey,
+    },
+    discardedConflicts,
+    missingKeys: expectedKeys.filter(key => !selectedByKey[key] && !baseline.selectedByKey[key]),
+  }
+}
+
+function tiktokStrategyGroupScore(
+  key: CanonicalMetricKey,
+  candidates: readonly MetricCandidateInput[],
+) {
+  const cell = platformMetricLayouts.tiktok_shop.find(candidate => candidate.key === key)
+  const reliableCandidates = candidates.filter(isTikTokReliableEvidenceCandidate)
+  const scoringCandidates = reliableCandidates.length ? reliableCandidates : candidates
+  const agreementCandidates = reliableCandidates.filter(isTikTokAgreementCandidate)
+  const reliableStrategies = new Set(agreementCandidates.map(candidate =>
+    candidate.metric.strategy || 'unclassified',
+  ))
+  const strategyWeight = Math.max(...candidates.map(candidate => {
+    if (
+      candidate.metric.strategy === 'anchor_card'
+      || candidate.metric.strategy === 'normalized_roi'
+    ) return 3.5
+    if (candidate.metric.strategy === 'legacy_relative') return 1
+    return 2
+  }))
+  const formatQuality = cell
+    ? Math.max(...scoringCandidates.map(candidate => {
+      const raw = candidate.metric.raw_value || candidate.metric.raw_ocr_value || ''
+      const normalized = normalizeLayoutCardValue(cell, raw)
+      const value = candidate.metric.value ?? candidate.metric.candidate_value
+      const shape = layoutValueShapeScore(cell.valueKind, normalized, value ?? null)
+      const compact = normalized.match(/^[-+]?\d+(?:[.,](\d+))?[KM]$/i)
+      const fractionDigits = compact?.[1]?.length || 0
+      const declaredDigits = cell.displayFormat?.decimalPlaces
+      const explicitDeclaredPrecision = declaredDigits
+        ? new RegExp(`[.,:;]\\d{${declaredDigits}}(?:[KM])?$`, 'i').test(raw.trim())
+        : false
+      const formatBonus = cell.valueKind === 'count_or_compact'
+        ? compact
+          ? fractionDigits > 0 ? 1.5 : .2
+          : Number.isInteger(value) ? 1 : 0
+        : cell.valueKind === 'compact' && declaredDigits
+          ? fractionDigits === declaredDigits
+            ? explicitDeclaredPrecision ? 2 : 1
+            : 0
+          : cell.valueKind === 'percentage' && /\d[.,]\d/.test(normalized)
+            ? 1
+            : 0
+      return shape * 2 + formatBonus
+    }))
+    : 0
+  const largestPassAgreement = Math.max(1, ...[...reliableStrategies].map(strategy =>
+    new Set(agreementCandidates
+      .filter(candidate => (candidate.metric.strategy || 'unclassified') === strategy)
+      .map(candidate => candidate.metric.preprocessing_pass || candidate.metric.source || 'unknown'))
+      .size,
+  ))
+  const passAgreementBonus = Math.min(.5, Math.max(0, largestPassAgreement - 1) * .5)
+  const repeatedObservationBonus = Math.min(
+    1,
+    Math.max(0, agreementCandidates.length - 1) * .5,
+  )
+  const independentStrategyBonus = Math.min(
+    .5,
+    Math.max(0, reliableStrategies.size - 1) * .25,
+  )
+  const pairQuality = Math.max(...scoringCandidates.map(candidate => {
+    const pairScore = candidate.metric.pair_score || 0
+    return candidate.metric.strategy === 'anchor_card'
+      ? Math.min(.25, pairScore / 50)
+      : Math.min(.5, pairScore / 2)
+  }))
+  const confidenceQuality = Math.max(...scoringCandidates.map(candidate =>
+    Math.min(.5, (candidate.metric.value_confidence || 0) / 200),
+  ))
+  const preprocessingQuality = Math.max(...scoringCandidates.map(candidate => {
+    const valueConfidence = candidate.metric.value_confidence || 0
+    switch (candidate.metric.preprocessing_pass) {
+      case 'inverted_grayscale':
+      case 'original_color':
+        return valueConfidence >= 30 ? 1 : .35
+      case 'fixed_threshold':
+        return valueConfidence >= 30 ? .8 : .3
+      case 'normalized_roi':
+        return 1.3
+      case 'geometry_compact_reconstruction':
+        return 1.1
+      case 'adaptive_light_text':
+      case 'adaptive_dark_text':
+      case 'adaptive_roi':
+        return .2
+      case 'original_full_image':
+        return .15
+      default:
+        return 0
+    }
+  }))
+  return strategyWeight
+    + formatQuality
+    + passAgreementBonus
+    + repeatedObservationBonus
+    + independentStrategyBonus
+    + pairQuality
+    + confidenceQuality
+    + preprocessingQuality
+}
+
 function metricValuesEqual(left: ReportMetricValue | undefined, right: ReportMetricValue | undefined) {
   if (typeof left === 'number' && typeof right === 'number') {
     return Math.abs(left - right) < Number.EPSILON
@@ -2130,6 +2454,7 @@ function formatRecognitionOutput(recognition: OcrImageRecognition) {
         ocr_readability: candidate.ocr_readability,
         source_method: candidate.source_method,
         perspective_correction_applied: candidate.perspective_correction_applied,
+        layout_family: candidate.layout_family,
       })),
       selected_candidate_id: recognition.region_diagnostics.selected_candidate_id,
       selected_roi: recognition.region_diagnostics.selected_roi,
@@ -2151,6 +2476,14 @@ function formatRecognitionOutput(recognition: OcrImageRecognition) {
       .map(([key, values]) => `${key}: ${values.filter(Boolean).join(' | ') || '—'}`)
       .join('\n')
     : ''
+  const cardDiagnostics = recognition.pass_output.card_diagnostics
+    ? JSON.stringify(recognition.pass_output.card_diagnostics, null, 2)
+    : ''
+  const strategyOutput = recognition.pass_output.strategy_text
+    ? Object.entries(recognition.pass_output.strategy_text)
+      .map(([strategy, text]) => `[${strategy} strategy]\n${text}`)
+      .join('\n\n')
+    : ''
   return [
     regionOutput ? `[region detection]\n${regionOutput}` : '',
     '[label pass]',
@@ -2159,6 +2492,8 @@ function formatRecognitionOutput(recognition: OcrImageRecognition) {
     recognition.pass_output.numeric,
     cardLabelOutput ? `[card label pass]\n${cardLabelOutput}` : '',
     cardOutput ? `[card pass]\n${cardOutput}` : '',
+    cardDiagnostics ? `[card diagnostics]\n${cardDiagnostics}` : '',
+    strategyOutput,
   ].filter(Boolean).join('\n\n')
 }
 
@@ -2491,7 +2826,7 @@ function layoutPassBonus(
   kind: LayoutValueKind,
   pass: OcrRecognizedWord['pass'],
 ) {
-  if (kind === 'count') return pass === 'label' ? .02 : .03
+  if (kind === 'count' || kind === 'count_or_compact') return pass === 'label' ? .02 : .03
   if (kind === 'percentage') return pass === 'label' ? .04 : pass === 'card' ? .03 : .02
   return pass === 'card' ? .05 : pass === 'numeric' ? .03 : .02
 }
@@ -2512,6 +2847,14 @@ function layoutValueShapeScore(
       return rawValue.includes(':') ? 1 : /[smh]\s*$/i.test(rawValue) ? .9 : .55
     case 'compact':
       return compact && decimal ? 1 : compact ? .6 : decimal ? .35 : .25
+    case 'count_or_compact':
+      return compact && decimal
+        ? 1
+        : compact
+          ? .8
+          : Number.isInteger(parsedValue)
+            ? .95
+            : .4
     case 'currency':
       return /[.,].*[.,]/.test(rawValue) ? 1 : /[.,]/.test(rawValue) ? .9 : .6
     case 'ratio':
@@ -2546,7 +2889,11 @@ function findMetricValueWord(
   const labelBottom = labelBox.y + labelBox.height
   const candidates = lines
     .flatMap(line => line.words)
-    .filter(word => /\d/.test(word.text) && !consumedWords.has(word))
+    .filter(word =>
+      word.pass !== 'card'
+      && /\d/.test(word.text)
+      && !consumedWords.has(word),
+    )
     .map(word => {
       const centerX = word.bounding_box.x + word.bounding_box.width / 2
       const centerY = word.bounding_box.y + word.bounding_box.height / 2
@@ -2604,13 +2951,41 @@ function findMetricValueWord(
   const rankedCandidates = samePassCandidates.length > 0 ? samePassCandidates : candidates
   const selected = rankedCandidates[0]
   if (!selected) return undefined
-  const selectedValue = parseOcrValue(selected.word.text)
+  const suffix = lines.flatMap(line => line.words).find(word => {
+    if (!/^[KM]$/i.test(word.text.trim())) return false
+    if (word.pass !== selected.word.pass || consumedWords.has(word)) return false
+    const selectedRight = selected.word.bounding_box.x + selected.word.bounding_box.width
+    const gap = word.bounding_box.x - selectedRight
+    const selectedCenterY = selected.word.bounding_box.y + selected.word.bounding_box.height / 2
+    const suffixCenterY = word.bounding_box.y + word.bounding_box.height / 2
+    return gap >= -2 * spatialScale
+      && gap <= Math.max(18 * spatialScale, selected.word.bounding_box.height)
+      && Math.abs(selectedCenterY - suffixCenterY) <= Math.max(
+        selected.word.bounding_box.height,
+        word.bounding_box.height,
+      )
+  })
+  const supportingWords = suffix ? [selected.word, suffix] : [selected.word]
+  const selectedWord = suffix
+    ? {
+      ...selected.word,
+      text: `${selected.word.text}${suffix.text.trim()}`,
+      confidence: Math.min(selected.word.confidence, suffix.confidence),
+      bounding_box: unionBoundingBoxes(supportingWords),
+    }
+    : selected.word
+  const selectedValue = parseOcrValue(selectedWord.text)
   const competingValues = rankedCandidates.filter(candidate =>
     candidate !== selected
     && !metricValuesEqual(parseOcrValue(candidate.word.text), selectedValue)
     && selected.spatialScore - candidate.spatialScore < .12,
   ).length
-  return { ...selected, competingValues }
+  return {
+    ...selected,
+    word: selectedWord,
+    supportingWords,
+    competingValues,
+  }
 }
 
 function unionBoundingBoxes(words: OcrRecognizedWord[]) {

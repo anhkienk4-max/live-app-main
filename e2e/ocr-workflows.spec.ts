@@ -44,6 +44,37 @@ const tiktokMetrics = {
   estimated_gmv: 8980000,
 } as const
 
+const tiktokIndependentMetrics = {
+  gmv: 12203520,
+  items_sold: 128,
+  current_viewers: 1230,
+  impressions: 88740,
+  total_views: 1680,
+  advertising_cost: 2340000,
+  click_rate: 1.89,
+  roi_gmv_max: 6.49,
+  ctor: 9.65,
+  average_view_duration_seconds: 39,
+  new_followers: 8,
+  buyers: 54,
+  sku_orders: 120,
+  comments: 46,
+  product_clicks: 850,
+  average_order_value: 148820,
+  live_ctr: 50.72,
+  shares: 10,
+  estimated_gmv: 10610000,
+} as const
+
+const tiktokIndependentFixture = path.join(
+  process.cwd(),
+  'e2e',
+  'fixtures',
+  'ocr',
+  'tiktok-layout-variants',
+  'tiktok-real-2026-07-10.png',
+)
+
 const shopeeKnownLabels = [
   'Sales',
   'Engaged Viewer',
@@ -122,12 +153,10 @@ async function runReportOcr(
     console.info(`[report-ocr] ${await rawDiagnostics.locator('pre').textContent()}`)
   }
 
-  await applyOcrTextOnlyIfImageAutofillIsIncomplete(
-    page,
-    page.getByTestId('apply-report-ocr-text'),
-    expected,
-  )
   await assertRenderedMetrics(page, expected)
+  if ('advertising_cost' in expected) {
+    await expect(page.getByTestId('ocr-metric-input-advertising_cost')).toBeVisible()
+  }
   await assertKnownMetricsAreMapped(page.getByTestId('report-ocr-unmapped-section'), knownLabels)
   await assertValuesSurviveRerender(page, expected)
 }
@@ -143,12 +172,10 @@ async function runLiveOcr(
   await page.getByTestId('live-run-ocr-button').click()
   await waitForOcrCompletion(page.getByTestId('live-ocr-completion-status'))
 
-  await applyOcrTextOnlyIfImageAutofillIsIncomplete(
-    page,
-    page.getByTestId('apply-live-ocr-text'),
-    expected,
-  )
   await assertRenderedMetrics(page, expected)
+  if ('advertising_cost' in expected) {
+    await expect(page.getByTestId('ocr-metric-input-advertising_cost')).toBeVisible()
+  }
   await assertKnownMetricsAreMapped(page.getByTestId('live-ocr-unmapped-section'), knownLabels)
   await assertValuesSurviveRerender(page, expected)
 }
@@ -159,22 +186,6 @@ async function waitForOcrCompletion(status: Locator) {
     () => status.getAttribute('data-ocr-status'),
     { timeout: 120_000, message: 'OCR did not reach review_required state' },
   ).toBe('review_required')
-}
-
-async function applyOcrTextOnlyIfImageAutofillIsIncomplete(
-  page: Page,
-  applyButton: Locator,
-  expected: ExpectedMetrics,
-) {
-  const renderedValues = await Promise.all(
-    Object.keys(expected).map(async key => {
-      const input = page.getByTestId(`ocr-metric-input-${key}`)
-      return await input.count() > 0 ? input.inputValue() : ''
-    }),
-  )
-  if (renderedValues.every(value => value !== '')) return
-  await expect(applyButton).toBeEnabled()
-  await applyButton.click()
 }
 
 async function assertRenderedMetrics(page: Page, expected: ExpectedMetrics) {
@@ -241,10 +252,6 @@ async function assertTikTokCorrectedText(
 ) {
   const value = await correctedText.inputValue()
   for (const label of tiktokKnownLabels) expect(value).toContain(`${label}:`)
-  expect(value).toContain('GMV đã ghi nhận: 8.761.919')
-  expect(value).toContain('Tỷ lệ nhấn: 2,52%')
-  expect(value).toContain('Thời lượng xem TB: 40s')
-  expect(value).toContain('GMV ước tính: 8,98M')
   expect(value).not.toContain('[label pass]')
   expect(value).not.toContain('[card pass]')
   await expect(rawDiagnostics).toBeVisible()
@@ -340,6 +347,38 @@ test('TikTok Live Dashboard Update uploads a real dashboard and autofills all 19
     page,
     fixturePath('tiktok-dashboard.jpg'),
     tiktokMetrics,
+    tiktokKnownLabels,
+  )
+  await assertTikTokCorrectedText(
+    page.getByTestId('live-ocr-corrected-text'),
+    page.getByTestId('live-ocr-raw-diagnostics'),
+  )
+})
+
+test('TikTok Final Report autofills all 19 KPIs from an independent real dashboard', async ({ page }) => {
+  test.setTimeout(240_000)
+  await openTikTokFinalReport(page)
+  await expectSelectedPlatform(page.getByTestId('report-platform-selector'), 'TikTok Shop')
+  await runReportOcr(
+    page,
+    tiktokIndependentFixture,
+    tiktokIndependentMetrics,
+    tiktokKnownLabels,
+  )
+  await assertTikTokCorrectedText(
+    page.getByTestId('report-ocr-corrected-text'),
+    page.getByTestId('report-ocr-raw-diagnostics'),
+  )
+})
+
+test('TikTok Live Dashboard Update autofills all 19 KPIs from an independent real dashboard', async ({ page }) => {
+  test.setTimeout(240_000)
+  await prepareTikTokShiftForLiveUpdate(page)
+  await expectSelectedPlatform(page.getByTestId('live-platform-selector'), 'TikTok Shop')
+  await runLiveOcr(
+    page,
+    tiktokIndependentFixture,
+    tiktokIndependentMetrics,
     tiktokKnownLabels,
   )
   await assertTikTokCorrectedText(

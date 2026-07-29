@@ -373,6 +373,13 @@ export interface LiveReportImage {
 
 export type OcrConfidence = 'high' | 'medium' | 'low'
 export type OcrMetricStatus = 'confirmed' | 'accepted' | 'review_required' | 'low_confidence' | 'rejected' | 'manual' | 'empty'
+export type OcrExtractionStrategy = 'anchor_card' | 'normalized_roi' | 'legacy_relative'
+export type TikTokLayoutFamily =
+  | 'standard'
+  | 'wide_desktop'
+  | 'cropped_kpi_panel'
+  | 'camera_perspective'
+  | 'composite_duplicate'
 
 export type ReportDashboardPlatform = 'tiktok_shop' | 'shopee_live' | 'other'
 
@@ -457,6 +464,19 @@ export interface OcrMetricValue {
   label_source?: 'ocr_text' | 'platform_layout'
   value_source_pass?: 'label' | 'numeric' | 'card'
   conflict_warning?: string
+  strategy?: OcrExtractionStrategy
+  preprocessing_pass?: string
+  supporting_word_boxes?: Array<{ x: number; y: number; width: number; height: number }>
+  strategy_candidates?: Array<{
+    strategy: OcrExtractionStrategy
+    raw_text: string
+    value_candidate: ReportMetricValue
+    confidence: OcrConfidence
+    card_ownership: ReportMetricKey
+    preprocessing_pass?: string
+    supporting_word_boxes?: Array<{ x: number; y: number; width: number; height: number }>
+    rejection_reason?: string
+  }>
   confirmed_by?: string
   confirmed_at?: string
   manual_edit?: {
@@ -540,6 +560,7 @@ export interface OcrDashboardCandidate {
   ocr_readability: number
   source_method: 'anchor_similarity' | 'anchor_affine' | 'anchor_homography' | 'anchor_and_color' | 'anchor_cluster' | 'color_contour' | 'manual_crop' | 'legacy_layout'
   perspective_correction_applied: boolean
+  layout_family?: TikTokLayoutFamily
 }
 
 export interface OcrRegionDiagnostics {
@@ -589,6 +610,13 @@ export interface OcrImageRecognition {
     numeric: string
     card?: Record<string, string[]>
     card_labels?: Record<string, string[]>
+    card_diagnostics?: Record<string, Array<{
+      text: string
+      confidence: number
+      preprocessing_pass: string
+      bounding_box: { x: number; y: number; width: number; height: number }
+    }>>
+    strategy_text?: Partial<Record<OcrExtractionStrategy, string>>
   }
   confidence: number
   words: OcrRecognizedWord[]

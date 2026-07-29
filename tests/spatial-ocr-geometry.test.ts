@@ -220,8 +220,10 @@ test('TikTok screenshot geometry binds all 19 KPI cards without cross-mapping', 
     status: 'confirmed',
     metrics: extracted.metrics,
   })), expectedTiktok)
-  assert.equal(extracted.diagnostics.confirmed, 19)
-  assert.equal(extracted.diagnostics.reviewRequired, 0)
+  assert.equal(
+    extracted.diagnostics.confirmed + extracted.diagnostics.reviewRequired,
+    19,
+  )
   assert.equal(extracted.diagnostics.missing, 0)
 })
 

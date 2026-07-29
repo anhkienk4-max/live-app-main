@@ -277,8 +277,8 @@ export function ReportFormModal({
       const recognizedText = rawOcrText.trim() || candidate.raw_output?.trim() || ''
       if (recognizedText) {
         setRawOcrText(recognizedText)
-        applyRawOcrText(recognizedText, candidate)
-      } else {
+      }
+      if (incomingMetricKeys.length > 0) {
         setReview(candidate)
         setMetricValues(current => {
           const merged = applySelectedMetricsToState(current, candidate, {
@@ -291,9 +291,22 @@ export function ReportFormModal({
           }
           return merged
         })
+      } else if (recognizedText) {
+        applyRawOcrText(recognizedText, candidate)
+      } else {
+        setReview(candidate)
       }
       setEditingMetrics(true)
-      if (!recognizedText) {
+      if (incomingMetricKeys.length > 0) {
+        toast({
+          title: t('ocrResults'),
+          description: t('ocrApplySummary', {
+            applied: incomingMetricKeys.length,
+            review: reviewRequiredCount(candidate),
+          }),
+          variant: 'success',
+        })
+      } else if (!recognizedText) {
         toast({
           title: candidate.status === 'unavailable' ? t('dashboardImageRequired') : t('metricReviewRequired'),
           description: candidate.status === 'unavailable' ? t('ocrUnavailableHelp') : t('ocrReviewHelp'),

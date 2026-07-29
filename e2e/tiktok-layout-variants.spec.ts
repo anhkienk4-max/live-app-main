@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
-const expectedMetrics = {
+const referenceExpectedMetrics = {
   gmv: 8761919,
   items_sold: 103,
   current_viewers: 7,
@@ -44,6 +44,7 @@ type RegionDiagnostics = {
     ocr_readability: number
     source_method: string
     perspective_correction_applied: boolean
+    layout_family?: string
   }>
   selected_candidate_id?: string
   selected_roi?: { left: number; top: number; width: number; height: number }
@@ -60,6 +61,7 @@ type FixtureCase = {
   sha256: string
   dimensions: { width: number; height: number }
   source: 'real' | 'synthetic'
+  expected?: Record<string, number>
   expectMultipleCandidates?: boolean
 }
 
@@ -78,6 +80,35 @@ const fixtures: FixtureCase[] = [
     sha256: 'A90067540A821CAF3EFCE6EA5C5EE9908D07DE4D2C1A381229B65776824E972D',
     dimensions: { width: 1748, height: 926 },
     source: 'real',
+    expected: referenceExpectedMetrics,
+  },
+  {
+    name: 'independent real dashboard',
+    fileName: 'tiktok-real-2026-07-10.png',
+    sha256: 'B509434B7B33108C0B0B1B69075C31D647A9DA8122CC6EA9F99A8CA37D45472E',
+    dimensions: { width: 1399, height: 942 },
+    source: 'real',
+    expected: {
+      gmv: 12203520,
+      items_sold: 128,
+      current_viewers: 1230,
+      impressions: 88740,
+      total_views: 1680,
+      advertising_cost: 2340000,
+      click_rate: 1.89,
+      roi_gmv_max: 6.49,
+      ctor: 9.65,
+      average_view_duration_seconds: 39,
+      new_followers: 8,
+      buyers: 54,
+      sku_orders: 120,
+      comments: 46,
+      product_clicks: 850,
+      average_order_value: 148820,
+      live_ctr: 50.72,
+      shares: 10,
+      estimated_gmv: 10610000,
+    },
   },
   {
     name: 'scaled and shifted viewport',
@@ -179,8 +210,9 @@ for (const fixture of fixtures) {
     }
 
     await page.getByTestId('ocr-metric-filter-all').click()
-    const actual = await readRenderedMetrics(page)
-    const statuses = await readMetricStatuses(page)
+    const expectedMetrics = fixture.expected || referenceExpectedMetrics
+    const actual = await readRenderedMetrics(page, expectedMetrics)
+    const statuses = await readMetricStatuses(page, expectedMetrics)
     const candidateDiagnostics = await readCandidateDiagnostics(page)
     const rawDiagnostics = await page.getByTestId('report-ocr-raw-diagnostics')
       .locator('pre')
@@ -207,7 +239,6 @@ for (const fixture of fixtures) {
       ),
       raw_diagnostics_available: Boolean(rawDiagnostics),
     }, null, 2))
-
     if (fixture.source === 'real') {
       expect(mismatches, JSON.stringify({ actual, diagnostics }, null, 2)).toEqual([])
     } else {
@@ -232,7 +263,7 @@ for (const fixture of fixtures) {
       await expect(page.getByTestId(`ocr-metric-input-${key}`)).toHaveValue(value)
     }
     await page.getByTestId('ocr-metric-filter-all').click()
-    expect(await readRenderedMetrics(page)).toEqual(actual)
+    expect(await readRenderedMetrics(page, expectedMetrics)).toEqual(actual)
   })
 }
 
@@ -265,7 +296,7 @@ async function readRegionDiagnostics(page: Page) {
   return JSON.parse(raw!) as RegionDiagnostics
 }
 
-async function readRenderedMetrics(page: Page) {
+async function readRenderedMetrics(page: Page, expectedMetrics: Record<string, number>) {
   const keys = Object.keys(expectedMetrics)
   const inputs = page.getByTestId('ocr-main-metrics').locator('input[data-testid^="ocr-metric-input-"]')
   await expect(inputs).toHaveCount(keys.length)
@@ -275,7 +306,7 @@ async function readRenderedMetrics(page: Page) {
   ])))
 }
 
-async function readMetricStatuses(page: Page) {
+async function readMetricStatuses(page: Page, expectedMetrics: Record<string, number>) {
   return Object.fromEntries(await Promise.all(Object.keys(expectedMetrics).map(async key => [
     key,
     await page.getByTestId(`ocr-metric-${key}`).getAttribute('data-ocr-status'),
