@@ -188,6 +188,7 @@ const metricValueSignature = (metric: OcrMetricValue) => {
 
 const evidenceChannel = (metric: OcrMetricValue) => {
   if (metric.source === 'manual' || metric.source === 'imported') return metric.source
+  if (metric.evidence_group) return metric.evidence_group
   if (metric.strategy) return metric.strategy
   if (
     metric.source === 'raw_text_exact'

@@ -61,13 +61,21 @@ export function roiCellBoundingBox(
   const labelHeight = candidate.platform === 'tiktok_shop' ? .045 : .055
   const labelCenterY = cell.y - (candidate.platform === 'tiktok_shop' ? .055 : .075)
   const centerY = kind === 'label' ? labelCenterY : cell.y
+  const tiktokValueWidth = candidate.platform === 'tiktok_shop'
+    ? cell.key === 'gmv'
+      ? Math.min(.48, cell.width * 1.08)
+      : cell.key === 'current_viewers'
+        ? Math.min(.22, cell.width * 1.6)
+        : cell.key === 'average_view_duration_seconds'
+          || cell.key === 'average_order_value'
+          ? Math.min(.24, cell.width * 1.5)
+          : Math.min(.22, cell.width * (
+            cell.key === 'items_sold' ? 1.6 : 1.35
+          ))
+    : cell.width
   const width = kind === 'label'
     ? Math.min(.30, cell.width * (candidate.platform === 'tiktok_shop' ? 1.55 : 1.35))
-    : candidate.platform === 'tiktok_shop'
-      ? Math.min(.22, cell.width * (
-        cell.key === 'items_sold' || cell.key === 'current_viewers' ? 1.6 : 1.35
-      ))
-      : cell.width
+    : tiktokValueWidth
   const height = kind === 'label'
     ? labelHeight
     : candidate.platform === 'tiktok_shop'

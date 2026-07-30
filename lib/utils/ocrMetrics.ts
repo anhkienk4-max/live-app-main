@@ -414,13 +414,13 @@ export const platformMetricLayouts: Record<Exclude<ReportDashboardPlatform, 'oth
     { key: 'advertising_cost', label: 'Chi phí quảng cáo', x: .537, y: .329, width: .08, height: .05, valueKind: 'compact', displayFormat: { compactSuffix: 'M', decimalPlaces: 2 } },
     { key: 'click_rate', label: 'Tỷ lệ nhấn', x: .676, y: .329, width: .08, height: .05, valueKind: 'percentage', displayFormat: { decimalPlaces: 2 } },
     { key: 'roi_gmv_max', label: 'ROI GMV Max', x: .264, y: .413, width: .08, height: .05, valueKind: 'ratio', displayFormat: { decimalPlaces: 2 } },
-    { key: 'ctor', label: 'CTOR', x: .398, y: .413, width: .08, height: .05, valueKind: 'percentage' },
+    { key: 'ctor', label: 'CTOR', x: .398, y: .413, width: .08, height: .05, valueKind: 'percentage', displayFormat: { decimalPlaces: 2 } },
     { key: 'average_view_duration_seconds', label: 'Thời lượng xem TB', x: .537, y: .413, width: .08, height: .05, valueKind: 'duration' },
     { key: 'new_followers', label: 'Người theo dõi mới', x: .676, y: .413, width: .07, height: .05, valueKind: 'count' },
     { key: 'buyers', label: 'Khách hàng', x: .264, y: .497, width: .07, height: .05, valueKind: 'count' },
     { key: 'sku_orders', label: 'Đơn hàng SKU đã ghi nhận', x: .398, y: .497, width: .07, height: .05, valueKind: 'count' },
     { key: 'comments', label: 'Bình luận', x: .537, y: .497, width: .07, height: .05, valueKind: 'count' },
-    { key: 'product_clicks', label: 'Lượt nhấp vào sản phẩm', x: .676, y: .497, width: .07, height: .05, valueKind: 'count' },
+    { key: 'product_clicks', label: 'Lượt nhấp vào sản phẩm', x: .676, y: .497, width: .07, height: .05, valueKind: 'count_or_compact', displayFormat: { compactSuffix: 'K', decimalPlaces: 2 } },
     { key: 'average_order_value', label: 'AOV', x: .264, y: .583, width: .09, height: .05, valueKind: 'compact', displayFormat: { compactSuffix: 'K', decimalPlaces: 2 } },
     { key: 'live_ctr', label: 'CTR của LIVE', x: .398, y: .583, width: .09, height: .05, valueKind: 'percentage' },
     { key: 'shares', label: 'Lượt chia sẻ', x: .537, y: .583, width: .07, height: .05, valueKind: 'count' },
@@ -583,8 +583,12 @@ export function parseCompactOcrNumber(raw: string): CompactOcrNumber | null {
     : digitsBeforeDecimal
   const parsed = Number(normalized)
   if (!Number.isFinite(parsed)) return null
+  const scaledValue = parsed * multiplier
+  const integerValue = Math.round(scaledValue)
   return {
-    value: parsed * multiplier,
+    value: Math.abs(scaledValue - integerValue) < Number.EPSILON * Math.max(1, Math.abs(scaledValue)) * 8
+      ? integerValue
+      : scaledValue,
     normalized: `${normalized}${suffix}`,
     suffix,
     decimalSeparator,
@@ -905,7 +909,11 @@ export function parsePlatformOcrText({
     ? []
     : platformOcrConfigs[canonicalPlatform].metricOrder.filter(isCanonicalMetricKey)
   const selection = platform === 'tiktok_shop'
-    ? selectTikTokHybridMetricCandidates(candidateInputs, expectedKeys)
+    ? selectTikTokHybridMetricCandidates(
+      candidateInputs,
+      expectedKeys,
+      tiktokConfidenceContext(existingReview?.region_diagnostics),
+    )
     : selectBestMetricCandidates(candidateInputs, expectedKeys)
   const candidates: OcrReviewData['metrics'] = selection.selectedByKey
 
@@ -1079,11 +1087,13 @@ export function mapDashboardImageRecognition(
         )
       ) continue
 
-      const parsedValue = parseMetricOcrValue(platform, alias.key, pairedValue.word.text)
       const layoutCell = platform === 'other'
         ? undefined
         : platformMetricLayouts[platform].find(cell => cell.key === alias.key)
       const normalizedShapeValue = normalizeLayoutCardValue(layoutCell, pairedValue.word.text)
+      const parsedValue = layoutCell
+        ? parseOcrValue(normalizedShapeValue)
+        : parseMetricOcrValue(platform, alias.key, pairedValue.word.text)
       const compactMetadata = parseCompactOcrNumber(normalizedShapeValue)
       const valueShapeScore = layoutCell
         ? layoutValueShapeScore(layoutCell.valueKind, normalizedShapeValue, parsedValue)
@@ -1145,6 +1155,8 @@ export function mapDashboardImageRecognition(
         preprocessing_pass: pairedValue.word.line_id.includes('roi-adaptive')
           ? 'adaptive_roi'
           : 'normalized_roi',
+        evidence_source_family: pairedValue.word.evidence_source_family || 'normalized_roi_ocr',
+        evidence_group: pairedValue.word.evidence_group || 'normalized_roi:primary',
         supporting_word_boxes: [labelBox, valueBox],
       }
       collectMetricCandidate(candidateInputs, alias.key, candidate)
@@ -1168,11 +1180,15 @@ export function mapDashboardImageRecognition(
   // card, word-box, or normalized-grid candidates.
   const normalizedStrategyText = recognition.pass_output.strategy_text?.normalized_roi
     || recognition.text
+  const normalizedEvidenceGroup = recognition.words.find(word =>
+    word.evidence_source_family === 'normalized_roi_ocr',
+  )?.evidence_group || 'normalized_roi:primary'
   applyExactRawTextCandidates(
     platform,
     normalizedStrategyText,
     candidateInputs,
     'normalized_roi',
+    normalizedEvidenceGroup,
   )
   if (recognition.text && recognition.text !== normalizedStrategyText) {
     applyExactRawTextCandidates(
@@ -1180,6 +1196,7 @@ export function mapDashboardImageRecognition(
       recognition.text,
       candidateInputs,
       'normalized_roi',
+      normalizedEvidenceGroup,
     )
   }
   if (
@@ -1192,6 +1209,7 @@ export function mapDashboardImageRecognition(
       recognition.pass_output.label,
       candidateInputs,
       'normalized_roi',
+      normalizedEvidenceGroup,
     )
   }
   const legacyStrategyText = recognition.pass_output.strategy_text?.legacy_relative
@@ -1201,6 +1219,9 @@ export function mapDashboardImageRecognition(
       legacyStrategyText,
       candidateInputs,
       'legacy_relative',
+      recognition.words.find(word =>
+        word.evidence_source_family === 'legacy_full_image_ocr',
+      )?.evidence_group || 'legacy_full_image:primary',
     )
   }
 
@@ -1208,7 +1229,11 @@ export function mapDashboardImageRecognition(
     ? []
     : platformOcrConfigs[platform].metricOrder.filter(isCanonicalMetricKey)
   const selection = platform === 'tiktok_shop'
-    ? selectTikTokHybridMetricCandidates(candidateInputs, expectedKeys)
+    ? selectTikTokHybridMetricCandidates(
+      candidateInputs,
+      expectedKeys,
+      tiktokConfidenceContext(recognition.region_diagnostics),
+    )
     : selectBestMetricCandidates(candidateInputs, expectedKeys)
   const metrics: OcrReviewData['metrics'] = selection.selectedByKey
   applyCrossMetricSanity(metrics)
@@ -1657,6 +1682,7 @@ function isDurationOcrToken(rawValue: string) {
   const trimmed = rawValue.trim()
   return /^(?:\d{1,2}:)?\d{1,3}:\d{2}$/.test(trimmed)
     || /^\d+(?:[.,]\d+)?\s*(?:s|sec|secs|second|seconds)$/i.test(trimmed)
+    || /^\d{1,2}\s*m\s*\d{1,2}\s*s?$/i.test(trimmed)
 }
 
 function addUnmappedTextField(
@@ -1704,16 +1730,20 @@ function applyCardOutputCandidates(
     const layoutCell = platformMetricLayouts[platform as Exclude<ReportDashboardPlatform, 'other'>]
       ?.find(cell => cell.key === key)
     const cardLabels = recognition.pass_output.card_labels?.[key] || []
+    const cardDiagnostics = recognition.pass_output.card_diagnostics?.[key] || []
+    const observedValues = cardDiagnostics.some(diagnostic => diagnostic.text.trim())
+      ? cardDiagnostics.map(diagnostic => diagnostic.text)
+      : values
     const anchoredCard = cardLabels.some(label =>
       mapOcrLabel(platform, label, [key]) === key,
     )
-    const reconstructedCompact = reconstructCompactOcrValue(layoutCell, values)
-    const cardValues = reconstructedCompact && !values.includes(reconstructedCompact)
-      ? [reconstructedCompact, ...values]
-      : values
+    const reconstructedCompact = reconstructCompactOcrValue(layoutCell, observedValues)
+    const cardValues = reconstructedCompact && !observedValues.includes(reconstructedCompact)
+      ? [reconstructedCompact, ...observedValues]
+      : observedValues
     const cardCandidates = cardValues.flatMap((value, variantIndex) => {
       const normalizedRaw = normalizeLayoutCardValue(layoutCell, value)
-      const parsedValue = parseOcrValue(normalizedRaw)
+      const parsedValue = parseMetricOcrValue(platform, key, normalizedRaw)
       const compactMetadata = parseCompactOcrNumber(normalizedRaw)
       if (validateMetricCandidate(key, parsedValue, normalizedRaw)) return []
       const shapeScore = layoutCell
@@ -1723,6 +1753,14 @@ function applyCardOutputCandidates(
         ? layoutCardRawQualityScore(layoutCell, value)
         : 1
       const cardWord = findCardValueWord(key, value, recognition)
+      const matchingDiagnostics = cardDiagnostics
+        .filter(diagnostic => diagnostic.text === value)
+      const priorMatchingValues = cardValues
+        .slice(0, variantIndex)
+        .filter(previousValue => previousValue === value)
+        .length
+      const cardDiagnostic = matchingDiagnostics[priorMatchingValues]
+        || matchingDiagnostics[0]
       return [{
         value,
         normalizedRaw,
@@ -1731,22 +1769,37 @@ function applyCardOutputCandidates(
         shapeScore,
         rawQualityScore,
         cardWord,
+        cardDiagnostic,
+        evidenceGroup: cardDiagnostic?.evidence_group
+          || cardWord?.evidence_group
+          || `anchor_card:${key}`,
         variantIndex,
         selectionScore:
           shapeScore * 10
           + rawQualityScore * 2
-          + (cardWord?.confidence || 0) / 100
+          + (cardDiagnostic?.confidence || cardWord?.confidence || 0) / 100
           - variantIndex * .05,
       }]
     })
     const consensusCandidates = cardCandidates.map(candidate => ({
       ...candidate,
-      supportCount: cardCandidates.filter(other =>
-        metricValuesEqual(other.parsedValue, candidate.parsedValue),
-      ).length,
-      selectionScore: candidate.selectionScore + cardCandidates.filter(other =>
-        metricValuesEqual(other.parsedValue, candidate.parsedValue),
-      ).length * 3,
+      supportCount: new Set(cardCandidates
+        .filter(other => metricValuesEqual(other.parsedValue, candidate.parsedValue))
+        .map(other => other.evidenceGroup))
+        .size,
+      selectionScore: candidate.selectionScore + new Set(cardCandidates
+        .filter(other => metricValuesEqual(other.parsedValue, candidate.parsedValue))
+        .map(other => other.evidenceGroup))
+        .size * 3
+        + Math.min(
+          .6,
+          Math.max(
+            0,
+            cardCandidates.filter(other =>
+              metricValuesEqual(other.parsedValue, candidate.parsedValue),
+            ).length - 1,
+          ) * .3,
+        ),
     }))
     const viableCandidates = consensusCandidates
       .map(candidate => ({
@@ -1773,6 +1826,10 @@ function applyCardOutputCandidates(
           candidate.cardWord
           || candidate.supportingWord
           || anchoredCard
+          || (
+            platform === 'tiktok_shop'
+            && Boolean(candidate.cardDiagnostic?.bounding_box)
+          )
           || recognition.words.every(word => word.pass === 'card')
         ),
       )
@@ -1783,7 +1840,9 @@ function applyCardOutputCandidates(
       const repaired = candidate.normalizedRaw !== rawValue.trim()
       const ambiguousCompact = candidate.compactMetadata?.ambiguous || false
       const independentValueConfidence = candidate.supportingWord?.confidence
-        || (candidate.supportCount >= 2 ? candidate.cardWord?.confidence : undefined)
+        || (candidate.supportCount >= 2
+          ? candidate.cardDiagnostic?.confidence || candidate.cardWord?.confidence
+          : undefined)
       const clearPair = Boolean(
         !repaired
         && !ambiguousCompact
@@ -1792,9 +1851,7 @@ function applyCardOutputCandidates(
       )
       const valueEvidence = candidate.cardWord || candidate.supportingWord
       const valueBox = valueEvidence?.bounding_box
-      const cardDiagnostic = recognition.pass_output.card_diagnostics?.[key]?.find(
-        diagnostic => diagnostic.text === rawValue,
-      )
+      const cardDiagnostic = candidate.cardDiagnostic
       collectMetricCandidate(candidates, key, {
         value: parsedValue,
         candidate_value: parsedValue,
@@ -1845,11 +1902,17 @@ function applyCardOutputCandidates(
         label_source: anchoredCard && !(platform === 'tiktok_shop' && repaired)
           ? 'ocr_text'
           : 'platform_layout',
-        value_confidence: valueEvidence?.confidence,
+        value_confidence: cardDiagnostic?.confidence || valueEvidence?.confidence,
         spatial_score: clearPair ? 1 : undefined,
         value_source_pass: 'card',
         strategy: 'anchor_card',
         preprocessing_pass: cardDiagnostic?.preprocessing_pass,
+        evidence_source_family: cardDiagnostic?.evidence_source_family
+          || candidate.cardWord?.evidence_source_family
+          || 'anchor_aligned_card_crop',
+        evidence_group: cardDiagnostic?.evidence_group
+          || candidate.cardWord?.evidence_group
+          || candidate.evidenceGroup,
         supporting_word_boxes: cardDiagnostic
           ? [cardDiagnostic.bounding_box]
           : valueBox
@@ -1878,6 +1941,14 @@ function normalizeLayoutCardValue(
     : trimmed
   if (cell?.valueKind === 'compact' && cell.displayFormat?.compactSuffix && /\d/.test(glyphNormalized)) {
     const suffix = cell.displayFormat.compactSuffix
+    glyphNormalized = glyphNormalized
+      .replace(/([KM])\s*[.;:]+$/i, '$1')
+      .replace(/(?<=[\d.,\s])[aA](?=\d)/g, '4')
+      .replace(/\s+(?=[.,]\d{2}[KMxXÃ‚Â«]\s*$)/, '')
+    glyphNormalized = glyphNormalized.replace(
+      new RegExp(`^(\\d{1,3})\\s+(\\d{${cell.displayFormat.decimalPlaces || 2}})(?=[xXÂ«${suffix}]\\s*$)`, 'i'),
+      '$1.$2',
+    )
     glyphNormalized = glyphNormalized.replace(
       new RegExp(`([\\d.,])${suffix === 'M' ? 'm[nma]*' : 'k[kx]*'}$`, 'i'),
       `$1${suffix}`,
@@ -1886,11 +1957,51 @@ function normalizeLayoutCardValue(
   if (cell?.valueKind === 'duration' && /^\d{1,5}[:;]$/.test(glyphNormalized)) {
     return `${glyphNormalized.slice(0, -1)}s`
   }
+  if (cell?.valueKind === 'duration') {
+    const minuteSecond = glyphNormalized
+      .replace(/\s+/g, '')
+      .replace(/:$/, 's')
+      .match(/^(\d{1,2})m(\d{1,2})s?$/i)
+    if (minuteSecond) {
+      return `${minuteSecond[1]}:${minuteSecond[2].padStart(2, '0')}`
+    }
+  }
   if (cell?.valueKind === 'count_or_compact') {
-    return glyphNormalized.replace(/^[a-z]+\s*(?=\d)/i, '')
+    let normalizedCompact = glyphNormalized
+      .replace(
+        /^([mnlI|])\s*(\d)(\d{2})([KM])$/i,
+        '$2.$3$4',
+      )
+      .replace(/^([mnlI|])(?=[.,]\d+[KM]$)/i, '1')
+      .replace(/^[a-z]+\s*(?=\d)/i, '')
+    const compactFormat = cell.displayFormat
+    if (
+      compactFormat?.compactSuffix
+      && compactFormat.decimalPlaces
+      && new RegExp(
+        `^\\d{${compactFormat.decimalPlaces + 1}}${compactFormat.compactSuffix}$`,
+        'i',
+      ).test(normalizedCompact)
+    ) {
+      const digits = normalizedCompact.replace(/\D/g, '')
+      normalizedCompact = `${digits.slice(0, -compactFormat.decimalPlaces)}.${digits.slice(-compactFormat.decimalPlaces)}${compactFormat.compactSuffix}`
+    }
+    return normalizedCompact
   }
   const format = cell?.displayFormat
-  if (!format) return glyphNormalized
+  if (!format) {
+    if (
+      cell?.valueKind === 'percentage'
+      && /^\d{3,4}\s*%?$/.test(glyphNormalized)
+    ) {
+      const digits = glyphNormalized.replace(/\D/g, '')
+      for (let decimalPlaces = 1; decimalPlaces < digits.length; decimalPlaces += 1) {
+        const inferredValue = Number(digits) / (10 ** decimalPlaces)
+        if (inferredValue <= 100) return String(inferredValue)
+      }
+    }
+    return glyphNormalized
+  }
   let normalized = glyphNormalized.replace(/([0-9])[:;]([0-9])/g, '$1.$2')
   const suffix = format.compactSuffix
   if (suffix) {
@@ -1952,7 +2063,8 @@ function layoutCardRawQualityScore(cell: LayoutMetricCell, rawValue: string) {
   }
   if (cell.valueKind === 'compact') {
     if (/^\d+[:;]\d+$/.test(trimmed) && cell.displayFormat?.decimalPlaces) return 1.25
-    return /^\d+(?:[.,]\d+)?[KM]$/i.test(trimmed) ? 1 : .45
+    if (/^\d{1,3}(?:[.,]\d+)?[KM]$/i.test(trimmed)) return 1
+    return /^\d+(?:[.,]\d+)?[KM]$/i.test(trimmed) ? .35 : .45
   }
   if (cell.valueKind === 'count_or_compact') {
     return /^\d+(?:[.,]\d+)?[KM]?$/i.test(trimmed) ? 1 : .4
@@ -2083,6 +2195,7 @@ function applyExactRawTextCandidates(
   rawText: string,
   candidates: MetricCandidateInput[],
   strategy: NonNullable<OcrMetricValue['strategy']>,
+  evidenceGroup: string,
 ) {
   const exactReview = parseDashboardOcrText(platform, rawText, 'raw_text_exact')
   for (const [key, candidate] of Object.entries(exactReview.metrics) as Array<[ReportMetricKey, OcrMetricValue]>) {
@@ -2105,6 +2218,10 @@ function applyExactRawTextCandidates(
       preprocessing_pass: strategy === 'legacy_relative'
         ? 'original_full_image'
         : 'normalized_roi',
+      evidence_source_family: strategy === 'legacy_relative'
+        ? 'legacy_full_image_ocr'
+        : 'normalized_roi_ocr',
+      evidence_group: evidenceGroup,
     })
   }
 }
@@ -2197,6 +2314,20 @@ function metricHasUsableValue(metric: OcrMetricValue) {
     (typeof value !== 'number' || Number.isFinite(value))
 }
 
+function tiktokConfidenceContext(
+  diagnostics: OcrReviewData['region_diagnostics'] | undefined,
+) {
+  const selected = diagnostics?.dashboard_candidates.find(candidate =>
+    candidate.id === diagnostics.selected_candidate_id,
+  )
+  return selected
+    ? {
+      roiConfidence: selected.confidence,
+      anchorCount: selected.anchor_count,
+    }
+    : undefined
+}
+
 function collectMetricCandidate(
   candidates: MetricCandidateInput[],
   key: ReportMetricKey,
@@ -2212,21 +2343,169 @@ function isTikTokReliableEvidenceCandidate(candidate: MetricCandidateInput) {
 
 function isTikTokAgreementCandidate(candidate: MetricCandidateInput) {
   if (!isTikTokReliableEvidenceCandidate(candidate)) return false
-  if (candidate.metric.preprocessing_pass === 'geometry_compact_reconstruction') return true
+  if (candidate.metric.preprocessing_pass === 'geometry_compact_reconstruction') return false
   if (candidate.metric.strategy !== 'anchor_card') return true
   return (candidate.metric.value_confidence || 0) >= 30
+}
+
+function isTikTokConfirmationEvidenceCandidate(candidate: MetricCandidateInput) {
+  if (isTikTokAgreementCandidate(candidate)) return true
+  return candidate.metric.strategy === 'legacy_relative'
+    && candidate.metric.source === 'raw_text_exact'
+    && candidate.metric.normalized_key === candidate.key
+    && Boolean((candidate.metric.raw_value || candidate.metric.raw_ocr_value || '').match(/\d/))
+}
+
+function tiktokCandidateConfidence(candidate: MetricCandidateInput) {
+  if (typeof candidate.metric.value_confidence === 'number') {
+    return candidate.metric.value_confidence
+  }
+  switch (candidate.metric.confidence) {
+    case 'high':
+      return 90
+    case 'medium':
+      return 70
+    default:
+      return 40
+  }
+}
+
+function tiktokCompactFormatIsVisuallySupported(
+  key: CanonicalMetricKey,
+  candidates: readonly MetricCandidateInput[],
+) {
+  const cell = platformMetricLayouts.tiktok_shop.find(candidate => candidate.key === key)
+  if (!cell || (cell.valueKind !== 'compact' && cell.valueKind !== 'count_or_compact')) {
+    return true
+  }
+  const selectedValue = candidates[0]?.metric.value ?? candidates[0]?.metric.candidate_value
+  const usesCompactNotation = candidates.some(candidate =>
+    /[KM]\s*$/i.test(candidate.metric.raw_value || candidate.metric.raw_ocr_value || ''),
+  ) || (typeof selectedValue === 'number' && selectedValue >= 1_000)
+  if (!usesCompactNotation) return true
+
+  const declaredDigits = cell.displayFormat?.decimalPlaces
+  const visuallySupportedGroups = new Set(candidates.flatMap(candidate => {
+    const raw = (candidate.metric.raw_value || candidate.metric.raw_ocr_value || '')
+      .trim()
+      .replace(/[\s;:]+$/, '')
+    const hasVisibleSuffix = /[KM]$/i.test(raw)
+    const hasVisiblePrecision = declaredDigits
+      ? new RegExp(`[.,]\\d{${declaredDigits}}[KM]$`, 'i').test(raw)
+      : hasVisibleSuffix
+    return hasVisibleSuffix && hasVisiblePrecision
+      ? [tiktokEvidenceGroup(candidate.metric)]
+      : []
+  }))
+  return visuallySupportedGroups.size >= 2
+}
+
+function tiktokPreprocessingEvidenceAgrees(
+  winnerCandidates: readonly MetricCandidateInput[],
+  allKeyCandidates: readonly MetricCandidateInput[],
+) {
+  const winnerValue = winnerCandidates[0]?.metric.value
+    ?? winnerCandidates[0]?.metric.candidate_value
+  if (winnerValue === undefined) return false
+
+  const winningGroups = new Set(winnerCandidates
+    .filter(isTikTokConfirmationEvidenceCandidate)
+    .map(candidate => tiktokEvidenceGroup(candidate.metric)))
+  for (const evidenceGroup of winningGroups) {
+    const groupCandidates = allKeyCandidates.filter(candidate =>
+      isTikTokConfirmationEvidenceCandidate(candidate)
+      && tiktokEvidenceGroup(candidate.metric) === evidenceGroup,
+    )
+    const selectedConfidence = Math.max(
+      ...groupCandidates
+        .filter(candidate => metricValuesEqual(
+          candidate.metric.value ?? candidate.metric.candidate_value,
+          winnerValue,
+        ))
+        .map(tiktokCandidateConfidence),
+      0,
+    )
+    const similarlyStrongConflict = groupCandidates.some(candidate => {
+      const value = candidate.metric.value ?? candidate.metric.candidate_value
+      return !metricValuesEqual(value, winnerValue)
+        && tiktokCandidateConfidence(candidate) >= selectedConfidence - 8
+    })
+    if (similarlyStrongConflict) return false
+  }
+  return true
+}
+
+function assessTikTokConfirmation(
+  key: CanonicalMetricKey,
+  winnerCandidates: readonly MetricCandidateInput[],
+  allKeyCandidates: readonly MetricCandidateInput[],
+  decisive: boolean,
+  context?: { roiConfidence?: number; anchorCount?: number },
+) {
+  const agreementCandidates = winnerCandidates.filter(isTikTokConfirmationEvidenceCandidate)
+  const evidenceGroups = new Set(agreementCandidates
+    .map(candidate => tiktokEvidenceGroup(candidate.metric)))
+  const cell = platformMetricLayouts.tiktok_shop.find(candidate => candidate.key === key)
+  const usesCompactNotation = agreementCandidates.some(candidate =>
+    /[KM]\s*$/i.test(candidate.metric.raw_value || candidate.metric.raw_ocr_value || ''),
+  )
+  // A card crop and normalized ROI can share the same ambiguous count glyph.
+  // Plain integer counts therefore need a third, separately recognized full-image
+  // label/value observation. Compact values with a visible K/M suffix retain the
+  // two-group threshold because their magnitude and punctuation are explicit.
+  const highConfidenceRegionOwnership = (context?.roiConfidence || 0) >= .98
+    && (context?.anchorCount || 0) >= 9
+  const requiredEvidenceGroups = (
+    cell?.valueKind === 'count'
+    || (cell?.valueKind === 'count_or_compact' && !usesCompactNotation)
+  ) && !highConfidenceRegionOwnership ? 3 : 2
+  const hasAnchorCardOwnership = agreementCandidates.some(candidate =>
+    candidate.metric.strategy === 'anchor_card'
+    && candidate.metric.normalized_key === key
+    && tiktokEvidenceGroup(candidate.metric).startsWith('anchor_card:')
+    && Boolean(candidate.metric.supporting_word_boxes?.length),
+  )
+  const hasNormalizedRoiOwnership = agreementCandidates.some(candidate =>
+    candidate.metric.strategy === 'normalized_roi'
+    && candidate.metric.normalized_key === key
+    && tiktokEvidenceGroup(candidate.metric).startsWith('normalized_roi:')
+    && (
+      candidate.metric.label_source === 'ocr_text'
+      || Boolean(candidate.metric.supporting_word_boxes?.length)
+    ),
+  )
+  const formatSupported = tiktokCompactFormatIsVisuallySupported(key, agreementCandidates)
+  const preprocessingAgrees = tiktokPreprocessingEvidenceAgrees(
+    winnerCandidates,
+    allKeyCandidates,
+  )
+  const confirmed = evidenceGroups.size >= requiredEvidenceGroups
+    && hasAnchorCardOwnership
+    && hasNormalizedRoiOwnership
+    && decisive
+    && formatSupported
+    && preprocessingAgrees
+  const reason = confirmed
+    ? `TikTok confidence policy confirmed this value because ${evidenceGroups.size} independent evidence groups agree (minimum ${requiredEvidenceGroups}), card ownership is explicit, no similarly strong conflict exists, and the displayed value format is visually supported.`
+    : undefined
+  return { confirmed, evidenceGroups, reason }
 }
 
 function selectTikTokHybridMetricCandidates(
   candidates: readonly MetricCandidateInput[],
   expectedKeys: readonly CanonicalMetricKey[],
+  context?: { roiConfidence?: number; anchorCount?: number },
 ): MetricCandidateSelection {
-  const baseline = selectBestMetricCandidates(candidates, expectedKeys)
+  const expandedCandidates = [
+    ...candidates,
+    ...buildTikTokComplementaryCompactCandidates(candidates),
+  ]
+  const baseline = selectBestMetricCandidates(expandedCandidates, expectedKeys)
   const selectedByKey: MetricCandidateSelection['selectedByKey'] = {}
   const discardedConflicts: MetricCandidateSelection['discardedConflicts'] = []
 
   for (const key of expectedKeys) {
-    const keyCandidates = candidates.filter(candidate =>
+    const keyCandidates = expandedCandidates.filter(candidate =>
       candidate.key === key && metricHasUsableValue(candidate.metric),
     )
     if (!keyCandidates.length) continue
@@ -2243,7 +2522,7 @@ function selectTikTokHybridMetricCandidates(
     const rankedGroups = [...grouped.values()]
       .map(group => ({
         group,
-        score: tiktokStrategyGroupScore(key, group),
+        score: tiktokStrategyGroupScore(key, group, keyCandidates),
       }))
       .sort((left, right) => right.score - left.score)
     const winner = rankedGroups[0]
@@ -2251,16 +2530,6 @@ function selectTikTokHybridMetricCandidates(
     const selected = selectBestMetricCandidates(winner.group, [key]).selectedByKey[key]
     if (!selected) continue
     const runnerUp = rankedGroups[1]
-    const channels = new Set(winner.group.map(candidate =>
-      candidate.metric.strategy || 'unclassified',
-    ))
-    const reliableWinnerCandidates = winner.group.filter(isTikTokReliableEvidenceCandidate)
-    const agreementWinnerCandidates = reliableWinnerCandidates.filter(isTikTokAgreementCandidate)
-    const reliableChannels = new Set(agreementWinnerCandidates
-      .map(candidate => candidate.metric.strategy || 'unclassified'))
-    const preprocessingPasses = new Set(agreementWinnerCandidates.flatMap(candidate =>
-      candidate.metric.preprocessing_pass ? [candidate.metric.preprocessing_pass] : [],
-    ))
     const strategyCandidates = keyCandidates.flatMap(candidate =>
       candidate.metric.strategy
         ? [{
@@ -2270,19 +2539,28 @@ function selectTikTokHybridMetricCandidates(
           confidence: candidate.metric.confidence,
           card_ownership: key,
           preprocessing_pass: candidate.metric.preprocessing_pass,
+          evidence_source_family: candidate.metric.evidence_source_family,
+          evidence_group: candidate.metric.evidence_group,
           supporting_word_boxes: candidate.metric.supporting_word_boxes,
           rejection_reason: candidate.metric.rejection_reason,
         }]
         : [],
     )
     const decisive = !runnerUp || winner.score - runnerUp.score >= .35
-    const hasConsensus = reliableChannels.size >= 2 || preprocessingPasses.size >= 2
+    const confirmation = assessTikTokConfirmation(
+      key,
+      winner.group,
+      keyCandidates,
+      decisive,
+      context,
+    )
     const evidenceSummary = winner.group.map(candidate =>
       `${candidate.metric.strategy || 'unclassified'}`
+      + `/${tiktokEvidenceGroup(candidate.metric)}`
       + `/${candidate.metric.preprocessing_pass || 'unknown'}`
       + `=${candidate.metric.raw_value || candidate.metric.raw_ocr_value || ''}`,
     ).join(', ')
-    selectedByKey[key] = hasConsensus && decisive
+    selectedByKey[key] = confirmation.confirmed
       ? {
         ...selected,
         status: 'confirmed',
@@ -2291,7 +2569,7 @@ function selectTikTokHybridMetricCandidates(
         conflict_warning: undefined,
         rejection_reason: undefined,
         strategy_candidates: strategyCandidates,
-        pairing_reason: `TikTok hybrid consensus selected this value from ${channels.size} strategy channel(s) and ${Math.max(1, preprocessingPasses.size)} preprocessing pass(es): ${evidenceSummary}.`,
+        pairing_reason: `${confirmation.reason} Evidence: ${evidenceSummary}.`,
       }
       : {
         ...selected,
@@ -2328,22 +2606,104 @@ function selectTikTokHybridMetricCandidates(
   }
 }
 
+function buildTikTokComplementaryCompactCandidates(
+  candidates: readonly MetricCandidateInput[],
+): MetricCandidateInput[] {
+  const reconstructed: MetricCandidateInput[] = []
+  const seen = new Set<string>()
+  for (const cell of platformMetricLayouts.tiktok_shop) {
+    if (cell.valueKind !== 'compact' || !cell.displayFormat?.compactSuffix) continue
+    if (!isCanonicalMetricKey(cell.key)) continue
+    const keyCandidates = candidates.filter(candidate =>
+      candidate.key === cell.key && metricHasUsableValue(candidate.metric))
+    for (const normalizedCandidate of keyCandidates) {
+      if (normalizedCandidate.metric.strategy !== 'normalized_roi') continue
+      const normalizedRaw = (
+        normalizedCandidate.metric.raw_value
+        || normalizedCandidate.metric.raw_ocr_value
+        || ''
+      ).replace(/\s+/g, '')
+      const ambiguous = normalizedRaw.match(/^(\d{2})([A-Za-z])(\d)([KkMmXx])$/)
+      if (!ambiguous) continue
+      for (const cardCandidate of keyCandidates) {
+        if (
+          cardCandidate.metric.strategy !== 'anchor_card'
+          || tiktokEvidenceGroup(cardCandidate.metric)
+            === tiktokEvidenceGroup(normalizedCandidate.metric)
+        ) continue
+        const cardRaw = cardCandidate.metric.raw_value
+          || cardCandidate.metric.raw_ocr_value
+          || ''
+        const cardDigits = cardRaw.replace(/\D/g, '')
+        if (cardDigits.length < 2 || cardDigits.at(-1) !== ambiguous[3]) continue
+        const fusedDigits = `${ambiguous[1]}${cardDigits.slice(-2)}`
+        const decimalPlaces = cell.displayFormat.decimalPlaces || 2
+        if (fusedDigits.length <= decimalPlaces) continue
+        const reconstructedRaw = `${fusedDigits.slice(0, -decimalPlaces)}.${fusedDigits.slice(-decimalPlaces)}${cell.displayFormat.compactSuffix}`
+        const value = parseMetricOcrValue('tiktok_shop', cell.key, reconstructedRaw)
+        if (validateMetricCandidate(cell.key, value, reconstructedRaw)) continue
+        const signature = `${cell.key}:${String(value)}`
+        if (seen.has(signature)) continue
+        seen.add(signature)
+        reconstructed.push({
+          key: cell.key,
+          metric: {
+            value,
+            candidate_value: value,
+            normalized_value: value,
+            confidence: 'low',
+            needs_review: true,
+            status: 'review_required',
+            original_label: cell.label,
+            raw_value: reconstructedRaw,
+            raw_ocr_value: `${normalizedRaw} + ${cardRaw}`,
+            normalized_key: cell.key,
+            unit: inferMetricUnit(cell.key, reconstructedRaw),
+            source: 'spatial_fallback',
+            strategy: 'anchor_card',
+            value_source_pass: 'card',
+            preprocessing_pass: 'geometry_compact_reconstruction',
+            evidence_source_family: normalizedCandidate.metric.evidence_source_family
+              || 'normalized_roi_ocr',
+            evidence_group: normalizedCandidate.metric.evidence_group
+              || 'normalized_roi:primary',
+            supporting_word_boxes: [
+              ...(normalizedCandidate.metric.supporting_word_boxes || []),
+              ...(cardCandidate.metric.supporting_word_boxes || []),
+            ],
+            rejection_reason: 'Independent compact-number views preserved complementary glyphs; the reconstructed value requires review.',
+          },
+        })
+      }
+    }
+  }
+  return reconstructed
+}
+
 function tiktokStrategyGroupScore(
   key: CanonicalMetricKey,
   candidates: readonly MetricCandidateInput[],
+  allKeyCandidates: readonly MetricCandidateInput[],
 ) {
   const cell = platformMetricLayouts.tiktok_shop.find(candidate => candidate.key === key)
   const reliableCandidates = candidates.filter(isTikTokReliableEvidenceCandidate)
   const scoringCandidates = reliableCandidates.length ? reliableCandidates : candidates
   const agreementCandidates = reliableCandidates.filter(isTikTokAgreementCandidate)
-  const reliableStrategies = new Set(agreementCandidates.map(candidate =>
-    candidate.metric.strategy || 'unclassified',
-  ))
+  const reliableStrategies = new Set(agreementCandidates
+    .map(candidate => candidate.metric.strategy || 'unclassified'))
+  const reliableEvidenceGroups = new Set(agreementCandidates
+    .map(candidate => tiktokEvidenceGroup(candidate.metric)))
   const strategyWeight = Math.max(...candidates.map(candidate => {
     if (
       candidate.metric.strategy === 'anchor_card'
       || candidate.metric.strategy === 'normalized_roi'
-    ) return 3.5
+    ) {
+      if (
+        candidate.metric.strategy === 'normalized_roi'
+        && cell?.valueKind === 'count'
+      ) return 5.2
+      return candidate.metric.strategy === 'normalized_roi' ? 3.8 : 4.2
+    }
     if (candidate.metric.strategy === 'legacy_relative') return 1
     return 2
   }))
@@ -2356,33 +2716,84 @@ function tiktokStrategyGroupScore(
       const compact = normalized.match(/^[-+]?\d+(?:[.,](\d+))?[KM]$/i)
       const fractionDigits = compact?.[1]?.length || 0
       const declaredDigits = cell.displayFormat?.decimalPlaces
+      const cleanedRaw = raw.trim().replace(/[\s.;:]+$/, '')
       const explicitDeclaredPrecision = declaredDigits
-        ? new RegExp(`[.,:;]\\d{${declaredDigits}}(?:[KM])?$`, 'i').test(raw.trim())
+        ? new RegExp(`[.,:;]\\d{${declaredDigits}}(?:[KM])?$`, 'i').test(cleanedRaw)
         : false
+      const inferredDeclaredPrecision = declaredDigits
+        ? new RegExp(`^\\d{${declaredDigits + 1}}(?:%|[KM])?$`, 'i')
+          .test(raw.trim().replace(/\s+/g, ''))
+        : false
+      const groupedPrimaryGmv = cell.key === 'gmv'
+        && candidate.metric.strategy === 'normalized_roi'
+        && /^\d{1,3}(?:[.,]\d{3}){2,}$/.test(raw.trim())
+      const adaptiveFormatRecovery = cell.valueKind === 'compact'
+        && explicitDeclaredPrecision
+        && candidate.metric.strategy === 'anchor_card'
+        && (
+          candidate.metric.preprocessing_pass === 'adaptive_light_text'
+          || candidate.metric.preprocessing_pass === 'adaptive_dark_text'
+        )
+        && cleanedRaw !== raw.trim()
+      const adaptiveInferredFormatRecovery = cell.valueKind === 'compact'
+        && inferredDeclaredPrecision
+        && /[KM]\s*[\s.;:]*$/i.test(raw.trim())
+        && candidate.metric.strategy === 'anchor_card'
+        && (
+          candidate.metric.preprocessing_pass === 'adaptive_light_text'
+          || candidate.metric.preprocessing_pass === 'adaptive_dark_text'
+        )
+        && (candidate.metric.value_confidence || 0) >= 30
+      const compactIntegerDigits = compact
+        ? normalized.split(/[.,]/, 1)[0].replace(/\D/g, '').length
+        : 0
       const formatBonus = cell.valueKind === 'count_or_compact'
         ? compact
-          ? fractionDigits > 0 ? 1.5 : .2
+          ? declaredDigits && fractionDigits === declaredDigits
+            ? 4.5
+            : fractionDigits > 0 ? 1.5 : .2
           : Number.isInteger(value) ? 1 : 0
         : cell.valueKind === 'compact' && declaredDigits
           ? fractionDigits === declaredDigits
-            ? explicitDeclaredPrecision ? 2 : 1
+            ? explicitDeclaredPrecision
+              ? 3.5
+              : inferredDeclaredPrecision ? 3 : 1.5
             : 0
-          : cell.valueKind === 'percentage' && /\d[.,]\d/.test(normalized)
-            ? 1
-            : 0
-      return shape * 2 + formatBonus
+          : (cell.valueKind === 'percentage' || cell.valueKind === 'ratio')
+            && declaredDigits
+            && (
+              new RegExp(`[.,:]\\d{${declaredDigits}}(?:%|[KM])?$`, 'i').test(raw.trim())
+              || inferredDeclaredPrecision
+            )
+            ? inferredDeclaredPrecision ? 2 : 1.5
+            : cell.valueKind === 'percentage' && /\d[.,]\d/.test(normalized)
+              ? 1
+              : cell.valueKind === 'duration'
+                ? /^\d{1,2}\s*m\s*\d{1,2}\s*s?$/i.test(raw.trim())
+                  ? 3
+                  : /^\d+(?:[.,]\d+)?\s*s$/i.test(raw.trim()) ? .5 : 0
+              : 0
+      return shape * 2
+        + formatBonus
+        + (groupedPrimaryGmv ? 2.5 : 0)
+        + (adaptiveFormatRecovery ? 2.5 : 0)
+        + (adaptiveInferredFormatRecovery ? 2.5 : 0)
+        - (cell.valueKind === 'compact' && compactIntegerDigits > 3
+          ? Math.min(5, (compactIntegerDigits - 3) * 2)
+          : 0)
+        - tiktokMergedNumericTokenPenalty(candidate.metric, cell)
     }))
     : 0
-  const largestPassAgreement = Math.max(1, ...[...reliableStrategies].map(strategy =>
-    new Set(agreementCandidates
-      .filter(candidate => (candidate.metric.strategy || 'unclassified') === strategy)
-      .map(candidate => candidate.metric.preprocessing_pass || candidate.metric.source || 'unknown'))
-      .size,
-  ))
-  const passAgreementBonus = Math.min(.5, Math.max(0, largestPassAgreement - 1) * .5)
-  const repeatedObservationBonus = Math.min(
-    1,
-    Math.max(0, agreementCandidates.length - 1) * .5,
+  const independentEvidenceBonus = Math.min(
+    2,
+    Math.max(0, reliableEvidenceGroups.size - 1),
+  )
+  // Repeated preprocessing of one crop is only a small within-family
+  // tie-breaker. It never creates an independent evidence group and therefore
+  // cannot confirm a metric on its own.
+  const sameGroupRepeatQuality = Math.min(
+    .35,
+    Math.max(0, agreementCandidates.length - reliableEvidenceGroups.size) * .12,
   )
   const independentStrategyBonus = Math.min(
     .5,
@@ -2401,14 +2812,17 @@ function tiktokStrategyGroupScore(
     const valueConfidence = candidate.metric.value_confidence || 0
     switch (candidate.metric.preprocessing_pass) {
       case 'inverted_grayscale':
+        return valueConfidence >= 30 ? 1.35 : .45
       case 'original_color':
-        return valueConfidence >= 30 ? 1 : .35
+        return valueConfidence >= 30 ? 1.3 : .45
+      case 'local_contrast':
+        return valueConfidence >= 30 ? 1.15 : .4
       case 'fixed_threshold':
         return valueConfidence >= 30 ? .8 : .3
       case 'normalized_roi':
-        return 1.3
+        return 1.5
       case 'geometry_compact_reconstruction':
-        return 1.1
+        return 4.5
       case 'adaptive_light_text':
       case 'adaptive_dark_text':
       case 'adaptive_roi':
@@ -2419,14 +2833,198 @@ function tiktokStrategyGroupScore(
         return 0
     }
   }))
+  const sourceOwnershipQuality = Math.max(...scoringCandidates.map(candidate => {
+    switch (candidate.metric.source) {
+      case 'word_box_exact':
+      case 'card_exact':
+        return .6
+      case 'spatial_fallback':
+        return .25
+      case 'raw_text_sequence':
+        if (candidate.metric.strategy !== 'normalized_roi') return -2.5
+        if (cell?.valueKind === 'count' || cell?.valueKind === 'duration') return .65
+        return cell?.valueKind === 'compact' || cell?.valueKind === 'count_or_compact'
+          ? .15
+          : -2.5
+      default:
+        return 0
+    }
+  }))
+  const crossEvidenceProximity = tiktokCrossEvidenceProximityBonus(
+    key,
+    candidates,
+    allKeyCandidates,
+    cell,
+  )
+  const exactEvidenceSupport = Math.min(
+    1.5,
+    Math.max(
+      0,
+      new Set(candidates
+        .filter(candidate => candidate.metric.strategy !== 'legacy_relative')
+        .map(candidate => tiktokEvidenceGroup(candidate.metric)))
+        .size - 1,
+    ) * 1.5,
+  )
+  const normalizedSpatialEvidence = cell?.valueKind === 'compact'
+    && candidates.some(candidate => {
+      if (
+        candidate.metric.strategy !== 'normalized_roi'
+        || (candidate.metric.supporting_word_boxes?.length || 0) < 2
+        || (candidate.metric.value_confidence || 0) < 20
+      ) return false
+      const raw = candidate.metric.raw_value || candidate.metric.raw_ocr_value || ''
+      if (/-/.test(raw)) return false
+      const normalized = normalizeLayoutCardValue(cell, raw)
+      const declaredDigits = cell.displayFormat?.decimalPlaces
+      return Boolean(
+        declaredDigits
+        && new RegExp(`[.,]\\d{${declaredDigits}}[KM]$`, 'i').test(normalized),
+      )
+    })
+    ? 3.9
+    : 0
+  const sameCropCompactSupport = (
+    cell?.valueKind === 'compact' || cell?.valueKind === 'count_or_compact'
+  )
+    ? Math.min(
+      .35,
+      Math.max(
+        0,
+        new Set(candidates
+          .filter(candidate => candidate.metric.strategy === 'anchor_card')
+          .map(candidate =>
+            candidate.metric.preprocessing_pass || candidate.metric.source || 'unknown'))
+          .size - 1,
+      ),
+    )
+    : 0
+  const normalizedCountNoisePenalty = cell?.valueKind === 'count'
+    && scoringCandidates.every(candidate => {
+      if (candidate.metric.strategy !== 'normalized_roi') return false
+      const raw = candidate.metric.raw_value || candidate.metric.raw_ocr_value || ''
+      return !/^\s*\d+\s*$/.test(raw)
+    })
+    ? 1
+    : 0
+  const informationCompleteness = tiktokInformationCompletenessBonus(
+    candidates,
+    allKeyCandidates,
+    cell,
+  )
   return strategyWeight
     + formatQuality
-    + passAgreementBonus
-    + repeatedObservationBonus
+    + independentEvidenceBonus
+    + sameGroupRepeatQuality
     + independentStrategyBonus
     + pairQuality
     + confidenceQuality
     + preprocessingQuality
+    + sourceOwnershipQuality
+    + crossEvidenceProximity
+    + exactEvidenceSupport
+    + normalizedSpatialEvidence
+    + sameCropCompactSupport
+    + informationCompleteness
+    - normalizedCountNoisePenalty
+}
+
+function tiktokInformationCompletenessBonus(
+  candidates: readonly MetricCandidateInput[],
+  allKeyCandidates: readonly MetricCandidateInput[],
+  cell: LayoutMetricCell | undefined,
+) {
+  if (cell?.valueKind === 'compact' || cell?.valueKind === 'count_or_compact') return 0
+  const anchorCandidates = candidates.filter(candidate =>
+    candidate.metric.strategy === 'anchor_card')
+  if (!anchorCandidates.length) return 0
+  const evidenceGroups = new Set(anchorCandidates.map(candidate =>
+    tiktokEvidenceGroup(candidate.metric)))
+  const comparable = allKeyCandidates.filter(candidate =>
+    candidate.metric.strategy === 'anchor_card'
+    && evidenceGroups.has(tiktokEvidenceGroup(candidate.metric)))
+  if (!comparable.length) return 0
+  const digitCount = (candidate: MetricCandidateInput) =>
+    (candidate.metric.raw_value || candidate.metric.raw_ocr_value || '')
+      .replace(/\D/g, '')
+      .length
+  const candidateDigits = Math.max(...anchorCandidates.map(digitCount))
+  const maximumDigits = Math.max(...comparable.map(digitCount))
+  if (!candidateDigits || candidateDigits < maximumDigits) return 0
+  const candidateConfidence = Math.max(...anchorCandidates.map(candidate =>
+    candidate.metric.value_confidence || 0))
+  const maximumConfidence = Math.max(...comparable.map(candidate =>
+    candidate.metric.value_confidence || 0))
+  const minimumConfidence = anchorCandidates.some(candidate => {
+    const raw = candidate.metric.raw_value || candidate.metric.raw_ocr_value || ''
+    return /%$/.test(raw.trim())
+  }) ? 0 : 25
+  return candidateConfidence >= minimumConfidence
+    && maximumConfidence - candidateConfidence <= 12
+    ? .75
+    : 0
+}
+
+function tiktokCrossEvidenceProximityBonus(
+  key: CanonicalMetricKey,
+  candidates: readonly MetricCandidateInput[],
+  allKeyCandidates: readonly MetricCandidateInput[],
+  cell: LayoutMetricCell | undefined,
+) {
+  if (
+    !cell
+    || !['percentage', 'ratio', 'compact', 'count_or_compact', 'count'].includes(cell.valueKind)
+  ) return 0
+  const candidateValues = candidates.flatMap(candidate => {
+    const value = candidate.metric.value ?? candidate.metric.candidate_value
+    return typeof value === 'number' && Number.isFinite(value) ? [value] : []
+  })
+  if (!candidateValues.length) return 0
+  const evidenceGroups = new Set(candidates.map(candidate =>
+    tiktokEvidenceGroup(candidate.metric)))
+  const otherValues = allKeyCandidates.flatMap(candidate => {
+    if (evidenceGroups.has(tiktokEvidenceGroup(candidate.metric))) return []
+    const value = candidate.metric.value ?? candidate.metric.candidate_value
+    return typeof value === 'number' && Number.isFinite(value) ? [value] : []
+  })
+  if (!otherValues.length) return 0
+  const isClose = candidateValues.some(value =>
+    otherValues.some(otherValue => {
+      if (cell.valueKind === 'percentage' || cell.valueKind === 'ratio') {
+        return Math.abs(value - otherValue) <= .05
+      }
+      if (cell.valueKind === 'count') return Math.abs(value - otherValue) <= 1
+      const scale = Math.max(Math.abs(value), Math.abs(otherValue), 1)
+      return Math.abs(value - otherValue) / scale <= .005
+    }))
+  return isClose ? 1.75 : 0
+}
+
+function tiktokEvidenceGroup(metric: OcrMetricValue) {
+  if (metric.evidence_group) return metric.evidence_group
+  if (metric.strategy === 'anchor_card') {
+    return `anchor_card:${metric.normalized_key || 'unknown'}`
+  }
+  if (metric.strategy === 'normalized_roi') return 'normalized_roi:primary'
+  if (metric.strategy === 'legacy_relative') return 'legacy_full_image:primary'
+  return `${metric.source || 'unknown'}:${metric.value_source_pass || 'unknown'}`
+}
+
+function tiktokMergedNumericTokenPenalty(
+  metric: OcrMetricValue,
+  cell: LayoutMetricCell,
+) {
+  if (metric.strategy === 'anchor_card') return 0
+  const raw = metric.raw_value || metric.raw_ocr_value || ''
+  if (!raw.trim()) return 0
+  const numericTokens = raw.match(/\d+(?:[.,:]\d+)*(?:[KM])?/gi) || []
+  if (numericTokens.length <= 1) return 0
+  if (
+    cell.valueKind === 'duration'
+    && numericTokens.length === 2
+    && /^\s*\d+\s*(?:m|min)\s*\d+\s*s?\s*$/i.test(raw)
+  ) return 0
+  return Math.min(5, (numericTokens.length - 1) * 2.5)
 }
 
 function metricValuesEqual(left: ReportMetricValue | undefined, right: ReportMetricValue | undefined) {
@@ -2624,7 +3222,7 @@ function applyPlatformLayoutCandidates(
       if (seen.has(signature)) return []
       seen.add(signature)
       const normalizedRaw = normalizeLayoutCardValue(cell, rawValue)
-      const parsedValue = parseOcrValue(normalizedRaw)
+      const parsedValue = parseMetricOcrValue(platform, cell.key, normalizedRaw)
       const sanityError = validateMetricCandidate(cell.key, parsedValue, normalizedRaw)
       const shapeScore = layoutValueShapeScore(cell.valueKind, normalizedRaw, parsedValue)
       if (sanityError || shapeScore <= 0) return []
@@ -2705,6 +3303,8 @@ function applyPlatformLayoutCandidates(
         spatial_score: candidate.spatialScore,
         label_source: 'platform_layout',
         value_source_pass: candidate.pass,
+        evidence_source_family: candidate.words[0]?.evidence_source_family,
+        evidence_group: candidate.words[0]?.evidence_group,
       })
     }
     candidates[0].words.forEach(word => consumedWords.add(word))

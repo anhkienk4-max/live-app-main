@@ -374,6 +374,10 @@ export interface LiveReportImage {
 export type OcrConfidence = 'high' | 'medium' | 'low'
 export type OcrMetricStatus = 'confirmed' | 'accepted' | 'review_required' | 'low_confidence' | 'rejected' | 'manual' | 'empty'
 export type OcrExtractionStrategy = 'anchor_card' | 'normalized_roi' | 'legacy_relative'
+export type OcrEvidenceSourceFamily =
+  | 'anchor_aligned_card_crop'
+  | 'normalized_roi_ocr'
+  | 'legacy_full_image_ocr'
 export type TikTokLayoutFamily =
   | 'standard'
   | 'wide_desktop'
@@ -466,6 +470,8 @@ export interface OcrMetricValue {
   conflict_warning?: string
   strategy?: OcrExtractionStrategy
   preprocessing_pass?: string
+  evidence_source_family?: OcrEvidenceSourceFamily
+  evidence_group?: string
   supporting_word_boxes?: Array<{ x: number; y: number; width: number; height: number }>
   strategy_candidates?: Array<{
     strategy: OcrExtractionStrategy
@@ -474,6 +480,8 @@ export interface OcrMetricValue {
     confidence: OcrConfidence
     card_ownership: ReportMetricKey
     preprocessing_pass?: string
+    evidence_source_family?: OcrEvidenceSourceFamily
+    evidence_group?: string
     supporting_word_boxes?: Array<{ x: number; y: number; width: number; height: number }>
     rejection_reason?: string
   }>
@@ -590,6 +598,8 @@ export interface OcrRecognizedWord {
   platform: ReportDashboardPlatform
   source: 'image_ocr'
   pass: 'label' | 'numeric' | 'card'
+  evidence_source_family?: OcrEvidenceSourceFamily
+  evidence_group?: string
   bounding_box: { x: number; y: number; width: number; height: number }
   x0?: number
   y0?: number
@@ -614,6 +624,8 @@ export interface OcrImageRecognition {
       text: string
       confidence: number
       preprocessing_pass: string
+      evidence_source_family?: OcrEvidenceSourceFamily
+      evidence_group?: string
       bounding_box: { x: number; y: number; width: number; height: number }
     }>>
     strategy_text?: Partial<Record<OcrExtractionStrategy, string>>

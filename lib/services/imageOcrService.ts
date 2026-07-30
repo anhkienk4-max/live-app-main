@@ -1,6 +1,7 @@
 import type {
   OcrCropBox,
   OcrDashboardCandidate,
+  OcrEvidenceSourceFamily,
   OcrImageRecognition,
   OcrRecognizedWord,
   ReportDashboardPlatform,
@@ -168,6 +169,8 @@ async function recognizeDashboardImageInBrowser(
       platform,
       { left: 0, top: 0 },
       browserPreprocessScale,
+      'legacy_full_image_ocr',
+      'legacy_full_image:primary',
     )
     const visualHints = browserVisualHints(bitmap)
     const regionResult = detectDashboardRegions({
@@ -214,6 +217,8 @@ async function recognizeDashboardImageInBrowser(
         selected,
         normalizedCanvas.width,
         normalizedCanvas.height,
+        'roi-label',
+        `normalized_roi:${selected.id}`,
       )
       normalizedStrategyText = normalizedResult.data.text.trim()
       const adaptiveRoi = createBrowserAdaptiveMetricCanvas(
@@ -239,6 +244,7 @@ async function recognizeDashboardImageInBrowser(
         normalizedCanvas.width,
         normalizedCanvas.height,
         'roi-adaptive',
+        `normalized_roi:${selected.id}`,
       )
       selectedText = [
         normalizedResult.data.text.trim(),
@@ -304,6 +310,7 @@ async function recognizeMetricCardsInBrowser(
     // remain available through anchor text, but are not cropped from this ROI.
     if (cell.x < 0 || cell.x > 1 || cell.y < 0 || cell.y > 1) continue
     const labelOriginalBox = roiCellBoundingBox(candidate, cell, 'label')
+    const evidenceGroup = `anchor_card:${candidate.id}:${cell.key}`
     const labelOriginalCrop = {
       left: labelOriginalBox.x,
       top: labelOriginalBox.y,
@@ -343,6 +350,8 @@ async function recognizeMetricCardsInBrowser(
         labelOriginalCrop,
         platform,
         'label',
+        'anchor_aligned_card_crop',
+        evidenceGroup,
       ))
     }
 
@@ -361,7 +370,10 @@ async function recognizeMetricCardsInBrowser(
         platform,
       )
       : originalCrop
-    const scale = platform === 'tiktok_shop' ? 7 : 5
+    const appearance = inspectBrowserMetricCrop(cardSource, crop)
+    const scale = platform === 'tiktok_shop'
+      ? crop.height <= 34 || appearance.blurEstimate >= .55 ? 9 : 7
+      : 5
     await worker.setParameters({
       tessedit_pageseg_mode: browserValuePsm(cell, psm),
       tessedit_char_whitelist: browserValueWhitelist(cell),
@@ -380,14 +392,12 @@ async function recognizeMetricCardsInBrowser(
       crop: originalCrop,
       preprocessingPass: 'inverted_grayscale',
     }]
-    const useColorPass = platform === 'tiktok_shop' && [
-      'current_viewers',
-      'advertising_cost',
-      'ctor',
-      'buyers',
-      'live_ctr',
-      'estimated_gmv',
-    ].includes(cell.key)
+    const useColorPass = platform === 'tiktok_shop'
+      && (
+        appearance.saturation >= .04
+        || appearance.dynamicRange < 190
+        || appearance.blurEstimate >= .35
+      )
     if (useColorPass) {
       const colorCanvas = createBrowserOriginalMetricCanvas(cardSource, crop, scale)
       const colorResult = await worker.recognize(
@@ -403,9 +413,10 @@ async function recognizeMetricCardsInBrowser(
       })
     }
     const alwaysThreshold = platform === 'tiktok_shop'
-      ? ['click_rate', 'average_order_value', 'live_ctr'].includes(cell.key)
+      ? true
       : ['sales', 'comment_rate', 'gpm', 'ctr'].includes(cell.key)
-    const lowConfidenceRetry = cell.valueKind !== 'count' && variants[0].confidence < 60
+    const lowConfidenceRetry = cell.valueKind !== 'count'
+      && variants[0].confidence < (cell.valueKind === 'compact' ? 85 : 60)
     if (!/\d/.test(variants[0].text) || lowConfidenceRetry || alwaysThreshold) {
       await worker.setParameters({
         tessedit_pageseg_mode: psm.SINGLE_LINE,
@@ -425,6 +436,31 @@ async function recognizeMetricCardsInBrowser(
         crop: originalCrop,
         preprocessingPass: 'fixed_threshold',
       })
+      if (
+        platform === 'tiktok_shop'
+        && (
+          appearance.dynamicRange < 210
+          || appearance.blurEstimate >= .3
+          || new Set(variants.map(variant => variant.text)).size > 1
+        )
+      ) {
+        const localContrastCanvas = createBrowserLocalContrastMetricCanvas(
+          cardSource,
+          crop,
+          Math.max(scale, 8),
+        )
+        const localContrastResult = await worker.recognize(
+          localContrastCanvas,
+          { rotateAuto: false },
+          { text: true },
+        )
+        variants.push({
+          text: normalizeBrowserCardText(localContrastResult.data.text),
+          confidence: localContrastResult.data.confidence,
+          crop: originalCrop,
+          preprocessingPass: 'local_contrast',
+        })
+      }
       const adaptiveCanvas = createBrowserAdaptiveMetricCanvas(cardSource, crop, scale, true)
       const adaptiveResult = await worker.recognize(
         adaptiveCanvas,
@@ -452,6 +488,67 @@ async function recognizeMetricCardsInBrowser(
         })
       }
     }
+    const compactDecimalPlaces = cell.valueKind === 'compact'
+      ? cell.displayFormat?.decimalPlaces
+      : undefined
+    const compactSuffix = cell.valueKind === 'compact'
+      ? cell.displayFormat?.compactSuffix
+      : undefined
+    const hasDeclaredCompactPrecision = compactDecimalPlaces && compactSuffix
+      ? variants.some(variant => new RegExp(
+        `[.,]\\d{${compactDecimalPlaces}}${compactSuffix}\\s*[.;:]*$`,
+        'i',
+      ).test(variant.text.trim()))
+      : true
+    if (!hasDeclaredCompactPrecision) {
+      await worker.setParameters({
+        tessedit_pageseg_mode: psm.SINGLE_WORD,
+        tessedit_char_whitelist: browserValueWhitelist(cell),
+        preserve_interword_spaces: '0',
+        user_defined_dpi: '300',
+      })
+      const tightGlyphCrop = browserBrightGlyphCrop(cardSource, crop)
+      const highResolutionCanvas = createBrowserOriginalMetricCanvas(
+        cardSource,
+        tightGlyphCrop,
+        Math.max(scale, 12),
+      )
+      const highResolutionResult = await worker.recognize(
+        highResolutionCanvas,
+        { rotateAuto: false },
+        { text: true },
+      )
+      variants.push({
+        text: normalizeBrowserCardText(highResolutionResult.data.text),
+        confidence: highResolutionResult.data.confidence,
+        crop: originalCrop,
+        preprocessingPass: 'high_resolution_color',
+      })
+      await worker.setParameters({
+        tessedit_pageseg_mode: psm.SINGLE_LINE,
+        tessedit_char_whitelist: browserValueWhitelist(cell),
+        preserve_interword_spaces: '0',
+        user_defined_dpi: '300',
+      })
+      const segmentedGlyphCanvas = createBrowserSegmentedGlyphCanvas(
+        cardSource,
+        tightGlyphCrop,
+        Math.max(scale, 12),
+      )
+      if (segmentedGlyphCanvas) {
+        const segmentedGlyphResult = await worker.recognize(
+          segmentedGlyphCanvas,
+          { rotateAuto: false },
+          { text: true },
+        )
+        variants.push({
+          text: normalizeBrowserCardText(segmentedGlyphResult.data.text),
+          confidence: segmentedGlyphResult.data.confidence,
+          crop: originalCrop,
+          preprocessingPass: 'segmented_glyphs',
+        })
+      }
+    }
     const reconstructedCompact = reconstructCompactCardValue(cell, variants)
     if (reconstructedCompact) variants.unshift(reconstructedCompact)
     // Keep the least-destructive pass first. Threshold and adaptive variants
@@ -463,6 +560,8 @@ async function recognizeMetricCardsInBrowser(
       text: variant.text,
       confidence: variant.confidence,
       preprocessing_pass: variant.preprocessingPass,
+      evidence_source_family: 'anchor_aligned_card_crop',
+      evidence_group: evidenceGroup,
       bounding_box: {
         x: variant.crop.left,
         y: variant.crop.top,
@@ -481,6 +580,8 @@ async function recognizeMetricCardsInBrowser(
         platform,
         source: 'image_ocr',
         pass: 'card',
+        evidence_source_family: 'anchor_aligned_card_crop',
+        evidence_group: evidenceGroup,
         bounding_box: {
           x: variant.crop.left,
           y: variant.crop.top,
@@ -524,7 +625,7 @@ function browserValueWhitelist(cell: LayoutMetricCell) {
   if (cell.valueKind === 'count') return '0123456789'
   if (cell.valueKind === 'count_or_compact') return '0123456789.,KkMm'
   if (cell.valueKind === 'percentage') return '0123456789.,%'
-  if (cell.valueKind === 'duration') return '0123456789:'
+  if (cell.valueKind === 'duration') return '0123456789:mMsS'
   if (cell.valueKind === 'compact') return '0123456789.,KkMm'
   return '0123456789.,'
 }
@@ -542,6 +643,8 @@ function browserCardWord(
   crop: { left: number; top: number; width: number; height: number },
   platform: Exclude<ReportDashboardPlatform, 'other'>,
   pass: OcrRecognizedWord['pass'],
+  evidenceSourceFamily?: OcrEvidenceSourceFamily,
+  evidenceGroup?: string,
 ): OcrRecognizedWord {
   return {
     text,
@@ -552,6 +655,8 @@ function browserCardWord(
     platform,
     source: 'image_ocr',
     pass,
+    evidence_source_family: evidenceSourceFamily,
+    evidence_group: evidenceGroup,
     bounding_box: {
       x: crop.left,
       y: crop.top,
@@ -684,6 +789,305 @@ function createBrowserOriginalMetricCanvas(
   )
   context.filter = 'none'
   return canvas
+}
+
+function inspectBrowserMetricCrop(
+  bitmap: CanvasImageSource,
+  crop: { left: number; top: number; width: number; height: number },
+) {
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(crop.width))
+  canvas.height = Math.max(1, Math.round(crop.height))
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+  if (!context) {
+    return {
+      dynamicRange: 255,
+      saturation: 0,
+      blurEstimate: 0,
+    }
+  }
+  context.drawImage(
+    bitmap,
+    crop.left,
+    crop.top,
+    crop.width,
+    crop.height,
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  )
+  const image = context.getImageData(0, 0, canvas.width, canvas.height)
+  let minimum = 255
+  let maximum = 0
+  let saturationTotal = 0
+  let gradientTotal = 0
+  let gradientSamples = 0
+  const luminance = new Uint8ClampedArray(canvas.width * canvas.height)
+  for (let pixel = 0; pixel < luminance.length; pixel += 1) {
+    const offset = pixel * 4
+    const red = image.data[offset]
+    const green = image.data[offset + 1]
+    const blue = image.data[offset + 2]
+    const gray = Math.round(red * .299 + green * .587 + blue * .114)
+    luminance[pixel] = gray
+    minimum = Math.min(minimum, gray)
+    maximum = Math.max(maximum, gray)
+    saturationTotal += maximumChannelDifference(red, green, blue) / 255
+  }
+  for (let y = 1; y < canvas.height; y += 1) {
+    for (let x = 1; x < canvas.width; x += 1) {
+      const pixel = y * canvas.width + x
+      gradientTotal += Math.abs(luminance[pixel] - luminance[pixel - 1])
+        + Math.abs(luminance[pixel] - luminance[pixel - canvas.width])
+      gradientSamples += 2
+    }
+  }
+  const averageGradient = gradientSamples ? gradientTotal / gradientSamples : 0
+  return {
+    dynamicRange: maximum - minimum,
+    saturation: saturationTotal / Math.max(1, luminance.length),
+    blurEstimate: Math.max(0, Math.min(1, 1 - averageGradient / 28)),
+  }
+}
+
+function browserBrightGlyphCrop(
+  bitmap: CanvasImageSource,
+  crop: { left: number; top: number; width: number; height: number },
+) {
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(crop.width))
+  canvas.height = Math.max(1, Math.round(crop.height))
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+  if (!context) return crop
+  context.drawImage(
+    bitmap,
+    crop.left,
+    crop.top,
+    crop.width,
+    crop.height,
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  )
+  const image = context.getImageData(0, 0, canvas.width, canvas.height)
+  let maximumLuminance = 0
+  for (let offset = 0; offset < image.data.length; offset += 4) {
+    maximumLuminance = Math.max(
+      maximumLuminance,
+      Math.round(
+        image.data[offset] * .299
+        + image.data[offset + 1] * .587
+        + image.data[offset + 2] * .114,
+      ),
+    )
+  }
+  const glyphThreshold = Math.max(145, maximumLuminance - 55)
+  let minimumX = canvas.width
+  let minimumY = canvas.height
+  let maximumX = -1
+  let maximumY = -1
+  for (let y = 0; y < canvas.height; y += 1) {
+    for (let x = 0; x < canvas.width; x += 1) {
+      const offset = (y * canvas.width + x) * 4
+      const red = image.data[offset]
+      const green = image.data[offset + 1]
+      const blue = image.data[offset + 2]
+      const luminance = Math.round(red * .299 + green * .587 + blue * .114)
+      if (
+        luminance < glyphThreshold
+        || maximumChannelDifference(red, green, blue) > 80
+      ) continue
+      minimumX = Math.min(minimumX, x)
+      minimumY = Math.min(minimumY, y)
+      maximumX = Math.max(maximumX, x)
+      maximumY = Math.max(maximumY, y)
+    }
+  }
+  if (
+    maximumX - minimumX < 3
+    || maximumY - minimumY < 3
+  ) return crop
+  const padding = Math.max(2, Math.round(canvas.height * .08))
+  const left = Math.max(0, minimumX - padding)
+  const top = Math.max(0, minimumY - padding)
+  const right = Math.min(canvas.width, maximumX + padding + 1)
+  const bottom = Math.min(canvas.height, maximumY + padding + 1)
+  return {
+    left: crop.left + left,
+    top: crop.top + top,
+    width: Math.max(1, right - left),
+    height: Math.max(1, bottom - top),
+  }
+}
+
+function createBrowserSegmentedGlyphCanvas(
+  bitmap: CanvasImageSource,
+  crop: { left: number; top: number; width: number; height: number },
+  scale: number,
+) {
+  const source = document.createElement('canvas')
+  source.width = Math.max(1, Math.round(crop.width))
+  source.height = Math.max(1, Math.round(crop.height))
+  const sourceContext = source.getContext('2d', { willReadFrequently: true })
+  if (!sourceContext) return null
+  sourceContext.drawImage(
+    bitmap,
+    crop.left,
+    crop.top,
+    crop.width,
+    crop.height,
+    0,
+    0,
+    source.width,
+    source.height,
+  )
+  const image = sourceContext.getImageData(0, 0, source.width, source.height)
+  let maximumLuminance = 0
+  for (let offset = 0; offset < image.data.length; offset += 4) {
+    maximumLuminance = Math.max(
+      maximumLuminance,
+      Math.round(
+        image.data[offset] * .299
+        + image.data[offset + 1] * .587
+        + image.data[offset + 2] * .114,
+      ),
+    )
+  }
+  const glyphThreshold = Math.max(145, maximumLuminance - 55)
+  const activeColumns = new Array<boolean>(source.width).fill(false)
+  for (let x = 0; x < source.width; x += 1) {
+    for (let y = 0; y < source.height; y += 1) {
+      const offset = (y * source.width + x) * 4
+      const red = image.data[offset]
+      const green = image.data[offset + 1]
+      const blue = image.data[offset + 2]
+      const luminance = Math.round(red * .299 + green * .587 + blue * .114)
+      if (
+        luminance >= glyphThreshold
+        && maximumChannelDifference(red, green, blue) <= 80
+      ) {
+        activeColumns[x] = true
+        break
+      }
+    }
+  }
+  const runs: Array<{ left: number; width: number }> = []
+  let runStart = -1
+  activeColumns.forEach((active, x) => {
+    if (active && runStart < 0) runStart = x
+    if (!active && runStart >= 0) {
+      runs.push({ left: runStart, width: x - runStart })
+      runStart = -1
+    }
+  })
+  if (runStart >= 0) runs.push({ left: runStart, width: source.width - runStart })
+  if (runs.length < 3) return null
+  const gap = 3
+  const segmentedWidth = runs.reduce((total, run) => total + run.width, 0)
+    + gap * (runs.length - 1)
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, segmentedWidth * scale)
+  canvas.height = Math.max(1, source.height * scale)
+  const context = canvas.getContext('2d')
+  if (!context) return null
+  const corner = sourceContext.getImageData(0, 0, 1, 1).data
+  context.fillStyle = `rgb(${corner[0]}, ${corner[1]}, ${corner[2]})`
+  context.fillRect(0, 0, canvas.width, canvas.height)
+  context.imageSmoothingEnabled = true
+  context.imageSmoothingQuality = 'high'
+  context.filter = 'contrast(150%)'
+  let targetX = 0
+  runs.forEach(run => {
+    context.drawImage(
+      source,
+      run.left,
+      0,
+      run.width,
+      source.height,
+      targetX * scale,
+      0,
+      run.width * scale,
+      source.height * scale,
+    )
+    targetX += run.width + gap
+  })
+  context.filter = 'none'
+  return canvas
+}
+
+function maximumChannelDifference(red: number, green: number, blue: number) {
+  return Math.max(red, green, blue) - Math.min(red, green, blue)
+}
+
+function createBrowserLocalContrastMetricCanvas(
+  bitmap: CanvasImageSource,
+  crop: { left: number; top: number; width: number; height: number },
+  scale: number,
+) {
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(crop.width * scale))
+  canvas.height = Math.max(1, Math.round(crop.height * scale))
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+  if (!context) throw new Error('Browser OCR local-contrast canvas is unavailable.')
+  context.imageSmoothingEnabled = true
+  context.imageSmoothingQuality = 'high'
+  context.drawImage(
+    bitmap,
+    crop.left,
+    crop.top,
+    crop.width,
+    crop.height,
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  )
+  const image = context.getImageData(0, 0, canvas.width, canvas.height)
+  const histogram = new Uint32Array(256)
+  const grayscale = new Uint8ClampedArray(canvas.width * canvas.height)
+  for (let pixel = 0; pixel < grayscale.length; pixel += 1) {
+    const offset = pixel * 4
+    const gray = Math.round(
+      image.data[offset] * .299
+      + image.data[offset + 1] * .587
+      + image.data[offset + 2] * .114,
+    )
+    grayscale[pixel] = gray
+    histogram[gray] += 1
+  }
+  const lower = histogramPercentile(histogram, grayscale.length, .04)
+  const upper = histogramPercentile(histogram, grayscale.length, .98)
+  const range = Math.max(12, upper - lower)
+  for (let pixel = 0; pixel < grayscale.length; pixel += 1) {
+    const normalized = Math.max(0, Math.min(
+      255,
+      ((grayscale[pixel] - lower) / range) * 255,
+    ))
+    const value = 255 - Math.round(normalized)
+    const offset = pixel * 4
+    image.data[offset] = value
+    image.data[offset + 1] = value
+    image.data[offset + 2] = value
+    image.data[offset + 3] = 255
+  }
+  context.putImageData(image, 0, 0)
+  return canvas
+}
+
+function histogramPercentile(
+  histogram: Uint32Array,
+  sampleCount: number,
+  percentile: number,
+) {
+  const target = sampleCount * percentile
+  let accumulated = 0
+  for (let value = 0; value < histogram.length; value += 1) {
+    accumulated += histogram[value]
+    if (accumulated >= target) return value
+  }
+  return histogram.length - 1
 }
 
 function createBrowserAdaptiveMetricCanvas(
@@ -886,6 +1290,7 @@ function mapNormalizedBrowserTesseractBlocksToWords(
   normalizedWidth: number,
   normalizedHeight: number,
   linePrefix = 'roi-label',
+  evidenceGroup = 'normalized_roi:primary',
 ): OcrRecognizedWord[] {
   if (!blocks?.length || !normalizedWidth || !normalizedHeight) return []
   return blocks.flatMap((block, blockIndex) =>
@@ -916,6 +1321,8 @@ function mapNormalizedBrowserTesseractBlocksToWords(
             platform,
             source: 'image_ocr' as const,
             pass: 'label' as const,
+            evidence_source_family: 'normalized_roi_ocr' as const,
+            evidence_group: evidenceGroup,
             bounding_box: { x: left, y: top, width, height },
             x0: left,
             y0: top,
@@ -949,6 +1356,8 @@ export function mapBrowserTesseractBlocksToWords(
   platform: ReportDashboardPlatform,
   cropOffset: { left: number; top: number },
   scale: number,
+  evidenceSourceFamily: OcrEvidenceSourceFamily = 'legacy_full_image_ocr',
+  evidenceGroup = 'legacy_full_image:primary',
 ): OcrRecognizedWord[] {
   if (!blocks?.length || !Number.isFinite(scale) || scale <= 0) return []
   return blocks.flatMap((block, blockIndex) =>
@@ -971,6 +1380,8 @@ export function mapBrowserTesseractBlocksToWords(
             platform,
             source: 'image_ocr' as const,
             pass: 'label' as const,
+            evidence_source_family: evidenceSourceFamily,
+            evidence_group: evidenceGroup,
             bounding_box: { x, y, width, height },
             x0: x,
             y0: y,

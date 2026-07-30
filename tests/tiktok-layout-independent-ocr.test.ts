@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type {
+  OcrImageRecognition,
   OcrRecognizedWord,
   ReportMetricKey,
 } from '../lib/types/database.types.ts'
@@ -11,6 +12,7 @@ import {
   mapDashboardImageRecognition,
   parseDashboardOcrText,
   parseCompactOcrNumber,
+  platformMetricLayouts,
 } from '../lib/utils/ocrMetrics.ts'
 import { reviewInputValues } from '../lib/utils/ocrReview.ts'
 
@@ -277,6 +279,198 @@ test('TikTok zero values are preserved and incompatible candidates are rejected'
     'word_box_exact',
     'confirmed',
   )?.[1].value, 1230)
+})
+
+test('TikTok preprocessing variants from one card crop cannot create false independent consensus', () => {
+  const commentsCell = platformMetricLayouts.tiktok_shop.find(cell => cell.key === 'comments')
+  assert.ok(commentsCell)
+  const cardBox = {
+    x: (commentsCell.x - commentsCell.width / 2) * 1600,
+    y: (commentsCell.y - commentsCell.height / 2) * 900,
+    width: commentsCell.width * 1600,
+    height: commentsCell.height * 900,
+  }
+  const evidenceGroup = 'anchor_card:candidate-1:comments'
+  const cardWords = ['inverted_grayscale', 'fixed_threshold', 'adaptive_light_text']
+    .map((preprocessingPass, index) => ({
+      ...recognizedWord(
+        '254',
+        cardBox.x,
+        cardBox.y,
+        cardBox.width,
+        cardBox.height,
+        'card',
+        `card:comments:${index}`,
+      ),
+      evidence_source_family: 'anchor_aligned_card_crop' as const,
+      evidence_group: evidenceGroup,
+      confidence: 94 - index,
+      preprocessingPass,
+    }))
+  const recognition: OcrImageRecognition = {
+    engine: 'tesseract.js',
+    language: 'eng+vie',
+    text: 'Comments: 234',
+    pass_output: {
+      label: 'Comments: 234',
+      numeric: '',
+      card: { comments: ['254', '254', '254'] },
+      card_labels: { comments: ['Comments'] },
+      card_diagnostics: {
+        comments: cardWords.map(word => ({
+          text: word.text,
+          confidence: word.confidence,
+          preprocessing_pass: word.preprocessingPass,
+          evidence_source_family: word.evidence_source_family,
+          evidence_group: word.evidence_group,
+          bounding_box: word.bounding_box,
+        })),
+      },
+      strategy_text: {
+        normalized_roi: 'Comments: 234',
+      },
+    },
+    confidence: 94,
+    words: cardWords,
+    crop_box: { left: 0, top: 0, width: 1, height: 1 },
+    original_dimensions: { width: 1600, height: 900 },
+    processed_dimensions: { width: 1600, height: 900 },
+  }
+  const review = mapDashboardImageRecognition('tiktok_shop', recognition)
+  const metric = review.metrics.comments
+
+  assert.ok(metric)
+  if (metric.value === 254) {
+    assert.equal(metric.status, 'review_required')
+    assert.equal(metric.needs_review, true)
+  }
+  const selectedGroups = new Set(
+    metric.strategy_candidates
+      ?.filter(candidate => candidate.value_candidate === metric.value)
+      .map(candidate => candidate.evidence_group),
+  )
+  if (selectedGroups.size <= 1) assert.notEqual(metric.status, 'confirmed')
+})
+
+test('TikTok advertising cost is confirmed when independent card and normalized ROI evidence agree', () => {
+  const advertisingCell = platformMetricLayouts.tiktok_shop
+    .find(cell => cell.key === 'advertising_cost')
+  assert.ok(advertisingCell)
+  const evidenceGroup = 'anchor_card:candidate-1:advertising_cost'
+  const cardWord: OcrRecognizedWord = {
+    ...recognizedWord(
+      '2.11M',
+      (advertisingCell.x - advertisingCell.width / 2) * 1600,
+      (advertisingCell.y - advertisingCell.height / 2) * 900,
+      advertisingCell.width * 1600,
+      advertisingCell.height * 900,
+      'card',
+      'card:advertising_cost:0',
+    ),
+    evidence_source_family: 'anchor_aligned_card_crop',
+    evidence_group: evidenceGroup,
+  }
+  const review = mapDashboardImageRecognition('tiktok_shop', {
+    engine: 'tesseract.js',
+    language: 'eng+vie',
+    text: 'Advertising Cost: 2.11M',
+    pass_output: {
+      label: 'Advertising Cost: 2.11M',
+      numeric: '',
+      card: { advertising_cost: ['2.11M'] },
+      card_labels: { advertising_cost: ['Advertising Cost'] },
+      card_diagnostics: {
+        advertising_cost: [{
+          text: '2.11M',
+          confidence: 96,
+          preprocessing_pass: 'original_color',
+          evidence_source_family: 'anchor_aligned_card_crop',
+          evidence_group: evidenceGroup,
+          bounding_box: cardWord.bounding_box,
+        }],
+      },
+      strategy_text: {
+        normalized_roi: 'Advertising Cost: 2.11M',
+      },
+    },
+    confidence: 96,
+    words: [cardWord],
+    crop_box: { left: 0, top: 0, width: 1, height: 1 },
+    original_dimensions: { width: 1600, height: 900 },
+    processed_dimensions: { width: 1600, height: 900 },
+  })
+
+  assert.equal(review.metrics.advertising_cost?.value, 2110000)
+  assert.equal(review.metrics.advertising_cost?.status, 'confirmed')
+  assert.equal(review.metrics.advertising_cost?.needs_review, false)
+  assert.match(
+    review.metrics.advertising_cost?.pairing_reason || '',
+    /2 independent evidence groups agree/,
+  )
+})
+
+test('TikTok card diagnostics recover a visually owned compact value without creating confirmation consensus', () => {
+  const totalViewsCell = platformMetricLayouts.tiktok_shop
+    .find(cell => cell.key === 'total_views')
+  assert.ok(totalViewsCell)
+  const evidenceGroup = 'anchor_card:candidate-1:total_views'
+  const boundingBox = {
+    x: (totalViewsCell.x - totalViewsCell.width / 2) * 1600,
+    y: (totalViewsCell.y - totalViewsCell.height / 2) * 900,
+    width: totalViewsCell.width * 1600,
+    height: totalViewsCell.height * 900,
+  }
+  const review = mapDashboardImageRecognition('tiktok_shop', {
+    engine: 'tesseract.js',
+    language: 'eng+vie',
+    text: '',
+    pass_output: {
+      label: '',
+      numeric: '',
+      card: { total_views: ['2.0K'] },
+      card_labels: { total_views: ['Lượt xem'] },
+      card_diagnostics: {
+        total_views: [
+          {
+            text: '2.0K',
+            confidence: 29,
+            preprocessing_pass: 'inverted_grayscale',
+            evidence_source_family: 'anchor_aligned_card_crop',
+            evidence_group: evidenceGroup,
+            bounding_box: boundingBox,
+          },
+          {
+            text: '201K',
+            confidence: 43,
+            preprocessing_pass: 'adaptive_light_text',
+            evidence_source_family: 'anchor_aligned_card_crop',
+            evidence_group: evidenceGroup,
+            bounding_box: boundingBox,
+          },
+        ],
+      },
+      strategy_text: {
+        normalized_roi: '',
+      },
+    },
+    confidence: 43,
+    words: [],
+    crop_box: { left: 0, top: 0, width: 1, height: 1 },
+    original_dimensions: { width: 1600, height: 900 },
+    processed_dimensions: { width: 1600, height: 900 },
+  })
+
+  assert.equal(review.metrics.total_views?.value, 2010)
+  assert.equal(review.metrics.total_views?.status, 'review_required')
+  assert.equal(review.metrics.total_views?.needs_review, true)
+  assert.equal(
+    new Set(
+      review.metrics.total_views?.strategy_candidates
+        ?.filter(candidate => candidate.value_candidate === 2010)
+        .map(candidate => candidate.evidence_group),
+    ).size,
+    1,
+  )
 })
 
 function customLayoutWords(

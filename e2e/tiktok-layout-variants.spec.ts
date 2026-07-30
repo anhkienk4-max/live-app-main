@@ -3,6 +3,11 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
+test.use({
+  viewport: { width: 1366, height: 768 },
+  deviceScaleFactor: 1,
+})
+
 const referenceExpectedMetrics = {
   gmv: 8761919,
   items_sold: 103,
@@ -60,9 +65,10 @@ type FixtureCase = {
   fileName: string
   sha256: string
   dimensions: { width: number; height: number }
-  source: 'real' | 'synthetic'
+  source: 'real' | 'synthetic' | 'diagnostic'
   expected?: Record<string, number>
   expectMultipleCandidates?: boolean
+  minimumExactMetrics?: number
 }
 
 const fixtureDirectory = path.join(
@@ -108,6 +114,93 @@ const fixtures: FixtureCase[] = [
       live_ctr: 50.72,
       shares: 10,
       estimated_gmv: 10610000,
+    },
+  },
+  {
+    name: 'June 26 evening real dashboard',
+    fileName: 'tiktok-real-2026-06-26-evening.png',
+    sha256: '4370D08FAFFBEDC43390C96D8E3ED4570E2DDC310444717325082094F2C210DB',
+    dimensions: { width: 1393, height: 920 },
+    source: 'diagnostic',
+    minimumExactMetrics: 18,
+    expected: {
+      gmv: 13566119,
+      items_sold: 140,
+      current_viewers: 1820,
+      impressions: 119520,
+      total_views: 2410,
+      advertising_cost: 3060000,
+      click_rate: 2.02,
+      roi_gmv_max: 5.23,
+      ctor: 7.48,
+      average_view_duration_seconds: 39,
+      new_followers: 13,
+      buyers: 62,
+      sku_orders: 124,
+      comments: 114,
+      product_clicks: 1030,
+      average_order_value: 176180,
+      live_ctr: 42.74,
+      shares: 8,
+      estimated_gmv: 12130000,
+    },
+  },
+  {
+    name: 'June 26 morning real dashboard',
+    fileName: 'tiktok-real-2026-06-26-morning.png',
+    sha256: '1A2B2E4D268379B22B59240A96F75DFA57604298BA91D27AB5DDED496513A7AA',
+    dimensions: { width: 1393, height: 998 },
+    source: 'diagnostic',
+    minimumExactMetrics: 16,
+    expected: {
+      gmv: 12887813,
+      items_sold: 142,
+      current_viewers: 1340,
+      impressions: 72940,
+      total_views: 1860,
+      advertising_cost: 2730000,
+      click_rate: 2.55,
+      roi_gmv_max: 5.62,
+      ctor: 9.58,
+      average_view_duration_seconds: 77,
+      new_followers: 12,
+      buyers: 58,
+      sku_orders: 130,
+      comments: 233,
+      product_clicks: 877,
+      average_order_value: 153430,
+      live_ctr: 47.1,
+      shares: 58,
+      estimated_gmv: 12070000,
+    },
+  },
+  {
+    name: 'June 25 evening real dashboard',
+    fileName: 'tiktok-real-2026-06-25-evening.png',
+    sha256: 'B1F3C981BD2024EDEFD2209111C3C373947121E68414AEC99FDFB59F95274126',
+    dimensions: { width: 1393, height: 987 },
+    source: 'diagnostic',
+    minimumExactMetrics: 16,
+    expected: {
+      gmv: 16475613,
+      items_sold: 169,
+      current_viewers: 1470,
+      impressions: 76840,
+      total_views: 2010,
+      advertising_cost: 3030000,
+      click_rate: 2.61,
+      roi_gmv_max: 6.6,
+      ctor: 8.17,
+      average_view_duration_seconds: 81,
+      new_followers: 12,
+      buyers: 51,
+      sku_orders: 132,
+      comments: 162,
+      product_clicks: 1040,
+      average_order_value: 193830,
+      live_ctr: 51.87,
+      shares: 15,
+      estimated_gmv: 12130000,
     },
   },
   {
@@ -225,6 +318,22 @@ for (const fixture of fixtures) {
     const reviewRequired = Object.entries(statuses)
       .filter(([, status]) => ['review_required', 'low_confidence'].includes(status || ''))
       .map(([key]) => key)
+    const confirmed = Object.entries(statuses)
+      .filter(([, status]) => ['confirmed', 'accepted'].includes(status || ''))
+      .map(([key]) => key)
+    const missing = Object.entries(actual)
+      .filter(([, value]) => value === '')
+      .map(([key]) => key)
+    const confirmedReasons = candidateDiagnostics
+      .filter(row => confirmed.includes(row.canonicalKey))
+      .map(row => {
+        const evidenceGroups = selectedEvidenceGroupNames(row)
+        return {
+          key: row.canonicalKey,
+          reason: `${evidenceGroups.length} independent evidence groups agreed with clear card ownership and no similarly strong conflict.`,
+          evidenceGroups,
+        }
+      })
 
     console.info(JSON.stringify({
       fixture: fixture.fileName,
@@ -232,16 +341,25 @@ for (const fixture of fixtures) {
       selected_roi: diagnostics.selected_roi,
       selected_candidate: selected,
       candidate_count: diagnostics.dashboard_candidates.length,
+      status_counts: {
+        confirmed: confirmed.length,
+        review_required: reviewRequired.length,
+        missing: missing.length,
+      },
+      confirmed_reasons: confirmedReasons,
       review_required: reviewRequired,
       mismatches,
-      candidate_diagnostics: candidateDiagnostics.filter(row =>
-        mismatches.some(mismatch => mismatch.key === row.canonicalKey),
-      ),
       raw_diagnostics_available: Boolean(rawDiagnostics),
     }, null, 2))
     if (fixture.source === 'real') {
       expect(mismatches, JSON.stringify({ actual, diagnostics }, null, 2)).toEqual([])
     } else {
+      if (fixture.minimumExactMetrics) {
+        expect(
+          Object.keys(expectedMetrics).length - mismatches.length,
+          JSON.stringify({ actual, diagnostics }, null, 2),
+        ).toBeGreaterThanOrEqual(fixture.minimumExactMetrics)
+      }
       for (const mismatch of mismatches) {
         const status = statuses[mismatch.key] || ''
         if (mismatch.actual === '') {
@@ -267,6 +385,66 @@ for (const fixture of fixtures) {
   })
 }
 
+for (const fixture of fixtures.filter(candidate => candidate.source === 'diagnostic')) {
+  test(`TikTok ${fixture.name} Live Dashboard Update keeps weak values review-required`, async ({ page }) => {
+    test.setTimeout(240_000)
+    const fixturePath = path.join(fixtureDirectory, fixture.fileName)
+    const expectedMetrics = fixture.expected || referenceExpectedMetrics
+    await expectFixtureIntegrity(fixturePath, fixture.sha256)
+    await prepareTikTokShiftForLiveUpdate(page)
+    await expect(page.getByTestId('live-platform-selector')).toContainText('TikTok Shop')
+    await page.getByTestId('live-dashboard-image-upload').setInputFiles(fixturePath)
+    await expect(page.locator('img[src^="blob:"]').first()).toBeVisible()
+    await page.getByTestId('live-run-ocr-button').click()
+    await waitForOcrCompletion(page.getByTestId('live-ocr-completion-status'))
+    await page.getByTestId('ocr-metric-filter-all').click()
+
+    const actual = await readRenderedMetrics(page, expectedMetrics)
+    const statuses = await readMetricStatuses(page, expectedMetrics)
+    const mismatches = Object.entries(expectedMetrics).flatMap(([key, expected]) =>
+      actual[key] === String(expected)
+        ? []
+        : [{ key, expected: String(expected), actual: actual[key], status: statuses[key] || '' }],
+    )
+    expect(
+      Object.keys(expectedMetrics).length - mismatches.length,
+      JSON.stringify({ fixture: fixture.fileName, actual, statuses }, null, 2),
+    ).toBeGreaterThanOrEqual(fixture.minimumExactMetrics || 0)
+    for (const mismatch of mismatches) {
+      expect(
+        ['review_required', 'low_confidence'].includes(mismatch.status),
+        `${mismatch.key}=${mismatch.actual} must remain review_required`,
+      ).toBe(true)
+    }
+    expect(
+      Object.entries(statuses)
+        .filter(([, status]) => ['confirmed', 'accepted'].includes(status || ''))
+        .map(([key]) => key)
+        .filter(key => mismatches.some(mismatch => mismatch.key === key)),
+    ).toEqual([])
+
+    console.info(JSON.stringify({
+      fixture: fixture.fileName,
+      workflow: 'live_dashboard_update',
+      exact: Object.keys(expectedMetrics).length - mismatches.length,
+      confirmed: Object.values(statuses)
+        .filter(status => ['confirmed', 'accepted'].includes(status || '')).length,
+      review_required: Object.values(statuses)
+        .filter(status => ['review_required', 'low_confidence'].includes(status || '')).length,
+      missing: Object.values(actual).filter(value => value === '').length,
+      mismatches,
+    }, null, 2))
+
+    await page.getByTestId('ocr-metric-filter-data').click()
+    for (const [key, value] of Object.entries(actual)) {
+      if (!value) continue
+      await expect(page.getByTestId(`ocr-metric-input-${key}`)).toHaveValue(value)
+    }
+    await page.getByTestId('ocr-metric-filter-all').click()
+    expect(await readRenderedMetrics(page, expectedMetrics)).toEqual(actual)
+  })
+}
+
 async function openTikTokFinalReport(page: Page) {
   await expect.poll(async () => {
     const response = await page.goto('/live', { waitUntil: 'domcontentloaded' })
@@ -278,6 +456,33 @@ async function openTikTokFinalReport(page: Page) {
   await page.getByTestId('open-live-session-s1').click()
   await page.getByTestId('open-final-report-modal').click()
   await expect(page.getByTestId('report-platform-selector')).toContainText('TikTok Shop')
+}
+
+async function prepareTikTokShiftForLiveUpdate(page: Page) {
+  await expect.poll(async () => {
+    const response = await page.goto('/calendar', { waitUntil: 'domcontentloaded' })
+    return response?.status()
+  }, {
+    timeout: 30_000,
+    intervals: [500, 1_000, 2_000],
+  }).toBe(200)
+  await page.getByTestId('calendar-event-s1').click()
+  await page.getByTestId('edit-shift-detail').click()
+
+  const editDialog = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: 'Edit Shift', exact: true }),
+  })
+  const statusField = editDialog.getByText('Status', { exact: true }).locator('..')
+  await statusField.getByRole('combobox').click()
+  await page.getByRole('option', { name: 'Preparing', exact: true }).click()
+  await editDialog.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(editDialog).toBeHidden()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  await page.getByTestId('sidebar-live').click()
+  await expect(page).toHaveURL(/\/live$/)
+  await page.getByTestId('open-live-dashboard-update-s1').click()
 }
 
 async function waitForOcrCompletion(status: Locator) {
@@ -326,8 +531,27 @@ async function readCandidateDiagnostics(page: Page) {
       status: (await cells.nth(6).textContent())?.trim() || '',
       discardedConflict: (await cells.nth(7).textContent())?.trim() || '',
       reason: (await cells.nth(8).textContent())?.trim() || '',
+      evidenceGroups: JSON.parse(
+        await rows.nth(index).getAttribute('data-ocr-evidence-groups') || '[]',
+      ) as unknown[],
     }
   }))
+}
+
+function selectedEvidenceGroupNames(
+  row: Awaited<ReturnType<typeof readCandidateDiagnostics>>[number],
+) {
+  return [...new Set(row.evidenceGroups.flatMap(candidate => {
+    if (
+      !candidate
+      || typeof candidate !== 'object'
+      || !('evidence_group' in candidate)
+      || typeof candidate.evidence_group !== 'string'
+      || !('value_candidate' in candidate)
+      || String(candidate.value_candidate ?? '') !== row.normalizedValue
+    ) return []
+    return [candidate.evidence_group]
+  }))]
 }
 
 async function expectFixtureIntegrity(filePath: string, sha256: string) {

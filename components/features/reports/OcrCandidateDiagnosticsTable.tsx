@@ -27,7 +27,10 @@ export function OcrCandidateDiagnosticsTable({ review }: { review?: OcrReviewDat
               const metric = review.metrics[key]
               const conflict = conflictsByKey.get(key)
               return (
-                <tr key={key}>
+                <tr
+                  key={key}
+                  data-ocr-evidence-groups={JSON.stringify(metric?.strategy_candidates || [])}
+                >
                   <td className="border p-2 font-mono">{key}</td>
                   <td className="border p-2">{metric?.source || 'missing'}</td>
                   <td className="border p-2">{metric?.original_label || '—'}</td>
