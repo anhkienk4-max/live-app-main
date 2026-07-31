@@ -25,6 +25,10 @@ import {
   roiPointToImage,
   type DashboardVisualHint,
 } from '@/lib/utils/dashboardRegionDetection'
+import {
+  OCR_RUNTIME_CONFIG,
+  pinnedBrowserWorkerOptions,
+} from '@/lib/services/ocrRuntimeConfig'
 
 export class OcrApiResponseError extends Error {
   constructor(
@@ -151,7 +155,11 @@ async function recognizeDashboardImageInBrowser(
   }
   context.drawImage(bitmap, 0, 0, originalWidth, originalHeight, 0, 0, canvas.width, canvas.height)
 
-  const worker = await createWorker('eng+vie', OEM.LSTM_ONLY)
+  const worker = await createWorker(
+    OCR_RUNTIME_CONFIG.language,
+    OEM.LSTM_ONLY,
+    pinnedBrowserWorkerOptions(),
+  )
   try {
     await worker.setParameters({
       tessedit_pageseg_mode: PSM.SPARSE_TEXT,
@@ -282,6 +290,15 @@ async function recognizeDashboardImageInBrowser(
       original_dimensions: { width: originalWidth, height: originalHeight },
       processed_dimensions: { width: canvas.width, height: canvas.height },
       region_diagnostics: regionResult.diagnostics,
+      runtime_diagnostics: browserRuntimeDiagnostics({
+        originalWidth,
+        originalHeight,
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height,
+        selectedRoi: selected?.crop_box,
+        normalizedRoiDimensions:
+          regionResult.diagnostics.normalized_roi_dimensions,
+      }),
     }
   } finally {
     bitmap.close()
@@ -500,7 +517,24 @@ async function recognizeMetricCardsInBrowser(
         'i',
       ).test(variant.text.trim()))
       : true
-    if (!hasDeclaredCompactPrecision) {
+    const distinctGlyphReadings = new Set(
+      variants
+        .map(variant => variant.text.replace(/\s+/g, '').toUpperCase())
+        .filter(value => /\d/.test(value)),
+    )
+    const shouldRunHighResolutionGlyphPass = platform === 'tiktok_shop'
+      && ['count', 'compact', 'count_or_compact', 'currency'].includes(cell.valueKind)
+      && (
+        !hasDeclaredCompactPrecision
+        || (
+          cell.valueKind === 'compact'
+          && (
+            distinctGlyphReadings.size > 1
+            || Math.max(...variants.map(variant => variant.confidence), 0) < 60
+          )
+        )
+      )
+    if (shouldRunHighResolutionGlyphPass) {
       await worker.setParameters({
         tessedit_pageseg_mode: psm.SINGLE_WORD,
         tessedit_char_whitelist: browserValueWhitelist(cell),
@@ -600,6 +634,83 @@ async function recognizeMetricCardsInBrowser(
     })
   }
   return { output, labels, diagnostics, words }
+}
+
+function browserRuntimeDiagnostics({
+  originalWidth,
+  originalHeight,
+  canvasWidth,
+  canvasHeight,
+  selectedRoi,
+  normalizedRoiDimensions,
+}: {
+  originalWidth: number
+  originalHeight: number
+  canvasWidth: number
+  canvasHeight: number
+  selectedRoi?: OcrCropBox
+  normalizedRoiDimensions?: { width: number; height: number }
+}): NonNullable<OcrImageRecognition['runtime_diagnostics']> {
+  const userAgent = navigator.userAgent
+  const browserMatch = userAgent.match(
+    /(?:Edg|Chrome|CriOS|Firefox|Version)\/([\d.]+)/,
+  )
+  const browserName = userAgent.includes('Edg/')
+    ? 'Microsoft Edge'
+    : userAgent.includes('Firefox/')
+      ? 'Firefox'
+      : userAgent.includes('Chrome/') || userAgent.includes('CriOS/')
+        ? 'Chromium'
+        : userAgent.includes('Safari/')
+          ? 'Safari'
+          : 'Unknown'
+  const operatingSystem = userAgent.includes('Windows')
+    ? 'Windows'
+    : userAgent.includes('Android')
+      ? 'Android'
+      : /iPhone|iPad|iPod/.test(userAgent)
+        ? 'iOS'
+        : userAgent.includes('Mac OS')
+          ? 'macOS'
+          : userAgent.includes('Linux')
+            ? 'Linux'
+            : 'Unknown'
+
+  return {
+    runtime_id: OCR_RUNTIME_CONFIG.runtimeId,
+    browser: {
+      name: browserName,
+      version: browserMatch?.[1] || 'unknown',
+      user_agent: userAgent,
+      operating_system: operatingSystem,
+      device_pixel_ratio: window.devicePixelRatio,
+      viewport: {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      },
+    },
+    image: {
+      decoded_width: originalWidth,
+      decoded_height: originalHeight,
+      canvas_width: canvasWidth,
+      canvas_height: canvasHeight,
+    },
+    tesseract: {
+      package_version: OCR_RUNTIME_CONFIG.tesseractVersion,
+      core_version: OCR_RUNTIME_CONFIG.coreVersion,
+      language: OCR_RUNTIME_CONFIG.language,
+      language_data_version: OCR_RUNTIME_CONFIG.languageDataVersion,
+      language_data_source: OCR_RUNTIME_CONFIG.langPath,
+      worker_path: OCR_RUNTIME_CONFIG.workerPath,
+      core_path: OCR_RUNTIME_CONFIG.corePath,
+      cache_method: OCR_RUNTIME_CONFIG.cacheMethod,
+      asset_sha256: { ...OCR_RUNTIME_CONFIG.assetSha256 },
+      worker_parameters: { ...OCR_RUNTIME_CONFIG.workerParameters },
+    },
+    preprocessing_pipeline: [...OCR_RUNTIME_CONFIG.preprocessingPipeline],
+    selected_roi: selectedRoi,
+    normalized_roi_dimensions: normalizedRoiDimensions,
+  }
 }
 
 function reconstructCompactCardValue(

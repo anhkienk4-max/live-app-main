@@ -424,6 +424,7 @@ export function ReportFormModal({
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault()
+    if (reviewing || submitting) return
     if (!validateSubmission()) return
     if (reviewRequiredCount(review) > 0) {
       setShowReviewWarning(true)
@@ -556,7 +557,10 @@ export function ReportFormModal({
               <ScanText className="mr-2 h-4 w-4" />{t('applyOcrData')}
             </Button>
             <OcrTextApplicationSummary result={ocrApplicationResult} />
-            <OcrCandidateDiagnosticsTable review={review} />
+            <OcrCandidateDiagnosticsTable
+              review={review}
+              canExport={Boolean(currentUser && hasPermission(currentUser, 'audit.view'))}
+            />
             {lowConfidence > 0 && <p className="flex items-center gap-2 text-sm text-amber-700"><AlertTriangle className="h-4 w-4" />{t('lowConfidenceCount', { count: lowConfidence })}</p>}
             {review.status === 'failed' && <p className="text-sm text-red-700">{review.error_message}</p>}
             {dashboardPlatform !== 'other' && <>
@@ -671,7 +675,7 @@ export function ReportFormModal({
               </div>
             </section>
           )}
-          <DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>{t('cancel')}</Button><Button type="submit" disabled={submitting}>{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t('saveFinalReport')}</Button></DialogFooter>
+          <DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>{t('cancel')}</Button><Button type="submit" disabled={submitting || reviewing}>{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t('saveFinalReport')}</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

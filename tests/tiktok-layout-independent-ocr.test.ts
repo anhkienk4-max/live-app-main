@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import test from 'node:test'
 
+import { OCR_RUNTIME_CONFIG, pinnedBrowserWorkerOptions } from '../lib/services/ocrRuntimeConfig.ts'
 import type {
   OcrImageRecognition,
   OcrRecognizedWord,
@@ -81,6 +85,40 @@ const displayValues: Record<keyof typeof expected, string> = {
   shares: '60',
   estimated_gmv: '8,98M',
 }
+
+test('browser OCR runtime uses pinned local worker, core, and language assets', () => {
+  assert.deepEqual(pinnedBrowserWorkerOptions(), {
+    workerPath: '/ocr/tesseract/worker.min.js',
+    corePath: '/ocr/tesseract/tesseract-core-lstm.wasm.js',
+    langPath: '/ocr/tessdata',
+    cacheMethod: 'none',
+    gzip: true,
+  })
+  assert.equal(OCR_RUNTIME_CONFIG.tesseractVersion, '7.0.0')
+  assert.equal(OCR_RUNTIME_CONFIG.coreVersion, '7.0.0')
+  assert.equal(OCR_RUNTIME_CONFIG.languageDataVersion, '4.0.0_best_int')
+  assert.equal(OCR_RUNTIME_CONFIG.language, 'eng+vie')
+
+  const assets = [
+    ['public/ocr/tesseract/worker.min.js', OCR_RUNTIME_CONFIG.assetSha256.worker],
+    [
+      'public/ocr/tesseract/tesseract-core-lstm.wasm.js',
+      OCR_RUNTIME_CONFIG.assetSha256.coreJavascript,
+    ],
+    [
+      'public/ocr/tesseract/tesseract-core-lstm.wasm',
+      OCR_RUNTIME_CONFIG.assetSha256.coreWasm,
+    ],
+    ['public/ocr/tessdata/eng.traineddata.gz', OCR_RUNTIME_CONFIG.assetSha256.englishTrainedData],
+    ['public/ocr/tessdata/vie.traineddata.gz', OCR_RUNTIME_CONFIG.assetSha256.vietnameseTrainedData],
+  ] as const
+
+  for (const [relativePath, expectedSha256] of assets) {
+    const content = readFileSync(path.join(process.cwd(), relativePath))
+    const actualSha256 = createHash('sha256').update(content).digest('hex').toUpperCase()
+    assert.equal(actualSha256, expectedSha256, relativePath)
+  }
+})
 
 test('TikTok compact numbers preserve K/M magnitude for dot and comma locales', () => {
   const cases = new Map([
@@ -471,6 +509,61 @@ test('TikTok card diagnostics recover a visually owned compact value without cre
     ).size,
     1,
   )
+})
+
+test('TikTok normalized compact evidence cannot drop a glyph seen by the original card crop', () => {
+  const estimatedGmvCell = platformMetricLayouts.tiktok_shop
+    .find(cell => cell.key === 'estimated_gmv')
+  assert.ok(estimatedGmvCell)
+  const evidenceGroup = 'anchor_card:candidate-1:estimated_gmv'
+  const boundingBox = {
+    x: (estimatedGmvCell.x - estimatedGmvCell.width / 2) * 1600,
+    y: (estimatedGmvCell.y - estimatedGmvCell.height / 2) * 900,
+    width: estimatedGmvCell.width * 1600,
+    height: estimatedGmvCell.height * 900,
+  }
+  const review = mapDashboardImageRecognition('tiktok_shop', {
+    engine: 'tesseract.js',
+    language: 'eng+vie',
+    text: 'Estimated GMV: 1.25M',
+    pass_output: {
+      label: 'Estimated GMV: 1.25M',
+      numeric: '',
+      card: { estimated_gmv: ['12.13M', '12.13M'] },
+      card_labels: { estimated_gmv: ['Estimated GMV'] },
+      card_diagnostics: {
+        estimated_gmv: [
+          {
+            text: '12.13M',
+            confidence: 55,
+            preprocessing_pass: 'original_color',
+            evidence_source_family: 'anchor_aligned_card_crop',
+            evidence_group: evidenceGroup,
+            bounding_box: boundingBox,
+          },
+          {
+            text: '12.13M',
+            confidence: 58,
+            preprocessing_pass: 'local_contrast',
+            evidence_source_family: 'anchor_aligned_card_crop',
+            evidence_group: evidenceGroup,
+            bounding_box: boundingBox,
+          },
+        ],
+      },
+      strategy_text: {
+        normalized_roi: 'Estimated GMV: 1.25M',
+      },
+    },
+    confidence: 58,
+    words: [],
+    crop_box: { left: 0, top: 0, width: 1, height: 1 },
+    original_dimensions: { width: 1600, height: 900 },
+    processed_dimensions: { width: 1600, height: 900 },
+  })
+
+  assert.equal(review.metrics.estimated_gmv?.value, 12130000)
+  assert.equal(review.metrics.estimated_gmv?.status, 'review_required')
 })
 
 function customLayoutWords(

@@ -287,6 +287,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (scanning || submitting) return
 
     if (!validateForm()) {
       toast({ title: t('validationError'), description: t('validationFillRequired'), variant: 'destructive' })
@@ -422,7 +423,10 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
               <ScanText className="mr-2 h-4 w-4" />{t('applyOcrData')}
             </Button>
             <OcrTextApplicationSummary result={ocrApplicationResult} />
-            <OcrCandidateDiagnosticsTable review={ocrReview} />
+            <OcrCandidateDiagnosticsTable
+              review={ocrReview}
+              canExport={Boolean(currentUser && hasPermission(currentUser, 'audit.view'))}
+            />
             {ocrReview?.raw_diagnostic_output && <details className="rounded-lg bg-muted/50 p-3 text-sm" data-testid="live-ocr-raw-diagnostics"><summary className="cursor-pointer font-medium">{t('rawOcrOutput')}</summary><pre className="mt-3 whitespace-pre-wrap break-words text-xs">{ocrReview.raw_diagnostic_output}</pre></details>}
             </div>
             <div className="min-h-40 rounded-lg border p-3" data-testid="live-ocr-completion-status" data-ocr-status={scanning ? 'processing' : ocrReview?.status || 'waiting'}>
@@ -522,7 +526,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
             >
               {t('cancel')}
             </Button>
-            <Button type="submit" disabled={submitting}>
+            <Button type="submit" disabled={submitting || scanning}>
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {t('addUpdate')}
             </Button>

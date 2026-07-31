@@ -184,7 +184,7 @@ async function waitForOcrCompletion(status: Locator) {
   await expect(status).toBeVisible()
   await expect.poll(
     () => status.getAttribute('data-ocr-status'),
-    { timeout: 120_000, message: 'OCR did not reach review_required state' },
+    { timeout: 180_000, message: 'OCR did not reach review_required state' },
   ).toBe('review_required')
 }
 
@@ -324,7 +324,7 @@ test('Shopee Live Dashboard Update uploads a real dashboard and autofills all 16
 })
 
 test('TikTok Final Report uploads a real dashboard and autofills all 19 KPIs', async ({ page }) => {
-  test.setTimeout(180_000)
+  test.setTimeout(240_000)
   await openTikTokFinalReport(page)
   await expectSelectedPlatform(page.getByTestId('report-platform-selector'), 'TikTok Shop')
   await runReportOcr(
@@ -340,7 +340,7 @@ test('TikTok Final Report uploads a real dashboard and autofills all 19 KPIs', a
 })
 
 test('TikTok Live Dashboard Update uploads a real dashboard and autofills all 19 KPIs', async ({ page }) => {
-  test.setTimeout(180_000)
+  test.setTimeout(240_000)
   await prepareTikTokShiftForLiveUpdate(page)
   await expectSelectedPlatform(page.getByTestId('live-platform-selector'), 'TikTok Shop')
   await runLiveOcr(

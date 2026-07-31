@@ -60,6 +60,64 @@ type RegionDiagnostics = {
   selection_reason: string
 }
 
+type OcrDiagnosticDownload = {
+  schema_version: '1'
+  runtime?: {
+    runtime_id: string
+    browser: {
+      name: string
+      version: string
+      operating_system: string
+      device_pixel_ratio: number
+      viewport: { width: number; height: number }
+    }
+    image: {
+      decoded_width: number
+      decoded_height: number
+      canvas_width: number
+      canvas_height: number
+    }
+    tesseract: {
+      package_version: string
+      core_version: string
+      language: string
+      language_data_version: string
+      language_data_source: string
+      worker_path: string
+      core_path: string
+      cache_method: string
+    }
+    preprocessing_pipeline: string[]
+    selected_roi?: RegionDiagnostics['selected_roi']
+    normalized_roi_dimensions?: { width: number; height: number }
+  }
+  raw_ocr_text: string
+  words: unknown[]
+  card_diagnostics: Record<string, unknown[]>
+  candidates: Array<{
+    canonical_key: string
+    metric: {
+      value: string | number
+      raw_value?: string
+      strategy?: string
+      preprocessing_pass?: string
+      evidence_source_family?: string
+      evidence_group?: string
+      status?: string
+      rejection_reason?: string
+      strategy_candidates?: Array<{
+        raw_text: string
+        value_candidate: string | number
+        strategy: string
+        preprocessing_pass?: string
+        evidence_source_family?: string
+        evidence_group?: string
+        rejection_reason?: string
+      }>
+    }
+  }>
+}
+
 type FixtureCase = {
   name: string
   fileName: string
@@ -244,6 +302,14 @@ const fixtures: FixtureCase[] = [
 for (const fixture of fixtures) {
   test(`TikTok ${fixture.name} selects one ROI without confirmed KPI corruption`, async ({ page }) => {
     test.setTimeout(240_000)
+    const ocrAssetRequests: string[] = []
+    if (fixture.fileName === 'tiktok-reference.jpg') {
+      page.on('request', request => {
+        if (/tesseract|traineddata|jsdelivr/i.test(request.url())) {
+          ocrAssetRequests.push(request.url())
+        }
+      })
+    }
     const fixturePath = path.join(fixtureDirectory, fixture.fileName)
     await expectFixtureIntegrity(fixturePath, fixture.sha256)
     await openTikTokFinalReport(page)
@@ -315,6 +381,18 @@ for (const fixture of fixtures) {
         ? []
         : [{ key, expected: String(expected), actual: actual[key] }],
     )
+    const mismatchCandidates = candidateDiagnostics
+      .filter(row => mismatches.some(mismatch => mismatch.key === row.canonicalKey))
+      .map(row => ({
+        canonicalKey: row.canonicalKey,
+        selected: row.normalizedValue,
+        rawValue: row.rawValue,
+        source: row.source,
+        status: row.status,
+        discardedConflict: row.discardedConflict,
+        reason: row.reason,
+        candidates: row.evidenceGroups,
+      }))
     const reviewRequired = Object.entries(statuses)
       .filter(([, status]) => ['review_required', 'low_confidence'].includes(status || ''))
       .map(([key]) => key)
@@ -349,6 +427,7 @@ for (const fixture of fixtures) {
       confirmed_reasons: confirmedReasons,
       review_required: reviewRequired,
       mismatches,
+      mismatch_candidates: mismatchCandidates,
       raw_diagnostics_available: Boolean(rawDiagnostics),
     }, null, 2))
     if (fixture.source === 'real') {
@@ -374,6 +453,90 @@ for (const fixture of fixtures) {
           ).toBe(true)
         }
       }
+    }
+    if (fixture.fileName === 'tiktok-reference.jpg') {
+      const downloadPromise = page.waitForEvent('download')
+      await page.getByTestId('ocr-download-diagnostics').click()
+      const download = await downloadPromise
+      const downloadedPath = await download.path()
+      if (!downloadedPath) {
+        throw new Error('Playwright did not provide a path for the OCR diagnostics download')
+      }
+      const exported = JSON.parse(
+        await readFile(downloadedPath, 'utf8'),
+      ) as OcrDiagnosticDownload
+      expect(exported.schema_version).toBe('1')
+      expect(exported.runtime?.runtime_id).toBe('tesseract-browser-pinned-v1')
+      expect(exported.runtime?.browser.device_pixel_ratio).toBe(1)
+      expect(exported.runtime?.browser.viewport).toEqual({ width: 1366, height: 768 })
+      expect(exported.runtime?.image).toEqual({
+        decoded_width: 1748,
+        decoded_height: 926,
+        canvas_width: 2800,
+        canvas_height: 1483,
+      })
+      expect(exported.runtime?.tesseract).toMatchObject({
+        package_version: '7.0.0',
+        core_version: '7.0.0',
+        language: 'eng+vie',
+        language_data_version: '4.0.0_best_int',
+        language_data_source: '/ocr/tessdata',
+        worker_path: '/ocr/tesseract/worker.min.js',
+        core_path: '/ocr/tesseract/tesseract-core-lstm.wasm.js',
+        cache_method: 'none',
+      })
+      expect(exported.runtime?.selected_roi).toEqual(diagnostics.selected_roi)
+      expect(exported.runtime?.normalized_roi_dimensions).toEqual({
+        width: 2400,
+        height: 1200,
+      })
+      expect(exported.raw_ocr_text.length).toBeGreaterThan(0)
+      expect(exported.words.length).toBeGreaterThan(0)
+      for (const key of [
+        'items_sold',
+        'impressions',
+        'advertising_cost',
+        'comments',
+        'average_order_value',
+      ]) {
+        expect(
+          exported.candidates.some(candidate => candidate.canonical_key === key),
+          `${key} must be included in the diagnostics export`,
+        ).toBe(true)
+        expect(exported.card_diagnostics[key]?.length || 0).toBeGreaterThan(0)
+      }
+      console.info(JSON.stringify({
+        fixture: fixture.fileName,
+        runtime: exported.runtime,
+        failing_metric_candidate_comparison: exported.candidates
+          .filter(candidate => [
+            'items_sold',
+            'impressions',
+            'advertising_cost',
+            'comments',
+            'average_order_value',
+          ].includes(candidate.canonical_key))
+          .map(candidate => ({
+            canonical_key: candidate.canonical_key,
+            selected_value: candidate.metric.value,
+            selected_raw_value: candidate.metric.raw_value,
+            selected_strategy: candidate.metric.strategy,
+            selected_evidence_group: candidate.metric.evidence_group,
+            status: candidate.metric.status,
+            candidates: candidate.metric.strategy_candidates,
+          })),
+      }, null, 2))
+      expect(JSON.stringify(exported)).not.toMatch(/data:image|base64,/i)
+      expect(ocrAssetRequests.some(url =>
+        url.includes('/ocr/tesseract/worker.min.js'),
+      )).toBe(true)
+      expect(ocrAssetRequests.some(url =>
+        url.includes('/ocr/tessdata/eng.traineddata.gz'),
+      )).toBe(true)
+      expect(ocrAssetRequests.some(url =>
+        url.includes('/ocr/tessdata/vie.traineddata.gz'),
+      )).toBe(true)
+      expect(ocrAssetRequests.some(url => url.includes('cdn.jsdelivr.net'))).toBe(false)
     }
     await page.getByTestId('ocr-metric-filter-data').click()
     for (const [key, value] of Object.entries(actual)) {

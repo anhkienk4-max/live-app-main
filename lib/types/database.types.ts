@@ -537,7 +537,60 @@ export interface OcrReviewData {
   }>
   raw_output?: string
   raw_diagnostic_output?: string | null
+  diagnostic_export?: OcrDiagnosticExport
   error_message?: string
+}
+
+export interface OcrRuntimeDiagnostics {
+  runtime_id: string
+  browser: {
+    name: string
+    version: string
+    user_agent: string
+    operating_system: string
+    device_pixel_ratio: number
+    viewport: { width: number; height: number }
+  }
+  image: {
+    decoded_width: number
+    decoded_height: number
+    canvas_width: number
+    canvas_height: number
+  }
+  tesseract: {
+    package_version: string
+    core_version: string
+    language: 'eng+vie'
+    language_data_version: string
+    language_data_source: string
+    worker_path: string
+    core_path: string
+    cache_method: 'none'
+    asset_sha256: Record<string, string>
+    worker_parameters: Record<string, string>
+  }
+  preprocessing_pipeline: string[]
+  selected_roi?: OcrCropBox
+  normalized_roi_dimensions?: { width: number; height: number }
+}
+
+export interface OcrDiagnosticExport {
+  schema_version: '1'
+  generated_at: string
+  source_platform: ReportDashboardPlatform
+  runtime?: OcrRuntimeDiagnostics
+  raw_ocr_text: string
+  strategy_text?: Partial<Record<OcrExtractionStrategy, string>>
+  words: OcrRecognizedWord[]
+  card_diagnostics: NonNullable<OcrImageRecognition['pass_output']['card_diagnostics']>
+  region_diagnostics?: OcrRegionDiagnostics
+  candidates: Array<{
+    canonical_key: ReportMetricKey
+    metric: OcrMetricValue
+  }>
+  selected_metrics: OcrReviewData['metrics']
+  discarded_conflicts: NonNullable<OcrReviewData['discarded_conflicts']>
+  missing_metric_keys: ReportMetricKey[]
 }
 
 export interface OcrCropBox {
@@ -636,6 +689,7 @@ export interface OcrImageRecognition {
   original_dimensions: { width: number; height: number }
   processed_dimensions: { width: number; height: number }
   region_diagnostics?: OcrRegionDiagnostics
+  runtime_diagnostics?: OcrRuntimeDiagnostics
 }
 
 export interface SwapRequest extends LifecycleMetadata {

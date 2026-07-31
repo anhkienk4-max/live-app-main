@@ -1,0 +1,27 @@
+Bundled OCR runtime notices
+===========================
+
+The files under public/ocr are unmodified copies from these pinned packages:
+
+- tesseract.js 7.0.0
+  Source: https://github.com/naptha/tesseract.js
+  License: Apache License 2.0
+  Bundled file: tesseract/worker.min.js
+
+- tesseract.js-core 7.0.0
+  Source: https://github.com/naptha/tesseract.js-core
+  License: Apache License 2.0
+  Bundled files:
+    - tesseract/tesseract-core-lstm.wasm.js
+    - tesseract/tesseract-core-lstm.wasm
+
+- @tesseract.js-data/eng 1.0.0
+- @tesseract.js-data/vie 1.0.0
+  Source: https://github.com/naptha/tessdata
+  License: MIT
+  Bundled files:
+    - tessdata/eng.traineddata.gz (4.0.0_best_int)
+    - tessdata/vie.traineddata.gz (4.0.0_best_int)
+
+The Apache License 2.0 and MIT License texts distributed with these assets
+are included in the LICENSES directory.

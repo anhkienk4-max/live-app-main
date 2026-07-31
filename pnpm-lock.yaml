@@ -170,10 +170,10 @@ importers:
         specifier: ^2.110.2
         version: 2.110.5
       '@tesseract.js-data/eng':
-        specifier: ^1.0.0
+        specifier: 1.0.0
         version: 1.0.0
       '@tesseract.js-data/vie':
-        specifier: ^1.0.0
+        specifier: 1.0.0
         version: 1.0.0
       class-variance-authority:
         specifier: ^0.7.1
@@ -215,7 +215,7 @@ importers:
         specifier: ^3.6.0
         version: 3.6.0
       tesseract.js:
-        specifier: ^7.0.0
+        specifier: 7.0.0
         version: 7.0.0
       tw-animate-css:
         specifier: ^1.4.0
@@ -225,7 +225,7 @@ importers:
         version: 0.18.5
     devDependencies:
       '@playwright/test':
-        specifier: ^1.61.1
+        specifier: 1.61.1
         version: 1.61.1
       '@tailwindcss/oxide-win32-x64-msvc':
         specifier: 4.3.2

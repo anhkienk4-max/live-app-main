@@ -3,15 +3,35 @@
 import type { OcrReviewData } from '@/lib/types/database.types'
 import { platformCanonicalMetricKeys } from '@/lib/utils/ocrCanonical'
 
-export function OcrCandidateDiagnosticsTable({ review }: { review?: OcrReviewData | null }) {
-  if (process.env.NODE_ENV === 'production' || !review) return null
+export function OcrCandidateDiagnosticsTable({
+  review,
+  canExport = false,
+}: {
+  review?: OcrReviewData | null
+  canExport?: boolean
+}) {
+  if (!review) return null
+  const showTable = process.env.NODE_ENV !== 'production'
+  const exportAvailable = canExport && Boolean(review.diagnostic_export)
+  if (!showTable && !exportAvailable) return null
   const conflictsByKey = new Map(
     (review.discarded_conflicts || []).map(conflict => [conflict.canonical_key, conflict]),
   )
   const keys = platformCanonicalMetricKeys(review.source_platform || 'other')
 
   return (
-    <details className="rounded-lg border border-dashed p-3 text-xs" data-testid="ocr-candidate-diagnostics">
+    <div className="space-y-2">
+      {exportAvailable && (
+        <button
+          type="button"
+          className="rounded-md border px-3 py-2 text-xs font-medium hover:bg-muted"
+          onClick={() => downloadOcrDiagnostics(review)}
+          data-testid="ocr-download-diagnostics"
+        >
+          Download OCR diagnostics JSON
+        </button>
+      )}
+      {showTable && <details className="rounded-lg border border-dashed p-3 text-xs" data-testid="ocr-candidate-diagnostics">
       <summary className="cursor-pointer font-semibold">OCR candidate diagnostics</summary>
       <div className="mt-3 overflow-x-auto">
         <table className="min-w-full border-collapse text-left">
@@ -46,6 +66,24 @@ export function OcrCandidateDiagnosticsTable({ review }: { review?: OcrReviewDat
           </tbody>
         </table>
       </div>
-    </details>
+      </details>}
+    </div>
   )
+}
+
+function downloadOcrDiagnostics(review: OcrReviewData) {
+  if (!review.diagnostic_export) return
+  const blob = new Blob(
+    [JSON.stringify(review.diagnostic_export, null, 2)],
+    { type: 'application/json' },
+  )
+  const objectUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+  link.href = objectUrl
+  link.download = `ocr-diagnostics-${review.source_platform || 'unknown'}-${timestamp}.json`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(objectUrl)
 }

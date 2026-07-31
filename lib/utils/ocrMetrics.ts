@@ -1000,6 +1000,16 @@ export function mapDashboardImageRecognition(
       missing_metric_keys: expectedKeys,
       raw_output: '',
       raw_diagnostic_output: formatRecognitionOutput(recognition),
+      diagnostic_export: buildOcrDiagnosticExport(
+        platform,
+        recognition,
+        [],
+        {
+          selectedByKey: {},
+          discardedConflicts: [],
+          missingKeys: expectedKeys,
+        },
+      ),
       error_message: recognition.region_diagnostics.ambiguous
         ? 'Several dashboard regions are similarly strong. Select one region and retry OCR.'
         : 'A dashboard region could not be selected confidently. Adjust the region and retry OCR.',
@@ -1296,6 +1306,12 @@ export function mapDashboardImageRecognition(
       ? recognition.text.trim()
       : formatCorrectedDashboardOcrText(platform, metrics),
     raw_diagnostic_output: formatRecognitionOutput(recognition),
+    diagnostic_export: buildOcrDiagnosticExport(
+      platform,
+      recognition,
+      candidateInputs,
+      selection,
+    ),
     error_message: recognition.text.trim() ? undefined : 'The OCR engine did not find readable text in this image.',
   }
 }
@@ -2934,7 +2950,32 @@ function tiktokInformationCompletenessBonus(
   allKeyCandidates: readonly MetricCandidateInput[],
   cell: LayoutMetricCell | undefined,
 ) {
-  if (cell?.valueKind === 'compact' || cell?.valueKind === 'count_or_compact') return 0
+  if (cell?.valueKind === 'compact' || cell?.valueKind === 'count_or_compact') {
+    const isNormalizedOnly = candidates.every(candidate =>
+      candidate.metric.strategy === 'normalized_roi')
+    if (!isNormalizedOnly) return 0
+    const originalCardCandidates = allKeyCandidates.filter(candidate =>
+      candidate.metric.strategy === 'anchor_card')
+    if (!originalCardCandidates.length) return 0
+    const visibleDigitCount = (candidate: MetricCandidateInput) =>
+      (candidate.metric.raw_value || candidate.metric.raw_ocr_value || '')
+        .replace(/\D/g, '')
+        .length
+    const candidateDigits = Math.max(...candidates.map(visibleDigitCount))
+    const maximumDigits = Math.max(...originalCardCandidates.map(visibleDigitCount))
+    const candidateConfidence = Math.max(...candidates.map(candidate =>
+      candidate.metric.value_confidence || 0))
+    const longerCandidateConfidence = Math.max(
+      ...originalCardCandidates
+        .filter(candidate => visibleDigitCount(candidate) > candidateDigits)
+        .map(candidate => candidate.metric.value_confidence || 0),
+      0,
+    )
+    return candidateDigits < maximumDigits
+      && longerCandidateConfidence >= candidateConfidence - 20
+      ? -2.5
+      : 0
+  }
   const anchorCandidates = candidates.filter(candidate =>
     candidate.metric.strategy === 'anchor_card')
   if (!anchorCandidates.length) return 0
@@ -3034,7 +3075,36 @@ function metricValuesEqual(left: ReportMetricValue | undefined, right: ReportMet
   return left === right
 }
 
+function buildOcrDiagnosticExport(
+  platform: ReportDashboardPlatform,
+  recognition: OcrImageRecognition,
+  candidates: readonly MetricCandidateInput[],
+  selection: MetricCandidateSelection,
+): NonNullable<OcrReviewData['diagnostic_export']> {
+  return {
+    schema_version: '1',
+    generated_at: new Date().toISOString(),
+    source_platform: platform,
+    runtime: recognition.runtime_diagnostics,
+    raw_ocr_text: recognition.text,
+    strategy_text: recognition.pass_output.strategy_text,
+    words: recognition.words,
+    card_diagnostics: recognition.pass_output.card_diagnostics || {},
+    region_diagnostics: recognition.region_diagnostics,
+    candidates: candidates.map(candidate => ({
+      canonical_key: candidate.key,
+      metric: candidate.metric,
+    })),
+    selected_metrics: selection.selectedByKey,
+    discarded_conflicts: selection.discardedConflicts,
+    missing_metric_keys: selection.missingKeys,
+  }
+}
+
 function formatRecognitionOutput(recognition: OcrImageRecognition) {
+  const runtimeOutput = recognition.runtime_diagnostics
+    ? JSON.stringify(recognition.runtime_diagnostics, null, 2)
+    : ''
   const regionOutput = recognition.region_diagnostics
     ? JSON.stringify({
       original_dimensions: recognition.region_diagnostics.original_dimensions,
@@ -3083,6 +3153,7 @@ function formatRecognitionOutput(recognition: OcrImageRecognition) {
       .join('\n\n')
     : ''
   return [
+    runtimeOutput ? `[runtime diagnostics]\n${runtimeOutput}` : '',
     regionOutput ? `[region detection]\n${regionOutput}` : '',
     '[label pass]',
     recognition.pass_output.label,
