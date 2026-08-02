@@ -116,6 +116,22 @@ type OcrDiagnosticDownload = {
       }>
     }
   }>
+  selected_metrics: Record<string, {
+    value: string | number
+    raw_value?: string
+    status?: string
+    strategy?: string
+    evidence_group?: string
+    strategy_candidates?: Array<{
+      raw_text: string
+      value_candidate: string | number
+      strategy: string
+      preprocessing_pass?: string
+      evidence_source_family?: string
+      evidence_group?: string
+      rejection_reason?: string
+    }>
+  }>
 }
 
 type FixtureCase = {
@@ -145,6 +161,7 @@ const fixtures: FixtureCase[] = [
     dimensions: { width: 1748, height: 926 },
     source: 'real',
     expected: referenceExpectedMetrics,
+    minimumExactMetrics: 19,
   },
   {
     name: 'independent real dashboard',
@@ -152,6 +169,7 @@ const fixtures: FixtureCase[] = [
     sha256: 'B509434B7B33108C0B0B1B69075C31D647A9DA8122CC6EA9F99A8CA37D45472E',
     dimensions: { width: 1399, height: 942 },
     source: 'real',
+    minimumExactMetrics: 19,
     expected: {
       gmv: 12203520,
       items_sold: 128,
@@ -209,7 +227,7 @@ const fixtures: FixtureCase[] = [
     sha256: '1A2B2E4D268379B22B59240A96F75DFA57604298BA91D27AB5DDED496513A7AA',
     dimensions: { width: 1393, height: 998 },
     source: 'diagnostic',
-    minimumExactMetrics: 16,
+    minimumExactMetrics: 17,
     expected: {
       gmv: 12887813,
       items_sold: 142,
@@ -316,8 +334,13 @@ for (const fixture of fixtures) {
     await page.getByTestId('report-dashboard-image-upload').setInputFiles(fixturePath)
     await expect(page.locator('img[src^="blob:"]').first()).toBeVisible()
     await expect(page.getByTestId('ocr-crop-selection')).toBeVisible()
-    await expect(page.getByTestId('ocr-crop-handle-se')).toBeVisible()
+    for (const handle of ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']) {
+      await expect(page.getByTestId(`ocr-crop-handle-${handle}`)).toBeVisible()
+    }
+    await expect(page.getByTestId('ocr-rescan-selected-crop')).toBeVisible()
     await page.getByTestId('report-run-ocr-button').click()
+    await expect(page.getByTestId('report-run-ocr-button')).toBeDisabled()
+    await expect(page.getByTestId('ocr-rescan-selected-crop')).toBeDisabled()
     await waitForOcrCompletion(page.getByTestId('report-ocr-completion-status'))
 
     let diagnostics = await readRegionDiagnostics(page)
@@ -506,6 +529,7 @@ for (const fixture of fixtures) {
         'impressions',
         'advertising_cost',
         'comments',
+        'ctor',
         'average_order_value',
       ]) {
         expect(
@@ -514,15 +538,14 @@ for (const fixture of fixtures) {
         ).toBe(true)
         expect(exported.card_diagnostics[key]?.length || 0).toBeGreaterThan(0)
       }
+      expect(exported.selected_metrics.ctor?.value).toBe(6.26)
+      expect(exported.selected_metrics.average_order_value?.value).toBe(165320)
       console.info(JSON.stringify({
         fixture: fixture.fileName,
         runtime: exported.runtime,
-        failing_metric_candidate_comparison: exported.candidates
+        glyph_candidate_comparison: exported.candidates
           .filter(candidate => [
-            'items_sold',
-            'impressions',
-            'advertising_cost',
-            'comments',
+            'ctor',
             'average_order_value',
           ].includes(candidate.canonical_key))
           .map(candidate => ({
@@ -554,15 +577,28 @@ for (const fixture of fixtures) {
     }
     await page.getByTestId('ocr-metric-filter-all').click()
     expect(await readRenderedMetrics(page, expectedMetrics)).toEqual(actual)
-    const originalWidth = await page.getByTestId('ocr-crop-width').inputValue()
-    const adjustedWidth = Math.max(5, Number(originalWidth) - 1)
-    await page.getByTestId('ocr-crop-width').fill(String(adjustedWidth))
-    await expect(page.getByTestId('ocr-crop-width')).toHaveValue(String(adjustedWidth))
+    if (fixture.fileName === 'tiktok-reference.jpg') {
+      await exerciseManualCropControls(page)
+      const retainedGmv = await page.getByTestId('ocr-metric-input-gmv').inputValue()
+      await page.getByTestId('ocr-crop-left').fill('0')
+      await page.getByTestId('ocr-crop-top').fill('0')
+      await page.getByTestId('ocr-crop-width').fill('5')
+      await page.getByTestId('ocr-crop-height').fill('5')
+      await page.getByTestId('ocr-rescan-selected-crop').click()
+      await expect(page.getByTestId('ocr-rescan-selected-crop')).toBeDisabled()
+      await expect.poll(
+        () => page.getByTestId('report-ocr-completion-status').getAttribute('data-ocr-status'),
+        { timeout: 180_000 },
+      ).not.toBe('processing')
+      await expect(page.getByTestId('ocr-crop-anchor-warning')).toBeVisible()
+      await expect(page.getByTestId('ocr-metric-input-gmv')).toHaveValue(retainedGmv)
+      await expect(page.getByTestId('report-platform-selector')).toContainText('TikTok Shop')
+    }
   })
 }
 
-for (const fixture of fixtures.filter(candidate => candidate.source === 'diagnostic')) {
-  test(`TikTok ${fixture.name} Live Dashboard Update keeps weak values review-required`, async ({ page }) => {
+for (const fixture of fixtures.filter(candidate => candidate.source !== 'synthetic')) {
+  test(`TikTok ${fixture.name} Live Dashboard Update preserves exact or review-required values`, async ({ page }) => {
     test.setTimeout(240_000)
     const fixturePath = path.join(fixtureDirectory, fixture.fileName)
     const expectedMetrics = fixture.expected || referenceExpectedMetrics
@@ -674,6 +710,27 @@ async function waitForOcrCompletion(status: Locator) {
     () => status.getAttribute('data-ocr-status'),
     { timeout: 180_000 },
   ).toBe('review_required')
+}
+
+async function exerciseManualCropControls(page: Page) {
+  const selection = page.getByTestId('ocr-crop-selection')
+  const initialLeft = Number(await page.getByTestId('ocr-crop-left').inputValue())
+  const initialTop = Number(await page.getByTestId('ocr-crop-top').inputValue())
+  const initialWidth = Number(await page.getByTestId('ocr-crop-width').inputValue())
+  const initialHeight = Number(await page.getByTestId('ocr-crop-height').inputValue())
+  const nextLeft = Math.min(90, initialLeft + 1)
+  const nextTop = Math.min(90, initialTop + 1)
+  const nextWidth = Math.max(5, initialWidth - 1)
+  const nextHeight = Math.max(5, initialHeight - 1)
+
+  await page.getByTestId('ocr-crop-left').fill(String(nextLeft))
+  await page.getByTestId('ocr-crop-top').fill(String(nextTop))
+  await page.getByTestId('ocr-crop-width').fill(String(nextWidth))
+  await page.getByTestId('ocr-crop-height').fill(String(nextHeight))
+  await expect(selection).toHaveAttribute('data-crop-left', String(nextLeft / 100))
+  await expect(selection).toHaveAttribute('data-crop-top', String(nextTop / 100))
+  await expect(selection).toHaveAttribute('data-crop-width', String(nextWidth / 100))
+  await expect(selection).toHaveAttribute('data-crop-height', String(nextHeight / 100))
 }
 
 async function readRegionDiagnostics(page: Page) {
