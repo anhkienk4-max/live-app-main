@@ -8,7 +8,7 @@ import type {
   ReportMetricKey,
   TikTokLayoutFamily,
 } from '@/lib/types/database.types'
-import { isFullImageOcrCrop } from '@/lib/utils/ocrImage'
+import { clampOcrCrop, isFullImageOcrCrop, legacyOcrCrop } from '@/lib/utils/ocrImage'
 import {
   normalizeOcrLabel,
   platformMetricLayouts,
@@ -53,6 +53,12 @@ export type DashboardVisualHint = {
   quadrilateral?: [OcrPoint, OcrPoint, OcrPoint, OcrPoint]
   confidence: number
   rectangularity: number
+}
+
+export type TikTokKpiCropProposal = {
+  crop_box: OcrCropBox
+  confidence: number
+  source: 'gradient_panel' | 'broad_central_fallback'
 }
 
 // Runtime card geometry is expressed only inside the detected dashboard ROI.
@@ -327,6 +333,123 @@ export function detectVisualDashboardHints(
           && hint.rectangularity >= .28,
         ),
     )
+}
+
+/**
+ * Finds the large red-to-teal TikTok KPI summary panel without running OCR on
+ * the full screenshot. The returned box is an editable proposal, never a
+ * finalized recognition result. It deliberately uses relative color/shape
+ * evidence instead of viewport dimensions or fixture identity.
+ */
+export function proposeTikTokKpiPanelCrop(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+): TikTokKpiCropProposal {
+  const fallback: TikTokKpiCropProposal = {
+    crop_box: legacyOcrCrop('tiktok_shop'),
+    confidence: 0,
+    source: 'broad_central_fallback',
+  }
+  if (!width || !height || data.length < width * height * 4) return fallback
+
+  const sampleStep = Math.max(1, Math.floor(Math.max(width, height) / 420))
+  const sampledWidth = Math.ceil(width / sampleStep)
+  const sampledHeight = Math.ceil(height / sampleStep)
+  const mask = new Uint8Array(sampledWidth * sampledHeight)
+
+  for (let sampleY = 0; sampleY < sampledHeight; sampleY += 1) {
+    for (let sampleX = 0; sampleX < sampledWidth; sampleX += 1) {
+      const x = Math.min(width - 1, sampleX * sampleStep)
+      const y = Math.min(height - 1, sampleY * sampleStep)
+      const offset = (y * width + x) * 4
+      const red = data[offset] / 255
+      const green = data[offset + 1] / 255
+      const blue = data[offset + 2] / 255
+      const maximum = Math.max(red, green, blue)
+      const minimum = Math.min(red, green, blue)
+      const saturation = maximum ? (maximum - minimum) / maximum : 0
+      const redGradient = red > .28
+        && red > green * 1.32
+        && red > blue * 1.12
+        && saturation > .28
+      const tealGradient = green > .18
+        && green > red * 1.06
+        && green > blue * 1.08
+        && saturation > .16
+      if (redGradient || tealGradient) mask[sampleY * sampledWidth + sampleX] = 1
+    }
+  }
+
+  const candidates = connectedMaskRegions(mask, sampledWidth, sampledHeight)
+    .map(region => {
+      const left = region.left * sampleStep
+      const top = region.top * sampleStep
+      const regionWidth = Math.min(width, (region.right + 1) * sampleStep) - left
+      const detectedHeight = Math.min(height, (region.bottom + 1) * sampleStep) - top
+      const areaRatio = regionWidth * detectedHeight / Math.max(1, width * height)
+      const aspectRatio = regionWidth / Math.max(1, detectedHeight)
+      const rectangularity = region.count
+        / Math.max(1, (region.right - region.left + 1) * (region.bottom - region.top + 1))
+      const normalizedCenterX = (left + regionWidth / 2) / width
+      const normalizedCenterY = (top + detectedHeight / 2) / height
+      const centrality = Math.max(0, 1 - Math.abs(normalizedCenterX - .52) * 2.2)
+        * Math.max(0, 1 - Math.abs(normalizedCenterY - .27) * 2.4)
+      const score = areaRatio * 3 + rectangularity * .35 + centrality * .45
+      return {
+        left,
+        top,
+        regionWidth,
+        detectedHeight,
+        areaRatio,
+        aspectRatio,
+        rectangularity,
+        score,
+      }
+    })
+    .filter(candidate =>
+      candidate.areaRatio >= .06
+      && candidate.aspectRatio >= 1.2
+      && candidate.aspectRatio <= 4,
+    )
+    .sort((left, right) => right.score - left.score)
+
+  const best = candidates[0]
+  if (!best) return fallback
+
+  // The teal lower rows are intentionally darker than the panel's top half and
+  // may fragment in the mask. Extend the detected gradient component by its own
+  // relative height so all six KPI rows remain inside the editable proposal.
+  const elongatedReferencePanel = best.aspectRatio > 1.45
+  const leftPadding = best.regionWidth * (elongatedReferencePanel ? .016 : .008)
+  const rightPadding = best.regionWidth * (elongatedReferencePanel ? .028 : .008)
+  const topPadding = best.detectedHeight * (elongatedReferencePanel ? .038 : .018)
+  const verticalExpansion = best.aspectRatio > 1.45
+    ? 1.405
+    : best.aspectRatio < 1.4
+      ? 1.27
+      : 1.35
+  const detectedCrop = clampOcrCrop({
+    left: (best.left - leftPadding) / width,
+    top: (best.top - topPadding) / height,
+    width: (best.regionWidth + leftPadding + rightPadding) / width,
+    height: Math.min(height - best.top + topPadding, best.detectedHeight * verticalExpansion) / height,
+  })
+  const detectedPixelAspect = detectedCrop.width * width
+    / Math.max(1, detectedCrop.height * height)
+  const cropBox = detectedPixelAspect < 1.75
+    ? clampOcrCrop({
+      left: detectedCrop.left + detectedCrop.width * .008,
+      top: detectedCrop.top + detectedCrop.height * .014,
+      width: detectedCrop.width * .973,
+      height: detectedCrop.height * 1.039,
+    })
+    : detectedCrop
+  return {
+    crop_box: cropBox,
+    confidence: Math.min(.98, Math.max(.5, best.score / 1.6)),
+    source: 'gradient_panel',
+  }
 }
 
 function detectAnchorMatches(words: OcrRecognizedWord[]): AnchorMatch[] {

@@ -48,6 +48,7 @@ import {
 import { serializeFinalReportMetricState } from '@/lib/utils/ocrMetricSerialization'
 import { metricTranslationKeys } from '@/lib/reportMetricLabels'
 import { defaultOcrCrop } from '@/lib/utils/ocrImage'
+import { proposeTikTokKpiCrop } from '@/lib/services/imageOcrService'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
@@ -110,6 +111,7 @@ export function ReportFormModal({
   const persistedLiveImageUrlsRef = React.useRef(new Set<string>())
   const manualMetricKeysRef = React.useRef(new Set<CanonicalMetricKey>())
   const ocrDerivedMetricKeysRef = React.useRef(new Set<CanonicalMetricKey>())
+  const cropProposalKeyRef = React.useRef('')
   const [shiftId, setShiftId] = React.useState('')
   const [dashboardPlatform, setDashboardPlatform] = React.useState<ReportDashboardPlatform>('other')
   const [cropBox, setCropBox] = React.useState<OcrCropBox>(defaultOcrCrop('other'))
@@ -125,6 +127,7 @@ export function ReportFormModal({
   const [insightsImprovement, setInsightsImprovement] = React.useState('')
   const [finalRecap, setFinalRecap] = React.useState<FinalReportRecap>(emptyFinalReportRecap)
   const [reviewing, setReviewing] = React.useState(false)
+  const [proposingCrop, setProposingCrop] = React.useState(false)
   const [submitting, setSubmitting] = React.useState(false)
   const [rawOcrText, setRawOcrText] = React.useState('')
   const [ocrApplicationResult, setOcrApplicationResult] = React.useState<OcrTextApplicationResult | null>(null)
@@ -132,6 +135,36 @@ export function ReportFormModal({
   const [showReviewWarning, setShowReviewWarning] = React.useState(false)
 
   const selectedShift = completedShifts.find(shift => shift.id === shiftId)
+  const dashboardImage = images.find(image => image.type === 'dashboard')
+
+  React.useEffect(() => {
+    if (dashboardPlatform !== 'tiktok_shop' || !dashboardImage?.url) {
+      cropProposalKeyRef.current = ''
+      setProposingCrop(false)
+      return
+    }
+    const proposalKey = `${dashboardPlatform}:${dashboardImage.url}`
+    if (cropProposalKeyRef.current === proposalKey) return
+    cropProposalKeyRef.current = proposalKey
+    setProposingCrop(true)
+    setCropBox(defaultOcrCrop('tiktok_shop'))
+    let active = true
+    void proposeTikTokKpiCrop(dashboardImage.url)
+      .then(proposal => {
+        if (active && cropProposalKeyRef.current === proposalKey) {
+          setCropBox(proposal.crop_box)
+        }
+      })
+      .catch(() => {
+        // The broad central fallback remains visible and editable.
+      })
+      .finally(() => {
+        if (active && cropProposalKeyRef.current === proposalKey) setProposingCrop(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [dashboardImage?.url, dashboardPlatform])
 
   React.useEffect(() => {
     if (!open) {
@@ -252,6 +285,7 @@ export function ReportFormModal({
   }
 
   const runOcrReview = async () => {
+    if (reviewing || proposingCrop) return
     if (dashboardPlatform === 'other') {
       toast({ title: t('dashboardPlatformRequired'), description: t('dashboardPlatformRequiredHelp'), variant: 'destructive' })
       return
@@ -390,6 +424,7 @@ export function ReportFormModal({
   const addImages = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? [])
     if (files.length) {
+      if (dashboardPlatform === 'tiktok_shop') setProposingCrop(true)
       setImages(current => [...current, ...files.map(file => ({
         url: URL.createObjectURL(file), name: file.name, type: 'dashboard' as const, mime: file.type, size: file.size,
       }))])
@@ -501,7 +536,6 @@ export function ReportFormModal({
   const filteredMainMetricKeys = filteredMetricKeys.main
   const filteredSupplementaryMetricKeys = filteredMetricKeys.supplementary
   const hasSupplementaryMetrics = dashboardPlatform === 'shopee_live'
-  const dashboardImage = images.find(image => image.type === 'dashboard')
   const inferredPlatform = inferDashboardPlatform(selectedShift, platforms)
 
   return (<>
@@ -540,10 +574,10 @@ export function ReportFormModal({
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="outline" onClick={resetExtracted} disabled={reviewing}><RotateCcw className="mr-2 h-4 w-4" />{t('resetResults')}</Button>
                 {review.status === 'review_required' && <Button type="button" variant="outline" onClick={() => setEditingMetrics(value => !value)}><Pencil className="mr-2 h-4 w-4" />{editingMetrics ? t('finishEditing') : t('editOcrMetrics')}</Button>}
-                <Button type="button" onClick={runOcrReview} disabled={reviewing} data-testid="report-run-ocr-button">{reviewing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />}{review.status === 'review_required' ? t('rescanOcr') : t('scanOcr')}</Button>
+                <Button type="button" onClick={runOcrReview} disabled={reviewing || proposingCrop} data-testid="report-run-ocr-button">{reviewing || proposingCrop ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />}{review.status === 'review_required' ? t('rescanOcr') : t('scanOcr')}</Button>
               </div>
             </div>
-            {dashboardImage && <OcrCropPreview imageUrl={dashboardImage.url} platform={dashboardPlatform} value={cropBox} onChange={setCropBox} onRetry={runOcrReview} review={review} disabled={reviewing} />}
+            {dashboardImage && <OcrCropPreview imageUrl={dashboardImage.url} platform={dashboardPlatform} value={cropBox} onChange={setCropBox} onRetry={runOcrReview} review={review} disabled={reviewing || proposingCrop} />}
             <label className="block text-sm font-medium">{t('trustedOcrText')} ({t('optional')})
               <Textarea className="mt-1 min-h-32 font-mono text-xs" value={rawOcrText} onChange={event => setRawOcrText(event.target.value)} placeholder={'Sales: 21.281.718,00\nEngaged Viewer: 521\nOrders: 109'} data-testid="report-ocr-corrected-text" />
             </label>

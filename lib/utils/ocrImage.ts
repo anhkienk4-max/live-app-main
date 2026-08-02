@@ -9,8 +9,13 @@ const legacyCropTemplates: Record<Exclude<ReportDashboardPlatform, 'other'>, Ocr
   tiktok_shop: { left: 0.22, top: 0.08, width: 0.58, height: 0.57 },
 }
 
-export function defaultOcrCrop(_platform: ReportDashboardPlatform): OcrCropBox {
-  return { ...fullImageCrop }
+export function defaultOcrCrop(platform: ReportDashboardPlatform): OcrCropBox {
+  // TikTok uses a crop-first workflow. This broad central panel is only the
+  // immediate editable suggestion while the image-only gradient detector runs.
+  // Shopee keeps the existing full-image region-detection workflow.
+  return platform === 'tiktok_shop'
+    ? { ...legacyCropTemplates.tiktok_shop }
+    : { ...fullImageCrop }
 }
 
 export function legacyOcrCrop(platform: Exclude<ReportDashboardPlatform, 'other'>): OcrCropBox {

@@ -21,6 +21,7 @@ import {
   detectDashboardRegions,
   detectVisualDashboardHints,
   platformRoiMetricLayouts,
+  proposeTikTokKpiPanelCrop,
   roiCellBoundingBox,
   roiPointToImage,
   type DashboardVisualHint,
@@ -112,6 +113,24 @@ export async function recognizeDashboardImage(
   }
 }
 
+export async function proposeTikTokKpiCrop(imageUrl: string) {
+  const imageResponse = await fetch(imageUrl)
+  if (!imageResponse.ok) throw new Error('The selected dashboard image could not be read.')
+  const bitmap = await createImageBitmap(await imageResponse.blob())
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    const context = canvas.getContext('2d', { willReadFrequently: true })
+    if (!context) throw new Error('Browser crop proposal canvas is unavailable.')
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    const image = context.getImageData(0, 0, canvas.width, canvas.height)
+    return proposeTikTokKpiPanelCrop(image.data, canvas.width, canvas.height)
+  } finally {
+    bitmap.close()
+  }
+}
+
 async function recognizeDashboardImageOnServer(
   imageBlob: Blob,
   platform: ReportDashboardPlatform,
@@ -134,13 +153,23 @@ async function recognizeDashboardImageInBrowser(
   platform: ReportDashboardPlatform,
   requestedCrop?: OcrCropBox,
 ): Promise<OcrImageRecognition> {
-  const [{ createWorker, OEM, PSM }, bitmap] = await Promise.all([
+  const [tesseract, bitmap] = await Promise.all([
     import('tesseract.js'),
     createImageBitmap(imageBlob),
   ])
+  const { createWorker, OEM, PSM } = tesseract
   const originalWidth = bitmap.width
   const originalHeight = bitmap.height
   const requested = clampOcrCrop(requestedCrop || defaultOcrCrop(platform))
+  if (platform === 'tiktok_shop') {
+    return recognizeTikTokKpiCropInBrowser({
+      bitmap,
+      requested,
+      createWorker,
+      OEM,
+      PSM,
+    })
+  }
   const browserPreprocessScale = Math.max(
     1,
     Math.min(2, 2800 / Math.max(originalWidth, originalHeight)),
@@ -306,6 +335,123 @@ async function recognizeDashboardImageInBrowser(
   }
 }
 
+async function recognizeTikTokKpiCropInBrowser({
+  bitmap,
+  requested,
+  createWorker,
+  OEM,
+  PSM,
+}: {
+  bitmap: ImageBitmap
+  requested: OcrCropBox
+  createWorker: typeof import('tesseract.js')['createWorker']
+  OEM: typeof import('tesseract.js')['OEM']
+  PSM: typeof import('tesseract.js')['PSM']
+}): Promise<OcrImageRecognition> {
+  const originalWidth = bitmap.width
+  const originalHeight = bitmap.height
+  const pixelCrop = {
+    left: requested.left * originalWidth,
+    top: requested.top * originalHeight,
+    width: requested.width * originalWidth,
+    height: requested.height * originalHeight,
+  }
+  const cropScale = Math.max(1, Math.min(3, 1800 / Math.max(1, pixelCrop.width)))
+  const cropCanvas = createBrowserOriginalMetricCanvas(bitmap, pixelCrop, cropScale)
+  const worker = await createWorker(
+    OCR_RUNTIME_CONFIG.language,
+    OEM.LSTM_ONLY,
+    pinnedBrowserWorkerOptions(),
+  )
+  try {
+    await worker.setParameters({
+      tessedit_pageseg_mode: PSM.SPARSE_TEXT,
+      preserve_interword_spaces: '1',
+      user_defined_dpi: '300',
+    })
+    const primary = await worker.recognize(
+      cropCanvas,
+      { rotateAuto: false },
+      { text: true, blocks: true },
+    )
+    const primaryWords = mapBrowserTesseractBlocksToWords(
+      primary.data.blocks,
+      'tiktok_shop',
+      { left: pixelCrop.left, top: pixelCrop.top },
+      cropScale,
+      'normalized_roi_ocr',
+      'selected_kpi_crop:primary',
+    )
+    const selectedWords = primaryWords
+    const regionResult = detectDashboardRegions({
+      words: selectedWords,
+      imageWidth: originalWidth,
+      imageHeight: originalHeight,
+      requestedPlatform: 'tiktok_shop',
+      requestedCrop: requested,
+    })
+    const selected = regionResult.selected
+    const normalizedCardCanvas = selected
+      ? createNormalizedRoiCanvas(bitmap, selected, 2400, 1200)
+      : cropCanvas
+    const cardRecognition = selected
+      ? await recognizeMetricCardsInBrowser(
+        worker,
+        bitmap,
+        normalizedCardCanvas,
+        selected,
+        'tiktok_shop',
+        PSM,
+        { cropFirst: true, useNormalizedSource: true },
+      )
+      : { output: {}, labels: {}, words: [], diagnostics: {} }
+    const selectedText = primary.data.text.trim()
+    const regionDiagnostics = {
+      ...regionResult.diagnostics,
+      normalized_roi_dimensions: selected ? { width: 2400, height: 1200 } : undefined,
+    }
+    const runtimeDiagnostics = browserRuntimeDiagnostics({
+      originalWidth,
+      originalHeight,
+      canvasWidth: cropCanvas.width,
+      canvasHeight: cropCanvas.height,
+      selectedRoi: requested,
+      normalizedRoiDimensions: selected ? { width: 2400, height: 1200 } : undefined,
+    })
+    runtimeDiagnostics.preprocessing_pipeline = [
+      'tiktok_selected_kpi_crop_original_resolution',
+      'tiktok_selected_kpi_crop_card_grid_2400x1200',
+      'anchor_aligned_card_crop',
+    ]
+
+    return {
+      engine: 'tesseract.js',
+      language: 'eng+vie',
+      text: selectedText,
+      pass_output: {
+        label: selectedText,
+        numeric: '',
+        card: cardRecognition.output,
+        card_labels: cardRecognition.labels,
+        card_diagnostics: cardRecognition.diagnostics,
+        strategy_text: {
+          normalized_roi: selectedText,
+        },
+      },
+      confidence: primary.data.confidence,
+      words: [...selectedWords, ...cardRecognition.words],
+      crop_box: requested,
+      original_dimensions: { width: originalWidth, height: originalHeight },
+      processed_dimensions: { width: cropCanvas.width, height: cropCanvas.height },
+      region_diagnostics: regionDiagnostics,
+      runtime_diagnostics: runtimeDiagnostics,
+    }
+  } finally {
+    bitmap.close()
+    await worker.terminate()
+  }
+}
+
 type BrowserOcrWorker = Awaited<ReturnType<(typeof import('tesseract.js'))['createWorker']>>
 type BrowserPsm = typeof import('tesseract.js')['PSM']
 
@@ -316,6 +462,7 @@ async function recognizeMetricCardsInBrowser(
   candidate: OcrDashboardCandidate,
   platform: Exclude<ReportDashboardPlatform, 'other'>,
   psm: BrowserPsm,
+  options: { cropFirst?: boolean; useNormalizedSource?: boolean } = {},
 ) {
   const output: Record<string, string[]> = {}
   const labels: Record<string, string[]> = {}
@@ -334,7 +481,9 @@ async function recognizeMetricCardsInBrowser(
       width: labelOriginalBox.width,
       height: labelOriginalBox.height,
     }
-    const labelCrop = candidate.perspective_correction_applied
+    const useNormalizedSource = candidate.perspective_correction_applied
+      || options.useNormalizedSource
+    const labelCrop = useNormalizedSource
       ? browserMetricLabelCrop(
         cell,
         normalizedCanvas.width,
@@ -342,34 +491,44 @@ async function recognizeMetricCardsInBrowser(
         platform,
       )
       : labelOriginalCrop
-    const cardSource = candidate.perspective_correction_applied
+    const useOriginalCardFallback = options.cropFirst
+      && useNormalizedSource
+      && platform === 'tiktok_shop'
+      && (cell.key === 'current_viewers' || cell.key === 'estimated_gmv')
+    const cardSource = useNormalizedSource && !useOriginalCardFallback
       ? normalizedCanvas
       : originalBitmap
-    await worker.setParameters({
-      tessedit_pageseg_mode: psm.SINGLE_LINE,
-      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ()-/.đĐ',
-      preserve_interword_spaces: '1',
-      user_defined_dpi: '300',
-    })
-    const labelCanvas = createBrowserMetricCanvas(cardSource, labelCrop, 3)
-    const labelResult = await worker.recognize(
-      labelCanvas,
-      { rotateAuto: false },
-      { text: true },
-    )
-    const rawLabel = normalizeBrowserCardText(labelResult.data.text)
-    labels[cell.key] = rawLabel ? [rawLabel] : []
-    if (rawLabel) {
-      words.push(browserCardWord(
-        rawLabel,
-        labelResult.data.confidence,
-        `card-label:${cell.key}:0`,
-        labelOriginalCrop,
-        platform,
-        'label',
-        'anchor_aligned_card_crop',
-        evidenceGroup,
-      ))
+    labels[cell.key] = []
+    // The selected-crop OCR already reads all labels and validates the panel.
+    // The canonical card grid owns each value crop, so repeating 19 label-only
+    // OCR calls would add latency without independent evidence.
+    if (!options.cropFirst) {
+      await worker.setParameters({
+        tessedit_pageseg_mode: psm.SINGLE_LINE,
+        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ()-/.đĐ',
+        preserve_interword_spaces: '1',
+        user_defined_dpi: '300',
+      })
+      const labelCanvas = createBrowserMetricCanvas(cardSource, labelCrop, 3)
+      const labelResult = await worker.recognize(
+        labelCanvas,
+        { rotateAuto: false },
+        { text: true },
+      )
+      const rawLabel = normalizeBrowserCardText(labelResult.data.text)
+      labels[cell.key] = rawLabel ? [rawLabel] : []
+      if (rawLabel) {
+        words.push(browserCardWord(
+          rawLabel,
+          labelResult.data.confidence,
+          `card-label:${cell.key}:0`,
+          labelOriginalCrop,
+          platform,
+          'label',
+          'anchor_aligned_card_crop',
+          evidenceGroup,
+        ))
+      }
     }
 
     const originalBox = roiCellBoundingBox(candidate, cell, 'value')
@@ -379,7 +538,7 @@ async function recognizeMetricCardsInBrowser(
       width: originalBox.width,
       height: originalBox.height,
     }
-    const crop = candidate.perspective_correction_applied
+    const crop = useNormalizedSource && !useOriginalCardFallback
       ? browserMetricCellCrop(
         cell,
         normalizedCanvas.width,
@@ -389,7 +548,13 @@ async function recognizeMetricCardsInBrowser(
       : originalCrop
     const appearance = inspectBrowserMetricCrop(cardSource, crop)
     const scale = platform === 'tiktok_shop'
-      ? crop.height <= 34 || appearance.blurEstimate >= .55 ? 9 : 7
+      ? options.cropFirst
+        ? useNormalizedSource && !useOriginalCardFallback
+          ? cell.valueKind === 'compact' && candidate.aspect_ratio >= 1.75
+            ? crop.height <= 34 || appearance.blurEstimate >= .55 ? 5 : 4
+            : crop.height <= 34 || appearance.blurEstimate >= .55 ? 4 : 3
+          : crop.height <= 34 || appearance.blurEstimate >= .55 ? 5 : 4
+        : crop.height <= 34 || appearance.blurEstimate >= .55 ? 9 : 7
       : 5
     await worker.setParameters({
       tessedit_pageseg_mode: browserValuePsm(cell, psm),
@@ -411,9 +576,13 @@ async function recognizeMetricCardsInBrowser(
     }]
     const useColorPass = platform === 'tiktok_shop'
       && (
-        appearance.saturation >= .04
-        || appearance.dynamicRange < 190
-        || appearance.blurEstimate >= .35
+        options.cropFirst
+          ? !/\d/.test(variants[0].text)
+            || cell.valueKind === 'compact'
+            || candidate.aspect_ratio >= 1.75 && cell.valueKind === 'count_or_compact'
+          : appearance.saturation >= .04
+            || appearance.dynamicRange < 190
+            || appearance.blurEstimate >= .35
       )
     if (useColorPass) {
       const colorCanvas = createBrowserOriginalMetricCanvas(cardSource, crop, scale)
@@ -433,7 +602,9 @@ async function recognizeMetricCardsInBrowser(
       ? true
       : ['sales', 'comment_rate', 'gpm', 'ctr'].includes(cell.key)
     const lowConfidenceRetry = cell.valueKind !== 'count'
-      && variants[0].confidence < (cell.valueKind === 'compact' ? 85 : 60)
+      && variants[0].confidence < (options.cropFirst
+        ? 45
+        : cell.valueKind === 'compact' ? 85 : 60)
     if (!/\d/.test(variants[0].text) || lowConfidenceRetry || alwaysThreshold) {
       await worker.setParameters({
         tessedit_pageseg_mode: psm.SINGLE_LINE,
@@ -455,6 +626,7 @@ async function recognizeMetricCardsInBrowser(
       })
       if (
         platform === 'tiktok_shop'
+        && !options.cropFirst
         && (
           appearance.dynamicRange < 210
           || appearance.blurEstimate >= .3
@@ -478,19 +650,29 @@ async function recognizeMetricCardsInBrowser(
           preprocessingPass: 'local_contrast',
         })
       }
-      const adaptiveCanvas = createBrowserAdaptiveMetricCanvas(cardSource, crop, scale, true)
-      const adaptiveResult = await worker.recognize(
-        adaptiveCanvas,
-        { rotateAuto: false },
-        { text: true },
+      const distinctThresholdReadings = new Set(
+        variants.map(variant => variant.text.replace(/\s+/g, '')).filter(value => /\d/.test(value)),
       )
-      variants.push({
-        text: normalizeBrowserCardText(adaptiveResult.data.text),
-        confidence: adaptiveResult.data.confidence,
-        crop: originalCrop,
-        preprocessingPass: 'adaptive_light_text',
-      })
-      if (!/\d/.test(adaptiveResult.data.text) || adaptiveResult.data.confidence < 60) {
+      const runAdaptivePass = !options.cropFirst
+        || !variants.some(variant => /\d/.test(variant.text))
+        || Math.max(...variants.map(variant => variant.confidence), 0) < 65
+        || distinctThresholdReadings.size > 1
+      let adaptiveResult: Awaited<ReturnType<BrowserOcrWorker['recognize']>> | undefined
+      if (runAdaptivePass) {
+        const adaptiveCanvas = createBrowserAdaptiveMetricCanvas(cardSource, crop, scale, true)
+        adaptiveResult = await worker.recognize(
+          adaptiveCanvas,
+          { rotateAuto: false },
+          { text: true },
+        )
+        variants.push({
+          text: normalizeBrowserCardText(adaptiveResult.data.text),
+          confidence: adaptiveResult.data.confidence,
+          crop: originalCrop,
+          preprocessingPass: 'adaptive_light_text',
+        })
+      }
+      if (adaptiveResult && (!/\d/.test(adaptiveResult.data.text) || adaptiveResult.data.confidence < 60)) {
         const normalAdaptiveCanvas = createBrowserAdaptiveMetricCanvas(cardSource, crop, scale, false)
         const normalAdaptiveResult = await worker.recognize(
           normalAdaptiveCanvas,
@@ -522,10 +704,17 @@ async function recognizeMetricCardsInBrowser(
         .map(variant => variant.text.replace(/\s+/g, '').toUpperCase())
         .filter(value => /\d/.test(value)),
     )
+    const countCompactSuffixMissing = cell.valueKind === 'count_or_compact'
+      && Boolean(cell.displayFormat?.compactSuffix)
+      && !variants.some(variant => new RegExp(
+        `${cell.displayFormat?.compactSuffix}\\s*[.;:]*$`,
+        'i',
+      ).test(variant.text.trim()))
     const shouldRunHighResolutionGlyphPass = platform === 'tiktok_shop'
       && ['count', 'compact', 'count_or_compact', 'currency'].includes(cell.valueKind)
       && (
         !hasDeclaredCompactPrecision
+        || countCompactSuffixMissing
         || (
           cell.valueKind === 'compact'
           && (

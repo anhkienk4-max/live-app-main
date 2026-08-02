@@ -39,6 +39,7 @@ import {
 import { serializeLiveMetricState } from '@/lib/utils/ocrMetricSerialization'
 import { metricStatusTranslationKeys, metricTranslationKeys } from '@/lib/reportMetricLabels'
 import { defaultOcrCrop } from '@/lib/utils/ocrImage'
+import { proposeTikTokKpiCrop } from '@/lib/services/imageOcrService'
 import { OcrCropPreview } from '@/components/features/reports/OcrCropPreview'
 import { OcrMetricFilterBar } from '@/components/features/reports/OcrMetricReviewField'
 import { OcrTextApplicationSummary } from '@/components/features/reports/OcrTextApplicationSummary'
@@ -72,10 +73,12 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
   const initializedShiftIdRef = React.useRef<string | null>(null)
   const manualMetricKeysRef = React.useRef(new Set<CanonicalMetricKey>())
   const ocrDerivedMetricKeysRef = React.useRef(new Set<CanonicalMetricKey>())
+  const cropProposalKeyRef = React.useRef('')
   const [formData, setFormData] = React.useState<FormData>(emptyForm)
   const [submitting, setSubmitting] = React.useState(false)
   const [ocrReview, setOcrReview] = React.useState<OcrReviewData | null>(null)
   const [scanning, setScanning] = React.useState(false)
+  const [proposingCrop, setProposingCrop] = React.useState(false)
   const [metricValues, setMetricValues] = React.useState<MetricState>({})
   const [rawOcrText, setRawOcrText] = React.useState('')
   const [ocrApplicationResult, setOcrApplicationResult] = React.useState<OcrTextApplicationResult | null>(null)
@@ -107,6 +110,35 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
     setShowReviewWarning(false)
   }, [inferredDashboardPlatform, open, shift.id])
 
+  React.useEffect(() => {
+    if (dashboardPlatform !== 'tiktok_shop' || !formData.screenshot_url) {
+      cropProposalKeyRef.current = ''
+      setProposingCrop(false)
+      return
+    }
+    const proposalKey = `${dashboardPlatform}:${formData.screenshot_url}`
+    if (cropProposalKeyRef.current === proposalKey) return
+    cropProposalKeyRef.current = proposalKey
+    setProposingCrop(true)
+    setCropBox(defaultOcrCrop('tiktok_shop'))
+    let active = true
+    void proposeTikTokKpiCrop(formData.screenshot_url)
+      .then(proposal => {
+        if (active && cropProposalKeyRef.current === proposalKey) {
+          setCropBox(proposal.crop_box)
+        }
+      })
+      .catch(() => {
+        // The broad central fallback remains visible and editable.
+      })
+      .finally(() => {
+        if (active && cropProposalKeyRef.current === proposalKey) setProposingCrop(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [dashboardPlatform, formData.screenshot_url])
+
   const validateForm = (): boolean => {
     if (dashboardPlatform === 'other') return false
     try {
@@ -120,6 +152,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
+      if (dashboardPlatform === 'tiktok_shop') setProposingCrop(true)
       setFormData({ ...formData, screenshot_url: URL.createObjectURL(file) })
       setCropBox(defaultOcrCrop(dashboardPlatform))
       toast({ 
@@ -233,6 +266,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
   }
 
   const scanScreenshot = async () => {
+    if (scanning || proposingCrop) return
     if (!formData.screenshot_url) return
     if (dashboardPlatform === 'other') {
       toast({ title: t('dashboardPlatformRequired'), description: t('dashboardPlatformRequiredHelp'), variant: 'destructive' })
@@ -269,6 +303,8 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
       if (overwriteManualEdits) {
         incomingMetricKeys.forEach(key => manualMetricKeysRef.current.delete(key))
       }
+    } catch {
+      toast({ title: t('ocrResults'), description: t('ocrUnavailableHelp'), variant: 'destructive' })
     } finally {
       setScanning(false)
     }
@@ -403,9 +439,9 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
                 <SelectContent><SelectItem value="tiktok_shop">TikTok Shop</SelectItem><SelectItem value="shopee_live">Shopee Live</SelectItem></SelectContent>
               </Select>
             </label>
-            {formData.screenshot_url && <div className="mt-3"><OcrCropPreview imageUrl={formData.screenshot_url} platform={dashboardPlatform} value={cropBox} onChange={setCropBox} onRetry={scanScreenshot} review={ocrReview} disabled={scanning} /></div>}
+            {formData.screenshot_url && <div className="mt-3"><OcrCropPreview imageUrl={formData.screenshot_url} platform={dashboardPlatform} value={cropBox} onChange={setCropBox} onRetry={scanScreenshot} review={ocrReview} disabled={scanning || proposingCrop} /></div>}
             <div className="mt-3 flex flex-wrap gap-2">
-              <Button type="button" variant="outline" disabled={!formData.screenshot_url || scanning} onClick={scanScreenshot} data-testid="live-run-ocr-button">{scanning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />}{ocrReview ? t('rescanOcr') : t('scanOcr')}</Button>
+              <Button type="button" variant="outline" disabled={!formData.screenshot_url || scanning || proposingCrop} onClick={scanScreenshot} data-testid="live-run-ocr-button">{scanning || proposingCrop ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />}{ocrReview ? t('rescanOcr') : t('scanOcr')}</Button>
               {ocrReview && <Button type="button" variant="ghost" onClick={resetOcrResults}><RefreshCw className="mr-2 h-4 w-4" />{t('resetResults')}</Button>}
             </div>
             <label className="mt-3 block text-sm font-medium">{t('trustedOcrText')} ({t('optional')})

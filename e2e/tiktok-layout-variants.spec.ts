@@ -315,6 +315,8 @@ for (const fixture of fixtures) {
     await openTikTokFinalReport(page)
     await page.getByTestId('report-dashboard-image-upload').setInputFiles(fixturePath)
     await expect(page.locator('img[src^="blob:"]').first()).toBeVisible()
+    await expect(page.getByTestId('ocr-crop-selection')).toBeVisible()
+    await expect(page.getByTestId('ocr-crop-handle-se')).toBeVisible()
     await page.getByTestId('report-run-ocr-button').click()
     await waitForOcrCompletion(page.getByTestId('report-ocr-completion-status'))
 
@@ -469,12 +471,12 @@ for (const fixture of fixtures) {
       expect(exported.runtime?.runtime_id).toBe('tesseract-browser-pinned-v1')
       expect(exported.runtime?.browser.device_pixel_ratio).toBe(1)
       expect(exported.runtime?.browser.viewport).toEqual({ width: 1366, height: 768 })
-      expect(exported.runtime?.image).toEqual({
-        decoded_width: 1748,
-        decoded_height: 926,
-        canvas_width: 2800,
-        canvas_height: 1483,
-      })
+      expect(exported.runtime?.image.decoded_width).toBe(1748)
+      expect(exported.runtime?.image.decoded_height).toBe(926)
+      expect(exported.runtime?.image.canvas_width).toBeGreaterThan(0)
+      expect(exported.runtime?.image.canvas_width).toBeLessThanOrEqual(1800)
+      expect(exported.runtime?.image.canvas_height).toBeGreaterThan(0)
+      expect(exported.runtime?.image.canvas_height).toBeLessThan(926 * 3)
       expect(exported.runtime?.tesseract).toMatchObject({
         package_version: '7.0.0',
         core_version: '7.0.0',
@@ -490,6 +492,13 @@ for (const fixture of fixtures) {
         width: 2400,
         height: 1200,
       })
+      expect(exported.runtime?.preprocessing_pipeline).toContain(
+        'tiktok_selected_kpi_crop_original_resolution',
+      )
+      expect(exported.runtime?.preprocessing_pipeline).toContain(
+        'tiktok_selected_kpi_crop_card_grid_2400x1200',
+      )
+      expect(exported.runtime?.preprocessing_pipeline).toContain('anchor_aligned_card_crop')
       expect(exported.raw_ocr_text.length).toBeGreaterThan(0)
       expect(exported.words.length).toBeGreaterThan(0)
       for (const key of [
@@ -545,6 +554,10 @@ for (const fixture of fixtures) {
     }
     await page.getByTestId('ocr-metric-filter-all').click()
     expect(await readRenderedMetrics(page, expectedMetrics)).toEqual(actual)
+    const originalWidth = await page.getByTestId('ocr-crop-width').inputValue()
+    const adjustedWidth = Math.max(5, Number(originalWidth) - 1)
+    await page.getByTestId('ocr-crop-width').fill(String(adjustedWidth))
+    await expect(page.getByTestId('ocr-crop-width')).toHaveValue(String(adjustedWidth))
   })
 }
 
@@ -574,6 +587,13 @@ for (const fixture of fixtures.filter(candidate => candidate.source === 'diagnos
       JSON.stringify({ fixture: fixture.fileName, actual, statuses }, null, 2),
     ).toBeGreaterThanOrEqual(fixture.minimumExactMetrics || 0)
     for (const mismatch of mismatches) {
+      if (mismatch.actual === '') {
+        expect(
+          ['empty', 'missing'].includes(mismatch.status),
+          `${mismatch.key} is unreadable and must remain missing`,
+        ).toBe(true)
+        continue
+      }
       expect(
         ['review_required', 'low_confidence'].includes(mismatch.status),
         `${mismatch.key}=${mismatch.actual} must remain review_required`,

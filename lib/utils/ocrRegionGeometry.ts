@@ -65,7 +65,7 @@ export function roiCellBoundingBox(
     ? cell.key === 'gmv'
       ? Math.min(.48, cell.width * 1.08)
       : cell.key === 'current_viewers'
-        ? Math.min(.22, cell.width * 1.6)
+        ? Math.min(.14, cell.width * 1.2)
         : cell.key === 'average_view_duration_seconds'
           || cell.key === 'average_order_value'
           ? Math.min(.24, cell.width * 1.5)

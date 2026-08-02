@@ -408,7 +408,7 @@ export const platformMetricLayouts: Record<Exclude<ReportDashboardPlatform, 'oth
   tiktok_shop: [
     { key: 'gmv', label: 'GMV đã ghi nhận', x: .510, y: .187, width: .24, height: .085, valueKind: 'currency' },
     { key: 'items_sold', label: 'Số món bán ra từ sự kiện', x: .508, y: .240, width: .075, height: .045, valueKind: 'count' },
-    { key: 'current_viewers', label: 'Người xem hiện tại', x: .647, y: .240, width: .06, height: .045, valueKind: 'count_or_compact' },
+    { key: 'current_viewers', label: 'Người xem hiện tại', x: .647, y: .240, width: .06, height: .045, valueKind: 'count_or_compact', displayFormat: { compactSuffix: 'K', decimalPlaces: 2 } },
     { key: 'impressions', label: 'Lượt hiển thị', x: .264, y: .329, width: .08, height: .05, valueKind: 'compact', displayFormat: { compactSuffix: 'K', decimalPlaces: 2 } },
     { key: 'total_views', label: 'Lượt xem', x: .398, y: .329, width: .08, height: .05, valueKind: 'compact', displayFormat: { compactSuffix: 'K', decimalPlaces: 2 } },
     { key: 'advertising_cost', label: 'Chi phí quảng cáo', x: .537, y: .329, width: .08, height: .05, valueKind: 'compact', displayFormat: { compactSuffix: 'M', decimalPlaces: 2 } },
@@ -1238,9 +1238,37 @@ export function mapDashboardImageRecognition(
   const expectedKeys = platform === 'other'
     ? []
     : platformOcrConfigs[platform].metricOrder.filter(isCanonicalMetricKey)
+  const cropFirstTikTok = platform === 'tiktok_shop'
+    && recognition.runtime_diagnostics?.preprocessing_pipeline.includes(
+      'tiktok_selected_kpi_crop_original_resolution',
+    )
+  const cropOwnedKeys = cropFirstTikTok
+    ? new Set(expectedKeys.filter(key => {
+      const passesByValue = new Map<string, Set<string>>()
+      candidateInputs.forEach(candidate => {
+        if (
+          candidate.key !== key
+          || candidate.metric.strategy !== 'anchor_card'
+          || !metricHasUsableValue(candidate.metric)
+        ) return
+        const value = candidate.metric.value ?? candidate.metric.candidate_value
+        const signature = `${typeof value}:${String(value)}`
+        const passes = passesByValue.get(signature) || new Set<string>()
+        passes.add(candidate.metric.preprocessing_pass || candidate.metric.source || 'unknown')
+        passesByValue.set(signature, passes)
+      })
+      return [...passesByValue.values()].some(passes => passes.size >= 2)
+    }))
+    : new Set<CanonicalMetricKey>()
+  const selectionCandidates = cropFirstTikTok
+    ? candidateInputs.filter(candidate =>
+      !cropOwnedKeys.has(candidate.key)
+      || candidate.metric.strategy === 'anchor_card',
+    )
+    : candidateInputs
   const selection = platform === 'tiktok_shop'
     ? selectTikTokHybridMetricCandidates(
-      candidateInputs,
+      selectionCandidates,
       expectedKeys,
       tiktokConfidenceContext(recognition.region_diagnostics),
     )
@@ -1960,6 +1988,7 @@ function normalizeLayoutCardValue(
     glyphNormalized = glyphNormalized
       .replace(/([KM])\s*[.;:]+$/i, '$1')
       .replace(/(?<=[\d.,\s])[aA](?=\d)/g, '4')
+      .replace(/a(?=[KMm]\s*$)/i, '4')
       .replace(/\s+(?=[.,]\d{2}[KMxXÃ‚Â«]\s*$)/, '')
     glyphNormalized = glyphNormalized.replace(
       new RegExp(`^(\\d{1,3})\\s+(\\d{${cell.displayFormat.decimalPlaces || 2}})(?=[xXÂ«${suffix}]\\s*$)`, 'i'),
@@ -1983,13 +2012,21 @@ function normalizeLayoutCardValue(
     }
   }
   if (cell?.valueKind === 'count_or_compact') {
+    const expectedSuffix = cell.displayFormat?.compactSuffix
     let normalizedCompact = glyphNormalized
       .replace(
-        /^([mnlI|])\s*(\d)(\d{2})([KM])$/i,
+        expectedSuffix ? /[xX«]\s*$/ : /$^/,
+        expectedSuffix || 'K',
+      )
+      .replace(
+        /^([mnlI|])\s*(\d)\s*(\d{2})\s*([KM])$/i,
         '$2.$3$4',
       )
+      .replace(/^([mnlI|])\s*(\d{2})\s*([KM])$/i, '1.$2$3')
       .replace(/^([mnlI|])(?=[.,]\d+[KM]$)/i, '1')
       .replace(/^[a-z]+\s*(?=\d)/i, '')
+      .replace(/(?<=[.,])o(?=\d|[KM])/gi, '0')
+      .replace(/s(?=[KM]$)/gi, '3')
     const compactFormat = cell.displayFormat
     if (
       compactFormat?.compactSuffix
@@ -2026,12 +2063,31 @@ function normalizeLayoutCardValue(
   }
   const declaredDecimalPlaces = format.decimalPlaces
   if (declaredDecimalPlaces) {
-    const digits = normalized.replace(/\D/g, '')
+    let digits = normalized.replace(/\D/g, '')
     const separators = [...normalized.matchAll(/[.,]/g)].map(match => match.index || 0)
     const lastSeparator = separators.at(-1)
     const trailingDigits = lastSeparator === undefined
       ? 0
       : normalized.slice(lastSeparator + 1).replace(/\D/g, '').length
+    if (
+      cell.valueKind === 'compact'
+      && lastSeparator === undefined
+      && !/[KM]$/i.test(normalized)
+      && digits.length >= declaredDecimalPlaces + 4
+      && digits.endsWith('0'.repeat(declaredDecimalPlaces))
+    ) {
+      digits = digits.slice(0, -declaredDecimalPlaces)
+      normalized = digits
+    }
+    if (
+      cell.valueKind === 'compact'
+      && lastSeparator !== undefined
+      && trailingDigits > declaredDecimalPlaces
+    ) {
+      const integerDigits = normalized.slice(0, lastSeparator).replace(/\D/g, '') || '0'
+      const fractionDigits = normalized.slice(lastSeparator + 1).replace(/\D/g, '')
+      normalized = `${integerDigits}.${fractionDigits.slice(0, declaredDecimalPlaces)}`
+    }
     const needsDeclaredDecimal = cell.valueKind !== 'currency'
       && digits.length > declaredDecimalPlaces
       && (
@@ -2514,6 +2570,7 @@ function selectTikTokHybridMetricCandidates(
 ): MetricCandidateSelection {
   const expandedCandidates = [
     ...candidates,
+    ...buildTikTokCanonicalRawCandidates(candidates),
     ...buildTikTokComplementaryCompactCandidates(candidates),
   ]
   const baseline = selectBestMetricCandidates(expandedCandidates, expectedKeys)
@@ -2522,7 +2579,9 @@ function selectTikTokHybridMetricCandidates(
 
   for (const key of expectedKeys) {
     const keyCandidates = expandedCandidates.filter(candidate =>
-      candidate.key === key && metricHasUsableValue(candidate.metric),
+      candidate.key === key
+      && metricHasUsableValue(candidate.metric)
+      && !tiktokHasIncompatibleCompactSuffix(candidate),
     )
     if (!keyCandidates.length) continue
     const grouped = new Map<string, MetricCandidateInput[]>()
@@ -2620,6 +2679,44 @@ function selectTikTokHybridMetricCandidates(
     discardedConflicts,
     missingKeys: expectedKeys.filter(key => !selectedByKey[key] && !baseline.selectedByKey[key]),
   }
+}
+
+function tiktokHasIncompatibleCompactSuffix(candidate: MetricCandidateInput) {
+  const cell = platformMetricLayouts.tiktok_shop.find(layout => layout.key === candidate.key)
+  const expectedSuffix = cell?.displayFormat?.compactSuffix
+  if (!expectedSuffix) return false
+  const raw = candidate.metric.raw_value || candidate.metric.raw_ocr_value || ''
+  const observedSuffix = raw.trim().match(/([KM])\s*[.;:]*$/i)?.[1]?.toUpperCase()
+  return Boolean(observedSuffix && observedSuffix !== expectedSuffix)
+}
+
+function buildTikTokCanonicalRawCandidates(
+  candidates: readonly MetricCandidateInput[],
+): MetricCandidateInput[] {
+  return candidates.flatMap(candidate => {
+    const cell = platformMetricLayouts.tiktok_shop.find(layout => layout.key === candidate.key)
+    const raw = candidate.metric.raw_value || candidate.metric.raw_ocr_value || ''
+    if (!cell || !raw) return []
+    const normalizedRaw = normalizeLayoutCardValue(cell, raw)
+    if (normalizedRaw === raw.trim()) return []
+    const normalizedValue = parseMetricOcrValue('tiktok_shop', candidate.key, normalizedRaw)
+    if (validateMetricCandidate(candidate.key, normalizedValue, normalizedRaw)) return []
+    const currentValue = candidate.metric.value ?? candidate.metric.candidate_value
+    if (metricValuesEqual(currentValue, normalizedValue)) return []
+    return [{
+      key: candidate.key,
+      metric: {
+        ...candidate.metric,
+        value: normalizedValue,
+        candidate_value: normalizedValue,
+        raw_value: normalizedRaw,
+        raw_ocr_value: raw,
+        needs_review: true,
+        status: 'review_required' as const,
+        rejection_reason: 'OCR glyphs were normalized using the declared KPI card format and require review.',
+      },
+    }]
+  })
 }
 
 function buildTikTokComplementaryCompactCandidates(
@@ -2763,6 +2860,20 @@ function tiktokStrategyGroupScore(
       const compactIntegerDigits = compact
         ? normalized.split(/[.,]/, 1)[0].replace(/\D/g, '').length
         : 0
+      const observedSuffix = raw.trim().match(/([KM])\s*[.;:]*$/i)?.[1]?.toUpperCase()
+      const incompatibleCompactSuffix = Boolean(
+        cell.displayFormat?.compactSuffix
+        && observedSuffix
+        && observedSuffix !== cell.displayFormat.compactSuffix,
+      )
+      const visuallySupportedSuffix = Boolean(
+        cell.displayFormat?.compactSuffix
+        && observedSuffix === cell.displayFormat.compactSuffix
+        && (
+          /[.,:;]/.test(cleanedRaw)
+          || raw.replace(/\D/g, '').length > (declaredDigits || 0) + 1
+        ),
+      )
       const formatBonus = cell.valueKind === 'count_or_compact'
         ? compact
           ? declaredDigits && fractionDigits === declaredDigits
@@ -2786,11 +2897,12 @@ function tiktokStrategyGroupScore(
               ? 1
               : cell.valueKind === 'duration'
                 ? /^\d{1,2}\s*m\s*\d{1,2}\s*s?$/i.test(raw.trim())
-                  ? 3
+                  ? 5
                   : /^\d+(?:[.,]\d+)?\s*s$/i.test(raw.trim()) ? .5 : 0
               : 0
       return shape * 2
         + formatBonus
+        + (visuallySupportedSuffix ? 2.5 : 0)
         + (groupedPrimaryGmv ? 2.5 : 0)
         + (adaptiveFormatRecovery ? 2.5 : 0)
         + (adaptiveInferredFormatRecovery ? 2.5 : 0)
@@ -2798,6 +2910,7 @@ function tiktokStrategyGroupScore(
           ? Math.min(5, (compactIntegerDigits - 3) * 2)
           : 0)
         - tiktokMergedNumericTokenPenalty(candidate.metric, cell)
+        - (incompatibleCompactSuffix ? 20 : 0)
     }))
     : 0
   const independentEvidenceBonus = Math.min(
@@ -2810,6 +2923,16 @@ function tiktokStrategyGroupScore(
   const sameGroupRepeatQuality = Math.min(
     .35,
     Math.max(0, agreementCandidates.length - reliableEvidenceGroups.size) * .12,
+  )
+  const cardPassConsensus = Math.min(
+    3,
+    Math.max(
+      0,
+      new Set(candidates
+        .filter(candidate => candidate.metric.strategy === 'anchor_card')
+        .map(candidate => candidate.metric.preprocessing_pass || candidate.metric.source || 'unknown'))
+        .size - 1,
+    ) * 1.5,
   )
   const independentStrategyBonus = Math.min(
     .5,
@@ -2826,13 +2949,17 @@ function tiktokStrategyGroupScore(
   ))
   const preprocessingQuality = Math.max(...scoringCandidates.map(candidate => {
     const valueConfidence = candidate.metric.value_confidence || 0
-    switch (candidate.metric.preprocessing_pass) {
-      case 'inverted_grayscale':
-        return valueConfidence >= 30 ? 1.35 : .45
-      case 'original_color':
-        return valueConfidence >= 30 ? 1.3 : .45
+      switch (candidate.metric.preprocessing_pass) {
+        case 'inverted_grayscale':
+          return valueConfidence >= 30 ? 1.2 : .4
+        case 'original_color':
+          return valueConfidence >= 30 ? 1.5 : .5
       case 'local_contrast':
         return valueConfidence >= 30 ? 1.15 : .4
+      case 'high_resolution_color':
+        return valueConfidence >= 30 ? 1.3 : .5
+      case 'segmented_glyphs':
+        return valueConfidence >= 30 ? 1.15 : .45
       case 'fixed_threshold':
         return valueConfidence >= 30 ? .8 : .3
       case 'normalized_roi':
@@ -2928,10 +3055,66 @@ function tiktokStrategyGroupScore(
     allKeyCandidates,
     cell,
   )
+  const anchorGlyphCompleteness = tiktokAnchorGlyphCompletenessScore(
+    candidates,
+    allKeyCandidates,
+    cell,
+  )
+  const originalColorSupport = candidates.some(candidate =>
+    candidate.metric.strategy === 'anchor_card'
+    && candidate.metric.preprocessing_pass === 'original_color')
+    ? .75
+    : 0
+  const canonicalGlyphRepairSupport = candidates.some(candidate =>
+    candidate.metric.rejection_reason?.startsWith('OCR glyphs were normalized'))
+    ? 5
+    : 0
+  const inferredRatioFormatSupport = cell?.valueKind === 'ratio'
+    && candidates.some(candidate => {
+      const raw = candidate.metric.raw_value || candidate.metric.raw_ocr_value || ''
+      const digits = raw.replace(/\D/g, '')
+      return candidate.metric.strategy === 'anchor_card'
+        && !/[.,:]/.test(raw)
+        && digits.length === (cell.displayFormat?.decimalPlaces || 0) + 1
+    })
+    ? 2
+    : 0
+  const trailingZeroCompactRecovery = cell?.valueKind === 'compact'
+    && candidates.some(candidate => {
+      const raw = candidate.metric.raw_ocr_value || candidate.metric.raw_value || ''
+      const decimalPlaces = cell.displayFormat?.decimalPlaces || 0
+      const digits = raw.replace(/\D/g, '')
+      return !/[.,KM]/i.test(raw)
+        && decimalPlaces > 0
+        && digits.length >= decimalPlaces + 4
+        && digits.endsWith('0'.repeat(decimalPlaces))
+    })
+    ? 5
+    : 0
+  const countHighConfidenceGlyphSupport = cell?.valueKind === 'count'
+    ? (() => {
+      const cardCandidates = allKeyCandidates.filter(candidate =>
+        candidate.metric.strategy === 'anchor_card')
+      const selectedCardCandidates = candidates.filter(candidate =>
+        candidate.metric.strategy === 'anchor_card')
+      if (!cardCandidates.length || !selectedCardCandidates.length) return 0
+      const digitCount = (candidate: MetricCandidateInput) =>
+        (candidate.metric.raw_value || candidate.metric.raw_ocr_value || '')
+          .replace(/\D/g, '')
+          .length
+      const maximumDigits = Math.max(...cardCandidates.map(digitCount))
+      return selectedCardCandidates.some(candidate =>
+        digitCount(candidate) === maximumDigits
+        && tiktokCandidateConfidence(candidate) >= 80)
+        ? 1.5
+        : 0
+    })()
+    : 0
   return strategyWeight
     + formatQuality
     + independentEvidenceBonus
     + sameGroupRepeatQuality
+    + cardPassConsensus
     + independentStrategyBonus
     + pairQuality
     + confidenceQuality
@@ -2942,6 +3125,12 @@ function tiktokStrategyGroupScore(
     + normalizedSpatialEvidence
     + sameCropCompactSupport
     + informationCompleteness
+    + anchorGlyphCompleteness
+    + originalColorSupport
+    + canonicalGlyphRepairSupport
+    + inferredRatioFormatSupport
+    + trailingZeroCompactRecovery
+    + countHighConfidenceGlyphSupport
     - normalizedCountNoisePenalty
 }
 
@@ -3004,6 +3193,42 @@ function tiktokInformationCompletenessBonus(
     && maximumConfidence - candidateConfidence <= 12
     ? .75
     : 0
+}
+
+function tiktokAnchorGlyphCompletenessScore(
+  candidates: readonly MetricCandidateInput[],
+  allKeyCandidates: readonly MetricCandidateInput[],
+  cell: LayoutMetricCell | undefined,
+) {
+  if (cell?.valueKind !== 'compact' && cell?.valueKind !== 'count_or_compact') return 0
+  const cardCandidates = allKeyCandidates.filter(candidate =>
+    candidate.metric.strategy === 'anchor_card')
+  const selectedCardCandidates = candidates.filter(candidate =>
+    candidate.metric.strategy === 'anchor_card')
+  if (!cardCandidates.length || !selectedCardCandidates.length) return 0
+
+  const visibleDigits = (candidate: MetricCandidateInput) =>
+    (candidate.metric.raw_value || candidate.metric.raw_ocr_value || '')
+      .replace(/\D/g, '')
+      .length
+  const highFidelityPasses = new Set([
+    'original_color',
+    'fixed_threshold',
+    'local_contrast',
+    'high_resolution_color',
+  ])
+  const maximumDigits = Math.max(...cardCandidates.map(visibleDigits))
+  const selectedDigits = Math.max(...selectedCardCandidates.map(visibleDigits))
+  const selectedHighFidelityPasses = new Set(selectedCardCandidates
+    .filter(candidate => highFidelityPasses.has(candidate.metric.preprocessing_pass || ''))
+    .map(candidate => candidate.metric.preprocessing_pass))
+  const fullerHighFidelitySupport = cardCandidates.some(candidate =>
+    visibleDigits(candidate) === maximumDigits
+    && highFidelityPasses.has(candidate.metric.preprocessing_pass || ''))
+
+  if (selectedDigits === maximumDigits && selectedHighFidelityPasses.size >= 2) return 4
+  if (selectedDigits < maximumDigits && fullerHighFidelitySupport) return -3
+  return 0
 }
 
 function tiktokCrossEvidenceProximityBonus(

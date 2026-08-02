@@ -1,11 +1,12 @@
 'use client'
 
+import * as React from 'react'
 import type {
   OcrCropBox,
   OcrReviewData,
   ReportDashboardPlatform,
 } from '@/lib/types/database.types'
-import { defaultOcrCrop } from '@/lib/utils/ocrImage'
+import { clampOcrCrop, defaultOcrCrop } from '@/lib/utils/ocrImage'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useTranslation } from '@/lib/i18n'
@@ -28,7 +29,14 @@ export function OcrCropPreview({
   disabled?: boolean
 }) {
   const { t } = useTranslation()
+  const previewRef = React.useRef<HTMLDivElement>(null)
   const regionDiagnostics = review?.region_diagnostics
+  const selectedCandidate = regionDiagnostics?.dashboard_candidates.find(candidate =>
+    candidate.id === regionDiagnostics.selected_candidate_id,
+  )
+  const insufficientTikTokAnchors = platform === 'tiktok_shop'
+    && Boolean(regionDiagnostics)
+    && (selectedCandidate?.anchor_count ?? 0) < 6
   const showRegionSelection = Boolean(
     regionDiagnostics
     && (
@@ -40,7 +48,38 @@ export function OcrCropPreview({
   const update = (field: keyof OcrCropBox, percent: string) => {
     const numeric = Number(percent)
     if (!Number.isFinite(numeric)) return
-    onChange({ ...value, [field]: numeric / 100 })
+    onChange(clampOcrCrop({ ...value, [field]: numeric / 100 }))
+  }
+
+  const beginInteraction = (
+    mode: CropInteractionMode,
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    if (disabled || platform !== 'tiktok_shop') return
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    event.currentTarget.dataset.startX = String(event.clientX)
+    event.currentTarget.dataset.startY = String(event.clientY)
+    event.currentTarget.dataset.startCrop = JSON.stringify(value)
+    event.currentTarget.dataset.mode = mode
+  }
+
+  const moveInteraction = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+    const bounds = previewRef.current?.getBoundingClientRect()
+    const rawStart = event.currentTarget.dataset.startCrop
+    if (!bounds || !rawStart) return
+    const start = JSON.parse(rawStart) as OcrCropBox
+    const deltaX = (event.clientX - Number(event.currentTarget.dataset.startX)) / bounds.width
+    const deltaY = (event.clientY - Number(event.currentTarget.dataset.startY)) / bounds.height
+    onChange(resizeOcrCrop(start, event.currentTarget.dataset.mode as CropInteractionMode, deltaX, deltaY))
+  }
+
+  const endInteraction = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
   }
 
   return (
@@ -48,24 +87,47 @@ export function OcrCropPreview({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-sm font-medium">{t('kpiCropPreview')}</p>
-          <p className="text-xs text-muted-foreground">{t('kpiCropHelp')}</p>
+          <p className="text-xs text-muted-foreground">{t(platform === 'tiktok_shop' ? 'tiktokKpiCropHelp' : 'kpiCropHelp')}</p>
         </div>
         <Button type="button" size="sm" variant="outline" disabled={disabled || platform === 'other'} onClick={() => onChange(defaultOcrCrop(platform))}>
-          {t('resetPlatformCrop')}
+          {t(platform === 'tiktok_shop' ? 'resetTikTokKpiCrop' : 'resetPlatformCrop')}
         </Button>
       </div>
       <div className="overflow-hidden rounded border bg-black/5">
-        <div className="relative mx-auto w-fit max-w-full">
+        <div ref={previewRef} className="relative mx-auto w-fit max-w-full touch-none">
           <img src={imageUrl} alt={t('dashboardCropPreview')} className="block max-h-80 max-w-full object-contain" />
           <div
-            className="pointer-events-none absolute border-2 border-emerald-500 bg-emerald-400/15 shadow-[0_0_0_9999px_rgba(0,0,0,.42)]"
+            className={`absolute z-20 border-2 border-emerald-500 bg-emerald-400/15 shadow-[0_0_0_9999px_rgba(0,0,0,.42)] ${platform === 'tiktok_shop' && !disabled ? 'cursor-move' : 'pointer-events-none'}`}
             style={{
               left: `${value.left * 100}%`,
               top: `${value.top * 100}%`,
               width: `${value.width * 100}%`,
               height: `${value.height * 100}%`,
             }}
-          />
+            data-testid="ocr-crop-selection"
+            data-crop-left={value.left}
+            data-crop-top={value.top}
+            data-crop-width={value.width}
+            data-crop-height={value.height}
+            onPointerDown={event => beginInteraction('move', event)}
+            onPointerMove={moveInteraction}
+            onPointerUp={endInteraction}
+            onPointerCancel={endInteraction}
+          >
+            {platform === 'tiktok_shop' && !disabled && cropHandles.map(handle => (
+              <div
+                key={handle.mode}
+                role="separator"
+                aria-label={t('resizeTikTokKpiCrop')}
+                className={`absolute h-3 w-3 rounded-full border border-white bg-emerald-600 shadow ${handle.className}`}
+                data-testid={`ocr-crop-handle-${handle.mode}`}
+                onPointerDown={event => beginInteraction(handle.mode, event)}
+                onPointerMove={moveInteraction}
+                onPointerUp={endInteraction}
+                onPointerCancel={endInteraction}
+              />
+            ))}
+          </div>
           {showRegionSelection && regionDiagnostics?.dashboard_candidates.map(candidate => {
             const selected = candidate.id === regionDiagnostics.selected_candidate_id
             return (
@@ -96,11 +158,21 @@ export function OcrCropPreview({
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <CropInput label={`${t('cropLeft')} %`} value={value.left} disabled={disabled} onChange={next => update('left', next)} />
-        <CropInput label={`${t('cropTop')} %`} value={value.top} disabled={disabled} onChange={next => update('top', next)} />
-        <CropInput label={`${t('cropWidth')} %`} value={value.width} disabled={disabled} onChange={next => update('width', next)} />
-        <CropInput label={`${t('cropHeight')} %`} value={value.height} disabled={disabled} onChange={next => update('height', next)} />
+        <CropInput testId="ocr-crop-left" label={`${t('cropLeft')} %`} value={value.left} disabled={disabled} onChange={next => update('left', next)} />
+        <CropInput testId="ocr-crop-top" label={`${t('cropTop')} %`} value={value.top} disabled={disabled} onChange={next => update('top', next)} />
+        <CropInput testId="ocr-crop-width" label={`${t('cropWidth')} %`} value={value.width} disabled={disabled} onChange={next => update('width', next)} />
+        <CropInput testId="ocr-crop-height" label={`${t('cropHeight')} %`} value={value.height} disabled={disabled} onChange={next => update('height', next)} />
       </div>
+      {insufficientTikTokAnchors && (
+        <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" data-testid="ocr-crop-anchor-warning">
+          {t('tiktokCropAnchorWarning')}
+        </p>
+      )}
+      {platform === 'tiktok_shop' && onRetry && (
+        <Button type="button" onClick={onRetry} disabled={disabled} data-testid="ocr-rescan-selected-crop">
+          {t('rescanSelectedCrop')}
+        </Button>
+      )}
       {showRegionSelection && regionDiagnostics && (
         <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3" data-testid="ocr-dashboard-region-selector">
           <p className="text-sm font-medium text-amber-950">
@@ -165,6 +237,44 @@ export function OcrCropPreview({
   )
 }
 
+type CropInteractionMode = 'move' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw'
+
+const cropHandles: Array<{ mode: Exclude<CropInteractionMode, 'move'>; className: string }> = [
+  { mode: 'nw', className: '-left-1.5 -top-1.5 cursor-nwse-resize' },
+  { mode: 'n', className: 'left-1/2 -top-1.5 -translate-x-1/2 cursor-ns-resize' },
+  { mode: 'ne', className: '-right-1.5 -top-1.5 cursor-nesw-resize' },
+  { mode: 'e', className: '-right-1.5 top-1/2 -translate-y-1/2 cursor-ew-resize' },
+  { mode: 'se', className: '-bottom-1.5 -right-1.5 cursor-nwse-resize' },
+  { mode: 's', className: '-bottom-1.5 left-1/2 -translate-x-1/2 cursor-ns-resize' },
+  { mode: 'sw', className: '-bottom-1.5 -left-1.5 cursor-nesw-resize' },
+  { mode: 'w', className: '-left-1.5 top-1/2 -translate-y-1/2 cursor-ew-resize' },
+]
+
+export function resizeOcrCrop(start: OcrCropBox, mode: CropInteractionMode, deltaX: number, deltaY: number) {
+  const minimum = .05
+  const right = start.left + start.width
+  const bottom = start.top + start.height
+  let left = start.left
+  let top = start.top
+  let nextRight = right
+  let nextBottom = bottom
+
+  if (mode === 'move') {
+    left = clamp(start.left + deltaX, 0, 1 - start.width)
+    top = clamp(start.top + deltaY, 0, 1 - start.height)
+    return { ...start, left, top }
+  }
+  if (mode.includes('w')) left = clamp(start.left + deltaX, 0, right - minimum)
+  if (mode.includes('e')) nextRight = clamp(right + deltaX, start.left + minimum, 1)
+  if (mode.includes('n')) top = clamp(start.top + deltaY, 0, bottom - minimum)
+  if (mode.includes('s')) nextBottom = clamp(bottom + deltaY, start.top + minimum, 1)
+  return clampOcrCrop({ left, top, width: nextRight - left, height: nextBottom - top })
+}
+
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.min(maximum, Math.max(minimum, value))
+}
+
 function SpatialDiagnosticOverlay({ review }: { review: OcrReviewData }) {
   const dimensions = review.original_dimensions
   if (!dimensions?.width || !dimensions.height) return null
@@ -219,6 +329,6 @@ function SpatialDiagnosticOverlay({ review }: { review: OcrReviewData }) {
   )
 }
 
-function CropInput({ label, value, disabled, onChange }: { label: string; value: number; disabled: boolean; onChange: (value: string) => void }) {
-  return <label className="text-xs font-medium">{label}<Input className="mt-1" type="number" min="0" max="100" step="1" disabled={disabled} value={Math.round(value * 100)} onChange={event => onChange(event.target.value)} /></label>
+function CropInput({ testId, label, value, disabled, onChange }: { testId: string; label: string; value: number; disabled: boolean; onChange: (value: string) => void }) {
+  return <label className="text-xs font-medium">{label}<Input data-testid={testId} className="mt-1" type="number" min="0" max="100" step="1" disabled={disabled} value={Math.round(value * 100)} onChange={event => onChange(event.target.value)} /></label>
 }
