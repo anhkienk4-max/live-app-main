@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
@@ -29,6 +29,16 @@ const referenceExpectedMetrics = {
   shares: 60,
   estimated_gmv: 8980000,
 } as const
+
+const referenceFocusMetricKeys = [
+  'items_sold',
+  'current_viewers',
+  'advertising_cost',
+  'ctor',
+  'roi_gmv_max',
+  'comments',
+  'average_order_value',
+] as const
 
 type RegionDiagnostics = {
   original_dimensions: { width: number; height: number }
@@ -318,7 +328,7 @@ const fixtures: FixtureCase[] = [
 ]
 
 for (const fixture of fixtures) {
-  test(`TikTok ${fixture.name} selects one ROI without confirmed KPI corruption`, async ({ page }) => {
+  test(`TikTok ${fixture.name} selects one ROI without confirmed KPI corruption`, async ({ page }, testInfo) => {
     test.setTimeout(240_000)
     const ocrAssetRequests: string[] = []
     if (fixture.fileName === 'tiktok-reference.jpg') {
@@ -338,7 +348,11 @@ for (const fixture of fixtures) {
       await expect(page.getByTestId(`ocr-crop-handle-${handle}`)).toBeVisible()
     }
     await expect(page.getByTestId('ocr-rescan-selected-crop')).toBeVisible()
-    await page.getByTestId('report-run-ocr-button').click()
+    if (fixture.fileName === 'tiktok-reference.jpg') {
+      await page.getByTestId('ocr-rescan-selected-crop').click()
+    } else {
+      await page.getByTestId('report-run-ocr-button').click()
+    }
     await expect(page.getByTestId('report-run-ocr-button')).toBeDisabled()
     await expect(page.getByTestId('ocr-rescan-selected-crop')).toBeDisabled()
     await waitForOcrCompletion(page.getByTestId('report-ocr-completion-status'))
@@ -396,6 +410,44 @@ for (const fixture of fixtures) {
     await page.getByTestId('ocr-metric-filter-all').click()
     const expectedMetrics = fixture.expected || referenceExpectedMetrics
     const actual = await readRenderedMetrics(page, expectedMetrics)
+    let referenceDiagnosticsExport: OcrDiagnosticDownload | undefined
+    if (fixture.fileName === 'tiktok-reference.jpg') {
+      const downloadPromise = page.waitForEvent('download')
+      await page.getByTestId('ocr-download-diagnostics').click()
+      const download = await downloadPromise
+      const downloadedPath = await download.path()
+      if (!downloadedPath) {
+        throw new Error('Playwright did not provide a path for the OCR diagnostics download')
+      }
+      referenceDiagnosticsExport = JSON.parse(
+        await readFile(downloadedPath, 'utf8'),
+      ) as OcrDiagnosticDownload
+      const evidenceDirectory = path.join(process.cwd(), 'test_reports', 'ocr-ui-evidence')
+      const evidenceHost = new URL(page.url()).hostname.replace(/[^a-z0-9.-]/gi, '-')
+      await mkdir(evidenceDirectory, { recursive: true })
+      await copyFile(
+        downloadedPath,
+        path.join(evidenceDirectory, `tiktok-reference-${evidenceHost}-final-report.json`),
+      )
+      await page.screenshot({
+        path: path.join(evidenceDirectory, `tiktok-reference-${evidenceHost}-final-report.png`),
+        fullPage: true,
+      })
+      await testInfo.attach('tiktok-reference-final-report-diagnostics', {
+        path: downloadedPath,
+        contentType: 'application/json',
+      })
+      await testInfo.attach('tiktok-reference-final-report-visible-inputs', {
+        body: await page.screenshot({ fullPage: true }),
+        contentType: 'image/png',
+      })
+      for (const [key, expected] of Object.entries(referenceExpectedMetrics)) {
+        await expect(
+          page.getByTestId(`ocr-metric-input-${key}`),
+          `${key} must be present in the visible Final Report form`,
+        ).toHaveValue(String(expected))
+      }
+    }
     const statuses = await readMetricStatuses(page, expectedMetrics)
     const candidateDiagnostics = await readCandidateDiagnostics(page)
     const rawDiagnostics = await page.getByTestId('report-ocr-raw-diagnostics')
@@ -480,16 +532,8 @@ for (const fixture of fixtures) {
       }
     }
     if (fixture.fileName === 'tiktok-reference.jpg') {
-      const downloadPromise = page.waitForEvent('download')
-      await page.getByTestId('ocr-download-diagnostics').click()
-      const download = await downloadPromise
-      const downloadedPath = await download.path()
-      if (!downloadedPath) {
-        throw new Error('Playwright did not provide a path for the OCR diagnostics download')
-      }
-      const exported = JSON.parse(
-        await readFile(downloadedPath, 'utf8'),
-      ) as OcrDiagnosticDownload
+      const exported = referenceDiagnosticsExport!
+      const visibleInputs = await readRenderedMetrics(page, referenceExpectedMetrics)
       expect(exported.schema_version).toBe('1')
       expect(exported.runtime?.runtime_id).toBe('tesseract-browser-pinned-v1')
       expect(exported.runtime?.browser.device_pixel_ratio).toBe(1)
@@ -538,11 +582,33 @@ for (const fixture of fixtures) {
         ).toBe(true)
         expect(exported.card_diagnostics[key]?.length || 0).toBeGreaterThan(0)
       }
-      expect(exported.selected_metrics.ctor?.value).toBe(6.26)
-      expect(exported.selected_metrics.average_order_value?.value).toBe(165320)
+      for (const [key, expected] of Object.entries(referenceExpectedMetrics)) {
+        expect(
+          exported.selected_metrics[key]?.value,
+          `${key} must exist in selected OCR diagnostics`,
+        ).toBe(expected)
+        expect(
+          visibleInputs[key],
+          `${key} diagnostics and visible input must agree`,
+        ).toBe(String(exported.selected_metrics[key]?.value))
+      }
       console.info(JSON.stringify({
         fixture: fixture.fileName,
         runtime: exported.runtime,
+        build_identifier: {
+          url: page.url(),
+          scripts: await page.locator('script[src*="/_next/static/"]').evaluateAll(elements =>
+            elements.map(element => (element as HTMLScriptElement).src).sort(),
+          ),
+        },
+        focus_metric_trace: Object.fromEntries(referenceFocusMetricKeys.map(key => [key, {
+          card_passes: exported.card_diagnostics[key]?.length || 0,
+          candidate_count: exported.candidates
+            .filter(candidate => candidate.canonical_key === key).length,
+          selected_value: exported.selected_metrics[key]?.value,
+          final_dom_field: visibleInputs[key],
+          metric_to_field_mapping_key: `ocr-metric-input-${key}`,
+        }])),
         glyph_candidate_comparison: exported.candidates
           .filter(candidate => [
             'ctor',
@@ -598,7 +664,7 @@ for (const fixture of fixtures) {
 }
 
 for (const fixture of fixtures.filter(candidate => candidate.source !== 'synthetic')) {
-  test(`TikTok ${fixture.name} Live Dashboard Update preserves exact or review-required values`, async ({ page }) => {
+  test(`TikTok ${fixture.name} Live Dashboard Update preserves exact or review-required values`, async ({ page }, testInfo) => {
     test.setTimeout(240_000)
     const fixturePath = path.join(fixtureDirectory, fixture.fileName)
     const expectedMetrics = fixture.expected || referenceExpectedMetrics
@@ -607,11 +673,47 @@ for (const fixture of fixtures.filter(candidate => candidate.source !== 'synthet
     await expect(page.getByTestId('live-platform-selector')).toContainText('TikTok Shop')
     await page.getByTestId('live-dashboard-image-upload').setInputFiles(fixturePath)
     await expect(page.locator('img[src^="blob:"]').first()).toBeVisible()
-    await page.getByTestId('live-run-ocr-button').click()
+    if (fixture.fileName === 'tiktok-reference.jpg') {
+      await page.getByTestId('ocr-rescan-selected-crop').click()
+      await expect(page.getByTestId('live-run-ocr-button')).toBeDisabled()
+      await expect(page.getByTestId('ocr-rescan-selected-crop')).toBeDisabled()
+    } else {
+      await page.getByTestId('live-run-ocr-button').click()
+    }
     await waitForOcrCompletion(page.getByTestId('live-ocr-completion-status'))
     await page.getByTestId('ocr-metric-filter-all').click()
 
     const actual = await readRenderedMetrics(page, expectedMetrics)
+    if (fixture.fileName === 'tiktok-reference.jpg') {
+      const rawLiveDiagnostics = await page.getByTestId('live-ocr-raw-diagnostics')
+        .locator('pre')
+        .textContent()
+      const evidenceDirectory = path.join(process.cwd(), 'test_reports', 'ocr-ui-evidence')
+      const evidenceHost = new URL(page.url()).hostname.replace(/[^a-z0-9.-]/gi, '-')
+      await mkdir(evidenceDirectory, { recursive: true })
+      await writeFile(
+        path.join(evidenceDirectory, `tiktok-reference-${evidenceHost}-live-update.txt`),
+        rawLiveDiagnostics || '',
+      )
+      await page.screenshot({
+        path: path.join(evidenceDirectory, `tiktok-reference-${evidenceHost}-live-update.png`),
+        fullPage: true,
+      })
+      await testInfo.attach('tiktok-reference-live-update-diagnostics', {
+        body: Buffer.from(rawLiveDiagnostics || ''),
+        contentType: 'text/plain',
+      })
+      await testInfo.attach('tiktok-reference-live-update-visible-inputs', {
+        body: await page.screenshot({ fullPage: true }),
+        contentType: 'image/png',
+      })
+      for (const [key, expected] of Object.entries(referenceExpectedMetrics)) {
+        await expect(
+          page.getByTestId(`ocr-metric-input-${key}`),
+          `${key} must be present in the visible Live Dashboard Update form`,
+        ).toHaveValue(String(expected))
+      }
+    }
     const statuses = await readMetricStatuses(page, expectedMetrics)
     const mismatches = Object.entries(expectedMetrics).flatMap(([key, expected]) =>
       actual[key] === String(expected)
