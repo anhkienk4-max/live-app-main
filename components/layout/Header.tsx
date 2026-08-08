@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { LogOut } from 'lucide-react'
@@ -17,6 +18,10 @@ import { GlobalSearch } from '@/components/features/search/GlobalSearch'
 import { NotificationCenter } from '@/components/features/notifications/NotificationCenter'
 import { useTranslation } from '@/lib/i18n'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useToast } from '@/components/ui/toast'
+import { getAuthMode, getSupabasePublicConfig } from '@/lib/auth/authMode'
+import { clearLocalSession } from '@/lib/auth/session'
+import { createClient } from '@/lib/supabase/client'
 
 interface HeaderProps {
   user?: {
@@ -31,8 +36,11 @@ interface HeaderProps {
 export function Header({ user }: HeaderProps) {
   const router = useRouter()
   const { language, setLanguage, t } = useTranslation()
+  const { toast } = useToast()
+  const [signingOut, setSigningOut] = useState(false)
   const { currentUser } = useCurrentUser()
-  const displayUser = currentUser ? {
+  const mockMode = getAuthMode() === 'mock'
+  const displayUser = mockMode && currentUser ? {
     email: currentUser.email,
     user_metadata: {
       full_name: currentUser.full_name,
@@ -41,8 +49,37 @@ export function Header({ user }: HeaderProps) {
   } : user
 
   const handleSignOut = async () => {
-    // In mock mode, just redirect to login
-    router.push('/login')
+    if (signingOut) return
+    setSigningOut(true)
+
+    if (mockMode) {
+      router.replace('/login?reason=signed_out')
+      router.refresh()
+      return
+    }
+
+    if (!getSupabasePublicConfig()) {
+      toast({
+        title: t('signOutFailed'),
+        description: t('authServiceUnavailable'),
+        variant: 'destructive',
+      })
+      setSigningOut(false)
+      return
+    }
+
+    const signedOut = await clearLocalSession(createClient())
+    if (!signedOut) {
+      toast({
+        title: t('signOutFailed'),
+        description: t('tryAgain'),
+        variant: 'destructive',
+      })
+      setSigningOut(false)
+      return
+    }
+
+    router.replace('/login?reason=signed_out')
     router.refresh()
   }
 
@@ -97,7 +134,7 @@ export function Header({ user }: HeaderProps) {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleSignOut} data-testid="signout-btn">
+                  <DropdownMenuItem onClick={() => void handleSignOut()} disabled={signingOut} data-testid="signout-btn">
                     <LogOut className="mr-2 h-4 w-4" />
                     <span>{t('signOut')}</span>
                   </DropdownMenuItem>
