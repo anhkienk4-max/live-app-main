@@ -29,14 +29,18 @@ const tiktokMetrics = {
 
 type ResponseMode = 'success' | 'conflict' | 'timeout'
 
-function visionResponse(mode: Exclude<ResponseMode, 'timeout'>) {
+function visionResponse(
+  mode: Exclude<ResponseMode, 'timeout'>,
+  overrides: Partial<Record<keyof typeof tiktokMetrics, number>> = {},
+) {
   return {
     ok: true,
     data: {
       provider: 'mock',
       model: 'deterministic-mock-v1',
       metrics: Object.entries(tiktokMetrics).map(([key, originalValue], index) => {
-        const value = mode === 'conflict' && key === 'gmv' ? originalValue + 1 : originalValue
+        const overriddenValue = overrides[key as keyof typeof tiktokMetrics] ?? originalValue
+        const value = mode === 'conflict' && key === 'gmv' ? overriddenValue + 1 : overriddenValue
         return {
           key,
           value,
@@ -52,7 +56,11 @@ function visionResponse(mode: Exclude<ResponseMode, 'timeout'>) {
   }
 }
 
-async function fulfillVision(route: Route, mode: ResponseMode) {
+async function fulfillVision(
+  route: Route,
+  mode: ResponseMode,
+  overrides: Partial<Record<keyof typeof tiktokMetrics, number>> = {},
+) {
   if (mode === 'timeout') {
     await route.fulfill({
       status: 504,
@@ -61,7 +69,7 @@ async function fulfillVision(route: Route, mode: ResponseMode) {
     })
     return
   }
-  await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(visionResponse(mode)) })
+  await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(visionResponse(mode, overrides)) })
 }
 
 async function fulfillVisionError(route: Route, code: string, message: string) {
@@ -116,6 +124,17 @@ async function expectAllMetrics(page: Page, overrides: Partial<Record<keyof type
     const value = overrides[key as keyof typeof tiktokMetrics] ?? originalValue
     await expect(page.getByTestId(`ocr-metric-input-${key}`)).toHaveValue(String(value))
   }
+}
+
+async function runQuickScan(page: Page, buttonTestId: 'report-run-ocr-button' | 'live-run-ocr-button') {
+  const button = page.getByTestId(buttonTestId)
+  await button.click()
+  await expect(button).toBeDisabled({ timeout: 5_000 })
+  await expect(button).toBeEnabled({ timeout: 180_000 })
+}
+
+async function closeCurrentForm(page: Page) {
+  await page.getByRole('button', { name: /Cancel|Hủy/, exact: true }).last().click()
 }
 
 test.beforeEach(async ({ page }) => {
@@ -212,7 +231,43 @@ test('Final Report comparison keeps a real OCR conflict unresolved until the use
   await expect(page.getByTestId('ocr-metric-input-gmv')).toHaveValue('777')
 })
 
+test('Final Report protects manual values across Quick, AI and Compare until an explicit source or new draft is chosen', async ({ page }) => {
+  test.setTimeout(420_000)
+  let mode: Exclude<ResponseMode, 'timeout'> = 'success'
+  await page.route('**/api/ocr/vision', route => fulfillVision(route, mode, { comments: 345 }))
+  await openFinalReport(page)
+
+  await runQuickScan(page, 'report-run-ocr-button')
+  await page.getByTestId('ocr-metric-input-gmv').fill('999')
+  await runQuickScan(page, 'report-run-ocr-button')
+  await expect(page.getByTestId('ocr-metric-input-gmv')).toHaveValue('999')
+
+  await page.getByTestId('vision-ocr-mode-ai').click()
+  await acceptPrivacy(page)
+  await expect(page.getByTestId('vision-ocr-mode-ai')).toBeEnabled({ timeout: 120_000 })
+  await expect(page.getByTestId('ocr-metric-input-gmv')).toHaveValue('999')
+  await expect(page.getByTestId('ocr-metric-input-comments')).toHaveValue('345')
+
+  mode = 'conflict'
+  await page.getByTestId('vision-ocr-mode-compare').click()
+  await expect(page.getByTestId('vision-ocr-mode-compare')).toBeEnabled({ timeout: 180_000 })
+  await expect(page.getByTestId('ocr-metric-input-gmv')).toHaveValue('999')
+  const row = page.getByTestId('vision-ocr-review-gmv')
+  await row.getByRole('button', { name: /Choose OCR|Chọn OCR/ }).click()
+  await expect(page.getByTestId('ocr-metric-input-gmv')).toHaveValue(String(tiktokMetrics.gmv))
+  await row.getByRole('button', { name: /Choose AI|Chọn AI/ }).click()
+  await expect(page.getByTestId('ocr-metric-input-gmv')).toHaveValue(String(tiktokMetrics.gmv + 1))
+
+  await closeCurrentForm(page)
+  await page.getByTestId('open-final-report-modal').click()
+  await page.getByTestId('report-dashboard-image-upload').setInputFiles(fixture)
+  await page.getByTestId('vision-ocr-mode-ai').click()
+  await expect(page.getByTestId('vision-ocr-mode-ai')).toBeEnabled({ timeout: 120_000 })
+  await expect(page.getByTestId('ocr-metric-input-gmv')).toHaveValue(String(tiktokMetrics.gmv + 1))
+})
+
 test('disabled and unconfigured AI responses are distinct and leave local controls available', async ({ page }) => {
+  test.setTimeout(240_000)
   let code = 'AI_OCR_DISABLED'
   let message = 'AI Vision OCR is disabled.'
   await page.route('**/api/ocr/vision', route => fulfillVisionError(route, code, message))
@@ -227,6 +282,19 @@ test('disabled and unconfigured AI responses are distinct and leave local contro
   await page.getByTestId('vision-ocr-mode-ai').click()
   await expect(page.getByText(/not configured|chưa được cấu hình/i).last()).toBeVisible()
   await expect(page.getByTestId('report-run-ocr-button')).toBeEnabled()
+  await expect(page.getByTestId('vision-ocr-ai-status')).toContainText(/Unavailable|Không khả dụng/)
+  await expect(page.getByTestId('vision-ocr-run-message')).toContainText(/Quick scan|Quét nhanh/)
+
+  code = 'AUTHENTICATION_REQUIRED'
+  message = 'Authentication required.'
+  await page.getByTestId('vision-ocr-mode-ai').click()
+  await expect(page.getByTestId('vision-ocr-run-message')).toContainText(/Sign in again|đăng nhập lại/i)
+
+  code = 'AI_PROVIDER_NOT_CONFIGURED'
+  message = 'AI Vision OCR provider is not configured.'
+  await page.getByTestId('vision-ocr-mode-compare').click()
+  await expect(page.getByTestId('vision-ocr-local-status')).toContainText(/Completed|Đã hoàn tất/, { timeout: 180_000 })
+  await expect(page.getByTestId('vision-ocr-ai-status')).toContainText(/Unavailable|Không khả dụng/)
 })
 
 test('Live Dashboard Update applies deterministic AI Vision results to all 19 visible fields', async ({ page }) => {
@@ -240,6 +308,41 @@ test('Live Dashboard Update applies deterministic AI Vision results to all 19 vi
   await page.getByTestId('ocr-metric-filter-data').click()
   await page.getByTestId('ocr-metric-filter-all').click()
   await expectAllMetrics(page)
+})
+
+test('Live Dashboard Update protects manual values across Quick, AI and Compare and resets them for a new modal context', async ({ page }) => {
+  test.setTimeout(420_000)
+  let mode: Exclude<ResponseMode, 'timeout'> = 'success'
+  await page.route('**/api/ocr/vision', route => fulfillVision(route, mode, { comments: 345 }))
+  await openLiveUpdate(page)
+
+  await runQuickScan(page, 'live-run-ocr-button')
+  await page.getByTestId('ocr-metric-input-gmv').fill('999')
+  await runQuickScan(page, 'live-run-ocr-button')
+  await expect(page.getByTestId('ocr-metric-input-gmv')).toHaveValue('999')
+
+  await page.getByTestId('vision-ocr-mode-ai').click()
+  await acceptPrivacy(page)
+  await expect(page.getByTestId('vision-ocr-mode-ai')).toBeEnabled({ timeout: 120_000 })
+  await expect(page.getByTestId('ocr-metric-input-gmv')).toHaveValue('999')
+  await expect(page.getByTestId('ocr-metric-input-comments')).toHaveValue('345')
+
+  mode = 'conflict'
+  await page.getByTestId('vision-ocr-mode-compare').click()
+  await expect(page.getByTestId('vision-ocr-mode-compare')).toBeEnabled({ timeout: 180_000 })
+  await expect(page.getByTestId('ocr-metric-input-gmv')).toHaveValue('999')
+  const row = page.getByTestId('vision-ocr-review-gmv')
+  await row.getByRole('button', { name: /Choose OCR|Chọn OCR/ }).click()
+  await expect(page.getByTestId('ocr-metric-input-gmv')).toHaveValue(String(tiktokMetrics.gmv))
+  await row.getByRole('button', { name: /Choose AI|Chọn AI/ }).click()
+  await expect(page.getByTestId('ocr-metric-input-gmv')).toHaveValue(String(tiktokMetrics.gmv + 1))
+
+  await closeCurrentForm(page)
+  await page.getByTestId('open-live-dashboard-update-s1').click()
+  await page.getByTestId('live-dashboard-image-upload').setInputFiles(fixture)
+  await page.getByTestId('vision-ocr-mode-ai').click()
+  await expect(page.getByTestId('vision-ocr-mode-ai')).toBeEnabled({ timeout: 120_000 })
+  await expect(page.getByTestId('ocr-metric-input-gmv')).toHaveValue(String(tiktokMetrics.gmv + 1))
 })
 
 test('AI Vision configuration shell is visible to the current admin without exposing a secret input', async ({ page }) => {

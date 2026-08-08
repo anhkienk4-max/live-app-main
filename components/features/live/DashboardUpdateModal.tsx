@@ -56,7 +56,9 @@ import { OcrCandidateDiagnosticsTable } from '@/components/features/reports/OcrC
 import {
   VisionOcrActionGroup,
   VisionOcrReviewPanel,
+  VisionOcrRunStatusNotice,
   type VisionOcrMode,
+  type VisionOcrRunStatus,
 } from '@/components/features/reports/VisionOcrControls'
 import { AlertDialog } from '@/components/ui/alert-dialog'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
@@ -102,6 +104,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
   const [visionMode, setVisionMode] = React.useState<VisionOcrMode | null>(null)
   const [visionResults, setVisionResults] = React.useState<HybridMetricResult[]>([])
   const [visionScanning, setVisionScanning] = React.useState(false)
+  const [visionRunStatus, setVisionRunStatus] = React.useState<VisionOcrRunStatus | null>(null)
   const { toast } = useToast()
   const { currentUser } = useCurrentUser()
   const { t } = useTranslation()
@@ -127,6 +130,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
     setVisionMode(null)
     setVisionResults([])
     setVisionScanning(false)
+    setVisionRunStatus(null)
   }, [inferredDashboardPlatform, open, shift.id])
 
   React.useEffect(() => {
@@ -292,7 +296,6 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
       return null
     }
     setScanning(true)
-    const overwriteManualEdits = ocrReview !== null
     try {
       const review = canonicalizeOcrReview(await ocrService.extractDashboardMetrics(
         dashboardPlatform,
@@ -316,12 +319,8 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
       }
       setMetricValues(current => applySelectedMetricsToState(current, review, {
         protectedKeys: manualMetricKeysRef.current,
-        overwriteProtected: overwriteManualEdits,
       }))
       incomingMetricKeys.forEach(key => ocrDerivedMetricKeysRef.current.add(key))
-      if (overwriteManualEdits) {
-        incomingMetricKeys.forEach(key => manualMetricKeysRef.current.delete(key))
-      }
       return review
     } catch {
       toast({ title: t('ocrResults'), description: t('ocrUnavailableHelp'), variant: 'destructive' })
@@ -335,7 +334,8 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
     if (!(error instanceof VisionOcrClientError)) return t('visionOcrFailed')
     if (error.code === 'AI_OCR_DISABLED') return t('visionOcrDisabled')
     if (error.code === 'AI_PROVIDER_NOT_CONFIGURED') return t('visionOcrNotConfigured')
-    if (error.code === 'AUTHENTICATION_REQUIRED' || error.code === 'PERMISSION_DENIED') return t('visionOcrPermissionDenied')
+    if (error.code === 'AUTHENTICATION_REQUIRED') return t('visionOcrAuthenticationRequired')
+    if (error.code === 'PERMISSION_DENIED') return t('visionOcrPermissionDenied')
     if (error.code === 'INVALID_CROP' || error.code === 'INVALID_IMAGE') return t('visionOcrInvalidCrop')
     if (error.code === 'AI_OCR_TIMEOUT') return t('visionOcrTimeout')
     if (error.code === 'RATE_LIMITED') return t('visionOcrRateLimited')
@@ -364,6 +364,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
   const runVisionMode = async (mode: VisionOcrMode) => {
     if (scanning || visionScanning || proposingCrop) return
     setVisionMode(mode)
+    setVisionRunStatus(null)
     if (mode === 'local') {
       await scanScreenshot()
       setVisionMode(null)
@@ -376,8 +377,14 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
       return
     }
     setVisionScanning(true)
+    let localStatus: VisionOcrRunStatus['local'] = 'idle'
     try {
       const localReview = mode === 'compare' ? await scanScreenshot() : null
+      if (mode === 'compare') {
+        localStatus = localReview && localReview.status !== 'failed' && localReview.status !== 'unavailable'
+          ? 'completed'
+          : 'unavailable'
+      }
       const response = await requestVisionOcr({ platform: dashboardPlatform, imageUrl: formData.screenshot_url, cropBox })
       const results = compareVisionMetrics({
         platform: visionPlatform,
@@ -388,8 +395,11 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
       })
       setVisionResults(results)
       applyVisionResults(results)
+      setVisionRunStatus({ local: localStatus, ai: 'completed' })
     } catch (error) {
-      toast({ title: t('ocrResults'), description: visionErrorMessage(error), variant: 'destructive' })
+      const message = visionErrorMessage(error)
+      setVisionRunStatus({ local: localStatus, ai: 'unavailable', message })
+      toast({ title: t('ocrResults'), description: message, variant: 'destructive' })
     } finally {
       setVisionScanning(false)
       setVisionMode(null)
@@ -418,6 +428,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
     setOcrReview(null)
     setOcrApplicationResult(null)
     setVisionResults([])
+    setVisionRunStatus(null)
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -547,6 +558,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
                 localButtonTestId="live-run-ocr-button"
                 onRun={runVisionMode}
               />
+              <VisionOcrRunStatusNotice status={visionRunStatus} />
               {ocrReview && <Button type="button" variant="ghost" disabled={scanning || visionScanning} onClick={resetOcrResults}><RefreshCw className="mr-2 h-4 w-4" />{t('resetResults')}</Button>}
             </div>
             <VisionOcrReviewPanel results={visionResults} onResolve={resolveVisionResult} />

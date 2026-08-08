@@ -12,6 +12,12 @@ import type { HybridMetricResult } from '@/lib/visionOcr/types'
 
 export type VisionOcrMode = 'local' | 'ai' | 'compare'
 
+export type VisionOcrRunStatus = {
+  local: 'idle' | 'completed' | 'unavailable'
+  ai: 'idle' | 'completed' | 'unavailable'
+  message?: string
+}
+
 const privacyConsentKey = 'livestream-ops-ai-ocr-privacy-consent-v1'
 
 export function VisionOcrActionGroup({
@@ -76,6 +82,25 @@ export function VisionOcrActionGroup({
       }}
     />
   </>
+}
+
+export function VisionOcrRunStatusNotice({ status }: { status: VisionOcrRunStatus | null }) {
+  const { t } = useTranslation()
+  if (!status) return null
+
+  const statusLabel = (value: VisionOcrRunStatus['local']) => t(
+    value === 'completed'
+      ? 'visionOcrCompleted'
+      : value === 'unavailable'
+        ? 'visionOcrUnavailable'
+        : 'visionOcrNotRun',
+  )
+
+  return <div className="space-y-1 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950" data-testid="vision-ocr-run-status" role="status">
+    <p><span className="font-medium">{t('visionOcrLocalStatus')}:</span> <span data-testid="vision-ocr-local-status">{statusLabel(status.local)}</span></p>
+    <p><span className="font-medium">{t('visionOcrAiStatus')}:</span> <span data-testid="vision-ocr-ai-status">{statusLabel(status.ai)}</span></p>
+    {status.message && <p data-testid="vision-ocr-run-message">{status.message}</p>}
+  </div>
 }
 
 function comparisonStatus(result: HybridMetricResult) {
