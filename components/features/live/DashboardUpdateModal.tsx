@@ -40,11 +40,24 @@ import { serializeLiveMetricState } from '@/lib/utils/ocrMetricSerialization'
 import { metricStatusTranslationKeys, metricTranslationKeys } from '@/lib/reportMetricLabels'
 import { defaultOcrCrop } from '@/lib/utils/ocrImage'
 import { proposeTikTokKpiCrop } from '@/lib/services/imageOcrService'
+import { requestVisionOcr, VisionOcrClientError } from '@/lib/services/visionOcrService'
+import {
+  compareVisionMetrics,
+  hybridResultsToMetricValues,
+  mergeHybridResultsIntoReview,
+  resolveHybridMetric,
+} from '@/lib/utils/visionOcrHybrid'
+import { toVisionPlatform, type HybridMetricResult } from '@/lib/visionOcr/types'
 import { OcrCropPreview } from '@/components/features/reports/OcrCropPreview'
 import { OcrMetricFilterBar } from '@/components/features/reports/OcrMetricReviewField'
 import { OcrTextApplicationSummary } from '@/components/features/reports/OcrTextApplicationSummary'
 import { OcrBoundMetricFields } from '@/components/features/reports/OcrBoundMetricFields'
 import { OcrCandidateDiagnosticsTable } from '@/components/features/reports/OcrCandidateDiagnosticsTable'
+import {
+  VisionOcrActionGroup,
+  VisionOcrReviewPanel,
+  type VisionOcrMode,
+} from '@/components/features/reports/VisionOcrControls'
 import { AlertDialog } from '@/components/ui/alert-dialog'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
@@ -86,6 +99,9 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
   const [showReviewWarning, setShowReviewWarning] = React.useState(false)
   const [dashboardPlatform, setDashboardPlatform] = React.useState<ReportDashboardPlatform>(inferredDashboardPlatform)
   const [cropBox, setCropBox] = React.useState<OcrCropBox>(defaultOcrCrop(inferredDashboardPlatform))
+  const [visionMode, setVisionMode] = React.useState<VisionOcrMode | null>(null)
+  const [visionResults, setVisionResults] = React.useState<HybridMetricResult[]>([])
+  const [visionScanning, setVisionScanning] = React.useState(false)
   const { toast } = useToast()
   const { currentUser } = useCurrentUser()
   const { t } = useTranslation()
@@ -108,6 +124,9 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
     setCropBox(defaultOcrCrop(inferredDashboardPlatform))
     setMetricFilter('data')
     setShowReviewWarning(false)
+    setVisionMode(null)
+    setVisionResults([])
+    setVisionScanning(false)
   }, [inferredDashboardPlatform, open, shift.id])
 
   React.useEffect(() => {
@@ -266,11 +285,11 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
   }
 
   const scanScreenshot = async () => {
-    if (scanning || proposingCrop) return
-    if (!formData.screenshot_url) return
+    if (scanning || proposingCrop) return null
+    if (!formData.screenshot_url) return null
     if (dashboardPlatform === 'other') {
       toast({ title: t('dashboardPlatformRequired'), description: t('dashboardPlatformRequiredHelp'), variant: 'destructive' })
-      return
+      return null
     }
     setScanning(true)
     const overwriteManualEdits = ocrReview !== null
@@ -288,12 +307,12 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
       }
       if (incomingMetricKeys.length === 0 && recognizedText) {
         applyRawOcrText(recognizedText, review)
-        return
+        return review
       }
       setOcrReview(review)
       if (incomingMetricKeys.length === 0 && (review.status === 'unavailable' || review.status === 'failed')) {
         toast({ title: t('ocrResults'), description: t('ocrUnavailableHelp'), variant: 'destructive' })
-        return
+        return review
       }
       setMetricValues(current => applySelectedMetricsToState(current, review, {
         protectedKeys: manualMetricKeysRef.current,
@@ -303,11 +322,90 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
       if (overwriteManualEdits) {
         incomingMetricKeys.forEach(key => manualMetricKeysRef.current.delete(key))
       }
+      return review
     } catch {
       toast({ title: t('ocrResults'), description: t('ocrUnavailableHelp'), variant: 'destructive' })
+      return null
     } finally {
       setScanning(false)
     }
+  }
+
+  const visionErrorMessage = (error: unknown) => {
+    if (!(error instanceof VisionOcrClientError)) return t('visionOcrFailed')
+    if (error.code === 'AI_OCR_DISABLED') return t('visionOcrDisabled')
+    if (error.code === 'AI_PROVIDER_NOT_CONFIGURED') return t('visionOcrNotConfigured')
+    if (error.code === 'AUTHENTICATION_REQUIRED' || error.code === 'PERMISSION_DENIED') return t('visionOcrPermissionDenied')
+    if (error.code === 'INVALID_CROP' || error.code === 'INVALID_IMAGE') return t('visionOcrInvalidCrop')
+    if (error.code === 'AI_OCR_TIMEOUT') return t('visionOcrTimeout')
+    if (error.code === 'RATE_LIMITED') return t('visionOcrRateLimited')
+    return t('visionOcrFailed')
+  }
+
+  const applyVisionResults = (
+    results: HybridMetricResult[],
+    forceKeys: ReadonlySet<CanonicalMetricKey> = new Set(),
+  ) => {
+    const selected = hybridResultsToMetricValues(results)
+    setMetricValues(current => {
+      const next = { ...current }
+      for (const [rawKey, value] of Object.entries(selected)) {
+        const key = rawKey as CanonicalMetricKey
+        if (forceKeys.has(key) || !manualMetricKeysRef.current.has(key)) {
+          next[key] = value
+          ocrDerivedMetricKeysRef.current.add(key)
+        }
+      }
+      return next
+    })
+    setOcrReview(current => mergeHybridResultsIntoReview(current, results))
+  }
+
+  const runVisionMode = async (mode: VisionOcrMode) => {
+    if (scanning || visionScanning || proposingCrop) return
+    setVisionMode(mode)
+    if (mode === 'local') {
+      await scanScreenshot()
+      setVisionMode(null)
+      return
+    }
+    const visionPlatform = toVisionPlatform(dashboardPlatform)
+    if (!formData.screenshot_url || !visionPlatform) {
+      toast({ title: t('ocrResults'), description: t('visionOcrInvalidCrop'), variant: 'destructive' })
+      setVisionMode(null)
+      return
+    }
+    setVisionScanning(true)
+    try {
+      const localReview = mode === 'compare' ? await scanScreenshot() : null
+      const response = await requestVisionOcr({ platform: dashboardPlatform, imageUrl: formData.screenshot_url, cropBox })
+      const results = compareVisionMetrics({
+        platform: visionPlatform,
+        localReview,
+        aiMetrics: response.metrics,
+        manualValues: metricValues,
+        protectedKeys: manualMetricKeysRef.current,
+      })
+      setVisionResults(results)
+      applyVisionResults(results)
+    } catch (error) {
+      toast({ title: t('ocrResults'), description: visionErrorMessage(error), variant: 'destructive' })
+    } finally {
+      setVisionScanning(false)
+      setVisionMode(null)
+    }
+  }
+
+  const resolveVisionResult = (
+    key: CanonicalMetricKey,
+    source: 'local' | 'ai' | 'manual',
+    manualValue?: number | null,
+  ) => {
+    const next = visionResults.map(result => result.key === key ? resolveHybridMetric(result, source, manualValue) : result)
+    if (source === 'manual') manualMetricKeysRef.current.add(key)
+    else manualMetricKeysRef.current.delete(key)
+    setVisionResults(next)
+    applyVisionResults(next, new Set([key]))
   }
 
   const resetOcrResults = () => {
@@ -319,11 +417,12 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
     ocrDerivedMetricKeysRef.current.clear()
     setOcrReview(null)
     setOcrApplicationResult(null)
+    setVisionResults([])
   }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (scanning || submitting) return
+    if (scanning || visionScanning || submitting) return
 
     if (!validateForm()) {
       toast({ title: t('validationError'), description: t('validationFillRequired'), variant: 'destructive' })
@@ -439,11 +538,18 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
                 <SelectContent><SelectItem value="tiktok_shop">TikTok Shop</SelectItem><SelectItem value="shopee_live">Shopee Live</SelectItem></SelectContent>
               </Select>
             </label>
-            {formData.screenshot_url && <div className="mt-3"><OcrCropPreview imageUrl={formData.screenshot_url} platform={dashboardPlatform} value={cropBox} onChange={setCropBox} onRetry={scanScreenshot} review={ocrReview} disabled={scanning || proposingCrop} /></div>}
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button type="button" variant="outline" disabled={!formData.screenshot_url || scanning || proposingCrop} onClick={scanScreenshot} data-testid="live-run-ocr-button">{scanning || proposingCrop ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />}{ocrReview ? t('rescanOcr') : t('scanOcr')}</Button>
-              {ocrReview && <Button type="button" variant="ghost" onClick={resetOcrResults}><RefreshCw className="mr-2 h-4 w-4" />{t('resetResults')}</Button>}
+            {formData.screenshot_url && <div className="mt-3"><OcrCropPreview imageUrl={formData.screenshot_url} platform={dashboardPlatform} value={cropBox} onChange={setCropBox} onRetry={scanScreenshot} review={ocrReview} disabled={scanning || visionScanning || proposingCrop} /></div>}
+            <div className="mt-3 space-y-2">
+              <VisionOcrActionGroup
+                activeMode={visionMode}
+                busy={scanning || visionScanning || proposingCrop}
+                disabled={!formData.screenshot_url || dashboardPlatform === 'other'}
+                localButtonTestId="live-run-ocr-button"
+                onRun={runVisionMode}
+              />
+              {ocrReview && <Button type="button" variant="ghost" disabled={scanning || visionScanning} onClick={resetOcrResults}><RefreshCw className="mr-2 h-4 w-4" />{t('resetResults')}</Button>}
             </div>
+            <VisionOcrReviewPanel results={visionResults} onResolve={resolveVisionResult} />
             <label className="mt-3 block text-sm font-medium">{t('trustedOcrText')} ({t('optional')})
               <Textarea className="mt-1 min-h-28 font-mono text-xs" value={rawOcrText} onChange={event => setRawOcrText(event.target.value)} placeholder={'Sales: 21.281.718,00\nOrders: 109\nPCU: 107'} data-testid="live-ocr-corrected-text" />
               <span className="mt-1 block text-xs font-normal text-muted-foreground">{t('trustedOcrHelp')}</span>
@@ -452,7 +558,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
               type="button"
               variant="outline"
               className="mt-2"
-              disabled={!rawOcrText.trim() || dashboardPlatform === 'other' || scanning}
+              disabled={!rawOcrText.trim() || dashboardPlatform === 'other' || scanning || visionScanning}
               onClick={() => applyRawOcrText()}
               data-testid="apply-live-ocr-text"
             >
@@ -562,7 +668,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
             >
               {t('cancel')}
             </Button>
-            <Button type="submit" disabled={submitting || scanning}>
+            <Button type="submit" disabled={submitting || scanning || visionScanning}>
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {t('addUpdate')}
             </Button>

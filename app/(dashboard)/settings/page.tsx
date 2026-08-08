@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Bell, Plug, RotateCcw, ShieldCheck, SlidersHorizontal, UserCog } from 'lucide-react'
+import { Bell, Bot, Plug, RotateCcw, ShieldCheck, SlidersHorizontal, UserCog } from 'lucide-react'
 import { settingsService } from '@/lib/services/dataService'
 import { OperationalRole, OperationalSettings, PersonalSettings } from '@/lib/types/database.types'
 import { hasPermission, permissionMatrix, resolveSystemPermission } from '@/lib/permissions'
@@ -129,6 +129,20 @@ export default function SettingsPage() {
       toast({ title: t('error'), description: t('validationError'), variant: 'destructive' })
       return
     }
+    const visionNumbers = [
+      Number(system.vision_ocr_timeout_ms),
+      Number(system.vision_ocr_retry_count),
+      Number(system.vision_ocr_daily_request_limit),
+      Number(system.vision_ocr_monthly_request_limit),
+    ]
+    if (
+      visionNumbers.some(value => !Number.isInteger(value) || value < 0)
+      || visionNumbers[0] < 1000
+      || visionNumbers[1] > 1
+    ) {
+      toast({ title: t('error'), description: t('validationError'), variant: 'destructive' })
+      return
+    }
     setSavingTab(tab)
     try {
       const saved = await settingsService.updateSystem(system)
@@ -148,6 +162,11 @@ export default function SettingsPage() {
 
   const isLeader = hasPermission(currentUser, 'settings.leader')
   const isAdmin = hasPermission(currentUser, 'settings.admin')
+  const mockVisionAvailable = process.env.NODE_ENV !== 'production'
+  const visionProvider = String(system.vision_ocr_provider || 'disabled')
+  const visionProviderConfigured = visionProvider === 'mock'
+    ? mockVisionAvailable
+    : false
 
   return <div className="min-w-0 space-y-6" data-testid="settings-page">
     <div><h1 className="text-3xl font-bold">{t('settings')}</h1><p className="mt-1 text-muted-foreground">{t('settingsSubtitle')}</p></div>
@@ -220,9 +239,36 @@ export default function SettingsPage() {
         </CardContent></Card>
       </form></TabsContent>}
 
-      {isAdmin && <TabsContent value="integrations">
-        <Card><CardHeader><CardTitle className="flex items-center gap-2"><Plug className="h-5 w-5" />{t('integrations')}</CardTitle><CardDescription>{t('credentialsSafe')}</CardDescription></CardHeader><CardContent className="grid gap-4 md:grid-cols-3"><ReadOnlySetting label={t('integrationSettings')} value={String(system.integration_mode)} /><ReadOnlySetting label={t('supabaseStatus')} value={String(system.supabase_connection_status)} /><ReadOnlySetting label={t('ocrConfiguration')} value={String(system.ocr_provider)} /><p className="text-sm text-muted-foreground md:col-span-3">{t('integrationSecretsNotice')}</p></CardContent></Card>
-      </TabsContent>}
+      {isAdmin && <TabsContent value="integrations"><form onSubmit={event => void saveSystem(event, 'integrations')}>
+        <Card><CardHeader><CardTitle className="flex items-center gap-2"><Plug className="h-5 w-5" />{t('integrations')}</CardTitle><CardDescription>{t('credentialsSafe')}</CardDescription></CardHeader><CardContent className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-3"><ReadOnlySetting label={t('integrationSettings')} value={String(system.integration_mode)} /><ReadOnlySetting label={t('supabaseStatus')} value={String(system.supabase_connection_status)} /><ReadOnlySetting label={t('ocrConfiguration')} value={String(system.ocr_provider)} /></div>
+          <section className="space-y-4 rounded-lg border p-4" data-testid="vision-ocr-admin-settings">
+            <div><h3 className="flex items-center gap-2 font-semibold"><Bot className="h-5 w-5" />{t('visionOcrSettings')}</h3><p className="mt-1 text-sm text-muted-foreground">{t('visionOcrSettingsHelp')}</p></div>
+            <div className="grid gap-4 md:grid-cols-3">
+              <ToggleSetting label={t('visionOcrEnabled')} checked={Boolean(system.vision_ocr_enabled)} onChange={checked => setSystem(current => current && ({ ...current, vision_ocr_enabled: checked }))} />
+              <SettingSelect label={t('visionOcrProvider')} value={visionProvider} options={[{ id: 'disabled', name: t('visionOcrDisabled') }, ...(mockVisionAvailable ? [{ id: 'mock', name: 'Mock' }] : []), { id: 'openai', name: 'OpenAI' }]} onChange={value => setSystem(current => current && ({ ...current, vision_ocr_provider: value, vision_ocr_provider_configured: value === 'mock' && mockVisionAvailable }))} />
+              <ReadOnlySetting label={t('visionOcrProviderState')} value={visionProviderConfigured ? t('visionOcrConfigured') : t('visionOcrNotConfiguredState')} />
+              <SettingSelect label={t('visionOcrDefaultMode')} value={String(system.vision_ocr_default_mode || 'local')} options={[{ id: 'local', name: t('visionOcrQuickScan') }, { id: 'ai', name: t('visionOcrAiScan') }, { id: 'compare', name: t('visionOcrCompareScan') }]} onChange={value => setSystem(current => current && ({ ...current, vision_ocr_default_mode: value }))} />
+              <label className="text-sm font-medium">{t('visionOcrModelIdentifier')}<Input className="mt-1" value={String(system.vision_ocr_model || '')} maxLength={120} onChange={event => setSystem(current => current && ({ ...current, vision_ocr_model: event.target.value }))} /></label>
+              <NumberSetting label={t('visionOcrTimeoutMs')} min={1000} value={finiteNumber(system.vision_ocr_timeout_ms, 30000)} onChange={value => setSystem(current => current && ({ ...current, vision_ocr_timeout_ms: value }))} />
+              <NumberSetting label={t('visionOcrRetryCount')} value={finiteNumber(system.vision_ocr_retry_count, 0)} onChange={value => setSystem(current => current && ({ ...current, vision_ocr_retry_count: Math.min(1, value) }))} />
+              <NumberSetting label={t('visionOcrDailyLimit')} min={1} value={finiteNumber(system.vision_ocr_daily_request_limit, 25)} onChange={value => setSystem(current => current && ({ ...current, vision_ocr_daily_request_limit: value }))} />
+              <NumberSetting label={t('visionOcrMonthlyLimit')} min={1} value={finiteNumber(system.vision_ocr_monthly_request_limit, 500)} onChange={value => setSystem(current => current && ({ ...current, vision_ocr_monthly_request_limit: value }))} />
+              <ToggleSetting label={t('visionOcrAllowTikTok')} checked={Boolean(system.vision_ocr_allow_tiktok)} onChange={checked => setSystem(current => current && ({ ...current, vision_ocr_allow_tiktok: checked }))} />
+              <ToggleSetting label={t('visionOcrAllowShopee')} checked={Boolean(system.vision_ocr_allow_shopee)} onChange={checked => setSystem(current => current && ({ ...current, vision_ocr_allow_shopee: checked }))} />
+              <ToggleSetting label={t('visionOcrDiagnosticsRetention')} checked={Boolean(system.vision_ocr_diagnostics_retention)} onChange={checked => setSystem(current => current && ({ ...current, vision_ocr_diagnostics_retention: checked }))} />
+            </div>
+            <p className="text-sm text-muted-foreground">{t('visionOcrMockDevelopmentOnly')}</p>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" disabled={!mockVisionAvailable || visionProvider !== 'mock'} onClick={() => toast({ title: t('visionOcrTestMock'), description: t('visionOcrConfigured'), variant: 'success' })}>{t('visionOcrTestMock')}</Button>
+              <Button type="button" variant="outline" onClick={() => setSystem(current => current && ({ ...current, vision_ocr_enabled: false, vision_ocr_provider: 'disabled', vision_ocr_provider_configured: false, vision_ocr_default_mode: 'local' }))}>{t('visionOcrDisable')}</Button>
+              <Button type="button" variant="outline" onClick={() => setSystem(current => current && ({ ...current, vision_ocr_provider: 'disabled', vision_ocr_provider_configured: false, vision_ocr_model: 'openai-not-configured' }))}>{t('visionOcrClearConfiguration')}</Button>
+            </div>
+          </section>
+          <p className="text-sm text-muted-foreground">{t('integrationSecretsNotice')}</p>
+          <Actions dirty={systemDirty} saving={savingTab === 'integrations'} onReset={() => setSystem(savedSystem)} />
+        </CardContent></Card>
+      </form></TabsContent>}
 
       {isAdmin && <TabsContent value="audit"><form onSubmit={event => void saveSystem(event, 'audit')}>
         <Card><CardHeader><CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5" />{t('audit')}</CardTitle><CardDescription>{t('auditSettings')}</CardDescription></CardHeader><CardContent className="space-y-5"><div className="grid gap-4 md:grid-cols-2"><ToggleSetting label={t('auditEnabled')} checked={Boolean(system.audit_enabled)} onChange={checked => setSystem(current => current && ({ ...current, audit_enabled: checked }))} /><NumberSetting label={t('auditRetentionDays')} min={1} value={finiteNumber(system.audit_retention_days, 90)} onChange={value => setSystem(current => current && ({ ...current, audit_retention_days: value }))} /></div><div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">{t('auditMockNotice')}</div><Actions dirty={systemDirty} saving={savingTab === 'audit'} onReset={() => setSystem(savedSystem)} /></CardContent></Card>

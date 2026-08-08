@@ -49,6 +49,14 @@ import { serializeFinalReportMetricState } from '@/lib/utils/ocrMetricSerializat
 import { metricTranslationKeys } from '@/lib/reportMetricLabels'
 import { defaultOcrCrop } from '@/lib/utils/ocrImage'
 import { proposeTikTokKpiCrop } from '@/lib/services/imageOcrService'
+import { requestVisionOcr, VisionOcrClientError } from '@/lib/services/visionOcrService'
+import {
+  compareVisionMetrics,
+  hybridResultsToMetricValues,
+  mergeHybridResultsIntoReview,
+  resolveHybridMetric,
+} from '@/lib/utils/visionOcrHybrid'
+import { toVisionPlatform, type HybridMetricResult } from '@/lib/visionOcr/types'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
@@ -78,6 +86,11 @@ import {
   updateLiveReportImageMetadata,
 } from '@/lib/utils/liveReportImages'
 import { LiveReportImageEditor } from '@/components/features/reports/LiveReportImageGallery'
+import {
+  VisionOcrActionGroup,
+  VisionOcrReviewPanel,
+  type VisionOcrMode,
+} from '@/components/features/reports/VisionOcrControls'
 
 const emptyReview = (): OcrReviewData => ({ status: 'waiting', metrics: {} })
 type PendingImage = { url: string; name: string; type: ReportImageCategory; mime: string; size: number }
@@ -133,6 +146,9 @@ export function ReportFormModal({
   const [ocrApplicationResult, setOcrApplicationResult] = React.useState<OcrTextApplicationResult | null>(null)
   const [metricFilter, setMetricFilter] = React.useState<OcrMetricFilter>(defaultFinalReportMetricFilter)
   const [showReviewWarning, setShowReviewWarning] = React.useState(false)
+  const [visionMode, setVisionMode] = React.useState<VisionOcrMode | null>(null)
+  const [visionResults, setVisionResults] = React.useState<HybridMetricResult[]>([])
+  const [visionScanning, setVisionScanning] = React.useState(false)
 
   const selectedShift = completedShifts.find(shift => shift.id === shiftId)
   const dashboardImage = images.find(image => image.type === 'dashboard')
@@ -201,6 +217,9 @@ export function ReportFormModal({
     setOcrApplicationResult(null)
     setMetricFilter(defaultFinalReportMetricFilter)
     setShowReviewWarning(false)
+    setVisionMode(null)
+    setVisionResults([])
+    setVisionScanning(false)
   // Opening the modal initializes a fresh draft. Prop-array identity changes
   // while it is open must not erase OCR candidates or autofilled metrics.
   }, [open])
@@ -232,6 +251,7 @@ export function ReportFormModal({
     setOcrApplicationResult(null)
     setOcrAcknowledged(false)
     setEditingMetrics(false)
+    setVisionResults([])
   }
 
   const resetExtracted = () => {
@@ -245,6 +265,7 @@ export function ReportFormModal({
     setOcrApplicationResult(null)
     setOcrAcknowledged(false)
     setEditingMetrics(manualMetricKeysRef.current.size > 0)
+    setVisionResults([])
   }
 
   const applyRawOcrText = (
@@ -285,14 +306,14 @@ export function ReportFormModal({
   }
 
   const runOcrReview = async () => {
-    if (reviewing || proposingCrop) return
+    if (reviewing || proposingCrop) return null
     if (dashboardPlatform === 'other') {
       toast({ title: t('dashboardPlatformRequired'), description: t('dashboardPlatformRequiredHelp'), variant: 'destructive' })
-      return
+      return null
     }
     if (!images.some(image => image.type === 'dashboard')) {
       toast({ title: t('dashboardImageRequired'), description: t('dashboardImageRequiredHelp'), variant: 'destructive' })
-      return
+      return null
     }
     setReviewing(true)
     setOcrAcknowledged(false)
@@ -347,11 +368,93 @@ export function ReportFormModal({
           variant: candidate.status === 'unavailable' ? 'destructive' : 'success',
         })
       }
+      return candidate
     } catch (error) {
       setReview({ status: 'failed', source_platform: dashboardPlatform, metrics: {}, error_message: error instanceof Error ? error.message : t('ocrFailed') })
+      return null
     } finally {
       setReviewing(false)
     }
+  }
+
+  const visionErrorMessage = (error: unknown) => {
+    if (!(error instanceof VisionOcrClientError)) return t('visionOcrFailed')
+    if (error.code === 'AI_OCR_DISABLED') return t('visionOcrDisabled')
+    if (error.code === 'AI_PROVIDER_NOT_CONFIGURED') return t('visionOcrNotConfigured')
+    if (error.code === 'AUTHENTICATION_REQUIRED' || error.code === 'PERMISSION_DENIED') return t('visionOcrPermissionDenied')
+    if (error.code === 'INVALID_CROP' || error.code === 'INVALID_IMAGE') return t('visionOcrInvalidCrop')
+    if (error.code === 'AI_OCR_TIMEOUT') return t('visionOcrTimeout')
+    if (error.code === 'RATE_LIMITED') return t('visionOcrRateLimited')
+    return t('visionOcrFailed')
+  }
+
+  const applyVisionResults = (
+    results: HybridMetricResult[],
+    forceKeys: ReadonlySet<CanonicalMetricKey> = new Set(),
+  ) => {
+    const selected = hybridResultsToMetricValues(results)
+    setMetricValues(current => {
+      const next = { ...current }
+      for (const [rawKey, value] of Object.entries(selected)) {
+        const key = rawKey as CanonicalMetricKey
+        if (forceKeys.has(key) || !manualMetricKeysRef.current.has(key)) {
+          next[key] = value
+          ocrDerivedMetricKeysRef.current.add(key)
+        }
+      }
+      return next
+    })
+    setReview(current => mergeHybridResultsIntoReview(current, results))
+    setEditingMetrics(true)
+    setOcrAcknowledged(false)
+  }
+
+  const runVisionMode = async (mode: VisionOcrMode) => {
+    if (reviewing || visionScanning || proposingCrop) return
+    setVisionMode(mode)
+    if (mode === 'local') {
+      await runOcrReview()
+      setVisionMode(null)
+      return
+    }
+    const image = images.find(candidate => candidate.type === 'dashboard')
+    const visionPlatform = toVisionPlatform(dashboardPlatform)
+    if (!image || !visionPlatform) {
+      toast({ title: t('ocrResults'), description: t('visionOcrInvalidCrop'), variant: 'destructive' })
+      setVisionMode(null)
+      return
+    }
+    setVisionScanning(true)
+    try {
+      const localReview = mode === 'compare' ? await runOcrReview() : null
+      const response = await requestVisionOcr({ platform: dashboardPlatform, imageUrl: image.url, cropBox })
+      const results = compareVisionMetrics({
+        platform: visionPlatform,
+        localReview,
+        aiMetrics: response.metrics,
+        manualValues: metricValues,
+        protectedKeys: manualMetricKeysRef.current,
+      })
+      setVisionResults(results)
+      applyVisionResults(results)
+    } catch (error) {
+      toast({ title: t('ocrResults'), description: visionErrorMessage(error), variant: 'destructive' })
+    } finally {
+      setVisionScanning(false)
+      setVisionMode(null)
+    }
+  }
+
+  const resolveVisionResult = (
+    key: CanonicalMetricKey,
+    source: 'local' | 'ai' | 'manual',
+    manualValue?: number | null,
+  ) => {
+    const next = visionResults.map(result => result.key === key ? resolveHybridMetric(result, source, manualValue) : result)
+    if (source === 'manual') manualMetricKeysRef.current.add(key)
+    else manualMetricKeysRef.current.delete(key)
+    setVisionResults(next)
+    applyVisionResults(next, new Set([key]))
   }
 
   const setMetric = (key: CanonicalMetricKey, value: string) => {
@@ -459,7 +562,7 @@ export function ReportFormModal({
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault()
-    if (reviewing || submitting) return
+    if (reviewing || visionScanning || submitting) return
     if (!validateSubmission()) return
     if (reviewRequiredCount(review) > 0) {
       setShowReviewWarning(true)
@@ -572,19 +675,26 @@ export function ReportFormModal({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{t('ocrReview')}</h3><span data-testid="report-ocr-completion-status" data-ocr-status={review.status}><OcrStatus status={review.status} /></span></div><p className="mt-1 text-sm text-muted-foreground">{t('ocrReviewHelp')}</p>{review.engine && <p className="mt-1 text-xs text-muted-foreground">{t('engine')}: {review.engine} · {t('recognitionLanguage')}: {review.recognition_language} · {t('overallConfidence')}: {review.overall_confidence?.toFixed(1) ?? '—'}%</p>}</div>
               <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" onClick={resetExtracted} disabled={reviewing}><RotateCcw className="mr-2 h-4 w-4" />{t('resetResults')}</Button>
+                <Button type="button" variant="outline" onClick={resetExtracted} disabled={reviewing || visionScanning}><RotateCcw className="mr-2 h-4 w-4" />{t('resetResults')}</Button>
                 {review.status === 'review_required' && <Button type="button" variant="outline" onClick={() => setEditingMetrics(value => !value)}><Pencil className="mr-2 h-4 w-4" />{editingMetrics ? t('finishEditing') : t('editOcrMetrics')}</Button>}
-                <Button type="button" onClick={runOcrReview} disabled={reviewing || proposingCrop} data-testid="report-run-ocr-button">{reviewing || proposingCrop ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />}{review.status === 'review_required' ? t('rescanOcr') : t('scanOcr')}</Button>
               </div>
             </div>
-            {dashboardImage && <OcrCropPreview imageUrl={dashboardImage.url} platform={dashboardPlatform} value={cropBox} onChange={setCropBox} onRetry={runOcrReview} review={review} disabled={reviewing || proposingCrop} />}
+            <VisionOcrActionGroup
+              activeMode={visionMode}
+              busy={reviewing || visionScanning || proposingCrop}
+              disabled={!dashboardImage || dashboardPlatform === 'other'}
+              localButtonTestId="report-run-ocr-button"
+              onRun={runVisionMode}
+            />
+            {dashboardImage && <OcrCropPreview imageUrl={dashboardImage.url} platform={dashboardPlatform} value={cropBox} onChange={setCropBox} onRetry={runOcrReview} review={review} disabled={reviewing || visionScanning || proposingCrop} />}
+            <VisionOcrReviewPanel results={visionResults} onResolve={resolveVisionResult} />
             <label className="block text-sm font-medium">{t('trustedOcrText')} ({t('optional')})
               <Textarea className="mt-1 min-h-32 font-mono text-xs" value={rawOcrText} onChange={event => setRawOcrText(event.target.value)} placeholder={'Sales: 21.281.718,00\nEngaged Viewer: 521\nOrders: 109'} data-testid="report-ocr-corrected-text" />
             </label>
             <Button
               type="button"
               variant="outline"
-              disabled={!rawOcrText.trim() || dashboardPlatform === 'other' || reviewing}
+              disabled={!rawOcrText.trim() || dashboardPlatform === 'other' || reviewing || visionScanning}
               onClick={() => applyRawOcrText()}
               data-testid="apply-report-ocr-text"
             >
@@ -709,7 +819,7 @@ export function ReportFormModal({
               </div>
             </section>
           )}
-          <DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>{t('cancel')}</Button><Button type="submit" disabled={submitting || reviewing}>{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t('saveFinalReport')}</Button></DialogFooter>
+          <DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>{t('cancel')}</Button><Button type="submit" disabled={submitting || reviewing || visionScanning}>{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t('saveFinalReport')}</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
