@@ -38,7 +38,7 @@ export function isPublicAuthPath(pathname: string) {
 
 export function createLoginRedirect(
   request: NextRequest,
-  reason: 'authentication_required' | 'auth_unavailable' | 'session_expired',
+  reason: 'authentication_required' | 'auth_unavailable' | 'session_expired' | 'identity_unavailable',
   sessionResponse = NextResponse.next({ request }),
 ) {
   const url = request.nextUrl.clone()
@@ -96,7 +96,10 @@ export function createSessionUpdater(
           : createLoginRedirect(request, 'session_expired', sessionResponse)
       }
 
-      if (isPublicAuthPath(request.nextUrl.pathname)) {
+      if (
+        isPublicAuthPath(request.nextUrl.pathname)
+        && request.nextUrl.searchParams.get('reason') !== 'identity_unavailable'
+      ) {
         const home = request.nextUrl.clone()
         home.pathname = '/'
         home.search = ''

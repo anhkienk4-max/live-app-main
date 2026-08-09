@@ -31,6 +31,8 @@ export default function LoginPage() {
       setError(t('sessionExpired'))
     } else if (reason === 'auth_unavailable') {
       setError(t('authServiceUnavailable'))
+    } else if (reason === 'identity_unavailable') {
+      setError(t('authIdentityUnavailable'))
     } else if (reason === 'signed_out') {
       setNotice(t('signedOutMessage'))
     }

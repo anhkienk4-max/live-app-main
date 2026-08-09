@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/toast'
+import { getAuthMode } from '@/lib/auth/authMode'
 
 const roles: OperationalRole[] = ['host', 'support', 'technical']
 type SettingsTab = 'personal' | 'team' | 'system' | 'integrations' | 'audit'
@@ -33,7 +34,8 @@ export default function SettingsPage() {
   const [savedOperational, setSavedOperational] = React.useState<OperationalSettings | null>(null)
   const [savedSystem, setSavedSystem] = React.useState<Record<string, string | number | boolean> | null>(null)
   const [savingTab, setSavingTab] = React.useState<SettingsTab | null>(null)
-  const showMockSwitcher = process.env.NEXT_PUBLIC_ENABLE_MOCK_USER_SWITCHER === 'true'
+  const showMockSwitcher = getAuthMode() === 'mock'
+    && process.env.NEXT_PUBLIC_ENABLE_MOCK_USER_SWITCHER === 'true'
 
   React.useEffect(() => {
     if (!currentUser) return

@@ -1,4 +1,6 @@
 import type { SystemPermission } from '@/lib/types/database.types'
+import { createAuthIdentity, mapAuthIdentityToBusinessUser } from '@/lib/auth/authIdentity'
+import { mockUsers } from '@/lib/services/mockData'
 import {
   permissionMatrix,
   type Permission,
@@ -8,6 +10,7 @@ export interface AuthenticatedServerUser {
   id: string
   email?: string
   systemPermission: SystemPermission
+  businessUserId?: string
 }
 
 export type ServerUserResolver = (
@@ -44,19 +47,14 @@ export async function resolveServerUser(
 
   if (error || !user) return null
 
-  // app_metadata is controlled by the auth server. Never authorize from
-  // user_metadata, request bodies, query strings, or client-provided headers.
-  const claimedPermission = user.app_metadata?.system_permission
-    ?? user.app_metadata?.role
-  const systemPermission: SystemPermission =
-    claimedPermission === 'admin' || claimedPermission === 'leader'
-      ? claimedPermission
-      : 'member'
+  const identity = createAuthIdentity(user)
+  if (!identity || !mapAuthIdentityToBusinessUser(identity, mockUsers)) return null
 
   return {
-    id: user.id,
-    email: user.email,
-    systemPermission,
+    id: identity.auth_user_id,
+    email: identity.email,
+    systemPermission: identity.system_permission,
+    businessUserId: identity.business_user_id,
   }
 }
 

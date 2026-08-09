@@ -32,6 +32,7 @@ import { DEFAULT_REQUIRED_STAFF_COUNT, normalizeCapacity, resolveShiftDateTime, 
 import { toCanonicalScheduleImportPreviewRow } from '@/lib/utils/scheduleImportPreview'
 import { recordAuditEvent } from '@/lib/services/auditService'
 import { resolveSystemPermission } from '@/lib/permissions'
+import { getAuthMode } from '@/lib/auth/authMode'
 import {
   liveReportImageCategories,
   maximumLiveReportImages,
@@ -68,6 +69,21 @@ let dashboardUpdates = [...mockDashboardUpdates]
 let swapRequests = [...mockSwapRequests]
 let scheduleImports: ScheduleImportBatch[] = []
 let scheduleChangeLogs: ScheduleChangeLog[] = []
+let authenticatedBusinessUser: User | null = null
+
+const currentBusinessUserFor = (actorId: string): User | null => {
+  if (getAuthMode() === 'supabase') {
+    if (!authenticatedBusinessUser || authenticatedBusinessUser.id !== actorId) return null
+    const latest = users.find(user => user.id === actorId)
+    if (!latest || latest.status !== 'active' || latest.deleted_at || latest.archived_at) return null
+    return {
+      ...latest,
+      role: authenticatedBusinessUser.role,
+      system_permission: authenticatedBusinessUser.system_permission,
+    }
+  }
+  return users.find(user => user.id === actorId) || null
+}
 
 const appendReportRevision = (
   report: Report,
@@ -153,8 +169,12 @@ const syncMockAuthAccount = (user: User) => {
     // Ignore storage sync errors for mock auth state.
   }
 }
-const actorFor = (actorId = currentUserService.getId()) =>
-  users.find(user => user.id === actorId) || users[0]
+const actorFor = (actorId = currentUserService.getId()) => {
+  const actor = currentBusinessUserFor(actorId)
+  if (actor) return actor
+  if (getAuthMode() === 'mock') return users[0]
+  throw new Error('The current user could not be verified.')
+}
 const audit = (
   module: AuditModule,
   action: AuditAction,
@@ -444,24 +464,43 @@ export const userService = {
 
 export const currentUserService = {
   getId(): string {
+    if (getAuthMode() === 'supabase') {
+      if (!authenticatedBusinessUser) throw new Error('The authenticated business user is unavailable.')
+      return authenticatedBusinessUser.id
+    }
     if (typeof window === 'undefined') return '1'
     if (process.env.NEXT_PUBLIC_ENABLE_MOCK_USER_SWITCHER !== 'true') return '1'
     return window.localStorage.getItem('livestream-ops-current-user') || '1'
   },
 
-  async getCurrent(): Promise<User> {
+  async getCurrent(): Promise<User | null> {
     const id = this.getId()
-    return users.find(user => user.id === id) || users[0]
+    return currentBusinessUserFor(id)
+      || (getAuthMode() === 'mock' ? users[0] : null)
   },
 
   async setCurrent(id: string): Promise<User | null> {
-    const user = users.find(candidate => candidate.id === id) || null
+    if (getAuthMode() === 'supabase') return currentBusinessUserFor(id)
+    const user = currentBusinessUserFor(id)
     if (!user) return null
     if (typeof window !== 'undefined') {
       window.localStorage.setItem('livestream-ops-current-user', id)
       window.dispatchEvent(new CustomEvent('livestream-ops-current-user-change', { detail: id }))
     }
     return user
+  },
+
+  bindAuthenticatedUser(user: User): void {
+    if (getAuthMode() !== 'supabase') return
+    authenticatedBusinessUser = {
+      ...user,
+      operational_roles: user.operational_roles ? [...user.operational_roles] : [],
+    }
+  },
+
+  clearAuthenticatedUser(expectedBusinessUserId?: string): void {
+    if (expectedBusinessUserId && authenticatedBusinessUser?.id !== expectedBusinessUserId) return
+    authenticatedBusinessUser = null
   },
 }
 

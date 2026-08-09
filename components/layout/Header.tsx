@@ -38,9 +38,9 @@ export function Header({ user }: HeaderProps) {
   const { language, setLanguage, t } = useTranslation()
   const { toast } = useToast()
   const [signingOut, setSigningOut] = useState(false)
-  const { currentUser } = useCurrentUser()
+  const { currentUser, clearIdentity } = useCurrentUser()
   const mockMode = getAuthMode() === 'mock'
-  const displayUser = mockMode && currentUser ? {
+  const displayUser = currentUser ? {
     email: currentUser.email,
     user_metadata: {
       full_name: currentUser.full_name,
@@ -79,6 +79,7 @@ export function Header({ user }: HeaderProps) {
       return
     }
 
+    clearIdentity()
     router.replace('/login?reason=signed_out')
     router.refresh()
   }

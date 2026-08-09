@@ -172,6 +172,18 @@ test('login remains reachable without a session and authenticated users leave lo
   assert.equal(new URL(response.headers.get('location') || '').pathname, '/')
 })
 
+test('authenticated users can view the fail-closed business identity error', async () => {
+  const authenticated = createSessionUpdater(sessionFactory({
+    data: { claims: { sub: 'supabase-user-without-business-link' } },
+    error: null,
+  }))
+
+  const response = await authenticated(new NextRequest(
+    'http://localhost/login?reason=identity_unavailable',
+  ))
+  assert.equal(response.status, 200)
+})
+
 test('auth proxy allows mock mode only through the resolved development boundary', async () => {
   let refreshCalls = 0
   const mockProxy = createAuthProxy({
