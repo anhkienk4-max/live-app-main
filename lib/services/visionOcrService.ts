@@ -8,6 +8,8 @@ import {
   type VisionOcrResponse,
 } from '@/lib/visionOcr/types'
 
+const visionOcrPrivacyConsentKey = 'livestream-ops-ai-ocr-privacy-consent-v1'
+
 export class VisionOcrClientError extends Error {
   constructor(
     public readonly code: string,
@@ -57,6 +59,9 @@ export async function requestVisionOcr({
   imageUrl: string
   cropBox: OcrCropBox
 }): Promise<VisionOcrResponse> {
+  if (window.localStorage.getItem(visionOcrPrivacyConsentKey) !== 'accepted') {
+    throw new VisionOcrClientError('PRIVACY_CONSENT_REQUIRED', 'AI Vision OCR privacy consent is required.', 400)
+  }
   const visionPlatform = toVisionPlatform(platform)
   if (!visionPlatform) throw new VisionOcrClientError('UNSUPPORTED_PLATFORM', 'Select TikTok Shop or Shopee Live.', 400)
   const crop = await renderSelectedOcrCrop(imageUrl, cropBox)
@@ -66,6 +71,7 @@ export async function requestVisionOcr({
   formData.set('crop_width', String(crop.width))
   formData.set('crop_height', String(crop.height))
   formData.set('request_id', crypto.randomUUID())
+  formData.set('privacy_consent', 'accepted')
   const response = await fetch('/api/ocr/vision', {
     method: 'POST',
     body: formData,

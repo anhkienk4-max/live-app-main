@@ -51,6 +51,7 @@ export type VisionOcrRequest = {
 export type VisionOcrResponse = {
   provider: 'mock' | 'openai'
   model: string
+  providerRequestId?: string
   metrics: VisionMetricResult[]
   warnings: string[]
   latencyMs: number
@@ -107,6 +108,7 @@ export const visionMetricResultSchema = z.object({
 const visionOcrResponseBaseSchema = z.object({
   provider: z.enum(['mock', 'openai']),
   model: z.string().min(1).max(120),
+  providerRequestId: z.string().min(1).max(200).optional(),
   metrics: z.array(visionMetricResultSchema),
   warnings: z.array(z.string().max(500)).max(50),
   latencyMs: z.number().finite().nonnegative(),

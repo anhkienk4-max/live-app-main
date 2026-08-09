@@ -65,7 +65,7 @@ async function fulfillVision(
     await route.fulfill({
       status: 504,
       contentType: 'application/json',
-      body: JSON.stringify({ ok: false, error: { code: 'AI_OCR_TIMEOUT', message: 'AI Vision OCR timed out.' } }),
+      body: JSON.stringify({ ok: false, error: { code: 'AI_TIMEOUT', message: 'AI Vision OCR timed out.' } }),
     })
     return
   }
@@ -97,19 +97,44 @@ async function openFinalReport(page: Page) {
 
 async function openLiveUpdate(page: Page) {
   await gotoOk(page, '/calendar')
-  await page.getByTestId('calendar-event-s1').click()
-  await page.getByTestId('edit-shift-detail').click()
-  const dialog = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit Shift', exact: true }) })
+  await page.getByRole('button', { name: 'New shift', exact: true }).first().click()
+  const dialog = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Create New Shift', exact: true }) })
+  await dialog.locator('input[placeholder="Morning livestream"]').fill('Vision OCR TikTok preparing shift')
+  await dialog.locator('input[type="date"]').fill(new Date().toISOString().slice(0, 10))
+  await dialog.locator('input[type="time"]').nth(0).fill('20:00')
+  await dialog.locator('input[type="time"]').nth(1).fill('21:00')
   await dialog.getByText('Status', { exact: true }).locator('..').getByRole('combobox').click()
   await page.getByRole('option', { name: 'Preparing', exact: true }).click()
-  await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+  await dialog.getByText('Brand *', { exact: true }).locator('..').getByRole('combobox').click()
+  await page.getByRole('option', { name: 'TechGear Pro', exact: true }).click()
+  await dialog.getByText('Platform *', { exact: true }).locator('..').getByRole('combobox').click()
+  await page.getByRole('option', { name: 'TikTok Shop', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Create', exact: true }).click()
   await expect(dialog).toBeHidden()
-  await page.keyboard.press('Escape')
   await page.getByTestId('sidebar-live').click()
-  await page.getByTestId('open-live-dashboard-update-s1').click()
+  const shiftCard = page.locator('[data-slot="card"]').filter({ hasText: 'Vision OCR TikTok preparing shift' })
+  await shiftCard.getByTestId(/^open-live-dashboard-update-/).click()
   await expect(page.getByTestId('live-platform-selector')).toContainText('TikTok Shop')
   await page.getByTestId('live-dashboard-image-upload').setInputFiles(fixture)
   await expect(page.getByTestId('ocr-crop-selection')).toBeVisible()
+}
+
+async function readStableCrop(page: Page) {
+  const selection = page.getByTestId('ocr-crop-selection')
+  const read = () => selection.evaluate(element => ({
+    left: element.getAttribute('data-crop-left'),
+    top: element.getAttribute('data-crop-top'),
+    width: element.getAttribute('data-crop-width'),
+    height: element.getAttribute('data-crop-height'),
+  }))
+  let previous = await read()
+  await expect.poll(async () => {
+    const current = await read()
+    const stable = JSON.stringify(current) === JSON.stringify(previous)
+    previous = current
+    return stable
+  }).toBe(true)
+  return previous
 }
 
 async function acceptPrivacy(page: Page) {
@@ -171,12 +196,7 @@ test('Final Report sends only the selected crop after consent, blocks duplicate 
   })
 
   await openFinalReport(page)
-  const cropBefore = await page.getByTestId('ocr-crop-selection').evaluate(element => ({
-    left: element.getAttribute('data-crop-left'),
-    top: element.getAttribute('data-crop-top'),
-    width: element.getAttribute('data-crop-width'),
-    height: element.getAttribute('data-crop-height'),
-  }))
+  const cropBefore = await readStableCrop(page)
 
   await page.getByTestId('vision-ocr-mode-ai').click()
   expect(calls).toBe(0)
@@ -268,7 +288,7 @@ test('Final Report protects manual values across Quick, AI and Compare until an 
 
 test('disabled and unconfigured AI responses are distinct and leave local controls available', async ({ page }) => {
   test.setTimeout(240_000)
-  let code = 'AI_OCR_DISABLED'
+  let code = 'AI_PROVIDER_DISABLED'
   let message = 'AI Vision OCR is disabled.'
   await page.route('**/api/ocr/vision', route => fulfillVisionError(route, code, message))
   await openFinalReport(page)
@@ -338,7 +358,10 @@ test('Live Dashboard Update protects manual values across Quick, AI and Compare 
   await expect(page.getByTestId('ocr-metric-input-gmv')).toHaveValue(String(tiktokMetrics.gmv + 1))
 
   await closeCurrentForm(page)
-  await page.getByTestId('open-live-dashboard-update-s1').click()
+  await page.locator('[data-slot="card"]')
+    .filter({ hasText: 'Vision OCR TikTok preparing shift' })
+    .getByTestId(/^open-live-dashboard-update-/)
+    .click()
   await page.getByTestId('live-dashboard-image-upload').setInputFiles(fixture)
   await page.getByTestId('vision-ocr-mode-ai').click()
   await expect(page.getByTestId('vision-ocr-mode-ai')).toBeEnabled({ timeout: 120_000 })

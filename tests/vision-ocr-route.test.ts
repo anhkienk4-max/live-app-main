@@ -6,6 +6,7 @@ import { AuthorizationError } from '../lib/server/authGuards.ts'
 import { createVisionOcrPostHandler } from '../lib/server/visionOcrRouteHandler.ts'
 import {
   MockVisionOcrProvider,
+  OpenAiVisionOcrProvider,
   VisionOcrProviderRegistry,
   VisionProviderError,
   type VisionOcrProvider,
@@ -38,6 +39,7 @@ async function multipartRequest(options: {
   width?: number
   height?: number
   requestId?: string
+  privacyConsent?: boolean
 } = {}) {
   const width = options.width ?? 64
   const height = options.height ?? 48
@@ -50,6 +52,7 @@ async function multipartRequest(options: {
   formData.set('crop_width', String(width))
   formData.set('crop_height', String(height))
   formData.set('request_id', options.requestId || `request-${crypto.randomUUID()}`)
+  if (options.privacyConsent !== false) formData.set('privacy_consent', 'accepted')
   return new Request('http://localhost/api/ocr/vision', { method: 'POST', body: formData })
 }
 
@@ -82,9 +85,25 @@ test('Vision route returns a standardized permission denial', async () => {
 
 test('Vision route rejects disabled and unconfigured providers', async () => {
   const disabled = createVisionOcrPostHandler({ authorize, config: { ...enabledConfig, enabled: false }, registry: registryWith(successProvider()) })
-  assert.equal((await json(await disabled(await multipartRequest()))).error?.code, 'AI_OCR_DISABLED')
+  assert.equal((await json(await disabled(await multipartRequest()))).error?.code, 'AI_PROVIDER_DISABLED')
   const missing = createVisionOcrPostHandler({ authorize, config: enabledConfig, registry: new VisionOcrProviderRegistry() })
   assert.equal((await json(await missing(await multipartRequest()))).error?.code, 'AI_PROVIDER_NOT_CONFIGURED')
+})
+
+test('Vision route cannot activate the deterministic mock provider in production', async () => {
+  const originalNodeEnv = process.env.NODE_ENV
+  process.env.NODE_ENV = 'production'
+  try {
+    const handler = createVisionOcrPostHandler({
+      authorize,
+      config: { ...enabledConfig, provider: 'mock' },
+    })
+    const response = await handler(await multipartRequest())
+    assert.equal(response.status, 503)
+    assert.equal((await json(response)).error?.code, 'AI_PROVIDER_NOT_CONFIGURED')
+  } finally {
+    process.env.NODE_ENV = originalNodeEnv
+  }
 })
 
 test('Vision route rejects unsupported platform, invalid signature and empty crop', async () => {
@@ -92,6 +111,13 @@ test('Vision route rejects unsupported platform, invalid signature and empty cro
   assert.equal((await json(await handler(await multipartRequest({ platform: 'other' })))).error?.code, 'UNSUPPORTED_PLATFORM')
   assert.equal((await json(await handler(await multipartRequest({ bytes: new Uint8Array([1, 2, 3]), mime: 'image/png' })))).error?.code, 'INVALID_IMAGE')
   assert.equal((await json(await handler(await multipartRequest({ includeImage: false })))).error?.code, 'INVALID_CROP')
+})
+
+test('Vision route requires an explicit privacy-consent assertion before provider execution', async () => {
+  const handler = createVisionOcrPostHandler({ authorize, config: enabledConfig, registry: registryWith(successProvider()) })
+  const response = await handler(await multipartRequest({ privacyConsent: false }))
+  assert.equal(response.status, 400)
+  assert.equal((await json(response)).error?.code, 'INVALID_REQUEST')
 })
 
 test('Vision route rejects MIME/signature mismatch and invalid crop dimensions', async () => {
@@ -110,7 +136,7 @@ test('Vision route rejects oversized declared payload before multipart parsing',
   })
   const response = await handler(request)
   assert.equal(response.status, 413)
-  assert.equal((await json(response)).error?.code, 'PAYLOAD_TOO_LARGE')
+  assert.equal((await json(response)).error?.code, 'AI_REQUEST_TOO_LARGE')
 })
 
 test('Vision route applies timeout and sanitizes provider failures', async () => {
@@ -122,7 +148,7 @@ test('Vision route applies timeout and sanitizes provider failures', async () =>
   const response = await handler(await multipartRequest())
   assert.equal(response.status, 504)
   const body = await json(response)
-  assert.equal(body.error?.code, 'AI_OCR_TIMEOUT')
+  assert.equal(body.error?.code, 'AI_TIMEOUT')
   assert.equal(JSON.stringify(body).includes('stack'), false)
 })
 
@@ -182,7 +208,7 @@ test('Vision route enforces the per-user daily request limit on the server', asy
   assert.equal((await handler(await multipartRequest())).status, 200)
   const response = await handler(await multipartRequest())
   assert.equal(response.status, 429)
-  assert.equal((await json(response)).error?.code, 'RATE_LIMITED')
+  assert.equal((await json(response)).error?.code, 'AI_RATE_LIMITED')
   assert.ok(response.headers.get('retry-after'))
 })
 
@@ -210,4 +236,81 @@ test('Vision route validates provider output and never returns secrets or logs i
   assert.equal(serialized.includes('bytes'), false)
   assert.equal(serialized.includes('selected-kpi-crop'), false)
   assert.equal(serialized.includes('stack'), false)
+})
+
+test('Vision route executes the OpenAI boundary with only the validated selected crop', async () => {
+  let capturedRequest: unknown
+  const outputText = JSON.stringify({
+    platform: 'tiktok',
+    metrics: visionMetricKeys.tiktok.map((key, index) => ({
+      key,
+      value: index + 1,
+      rawText: String(index + 1),
+      confidence: 0.99,
+      state: 'confirmed',
+      reasoningCode: 'direct_read',
+    })),
+    warnings: [],
+  })
+  const provider = new OpenAiVisionOcrProvider('gpt-5.4', true, {
+    resolveApiKey: () => 'server-test-key',
+    createExecutor: async () => async request => {
+      capturedRequest = request
+      return { outputText, model: 'gpt-5.4', requestId: 'safe-provider-request-id' }
+    },
+  })
+  const logs: unknown[] = []
+  const response = await createVisionOcrPostHandler({
+    authorize,
+    config: { ...enabledConfig, provider: 'openai', model: 'gpt-5.4' },
+    registry: registryWith(provider),
+    logger: entry => logs.push(entry),
+  })(await multipartRequest())
+  assert.equal(response.status, 200)
+  const body = await json(response) as { ok: boolean; data: { metrics: unknown[] } }
+  assert.equal(body.data.metrics.length, 19)
+  const serializedRequest = JSON.stringify(capturedRequest)
+  assert.match(serializedRequest, /data:image\/png;base64,/)
+  assert.equal(serializedRequest.includes('selected-kpi-crop.png'), false)
+  assert.equal(serializedRequest.includes('server-test-key'), false)
+  assert.equal(JSON.stringify(logs).includes('base64'), false)
+  assert.equal(JSON.stringify(logs).includes('server-test-key'), false)
+})
+
+test('Vision route maps provider failures to stable safe API codes', async t => {
+  const cases = [
+    ['provider_not_configured', 'AI_PROVIDER_NOT_CONFIGURED', 503],
+    ['provider_disabled', 'AI_PROVIDER_DISABLED', 503],
+    ['model_unavailable', 'AI_MODEL_UNAVAILABLE', 503],
+    ['provider_rate_limited', 'AI_RATE_LIMITED', 429],
+    ['provider_timeout', 'AI_TIMEOUT', 504],
+    ['provider_unavailable', 'AI_PROVIDER_ERROR', 502],
+    ['invalid_provider_response', 'AI_INVALID_OUTPUT', 502],
+    ['output_schema_mismatch', 'AI_OUTPUT_SCHEMA_MISMATCH', 502],
+    ['request_too_large', 'AI_REQUEST_TOO_LARGE', 413],
+  ] as const
+  for (const [providerCode, apiCode, status] of cases) {
+    await t.test(apiCode, async () => {
+      const provider: VisionOcrProvider = {
+        id: 'mock',
+        model: 'safe-error-test',
+        async recognize() {
+          throw new VisionProviderError(providerCode, 'private provider body and secret-test-value')
+        },
+      }
+      const response = await createVisionOcrPostHandler({
+        authorize,
+        config: enabledConfig,
+        registry: registryWith(provider),
+        logger: () => undefined,
+      })(await multipartRequest())
+      const body = await json(response)
+      assert.equal(response.status, status)
+      assert.equal(body.error?.code, apiCode)
+      const serialized = JSON.stringify(body)
+      assert.equal(serialized.includes('private provider body'), false)
+      assert.equal(serialized.includes('secret-test-value'), false)
+      assert.equal(serialized.includes('stack'), false)
+    })
+  }
 })

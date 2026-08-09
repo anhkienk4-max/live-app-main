@@ -157,17 +157,17 @@ test('mock provider supports deterministic missing, conflict, timeout, invalid a
   )
 })
 
-test('OpenAI placeholder never executes and fails with typed Phase A gates', async () => {
+test('OpenAI provider remains fail-closed while disabled or missing its server key', async () => {
   await assert.rejects(
-    () => new OpenAiVisionOcrProvider('openai-placeholder', false, '').recognize(request('tiktok')),
+    () => new OpenAiVisionOcrProvider('gpt-5.4', false).recognize(request('tiktok')),
     (error: unknown) => error instanceof VisionProviderError && error.code === 'provider_disabled',
   )
   await assert.rejects(
-    () => new OpenAiVisionOcrProvider('openai-placeholder', true, '').recognize(request('tiktok')),
+    () => new OpenAiVisionOcrProvider('gpt-5.4', true, { resolveApiKey: () => undefined }).recognize(request('tiktok')),
     (error: unknown) => error instanceof VisionProviderError && error.code === 'provider_not_configured',
   )
   await assert.rejects(
-    () => new OpenAiVisionOcrProvider('openai-placeholder', true, 'server-only-test-key').recognize(request('tiktok')),
-    (error: unknown) => error instanceof VisionProviderError && error.code === 'provider_disabled',
+    () => new OpenAiVisionOcrProvider('client-supplied-model', true, { resolveApiKey: () => 'server-test-key' }).recognize(request('tiktok')),
+    (error: unknown) => error instanceof VisionProviderError && error.code === 'model_unavailable',
   )
 })

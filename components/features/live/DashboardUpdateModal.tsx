@@ -332,13 +332,13 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
 
   const visionErrorMessage = (error: unknown) => {
     if (!(error instanceof VisionOcrClientError)) return t('visionOcrFailed')
-    if (error.code === 'AI_OCR_DISABLED') return t('visionOcrDisabled')
+    if (error.code === 'AI_PROVIDER_DISABLED' || error.code === 'AI_OCR_DISABLED') return t('visionOcrDisabled')
     if (error.code === 'AI_PROVIDER_NOT_CONFIGURED') return t('visionOcrNotConfigured')
     if (error.code === 'AUTHENTICATION_REQUIRED') return t('visionOcrAuthenticationRequired')
     if (error.code === 'PERMISSION_DENIED') return t('visionOcrPermissionDenied')
-    if (error.code === 'INVALID_CROP' || error.code === 'INVALID_IMAGE') return t('visionOcrInvalidCrop')
-    if (error.code === 'AI_OCR_TIMEOUT') return t('visionOcrTimeout')
-    if (error.code === 'RATE_LIMITED') return t('visionOcrRateLimited')
+    if (error.code === 'INVALID_CROP' || error.code === 'INVALID_IMAGE' || error.code === 'AI_REQUEST_TOO_LARGE') return t('visionOcrInvalidCrop')
+    if (error.code === 'AI_TIMEOUT' || error.code === 'AI_OCR_TIMEOUT') return t('visionOcrTimeout')
+    if (error.code === 'AI_RATE_LIMITED' || error.code === 'RATE_LIMITED') return t('visionOcrRateLimited')
     return t('visionOcrFailed')
   }
 

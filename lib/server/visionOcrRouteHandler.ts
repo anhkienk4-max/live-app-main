@@ -9,7 +9,6 @@ import {
 import {
   consumeRateLimit,
   OperationTimeoutError,
-  rateLimitResponse,
   readFormDataBody,
   RequestBodyError,
   withTimeout,
@@ -34,6 +33,7 @@ const requestFieldsSchema = z.object({
   requestId: z.string().min(8).max(120).regex(/^[a-zA-Z0-9._-]+$/),
   cropWidth: z.coerce.number().int().min(minimumDimension).max(maximumDimension),
   cropHeight: z.coerce.number().int().min(minimumDimension).max(maximumDimension),
+  privacyConsent: z.literal('accepted'),
 }).strict()
 
 type SafeRequestLog = {
@@ -46,6 +46,7 @@ type SafeRequestLog = {
   timestamp: string
   latencyMs: number
   success: boolean
+  providerRequestId?: string
   metricStateCounts?: Record<string, number>
   usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }
   errorCode?: string
@@ -66,6 +67,7 @@ export type VisionOcrServerConfig = {
   timeoutMs: number
   retryCount: 0 | 1
   dailyRequestLimit: number
+  monthlyRequestLimit: number
   globalDailyRequestLimit: number
   allowTikTok: boolean
   allowShopee: boolean
@@ -90,6 +92,7 @@ export function visionOcrServerConfig(): VisionOcrServerConfig {
     timeoutMs: envInteger(process.env.VISION_OCR_TIMEOUT_MS, 30_000, 1_000, 120_000),
     retryCount: envInteger(process.env.VISION_OCR_RETRY_COUNT, 0, 0, 1) as 0 | 1,
     dailyRequestLimit: envInteger(process.env.VISION_OCR_DAILY_USER_LIMIT, 25, 1, 10_000),
+    monthlyRequestLimit: envInteger(process.env.VISION_OCR_MONTHLY_USER_LIMIT, 500, 1, 100_000),
     globalDailyRequestLimit: envInteger(process.env.VISION_OCR_DAILY_GLOBAL_LIMIT, 500, 1, 100_000),
     allowTikTok: envBoolean(process.env.VISION_OCR_ALLOW_TIKTOK, true),
     allowShopee: envBoolean(process.env.VISION_OCR_ALLOW_SHOPEE, true),
@@ -108,7 +111,7 @@ function runtimeRegistry(config: VisionOcrServerConfig) {
   registry.register(new OpenAiVisionOcrProvider(
     config.model,
     config.enabled,
-    process.env.OPENAI_API_KEY || '',
+    { timeoutMs: config.timeoutMs },
   ))
   return registry
 }
@@ -117,6 +120,23 @@ function safeError(code: string, message: string, status: number) {
   return Response.json({ ok: false, error: { code, message } }, {
     status,
     headers: { 'Cache-Control': 'no-store' },
+  })
+}
+
+function visionRateLimitResponse(resetAt: number) {
+  return new Response(JSON.stringify({
+    ok: false,
+    error: {
+      code: 'AI_RATE_LIMITED',
+      message: 'AI Vision OCR request limit was reached. Please try again later.',
+    },
+  }), {
+    status: 429,
+    headers: {
+      'Cache-Control': 'no-store',
+      'Content-Type': 'application/json',
+      'Retry-After': String(Math.max(1, Math.ceil((resetAt - Date.now()) / 1_000))),
+    },
   })
 }
 
@@ -182,7 +202,7 @@ export function createVisionOcrPostHandler(dependencies: VisionRouteDependencies
         ? await dependencies.authorize(request)
         : await requirePermission(request, 'reports.submit', dependencies.resolveUser)
       const config = { ...visionOcrServerConfig(), ...dependencies.config }
-      if (!config.enabled) return safeError('AI_OCR_DISABLED', 'AI Vision OCR is disabled.', 503)
+      if (!config.enabled) return safeError('AI_PROVIDER_DISABLED', 'AI Vision OCR is disabled.', 503)
       if (config.provider === 'mock' && process.env.NODE_ENV === 'production' && !dependencies.registry) {
         return safeError('AI_PROVIDER_NOT_CONFIGURED', 'AI Vision OCR provider is not configured.', 503)
       }
@@ -192,13 +212,19 @@ export function createVisionOcrPostHandler(dependencies: VisionRouteDependencies
         limit: config.dailyRequestLimit,
         windowMs: 86_400_000,
       })
-      if (!userRateLimit.allowed) return rateLimitResponse(userRateLimit.resetAt)
+      if (!userRateLimit.allowed) return visionRateLimitResponse(userRateLimit.resetAt)
+      const monthlyRateLimit = consumeRateLimit({
+        key: `vision-ocr:month:user:${user.id}`,
+        limit: config.monthlyRequestLimit,
+        windowMs: 30 * 86_400_000,
+      })
+      if (!monthlyRateLimit.allowed) return visionRateLimitResponse(monthlyRateLimit.resetAt)
       const globalRateLimit = consumeRateLimit({
         key: 'vision-ocr:global',
         limit: config.globalDailyRequestLimit,
         windowMs: 86_400_000,
       })
-      if (!globalRateLimit.allowed) return rateLimitResponse(globalRateLimit.resetAt)
+      if (!globalRateLimit.allowed) return visionRateLimitResponse(globalRateLimit.resetAt)
 
       const formData = await readFormDataBody(request, maximumMultipartBytes)
       const rawPlatform = formData.get('platform')
@@ -210,6 +236,7 @@ export function createVisionOcrPostHandler(dependencies: VisionRouteDependencies
         requestId: formData.get('request_id'),
         cropWidth: formData.get('crop_width'),
         cropHeight: formData.get('crop_height'),
+        privacyConsent: formData.get('privacy_consent'),
       })
       if (!parsedFields.success) return safeError('INVALID_REQUEST', 'AI OCR request metadata is invalid.', 400)
       const { platform, requestId, cropWidth, cropHeight } = parsedFields.data
@@ -218,7 +245,7 @@ export function createVisionOcrPostHandler(dependencies: VisionRouteDependencies
       }
       const image = formData.get('image')
       if (!(image instanceof File) || image.size === 0) return safeError('INVALID_CROP', 'The selected KPI crop is empty.', 400)
-      if (image.size > maximumImageBytes) return safeError('PAYLOAD_TOO_LARGE', 'The selected KPI crop is too large.', 413)
+      if (image.size > maximumImageBytes) return safeError('AI_REQUEST_TOO_LARGE', 'The selected KPI crop is too large.', 413)
       const bytes = new Uint8Array(await image.arrayBuffer())
       const verifiedMime = imageSignature(bytes)
       if (!verifiedMime || verifiedMime !== image.type) return safeError('INVALID_IMAGE', 'The selected KPI crop has an invalid image format.', 400)
@@ -264,6 +291,7 @@ export function createVisionOcrPostHandler(dependencies: VisionRouteDependencies
           latencyMs: Date.now() - startedAt,
           success: true,
           metricStateCounts: stateCounts(data.metrics),
+          providerRequestId: data.providerRequestId,
           usage: data.usage,
         })
         return Response.json({ ok: true, data }, { headers: { 'Cache-Control': 'no-store' } })
@@ -278,29 +306,29 @@ export function createVisionOcrPostHandler(dependencies: VisionRouteDependencies
         errorCode: error instanceof VisionProviderError ? error.code : error instanceof Error ? error.name : 'unknown',
       })
       if (isAuthorizationError(error)) return authorizationErrorResponse(error)
-      if (error instanceof RequestBodyError) return safeError(error.code, error.message, error.status)
+      if (error instanceof RequestBodyError) {
+        const code = error.code === 'PAYLOAD_TOO_LARGE' ? 'AI_REQUEST_TOO_LARGE' : error.code
+        return safeError(code, error.message, error.status)
+      }
       if (error instanceof OperationTimeoutError || (error instanceof VisionProviderError && error.code === 'provider_timeout')) {
-        return safeError('AI_OCR_TIMEOUT', 'AI Vision OCR timed out.', 504)
+        return safeError('AI_TIMEOUT', 'AI Vision OCR timed out.', 504)
       }
       if (error instanceof VisionProviderError) {
-        const status = error.code === 'invalid_provider_response' ? 502 : 503
-        const code = error.code === 'provider_not_configured'
-          ? 'AI_PROVIDER_NOT_CONFIGURED'
-          : error.code === 'provider_disabled'
-            ? 'AI_OCR_DISABLED'
-            : error.code === 'invalid_provider_response'
-              ? 'INVALID_PROVIDER_RESPONSE'
-              : 'AI_PROVIDER_UNAVAILABLE'
-        const message = code === 'AI_PROVIDER_NOT_CONFIGURED'
-          ? 'AI Vision OCR provider is not configured.'
-          : code === 'AI_OCR_DISABLED'
-            ? 'AI Vision OCR is disabled.'
-            : code === 'INVALID_PROVIDER_RESPONSE'
-              ? 'AI Vision OCR provider returned an invalid response.'
-              : 'AI Vision OCR provider is unavailable.'
+        const mapped = {
+          provider_not_configured: ['AI_PROVIDER_NOT_CONFIGURED', 'AI Vision OCR provider is not configured.', 503],
+          provider_disabled: ['AI_PROVIDER_DISABLED', 'AI Vision OCR is disabled.', 503],
+          model_unavailable: ['AI_MODEL_UNAVAILABLE', 'The configured AI Vision OCR model is unavailable.', 503],
+          provider_rate_limited: ['AI_RATE_LIMITED', 'AI Vision OCR request limit was reached. Please try again later.', 429],
+          provider_timeout: ['AI_TIMEOUT', 'AI Vision OCR timed out.', 504],
+          invalid_provider_response: ['AI_INVALID_OUTPUT', 'AI Vision OCR returned invalid output.', 502],
+          output_schema_mismatch: ['AI_OUTPUT_SCHEMA_MISMATCH', 'AI Vision OCR output did not match the required schema.', 502],
+          request_too_large: ['AI_REQUEST_TOO_LARGE', 'The selected KPI crop is too large.', 413],
+          provider_unavailable: ['AI_PROVIDER_ERROR', 'AI Vision OCR provider is unavailable.', 502],
+        } satisfies Record<VisionProviderError['code'], readonly [string, string, number]>
+        const [code, message, status] = mapped[error.code]
         return safeError(code, message, status)
       }
-      return safeError('AI_OCR_FAILED', 'AI Vision OCR is unavailable.', 500)
+      return safeError('AI_PROVIDER_ERROR', 'AI Vision OCR provider is unavailable.', 502)
     }
   }
 }

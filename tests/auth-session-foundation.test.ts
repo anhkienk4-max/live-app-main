@@ -241,7 +241,7 @@ test('protected Vision route receives cookie-backed identity and logout returns 
 
   const authenticated = await handler(request())
   assert.equal(authenticated.status, 503)
-  assert.equal((await authenticated.json() as { error: { code: string } }).error.code, 'AI_OCR_DISABLED')
+  assert.equal((await authenticated.json() as { error: { code: string } }).error.code, 'AI_PROVIDER_DISABLED')
 
   active = false
   const afterLogout = await handler(request())
