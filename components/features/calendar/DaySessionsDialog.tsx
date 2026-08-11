@@ -123,6 +123,7 @@ export function DaySessionsDialog({
             <div className="py-16 text-center text-muted-foreground">{t('noSessionsForDay')}</div>
           )}
           {dayShifts.map(shift => {
+            const overnightEndDate = formatShiftEndDate(shift)
             const report = reports.find(candidate => candidate.shift_id === shift.id)
             const myRegistrations = currentUser
               ? registrations.filter(registration =>
@@ -164,8 +165,8 @@ export function DaySessionsDialog({
                       <p className="mt-1 text-sm text-muted-foreground">
                         {shift.date} · {formatShiftTimeRange(shift)}
                       </p>
-                      {shift.crosses_midnight && (
-                        <p className="text-xs text-indigo-700">{t('endsNextDay')}: {formatShiftEndDate(shift)}</p>
+                      {overnightEndDate && (
+                        <p className="text-xs text-indigo-700">{t('endsNextDay')}: {overnightEndDate}</p>
                       )}
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -242,7 +243,7 @@ export function DaySessionsDialog({
                   )}
 
                   <div className="flex flex-wrap gap-2">
-                    <Button onClick={() => onViewShift(shift)} size="sm" variant="outline">
+                    <Button data-testid={`day-session-view-shift-${shift.id}`} onClick={() => onViewShift(shift)} size="sm" variant="outline">
                       {t('viewShiftDetail')}
                     </Button>
                     {['preparing', 'live', 'paused'].includes(shift.status) && (
@@ -284,7 +285,7 @@ export function DaySessionsDialog({
                         {t('cancelRegistration')} · {t(registration.operational_role)}
                       </Button>
                     ))}
-                    {currentUser && hasPermission(currentUser, 'shifts.assign_staff') && (
+                    {currentUser && hasPermission(currentUser, 'shifts.edit') && (
                       <>
                         <Button onClick={() => onEditShift(shift)} size="sm" variant="outline">
                           <Pencil className="mr-1 h-4 w-4" />{t('editShift')}

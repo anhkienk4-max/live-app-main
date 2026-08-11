@@ -37,9 +37,11 @@ export function DayView({ currentDate, shifts, brands, platforms, users, onShift
       ) : (
         <div className="space-y-3">
           {dayShifts.map((shift) => (
-            <div
+            <button
+              type="button"
               key={shift.id}
-              className="p-4 rounded-lg border cursor-pointer hover:shadow-lg transition-all"
+              className="w-full rounded-lg border p-4 text-left transition-all hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              data-testid={`day-shift-${shift.id}`}
               style={{ borderLeft: `6px solid ${getBrandColor(shift.brand_id)}` }}
               onClick={() => onShiftClick?.(shift)}
             >
@@ -87,7 +89,7 @@ export function DayView({ currentDate, shifts, brands, platforms, users, onShift
                   )}
                 </div>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}

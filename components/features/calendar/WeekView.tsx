@@ -39,9 +39,11 @@ export function WeekView({ currentDate, shifts, brands, platforms, onShiftClick 
             </div>
             <div className="space-y-2">
               {dayShifts.map((shift) => (
-                <div
+                <button
+                  type="button"
                   key={shift.id}
-                  className="p-2 rounded text-sm cursor-pointer hover:shadow-md transition-shadow"
+                  className="w-full rounded p-2 text-left text-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  data-testid={`week-shift-${shift.id}`}
                   style={{ backgroundColor: getBrandColor(shift.brand_id) + '15', borderLeft: `4px solid ${getBrandColor(shift.brand_id)}` }}
                   onClick={() => onShiftClick?.(shift)}
                 >
@@ -51,7 +53,7 @@ export function WeekView({ currentDate, shifts, brands, platforms, onShiftClick 
                   <Badge variant={shift.status === 'live' ? 'destructive' : 'secondary'} className="text-[10px] mt-1">
                     {shift.status}
                   </Badge>
-                </div>
+                </button>
               ))}
             </div>
           </div>

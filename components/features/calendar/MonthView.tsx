@@ -80,9 +80,11 @@ export function MonthView({
               onClick={() => onDayClick?.(day)}
             >
               <button
+                aria-label={t('openDaySessions', { date: format(day, 'PP', { locale }) })}
                 className={`mb-1 inline-flex h-6 min-w-6 items-center justify-center rounded px-1 text-xs font-semibold hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   currentDay ? 'bg-primary text-primary-foreground' : ''
                 }`}
+                data-testid={`calendar-day-open-${format(day, 'yyyy-MM-dd')}`}
                 onClick={event => {
                   event.stopPropagation()
                   onDayClick?.(day)

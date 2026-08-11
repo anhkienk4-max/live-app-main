@@ -9,15 +9,17 @@ import { DataTable, Column } from '@/components/ui/data-table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Plus, Pencil, Trash2, Copy, Upload, Download, Filter } from 'lucide-react'
+import { Plus, Pencil, Trash2, Copy, Upload, Eye } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { ShiftFormDialog } from './ShiftFormDialog'
+import { ShiftDetailModal } from './ShiftDetailModal'
 import { BulkActionsToolbar } from './BulkActionsToolbar'
 import { ImportExportDialog } from './ImportExportDialog'
 import { format } from 'date-fns'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
+import { useTranslation } from '@/lib/i18n'
 
 export function ShiftList() {
   const [shifts, setShifts] = React.useState<Shift[]>([])
@@ -28,7 +30,9 @@ export function ShiftList() {
   const [templates, setTemplates] = React.useState<ShiftTemplate[]>([])
   const [loading, setLoading] = React.useState(true)
   
-  const [selectedShift, setSelectedShift] = React.useState<Shift | null>(null)
+  const [editingShift, setEditingShift] = React.useState<Shift | null>(null)
+  const [detailShift, setDetailShift] = React.useState<Shift | null>(null)
+  const [reopenDetailAfterEdit, setReopenDetailAfterEdit] = React.useState(false)
   const [duplicateShift, setDuplicateShift] = React.useState<Shift | null>(null)
   const [deleteId, setDeleteId] = React.useState<string | null>(null)
   const [deleteIds, setDeleteIds] = React.useState<string[]>([])
@@ -40,8 +44,10 @@ export function ShiftList() {
   const [showBulkActions, setShowBulkActions] = React.useState(false)
   
   const { toast } = useToast()
+  const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
-  const canManage = Boolean(currentUser && hasPermission(currentUser, 'shifts.assign_staff'))
+  const canEdit = Boolean(currentUser && hasPermission(currentUser, 'shifts.edit'))
+  const canDelete = Boolean(currentUser && hasPermission(currentUser, 'shifts.delete'))
 
   const loadData = React.useCallback(async () => {
     setLoading(true)
@@ -65,6 +71,7 @@ export function ShiftList() {
   React.useEffect(() => { loadData() }, [loadData])
 
   const requestDelete = async (ids: string[]) => {
+    if (!canDelete) return
     const impacts = (await Promise.all(ids.map(id => shiftService.getDeletionImpact(id)))).filter((impact): impact is DeletionImpact => Boolean(impact))
     if (impacts.length === 0) return
     setDeleteIds(ids)
@@ -95,20 +102,32 @@ export function ShiftList() {
   }
 
   const handleEdit = (shift: Shift) => {
-    setSelectedShift(shift)
+    setEditingShift(shift)
     setDuplicateShift(null)
+    setReopenDetailAfterEdit(false)
     setIsFormOpen(true)
   }
 
   const handleDuplicate = (shift: Shift) => {
     setDuplicateShift(shift)
-    setSelectedShift(null)
+    setEditingShift(null)
+    setReopenDetailAfterEdit(false)
     setIsFormOpen(true)
   }
 
   const handleCreate = () => {
-    setSelectedShift(null)
+    setEditingShift(null)
     setDuplicateShift(null)
+    setReopenDetailAfterEdit(false)
+    setIsFormOpen(true)
+  }
+
+  const editFromDetail = () => {
+    if (!detailShift) return
+    setEditingShift(detailShift)
+    setDuplicateShift(null)
+    setReopenDetailAfterEdit(true)
+    setDetailShift(null)
     setIsFormOpen(true)
   }
 
@@ -203,13 +222,16 @@ export function ShiftList() {
       header: 'Actions',
       accessor: (row) => (
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" onClick={() => handleEdit(row)} data-testid={`edit-shift-${row.id}`}>
-            <Pencil className="h-4 w-4" />
+          <Button variant="ghost" size="icon" aria-label={t('viewShiftDetail')} title={t('viewShiftDetail')} onClick={() => setDetailShift(row)} data-testid={`view-shift-${row.id}`}>
+            <Eye className="h-4 w-4" />
           </Button>
+          {canEdit && <Button variant="ghost" size="icon" aria-label="Edit shift" onClick={() => handleEdit(row)} data-testid={`edit-shift-${row.id}`}>
+            <Pencil className="h-4 w-4" />
+          </Button>}
           <Button variant="ghost" size="icon" onClick={() => handleDuplicate(row)} data-testid={`duplicate-shift-${row.id}`}>
             <Copy className="h-4 w-4" />
           </Button>
-          {canManage && <Button variant="ghost" size="icon" aria-label="Delete or cancel shift" title="Delete or cancel shift" onClick={() => void requestDelete([row.id])} data-testid={`delete-shift-${row.id}`}>
+          {canDelete && <Button variant="ghost" size="icon" aria-label="Delete or cancel shift" title="Delete or cancel shift" onClick={() => void requestDelete([row.id])} data-testid={`delete-shift-${row.id}`}>
             <Trash2 className="h-4 w-4 text-red-600" />
           </Button>}
         </div>
@@ -257,16 +279,52 @@ export function ShiftList() {
 
       <ShiftFormDialog
         open={isFormOpen}
-        onOpenChange={setIsFormOpen}
-        shift={selectedShift}
+        onOpenChange={(open) => {
+          setIsFormOpen(open)
+          if (!open) {
+            setEditingShift(null)
+            setReopenDetailAfterEdit(false)
+          }
+        }}
+        shift={editingShift}
         duplicateFrom={duplicateShift}
         brands={brands}
         platforms={platforms}
         campaigns={campaigns}
         users={users}
         templates={templates}
-        onSuccess={loadData}
+        onSuccess={async (updatedShift) => {
+          await loadData()
+          setIsFormOpen(false)
+          setEditingShift(null)
+          if (reopenDetailAfterEdit && updatedShift) setDetailShift({ ...updatedShift })
+          setReopenDetailAfterEdit(false)
+        }}
       />
+
+      {detailShift && (
+        <ShiftDetailModal
+          open
+          onOpenChange={(open) => { if (!open) setDetailShift(null) }}
+          shift={detailShift}
+          brands={brands}
+          platforms={platforms}
+          campaigns={campaigns}
+          users={users}
+          onUpdate={() => {
+            void (async () => {
+              await loadData()
+              const refreshed = await shiftService.getById(detailShift.id)
+              if (refreshed) setDetailShift({ ...refreshed })
+            })()
+          }}
+          onEdit={editFromDetail}
+          onDelete={() => {
+            setDetailShift(null)
+            void loadData()
+          }}
+        />
+      )}
 
       <ImportExportDialog
         open={isImportExportOpen}

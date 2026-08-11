@@ -39,9 +39,11 @@ export function ListView({ shifts, brands, platforms, users, onShiftClick }: Lis
   return (
     <div className="space-y-2">
       {sortedShifts.map((shift) => (
-        <div
+        <button
+          type="button"
           key={shift.id}
-          className="p-4 rounded-lg border hover:shadow-lg transition-all cursor-pointer"
+          className="w-full rounded-lg border p-4 text-left transition-all hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          data-testid={`list-shift-${shift.id}`}
           style={{ borderLeft: `4px solid ${getBrandColor(shift.brand_id)}` }}
           onClick={() => onShiftClick?.(shift)}
         >
@@ -64,7 +66,7 @@ export function ListView({ shifts, brands, platforms, users, onShiftClick }: Lis
               {shift.status}
             </Badge>
           </div>
-        </div>
+        </button>
       ))}
     </div>
   )

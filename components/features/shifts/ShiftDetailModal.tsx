@@ -1,24 +1,92 @@
 'use client'
 
 import * as React from 'react'
-import { shiftRegistrationService, shiftService, type ShiftRoleCapacity } from '@/lib/services/dataService'
-import { Shift, Brand, Platform, Campaign, User, ShiftRegistration, OperationalRole, DeletionImpact } from '@/lib/types/database.types'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { format, isValid, parseISO } from 'date-fns'
+import { enUS, vi } from 'date-fns/locale'
+import {
+  isStaffedRegistration,
+  shiftRegistrationService,
+  shiftService,
+  type ShiftRoleCapacity,
+} from '@/lib/services/dataService'
+import type {
+  Brand,
+  Campaign,
+  DeletionImpact,
+  OperationalRole,
+  Platform,
+  Shift,
+  ShiftRegistration,
+  ShiftStatus,
+  User,
+} from '@/lib/types/database.types'
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { format } from 'date-fns'
-import { Calendar, Clock, User as UserIcon, ExternalLink, Trash2, Check, X, Lock, LockOpen, Download, UserPlus } from 'lucide-react'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import {
+  Calendar,
+  Check,
+  Clock,
+  Download,
+  ExternalLink,
+  Link2,
+  Lock,
+  LockOpen,
+  MapPin,
+  Pencil,
+  Trash2,
+  UserPlus,
+  X,
+} from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
 import { exportShiftStaffingToExcel } from '@/lib/utils/excelUtils'
-import { useTranslation } from '@/lib/i18n'
-import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { useTranslation, type Language, type TranslationKey } from '@/lib/i18n'
+import { resolveShiftDateTime } from '@/lib/utils/shiftUtils'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { HistoryPagination } from '@/components/ui/history-pagination'
+
+const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
+
+const roleAssignmentField: Record<OperationalRole, 'host_id' | 'support_id' | 'technical_id'> = {
+  host: 'host_id',
+  support: 'support_id',
+  technical: 'technical_id',
+}
+
+const roleRequiredField: Record<OperationalRole, 'required_host_count' | 'required_support_count' | 'required_technical_count'> = {
+  host: 'required_host_count',
+  support: 'required_support_count',
+  technical: 'required_technical_count',
+}
+
+const statusStyles: Record<ShiftStatus, string> = {
+  scheduled: 'border-blue-200 bg-blue-50 text-blue-800',
+  preparing: 'border-amber-200 bg-amber-50 text-amber-800',
+  live: 'border-red-200 bg-red-50 text-red-800',
+  paused: 'border-orange-200 bg-orange-50 text-orange-800',
+  completed: 'border-green-200 bg-green-50 text-green-800',
+  cancelled: 'border-gray-200 bg-gray-100 text-gray-700',
+}
+
+export interface ShiftStaffAssignment {
+  role: OperationalRole
+  user: User | null
+  userId: string
+  status: 'approved' | 'manually_assigned'
+}
 
 interface ShiftDetailModalProps {
   open: boolean
@@ -33,6 +101,110 @@ interface ShiftDetailModalProps {
   onDelete: () => void
 }
 
+export function getShiftStatusClass(status: ShiftStatus) {
+  return statusStyles[status]
+}
+
+export function safeFormatShiftDate(
+  value: string | undefined,
+  pattern: string,
+  language: Language,
+  fallback: string,
+) {
+  if (!value) return fallback
+  const parsed = parseISO(value)
+  return isValid(parsed)
+    ? format(parsed, pattern, { locale: language === 'vi' ? vi : enUS })
+    : fallback
+}
+
+export function buildShiftStaffing(
+  shift: Shift,
+  registrations: ShiftRegistration[],
+  users: User[],
+): Record<OperationalRole, ShiftStaffAssignment[]> {
+  const usersById = new Map(users.map(user => [user.id, user]))
+  const result: Record<OperationalRole, ShiftStaffAssignment[]> = {
+    host: [],
+    support: [],
+    technical: [],
+  }
+
+  for (const role of operationalRoles) {
+    const assignments = new Map<string, ShiftStaffAssignment>()
+    const directUserId = shift[roleAssignmentField[role]]
+    if (directUserId) {
+      assignments.set(directUserId, {
+        role,
+        user: usersById.get(directUserId) || null,
+        userId: directUserId,
+        status: 'approved',
+      })
+    }
+
+    for (const registration of registrations) {
+      if (
+        registration.shift_id !== shift.id ||
+        registration.operational_role !== role ||
+        !isStaffedRegistration(registration)
+      ) continue
+
+      assignments.set(registration.user_id, {
+        role,
+        user: usersById.get(registration.user_id) || null,
+        userId: registration.user_id,
+        status: registration.status === 'manually_assigned' ? 'manually_assigned' : 'approved',
+      })
+    }
+
+    result[role] = [...assignments.values()]
+  }
+
+  return result
+}
+
+export function ShiftDetailActions({
+  currentUser,
+  busy,
+  onEdit,
+  onDelete,
+  onClose,
+  editLabel,
+  deleteLabel,
+  closeLabel,
+}: {
+  currentUser: User | null
+  busy: boolean
+  onEdit?: () => void
+  onDelete: () => void
+  onClose: () => void
+  editLabel: string
+  deleteLabel: string
+  closeLabel: string
+}) {
+  const canEdit = Boolean(onEdit && currentUser && hasPermission(currentUser, 'shifts.edit'))
+  const canDelete = Boolean(currentUser && hasPermission(currentUser, 'shifts.delete'))
+  return (
+    <DialogFooter className="flex w-full flex-wrap justify-end gap-2">
+      {canEdit ? (
+        <Button type="button" variant="outline" disabled={busy} onClick={onEdit} data-testid="edit-shift-detail">
+          <Pencil className="mr-2 h-4 w-4" />
+          {editLabel}
+        </Button>
+      ) : null}
+      {canDelete ? (
+        <Button type="button" variant="outline" className="text-red-600" disabled={busy} onClick={onDelete} data-testid="delete-shift-detail">
+          <Trash2 className="mr-2 h-4 w-4" />
+          {deleteLabel}
+        </Button>
+      ) : null}
+      <Button type="button" variant="outline" disabled={busy} onClick={onClose} data-testid="close-shift-detail">
+        {closeLabel}
+      </Button>
+    </DialogFooter>
+  )
+}
+
 export function ShiftDetailModal({
   open,
   onOpenChange,
@@ -42,10 +214,11 @@ export function ShiftDetailModal({
   campaigns,
   users,
   onUpdate,
-  onDelete
+  onEdit,
+  onDelete,
 }: ShiftDetailModalProps) {
   const { toast } = useToast()
-  const { t } = useTranslation()
+  const { language, t } = useTranslation()
   const { currentUser } = useCurrentUser()
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   const [capacities, setCapacities] = React.useState<ShiftRoleCapacity[]>([])
@@ -53,10 +226,12 @@ export function ShiftDetailModal({
   const [selectedStaff, setSelectedStaff] = React.useState('')
   const [isLocked, setIsLocked] = React.useState(Boolean(shift.registration_locked))
   const [busy, setBusy] = React.useState(false)
+  const [staffingLoading, setStaffingLoading] = React.useState(false)
+  const [staffingError, setStaffingError] = React.useState(false)
   const [deleteImpact, setDeleteImpact] = React.useState<DeletionImpact | null>(null)
   const [registrationPage, setRegistrationPage] = React.useState(1)
   const [registrationPageSize, setRegistrationPageSize] = React.useState(10)
-  const canManageShift = Boolean(currentUser && hasPermission(currentUser, 'shifts.assign_staff'))
+  const canDeleteShift = Boolean(currentUser && hasPermission(currentUser, 'shifts.delete'))
   const registrationTotalPages = Math.max(1, Math.ceil(registrations.length / registrationPageSize))
   const safeRegistrationPage = Math.min(registrationPage, registrationTotalPages)
   const visibleRegistrations = registrations.slice(
@@ -65,37 +240,46 @@ export function ShiftDetailModal({
   )
 
   const loadStaffing = React.useCallback(async () => {
-    const [loadedRegistrations, loadedCapacities, updatedShift] = await Promise.all([
-      shiftRegistrationService.getForShift(shift.id),
-      shiftRegistrationService.getCapacity(shift.id),
-      shiftService.getById(shift.id),
-    ])
-    setRegistrations(loadedRegistrations)
-    setCapacities(loadedCapacities)
-    setIsLocked(Boolean(updatedShift?.registration_locked))
+    setStaffingLoading(true)
+    setStaffingError(false)
+    try {
+      const [loadedRegistrations, loadedCapacities, updatedShift] = await Promise.all([
+        shiftRegistrationService.getForShift(shift.id),
+        shiftRegistrationService.getCapacity(shift.id),
+        shiftService.getById(shift.id),
+      ])
+      setRegistrations(loadedRegistrations)
+      setCapacities(loadedCapacities)
+      setIsLocked(Boolean(updatedShift?.registration_locked))
+    } catch {
+      setStaffingError(true)
+    } finally {
+      setStaffingLoading(false)
+    }
   }, [shift.id])
 
-  React.useEffect(() => { if (open) void loadStaffing() }, [loadStaffing, open])
-  React.useEffect(() => { setRegistrationPage(1) }, [shift.id])
-  
-  const getBrandName = (id: string) => brands.find(b => b.id === id)?.name || 'Unknown'
-  const getBrandColor = (id: string) => brands.find(b => b.id === id)?.color || '#2563EB'
-  const getPlatformName = (id: string) => platforms.find(p => p.id === id)?.name || 'Unknown'
-  const getCampaignName = (id?: string) => id ? campaigns.find(c => c.id === id)?.name || 'N/A' : 'N/A'
-  const getUserName = (id?: string) => id ? users.find(u => u.id === id)?.full_name || 'Unassigned' : 'Unassigned'
+  React.useEffect(() => {
+    if (open) void loadStaffing()
+  }, [loadStaffing, open])
+  React.useEffect(() => {
+    setRegistrationPage(1)
+    setIsLocked(Boolean(shift.registration_locked))
+  }, [shift.id, shift.registration_locked])
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'scheduled': return 'bg-blue-100 text-blue-800'
-      case 'live': return 'bg-red-100 text-red-800'
-      case 'completed': return 'bg-green-100 text-green-800'
-      case 'cancelled': return 'bg-gray-100 text-gray-800'
-      default: return 'bg-gray-100 text-gray-800'
-    }
-  }
+  const staffing = React.useMemo(
+    () => buildShiftStaffing(shift, registrations, users),
+    [registrations, shift, users],
+  )
+  const dateTime = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time)
+  const fallback = t('notProvided')
+  const brand = brands.find(item => item.id === shift.brand_id)
+  const platform = platforms.find(item => item.id === shift.platform_id)
+  const campaign = shift.campaign_id ? campaigns.find(item => item.id === shift.campaign_id) : undefined
+  const userName = (id?: string) => id ? users.find(user => user.id === id)?.full_name || fallback : fallback
+  const statusKey: TranslationKey = shift.status === 'live' ? 'liveStatus' : shift.status
 
   const requestDelete = async () => {
-    if (!canManageShift) {
+    if (!canDeleteShift) {
       toast({ title: t('error'), description: t('permissionDenied'), variant: 'destructive' })
       return
     }
@@ -107,9 +291,9 @@ export function ShiftDetailModal({
     try {
       await shiftService.remove(shift.id, currentUser.id, reason)
       toast({
-        title: deleteImpact?.action === 'delete' ? 'Shift deleted' : 'Shift cancelled',
+        title: deleteImpact?.action === 'delete' ? t('shiftDeleted') : t('shiftCancelled'),
         description: deleteImpact?.consequence,
-        variant: 'success'
+        variant: 'success',
       })
       setDeleteImpact(null)
       onDelete()
@@ -134,206 +318,354 @@ export function ShiftDetailModal({
     }
   }
 
-  return (<>
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="xl" className="overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <DialogTitle className="text-2xl">{getBrandName(shift.brand_id)}</DialogTitle>
-              <div className="text-sm text-gray-600 mt-1">{getPlatformName(shift.platform_id)}</div>
-            </div>
-            <Badge className={getStatusColor(shift.status)}>
-              {shift.status === 'live' ? t('liveStatus') : t(shift.status)}
-            </Badge>
-          </div>
-        </DialogHeader>
-
-        <Tabs defaultValue="details" className="mt-4">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="details">Details</TabsTrigger>
-            <TabsTrigger value="info">Additional Info</TabsTrigger>
-            <TabsTrigger value="staffing">{t('remainingPositions')}</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="details" className="space-y-4">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="flex items-start gap-3">
-                    <Calendar className="h-5 w-5 text-gray-600 mt-1" />
-                    <div>
-                      <div className="text-sm text-gray-600">Date</div>
-                      <div className="font-semibold">{format(new Date(shift.date), 'MMMM d, yyyy')}</div>
-                      <div className="text-sm text-gray-500">{format(new Date(shift.date), 'EEEE')}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Clock className="h-5 w-5 text-gray-600 mt-1" />
-                    <div>
-                      <div className="text-sm text-gray-600">Time</div>
-                      <div className="font-semibold">{formatShiftTimeRange(shift)}</div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-sm font-medium text-gray-600 mb-4">Brand & Platform</div>
-                <div className="grid grid-cols-2 gap-6">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getBrandColor(shift.brand_id) }}></div>
-                      <div className="text-sm text-gray-600">Brand</div>
-                    </div>
-                    <div className="font-semibold">{getBrandName(shift.brand_id)}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-600 mb-1">Platform</div>
-                    <div className="font-semibold">{getPlatformName(shift.platform_id)}</div>
-                  </div>
-                  <div className="col-span-2">
-                    <div className="text-sm text-gray-600 mb-1">Campaign</div>
-                    <div className="font-semibold">{getCampaignName(shift.campaign_id)}</div>
-                  </div>
-                  <div className="col-span-2">
-                    <div className="text-sm text-gray-600 mb-1">{t('studio')}</div>
-                    <div className="font-semibold">{shift.studio || t('notUpdated')}</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-sm font-medium text-gray-600 mb-4">Team</div>
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="flex items-start gap-3">
-                    <UserIcon className="h-5 w-5 text-blue-600 mt-1" />
-                    <div>
-                      <div className="text-sm text-gray-600">Host</div>
-                      <div className="font-semibold">{getUserName(shift.host_id)}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <UserIcon className="h-5 w-5 text-green-600 mt-1" />
-                    <div>
-                      <div className="text-sm text-gray-600">Support</div>
-                      <div className="font-semibold">{getUserName(shift.support_id)}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <UserIcon className="h-5 w-5 text-purple-600 mt-1" />
-                    <div>
-                      <div className="text-sm text-gray-600">Technical</div>
-                      <div className="font-semibold">{getUserName(shift.technical_id)}</div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="info" className="space-y-4">
-            {shift.live_link && (
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm text-gray-600 mb-1">Live Link</div>
-                      <div className="font-mono text-sm text-blue-600">{shift.live_link}</div>
-                    </div>
-                    <Button size="sm" onClick={() => window.open(shift.live_link, '_blank')}>
-                      <ExternalLink className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {shift.product_notes && (
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="text-sm text-gray-600 mb-2">Product Notes</div>
-                  <div className="text-sm whitespace-pre-wrap bg-gray-50 p-4 rounded-lg">
-                    {shift.product_notes}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-sm text-gray-600 mb-4">Metadata</div>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-gray-600">Created:</span>
-                    <span className="ml-2">{format(new Date(shift.created_at), 'MMM d, yyyy h:mm a')}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Updated:</span>
-                    <span className="ml-2">{format(new Date(shift.updated_at), 'MMM d, yyyy h:mm a')}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-          <TabsContent value="staffing" className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-3">
-              {capacities.map(capacity => (
-                <Card key={capacity.role}><CardContent className="pt-5"><div className="flex items-center justify-between"><span className="font-semibold">{t(capacity.role)}</span><Badge variant={capacity.remaining > 0 ? 'outline' : 'secondary'}>{capacity.remaining}/{capacity.required}</Badge></div><p className="mt-2 text-xs text-muted-foreground">{capacity.approved} {t('approved')} · {capacity.pending} {t('pending')}</p></CardContent></Card>
-              ))}
-            </div>
-
-            {currentUser && hasPermission(currentUser, 'shifts.assign_staff') && (
-              <Card><CardContent className="pt-5"><div className="flex flex-wrap items-end gap-3"><label className="min-w-40 flex-1 text-xs font-medium">{t('role')}<Select value={selectedRole} onValueChange={value => { setSelectedRole(value as OperationalRole); setSelectedStaff('') }}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent>{(['host','support','technical'] as OperationalRole[]).map(role => <SelectItem key={role} value={role}>{t(role)}</SelectItem>)}</SelectContent></Select></label><label className="min-w-56 flex-[2] text-xs font-medium">{t('staff')}<Select value={selectedStaff} onValueChange={setSelectedStaff}><SelectTrigger className="mt-1 w-full"><SelectValue placeholder={t('assignStaff')} /></SelectTrigger><SelectContent>{users.filter(user => user.status === 'active' && user.operational_roles?.includes(selectedRole)).map(user => <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>)}</SelectContent></Select></label><Button disabled={busy || !selectedStaff} onClick={() => runStaffingAction(() => shiftRegistrationService.assignManually(shift.id, selectedStaff, selectedRole, currentUser.id), t('registrationApproved'))}><UserPlus className="mr-2 h-4 w-4" />{t('assignStaff')}</Button></div></CardContent></Card>
-            )}
-
-            <Card className="overflow-hidden"><CardContent className="p-0">
-              <div className="max-h-[440px] space-y-2 overflow-auto p-5">
-              {registrations.length === 0 ? <p className="text-sm text-muted-foreground">{t('noData')}</p> : visibleRegistrations.map(registration => (
-                <div key={registration.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
-                  <div><p className="font-medium">{getUserName(registration.user_id)} · {t(registration.operational_role)}</p><p className="text-xs text-muted-foreground">{registration.source} · {format(new Date(registration.requested_at), 'dd/MM/yyyy HH:mm')}</p>{registration.review_notes && <p className="mt-1 text-xs">{registration.review_notes}</p>}</div>
-                  <div className="flex items-center gap-2"><Badge className={registration.status === 'approved' || registration.status === 'manually_assigned' ? 'bg-green-100 text-green-800' : registration.status === 'pending' ? 'bg-amber-100 text-amber-800' : ''}>{registration.status === 'manually_assigned' ? t('manuallyAssigned') : registration.status === 'removed' ? t('removed') : registration.status === 'available' ? t('available') : t(registration.status)}</Badge>{registration.status === 'pending' && currentUser && hasPermission(currentUser, 'shifts.approve_registration') && <><Button size="sm" disabled={busy} onClick={() => runStaffingAction(() => shiftRegistrationService.approve(registration.id, currentUser.id), t('registrationApproved'))}><Check className="mr-1 h-4 w-4" />{t('approve')}</Button><Button size="sm" variant="outline" disabled={busy} onClick={() => runStaffingAction(() => shiftRegistrationService.reject(registration.id, currentUser.id), t('rejected'))}><X className="mr-1 h-4 w-4" />{t('reject')}</Button></>}</div>
-                </div>
-              ))}
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent
+          size="xl"
+          className="h-[calc(100vh-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:h-[92vh]"
+          data-testid="shift-detail-modal"
+        >
+          <DialogHeader>
+            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <DialogTitle className="break-words pr-2 text-xl sm:text-2xl" data-testid="shift-detail-title">
+                  {shift.title?.trim() || t('shiftDetail')}
+                </DialogTitle>
+                <p className="mt-1 break-words text-sm text-muted-foreground">
+                  {brand?.name || fallback} · {platform?.name || fallback}
+                </p>
               </div>
-              <HistoryPagination
-                page={safeRegistrationPage}
-                pageSize={registrationPageSize}
-                total={registrations.length}
-                onPageChange={setRegistrationPage}
-                onPageSizeChange={size => {
-                  setRegistrationPageSize(size)
-                  setRegistrationPage(1)
-                }}
-              />
-            </CardContent></Card>
-
-            <div className="flex flex-wrap justify-end gap-2">
-              {currentUser && hasPermission(currentUser, 'shifts.export') && <Button variant="outline" onClick={() => exportShiftStaffingToExcel(shift, registrations, new Map(users.map(user => [user.id, user.full_name])))}><Download className="mr-2 h-4 w-4" />{t('exportStaffing')}</Button>}
-              {currentUser && hasPermission(currentUser, 'shifts.lock') && (isLocked
-                ? <Button variant="outline" disabled={busy || shift.status !== 'scheduled'} onClick={() => runStaffingAction(() => shiftService.reopen(shift.id), t('reopenShift'))}><LockOpen className="mr-2 h-4 w-4" />{t('reopenShift')}</Button>
-                : <Button variant="outline" disabled={busy} onClick={() => runStaffingAction(() => shiftService.lock(shift.id), t('lockShift'))}><Lock className="mr-2 h-4 w-4" />{t('lockShift')}</Button>)}
+              <Badge className={`${getShiftStatusClass(shift.status)} w-fit shrink-0`} variant="outline" data-testid="shift-detail-status">
+                {t(statusKey)}
+              </Badge>
             </div>
-          </TabsContent>
-        </Tabs>
+          </DialogHeader>
 
-        <DialogFooter className="flex justify-between">
-          {canManageShift && <Button variant="outline" className="text-red-600" onClick={() => void requestDelete()}>
-            <Trash2 className="h-4 w-4 mr-2" />
-            {t('delete')}
-          </Button>}
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              {t('close')}
-            </Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-    <LifecycleActionDialog open={Boolean(deleteImpact)} onOpenChange={open => !open && setDeleteImpact(null)} title={deleteImpact?.action === 'delete' ? 'Delete shift' : 'Cancel and archive shift'} impact={deleteImpact} confirmText={deleteImpact?.action === 'delete' ? 'Delete' : 'Cancel shift'} onConfirm={handleDelete} />
-  </>)
+          <DialogBody className="pb-1">
+            <Tabs defaultValue="overview" className="min-w-0">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="overview">{t('shiftOverview')}</TabsTrigger>
+                <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="staffing">{t('staffing')}</TabsTrigger>
+                <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="details">{t('additionalInfo')}</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="overview" className="space-y-4 pt-1">
+                <Card>
+                  <CardContent className="grid gap-5 pt-6 sm:grid-cols-2">
+                    <OverviewItem icon={<Calendar className="h-5 w-5" />} label={t('date')} testId="shift-detail-date">
+                      <p className="font-semibold">
+                        {safeFormatShiftDate(shift.date, 'PP', language, fallback)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {safeFormatShiftDate(shift.date, 'EEEE', language, fallback)}
+                      </p>
+                    </OverviewItem>
+                    <OverviewItem icon={<Clock className="h-5 w-5" />} label={t('time')} testId="shift-detail-time">
+                      <p className="font-semibold">
+                        {shift.start_time || fallback} – {shift.end_time || fallback}
+                      </p>
+                      {dateTime?.valid && dateTime.crossesMidnight ? (
+                        <p className="text-xs font-medium text-indigo-700" data-testid="shift-detail-overnight">
+                          {t('endsNextDay')}: {safeFormatShiftDate(dateTime.endDate, 'PP', language, fallback)}
+                        </p>
+                      ) : null}
+                    </OverviewItem>
+                    <OverviewItem icon={<MapPin className="h-5 w-5" />} label={t('studio')}>
+                      <p className="font-semibold">{shift.studio?.trim() || fallback}</p>
+                    </OverviewItem>
+                    <OverviewItem icon={<Link2 className="h-5 w-5" />} label={t('shiftIdentifier')}>
+                      <p className="break-all font-mono text-sm font-semibold">{shift.id || fallback}</p>
+                    </OverviewItem>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="pt-6">
+                    <h3 className="mb-4 text-sm font-semibold text-muted-foreground">{t('brandAndPlatform')}</h3>
+                    <dl className="grid gap-5 sm:grid-cols-2">
+                      <DetailValue label={t('brand')} value={brand?.name || fallback} color={brand?.color} />
+                      <DetailValue label={t('platform')} value={platform?.name || fallback} />
+                      <DetailValue className="sm:col-span-2" label={t('campaign')} value={campaign?.name || fallback} />
+                    </dl>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="pt-6">
+                    <h3 className="mb-4 text-sm font-semibold text-muted-foreground">{t('team')}</h3>
+                    <div className="grid gap-4 lg:grid-cols-3">
+                      {operationalRoles.map(role => (
+                        <RoleAssignments
+                          assignments={staffing[role]}
+                          key={role}
+                          label={t(role)}
+                          notAssignedLabel={t('notAssigned')}
+                          required={shift[roleRequiredField[role]]}
+                          requiredLabel={t('required')}
+                          t={t}
+                          testId={`shift-detail-role-${role}`}
+                        />
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="staffing" className="space-y-4 pt-1">
+                {staffingLoading ? (
+                  <Card><CardContent className="py-8 text-center text-muted-foreground">{t('loading')}</CardContent></Card>
+                ) : staffingError ? (
+                  <Card><CardContent className="py-8 text-center text-muted-foreground">{t('staffingUnavailable')}</CardContent></Card>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {capacities.map(capacity => (
+                      <Card key={capacity.role}>
+                        <CardContent className="pt-5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-semibold">{t(capacity.role)}</span>
+                            <Badge variant={capacity.remaining > 0 ? 'outline' : 'secondary'}>{capacity.remaining}/{capacity.required}</Badge>
+                          </div>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            {capacity.approved} {t('approved')} · {capacity.pending} {t('pending')}
+                          </p>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+
+                {currentUser && hasPermission(currentUser, 'shifts.assign_staff') ? (
+                  <Card>
+                    <CardContent className="pt-5">
+                      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+                        <label className="min-w-40 flex-1 text-xs font-medium">
+                          {t('role')}
+                          <Select value={selectedRole} onValueChange={value => { setSelectedRole(value as OperationalRole); setSelectedStaff('') }}>
+                            <SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger>
+                            <SelectContent>{operationalRoles.map(role => <SelectItem key={role} value={role}>{t(role)}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </label>
+                        <label className="min-w-0 flex-[2] text-xs font-medium sm:min-w-56">
+                          {t('staff')}
+                          <Select value={selectedStaff} onValueChange={setSelectedStaff}>
+                            <SelectTrigger className="mt-1 w-full"><SelectValue placeholder={t('assignStaff')} /></SelectTrigger>
+                            <SelectContent>{users.filter(user => user.status === 'active' && user.operational_roles?.includes(selectedRole)).map(user => <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </label>
+                        <Button disabled={busy || !selectedStaff} onClick={() => runStaffingAction(() => shiftRegistrationService.assignManually(shift.id, selectedStaff, selectedRole, currentUser.id), t('registrationApproved'))}>
+                          <UserPlus className="mr-2 h-4 w-4" />{t('assignStaff')}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : null}
+
+                <Card className="overflow-hidden">
+                  <CardContent className="p-0">
+                    <div className="max-h-[440px] space-y-2 overflow-auto p-5">
+                      {registrations.length === 0 ? <p className="text-sm text-muted-foreground">{t('noData')}</p> : visibleRegistrations.map(registration => (
+                        <div key={registration.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+                          <div className="min-w-0">
+                            <p className="break-words font-medium">{userName(registration.user_id)} · {t(registration.operational_role)}</p>
+                            <p className="text-xs text-muted-foreground">{registration.source} · {safeFormatShiftDate(registration.requested_at, 'Pp', language, fallback)}</p>
+                            {registration.review_notes ? <p className="mt-1 break-words text-xs">{registration.review_notes}</p> : null}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge className={registration.status === 'approved' || registration.status === 'manually_assigned' ? 'bg-green-100 text-green-800' : registration.status === 'pending' ? 'bg-amber-100 text-amber-800' : ''}>
+                              {registration.status === 'manually_assigned' ? t('manuallyAssigned') : registration.status === 'removed' ? t('removed') : registration.status === 'available' ? t('available') : t(registration.status)}
+                            </Badge>
+                            {registration.status === 'pending' && currentUser && hasPermission(currentUser, 'shifts.approve_registration') ? (
+                              <>
+                                <Button size="sm" disabled={busy} onClick={() => runStaffingAction(() => shiftRegistrationService.approve(registration.id, currentUser.id), t('registrationApproved'))}><Check className="mr-1 h-4 w-4" />{t('approve')}</Button>
+                                <Button size="sm" variant="outline" disabled={busy} onClick={() => runStaffingAction(() => shiftRegistrationService.reject(registration.id, currentUser.id), t('rejected'))}><X className="mr-1 h-4 w-4" />{t('reject')}</Button>
+                              </>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <HistoryPagination
+                      page={safeRegistrationPage}
+                      pageSize={registrationPageSize}
+                      total={registrations.length}
+                      onPageChange={setRegistrationPage}
+                      onPageSizeChange={size => {
+                        setRegistrationPageSize(size)
+                        setRegistrationPage(1)
+                      }}
+                    />
+                  </CardContent>
+                </Card>
+
+                <div className="flex flex-wrap justify-end gap-2">
+                  {currentUser && hasPermission(currentUser, 'shifts.export') ? (
+                    <Button variant="outline" onClick={() => exportShiftStaffingToExcel(shift, registrations, new Map(users.map(user => [user.id, user.full_name])))}>
+                      <Download className="mr-2 h-4 w-4" />{t('exportStaffing')}
+                    </Button>
+                  ) : null}
+                  {currentUser && hasPermission(currentUser, 'shifts.lock') ? (
+                    isLocked
+                      ? <Button variant="outline" disabled={busy || shift.status !== 'scheduled'} onClick={() => runStaffingAction(() => shiftService.reopen(shift.id), t('reopenShift'))}><LockOpen className="mr-2 h-4 w-4" />{t('reopenShift')}</Button>
+                      : <Button variant="outline" disabled={busy} onClick={() => runStaffingAction(() => shiftService.lock(shift.id), t('lockShift'))}><Lock className="mr-2 h-4 w-4" />{t('lockShift')}</Button>
+                  ) : null}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="details" className="space-y-4 pt-1">
+                <Card>
+                  <CardContent className="space-y-5 pt-6">
+                    <DetailValue label={t('liveUrl')} value={shift.live_link?.trim() || fallback} />
+                    {shift.live_link?.trim() ? (
+                      <a
+                        className="inline-flex max-w-full items-center gap-2 break-all text-sm font-medium text-blue-700 underline-offset-4 hover:underline"
+                        href={shift.live_link}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        <ExternalLink className="h-4 w-4 shrink-0" />
+                        {t('openLiveLink')}
+                      </a>
+                    ) : null}
+                    <DetailValue label={t('productNotes')} value={shift.product_notes?.trim() || fallback} preserveWhitespace />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="pt-6">
+                    <h3 className="mb-4 text-sm font-semibold text-muted-foreground">{t('metadata')}</h3>
+                    <dl className="grid gap-4 text-sm sm:grid-cols-2">
+                      <DetailValue label={t('createdAt')} value={safeFormatShiftDate(shift.created_at, 'Pp', language, fallback)} />
+                      <DetailValue label={t('updatedAt')} value={safeFormatShiftDate(shift.updated_at, 'Pp', language, fallback)} />
+                      <DetailValue className="sm:col-span-2" label={t('updatedBy')} value={shift.updated_by ? userName(shift.updated_by) : fallback} />
+                    </dl>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </DialogBody>
+
+          <ShiftDetailActions
+            currentUser={currentUser}
+            busy={busy}
+            onEdit={onEdit}
+            onDelete={() => void requestDelete()}
+            onClose={() => onOpenChange(false)}
+            editLabel={t('edit')}
+            deleteLabel={t('delete')}
+            closeLabel={t('close')}
+          />
+        </DialogContent>
+      </Dialog>
+      <LifecycleActionDialog
+        open={Boolean(deleteImpact)}
+        onOpenChange={nextOpen => { if (!nextOpen) setDeleteImpact(null) }}
+        title={deleteImpact?.action === 'delete' ? t('deleteShiftTitle') : t('cancelArchiveShiftTitle')}
+        impact={deleteImpact}
+        confirmText={deleteImpact?.action === 'delete' ? t('delete') : t('cancel')}
+        onConfirm={handleDelete}
+      />
+    </>
+  )
+}
+
+function OverviewItem({
+  children,
+  icon,
+  label,
+  testId,
+}: {
+  children: React.ReactNode
+  icon: React.ReactNode
+  label: string
+  testId?: string
+}) {
+  return (
+    <div className="flex min-w-0 items-start gap-3" data-testid={testId}>
+      <span className="mt-0.5 shrink-0 text-muted-foreground">{icon}</span>
+      <div className="min-w-0">
+        <p className="text-sm text-muted-foreground">{label}</p>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function DetailValue({
+  className,
+  color,
+  label,
+  preserveWhitespace = false,
+  value,
+}: {
+  className?: string
+  color?: string
+  label: string
+  preserveWhitespace?: boolean
+  value: string
+}) {
+  return (
+    <div className={className}>
+      <dt className="flex items-center gap-2 text-xs text-muted-foreground">
+        {color ? <span aria-hidden="true" className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: color }} /> : null}
+        {label}
+      </dt>
+      <dd className={`mt-1 break-words font-medium ${preserveWhitespace ? 'whitespace-pre-wrap rounded-lg bg-muted/40 p-3' : ''}`}>{value}</dd>
+    </div>
+  )
+}
+
+function RoleAssignments({
+  assignments,
+  label,
+  notAssignedLabel,
+  required,
+  requiredLabel,
+  t,
+  testId,
+}: {
+  assignments: ShiftStaffAssignment[]
+  label: string
+  notAssignedLabel: string
+  required?: number
+  requiredLabel: string
+  t: (key: TranslationKey, variables?: Record<string, string | number>) => string
+  testId: string
+}) {
+  const requiredValue = typeof required === 'number' && Number.isFinite(required) ? required : '—'
+
+  return (
+    <section className="min-w-0 rounded-lg border p-4" data-testid={testId}>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h4 className="font-semibold">{label}</h4>
+        <Badge variant="outline">{requiredLabel}: {requiredValue}</Badge>
+      </div>
+      {assignments.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{notAssignedLabel}</p>
+      ) : (
+        <div className="space-y-3">
+          {assignments.map(assignment => {
+            const name = assignment.user?.full_name?.trim() || notAssignedLabel
+            const initials = name === notAssignedLabel
+              ? '?'
+              : name.split(/\s+/).slice(0, 2).map(part => part[0]?.toUpperCase()).join('')
+            return (
+              <div className="flex min-w-0 items-center gap-3" key={assignment.userId}>
+                <Avatar>
+                  {assignment.user?.avatar_url ? <AvatarImage alt={name} src={assignment.user.avatar_url} /> : null}
+                  <AvatarFallback>{initials}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <p className="break-words font-medium">{name}</p>
+                  <Badge className="mt-1" variant="secondary">
+                    {assignment.status === 'manually_assigned' ? t('manuallyAssigned') : t('approved')}
+                  </Badge>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </section>
+  )
 }
