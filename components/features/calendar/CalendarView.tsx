@@ -388,9 +388,10 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           campaigns={campaigns}
           users={users}
           templates={[]}
-          onSuccess={() => {
-            void loadData()
+          onSuccess={async (updatedShift) => {
+            await loadData()
             setEditingShift(null)
+            if (updatedShift) setSelectedShift({ ...updatedShift })
           }}
         />
       )}
@@ -427,7 +428,17 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           platforms={platforms}
           campaigns={campaigns}
           users={users}
-          onUpdate={loadData}
+          onUpdate={() => {
+            void (async () => {
+              await loadData()
+              const refreshedShift = await shiftService.getById(selectedShift.id)
+              if (refreshedShift) setSelectedShift({ ...refreshedShift })
+            })()
+          }}
+          onEdit={() => {
+            setEditingShift(selectedShift)
+            setSelectedShift(null)
+          }}
           onDelete={() => {
             loadData()
             setSelectedShift(null)

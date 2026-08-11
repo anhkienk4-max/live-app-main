@@ -7,6 +7,8 @@ export type Permission =
   | 'shifts.cancel_registration'
   | 'shifts.approve_registration'
   | 'shifts.assign_staff'
+  | 'shifts.edit'
+  | 'shifts.delete'
   | 'shifts.lock'
   | 'shifts.import'
   | 'shifts.export'
@@ -47,6 +49,7 @@ const leaderPermissions: Permission[] = [
   ...memberPermissions,
   'shifts.approve_registration',
   'shifts.assign_staff',
+  'shifts.edit',
   'shifts.lock',
   'shifts.import',
   'shifts.export',
@@ -71,6 +74,7 @@ const adminPermissions: Permission[] = [
   'audit.restore',
   'audit.review',
   'data.force_delete',
+  'shifts.delete',
 ]
 
 export const permissionMatrix: Record<SystemPermission, ReadonlySet<Permission>> = {

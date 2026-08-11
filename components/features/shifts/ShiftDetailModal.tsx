@@ -29,6 +29,7 @@ interface ShiftDetailModalProps {
   campaigns: Campaign[]
   users: User[]
   onUpdate: () => void
+  onEdit?: () => void
   onDelete: () => void
 }
 

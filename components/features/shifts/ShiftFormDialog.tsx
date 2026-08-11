@@ -35,7 +35,7 @@ interface ShiftFormDialogProps {
   campaigns: Campaign[]
   users: User[]
   templates: ShiftTemplate[]
-  onSuccess: () => void
+  onSuccess: (savedShift?: Shift) => void | Promise<void>
 }
 
 interface ShiftFormState {
@@ -245,14 +245,17 @@ export function ShiftFormDialog({
           await shiftService.create(shiftData)
         }
         toast({ title: 'Success', description: `Created ${generated.length} recurring shifts`, variant: 'success' })
+        await onSuccess()
       } else if (shift) {
-        await shiftService.update(shift.id, formData)
+        const updatedShift = await shiftService.update(shift.id, formData)
+        if (!updatedShift) throw new Error('Shift was not found.')
         toast({ title: 'Success', description: 'Shift updated', variant: 'success' })
+        await onSuccess(updatedShift)
       } else {
-        await shiftService.create(formData)
+        const createdShift = await shiftService.create(formData)
         toast({ title: 'Success', description: 'Shift created', variant: 'success' })
+        await onSuccess(createdShift)
       }
-      onSuccess()
       onOpenChange(false)
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to save shift', variant: 'destructive' })
