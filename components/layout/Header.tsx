@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { LogOut } from 'lucide-react'
 import {
@@ -34,7 +33,6 @@ interface HeaderProps {
 }
 
 export function Header({ user }: HeaderProps) {
-  const router = useRouter()
   const { language, setLanguage, t } = useTranslation()
   const { toast } = useToast()
   const [signingOut, setSigningOut] = useState(false)
@@ -53,8 +51,8 @@ export function Header({ user }: HeaderProps) {
     setSigningOut(true)
 
     if (mockMode) {
-      router.replace('/login?reason=signed_out')
-      router.refresh()
+      clearIdentity()
+      window.location.replace('/login?reason=signed_out')
       return
     }
 
@@ -80,8 +78,7 @@ export function Header({ user }: HeaderProps) {
     }
 
     clearIdentity()
-    router.replace('/login?reason=signed_out')
-    router.refresh()
+    window.location.replace('/login?reason=signed_out')
   }
 
   const initials = displayUser?.user_metadata?.full_name

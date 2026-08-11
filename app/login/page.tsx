@@ -11,7 +11,11 @@ import { useRouter } from 'next/navigation'
 import { useTranslation } from '@/lib/i18n'
 import { mockAuthService } from '@/lib/services/mockAuthService'
 import { getAuthMode, getSupabasePublicConfig, safeLocalRedirect } from '@/lib/auth/authMode'
-import { establishPasswordSession } from '@/lib/auth/session'
+import {
+  clearLocalSession,
+  establishPasswordSession,
+  shouldClearLocalSessionForLoginReason,
+} from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/client'
 
 export default function LoginPage() {
@@ -27,6 +31,13 @@ export default function LoginPage() {
 
   useEffect(() => {
     const reason = new URLSearchParams(window.location.search).get('reason')
+    if (
+      !mockMode
+      && getSupabasePublicConfig()
+      && shouldClearLocalSessionForLoginReason(reason)
+    ) {
+      void clearLocalSession(createClient())
+    }
     if (reason === 'session_expired' || reason === 'authentication_required') {
       setError(t('sessionExpired'))
     } else if (reason === 'auth_unavailable') {
@@ -36,7 +47,7 @@ export default function LoginPage() {
     } else if (reason === 'signed_out') {
       setNotice(t('signedOutMessage'))
     }
-  }, [t])
+  }, [mockMode, t])
 
   const redirectAfterLogin = () => {
     const next = safeLocalRedirect(new URLSearchParams(window.location.search).get('next'))

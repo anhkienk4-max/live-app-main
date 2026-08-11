@@ -12,6 +12,7 @@ import {
   clearLocalSession,
   establishPasswordSession,
   getVerifiedUser,
+  shouldClearLocalSessionForLoginReason,
   type PasswordSessionClient,
 } from '../lib/auth/session.ts'
 import {
@@ -93,6 +94,49 @@ test('password login, reload verification and logout use one Supabase session', 
   })), null)
 })
 
+test('login recovery reasons use the supported local Supabase sign-out boundary', () => {
+  for (const reason of ['session_expired', 'authentication_required', 'signed_out']) {
+    assert.equal(shouldClearLocalSessionForLoginReason(reason), true)
+  }
+  for (const reason of [null, '', 'auth_unavailable', 'identity_unavailable']) {
+    assert.equal(shouldClearLocalSessionForLoginReason(reason), false)
+  }
+})
+
+test('sequential account switching clears each local session before the next login', async () => {
+  let activeEmail: string | null = null
+  const client: PasswordSessionClient = {
+    auth: {
+      async signInWithPassword(credentials) {
+        activeEmail = credentials.email
+        return {
+          data: {
+            session: { kind: 'test-session' },
+            user: { id: `auth-${credentials.email}`, email: credentials.email },
+          },
+          error: null,
+        }
+      },
+      async signOut(options) {
+        assert.equal(options.scope, 'local')
+        activeEmail = null
+        return { error: null }
+      },
+    },
+  }
+
+  for (const email of [
+    'admin@livestream.com',
+    'leader@livestream.com',
+    'host1@livestream.com',
+  ]) {
+    assert.equal(await establishPasswordSession(client, email, 'valid-password'), true)
+    assert.equal(activeEmail, email)
+    assert.equal(await clearLocalSession(client), true)
+    assert.equal(activeEmail, null)
+  }
+})
+
 test('anonymous, expired and failed user verification fail closed', async () => {
   assert.equal(await getVerifiedUser(async () => ({
     data: { user: null },
@@ -159,17 +203,29 @@ test('anonymous and expired dashboard sessions redirect to login', async () => {
   }
 })
 
-test('login remains reachable without a session and authenticated users leave login', async () => {
-  const anonymous = createSessionUpdater(sessionFactory({ data: null, error: null }))
-  const authenticated = createSessionUpdater(sessionFactory({
-    data: { claims: { sub: 'supabase-user-1' } },
-    error: null,
-  }))
+test('login is a stable recovery boundary even when stale claims appear authenticated', async () => {
+  let claimsChecks = 0
+  const update = createSessionUpdater((request, onResponse) => {
+    claimsChecks += 1
+    return sessionFactory({
+      data: { claims: { sub: 'stale-supabase-user' } },
+      error: null,
+    })(request, onResponse)
+  })
 
-  assert.equal((await anonymous(new NextRequest('http://localhost/login'))).status, 200)
-  const response = await authenticated(new NextRequest('http://localhost/login'))
-  assert.equal(response.status, 307)
-  assert.equal(new URL(response.headers.get('location') || '').pathname, '/')
+  for (const path of [
+    '/login',
+    '/login?reason=session_expired',
+    '/login?reason=authentication_required',
+    '/login?reason=signed_out',
+    '/login?reason=identity_unavailable',
+  ]) {
+    const response = await update(new NextRequest(`http://localhost${path}`))
+    assert.equal(response.status, 200)
+    assert.equal(response.headers.get('location'), null)
+    assert.match(response.headers.get('cache-control') || '', /no-store/)
+  }
+  assert.equal(claimsChecks, 0)
 })
 
 test('authenticated users can view the fail-closed business identity error', async () => {

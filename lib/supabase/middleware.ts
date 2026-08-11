@@ -81,6 +81,13 @@ export function createSessionUpdater(
   return async function refreshSession(request: NextRequest) {
     let sessionResponse = withPrivateNoStore(NextResponse.next({ request }))
 
+    // The login page is the stable recovery boundary for expired, revoked, or
+    // partially refreshed sessions. Do not infer a stronger authentication
+    // state here than the protected dashboard's authoritative getUser() check.
+    if (isPublicAuthPath(request.nextUrl.pathname)) {
+      return sessionResponse
+    }
+
     try {
       const client = createClient(request, response => {
         sessionResponse = withPrivateNoStore(response)
@@ -91,26 +98,12 @@ export function createSessionUpdater(
         && data.claims.sub.length > 0
 
       if (!authenticated) {
-        return isPublicAuthPath(request.nextUrl.pathname)
-          ? sessionResponse
-          : createLoginRedirect(request, 'session_expired', sessionResponse)
-      }
-
-      if (
-        isPublicAuthPath(request.nextUrl.pathname)
-        && request.nextUrl.searchParams.get('reason') !== 'identity_unavailable'
-      ) {
-        const home = request.nextUrl.clone()
-        home.pathname = '/'
-        home.search = ''
-        return copySessionState(sessionResponse, NextResponse.redirect(home))
+        return createLoginRedirect(request, 'session_expired', sessionResponse)
       }
 
       return sessionResponse
     } catch {
-      return isPublicAuthPath(request.nextUrl.pathname)
-        ? sessionResponse
-        : createLoginRedirect(request, 'auth_unavailable', sessionResponse)
+      return createLoginRedirect(request, 'auth_unavailable', sessionResponse)
     }
   }
 }

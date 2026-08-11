@@ -11,6 +11,18 @@ export interface PasswordSessionClient {
   }
 }
 
+const sessionResetReasons = new Set([
+  'session_expired',
+  'authentication_required',
+  'signed_out',
+])
+
+export function shouldClearLocalSessionForLoginReason(
+  reason: string | null | undefined,
+): boolean {
+  return Boolean(reason && sessionResetReasons.has(reason))
+}
+
 export async function establishPasswordSession(
   client: PasswordSessionClient,
   email: string,
