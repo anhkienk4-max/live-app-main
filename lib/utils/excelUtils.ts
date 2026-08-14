@@ -56,6 +56,7 @@ export type EntityMaps = {
 }
 
 type ScheduleSheetRow = Record<string, unknown>
+type SlashDateOrder = 'day-first' | 'month-first'
 
 const scheduleHeaders = {
   date: ['date', 'ngày', 'ngay', 'ngày live', 'ngay live'],
@@ -148,7 +149,57 @@ const entityIdFor = (items: Map<string, string>, value: string) => {
   return undefined
 }
 
-const normalizeDate = (value: unknown): string => {
+const SLASH_DATE_PATTERN = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
+
+const sourceRowNumberFor = (source: ScheduleSheetRow, index: number) =>
+  typeof source[SOURCE_ROW_NUMBER] === 'number' ? source[SOURCE_ROW_NUMBER] as number : index + 2
+
+function inferSlashDateOrder(sourceRows: ScheduleSheetRow[]): {
+  order: SlashDateOrder
+  error?: ImportError
+} {
+  let inferred: SlashDateOrder | undefined
+
+  for (const [index, source] of sourceRows.entries()) {
+    const rawDate = valueFor(source, scheduleHeaders.date)
+    if (typeof rawDate !== 'string') continue
+    const text = rawDate.trim()
+    const match = text.match(SLASH_DATE_PATTERN)
+    if (!match) continue
+    const first = Number(match[1])
+    const second = Number(match[2])
+    const row = sourceRowNumberFor(source, index)
+
+    if (first < 1 || second < 1 || (first > 12 && second > 12)) {
+      return {
+        order: inferred ?? 'day-first',
+        error: { row, field: 'date_format', message: `Date "${text}" is not a valid DD/MM/YYYY or MM/DD/YYYY date.` },
+      }
+    }
+
+    const evidence: SlashDateOrder | undefined = first > 12
+      ? 'day-first'
+      : second > 12
+        ? 'month-first'
+        : undefined
+    if (!evidence) continue
+    if (inferred && inferred !== evidence) {
+      return {
+        order: inferred,
+        error: {
+          row,
+          field: 'date_format',
+          message: 'Conflicting slash date formats were found. Use one consistent DD/MM/YYYY or MM/DD/YYYY order in the imported schedule.',
+        },
+      }
+    }
+    inferred = evidence
+  }
+
+  return { order: inferred ?? 'day-first' }
+}
+
+const normalizeDate = (value: unknown, slashDateOrder: SlashDateOrder): string => {
   if (typeof value === 'number') {
     const parsed = XLSX.SSF.parse_date_code(value)
     if (parsed) return `${parsed.y}-${String(parsed.m).padStart(2, '0')}-${String(parsed.d).padStart(2, '0')}`
@@ -156,8 +207,17 @@ const normalizeDate = (value: unknown): string => {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return format(value, 'yyyy-MM-dd')
   const text = String(value ?? '').trim()
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text
-  const match = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
-  if (match) return `${match[3]}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}`
+  const match = text.match(SLASH_DATE_PATTERN)
+  if (match) {
+    const first = match[1].padStart(2, '0')
+    const second = match[2].padStart(2, '0')
+    const [month, day] = slashDateOrder === 'month-first' ? [first, second] : [second, first]
+    return `${match[3]}-${month}-${day}`
+  }
+  const legacyDayFirstMatch = text.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/)
+  if (legacyDayFirstMatch) {
+    return `${legacyDayFirstMatch[3]}-${legacyDayFirstMatch[2].padStart(2, '0')}-${legacyDayFirstMatch[1].padStart(2, '0')}`
+  }
   return text
 }
 
@@ -200,6 +260,20 @@ export function parseScheduleRows(
   maps: EntityMaps,
   existingShifts: Shift[] = [],
 ): ImportResult {
+  const dateOrder = inferSlashDateOrder(sourceRows)
+  if (dateOrder.error) {
+    return {
+      success: false,
+      rows: [],
+      validShifts: [],
+      errors: [dateOrder.error],
+      warnings: [],
+      totalRows: 0,
+      validRows: 0,
+      invalidRows: 0,
+      warningRows: 0,
+    }
+  }
   const previews: ImportPreviewRow[] = []
   const errors: ImportError[] = []
   const warnings: ImportError[] = []
@@ -208,10 +282,11 @@ export function parseScheduleRows(
   sourceRows.forEach((source, index) => {
     const { [SOURCE_ROW_NUMBER]: sourceRowNumber, ...sourceValues } = source
     const normalizedSource = normalizeScheduleImportSourceRow(sourceValues)
-    const rowNumber = typeof sourceRowNumber === 'number' ? sourceRowNumber : index + 2
+    const rowNumber = sourceRowNumberFor(source, index)
     const rowText = Object.values(normalizedSource).map(value => String(value ?? '')).join(' ').replace(/\s+/g, ' ').trim()
     if (/^total\s*week\s*[1-4]\b/i.test(normalizeLookup(rowText))) return
-    const date = normalizeDate(valueFor(normalizedSource, scheduleHeaders.date))
+    const rawDate = valueFor(normalizedSource, scheduleHeaders.date)
+    const date = normalizeDate(rawDate, dateOrder.order)
     const [rangeStart, rangeEnd] = normalizeTimeRange(valueFor(normalizedSource, scheduleHeaders.timeRange))
     const startTime = normalizeTime(valueFor(normalizedSource, scheduleHeaders.startTime)) || rangeStart
     const endTime = normalizeTime(valueFor(normalizedSource, scheduleHeaders.endTime)) || rangeEnd
@@ -239,7 +314,12 @@ export function parseScheduleRows(
     const rowWarnings: string[] = []
 
     if (!date) rowErrors.push('Date is required.')
-    else if (!validIsoDate(date)) rowErrors.push('Date must use YYYY-MM-DD or DD/MM/YYYY.')
+    else if (!validIsoDate(date)) {
+      const slashOrder = dateOrder.order === 'month-first' ? 'MM/DD/YYYY' : 'DD/MM/YYYY'
+      rowErrors.push(String(rawDate ?? '').trim().match(SLASH_DATE_PATTERN)
+        ? `Date "${String(rawDate).trim()}" is invalid using the inferred ${slashOrder} order.`
+        : 'Date must use YYYY-MM-DD, DD/MM/YYYY, or MM/DD/YYYY.')
+    }
     if (!startTime) rowErrors.push('Start time is required.')
     else if (!validTime(startTime)) rowErrors.push('Start time must use HH:MM.')
     if (!endTime) rowErrors.push('End time is required.')

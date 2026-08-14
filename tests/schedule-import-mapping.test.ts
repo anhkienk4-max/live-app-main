@@ -149,3 +149,93 @@ test('an insufficient header returns one clear header error instead of row error
   assert.equal(result.errors[0].field, 'header')
   assert.match(result.errors[0].message, /Date\/Ngày/)
 })
+
+test('MM/DD/YYYY order is inferred from unambiguous Google Sheets dates', () => {
+  const rows = [
+    ['8/29/2026', 'US date 29'],
+    ['8/30/2026', 'US date 30'],
+    ['8/31/2026', 'US date 31'],
+  ].map(([date, title]) => {
+    const row = [...scheduleRow]
+    row[0] = date
+    row[6] = title
+    return row
+  })
+  const result = parseScheduleTabularData([englishHeader, ...rows].map(csvRow).join('\n'), 'string', maps)
+
+  assert.equal(result.validRows, 3)
+  assert.deepEqual(result.validShifts.map(shift => shift.date), [
+    '2026-08-29',
+    '2026-08-30',
+    '2026-08-31',
+  ])
+})
+
+test('an unambiguous date applies one inferred order to ambiguous dates', () => {
+  const dayFirstRows = [
+    ['31/08/2026', 'Day-first evidence'],
+    ['09/08/2026', 'Ambiguous day-first'],
+  ].map(([date, title]) => {
+    const row = [...scheduleRow]
+    row[0] = date
+    row[6] = title
+    return row
+  })
+  const monthFirstRows = [
+    ['8/29/2026', 'Month-first evidence'],
+    ['9/8/2026', 'Ambiguous month-first'],
+  ].map(([date, title]) => {
+    const row = [...scheduleRow]
+    row[0] = date
+    row[6] = title
+    return row
+  })
+
+  const dayFirst = parseScheduleTabularData([englishHeader, ...dayFirstRows].map(csvRow).join('\n'), 'string', maps)
+  const monthFirst = parseScheduleTabularData([englishHeader, ...monthFirstRows].map(csvRow).join('\n'), 'string', maps)
+
+  assert.deepEqual(dayFirst.validShifts.map(shift => shift.date), ['2026-08-31', '2026-08-09'])
+  assert.deepEqual(monthFirst.validShifts.map(shift => shift.date), ['2026-08-29', '2026-09-08'])
+})
+
+test('contradictory slash-date evidence returns one clear import error', () => {
+  const rows = [
+    ['31/08/2026', 'Day-first row'],
+    ['8/29/2026', 'Month-first row'],
+  ].map(([date, title]) => {
+    const row = [...scheduleRow]
+    row[0] = date
+    row[6] = title
+    return row
+  })
+  const result = parseScheduleTabularData([englishHeader, ...rows].map(csvRow).join('\n'), 'string', maps)
+
+  assert.equal(result.success, false)
+  assert.equal(result.rows.length, 0)
+  assert.equal(result.errors.length, 1)
+  assert.equal(result.errors[0].field, 'date_format')
+  assert.match(result.errors[0].message, /Conflicting slash date formats/)
+})
+
+test('an impossible date is rejected using the inferred order', () => {
+  const invalidRow = [...scheduleRow]
+  invalidRow[0] = '2/30/2026'
+  const result = parseScheduleTabularData([englishHeader, invalidRow].map(csvRow).join('\n'), 'string', maps)
+
+  assert.equal(result.validRows, 0)
+  assert.equal(result.invalidRows, 1)
+  assert.match(result.rows[0].row.errors.join(' '), /invalid using the inferred MM\/DD\/YYYY order/)
+})
+
+test('typed Excel date cells continue to import as calendar dates', () => {
+  const workbook = XLSX.utils.book_new()
+  const excelRow = [...scheduleRow]
+  excelRow[0] = new Date(2026, 7, 31)
+  const worksheet = XLSX.utils.aoa_to_sheet([englishHeader, excelRow])
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Schedule')
+  const bytes = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+  const result = parseScheduleTabularData(bytes, 'array', maps)
+
+  assert.equal(result.validRows, 1)
+  assert.equal(result.validShifts[0].date, '2026-08-31')
+})
