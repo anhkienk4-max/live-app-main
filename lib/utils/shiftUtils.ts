@@ -75,7 +75,6 @@ export function normalizeCapacity(
   }
   const parsed = Number(String(value).trim())
   if (!Number.isInteger(parsed) || parsed < 0 || parsed > maximum) return null
-  if (parsed === 0) return defaultValue
   return parsed
 }
 
