@@ -7,15 +7,17 @@ const migrationDirectory = path.join(process.cwd(), 'supabase', 'migrations')
 const foundationPath = path.join(migrationDirectory, '20260811110219_p1b_foundation.sql')
 const masterDataPath = path.join(migrationDirectory, '20260811110239_p1b_master_data.sql')
 const bootstrapPath = path.join(migrationDirectory, '20260811112834_p1b_production_bootstrap.sql')
+const hardeningPath = path.join(migrationDirectory, '20260814064606_p1b_security_hardening.sql')
 const fixtureDirectory = path.join(process.cwd(), 'supabase', 'tests', 'fixtures')
 const authFixturePath = path.join(fixtureDirectory, 'p1b_auth_users.sql')
 const demoFixturePath = path.join(fixtureDirectory, 'p1b_demo_master_data.sql')
 
 async function migrationText() {
-  const [foundation, masterData, bootstrap, authFixture, demoFixture] = await Promise.all([
+  const [foundation, masterData, bootstrap, hardening, authFixture, demoFixture] = await Promise.all([
     readFile(foundationPath, 'utf8'),
     readFile(masterDataPath, 'utf8'),
     readFile(bootstrapPath, 'utf8'),
+    readFile(hardeningPath, 'utf8'),
     readFile(authFixturePath, 'utf8'),
     readFile(demoFixturePath, 'utf8'),
   ])
@@ -24,10 +26,12 @@ async function migrationText() {
     foundation,
     masterData,
     bootstrap,
+    hardening,
     authFixture,
     demoFixture,
-    production: `${foundation}\n${masterData}\n${bootstrap}`,
-    all: `${foundation}\n${masterData}\n${bootstrap}\n${authFixture}\n${demoFixture}`,
+    core: `${foundation}\n${masterData}\n${bootstrap}`,
+    production: `${foundation}\n${masterData}\n${bootstrap}\n${hardening}`,
+    all: `${foundation}\n${masterData}\n${bootstrap}\n${hardening}\n${authFixture}\n${demoFixture}`,
   }
 }
 
@@ -38,10 +42,26 @@ test('migration order separates replayable schema from strict production bootstr
     '20260811110219_p1b_foundation.sql',
     '20260811110239_p1b_master_data.sql',
     '20260811112834_p1b_production_bootstrap.sql',
+    '20260814064606_p1b_security_hardening.sql',
   ])
   assert.ok(files.indexOf(path.basename(foundationPath)) < files.indexOf(path.basename(masterDataPath)))
   assert.ok(files.indexOf(path.basename(masterDataPath)) < files.indexOf(path.basename(bootstrapPath)))
+  assert.ok(files.indexOf(path.basename(bootstrapPath)) < files.indexOf(path.basename(hardeningPath)))
   assert.ok(files.every(file => !file.includes('fixture') && !file.includes('demo')))
+})
+
+test('P1B security hardening removes direct API-role execution without changing the event trigger', async () => {
+  const { hardening } = await migrationText()
+
+  assert.match(hardening, /to_regprocedure\('public\.rls_auto_enable\(\)'\) is null/i)
+  assert.match(
+    hardening,
+    /revoke execute on function public\.rls_auto_enable\(\)[\s\S]*from public, anon, authenticated, service_role/i,
+  )
+  assert.match(hardening, /has_function_privilege\('anon', 'public\.rls_auto_enable\(\)', 'execute'\)/i)
+  assert.match(hardening, /has_function_privilege\('authenticated', 'public\.rls_auto_enable\(\)', 'execute'\)/i)
+  assert.match(hardening, /has_function_privilege\('service_role', 'public\.rls_auto_enable\(\)', 'execute'\)/i)
+  assert.doesNotMatch(hardening, /drop\s+(?:event\s+trigger|function)|disable\s+trigger|create\s+or\s+replace\s+function/i)
 })
 
 test('P1B creates only the four approved public business tables', async () => {
@@ -221,9 +241,10 @@ test('demo brands and campaigns stay in the test fixture with a frozen c3 snapsh
 })
 
 test('migration package contains no credential fields or client-controlled authorization source', async () => {
-  const { production } = await migrationText()
+  const { core, production } = await migrationText()
 
-  assert.doesNotMatch(production, /\bservice_role\b|\bpassword\b|access_token|refresh_token|NEXT_PUBLIC|raw_user_meta_data|user_metadata/i)
+  assert.doesNotMatch(core, /\bservice_role\b/i)
+  assert.doesNotMatch(production, /\bpassword\b|access_token|refresh_token|NEXT_PUBLIC|raw_user_meta_data|user_metadata/i)
   assert.doesNotMatch(production, /auth\.jwt\(\)|request body|request header/i)
   assert.match(production, /private\.current_system_permission/i)
 })
