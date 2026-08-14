@@ -18,7 +18,9 @@ import {
   shiftDateTimeFields,
 } from '@/lib/utils/shiftUtils'
 import {
+  getCanonicalStaffingField,
   normalizeScheduleImportSourceRow,
+  PreviewStaffingField,
   previewStaffingFields,
   toCanonicalScheduleImportPreviewRow,
   validateStaffingValues,
@@ -47,7 +49,7 @@ export interface ImportResult {
   warningRows: number
 }
 
-type EntityMaps = {
+export type EntityMaps = {
   brands: Map<string, string>
   platforms: Map<string, string>
   campaigns: Map<string, string>
@@ -56,19 +58,42 @@ type EntityMaps = {
 type ScheduleSheetRow = Record<string, unknown>
 
 const scheduleHeaders = {
-  date: ['date', 'ngay'],
-  timeRange: ['time', 'gio', 'shift time', 'khung gio', 'thoi gian'],
-  startTime: ['start time', 'gio bat dau', 'tu gio'],
-  endTime: ['end time', 'gio ket thuc', 'den gio'],
-  brand: ['brand', 'thuong hieu', 'nhan hang'],
-  platform: ['platform', 'nen tang', 'kenh'],
-  campaign: ['campaign', 'chien dich'],
-  title: ['shift name', 'shift title', 'ten ca', 'ca'],
-  studio: ['studio', 'live studio', 'studio name', 'room', 'live room', 'phong live', 'phong livestream', 'ten studio', 'phong quay'],
-  notes: ['notes', 'note', 'ghi chu'],
+  date: ['date', 'ngày', 'ngay', 'ngày live', 'ngay live'],
+  timeRange: ['time', 'giờ', 'gio', 'shift time', 'time range', 'khung giờ', 'khung gio', 'thời gian', 'thoi gian'],
+  startTime: ['start', 'start time', 'giờ bắt đầu', 'gio bat dau', 'từ giờ', 'tu gio'],
+  endTime: ['end', 'end time', 'giờ kết thúc', 'gio ket thuc', 'đến giờ', 'den gio'],
+  brand: ['brand', 'thương hiệu', 'thuong hieu', 'nhãn hàng', 'nhan hang'],
+  platform: ['platform', 'nền tảng', 'nen tang', 'kênh', 'kenh'],
+  campaign: ['campaign', 'chiến dịch', 'chien dich'],
+  title: ['shift name', 'shift title', 'tên ca', 'ten ca', 'ca'],
+  studio: ['studio', 'live studio', 'studio name', 'room', 'live room', 'phòng live', 'phong live', 'phòng livestream', 'phong livestream', 'tên studio', 'ten studio', 'phòng quay', 'phong quay'],
+  notes: ['notes', 'note', 'ghi chú', 'ghi chu'],
 } as const
 
+type ScheduleHeaderField = keyof typeof scheduleHeaders | PreviewStaffingField
+
+const canonicalScheduleHeaders: Record<ScheduleHeaderField, string> = {
+  date: 'Date',
+  timeRange: 'Time',
+  startTime: 'Start time',
+  endTime: 'End time',
+  brand: 'Brand',
+  platform: 'Platform',
+  campaign: 'Campaign',
+  title: 'Shift title',
+  studio: 'Studio',
+  notes: 'Notes',
+  required_host_count: 'required_host_count',
+  required_support_count: 'required_support_count',
+  required_technical_count: 'required_technical_count',
+}
+
+const SOURCE_ROW_NUMBER = '__schedule_source_row_number'
+const HEADER_SCAN_LIMIT = 30
+const HEADER_ERROR_MESSAGE = 'Schedule header was not found. Required columns: Date/Ngày, Time/Khung giờ or Start/End, Brand/Thương hiệu, and Platform/Nền tảng.'
+
 const normalizeLookup = (value: unknown) => String(value ?? '')
+  .replace(/^\uFEFF/, '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
   .replace(/đ/g, 'd')
@@ -83,8 +108,35 @@ const valueFor = (row: ScheduleSheetRow, aliases: readonly string[]) => {
   const normalized = Object.fromEntries(
     Object.entries(row).map(([key, value]) => [normalizeLookup(key), value]),
   )
-  const alias = aliases.find(candidate => Object.prototype.hasOwnProperty.call(normalized, candidate))
+  const alias = aliases.map(normalizeLookup).find(candidate => Object.prototype.hasOwnProperty.call(normalized, candidate))
   return alias ? normalized[alias] : undefined
+}
+
+const headerFieldFor = (value: unknown): ScheduleHeaderField | undefined => {
+  const text = String(value ?? '').trim()
+  if (!text) return undefined
+  const staffingField = getCanonicalStaffingField(text)
+  if (staffingField) return staffingField
+  const normalized = normalizeLookup(text)
+  const entry = (Object.entries(scheduleHeaders) as Array<[keyof typeof scheduleHeaders, readonly string[]]>)
+    .find(([, aliases]) => aliases.some(alias => normalizeLookup(alias) === normalized))
+  return entry?.[0]
+}
+
+const hasRequiredScheduleHeaders = (fields: Set<ScheduleHeaderField>) =>
+  fields.has('date') &&
+  fields.has('brand') &&
+  fields.has('platform') &&
+  (fields.has('timeRange') || (fields.has('startTime') && fields.has('endTime')))
+
+function detectScheduleHeaderRow(rawRows: unknown[][]) {
+  let best: { index: number; fields: Set<ScheduleHeaderField>; score: number } | null = null
+  for (const [index, row] of rawRows.slice(0, HEADER_SCAN_LIMIT).entries()) {
+    const fields = new Set(row.map(headerFieldFor).filter((field): field is ScheduleHeaderField => Boolean(field)))
+    const score = fields.size + (hasRequiredScheduleHeaders(fields) ? 100 : 0)
+    if (!best || score > best.score) best = { index, fields, score }
+  }
+  return best && hasRequiredScheduleHeaders(best.fields) ? best : null
 }
 
 const entityIdFor = (items: Map<string, string>, value: string) => {
@@ -154,8 +206,9 @@ export function parseScheduleRows(
   const candidates: Array<Omit<Shift, 'id' | 'created_at' | 'updated_at'>> = []
 
   sourceRows.forEach((source, index) => {
-    const normalizedSource = normalizeScheduleImportSourceRow(source)
-    const rowNumber = index + 2
+    const { [SOURCE_ROW_NUMBER]: sourceRowNumber, ...sourceValues } = source
+    const normalizedSource = normalizeScheduleImportSourceRow(sourceValues)
+    const rowNumber = typeof sourceRowNumber === 'number' ? sourceRowNumber : index + 2
     const rowText = Object.values(normalizedSource).map(value => String(value ?? '')).join(' ').replace(/\s+/g, ' ').trim()
     if (/^total\s*week\s*[1-4]\b/i.test(normalizeLookup(rowText))) return
     const date = normalizeDate(valueFor(normalizedSource, scheduleHeaders.date))
@@ -207,7 +260,7 @@ export function parseScheduleRows(
     } as const
     previewStaffingFields.forEach(field => {
       if (validatedStaffing[field] === null) {
-        rowErrors.push(`Required ${staffingLabels[field]} count must be a whole number from 1 to ${MAX_SHIFT_CAPACITY}.`)
+        rowErrors.push(`Required ${staffingLabels[field]} count must be a whole number from 0 to ${MAX_SHIFT_CAPACITY}.`)
       }
     })
 
@@ -285,10 +338,71 @@ export function parseScheduleRows(
   }
 }
 
+class ScheduleImportHeaderError extends Error {}
+
+const headerErrorResult = (): ImportResult => ({
+  success: false,
+  rows: [],
+  validShifts: [],
+  errors: [{ row: 0, field: 'header', message: HEADER_ERROR_MESSAGE }],
+  warnings: [],
+  totalRows: 0,
+  validRows: 0,
+  invalidRows: 0,
+  warningRows: 0,
+})
+
 const rowsFromWorkbook = (data: ArrayBuffer | string, type: 'array' | 'string') => {
-  const workbook = XLSX.read(data, { type, cellDates: true })
+  const workbook = XLSX.read(data, {
+    type,
+    cellDates: type === 'array',
+    raw: type === 'string',
+  })
   const worksheet = workbook.Sheets[workbook.SheetNames[0]]
-  return XLSX.utils.sheet_to_json<ScheduleSheetRow>(worksheet, { defval: '' })
+  if (!worksheet) throw new ScheduleImportHeaderError(HEADER_ERROR_MESSAGE)
+  const rawRows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, {
+    header: 1,
+    defval: '',
+    blankrows: true,
+  })
+  const detected = detectScheduleHeaderRow(rawRows)
+  if (!detected) throw new ScheduleImportHeaderError(HEADER_ERROR_MESSAGE)
+
+  const headers = rawRows[detected.index].map((header, columnIndex) => {
+    const field = headerFieldFor(header)
+    return field ? canonicalScheduleHeaders[field] : String(header ?? '').trim() || `__column_${columnIndex}`
+  })
+
+  return rawRows.slice(detected.index + 1).flatMap((values, dataIndex) => {
+    if (!values.some(value => String(value ?? '').trim() !== '')) return []
+    const row: ScheduleSheetRow = { [SOURCE_ROW_NUMBER]: detected.index + dataIndex + 2 }
+    headers.forEach((header, columnIndex) => {
+      if (header.startsWith('__column_')) return
+      const value = values[columnIndex] ?? ''
+      if (!(header in row) || String(row[header] ?? '').trim() === '') row[header] = value
+    })
+    return [row]
+  })
+}
+
+const normalizeEntityMaps = (maps: EntityMaps): EntityMaps => ({
+  brands: new Map([...maps.brands].map(([name, id]) => [name.toLowerCase(), id])),
+  platforms: new Map([...maps.platforms].map(([name, id]) => [name.toLowerCase(), id])),
+  campaigns: new Map([...maps.campaigns].map(([name, id]) => [name.toLowerCase(), id])),
+})
+
+export function parseScheduleTabularData(
+  data: ArrayBuffer | string,
+  type: 'array' | 'string',
+  maps: EntityMaps,
+  existingShifts: Shift[] = [],
+): ImportResult {
+  try {
+    return parseScheduleRows(rowsFromWorkbook(data, type), normalizeEntityMaps(maps), existingShifts)
+  } catch (error) {
+    if (error instanceof ScheduleImportHeaderError) return headerErrorResult()
+    throw error
+  }
 }
 
 export async function importShiftsFromExcel(
@@ -300,11 +414,10 @@ export async function importShiftsFromExcel(
   existingShifts: Shift[] = [],
 ): Promise<ImportResult> {
   try {
-    const rows = rowsFromWorkbook(await file.arrayBuffer(), 'array')
-    return parseScheduleRows(rows, {
-      brands: new Map([...brandsMap].map(([name, id]) => [name.toLowerCase(), id])),
-      platforms: new Map([...platformsMap].map(([name, id]) => [name.toLowerCase(), id])),
-      campaigns: new Map([...campaignsMap].map(([name, id]) => [name.toLowerCase(), id])),
+    return parseScheduleTabularData(await file.arrayBuffer(), 'array', {
+      brands: brandsMap,
+      platforms: platformsMap,
+      campaigns: campaignsMap,
     }, existingShifts)
   } catch {
     return {
@@ -353,17 +466,12 @@ export async function importShiftsFromGoogleSheetsUrl(
   campaignsMap: Map<string, string>,
   existingShifts: Shift[] = [],
 ): Promise<ImportResult> {
-  const maps = {
-    brands: new Map([...brandsMap].map(([name, id]) => [name.toLowerCase(), id])),
-    platforms: new Map([...platformsMap].map(([name, id]) => [name.toLowerCase(), id])),
-    campaigns: new Map([...campaignsMap].map(([name, id]) => [name.toLowerCase(), id])),
-  }
+  const maps = normalizeEntityMaps({ brands: brandsMap, platforms: platformsMap, campaigns: campaignsMap })
   if (url === 'mock://schedule') return parseScheduleRows(mockGoogleRows, maps, existingShifts)
   const normalizedUrl = normalizeGoogleSheetsUrl(url)
   const response = await fetch(normalizedUrl)
   if (!response.ok) throw new Error('The public Google Sheets CSV could not be loaded.')
-  const rows = rowsFromWorkbook(await response.text(), 'string')
-  return parseScheduleRows(rows, maps, existingShifts)
+  return parseScheduleTabularData(await response.text(), 'string', maps, existingShifts)
 }
 
 type WorkbookSheet = {

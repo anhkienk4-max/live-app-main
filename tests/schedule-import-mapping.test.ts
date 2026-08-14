@@ -1,0 +1,151 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import * as XLSX from 'xlsx'
+import {
+  type EntityMaps,
+  parseScheduleTabularData,
+} from '../lib/utils/excelUtils.ts'
+
+const maps: EntityMaps = {
+  brands: new Map([['Mars Wrigley', 'brand-1']]),
+  platforms: new Map([['Shopee Live', 'platform-1'], ['TikTok Shop', 'platform-2']]),
+  campaigns: new Map([['World Cup', 'campaign-1']]),
+}
+
+const englishHeader = [
+  'Date',
+  'Start time',
+  'End time',
+  'Brand',
+  'Platform',
+  'Campaign',
+  'Shift name',
+  'Studio',
+  'Required Host count',
+  'Required Support count',
+  'Required Technical count',
+]
+
+const scheduleRow = [
+  '2026-09-01',
+  '09:00',
+  '13:00',
+  'Mars Wrigley',
+  'Shopee Live',
+  'World Cup',
+  'Morning shift',
+  'Studio A',
+  1,
+  1,
+  1,
+]
+
+const csvRow = (values: unknown[]) => values.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')
+
+test('schedule import detects a normal row-one header', () => {
+  const result = parseScheduleTabularData(
+    `${csvRow(englishHeader)}\n${csvRow(scheduleRow)}`,
+    'string',
+    maps,
+  )
+
+  assert.equal(result.validRows, 1)
+  assert.equal(result.invalidRows, 0)
+  assert.equal(result.validShifts[0].title, 'Morning shift')
+  assert.equal(result.validShifts[0].brand_id, 'brand-1')
+})
+
+test('Excel import detects the real header after title and blank rows', () => {
+  const workbook = XLSX.utils.book_new()
+  const worksheet = XLSX.utils.aoa_to_sheet([
+    ['MARS WRIGLEY LIVESTREAM SCHEDULE'],
+    [],
+    ['Prepared for operations'],
+    englishHeader,
+    scheduleRow,
+  ])
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Schedule')
+  const bytes = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+  const result = parseScheduleTabularData(bytes, 'array', maps)
+
+  assert.equal(result.validRows, 1)
+  assert.equal(result.rows[0].row.row_number, 5)
+  assert.equal(result.validShifts[0].platform_id, 'platform-1')
+  assert.equal(result.validShifts[0].studio, 'Studio A')
+})
+
+test('Vietnamese headers and Khung giờ map to the canonical schedule fields', () => {
+  const csv = [
+    ['Ngày', 'Khung giờ', 'Thương hiệu', 'Nền tảng', 'Chiến dịch', 'Tên ca', 'Studio', 'Số host bắt buộc', 'Số support bắt buộc', 'Số technical bắt buộc'],
+    ['02/09/2026', '19:30 - 23:30', 'Mars Wrigley', 'TikTok Shop', 'World Cup', 'Ca tối', 'Studio B', 2, 1, 1],
+  ].map(csvRow).join('\n')
+  const result = parseScheduleTabularData(csv, 'string', maps)
+
+  assert.equal(result.validRows, 1)
+  assert.equal(result.validShifts[0].date, '2026-09-02')
+  assert.equal(result.validShifts[0].start_time, '19:30')
+  assert.equal(result.validShifts[0].end_time, '23:30')
+  assert.equal(result.validShifts[0].title, 'Ca tối')
+  assert.equal(result.validShifts[0].required_host_count, 2)
+})
+
+test('Google Sheets-shaped CSV detects a later BOM-prefixed header', () => {
+  const csv = [
+    '\uFEFFLỊCH LIVESTREAM THÁNG 9',
+    '',
+    csvRow(englishHeader),
+    csvRow(scheduleRow),
+  ].join('\n')
+  const result = parseScheduleTabularData(csv, 'string', maps)
+
+  assert.equal(result.validRows, 1)
+  assert.equal(result.rows[0].row.row_number, 4)
+  assert.equal(result.validShifts[0].campaign_id, 'campaign-1')
+})
+
+test('explicit zero staffing is preserved while blank staffing defaults to one', () => {
+  const zeroRow = [...scheduleRow]
+  zeroRow[6] = 'Zero staffing'
+  zeroRow[8] = 0
+  zeroRow[9] = '0'
+  zeroRow[10] = 0
+  const blankRow = [...scheduleRow]
+  blankRow[6] = 'Blank staffing'
+  blankRow[8] = ''
+  blankRow[9] = '   '
+  blankRow[10] = null
+  const csv = [englishHeader, zeroRow, blankRow].map(csvRow).join('\n')
+  const result = parseScheduleTabularData(csv, 'string', maps)
+
+  assert.equal(result.validRows, 2)
+  assert.deepEqual(
+    [
+      result.validShifts[0].required_host_count,
+      result.validShifts[0].required_support_count,
+      result.validShifts[0].required_technical_count,
+    ],
+    [0, 0, 0],
+  )
+  assert.deepEqual(
+    [
+      result.validShifts[1].required_host_count,
+      result.validShifts[1].required_support_count,
+      result.validShifts[1].required_technical_count,
+    ],
+    [1, 1, 1],
+  )
+})
+
+test('an insufficient header returns one clear header error instead of row errors', () => {
+  const result = parseScheduleTabularData(
+    'Platform,Random column\nShopee Live,Something\nTikTok Shop,Something else',
+    'string',
+    maps,
+  )
+
+  assert.equal(result.success, false)
+  assert.equal(result.rows.length, 0)
+  assert.equal(result.errors.length, 1)
+  assert.equal(result.errors[0].field, 'header')
+  assert.match(result.errors[0].message, /Date\/Ngày/)
+})

@@ -57,7 +57,7 @@ export function ScheduleImportStaffingInput({
     <Input
       className="w-20"
       data-testid={`schedule-preview-${field}`}
-      min="1"
+      min="0"
       onChange={event => onChange(event.target.value)}
       step="1"
       type="number"

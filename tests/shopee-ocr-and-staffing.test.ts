@@ -268,7 +268,7 @@ test('partial exact Shopee OCR creates only sales, orders, and PCU candidates', 
   assert.equal(review.metrics.buyers, undefined)
 })
 
-test('host missing or blank defaults to one and invalid host values fail validation', () => {
+test('host missing or blank defaults to one, explicit zero is preserved, and invalid values fail validation', () => {
   const rows = [
     { Date: '2026-07-20', 'Start time': '09:00', 'End time': '13:00', Brand: 'TechGear Pro', Platform: 'Shopee Live', 'Shift title': 'A', Notes: '' },
     { Date: '2026-07-20', 'Start time': '09:00', 'End time': '13:00', Brand: 'TechGear Pro', Platform: 'Shopee Live', 'Shift title': 'B', 'Required Host count': '' },
@@ -290,7 +290,7 @@ test('host missing or blank defaults to one and invalid host values fail validat
   const previewFields = result.rows.map(row => row.row.required_host_count)
   assert.deepEqual(previewFields[0], 1)
   assert.deepEqual(previewFields[1], 1)
-  assert.deepEqual(previewFields[2], 1)
+  assert.deepEqual(previewFields[2], 0)
   assert.deepEqual(previewFields[3], 1)
   assert.deepEqual(previewFields[4], 2)
   assert.equal(result.rows[5].row.errors.some(message => message.includes('Required Host count')), true)
@@ -325,15 +325,18 @@ test('Schedule Import rendered Host binding is the canonical value before valida
     onChange: () => undefined,
   }))
   assert.match(markup, /data-testid="schedule-preview-required_host_count"/)
+  assert.match(markup, /min="0"/)
   assert.match(markup, /value="1"/)
   assert.doesNotMatch(markup, /value=""/)
   assert.equal(getScheduleImportSourceField('required_host_count'), 'required_host_count')
 })
 
-test('staffing preview normalization defaults empty values and rejects malformed values', () => {
-  for (const value of [undefined, null, Number.NaN, '', '   ', 0, '0']) {
+test('staffing preview normalization defaults empty values, preserves zero, and rejects malformed values', () => {
+  for (const value of [undefined, null, Number.NaN, '', '   ']) {
     assert.equal(normalizeStaffingCountForPreview(value), 1)
   }
+  assert.equal(normalizeStaffingCountForPreview(0), 0)
+  assert.equal(normalizeStaffingCountForPreview('0'), 0)
   assert.equal(normalizeStaffingCountForPreview(2), 2)
   assert.equal(normalizeStaffingCountForPreview('2'), 2)
   assert.equal(normalizeStaffingCountForPreview(-1), '-1')
@@ -388,7 +391,7 @@ test('mixed spreadsheet rows canonicalize Host before state/render/persistence a
 
   assert.deepEqual(
     result.rows.slice(0, 10).map(preview => preview.row.required_host_count),
-    [1, 1, 1, 1, 1, 1, 2, 1, 1, 2],
+    [1, 1, 1, 0, 0, 1, 2, 1, 1, 2],
   )
   assert.equal(result.rows[10].row.errors.some(message => message.includes('Required Host count')), true)
   assert.equal(result.rows[11].row.errors.some(message => message.includes('Required Host count')), true)

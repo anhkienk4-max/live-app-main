@@ -1,6 +1,6 @@
 import type { ScheduleImportRow } from '@/lib/types/database.types'
 import type { ImportResult } from '@/lib/utils/excelUtils'
-import { DEFAULT_SHIFT_STAFFING, normalizeCapacity } from '@/lib/utils/shiftUtils'
+import { DEFAULT_SHIFT_STAFFING, MAX_SHIFT_CAPACITY } from '@/lib/utils/shiftUtils'
 
 export type PreviewStaffingField = 'required_host_count' | 'required_support_count' | 'required_technical_count'
 export type PreviewStaffingValues = Record<PreviewStaffingField, number | string>
@@ -96,6 +96,13 @@ const normalizeSourceKey = (value: string) => value
   .trim()
   .toLowerCase()
 
+export function getCanonicalStaffingField(sourceKey: string): PreviewStaffingField | undefined {
+  const normalizedKey = normalizeSourceKey(sourceKey)
+  return previewStaffingFields.find(field =>
+    staffingSourceAliases[field].some(alias => normalizeSourceKey(alias) === normalizedKey),
+  )
+}
+
 function staffingSourceValue(
   sourceRow: Record<string, unknown>,
   field: PreviewStaffingField,
@@ -123,8 +130,7 @@ export function normalizeStaffingCountForPreview(rawValue: unknown): number | st
   if (typeof rawValue === 'number') {
     if (Number.isNaN(rawValue)) return DEFAULT_SHIFT_STAFFING.required_host_count
     if (!Number.isFinite(rawValue)) return String(rawValue)
-    if (rawValue === 0) return DEFAULT_SHIFT_STAFFING.required_host_count
-    return Number.isInteger(rawValue) && rawValue > 0 ? rawValue : String(rawValue)
+    return Number.isInteger(rawValue) && rawValue >= 0 ? rawValue : String(rawValue)
   }
 
   const text = String(rawValue).trim()
@@ -134,7 +140,6 @@ export function normalizeStaffingCountForPreview(rawValue: unknown): number | st
 
   const parsed = Number(text)
   if (!Number.isFinite(parsed) || Number.isNaN(parsed)) return text
-  if (parsed === 0) return DEFAULT_SHIFT_STAFFING.required_host_count
   if (!Number.isInteger(parsed) || parsed < 0) return text
   return parsed
 }
@@ -154,7 +159,16 @@ export function validateStaffingValues(
   values: PreviewStaffingValues,
 ): ValidatedStaffingValues {
   return Object.fromEntries(
-    previewStaffingFields.map(field => [field, normalizeCapacity(values[field])]),
+    previewStaffingFields.map(field => {
+      const value = values[field]
+      const parsed = typeof value === 'number' ? value : Number(String(value).trim())
+      return [
+        field,
+        Number.isFinite(parsed) && Number.isInteger(parsed) && parsed >= 0 && parsed <= MAX_SHIFT_CAPACITY
+          ? parsed
+          : null,
+      ]
+    }),
   ) as ValidatedStaffingValues
 }
 
