@@ -230,6 +230,7 @@ function updatePayload(data: Partial<Shift>): Record<string, unknown> {
 
 export interface SupabaseShiftRepository {
   getAll(includeDeleted?: boolean): Promise<Shift[]>
+  getArchivedShifts(): Promise<Shift[]>
   getById(id: string): Promise<Shift | null>
   getByDate(date: string): Promise<Shift[]>
   getByDateRange(startDate: string, endDate: string): Promise<Shift[]>
@@ -255,6 +256,14 @@ export function createSupabaseShiftRepository(
       if (!includeDeleted) query = query.is('deleted_at', null).is('archived_at', null)
       const result = await query
       return optionalRows('shift read', result).map(row => shiftFromRow(row as unknown as ShiftRow))
+    },
+
+    async getArchivedShifts() {
+      const result = await selectShifts()
+        .not('deleted_at', 'is', null)
+        .order('deleted_at', { ascending: false })
+      return optionalRows('shift archived read', result)
+        .map(row => shiftFromRow(row as unknown as ShiftRow))
     },
 
     async getById(id) {
@@ -362,24 +371,29 @@ export function createSupabaseShiftRepository(
     },
 
     async remove(id, reason) {
-      // The P1C migration has no shift delete/soft-delete RPC and update_shift
-      // rejects lifecycle fields (deleted_at/deleted_by/deletion_reason). Mock
-      // mode performs a true lifecycle soft-delete; silently downgrading to a
-      // status cancel would change semantics, so this is fail-closed until a
-      // lifecycle RPC exists.
-      throw new ShiftRequestError(
-        'Shift removal is not available during the P1C-B2B-A cutover: no lifecycle delete RPC exists yet.',
-        'SHIFT_LIFECYCLE_UNAVAILABLE',
-      )
+      const result = await client.rpc('soft_delete_shift', {
+        p_shift_id: id,
+        p_reason: reason ?? null,
+      }).single()
+      if (result.error) throw requestError('shift soft delete', result.error)
+      const shift = shiftFromRow(requiredRow('shift soft delete', result) as unknown as ShiftRow)
+      return {
+        entity_type: 'shift',
+        entity_id: shift.id,
+        entity_name: shift.title || `${shift.date} ${shift.start_time}-${shift.end_time}`,
+        action: 'soft_delete',
+        consequence: 'The shift has been cancelled and hidden from operational lists. Related history remains available.',
+        reversible: true,
+        related_records: [],
+      }
     },
 
     async restore(id) {
-      // Same lifecycle gap as remove: no restore RPC and update_shift cannot
-      // clear deleted_at/deleted_by/deletion_reason.
-      throw new ShiftRequestError(
-        'Shift restore is not available during the P1C-B2B-A cutover: no lifecycle restore RPC exists yet.',
-        'SHIFT_LIFECYCLE_UNAVAILABLE',
-      )
+      const result = await client.rpc('restore_shift', {
+        p_shift_id: id,
+      }).single()
+      if (result.error) throw requestError('shift restore', result.error)
+      return result.data ? shiftFromRow(result.data as unknown as ShiftRow) : null
     },
   }
 }

@@ -16,7 +16,7 @@ import type { Shift, User } from '../lib/types/database.types.ts'
 
 type Row = Record<string, unknown>
 type TableName = 'shifts' | 'shift_registrations' | 'schedule_imports'
-type RpcName = 'create_shift' | 'update_shift' | 'set_shift_registration_lock'
+type RpcName = 'create_shift' | 'update_shift' | 'set_shift_registration_lock' | 'soft_delete_shift' | 'restore_shift'
 
 interface FakeDatabase {
   shifts: Row[]
@@ -69,8 +69,12 @@ class FakeQuery {
     return this
   }
 
-  not(column: string, operator: string, value: string) {
-    const values = value.replace(/[()"]/g, '').split(',').map(v => v.trim())
+  not(column: string, operator: string, value: string | null) {
+    if (operator === 'is' && value === null) {
+      this.filters.push(row => (row[column] ?? null) !== null)
+      return this
+    }
+    const values = String(value).replace(/[()"]/g, '').split(',').map(v => v.trim())
     this.filters.push(row => !values.includes(String(row[column])))
     return this
   }
@@ -191,6 +195,48 @@ function fakeClient(database: FakeDatabase, options: FakeClientOptions = {}) {
         ...database.shifts[index],
         registration_locked: Boolean(args.p_locked),
         updated_at: '2026-08-14T12:02:00.000Z',
+      }
+      database.shifts[index] = updated
+      return { ...updated }
+    },
+    soft_delete_shift(args) {
+      const id = String(args.p_shift_id ?? '')
+      const index = database.shifts.findIndex(row => row.id === id)
+      if (index === -1) {
+        throw { code: 'P0001', message: 'SHIFT_NOT_FOUND' }
+      }
+      if (database.shifts[index].deleted_at) {
+        throw { code: 'P0001', message: 'SHIFT_ALREADY_DELETED' }
+      }
+      const updated = {
+        ...database.shifts[index],
+        status: 'cancelled',
+        deleted_at: '2026-08-14T13:00:00.000Z',
+        deleted_by: '1',
+        deletion_reason: String(args.p_reason ?? ''),
+        registration_locked: true,
+        updated_at: '2026-08-14T13:00:00.000Z',
+      }
+      database.shifts[index] = updated
+      return { ...updated }
+    },
+    restore_shift(args) {
+      const id = String(args.p_shift_id ?? '')
+      const index = database.shifts.findIndex(row => row.id === id)
+      if (index === -1) {
+        throw { code: 'P0001', message: 'SHIFT_NOT_FOUND' }
+      }
+      if (!database.shifts[index].deleted_at) {
+        throw { code: 'P0001', message: 'SHIFT_NOT_DELETED' }
+      }
+      const updated = {
+        ...database.shifts[index],
+        status: 'scheduled',
+        deleted_at: null,
+        deleted_by: null,
+        deletion_reason: null,
+        registration_locked: false,
+        updated_at: '2026-08-14T13:01:00.000Z',
       }
       database.shifts[index] = updated
       return { ...updated }
@@ -460,24 +506,59 @@ test('Supabase mode denies non-admin shift deletion', async () => {
   })
 })
 
-test('Supabase mode remove/restore are fail-closed until a lifecycle RPC exists', async () => {
+test('Supabase mode soft delete persists lifecycle fields and hides from reads; restore clears them', async () => {
   await withEnvironment(async () => {
     setAuthMode('supabase')
     const db = database()
     setSupabaseShiftRepositoryForTests(createSupabaseShiftRepository(fakeClient(db)))
     currentUserService.bindAuthenticatedUser(adminUser())
 
+    const impact = await shiftService.remove('shift-1', '1', 'test removal')
+    assert.equal(impact?.action, 'soft_delete')
+    assert.equal(impact?.reversible, true)
+    const deletedRow = db.shifts.find(row => row.id === 'shift-1')!
+    assert.equal(deletedRow.status, 'cancelled')
+    assert.ok(deletedRow.deleted_at)
+    assert.equal(deletedRow.deleted_by, '1')
+    assert.equal(deletedRow.deletion_reason, 'test removal')
+    assert.equal(deletedRow.registration_locked, true)
+
+    // Deleted shift is absent from normal reads.
+    const all = await shiftService.getAll()
+    assert.equal(all.some(shift => shift.id === 'shift-1'), false)
+
+    // Admin archived view includes it.
+    const archived = await (await import('../lib/services/dataService.ts')).lifecycleService.getArchived('1')
+    assert.ok(archived.some(item => item.entity_type === 'shift' && item.entity_id === 'shift-1'))
+
+    // Restore clears lifecycle fields.
+    const restored = await shiftService.restore('shift-1', '1', 'restored in error')
+    assert.equal(restored?.status, 'scheduled')
+    assert.equal(restored?.deleted_at, undefined)
+    assert.equal(restored?.registration_locked, false)
+    assert.equal(db.shifts.find(row => row.id === 'shift-1')?.deleted_at, null)
+    assert.ok((await shiftService.getAll()).some(shift => shift.id === 'shift-1'))
+  })
+})
+
+test('Supabase mode invalid restore and double delete fail closed', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    setSupabaseShiftRepositoryForTests(createSupabaseShiftRepository(fakeClient(db)))
+    currentUserService.bindAuthenticatedUser(adminUser())
+
+    // Restoring a non-deleted shift fails closed.
     await assert.rejects(
-      shiftService.remove('shift-1', '1', 'test'),
-      (error: unknown) => error instanceof ShiftRequestError
-        && error.code === 'SHIFT_LIFECYCLE_UNAVAILABLE',
+      shiftService.restore('shift-1', '1', 'no-op'),
+      /SHIFT_NOT_DELETED|shift restore/i,
     )
+    // Soft-deleting twice fails closed.
+    await shiftService.remove('shift-1', '1', 'first')
     await assert.rejects(
-      shiftService.restore('shift-1', '1', 'test'),
-      (error: unknown) => error instanceof ShiftRequestError
-        && error.code === 'SHIFT_LIFECYCLE_UNAVAILABLE',
+      shiftService.remove('shift-1', '1', 'second'),
+      /SHIFT_ALREADY_DELETED|shift soft delete/i,
     )
-    assert.ok(db.shifts.some(row => row.id === 'shift-1'))
   })
 })
 

@@ -2438,8 +2438,11 @@ export interface ArchivedEntitySummary {
 export const lifecycleService = {
   async getArchived(actorId: string): Promise<ArchivedEntitySummary[]> {
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can view archived data.')
+    const archivedShifts = getAuthMode() === 'supabase'
+      ? (await getSupabaseShiftRepository().getArchivedShifts())
+      : shifts.filter(item => item.deleted_at)
     const summaries: ArchivedEntitySummary[] = [
-      ...shifts.filter(item => item.deleted_at).map(item => ({ entity_type: 'shift' as const, entity_id: item.id, entity_name: item.title || `${item.date} ${item.start_time}`, archived_at: item.deleted_at!, archived_by: item.deleted_by, reason: item.deletion_reason })),
+      ...archivedShifts.map(item => ({ entity_type: 'shift' as const, entity_id: item.id, entity_name: item.title || `${item.date} ${item.start_time}`, archived_at: item.deleted_at!, archived_by: item.deleted_by, reason: item.deletion_reason })),
       ...reports.filter(item => item.deleted_at || item.archived_at).map(item => ({ entity_type: 'report' as const, entity_id: item.id, entity_name: `Report · ${item.shift_id}`, archived_at: item.deleted_at || item.archived_at!, archived_by: item.deleted_by || item.archived_by, reason: item.deletion_reason })),
       ...campaigns.filter(item => item.deleted_at || item.archived_at).map(item => ({ entity_type: 'campaign' as const, entity_id: item.id, entity_name: item.name, archived_at: item.deleted_at || item.archived_at!, archived_by: item.deleted_by || item.archived_by, reason: item.deletion_reason })),
       ...brands.filter(item => item.deleted_at || item.archived_at).map(item => ({ entity_type: 'brand' as const, entity_id: item.id, entity_name: item.name, archived_at: item.deleted_at || item.archived_at!, archived_by: item.deleted_by || item.archived_by, reason: item.deletion_reason })),
