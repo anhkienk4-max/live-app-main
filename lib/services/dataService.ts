@@ -198,6 +198,12 @@ const requireSupabaseAdmin = (actorId = currentUserService.getId()) => {
 const rejectSupabaseBusinessUserWrite = (): never => {
   throw new Error('Business user writes are not available during the P1C-B2A read-only cutover.')
 }
+const rejectSupabaseSwapWrite = (): never => {
+  throw new Error('Shift Swap is temporarily unavailable while shared persistence is being upgraded.')
+}
+const rejectSupabaseReportWrite = (): never => {
+  throw new Error('Shift Reports are temporarily unavailable while shared persistence is being upgraded.')
+}
 const audit = (
   module: AuditModule,
   action: AuditAction,
@@ -1742,6 +1748,7 @@ export const reportService = {
   },
 
   async create(data: Omit<Report, 'id' | 'created_at' | 'updated_at'>): Promise<Report> {
+    if (getAuthMode() === 'supabase') return rejectSupabaseReportWrite()
     const shift = shifts.find(candidate => candidate.id === data.shift_id)
     if (!shift || !['preparing', 'live', 'paused', 'completed'].includes(shift.status)) {
       throw new Error('A Final Report draft is available only after the live workflow has started.')
@@ -1786,8 +1793,17 @@ export const reportService = {
     reason?: string,
     event: ReportRevision['event'] = 'save',
   ): Promise<Report | null> {
+    if (getAuthMode() === 'supabase') return rejectSupabaseReportWrite()
     const index = reports.findIndex(r => r.id === id)
     if (index === -1) return Promise.resolve(null)
+    const actor = requiredActorFor(actorId)
+    const canReview = hasPermission(actor, 'reports.review')
+    if (!canReview && reports[index].submitted_by !== actorId) {
+      throw new Error('Only the report submitter or a Leader/Admin reviewer can update this report.')
+    }
+    if (!canReview && ['confirm', 'reopen', 'archive'].includes(event)) {
+      throw new Error('Only a Leader or Admin can change the report review state.')
+    }
     if (reports[index].status === 'confirmed' && event === 'save') {
       throw new Error('Reopen the confirmed report before editing it.')
     }
@@ -1799,6 +1815,7 @@ export const reportService = {
   },
 
   async confirmMetrics(id: string, data: Partial<Report>, review: OcrReviewData, confirmedBy = '1'): Promise<Report | null> {
+    if (getAuthMode() === 'supabase') return rejectSupabaseReportWrite()
     const reviewer = users.find(user => user.id === confirmedBy)
     if (!reviewer || !['leader', 'admin'].includes(reviewer.system_permission || reviewer.role)) {
       throw new Error('Only a Leader or Admin can confirm report metrics.')
@@ -1852,6 +1869,7 @@ export const reportService = {
   },
 
   async reopen(id: string, actorId: string, reason: string): Promise<Report | null> {
+    if (getAuthMode() === 'supabase') return rejectSupabaseReportWrite()
     const permission = resolveSystemPermission(actorFor(actorId))
     if (permission !== 'admin' && permission !== 'leader') throw new Error('Only a Leader or Admin can reopen reports.')
     if (!reason.trim()) throw new Error('A reason is required to reopen a confirmed report.')
@@ -1872,6 +1890,7 @@ export const reportService = {
   },
 
   async resetOcr(id: string, actorId: string, reason: string): Promise<Report | null> {
+    if (getAuthMode() === 'supabase') return rejectSupabaseReportWrite()
     const index = reports.findIndex(report => report.id === id)
     if (index === -1) return null
     const actor = actorFor(actorId)
@@ -1887,6 +1906,7 @@ export const reportService = {
   },
 
   async recordOcrRun(id: string, actorId: string, review: OcrReviewData, rerun = false): Promise<Report | null> {
+    if (getAuthMode() === 'supabase') return rejectSupabaseReportWrite()
     const index = reports.findIndex(report => report.id === id)
     if (index === -1) return null
     const before = { ...reports[index] }
@@ -1897,6 +1917,7 @@ export const reportService = {
   },
 
   async removeDraft(id: string, actorId: string, reason: string): Promise<boolean> {
+    if (getAuthMode() === 'supabase') return rejectSupabaseReportWrite()
     const index = reports.findIndex(report => report.id === id)
     if (index === -1) return false
     const report = reports[index]
@@ -1913,6 +1934,7 @@ export const reportService = {
   },
 
   async archive(id: string, actorId: string, reason: string): Promise<Report | null> {
+    if (getAuthMode() === 'supabase') return rejectSupabaseReportWrite()
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can archive reports.')
     const index = reports.findIndex(report => report.id === id)
     if (index === -1) return null
@@ -1924,6 +1946,7 @@ export const reportService = {
   },
 
   async restore(id: string, actorId: string, reason: string): Promise<Report | null> {
+    if (getAuthMode() === 'supabase') return rejectSupabaseReportWrite()
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can restore reports.')
     const index = reports.findIndex(report => report.id === id)
     if (index === -1) return null
@@ -2291,6 +2314,7 @@ export const swapRequestService = {
   async create(
     data: Omit<SwapRequest, 'id' | 'status' | 'created_at' | 'updated_at'> & { status?: SwapRequest['status'] },
   ): Promise<SwapRequest> {
+    if (getAuthMode() === 'supabase') return rejectSupabaseSwapWrite()
     const shift = shifts.find(candidate => candidate.id === data.shift_id)
     const role: OperationalRole = data.operational_role ||
       (data.new_support_id ? 'support' : data.new_technical_id ? 'technical' : 'host')
@@ -2323,6 +2347,7 @@ export const swapRequestService = {
   },
 
   async approve(id: string, approverId: string): Promise<SwapRequest | null> {
+    if (getAuthMode() === 'supabase') return rejectSupabaseSwapWrite()
     ensureLeaderOrAdmin(approverId)
     const index = swapRequests.findIndex(sr => sr.id === id)
     if (index === -1) return Promise.resolve(null)
@@ -2379,6 +2404,7 @@ export const swapRequestService = {
   },
 
   async reject(id: string, approverId: string): Promise<SwapRequest | null> {
+    if (getAuthMode() === 'supabase') return rejectSupabaseSwapWrite()
     ensureLeaderOrAdmin(approverId)
     const index = swapRequests.findIndex(sr => sr.id === id)
     if (index === -1) return Promise.resolve(null)
@@ -2399,6 +2425,7 @@ export const swapRequestService = {
   },
 
   async cancel(id: string, actorId: string, reason: string): Promise<SwapRequest | null> {
+    if (getAuthMode() === 'supabase') return rejectSupabaseSwapWrite()
     const index = swapRequests.findIndex(request => request.id === id)
     if (index === -1) return null
     const request = swapRequests[index]

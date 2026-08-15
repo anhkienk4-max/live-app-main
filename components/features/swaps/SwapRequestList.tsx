@@ -15,6 +15,7 @@ import {
 } from '@/lib/services/dataService'
 import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Shift, SwapRequest, User } from '@/lib/types/database.types'
 import { hasPermission } from '@/lib/permissions'
+import { getAuthMode } from '@/lib/auth/authMode'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
 import { downloadSwapRequestTemplate, exportSwapsToExcel } from '@/lib/utils/excelUtils'
@@ -122,6 +123,10 @@ export function SwapRequestList() {
       toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
       throw error
     }
+  }
+
+  if (getAuthMode() === 'supabase') {
+    return <Card><CardContent className="py-12 text-center"><p className="text-sm font-medium text-muted-foreground">Shift Swap is temporarily unavailable while shared persistence is being upgraded.</p></CardContent></Card>
   }
 
   if (loading || userLoading) return <div className="py-12 text-center">{t('loading')}</div>

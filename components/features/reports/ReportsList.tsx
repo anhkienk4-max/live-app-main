@@ -15,6 +15,7 @@ import {
 } from '@/lib/services/dataService'
 import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Report, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import { hasPermission } from '@/lib/permissions'
+import { getAuthMode } from '@/lib/auth/authMode'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
@@ -213,6 +214,10 @@ export function ReportsList() {
     const images = (await Promise.all(filteredReports.map(report => reportImageService.getByReport(report.id)))).flat()
     exportReportImageMetadataToExcel(images, filteredReports)
     toast({ title: t('success'), description: t('exportImageMetadata'), variant: 'success' })
+  }
+
+  if (getAuthMode() === 'supabase') {
+    return <Card><CardContent className="py-12 text-center"><p className="text-sm font-medium text-muted-foreground">Shift Reports are temporarily unavailable while shared persistence is being upgraded.</p></CardContent></Card>
   }
 
   if (loading || userLoading) return <div className="py-12 text-center">{t('loading')}</div>
