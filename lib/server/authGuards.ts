@@ -1,6 +1,6 @@
 import type { SystemPermission } from '@/lib/types/database.types'
 import { createAuthIdentity, mapAuthIdentityToBusinessUser } from '@/lib/auth/authIdentity'
-import { mockUsers } from '@/lib/services/mockData'
+import { createSupabaseMasterDataRepository } from '@/lib/services/supabaseMasterDataService'
 import {
   permissionMatrix,
   type Permission,
@@ -38,23 +38,33 @@ export async function resolveServerUser(
     return null
   }
 
-  const { createClient } = await import('@/lib/supabase/server')
-  const supabase = await createClient()
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser()
+  try {
+    const { createClient } = await import('@/lib/supabase/server')
+    const supabase = await createClient()
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser()
 
-  if (error || !user) return null
+    if (error || !user) return null
 
-  const identity = createAuthIdentity(user)
-  if (!identity || !mapAuthIdentityToBusinessUser(identity, mockUsers)) return null
+    const identity = createAuthIdentity(user)
+    if (!identity) return null
+    const persistedBusinessUser = await createSupabaseMasterDataRepository(supabase)
+      .businessUsers.getByAuthIdentity(identity)
+    if (
+      !persistedBusinessUser
+      || !mapAuthIdentityToBusinessUser(identity, [persistedBusinessUser])
+    ) return null
 
-  return {
-    id: identity.auth_user_id,
-    email: identity.email,
-    systemPermission: identity.system_permission,
-    businessUserId: identity.business_user_id,
+    return {
+      id: identity.auth_user_id,
+      email: identity.email,
+      systemPermission: identity.system_permission,
+      businessUserId: identity.business_user_id,
+    }
+  } catch {
+    return null
   }
 }
 

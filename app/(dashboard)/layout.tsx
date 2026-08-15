@@ -11,7 +11,7 @@ import {
   type AuthIdentity,
 } from '@/lib/auth/authIdentity'
 import { getVerifiedUser } from '@/lib/auth/session'
-import { mockUsers } from '@/lib/services/mockData'
+import { createSupabaseMasterDataRepository } from '@/lib/services/supabaseMasterDataService'
 import { createClient } from '@/lib/supabase/server'
 import type { User } from '@/lib/types/database.types'
 
@@ -46,23 +46,33 @@ export default async function DashboardLayout({
       redirect('/login?reason=auth_unavailable')
     }
 
-    const supabaseUser = await (async () => {
+    const authenticatedSession = await (async () => {
       try {
         const supabase = await createClient()
-        return getVerifiedUser(() => supabase.auth.getUser())
+        const verifiedUser = await getVerifiedUser(() => supabase.auth.getUser())
+        return verifiedUser ? { supabase, verifiedUser } : null
       } catch {
         return null
       }
     })()
 
-    if (!supabaseUser) {
+    if (!authenticatedSession) {
       redirect('/login?reason=session_expired')
     }
 
-    identity = createAuthIdentity(supabaseUser)
-    businessUser = identity
-      ? mapAuthIdentityToBusinessUser(identity, mockUsers)
-      : null
+    identity = createAuthIdentity(authenticatedSession.verifiedUser)
+    if (identity) {
+      try {
+        const persistedBusinessUser = await createSupabaseMasterDataRepository(
+          authenticatedSession.supabase,
+        ).businessUsers.getByAuthIdentity(identity)
+        businessUser = persistedBusinessUser
+          ? mapAuthIdentityToBusinessUser(identity, [persistedBusinessUser])
+          : null
+      } catch {
+        businessUser = null
+      }
+    }
     if (!identity || !businessUser) {
       redirect('/login?reason=identity_unavailable')
     }

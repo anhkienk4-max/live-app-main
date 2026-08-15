@@ -28,11 +28,12 @@ import {
 } from '@/lib/types/database.types'
 import { buildDashboardOcrReviewFromRecognition, parseDashboardOcrText } from '@/lib/utils/ocrMetrics'
 import { recognizeDashboardImage } from '@/lib/services/imageOcrService'
-import { DEFAULT_REQUIRED_STAFF_COUNT, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
+import { DEFAULT_REQUIRED_STAFF_COUNT, detectConflicts, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
 import { toCanonicalScheduleImportPreviewRow } from '@/lib/utils/scheduleImportPreview'
 import { recordAuditEvent } from '@/lib/services/auditService'
-import { resolveSystemPermission } from '@/lib/permissions'
+import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { getAuthMode } from '@/lib/auth/authMode'
+import { getSupabaseMasterDataRepository } from '@/lib/services/supabaseMasterDataService'
 import {
   liveReportImageCategories,
   maximumLiveReportImages,
@@ -74,12 +75,17 @@ let authenticatedBusinessUser: User | null = null
 const currentBusinessUserFor = (actorId: string): User | null => {
   if (getAuthMode() === 'supabase') {
     if (!authenticatedBusinessUser || authenticatedBusinessUser.id !== actorId) return null
-    const latest = users.find(user => user.id === actorId)
-    if (!latest || latest.status !== 'active' || latest.deleted_at || latest.archived_at) return null
+    if (
+      authenticatedBusinessUser.status !== 'active'
+      || authenticatedBusinessUser.account_status !== 'active'
+      || authenticatedBusinessUser.deleted_at
+      || authenticatedBusinessUser.archived_at
+    ) return null
     return {
-      ...latest,
-      role: authenticatedBusinessUser.role,
-      system_permission: authenticatedBusinessUser.system_permission,
+      ...authenticatedBusinessUser,
+      operational_roles: authenticatedBusinessUser.operational_roles
+        ? [...authenticatedBusinessUser.operational_roles]
+        : [],
     }
   }
   return users.find(user => user.id === actorId) || null
@@ -174,6 +180,21 @@ const actorFor = (actorId = currentUserService.getId()) => {
   if (actor) return actor
   if (getAuthMode() === 'mock') return users[0]
   throw new Error('The current user could not be verified.')
+}
+const requiredActorFor = (actorId: string) => {
+  const actor = currentBusinessUserFor(actorId)
+  if (!actor) throw new Error('The current user could not be verified.')
+  return actor
+}
+const requireSupabaseAdmin = (actorId = currentUserService.getId()) => {
+  const actor = requiredActorFor(actorId)
+  if (resolveSystemPermission(actor) !== 'admin') {
+    throw new Error('Only Admin can manage shared master data.')
+  }
+  return actor
+}
+const rejectSupabaseBusinessUserWrite = (): never => {
+  throw new Error('Business user writes are not available during the P1C-B2A read-only cutover.')
 }
 const audit = (
   module: AuditModule,
@@ -337,19 +358,29 @@ const writeSessionSetting = (scope: string, value: unknown) => {
 // User Service
 export const userService = {
   async getAll(): Promise<User[]> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseMasterDataRepository().businessUsers.getAll()
+    }
     return Promise.resolve(users.filter(user => !user.deleted_at))
   },
 
   async getAllIncludingDeleted(actorId: string): Promise<User[]> {
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can view deleted staff.')
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseMasterDataRepository().businessUsers.getAll(true)
+    }
     return Promise.resolve([...users])
   },
 
   async getById(id: string): Promise<User | null> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseMasterDataRepository().businessUsers.getById(id)
+    }
     return Promise.resolve(users.find(u => u.id === id) || null)
   },
 
   async create(data: Omit<User, 'id' | 'created_at' | 'updated_at'>): Promise<User> {
+    if (getAuthMode() === 'supabase') return rejectSupabaseBusinessUserWrite()
     const newUser: User = {
       ...data,
       id: generateId(),
@@ -362,17 +393,33 @@ export const userService = {
     return Promise.resolve(newUser)
   },
 
-  async update(id: string, data: Partial<User>): Promise<User | null> {
+  async update(
+    id: string,
+    data: Partial<User>,
+    actorId = currentUserService.getId(),
+  ): Promise<User | null> {
+    if (getAuthMode() === 'supabase') return rejectSupabaseBusinessUserWrite()
     const index = users.findIndex(u => u.id === id)
     if (index === -1) return Promise.resolve(null)
+    const actor = users.find(user => user.id === actorId)
+    if (!actor) throw new Error('The current user could not be verified.')
+    const ownProfileFields = new Set<keyof User>(['full_name', 'phone', 'department', 'avatar_url', 'avatar_storage_path'])
+    const changedFields = Object.entries(data)
+      .filter(([key, value]) => value !== undefined && users[index][key as keyof User] !== value)
+      .map(([key]) => key as keyof User)
+    const isOwnProfileUpdate = id === actorId && changedFields.every(field => ownProfileFields.has(field))
+    if (!isOwnProfileUpdate && !hasPermission(actor, 'staff.manage')) {
+      throw new Error('Only Admin can update staff records.')
+    }
     const before = { ...users[index] }
     users[index] = { ...users[index], ...data, updated_at: new Date().toISOString() }
     syncMockAuthAccount(users[index])
-    audit('staff', 'update', 'staff', id, users[index].full_name, { before, after: { ...users[index] } })
+    audit('staff', 'update', 'staff', id, users[index].full_name, { actorId, before, after: { ...users[index] } })
     return Promise.resolve(users[index])
   },
 
   async approvePendingAccount(id: string, actorId = currentUserService.getId()): Promise<User | null> {
+    if (getAuthMode() === 'supabase') return rejectSupabaseBusinessUserWrite()
     const index = users.findIndex(u => u.id === id)
     if (index === -1) return null
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can approve pending accounts.')
@@ -395,6 +442,7 @@ export const userService = {
   },
 
   async rejectPendingAccount(id: string, actorId = currentUserService.getId()): Promise<User | null> {
+    if (getAuthMode() === 'supabase') return rejectSupabaseBusinessUserWrite()
     const index = users.findIndex(u => u.id === id)
     if (index === -1) return null
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can reject pending accounts.')
@@ -417,6 +465,7 @@ export const userService = {
   },
 
   async archive(id: string, actorId = currentUserService.getId(), reason = 'Deactivated by administrator'): Promise<User | null> {
+    if (getAuthMode() === 'supabase') return rejectSupabaseBusinessUserWrite()
     const index = users.findIndex(u => u.id === id)
     if (index === -1) return null
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can deactivate staff.')
@@ -429,6 +478,7 @@ export const userService = {
   },
 
   async restore(id: string, actorId: string, reason: string): Promise<User | null> {
+    if (getAuthMode() === 'supabase') return rejectSupabaseBusinessUserWrite()
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can restore staff.')
     const index = users.findIndex(user => user.id === id)
     if (index === -1) return null
@@ -444,6 +494,13 @@ export const userService = {
 
   async search(query: string): Promise<User[]> {
     const lowerQuery = query.toLowerCase()
+    if (getAuthMode() === 'supabase') {
+      const directory = await getSupabaseMasterDataRepository().businessUsers.getAll()
+      return directory.filter(user =>
+        user.full_name.toLowerCase().includes(lowerQuery)
+        || user.email.toLowerCase().includes(lowerQuery)
+      )
+    }
     return Promise.resolve(
       users.filter(
         u =>
@@ -454,7 +511,10 @@ export const userService = {
   },
 
   async getByOperationalRole(role: OperationalRole): Promise<User[]> {
-    return Promise.resolve(users.filter(user =>
+    const directory = getAuthMode() === 'supabase'
+      ? await getSupabaseMasterDataRepository().businessUsers.getAll()
+      : users
+    return Promise.resolve(directory.filter(user =>
       user.status === 'active' && (user.operational_roles?.includes(role) ||
         (role === 'host' && user.department === 'Live Host') ||
         (role === 'support' && user.department === 'Live Support'))
@@ -507,19 +567,37 @@ export const currentUserService = {
 // Brand Service
 export const brandService = {
   async getAll(): Promise<Brand[]> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseMasterDataRepository().brands.getAll()
+    }
     return Promise.resolve(brands.filter(brand => !brand.deleted_at && !brand.archived_at))
   },
 
   async getAllIncludingArchived(actorId: string): Promise<Brand[]> {
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can view archived brands.')
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseMasterDataRepository().brands.getAll(true)
+    }
     return Promise.resolve([...brands])
   },
 
   async getById(id: string): Promise<Brand | null> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseMasterDataRepository().brands.getById(id)
+    }
     return Promise.resolve(brands.find(b => b.id === id) || null)
   },
 
   async create(data: Omit<Brand, 'id' | 'created_at' | 'updated_at'>): Promise<Brand> {
+    if (getAuthMode() === 'supabase') {
+      const actor = requireSupabaseAdmin()
+      const persisted = await getSupabaseMasterDataRepository().brands.create(generateId(), data, actor.id)
+      audit('brands', 'create', 'brand', persisted.id, persisted.name, {
+        actorId: actor.id,
+        after: { ...persisted },
+      })
+      return persisted
+    }
     const newBrand: Brand = {
       ...data,
       id: generateId(),
@@ -531,16 +609,48 @@ export const brandService = {
     return Promise.resolve(newBrand)
   },
 
-  async update(id: string, data: Partial<Brand>): Promise<Brand | null> {
+  async update(
+    id: string,
+    data: Partial<Brand>,
+    actorId = currentUserService.getId(),
+  ): Promise<Brand | null> {
+    if (getAuthMode() === 'supabase') {
+      const actor = requireSupabaseAdmin(actorId)
+      const before = await getSupabaseMasterDataRepository().brands.getById(id)
+      if (!before) return null
+      const persisted = await getSupabaseMasterDataRepository().brands.update(id, data, actor.id)
+      if (!persisted) return null
+      audit('brands', 'update', 'brand', id, persisted.name, {
+        actorId: actor.id,
+        before: { ...before },
+        after: { ...persisted },
+      })
+      return persisted
+    }
     const index = brands.findIndex(b => b.id === id)
     if (index === -1) return Promise.resolve(null)
+    if (!hasPermission(requiredActorFor(actorId), 'brands.manage')) throw new Error('Only Admin can update brands.')
     const before = { ...brands[index] }
     brands[index] = { ...brands[index], ...data, updated_at: new Date().toISOString() }
-    audit('brands', 'update', 'brand', id, brands[index].name, { before, after: { ...brands[index] } })
+    audit('brands', 'update', 'brand', id, brands[index].name, { actorId, before, after: { ...brands[index] } })
     return Promise.resolve(brands[index])
   },
 
   async archive(id: string, actorId = currentUserService.getId(), reason = 'Archived by administrator'): Promise<Brand | null> {
+    if (getAuthMode() === 'supabase') {
+      const actor = requireSupabaseAdmin(actorId)
+      const before = await getSupabaseMasterDataRepository().brands.getById(id)
+      if (!before) return null
+      const persisted = await getSupabaseMasterDataRepository().brands.archive(id, actor.id, reason)
+      if (!persisted) return null
+      audit('brands', 'archive', 'brand', id, persisted.name, {
+        actorId: actor.id,
+        before: { ...before },
+        after: { ...persisted },
+        reason,
+      })
+      return persisted
+    }
     const index = brands.findIndex(b => b.id === id)
     if (index === -1) return null
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can archive brands.')
@@ -551,6 +661,20 @@ export const brandService = {
   },
 
   async restore(id: string, actorId: string, reason: string): Promise<Brand | null> {
+    if (getAuthMode() === 'supabase') {
+      const actor = requireSupabaseAdmin(actorId)
+      const before = await getSupabaseMasterDataRepository().brands.getById(id)
+      if (!before) return null
+      const persisted = await getSupabaseMasterDataRepository().brands.restore(id, actor.id)
+      if (!persisted) return null
+      audit('brands', 'restore', 'brand', id, persisted.name, {
+        actorId: actor.id,
+        before: { ...before },
+        after: { ...persisted },
+        reason,
+      })
+      return persisted
+    }
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can restore brands.')
     const index = brands.findIndex(brand => brand.id === id)
     if (index === -1) return null
@@ -568,19 +692,37 @@ export const brandService = {
 // Platform Service
 export const platformService = {
   async getAll(): Promise<Platform[]> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseMasterDataRepository().platforms.getAll()
+    }
     return Promise.resolve(platforms.filter(platform => !platform.deleted_at && !platform.archived_at))
   },
 
   async getAllIncludingArchived(actorId: string): Promise<Platform[]> {
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can view archived platforms.')
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseMasterDataRepository().platforms.getAll(true)
+    }
     return Promise.resolve([...platforms])
   },
 
   async getById(id: string): Promise<Platform | null> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseMasterDataRepository().platforms.getById(id)
+    }
     return Promise.resolve(platforms.find(p => p.id === id) || null)
   },
 
   async create(data: Omit<Platform, 'id' | 'created_at' | 'updated_at'>): Promise<Platform> {
+    if (getAuthMode() === 'supabase') {
+      const actor = requireSupabaseAdmin()
+      const persisted = await getSupabaseMasterDataRepository().platforms.create(generateId(), data, actor.id)
+      audit('platforms', 'create', 'platform', persisted.id, persisted.name, {
+        actorId: actor.id,
+        after: { ...persisted },
+      })
+      return persisted
+    }
     const newPlatform: Platform = {
       ...data,
       id: generateId(),
@@ -592,16 +734,48 @@ export const platformService = {
     return Promise.resolve(newPlatform)
   },
 
-  async update(id: string, data: Partial<Platform>): Promise<Platform | null> {
+  async update(
+    id: string,
+    data: Partial<Platform>,
+    actorId = currentUserService.getId(),
+  ): Promise<Platform | null> {
+    if (getAuthMode() === 'supabase') {
+      const actor = requireSupabaseAdmin(actorId)
+      const before = await getSupabaseMasterDataRepository().platforms.getById(id)
+      if (!before) return null
+      const persisted = await getSupabaseMasterDataRepository().platforms.update(id, data, actor.id)
+      if (!persisted) return null
+      audit('platforms', 'update', 'platform', id, persisted.name, {
+        actorId: actor.id,
+        before: { ...before },
+        after: { ...persisted },
+      })
+      return persisted
+    }
     const index = platforms.findIndex(p => p.id === id)
     if (index === -1) return Promise.resolve(null)
+    if (!hasPermission(requiredActorFor(actorId), 'platforms.manage')) throw new Error('Only Admin can update platforms.')
     const before = { ...platforms[index] }
     platforms[index] = { ...platforms[index], ...data, updated_at: new Date().toISOString() }
-    audit('platforms', 'update', 'platform', id, platforms[index].name, { before, after: { ...platforms[index] } })
+    audit('platforms', 'update', 'platform', id, platforms[index].name, { actorId, before, after: { ...platforms[index] } })
     return Promise.resolve(platforms[index])
   },
 
   async archive(id: string, actorId = currentUserService.getId(), reason = 'Archived by administrator'): Promise<Platform | null> {
+    if (getAuthMode() === 'supabase') {
+      const actor = requireSupabaseAdmin(actorId)
+      const before = await getSupabaseMasterDataRepository().platforms.getById(id)
+      if (!before) return null
+      const persisted = await getSupabaseMasterDataRepository().platforms.archive(id, actor.id, reason)
+      if (!persisted) return null
+      audit('platforms', 'archive', 'platform', id, persisted.name, {
+        actorId: actor.id,
+        before: { ...before },
+        after: { ...persisted },
+        reason,
+      })
+      return persisted
+    }
     const index = platforms.findIndex(p => p.id === id)
     if (index === -1) return null
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can archive platforms.')
@@ -612,6 +786,20 @@ export const platformService = {
   },
 
   async restore(id: string, actorId: string, reason: string): Promise<Platform | null> {
+    if (getAuthMode() === 'supabase') {
+      const actor = requireSupabaseAdmin(actorId)
+      const before = await getSupabaseMasterDataRepository().platforms.getById(id)
+      if (!before) return null
+      const persisted = await getSupabaseMasterDataRepository().platforms.restore(id, actor.id)
+      if (!persisted) return null
+      audit('platforms', 'restore', 'platform', id, persisted.name, {
+        actorId: actor.id,
+        before: { ...before },
+        after: { ...persisted },
+        reason,
+      })
+      return persisted
+    }
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can restore platforms.')
     const index = platforms.findIndex(platform => platform.id === id)
     if (index === -1) return null
@@ -629,19 +817,37 @@ export const platformService = {
 // Campaign Service
 export const campaignService = {
   async getAll(): Promise<Campaign[]> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseMasterDataRepository().campaigns.getAll()
+    }
     return Promise.resolve(campaigns.filter(campaign => !campaign.deleted_at && !campaign.archived_at))
   },
 
   async getAllIncludingArchived(actorId: string): Promise<Campaign[]> {
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can view archived campaigns.')
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseMasterDataRepository().campaigns.getAll(true)
+    }
     return Promise.resolve([...campaigns])
   },
 
   async getById(id: string): Promise<Campaign | null> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseMasterDataRepository().campaigns.getById(id)
+    }
     return Promise.resolve(campaigns.find(c => c.id === id) || null)
   },
 
   async create(data: Omit<Campaign, 'id' | 'created_at' | 'updated_at'>): Promise<Campaign> {
+    if (getAuthMode() === 'supabase') {
+      const actor = requireSupabaseAdmin()
+      const persisted = await getSupabaseMasterDataRepository().campaigns.create(generateId(), data)
+      audit('campaigns', 'create', 'campaign', persisted.id, persisted.name, {
+        actorId: actor.id,
+        after: { ...persisted },
+      })
+      return persisted
+    }
     const newCampaign: Campaign = {
       ...data,
       id: generateId(),
@@ -653,17 +859,55 @@ export const campaignService = {
     return Promise.resolve(newCampaign)
   },
 
-  async update(id: string, data: Partial<Campaign>): Promise<Campaign | null> {
+  async update(
+    id: string,
+    data: Partial<Campaign>,
+    actorId = currentUserService.getId(),
+  ): Promise<Campaign | null> {
+    if (getAuthMode() === 'supabase') {
+      const actor = requireSupabaseAdmin(actorId)
+      const before = await getSupabaseMasterDataRepository().campaigns.getById(id)
+      if (!before) return null
+      const persisted = await getSupabaseMasterDataRepository().campaigns.update(id, data)
+      if (!persisted) return null
+      const action: AuditAction = data.website_preview_image === null || data.website_url === null
+        ? 'remove_upload'
+        : 'update'
+      audit('campaigns', action, 'campaign', id, persisted.name, {
+        actorId: actor.id,
+        before: { ...before },
+        after: { ...persisted },
+      })
+      return persisted
+    }
     const index = campaigns.findIndex(c => c.id === id)
     if (index === -1) return Promise.resolve(null)
+    const actor = requiredActorFor(actorId)
+    if (!hasPermission(actor, 'campaigns.manage') && !hasPermission(actor, 'campaigns.edit_operational')) {
+      throw new Error('Only a Leader or Admin can update campaigns.')
+    }
     const before = { ...campaigns[index] }
     campaigns[index] = { ...campaigns[index], ...data, updated_at: new Date().toISOString() }
     const action: AuditAction = data.website_preview_image === null || data.website_url === null ? 'remove_upload' : 'update'
-    audit('campaigns', action, 'campaign', id, campaigns[index].name, { before, after: { ...campaigns[index] } })
+    audit('campaigns', action, 'campaign', id, campaigns[index].name, { actorId, before, after: { ...campaigns[index] } })
     return Promise.resolve(campaigns[index])
   },
 
   async archive(id: string, actorId = currentUserService.getId(), reason = 'Archived by administrator'): Promise<Campaign | null> {
+    if (getAuthMode() === 'supabase') {
+      const actor = requireSupabaseAdmin(actorId)
+      const before = await getSupabaseMasterDataRepository().campaigns.getById(id)
+      if (!before) return null
+      const persisted = await getSupabaseMasterDataRepository().campaigns.archive(id, actor.id, reason)
+      if (!persisted) return null
+      audit('campaigns', 'archive', 'campaign', id, persisted.name, {
+        actorId: actor.id,
+        before: { ...before },
+        after: { ...persisted },
+        reason,
+      })
+      return persisted
+    }
     const index = campaigns.findIndex(c => c.id === id)
     if (index === -1) return null
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can archive campaigns.')
@@ -674,6 +918,20 @@ export const campaignService = {
   },
 
   async restore(id: string, actorId: string, reason: string): Promise<Campaign | null> {
+    if (getAuthMode() === 'supabase') {
+      const actor = requireSupabaseAdmin(actorId)
+      const before = await getSupabaseMasterDataRepository().campaigns.getById(id)
+      if (!before) return null
+      const persisted = await getSupabaseMasterDataRepository().campaigns.restore(id)
+      if (!persisted) return null
+      audit('campaigns', 'restore', 'campaign', id, persisted.name, {
+        actorId: actor.id,
+        before: { ...before },
+        after: { ...persisted },
+        reason,
+      })
+      return persisted
+    }
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can restore campaigns.')
     const index = campaigns.findIndex(campaign => campaign.id === id)
     if (index === -1) return null
@@ -684,8 +942,26 @@ export const campaignService = {
   },
 
   async removeWebsitePreview(id: string, actorId: string, reason: string): Promise<Campaign | null> {
+    if (getAuthMode() === 'supabase') {
+      const actor = requireSupabaseAdmin(actorId)
+      const before = await getSupabaseMasterDataRepository().campaigns.getById(id)
+      if (!before) return null
+      const persisted = await getSupabaseMasterDataRepository().campaigns.removeWebsitePreview(id)
+      if (!persisted) return null
+      audit('campaigns', 'remove_upload', 'campaign_website', id, persisted.name, {
+        actorId: actor.id,
+        before: { ...before },
+        after: { ...persisted },
+        reason,
+      })
+      return persisted
+    }
     const index = campaigns.findIndex(campaign => campaign.id === id)
     if (index === -1) return null
+    const actor = requiredActorFor(actorId)
+    if (!hasPermission(actor, 'campaigns.manage') && !hasPermission(actor, 'campaigns.edit_operational')) {
+      throw new Error('Only a Leader or Admin can update campaigns.')
+    }
     const before = { ...campaigns[index] }
     campaigns[index] = { ...campaigns[index], website_url: null, campaign_url: undefined, website_preview_image: null, website_embed_enabled: false, updated_at: nowIso() }
     audit('campaigns', 'remove_upload', 'campaign_website', id, campaigns[index].name, { actorId, before, after: { ...campaigns[index] }, reason })
@@ -697,6 +973,9 @@ export const campaignService = {
   },
 
   async getByBrand(brandId: string): Promise<Campaign[]> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseMasterDataRepository().campaigns.getByBrand(brandId)
+    }
     return Promise.resolve(campaigns.filter(c => c.brand_id === brandId && !c.deleted_at && !c.archived_at))
   },
 }
