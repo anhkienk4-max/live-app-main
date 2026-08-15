@@ -35,6 +35,7 @@ import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { getAuthMode } from '@/lib/auth/authMode'
 import { getSupabaseMasterDataRepository } from '@/lib/services/supabaseMasterDataService'
 import { getSupabaseShiftRepository } from '@/lib/services/supabaseShiftService'
+import { getSupabaseShiftRegistrationRepository } from '@/lib/services/supabaseShiftRegistrationService'
 import {
   liveReportImageCategories,
   maximumLiveReportImages,
@@ -1379,24 +1380,39 @@ const findRegistrationConflict = (
 
 export const shiftRegistrationService = {
   async getAll(): Promise<ShiftRegistration[]> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseShiftRegistrationRepository().getAll()
+    }
     return Promise.resolve([...shiftRegistrations])
   },
 
   async getForShift(shiftId: string): Promise<ShiftRegistration[]> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseShiftRegistrationRepository().getForShift(shiftId)
+    }
     return Promise.resolve(shiftRegistrations.filter(registration => registration.shift_id === shiftId))
   },
 
   async getForUser(userId: string): Promise<ShiftRegistration[]> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseShiftRegistrationRepository().getForUser(userId)
+    }
     return Promise.resolve(shiftRegistrations.filter(registration => registration.user_id === userId))
   },
 
   async getCapacity(shiftId: string): Promise<ShiftRoleCapacity[]> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseShiftRegistrationRepository().getCapacity(shiftId)
+    }
     const shift = shifts.find(candidate => candidate.id === shiftId)
     if (!shift) return []
     return Promise.resolve((['host', 'support', 'technical'] as OperationalRole[]).map(role => capacityFor(shift, role)))
   },
 
   async getMyApprovedShifts(userId: string): Promise<Shift[]> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseShiftRegistrationRepository().getMyApprovedShifts(userId)
+    }
     const shiftIds = new Set(shiftRegistrations
       .filter(registration => registration.user_id === userId && isStaffedRegistration(registration))
       .map(registration => registration.shift_id))
@@ -1404,6 +1420,15 @@ export const shiftRegistrationService = {
   },
 
   async register(shiftId: string, userId: string, role: OperationalRole): Promise<ShiftRegistration> {
+    if (getAuthMode() === 'supabase') {
+      // Actor identity comes from the Supabase session; the RPC resolves the
+      // authenticated business user server-side. Client-supplied userId is
+      // intentionally ignored for registration authority.
+      const registration = await getSupabaseShiftRegistrationRepository().register(shiftId, role)
+      recordScheduleChange('register', shiftId, undefined, { ...registration }, { actor_id: userId })
+      audit('calendar', 'register', 'shift_registration', registration.id, `${registration.user_id} · ${role}`, { actorId: userId, after: { ...registration }, relatedRecords: [{ entity_type: 'shift', entity_id: shiftId, entity_name: shiftId }] })
+      return registration
+    }
     const shift = shifts.find(candidate => candidate.id === shiftId)
     const user = users.find(candidate => candidate.id === userId)
     if (!shift || !user) throw new Error('Shift or staff member was not found.')
@@ -1454,6 +1479,17 @@ export const shiftRegistrationService = {
   },
 
   async approve(id: string, reviewerId: string, notes?: string): Promise<ShiftRegistration> {
+    if (getAuthMode() === 'supabase') {
+      if (reviewerId !== 'system') {
+        if (!hasPermission(requiredActorFor(reviewerId), 'shifts.approve_registration')) {
+          throw new Error('Only a Leader or Admin can approve registrations.')
+        }
+      }
+      const registration = await getSupabaseShiftRegistrationRepository().approve(id, notes)
+      recordScheduleChange('approve', registration.shift_id, undefined, { ...registration }, { actor_id: reviewerId, reason: notes })
+      audit('calendar', 'approve', 'shift_registration', id, `${registration.user_id} · ${registration.operational_role}`, { actorId: reviewerId, after: { ...registration }, reason: notes })
+      return registration
+    }
     if (reviewerId !== 'system') ensureLeaderOrAdmin(reviewerId)
     const index = shiftRegistrations.findIndex(registration => registration.id === id)
     if (index === -1) throw new Error('Registration was not found.')
@@ -1494,6 +1530,15 @@ export const shiftRegistrationService = {
   },
 
   async reject(id: string, reviewerId: string, notes?: string): Promise<ShiftRegistration> {
+    if (getAuthMode() === 'supabase') {
+      if (!hasPermission(requiredActorFor(reviewerId), 'shifts.approve_registration')) {
+        throw new Error('Only a Leader or Admin can reject registrations.')
+      }
+      const registration = await getSupabaseShiftRegistrationRepository().reject(id, notes)
+      recordScheduleChange('reject', registration.shift_id, undefined, { ...registration }, { actor_id: reviewerId, reason: notes })
+      audit('calendar', 'reject', 'shift_registration', id, `${registration.user_id} · ${registration.operational_role}`, { actorId: reviewerId, before: { status: 'pending' }, after: { ...registration }, reason: notes })
+      return registration
+    }
     ensureLeaderOrAdmin(reviewerId)
     const index = shiftRegistrations.findIndex(registration => registration.id === id)
     if (index === -1) throw new Error('Registration was not found.')
@@ -1513,6 +1558,15 @@ export const shiftRegistrationService = {
   },
 
   async cancel(id: string, userId: string, reason?: string): Promise<ShiftRegistration> {
+    if (getAuthMode() === 'supabase') {
+      if (!hasPermission(requiredActorFor(userId), 'shifts.cancel_registration')) {
+        throw new Error('Only the registrant can cancel their own registration.')
+      }
+      const registration = await getSupabaseShiftRegistrationRepository().cancel(id, reason)
+      recordScheduleChange('cancel_registration', registration.shift_id, undefined, { ...registration }, { actor_id: userId, reason })
+      audit('calendar', 'cancel_registration', 'shift_registration', id, `${registration.user_id} · ${registration.operational_role}`, { actorId: userId, after: { ...registration }, reason })
+      return registration
+    }
     const index = shiftRegistrations.findIndex(registration => registration.id === id)
     if (index === -1 || shiftRegistrations[index].user_id !== userId) {
       throw new Error('Registration was not found.')
@@ -1556,6 +1610,15 @@ export const shiftRegistrationService = {
     role: OperationalRole,
     reviewerId: string,
   ): Promise<ShiftRegistration> {
+    if (getAuthMode() === 'supabase') {
+      if (!hasPermission(requiredActorFor(reviewerId), 'shifts.assign_staff')) {
+        throw new Error('Only a Leader or Admin can assign staff.')
+      }
+      const registration = await getSupabaseShiftRegistrationRepository().assignManually(shiftId, userId, role)
+      recordScheduleChange('manual_assign', shiftId, undefined, { ...registration }, { actor_id: reviewerId })
+      audit('calendar', 'assign', 'shift_registration', registration.id, `${registration.user_id} · ${role}`, { actorId: reviewerId, after: { ...registration }, relatedRecords: [{ entity_type: 'shift', entity_id: shiftId, entity_name: shiftId }] })
+      return registration
+    }
     const shift = shifts.find(candidate => candidate.id === shiftId)
     const user = users.find(candidate => candidate.id === userId)
     ensureLeaderOrAdmin(reviewerId)
@@ -1603,6 +1666,15 @@ export const shiftRegistrationService = {
   },
 
   async removeAssignment(id: string, reviewerId: string, notes?: string): Promise<ShiftRegistration> {
+    if (getAuthMode() === 'supabase') {
+      if (!hasPermission(requiredActorFor(reviewerId), 'shifts.assign_staff')) {
+        throw new Error('Only a Leader or Admin can remove staff assignments.')
+      }
+      const registration = await getSupabaseShiftRegistrationRepository().removeAssignment(id, notes)
+      recordScheduleChange('remove_assignment', registration.shift_id, undefined, { ...registration }, { actor_id: reviewerId, reason: notes })
+      audit('calendar', 'unassign', 'shift_registration', id, `${registration.user_id} · ${registration.operational_role}`, { actorId: reviewerId, after: { ...registration }, reason: notes })
+      return registration
+    }
     ensureLeaderOrAdmin(reviewerId)
     const index = shiftRegistrations.findIndex(registration => registration.id === id)
     if (index === -1) throw new Error('Registration was not found.')
