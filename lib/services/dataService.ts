@@ -1097,7 +1097,12 @@ export const shiftService = {
     return Promise.resolve(newShift)
   },
 
-  async update(id: string, data: Partial<Shift>): Promise<Shift | null> {
+  async update(
+    id: string,
+    data: Partial<Shift>,
+    actorId = currentUserService.getId(),
+    options: { reason?: string } = {},
+  ): Promise<Shift | null> {
     if (getAuthMode() === 'supabase') {
       const lockPatch = data.registration_locked
       const shiftPatch = { ...data }
