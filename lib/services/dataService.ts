@@ -34,6 +34,7 @@ import { recordAuditEvent } from '@/lib/services/auditService'
 import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { getAuthMode } from '@/lib/auth/authMode'
 import { getSupabaseMasterDataRepository } from '@/lib/services/supabaseMasterDataService'
+import { getSupabaseShiftRepository } from '@/lib/services/supabaseShiftService'
 import {
   liveReportImageCategories,
   maximumLiveReportImages,
@@ -981,21 +982,62 @@ export const campaignService = {
 }
 
 // Shift Service
+// P1C-B2B-A: in Supabase mode all shift reads and mutations go through the
+// Supabase repository (RLS + RPC). The in-memory `shifts` array is maintained
+// as a read projection so the not-yet-cut-over shiftRegistrationService keeps
+// seeing the same rows it mutates. Mock mode keeps the existing in-memory flow.
+const upsertShiftProjection = (shift: Shift) => {
+  const index = shifts.findIndex(candidate => candidate.id === shift.id)
+  if (index === -1) {
+    shifts.push(shift)
+  } else {
+    shifts[index] = shift
+  }
+}
+const removeShiftProjection = (id: string) => {
+  shifts = shifts.filter(shift => shift.id !== id)
+}
+
 export const shiftService = {
   async getAll(): Promise<Shift[]> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseShiftRepository().getAll()
+    }
     return Promise.resolve(shifts.filter(shift => !shift.deleted_at))
   },
 
   async getAllIncludingDeleted(actorId: string): Promise<Shift[]> {
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can view deleted shifts.')
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseShiftRepository().getAll(true)
+    }
     return Promise.resolve([...shifts])
   },
 
   async getById(id: string): Promise<Shift | null> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseShiftRepository().getById(id)
+    }
     return Promise.resolve(shifts.find(s => s.id === id) || null)
   },
 
   async create(data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>): Promise<Shift> {
+    if (getAuthMode() === 'supabase') {
+      const persisted = await getSupabaseShiftRepository().create(data)
+      upsertShiftProjection(persisted)
+      recordScheduleChange('create', persisted.id, undefined, { ...persisted }, {
+        source: persisted.import_batch_id
+          ? scheduleImports.find(batch => batch.id === persisted.import_batch_id)?.source === 'google_sheets'
+            ? 'google_sheets'
+            : 'excel_import'
+          : 'manual',
+      })
+      audit('calendar', 'create', 'shift', persisted.id, persisted.title || `${persisted.date} ${persisted.start_time}`, {
+        after: { ...persisted },
+        source: persisted.import_batch_id ? 'excel_import' : 'manual',
+      })
+      return persisted
+    }
     const dateTime = shiftDateTimeFields(data.date, data.start_time, data.end_time)
     if (!dateTime) throw new Error('Shift date or duration is invalid.')
     const requiredHostCount = normalizeCapacity(data.required_host_count, operationalSettings.default_host_count)
@@ -1049,6 +1091,33 @@ export const shiftService = {
   },
 
   async update(id: string, data: Partial<Shift>): Promise<Shift | null> {
+    if (getAuthMode() === 'supabase') {
+      const lockPatch = data.registration_locked
+      const shiftPatch = { ...data }
+      delete shiftPatch.registration_locked
+      let persisted = await getSupabaseShiftRepository().update(id, shiftPatch, false)
+      if (!persisted) return null
+      if (lockPatch !== undefined) {
+        const locked = await getSupabaseShiftRepository().setRegistrationLock(id, Boolean(lockPatch))
+        if (locked) persisted = locked
+      }
+      upsertShiftProjection(persisted)
+      const action = data.registration_locked === true
+        ? 'lock'
+        : data.registration_locked === false
+          ? 'reopen'
+          : data.status === 'cancelled'
+            ? 'cancel'
+            : 'edit'
+      recordScheduleChange(action, id, undefined, { ...persisted }, {
+        actor_id: currentUserService.getId(),
+      })
+      const auditAction: AuditAction = action === 'lock' ? 'lock' : action === 'reopen' ? 'reopen' : 'update'
+      audit('calendar', auditAction, 'shift', id, persisted.title || `${persisted.date} ${persisted.start_time}`, {
+        after: { ...persisted },
+      })
+      return persisted
+    }
     const index = shifts.findIndex(s => s.id === id)
     if (index === -1) return Promise.resolve(null)
     const before = { ...shifts[index] }
@@ -1086,6 +1155,9 @@ export const shiftService = {
   },
 
   async getDeletionImpact(id: string): Promise<DeletionImpact | null> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseShiftRepository().getDeletionImpact(id)
+    }
     const shift = shifts.find(candidate => candidate.id === id)
     if (!shift) return null
     const related = [
@@ -1108,6 +1180,17 @@ export const shiftService = {
   },
 
   async remove(id: string, actorId = currentUserService.getId(), reason = 'Removed by operator'): Promise<DeletionImpact | null> {
+    if (getAuthMode() === 'supabase') {
+      if (!hasPermission(requiredActorFor(actorId), 'shifts.delete')) {
+        throw new Error('Only Admin can delete or archive shifts.')
+      }
+      const impact = await getSupabaseShiftRepository().remove(id, reason)
+      if (!impact) return null
+      removeShiftProjection(id)
+      recordScheduleChange('soft_delete', id, undefined, undefined, { actor_id: actorId, reason })
+      audit('calendar', 'soft_delete', 'shift', id, impact.entity_name, { actorId, reason, relatedRecords: impact.related_records })
+      return impact
+    }
     ensureLeaderOrAdmin(actorId)
     const index = shifts.findIndex(s => s.id === id)
     if (index === -1) return null
@@ -1135,6 +1218,15 @@ export const shiftService = {
   },
 
   async restore(id: string, actorId: string, reason: string): Promise<Shift | null> {
+    if (getAuthMode() === 'supabase') {
+      if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can restore shifts.')
+      const persisted = await getSupabaseShiftRepository().restore(id)
+      if (!persisted) return null
+      upsertShiftProjection(persisted)
+      recordScheduleChange('restore', id, undefined, { ...persisted }, { actor_id: actorId, reason })
+      audit('calendar', 'restore', 'shift', id, persisted.title || `${persisted.date} ${persisted.start_time}`, { actorId, after: { ...persisted }, reason })
+      return persisted
+    }
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can restore shifts.')
     const index = shifts.findIndex(s => s.id === id)
     if (index === -1) return null
@@ -1150,16 +1242,25 @@ export const shiftService = {
   },
 
   async getByDate(date: string): Promise<Shift[]> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseShiftRepository().getByDate(date)
+    }
     return Promise.resolve(shifts.filter(s => s.date === date && !s.deleted_at))
   },
 
   async getByDateRange(startDate: string, endDate: string): Promise<Shift[]> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseShiftRepository().getByDateRange(startDate, endDate)
+    }
     return Promise.resolve(
       shifts.filter(s => s.date >= startDate && s.date <= endDate && !s.deleted_at)
     )
   },
 
   async getByStatus(status: string): Promise<Shift[]> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseShiftRepository().getByStatus(status)
+    }
     return Promise.resolve(shifts.filter(s => s.status === status && !s.deleted_at))
   },
 
@@ -1169,6 +1270,9 @@ export const shiftService = {
   },
 
   async getOpen(): Promise<Shift[]> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseShiftRepository().getOpen()
+    }
     return Promise.resolve(shifts.filter(shift =>
       !shift.deleted_at &&
       shift.status === 'scheduled' &&
@@ -1177,14 +1281,42 @@ export const shiftService = {
     ))
   },
 
-  async lock(id: string): Promise<Shift | null> {
-    return this.update(id, { registration_locked: true })
+  async lock(id: string, actorId = currentUserService.getId()): Promise<Shift | null> {
+    if (getAuthMode() === 'supabase') {
+      if (!hasPermission(requiredActorFor(actorId), 'shifts.lock')) {
+        throw new Error('Only a Leader or Admin can lock registration.')
+      }
+      const persisted = await getSupabaseShiftRepository().setRegistrationLock(id, true)
+      if (!persisted) return null
+      upsertShiftProjection(persisted)
+      recordScheduleChange('lock', id, undefined, { ...persisted }, { actor_id: actorId, reason: 'Registration locked' })
+      audit('calendar', 'lock', 'shift', id, persisted.title || `${persisted.date} ${persisted.start_time}`, { actorId, after: { ...persisted }, reason: 'Registration locked' })
+      return persisted
+    }
+    if (!hasPermission(requiredActorFor(actorId), 'shifts.lock')) {
+      throw new Error('Only a Leader or Admin can lock registration.')
+    }
+    return this.update(id, { registration_locked: true }, actorId, { reason: 'Registration locked' })
   },
 
-  async reopen(id: string): Promise<Shift | null> {
+  async reopen(id: string, actorId = currentUserService.getId()): Promise<Shift | null> {
+    if (getAuthMode() === 'supabase') {
+      if (!hasPermission(requiredActorFor(actorId), 'shifts.lock')) {
+        throw new Error('Only a Leader or Admin can reopen registration.')
+      }
+      const persisted = await getSupabaseShiftRepository().setRegistrationLock(id, false)
+      if (!persisted) return null
+      upsertShiftProjection(persisted)
+      recordScheduleChange('reopen', id, undefined, { ...persisted }, { actor_id: actorId, reason: 'Registration reopened' })
+      audit('calendar', 'reopen', 'shift', id, persisted.title || `${persisted.date} ${persisted.start_time}`, { actorId, after: { ...persisted }, reason: 'Registration reopened' })
+      return persisted
+    }
+    if (!hasPermission(requiredActorFor(actorId), 'shifts.lock')) {
+      throw new Error('Only a Leader or Admin can reopen registration.')
+    }
     const shift = shifts.find(candidate => candidate.id === id)
     if (!shift || shift.status !== 'scheduled' || shiftEndAt(shift) <= new Date()) return null
-    return this.update(id, { registration_locked: false })
+    return this.update(id, { registration_locked: false }, actorId, { reason: 'Registration reopened' })
   },
 }
 

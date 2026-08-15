@@ -39,6 +39,11 @@ const mockWindow = {
 Object.defineProperty(globalThis, 'window', { value: mockWindow, configurable: true })
 
 test('Studio aliases, missing values, template, preview history, and saved shifts share studio', async () => {
+  const previousNodeEnv = process.env.NODE_ENV
+  const previousMockFlag = process.env.NEXT_PUBLIC_USE_MOCK_DATA
+  process.env.NODE_ENV = 'development'
+  process.env.NEXT_PUBLIC_USE_MOCK_DATA = 'true'
+  try {
   const result = parseScheduleRows([
     {
       Date: '2026-08-10',
@@ -98,9 +103,18 @@ test('Studio aliases, missing values, template, preview history, and saved shift
 
   const saved = await shiftService.create(result.validShifts[0])
   assert.equal((await shiftService.getById(saved.id))?.studio, 'Studio North 01')
+  } finally {
+    process.env.NODE_ENV = previousNodeEnv
+    process.env.NEXT_PUBLIC_USE_MOCK_DATA = previousMockFlag
+  }
 })
 
 test('all nine final recap fields persist, reopen, display, and export while legacy reports remain compatible', async () => {
+  const previousNodeEnv = process.env.NODE_ENV
+  const previousMockFlag = process.env.NEXT_PUBLIC_USE_MOCK_DATA
+  process.env.NODE_ENV = 'development'
+  process.env.NEXT_PUBLIC_USE_MOCK_DATA = 'true'
+  try {
   const values = Object.fromEntries(
     finalReportRecapFields.map((field, index) => [field.key, `Recap ${index + 1}`]),
   )
@@ -191,6 +205,10 @@ test('all nine final recap fields persist, reopen, display, and export while leg
   assert.equal(legacy?.final_recap, undefined)
   assert.equal(legacyExport['Traffic Throughout the Session'], '')
   assert.equal(legacyExport['Issues Encountered During the Live'], '')
+  } finally {
+    process.env.NODE_ENV = previousNodeEnv
+    process.env.NEXT_PUBLIC_USE_MOCK_DATA = previousMockFlag
+  }
 })
 
 test('Month View uses stable responsive limits and sorts sessions by start time', () => {
