@@ -1107,9 +1107,19 @@ export const shiftService = {
       const lockPatch = data.registration_locked
       const shiftPatch = { ...data }
       delete shiftPatch.registration_locked
+      // update_shift RPC rejects allow_multi_role/registration_cutoff_at for
+      // leaders; only admins may change them, so strip them for non-admins.
+      if (resolveSystemPermission(actorFor(actorId)) !== 'admin') {
+        delete shiftPatch.allow_multi_role
+        delete shiftPatch.registration_cutoff_at
+      }
       let persisted = await getSupabaseShiftRepository().update(id, shiftPatch, false)
       if (!persisted) return null
-      if (lockPatch !== undefined) {
+      // Only invoke the lock/reopen RPC when registration_locked actually
+      // changes; the edit form always submits the current boolean, and calling
+      // set_shift_registration_lock on an unchanged value would reject with
+      // SHIFT_CANNOT_REOPEN for non-scheduled/past shifts.
+      if (lockPatch !== undefined && persisted.registration_locked !== lockPatch) {
         const locked = await getSupabaseShiftRepository().setRegistrationLock(id, Boolean(lockPatch))
         if (locked) persisted = locked
       }

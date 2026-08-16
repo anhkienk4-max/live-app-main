@@ -244,6 +244,7 @@ function fakeClient(database: FakeDatabase, options: FakeClientOptions = {}) {
   }
 
   return {
+    rpcCalls: [] as Array<{ name: string; args: Record<string, unknown> }>,
     from(table: TableName) {
       if (table === 'shifts' || table === 'shift_registrations') {
         return new FakeQuery(database, table, options)
@@ -251,6 +252,7 @@ function fakeClient(database: FakeDatabase, options: FakeClientOptions = {}) {
       throw new Error(`Unexpected table ${table}`)
     },
     rpc(name: string, args: Record<string, unknown>) {
+      this.rpcCalls.push({ name, args })
       const handler = rpcHandlers[name as RpcName]
       if (!handler) return { data: null, error: { code: 'P0001', message: `unknown rpc ${name}` } }
       if (options.deniedRpc === name) {
@@ -575,6 +577,100 @@ test('Supabase mode update with registration_locked splits into update_shift + l
     }, '1', { reason: 'lock via form' })
     assert.equal(updated?.studio, 'Studio Lock')
     assert.equal(updated?.registration_locked, true)
+    assert.equal(db.shifts.find(row => row.id === 'shift-1')?.registration_locked, true)
+  })
+})
+
+test('Leader update strips allow_multi_role and registration_cutoff_at from update_shift payload', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    const client = fakeClient(db)
+    setSupabaseShiftRepositoryForTests(createSupabaseShiftRepository(client))
+    const leader = {
+      ...adminUser(),
+      id: '2',
+      email: 'leader@example.test',
+      role: 'leader' as const,
+      system_permission: 'leader' as const,
+    }
+    currentUserService.bindAuthenticatedUser(leader)
+
+    const updated = await shiftService.update('shift-1', {
+      studio: 'Studio Leader',
+      allow_multi_role: false,
+      registration_cutoff_at: '2031-08-19T18:00:00.000Z',
+    }, '2', { reason: 'leader edit' })
+    assert.equal(updated?.studio, 'Studio Leader')
+
+    const updateCall = client.rpcCalls.find(call => call.name === 'update_shift')
+    assert.ok(updateCall, 'update_shift RPC was called')
+    const patch = updateCall.args.p_patch as Record<string, unknown>
+    assert.equal(patch.allow_multi_role, undefined)
+    assert.equal(patch.registration_cutoff_at, undefined)
+    assert.equal(patch.studio, 'Studio Leader')
+  })
+})
+
+test('Admin update preserves allow_multi_role and registration_cutoff_at in payload', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    const client = fakeClient(db)
+    setSupabaseShiftRepositoryForTests(createSupabaseShiftRepository(client))
+    currentUserService.bindAuthenticatedUser(adminUser())
+
+    await shiftService.update('shift-1', {
+      studio: 'Studio Admin',
+      allow_multi_role: true,
+      registration_cutoff_at: '2031-08-19T18:00:00.000Z',
+    }, '1', { reason: 'admin edit' })
+
+    const updateCall = client.rpcCalls.find(call => call.name === 'update_shift')
+    assert.ok(updateCall, 'update_shift RPC was called')
+    const patch = updateCall.args.p_patch as Record<string, unknown>
+    assert.equal(patch.allow_multi_role, true)
+    assert.equal(patch.registration_cutoff_at, '2031-08-19T18:00:00.000Z')
+  })
+})
+
+test('Supabase mode skips lock RPC when registration_locked is unchanged', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    const client = fakeClient(db)
+    setSupabaseShiftRepositoryForTests(createSupabaseShiftRepository(client))
+    currentUserService.bindAuthenticatedUser(adminUser())
+
+    // shift-1 has registration_locked: false; submitting false must not call lock RPC.
+    await shiftService.update('shift-1', {
+      studio: 'No Lock Call',
+      registration_locked: false,
+    }, '1', { reason: 'plain edit' })
+
+    const lockCalls = client.rpcCalls.filter(call => call.name === 'set_shift_registration_lock')
+    assert.equal(lockCalls.length, 0)
+    assert.equal(db.shifts.find(row => row.id === 'shift-1')?.studio, 'No Lock Call')
+  })
+})
+
+test('Supabase mode calls lock RPC when registration_locked changes', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    const client = fakeClient(db)
+    setSupabaseShiftRepositoryForTests(createSupabaseShiftRepository(client))
+    currentUserService.bindAuthenticatedUser(adminUser())
+
+    // shift-1 has registration_locked: false; submitting true must call lock RPC.
+    await shiftService.update('shift-1', {
+      studio: 'Lock Change',
+      registration_locked: true,
+    }, '1', { reason: 'lock edit' })
+
+    const lockCalls = client.rpcCalls.filter(call => call.name === 'set_shift_registration_lock')
+    assert.equal(lockCalls.length, 1)
+    assert.equal(lockCalls[0].args.p_locked, true)
     assert.equal(db.shifts.find(row => row.id === 'shift-1')?.registration_locked, true)
   })
 })
