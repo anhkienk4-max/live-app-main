@@ -24,6 +24,7 @@ import { useToast } from '@/components/ui/toast'
 import { AlertCircle, Sparkles } from 'lucide-react'
 import { format } from 'date-fns'
 import { useTranslation } from '@/lib/i18n'
+import { getAuthMode } from '@/lib/auth/authMode'
 
 interface ShiftFormDialogProps {
   open: boolean
@@ -436,41 +437,62 @@ export function ShiftFormDialog({
           </div>
 
           {/* Staffing */}
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="text-sm font-medium">Host</label>
-              <Select value={formData.host_id} onValueChange={(v) => setFormData({ ...formData, host_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Assign host..." /></SelectTrigger>
-                <SelectContent>
-                  {users.filter(u => u.status === 'active' && (u.operational_roles?.includes('host') || (!u.operational_roles && (u.role === 'staff' || u.role === 'leader')))).map(u => (
-                    <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {getAuthMode() === 'supabase' && shift ? (
+            <div className="rounded-lg border p-4">
+              <p className="mb-2 text-sm font-medium">Staffing</p>
+              <p className="text-sm text-muted-foreground">Nhân sự được quản lý tại tab Nhân sự (Staffing) của ca.</p>
+              <div className="mt-3 grid grid-cols-3 gap-4 text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground">Host</p>
+                  <p className="font-medium">{users.find(u => u.id === shift.host_id)?.full_name || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Support Staff</p>
+                  <p className="font-medium">{users.find(u => u.id === shift.support_id)?.full_name || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Technical Staff</p>
+                  <p className="font-medium">{users.find(u => u.id === shift.technical_id)?.full_name || '—'}</p>
+                </div>
+              </div>
             </div>
-            <div>
-              <label className="text-sm font-medium">Support Staff</label>
-              <Select value={formData.support_id} onValueChange={(v) => setFormData({ ...formData, support_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Assign support..." /></SelectTrigger>
-                <SelectContent>
-                  {users.filter(u => u.status === 'active' && (u.operational_roles?.includes('support') || (!u.operational_roles && u.department === 'Live Support'))).map(u => (
-                    <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          ) : (
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="text-sm font-medium">Host</label>
+                <Select value={formData.host_id} onValueChange={(v) => setFormData({ ...formData, host_id: v })}>
+                  <SelectTrigger><SelectValue placeholder="Assign host..." /></SelectTrigger>
+                  <SelectContent>
+                    {users.filter(u => u.status === 'active' && (u.operational_roles?.includes('host') || (!u.operational_roles && (u.role === 'staff' || u.role === 'leader')))).map(u => (
+                      <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Support Staff</label>
+                <Select value={formData.support_id} onValueChange={(v) => setFormData({ ...formData, support_id: v })}>
+                  <SelectTrigger><SelectValue placeholder="Assign support..." /></SelectTrigger>
+                  <SelectContent>
+                    {users.filter(u => u.status === 'active' && (u.operational_roles?.includes('support') || (!u.operational_roles && u.department === 'Live Support'))).map(u => (
+                      <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Technical Staff</label>
+                <Select value={formData.technical_id} onValueChange={(v) => setFormData({ ...formData, technical_id: v })}>
+                  <SelectTrigger><SelectValue placeholder="Assign technical..." /></SelectTrigger>
+                  <SelectContent>
+                    {users.filter(u => u.status === 'active' && u.operational_roles?.includes('technical')).map(u => (
+                      <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div>
-              <label className="text-sm font-medium">Technical Staff</label>
-              <Select value={formData.technical_id} onValueChange={(v) => setFormData({ ...formData, technical_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Assign technical..." /></SelectTrigger>
-                <SelectContent>
-                  {users.filter(u => u.status === 'active' && u.operational_roles?.includes('technical')).map(u => (
-                    <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+          )}
 
           {/* Notes */}
           <div>

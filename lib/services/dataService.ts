@@ -1107,6 +1107,11 @@ export const shiftService = {
       const lockPatch = data.registration_locked
       const shiftPatch = { ...data }
       delete shiftPatch.registration_locked
+      // Staffing is managed through staffing RPCs only; direct IDs are
+      // projections and must never reach update_shift.
+      delete shiftPatch.host_id
+      delete shiftPatch.support_id
+      delete shiftPatch.technical_id
       // update_shift RPC rejects allow_multi_role/registration_cutoff_at for
       // leaders; only admins may change them, so strip them for non-admins.
       if (resolveSystemPermission(actorFor(actorId)) !== 'admin') {
