@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "node --import ./tests/typescript-alias-loader.mjs scripts/check-runtime-environment.ts && next dev",
+    "build": "node --import ./tests/typescript-alias-loader.mjs scripts/check-runtime-environment.ts && next build",
     "start": "next start",
     "lint": "eslint"
   },

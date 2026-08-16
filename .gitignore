@@ -20,6 +20,8 @@ out/
 .env
 .env.local
 .env.*.local
+.env*
+!.env.example
 
 # generated reports and migration snapshots kept locally only
 test_reports/
@@ -73,3 +75,7 @@ Thumbs.db
 .replit-cache/
 .replit-tmp/
 .upm/
+
+.vercel
+.env*
+!.env.example
