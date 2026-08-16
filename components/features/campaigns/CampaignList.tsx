@@ -19,6 +19,8 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
+import { ContentSkeleton } from '@/components/ui/content-skeleton'
+import { refreshCollection } from '@/lib/utils/scopedRefresh'
 
 type CampaignForm = { name: string; brand_id: string; start_date: string; end_date: string; type: string; notes: string; campaign_url: string; website_title: string; website_preview_image: string; website_embed_enabled: boolean; platform_source: string; status: CampaignStatus; owner_id: string }
 type ImportRow = CampaignForm & { row: number; errors: string[] }
@@ -57,6 +59,7 @@ export function CampaignList() {
     setCampaigns(loadedCampaigns); setBrands(loadedBrands); setPlatforms(loadedPlatforms); setShifts(loadedShifts); setReports(loadedReports); setUsers(loadedUsers); setLoading(false)
   }, [])
   React.useEffect(() => { void loadData() }, [loadData])
+  const refreshCampaigns = React.useCallback(() => refreshCollection(campaignService, setCampaigns), [])
   const canManage = Boolean(currentUser && hasPermission(currentUser, 'campaigns.manage'))
   const canEdit = Boolean(currentUser && (canManage || hasPermission(currentUser, 'campaigns.edit_operational')))
   const openForm = (campaign?: Campaign | null) => { setSelected(campaign || null); setForm(formFor(campaign)); setFormOpen(true) }
@@ -84,7 +87,7 @@ export function CampaignList() {
       else await campaignService.create(data)
       toast({ title: t('success'), description: t('save'), variant: 'success' })
       setFormOpen(false)
-      await loadData()
+      await refreshCampaigns()
     } catch {
       toast({ title: t('error'), description: t('validationError'), variant: 'destructive' })
     } finally {
@@ -114,7 +117,7 @@ export function CampaignList() {
     try {
       await campaignService.archive(deleteId, currentUser.id, reason)
       toast({ title: 'Campaign archived', variant: 'success' })
-      await loadData()
+      await refreshCampaigns()
     } catch (error) {
       toast({ title: 'Archive failed', description: error instanceof Error ? error.message : 'Unknown error', variant: 'destructive' })
       throw error
@@ -164,7 +167,7 @@ export function CampaignList() {
     }
     setImportOpen(false)
     setImportRows([])
-    await loadData()
+    await refreshCampaigns()
   }
   const columns: Column<Campaign>[] = [
     { header: t('campaign'), accessor: row => <div><p className="font-medium">{row.name}</p><p className="text-xs text-muted-foreground">{brands.find(brand => brand.id === row.brand_id)?.name || '—'}</p></div> },
@@ -181,7 +184,7 @@ export function CampaignList() {
     { header: t('actions'), accessor: row => <div className="flex gap-1"><Button variant="ghost" size="icon" aria-label={t('viewDetails')} onClick={() => setDetail(row)}><Eye className="h-4 w-4" /></Button>{canEdit && <Button variant="ghost" size="icon" aria-label={t('edit')} onClick={() => openForm(row)}><Pencil className="h-4 w-4" /></Button>}{canManage && <Button variant="ghost" size="icon" aria-label="Archive campaign" title="Archive campaign" onClick={() => requestArchive(row)}><Trash2 className="h-4 w-4 text-red-600" /></Button>}</div> },
   ]
 
-  if (loading) return <div className="py-12 text-center">{t('loading')}</div>
+  if (loading) return <ContentSkeleton />
   return <>
     <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t('campaigns')}</h2><p className="mt-1 text-muted-foreground">{t('campaignPreviewHelp')}</p></div>{canManage && <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => fileRef.current?.click()}><FileSpreadsheet className="mr-2 h-4 w-4" />{t('importExcel')}</Button><input ref={fileRef} className="sr-only" type="file" accept=".xlsx,.xls" onChange={parseImport} /><Button onClick={() => openForm()}><Plus className="mr-2 h-4 w-4" />{t('create')} {t('campaign')}</Button></div>}</div>
     <DataTable data={campaigns} columns={columns} searchPlaceholder={`${t('search')} ${t('campaigns')}`} />

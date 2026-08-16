@@ -4,7 +4,7 @@ import * as React from 'react'
 import Link from 'next/link'
 import { addDays, endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
 import { BarChart3, Calendar, FileText, Package, Radio, RotateCcw, TrendingUp, Users } from 'lucide-react'
-import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import dynamic from 'next/dynamic'
 import { brandService, campaignService, isStaffedRegistration, platformService, reportService, shiftRegistrationService, shiftService, userService } from '@/lib/services/dataService'
 import { Brand, Campaign, OperationalRole, Platform, Report, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import { useTranslation } from '@/lib/i18n'
@@ -15,6 +15,12 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ContentSkeleton } from '@/components/ui/content-skeleton'
+
+const DashboardCharts = dynamic(
+  () => import('@/components/features/dashboard/DashboardCharts').then(mod => ({ default: mod.DashboardCharts })),
+  { ssr: false, loading: () => <div className="grid gap-5 xl:grid-cols-2">{[0, 1].map(i => <Card key={i}><CardContent className="h-72"><div className="space-y-3 pt-5"><ContentSkeleton /></div></CardContent></Card>)}</div> },
+)
 
 type Preset = 'today' | 'yesterday' | '7d' | '30d' | 'thisMonth' | 'lastMonth' | 'custom'
 type Filters = { preset: Preset; start: string; end: string; brand: string; platform: string; campaign: string; host: string; support: string; technical: string }
@@ -51,7 +57,7 @@ export function DashboardOverview() {
       })
   }, [])
 
-  if (loading || !filters) return <div className="py-12 text-center">{t('loading')}</div>
+  if (loading || !filters) return <ContentSkeleton />
 
   const matchesRole = (shift: Shift, role: OperationalRole, userId: string) => {
     const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
@@ -128,10 +134,15 @@ export function DashboardOverview() {
       <QuickAction href="/calendar" label={t('calendar')} icon={<Calendar className="h-6 w-6" />} /><QuickAction href="/live" label={t('liveMonitor')} icon={<Radio className="h-6 w-6" />} /><QuickAction href="/reports" label={t('reports')} icon={<FileText className="h-6 w-6" />} /><QuickAction href="/analytics" label={t('analytics')} icon={<BarChart3 className="h-6 w-6" />} />
     </CardContent></Card>
 
-    <div className="grid gap-5 xl:grid-cols-2">
-      <Card><CardHeader><CardTitle>{t('revenueTrend')}</CardTitle></CardHeader><CardContent className="h-72">{trend.length ? <ResponsiveContainer width="100%" height="100%"><LineChart data={trend}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis /><Tooltip formatter={(value, _name, item) => [String(item.dataKey) === 'revenue' ? formatCurrency(Number(value)) : value, item.name]} /><Legend /><Line type="monotone" dataKey="revenue" stroke="#16a34a" name={t('revenue')} /><Line type="monotone" dataKey="orders" stroke="#2563eb" name={t('orders')} /></LineChart></ResponsiveContainer> : <Empty text={t('noData')} />}</CardContent></Card>
-      <Card><CardHeader><CardTitle>{t('shiftStatusSummary')}</CardTitle></CardHeader><CardContent className="h-72"><ResponsiveContainer width="100%" height="100%"><BarChart data={statusSummary}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="status" /><YAxis allowDecimals={false} /><Tooltip /><Bar dataKey="shifts" fill="#2563eb" /></BarChart></ResponsiveContainer></CardContent></Card>
-    </div>
+    <DashboardCharts
+      trend={trend}
+      statusSummary={statusSummary}
+      revenueLabel={t('revenue')}
+      ordersLabel={t('orders')}
+      revenueTrendLabel={t('revenueTrend')}
+      shiftStatusSummaryLabel={t('shiftStatusSummary')}
+      noDataLabel={t('noData')}
+    />
 
     <Card><CardHeader className="flex-row items-center justify-between"><div><CardTitle>{t('upcomingShifts')}</CardTitle><CardDescription>{t('dashboardFilters')}</CardDescription></div><Button nativeButton={false} render={<Link href="/calendar" />} variant="outline" size="sm">{t('viewAll')}</Button></CardHeader><CardContent>{upcoming.length ? <div className="space-y-3">{upcoming.map(shift => <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3" key={shift.id}><div><p className="font-medium">{shift.title || nameFor(brands, shift.brand_id)}</p><p className="text-sm text-muted-foreground">{shift.date} · {formatShiftTimeRange(shift)} · {nameFor(platforms, shift.platform_id)}</p></div><Badge variant="outline">{t('scheduled')}</Badge></div>)}</div> : <Empty text={t('noMatchingShifts')} />}</CardContent></Card>
   </div>

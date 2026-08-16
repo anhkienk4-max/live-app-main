@@ -34,6 +34,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Calendar,
   Check,
@@ -414,7 +415,11 @@ export function ShiftDetailModal({
 
               <TabsContent value="staffing" className="space-y-4 pt-1">
                 {staffingLoading ? (
-                  <Card><CardContent className="py-8 text-center text-muted-foreground">{t('loading')}</CardContent></Card>
+                  <div className="space-y-3" data-testid="staffing-skeleton">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                      <Card key={index}><CardContent className="space-y-2 pt-5"><Skeleton className="h-4 w-24" /><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-2/3" /></CardContent></Card>
+                    ))}
+                  </div>
                 ) : staffingError ? (
                   <Card><CardContent className="py-8 text-center text-muted-foreground">{t('staffingUnavailable')}</CardContent></Card>
                 ) : (
