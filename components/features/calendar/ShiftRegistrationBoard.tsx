@@ -301,9 +301,11 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                           {myRegistration ? (
                             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                               <Badge className={isStaffedRegistration(myRegistration) ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{registrationLabel(myRegistration, t)}</Badge>
-                              {hasPermission(currentUser, 'shifts.cancel_registration') && !shift.registration_locked && (
+                              {myRegistration.source === 'manual_assignment' || myRegistration.status === 'manually_assigned' ? (
+                                <Badge variant="outline">{t('assignedByManager')}</Badge>
+                              ) : hasPermission(currentUser, 'shifts.cancel_registration') && !shift.registration_locked ? (
                                 <Button size="sm" variant="outline" disabled={busyId === myRegistration.id} onClick={() => setRemovalTarget({ registration: myRegistration, kind: 'cancel' })}>{t('cancelRegistration')}</Button>
-                              )}
+                              ) : null}
                             </div>
                           ) : mode === 'open' && !shift.registration_locked && eligible && capacity.remaining > 0 ? (
                             <Button size="sm" disabled={busyId === `${shift.id}-${capacity.role}`} onClick={() => runAction(`${shift.id}-${capacity.role}`, () => shiftRegistrationService.register(shift.id, currentUser.id, capacity.role), t('registrationPending'))}><UserPlus className="mr-1 h-4 w-4" />{t('register')}</Button>

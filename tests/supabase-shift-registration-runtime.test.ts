@@ -126,8 +126,15 @@ function fakeClient(database: FakeDatabase, options: FakeClientOptions = {}) {
       const id = String(args.p_registration_id)
       const index = database.shift_registrations.findIndex(row => row.id === id)
       if (index === -1) throw { code: 'P0001', message: 'REGISTRATION_NOT_FOUND' }
+      const row = database.shift_registrations[index]
+      if (row.source === 'manual_assignment' || row.status === 'manually_assigned') {
+        throw { code: 'P0001', message: 'MANUAL_ASSIGNMENT_REQUIRES_MANAGER_REMOVAL' }
+      }
+      if (row.status !== 'pending' && row.status !== 'approved') {
+        throw { code: 'P0001', message: 'INVALID_REGISTRATION_TRANSITION' }
+      }
       const updated = {
-        ...database.shift_registrations[index],
+        ...row,
         status: 'cancelled',
         cancelled_at: '2031-08-20T02:00:00.000Z',
         updated_at: '2031-08-20T02:00:00.000Z',
@@ -447,6 +454,73 @@ test('Supabase mode manual assign and remove go through RPCs', async () => {
     const removed = await shiftRegistrationService.removeAssignment('reg-2', '1', 'replaced')
     assert.equal(removed.status, 'removed')
     assert.equal(db.shift_registrations.find(row => row.id === 'reg-2')?.status, 'removed')
+  })
+})
+
+test('Supabase mode blocks self-cancel of a manually assigned registration', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    db.shift_registrations.push(registrationRow({
+      id: 'reg-manual',
+      user_id: 'u-member',
+      operational_role: 'host',
+      status: 'manually_assigned',
+      source: 'manual_assignment',
+      reviewed_by: 'u-leader',
+      reviewed_at: '2031-08-19T11:00:00.000Z',
+    }))
+    setSupabaseShiftRegistrationRepositoryForTests(createSupabaseShiftRegistrationRepository(fakeClient(db)))
+    currentUserService.bindAuthenticatedUser(adminUser({ id: 'u-member', email: 'member@example.test', role: 'staff', system_permission: 'member' }))
+
+    await assert.rejects(
+      shiftRegistrationService.cancel('reg-manual', 'u-member', 'not allowed'),
+      /MANUAL_ASSIGNMENT_REQUIRES_MANAGER_REMOVAL|registration cancel/i,
+    )
+    // Registration untouched.
+    assert.equal(db.shift_registrations.find(row => row.id === 'reg-manual')?.status, 'manually_assigned')
+  })
+})
+
+test('Supabase mode allows self-cancel of pending and approved self-registrations', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    db.shift_registrations.push(
+      registrationRow({ id: 'reg-self-pending', user_id: 'u-member', operational_role: 'host', status: 'pending', source: 'self_registration' }),
+      registrationRow({ id: 'reg-self-approved', user_id: 'u-member', operational_role: 'support', status: 'approved', source: 'self_registration', reviewed_by: 'u-leader' }),
+    )
+    setSupabaseShiftRegistrationRepositoryForTests(createSupabaseShiftRegistrationRepository(fakeClient(db)))
+    currentUserService.bindAuthenticatedUser(adminUser({ id: 'u-member', email: 'member@example.test', role: 'staff', system_permission: 'member' }))
+
+    const cancelledPending = await shiftRegistrationService.cancel('reg-self-pending', 'u-member', 'changed mind')
+    assert.equal(cancelledPending.status, 'cancelled')
+    const cancelledApproved = await shiftRegistrationService.cancel('reg-self-approved', 'u-member', 'changed mind')
+    assert.equal(cancelledApproved.status, 'cancelled')
+    assert.equal(db.shift_registrations.find(row => row.id === 'reg-self-pending')?.status, 'cancelled')
+    assert.equal(db.shift_registrations.find(row => row.id === 'reg-self-approved')?.status, 'cancelled')
+  })
+})
+
+test('Supabase mode Admin/Leader remove of manually assigned staffing still works', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    db.shift_registrations.push(registrationRow({
+      id: 'reg-manual-2',
+      user_id: 'u-member',
+      operational_role: 'host',
+      status: 'manually_assigned',
+      source: 'manual_assignment',
+      reviewed_by: 'u-leader',
+      reviewed_at: '2031-08-19T11:00:00.000Z',
+    }))
+    setSupabaseShiftRegistrationRepositoryForTests(createSupabaseShiftRegistrationRepository(fakeClient(db)))
+    currentUserService.bindAuthenticatedUser(adminUser())
+
+    const removed = await shiftRegistrationService.removeAssignment('reg-manual-2', '1', 'replaced by manager')
+    assert.equal(removed.status, 'removed')
+    assert.equal(db.shift_registrations.find(row => row.id === 'reg-manual-2')?.status, 'removed')
   })
 })
 

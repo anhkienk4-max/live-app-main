@@ -270,21 +270,29 @@ export function DaySessionsDialog({
                         {t('registerForRole', { role: t(role) })}
                       </Button>
                     ))}
-                    {myRegistrations.map(registration => (
-                      <Button
-                        disabled={Boolean(busyAction) || Boolean(shift.registration_locked)}
-                        key={registration.id}
-                        onClick={() => void runAction(
-                          `cancel-${registration.id}`,
-                          () => shiftRegistrationService.cancel(registration.id, currentUser!.id),
-                          t('registrationCancelled'),
-                        )}
-                        size="sm"
-                        variant="outline"
-                      >
-                        {t('cancelRegistration')} · {t(registration.operational_role)}
-                      </Button>
-                    ))}
+                    {myRegistrations.map(registration => {
+                      const isManualAssignment = registration.source === 'manual_assignment' || registration.status === 'manually_assigned'
+                      return (
+                        <div key={registration.id} className="flex flex-wrap items-center gap-2">
+                          {isManualAssignment ? (
+                            <Badge variant="outline">{t('assignedByManager')}</Badge>
+                          ) : (
+                            <Button
+                              disabled={Boolean(busyAction) || Boolean(shift.registration_locked)}
+                              onClick={() => void runAction(
+                                `cancel-${registration.id}`,
+                                () => shiftRegistrationService.cancel(registration.id, currentUser!.id),
+                                t('registrationCancelled'),
+                              )}
+                              size="sm"
+                              variant="outline"
+                            >
+                              {t('cancelRegistration')} · {t(registration.operational_role)}
+                            </Button>
+                          )}
+                        </div>
+                      )
+                    })}
                     {currentUser && hasPermission(currentUser, 'shifts.edit') && (
                       <>
                         <Button onClick={() => onEditShift(shift)} size="sm" variant="outline">
