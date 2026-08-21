@@ -39,10 +39,12 @@ import {
   normalizeScheduleImportResult,
   normalizeScheduleImportSourceRow,
   previewStaffingFields,
+  previewStaffingNameFields,
 } from '@/lib/utils/scheduleImportPreview'
 import {
   type DraftField,
   type DraftRows,
+  committedRowValue,
   commitRowDraftToSource,
   removeRowDraft,
   rowDraftValue,
@@ -396,8 +398,8 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
               </div>
             </div>
             <div className="max-h-[560px] overflow-auto rounded-lg border">
-              <table className="min-w-[1300px] w-full text-sm">
-                <thead className="sticky top-0 z-10 bg-background"><tr className="border-b text-left"><th className="p-2">#</th><th className="p-2">{t('date')}</th><th className="p-2">{t('time')}</th><th className="p-2">{t('brand')}</th><th className="p-2">{t('platform')}</th><th className="p-2">{t('campaign')}</th><th className="p-2">{t('shiftTitle')}</th><th className="p-2">{t('studio')}</th><th className="p-2">{t('requiredHostCount')}</th><th className="p-2">{t('requiredSupportCount')}</th><th className="p-2">{t('requiredTechnicalCount')}</th><th className="min-w-64 p-2">{t('status')}</th></tr></thead>
+              <table className="min-w-[1780px] w-full text-sm">
+                <thead className="sticky top-0 z-10 bg-background"><tr className="border-b text-left"><th className="p-2">#</th><th className="p-2">{t('date')}</th><th className="p-2">{t('time')}</th><th className="p-2">{t('brand')}</th><th className="p-2">{t('platform')}</th><th className="p-2">{t('campaign')}</th><th className="p-2">{t('shiftTitle')}</th><th className="p-2">{t('studio')}</th><th className="p-2">{t('importHostNames')}</th><th className="p-2">{t('importAssistantNames')}</th><th className="p-2">{t('importTechnicalNames')}</th><th className="p-2">{t('requiredHostCount')}</th><th className="p-2">{t('requiredSupportCount')}</th><th className="p-2">{t('requiredTechnicalCount')}</th><th className="min-w-64 p-2">{t('status')}</th></tr></thead>
                 <tbody>
                   {result.rows.filter(preview =>
                     previewFilter === 'all' ||
@@ -408,8 +410,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                     const rowNumber = preview.row.row_number
                     const editing = draftRows[rowNumber]
                     const cellValue = (field: DraftField): string => {
-                      const committed = preview.row[field]
-                      const committedText = committed === undefined || committed === null ? '' : String(committed)
+                      const committedText = committedRowValue(preview.row, field)
                       return editing ? rowDraftValue(draftRows, rowNumber, field, committedText) : committedText
                     }
                     const changeField = (field: DraftField) => (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -436,6 +437,18 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                         <td className="p-2"><PreviewEntitySelect optional value={entityValue('campaign_name', preview.row.campaign_name || '')} onChange={value => draftChange(rowNumber, 'campaign_name', value)} options={campaigns} /></td>
                         <td className="p-2"><Input className="w-48" value={cellValue('title')} onChange={changeField('title')} onKeyDown={handleCellKeyDown} /></td>
                         <td className="p-2"><Input className="w-36" value={cellValue('studio')} onChange={changeField('studio')} onKeyDown={handleCellKeyDown} /></td>
+                        {previewStaffingNameFields.map(field => (
+                          <td className="p-2" key={field}>
+                            <Input
+                              className="w-40"
+                              data-testid={`schedule-preview-${field}`}
+                              value={cellValue(field)}
+                              onChange={changeField(field)}
+                              onKeyDown={handleCellKeyDown}
+                              placeholder="—"
+                            />
+                          </td>
+                        ))}
                         {previewStaffingFields.map(field => (
                           <td className="p-2" key={field}>
                             <ScheduleImportStaffingInput

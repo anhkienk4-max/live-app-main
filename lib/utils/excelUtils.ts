@@ -19,8 +19,10 @@ import {
 } from '@/lib/utils/shiftUtils'
 import {
   getCanonicalStaffingField,
+  getCanonicalStaffingNameField,
   normalizeScheduleImportSourceRow,
   PreviewStaffingField,
+  PreviewStaffingNameField,
   previewStaffingFields,
   toCanonicalScheduleImportPreviewRow,
   validateStaffingValues,
@@ -71,7 +73,7 @@ const scheduleHeaders = {
   notes: ['notes', 'note', 'ghi chú', 'ghi chu'],
 } as const
 
-type ScheduleHeaderField = keyof typeof scheduleHeaders | PreviewStaffingField
+type ScheduleHeaderField = keyof typeof scheduleHeaders | PreviewStaffingField | PreviewStaffingNameField
 
 const canonicalScheduleHeaders: Record<ScheduleHeaderField, string> = {
   date: 'Date',
@@ -84,6 +86,9 @@ const canonicalScheduleHeaders: Record<ScheduleHeaderField, string> = {
   title: 'Shift title',
   studio: 'Studio',
   notes: 'Notes',
+  host_names: 'host_names',
+  assistant_names: 'assistant_names',
+  technical_names: 'technical_names',
   required_host_count: 'required_host_count',
   required_support_count: 'required_support_count',
   required_technical_count: 'required_technical_count',
@@ -118,6 +123,8 @@ const headerFieldFor = (value: unknown): ScheduleHeaderField | undefined => {
   if (!text) return undefined
   const staffingField = getCanonicalStaffingField(text)
   if (staffingField) return staffingField
+  const staffingNameField = getCanonicalStaffingNameField(text)
+  if (staffingNameField) return staffingNameField
   const normalized = normalizeLookup(text)
   const entry = (Object.entries(scheduleHeaders) as Array<[keyof typeof scheduleHeaders, readonly string[]]>)
     .find(([, aliases]) => aliases.some(alias => normalizeLookup(alias) === normalized))
@@ -318,6 +325,11 @@ export function parseScheduleRows(
       required_support_count: normalizedSource.required_support_count,
       required_technical_count: normalizedSource.required_technical_count,
     }
+    const staffingNames = {
+      host_names: normalizedSource.host_names,
+      assistant_names: normalizedSource.assistant_names,
+      technical_names: normalizedSource.technical_names,
+    }
     const validatedStaffing = validateStaffingValues(staffingValues)
     const rowErrors: string[] = []
     const rowWarnings: string[] = []
@@ -371,6 +383,7 @@ export function parseScheduleRows(
         campaign_id: campaignId,
         title,
         studio: studio || undefined,
+        ...staffingNames,
         required_host_count: validatedStaffing.required_host_count!,
         required_support_count: validatedStaffing.required_support_count!,
         required_technical_count: validatedStaffing.required_technical_count!,
@@ -405,6 +418,7 @@ export function parseScheduleRows(
         campaign_name: campaignName || undefined,
         title,
         studio: studio || undefined,
+        ...staffingNames,
         ...staffingValues,
         notes: notes || undefined,
         warnings: rowWarnings,

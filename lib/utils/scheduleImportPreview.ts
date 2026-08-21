@@ -5,11 +5,19 @@ import { DEFAULT_SHIFT_STAFFING, MAX_SHIFT_CAPACITY } from '@/lib/utils/shiftUti
 export type PreviewStaffingField = 'required_host_count' | 'required_support_count' | 'required_technical_count'
 export type PreviewStaffingValues = Record<PreviewStaffingField, number | string>
 export type ValidatedStaffingValues = Record<PreviewStaffingField, number | null>
+export type PreviewStaffingNameField = 'host_names' | 'assistant_names' | 'technical_names'
+export type PreviewStaffingNameValues = Record<PreviewStaffingNameField, string[]>
 
 export const previewStaffingFields = [
   'required_host_count',
   'required_support_count',
   'required_technical_count',
+] as const
+
+export const previewStaffingNameFields = [
+  'host_names',
+  'assistant_names',
+  'technical_names',
 ] as const
 
 const previewFieldToSourceField: Record<string, string> = {
@@ -21,6 +29,9 @@ const previewFieldToSourceField: Record<string, string> = {
   campaign_name: 'Campaign',
   title: 'Shift title',
   studio: 'Studio',
+  host_names: 'host_names',
+  assistant_names: 'assistant_names',
+  technical_names: 'technical_names',
   required_host_count: 'required_host_count',
   required_support_count: 'required_support_count',
   required_technical_count: 'required_technical_count',
@@ -75,15 +86,11 @@ const staffingSourceAliases: Record<PreviewStaffingField, string[]> = {
   ],
 }
 
-const ignoredLegacyStaffingAliases = [
-  'Host',
-  'Support',
-  'Technical',
-  'Hỗ trợ',
-  'Ho tro',
-  'Kỹ thuật',
-  'Ky thuat',
-]
+const staffingNameSourceAliases: Record<PreviewStaffingNameField, string[]> = {
+  host_names: ['host_names', 'Host', 'Tên Host', 'MC'],
+  assistant_names: ['assistant_names', 'Trợ', 'Trợ live', 'Assistant'],
+  technical_names: ['technical_names', 'Kỹ thuật', 'Ky thuat', 'Technical', 'Tech'],
+}
 
 const normalizeSourceKey = (value: string) => value
   .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '')
@@ -104,6 +111,25 @@ export function getCanonicalStaffingField(sourceKey: string): PreviewStaffingFie
   )
 }
 
+export function getCanonicalStaffingNameField(sourceKey: string): PreviewStaffingNameField | undefined {
+  const normalizedKey = normalizeSourceKey(sourceKey)
+  return previewStaffingNameFields.find(field =>
+    staffingNameSourceAliases[field].some(alias => normalizeSourceKey(alias) === normalizedKey),
+  )
+}
+
+export function normalizeStaffingDisplayNames(rawValue: unknown): string[] {
+  const values = Array.isArray(rawValue) ? rawValue : [rawValue]
+  const names = values.flatMap(value => {
+    if (value === null || value === undefined) return []
+    return String(value)
+      .split(/[,;\r\n]+/)
+      .map(name => name.replace(/\s+/g, ' ').trim())
+      .filter(Boolean)
+  })
+  return [...new Set(names)]
+}
+
 function staffingSourceValue(
   sourceRow: Record<string, unknown>,
   field: PreviewStaffingField,
@@ -118,6 +144,21 @@ function staffingSourceValue(
     if (normalizedEntries.has(normalizedAlias)) presentValues.push(normalizedEntries.get(normalizedAlias))
   }
   return presentValues.find(value => !isMissingStaffingValue(value)) ?? presentValues[0]
+}
+
+function staffingNameSourceValue(
+  sourceRow: Record<string, unknown>,
+  field: PreviewStaffingNameField,
+) {
+  const normalizedEntries = new Map<string, unknown>()
+  Object.entries(sourceRow).forEach(([key, value]) => {
+    normalizedEntries.set(normalizeSourceKey(key), value)
+  })
+  for (const alias of staffingNameSourceAliases[field]) {
+    const normalizedAlias = normalizeSourceKey(alias)
+    if (normalizedEntries.has(normalizedAlias)) return normalizedEntries.get(normalizedAlias)
+  }
+  return undefined
 }
 
 function isMissingStaffingValue(value: unknown) {
@@ -156,6 +197,17 @@ export function normalizeStaffingValuesForPreview(
   ) as PreviewStaffingValues
 }
 
+export function normalizeStaffingNameValuesForPreview(
+  sourceRow: Record<string, unknown>,
+): PreviewStaffingNameValues {
+  return Object.fromEntries(
+    previewStaffingNameFields.map(field => [
+      field,
+      normalizeStaffingDisplayNames(staffingNameSourceValue(sourceRow, field)),
+    ]),
+  ) as PreviewStaffingNameValues
+}
+
 export function validateStaffingValues(
   values: PreviewStaffingValues,
 ): ValidatedStaffingValues {
@@ -175,9 +227,12 @@ export function validateStaffingValues(
 
 export function normalizeScheduleImportSourceRow(
   sourceRow: Record<string, unknown>,
-): Record<string, unknown> & PreviewStaffingValues {
+): Record<string, unknown> & PreviewStaffingValues & PreviewStaffingNameValues {
   const staffingAliases = new Set(
-    [...Object.values(staffingSourceAliases).flat(), ...ignoredLegacyStaffingAliases].map(normalizeSourceKey),
+    [
+      ...Object.values(staffingSourceAliases).flat(),
+      ...Object.values(staffingNameSourceAliases).flat(),
+    ].map(normalizeSourceKey),
   )
   const canonicalSource = Object.fromEntries(
     Object.entries(sourceRow).filter(([key]) => !staffingAliases.has(normalizeSourceKey(key))),
@@ -185,6 +240,7 @@ export function normalizeScheduleImportSourceRow(
   return {
     ...canonicalSource,
     ...normalizeStaffingValuesForPreview(sourceRow),
+    ...normalizeStaffingNameValuesForPreview(sourceRow),
   }
 }
 
@@ -198,6 +254,9 @@ export function buildScheduleImportPreviewSourceRow(row: ScheduleImportRow) {
     Campaign: row.campaign_name || '',
     'Shift title': row.title,
     Studio: row.studio || '',
+    host_names: row.host_names?.join(', ') || '',
+    assistant_names: row.assistant_names?.join(', ') || '',
+    technical_names: row.technical_names?.join(', ') || '',
     required_host_count: row.required_host_count,
     required_support_count: row.required_support_count,
     required_technical_count: row.required_technical_count,
@@ -214,6 +273,9 @@ export function toCanonicalScheduleImportPreviewRow(
   return {
     ...canonical,
     studio: studio || undefined,
+    host_names: canonical.host_names,
+    assistant_names: canonical.assistant_names,
+    technical_names: canonical.technical_names,
     required_host_count: canonical.required_host_count,
     required_support_count: canonical.required_support_count,
     required_technical_count: canonical.required_technical_count,
@@ -228,6 +290,9 @@ export function normalizeScheduleImportResult(result: ImportResult): ImportResul
       ? {
           ...preview.shift,
           studio: row.studio,
+          host_names: row.host_names ?? [],
+          assistant_names: row.assistant_names ?? [],
+          technical_names: row.technical_names ?? [],
           required_host_count: staffing.required_host_count!,
           required_support_count: staffing.required_support_count!,
           required_technical_count: staffing.required_technical_count!,

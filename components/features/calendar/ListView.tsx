@@ -20,7 +20,9 @@ export function ListView({ shifts, brands, platforms, users, onShiftClick }: Lis
   const getBrandName = (brandId: string) => brands.find(b => b.id === brandId)?.name || 'Unknown'
   const getPlatformName = (platformId: string) => platforms.find(p => p.id === platformId)?.name || 'Unknown'
   const getBrandColor = (brandId: string) => brands.find(b => b.id === brandId)?.color || '#2563EB'
-  const getUserName = (userId?: string) => userId ? users.find(u => u.id === userId)?.full_name || 'Unassigned' : 'Unassigned'
+  const getUserName = (userId?: string) => userId ? users.find(u => u.id === userId)?.full_name || t('notAssigned') : t('notAssigned')
+  const staffingName = (userId: string | undefined, importedNames: string[] | undefined) =>
+    userId ? getUserName(userId) : importedNames?.join(', ') || t('notAssigned')
 
   const sortedShifts = [...shifts].sort((a, b) => {
     if (a.date !== b.date) return a.date.localeCompare(b.date)
@@ -57,10 +59,10 @@ export function ListView({ shifts, brands, platforms, users, onShiftClick }: Lis
               <div className="text-sm text-gray-600">{getPlatformName(shift.platform_id)}</div>
               <div className="text-sm text-gray-500"><span className="font-medium">{t('studio')}:</span> {shift.studio || t('notUpdated')}</div>
               <div className="text-sm text-gray-500">
-                <span className="font-medium">Host:</span> {getUserName(shift.host_id)}
+                <span className="font-medium">{t('importHostNames')}:</span> {staffingName(shift.host_id, shift.host_names)}
               </div>
-              <div className="text-sm text-gray-500"><span className="font-medium">Support:</span> {getUserName(shift.support_id)}</div>
-              <div className="text-sm text-gray-500"><span className="font-medium">Technical:</span> {getUserName(shift.technical_id)}</div>
+              <div className="text-sm text-gray-500"><span className="font-medium">{t('importAssistantNames')}:</span> {staffingName(shift.support_id, shift.assistant_names)}</div>
+              <div className="text-sm text-gray-500"><span className="font-medium">{t('importTechnicalNames')}:</span> {staffingName(shift.technical_id, shift.technical_names)}</div>
             </div>
             <Badge variant={shift.status === 'live' ? 'destructive' : shift.status === 'completed' ? 'default' : 'secondary'}>
               {shift.status}

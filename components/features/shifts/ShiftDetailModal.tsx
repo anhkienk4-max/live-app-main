@@ -73,6 +73,38 @@ const roleRequiredField: Record<OperationalRole, 'required_host_count' | 'requir
   technical: 'required_technical_count',
 }
 
+const roleImportedNameField: Record<OperationalRole, 'host_names' | 'assistant_names' | 'technical_names'> = {
+  host: 'host_names',
+  support: 'assistant_names',
+  technical: 'technical_names',
+}
+
+export function ShiftImportedStaffingLabels({
+  shift,
+  t,
+}: {
+  shift: Shift
+  t: (key: TranslationKey) => string
+}) {
+  if (!operationalRoles.some(role => (shift[roleImportedNameField[role]]?.length ?? 0) > 0)) {
+    return null
+  }
+
+  return (
+    <div className="mt-5 border-t pt-4" data-testid="shift-detail-imported-staffing">
+      <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('importedStaffingLabels')}</h4>
+      <dl className="grid gap-3 sm:grid-cols-3">
+        {operationalRoles.map(role => (
+          <div key={role}>
+            <dt className="text-xs text-muted-foreground">{t(role)}</dt>
+            <dd className="mt-1 break-words text-sm font-medium">{shift[roleImportedNameField[role]]?.join(', ') || '—'}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  )
+}
+
 const statusStyles: Record<ShiftStatus, string> = {
   scheduled: 'border-blue-200 bg-blue-50 text-blue-800',
   preparing: 'border-amber-200 bg-amber-50 text-amber-800',
@@ -409,6 +441,7 @@ export function ShiftDetailModal({
                         />
                       ))}
                     </div>
+                    <ShiftImportedStaffingLabels shift={shift} t={t} />
                   </CardContent>
                 </Card>
               </TabsContent>

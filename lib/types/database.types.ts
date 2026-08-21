@@ -219,6 +219,9 @@ export interface Shift extends LifecycleMetadata {
   host_id?: string
   support_id?: string
   technical_id?: string
+  host_names?: string[]
+  assistant_names?: string[]
+  technical_names?: string[]
   required_host_count?: number
   required_support_count?: number
   required_technical_count?: number
@@ -768,6 +771,9 @@ export interface ScheduleImportRow {
   campaign_name?: string
   title: string
   studio?: string
+  host_names?: string[]
+  assistant_names?: string[]
+  technical_names?: string[]
   required_host_count: number | string
   required_support_count: number | string
   required_technical_count: number | string
