@@ -2,7 +2,9 @@ import type { ScheduleImportRow } from '@/lib/types/database.types'
 import {
   getScheduleImportSourceField,
   previewStaffingFields,
+  previewStaffingNameFields,
   type PreviewStaffingField,
+  type PreviewStaffingNameField,
 } from '@/lib/utils/scheduleImportPreview'
 
 export type DraftField =
@@ -14,6 +16,7 @@ export type DraftField =
   | 'campaign_name'
   | 'title'
   | 'studio'
+  | PreviewStaffingNameField
   | PreviewStaffingField
 
 export const draftFields: readonly DraftField[] = [
@@ -25,6 +28,7 @@ export const draftFields: readonly DraftField[] = [
   'campaign_name',
   'title',
   'studio',
+  ...previewStaffingNameFields,
   ...previewStaffingFields,
 ]
 
@@ -33,6 +37,7 @@ export type DraftRows = Record<number, DraftRow>
 
 export function committedRowValue(row: ScheduleImportRow, field: DraftField): string {
   const value = row[field]
+  if (Array.isArray(value)) return value.join(', ')
   return value === undefined || value === null ? '' : String(value)
 }
 

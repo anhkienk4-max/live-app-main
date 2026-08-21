@@ -396,6 +396,26 @@ test('Supabase mode capacity counts pending and approved per role', async () => 
   })
 })
 
+test('Supabase approved-shift reads preserve imported staffing display labels', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    db.shifts[0] = shiftRow({
+      host_names: ['Hương'],
+      assistant_names: ['An', 'Linh'],
+      technical_names: ['Minh'],
+    })
+    const repository = createSupabaseShiftRegistrationRepository(fakeClient(db))
+
+    const shifts = await repository.getMyApprovedShifts('u-other')
+
+    assert.equal(shifts.length, 1)
+    assert.deepEqual(shifts[0].host_names, ['Hương'])
+    assert.deepEqual(shifts[0].assistant_names, ['An', 'Linh'])
+    assert.deepEqual(shifts[0].technical_names, ['Minh'])
+  })
+})
+
 test('Supabase mode self registration goes through register_for_shift RPC', async () => {
   await withEnvironment(async () => {
     setAuthMode('supabase')

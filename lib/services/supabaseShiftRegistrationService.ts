@@ -42,6 +42,9 @@ const shiftColumns = [
   'host_id',
   'support_id',
   'technical_id',
+  'host_names',
+  'assistant_names',
+  'technical_names',
   'required_host_count',
   'required_support_count',
   'required_technical_count',
@@ -74,6 +77,9 @@ type ShiftRow = Nullable<Shift> &
     required_host_count: number
     required_support_count: number
     required_technical_count: number
+    host_names: string[]
+    assistant_names: string[]
+    technical_names: string[]
     registration_locked: boolean
     allow_multi_role: boolean
   }
@@ -165,6 +171,9 @@ function shiftFromRow(row: ShiftRow): Shift {
     host_id: row.host_id ?? undefined,
     support_id: row.support_id ?? undefined,
     technical_id: row.technical_id ?? undefined,
+    host_names: row.host_names ?? [],
+    assistant_names: row.assistant_names ?? [],
+    technical_names: row.technical_names ?? [],
     required_host_count: row.required_host_count,
     required_support_count: row.required_support_count,
     required_technical_count: row.required_technical_count,

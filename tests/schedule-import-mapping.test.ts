@@ -54,6 +54,42 @@ test('schedule import detects a normal row-one header', () => {
   assert.equal(result.invalidRows, 0)
   assert.equal(result.validShifts[0].title, 'Morning shift')
   assert.equal(result.validShifts[0].brand_id, 'brand-1')
+  assert.deepEqual(result.validShifts[0].host_names, [])
+  assert.deepEqual(result.validShifts[0].assistant_names, [])
+  assert.deepEqual(result.validShifts[0].technical_names, [])
+})
+
+test('Google Sheets staffing display aliases normalize names without resolving users', () => {
+  const headers = [...englishHeader, 'Host', 'Assistant', 'Tech']
+  const row = [...scheduleRow, '  Hương  ', 'An, Linh; An', ' Minh ; Phúc ']
+  const result = parseScheduleTabularData(
+    [headers, row].map(csvRow).join('\n'),
+    'string',
+    maps,
+  )
+
+  assert.equal(result.validRows, 1)
+  assert.deepEqual(result.rows[0].row.host_names, ['Hương'])
+  assert.deepEqual(result.rows[0].row.assistant_names, ['An', 'Linh'])
+  assert.deepEqual(result.rows[0].row.technical_names, ['Minh', 'Phúc'])
+  assert.deepEqual(result.validShifts[0].host_names, ['Hương'])
+  assert.deepEqual(result.validShifts[0].assistant_names, ['An', 'Linh'])
+  assert.deepEqual(result.validShifts[0].technical_names, ['Minh', 'Phúc'])
+})
+
+test('Excel staffing display aliases preserve Vietnamese spelling and newlines', () => {
+  const workbook = XLSX.utils.book_new()
+  const headers = [...englishHeader, 'Tên Host', 'Trợ live', 'Kỹ thuật']
+  const row = [...scheduleRow, 'Nguyễn Thị Hương', 'An\nLinh', 'Minh; Tuấn']
+  const worksheet = XLSX.utils.aoa_to_sheet([headers, row])
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Schedule')
+  const bytes = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+  const result = parseScheduleTabularData(bytes, 'array', maps)
+
+  assert.equal(result.validRows, 1)
+  assert.deepEqual(result.rows[0].row.host_names, ['Nguyễn Thị Hương'])
+  assert.deepEqual(result.rows[0].row.assistant_names, ['An', 'Linh'])
+  assert.deepEqual(result.rows[0].row.technical_names, ['Minh', 'Tuấn'])
 })
 
 test('Excel import detects the real header after title and blank rows', () => {

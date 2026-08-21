@@ -146,6 +146,9 @@ function fakeClient(database: FakeDatabase, options: FakeClientOptions = {}) {
         host_id: args.p_data?.host_id ?? null,
         support_id: args.p_data?.support_id ?? null,
         technical_id: args.p_data?.technical_id ?? null,
+        host_names: args.p_data?.host_names ?? [],
+        assistant_names: args.p_data?.assistant_names ?? [],
+        technical_names: args.p_data?.technical_names ?? [],
         required_host_count: Number(args.p_data?.required_host_count ?? 1),
         required_support_count: Number(args.p_data?.required_support_count ?? 1),
         required_technical_count: Number(args.p_data?.required_technical_count ?? 1),
@@ -436,6 +439,9 @@ test('Supabase mode create persists through create_shift RPC and updates the pro
       end_time: '11:00',
       brand_id: 'b1',
       platform_id: 'p1',
+      host_names: ['Hương'],
+      assistant_names: ['An', 'Linh'],
+      technical_names: ['Minh'],
       required_host_count: 1,
       required_support_count: 1,
       required_technical_count: 1,
@@ -446,6 +452,9 @@ test('Supabase mode create persists through create_shift RPC and updates the pro
     assert.equal(created.id, 'shift-new-001')
     assert.ok(db.shifts.some(row => row.id === created.id))
     assert.equal((await shiftService.getById(created.id))?.title, 'Imported Mars Shift')
+    assert.deepEqual((await shiftService.getById(created.id))?.host_names, ['Hương'])
+    assert.deepEqual((await shiftService.getById(created.id))?.assistant_names, ['An', 'Linh'])
+    assert.deepEqual((await shiftService.getById(created.id))?.technical_names, ['Minh'])
   })
 })
 
@@ -706,6 +715,9 @@ test('schedule import confirm flows through shiftService.create for durability',
       brand_name: 'Mars Brand',
       platform_name: 'Mars Platform',
       title: 'Mars Imported',
+      host_names: ['Hương'],
+      assistant_names: ['An', 'Linh'],
+      technical_names: ['Minh'],
       required_host_count: 1,
       required_support_count: 1,
       required_technical_count: 1,
@@ -720,6 +732,9 @@ test('schedule import confirm flows through shiftService.create for durability',
       end_time: '11:00',
       brand_id: 'b1',
       platform_id: 'p1',
+      host_names: ['Hương'],
+      assistant_names: ['An', 'Linh'],
+      technical_names: ['Minh'],
       required_host_count: 1,
       required_support_count: 1,
       required_technical_count: 1,
@@ -732,6 +747,9 @@ test('schedule import confirm flows through shiftService.create for durability',
     const confirmed = await scheduleImportService.confirm(batch.id)
 
     assert.equal(created.import_batch_id, batch.id)
+    assert.deepEqual(created.host_names, ['Hương'])
+    assert.deepEqual(created.assistant_names, ['An', 'Linh'])
+    assert.deepEqual(created.technical_names, ['Minh'])
     assert.ok(db.shifts.some(row => row.id === created.id))
     assert.equal(confirmed?.status, 'confirmed')
   })
