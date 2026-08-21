@@ -12,6 +12,13 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local agent worktrees and archived/generated application snapshots are
+    // not part of this repository's active runtime or test source.
+    ".kilo/worktrees/**",
+    "artifacts/**",
+    ".migration-backup/**",
+    "public/ocr/tesseract/**",
+    "supabase/.temp/**",
   ]),
 ]);
 

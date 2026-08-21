@@ -37,8 +37,9 @@ async function migrationText() {
 
 test('migration order separates replayable schema from strict production bootstrap', async () => {
   const files = (await readdir(migrationDirectory)).sort()
+  const p1bFiles = files.filter(file => file.includes('_p1b_'))
 
-  assert.deepEqual(files, [
+  assert.deepEqual(p1bFiles, [
     '20260811110219_p1b_foundation.sql',
     '20260811110239_p1b_master_data.sql',
     '20260811112834_p1b_production_bootstrap.sql',

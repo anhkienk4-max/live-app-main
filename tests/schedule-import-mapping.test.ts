@@ -7,7 +7,7 @@ import {
 } from '../lib/utils/excelUtils.ts'
 
 const maps: EntityMaps = {
-  brands: new Map([['Mars Wrigley', 'brand-1']]),
+  brands: new Map([['Mars Wrigley', 'brand-1'], ['Snickers', 'brand-2']]),
   platforms: new Map([['Shopee Live', 'platform-1'], ['TikTok Shop', 'platform-2']]),
   campaigns: new Map([['World Cup', 'campaign-1']]),
 }
@@ -41,6 +41,7 @@ const scheduleRow = [
 ]
 
 const csvRow = (values: unknown[]) => values.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')
+const withColumn = (row: unknown[], index: number, value: unknown) => row.map((cell, i) => (i === index ? value : cell))
 
 test('schedule import detects a normal row-one header', () => {
   const result = parseScheduleTabularData(
@@ -111,6 +112,7 @@ test('explicit zero staffing is preserved while blank staffing defaults to one',
   zeroRow[10] = 0
   const blankRow = [...scheduleRow]
   blankRow[6] = 'Blank staffing'
+  blankRow[7] = 'Studio B'
   blankRow[8] = ''
   blankRow[9] = '   '
   blankRow[10] = null
@@ -238,4 +240,128 @@ test('typed Excel date cells continue to import as calendar dates', () => {
 
   assert.equal(result.validRows, 1)
   assert.equal(result.validShifts[0].date, '2026-08-31')
+})
+
+test('master lookup resolves dirty Brand/Platform values while a genuinely missing value still errors', () => {
+  const brandVariants = [
+    ['Exact name', 'Mars Wrigley'],
+    ['Leading and trailing spaces', '  Mars Wrigley  '],
+    ['Repeated spaces', 'Mars   Wrigley'],
+    ['Mixed case', 'MaRs WrIgLeY'],
+    ['Zero-width character', 'Mars\u200BWrigley'],
+    ['BOM inside value', 'Mars Wrig\uFEFFley'],
+  ]
+  const rows = brandVariants.map(([title, brand], index) => {
+    const row = [...scheduleRow]
+    row[6] = title
+    row[3] = brand
+    row[1] = `09:0${index}`
+    row[2] = `10:0${index}`
+    return row
+  })
+  const missingRow = [...scheduleRow]
+  missingRow[6] = 'Genuinely missing brand'
+  missingRow[3] = 'No Such Brand Anywhere'
+  missingRow[1] = '20:00'
+  missingRow[2] = '21:00'
+
+  const result = parseScheduleTabularData(
+    [englishHeader, ...rows, missingRow].map(csvRow).join('\n'),
+    'string',
+    maps,
+  )
+
+  assert.equal(result.validRows, brandVariants.length)
+  assert.equal(result.invalidRows, 1)
+  const resolvedShifts = result.validShifts.filter(shift => shift.brand_id === 'brand-1')
+  assert.equal(resolvedShifts.length, brandVariants.length)
+  assert.deepEqual(
+    resolvedShifts.map(shift => shift.platform_id),
+    brandVariants.map(() => 'platform-1'),
+  )
+  const missingPreview = result.rows.find(preview => preview.row.brand_name === 'No Such Brand Anywhere')
+  assert.ok(missingPreview)
+  assert.match(missingPreview.row.errors.join(' '), /Brand "No Such Brand Anywhere" was not found/)
+})
+
+test('an imported brand in a successfully loaded but empty master map is still a not-found error', () => {
+  const emptyMaps: EntityMaps = {
+    brands: new Map(),
+    platforms: new Map(),
+    campaigns: new Map(),
+  }
+  const result = parseScheduleTabularData(
+    `${csvRow(englishHeader)}\n${csvRow(scheduleRow)}`,
+    'string',
+    emptyMaps,
+  )
+
+  assert.equal(result.validRows, 0)
+  assert.match(result.rows[0].row.errors.join(' '), /Brand "Mars Wrigley" was not found/)
+})
+
+test('duplicate semantics: same time different brand is valid', () => {
+  const rows = [
+    withColumn(scheduleRow, 3, 'Mars Wrigley'),
+    withColumn(scheduleRow, 3, 'Snickers'),
+  ]
+  const result = parseScheduleTabularData([englishHeader, ...rows].map(csvRow).join('\n'), 'string', maps)
+  assert.equal(result.validRows, 2)
+  assert.equal(result.warnings.length, 0)
+})
+
+test('duplicate semantics: same time/brand different studio is valid', () => {
+  const rows = [
+    withColumn(scheduleRow, 7, 'Studio A'),
+    withColumn(scheduleRow, 7, 'Studio B'),
+  ]
+  const result = parseScheduleTabularData([englishHeader, ...rows].map(csvRow).join('\n'), 'string', maps)
+  assert.equal(result.validRows, 2)
+  assert.equal(result.warnings.length, 0)
+})
+
+test('duplicate semantics: true exact duplicate is warned', () => {
+  const result = parseScheduleTabularData(
+    [englishHeader, scheduleRow, scheduleRow].map(csvRow).join('\n'),
+    'string',
+    maps,
+  )
+  assert.equal(result.validRows, 2)
+  assert.equal(result.validShifts.length, 1)
+  assert.ok(result.warnings.some(warning => /already exists/.test(warning.message)))
+})
+
+test('duplicate semantics: existing matching DB shift is warned', () => {
+  const existing = parseScheduleTabularData([englishHeader, scheduleRow].map(csvRow).join('\n'), 'string', maps)
+  const result = parseScheduleTabularData(
+    [englishHeader, scheduleRow].map(csvRow).join('\n'),
+    'string',
+    maps,
+    existing.validShifts,
+  )
+  assert.equal(result.validRows, 1)
+  assert.equal(result.validShifts.length, 0)
+  assert.ok(result.warnings.some(warning => /already exists/.test(warning.message)))
+})
+
+test('duplicate semantics: whitespace variation in studio is treated as duplicate', () => {
+  const rows = [
+    withColumn(scheduleRow, 7, 'Studio A'),
+    withColumn(scheduleRow, 7, '  studio   a  '),
+  ]
+  const result = parseScheduleTabularData([englishHeader, ...rows].map(csvRow).join('\n'), 'string', maps)
+  assert.equal(result.validRows, 2)
+  assert.equal(result.validShifts.length, 1)
+  assert.ok(result.warnings.some(warning => /already exists/.test(warning.message)))
+})
+
+test('duplicate semantics: same time/brand/studio different campaign is valid', () => {
+  const rows = [
+    withColumn(scheduleRow, 5, 'World Cup'),
+    withColumn(scheduleRow, 5, 'Summer Sale'),
+  ]
+  const withExtraCampaign = { ...maps, campaigns: new Map([['World Cup', 'campaign-1'], ['Summer Sale', 'campaign-2']]) }
+  const result = parseScheduleTabularData([englishHeader, ...rows].map(csvRow).join('\n'), 'string', withExtraCampaign)
+  assert.equal(result.validRows, 2)
+  assert.equal(result.warnings.length, 0)
 })

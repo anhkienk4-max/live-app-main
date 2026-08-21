@@ -93,8 +93,8 @@ const SOURCE_ROW_NUMBER = '__schedule_source_row_number'
 const HEADER_SCAN_LIMIT = 30
 const HEADER_ERROR_MESSAGE = 'Schedule header was not found. Required columns: Date/Ngày, Time/Khung giờ or Start/End, Brand/Thương hiệu, and Platform/Nền tảng.'
 
-const normalizeLookup = (value: unknown) => String(value ?? '')
-  .replace(/^\uFEFF/, '')
+export const normalizeLookup = (value: unknown) => String(value ?? '')
+  .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
   .replace(/đ/g, 'd')
@@ -245,15 +245,24 @@ const validIsoDate = (value: string) => {
 
 const validTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value)
 
+const normalizeDimension = (value: string | null | undefined) =>
+  (value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .normalize('NFKC')
+    .toLocaleLowerCase()
+
 const sameShift = (
-  shift: Pick<Shift, 'date' | 'start_time' | 'end_time' | 'brand_id' | 'platform_id'>,
-  candidate: Pick<Shift, 'date' | 'start_time' | 'end_time' | 'brand_id' | 'platform_id'>,
+  shift: Pick<Shift, 'date' | 'start_time' | 'end_time' | 'brand_id' | 'platform_id' | 'campaign_id' | 'studio'>,
+  candidate: Pick<Shift, 'date' | 'start_time' | 'end_time' | 'brand_id' | 'platform_id' | 'campaign_id' | 'studio'>,
 ) =>
   shift.date === candidate.date &&
   shift.start_time === candidate.start_time &&
   shift.end_time === candidate.end_time &&
   shift.brand_id === candidate.brand_id &&
-  shift.platform_id === candidate.platform_id
+  shift.platform_id === candidate.platform_id &&
+  normalizeDimension(shift.campaign_id) === normalizeDimension(candidate.campaign_id) &&
+  normalizeDimension(shift.studio) === normalizeDimension(candidate.studio)
 
 export function parseScheduleRows(
   sourceRows: ScheduleSheetRow[],
@@ -371,10 +380,13 @@ export function parseScheduleRows(
         product_notes: notes || undefined,
         ...shiftDateTimeFields(date, startTime, endTime)!,
       }
-      if (existingShifts.some(existing => sameShift(existing, shift!)) || candidates.some(existing => sameShift(existing, shift!))) {
-        rowWarnings.push('A shift with the same brand, platform, date, and time already exists.')
+      const isDuplicate = existingShifts.some(existing => sameShift(existing, shift!)) || candidates.some(existing => sameShift(existing, shift!))
+      if (isDuplicate) {
+        rowWarnings.push('A shift with the same brand, platform, campaign, studio, date, and time already exists.')
+        shift = undefined
+      } else {
+        candidates.push(shift)
       }
-      candidates.push(shift)
     }
 
     rowErrors.forEach(message => errors.push({ row: rowNumber, field: 'row', message }))

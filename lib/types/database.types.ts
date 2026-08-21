@@ -746,7 +746,14 @@ export interface ShiftRegistration {
 }
 
 export type ScheduleImportSource = 'excel' | 'google_sheets'
-export type ScheduleImportStatus = 'previewed' | 'confirmed' | 'failed'
+export type ScheduleImportStatus = 'previewed' | 'confirmed' | 'failed' | 'cancelled'
+export type ScheduleImportRowOutcome =
+  | 'pending'
+  | 'imported'
+  | 'validation_failed'
+  | 'duplicate_skipped'
+  | 'warning'
+  | 'retryable'
 
 export interface ScheduleImportRow {
   row_number: number
@@ -778,10 +785,26 @@ export interface ScheduleImportBatch extends LifecycleMetadata {
   valid_rows: number
   invalid_rows: number
   warning_rows: number
+  imported_rows?: number
+  duplicate_rows?: number
+  failed_rows?: number
+  retryable_rows?: number
   preview_rows?: ScheduleImportRow[]
   created_by: string
   created_at: string
   confirmed_at?: string
+}
+
+export interface ScheduleImportBatchRow {
+  id: string
+  batch_id: string
+  row_number: number
+  outcome: ScheduleImportRowOutcome
+  shift_id?: string
+  source_row: ScheduleImportRow
+  failure_code?: string
+  created_at: string
+  updated_at: string
 }
 
 export interface ScheduleChangeLog {

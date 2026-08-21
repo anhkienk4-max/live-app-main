@@ -2473,7 +2473,7 @@ export const scheduleImportService = {
   async createPreview(
     source: ScheduleImportSource,
     sourceName: string,
-    summary: Pick<ScheduleImportBatch, 'total_rows' | 'valid_rows' | 'invalid_rows' | 'warning_rows'>,
+    summary: Pick<ScheduleImportBatch, 'total_rows' | 'valid_rows' | 'invalid_rows' | 'warning_rows' | 'duplicate_rows'>,
     createdBy: string,
     previewRows?: ScheduleImportRow[],
   ): Promise<ScheduleImportBatch> {
@@ -2506,7 +2506,7 @@ export const scheduleImportService = {
 
   async updatePreview(
     id: string,
-    summary: Pick<ScheduleImportBatch, 'total_rows' | 'valid_rows' | 'invalid_rows' | 'warning_rows'>,
+    summary: Pick<ScheduleImportBatch, 'total_rows' | 'valid_rows' | 'invalid_rows' | 'warning_rows' | 'duplicate_rows'>,
     previewRows?: ScheduleImportRow[],
   ): Promise<ScheduleImportBatch | null> {
     const index = scheduleImports.findIndex(batch => batch.id === id)

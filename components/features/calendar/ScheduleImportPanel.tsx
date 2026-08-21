@@ -1,14 +1,13 @@
 'use client'
 
 import * as React from 'react'
-import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Link2, Moon, Plus, Upload } from 'lucide-react'
+import { AlertTriangle, Check, CheckCircle2, Download, FileSpreadsheet, Link2, Moon, Plus, Upload, X } from 'lucide-react'
 import {
   brandService,
   campaignService,
   currentUserService,
   platformService,
   scheduleChangeService,
-  scheduleImportService,
   shiftService,
   userService,
 } from '@/lib/services/dataService'
@@ -21,6 +20,7 @@ import {
   downloadScheduleImportErrors,
   importShiftsFromExcel,
   importShiftsFromGoogleSheetsUrl,
+  normalizeLookup,
   type ImportResult,
   parseScheduleRows,
 } from '@/lib/utils/excelUtils'
@@ -36,11 +36,29 @@ import { HistoryPagination } from '@/components/ui/history-pagination'
 import { DEFAULT_SHIFT_STAFFING } from '@/lib/utils/shiftUtils'
 import {
   buildScheduleImportPreviewSourceRow,
-  getScheduleImportSourceField,
   normalizeScheduleImportResult,
   normalizeScheduleImportSourceRow,
   previewStaffingFields,
 } from '@/lib/utils/scheduleImportPreview'
+import {
+  type DraftField,
+  type DraftRows,
+  commitRowDraftToSource,
+  removeRowDraft,
+  rowDraftValue,
+  updateRowDraft,
+} from '@/lib/utils/scheduleImportDraft'
+import {
+  isScheduleImportDuplicateError,
+  mapImportResultToBatchRows,
+  scheduleImportFailureCode,
+  summarizeImportResult,
+} from '@/lib/utils/scheduleImportBatch'
+import { scheduleImportBatchPort } from '@/lib/services/scheduleImportBatchPort'
+import {
+  type MasterDataState,
+  importGate,
+} from '@/lib/utils/scheduleImportReadiness'
 
 type Source = { type: 'excel' | 'google_sheets'; name: string }
 
@@ -80,8 +98,10 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   const [source, setSource] = React.useState<Source | null>(null)
   const [batch, setBatch] = React.useState<ScheduleImportBatch | null>(null)
   const [busy, setBusy] = React.useState(false)
+  const [masterState, setMasterState] = React.useState<MasterDataState>('loading')
   const [previewFilter, setPreviewFilter] = React.useState<'all' | 'valid' | 'warning' | 'error'>('all')
   const [cancelOpen, setCancelOpen] = React.useState(false)
+  const [draftRows, setDraftRows] = React.useState<DraftRows>({})
 
   React.useEffect(() => {
     void Promise.all([
@@ -94,6 +114,9 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       setPlatforms(loadedPlatforms)
       setCampaigns(loadedCampaigns)
       setExistingShifts(loadedShifts)
+      setMasterState('ready')
+    }).catch(() => {
+      setMasterState('error')
     })
   }, [])
 
@@ -103,23 +126,35 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     campaigns: new Map(campaigns.map(item => [item.name, item.id])),
   }), [brands, campaigns, platforms])
 
+  const masterGate = importGate(masterState)
+
   const recordPreview = async (next: ImportResult, nextSource: Source) => {
     const normalizedNext = normalizeScheduleImportResult(next)
     setResult(normalizedNext)
     setSource(nextSource)
     const createdBy = currentUser?.id || currentUserService.getId()
-    const created = await scheduleImportService.createPreview(nextSource.type, nextSource.name, {
-      total_rows: normalizedNext.totalRows,
-      valid_rows: normalizedNext.validRows,
-      invalid_rows: normalizedNext.invalidRows,
-      warning_rows: normalizedNext.warningRows,
-    }, createdBy, normalizedNext.rows.map(preview => preview.row))
+    const created = await scheduleImportBatchPort.createBatch({
+      source: nextSource.type,
+      sourceName: nextSource.name,
+      createdBy,
+      summary: summarizeImportResult(normalizedNext),
+      previewRows: normalizedNext.rows.map(preview => preview.row),
+    })
+    await scheduleImportBatchPort.recordBatchRows(
+      created.id,
+      mapImportResultToBatchRows(created.id, normalizedNext),
+    )
     setBatch(created)
   }
 
   const handleFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
-    if (!file) return
+    if (!file || !masterGate.allowed) {
+      if (file && masterGate.message) {
+        toast({ title: t('error'), description: masterGate.message, variant: 'destructive' })
+      }
+      return
+    }
     setBusy(true)
     try {
       const next = await importShiftsFromExcel(file, maps.brands, maps.platforms, maps.campaigns, undefined, existingShifts)
@@ -133,6 +168,12 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   }
 
   const handleGoogle = async () => {
+    if (!masterGate.allowed) {
+      if (masterGate.message) {
+        toast({ title: t('error'), description: masterGate.message, variant: 'destructive' })
+      }
+      return
+    }
     setBusy(true)
     try {
       const next = await importShiftsFromGoogleSheetsUrl(googleUrl, maps.brands, maps.platforms, maps.campaigns, existingShifts)
@@ -157,20 +198,40 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     }, existingShifts))
     setResult(nextResult)
     if (batch) {
-      void scheduleImportService.updatePreview(batch.id, {
-        total_rows: nextResult.totalRows,
-        valid_rows: nextResult.validRows,
-        invalid_rows: nextResult.invalidRows,
-        warning_rows: nextResult.warningRows,
-      }, nextResult.rows.map(preview => preview.row))
+      void scheduleImportBatchPort.updateBatchPreview(
+        batch.id,
+        summarizeImportResult(nextResult),
+        nextResult.rows.map(preview => preview.row),
+      ).catch(() => {
+        toast({
+          title: t('error'),
+          description: 'Import outcomes were already recorded for this batch. Re-import the source file to retry failed rows.',
+          variant: 'destructive',
+        })
+      })
     }
   }
 
-  const updateRow = (index: number, field: string, value: string) => {
+  const draftChange = (rowNumber: number, field: DraftField, value: string) => {
+    const row = result?.rows.find(preview => preview.row.row_number === rowNumber)?.row
+    if (!row) return
+    setDraftRows(prev => updateRowDraft(prev, rowNumber, row, field, value))
+  }
+
+  const commitRow = (rowNumber: number) => {
+    const draft = draftRows[rowNumber]
+    if (!draft) return
     const sourceRows = sourceRowsFromPreview()
-    if (!sourceRows.length) return
-    sourceRows[index] = { ...sourceRows[index], [getScheduleImportSourceField(field)]: value }
-    applySourceRows(sourceRows)
+    const index = result?.rows.findIndex(preview => preview.row.row_number === rowNumber) ?? -1
+    if (index >= 0 && sourceRows[index]) {
+      sourceRows[index] = commitRowDraftToSource(sourceRows[index], draft)
+      applySourceRows(sourceRows)
+    }
+    setDraftRows(prev => removeRowDraft(prev, rowNumber))
+  }
+
+  const cancelRow = (rowNumber: number) => {
+    setDraftRows(prev => removeRowDraft(prev, rowNumber))
   }
 
   const addPreviewRow = () => {
@@ -197,10 +258,46 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     if (!result || !batch || result.validRows === 0) return
     setBusy(true)
     try {
-      for (const shift of result.validShifts) {
-        await shiftService.create({ ...shift, import_batch_id: batch.id, registration_locked: false })
+      const importable = result.rows
+        .filter(preview => preview.shift && preview.row.errors.length === 0)
+      let importedCount = 0
+      let retryableCount = 0
+      for (const preview of importable) {
+        const shiftData = preview.shift
+        if (!shiftData) continue
+        try {
+          const shift = await shiftService.create({ ...shiftData, import_batch_id: batch.id, registration_locked: false })
+          await scheduleImportBatchPort.linkRowToShift(
+            batch.id,
+            preview.row.row_number,
+            shift.id,
+            preview.row.warnings.length > 0 ? 'warning' : 'imported',
+          )
+          importedCount += 1
+        } catch (error) {
+          // Overlap != duplicate at app level, but the DB unique slot index is
+          // the race safety net: a 23505 here means the slot is already taken,
+          // so record the row as skipped instead of failing the whole batch.
+          if (isScheduleImportDuplicateError(error)) {
+            await scheduleImportBatchPort.recordRowOutcome(batch.id, preview.row.row_number, 'duplicate_skipped')
+          } else {
+            retryableCount += 1
+            await scheduleImportBatchPort.markRowRetryable(batch.id, preview.row.row_number, scheduleImportFailureCode(error))
+          }
+        }
       }
-      await scheduleImportService.confirm(batch.id)
+      if (retryableCount > 0) {
+        await scheduleImportBatchPort.markBatchStatus(batch.id, 'failed')
+        toast({
+          title: t('error'),
+          description: `${importedCount} row(s) imported; ${retryableCount} row(s) were marked for retry.`,
+          variant: 'destructive',
+        })
+        setExistingShifts(await shiftService.getAll())
+        onImported?.()
+        return
+      }
+      await scheduleImportBatchPort.markBatchStatus(batch.id, 'confirmed')
       toast({ title: t('success'), description: `${result.validRows} ${t('validRows')}`, variant: 'success' })
       setResult(null)
       setBatch(null)
@@ -208,7 +305,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       setExistingShifts(await shiftService.getAll())
       onImported?.()
     } catch (error) {
-      await scheduleImportService.fail(batch.id)
+      await scheduleImportBatchPort.markBatchStatus(batch.id, 'failed').catch(() => undefined)
       toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
     } finally {
       setBusy(false)
@@ -228,7 +325,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   const removePreview = async (reason: string) => {
     if (!batch || !currentUser) return
     try {
-      await scheduleImportService.removePreview(batch.id, currentUser.id, reason)
+      await scheduleImportBatchPort.removeBatch(batch.id, currentUser.id, reason)
       setResult(null)
       setBatch(null)
       setSource(null)
@@ -252,7 +349,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">XLSX / XLS</p>
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => fileInputRef.current?.click()} disabled={busy}><Upload className="mr-2 h-4 w-4" />{t('importExcel')}</Button>
+              <Button onClick={() => fileInputRef.current?.click()} disabled={busy || !masterGate.allowed}><Upload className="mr-2 h-4 w-4" />{t('importExcel')}</Button>
               <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="sr-only" onChange={handleFile} />
               <Button variant="outline" onClick={downloadExcelTemplate}><Download className="mr-2 h-4 w-4" />{t('downloadTemplate')}</Button>
             </div>
@@ -262,10 +359,14 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
           <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Link2 className="h-5 w-5" />{t('importGoogleSheets')}</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">{t('googleSheetsHelp')}</p>
-            <div className="flex flex-col gap-2 sm:flex-row"><Input className="min-w-0" value={googleUrl} onChange={event => setGoogleUrl(event.target.value)} placeholder="https://docs.google.com/spreadsheets/... or mock://schedule" /><Button className="shrink-0" onClick={handleGoogle} disabled={busy || !googleUrl}>{t('importGoogleSheets')}</Button></div>
+            <div className="flex flex-col gap-2 sm:flex-row"><Input className="min-w-0" value={googleUrl} onChange={event => setGoogleUrl(event.target.value)} placeholder="https://docs.google.com/spreadsheets/... or mock://schedule" /><Button className="shrink-0" onClick={handleGoogle} disabled={busy || !masterGate.allowed || !googleUrl}>{t('importGoogleSheets')}</Button></div>
           </CardContent>
         </Card>
       </div>
+
+      {masterGate.message && (
+        <p className="text-sm font-medium text-red-700">{masterGate.message}</p>
+      )}
 
       {result && source && (
         <Card>
@@ -298,37 +399,67 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
               <table className="min-w-[1300px] w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-background"><tr className="border-b text-left"><th className="p-2">#</th><th className="p-2">{t('date')}</th><th className="p-2">{t('time')}</th><th className="p-2">{t('brand')}</th><th className="p-2">{t('platform')}</th><th className="p-2">{t('campaign')}</th><th className="p-2">{t('shiftTitle')}</th><th className="p-2">{t('studio')}</th><th className="p-2">{t('requiredHostCount')}</th><th className="p-2">{t('requiredSupportCount')}</th><th className="p-2">{t('requiredTechnicalCount')}</th><th className="min-w-64 p-2">{t('status')}</th></tr></thead>
                 <tbody>
-                  {result.rows.map((preview, index) => ({ preview, index })).filter(({ preview }) =>
+                  {result.rows.filter(preview =>
                     previewFilter === 'all' ||
                     (previewFilter === 'valid' && preview.row.errors.length === 0 && preview.row.warnings.length === 0) ||
                     (previewFilter === 'warning' && preview.row.warnings.length > 0) ||
                     (previewFilter === 'error' && preview.row.errors.length > 0)
-                  ).map(({ preview, index }) => (
-                    <tr key={preview.row.row_number} className="border-b align-top">
-                      <td className="p-2">{preview.row.row_number}</td>
-                      <td className="p-2"><Input className="w-36" value={preview.row.date} onChange={event => updateRow(index, 'date', event.target.value)} /></td>
-                      <td className="p-2"><div className="flex gap-1"><Input className="w-24" value={preview.row.start_time} onChange={event => updateRow(index, 'start_time', event.target.value)} /><Input className="w-24" value={preview.row.end_time} onChange={event => updateRow(index, 'end_time', event.target.value)} /></div>{preview.row.crosses_midnight && <p className="mt-1 flex items-center gap-1 whitespace-nowrap text-xs text-indigo-700"><Moon className="h-3 w-3" />{t('endsNextDay')}: {displayDate(preview.row.end_date)}</p>}</td>
-                      <td className="p-2"><PreviewEntitySelect value={preview.row.brand_name} onChange={value => updateRow(index, 'brand_name', value)} options={brands} /></td>
-                      <td className="p-2"><PreviewEntitySelect value={preview.row.platform_name} onChange={value => updateRow(index, 'platform_name', value)} options={platforms} /></td>
-                      <td className="p-2"><PreviewEntitySelect optional value={preview.row.campaign_name || ''} onChange={value => updateRow(index, 'campaign_name', value)} options={campaigns} /></td>
-                      <td className="p-2"><Input className="w-48" value={preview.row.title} onChange={event => updateRow(index, 'title', event.target.value)} /></td>
-                      <td className="p-2"><Input className="w-36" value={preview.row.studio || ''} onChange={event => updateRow(index, 'studio', event.target.value)} /></td>
-                      {previewStaffingFields.map(field => (
-                        <td className="p-2" key={field}>
-                          <ScheduleImportStaffingInput
-                            field={field}
-                            value={preview.row[field]}
-                            onChange={value => updateRow(index, field, value)}
-                          />
+                  ).map(preview => {
+                    const rowNumber = preview.row.row_number
+                    const editing = draftRows[rowNumber]
+                    const cellValue = (field: DraftField): string => {
+                      const committed = preview.row[field]
+                      const committedText = committed === undefined || committed === null ? '' : String(committed)
+                      return editing ? rowDraftValue(draftRows, rowNumber, field, committedText) : committedText
+                    }
+                    const changeField = (field: DraftField) => (event: React.ChangeEvent<HTMLInputElement>) => {
+                      draftChange(rowNumber, field, event.target.value)
+                    }
+                    const handleCellKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        commitRow(rowNumber)
+                      } else if (event.key === 'Escape') {
+                        event.preventDefault()
+                        cancelRow(rowNumber)
+                      }
+                    }
+                    const entityValue = (field: DraftField, fallback: string) =>
+                      editing ? rowDraftValue(draftRows, rowNumber, field, fallback) : fallback
+                    return (
+                      <tr key={rowNumber} className={`border-b align-top${editing ? ' bg-amber-50/50' : ''}`}>
+                        <td className="p-2">{rowNumber}</td>
+                        <td className="p-2"><Input className="w-36" value={cellValue('date')} onChange={changeField('date')} onKeyDown={handleCellKeyDown} /></td>
+                        <td className="p-2"><div className="flex gap-1"><Input className="w-24" value={cellValue('start_time')} onChange={changeField('start_time')} onKeyDown={handleCellKeyDown} /><Input className="w-24" value={cellValue('end_time')} onChange={changeField('end_time')} onKeyDown={handleCellKeyDown} /></div>{preview.row.crosses_midnight && <p className="mt-1 flex items-center gap-1 whitespace-nowrap text-xs text-indigo-700"><Moon className="h-3 w-3" />{t('endsNextDay')}: {displayDate(preview.row.end_date)}</p>}</td>
+                        <td className="p-2"><PreviewEntitySelect value={entityValue('brand_name', preview.row.brand_name)} onChange={value => draftChange(rowNumber, 'brand_name', value)} options={brands} /></td>
+                        <td className="p-2"><PreviewEntitySelect value={entityValue('platform_name', preview.row.platform_name)} onChange={value => draftChange(rowNumber, 'platform_name', value)} options={platforms} /></td>
+                        <td className="p-2"><PreviewEntitySelect optional value={entityValue('campaign_name', preview.row.campaign_name || '')} onChange={value => draftChange(rowNumber, 'campaign_name', value)} options={campaigns} /></td>
+                        <td className="p-2"><Input className="w-48" value={cellValue('title')} onChange={changeField('title')} onKeyDown={handleCellKeyDown} /></td>
+                        <td className="p-2"><Input className="w-36" value={cellValue('studio')} onChange={changeField('studio')} onKeyDown={handleCellKeyDown} /></td>
+                        {previewStaffingFields.map(field => (
+                          <td className="p-2" key={field}>
+                            <ScheduleImportStaffingInput
+                              field={field}
+                              value={cellValue(field)}
+                              onChange={value => draftChange(rowNumber, field, value)}
+                            />
+                          </td>
+                        ))}
+                        <td className="p-2">
+                          {editing && (
+                            <div className="mb-1 flex flex-wrap items-center gap-1">
+                              <Button size="sm" variant="default" onClick={() => commitRow(rowNumber)} aria-label="Confirm edit"><Check className="h-3 w-3" /></Button>
+                              <Button size="sm" variant="outline" onClick={() => cancelRow(rowNumber)} aria-label="Cancel edit"><X className="h-3 w-3" /></Button>
+                              <span className="text-xs text-amber-700">Editing draft — Enter to confirm</span>
+                            </div>
+                          )}
+                          {!editing && preview.row.errors.length === 0 && preview.row.warnings.length === 0 && <CheckCircle2 className="h-5 w-5 text-green-600" />}
+                          {preview.row.errors.map(message => <p key={message} className="mb-1 text-xs text-red-700">{message}</p>)}
+                          {preview.row.warnings.map(message => <p key={message} className="mb-1 flex gap-1 text-xs text-amber-700"><AlertTriangle className="h-3 w-3 shrink-0" />{message}</p>)}
                         </td>
-                      ))}
-                      <td className="p-2">
-                        {preview.row.errors.length === 0 && preview.row.warnings.length === 0 && <CheckCircle2 className="h-5 w-5 text-green-600" />}
-                        {preview.row.errors.map(message => <p key={message} className="mb-1 text-xs text-red-700">{message}</p>)}
-                        {preview.row.warnings.map(message => <p key={message} className="mb-1 flex gap-1 text-xs text-amber-700"><AlertTriangle className="h-3 w-3 shrink-0" />{message}</p>)}
-                      </td>
-                    </tr>
-                  ))}
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -347,12 +478,16 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
 }
 
 function PreviewEntitySelect({ value, onChange, options, optional = false }: { value: string; onChange: (value: string) => void; options: Array<{ id: string; name: string }>; optional?: boolean }) {
+  const resolved = value
+    ? options.find(option => normalizeLookup(option.name) === normalizeLookup(value))
+    : undefined
+  const unmatched = Boolean(value) && !resolved
   return (
-    <Select value={value || (optional ? 'none' : '')} onValueChange={next => onChange(next === 'none' ? '' : next)}>
+    <Select value={resolved ? resolved.name : value || (optional ? 'none' : '')} onValueChange={next => onChange(next === 'none' ? '' : next)}>
       <SelectTrigger className="w-44"><SelectValue placeholder="Select mapping" /></SelectTrigger>
       <SelectContent>
         {optional && <SelectItem value="none">—</SelectItem>}
-        {value && !options.some(option => option.name === value) && <SelectItem value={value}>{value}</SelectItem>}
+        {unmatched && <SelectItem value={value}>{value}</SelectItem>}
         {options.map(option => <SelectItem key={option.id} value={option.name}>{option.name}</SelectItem>)}
       </SelectContent>
     </Select>
@@ -374,7 +509,7 @@ export function ImportHistoryPanel() {
   const [changePageSize, setChangePageSize] = React.useState(10)
   React.useEffect(() => {
     void Promise.all([
-      scheduleImportService.getAll(),
+      scheduleImportBatchPort.listBatches(),
       scheduleChangeService.getAll(),
       shiftService.getAll(),
       userService.getAll(),
@@ -388,7 +523,10 @@ export function ImportHistoryPanel() {
       setLoading(false)
     })
   }, [])
-  React.useEffect(() => setChangePage(1), [filters])
+  const updateChangeFilter = (key: keyof typeof filters, value: string) => {
+    setFilters(current => ({ ...current, [key]: value }))
+    setChangePage(1)
+  }
   if (loading) return <div className="py-12 text-center">{t('loading')}</div>
   const visibleChanges = changes.filter(log => {
     const shift = shifts.find(item => item.id === log.shift_id)
@@ -411,18 +549,18 @@ export function ImportHistoryPanel() {
       <TabsContent value="imports">
         {history.length === 0
           ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noImportHistory')}</CardContent></Card>
-          : <Card className="overflow-hidden"><CardContent className="p-0"><div className="max-h-[520px] overflow-auto p-5"><table className="w-full text-sm"><thead className="sticky top-0 bg-card"><tr className="border-b text-left"><th className="p-2">{t('date')}</th><th className="p-2">{t('source')}</th><th className="p-2">{t('status')}</th><th className="p-2 text-right">{t('totalRows')}</th><th className="p-2 text-right">{t('validRows')}</th><th className="p-2 text-right">{t('invalidRows')}</th><th className="p-2 text-right">{t('warningRows')}</th></tr></thead><tbody>{pagedImports.map(batch => <tr className="border-b" key={batch.id}><td className="p-2">{new Date(batch.created_at).toLocaleString()}</td><td className="p-2"><p className="font-medium">{batch.source === 'google_sheets' ? 'Google Sheets' : 'Excel'}</p><p className="max-w-72 truncate text-xs text-muted-foreground">{batch.source_name}</p></td><td className="p-2"><Badge variant="outline">{batch.status}</Badge></td><td className="p-2 text-right">{batch.total_rows}</td><td className="p-2 text-right">{batch.valid_rows}</td><td className="p-2 text-right">{batch.invalid_rows}</td><td className="p-2 text-right">{batch.warning_rows}</td></tr>)}</tbody></table></div><HistoryPagination page={importPage} pageSize={importPageSize} total={history.length} onPageChange={setImportPage} onPageSizeChange={size => { setImportPageSize(size); setImportPage(1) }} /></CardContent></Card>}
+          : <Card className="overflow-hidden"><CardContent className="p-0"><div className="max-h-[520px] overflow-auto p-5"><table className="w-full text-sm"><thead className="sticky top-0 bg-card"><tr className="border-b text-left"><th className="p-2">{t('date')}</th><th className="p-2">{t('source')}</th><th className="p-2">{t('status')}</th><th className="p-2 text-right">{t('totalRows')}</th><th className="p-2 text-right">{t('validRows')}</th><th className="p-2 text-right">{t('invalidRows')}</th><th className="p-2 text-right">{t('warningRows')}</th><th className="p-2 text-right">Imported</th><th className="p-2 text-right">Retryable</th></tr></thead><tbody>{pagedImports.map(batch => <tr className="border-b" key={batch.id}><td className="p-2">{new Date(batch.created_at).toLocaleString()}</td><td className="p-2"><p className="font-medium">{batch.source === 'google_sheets' ? 'Google Sheets' : 'Excel'}</p><p className="max-w-72 truncate text-xs text-muted-foreground">{batch.source_name}</p></td><td className="p-2"><Badge variant="outline">{batch.status}</Badge></td><td className="p-2 text-right">{batch.total_rows}</td><td className="p-2 text-right">{batch.valid_rows}</td><td className="p-2 text-right">{batch.invalid_rows}</td><td className="p-2 text-right">{batch.warning_rows}</td><td className="p-2 text-right">{batch.imported_rows ?? '—'}</td><td className="p-2 text-right">{batch.retryable_rows ?? '—'}</td></tr>)}</tbody></table></div><HistoryPagination page={importPage} pageSize={importPageSize} total={history.length} onPageChange={setImportPage} onPageSizeChange={size => { setImportPageSize(size); setImportPage(1) }} /></CardContent></Card>}
       </TabsContent>
       <TabsContent value="changes">
         <Card>
           <CardContent className="space-y-4 pt-5">
             <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
-              <Input type="date" value={filters.date} onChange={event => setFilters(current => ({ ...current, date: event.target.value }))} />
-              <HistorySelect value={filters.actor} onChange={value => setFilters(current => ({ ...current, actor: value }))} allLabel={t('actor')} options={users.map(user => ({ id: user.id, name: user.full_name }))} />
-              <HistorySelect value={filters.action} onChange={value => setFilters(current => ({ ...current, action: value }))} allLabel={t('action')} options={actions.map(action => ({ id: action, name: action }))} />
-              <HistorySelect value={filters.shift} onChange={value => setFilters(current => ({ ...current, shift: value }))} allLabel={t('shiftTitle')} options={shifts.map(shift => ({ id: shift.id, name: shift.title || `${shift.date} ${shift.start_time}` }))} />
-              <HistorySelect value={filters.brand} onChange={value => setFilters(current => ({ ...current, brand: value }))} allLabel={t('brand')} options={brands} />
-              <HistorySelect value={filters.source} onChange={value => setFilters(current => ({ ...current, source: value }))} allLabel={t('source')} options={['manual','excel_import','google_sheets','system'].map(source => ({ id: source, name: source.replaceAll('_', ' ') }))} />
+              <Input type="date" value={filters.date} onChange={event => updateChangeFilter('date', event.target.value)} />
+              <HistorySelect value={filters.actor} onChange={value => updateChangeFilter('actor', value)} allLabel={t('actor')} options={users.map(user => ({ id: user.id, name: user.full_name }))} />
+              <HistorySelect value={filters.action} onChange={value => updateChangeFilter('action', value)} allLabel={t('action')} options={actions.map(action => ({ id: action, name: action }))} />
+              <HistorySelect value={filters.shift} onChange={value => updateChangeFilter('shift', value)} allLabel={t('shiftTitle')} options={shifts.map(shift => ({ id: shift.id, name: shift.title || `${shift.date} ${shift.start_time}` }))} />
+              <HistorySelect value={filters.brand} onChange={value => updateChangeFilter('brand', value)} allLabel={t('brand')} options={brands} />
+              <HistorySelect value={filters.source} onChange={value => updateChangeFilter('source', value)} allLabel={t('source')} options={['manual','excel_import','google_sheets','system'].map(source => ({ id: source, name: source.replaceAll('_', ' ') }))} />
             </div>
             <div className="max-h-[520px] overflow-auto">
               <table className="min-w-[1100px] w-full text-sm">
