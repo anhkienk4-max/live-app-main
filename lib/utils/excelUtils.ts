@@ -199,12 +199,24 @@ function inferSlashDateOrder(sourceRows: ScheduleSheetRow[]): {
   return { order: inferred ?? 'day-first' }
 }
 
+type ExcelDateParts = { y: number; m: number; d: number }
+
+// SheetJS attaches `SSF` to `module.exports`. Under Node ESM `import *` exposes the
+// namespace without `SSF`; the default export still carries it. Bundlers expose `SSF`
+// directly. Resolve once so numeric Excel serials decode in every environment.
+const parseExcelDateCode = (value: number): ExcelDateParts | undefined =>
+  (XLSX.SSF ?? (XLSX as unknown as { default?: { SSF?: { parse_date_code?: (value: number) => ExcelDateParts } } }).default?.SSF)
+    ?.parse_date_code?.(value)
+
 const normalizeDate = (value: unknown, slashDateOrder: SlashDateOrder): string => {
   if (typeof value === 'number') {
-    const parsed = XLSX.SSF.parse_date_code(value)
+    const parsed = parseExcelDateCode(value)
     if (parsed) return `${parsed.y}-${String(parsed.m).padStart(2, '0')}-${String(parsed.d).padStart(2, '0')}`
   }
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return format(value, 'yyyy-MM-dd')
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const date = value
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  }
   const text = String(value ?? '').trim()
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text
   const match = text.match(SLASH_DATE_PATTERN)
@@ -225,6 +237,10 @@ const normalizeTime = (value: unknown): string => {
   if (typeof value === 'number') {
     const totalMinutes = Math.round(value * 24 * 60)
     return `${String(Math.floor(totalMinutes / 60) % 24).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`
+  }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const date = value
+    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
   }
   const text = String(value ?? '').trim()
   const match = text.match(/^(\d{1,2}):(\d{2})/)
@@ -447,7 +463,7 @@ const headerErrorResult = (): ImportResult => ({
 const rowsFromWorkbook = (data: ArrayBuffer | string, type: 'array' | 'string') => {
   const workbook = XLSX.read(data, {
     type,
-    cellDates: type === 'array',
+    cellDates: false,
     raw: type === 'string',
   })
   const worksheet = workbook.Sheets[workbook.SheetNames[0]]
