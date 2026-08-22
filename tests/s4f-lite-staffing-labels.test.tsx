@@ -5,7 +5,11 @@ import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { ListView } from '../components/features/calendar/ListView.tsx'
-import { ShiftImportedStaffingLabels } from '../components/features/shifts/ShiftDetailModal.tsx'
+import { resolveDaySessionRoleNames } from '../components/features/calendar/DaySessionsDialog.tsx'
+import {
+  buildShiftStaffing,
+  ShiftImportedStaffingLabels,
+} from '../components/features/shifts/ShiftDetailModal.tsx'
 import { LanguageProvider } from '../lib/i18n.tsx'
 import type { Shift, User } from '../lib/types/database.types.ts'
 import { parseScheduleRows, type EntityMaps } from '../lib/utils/excelUtils.ts'
@@ -47,6 +51,31 @@ const shift: Shift = {
   created_at: '2031-09-01T00:00:00.000Z',
   updated_at: '2031-09-01T00:00:00.000Z',
 }
+
+const fallbackAssignedUser: User = {
+  id: 'fallback-host-real',
+  email: 'fallback-host@example.test',
+  full_name: 'Actual Assigned Host',
+  role: 'staff',
+  system_permission: 'member',
+  operational_roles: ['host'],
+  status: 'active',
+  join_date: '2031-01-01',
+  created_at: '2031-01-01T00:00:00.000Z',
+  updated_at: '2031-01-01T00:00:00.000Z',
+}
+
+const dayRoleNames = (
+  role: 'host' | 'support' | 'technical',
+  candidateShift: Shift = shift,
+  users: User[] = [],
+) => resolveDaySessionRoleNames({
+  fallback: 'Not updated',
+  registrations: [],
+  role,
+  shift: candidateShift,
+  users,
+})
 
 test('staffing display name normalization trims, splits and de-duplicates exact names', () => {
   assert.deepEqual(
@@ -160,6 +189,86 @@ test('Calendar prefers a real assignment while Shift Detail preserves imported l
   }))
   assert.match(detailMarkup, /shift-detail-imported-staffing/)
   assert.match(detailMarkup, />Hương</)
+})
+
+test('Day Sessions falls back to imported labels for all three staffing roles', () => {
+  assert.equal(dayRoleNames('host'), shift.host_names?.join(', '))
+  assert.equal(dayRoleNames('support'), 'An, Linh')
+  assert.equal(dayRoleNames('technical'), 'Minh')
+})
+
+test('Day Sessions prefers an actual assignment over an imported label', () => {
+  assert.equal(
+    dayRoleNames(
+      'host',
+      { ...shift, host_id: fallbackAssignedUser.id },
+      [fallbackAssignedUser],
+    ),
+    fallbackAssignedUser.full_name,
+  )
+})
+
+test('Day Sessions uses the not-updated fallback when no assignment or imported label exists', () => {
+  const emptyShift = { ...shift, host_names: [], assistant_names: [], technical_names: [] }
+  assert.equal(dayRoleNames('host', emptyShift), 'Not updated')
+  assert.equal(dayRoleNames('support', emptyShift), 'Not updated')
+  assert.equal(dayRoleNames('technical', emptyShift), 'Not updated')
+})
+
+test('Shift Detail staffing tab displays imported labels as a distinct read-only section', () => {
+  const shiftDetailSource = readFileSync(
+    new URL('../components/features/shifts/ShiftDetailModal.tsx', import.meta.url),
+    'utf8',
+  )
+  const markup = renderToStaticMarkup(createElement(ShiftImportedStaffingLabels, {
+    shift,
+    t: key => key,
+    testId: 'shift-detail-staffing-imported-labels',
+    variant: 'standalone',
+  }))
+
+  assert.match(markup, /shift-detail-staffing-imported-labels/)
+  assert.match(markup, /importedStaffingLabels/)
+  assert.match(markup, new RegExp(shift.host_names?.[0] ?? ''))
+  assert.match(markup, /An, Linh/)
+  assert.match(markup, /Minh/)
+  assert.match(
+    shiftDetailSource,
+    /<TabsContent value="staffing"[\s\S]*?<ShiftImportedStaffingLabels[\s\S]*?testId="shift-detail-staffing-imported-labels"/,
+  )
+})
+
+test('imported labels do not create assignments or change canonical staffing counts', () => {
+  const importedOnly = buildShiftStaffing(shift, [], [])
+  assert.equal(importedOnly.host.length, 0)
+  assert.equal(importedOnly.support.length, 0)
+  assert.equal(importedOnly.technical.length, 0)
+
+  const canonicalShift = { ...shift, host_id: fallbackAssignedUser.id }
+  const withoutImportedLabels = {
+    ...canonicalShift,
+    host_names: [],
+    assistant_names: [],
+    technical_names: [],
+  }
+  assert.deepEqual(
+    buildShiftStaffing(canonicalShift, [], [fallbackAssignedUser]),
+    buildShiftStaffing(withoutImportedLabels, [], [fallbackAssignedUser]),
+  )
+})
+
+test('empty imported arrays render no section and create no fake staffing rows', () => {
+  const emptyShift = { ...shift, host_names: [], assistant_names: [], technical_names: [] }
+  const markup = renderToStaticMarkup(createElement(ShiftImportedStaffingLabels, {
+    shift: emptyShift,
+    t: key => key,
+    testId: 'shift-detail-staffing-imported-labels',
+    variant: 'standalone',
+  }))
+  const staffing = buildShiftStaffing(emptyShift, [], [])
+
+  assert.equal(markup, '')
+  assert.equal(staffing.host.length + staffing.support.length + staffing.technical.length, 0)
 })
 
 test('S4F-Lite migration is additive and keeps labels independent from staffing assignments', () => {

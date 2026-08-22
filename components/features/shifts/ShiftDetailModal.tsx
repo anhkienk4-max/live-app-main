@@ -82,22 +82,31 @@ const roleImportedNameField: Record<OperationalRole, 'host_names' | 'assistant_n
 export function ShiftImportedStaffingLabels({
   shift,
   t,
+  testId = 'shift-detail-imported-staffing',
+  variant = 'embedded',
 }: {
   shift: Shift
   t: (key: TranslationKey) => string
+  testId?: string
+  variant?: 'embedded' | 'standalone'
 }) {
   if (!operationalRoles.some(role => (shift[roleImportedNameField[role]]?.length ?? 0) > 0)) {
     return null
   }
 
   return (
-    <div className="mt-5 border-t pt-4" data-testid="shift-detail-imported-staffing">
+    <div
+      className={variant === 'standalone' ? 'rounded-lg border bg-muted/20 p-4' : 'mt-5 border-t pt-4'}
+      data-testid={testId}
+    >
       <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('importedStaffingLabels')}</h4>
       <dl className="grid gap-3 sm:grid-cols-3">
         {operationalRoles.map(role => (
           <div key={role}>
             <dt className="text-xs text-muted-foreground">{t(role)}</dt>
-            <dd className="mt-1 break-words text-sm font-medium">{shift[roleImportedNameField[role]]?.join(', ') || '—'}</dd>
+            <dd className="mt-1 break-words text-sm font-medium" data-testid={`${testId}-${role}`}>
+              {shift[roleImportedNameField[role]]?.join(', ') || '—'}
+            </dd>
           </div>
         ))}
       </dl>
@@ -447,6 +456,13 @@ export function ShiftDetailModal({
               </TabsContent>
 
               <TabsContent value="staffing" className="space-y-4 pt-1">
+                <ShiftImportedStaffingLabels
+                  shift={shift}
+                  t={t}
+                  testId="shift-detail-staffing-imported-labels"
+                  variant="standalone"
+                />
+
                 {staffingLoading ? (
                   <div className="space-y-3" data-testid="staffing-skeleton">
                     {Array.from({ length: 3 }).map((_, index) => (

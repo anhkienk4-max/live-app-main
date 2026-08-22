@@ -45,6 +45,55 @@ interface DaySessionsDialogProps {
   onChanged: () => Promise<void> | void
 }
 
+const roleAssignmentField: Record<OperationalRole, 'host_id' | 'support_id' | 'technical_id'> = {
+  host: 'host_id',
+  support: 'support_id',
+  technical: 'technical_id',
+}
+
+const roleImportedNameField: Record<OperationalRole, 'host_names' | 'assistant_names' | 'technical_names'> = {
+  host: 'host_names',
+  support: 'assistant_names',
+  technical: 'technical_names',
+}
+
+export function resolveDaySessionRoleNames({
+  fallback,
+  registrations,
+  role,
+  shift,
+  users,
+}: {
+  fallback: string
+  registrations: ShiftRegistration[]
+  role: OperationalRole
+  shift: Shift
+  users: User[]
+}) {
+  const directAssignment = shift[roleAssignmentField[role]]
+  const assignedUserIds = new Set([
+    ...(directAssignment ? [directAssignment] : []),
+    ...registrations
+      .filter(registration =>
+        registration.shift_id === shift.id &&
+        registration.operational_role === role &&
+        isStaffedRegistration(registration),
+      )
+      .map(registration => registration.user_id),
+  ])
+  const assignedNames = [...assignedUserIds]
+    .map(userId => users.find(user => user.id === userId)?.full_name?.trim())
+    .filter((name): name is string => Boolean(name))
+
+  if (assignedNames.length > 0) return assignedNames.join(', ')
+
+  const importedNames = shift[roleImportedNameField[role]]
+    ?.map(name => name.trim())
+    .filter(Boolean) ?? []
+
+  return importedNames.join(', ') || fallback
+}
+
 export function DaySessionsDialog({
   open,
   date,
@@ -74,20 +123,13 @@ export function DaySessionsDialog({
     id ? items.find(item => item.id === id)?.name || t('notUpdated') : t('notUpdated')
   const userName = (id?: string) =>
     id ? users.find(user => user.id === id)?.full_name || t('notUpdated') : t('notUpdated')
-  const roleNames = (shift: Shift, role: OperationalRole) => {
-    const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
-    const ids = new Set([
-      ...(assignment ? [assignment] : []),
-      ...registrations
-        .filter(registration =>
-          registration.shift_id === shift.id &&
-          registration.operational_role === role &&
-          isStaffedRegistration(registration),
-        )
-        .map(registration => registration.user_id),
-    ])
-    return [...ids].map(userName).join(', ') || t('notUpdated')
-  }
+  const roleNames = (shift: Shift, role: OperationalRole) => resolveDaySessionRoleNames({
+    fallback: t('notUpdated'),
+    registrations,
+    role,
+    shift,
+    users,
+  })
 
   const runAction = async (key: string, action: () => Promise<unknown>, successMessage: string) => {
     setBusyAction(key)
