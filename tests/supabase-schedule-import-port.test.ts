@@ -62,7 +62,8 @@ function insertRows(database: FakeDatabase, batchId: string, rows: Row[]) {
 
 class FakeBatchQuery {
   private filters: Array<(row: Row) => boolean> = []
-  private ordered = false
+  private orderColumn: string | null = null
+  private ascending = true
   private maybe = false
 
   constructor(private readonly rows: Row[]) {}
@@ -81,8 +82,9 @@ class FakeBatchQuery {
     return this
   }
 
-  order() {
-    this.ordered = true
+  order(column: string, options?: { ascending?: boolean }) {
+    this.orderColumn = column
+    this.ascending = options?.ascending ?? true
     return this
   }
 
@@ -96,8 +98,15 @@ class FakeBatchQuery {
     onrejected?: ((reason: unknown) => unknown) | null,
   ) {
     const matching = this.rows.filter(row => this.filters.every(filter => filter(row)))
-    const ordered = this.ordered
-      ? [...matching].sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)))
+    const ordered = this.orderColumn
+      ? [...matching].sort((left, right) => {
+          const comparison = String(left[this.orderColumn!]).localeCompare(
+            String(right[this.orderColumn!]),
+            undefined,
+            { numeric: true },
+          )
+          return this.ascending ? comparison : -comparison
+        })
       : matching
     const data = this.maybe ? ordered[0] ?? null : ordered
     return Promise.resolve({ data, error: null }).then(onfulfilled, onrejected)
@@ -174,6 +183,12 @@ function fakeClient(database: FakeDatabase, options: FakeClientOptions = {}) {
       for (const item of outcomes) {
         const target = database.rows.find(row => row.batch_id === id && row.row_number === Number(item.row_number))
         if (!target) throw { code: 'P0001', message: 'IMPORT_ROW_NOT_FOUND' }
+        if (['imported', 'warning', 'duplicate_skipped'].includes(String(target.outcome))) {
+          throw { code: 'P0001', message: 'IMPORT_ROW_ALREADY_FINALIZED' }
+        }
+        if (target.outcome !== item.expected_outcome) {
+          throw { code: 'P0001', message: 'IMPORT_ROW_OUTCOME_CONFLICT' }
+        }
         const outcome = String(item.outcome ?? 'pending')
         if (['imported', 'warning'].includes(outcome)) {
           const shiftId = (item.shift_id as string | undefined) ?? ''
@@ -238,6 +253,7 @@ function fakeClient(database: FakeDatabase, options: FakeClientOptions = {}) {
     rpcCalls: [] as Array<{ name: string; args: Record<string, unknown> }>,
     from(table: string) {
       if (table === 'schedule_import_batches') return new FakeBatchQuery(database.batches)
+      if (table === 'schedule_import_batch_rows') return new FakeBatchQuery(database.rows)
       throw new Error(`Unexpected table ${table}`)
     },
     rpc(name: string, args: Record<string, unknown>) {
@@ -328,6 +344,25 @@ test('supabase port createBatch persists a previewed batch with pending rows', a
   })
 })
 
+test('supabase port lists canonical batch rows in source-row order', async () => {
+  await withEnvironment(async () => {
+    const db: FakeDatabase = { batches: [], rows: [], shifts: [] }
+    const port = createSupabaseScheduleImportPort(fakeClient(db))
+    const batch = await port.createBatch({
+      source: 'excel',
+      sourceName: 'ordered.xlsx',
+      createdBy: '1',
+      summary,
+      previewRows: [previewRow(5), previewRow(2)],
+    })
+
+    const rows = await port.listBatchRows(batch.id)
+    assert.deepEqual(rows.map(row => row.source_row_number), [2, 5])
+    assert.ok(rows.every(row => row.status === 'pending'))
+    assert.equal(rows[0]?.normalized_values.title, 'Morning shift')
+  })
+})
+
 test('supabase port linkRowToShift records imported and warning outcomes with shift ids', async () => {
   await withEnvironment(async () => {
     const db: FakeDatabase = { batches: [], rows: [], shifts: [] }
@@ -350,8 +385,8 @@ test('supabase port linkRowToShift records imported and warning outcomes with sh
       { id: 'shift-2', import_batch_id: batch.id },
     )
 
-    await port.linkRowToShift(batch.id, 2, 'shift-1')
-    await port.linkRowToShift(batch.id, 5, 'shift-2', 'warning')
+    await port.linkRowToShift(batch.id, 2, 'shift-1', 'pending')
+    await port.linkRowToShift(batch.id, 5, 'shift-2', 'pending', 'warning')
 
     const row2 = db.rows.find(row => row.row_number === 2)
     assert.equal(row2?.outcome, 'imported')
@@ -378,8 +413,8 @@ test('supabase port marks rows retryable with failure codes and duplicate rows s
       previewRows: [previewRow(2), previewRow(3)],
     })
 
-    await port.markRowRetryable(batch.id, 2, 'SHIFT_REQUEST_FAILED')
-    await port.recordRowOutcome(batch.id, 3, 'duplicate_skipped')
+    await port.markRowRetryable(batch.id, 2, 'SHIFT_REQUEST_FAILED', 'pending')
+    await port.recordRowOutcome(batch.id, 3, 'duplicate_skipped', { expectedOutcome: 'pending' })
 
     const row2 = db.rows.find(row => row.row_number === 2)
     assert.equal(row2?.outcome, 'retryable')
@@ -388,6 +423,43 @@ test('supabase port marks rows retryable with failure codes and duplicate rows s
     const row3 = db.rows.find(row => row.row_number === 3)
     assert.equal(row3?.outcome, 'duplicate_skipped')
     assert.equal(row3?.shift_id, null)
+  })
+})
+
+test('supabase port distinguishes missing, stale, and finalized outcome writes', async () => {
+  await withEnvironment(async () => {
+    const db: FakeDatabase = { batches: [], rows: [], shifts: [] }
+    const port = createSupabaseScheduleImportPort(fakeClient(db))
+    const batch = await port.createBatch({
+      source: 'excel',
+      sourceName: 'cas.xlsx',
+      createdBy: '1',
+      summary,
+      previewRows: [previewRow(2), previewRow(3)],
+    })
+
+    await port.markRowRetryable(batch.id, 2, 'NETWORK_TIMEOUT', 'pending')
+    await assert.rejects(
+      port.recordRowOutcome(batch.id, 2, 'duplicate_skipped', { expectedOutcome: 'pending' }),
+      (error: unknown) => error instanceof ScheduleImportRequestError
+        && /IMPORT_ROW_OUTCOME_CONFLICT/.test(error.message),
+    )
+
+    await port.recordRowOutcome(batch.id, 3, 'duplicate_skipped', { expectedOutcome: 'pending' })
+    await assert.rejects(
+      port.recordRowOutcome(batch.id, 3, 'retryable', {
+        expectedOutcome: 'pending',
+        failureCode: 'NETWORK_TIMEOUT',
+      }),
+      (error: unknown) => error instanceof ScheduleImportRequestError
+        && /IMPORT_ROW_ALREADY_FINALIZED/.test(error.message),
+    )
+
+    await assert.rejects(
+      port.recordRowOutcome(batch.id, 99, 'duplicate_skipped', { expectedOutcome: 'pending' }),
+      (error: unknown) => error instanceof ScheduleImportRequestError
+        && /IMPORT_ROW_NOT_FOUND/.test(error.message),
+    )
   })
 })
 
@@ -409,7 +481,7 @@ test('supabase port confirm finalizes pending rows and syncs outcome counters', 
       ],
     })
     db.shifts.push({ id: 'shift-1', import_batch_id: batch.id })
-    await port.linkRowToShift(batch.id, 2, 'shift-1')
+    await port.linkRowToShift(batch.id, 2, 'shift-1', 'pending')
 
     const confirmed = await port.markBatchStatus(batch.id, 'confirmed')
 
@@ -437,7 +509,7 @@ test('supabase port fail keeps pending rows pending and records retryable counte
       summary,
       previewRows: [previewRow(2), previewRow(3, { errors: ['Brand "X" was not found.'] })],
     })
-    await port.markRowRetryable(batch.id, 2, 'SHIFT_REQUEST_FAILED')
+    await port.markRowRetryable(batch.id, 2, 'SHIFT_REQUEST_FAILED', 'pending')
 
     const failed = await port.markBatchStatus(batch.id, 'failed')
 
@@ -494,7 +566,7 @@ test('supabase port updateBatchPreview replaces rows for draft edits', async () 
       sourceName: 'mars.xlsx',
       createdBy: '1',
       summary,
-      previewRows: [previewRow(2)],
+      previewRows: [previewRow(2), previewRow(3)],
     })
 
     const updated = await port.updateBatchPreview(batch.id, {
@@ -560,23 +632,25 @@ test('dispatching port keeps mock mode in memory with row outcomes', async () =>
     })
     assert.ok((await scheduleImportBatchPort.listBatches()).some(item => item.id === batch.id))
 
-    const recorded = await scheduleImportBatchPort.recordBatchRows(batch.id, [{
-      id: `${batch.id}:2`,
+    const recorded = await scheduleImportBatchPort.recordBatchRows(batch.id, [2, 3].map(rowNumber => ({
+      id: `${batch.id}:${rowNumber}`,
       batch_id: batch.id,
-      source_row_number: 2,
+      source_row_number: rowNumber,
       original_values: {},
-      normalized_values: previewRow(2),
-      status: 'imported',
+      normalized_values: previewRow(rowNumber),
+      status: 'imported' as const,
       validation_issues: [],
       created_at: NOW,
-    }])
-    assert.equal(recorded.length, 1)
+    })))
+    assert.equal(recorded.length, 2)
+    assert.ok(recorded.every(row => row.status === 'pending'))
+    assert.equal((await scheduleImportBatchPort.listBatchRows(batch.id)).length, 2)
 
-    const linked = await scheduleImportBatchPort.linkRowToShift(batch.id, 2, 'shift-mock', 'warning')
+    const linked = await scheduleImportBatchPort.linkRowToShift(batch.id, 2, 'shift-mock', 'pending', 'warning')
     assert.equal(linked?.status, 'warning')
     assert.equal(linked?.resulting_shift_id, 'shift-mock')
 
-    const retryable = await scheduleImportBatchPort.markRowRetryable(batch.id, 2, 'SHIFT_CONFLICT')
+    const retryable = await scheduleImportBatchPort.markRowRetryable(batch.id, 3, 'SHIFT_CONFLICT', 'pending')
     assert.equal(retryable?.status, 'retryable')
     assert.equal(retryable?.failure_code, 'SHIFT_CONFLICT')
   })
@@ -605,7 +679,7 @@ test('crash recovery: shift created but outcome not recorded leaves row pending 
     assert.equal(row?.shift_id, null)
 
     // Recovery: re-link the already-created shift to the pending row
-    await port.linkRowToShift(batch.id, 2, 'shift-orphan', 'imported')
+    await port.linkRowToShift(batch.id, 2, 'shift-orphan', 'pending', 'imported')
     const recovered = db.rows.find(r => r.batch_id === batch.id && r.row_number === 2)
     assert.equal(recovered?.outcome, 'imported')
     assert.equal(recovered?.shift_id, 'shift-orphan')
@@ -663,7 +737,7 @@ test('batch state machine: recording outcomes on a confirmed batch is rejected',
     await port.markBatchStatus(batch.id, 'confirmed')
 
     await assert.rejects(
-      port.linkRowToShift(batch.id, 2, 'shift-1'),
+      port.linkRowToShift(batch.id, 2, 'shift-1', 'pending'),
       (error: unknown) => error instanceof ScheduleImportRequestError
         && /IMPORT_BATCH_NOT_ACTIVE/.test(error.message),
     )

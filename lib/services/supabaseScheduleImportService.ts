@@ -8,7 +8,9 @@ import type {
 } from '@/lib/types/database.types'
 import type { ScheduleImportBatchPort } from '@/lib/services/scheduleImportBatchPort'
 import type {
-  ImportBatchFinalRowStatus,
+  ImportBatchRecordedRowStatus,
+  ImportBatchRetryableRowStatus,
+  ImportBatchRow,
   ImportBatchSummary,
 } from '@/lib/utils/scheduleImportBatch'
 import { toPreviewCounters } from '@/lib/utils/scheduleImportBatch'
@@ -56,6 +58,30 @@ interface BatchDbRow {
   deleted_by: string | null
   deletion_reason: string | null
 }
+
+interface BatchRowDbRow {
+  id: string
+  batch_id: string
+  row_number: number
+  outcome: ImportBatchRow['status']
+  shift_id: string | null
+  source_row: ImportBatchRow['normalized_values']
+  failure_code: string | null
+  created_at: string
+  updated_at: string
+}
+
+const batchRowColumns = [
+  'id',
+  'batch_id',
+  'row_number',
+  'outcome',
+  'shift_id',
+  'source_row',
+  'failure_code',
+  'created_at',
+  'updated_at',
+].join(',')
 
 interface SupabaseErrorShape {
   code?: string
@@ -122,6 +148,21 @@ function batchFromRow(row: BatchDbRow): ScheduleImportBatch {
   }
 }
 
+function batchRowFromRow(row: BatchRowDbRow): ImportBatchRow {
+  return {
+    id: row.id,
+    batch_id: row.batch_id,
+    source_row_number: row.row_number,
+    original_values: { ...row.source_row },
+    normalized_values: row.source_row,
+    status: row.outcome,
+    validation_issues: [...(row.source_row.errors ?? [])],
+    resulting_shift_id: row.shift_id ?? undefined,
+    failure_code: row.failure_code ?? undefined,
+    created_at: row.created_at,
+  }
+}
+
 /** Maps the shared ImportBatchSummary onto the stored preview counters. */
 function rpcSummary(summary: ImportBatchSummary) {
   return toPreviewCounters(summary)
@@ -129,7 +170,8 @@ function rpcSummary(summary: ImportBatchSummary) {
 
 interface RpcOutcomeInput {
   row_number: number
-  outcome: ImportBatchFinalRowStatus
+  outcome: ImportBatchRecordedRowStatus
+  expected_outcome: ImportBatchRetryableRowStatus
   shift_id?: string
   failure_code?: string
 }
@@ -166,22 +208,38 @@ export function createSupabaseScheduleImportPort(
     // Rows are already persisted by create_schedule_import_batch; there is
     // nothing more to record at preview time in Supabase mode.
     async recordBatchRows(_batchId, rows) {
-      return rows
+      return rows.map(row => ({
+        ...row,
+        status: 'pending' as const,
+        resulting_shift_id: undefined,
+        failure_code: undefined,
+      }))
     },
 
-    async linkRowToShift(batchId, sourceRowNumber, shiftId, outcome = 'imported') {
+    async listBatchRows(batchId) {
+      const result = await client.from('schedule_import_batch_rows')
+        .select(batchRowColumns)
+        .eq('batch_id', batchId)
+        .order('row_number', { ascending: true })
+      return optionalRows('schedule import row read', result)
+        .map(row => batchRowFromRow(row as unknown as BatchRowDbRow))
+    },
+
+    async linkRowToShift(batchId, sourceRowNumber, shiftId, expectedOutcome, outcome = 'imported') {
       await recordOutcomes(batchId, [{
         row_number: sourceRowNumber,
         outcome,
+        expected_outcome: expectedOutcome,
         shift_id: shiftId,
       }])
       return null
     },
 
-    async markRowRetryable(batchId, sourceRowNumber, failureCode) {
+    async markRowRetryable(batchId, sourceRowNumber, failureCode, expectedOutcome) {
       await recordOutcomes(batchId, [{
         row_number: sourceRowNumber,
         outcome: 'retryable',
+        expected_outcome: expectedOutcome,
         failure_code: failureCode,
       }])
       return null
@@ -191,6 +249,7 @@ export function createSupabaseScheduleImportPort(
       await recordOutcomes(batchId, [{
         row_number: sourceRowNumber,
         outcome,
+        expected_outcome: options.expectedOutcome,
         shift_id: options?.shiftId,
         failure_code: options?.failureCode,
       }])

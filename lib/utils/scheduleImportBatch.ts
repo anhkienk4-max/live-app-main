@@ -12,7 +12,15 @@ export type ImportBatch = ScheduleImportBatch
 export type ImportBatchStatus = ScheduleImportStatus
 
 export type ImportBatchRowStatus = ScheduleImportRowOutcome
-export type ImportBatchFinalRowStatus = Exclude<ImportBatchRowStatus, 'pending'>
+export type ImportBatchRetryableRowStatus = Extract<
+  ImportBatchRowStatus,
+  'pending' | 'validation_failed' | 'retryable'
+>
+export type ImportBatchFinalRowStatus = Exclude<
+  ImportBatchRowStatus,
+  ImportBatchRetryableRowStatus
+>
+export type ImportBatchRecordedRowStatus = Exclude<ImportBatchRowStatus, 'pending'>
 
 export interface ImportBatchRow {
   id: string
@@ -147,7 +155,7 @@ export function toPreviewCounters(summary: ImportBatchSummary): ScheduleImportPr
 }
 
 export function isRowRetryable(row: ImportBatchRow): boolean {
-  return row.status === 'validation_failed' || row.status === 'pending'
+  return row.status === 'pending' || row.status === 'validation_failed' || row.status === 'retryable'
 }
 
 export function isRowImported(row: ImportBatchRow): boolean {

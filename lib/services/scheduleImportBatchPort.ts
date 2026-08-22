@@ -9,6 +9,8 @@ import { scheduleImportService } from '@/lib/services/dataService'
 import { getSupabaseScheduleImportPort } from '@/lib/services/supabaseScheduleImportService'
 import type {
   ImportBatchFinalRowStatus,
+  ImportBatchRecordedRowStatus,
+  ImportBatchRetryableRowStatus,
   ImportBatchRow,
   ImportBatchSummary,
 } from '@/lib/utils/scheduleImportBatch'
@@ -25,18 +27,29 @@ export interface CreateImportBatchInput {
 export interface ScheduleImportBatchPort {
   createBatch(input: CreateImportBatchInput): Promise<ScheduleImportBatch>
   recordBatchRows(batchId: string, rows: ImportBatchRow[]): Promise<ImportBatchRow[]>
+  listBatchRows(batchId: string): Promise<ImportBatchRow[]>
   linkRowToShift(
     batchId: string,
     sourceRowNumber: number,
     shiftId: string,
+    expectedOutcome: ImportBatchRetryableRowStatus,
     outcome?: 'imported' | 'warning',
   ): Promise<ImportBatchRow | null>
-  markRowRetryable(batchId: string, sourceRowNumber: number, failureCode: string): Promise<ImportBatchRow | null>
+  markRowRetryable(
+    batchId: string,
+    sourceRowNumber: number,
+    failureCode: string,
+    expectedOutcome: ImportBatchRetryableRowStatus,
+  ): Promise<ImportBatchRow | null>
   recordRowOutcome(
     batchId: string,
     sourceRowNumber: number,
-    outcome: ImportBatchFinalRowStatus,
-    options?: { shiftId?: string; failureCode?: string },
+    outcome: ImportBatchRecordedRowStatus,
+    options: {
+      expectedOutcome: ImportBatchRetryableRowStatus
+      shiftId?: string
+      failureCode?: string
+    },
   ): Promise<ImportBatchRow | null>
   updateBatchPreview(
     batchId: string,
@@ -51,21 +64,47 @@ export interface ScheduleImportBatchPort {
 
 const recordedBatchRows = new Map<string, ImportBatchRow[]>()
 
+function findMutableMockRow(
+  batchId: string,
+  sourceRowNumber: number,
+  expectedOutcome: ImportBatchRetryableRowStatus,
+): { rows: ImportBatchRow[]; index: number } {
+  const rows = recordedBatchRows.get(batchId)
+  const index = rows?.findIndex(row => row.source_row_number === sourceRowNumber) ?? -1
+  if (!rows || index === -1) throw new Error('IMPORT_ROW_NOT_FOUND')
+  const current = rows[index]
+  if (!current) throw new Error('IMPORT_ROW_NOT_FOUND')
+  if ((['imported', 'warning', 'duplicate_skipped'] as ImportBatchFinalRowStatus[]).includes(
+    current.status as ImportBatchFinalRowStatus,
+  )) {
+    throw new Error('IMPORT_ROW_ALREADY_FINALIZED')
+  }
+  if (current.status !== expectedOutcome) throw new Error('IMPORT_ROW_OUTCOME_CONFLICT')
+  return { rows, index }
+}
+
 const mockPort: ScheduleImportBatchPort = {
   async createBatch({ source, sourceName, createdBy, summary, previewRows }) {
     return scheduleImportService.createPreview(source, sourceName, toPreviewCounters(summary), createdBy, previewRows)
   },
 
   async recordBatchRows(batchId, rows) {
-    recordedBatchRows.set(batchId, rows.map(row => ({ ...row })))
-    return rows
+    const pendingRows = rows.map(row => ({
+      ...row,
+      status: 'pending' as const,
+      resulting_shift_id: undefined,
+      failure_code: undefined,
+    }))
+    recordedBatchRows.set(batchId, pendingRows)
+    return pendingRows
   },
 
-  async linkRowToShift(batchId, sourceRowNumber, shiftId, outcome = 'imported') {
-    const rows = recordedBatchRows.get(batchId)
-    if (!rows) return null
-    const index = rows.findIndex(row => row.source_row_number === sourceRowNumber)
-    if (index === -1) return null
+  async listBatchRows(batchId) {
+    return (recordedBatchRows.get(batchId) ?? []).map(row => ({ ...row }))
+  },
+
+  async linkRowToShift(batchId, sourceRowNumber, shiftId, expectedOutcome, outcome = 'imported') {
+    const { rows, index } = findMutableMockRow(batchId, sourceRowNumber, expectedOutcome)
     rows[index] = {
       ...rows[index],
       resulting_shift_id: shiftId,
@@ -74,11 +113,8 @@ const mockPort: ScheduleImportBatchPort = {
     return rows[index]
   },
 
-  async markRowRetryable(batchId, sourceRowNumber, failureCode) {
-    const rows = recordedBatchRows.get(batchId)
-    if (!rows) return null
-    const index = rows.findIndex(row => row.source_row_number === sourceRowNumber)
-    if (index === -1) return null
+  async markRowRetryable(batchId, sourceRowNumber, failureCode, expectedOutcome) {
+    const { rows, index } = findMutableMockRow(batchId, sourceRowNumber, expectedOutcome)
     rows[index] = {
       ...rows[index],
       status: 'retryable',
@@ -88,10 +124,11 @@ const mockPort: ScheduleImportBatchPort = {
   },
 
   async recordRowOutcome(batchId, sourceRowNumber, outcome, options) {
-    const rows = recordedBatchRows.get(batchId)
-    if (!rows) return null
-    const index = rows.findIndex(row => row.source_row_number === sourceRowNumber)
-    if (index === -1) return null
+    const { rows, index } = findMutableMockRow(
+      batchId,
+      sourceRowNumber,
+      options.expectedOutcome,
+    )
     rows[index] = {
       ...rows[index],
       status: outcome,
@@ -136,10 +173,11 @@ function resolvePort(): ScheduleImportBatchPort {
 export const scheduleImportBatchPort: ScheduleImportBatchPort = {
   createBatch: input => resolvePort().createBatch(input),
   recordBatchRows: (batchId, rows) => resolvePort().recordBatchRows(batchId, rows),
-  linkRowToShift: (batchId, sourceRowNumber, shiftId, outcome) =>
-    resolvePort().linkRowToShift(batchId, sourceRowNumber, shiftId, outcome),
-  markRowRetryable: (batchId, sourceRowNumber, failureCode) =>
-    resolvePort().markRowRetryable(batchId, sourceRowNumber, failureCode),
+  listBatchRows: batchId => resolvePort().listBatchRows(batchId),
+  linkRowToShift: (batchId, sourceRowNumber, shiftId, expectedOutcome, outcome) =>
+    resolvePort().linkRowToShift(batchId, sourceRowNumber, shiftId, expectedOutcome, outcome),
+  markRowRetryable: (batchId, sourceRowNumber, failureCode, expectedOutcome) =>
+    resolvePort().markRowRetryable(batchId, sourceRowNumber, failureCode, expectedOutcome),
   recordRowOutcome: (batchId, sourceRowNumber, outcome, options) =>
     resolvePort().recordRowOutcome(batchId, sourceRowNumber, outcome, options),
   updateBatchPreview: (batchId, summary, previewRows) =>

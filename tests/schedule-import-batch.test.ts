@@ -188,7 +188,7 @@ test('warning classification: a valid row without a shift and non-duplicate warn
   assert.equal(classifyRowOutcome(preview), 'warning')
 })
 
-test('retryable logic: failed and pending rows can be retried, completed rows cannot', () => {
+test('retryable logic: pending, validation-failed, and retryable rows can be retried', () => {
   const baseRow = {
     date: '2026-09-01',
     start_time: '09:00',
@@ -202,7 +202,7 @@ test('retryable logic: failed and pending rows can be retried, completed rows ca
     warnings: [] as string[],
     errors: [] as string[],
   }
-  const rowFor = (row_number: number, status: 'validation_failed' | 'imported' | 'duplicate_skipped' | 'pending') => ({
+  const rowFor = (row_number: number, status: 'validation_failed' | 'retryable' | 'imported' | 'duplicate_skipped' | 'pending') => ({
     id: `batch-1:${row_number}`,
     batch_id: 'batch-1',
     source_row_number: row_number,
@@ -214,9 +214,10 @@ test('retryable logic: failed and pending rows can be retried, completed rows ca
   })
   assert.equal(isRowRetryable(rowFor(1, 'validation_failed')), true)
   assert.equal(isRowRetryable(rowFor(2, 'pending')), true)
-  assert.equal(isRowRetryable(rowFor(3, 'imported')), false)
-  assert.equal(isRowRetryable(rowFor(4, 'duplicate_skipped')), false)
-  assert.equal(isRowImported(rowFor(3, 'imported')), true)
+  assert.equal(isRowRetryable(rowFor(3, 'retryable')), true)
+  assert.equal(isRowRetryable(rowFor(4, 'imported')), false)
+  assert.equal(isRowRetryable(rowFor(5, 'duplicate_skipped')), false)
+  assert.equal(isRowImported(rowFor(4, 'imported')), true)
   assert.equal(isRowImported(rowFor(1, 'validation_failed')), false)
 })
 

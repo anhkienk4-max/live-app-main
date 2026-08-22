@@ -51,11 +51,10 @@ import {
   updateRowDraft,
 } from '@/lib/utils/scheduleImportDraft'
 import {
-  isScheduleImportDuplicateError,
   mapImportResultToBatchRows,
-  scheduleImportFailureCode,
   summarizeImportResult,
 } from '@/lib/utils/scheduleImportBatch'
+import { processScheduleImportRows } from '@/lib/utils/scheduleImportRecovery'
 import { scheduleImportBatchPort } from '@/lib/services/scheduleImportBatchPort'
 import {
   type MasterDataState,
@@ -260,39 +259,28 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     if (!result || !batch || result.validRows === 0) return
     setBusy(true)
     try {
-      const importable = result.rows
-        .filter(preview => preview.shift && preview.row.errors.length === 0)
-      let importedCount = 0
-      let retryableCount = 0
-      for (const preview of importable) {
-        const shiftData = preview.shift
-        if (!shiftData) continue
-        try {
-          const shift = await shiftService.create({ ...shiftData, import_batch_id: batch.id, registration_locked: false })
-          await scheduleImportBatchPort.linkRowToShift(
-            batch.id,
-            preview.row.row_number,
-            shift.id,
-            preview.row.warnings.length > 0 ? 'warning' : 'imported',
-          )
-          importedCount += 1
-        } catch (error) {
-          // Overlap != duplicate at app level, but the DB unique slot index is
-          // the race safety net: a 23505 here means the slot is already taken,
-          // so record the row as skipped instead of failing the whole batch.
-          if (isScheduleImportDuplicateError(error)) {
-            await scheduleImportBatchPort.recordRowOutcome(batch.id, preview.row.row_number, 'duplicate_skipped')
-          } else {
-            retryableCount += 1
-            await scheduleImportBatchPort.markRowRetryable(batch.id, preview.row.row_number, scheduleImportFailureCode(error))
-          }
-        }
-      }
-      if (retryableCount > 0) {
+      const batchRows = await scheduleImportBatchPort.listBatchRows(batch.id)
+      const importResult = await processScheduleImportRows({
+        batchId: batch.id,
+        previews: result.rows,
+        batchRows,
+        initialShifts: existingShifts,
+        createShift: shiftService.create,
+        refreshShifts: shiftService.getAll,
+        recordOutcome: async ({ rowNumber, outcome, expectedOutcome, shiftId, failureCode }) => {
+          await scheduleImportBatchPort.recordRowOutcome(batch.id, rowNumber, outcome, {
+            expectedOutcome,
+            shiftId,
+            failureCode,
+          })
+        },
+      })
+      const importedCount = importResult.imported + importResult.recovered
+      if (importResult.retryable > 0) {
         await scheduleImportBatchPort.markBatchStatus(batch.id, 'failed')
         toast({
           title: t('error'),
-          description: `${importedCount} row(s) imported; ${retryableCount} row(s) were marked for retry.`,
+          description: `${importedCount} row(s) imported; ${importResult.retryable} row(s) were marked for retry.`,
           variant: 'destructive',
         })
         setExistingShifts(await shiftService.getAll())
