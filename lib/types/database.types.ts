@@ -12,6 +12,7 @@ export type RegistrationStatus =
   | 'cancelled'
   | 'manually_assigned'
   | 'removed'
+export type ShiftStaffIdentityMatchMethod = 'exact' | 'normalized' | 'manual'
 export type ReportStatus = 'draft' | 'in_review' | 'confirmed' | 'reopened' | 'archived'
 export type KnowledgeStatus = 'active' | 'inactive' | 'draft'
 export type CampaignStatus = 'draft' | 'active' | 'completed' | 'cancelled'
@@ -744,6 +745,8 @@ export interface ShiftRegistration {
   reviewed_at?: string
   review_notes?: string
   cancelled_at?: string
+  imported_name?: string
+  match_method?: ShiftStaffIdentityMatchMethod
   created_at: string
   updated_at: string
 }

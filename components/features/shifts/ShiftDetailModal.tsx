@@ -17,6 +17,7 @@ import type {
   Platform,
   Shift,
   ShiftRegistration,
+  ShiftStaffIdentityMatchMethod,
   ShiftStatus,
   User,
 } from '@/lib/types/database.types'
@@ -60,6 +61,7 @@ import { resolveShiftDateTime } from '@/lib/utils/shiftUtils'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 import { normalizeStaffingDisplayNames } from '@/lib/utils/scheduleImportPreview'
+import { deriveShiftStaffIdentityMatches } from '@/lib/utils/staffIdentityMatching'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
 
@@ -147,6 +149,142 @@ export function ShiftImportedStaffingLabels({
         ))}
       </dl>
     </div>
+  )
+}
+
+export function ImportedStaffIdentityMapping({
+  busy,
+  canAssign,
+  onAssign,
+  registrations,
+  shift,
+  t,
+  users,
+}: {
+  busy: boolean
+  canAssign: boolean
+  onAssign: (
+    role: OperationalRole,
+    importedName: string,
+    userId: string,
+    matchMethod: ShiftStaffIdentityMatchMethod,
+  ) => Promise<void>
+  registrations: ShiftRegistration[]
+  shift: Shift
+  t: (key: TranslationKey) => string
+  users: User[]
+}) {
+  const [selectedUsers, setSelectedUsers] = React.useState<Record<string, string>>({})
+  const matches = React.useMemo(() => deriveShiftStaffIdentityMatches({
+    host: shift.host_names ?? [],
+    support: shift.assistant_names ?? [],
+    technical: shift.technical_names ?? [],
+  }, users), [shift.assistant_names, shift.host_names, shift.technical_names, users])
+
+  if (matches.length === 0) return null
+
+  return (
+    <Card data-testid="shift-imported-staff-identity-mapping">
+      <CardContent className="space-y-3 pt-5">
+        <div>
+          <h4 className="font-semibold">{t('staffIdentityMapping')}</h4>
+          <p className="mt-1 text-xs text-muted-foreground">{t('staffIdentityMappingHelp')}</p>
+        </div>
+        <div className="space-y-3">
+          {matches.map((match, index) => {
+            const itemKey = `${match.role}:${index}:${match.importedName}`
+            const assignedRegistration = registrations.find(registration =>
+              registration.shift_id === shift.id &&
+              registration.operational_role === match.role &&
+              isStaffedRegistration(registration) &&
+              registration.imported_name === match.importedName,
+            )
+            const assignedUser = assignedRegistration
+              ? users.find(user => user.id === assignedRegistration.user_id)
+              : undefined
+            const selectedUserId = selectedUsers[itemKey] ?? match.suggestedUser?.id ?? ''
+            const selectedMethod: ShiftStaffIdentityMatchMethod =
+              selectedUserId === match.suggestedUser?.id && match.method
+                ? match.method
+                : 'manual'
+            const eligibleUsers = users.filter(user =>
+              user.status === 'active' && user.operational_roles?.includes(match.role),
+            )
+            const statusKey: TranslationKey = assignedRegistration
+              ? 'staffMatchAssigned'
+              : match.status === 'candidate'
+                ? 'staffMatchCandidate'
+                : match.status === 'ambiguous'
+                  ? 'staffMatchAmbiguous'
+                  : 'staffMatchUnmatched'
+
+            return (
+              <div
+                className="rounded-lg border p-3"
+                data-testid={`staff-identity-${match.role}-${index}`}
+                key={itemKey}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground">{t(match.role)} · {t('scheduleStaffingName')}</p>
+                    <p className="break-words font-medium">{match.importedName}</p>
+                  </div>
+                  <Badge variant={assignedRegistration ? 'secondary' : 'outline'}>{t(statusKey)}</Badge>
+                </div>
+
+                {assignedRegistration ? (
+                  <p className="mt-2 text-sm" data-testid={`${itemKey}-assignment`}>
+                    {t('actualAssignment')}: {assignedUser?.full_name ?? assignedRegistration.user_id}
+                    {assignedRegistration.match_method ? ` · ${t(assignedRegistration.match_method === 'exact' ? 'staffMatchExact' : assignedRegistration.match_method === 'normalized' ? 'staffMatchNormalized' : 'staffMatchManual')}` : ''}
+                  </p>
+                ) : (
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+                    <label className="min-w-0 flex-1 text-xs font-medium">
+                      {t('actualAssignment')}
+                      <Select
+                        disabled={!canAssign || busy}
+                        onValueChange={value => setSelectedUsers(current => ({ ...current, [itemKey]: value }))}
+                        value={selectedUserId}
+                      >
+                        <SelectTrigger className="mt-1 w-full" data-testid={`${itemKey}-select`}>
+                          <SelectValue placeholder={t('chooseStaff')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {eligibleUsers.map(user => (
+                            <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </label>
+                    {canAssign ? (
+                      <Button
+                        data-testid={`${itemKey}-confirm`}
+                        disabled={busy || !selectedUserId}
+                        onClick={() => onAssign(match.role, match.importedName, selectedUserId, selectedMethod)}
+                        size="sm"
+                      >
+                        <UserPlus className="mr-2 h-4 w-4" />{t('confirmStaffIdentity')}
+                      </Button>
+                    ) : null}
+                  </div>
+                )}
+
+                {!assignedRegistration && match.status === 'candidate' && match.suggestedUser ? (
+                  <p className="mt-2 text-xs text-muted-foreground" data-testid={`${itemKey}-suggestion`}>
+                    {t('suggestedCandidate')}: {match.suggestedUser.full_name} · {t(match.method === 'exact' ? 'staffMatchExact' : 'staffMatchNormalized')}
+                  </p>
+                ) : null}
+                {!assignedRegistration && match.status === 'ambiguous' ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {t('matchingCandidates')}: {match.candidates.map(candidate => candidate.full_name).join(', ')}
+                  </p>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -414,6 +552,7 @@ export function ShiftDetailModal({
   const [registrationPageSize, setRegistrationPageSize] = React.useState(10)
   const canDeleteShift = Boolean(currentUser && hasPermission(currentUser, 'shifts.delete'))
   const canEditStaffingLabels = Boolean(currentUser && hasPermission(currentUser, 'shifts.edit'))
+  const canAssignStaff = Boolean(currentUser && hasPermission(currentUser, 'shifts.assign_staff'))
   const registrationTotalPages = Math.max(1, Math.ceil(registrations.length / registrationPageSize))
   const safeRegistrationPage = Math.min(registrationPage, registrationTotalPages)
   const visibleRegistrations = registrations.slice(
@@ -515,6 +654,26 @@ export function ShiftDetailModal({
       })
       throw error
     }
+  }
+
+  const assignImportedStaff = async (
+    role: OperationalRole,
+    importedName: string,
+    userId: string,
+    matchMethod: ShiftStaffIdentityMatchMethod,
+  ) => {
+    if (!currentUser) return
+    await runStaffingAction(
+      () => shiftRegistrationService.assignImported(
+        shift.id,
+        userId,
+        role,
+        importedName,
+        matchMethod,
+        currentUser.id,
+      ),
+      t('staffIdentityAssigned'),
+    )
   }
 
   return (
@@ -630,6 +789,16 @@ export function ShiftDetailModal({
                   />
                 )}
 
+                <ImportedStaffIdentityMapping
+                  busy={busy}
+                  canAssign={canAssignStaff}
+                  onAssign={assignImportedStaff}
+                  registrations={registrations}
+                  shift={shift}
+                  t={t}
+                  users={users}
+                />
+
                 {staffingLoading ? (
                   <div className="space-y-3" data-testid="staffing-skeleton">
                     {Array.from({ length: 3 }).map((_, index) => (
@@ -656,7 +825,7 @@ export function ShiftDetailModal({
                   </div>
                 )}
 
-                {currentUser && hasPermission(currentUser, 'shifts.assign_staff') ? (
+                {canAssignStaff && currentUser ? (
                   <Card>
                     <CardContent className="pt-5">
                       <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-end">

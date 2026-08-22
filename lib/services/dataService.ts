@@ -33,6 +33,7 @@ import {
   normalizeStaffingDisplayNames,
   toCanonicalScheduleImportPreviewRow,
 } from '@/lib/utils/scheduleImportPreview'
+import { deriveShiftStaffIdentityMatch } from '@/lib/utils/staffIdentityMatching'
 import { recordAuditEvent } from '@/lib/services/auditService'
 import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { getAuthMode } from '@/lib/auth/authMode'
@@ -1758,6 +1759,104 @@ export const shiftRegistrationService = {
     }
     recordScheduleChange('manual_assign', shiftId, undefined, { ...registration }, { actor_id: reviewerId })
     audit('calendar', 'assign', 'shift_registration', registration.id, `${user.full_name} · ${role}`, { actorId: reviewerId, after: { ...registration }, relatedRecords: [{ entity_type: 'shift', entity_id: shift.id, entity_name: shift.title || shift.date }] })
+    return registration
+  },
+
+  async assignImported(
+    shiftId: string,
+    userId: string,
+    role: OperationalRole,
+    importedName: string,
+    matchMethod: NonNullable<ShiftRegistration['match_method']>,
+    reviewerId: string,
+  ): Promise<ShiftRegistration> {
+    if (!hasPermission(requiredActorFor(reviewerId), 'shifts.assign_staff')) {
+      throw new Error('Only a Leader or Admin can assign imported staffing names.')
+    }
+    const trimmedImportedName = importedName.trim()
+    if (!trimmedImportedName) throw new Error('The imported staffing name is required.')
+
+    if (getAuthMode() === 'supabase') {
+      const registration = await getSupabaseShiftRegistrationRepository().assignImported(
+        shiftId,
+        userId,
+        role,
+        trimmedImportedName,
+        matchMethod,
+      )
+      recordScheduleChange('manual_assign', shiftId, undefined, { ...registration }, { actor_id: reviewerId })
+      audit('calendar', 'assign', 'shift_registration', registration.id, `${registration.user_id} · ${role}`, {
+        actorId: reviewerId,
+        after: { ...registration },
+        relatedRecords: [{ entity_type: 'shift', entity_id: shiftId, entity_name: shiftId }],
+      })
+      return registration
+    }
+
+    const shift = shifts.find(candidate => candidate.id === shiftId)
+    const user = users.find(candidate => candidate.id === userId)
+    if (!shift || !user) throw new Error('Shift or staff member was not found.')
+    if (!user.operational_roles?.includes(role) || user.status !== 'active') {
+      throw new Error('The staff member is not eligible for this role.')
+    }
+
+    if (matchMethod !== 'manual') {
+      const derivedMatch = deriveShiftStaffIdentityMatch(trimmedImportedName, role, users)
+      if (
+        derivedMatch.status !== 'candidate' ||
+        derivedMatch.method !== matchMethod ||
+        derivedMatch.suggestedUser?.id !== userId
+      ) {
+        throw new Error('The selected staff member does not satisfy the recorded match method.')
+      }
+    }
+    if (capacityFor(shift, role).approved >= (shift[roleRequiredField[role]] ?? 1)) {
+      throw new Error('This role is already full.')
+    }
+    if (findRegistrationConflict(userId, shift)) throw new Error('The staff member has a schedule conflict.')
+    const sameShift = shiftRegistrations.find(registration =>
+      registration.shift_id === shiftId &&
+      registration.user_id === userId &&
+      (registration.status === 'pending' || isStaffedRegistration(registration))
+    )
+    if (sameShift?.operational_role === role) {
+      throw new Error('This staff member already has this role in the shift.')
+    }
+    if (sameShift && !shift.allow_multi_role && !operationalSettings.allow_multi_role_per_shift) {
+      throw new Error('A staff member cannot occupy multiple roles in the same shift.')
+    }
+
+    const timestamp = nowIso()
+    const registration: ShiftRegistration = {
+      id: generateId(),
+      shift_id: shiftId,
+      user_id: userId,
+      operational_role: role,
+      status: 'manually_assigned',
+      source: 'manual_assignment',
+      requested_at: timestamp,
+      reviewed_by: reviewerId,
+      reviewed_at: timestamp,
+      imported_name: trimmedImportedName,
+      match_method: matchMethod,
+      created_at: timestamp,
+      updated_at: timestamp,
+    }
+    shiftRegistrations.push(registration)
+    const shiftIndex = shifts.findIndex(candidate => candidate.id === shiftId)
+    const assignmentField = roleAssignmentField[role]
+    if (!shifts[shiftIndex][assignmentField]) {
+      shifts[shiftIndex] = { ...shifts[shiftIndex], [assignmentField]: userId, updated_at: timestamp }
+    }
+    if (operationalSettings.auto_lock_filled_shifts && isFullyStaffed(shifts[shiftIndex])) {
+      shifts[shiftIndex] = { ...shifts[shiftIndex], registration_locked: true, updated_at: timestamp }
+    }
+    recordScheduleChange('manual_assign', shiftId, undefined, { ...registration }, { actor_id: reviewerId })
+    audit('calendar', 'assign', 'shift_registration', registration.id, `${user.full_name} · ${role}`, {
+      actorId: reviewerId,
+      after: { ...registration },
+      relatedRecords: [{ entity_type: 'shift', entity_id: shift.id, entity_name: shift.title || shift.date }],
+    })
     return registration
   },
 

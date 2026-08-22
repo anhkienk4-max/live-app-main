@@ -22,6 +22,7 @@ type RpcName =
   | 'approve_shift_registration'
   | 'reject_shift_registration'
   | 'manual_assign_shift_staff'
+  | 'manual_assign_imported_shift_staff'
   | 'remove_shift_staffing'
 
 interface FakeDatabase {
@@ -190,6 +191,28 @@ function fakeClient(database: FakeDatabase, options: FakeClientOptions = {}) {
         reviewed_at: now,
         review_notes: args.p_notes ?? null,
         cancelled_at: null,
+        created_at: now,
+        updated_at: now,
+      }
+      database.shift_registrations.push({ ...row })
+      return { ...row }
+    },
+    manual_assign_imported_shift_staff(args) {
+      const now = '2031-08-20T04:30:00.000Z'
+      const row: Row = {
+        id: 'reg-imported-001',
+        shift_id: String(args.p_shift_id),
+        user_id: String(args.p_user_id),
+        operational_role: String(args.p_role),
+        status: 'manually_assigned',
+        source: 'manual_assignment',
+        requested_at: now,
+        reviewed_by: 'current-user',
+        reviewed_at: now,
+        review_notes: args.p_notes ?? null,
+        cancelled_at: null,
+        imported_name: String(args.p_imported_name),
+        match_method: String(args.p_match_method),
         created_at: now,
         updated_at: now,
       }
@@ -474,6 +497,31 @@ test('Supabase mode manual assign and remove go through RPCs', async () => {
     const removed = await shiftRegistrationService.removeAssignment('reg-2', '1', 'replaced')
     assert.equal(removed.status, 'removed')
     assert.equal(db.shift_registrations.find(row => row.id === 'reg-2')?.status, 'removed')
+  })
+})
+
+test('Supabase imported staffing assignment uses the dedicated RPC and preserves provenance', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    setSupabaseShiftRegistrationRepositoryForTests(createSupabaseShiftRegistrationRepository(fakeClient(db)))
+    currentUserService.bindAuthenticatedUser(adminUser())
+
+    const assigned = await shiftRegistrationService.assignImported(
+      'shift-1',
+      'u-leader',
+      'host',
+      'Hương',
+      'normalized',
+      '1',
+    )
+
+    assert.equal(assigned.status, 'manually_assigned')
+    assert.equal(assigned.imported_name, 'Hương')
+    assert.equal(assigned.match_method, 'normalized')
+    const persisted = db.shift_registrations.find(row => row.id === 'reg-imported-001')
+    assert.equal(persisted?.imported_name, 'Hương')
+    assert.equal(persisted?.match_method, 'normalized')
   })
 })
 

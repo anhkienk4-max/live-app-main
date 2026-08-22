@@ -19,6 +19,8 @@ const registrationColumns = [
   'reviewed_at',
   'review_notes',
   'cancelled_at',
+  'imported_name',
+  'match_method',
   'created_at',
   'updated_at',
 ].join(',')
@@ -141,6 +143,8 @@ function registrationFromRow(row: RegistrationRow): ShiftRegistration {
     reviewed_at: row.reviewed_at ?? undefined,
     review_notes: row.review_notes ?? undefined,
     cancelled_at: row.cancelled_at ?? undefined,
+    imported_name: row.imported_name ?? undefined,
+    match_method: row.match_method ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
   }
@@ -228,6 +232,14 @@ export interface SupabaseShiftRegistrationRepository {
   approve(id: string, notes?: string): Promise<ShiftRegistration>
   reject(id: string, notes?: string): Promise<ShiftRegistration>
   assignManually(shiftId: string, userId: string, role: OperationalRole, notes?: string): Promise<ShiftRegistration>
+  assignImported(
+    shiftId: string,
+    userId: string,
+    role: OperationalRole,
+    importedName: string,
+    matchMethod: NonNullable<ShiftRegistration['match_method']>,
+    notes?: string,
+  ): Promise<ShiftRegistration>
   removeAssignment(id: string, notes?: string): Promise<ShiftRegistration>
 }
 
@@ -359,6 +371,20 @@ export function createSupabaseShiftRegistrationRepository(
       }).single()
       return registrationFromRow(
         requiredRow('registration manual assign', result) as unknown as RegistrationRow,
+      )
+    },
+
+    async assignImported(shiftId, userId, role, importedName, matchMethod, notes) {
+      const result = await client.rpc('manual_assign_imported_shift_staff', {
+        p_shift_id: shiftId,
+        p_user_id: userId,
+        p_role: role,
+        p_imported_name: importedName,
+        p_match_method: matchMethod,
+        p_notes: notes ?? null,
+      }).single()
+      return registrationFromRow(
+        requiredRow('imported staffing assignment', result) as unknown as RegistrationRow,
       )
     },
 
