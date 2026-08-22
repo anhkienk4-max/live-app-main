@@ -365,3 +365,53 @@ test('duplicate semantics: same time/brand/studio different campaign is valid', 
   assert.equal(result.validRows, 2)
   assert.equal(result.warnings.length, 0)
 })
+
+// Excel 1900-system serials: how Excel stores real date/time cells (number + number format).
+const EXCEL_DATE_2026_08_25 = 46259 // => 2026-08-25 (verified via XLSX.SSF.parse_date_code)
+const EXCEL_TIME_14_00 = 14 / 24
+const EXCEL_TIME_16_00 = 16 / 24
+
+test('S4-UAT-01: Excel numeric time cells import as HH:MM instead of a JS Date string', () => {
+  const row = [...scheduleRow]
+  row[0] = '2026-08-25'
+  const workbook = XLSX.utils.book_new()
+  const worksheet = XLSX.utils.aoa_to_sheet([englishHeader, row])
+  worksheet['B2'] = { t: 'n', v: EXCEL_TIME_14_00, z: 'h:mm' }
+  worksheet['C2'] = { t: 'n', v: EXCEL_TIME_16_00, z: 'h:mm' }
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Schedule')
+  const bytes = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+  const result = parseScheduleTabularData(bytes, 'array', maps)
+
+  assert.equal(result.validRows, 1, `expected 1 valid row, errors: ${JSON.stringify(result.errors)}`)
+  assert.equal(result.validShifts[0].start_time, '14:00')
+  assert.equal(result.validShifts[0].end_time, '16:00')
+})
+
+test('S4-UAT-02: Excel numeric date cell imports as the correct calendar date (no off-by-one)', () => {
+  const workbook = XLSX.utils.book_new()
+  const worksheet = XLSX.utils.aoa_to_sheet([englishHeader, scheduleRow])
+  worksheet['A2'] = { t: 'n', v: EXCEL_DATE_2026_08_25, z: 'yyyy-mm-dd' }
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Schedule')
+  const bytes = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+  const result = parseScheduleTabularData(bytes, 'array', maps)
+
+  assert.equal(result.validRows, 1, `expected 1 valid row, errors: ${JSON.stringify(result.errors)}`)
+  assert.equal(result.validShifts[0].date, '2026-08-25')
+})
+
+test('S4 regression: realistic Excel date+time row round-trips to exact wall-clock strings', () => {
+  const workbook = XLSX.utils.book_new()
+  const worksheet = XLSX.utils.aoa_to_sheet([englishHeader, scheduleRow])
+  worksheet['A2'] = { t: 'n', v: EXCEL_DATE_2026_08_25, z: 'yyyy-mm-dd' }
+  worksheet['B2'] = { t: 'n', v: EXCEL_TIME_14_00, z: 'h:mm' }
+  worksheet['C2'] = { t: 'n', v: EXCEL_TIME_16_00, z: 'h:mm' }
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Schedule')
+  const bytes = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+  const result = parseScheduleTabularData(bytes, 'array', maps)
+
+  assert.equal(result.errors.length, 0, `expected 0 errors, got: ${JSON.stringify(result.errors)}`)
+  assert.equal(result.validShifts.length, 1)
+  assert.equal(result.validShifts[0].date, '2026-08-25')
+  assert.equal(result.validShifts[0].start_time, '14:00')
+  assert.equal(result.validShifts[0].end_time, '16:00')
+})
