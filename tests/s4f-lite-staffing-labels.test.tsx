@@ -9,7 +9,10 @@ import { resolveDaySessionRoleNames } from '../components/features/calendar/DayS
 import {
   buildShiftStaffing,
   ShiftImportedStaffingLabels,
+  ShiftStaffingLabelsEditor,
+  normalizeShiftStaffingLabelDraft,
 } from '../components/features/shifts/ShiftDetailModal.tsx'
+import { shiftRegistrationService, shiftService } from '../lib/services/dataService.ts'
 import { LanguageProvider } from '../lib/i18n.tsx'
 import type { Shift, User } from '../lib/types/database.types.ts'
 import { parseScheduleRows, type EntityMaps } from '../lib/utils/excelUtils.ts'
@@ -197,6 +200,38 @@ test('Day Sessions falls back to imported labels for all three staffing roles', 
   assert.equal(dayRoleNames('technical'), 'Minh')
 })
 
+test('staffing label editor draft normalizes comma, semicolon and newline delimiters', () => {
+  assert.deepEqual(normalizeShiftStaffingLabelDraft({
+    host: ' Hương, Hương ',
+    support: 'An; Linh\nAn',
+    technical: ' Minh\nTuấn ',
+  }), {
+    host_names: ['Hương'],
+    assistant_names: ['An', 'Linh'],
+    technical_names: ['Minh', 'Tuấn'],
+  })
+})
+
+test('staffing label normalization preserves case and Vietnamese characters', () => {
+  assert.deepEqual(normalizeShiftStaffingLabelDraft({
+    host: 'Hương, hương',
+    support: 'Ánh; ANH',
+    technical: 'Đức',
+  }), {
+    host_names: ['Hương', 'hương'],
+    assistant_names: ['Ánh', 'ANH'],
+    technical_names: ['Đức'],
+  })
+})
+
+test('clearing one staffing label role produces an empty array', () => {
+  assert.deepEqual(normalizeShiftStaffingLabelDraft({
+    host: '',
+    support: 'An',
+    technical: 'Minh',
+  }).host_names, [])
+})
+
 test('Day Sessions prefers an actual assignment over an imported label', () => {
   assert.equal(
     dayRoleNames(
@@ -238,6 +273,29 @@ test('Shift Detail staffing tab displays imported labels as a distinct read-only
   )
 })
 
+test('editable staffing label section is available even for a legacy shift with empty arrays', () => {
+  const emptyShift = { ...shift, host_names: [], assistant_names: [], technical_names: [] }
+  const markup = renderToStaticMarkup(createElement(ShiftStaffingLabelsEditor, {
+    shift: emptyShift,
+    t: (key: string) => key,
+    onSave: async () => undefined,
+  }))
+
+  assert.match(markup, /shift-detail-staffing-labels-editor/)
+  assert.match(markup, /edit-shift-staffing-labels/)
+  assert.match(markup, /importedStaffingLabels/)
+  assert.equal((markup.match(/>—</g) ?? []).length, 3)
+})
+
+test('read-only staffing label section still omits empty legacy arrays', () => {
+  const emptyShift = { ...shift, host_names: [], assistant_names: [], technical_names: [] }
+  const markup = renderToStaticMarkup(createElement(ShiftImportedStaffingLabels, {
+    shift: emptyShift,
+    t: (key: string) => key,
+  }))
+  assert.equal(markup, '')
+})
+
 test('imported labels do not create assignments or change canonical staffing counts', () => {
   const importedOnly = buildShiftStaffing(shift, [], [])
   assert.equal(importedOnly.host.length, 0)
@@ -269,6 +327,68 @@ test('empty imported arrays render no section and create no fake staffing rows',
 
   assert.equal(markup, '')
   assert.equal(staffing.host.length + staffing.support.length + staffing.technical.length, 0)
+})
+
+test('mock staffing label save has parity and leaves assignments, capacity and registrations unchanged', async () => {
+  const previousNodeEnv = process.env.NODE_ENV
+  const previousMockFlag = process.env.NEXT_PUBLIC_USE_MOCK_DATA
+  process.env.NODE_ENV = 'development'
+  process.env.NEXT_PUBLIC_USE_MOCK_DATA = 'true'
+  const before = await shiftService.getById('s1')
+  assert.ok(before)
+  const beforeRegistrations = await shiftRegistrationService.getForShift('s1')
+  const originalLabels = {
+    host_names: before.host_names ?? [],
+    assistant_names: before.assistant_names ?? [],
+    technical_names: before.technical_names ?? [],
+  }
+
+  try {
+    const updated = await shiftService.updateStaffingLabels('s1', {
+      host_names: [' Hương ', 'Hương'],
+      assistant_names: ['An; Linh'],
+      technical_names: ['Minh'],
+    }, '1')
+    assert.deepEqual(updated?.host_names, ['Hương'])
+    assert.deepEqual(updated?.assistant_names, ['An', 'Linh'])
+    assert.deepEqual(updated?.technical_names, ['Minh'])
+    assert.equal(updated?.host_id, before.host_id)
+    assert.equal(updated?.support_id, before.support_id)
+    assert.equal(updated?.technical_id, before.technical_id)
+    assert.equal(updated?.required_host_count, before.required_host_count)
+    assert.equal(updated?.required_support_count, before.required_support_count)
+    assert.equal(updated?.required_technical_count, before.required_technical_count)
+    assert.deepEqual(await shiftRegistrationService.getForShift('s1'), beforeRegistrations)
+  } finally {
+    await shiftService.updateStaffingLabels('s1', originalLabels, '1')
+    process.env.NODE_ENV = previousNodeEnv
+    process.env.NEXT_PUBLIC_USE_MOCK_DATA = previousMockFlag
+  }
+})
+
+test('S4F.1 RPC is narrow, leader-gated and hardened', () => {
+  const sql = readFileSync(
+    new URL('../supabase/migrations/20260822140432_s4f1_edit_staffing_display_labels.sql', import.meta.url),
+    'utf8',
+  )
+  const updateSet = sql.match(/update public\.shifts as target\s+set([\s\S]*?)where target\.id/i)?.[1] ?? ''
+
+  assert.match(sql, /create or replace function public\.update_shift_staffing_labels\(\s*p_shift_id text,\s*p_host_names text\[\],\s*p_assistant_names text\[\],\s*p_technical_names text\[\]/i)
+  assert.match(sql, /security definer\s+set search_path = ''/i)
+  assert.match(sql, /private\.require_shift_actor\(true\)/i)
+  assert.match(sql, /deleted_at is null/i)
+  assert.match(sql, /archived_at is null/i)
+  assert.match(sql, /for update/i)
+  assert.match(sql, /revoke all on function public\.update_shift_staffing_labels\(text, text\[\], text\[\], text\[\]\) from public, anon, authenticated/i)
+  assert.match(sql, /grant execute on function public\.update_shift_staffing_labels\(text, text\[\], text\[\], text\[\]\) to authenticated/i)
+  assert.match(updateSet, /host_names = p_host_names/i)
+  assert.match(updateSet, /assistant_names = p_assistant_names/i)
+  assert.match(updateSet, /technical_names = p_technical_names/i)
+  assert.match(updateSet, /updated_by = actor_id/i)
+  assert.doesNotMatch(updateSet, /host_id|support_id|technical_id/)
+  assert.doesNotMatch(updateSet, /required_.*_count|registration_locked|status|import_batch_id/)
+  assert.doesNotMatch(sql, /insert into public\.shift_registrations/i)
+  assert.doesNotMatch(sql, /schedule_import_batch_rows/i)
 })
 
 test('S4F-Lite migration is additive and keeps labels independent from staffing assignments', () => {

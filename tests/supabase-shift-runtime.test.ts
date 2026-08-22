@@ -16,7 +16,13 @@ import type { Shift, User } from '../lib/types/database.types.ts'
 
 type Row = Record<string, unknown>
 type TableName = 'shifts' | 'shift_registrations' | 'schedule_imports'
-type RpcName = 'create_shift' | 'update_shift' | 'set_shift_registration_lock' | 'soft_delete_shift' | 'restore_shift'
+type RpcName =
+  | 'create_shift'
+  | 'update_shift'
+  | 'update_shift_staffing_labels'
+  | 'set_shift_registration_lock'
+  | 'soft_delete_shift'
+  | 'restore_shift'
 
 interface FakeDatabase {
   shifts: Row[]
@@ -184,6 +190,23 @@ function fakeClient(database: FakeDatabase, options: FakeClientOptions = {}) {
         start_time: patch.start_time ? String(patch.start_time) + ':00' : database.shifts[index].start_time,
         end_time: patch.end_time ? String(patch.end_time) + ':00' : database.shifts[index].end_time,
         updated_at: '2026-08-14T12:01:00.000Z',
+      }
+      database.shifts[index] = updated
+      return { ...updated }
+    },
+    update_shift_staffing_labels(args) {
+      const id = String(args.p_shift_id ?? '')
+      const index = database.shifts.findIndex(row => row.id === id)
+      if (index === -1) {
+        throw { code: 'P0001', message: 'SHIFT_NOT_FOUND' }
+      }
+      const updated = {
+        ...database.shifts[index],
+        host_names: args.p_host_names,
+        assistant_names: args.p_assistant_names,
+        technical_names: args.p_technical_names,
+        updated_by: '1',
+        updated_at: '2026-08-14T12:01:30.000Z',
       }
       database.shifts[index] = updated
       return { ...updated }
@@ -475,6 +498,101 @@ test('Supabase mode update and lock go through the RPCs and update the projectio
 
     const reopened = await shiftService.reopen('shift-1', '1')
     assert.equal(reopened?.registration_locked, false)
+  })
+})
+
+test('Supabase staffing label update sends normalized arrays through the dedicated RPC only', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    const original = { ...db.shifts[0] }
+    const client = fakeClient(db)
+    setSupabaseShiftRepositoryForTests(createSupabaseShiftRepository(client))
+    currentUserService.bindAuthenticatedUser(adminUser())
+
+    const updated = await shiftService.updateStaffingLabels('shift-1', {
+      host_names: [' Hương ', 'Hương'],
+      assistant_names: ['An, Linh', 'An'],
+      technical_names: [' Minh\nTuấn '],
+    }, '1')
+
+    assert.deepEqual(updated?.host_names, ['Hương'])
+    assert.deepEqual(updated?.assistant_names, ['An', 'Linh'])
+    assert.deepEqual(updated?.technical_names, ['Minh', 'Tuấn'])
+    const calls = client.rpcCalls.filter(call => call.name === 'update_shift_staffing_labels')
+    assert.equal(calls.length, 1)
+    assert.deepEqual(calls[0].args, {
+      p_shift_id: 'shift-1',
+      p_host_names: ['Hương'],
+      p_assistant_names: ['An', 'Linh'],
+      p_technical_names: ['Minh', 'Tuấn'],
+    })
+    assert.equal(client.rpcCalls.some(call => call.name === 'update_shift'), false)
+    assert.equal(client.rpcCalls.some(call => call.name === 'set_shift_registration_lock'), false)
+
+    const persisted = db.shifts[0]
+    for (const field of [
+      'host_id',
+      'support_id',
+      'technical_id',
+      'required_host_count',
+      'required_support_count',
+      'required_technical_count',
+      'registration_locked',
+      'status',
+      'import_batch_id',
+    ]) {
+      assert.equal(persisted[field], original[field], `${field} remains unchanged`)
+    }
+    assert.deepEqual(db.shift_registrations, [])
+  })
+})
+
+test('Supabase staffing label update surfaces backend authorization errors without fallback', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    const repository = createSupabaseShiftRepository(fakeClient(db, {
+      deniedRpc: 'update_shift_staffing_labels',
+    }))
+
+    await assert.rejects(
+      repository.updateStaffingLabels('shift-1', {
+        host_names: ['Hương'],
+        assistant_names: [],
+        technical_names: [],
+      }),
+      (error: unknown) => error instanceof ShiftRequestError
+        && error.code === '42501'
+        && /permission denied/.test(error.message),
+    )
+    assert.deepEqual(db.shifts[0].host_names, undefined)
+  })
+})
+
+test('member cannot call the staffing label service and no RPC is sent', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    const client = fakeClient(db)
+    setSupabaseShiftRepositoryForTests(createSupabaseShiftRepository(client))
+    currentUserService.bindAuthenticatedUser({
+      ...adminUser(),
+      id: '3',
+      email: 'member@example.test',
+      role: 'staff',
+      system_permission: 'member',
+    })
+
+    await assert.rejects(
+      shiftService.updateStaffingLabels('shift-1', {
+        host_names: ['Hương'],
+        assistant_names: [],
+        technical_names: [],
+      }, '3'),
+      /Only Leader or Admin/,
+    )
+    assert.equal(client.rpcCalls.length, 0)
   })
 })
 

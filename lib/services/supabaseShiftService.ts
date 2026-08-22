@@ -95,6 +95,11 @@ export class ShiftRequestError extends Error {
   }
 }
 
+export type ShiftStaffingLabels = Required<Pick<
+  Shift,
+  'host_names' | 'assistant_names' | 'technical_names'
+>>
+
 function requestError(operation: string, error: SupabaseErrorShape): ShiftRequestError {
   const message = error.message?.trim() || `Supabase ${operation} failed.`
   return new ShiftRequestError(message, error.code || 'SHIFT_REQUEST_FAILED')
@@ -252,6 +257,7 @@ export interface SupabaseShiftRepository {
   getDeletionImpact(id: string): Promise<DeletionImpact | null>
   create(data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>): Promise<Shift>
   update(id: string, data: Partial<Shift>, confirmImpact?: boolean): Promise<Shift | null>
+  updateStaffingLabels(id: string, labels: ShiftStaffingLabels): Promise<Shift | null>
   setRegistrationLock(id: string, locked: boolean): Promise<Shift | null>
   remove(id: string, reason: string): Promise<DeletionImpact | null>
   restore(id: string): Promise<Shift | null>
@@ -370,6 +376,17 @@ export function createSupabaseShiftRepository(
         p_confirm_impact: confirmImpact,
       }).single()
       if (result.error) throw requestError('shift update', result.error)
+      return result.data ? shiftFromRow(result.data as unknown as ShiftRow) : null
+    },
+
+    async updateStaffingLabels(id, labels) {
+      const result = await client.rpc('update_shift_staffing_labels', {
+        p_shift_id: id,
+        p_host_names: labels.host_names,
+        p_assistant_names: labels.assistant_names,
+        p_technical_names: labels.technical_names,
+      }).single()
+      if (result.error) throw requestError('shift staffing label update', result.error)
       return result.data ? shiftFromRow(result.data as unknown as ShiftRow) : null
     },
 

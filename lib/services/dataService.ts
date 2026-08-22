@@ -29,12 +29,18 @@ import {
 import { buildDashboardOcrReviewFromRecognition, parseDashboardOcrText } from '@/lib/utils/ocrMetrics'
 import { recognizeDashboardImage } from '@/lib/services/imageOcrService'
 import { DEFAULT_REQUIRED_STAFF_COUNT, detectConflicts, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
-import { toCanonicalScheduleImportPreviewRow } from '@/lib/utils/scheduleImportPreview'
+import {
+  normalizeStaffingDisplayNames,
+  toCanonicalScheduleImportPreviewRow,
+} from '@/lib/utils/scheduleImportPreview'
 import { recordAuditEvent } from '@/lib/services/auditService'
 import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { getAuthMode } from '@/lib/auth/authMode'
 import { getSupabaseMasterDataRepository } from '@/lib/services/supabaseMasterDataService'
-import { getSupabaseShiftRepository } from '@/lib/services/supabaseShiftService'
+import {
+  getSupabaseShiftRepository,
+  type ShiftStaffingLabels,
+} from '@/lib/services/supabaseShiftService'
 import { getSupabaseShiftRegistrationRepository } from '@/lib/services/supabaseShiftRegistrationService'
 import {
   liveReportImageCategories,
@@ -1180,6 +1186,67 @@ export const shiftService = {
     audit('calendar', auditAction, 'shift', id, shifts[index].title || `${shifts[index].date} ${shifts[index].start_time}`, {
       before,
       after: { ...shifts[index] },
+    })
+    return Promise.resolve(shifts[index])
+  },
+
+  async updateStaffingLabels(
+    id: string,
+    labels: ShiftStaffingLabels,
+    actorId = currentUserService.getId(),
+  ): Promise<Shift | null> {
+    const actor = requiredActorFor(actorId)
+    if (!hasPermission(actor, 'shifts.edit')) {
+      throw new Error('Only Leader or Admin can edit schedule staffing names.')
+    }
+    const normalizedLabels: ShiftStaffingLabels = {
+      host_names: normalizeStaffingDisplayNames(labels.host_names),
+      assistant_names: normalizeStaffingDisplayNames(labels.assistant_names),
+      technical_names: normalizeStaffingDisplayNames(labels.technical_names),
+    }
+
+    if (getAuthMode() === 'supabase') {
+      const repository = getSupabaseShiftRepository()
+      const before = await repository.getById(id)
+      const persisted = await repository.updateStaffingLabels(id, normalizedLabels)
+      if (!persisted) return null
+      upsertShiftProjection(persisted)
+      recordScheduleChange('edit', id, before ? { ...before } : undefined, { ...persisted }, {
+        actor_id: actor.id,
+      })
+      audit('calendar', 'update', 'shift', id, persisted.title || `${persisted.date} ${persisted.start_time}`, {
+        actorId: actor.id,
+        before: before ? {
+          host_names: before.host_names ?? [],
+          assistant_names: before.assistant_names ?? [],
+          technical_names: before.technical_names ?? [],
+        } : undefined,
+        after: { ...normalizedLabels },
+      })
+      return persisted
+    }
+
+    const index = shifts.findIndex(item => item.id === id)
+    if (index === -1) return Promise.resolve(null)
+    if (shifts[index].deleted_at || shifts[index].archived_at) {
+      throw new Error('Only active shifts can update schedule staffing names.')
+    }
+    const before = { ...shifts[index] }
+    shifts[index] = {
+      ...shifts[index],
+      ...normalizedLabels,
+      updated_by: actor.id,
+      updated_at: new Date().toISOString(),
+    }
+    recordScheduleChange('edit', id, before, { ...shifts[index] }, { actor_id: actor.id })
+    audit('calendar', 'update', 'shift', id, shifts[index].title || `${shifts[index].date} ${shifts[index].start_time}`, {
+      actorId: actor.id,
+      before: {
+        host_names: before.host_names ?? [],
+        assistant_names: before.assistant_names ?? [],
+        technical_names: before.technical_names ?? [],
+      },
+      after: { ...normalizedLabels },
     })
     return Promise.resolve(shifts[index])
   },

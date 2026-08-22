@@ -31,6 +31,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -58,6 +59,7 @@ import { useTranslation, type Language, type TranslationKey } from '@/lib/i18n'
 import { resolveShiftDateTime } from '@/lib/utils/shiftUtils'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { HistoryPagination } from '@/components/ui/history-pagination'
+import { normalizeStaffingDisplayNames } from '@/lib/utils/scheduleImportPreview'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
 
@@ -77,6 +79,40 @@ const roleImportedNameField: Record<OperationalRole, 'host_names' | 'assistant_n
   host: 'host_names',
   support: 'assistant_names',
   technical: 'technical_names',
+}
+
+export type ShiftStaffingLabelValues = {
+  host_names: string[]
+  assistant_names: string[]
+  technical_names: string[]
+}
+
+type ShiftStaffingLabelDraft = Record<OperationalRole, string>
+
+export function normalizeShiftStaffingLabelDraft(
+  draft: ShiftStaffingLabelDraft,
+): ShiftStaffingLabelValues {
+  return {
+    host_names: normalizeStaffingDisplayNames(draft.host),
+    assistant_names: normalizeStaffingDisplayNames(draft.support),
+    technical_names: normalizeStaffingDisplayNames(draft.technical),
+  }
+}
+
+function staffingLabelValuesFromShift(shift: Shift): ShiftStaffingLabelValues {
+  return {
+    host_names: shift.host_names ?? [],
+    assistant_names: shift.assistant_names ?? [],
+    technical_names: shift.technical_names ?? [],
+  }
+}
+
+function staffingLabelDraftFromValues(values: ShiftStaffingLabelValues): ShiftStaffingLabelDraft {
+  return {
+    host: values.host_names.join(', '),
+    support: values.assistant_names.join(', '),
+    technical: values.technical_names.join(', '),
+  }
 }
 
 export function ShiftImportedStaffingLabels({
@@ -111,6 +147,109 @@ export function ShiftImportedStaffingLabels({
         ))}
       </dl>
     </div>
+  )
+}
+
+export function ShiftStaffingLabelsEditor({
+  disabled = false,
+  onSave,
+  shift,
+  t,
+}: {
+  disabled?: boolean
+  onSave: (labels: ShiftStaffingLabelValues) => Promise<void>
+  shift: Shift
+  t: (key: TranslationKey) => string
+}) {
+  const initialValues = staffingLabelValuesFromShift(shift)
+  const [savedValues, setSavedValues] = React.useState(initialValues)
+  const [draft, setDraft] = React.useState(() => staffingLabelDraftFromValues(initialValues))
+  const [editing, setEditing] = React.useState(false)
+  const [saving, setSaving] = React.useState(false)
+
+  const startEditing = () => {
+    setDraft(staffingLabelDraftFromValues(savedValues))
+    setEditing(true)
+  }
+
+  const cancelEditing = () => {
+    setDraft(staffingLabelDraftFromValues(savedValues))
+    setEditing(false)
+  }
+
+  const save = async () => {
+    const normalized = normalizeShiftStaffingLabelDraft(draft)
+    setSaving(true)
+    try {
+      await onSave(normalized)
+      setSavedValues(normalized)
+      setDraft(staffingLabelDraftFromValues(normalized))
+      setEditing(false)
+    } catch {
+      // The caller owns user-facing error reporting. Keep the draft open.
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="rounded-lg border bg-muted/20 p-4" data-testid="shift-detail-staffing-labels-editor">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {t('importedStaffingLabels')}
+        </h4>
+        {!editing ? (
+          <Button
+            data-testid="edit-shift-staffing-labels"
+            disabled={disabled}
+            onClick={startEditing}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <Pencil className="mr-2 h-4 w-4" />{t('edit')}
+          </Button>
+        ) : null}
+      </div>
+
+      {editing ? (
+        <div className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            {operationalRoles.map(role => (
+              <label className="text-xs font-medium" key={role}>
+                {t(role)}
+                <Textarea
+                  className="mt-1 min-h-20"
+                  data-testid={`shift-staffing-labels-${role}`}
+                  disabled={saving}
+                  value={draft[role]}
+                  onChange={event => setDraft(current => ({ ...current, [role]: event.target.value }))}
+                />
+              </label>
+            ))}
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button disabled={saving} onClick={cancelEditing} type="button" variant="outline">
+              {t('cancel')}
+            </Button>
+            <Button data-testid="save-shift-staffing-labels" disabled={saving} onClick={() => void save()} type="button">
+              {t('save')}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <dl className="grid gap-3 sm:grid-cols-3">
+          {operationalRoles.map(role => (
+            <div key={role}>
+              <dt className="text-xs text-muted-foreground">{t(role)}</dt>
+              <dd className="mt-1 break-words text-sm font-medium" data-testid={`shift-detail-staffing-labels-${role}`}>
+                {savedValues[roleImportedNameField[role]].join(', ') || '—'}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </section>
   )
 }
 
@@ -274,6 +413,7 @@ export function ShiftDetailModal({
   const [registrationPage, setRegistrationPage] = React.useState(1)
   const [registrationPageSize, setRegistrationPageSize] = React.useState(10)
   const canDeleteShift = Boolean(currentUser && hasPermission(currentUser, 'shifts.delete'))
+  const canEditStaffingLabels = Boolean(currentUser && hasPermission(currentUser, 'shifts.edit'))
   const registrationTotalPages = Math.max(1, Math.ceil(registrations.length / registrationPageSize))
   const safeRegistrationPage = Math.min(registrationPage, registrationTotalPages)
   const visibleRegistrations = registrations.slice(
@@ -357,6 +497,23 @@ export function ShiftDetailModal({
       toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
     } finally {
       setBusy(false)
+    }
+  }
+
+  const saveStaffingLabels = async (labels: ShiftStaffingLabelValues) => {
+    if (!currentUser) throw new Error(t('permissionDenied'))
+    try {
+      const updated = await shiftService.updateStaffingLabels(shift.id, labels, currentUser.id)
+      if (!updated) throw new Error(t('validationError'))
+      toast({ title: t('success'), description: t('shiftUpdated'), variant: 'success' })
+      onUpdate()
+    } catch (error) {
+      toast({
+        title: t('error'),
+        description: error instanceof Error ? error.message : t('validationError'),
+        variant: 'destructive',
+      })
+      throw error
     }
   }
 
@@ -456,12 +613,22 @@ export function ShiftDetailModal({
               </TabsContent>
 
               <TabsContent value="staffing" className="space-y-4 pt-1">
-                <ShiftImportedStaffingLabels
-                  shift={shift}
-                  t={t}
-                  testId="shift-detail-staffing-imported-labels"
-                  variant="standalone"
-                />
+                {canEditStaffingLabels ? (
+                  <ShiftStaffingLabelsEditor
+                    disabled={busy}
+                    key={`${shift.id}:${shift.host_names?.join('|')}:${shift.assistant_names?.join('|')}:${shift.technical_names?.join('|')}`}
+                    onSave={saveStaffingLabels}
+                    shift={shift}
+                    t={t}
+                  />
+                ) : (
+                  <ShiftImportedStaffingLabels
+                    shift={shift}
+                    t={t}
+                    testId="shift-detail-staffing-imported-labels"
+                    variant="standalone"
+                  />
+                )}
 
                 {staffingLoading ? (
                   <div className="space-y-3" data-testid="staffing-skeleton">
