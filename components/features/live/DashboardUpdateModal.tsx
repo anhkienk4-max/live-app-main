@@ -64,7 +64,7 @@ import { AlertDialog } from '@/components/ui/alert-dialog'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
-import { AlertTriangle, Loader2, RefreshCw, ScanText, Upload, X } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronUp, Loader2, RefreshCw, ScanText, Upload, X } from 'lucide-react'
 
 interface DashboardUpdateModalProps {
   open: boolean
@@ -98,6 +98,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
   const [rawOcrText, setRawOcrText] = React.useState('')
   const [ocrApplicationResult, setOcrApplicationResult] = React.useState<OcrTextApplicationResult | null>(null)
   const [metricFilter, setMetricFilter] = React.useState<OcrMetricFilter>('data')
+  const [metricsCollapsed, setMetricsCollapsed] = React.useState(false)
   const [showReviewWarning, setShowReviewWarning] = React.useState(false)
   const [dashboardPlatform, setDashboardPlatform] = React.useState<ReportDashboardPlatform>(inferredDashboardPlatform)
   const [cropBox, setCropBox] = React.useState<OcrCropBox>(defaultOcrCrop(inferredDashboardPlatform))
@@ -584,15 +585,15 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
             {ocrReview?.raw_diagnostic_output && <details className="rounded-lg bg-muted/50 p-3 text-sm" data-testid="live-ocr-raw-diagnostics"><summary className="cursor-pointer font-medium">{t('rawOcrOutput')}</summary><pre className="mt-3 whitespace-pre-wrap break-words text-xs">{ocrReview.raw_diagnostic_output}</pre></details>}
             </div>
             <div className="min-h-40 rounded-lg border p-3" data-testid="live-ocr-completion-status" data-ocr-status={scanning ? 'processing' : ocrReview?.status || 'waiting'}>
-              <p className="mb-2 font-medium">{t('ocrResults')} · {dashboardPlatform === 'tiktok_shop' ? 'TikTok Shop' : dashboardPlatform === 'shopee_live' ? 'Shopee Live' : t('selectDashboardPlatform')}</p>
+              <p className="mb-2 font-medium">{t('ocrResults')} ┬╖ {dashboardPlatform === 'tiktok_shop' ? 'TikTok Shop' : dashboardPlatform === 'shopee_live' ? 'Shopee Live' : t('selectDashboardPlatform')}</p>
               {scanning ? <div className="flex h-32 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" /></div> : ocrReview ? (
                 <div className="max-h-72 space-y-2 overflow-y-auto">
-                  {ocrReview.engine && <p className="rounded bg-muted p-2 text-xs">{t('engine')}: {ocrReview.engine} · {t('recognitionLanguage')}: {ocrReview.recognition_language} · {t('overallConfidence')}: {ocrReview.overall_confidence?.toFixed(1) ?? '—'}%</p>}
-                  {Object.entries(ocrReview.metrics).map(([key, metric]) => <div key={key} className={`rounded border p-2 text-sm ${metric.status === 'review_required' || metric.status === 'low_confidence' ? 'border-amber-400 bg-amber-50' : metric.status === 'rejected' ? 'border-red-300 bg-red-50' : ''}`}><div className="flex justify-between gap-2"><span className="font-medium">{t(metricTranslationKeys[key as CanonicalMetricKey])}</span><span>{t(metricStatusTranslationKeys[metric.status || 'empty'])}</span></div><p className="text-xs text-muted-foreground">{t('originalLabel')}: {metric.original_label || '—'} · {t('originalValue')}: {metric.raw_value || '—'} → {metric.candidate_value ?? '—'} · {t('confidence')}: {metric.value_confidence == null ? metric.confidence : `${Math.round(metric.value_confidence)}%`}</p><p className="text-xs text-muted-foreground">{t('labelSource')}: {metric.label_source === 'platform_layout' ? t('platformLayout') : t('ocrText')} · {t('valuePass')}: {metric.value_source_pass === 'label' ? t('labelPass') : metric.value_source_pass === 'numeric' ? t('numericPass') : metric.value_source_pass === 'card' ? t('cardPass') : t('unknownSource')}</p>{metric.bounding_box && <p className="text-xs text-muted-foreground">{t('boundingBox')}: {Math.round(metric.bounding_box.x)}, {Math.round(metric.bounding_box.y)}, {Math.round(metric.bounding_box.width)}×{Math.round(metric.bounding_box.height)}</p>}{metric.rejection_reason && <p className="mt-1 text-xs text-amber-800">{t(metric.status === 'review_required' || metric.status === 'low_confidence' ? 'reviewRequiredHelp' : 'rejectedMetricHelp')}</p>}</div>)}
+                  {ocrReview.engine && <p className="rounded bg-muted p-2 text-xs">{t('engine')}: {ocrReview.engine} ┬╖ {t('recognitionLanguage')}: {ocrReview.recognition_language} ┬╖ {t('overallConfidence')}: {ocrReview.overall_confidence?.toFixed(1) ?? 'ΓÇö'}%</p>}
+                  {Object.entries(ocrReview.metrics).map(([key, metric]) => <div key={key} className={`rounded border p-2 text-sm ${metric.status === 'review_required' || metric.status === 'low_confidence' ? 'border-amber-400 bg-amber-50' : metric.status === 'rejected' ? 'border-red-300 bg-red-50' : ''}`}><div className="flex justify-between gap-2"><span className="font-medium">{t(metricTranslationKeys[key as CanonicalMetricKey])}</span><span>{t(metricStatusTranslationKeys[metric.status || 'empty'])}</span></div><p className="text-xs text-muted-foreground">{t('originalLabel')}: {metric.original_label || 'ΓÇö'} ┬╖ {t('originalValue')}: {metric.raw_value || 'ΓÇö'} ΓåÆ {metric.candidate_value ?? 'ΓÇö'} ┬╖ {t('confidence')}: {metric.value_confidence == null ? metric.confidence : `${Math.round(metric.value_confidence)}%`}</p><p className="text-xs text-muted-foreground">{t('labelSource')}: {metric.label_source === 'platform_layout' ? t('platformLayout') : t('ocrText')} ┬╖ {t('valuePass')}: {metric.value_source_pass === 'label' ? t('labelPass') : metric.value_source_pass === 'numeric' ? t('numericPass') : metric.value_source_pass === 'card' ? t('cardPass') : t('unknownSource')}</p>{metric.bounding_box && <p className="text-xs text-muted-foreground">{t('boundingBox')}: {Math.round(metric.bounding_box.x)}, {Math.round(metric.bounding_box.y)}, {Math.round(metric.bounding_box.width)}├ù{Math.round(metric.bounding_box.height)}</p>}{metric.rejection_reason && <p className="mt-1 text-xs text-amber-800">{t(metric.status === 'review_required' || metric.status === 'low_confidence' ? 'reviewRequiredHelp' : 'rejectedMetricHelp')}</p>}</div>)}
                 </div>
               ) : <p className="text-sm text-muted-foreground">{t('ocrEmptyHelp')}</p>}
               {ocrReview?.status === 'unavailable' && <p className="mt-2 rounded bg-amber-50 p-2 text-sm text-amber-800">{t('ocrUnavailableHelp')}</p>}
-              {ocrReview?.unmapped_fields && ocrReview.unmapped_fields.length > 0 && <div className="mt-3 space-y-2" data-testid="live-ocr-unmapped-section"><p className="font-medium">{t('rejectedUnmappedOcrFields')}</p>{ocrReview.unmapped_fields.map((field, index) => <div className="grid gap-2 rounded border p-2" key={`${field.original_label}-${index}`} data-testid="ocr-unmapped-field" data-ocr-original-label={field.original_label}><p className="text-xs">{t('originalLabel')}: {field.original_label} · {t('originalValue')}: {field.original_value || '—'} · {t('source')}: {field.source || t('unknownSource')}</p>{field.rejection_reason && <p className="text-xs text-amber-800">{t('unmappedMetricHelp')}</p>}<Select onValueChange={value => mapUnmappedField(index, value as CanonicalMetricKey)}><SelectTrigger><SelectValue placeholder={t('mapManually')} /></SelectTrigger><SelectContent>{visibleMetricKeys.map(key => <SelectItem key={key} value={key}>{t(metricTranslationKeys[key])}</SelectItem>)}</SelectContent></Select></div>)}</div>}
+              {ocrReview?.unmapped_fields && ocrReview.unmapped_fields.length > 0 && <div className="mt-3 space-y-2" data-testid="live-ocr-unmapped-section"><p className="font-medium">{t('rejectedUnmappedOcrFields')}</p>{ocrReview.unmapped_fields.map((field, index) => <div className="grid gap-2 rounded border p-2" key={`${field.original_label}-${index}`} data-testid="ocr-unmapped-field" data-ocr-original-label={field.original_label}><p className="text-xs">{t('originalLabel')}: {field.original_label} ┬╖ {t('originalValue')}: {field.original_value || 'ΓÇö'} ┬╖ {t('source')}: {field.source || t('unknownSource')}</p>{field.rejection_reason && <p className="text-xs text-amber-800">{t('unmappedMetricHelp')}</p>}<Select onValueChange={value => mapUnmappedField(index, value as CanonicalMetricKey)}><SelectTrigger><SelectValue placeholder={t('mapManually')} /></SelectTrigger><SelectContent>{visibleMetricKeys.map(key => <SelectItem key={key} value={key}>{t(metricTranslationKeys[key])}</SelectItem>)}</SelectContent></Select></div>)}</div>}
             </div>
           </div>
 
@@ -620,21 +621,35 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
               </div>
             )}
             <div data-testid="ocr-main-metrics" data-ocr-platform={dashboardPlatform}>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <OcrBoundMetricFields
-                  metricKeys={filteredMainMetricKeys}
-                  values={metricValues}
-                  review={ocrReview}
-                  editable
-                  canReview={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}
-                  onChange={setMetric}
-                  onConfirm={confirmMetric}
-                  onReset={resetMetric}
-                  onClear={clearMetric}
-                />
+              <div className="mb-2 flex items-center justify-between">
+                <h4 className="text-sm font-semibold">{t('platformLivestreamMetrics')}</h4>
+                <button
+                  type="button"
+                  data-testid="toggle-metrics-collapse"
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setMetricsCollapsed(prev => !prev)}
+                >
+                  {metricsCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                  {metricsCollapsed ? t('expandMetrics') : t('collapseMetrics')}
+                </button>
               </div>
+              {!metricsCollapsed && (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <OcrBoundMetricFields
+                    metricKeys={filteredMainMetricKeys}
+                    values={metricValues}
+                    review={ocrReview}
+                    editable
+                    canReview={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}
+                    onChange={setMetric}
+                    onConfirm={confirmMetric}
+                    onReset={resetMetric}
+                    onClear={clearMetric}
+                  />
+                </div>
+              )}
             </div>
-            {filteredSupplementaryMetricKeys.length > 0 && (
+            {!metricsCollapsed && filteredSupplementaryMetricKeys.length > 0 && (
               <div data-testid="ocr-supplementary-metrics">
                 <h4 className="mb-2 text-sm font-semibold">{t('platformSpecificMetrics')}</h4>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

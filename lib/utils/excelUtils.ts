@@ -4,6 +4,7 @@ import {
   Campaign,
   Report,
   ReportImage,
+  ReportMetricKey,
   ScheduleImportRow,
   Shift,
   ShiftRegistration,
@@ -757,6 +758,86 @@ type ReportExportContext = {
   registrations?: ShiftRegistration[]
 }
 
+export const REPORT_EXPORT_COLUMN_ORDER = [
+  // 1. Shift & Schedule Metadata
+  'Report ID',
+  'Shift ID',
+  'Start Date',
+  'End Date',
+  'Time',
+  'Shift Duration Minutes',
+  'Brand',
+  'Platform',
+  'Campaign',
+  'Studio',
+  'Host',
+  'Support',
+  'Technical',
+
+  // 2. Canonical Financial & Sales KPIs
+  'Revenue',
+  'GMV',
+  'Estimated GMV',
+  'Orders',
+  'SKU Orders',
+  'Buyers',
+  'Items Sold',
+  'Add to Cart',
+  'Average Order Value',
+  'Average Basket Size',
+  'GPM',
+  'Advertising Cost',
+  'ROI GMV Max',
+
+  // 3. Canonical Viewership & Engagement KPIs
+  'Total Views',
+  'Total Viewers',
+  'Impressions',
+  'Current Viewers',
+  'Peak Viewers',
+  'Engaged Viewers',
+  'Average Viewers',
+  'Average Watch Time (s)',
+  'Product Clicks',
+  'CTR',
+  'CVR',
+  'CTOR',
+  'Comment Rate',
+  'Likes',
+  'Comments',
+  'Shares',
+  'New Followers',
+  'Live Duration Minutes',
+
+  // 4. Report Lifecycle & Approval Metadata
+  'Report Status',
+  'Metrics Confirmed',
+  'Confirmed At',
+  'Confirmed By',
+  'Submitted At',
+  'Submitted By',
+
+  // 5. Narrative & Feedback Fields
+  'Traffic Throughout the Session',
+  'Platform Vouchers',
+  'Shop Vouchers',
+  'Best-performing Time Slots',
+  'Customer Interest in Products and Gifts',
+  'Main Customer Comment Topics',
+  'Live Pricing Feedback',
+  'Top-selling Products',
+  'Issues Encountered During the Live',
+] as const
+
+export const REPORT_CURRENCY_COLUMNS = [
+  'Revenue',
+  'GMV',
+  'Estimated GMV',
+  'Average Order Value',
+  'Average Basket Size',
+  'Advertising Cost',
+]
+
 export const buildReportExportRows = (reports: Report[], context: ReportExportContext) => reports.map(report => {
   const shift = context.shifts.find(candidate => candidate.id === report.shift_id)
   const resolved = shift ? resolveShiftDateTime(shift.date, shift.start_time, shift.end_time) : null
@@ -771,7 +852,42 @@ export const buildReportExportRows = (reports: Report[], context: ReportExportCo
     ])
     return [...ids].map(userName).join(', ')
   }
-  return {
+
+  const pMetrics = (report.platform_metrics || {}) as Record<string, unknown>
+  const nMetrics = (report.normalized_metrics || {}) as Record<string, unknown>
+
+  const getMetric = (...keys: (ReportMetricKey | string)[]): number | '' => {
+    for (const key of keys) {
+      const val = pMetrics[key] ?? nMetrics[key]
+      if (typeof val === 'number' && Number.isFinite(val)) {
+        return val
+      }
+    }
+    return ''
+  }
+
+  const revenueVal = getMetric('revenue', 'sales') !== ''
+    ? getMetric('revenue', 'sales')
+    : (typeof report.revenue === 'number' ? report.revenue : 0)
+
+  const gmvVal = getMetric('gmv') !== ''
+    ? getMetric('gmv')
+    : (report.gmv ?? revenueVal)
+
+  const ordersVal = getMetric('orders') !== ''
+    ? getMetric('orders')
+    : (typeof report.orders === 'number' ? report.orders : 0)
+
+  const aovVal = getMetric('average_order_value', 'average_basket_size') !== ''
+    ? getMetric('average_order_value', 'average_basket_size')
+    : (report.average_order_value ?? (typeof revenueVal === 'number' && typeof ordersVal === 'number' && ordersVal > 0 ? revenueVal / ordersVal : ''))
+
+  const liveDurationMinutes = report.live_duration_minutes ?? (
+    getMetric('live_duration_seconds') !== '' ? Number(getMetric('live_duration_seconds')) / 60 : 0
+  )
+
+  const rawRow: Record<string, unknown> = {
+    // 1. Shift & Schedule Metadata
     'Report ID': report.id,
     'Shift ID': report.shift_id,
     'Start Date': shift?.date || '',
@@ -785,21 +901,51 @@ export const buildReportExportRows = (reports: Report[], context: ReportExportCo
     Host: assignedNames('host', shift?.host_id),
     Support: assignedNames('support', shift?.support_id),
     Technical: assignedNames('technical', shift?.technical_id),
-    Revenue: report.revenue,
-    GMV: report.gmv ?? report.revenue,
-    Orders: report.orders,
-    Viewers: report.viewers ?? report.average_viewer,
-    'Product Clicks': report.product_clicks ?? 0,
-    CTR: report.ctr ?? 0,
-    CVR: report.cvr ?? 0,
-    'Average Order Value': report.average_order_value ?? (report.orders ? report.revenue / report.orders : 0),
-    'Live Duration Minutes': report.live_duration_minutes ?? 0,
+
+    // 2. Canonical Financial & Sales KPIs
+    Revenue: revenueVal,
+    GMV: gmvVal,
+    'Estimated GMV': getMetric('estimated_gmv'),
+    Orders: ordersVal,
+    'SKU Orders': getMetric('sku_orders'),
+    Buyers: getMetric('buyers'),
+    'Items Sold': getMetric('items_sold'),
+    'Add to Cart': getMetric('add_to_cart'),
+    'Average Order Value': aovVal,
+    'Average Basket Size': getMetric('average_basket_size'),
+    GPM: getMetric('gpm'),
+    'Advertising Cost': getMetric('advertising_cost'),
+    'ROI GMV Max': getMetric('roi_gmv_max'),
+
+    // 3. Canonical Viewership & Engagement KPIs
+    'Total Views': getMetric('total_views'),
+    'Total Viewers': getMetric('total_viewers'),
+    Impressions: getMetric('impressions'),
+    'Current Viewers': getMetric('current_viewers'),
+    'Peak Viewers': getMetric('pcu', 'peak_concurrent_viewers') !== '' ? getMetric('pcu', 'peak_concurrent_viewers') : (report.peak_viewer ?? ''),
+    'Engaged Viewers': getMetric('engaged_viewers'),
+    'Average Viewers': typeof report.average_viewer === 'number' ? report.average_viewer : '',
+    'Average Watch Time (s)': getMetric('average_view_duration_seconds'),
+    'Product Clicks': getMetric('product_clicks') !== '' ? getMetric('product_clicks') : (report.product_clicks ?? ''),
+    CTR: getMetric('ctr', 'live_ctr', 'click_rate') !== '' ? getMetric('ctr', 'live_ctr', 'click_rate') : (report.ctr ?? ''),
+    CVR: getMetric('conversion_rate', 'click_to_order_rate') !== '' ? getMetric('conversion_rate', 'click_to_order_rate') : (report.cvr ?? ''),
+    CTOR: getMetric('ctor'),
+    'Comment Rate': getMetric('comment_rate'),
+    Likes: getMetric('likes') !== '' ? getMetric('likes') : (report.likes ?? ''),
+    Comments: getMetric('comments') !== '' ? getMetric('comments') : (report.comments ?? ''),
+    Shares: getMetric('shares') !== '' ? getMetric('shares') : (report.shares ?? ''),
+    'New Followers': getMetric('new_followers'),
+    'Live Duration Minutes': liveDurationMinutes,
+
+    // 4. Report Lifecycle & Approval Metadata
     'Report Status': report.status || (report.metrics_confirmed ? 'confirmed' : 'draft'),
     'Metrics Confirmed': Boolean(report.metrics_confirmed),
     'Confirmed At': report.confirmed_at || '',
     'Confirmed By': userName(report.confirmed_by),
     'Submitted At': report.created_at,
     'Submitted By': userName(report.submitted_by),
+
+    // 5. Narrative & Feedback Fields
     'Traffic Throughout the Session': report.final_recap?.traffic_summary || '',
     'Platform Vouchers': report.final_recap?.platform_vouchers || '',
     'Shop Vouchers': report.final_recap?.shop_vouchers || '',
@@ -810,24 +956,29 @@ export const buildReportExportRows = (reports: Report[], context: ReportExportCo
     'Top-selling Products': report.final_recap?.top_selling_products || '',
     'Issues Encountered During the Live': report.final_recap?.live_issues || '',
   }
+
+  const orderedRow: Record<string, unknown> = {}
+  for (const col of REPORT_EXPORT_COLUMN_ORDER) {
+    orderedRow[col] = rawRow[col] ?? ''
+  }
+  return orderedRow
 })
 
 export function exportReportsToExcel(reports: Report[], context: ReportExportContext): void {
-  writeWorkbook(`reports_filtered_${format(new Date(), 'yyyy-MM-dd')}.xlsx`, [{
+  writeWorkbook('reports_filtered_' + format(new Date(), 'yyyy-MM-dd') + '.xlsx', [{
     name: 'Reports',
     rows: buildReportExportRows(reports, context),
-    currencyColumns: ['Revenue', 'GMV', 'Average Order Value'],
+    currencyColumns: REPORT_CURRENCY_COLUMNS,
   }])
 }
 
 export function exportReportDetailToExcel(report: Report, context: ReportExportContext): void {
-  writeWorkbook(`report_${report.id}.xlsx`, [{
+  writeWorkbook('report_' + report.id + '.xlsx', [{
     name: 'Report',
     rows: buildReportExportRows([report], context),
-    currencyColumns: ['Revenue', 'GMV', 'Average Order Value'],
+    currencyColumns: REPORT_CURRENCY_COLUMNS,
   }])
 }
-
 export function exportReportImageMetadataToExcel(
   images: ReportImage[],
   reports: Report[],

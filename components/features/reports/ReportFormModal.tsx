@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { format } from 'date-fns'
-import { AlertTriangle, Check, Loader2, Pencil, RotateCcw, ScanText, Upload, X } from 'lucide-react'
+import { AlertTriangle, Check, ChevronDown, ChevronUp, Loader2, Pencil, RotateCcw, ScanText, Upload, X } from 'lucide-react'
 import { liveReportImageService, ocrService, reportImageService, reportService } from '@/lib/services/dataService'
 import {
   Brand,
@@ -147,6 +147,7 @@ export function ReportFormModal({
   const [rawOcrText, setRawOcrText] = React.useState('')
   const [ocrApplicationResult, setOcrApplicationResult] = React.useState<OcrTextApplicationResult | null>(null)
   const [metricFilter, setMetricFilter] = React.useState<OcrMetricFilter>(defaultFinalReportMetricFilter)
+  const [metricsCollapsed, setMetricsCollapsed] = React.useState(false)
   const [showReviewWarning, setShowReviewWarning] = React.useState(false)
   const [visionMode, setVisionMode] = React.useState<VisionOcrMode | null>(null)
   const [visionResults, setVisionResults] = React.useState<HybridMetricResult[]>([])
@@ -662,7 +663,7 @@ export function ReportFormModal({
         </DialogHeader>
         <form onSubmit={submit} className="space-y-6">
           <div className="grid gap-4 lg:grid-cols-2">
-            <label className="text-sm font-medium">{t('liveOrCompletedShift')} *<Select value={shiftId} onValueChange={changeShift}><SelectTrigger className="mt-1 w-full"><SelectValue placeholder={t('chooseLiveOrCompletedShift')} /></SelectTrigger><SelectContent>{completedShifts.map(shift => <SelectItem key={shift.id} value={shift.id}>{entityName(brands, shift.brand_id)} · {entityName(platforms, shift.platform_id)} · {format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} {shift.start_time} · {t(shift.status)}</SelectItem>)}</SelectContent></Select></label>
+            <label className="text-sm font-medium">{t('liveOrCompletedShift')} *<Select value={shiftId} onValueChange={changeShift}><SelectTrigger className="mt-1 w-full"><SelectValue placeholder={t('chooseLiveOrCompletedShift')} /></SelectTrigger><SelectContent>{completedShifts.map(shift => <SelectItem key={shift.id} value={shift.id}>{entityName(brands, shift.brand_id)} Â· {entityName(platforms, shift.platform_id)} Â· {format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} {shift.start_time} Â· {t(shift.status)}</SelectItem>)}</SelectContent></Select></label>
             <label className="text-sm font-medium">{t('platformDashboardType')} *<Select value={dashboardPlatform} disabled={inferredPlatform !== 'other'} onValueChange={value => { const next = value as ReportDashboardPlatform; setDashboardPlatform(next); setCropBox(defaultOcrCrop(next)); resetExtracted() }}><SelectTrigger className="mt-1 w-full" data-testid="report-platform-selector"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="tiktok_shop">TikTok Shop</SelectItem><SelectItem value="shopee_live">Shopee Live</SelectItem>{inferredPlatform === 'other' && <SelectItem value="other">{t('selectDashboardPlatform')}</SelectItem>}</SelectContent></Select></label>
           </div>
 
@@ -685,7 +686,7 @@ export function ReportFormModal({
 
           <section className="space-y-4 rounded-lg border border-dashed p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{t('ocrReview')}</h3><span data-testid="report-ocr-completion-status" data-ocr-status={review.status}><OcrStatus status={review.status} /></span></div><p className="mt-1 text-sm text-muted-foreground">{t('ocrReviewHelp')}</p>{review.engine && <p className="mt-1 text-xs text-muted-foreground">{t('engine')}: {review.engine} · {t('recognitionLanguage')}: {review.recognition_language} · {t('overallConfidence')}: {review.overall_confidence?.toFixed(1) ?? '—'}%</p>}</div>
+              <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{t('ocrReview')}</h3><span data-testid="report-ocr-completion-status" data-ocr-status={review.status}><OcrStatus status={review.status} /></span></div><p className="mt-1 text-sm text-muted-foreground">{t('ocrReviewHelp')}</p>{review.engine && <p className="mt-1 text-xs text-muted-foreground">{t('engine')}: {review.engine} Â· {t('recognitionLanguage')}: {review.recognition_language} Â· {t('overallConfidence')}: {review.overall_confidence?.toFixed(1) ?? 'â€”'}%</p>}</div>
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="outline" onClick={resetExtracted} disabled={reviewing || visionScanning}><RotateCcw className="mr-2 h-4 w-4" />{t('resetResults')}</Button>
                 {review.status === 'review_required' && <Button type="button" variant="outline" onClick={() => setEditingMetrics(value => !value)}><Pencil className="mr-2 h-4 w-4" />{editingMetrics ? t('finishEditing') : t('editOcrMetrics')}</Button>}
@@ -723,8 +724,19 @@ export function ReportFormModal({
             {dashboardPlatform !== 'other' && <>
               <OcrMetricFilterBar value={metricFilter} onChange={setMetricFilter} reviewCount={lowConfidence} />
               <div data-testid="ocr-main-metrics" data-ocr-platform={dashboardPlatform}>
-                <h4 className="mb-2 text-sm font-semibold">{t('platformLivestreamMetrics')}</h4>
-                {filteredMainMetricKeys.length > 0 ? (
+                <div className="mb-2 flex items-center justify-between">
+                  <h4 className="text-sm font-semibold">{t('platformLivestreamMetrics')}</h4>
+                  <button
+                    type="button"
+                    data-testid="toggle-metrics-collapse"
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => setMetricsCollapsed(prev => !prev)}
+                  >
+                    {metricsCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                    {metricsCollapsed ? t('expandMetrics') : t('collapseMetrics')}
+                  </button>
+                </div>
+                {!metricsCollapsed && filteredMainMetricKeys.length > 0 && (
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <OcrBoundMetricFields
                       metricKeys={filteredMainMetricKeys}
@@ -739,13 +751,14 @@ export function ReportFormModal({
                       onClear={clearMetric}
                     />
                   </div>
-                ) : (
+                )}
+                {!metricsCollapsed && filteredMainMetricKeys.length === 0 && (
                   <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground" data-testid="ocr-main-metrics-empty">
                     {t(metricFilter === 'data' ? 'noMetricsWithData' : 'noMetricsForSelectedFilter')}
                   </p>
                 )}
               </div>
-              {hasSupplementaryMetrics && (
+              {!metricsCollapsed && hasSupplementaryMetrics && (
                 <div data-testid="ocr-supplementary-metrics">
                   <h4 className="mb-2 text-sm font-semibold">{t('platformSpecificMetrics')}</h4>
                   {filteredSupplementaryMetricKeys.length > 0 ? (
@@ -771,7 +784,7 @@ export function ReportFormModal({
                 </div>
               )}
               {(review.status === 'review_required' || review.status === 'unavailable') && <>
-              {review.unmapped_fields && review.unmapped_fields.length > 0 && <div className="rounded-lg border border-amber-300 bg-amber-50 p-3" data-testid="report-ocr-unmapped-section"><h4 className="font-semibold text-amber-900">{t('rejectedUnmappedOcrFields')}</h4><div className="mt-2 space-y-2">{review.unmapped_fields.map((field, index) => <div className="grid gap-2 rounded border border-amber-200 bg-white p-2 sm:grid-cols-[minmax(180px,1fr)_minmax(220px,.8fr)] sm:items-center" key={`${field.original_label}-${index}`} data-testid="ocr-unmapped-field" data-ocr-original-label={field.original_label}><div className="text-sm text-amber-900"><p>{t('originalLabel')}: {field.original_label} · {t('originalValue')}: {field.original_value || '—'}</p><p className="text-xs">{t('source')}: {field.source || t('unknownSource')}{field.rejection_reason ? ` · ${t('unmappedMetricHelp')}` : ''}</p></div><Select onValueChange={value => mapUnmappedField(index, value as CanonicalMetricKey)}><SelectTrigger><SelectValue placeholder={t('mapToNormalizedMetric')} /></SelectTrigger><SelectContent>{visibleMetricKeys.map(key => <SelectItem value={key} key={key}>{t(metricTranslationKeys[key])}</SelectItem>)}</SelectContent></Select></div>)}</div></div>}
+              {review.unmapped_fields && review.unmapped_fields.length > 0 && <div className="rounded-lg border border-amber-300 bg-amber-50 p-3" data-testid="report-ocr-unmapped-section"><h4 className="font-semibold text-amber-900">{t('rejectedUnmappedOcrFields')}</h4><div className="mt-2 space-y-2">{review.unmapped_fields.map((field, index) => <div className="grid gap-2 rounded border border-amber-200 bg-white p-2 sm:grid-cols-[minmax(180px,1fr)_minmax(220px,.8fr)] sm:items-center" key={`${field.original_label}-${index}`} data-testid="ocr-unmapped-field" data-ocr-original-label={field.original_label}><div className="text-sm text-amber-900"><p>{t('originalLabel')}: {field.original_label} Â· {t('originalValue')}: {field.original_value || 'â€”'}</p><p className="text-xs">{t('source')}: {field.source || t('unknownSource')}{field.rejection_reason ? ` Â· ${t('unmappedMetricHelp')}` : ''}</p></div><Select onValueChange={value => mapUnmappedField(index, value as CanonicalMetricKey)}><SelectTrigger><SelectValue placeholder={t('mapToNormalizedMetric')} /></SelectTrigger><SelectContent>{visibleMetricKeys.map(key => <SelectItem value={key} key={key}>{t(metricTranslationKeys[key])}</SelectItem>)}</SelectContent></Select></div>)}</div></div>}
               {review.raw_diagnostic_output && <details className="rounded-lg bg-muted/50 p-3 text-sm" data-testid="report-ocr-raw-diagnostics"><summary className="cursor-pointer font-medium">{t('rawOcrOutput')}</summary><pre className="mt-3 whitespace-pre-wrap break-words text-xs">{review.raw_diagnostic_output}</pre></details>}
               <div className="flex justify-end"><Button type="button" variant={ocrAcknowledged ? 'outline' : 'default'} onClick={confirmAllMetrics}><Check className="mr-2 h-4 w-4" />{ocrAcknowledged ? t('metricsReviewedForDraft') : t('confirmAllReviewed')}</Button></div>
               </>}
@@ -855,7 +868,7 @@ function inferDashboardPlatform(shift: Shift | undefined, platforms: Platform[])
   return 'other'
 }
 
-const entityName = (items: Array<{ id: string; name: string }>, id?: string) => items.find(item => item.id === id)?.name || '—'
+const entityName = (items: Array<{ id: string; name: string }>, id?: string) => items.find(item => item.id === id)?.name || 'â€”'
 
 function Entity({ label, value }: { label: string; value: string }) {
   return <div><p className="text-xs text-muted-foreground">{label}</p><p className="font-medium">{value}</p></div>
@@ -872,9 +885,9 @@ function roleSummary(
       ...(assigned ? [assigned] : []),
       ...registrations.filter(item => item.shift_id === shift.id && item.operational_role === role && item.status === 'approved').map(item => item.user_id),
     ])
-    return [...ids].map(id => users.find(user => user.id === id)?.full_name).filter(Boolean).join(', ') || '—'
+    return [...ids].map(id => users.find(user => user.id === id)?.full_name).filter(Boolean).join(', ') || 'â€”'
   }
-  return `${labels.host}: ${names('host', shift.host_id)} · ${labels.support}: ${names('support', shift.support_id)} · ${labels.technical}: ${names('technical', shift.technical_id)}`
+  return `${labels.host}: ${names('host', shift.host_id)} Â· ${labels.support}: ${names('support', shift.support_id)} Â· ${labels.technical}: ${names('technical', shift.technical_id)}`
 }
 
 function OcrStatus({ status }: { status: OcrReviewData['status'] }) {
