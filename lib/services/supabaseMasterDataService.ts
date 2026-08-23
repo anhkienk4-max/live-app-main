@@ -185,6 +185,40 @@ function compactRecord(record: Record<string, unknown>): Record<string, unknown>
   )
 }
 
+function businessUserCreatePayload(
+  data: Omit<User, 'id' | 'created_at' | 'updated_at'>,
+): Record<string, unknown> {
+  return compactRecord({
+    email: data.email,
+    full_name: data.full_name,
+    avatar_url: data.avatar_url,
+    avatar_storage_path: data.avatar_storage_path,
+    phone: data.phone,
+    system_permission: data.system_permission,
+    operational_roles: data.operational_roles,
+    department: data.department,
+    status: data.status,
+    account_status: data.account_status,
+    email_verified: data.email_verified,
+    auth_provider: data.auth_provider,
+    join_date: data.join_date,
+  })
+}
+
+function businessUserUpdatePayload(data: Partial<User>): Record<string, unknown> {
+  return compactRecord({
+    email: data.email,
+    full_name: data.full_name,
+    avatar_url: data.avatar_url,
+    avatar_storage_path: data.avatar_storage_path,
+    phone: data.phone,
+    system_permission: data.system_permission,
+    operational_roles: data.operational_roles,
+    department: data.department,
+    status: data.status,
+  })
+}
+
 function lifecycle(row: {
   deleted_at?: string | null
   deleted_by?: string | null
@@ -365,6 +399,12 @@ export interface SupabaseMasterDataRepository {
     getAll(includeDeleted?: boolean): Promise<User[]>
     getById(id: string): Promise<User | null>
     getByAuthIdentity(identity: AuthIdentity): Promise<User | null>
+    create(data: Omit<User, 'id' | 'created_at' | 'updated_at'>): Promise<User>
+    update(id: string, data: Partial<User>): Promise<User | null>
+    approvePendingAccount(id: string): Promise<User | null>
+    rejectPendingAccount(id: string): Promise<User | null>
+    archive(id: string, reason: string): Promise<User | null>
+    restore(id: string, reason: string): Promise<User | null>
   }
   brands: {
     getAll(includeArchived?: boolean): Promise<Brand[]>
@@ -426,7 +466,7 @@ export function createSupabaseMasterDataRepository(
         let query = client.from('business_users')
           .select(businessUserColumns)
           .order('full_name', { ascending: true })
-        if (!includeDeleted) query = query.is('deleted_at', null)
+        if (!includeDeleted) query = query.is('deleted_at', null).is('archived_at', null)
         const result = await query
         return requiredData('business user directory read', result)
           .map(row => userFromRow(row as unknown as BusinessUserRow))
@@ -450,6 +490,45 @@ export function createSupabaseMasterDataRepository(
           .is('deleted_at', null)
           .maybeSingle()
         const row = optionalData('authenticated business user lookup', result)
+        return row ? userFromRow(row as unknown as BusinessUserRow) : null
+      },
+      async create(data) {
+        const result = await client
+          .rpc('create_staff_member', { p_data: businessUserCreatePayload(data) })
+          .single()
+        return userFromRow(requiredData('staff create', result) as unknown as BusinessUserRow)
+      },
+      async update(id, data) {
+        const result = await client
+          .rpc('update_staff_member', { p_user_id: id, p_data: businessUserUpdatePayload(data) })
+          .maybeSingle()
+        const row = optionalData('staff update', result)
+        return row ? userFromRow(row as unknown as BusinessUserRow) : null
+      },
+      async approvePendingAccount(id) {
+        const result = await client.rpc('approve_staff_account', { p_user_id: id }).maybeSingle()
+        const row = optionalData('staff account approval', result)
+        return row ? userFromRow(row as unknown as BusinessUserRow) : null
+      },
+      async rejectPendingAccount(id) {
+        const result = await client.rpc('reject_staff_account', { p_user_id: id }).maybeSingle()
+        const row = optionalData('staff account rejection', result)
+        return row ? userFromRow(row as unknown as BusinessUserRow) : null
+      },
+      async archive(id, reason) {
+        const result = await client.rpc('archive_staff_member', {
+          p_user_id: id,
+          p_reason: reason,
+        }).maybeSingle()
+        const row = optionalData('staff archive', result)
+        return row ? userFromRow(row as unknown as BusinessUserRow) : null
+      },
+      async restore(id, reason) {
+        const result = await client.rpc('restore_staff_member', {
+          p_user_id: id,
+          p_reason: reason,
+        }).maybeSingle()
+        const row = optionalData('staff restore', result)
         return row ? userFromRow(row as unknown as BusinessUserRow) : null
       },
     },

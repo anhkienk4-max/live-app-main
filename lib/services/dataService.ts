@@ -195,15 +195,24 @@ const requiredActorFor = (actorId: string) => {
   if (!actor) throw new Error('The current user could not be verified.')
   return actor
 }
+const requiredActiveStaffActorFor = (actorId: string) => {
+  const actor = requiredActorFor(actorId)
+  if (
+    actor.status !== 'active'
+    || (actor.account_status && actor.account_status !== 'active')
+    || actor.deleted_at
+    || actor.archived_at
+  ) {
+    throw new Error('An active approved user is required to manage staff.')
+  }
+  return actor
+}
 const requireSupabaseAdmin = (actorId = currentUserService.getId()) => {
   const actor = requiredActorFor(actorId)
   if (resolveSystemPermission(actor) !== 'admin') {
     throw new Error('Only Admin can manage shared master data.')
   }
   return actor
-}
-const rejectSupabaseBusinessUserWrite = (): never => {
-  throw new Error('Business user writes are not available during the P1C-B2A read-only cutover.')
 }
 const rejectSupabaseSwapWrite = (): never => {
   throw new Error('Shift Swap is temporarily unavailable while shared persistence is being upgraded.')
@@ -376,11 +385,11 @@ export const userService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseMasterDataRepository().businessUsers.getAll()
     }
-    return Promise.resolve(users.filter(user => !user.deleted_at))
+    return Promise.resolve(users.filter(user => !user.deleted_at && !user.archived_at))
   },
 
   async getAllIncludingDeleted(actorId: string): Promise<User[]> {
-    if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can view deleted staff.')
+    if (!hasPermission(requiredActiveStaffActorFor(actorId), 'staff.manage')) throw new Error('Only Admin can view deleted staff.')
     if (getAuthMode() === 'supabase') {
       return getSupabaseMasterDataRepository().businessUsers.getAll(true)
     }
@@ -394,17 +403,34 @@ export const userService = {
     return Promise.resolve(users.find(u => u.id === id) || null)
   },
 
-  async create(data: Omit<User, 'id' | 'created_at' | 'updated_at'>): Promise<User> {
-    if (getAuthMode() === 'supabase') return rejectSupabaseBusinessUserWrite()
-    const newUser: User = {
+  async create(
+    data: Omit<User, 'id' | 'created_at' | 'updated_at'>,
+    actorId = currentUserService.getId(),
+  ): Promise<User> {
+    const actor = requiredActiveStaffActorFor(actorId)
+    if (!hasPermission(actor, 'staff.manage')) throw new Error('Only Admin can create staff records.')
+    const systemPermission = resolveSystemPermission(data)
+    const normalizedData = {
       ...data,
+      email: data.email.trim().toLowerCase(),
+      full_name: data.full_name.trim(),
+      role: systemPermission === 'member' ? 'staff' as const : systemPermission,
+      system_permission: systemPermission,
+      operational_roles: [...(data.operational_roles || [])],
+      account_status: data.account_status ?? (data.status === 'active' ? 'active' as const : 'pending_approval' as const),
+    }
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseMasterDataRepository().businessUsers.create(normalizedData)
+    }
+    const newUser: User = {
+      ...normalizedData,
       id: generateId(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
     users.push(newUser)
     syncMockAuthAccount(newUser)
-    audit('staff', 'create', 'staff', newUser.id, newUser.full_name, { actorId: currentUserService.getId(), after: { ...newUser } })
+    audit('staff', 'create', 'staff', newUser.id, newUser.full_name, { actorId, after: { ...newUser } })
     return Promise.resolve(newUser)
   },
 
@@ -413,31 +439,64 @@ export const userService = {
     data: Partial<User>,
     actorId = currentUserService.getId(),
   ): Promise<User | null> {
-    if (getAuthMode() === 'supabase') return rejectSupabaseBusinessUserWrite()
-    const index = users.findIndex(u => u.id === id)
-    if (index === -1) return Promise.resolve(null)
-    const actor = users.find(user => user.id === actorId)
-    if (!actor) throw new Error('The current user could not be verified.')
+    const actor = requiredActiveStaffActorFor(actorId)
+    const existing = getAuthMode() === 'supabase'
+      ? await getSupabaseMasterDataRepository().businessUsers.getById(id)
+      : users.find(user => user.id === id) || null
+    if (!existing) return null
     const ownProfileFields = new Set<keyof User>(['full_name', 'phone', 'department', 'avatar_url', 'avatar_storage_path'])
     const changedFields = Object.entries(data)
-      .filter(([key, value]) => value !== undefined && users[index][key as keyof User] !== value)
+      .filter(([key, value]) => value !== undefined && JSON.stringify(existing[key as keyof User]) !== JSON.stringify(value))
       .map(([key]) => key as keyof User)
     const isOwnProfileUpdate = id === actorId && changedFields.every(field => ownProfileFields.has(field))
     if (!isOwnProfileUpdate && !hasPermission(actor, 'staff.manage')) {
       throw new Error('Only Admin can update staff records.')
     }
+    const selfPrivilegeFields = new Set<keyof User>([
+      'role',
+      'system_permission',
+      'status',
+      'account_status',
+      'deleted_at',
+      'deleted_by',
+      'archived_at',
+      'archived_by',
+    ])
+    if (id === actorId && changedFields.some(field => selfPrivilegeFields.has(field))) {
+      throw new Error('Self privilege or account-status changes are not allowed.')
+    }
+    const systemPermission = data.system_permission
+    const normalizedData: Partial<User> = {
+      ...data,
+      ...(data.email === undefined ? {} : { email: data.email.trim().toLowerCase() }),
+      ...(data.full_name === undefined ? {} : { full_name: data.full_name.trim() }),
+      ...(data.operational_roles === undefined ? {} : { operational_roles: [...data.operational_roles] }),
+      ...(systemPermission === undefined ? {} : {
+        system_permission: systemPermission,
+        role: systemPermission === 'member' ? 'staff' : systemPermission,
+      }),
+    }
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseMasterDataRepository().businessUsers.update(id, normalizedData)
+    }
+    const index = users.findIndex(user => user.id === id)
     const before = { ...users[index] }
-    users[index] = { ...users[index], ...data, updated_at: new Date().toISOString() }
+    users[index] = { ...users[index], ...normalizedData, updated_at: new Date().toISOString() }
     syncMockAuthAccount(users[index])
     audit('staff', 'update', 'staff', id, users[index].full_name, { actorId, before, after: { ...users[index] } })
     return Promise.resolve(users[index])
   },
 
   async approvePendingAccount(id: string, actorId = currentUserService.getId()): Promise<User | null> {
-    if (getAuthMode() === 'supabase') return rejectSupabaseBusinessUserWrite()
+    const actor = requiredActiveStaffActorFor(actorId)
+    if (!hasPermission(actor, 'staff.manage')) throw new Error('Only Admin can approve pending accounts.')
+    if (id === actorId) throw new Error('Self account approval is not allowed.')
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseMasterDataRepository().businessUsers.approvePendingAccount(id)
+    }
     const index = users.findIndex(u => u.id === id)
     if (index === -1) return null
-    if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can approve pending accounts.')
+    if (users[index].account_status !== 'pending_approval') throw new Error('The account is not pending approval.')
     const before = { ...users[index] }
     users[index] = {
       ...users[index],
@@ -457,10 +516,15 @@ export const userService = {
   },
 
   async rejectPendingAccount(id: string, actorId = currentUserService.getId()): Promise<User | null> {
-    if (getAuthMode() === 'supabase') return rejectSupabaseBusinessUserWrite()
+    const actor = requiredActiveStaffActorFor(actorId)
+    if (!hasPermission(actor, 'staff.manage')) throw new Error('Only Admin can reject pending accounts.')
+    if (id === actorId) throw new Error('Self account rejection is not allowed.')
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseMasterDataRepository().businessUsers.rejectPendingAccount(id)
+    }
     const index = users.findIndex(u => u.id === id)
     if (index === -1) return null
-    if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can reject pending accounts.')
+    if (users[index].account_status !== 'pending_approval') throw new Error('The account is not pending approval.')
     const before = { ...users[index] }
     users[index] = {
       ...users[index],
@@ -480,25 +544,37 @@ export const userService = {
   },
 
   async archive(id: string, actorId = currentUserService.getId(), reason = 'Deactivated by administrator'): Promise<User | null> {
-    if (getAuthMode() === 'supabase') return rejectSupabaseBusinessUserWrite()
+    const actor = requiredActiveStaffActorFor(actorId)
+    if (!hasPermission(actor, 'staff.manage')) throw new Error('Only Admin can archive staff.')
+    if (id === actorId) throw new Error('Self archive is not allowed.')
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseMasterDataRepository().businessUsers.archive(id, reason)
+    }
     const index = users.findIndex(u => u.id === id)
     if (index === -1) return null
-    if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can deactivate staff.')
+    if (users[index].archived_at || users[index].deleted_at) throw new Error('The staff record is already archived.')
     const before = { ...users[index] }
     const timestamp = nowIso()
     users[index] = { ...users[index], status: 'inactive', archived_at: timestamp, archived_by: actorId, deletion_reason: reason, updated_at: timestamp }
     const related = staffRelatedRecords(id)
+    syncMockAuthAccount(users[index])
     audit('staff', 'archive', 'staff', id, users[index].full_name, { actorId, before, after: { ...users[index] }, reason, relatedRecords: related })
     return users[index]
   },
 
   async restore(id: string, actorId: string, reason: string): Promise<User | null> {
-    if (getAuthMode() === 'supabase') return rejectSupabaseBusinessUserWrite()
-    if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can restore staff.')
+    const actor = requiredActiveStaffActorFor(actorId)
+    if (!hasPermission(actor, 'staff.manage')) throw new Error('Only Admin can restore staff.')
+    if (id === actorId) throw new Error('Self restore is not allowed.')
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseMasterDataRepository().businessUsers.restore(id, reason)
+    }
     const index = users.findIndex(user => user.id === id)
     if (index === -1) return null
+    if (!users[index].archived_at && !users[index].deleted_at) throw new Error('The staff record is not archived.')
     const before = { ...users[index] }
     users[index] = { ...users[index], status: 'active', archived_at: undefined, archived_by: undefined, deleted_at: undefined, deleted_by: undefined, deletion_reason: undefined, updated_at: nowIso() }
+    syncMockAuthAccount(users[index])
     audit('staff', 'restore', 'staff', id, users[index].full_name, { actorId, before, after: { ...users[index] }, reason })
     return users[index]
   },

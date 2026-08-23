@@ -240,21 +240,6 @@ test('Supabase mode routes directory and master-data reads without mock fallback
     assert.deepEqual((await platformService.getAll()).map(platform => platform.id), ['remote-platform'])
     assert.deepEqual((await campaignService.getAll()).map(campaign => campaign.id), ['remote-campaign'])
     assert.equal((await brandService.getById('b1')), null)
-    await assert.rejects(
-      userService.create({
-        email: 'blocked@example.test',
-        full_name: 'Blocked User',
-        role: 'staff',
-        system_permission: 'member',
-        operational_roles: [],
-        status: 'active',
-        account_status: 'active',
-        email_verified: true,
-        auth_provider: 'email',
-        join_date: '2026-08-14',
-      }),
-      /read-only cutover/,
-    )
   })
 })
 
