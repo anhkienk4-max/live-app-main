@@ -43,6 +43,7 @@ import {
   type ShiftStaffingLabels,
 } from '@/lib/services/supabaseShiftService'
 import { getSupabaseShiftRegistrationRepository } from '@/lib/services/supabaseShiftRegistrationService'
+import { getSupabaseReportRepository } from '@/lib/services/supabaseReportService'
 import {
   liveReportImageCategories,
   maximumLiveReportImages,
@@ -207,9 +208,6 @@ const rejectSupabaseBusinessUserWrite = (): never => {
 }
 const rejectSupabaseSwapWrite = (): never => {
   throw new Error('Shift Swap is temporarily unavailable while shared persistence is being upgraded.')
-}
-const rejectSupabaseReportWrite = (): never => {
-  throw new Error('Shift Reports are temporarily unavailable while shared persistence is being upgraded.')
 }
 const audit = (
   module: AuditModule,
@@ -1911,33 +1909,79 @@ export const shiftRegistrationService = {
 // Report Service
 export const reportService = {
   async getAll(): Promise<Report[]> {
+    if (getAuthMode() === 'supabase') return getSupabaseReportRepository().getAll()
     return Promise.resolve(reports.filter(report => !report.deleted_at && !report.archived_at))
   },
 
   async getAllIncludingArchived(actorId: string): Promise<Report[]> {
+    if (getAuthMode() === 'supabase') return getSupabaseReportRepository().getAllIncludingArchived()
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can view archived reports.')
     return Promise.resolve([...reports])
   },
 
   async getById(id: string): Promise<Report | null> {
+    if (getAuthMode() === 'supabase') return getSupabaseReportRepository().getById(id)
     return Promise.resolve(reports.find(r => r.id === id) || null)
   },
 
   async getByShift(shiftId: string): Promise<Report | null> {
+    if (getAuthMode() === 'supabase') return getSupabaseReportRepository().getByShift(shiftId)
     return Promise.resolve(reports.find(r => r.shift_id === shiftId && !r.deleted_at && !r.archived_at) || null)
   },
 
   async getConfirmed(): Promise<Report[]> {
+    if (getAuthMode() === 'supabase') return getSupabaseReportRepository().getConfirmed()
     return Promise.resolve(reports.filter(report =>
       report.status === 'confirmed' &&
       report.metrics_confirmed === true &&
       !report.deleted_at &&
       !report.archived_at
-    ))
+     ))
+  },
+
+  async getReportRevisions(reportId: string): Promise<ReportRevision[]> {
+    if (getAuthMode() === 'supabase') return getSupabaseReportRepository().getReportRevisions(reportId)
+    return Promise.resolve([...(reports.find(r => r.id === reportId)?.revisions || [])])
   },
 
   async create(data: Omit<Report, 'id' | 'created_at' | 'updated_at'>): Promise<Report> {
-    if (getAuthMode() === 'supabase') return rejectSupabaseReportWrite()
+    if (getAuthMode() === 'supabase') {
+      const created = await getSupabaseReportRepository().create({
+        shift_id: data.shift_id,
+        revenue: data.revenue,
+        orders: data.orders,
+        peak_viewer: data.peak_viewer,
+        average_viewer: data.average_viewer,
+        likes: data.likes,
+        comments: data.comments,
+        shares: data.shares,
+        top_products: data.top_products,
+        insights_good: data.insights_good,
+        insights_improvement: data.insights_improvement,
+        final_recap: data.final_recap,
+        replay_url: data.replay_url,
+        dashboard_url: data.dashboard_url,
+        gmv: data.gmv,
+        viewers: data.viewers,
+        product_clicks: data.product_clicks,
+        ctr: data.ctr,
+        cvr: data.cvr,
+        average_order_value: data.average_order_value,
+        live_duration_minutes: data.live_duration_minutes,
+        dashboard_platform: data.dashboard_platform,
+        normalized_metrics: data.normalized_metrics,
+        platform_metrics: data.platform_metrics,
+        raw_ocr_output: data.raw_ocr_output,
+        ocr_review: data.ocr_review,
+        status: data.status,
+      })
+      audit('reports', 'create', 'report', created.id, `Report · ${data.shift_id}`, {
+        actorId: data.submitted_by,
+        after: { ...created },
+        relatedRecords: [{ entity_type: 'shift', entity_id: data.shift_id, entity_name: data.shift_id }],
+      })
+      return created
+    }
     const shift = shifts.find(candidate => candidate.id === data.shift_id)
     if (!shift || !['preparing', 'live', 'paused', 'completed'].includes(shift.status)) {
       throw new Error('A Final Report draft is available only after the live workflow has started.')
@@ -1982,7 +2026,17 @@ export const reportService = {
     reason?: string,
     event: ReportRevision['event'] = 'save',
   ): Promise<Report | null> {
-    if (getAuthMode() === 'supabase') return rejectSupabaseReportWrite()
+    if (getAuthMode() === 'supabase') {
+      const updated = await getSupabaseReportRepository().update(id, data, reason ?? null, event)
+      if (updated) {
+        audit('reports', 'update', 'report', id, `Report · ${updated.shift_id}`, {
+          actorId,
+          after: { ...updated },
+          reason,
+        })
+      }
+      return updated
+    }
     const index = reports.findIndex(r => r.id === id)
     if (index === -1) return Promise.resolve(null)
     const actor = requiredActorFor(actorId)
@@ -2004,16 +2058,29 @@ export const reportService = {
   },
 
   async confirmMetrics(id: string, data: Partial<Report>, review: OcrReviewData, confirmedBy = '1'): Promise<Report | null> {
-    if (getAuthMode() === 'supabase') return rejectSupabaseReportWrite()
-    const reviewer = users.find(user => user.id === confirmedBy)
-    if (!reviewer || !['leader', 'admin'].includes(reviewer.system_permission || reviewer.role)) {
-      throw new Error('Only a Leader or Admin can confirm report metrics.')
-    }
     const unresolvedMetrics = Object.values(review.metrics).filter(metric =>
       metric?.status === 'review_required' || metric?.needs_review,
     )
     if (unresolvedMetrics.length > 0) {
       throw new Error(`Confirm or manually edit all review-required metrics before confirming this report (${unresolvedMetrics.length} remaining).`)
+    }
+    if (getAuthMode() === 'supabase') {
+      const result = await this.update(id, {
+        ...data,
+        ocr_review: { ...review, status: 'confirmed' },
+        metrics_confirmed: true,
+        status: 'confirmed',
+        confirmed_at: new Date().toISOString(),
+        confirmed_by: confirmedBy,
+        reviewed_by: confirmedBy,
+        reviewed_at: new Date().toISOString(),
+      }, confirmedBy, data.review_notes, 'confirm')
+      if (result) audit('reports', 'confirm', 'report', id, `Report · ${result.shift_id}`, { actorId: confirmedBy, after: { ...result } })
+      return result
+    }
+    const reviewer = users.find(user => user.id === confirmedBy)
+    if (!reviewer || !['leader', 'admin'].includes(reviewer.system_permission || reviewer.role)) {
+      throw new Error('Only a Leader or Admin can confirm report metrics.')
     }
     const result = await this.update(id, {
       ...data,
@@ -2030,6 +2097,11 @@ export const reportService = {
   },
 
   async startReview(id: string, reviewerId: string): Promise<Report | null> {
+    if (getAuthMode() === 'supabase') {
+      const result = await getSupabaseReportRepository().startReview(id)
+      if (result) audit('reports', 'update', 'report', id, `Report · ${result.shift_id}`, { actorId: reviewerId, after: { ...result } })
+      return result
+    }
     const reviewer = users.find(user => user.id === reviewerId)
     if (!reviewer || !['leader', 'admin'].includes(reviewer.system_permission || reviewer.role)) {
       throw new Error('Only a Leader or Admin can review reports.')
@@ -2042,6 +2114,11 @@ export const reportService = {
   },
 
   async rejectReview(id: string, reviewerId: string, notes: string): Promise<Report | null> {
+    if (getAuthMode() === 'supabase') {
+      const result = await getSupabaseReportRepository().rejectReview(id, notes)
+      if (result) audit('reports', 'reject', 'report', id, `Report · ${result.shift_id}`, { actorId: reviewerId, after: { ...result }, reason: notes })
+      return result
+    }
     const reviewer = users.find(user => user.id === reviewerId)
     if (!reviewer || !['leader', 'admin'].includes(reviewer.system_permission || reviewer.role)) {
       throw new Error('Only a Leader or Admin can reject reports.')
@@ -2058,7 +2135,11 @@ export const reportService = {
   },
 
   async reopen(id: string, actorId: string, reason: string): Promise<Report | null> {
-    if (getAuthMode() === 'supabase') return rejectSupabaseReportWrite()
+    if (getAuthMode() === 'supabase') {
+      const result = await getSupabaseReportRepository().reopen(id, reason)
+      if (result) audit('reports', 'unconfirm', 'report', id, `Report · ${result.shift_id}`, { actorId, after: { ...result }, reason })
+      return result
+    }
     const permission = resolveSystemPermission(actorFor(actorId))
     if (permission !== 'admin' && permission !== 'leader') throw new Error('Only a Leader or Admin can reopen reports.')
     if (!reason.trim()) throw new Error('A reason is required to reopen a confirmed report.')
@@ -2079,7 +2160,11 @@ export const reportService = {
   },
 
   async resetOcr(id: string, actorId: string, reason: string): Promise<Report | null> {
-    if (getAuthMode() === 'supabase') return rejectSupabaseReportWrite()
+    if (getAuthMode() === 'supabase') {
+      const result = await getSupabaseReportRepository().resetOcr(id, reason)
+      if (result) audit('reports', 'ocr_reset', 'report', id, `Report · ${result.shift_id}`, { actorId, after: { ...result }, reason, source: 'ocr' })
+      return result
+    }
     const index = reports.findIndex(report => report.id === id)
     if (index === -1) return null
     const actor = actorFor(actorId)
@@ -2095,7 +2180,11 @@ export const reportService = {
   },
 
   async recordOcrRun(id: string, actorId: string, review: OcrReviewData, rerun = false): Promise<Report | null> {
-    if (getAuthMode() === 'supabase') return rejectSupabaseReportWrite()
+    if (getAuthMode() === 'supabase') {
+      const result = await getSupabaseReportRepository().recordOcrRun(id, review, rerun)
+      if (result) audit('reports', rerun ? 'ocr_rerun' : 'ocr_run', 'report', id, `Report · ${result.shift_id}`, { actorId, after: { ...result }, source: 'ocr' })
+      return result
+    }
     const index = reports.findIndex(report => report.id === id)
     if (index === -1) return null
     const before = { ...reports[index] }
@@ -2106,7 +2195,12 @@ export const reportService = {
   },
 
   async removeDraft(id: string, actorId: string, reason: string): Promise<boolean> {
-    if (getAuthMode() === 'supabase') return rejectSupabaseReportWrite()
+    if (getAuthMode() === 'supabase') {
+      const report = await getSupabaseReportRepository().getById(id)
+      const success = await getSupabaseReportRepository().removeDraft(id, reason)
+      if (success) audit('reports', 'delete', 'report', id, `Report · ${report?.shift_id || id}`, { actorId, before: { ...report }, reason, entityExists: false })
+      return success
+    }
     const index = reports.findIndex(report => report.id === id)
     if (index === -1) return false
     const report = reports[index]
@@ -2123,7 +2217,11 @@ export const reportService = {
   },
 
   async archive(id: string, actorId: string, reason: string): Promise<Report | null> {
-    if (getAuthMode() === 'supabase') return rejectSupabaseReportWrite()
+    if (getAuthMode() === 'supabase') {
+      const result = await getSupabaseReportRepository().archive(id, reason)
+      if (result) audit('reports', 'archive', 'report', id, `Report · ${result.shift_id}`, { actorId, after: { ...result }, reason })
+      return result
+    }
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can archive reports.')
     const index = reports.findIndex(report => report.id === id)
     if (index === -1) return null
@@ -2135,7 +2233,11 @@ export const reportService = {
   },
 
   async restore(id: string, actorId: string, reason: string): Promise<Report | null> {
-    if (getAuthMode() === 'supabase') return rejectSupabaseReportWrite()
+    if (getAuthMode() === 'supabase') {
+      const result = await getSupabaseReportRepository().restore(id, reason)
+      if (result) audit('reports', 'restore', 'report', id, `Report · ${result.shift_id}`, { actorId, after: { ...result }, reason })
+      return result
+    }
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can restore reports.')
     const index = reports.findIndex(report => report.id === id)
     if (index === -1) return null
@@ -2147,13 +2249,36 @@ export const reportService = {
   },
 }
 
-// Metadata-only service. File uploads will be replaced by Supabase Storage in a future sprint.
+// Report evidence service. Supabase mode persists bytes in Storage and metadata through RPCs;
+// mock mode retains the existing in-memory parity path.
 export const reportImageService = {
   async getByReport(reportId: string): Promise<ReportImage[]> {
+    if (getAuthMode() === 'supabase') return getSupabaseReportRepository().getReportImages(reportId)
     return Promise.resolve(reportImages.filter(image => image.report_id === reportId && !image.deleted_at))
   },
 
   async create(data: Omit<ReportImage, 'id' | 'created_at'>): Promise<ReportImage> {
+    if (getAuthMode() === 'supabase') {
+      const repo = getSupabaseReportRepository()
+      const parentReport = await repo.getById(data.report_id)
+      if (!parentReport) throw new Error('Report was not found.')
+      if (parentReport.metrics_confirmed || parentReport.status === 'confirmed') {
+        throw new Error('Reopen the confirmed report before uploading new evidence.')
+      }
+      const actor = requiredActorFor(data.uploaded_by || currentUserService.getId())
+      const image = await repo.uploadReportImage({
+        report_id: data.report_id,
+        storage_path: data.storage_path || `reports/${data.report_id}/${data.image_type}/${data.original_name || generateId()}`,
+        image_url: data.image_url,
+        original_name: data.original_name,
+        mime_type: data.mime_type,
+        size_bytes: data.size_bytes,
+        image_type: data.image_type,
+        uploaded_by: actor.id,
+      })
+      audit('reports', 'upload', 'report_image', image.id, image.original_name || image.image_type, { actorId: data.uploaded_by || currentUserService.getId(), after: { ...image }, source: 'upload', relatedRecords: [{ entity_type: 'report', entity_id: image.report_id, entity_name: `Report ${image.report_id}` }] })
+      return image
+    }
     const parentReport = reports.find(report => report.id === data.report_id)
     if (!parentReport) throw new Error('Report was not found.')
     if (parentReport.metrics_confirmed || parentReport.status === 'confirmed') {
@@ -2173,6 +2298,21 @@ export const reportImageService = {
   },
 
   async remove(id: string, actorId: string, reason: string): Promise<boolean> {
+    if (getAuthMode() === 'supabase') {
+      const repo = getSupabaseReportRepository()
+      const image = await repo.getReportImageById(id)
+      if (!image) return false
+      const report = await repo.getById(image.report_id)
+      if (!report) throw new Error('Report was not found.')
+      const actor = actorFor(actorId)
+      if (resolveSystemPermission(actor) === 'member' && image.uploaded_by !== actorId) {
+        throw new Error('You can only remove images that you uploaded.')
+      }
+      if (report.metrics_confirmed) throw new Error('Undo report confirmation before removing evidence.')
+      const success = await repo.removeReportImage(id)
+      if (success) audit('reports', 'remove_upload', 'report_image', id, image.original_name || image.image_type, { actorId, before: { ...image }, reason, source: 'upload', entityExists: false })
+      return success
+    }
     const index = reportImages.findIndex(image => image.id === id)
     if (index === -1) return false
     const image = reportImages[index]
@@ -2197,11 +2337,11 @@ export const reportImageService = {
   },
 }
 
-// Metadata-only live-session gallery. Components currently provide blob URLs;
-// a future upload Route Handler will replace them with OneDrive URLs while this
-// service contract remains stable.
+// Live-session gallery service. Supabase mode persists Storage objects and metadata;
+// mock mode retains the existing in-memory parity path.
 export const liveReportImageService = {
   async getByReport(reportId: string): Promise<LiveReportImage[]> {
+    if (getAuthMode() === 'supabase') return getSupabaseReportRepository().getLiveReportImages(reportId)
     return sortedLiveReportImages(
       liveReportImages.filter(image => image.report_id === reportId),
     )
@@ -2211,6 +2351,55 @@ export const liveReportImageService = {
     data: Omit<LiveReportImage, 'id' | 'created_at'> & { report_id: string },
     actorId: string,
   ): Promise<LiveReportImage> {
+    if (getAuthMode() === 'supabase') {
+      const repo = getSupabaseReportRepository()
+      const report = await repo.getById(data.report_id)
+      if (!report) throw new Error('Report was not found.')
+      if (report.metrics_confirmed || report.status === 'confirmed') {
+        throw new Error('Reopen the confirmed report before uploading new live-session images.')
+      }
+      const existing = await repo.getLiveReportImages(data.report_id)
+      if (existing.length >= maximumLiveReportImages) {
+        throw new Error('A report can contain at most 30 live-session images.')
+      }
+      if (!liveReportImageCategories.includes(data.category)) {
+        throw new Error('The image category is invalid.')
+      }
+      const fileName = sanitizeLiveReportImageFileName(data.file_name)
+      const fileError = validateLiveReportImageFile({
+        name: fileName,
+        type: data.mime_type,
+        size: data.size_bytes,
+      }, existing.length)
+      if (fileError) throw new Error(`Invalid live-session image: ${fileError.code}.`)
+      const metadataError = validateLiveReportImageMetadata(data)
+      if (metadataError) throw new Error(`Invalid image metadata: ${metadataError.code}.`)
+      const image = await repo.upsertLiveReportImage({
+        report_id: data.report_id,
+        category: data.category,
+        title: data.title,
+        description: data.description,
+        captured_at: data.captured_at,
+        file_url: data.file_url,
+        thumbnail_url: data.thumbnail_url,
+        file_name: fileName,
+        mime_type: data.mime_type,
+        size_bytes: data.size_bytes,
+        sort_order: existing.length,
+        is_cover: data.is_cover || existing.length === 0,
+      })
+      audit('reports', 'upload', 'live_report_image', image.id, image.file_name, {
+        actorId,
+        after: { ...image },
+        source: 'upload',
+        relatedRecords: [{
+          entity_type: 'report',
+          entity_id: report.id,
+          entity_name: `Report ${report.id}`,
+        }],
+      })
+      return image
+    }
     const report = requireEditableImageReport(data.report_id, actorId)
     const reportImageCount = liveReportImages.filter(
       image => image.report_id === data.report_id,
@@ -2274,6 +2463,30 @@ export const liveReportImageService = {
     >,
     actorId: string,
   ): Promise<LiveReportImage> {
+    if (getAuthMode() === 'supabase') {
+      const repo = getSupabaseReportRepository()
+      const current = await repo.getLiveReportImageById(id)
+      if (!current) throw new Error('Image was not found.')
+      if (!liveReportImageCategories.includes(patch.category)) {
+        throw new Error('The image category is invalid.')
+      }
+      const metadataError = validateLiveReportImageMetadata({ ...current, ...patch })
+      if (metadataError) throw new Error(`Invalid image metadata: ${metadataError.code}.`)
+      const updated = await repo.updateLiveReportImageMetadata(id, {
+        category: patch.category,
+        title: patch.title,
+        description: patch.description,
+        captured_at: patch.captured_at,
+      })
+      const report = await repo.getById(current.report_id || '')
+      if (report) appendReportRevision(report, 'save', actorId, `Updated ${current.file_name}`)
+      audit('reports', 'update', 'live_report_image', id, current.file_name, {
+        actorId,
+        after: { ...updated },
+        source: 'upload',
+      })
+      return updated
+    }
     const index = liveReportImages.findIndex(image => image.id === id)
     if (index === -1) throw new Error('Image was not found.')
     const current = liveReportImages[index]
@@ -2295,6 +2508,23 @@ export const liveReportImageService = {
   },
 
   async setCover(id: string, actorId: string): Promise<LiveReportImage[]> {
+    if (getAuthMode() === 'supabase') {
+      const repo = getSupabaseReportRepository()
+      const image = await repo.getLiveReportImageById(id)
+      if (!image?.report_id) throw new Error('Image was not found.')
+      const report = await repo.getById(image.report_id)
+      if (!report) throw new Error('Report was not found.')
+      if (report.metrics_confirmed || report.status === 'confirmed') {
+        throw new Error('Reopen the confirmed report before changing report images.')
+      }
+      await repo.setLiveReportImageCover(image.report_id, id)
+      audit('reports', 'update', 'live_report_image', id, image.file_name, {
+        actorId,
+        after: { ...image, is_cover: true },
+        source: 'upload',
+      })
+      return repo.getLiveReportImages(image.report_id)
+    }
     const image = liveReportImages.find(candidate => candidate.id === id)
     if (!image?.report_id) throw new Error('Image was not found.')
     const report = requireEditableImageReport(image.report_id, actorId)
@@ -2312,6 +2542,28 @@ export const liveReportImageService = {
     orderedIds: readonly string[],
     actorId: string,
   ): Promise<LiveReportImage[]> {
+    if (getAuthMode() === 'supabase') {
+      const repo = getSupabaseReportRepository()
+      const report = await repo.getById(reportId)
+      if (!report) throw new Error('Report was not found.')
+      if (report.metrics_confirmed || report.status === 'confirmed') {
+        throw new Error('Reopen the confirmed report before changing report images.')
+      }
+      const current = await repo.getLiveReportImages(reportId)
+      if (
+        orderedIds.length !== current.length
+        || new Set(orderedIds).size !== current.length
+        || current.some(image => !orderedIds.includes(image.id))
+      ) {
+        throw new Error('The image order is invalid.')
+      }
+      await repo.reorderLiveReportImages(reportId, orderedIds)
+      audit('reports', 'update', 'live_report_image', reportId, 'Reordered live-session images', {
+        actorId,
+        source: 'upload',
+      })
+      return repo.getLiveReportImages(reportId)
+    }
     const report = requireEditableImageReport(reportId, actorId)
     const current = liveReportImages.filter(image => image.report_id === reportId)
     if (
@@ -2332,6 +2584,27 @@ export const liveReportImageService = {
   },
 
   async remove(id: string, actorId: string): Promise<LiveReportImage[]> {
+    if (getAuthMode() === 'supabase') {
+      const repo = getSupabaseReportRepository()
+      const image = await repo.getLiveReportImageById(id)
+      if (!image) throw new Error('Image was not found.')
+      if (!image.report_id) throw new Error('The image is not attached to a report.')
+      const report = await repo.getById(image.report_id)
+      if (!report) throw new Error('Report was not found.')
+      if (report.metrics_confirmed || report.status === 'confirmed') {
+        throw new Error('Reopen the confirmed report before changing report images.')
+      }
+      const success = await repo.removeLiveReportImage(id)
+      if (success) {
+        audit('reports', 'remove_upload', 'live_report_image', id, image.file_name, {
+          actorId,
+          before: { ...image },
+          source: 'upload',
+          entityExists: false,
+        })
+      }
+      return repo.getLiveReportImages(image.report_id)
+    }
     const index = liveReportImages.findIndex(image => image.id === id)
     if (index === -1) throw new Error('Image was not found.')
     const image = liveReportImages[index]
@@ -2729,9 +3002,12 @@ export const lifecycleService = {
     const archivedShifts = getAuthMode() === 'supabase'
       ? (await getSupabaseShiftRepository().getArchivedShifts())
       : shifts.filter(item => item.deleted_at)
+    const archivedReports = getAuthMode() === 'supabase'
+      ? (await getSupabaseReportRepository().getAllIncludingArchived())
+      : [...reports]
     const summaries: ArchivedEntitySummary[] = [
       ...archivedShifts.map(item => ({ entity_type: 'shift' as const, entity_id: item.id, entity_name: item.title || `${item.date} ${item.start_time}`, archived_at: item.deleted_at!, archived_by: item.deleted_by, reason: item.deletion_reason })),
-      ...reports.filter(item => item.deleted_at || item.archived_at).map(item => ({ entity_type: 'report' as const, entity_id: item.id, entity_name: `Report · ${item.shift_id}`, archived_at: item.deleted_at || item.archived_at!, archived_by: item.deleted_by || item.archived_by, reason: item.deletion_reason })),
+      ...archivedReports.filter(item => item.deleted_at || item.archived_at).map(item => ({ entity_type: 'report' as const, entity_id: item.id, entity_name: `Report · ${item.shift_id}`, archived_at: item.deleted_at || item.archived_at!, archived_by: item.deleted_by || item.archived_by, reason: item.deletion_reason })),
       ...campaigns.filter(item => item.deleted_at || item.archived_at).map(item => ({ entity_type: 'campaign' as const, entity_id: item.id, entity_name: item.name, archived_at: item.deleted_at || item.archived_at!, archived_by: item.deleted_by || item.archived_by, reason: item.deletion_reason })),
       ...brands.filter(item => item.deleted_at || item.archived_at).map(item => ({ entity_type: 'brand' as const, entity_id: item.id, entity_name: item.name, archived_at: item.deleted_at || item.archived_at!, archived_by: item.deleted_by || item.archived_by, reason: item.deletion_reason })),
       ...platforms.filter(item => item.deleted_at || item.archived_at).map(item => ({ entity_type: 'platform' as const, entity_id: item.id, entity_name: item.name, archived_at: item.deleted_at || item.archived_at!, archived_by: item.deleted_by || item.archived_by, reason: item.deletion_reason })),

@@ -12,7 +12,11 @@ import {
   setSupabaseShiftRepositoryForTests,
   ShiftRequestError,
 } from '../lib/services/supabaseShiftService.ts'
-import type { Shift, User } from '../lib/types/database.types.ts'
+import {
+  setSupabaseReportRepositoryForTests,
+  type SupabaseReportRepository,
+} from '../lib/services/supabaseReportService.ts'
+import type { Report, Shift, User } from '../lib/types/database.types.ts'
 
 type Row = Record<string, unknown>
 type TableName = 'shifts' | 'shift_registrations' | 'schedule_imports'
@@ -401,9 +405,22 @@ async function withEnvironment(run: () => Promise<void>) {
   } finally {
     currentUserService.clearAuthenticatedUser()
     setSupabaseShiftRepositoryForTests(undefined)
+    setSupabaseReportRepositoryForTests(undefined)
     process.env.NODE_ENV = previousNodeEnv
     process.env.NEXT_PUBLIC_USE_MOCK_DATA = previousMockFlag
   }
+}
+
+function stubReportRepository(
+  reports: Array<Partial<Report> & Pick<Report, 'id'>> = [],
+): SupabaseReportRepository {
+  return {
+    getAllIncludingArchived: async () => reports.map(report => ({
+      deleted_at: null,
+      archived_at: null,
+      ...report,
+    })),
+  } as unknown as SupabaseReportRepository
 }
 
 test('Supabase mode shift reads use the repository and never fall back to mock rows', async () => {
@@ -640,6 +657,7 @@ test('Supabase mode soft delete persists lifecycle fields and hides from reads; 
     setAuthMode('supabase')
     const db = database()
     setSupabaseShiftRepositoryForTests(createSupabaseShiftRepository(fakeClient(db)))
+    setSupabaseReportRepositoryForTests(stubReportRepository())
     currentUserService.bindAuthenticatedUser(adminUser())
 
     const impact = await shiftService.remove('shift-1', '1', 'test removal')

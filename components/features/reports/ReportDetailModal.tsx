@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Report, Shift, Brand, Platform, User, Campaign, FinalReportRecap, OcrReviewData, ShiftRegistration, NormalizedReportMetrics, ReportMetricKey, LiveReportImage } from '@/lib/types/database.types'
+import { Report, Shift, Brand, Platform, User, Campaign, FinalReportRecap, OcrReviewData, ShiftRegistration, NormalizedReportMetrics, ReportMetricKey, LiveReportImage, ReportRevision } from '@/lib/types/database.types'
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -126,6 +126,12 @@ export function ReportDetailModal({
   const [showConfirmWarning, setShowConfirmWarning] = React.useState(false)
   const [revisionPage, setRevisionPage] = React.useState(1)
   const [revisionPageSize, setRevisionPageSize] = React.useState(10)
+  const [loadedRevisions, setLoadedRevisions] = React.useState<ReportRevision[]>(report.revisions || [])
+  React.useEffect(() => {
+    if (open && !report.revisions) {
+      void reportService.getReportRevisions(report.id).then(setLoadedRevisions)
+    }
+  }, [open, report.id, report.revisions])
   const uploadInputRef = React.useRef<HTMLInputElement>(null)
   const dashboardImage = images.find(image => image.image_type === 'dashboard')
   React.useEffect(() => { if (open) void reportImageService.getByReport(report.id).then(setImages) }, [open, report.id])
@@ -417,7 +423,7 @@ export function ReportDetailModal({
   const filteredMetricKeys = metricKeys.filter(key =>
     metricMatchesFilter(metricFilter, metricValues[key], reviewData.metrics[key]),
   )
-  const revisions = [...(report.revisions || [])].reverse()
+  const revisions = [...loadedRevisions].reverse()
   const visibleRevisions = revisions.slice((revisionPage - 1) * revisionPageSize, revisionPage * revisionPageSize)
   const currentUserAssigned = Boolean(currentUser && (
     shift.host_id === currentUser.id ||

@@ -312,6 +312,7 @@ export interface Report extends LifecycleMetadata {
   reviewed_at?: string
   review_notes?: string
   version_number?: number
+  updated_by?: string
   revisions?: ReportRevision[]
   created_at: string
   updated_at: string
