@@ -1,6 +1,7 @@
-﻿/**
+/**
  * P3 UAT regression tests:
- *   - Collapsible metrics section (collapse toggle does not alter metric state)
+ *   - Collapsible metrics section in saved report UI (ReportDetailPlatformMetrics & OcrBoundMetricFields)
+ *   - Export button exposed on saved report UI (ReportDetailHeaderActions)
  *   - Complete report export (all canonical metrics beyond the core subset)
  *   - Confirmed canonical metrics survive export
  *   - Unmapped OCR candidates are NOT silently promoted into canonical KPI columns
@@ -15,12 +16,17 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { OcrBoundMetricFields } from '../components/features/reports/OcrBoundMetricFields.tsx'
+import {
+  ReportDetailHeaderActions,
+  ReportDetailPlatformMetrics,
+} from '../components/features/reports/ReportDetailModal.tsx'
 import { LanguageProvider } from '../lib/i18n.tsx'
 import type {
   Campaign,
   OcrReviewData,
   Report,
   Shift,
+  ShiftRegistration,
   User,
 } from '../lib/types/database.types.ts'
 import {
@@ -108,10 +114,10 @@ function makeReport(overrides: Partial<Report> = {}): Report {
 
 const mockContext = {
   shifts: [makeShift()],
-  campaigns: [{ id: 'campaign-1', name: 'Chiến dịch Mùa Hè 2026' } as Campaign],
+  campaigns: [{ id: 'campaign-1', brand_id: 'brand-1', name: 'Chiến dịch Mùa Hè 2026', start_date: '2026-08-01', end_date: '2026-08-31', status: 'active', created_at: '2026-08-25T00:00:00Z', updated_at: '2026-08-25T00:00:00Z' } as Campaign],
   users: [
-    { id: 'user-host-1', full_name: 'Nguyễn Thị Hương' } as User,
-    { id: 'user-manager-1', full_name: 'Trần Văn Quản Lý' } as User,
+    { id: 'user-host-1', full_name: 'Nguyễn Thị Hương', email: 'huong@example.com', role: 'member', system_permission: 'member', operational_roles: ['host'], active: true, created_at: '2026-08-25T00:00:00Z', updated_at: '2026-08-25T00:00:00Z' } as User,
+    { id: 'user-manager-1', full_name: 'Trần Văn Quản Lý', email: 'quanly@example.com', role: 'leader', system_permission: 'leader', operational_roles: ['leader'], active: true, created_at: '2026-08-25T00:00:00Z', updated_at: '2026-08-25T00:00:00Z' } as User,
   ],
   brands: new Map([['brand-1', 'Mars Wrigley Vietnam']]),
   platforms: new Map([['platform-1', 'TikTok Shop']]),
@@ -126,9 +132,48 @@ const mockContext = {
       requested_at: '2026-08-25T00:00:00Z',
       created_at: '2026-08-25T00:00:00Z',
       updated_at: '2026-08-25T00:00:00Z',
-    },
+    } as ShiftRegistration,
   ],
 }
+
+test('ReportDetailPlatformMetrics — renders Collapse/Expand button and toggles metric cards grid on saved report', () => {
+  const report = makeReport()
+
+  // 1. Expanded state (default)
+  const htmlExpanded = renderToStaticMarkup(
+    <LanguageProvider defaultLanguage="vi">
+      <ReportDetailPlatformMetrics report={report} collapsed={false} />
+    </LanguageProvider>,
+  )
+
+  assert.ok(htmlExpanded.includes('data-testid="toggle-metrics-collapse"'), 'Collapse toggle button must be rendered on saved report')
+  assert.ok(htmlExpanded.includes('Collapse metrics') || htmlExpanded.includes('Thu gọn chỉ số'), 'Toggle label must show collapse text when expanded')
+  assert.ok(htmlExpanded.includes('data-testid="platform-metrics-grid"'), 'Platform metrics grid must be visible when expanded')
+
+  // 2. Collapsed state
+  const htmlCollapsed = renderToStaticMarkup(
+    <LanguageProvider defaultLanguage="vi">
+      <ReportDetailPlatformMetrics report={report} collapsed={true} />
+    </LanguageProvider>,
+  )
+
+  assert.ok(htmlCollapsed.includes('data-testid="toggle-metrics-collapse"'), 'Collapse toggle button must remain visible when collapsed')
+  assert.ok(htmlCollapsed.includes('Expand metrics') || htmlCollapsed.includes('Mở rộng chỉ số'), 'Toggle label must show expand text when collapsed')
+  assert.ok(!htmlCollapsed.includes('data-testid="platform-metrics-grid"'), 'Platform metrics grid must be hidden when collapsed')
+})
+
+test('ReportDetailHeaderActions — renders Export button on saved report UI', () => {
+  const report = makeReport()
+
+  const html = renderToStaticMarkup(
+    <LanguageProvider defaultLanguage="vi">
+      <ReportDetailHeaderActions report={report} canExport={true} />
+    </LanguageProvider>,
+  )
+
+  assert.ok(html.includes('data-testid="export-report-detail"'), 'Export button must be rendered in header actions')
+  assert.ok(html.includes('Export report detail') || html.includes('Xuất báo cáo chi tiết'), 'Export label must be rendered')
+})
 
 test('Collapsible Metrics — collapse state preserves metric values and review data intact', () => {
   const metricValues = {
@@ -146,12 +191,10 @@ test('Collapsible Metrics — collapse state preserves metric values and review 
     ],
   }
 
-  // Toggling collapse flag locally does not alter metricValues or review
   let collapsed = false
   assert.equal(collapsed, false)
   assert.equal(metricValues.gmv, 18000000)
 
-  // When expanded, metric card grid renders
   const htmlExpanded = renderToStaticMarkup(
     <LanguageProvider>
       <OcrBoundMetricFields
@@ -165,10 +208,8 @@ test('Collapsible Metrics — collapse state preserves metric values and review 
   )
   assert.ok(htmlExpanded.includes('18000000') || htmlExpanded.includes('18.000.000') || htmlExpanded.includes('18,000,000'))
 
-  // Toggle collapse
   collapsed = true
   assert.equal(collapsed, true)
-  // Metric values and review object remain unmodified
   assert.equal(metricValues.gmv, 18000000)
   assert.equal(review.unmapped_fields?.length, 1)
   assert.equal(review.status, 'confirmed')
@@ -182,10 +223,8 @@ test('Report Export — includes all supported canonical metrics in deterministi
   const row = rows[0]
   const keys = Object.keys(row)
 
-  // Verify exact deterministic column order
   assert.deepEqual(keys, [...REPORT_EXPORT_COLUMN_ORDER])
 
-  // Verify canonical metrics beyond the old core subset
   assert.equal(row['Estimated GMV'], 17500000)
   assert.equal(row['SKU Orders'], 130)
   assert.equal(row['Buyers'], 95)
@@ -259,7 +298,6 @@ test('Report Export — unmapped OCR candidates are NOT silently promoted into c
   const rows = buildReportExportRows([report], mockContext)
   const row = rows[0]
 
-  // Unmapped candidate '999999' is not placed in any canonical KPI column
   for (const col of REPORT_EXPORT_COLUMN_ORDER) {
     assert.notEqual(row[col], '999999', `Unmapped candidate leaked into column: ${col}`)
     assert.notEqual(row[col], 999999, `Unmapped candidate leaked into column: ${col}`)

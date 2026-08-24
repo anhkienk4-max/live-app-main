@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { liveReportImageService, ocrService, reportImageService, reportService } from '@/lib/services/dataService'
 import { ReportImage } from '@/lib/types/database.types'
 import { format } from 'date-fns'
-import { AlertTriangle, DollarSign, TrendingUp, Users, ThumbsUp, MessageCircle, Share2, ExternalLink, Star, Download, Check, X, Pencil, RotateCcw, ScanText, Trash2, History, LockOpen, Upload } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronUp, DollarSign, TrendingUp, Users, ThumbsUp, MessageCircle, Share2, ExternalLink, Star, Download, Check, X, Pencil, RotateCcw, ScanText, Trash2, History, LockOpen, Upload } from 'lucide-react'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
@@ -73,6 +73,95 @@ interface ReportDetailModalProps {
   onUpdated?: () => void
 }
 
+export function ReportDetailHeaderActions({
+  report,
+  canExport = true,
+  canReview = false,
+  onExport,
+  onReopen,
+}: {
+  report: Report
+  canExport?: boolean
+  canReview?: boolean
+  onExport?: () => void
+  onReopen?: () => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <Badge className={report.metrics_confirmed ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>
+        {report.status === 'reopened' ? t('reopened') : report.metrics_confirmed ? t('confirmed') : t('needsReview')}
+      </Badge>
+      <div className="flex flex-wrap gap-2">
+        {canReview && (
+          <Button variant="outline" size="sm" onClick={onReopen}>
+            <LockOpen className="mr-2 h-4 w-4" />{t('reopenReport')}
+          </Button>
+        )}
+        {canExport && (
+          <Button variant="outline" size="sm" onClick={onExport} data-testid="export-report-detail">
+            <Download className="mr-2 h-4 w-4" />{t('exportReportDetail')}
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export function ReportDetailPlatformMetrics({
+  report,
+  collapsed = false,
+  onToggleCollapse,
+}: {
+  report: Report
+  collapsed?: boolean
+  onToggleCollapse?: () => void
+}) {
+  const { t } = useTranslation()
+  if (!report.normalized_metrics && !report.platform_metrics) return null
+  const metricKeys = [...platformCanonicalMetricKeys(report.dashboard_platform || 'other')]
+
+  return (
+    <Card>
+      <CardContent className="pt-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold">{t('platformLivestreamMetrics')}</h3>
+            <Badge variant="outline">
+              {report.dashboard_platform === 'tiktok_shop' ? 'TikTok Shop' : report.dashboard_platform === 'shopee_live' ? 'Shopee Live' : t('otherPlatform')}
+            </Badge>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            data-testid="toggle-metrics-collapse"
+            onClick={onToggleCollapse}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            {collapsed ? t('expandMetrics') : t('collapseMetrics')}
+          </Button>
+        </div>
+        {!collapsed && (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5" data-testid="platform-metrics-grid">
+            {metricKeys.map(key => {
+              const value = report.platform_metrics?.[key] ?? report.normalized_metrics?.[key]
+              if (value == null || value === '') return null
+              return (
+                <div className="rounded-lg border p-3" key={key}>
+                  <p className="text-xs text-muted-foreground">{t(metricTranslationKeys[key])}</p>
+                  <p className="mt-1 break-words font-semibold">{formatMetricValue(key, value)}</p>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function FinalReportRecapReadOnly({ recap }: { recap?: FinalReportRecap }) {
   const { t } = useTranslation()
 
@@ -123,6 +212,7 @@ export function ReportDetailModal({
   const [removeImageTarget, setRemoveImageTarget] = React.useState<ReportImage | null>(null)
   const [showReopen, setShowReopen] = React.useState(false)
   const [metricFilter, setMetricFilter] = React.useState<OcrMetricFilter>('data')
+  const [metricsCollapsed, setMetricsCollapsed] = React.useState(false)
   const [showConfirmWarning, setShowConfirmWarning] = React.useState(false)
   const [revisionPage, setRevisionPage] = React.useState(1)
   const [revisionPageSize, setRevisionPageSize] = React.useState(10)
@@ -247,6 +337,8 @@ export function ReportDetailModal({
     brands: new Map(brands.map(brand => [brand.id, brand.name])),
     platforms: new Map(platforms.map(platform => [platform.id, platform.name])),
   })
+
+  const canExport = !currentUser || hasPermission(currentUser, 'reports.export') || hasPermission(currentUser, 'reports.review') || hasPermission(currentUser, 'reports.submit') || report.submitted_by === currentUser?.id
 
   const rerunOcr = async () => {
     const platform = report.dashboard_platform || 'other'
@@ -492,14 +584,14 @@ export function ReportDetailModal({
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Badge className={report.metrics_confirmed ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{report.status === 'reopened' ? t('reopened') : report.metrics_confirmed ? t('confirmed') : t('needsReview')}</Badge>
-          <div className="flex flex-wrap gap-2">{report.metrics_confirmed && currentUser && hasPermission(currentUser, 'reports.review') && <Button variant="outline" size="sm" onClick={() => setShowReopen(true)}><LockOpen className="mr-2 h-4 w-4" />{t('reopenReport')}</Button>}{currentUser && hasPermission(currentUser, 'reports.export') && <Button variant="outline" size="sm" onClick={exportDetail}><Download className="mr-2 h-4 w-4" />{t('exportReportDetail')}</Button>}</div>
+          <div className="flex flex-wrap gap-2">{report.metrics_confirmed && currentUser && hasPermission(currentUser, 'reports.review') && <Button variant="outline" size="sm" onClick={() => setShowReopen(true)}><LockOpen className="mr-2 h-4 w-4" />{t('reopenReport')}</Button>}{canExport && <Button variant="outline" size="sm" onClick={exportDetail} data-testid="export-report-detail"><Download className="mr-2 h-4 w-4" />{t('exportReportDetail')}</Button>}</div>
         </div>
 
         <DialogBody className="space-y-4 pb-1">
         {!report.metrics_confirmed && currentUser && hasPermission(currentUser, 'reports.review') && (
           <Card className="border-amber-200">
             <CardContent className="space-y-4 pt-5">
-              <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2"><h3 className="font-semibold">{t('reportOcrReview')}</h3><Badge variant="outline">{reviewData.status === 'review_required' ? t('statusReviewRequired') : reviewData.status === 'confirmed' ? t('statusConfirmed') : reviewData.status === 'failed' ? t('error') : reviewData.status === 'processing' ? t('loading') : reviewData.status === 'unavailable' ? t('manualInput') : t('pending')}</Badge></div><p className="text-sm text-muted-foreground">{t('ocrReviewHelp')}</p></div><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => void resetExtracted()}><RotateCcw className="mr-2 h-4 w-4" />{t('resetResults')}</Button><Button type="button" variant="outline" onClick={() => setEditingMetrics(value => !value)}><Pencil className="mr-2 h-4 w-4" />{editingMetrics ? t('finishEditing') : t('editOcrMetrics')}</Button><Button type="button" variant="outline" disabled={reviewData.status === 'processing'} onClick={() => void rerunOcr()}><ScanText className="mr-2 h-4 w-4" />{t('rescanOcr')}</Button></div></div>
+              <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2"><h3 className="font-semibold">{t('reportOcrReview')}</h3><Badge variant="outline">{reviewData.status === 'review_required' ? t('statusReviewRequired') : reviewData.status === 'confirmed' ? t('statusConfirmed') : reviewData.status === 'failed' ? t('error') : reviewData.status === 'processing' ? t('loading') : reviewData.status === 'unavailable' ? t('manualInput') : t('pending')}</Badge></div><p className="text-sm text-muted-foreground">{t('ocrReviewHelp')}</p></div><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => void resetExtracted()}><RotateCcw className="mr-2 h-4 w-4" />{t('resetResults')}</Button><Button type="button" variant="outline" onClick={() => setEditingMetrics(value => !value)}><Pencil className="mr-2 h-4 w-4" />{editingMetrics ? t('finishEditing') : t('editOcrMetrics')}</Button><Button type="button" variant="outline" disabled={reviewData.status === 'processing'} onClick={() => void rerunOcr()}><ScanText className="mr-2 h-4 w-4" />{t('rescanOcr')}</Button><Button type="button" variant="outline" size="sm" data-testid="toggle-review-metrics-collapse" onClick={() => setMetricsCollapsed(prev => !prev)}>{metricsCollapsed ? <ChevronDown className="mr-1.5 h-4 w-4" /> : <ChevronUp className="mr-1.5 h-4 w-4" />}{metricsCollapsed ? t('expandMetrics') : t('collapseMetrics')}</Button></div></div>
               {dashboardImage && <><OcrCropPreview imageUrl={dashboardImage.image_url} platform={report.dashboard_platform || 'other'} value={reviewData.crop_box || defaultOcrCrop(report.dashboard_platform || 'other')} onChange={() => undefined} review={reviewData} disabled />{reviewData.raw_output && <pre className="whitespace-pre-wrap break-words rounded-lg border bg-muted/30 p-3 text-xs">{reviewData.raw_output}</pre>}{reviewData.raw_diagnostic_output && <details className="rounded-lg bg-muted/50 p-3 text-xs"><summary className="cursor-pointer font-medium">{t('rawOcrOutput')}</summary><pre className="mt-2 whitespace-pre-wrap break-words">{reviewData.raw_diagnostic_output}</pre></details>}</>}
               {unresolvedCount > 0 && <p className="flex items-center gap-2 text-sm text-amber-800"><AlertTriangle className="h-4 w-4" />{t('reportReviewWarning', { count: unresolvedCount })}</p>}
               <OcrMetricFilterBar value={metricFilter} onChange={setMetricFilter} reviewCount={unresolvedCount} />
@@ -589,20 +681,7 @@ export function ReportDetailModal({
               </Card>
             </div>
 
-            {(report.normalized_metrics || report.platform_metrics) && (
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">{t('platformAwareMetrics')}</h3><Badge variant="outline">{report.dashboard_platform === 'tiktok_shop' ? 'TikTok Shop' : report.dashboard_platform === 'shopee_live' ? 'Shopee Live' : t('otherPlatform')}</Badge></div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-                    {metricKeys.map(key => {
-                      const value = report.platform_metrics?.[key] ?? report.normalized_metrics?.[key]
-                      if (value == null || value === '') return null
-                      return <div className="rounded-lg border p-3" key={key}><p className="text-xs text-muted-foreground">{t(metricTranslationKeys[key])}</p><p className="mt-1 break-words font-semibold">{formatMetricValue(key, value)}</p></div>
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            <ReportDetailPlatformMetrics report={report} collapsed={metricsCollapsed} onToggleCollapse={() => setMetricsCollapsed(prev => !prev)} />
 
             {/* Engagement */}
             <Card>
