@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ChevronLeft, ChevronRight, LayoutGrid, List, Clock, Calendar as CalendarIcon, Search, Filter, Plus, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LayoutGrid, List, Clock, Calendar as CalendarIcon, Search, Filter, Plus, UserCheck, X } from 'lucide-react'
 import { format, addMonths, addWeeks, addDays } from 'date-fns'
 import { MonthView } from './MonthView'
 import { WeekView } from './WeekView'
@@ -17,10 +17,12 @@ import { ShiftFormModal } from '../shifts/ShiftFormModal'
 import { ShiftFormDialog } from '../shifts/ShiftFormDialog'
 import { ShiftDetailModal } from '../shifts/ShiftDetailModal'
 import { DaySessionsDialog } from './DaySessionsDialog'
+import { BulkStaffingApprovalDialog } from './BulkStaffingApprovalDialog'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
 import { enUS, vi } from 'date-fns/locale'
+import { pendingRegistrationsInScope, shiftsInCalendarScope } from '@/lib/utils/calendarStaffingApproval'
 
 export function CalendarView({ createRequest = 0 }: { createRequest?: number }) {
   const { currentUser } = useCurrentUser()
@@ -41,6 +43,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const [selectedDay, setSelectedDay] = React.useState<Date | null>(null)
   const [editingShift, setEditingShift] = React.useState<Shift | null>(null)
   const [showFilters, setShowFilters] = React.useState(false)
+  const [showBulkStaffingApproval, setShowBulkStaffingApproval] = React.useState(false)
   const [searchTerm, setSearchTerm] = React.useState('')
   const [filters, setFilters] = React.useState({
     brand: 'all',
@@ -134,6 +137,15 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     }
   }, [filteredShifts])
 
+  const calendarScopeShifts = React.useMemo(
+    () => shiftsInCalendarScope(filteredShifts, view, currentDate),
+    [currentDate, filteredShifts, view],
+  )
+  const pendingStaffingRegistrations = React.useMemo(
+    () => pendingRegistrationsInScope(registrations, calendarScopeShifts),
+    [calendarScopeShifts, registrations],
+  )
+
   const navigate = (direction: 'prev' | 'next') => {
     if (view === 'month') {
       setCurrentDate(direction === 'prev' ? addMonths(currentDate, -1) : addMonths(currentDate, 1))
@@ -219,6 +231,16 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
               <Button onClick={() => setShowForm(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 {t('newShift')}
+              </Button>
+            )}
+            {currentUser && hasPermission(currentUser, 'shifts.approve_registration') && (
+              <Button
+                variant="outline"
+                onClick={() => setShowBulkStaffingApproval(true)}
+                data-testid="open-bulk-staffing-approval"
+              >
+                <UserCheck className="mr-2 h-4 w-4" />
+                {t('bulkStaffingApproval')} ({pendingStaffingRegistrations.length})
               </Button>
             )}
           </div>
@@ -418,6 +440,22 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         }}
         onChanged={loadData}
       />
+
+      {currentUser && hasPermission(currentUser, 'shifts.approve_registration') && (
+        <BulkStaffingApprovalDialog
+          open={showBulkStaffingApproval}
+          registrations={pendingStaffingRegistrations}
+          shifts={calendarScopeShifts}
+          users={users}
+          currentUser={currentUser}
+          onOpenChange={setShowBulkStaffingApproval}
+          onChanged={loadData}
+          onOpenShift={(shift) => {
+            setShowBulkStaffingApproval(false)
+            setSelectedShift(shift)
+          }}
+        />
+      )}
 
       {selectedShift && (
         <ShiftDetailModal

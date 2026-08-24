@@ -12,6 +12,8 @@ import {
   OcrReviewData,
   OcrCropBox,
   ShiftRegistration,
+  ShiftRegistrationReviewAction,
+  ShiftRegistrationReviewResult,
   ScheduleImportBatch,
   ScheduleImportRow,
   ScheduleImportSource,
@@ -1592,6 +1594,17 @@ export const shiftRegistrationService = {
     if (registration.status !== 'pending') throw new Error('Only a pending registration can be approved.')
     const shift = shifts.find(candidate => candidate.id === registration.shift_id)
     if (!shift) throw new Error('Shift was not found.')
+    const staffMember = users.find(candidate => candidate.id === registration.user_id)
+    if (
+      !staffMember
+      || staffMember.status !== 'active'
+      || (staffMember.account_status !== undefined && staffMember.account_status !== 'active')
+      || staffMember.archived_at
+      || staffMember.deleted_at
+      || !staffMember.operational_roles?.includes(registration.operational_role)
+    ) {
+      throw new Error('The staff member is inactive or no longer eligible for this role.')
+    }
     const approvedCount = shiftRegistrations.filter(candidate =>
       candidate.shift_id === shift.id &&
       candidate.operational_role === registration.operational_role &&
@@ -1650,6 +1663,111 @@ export const shiftRegistrationService = {
     recordScheduleChange('reject', shiftRegistrations[index].shift_id, { status: 'pending' }, { ...shiftRegistrations[index] }, { actor_id: reviewerId, reason: notes })
     audit('calendar', 'reject', 'shift_registration', id, `${actorFor(shiftRegistrations[index].user_id).full_name} · ${shiftRegistrations[index].operational_role}`, { actorId: reviewerId, before: { status: 'pending' }, after: { ...shiftRegistrations[index] }, reason: notes })
     return Promise.resolve(shiftRegistrations[index])
+  },
+
+  async bulkReview(
+    registrationIds: string[],
+    action: ShiftRegistrationReviewAction,
+    reviewerId: string,
+    notes?: string,
+  ): Promise<ShiftRegistrationReviewResult[]> {
+    if (!hasPermission(requiredActorFor(reviewerId), 'shifts.approve_registration')) {
+      throw new Error('Only a Leader or Admin can review registrations.')
+    }
+
+    const uniqueIds = [...new Set(registrationIds.map(id => id.trim()).filter(Boolean))]
+    if (uniqueIds.length === 0) return []
+
+    if (getAuthMode() === 'supabase') {
+      const results = await getSupabaseShiftRegistrationRepository().bulkReview(uniqueIds, action, notes)
+      results.forEach(result => {
+        if (!result.success || !result.registration) return
+        const registration = result.registration
+        recordScheduleChange(
+          action,
+          registration.shift_id,
+          { status: 'pending' },
+          { ...registration },
+          { actor_id: reviewerId, reason: notes },
+        )
+        audit(
+          'calendar',
+          action,
+          'shift_registration',
+          registration.id,
+          `${registration.user_id} · ${registration.operational_role}`,
+          {
+            actorId: reviewerId,
+            before: { status: 'pending' },
+            after: { ...registration },
+            reason: notes,
+          },
+        )
+      })
+      audit(
+        'calendar',
+        action,
+        'shift_registration_batch',
+        `bulk-${action}-${nowIso()}`,
+        `${uniqueIds.length} staffing requests`,
+        {
+          actorId: reviewerId,
+          after: {
+            action,
+            results: results.map(result => ({
+              registration_id: result.registration_id,
+              success: result.success,
+              error_code: result.error_code,
+            })),
+          },
+          reason: notes,
+        },
+      )
+      return results
+    }
+
+    const results: ShiftRegistrationReviewResult[] = []
+    for (const registrationId of uniqueIds) {
+      try {
+        const registration = action === 'approve'
+          ? await this.approve(registrationId, reviewerId, notes)
+          : await this.reject(registrationId, reviewerId, notes)
+        results.push({
+          registration_id: registrationId,
+          action,
+          success: true,
+          registration,
+        })
+      } catch (error) {
+        results.push({
+          registration_id: registrationId,
+          action,
+          success: false,
+          error_code: error instanceof Error ? error.name : 'REGISTRATION_REVIEW_FAILED',
+          error_message: error instanceof Error ? error.message : 'Registration review failed.',
+        })
+      }
+    }
+    audit(
+      'calendar',
+      action,
+      'shift_registration_batch',
+      `bulk-${action}-${nowIso()}`,
+      `${uniqueIds.length} staffing requests`,
+      {
+        actorId: reviewerId,
+        after: {
+          action,
+          results: results.map(result => ({
+            registration_id: result.registration_id,
+            success: result.success,
+            error_code: result.error_code,
+          })),
+        },
+        reason: notes,
+      },
+    )
+    return results
   },
 
   async cancel(id: string, userId: string, reason?: string): Promise<ShiftRegistration> {

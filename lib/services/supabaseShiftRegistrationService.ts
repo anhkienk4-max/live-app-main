@@ -5,6 +5,8 @@ import type {
   OperationalRole,
   Shift,
   ShiftRegistration,
+  ShiftRegistrationReviewAction,
+  ShiftRegistrationReviewResult,
 } from '@/lib/types/database.types'
 
 const registrationColumns = [
@@ -91,6 +93,15 @@ interface SupabaseErrorShape {
   message?: string
   details?: string
   hint?: string
+}
+
+interface BulkReviewRow {
+  registration_id: string
+  review_action: ShiftRegistrationReviewAction
+  success: boolean
+  error_code: string | null
+  error_message: string | null
+  reviewed_registration: RegistrationRow | null
 }
 
 export class RegistrationRequestError extends Error {
@@ -231,6 +242,11 @@ export interface SupabaseShiftRegistrationRepository {
   cancel(id: string, notes?: string): Promise<ShiftRegistration>
   approve(id: string, notes?: string): Promise<ShiftRegistration>
   reject(id: string, notes?: string): Promise<ShiftRegistration>
+  bulkReview(
+    registrationIds: string[],
+    action: ShiftRegistrationReviewAction,
+    notes?: string,
+  ): Promise<ShiftRegistrationReviewResult[]>
   assignManually(shiftId: string, userId: string, role: OperationalRole, notes?: string): Promise<ShiftRegistration>
   assignImported(
     shiftId: string,
@@ -360,6 +376,26 @@ export function createSupabaseShiftRegistrationRepository(
       return registrationFromRow(
         requiredRow('registration reject', result) as unknown as RegistrationRow,
       )
+    },
+
+    async bulkReview(registrationIds, action, notes) {
+      const result = await client.rpc('bulk_review_shift_registrations', {
+        p_registration_ids: registrationIds,
+        p_action: action,
+        p_notes: notes ?? null,
+      })
+      return optionalRows('bulk registration review', result)
+        .map(rawRow => rawRow as unknown as BulkReviewRow)
+        .map(row => ({
+          registration_id: row.registration_id,
+          action: row.review_action,
+          success: row.success,
+          registration: row.reviewed_registration
+            ? registrationFromRow(row.reviewed_registration)
+            : undefined,
+          error_code: row.error_code ?? undefined,
+          error_message: row.error_message ?? undefined,
+        }))
     },
 
     async assignManually(shiftId, userId, role, notes) {
