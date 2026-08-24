@@ -24,6 +24,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DashboardUpdateModal } from './DashboardUpdateModal'
 import { LiveSessionModal } from './LiveSessionModal'
+import { PageLoadError } from '@/components/ui/page-load-error'
 
 type Filters = { date: string; brand: string; platform: string; campaign: string; host: string; support: string; technical: string; status: string }
 const todayValue = () => format(new Date(), 'yyyy-MM-dd')
@@ -42,20 +43,27 @@ export function LiveMonitoringDashboard() {
   const [selectedShift, setSelectedShift] = React.useState<Shift | null>(null)
   const [updateShift, setUpdateShift] = React.useState<Shift | null>(null)
   const [loading, setLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<unknown>(null)
 
   const loadData = React.useCallback(async () => {
-    const [loadedShifts, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers, loadedRegistrations] = await Promise.all([
-      shiftService.getAll(), brandService.getAll(), platformService.getAll(), campaignService.getAll(), userService.getAll(), shiftRegistrationService.getAll(),
-    ])
-    const updateEntries = await Promise.all(loadedShifts.map(async shift => [shift.id, await dashboardUpdateService.getByShift(shift.id)] as const))
-    setShifts(loadedShifts)
-    setBrands(loadedBrands)
-    setPlatforms(loadedPlatforms)
-    setCampaigns(loadedCampaigns)
-    setUsers(loadedUsers)
-    setRegistrations(loadedRegistrations)
-    setUpdates(Object.fromEntries(updateEntries))
-    setLoading(false)
+    setLoadError(null)
+    try {
+      const [loadedShifts, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers, loadedRegistrations] = await Promise.all([
+        shiftService.getAll(), brandService.getAll(), platformService.getAll(), campaignService.getAll(), userService.getAll(), shiftRegistrationService.getAll(),
+      ])
+      const updateEntries = await Promise.all(loadedShifts.map(async shift => [shift.id, await dashboardUpdateService.getByShift(shift.id)] as const))
+      setShifts(loadedShifts)
+      setBrands(loadedBrands)
+      setPlatforms(loadedPlatforms)
+      setCampaigns(loadedCampaigns)
+      setUsers(loadedUsers)
+      setRegistrations(loadedRegistrations)
+      setUpdates(Object.fromEntries(updateEntries))
+    } catch (error) {
+      setLoadError(error)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   React.useEffect(() => { setFilters(initialFilters()); void loadData() }, [loadData])
@@ -65,6 +73,7 @@ export function LiveMonitoringDashboard() {
   }, [loadData])
 
   if (loading || !filters) return <div className="py-12 text-center">{t('loading')}</div>
+  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
 
   const matchesRole = (shift: Shift, role: OperationalRole, userId: string) => {
     const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id

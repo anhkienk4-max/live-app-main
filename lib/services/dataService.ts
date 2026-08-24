@@ -1517,8 +1517,12 @@ export interface ShiftRoleCapacity {
 export const isStaffedRegistration = (registration: Pick<ShiftRegistration, 'status'>) =>
   registration.status === 'approved' || registration.status === 'manually_assigned'
 
-const capacityFor = (shift: Shift, role: OperationalRole): ShiftRoleCapacity => {
-  const roleRegistrations = shiftRegistrations.filter(registration =>
+const capacityForRegistrations = (
+  shift: Shift,
+  registrations: ShiftRegistration[],
+  role: OperationalRole,
+): ShiftRoleCapacity => {
+  const roleRegistrations = registrations.filter(registration =>
     registration.shift_id === shift.id &&
     registration.operational_role === role &&
     (isStaffedRegistration(registration) || registration.status === 'pending')
@@ -1534,6 +1538,16 @@ const capacityFor = (shift: Shift, role: OperationalRole): ShiftRoleCapacity => 
     remaining: Math.max(0, required - approved),
   }
 }
+
+export const getShiftRoleCapacities = (
+  shift: Shift,
+  registrations: ShiftRegistration[],
+): ShiftRoleCapacity[] =>
+  (['host', 'support', 'technical'] as OperationalRole[])
+    .map(role => capacityForRegistrations(shift, registrations, role))
+
+const capacityFor = (shift: Shift, role: OperationalRole): ShiftRoleCapacity =>
+  capacityForRegistrations(shift, shiftRegistrations, role)
 
 const isFullyStaffed = (shift: Shift) =>
   (['host', 'support', 'technical'] as OperationalRole[]).every(role => {
@@ -1591,7 +1605,7 @@ export const shiftRegistrationService = {
     }
     const shift = shifts.find(candidate => candidate.id === shiftId)
     if (!shift) return []
-    return Promise.resolve((['host', 'support', 'technical'] as OperationalRole[]).map(role => capacityFor(shift, role)))
+    return Promise.resolve(getShiftRoleCapacities(shift, shiftRegistrations))
   },
 
   async getMyApprovedShifts(userId: string): Promise<Shift[]> {

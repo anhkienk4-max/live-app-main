@@ -21,6 +21,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import { refreshCollection } from '@/lib/utils/scopedRefresh'
+import { PageLoadError } from '@/components/ui/page-load-error'
 
 type CampaignForm = { name: string; brand_id: string; start_date: string; end_date: string; type: string; notes: string; campaign_url: string; website_title: string; website_preview_image: string; website_embed_enabled: boolean; platform_source: string; status: CampaignStatus; owner_id: string }
 type ImportRow = CampaignForm & { row: number; errors: string[] }
@@ -50,13 +51,21 @@ export function CampaignList() {
   const [importRows, setImportRows] = React.useState<ImportRow[]>([])
   const [importOpen, setImportOpen] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<unknown>(null)
   const [saving, setSaving] = React.useState(false)
 
   const loadData = React.useCallback(async () => {
-    const [loadedCampaigns, loadedBrands, loadedPlatforms, loadedShifts, loadedReports, loadedUsers] = await Promise.all([
-      campaignService.getAll(), brandService.getAll(), platformService.getAll(), shiftService.getAll(), reportService.getAll(), userService.getAll(),
-    ])
-    setCampaigns(loadedCampaigns); setBrands(loadedBrands); setPlatforms(loadedPlatforms); setShifts(loadedShifts); setReports(loadedReports); setUsers(loadedUsers); setLoading(false)
+    setLoadError(null)
+    try {
+      const [loadedCampaigns, loadedBrands, loadedPlatforms, loadedShifts, loadedReports, loadedUsers] = await Promise.all([
+        campaignService.getAll(), brandService.getAll(), platformService.getAll(), shiftService.getAll(), reportService.getAll(), userService.getAll(),
+      ])
+      setCampaigns(loadedCampaigns); setBrands(loadedBrands); setPlatforms(loadedPlatforms); setShifts(loadedShifts); setReports(loadedReports); setUsers(loadedUsers)
+    } catch (error) {
+      setLoadError(error)
+    } finally {
+      setLoading(false)
+    }
   }, [])
   React.useEffect(() => { void loadData() }, [loadData])
   const refreshCampaigns = React.useCallback(() => refreshCollection(campaignService, setCampaigns), [])
@@ -185,6 +194,7 @@ export function CampaignList() {
   ]
 
   if (loading) return <ContentSkeleton />
+  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
   return <>
     <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t('campaigns')}</h2><p className="mt-1 text-muted-foreground">{t('campaignPreviewHelp')}</p></div>{canManage && <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => fileRef.current?.click()}><FileSpreadsheet className="mr-2 h-4 w-4" />{t('importExcel')}</Button><input ref={fileRef} className="sr-only" type="file" accept=".xlsx,.xls" onChange={parseImport} /><Button onClick={() => openForm()}><Plus className="mr-2 h-4 w-4" />{t('create')} {t('campaign')}</Button></div>}</div>
     <DataTable data={campaigns} columns={columns} searchPlaceholder={`${t('search')} ${t('campaigns')}`} />

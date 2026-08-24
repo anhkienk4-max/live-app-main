@@ -16,6 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
+import { PageLoadError } from '@/components/ui/page-load-error'
 
 const DashboardCharts = dynamic(
   () => import('@/components/features/dashboard/DashboardCharts').then(mod => ({ default: mod.DashboardCharts })),
@@ -48,16 +49,29 @@ export function DashboardOverview() {
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   const [filters, setFilters] = React.useState<Filters | null>(null)
   const [loading, setLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<unknown>(null)
+
+  const loadData = React.useCallback(async () => {
+    setLoadError(null)
+    try {
+      const [loadedShifts, loadedReports, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers, loadedRegistrations] = await Promise.all([
+        shiftService.getAll(), reportService.getConfirmed(), brandService.getAll(), platformService.getAll(), campaignService.getAll(), userService.getAll(), shiftRegistrationService.getAll(),
+      ])
+      setShifts(loadedShifts); setReports(loadedReports); setBrands(loadedBrands); setPlatforms(loadedPlatforms); setCampaigns(loadedCampaigns); setUsers(loadedUsers); setRegistrations(loadedRegistrations)
+    } catch (error) {
+      setLoadError(error)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   React.useEffect(() => {
     setFilters(initialFilters())
-    void Promise.all([shiftService.getAll(), reportService.getConfirmed(), brandService.getAll(), platformService.getAll(), campaignService.getAll(), userService.getAll(), shiftRegistrationService.getAll()])
-      .then(([loadedShifts, loadedReports, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers, loadedRegistrations]) => {
-        setShifts(loadedShifts); setReports(loadedReports); setBrands(loadedBrands); setPlatforms(loadedPlatforms); setCampaigns(loadedCampaigns); setUsers(loadedUsers); setRegistrations(loadedRegistrations); setLoading(false)
-      })
-  }, [])
+    void loadData()
+  }, [loadData])
 
   if (loading || !filters) return <ContentSkeleton />
+  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
 
   const matchesRole = (shift: Shift, role: OperationalRole, userId: string) => {
     const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id

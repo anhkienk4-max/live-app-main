@@ -33,6 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/toast'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { HistoryPagination } from '@/components/ui/history-pagination'
+import { PageLoadError } from '@/components/ui/page-load-error'
 import { DEFAULT_SHIFT_STAFFING } from '@/lib/utils/shiftUtils'
 import {
   buildScheduleImportPreviewSourceRow,
@@ -504,31 +505,35 @@ export function ImportHistoryPanel() {
   const [brands, setBrands] = React.useState<Brand[]>([])
   const [filters, setFilters] = React.useState({ date: '', actor: 'all', action: 'all', shift: 'all', brand: 'all', source: 'all' })
   const [loading, setLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<unknown>(null)
   const [importPage, setImportPage] = React.useState(1)
   const [importPageSize, setImportPageSize] = React.useState(10)
   const [changePage, setChangePage] = React.useState(1)
   const [changePageSize, setChangePageSize] = React.useState(10)
-  React.useEffect(() => {
-    void Promise.all([
-      scheduleImportBatchPort.listBatches(),
-      scheduleChangeService.getAll(),
-      shiftService.getAll(),
-      userService.getAll(),
-      brandService.getAll(),
-    ]).then(([imports, logs, loadedShifts, loadedUsers, loadedBrands]) => {
+  const loadHistory = React.useCallback(() => Promise.all([
+    scheduleImportBatchPort.listBatches(),
+    scheduleChangeService.getAll(),
+    shiftService.getAll(),
+    userService.getAll(),
+    brandService.getAll(),
+  ]).then(([imports, logs, loadedShifts, loadedUsers, loadedBrands]) => {
       setHistory(imports)
       setChanges(logs)
       setShifts(loadedShifts)
       setUsers(loadedUsers)
       setBrands(loadedBrands)
+    }).catch((error: unknown) => {
+      setLoadError(error)
+    }).finally(() => {
       setLoading(false)
-    })
-  }, [])
+    }), [])
+  React.useEffect(() => { void loadHistory() }, [loadHistory])
   const updateChangeFilter = (key: keyof typeof filters, value: string) => {
     setFilters(current => ({ ...current, [key]: value }))
     setChangePage(1)
   }
   if (loading) return <div className="py-12 text-center">{t('loading')}</div>
+  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoadError(null); setLoading(true); void loadHistory() }} />
   const visibleChanges = changes.filter(log => {
     const shift = shifts.find(item => item.id === log.shift_id)
     return (!filters.date || log.timestamp.slice(0, 10) === filters.date) &&

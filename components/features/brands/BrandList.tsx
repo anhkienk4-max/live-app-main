@@ -16,6 +16,7 @@ import { BrandDetailDialog } from './BrandDetailDialog'
 import { BrandFormDialog } from './BrandFormDialog'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import { refreshCollection } from '@/lib/utils/scopedRefresh'
+import { PageLoadError } from '@/components/ui/page-load-error'
 
 export function BrandList() {
   const { currentUser } = useCurrentUser()
@@ -26,6 +27,7 @@ export function BrandList() {
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
   const [users, setUsers] = React.useState<User[]>([])
   const [loading, setLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<unknown>(null)
   const [selectedBrand, setSelectedBrand] = React.useState<Brand | null>(null)
   const [detailBrand, setDetailBrand] = React.useState<Brand | null>(null)
   const [statusTarget, setStatusTarget] = React.useState<Brand | null>(null)
@@ -33,10 +35,17 @@ export function BrandList() {
   const [viewMode, setViewMode] = React.useState<'grid' | 'table'>('grid')
 
   const loadData = React.useCallback(async () => {
-    const [loadedBrands, loadedCampaigns, loadedPlatforms, loadedUsers] = await Promise.all([
-      brandService.getAll(), campaignService.getAll(), platformService.getAll(), userService.getAll(),
-    ])
-    setBrands(loadedBrands); setCampaigns(loadedCampaigns); setPlatforms(loadedPlatforms); setUsers(loadedUsers); setLoading(false)
+    setLoadError(null)
+    try {
+      const [loadedBrands, loadedCampaigns, loadedPlatforms, loadedUsers] = await Promise.all([
+        brandService.getAll(), campaignService.getAll(), platformService.getAll(), userService.getAll(),
+      ])
+      setBrands(loadedBrands); setCampaigns(loadedCampaigns); setPlatforms(loadedPlatforms); setUsers(loadedUsers)
+    } catch (error) {
+      setLoadError(error)
+    } finally {
+      setLoading(false)
+    }
   }, [])
   React.useEffect(() => { void loadData() }, [loadData])
   const refreshBrands = React.useCallback(() => refreshCollection(brandService, setBrands), [])
@@ -60,6 +69,7 @@ export function BrandList() {
   ]
 
   if (loading) return <ContentSkeleton />
+  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
   return <>
     <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t('brandKnowledge')}</h2><p className="mt-1 text-muted-foreground">{t('description')}</p></div><div className="flex gap-2"><div className="flex rounded-lg border"><Button variant={viewMode === 'grid' ? 'default' : 'ghost'} size="icon" onClick={() => setViewMode('grid')}><LayoutGrid className="h-4 w-4" /></Button><Button variant={viewMode === 'table' ? 'default' : 'ghost'} size="icon" onClick={() => setViewMode('table')}><List className="h-4 w-4" /></Button></div>{canManage && <Button onClick={() => { setSelectedBrand(null); setFormOpen(true) }}><Plus className="mr-2 h-4 w-4" />{t('create')} {t('brand')}</Button>}</div></div>
     {viewMode === 'table' ? <DataTable data={brands} columns={columns} searchPlaceholder={`${t('search')} ${t('brands')}`} /> : <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">{brands.map(brand => <Card key={brand.id}><CardContent className="space-y-4 pt-5"><div className="flex items-start justify-between">{brand.logo_url ? <img src={brand.logo_url} alt={brand.name} className="h-16 w-16 rounded-lg border object-contain" /> : <div className="h-16 w-16 rounded-lg" style={{ backgroundColor: brand.color }} />}{actions(brand)}</div><div><h3 className="text-lg font-semibold">{brand.name}</h3><p className="text-sm text-muted-foreground">{brand.category || '—'} · {t(brand.status || 'active')}</p></div><p className="line-clamp-3 text-sm">{brand.description || '—'}</p><Button className="w-full" variant="outline" onClick={() => setDetailBrand(brand)}>{t('viewDetails')}</Button></CardContent></Card>)}</div>}

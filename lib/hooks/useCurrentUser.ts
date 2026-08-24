@@ -1,10 +1,12 @@
 'use client'
 
 import * as React from 'react'
-import { getAuthMode } from '@/lib/auth/authMode'
+import { getAuthMode, type AuthMode } from '@/lib/auth/authMode'
 import { useAuthIdentity } from '@/lib/auth/AuthIdentityProvider'
 import { currentUserService, userService } from '@/lib/services/dataService'
 import { User } from '@/lib/types/database.types'
+
+export const currentUserDirectoryRequired = (mode: AuthMode) => mode === 'mock'
 
 export function useCurrentUser() {
   const auth = useAuthIdentity()
@@ -17,23 +19,27 @@ export function useCurrentUser() {
   const [loading, setLoading] = React.useState(!supabaseMode)
 
   const reload = React.useCallback(async () => {
-    const available = await userService.getAll()
-    let current = auth?.businessUser || null
-    if (!supabaseMode) {
-      current = await currentUserService.getCurrent()
-    } else {
-      try {
-        current = await currentUserService.getCurrent() || current
-      } catch {
-        // The provider's server-derived business user remains authoritative
-        // while its client binding is being established.
-      }
+    if (!currentUserDirectoryRequired(supabaseMode ? 'supabase' : 'mock')) {
+      const current = auth?.businessUser || null
+      setCurrentUserState(current)
+      setUsers(current ? [current] : [])
+      setLoading(false)
+      return
     }
-    setCurrentUserState(current)
-    setUsers(current
-      ? available.map(user => user.id === current.id ? current : user)
-      : available)
-    setLoading(false)
+
+    setLoading(true)
+    try {
+      const [available, current] = await Promise.all([
+        userService.getAll(),
+        currentUserService.getCurrent(),
+      ])
+      setCurrentUserState(current)
+      setUsers(current
+        ? available.map(user => user.id === current.id ? current : user)
+        : available)
+    } finally {
+      setLoading(false)
+    }
   }, [auth?.businessUser, supabaseMode])
 
   React.useEffect(() => {

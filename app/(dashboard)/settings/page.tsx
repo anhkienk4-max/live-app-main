@@ -16,6 +16,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/toast'
 import { getAuthMode } from '@/lib/auth/authMode'
+import { PageLoadError } from '@/components/ui/page-load-error'
 
 const roles: OperationalRole[] = ['host', 'support', 'technical']
 type SettingsTab = 'personal' | 'team' | 'system' | 'integrations' | 'audit'
@@ -34,17 +35,25 @@ export default function SettingsPage() {
   const [savedOperational, setSavedOperational] = React.useState<OperationalSettings | null>(null)
   const [savedSystem, setSavedSystem] = React.useState<Record<string, string | number | boolean> | null>(null)
   const [savingTab, setSavingTab] = React.useState<SettingsTab | null>(null)
+  const [settingsLoading, setSettingsLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<unknown>(null)
   const showMockSwitcher = getAuthMode() === 'mock'
     && process.env.NEXT_PUBLIC_ENABLE_MOCK_USER_SWITCHER === 'true'
 
-  React.useEffect(() => {
-    if (!currentUser) return
+  const loadSettings = React.useCallback(async () => {
+    if (!currentUser) {
+      setSettingsLoading(false)
+      return
+    }
     setActiveTab('personal')
-    void Promise.all([
-      settingsService.getPersonal(currentUser.id),
-      settingsService.getOperational(),
-      settingsService.getSystem(),
-    ]).then(([loadedPersonal, loadedOperational, loadedSystem]) => {
+    setSettingsLoading(true)
+    setLoadError(null)
+    try {
+      const [loadedPersonal, loadedOperational, loadedSystem] = await Promise.all([
+        settingsService.getPersonal(currentUser.id),
+        settingsService.getOperational(),
+        settingsService.getSystem(),
+      ])
       const localizedPersonal = { ...loadedPersonal, language }
       setPersonal(localizedPersonal)
       setSavedPersonal(localizedPersonal)
@@ -52,8 +61,14 @@ export default function SettingsPage() {
       setSavedOperational(loadedOperational)
       setSystem(loadedSystem)
       setSavedSystem(loadedSystem)
-    })
+    } catch (error) {
+      setLoadError(error)
+    } finally {
+      setSettingsLoading(false)
+    }
   }, [currentUser, language])
+
+  React.useEffect(() => { void loadSettings() }, [loadSettings])
 
   const personalDirty = !same(personal, savedPersonal)
   const operationalDirty = !same(operational, savedOperational)
@@ -158,8 +173,12 @@ export default function SettingsPage() {
     }
   }
 
-  if (loading || !currentUser || !personal || !operational || !system || !savedPersonal || !savedOperational || !savedSystem) {
+  if (loading || settingsLoading || !currentUser) {
     return <div className="py-12 text-center">{t('loading')}</div>
+  }
+  if (loadError) return <PageLoadError error={loadError} onRetry={() => { void loadSettings() }} />
+  if (!personal || !operational || !system || !savedPersonal || !savedOperational || !savedSystem) {
+    return <PageLoadError error={new Error(t('tryAgain'))} onRetry={() => { void loadSettings() }} />
   }
 
   const isLeader = hasPermission(currentUser, 'settings.leader')

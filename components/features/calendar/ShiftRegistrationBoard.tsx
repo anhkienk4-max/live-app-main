@@ -10,6 +10,7 @@ import {
   shiftRegistrationService,
   shiftService,
   userService,
+  getShiftRoleCapacities,
   isStaffedRegistration,
   type ShiftRoleCapacity,
 } from '@/lib/services/dataService'
@@ -35,6 +36,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
+import { PageLoadError } from '@/components/ui/page-load-error'
 import { ShiftDetailModal } from '@/components/features/shifts/ShiftDetailModal'
 
 type Mode = 'open' | 'mine'
@@ -59,31 +61,38 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const [filters, setFilters] = React.useState<Filters>(initialFilters)
   const [manualSelections, setManualSelections] = React.useState<Record<string, string>>({})
   const [loading, setLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<unknown>(null)
   const [busyId, setBusyId] = React.useState<string | null>(null)
   const [removalTarget, setRemovalTarget] = React.useState<{ registration: ShiftRegistration; kind: 'cancel' | 'unassign' } | null>(null)
   const [viewMode, setViewMode] = React.useState<ViewMode>('card')
   const [detailShift, setDetailShift] = React.useState<Shift | null>(null)
 
   const loadData = React.useCallback(async () => {
-    const [loadedShifts, loadedRegistrations, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers] = await Promise.all([
-      shiftService.getAll(),
-      shiftRegistrationService.getAll(),
-      brandService.getAll(),
-      platformService.getAll(),
-      campaignService.getAll(),
-      userService.getAll(),
-    ])
-    const capacityEntries = await Promise.all(loadedShifts.map(async shift =>
-      [shift.id, await shiftRegistrationService.getCapacity(shift.id)] as const
-    ))
-    setShifts(loadedShifts)
-    setRegistrations(loadedRegistrations)
-    setBrands(loadedBrands)
-    setPlatforms(loadedPlatforms)
-    setCampaigns(loadedCampaigns)
-    setUsers(loadedUsers)
-    setCapacities(Object.fromEntries(capacityEntries))
-    setLoading(false)
+    setLoadError(null)
+    try {
+      const [loadedShifts, loadedRegistrations, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers] = await Promise.all([
+        shiftService.getAll(),
+        shiftRegistrationService.getAll(),
+        brandService.getAll(),
+        platformService.getAll(),
+        campaignService.getAll(),
+        userService.getAll(),
+      ])
+      setShifts(loadedShifts)
+      setRegistrations(loadedRegistrations)
+      setBrands(loadedBrands)
+      setPlatforms(loadedPlatforms)
+      setCampaigns(loadedCampaigns)
+      setUsers(loadedUsers)
+      setCapacities(Object.fromEntries(loadedShifts.map(shift => [
+        shift.id,
+        getShiftRoleCapacities(shift, loadedRegistrations),
+      ])))
+    } catch (error) {
+      setLoadError(error)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   React.useEffect(() => { void loadData() }, [loadData])
@@ -172,6 +181,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   )
 
   if (loading || userLoading || !currentUser) return <div className="py-12 text-center">{t('loading')}</div>
+  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
 
   return (
     <div className="space-y-5">

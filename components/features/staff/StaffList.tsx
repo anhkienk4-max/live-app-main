@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
 import { StaffFormDialog } from './StaffFormDialog'
+import { PageLoadError } from '@/components/ui/page-load-error'
 
 type StaffFilters = {
   permission: 'all' | SystemPermission
@@ -33,6 +34,7 @@ export function StaffList() {
   const [shifts, setShifts] = React.useState<Shift[]>([])
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   const [loading, setLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<unknown>(null)
   const [selectedStaff, setSelectedStaff] = React.useState<User | null>(null)
   const [detailStaff, setDetailStaff] = React.useState<User | null>(null)
   const [statusTarget, setStatusTarget] = React.useState<User | null>(null)
@@ -48,17 +50,23 @@ export function StaffList() {
 
   const loadStaff = React.useCallback(async () => {
     setLoading(true)
-    const [loadedStaff, loadedShifts, loadedRegistrations] = await Promise.all([
-      showArchived && canManage && currentUser
-        ? userService.getAllIncludingDeleted(currentUser.id)
-        : userService.getAll(),
-      shiftService.getAll(),
-      shiftRegistrationService.getAll(),
-    ])
-    setStaff(loadedStaff)
-    setShifts(loadedShifts)
-    setRegistrations(loadedRegistrations)
-    setLoading(false)
+    setLoadError(null)
+    try {
+      const [loadedStaff, loadedShifts, loadedRegistrations] = await Promise.all([
+        showArchived && canManage && currentUser
+          ? userService.getAllIncludingDeleted(currentUser.id)
+          : userService.getAll(),
+        shiftService.getAll(),
+        shiftRegistrationService.getAll(),
+      ])
+      setStaff(loadedStaff)
+      setShifts(loadedShifts)
+      setRegistrations(loadedRegistrations)
+    } catch (error) {
+      setLoadError(error)
+    } finally {
+      setLoading(false)
+    }
   }, [canManage, currentUser, showArchived])
 
   React.useEffect(() => {
@@ -212,6 +220,7 @@ export function StaffList() {
   ]
 
   if (loading) return <div className="py-12 text-center">{t('loading')}</div>
+  if (loadError) return <PageLoadError error={loadError} onRetry={() => { void loadStaff() }} />
 
   return <>
     <div className="mb-6 flex flex-wrap items-center justify-between gap-3">

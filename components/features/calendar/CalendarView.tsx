@@ -53,6 +53,7 @@ import {
   campaignsToNameMap,
   usersToNameMap,
 } from '@/lib/utils/scheduleExportUtils'
+import { PageLoadError } from '@/components/ui/page-load-error'
 
 export function CalendarView({ createRequest = 0 }: { createRequest?: number }) {
   const { currentUser } = useCurrentUser()
@@ -69,6 +70,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   const [reports, setReports] = React.useState<Report[]>([])
   const [loading, setLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<unknown>(null)
   const [showForm, setShowForm] = React.useState(false)
   const [selectedShift, setSelectedShift] = React.useState<Shift | null>(null)
   const [selectedDay, setSelectedDay] = React.useState<Date | null>(null)
@@ -87,28 +89,9 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   })
 
   const loadData = React.useCallback(async () => {
-    const [shiftsData, brandsData, platformsData, campaignsData, usersData, registrationsData, reportsData] = await Promise.all([
-      shiftService.getAll(),
-      brandService.getAll(),
-      platformService.getAll(),
-      campaignService.getAll(),
-      userService.getAll(),
-      shiftRegistrationService.getAll(),
-      reportService.getAll(),
-    ])
-    setShifts(shiftsData)
-    setBrands(brandsData)
-    setPlatforms(platformsData)
-    setCampaigns(campaignsData)
-    setUsers(usersData)
-    setRegistrations(registrationsData)
-    setReports(reportsData)
-    setLoading(false)
-  }, [])
-
-  React.useEffect(() => {
-    let active = true
-    const fetchData = async () => {
+    setLoading(true)
+    setLoadError(null)
+    try {
       const [shiftsData, brandsData, platformsData, campaignsData, usersData, registrationsData, reportsData] = await Promise.all([
         shiftService.getAll(),
         brandService.getAll(),
@@ -118,22 +101,24 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         shiftRegistrationService.getAll(),
         reportService.getAll(),
       ])
-      if (active) {
-        setShifts(shiftsData)
-        setBrands(brandsData)
-        setPlatforms(platformsData)
-        setCampaigns(campaignsData)
-        setUsers(usersData)
-        setRegistrations(registrationsData)
-        setReports(reportsData)
-        setLoading(false)
-      }
-    }
-    void fetchData()
-    return () => {
-      active = false
+      setShifts(shiftsData)
+      setBrands(brandsData)
+      setPlatforms(platformsData)
+      setCampaigns(campaignsData)
+      setUsers(usersData)
+      setRegistrations(registrationsData)
+      setReports(reportsData)
+    } catch (error: unknown) {
+      setLoadError(error)
+    } finally {
+      setLoading(false)
     }
   }, [])
+
+  React.useEffect(() => {
+    const frame = window.requestAnimationFrame(() => { void loadData() })
+    return () => window.cancelAnimationFrame(frame)
+  }, [loadData])
 
   React.useEffect(() => {
     if (createRequest > 0) {
@@ -286,6 +271,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   }
 
   if (loading) return <div className="text-center py-12">{t('loading')}</div>
+  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoadError(null); setLoading(true); void loadData() }} />
 
   return (
     <div className="min-w-0 space-y-6">
