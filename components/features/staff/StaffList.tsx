@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { CheckCircle2, Eye, Pencil, Power, PowerOff, UserPlus, XCircle } from 'lucide-react'
+import { Archive, CheckCircle2, Eye, Pencil, Power, PowerOff, RotateCcw, UserPlus, XCircle } from 'lucide-react'
 import { isStaffedRegistration, shiftRegistrationService, shiftService, userService } from '@/lib/services/dataService'
 import { OperationalRole, Shift, ShiftRegistration, SystemPermission, User } from '@/lib/types/database.types'
 import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
@@ -36,6 +36,9 @@ export function StaffList() {
   const [selectedStaff, setSelectedStaff] = React.useState<User | null>(null)
   const [detailStaff, setDetailStaff] = React.useState<User | null>(null)
   const [statusTarget, setStatusTarget] = React.useState<User | null>(null)
+  const [archiveTarget, setArchiveTarget] = React.useState<User | null>(null)
+  const [restoreTarget, setRestoreTarget] = React.useState<User | null>(null)
+  const [showArchived, setShowArchived] = React.useState(false)
   const [isFormOpen, setIsFormOpen] = React.useState(false)
   const [filters, setFilters] = React.useState<StaffFilters>(initialFilters)
   const { toast } = useToast()
@@ -46,7 +49,9 @@ export function StaffList() {
   const loadStaff = React.useCallback(async () => {
     setLoading(true)
     const [loadedStaff, loadedShifts, loadedRegistrations] = await Promise.all([
-      userService.getAll(),
+      showArchived && canManage && currentUser
+        ? userService.getAllIncludingDeleted(currentUser.id)
+        : userService.getAll(),
       shiftService.getAll(),
       shiftRegistrationService.getAll(),
     ])
@@ -54,9 +59,12 @@ export function StaffList() {
     setShifts(loadedShifts)
     setRegistrations(loadedRegistrations)
     setLoading(false)
-  }, [])
+  }, [canManage, currentUser, showArchived])
 
-  React.useEffect(() => { void loadStaff() }, [loadStaff])
+  React.useEffect(() => {
+    const frame = window.requestAnimationFrame(() => { void loadStaff() })
+    return () => window.cancelAnimationFrame(frame)
+  }, [loadStaff])
 
   const approveAccount = async (user: User) => {
     if (!canManage) return
@@ -77,10 +85,11 @@ export function StaffList() {
       ? staff.filter(user => user.id === currentUser?.id)
       : staff
     return permitted
+      .filter(user => showArchived ? Boolean(user.archived_at || user.deleted_at) : !user.archived_at && !user.deleted_at)
       .filter(user => filters.permission === 'all' || resolveSystemPermission(user) === filters.permission)
       .filter(user => filters.role === 'all' || user.operational_roles?.includes(filters.role))
       .filter(user => filters.status === 'all' || user.status === filters.status)
-  }, [currentUser, filters, staff])
+  }, [currentUser, filters, showArchived, staff])
 
   const assignedShifts = React.useCallback((userId: string) => {
     const registeredShiftIds = new Set(registrations
@@ -112,11 +121,39 @@ export function StaffList() {
       toast({ title: t('error'), description: t('permissionDenied'), variant: 'destructive' })
       return
     }
-    const status = statusTarget.status === 'active' ? 'inactive' : 'active'
-    await userService.update(statusTarget.id, { status })
-    toast({ title: t('success'), description: t(status === 'active' ? 'activate' : 'deactivate'), variant: 'success' })
-    setStatusTarget(null)
-    await loadStaff()
+    try {
+      const status = statusTarget.status === 'active' ? 'inactive' : 'active'
+      await userService.update(statusTarget.id, { status })
+      toast({ title: t('success'), description: t(status === 'active' ? 'activate' : 'deactivate'), variant: 'success' })
+      setStatusTarget(null)
+      await loadStaff()
+    } catch {
+      toast({ title: t('error'), description: t('permissionDenied'), variant: 'destructive' })
+    }
+  }
+
+  const archiveStaff = async () => {
+    if (!archiveTarget || !currentUser || !canManage) return
+    try {
+      await userService.archive(archiveTarget.id, currentUser.id, 'Archived from Staff Management')
+      toast({ title: t('success'), description: t('archived'), variant: 'success' })
+      setArchiveTarget(null)
+      await loadStaff()
+    } catch {
+      toast({ title: t('error'), description: t('permissionDenied'), variant: 'destructive' })
+    }
+  }
+
+  const restoreStaff = async () => {
+    if (!restoreTarget || !currentUser || !canManage) return
+    try {
+      await userService.restore(restoreTarget.id, currentUser.id, 'Restored from Staff Management')
+      toast({ title: t('success'), description: t('restored'), variant: 'success' })
+      setRestoreTarget(null)
+      await loadStaff()
+    } catch {
+      toast({ title: t('error'), description: t('permissionDenied'), variant: 'destructive' })
+    }
   }
 
   const columns: Column<User>[] = [
@@ -144,6 +181,7 @@ export function StaffList() {
     },
     { header: t('department'), accessor: 'department', cell: value => value || <span className="text-muted-foreground">—</span> },
     { header: t('status'), accessor: row => <Badge variant={row.status === 'active' ? 'default' : 'secondary'}>{t(row.status)}</Badge> },
+    { header: t('accountStatus'), accessor: row => <Badge variant="outline">{t(row.account_status === 'active' ? 'active' : row.account_status === 'rejected' ? 'rejected' : 'pending')}</Badge> },
     {
       header: t('workload'),
       accessor: row => operationalRoles.map(role => `${t(role)}: ${workload(row.id, role)}`).join(' · '),
@@ -154,14 +192,19 @@ export function StaffList() {
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="icon" aria-label={t('viewDetails')} onClick={() => setDetailStaff(row)}><Eye className="h-4 w-4" /></Button>
           {canManage && <>
+            {row.archived_at || row.deleted_at ? (
+              <Button variant="ghost" size="icon" aria-label={t('restore')} onClick={() => setRestoreTarget(row)} data-testid={`restore-staff-${row.id}`}><RotateCcw className="h-4 w-4 text-green-600" /></Button>
+            ) : <>
             {row.account_status === 'pending_approval' && <>
               <Button variant="ghost" size="icon" aria-label={t('approvePendingAccount')} onClick={() => void approveAccount(row)} data-testid={`approve-staff-${row.id}`}><CheckCircle2 className="h-4 w-4 text-green-600" /></Button>
               <Button variant="ghost" size="icon" aria-label={t('rejectPendingAccount')} onClick={() => void rejectAccount(row)} data-testid={`reject-staff-${row.id}`}><XCircle className="h-4 w-4 text-red-600" /></Button>
             </>}
             <Button variant="ghost" size="icon" aria-label={t('edit')} onClick={() => { setSelectedStaff(row); setIsFormOpen(true) }} data-testid={`edit-staff-${row.id}`}><Pencil className="h-4 w-4" /></Button>
-            <Button variant="ghost" size="icon" aria-label={t(row.status === 'active' ? 'deactivate' : 'activate')} onClick={() => setStatusTarget(row)} data-testid={`toggle-staff-${row.id}`}>
+            {row.id !== currentUser?.id && <Button variant="ghost" size="icon" aria-label={t(row.status === 'active' ? 'deactivate' : 'activate')} onClick={() => setStatusTarget(row)} data-testid={`toggle-staff-${row.id}`}>
               {row.status === 'active' ? <PowerOff className="h-4 w-4 text-amber-600" /> : <Power className="h-4 w-4 text-green-600" />}
-            </Button>
+            </Button>}
+            {row.id !== currentUser?.id && <Button variant="ghost" size="icon" aria-label={t('archive')} onClick={() => setArchiveTarget(row)} data-testid={`archive-staff-${row.id}`}><Archive className="h-4 w-4 text-red-600" /></Button>}
+            </>}
           </>}
         </div>
       ),
@@ -173,7 +216,10 @@ export function StaffList() {
   return <>
     <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
       <div><h2 className="text-2xl font-bold">{t('staffManagement')}</h2><p className="mt-1 text-muted-foreground">{t('staffManagementSubtitle')}</p></div>
-      {canManage && <Button onClick={() => { setSelectedStaff(null); setIsFormOpen(true) }} data-testid="add-staff-btn"><UserPlus className="mr-2 h-4 w-4" />{t('addStaff')}</Button>}
+      {canManage && <div className="flex gap-2">
+        <Button variant="outline" onClick={() => setShowArchived(value => !value)} data-testid="toggle-archived-staff"><Archive className="mr-2 h-4 w-4" />{t(showArchived ? 'active' : 'archivedRecords')}</Button>
+        {!showArchived && <Button onClick={() => { setSelectedStaff(null); setIsFormOpen(true) }} data-testid="add-staff-btn"><UserPlus className="mr-2 h-4 w-4" />{t('addStaff')}</Button>}
+      </div>}
     </div>
 
     <DataTable
@@ -205,6 +251,23 @@ export function StaffList() {
       onConfirm={updateStatus}
       confirmText={t(statusTarget?.status === 'active' ? 'deactivate' : 'activate')}
       variant={statusTarget?.status === 'active' ? 'destructive' : 'default'}
+    />
+    <AlertDialog
+      open={Boolean(archiveTarget)}
+      onOpenChange={open => !open && setArchiveTarget(null)}
+      title={t('archive')}
+      description={archiveTarget?.full_name || ''}
+      onConfirm={archiveStaff}
+      confirmText={t('archive')}
+      variant="destructive"
+    />
+    <AlertDialog
+      open={Boolean(restoreTarget)}
+      onOpenChange={open => !open && setRestoreTarget(null)}
+      title={t('restoreRecord')}
+      description={restoreTarget?.full_name || ''}
+      onConfirm={restoreStaff}
+      confirmText={t('restore')}
     />
   </>
 }

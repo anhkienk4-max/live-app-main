@@ -240,21 +240,6 @@ test('Supabase mode routes directory and master-data reads without mock fallback
     assert.deepEqual((await platformService.getAll()).map(platform => platform.id), ['remote-platform'])
     assert.deepEqual((await campaignService.getAll()).map(campaign => campaign.id), ['remote-campaign'])
     assert.equal((await brandService.getById('b1')), null)
-    await assert.rejects(
-      userService.create({
-        email: 'blocked@example.test',
-        full_name: 'Blocked User',
-        role: 'staff',
-        system_permission: 'member',
-        operational_roles: [],
-        status: 'active',
-        account_status: 'active',
-        email_verified: true,
-        auth_provider: 'email',
-        join_date: '2026-08-14',
-      }),
-      /read-only cutover/,
-    )
   })
 })
 
@@ -289,6 +274,112 @@ test('Admin create, update, archive and restore persist through the Supabase rep
     assert.ok((await campaignService.archive(campaign.id, '1', 'test'))?.archived_at)
     assert.equal((await campaignService.restore(campaign.id, '1', 'test'))?.archived_at, undefined)
   })
+})
+
+test('Staff browser save calls update_staff_member with the exact RPC contract and maps its row', async () => {
+  const calls: Array<{ name: string; args: Record<string, unknown> }> = []
+  const rpcRow = businessUser({
+    id: '5',
+    email: 'support1@livestream.com',
+    full_name: 'Updated Support',
+    role: 'staff',
+    system_permission: 'member',
+    operational_roles: ['support', 'technical'],
+  })
+  const client = {
+    rpc(name: string, args: Record<string, unknown>) {
+      calls.push({ name, args })
+      return {
+        async maybeSingle() {
+          return { data: rpcRow, error: null }
+        },
+      }
+    },
+  } as unknown as SupabaseClient
+  const repository = createSupabaseMasterDataRepository(client)
+
+  const updated = await repository.businessUsers.update('5', {
+    full_name: 'Updated Support',
+    system_permission: 'member',
+    operational_roles: ['support', 'technical'],
+    phone: undefined,
+  })
+
+  assert.deepEqual(calls, [{
+    name: 'update_staff_member',
+    args: {
+      p_user_id: '5',
+      p_data: {
+        full_name: 'Updated Support',
+        system_permission: 'member',
+        operational_roles: ['support', 'technical'],
+      },
+    },
+  }])
+  assert.equal('auth_user_id' in (calls[0].args.p_data as Record<string, unknown>), false)
+  assert.equal(updated?.full_name, 'Updated Support')
+  assert.equal(updated?.system_permission, 'member')
+  assert.deepEqual(updated?.operational_roles, ['support', 'technical'])
+})
+
+test('Staff browser create calls create_staff_member with the exact RPC contract and maps its row', async () => {
+  const calls: Array<{ name: string; args: Record<string, unknown> }> = []
+  const rpcRow = businessUser({
+    id: 'new-staff',
+    auth_user_id: null,
+    email: 'new.staff@example.test',
+    full_name: 'New Staff',
+    role: 'staff',
+    system_permission: 'member',
+    operational_roles: ['host'],
+    department: null,
+  })
+  const client = {
+    rpc(name: string, args: Record<string, unknown>) {
+      calls.push({ name, args })
+      return {
+        async single() {
+          return { data: rpcRow, error: null }
+        },
+      }
+    },
+  } as unknown as SupabaseClient
+  const repository = createSupabaseMasterDataRepository(client)
+
+  const created = await repository.businessUsers.create({
+    email: 'new.staff@example.test',
+    full_name: 'New Staff',
+    role: 'staff',
+    system_permission: 'member',
+    operational_roles: ['host'],
+    department: undefined,
+    status: 'active',
+    account_status: 'active',
+    email_verified: false,
+    auth_provider: 'email',
+    join_date: '2026-08-24',
+  })
+
+  assert.deepEqual(calls, [{
+    name: 'create_staff_member',
+    args: {
+      p_data: {
+        email: 'new.staff@example.test',
+        full_name: 'New Staff',
+        system_permission: 'member',
+        operational_roles: ['host'],
+        status: 'active',
+        account_status: 'active',
+        email_verified: false,
+        auth_provider: 'email',
+        join_date: '2026-08-24',
+      },
+    },
+  }])
+  assert.equal('auth_user_id' in (calls[0].args.p_data as Record<string, unknown>), false)
+  assert.equal(created.id, 'new-staff')
+  assert.equal(created.auth_user_id, undefined)
+  assert.equal(created.full_name, 'New Staff')
 })
 
 test('permission and RLS failures surface and never fall back to mock rows', async () => {

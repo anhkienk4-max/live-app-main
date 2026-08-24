@@ -20,9 +20,21 @@ interface StaffFormDialogProps {
   onSuccess: () => void
 }
 
+interface StaffFormData {
+  full_name: string
+  email: string
+  phone: string
+  department: string
+  role: UserRole
+  system_permission: SystemPermission
+  operational_roles: OperationalRole[]
+  status: 'active' | 'inactive'
+  avatar_url: string
+}
+
 export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffFormDialogProps) {
   const [loading, setLoading] = React.useState(false)
-  const [formData, setFormData] = React.useState({
+  const [formData, setFormData] = React.useState<StaffFormData>({
     full_name: '',
     email: '',
     phone: '',
@@ -36,10 +48,10 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
   const { toast } = useToast()
   const { currentUser } = useCurrentUser()
   const { t } = useTranslation()
+  const isSelf = Boolean(staff && currentUser?.id === staff.id)
 
   React.useEffect(() => {
-    if (staff) {
-      setFormData({
+    const nextFormData: StaffFormData = staff ? {
         full_name: staff.full_name,
         email: staff.email,
         phone: staff.phone || '',
@@ -49,9 +61,7 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
         operational_roles: staff.operational_roles || [],
         status: staff.status,
         avatar_url: staff.avatar_url || '',
-      })
-    } else {
-      setFormData({
+      } : {
         full_name: '',
         email: '',
         phone: '',
@@ -61,8 +71,9 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
         operational_roles: [],
         status: 'active',
         avatar_url: '',
-      })
-    }
+      }
+    const frame = window.requestAnimationFrame(() => setFormData(nextFormData))
+    return () => window.cancelAnimationFrame(frame)
   }, [staff, open])
 
   const toggleOperationalRole = (role: OperationalRole) => {
@@ -90,7 +101,12 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
       setLoading(true)
       const payload = { ...formData, full_name: formData.full_name.trim(), email: normalizedEmail }
       if (staff) {
-        await userService.update(staff.id, payload)
+        await userService.update(staff.id, isSelf ? {
+          full_name: payload.full_name,
+          phone: payload.phone,
+          department: payload.department,
+          avatar_url: payload.avatar_url,
+        } : payload)
         toast({ title: t('success'), description: t('staffUpdated'), variant: 'success' })
       } else {
         // Generate avatar URL if not provided
@@ -105,7 +121,11 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
       onSuccess()
       onOpenChange(false)
     } catch (error) {
-      toast({ title: t('error'), description: t('staffSaveFailed'), variant: 'destructive' })
+      const message = error instanceof Error && error.message.trim()
+        ? `${t('staffSaveFailed')} (${error.message})`
+        : t('staffSaveFailed')
+      console.error('Staff save failed', error)
+      toast({ title: t('error'), description: message, variant: 'destructive' })
     } finally {
       setLoading(false)
     }
@@ -138,6 +158,7 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
               <Input
                 required
                 type="email"
+                disabled={isSelf}
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 placeholder="john@example.com"
@@ -164,7 +185,7 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
 
             <div className="space-y-2">
               <label className="text-sm font-medium">{t('systemPermissions')} *</label>
-              <Select value={formData.system_permission} onValueChange={(value: SystemPermission) => setFormData({ ...formData, system_permission: value, role: value === 'member' ? 'staff' : value })}>
+              <Select disabled={isSelf} value={formData.system_permission} onValueChange={(value: SystemPermission) => setFormData({ ...formData, system_permission: value, role: value === 'member' ? 'staff' : value })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -178,7 +199,7 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
 
             <div className="space-y-2">
               <label className="text-sm font-medium">{t('status')} *</label>
-              <Select value={formData.status} onValueChange={(value: 'active' | 'inactive') => setFormData({ ...formData, status: value })}>
+              <Select disabled={isSelf} value={formData.status} onValueChange={(value: 'active' | 'inactive') => setFormData({ ...formData, status: value })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
