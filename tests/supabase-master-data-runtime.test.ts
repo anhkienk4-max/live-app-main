@@ -276,6 +276,52 @@ test('Admin create, update, archive and restore persist through the Supabase rep
   })
 })
 
+test('Staff browser save calls update_staff_member with the exact RPC contract and maps its row', async () => {
+  const calls: Array<{ name: string; args: Record<string, unknown> }> = []
+  const rpcRow = businessUser({
+    id: '5',
+    email: 'support1@livestream.com',
+    full_name: 'Updated Support',
+    role: 'staff',
+    system_permission: 'member',
+    operational_roles: ['support', 'technical'],
+  })
+  const client = {
+    rpc(name: string, args: Record<string, unknown>) {
+      calls.push({ name, args })
+      return {
+        async maybeSingle() {
+          return { data: rpcRow, error: null }
+        },
+      }
+    },
+  } as unknown as SupabaseClient
+  const repository = createSupabaseMasterDataRepository(client)
+
+  const updated = await repository.businessUsers.update('5', {
+    full_name: 'Updated Support',
+    system_permission: 'member',
+    operational_roles: ['support', 'technical'],
+    phone: undefined,
+  })
+
+  assert.deepEqual(calls, [{
+    name: 'update_staff_member',
+    args: {
+      p_user_id: '5',
+      p_data: {
+        full_name: 'Updated Support',
+        system_permission: 'member',
+        operational_roles: ['support', 'technical'],
+      },
+    },
+  }])
+  assert.equal('auth_user_id' in (calls[0].args.p_data as Record<string, unknown>), false)
+  assert.equal(updated?.full_name, 'Updated Support')
+  assert.equal(updated?.system_permission, 'member')
+  assert.deepEqual(updated?.operational_roles, ['support', 'technical'])
+})
+
 test('permission and RLS failures surface and never fall back to mock rows', async () => {
   await withEnvironment(async () => {
     setAuthMode('supabase')

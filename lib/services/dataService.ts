@@ -437,10 +437,28 @@ export const userService = {
   async update(
     id: string,
     data: Partial<User>,
-    actorId = currentUserService.getId(),
+    actorId?: string,
   ): Promise<User | null> {
-    const actor = requiredActiveStaffActorFor(actorId)
-    const existing = getAuthMode() === 'supabase'
+    const systemPermission = data.system_permission
+    const normalizedData: Partial<User> = {
+      ...data,
+      ...(data.email === undefined ? {} : { email: data.email.trim().toLowerCase() }),
+      ...(data.full_name === undefined ? {} : { full_name: data.full_name.trim() }),
+      ...(data.operational_roles === undefined ? {} : { operational_roles: [...data.operational_roles] }),
+      ...(systemPermission === undefined ? {} : {
+        system_permission: systemPermission,
+        role: systemPermission === 'member' ? 'staff' : systemPermission,
+      }),
+    }
+    const supabaseMode = getAuthMode() === 'supabase'
+    if (supabaseMode && actorId === undefined) {
+      // The RPC derives and authorizes the actor from auth.uid(). Do not block
+      // the browser write on the transient client-side identity projection.
+      return getSupabaseMasterDataRepository().businessUsers.update(id, normalizedData)
+    }
+    const resolvedActorId = actorId ?? currentUserService.getId()
+    const actor = requiredActiveStaffActorFor(resolvedActorId)
+    const existing = supabaseMode
       ? await getSupabaseMasterDataRepository().businessUsers.getById(id)
       : users.find(user => user.id === id) || null
     if (!existing) return null
@@ -448,7 +466,7 @@ export const userService = {
     const changedFields = Object.entries(data)
       .filter(([key, value]) => value !== undefined && JSON.stringify(existing[key as keyof User]) !== JSON.stringify(value))
       .map(([key]) => key as keyof User)
-    const isOwnProfileUpdate = id === actorId && changedFields.every(field => ownProfileFields.has(field))
+    const isOwnProfileUpdate = id === resolvedActorId && changedFields.every(field => ownProfileFields.has(field))
     if (!isOwnProfileUpdate && !hasPermission(actor, 'staff.manage')) {
       throw new Error('Only Admin can update staff records.')
     }
@@ -462,28 +480,17 @@ export const userService = {
       'archived_at',
       'archived_by',
     ])
-    if (id === actorId && changedFields.some(field => selfPrivilegeFields.has(field))) {
+    if (id === resolvedActorId && changedFields.some(field => selfPrivilegeFields.has(field))) {
       throw new Error('Self privilege or account-status changes are not allowed.')
     }
-    const systemPermission = data.system_permission
-    const normalizedData: Partial<User> = {
-      ...data,
-      ...(data.email === undefined ? {} : { email: data.email.trim().toLowerCase() }),
-      ...(data.full_name === undefined ? {} : { full_name: data.full_name.trim() }),
-      ...(data.operational_roles === undefined ? {} : { operational_roles: [...data.operational_roles] }),
-      ...(systemPermission === undefined ? {} : {
-        system_permission: systemPermission,
-        role: systemPermission === 'member' ? 'staff' : systemPermission,
-      }),
-    }
-    if (getAuthMode() === 'supabase') {
+    if (supabaseMode) {
       return getSupabaseMasterDataRepository().businessUsers.update(id, normalizedData)
     }
     const index = users.findIndex(user => user.id === id)
     const before = { ...users[index] }
     users[index] = { ...users[index], ...normalizedData, updated_at: new Date().toISOString() }
     syncMockAuthAccount(users[index])
-    audit('staff', 'update', 'staff', id, users[index].full_name, { actorId, before, after: { ...users[index] } })
+    audit('staff', 'update', 'staff', id, users[index].full_name, { actorId: resolvedActorId, before, after: { ...users[index] } })
     return Promise.resolve(users[index])
   },
 

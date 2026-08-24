@@ -120,8 +120,12 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
       }
       onSuccess()
       onOpenChange(false)
-    } catch {
-      toast({ title: t('error'), description: t('staffSaveFailed'), variant: 'destructive' })
+    } catch (error) {
+      const message = error instanceof Error && error.message.trim()
+        ? `${t('staffSaveFailed')} (${error.message})`
+        : t('staffSaveFailed')
+      console.error('Staff save failed', error)
+      toast({ title: t('error'), description: message, variant: 'destructive' })
     } finally {
       setLoading(false)
     }

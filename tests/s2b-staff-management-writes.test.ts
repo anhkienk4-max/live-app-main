@@ -188,6 +188,55 @@ test('Supabase mode routes every Staff mutation through the repository and never
   }
 })
 
+test('Supabase browser save reaches the RPC repository without a transient client identity binding', async () => {
+  const previousNodeEnv = process.env.NODE_ENV
+  const previousMockFlag = process.env.NEXT_PUBLIC_USE_MOCK_DATA
+  let updateCall: { id: string; data: Partial<User> } | null = null
+  const target = remoteUser()
+  const businessUsers: SupabaseMasterDataRepository['businessUsers'] = {
+    async getAll() { return [target] },
+    async getById() { return target },
+    async getByAuthIdentity() { return null },
+    async create() { return target },
+    async update(id, data) {
+      updateCall = { id, data }
+      return { ...target, ...data }
+    },
+    async approvePendingAccount() { return target },
+    async rejectPendingAccount() { return target },
+    async archive() { return target },
+    async restore() { return target },
+  }
+
+  try {
+    setAuthMode('supabase')
+    setSupabaseMasterDataRepositoryForTests({ businessUsers } as unknown as SupabaseMasterDataRepository)
+    currentUserService.clearAuthenticatedUser()
+
+    const updated = await userService.update(target.id, {
+      full_name: 'Updated through RPC',
+      system_permission: 'leader',
+      operational_roles: ['technical'],
+    })
+
+    assert.deepEqual(updateCall, {
+      id: target.id,
+      data: {
+        full_name: 'Updated through RPC',
+        system_permission: 'leader',
+        role: 'leader',
+        operational_roles: ['technical'],
+      },
+    })
+    assert.equal(updated?.full_name, 'Updated through RPC')
+  } finally {
+    setSupabaseMasterDataRepositoryForTests(undefined)
+    currentUserService.clearAuthenticatedUser()
+    process.env.NODE_ENV = previousNodeEnv
+    process.env.NEXT_PUBLIC_USE_MOCK_DATA = previousMockFlag
+  }
+})
+
 test('S2B migration enforces server-derived Admin RPCs and preserves auth linkage', async () => {
   const sql = await readFile(migrationUrl, 'utf8')
   const rpcNames = [
