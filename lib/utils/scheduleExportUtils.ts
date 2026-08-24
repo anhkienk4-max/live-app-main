@@ -1,4 +1,4 @@
-﻿/**
+/**
  * S4D — Schedule Export Utilities
  *
  * Pure, side-effect-free helpers for building operational schedule export rows
@@ -6,7 +6,9 @@
  *
  * Design notes
  * —————————————
- * - Column order is deterministic (see COLUMN_ORDER constant).
+ * - Column order is deterministic (see SCHEDULE_EXPORT_COLUMN_ORDER constant).
+ * - Canonical actual staffing comes from staffed ShiftRegistrations / assigned users.
+ * - Imported schedule labels remain separate metadata under Scheduled * Names.
  * - Dates and times are written as TEXT strings so Excel never auto-converts
  *   them to date serials (regression guard for 2026-08-25, 14:00-16:00, etc.).
  * - Vietnamese text: SheetJS writes UTF-8 natively; no special handling needed.
@@ -16,7 +18,7 @@
 
 import * as XLSX from 'xlsx'
 import { format } from 'date-fns'
-import type { Shift, Brand, Platform, Campaign } from '@/lib/types/database.types'
+import type { Shift, Brand, Platform, Campaign, User, ShiftRegistration } from '@/lib/types/database.types'
 import { resolveShiftDateTime } from '@/lib/utils/shiftUtils'
 
 // --- Row shape ---------------------------------------------------------------
@@ -50,12 +52,18 @@ export interface ScheduleExportRow {
   'Campaign': string
   'Title': string
   'Studio': string
-  /** Comma-separated host display names from the import schedule */
-  'Host Names': string
-  /** Comma-separated assistant display names from the import schedule */
-  'Assistant Names': string
-  /** Comma-separated technical display names from the import schedule */
-  'Technical Names': string
+  /** Comma-separated assigned host full names from staffed registrations / assigned host_id */
+  'Assigned Host Names': string
+  /** Comma-separated assigned support full names from staffed registrations / assigned support_id */
+  'Assigned Support Names': string
+  /** Comma-separated assigned technical full names from staffed registrations / assigned technical_id */
+  'Assigned Technical Names': string
+  /** Comma-separated host display names from the imported schedule */
+  'Scheduled Host Names': string
+  /** Comma-separated assistant display names from the imported schedule */
+  'Scheduled Support Names': string
+  /** Comma-separated technical display names from the imported schedule */
+  'Scheduled Technical Names': string
   'Required Host Count': number
   'Required Support Count': number
   'Required Technical Count': number
@@ -80,9 +88,12 @@ export const SCHEDULE_EXPORT_COLUMN_ORDER: ReadonlyArray<keyof ScheduleExportRow
   'Campaign',
   'Title',
   'Studio',
-  'Host Names',
-  'Assistant Names',
-  'Technical Names',
+  'Assigned Host Names',
+  'Assigned Support Names',
+  'Assigned Technical Names',
+  'Scheduled Host Names',
+  'Scheduled Support Names',
+  'Scheduled Technical Names',
   'Required Host Count',
   'Required Support Count',
   'Required Technical Count',
@@ -92,20 +103,58 @@ export const SCHEDULE_EXPORT_COLUMN_ORDER: ReadonlyArray<keyof ScheduleExportRow
   'Notes',
 ]
 
+// --- Helper: Staffed registration predicate ---------------------------------
+
+export const isStaffedRegistrationRecord = (
+  registration: Pick<ShiftRegistration, 'status'>,
+): boolean =>
+  registration.status === 'approved' || registration.status === 'manually_assigned'
+
 // --- Row builder ------------------------------------------------------------
 
 /**
  * Builds export rows for the given shifts.
- * Accepts entity-name Maps (id to name) for brand / platform / campaign lookup.
- * Shifts with unknown brand/platform fall back to the raw ID so data is never
- * silently dropped.
+ * Accepts entity-name Maps (id to name) for brand / platform / campaign / user lookup
+ * and shift registrations for resolving canonical actual assigned staffing.
  */
 export function buildScheduleExportRows(
   shifts: Shift[],
   brands: Map<string, string>,
   platforms: Map<string, string>,
   campaigns: Map<string, string>,
+  users: Map<string, string> | User[] = new Map(),
+  registrations: ShiftRegistration[] = [],
 ): ScheduleExportRow[] {
+  const userMap: Map<string, string> = users instanceof Map
+    ? users
+    : new Map(users.map(u => [u.id, u.full_name]))
+
+  const getUserName = (id?: string): string => {
+    if (!id) return ''
+    return userMap.get(id) ?? id
+  }
+
+  const getAssignedNames = (
+    shift: Shift,
+    role: 'host' | 'support' | 'technical',
+    fallbackId?: string,
+  ): string => {
+    const ids = new Set<string>()
+    if (fallbackId) {
+      ids.add(fallbackId)
+    }
+    for (const reg of registrations) {
+      if (
+        reg.shift_id === shift.id &&
+        reg.operational_role === role &&
+        isStaffedRegistrationRecord(reg)
+      ) {
+        ids.add(reg.user_id)
+      }
+    }
+    return [...ids].map(getUserName).filter(Boolean).join(', ')
+  }
+
   return shifts.map(shift => {
     const resolved = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time)
     return {
@@ -122,9 +171,12 @@ export function buildScheduleExportRows(
       'Campaign': shift.campaign_id ? (campaigns.get(shift.campaign_id) ?? shift.campaign_id) : '',
       'Title': shift.title ?? '',
       'Studio': shift.studio ?? '',
-      'Host Names': (shift.host_names ?? []).join(', '),
-      'Assistant Names': (shift.assistant_names ?? []).join(', '),
-      'Technical Names': (shift.technical_names ?? []).join(', '),
+      'Assigned Host Names': getAssignedNames(shift, 'host', shift.host_id),
+      'Assigned Support Names': getAssignedNames(shift, 'support', shift.support_id),
+      'Assigned Technical Names': getAssignedNames(shift, 'technical', shift.technical_id),
+      'Scheduled Host Names': (shift.host_names ?? []).join(', '),
+      'Scheduled Support Names': (shift.assistant_names ?? []).join(', '),
+      'Scheduled Technical Names': (shift.technical_names ?? []).join(', '),
       'Required Host Count': shift.required_host_count ?? 1,
       'Required Support Count': shift.required_support_count ?? 1,
       'Required Technical Count': shift.required_technical_count ?? 1,
@@ -290,4 +342,9 @@ export function platformsToNameMap(platforms: Platform[]): Map<string, string> {
 /** Builds a Map<id, name> from Campaign[] for passing to buildScheduleExportRows. */
 export function campaignsToNameMap(campaigns: Campaign[]): Map<string, string> {
   return new Map(campaigns.map(c => [c.id, c.name]))
+}
+
+/** Builds a Map<id, full_name> from User[] for passing to buildScheduleExportRows. */
+export function usersToNameMap(users: User[]): Map<string, string> {
+  return new Map(users.map(u => [u.id, u.full_name]))
 }

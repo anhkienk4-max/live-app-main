@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import * as React from 'react'
 import { shiftRegistrationService, shiftService, brandService, platformService, campaignService, userService, reportService, isStaffedRegistration } from '@/lib/services/dataService'
@@ -51,6 +51,7 @@ import {
   brandsToNameMap,
   platformsToNameMap,
   campaignsToNameMap,
+  usersToNameMap,
 } from '@/lib/utils/scheduleExportUtils'
 
 export function CalendarView({ createRequest = 0 }: { createRequest?: number }) {
@@ -244,8 +245,16 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     const brandsMap = brandsToNameMap(brands)
     const platformsMap = platformsToNameMap(platforms)
     const campaignsMap = campaignsToNameMap(campaigns)
+    const usersMap = usersToNameMap(users)
 
-    const rows = buildScheduleExportRows(targetShifts, brandsMap, platformsMap, campaignsMap)
+    const rows = buildScheduleExportRows(
+      targetShifts,
+      brandsMap,
+      platformsMap,
+      campaignsMap,
+      usersMap,
+      registrations,
+    )
     const filename = buildScheduleExportFilename(scope, targetShifts, formatType, currentDate)
 
     if (formatType === 'xlsx') {
@@ -343,25 +352,29 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => handleExport('xlsx', 'filtered')} data-testid="export-filtered-xlsx">
                     <FileSpreadsheet className="h-4 w-4 mr-2" />
-                    Export filtered ({filteredShifts.length}) (XLSX)
+                    Filtered XLSX
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleExport('csv', 'filtered')} data-testid="export-filtered-csv">
                     <FileText className="h-4 w-4 mr-2" />
-                    Export filtered ({filteredShifts.length}) (CSV)
+                    Filtered CSV
                   </DropdownMenuItem>
-                  {selectedShiftIds.size > 0 && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => handleExport('xlsx', 'selected')} data-testid="export-selected-xlsx">
-                        <FileSpreadsheet className="h-4 w-4 mr-2" />
-                        Export selected ({selectedShiftIds.size}) (XLSX)
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleExport('csv', 'selected')} data-testid="export-selected-csv">
-                        <FileText className="h-4 w-4 mr-2" />
-                        Export selected ({selectedShiftIds.size}) (CSV)
-                      </DropdownMenuItem>
-                    </>
-                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => handleExport('xlsx', 'selected')}
+                    disabled={selectedShiftIds.size === 0}
+                    data-testid="export-selected-xlsx"
+                  >
+                    <FileSpreadsheet className="h-4 w-4 mr-2" />
+                    Selected XLSX
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => handleExport('csv', 'selected')}
+                    disabled={selectedShiftIds.size === 0}
+                    data-testid="export-selected-csv"
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    Selected CSV
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
