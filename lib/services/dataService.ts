@@ -405,10 +405,8 @@ export const userService = {
 
   async create(
     data: Omit<User, 'id' | 'created_at' | 'updated_at'>,
-    actorId = currentUserService.getId(),
+    actorId?: string,
   ): Promise<User> {
-    const actor = requiredActiveStaffActorFor(actorId)
-    if (!hasPermission(actor, 'staff.manage')) throw new Error('Only Admin can create staff records.')
     const systemPermission = resolveSystemPermission(data)
     const normalizedData = {
       ...data,
@@ -419,7 +417,16 @@ export const userService = {
       operational_roles: [...(data.operational_roles || [])],
       account_status: data.account_status ?? (data.status === 'active' ? 'active' as const : 'pending_approval' as const),
     }
-    if (getAuthMode() === 'supabase') {
+    const supabaseMode = getAuthMode() === 'supabase'
+    if (supabaseMode && actorId === undefined) {
+      // The RPC derives and authorizes the actor from auth.uid(). Do not block
+      // the browser write on the transient client-side identity projection.
+      return getSupabaseMasterDataRepository().businessUsers.create(normalizedData)
+    }
+    const resolvedActorId = actorId ?? currentUserService.getId()
+    const actor = requiredActiveStaffActorFor(resolvedActorId)
+    if (!hasPermission(actor, 'staff.manage')) throw new Error('Only Admin can create staff records.')
+    if (supabaseMode) {
       return getSupabaseMasterDataRepository().businessUsers.create(normalizedData)
     }
     const newUser: User = {
@@ -430,7 +437,7 @@ export const userService = {
     }
     users.push(newUser)
     syncMockAuthAccount(newUser)
-    audit('staff', 'create', 'staff', newUser.id, newUser.full_name, { actorId, after: { ...newUser } })
+    audit('staff', 'create', 'staff', newUser.id, newUser.full_name, { actorId: resolvedActorId, after: { ...newUser } })
     return Promise.resolve(newUser)
   },
 

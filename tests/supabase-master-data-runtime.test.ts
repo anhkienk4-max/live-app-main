@@ -322,6 +322,66 @@ test('Staff browser save calls update_staff_member with the exact RPC contract a
   assert.deepEqual(updated?.operational_roles, ['support', 'technical'])
 })
 
+test('Staff browser create calls create_staff_member with the exact RPC contract and maps its row', async () => {
+  const calls: Array<{ name: string; args: Record<string, unknown> }> = []
+  const rpcRow = businessUser({
+    id: 'new-staff',
+    auth_user_id: null,
+    email: 'new.staff@example.test',
+    full_name: 'New Staff',
+    role: 'staff',
+    system_permission: 'member',
+    operational_roles: ['host'],
+    department: null,
+  })
+  const client = {
+    rpc(name: string, args: Record<string, unknown>) {
+      calls.push({ name, args })
+      return {
+        async single() {
+          return { data: rpcRow, error: null }
+        },
+      }
+    },
+  } as unknown as SupabaseClient
+  const repository = createSupabaseMasterDataRepository(client)
+
+  const created = await repository.businessUsers.create({
+    email: 'new.staff@example.test',
+    full_name: 'New Staff',
+    role: 'staff',
+    system_permission: 'member',
+    operational_roles: ['host'],
+    department: undefined,
+    status: 'active',
+    account_status: 'active',
+    email_verified: false,
+    auth_provider: 'email',
+    join_date: '2026-08-24',
+  })
+
+  assert.deepEqual(calls, [{
+    name: 'create_staff_member',
+    args: {
+      p_data: {
+        email: 'new.staff@example.test',
+        full_name: 'New Staff',
+        system_permission: 'member',
+        operational_roles: ['host'],
+        status: 'active',
+        account_status: 'active',
+        email_verified: false,
+        auth_provider: 'email',
+        join_date: '2026-08-24',
+      },
+    },
+  }])
+  assert.equal('auth_user_id' in (calls[0].args.p_data as Record<string, unknown>), false)
+  assert.equal(created.id, 'new-staff')
+  assert.equal(created.auth_user_id, undefined)
+  assert.equal(created.full_name, 'New Staff')
+})
+
 test('permission and RLS failures surface and never fall back to mock rows', async () => {
   await withEnvironment(async () => {
     setAuthMode('supabase')

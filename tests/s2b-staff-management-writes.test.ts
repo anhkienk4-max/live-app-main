@@ -237,6 +237,58 @@ test('Supabase browser save reaches the RPC repository without a transient clien
   }
 })
 
+test('Supabase browser create reaches the RPC repository without a transient client identity binding', async () => {
+  const previousNodeEnv = process.env.NODE_ENV
+  const previousMockFlag = process.env.NEXT_PUBLIC_USE_MOCK_DATA
+  let createCall: Omit<User, 'id' | 'created_at' | 'updated_at'> | null = null
+  const target = remoteUser({ id: 'remote-created' })
+  const businessUsers: SupabaseMasterDataRepository['businessUsers'] = {
+    async getAll() { return [target] },
+    async getById() { return target },
+    async getByAuthIdentity() { return null },
+    async create(data) {
+      createCall = data
+      return { ...target, ...data }
+    },
+    async update() { return target },
+    async approvePendingAccount() { return target },
+    async rejectPendingAccount() { return target },
+    async archive() { return target },
+    async restore() { return target },
+  }
+
+  try {
+    setAuthMode('supabase')
+    setSupabaseMasterDataRepositoryForTests({ businessUsers } as unknown as SupabaseMasterDataRepository)
+    currentUserService.clearAuthenticatedUser()
+
+    const created = await userService.create(staffInput({
+      email: '  Browser.Create@Example.Test  ',
+      full_name: '  Browser Created Staff  ',
+      system_permission: 'leader',
+      operational_roles: ['host', 'technical'],
+    }))
+
+    assert.deepEqual(createCall, {
+      ...staffInput({
+        email: 'browser.create@example.test',
+        full_name: 'Browser Created Staff',
+        role: 'leader',
+        system_permission: 'leader',
+        operational_roles: ['host', 'technical'],
+      }),
+      email: 'browser.create@example.test',
+    })
+    assert.equal(created.id, 'remote-created')
+    assert.equal(created.full_name, 'Browser Created Staff')
+  } finally {
+    setSupabaseMasterDataRepositoryForTests(undefined)
+    currentUserService.clearAuthenticatedUser()
+    process.env.NODE_ENV = previousNodeEnv
+    process.env.NEXT_PUBLIC_USE_MOCK_DATA = previousMockFlag
+  }
+})
+
 test('S2B migration enforces server-derived Admin RPCs and preserves auth linkage', async () => {
   const sql = await readFile(migrationUrl, 'utf8')
   const rpcNames = [
