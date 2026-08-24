@@ -99,6 +99,8 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
   const [ocrApplicationResult, setOcrApplicationResult] = React.useState<OcrTextApplicationResult | null>(null)
   const [metricFilter, setMetricFilter] = React.useState<OcrMetricFilter>('data')
   const [metricsCollapsed, setMetricsCollapsed] = React.useState(false)
+  const [unmappedCollapsed, setUnmappedCollapsed] = React.useState(true)
+  const [rawOcrCollapsed, setRawOcrCollapsed] = React.useState(true)
   const [showReviewWarning, setShowReviewWarning] = React.useState(false)
   const [dashboardPlatform, setDashboardPlatform] = React.useState<ReportDashboardPlatform>(inferredDashboardPlatform)
   const [cropBox, setCropBox] = React.useState<OcrCropBox>(defaultOcrCrop(inferredDashboardPlatform))
@@ -582,7 +584,27 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
               review={ocrReview}
               canExport={Boolean(currentUser && hasPermission(currentUser, 'audit.view'))}
             />
-            {ocrReview?.raw_diagnostic_output && <details className="rounded-lg bg-muted/50 p-3 text-sm" data-testid="live-ocr-raw-diagnostics"><summary className="cursor-pointer font-medium">{t('rawOcrOutput')}</summary><pre className="mt-3 whitespace-pre-wrap break-words text-xs">{ocrReview.raw_diagnostic_output}</pre></details>}
+            {ocrReview?.raw_diagnostic_output && (
+              <div className="rounded-lg bg-muted/50 p-3 text-sm" data-testid="live-ocr-raw-diagnostics">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">{t('rawOcrOutput')}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    data-testid="toggle-live-raw-ocr-collapse"
+                    onClick={() => setRawOcrCollapsed(prev => !prev)}
+                    className="h-7 text-xs"
+                  >
+                    {rawOcrCollapsed ? <ChevronDown className="mr-1.5 h-3.5 w-3.5" /> : <ChevronUp className="mr-1.5 h-3.5 w-3.5" />}
+                    {rawOcrCollapsed ? t('expandMetrics') : t('collapseMetrics')}
+                  </Button>
+                </div>
+                {!rawOcrCollapsed && (
+                  <pre className="mt-3 whitespace-pre-wrap break-words text-xs">{ocrReview.raw_diagnostic_output}</pre>
+                )}
+              </div>
+            )}
             </div>
             <div className="min-h-40 rounded-lg border p-3" data-testid="live-ocr-completion-status" data-ocr-status={scanning ? 'processing' : ocrReview?.status || 'waiting'}>
               <p className="mb-2 font-medium">{t('ocrResults')} ┬╖ {dashboardPlatform === 'tiktok_shop' ? 'TikTok Shop' : dashboardPlatform === 'shopee_live' ? 'Shopee Live' : t('selectDashboardPlatform')}</p>
@@ -593,7 +615,38 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
                 </div>
               ) : <p className="text-sm text-muted-foreground">{t('ocrEmptyHelp')}</p>}
               {ocrReview?.status === 'unavailable' && <p className="mt-2 rounded bg-amber-50 p-2 text-sm text-amber-800">{t('ocrUnavailableHelp')}</p>}
-              {ocrReview?.unmapped_fields && ocrReview.unmapped_fields.length > 0 && <div className="mt-3 space-y-2" data-testid="live-ocr-unmapped-section"><p className="font-medium">{t('rejectedUnmappedOcrFields')}</p>{ocrReview.unmapped_fields.map((field, index) => <div className="grid gap-2 rounded border p-2" key={`${field.original_label}-${index}`} data-testid="ocr-unmapped-field" data-ocr-original-label={field.original_label}><p className="text-xs">{t('originalLabel')}: {field.original_label} ┬╖ {t('originalValue')}: {field.original_value || 'ΓÇö'} ┬╖ {t('source')}: {field.source || t('unknownSource')}</p>{field.rejection_reason && <p className="text-xs text-amber-800">{t('unmappedMetricHelp')}</p>}<Select onValueChange={value => mapUnmappedField(index, value as CanonicalMetricKey)}><SelectTrigger><SelectValue placeholder={t('mapManually')} /></SelectTrigger><SelectContent>{visibleMetricKeys.map(key => <SelectItem key={key} value={key}>{t(metricTranslationKeys[key])}</SelectItem>)}</SelectContent></Select></div>)}</div>}
+            {ocrReview?.unmapped_fields && ocrReview.unmapped_fields.length > 0 && (
+              <div className="mt-3 space-y-2" data-testid="live-ocr-unmapped-section">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-medium">{t('rejectedUnmappedOcrFields')}</p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    data-testid="toggle-live-unmapped-ocr-collapse"
+                    onClick={() => setUnmappedCollapsed(prev => !prev)}
+                    className="h-7 text-xs"
+                  >
+                    {unmappedCollapsed ? <ChevronDown className="mr-1.5 h-3.5 w-3.5" /> : <ChevronUp className="mr-1.5 h-3.5 w-3.5" />}
+                    {unmappedCollapsed ? t('expandMetrics') : t('collapseMetrics')}
+                  </Button>
+                </div>
+                {!unmappedCollapsed && (
+                  <div className="space-y-2" data-testid="live-unmapped-ocr-body">
+                    {ocrReview.unmapped_fields.map((field, index) => (
+                      <div className="grid gap-2 rounded border p-2" key={`${field.original_label}-${index}`} data-testid="ocr-unmapped-field" data-ocr-original-label={field.original_label}>
+                        <p className="text-xs">{t('originalLabel')}: {field.original_label} — {t('originalValue')}: {field.original_value || '—'} — {t('source')}: {field.source || t('unknownSource')}</p>
+                        {field.rejection_reason && <p className="text-xs text-amber-800">{t('unmappedMetricHelp')}</p>}
+                        <Select onValueChange={value => mapUnmappedField(index, value as CanonicalMetricKey)}>
+                          <SelectTrigger><SelectValue placeholder={t('mapManually')} /></SelectTrigger>
+                          <SelectContent>{visibleMetricKeys.map(key => <SelectItem key={key} value={key}>{t(metricTranslationKeys[key])}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             </div>
           </div>
 

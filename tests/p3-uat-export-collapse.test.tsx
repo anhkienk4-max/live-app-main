@@ -19,6 +19,8 @@ import { OcrBoundMetricFields } from '../components/features/reports/OcrBoundMet
 import {
   ReportDetailHeaderActions,
   ReportDetailPlatformMetrics,
+  ReportDetailRawOcrSection,
+  ReportDetailUnmappedOcrSection,
 } from '../components/features/reports/ReportDetailModal.tsx'
 import { LanguageProvider } from '../lib/i18n.tsx'
 import type {
@@ -346,4 +348,110 @@ test('Report Export — Shopee Live specific metrics mapped and exported correct
   assert.equal(row['GPM'], 120000)
   assert.equal(row['CVR'], 0.29)
   assert.equal(row['Live Duration Minutes'], 90)
+})
+
+test('Report Detail — Raw OCR Section collapses by default and expands on demand', () => {
+  const rawText = 'RAW DASHBOARD OCR DATA 12345 LINE 1\nLINE 2'
+  const diagnosticText = 'DIAGNOSTIC OCR TOKENS: [Revenue, 15000000]'
+
+  // Default collapsed
+  const collapsedHtml = renderToStaticMarkup(
+    <LanguageProvider>
+      <ReportDetailRawOcrSection rawOutput={rawText} rawDiagnosticOutput={diagnosticText} defaultCollapsed={true} />
+    </LanguageProvider>
+  )
+
+  assert.ok(collapsedHtml.includes('data-testid="report-detail-raw-ocr-section"'))
+  assert.ok(collapsedHtml.includes('data-testid="toggle-raw-ocr-collapse"'))
+  // Body is hidden when collapsed
+  assert.ok(!collapsedHtml.includes('data-testid="raw-ocr-body"'))
+  assert.ok(!collapsedHtml.includes(rawText))
+
+  // Expanded
+  const expandedHtml = renderToStaticMarkup(
+    <LanguageProvider>
+      <ReportDetailRawOcrSection rawOutput={rawText} rawDiagnosticOutput={diagnosticText} defaultCollapsed={false} />
+    </LanguageProvider>
+  )
+
+  assert.ok(expandedHtml.includes('data-testid="raw-ocr-body"'))
+  assert.ok(expandedHtml.includes(rawText))
+  assert.ok(expandedHtml.includes(diagnosticText))
+})
+
+test('Report Detail — Unmapped OCR Section collapses by default and preserves all rejected fields', () => {
+  const unmappedFields = [
+    { original_label: 'Doanh thu du kien', original_value: '50.000.000', source: 'ocr_text', rejection_reason: 'unmapped' },
+    { original_label: 'Luot xem dong thoi cao nhat', original_value: '1200', source: 'platform_layout' },
+  ]
+
+  // Default collapsed
+  const collapsedHtml = renderToStaticMarkup(
+    <LanguageProvider>
+      <ReportDetailUnmappedOcrSection unmappedFields={unmappedFields} defaultCollapsed={true} />
+    </LanguageProvider>
+  )
+
+  assert.ok(collapsedHtml.includes('data-testid="report-detail-unmapped-section"'))
+  assert.ok(collapsedHtml.includes('data-testid="toggle-unmapped-ocr-collapse"'))
+  // Body is hidden when collapsed
+  assert.ok(!collapsedHtml.includes('data-testid="unmapped-ocr-fields-body"'))
+  assert.ok(!collapsedHtml.includes('Doanh thu du kien'))
+
+  // Expanded
+  const expandedHtml = renderToStaticMarkup(
+    <LanguageProvider>
+      <ReportDetailUnmappedOcrSection unmappedFields={unmappedFields} defaultCollapsed={false} />
+    </LanguageProvider>
+  )
+
+  assert.ok(expandedHtml.includes('data-testid="unmapped-ocr-fields-body"'))
+  assert.ok(expandedHtml.includes('Doanh thu du kien'))
+  assert.ok(expandedHtml.includes('50.000.000'))
+  assert.ok(expandedHtml.includes('Luot xem dong thoi cao nhat'))
+  assert.ok(expandedHtml.includes('1200'))
+})
+
+test('Report Detail — OCR sections have independent collapse states without affecting canonical metrics', () => {
+  const report = makeReport()
+  const rawText = 'SAMPLE RAW OCR'
+  const unmappedFields = [{ original_label: 'Unknown Tag', original_value: '99' }]
+
+  // State 1: Raw collapsed, Unmapped expanded, Canonical metrics expanded
+  const htmlState1 = renderToStaticMarkup(
+    <LanguageProvider>
+      <div>
+        <ReportDetailPlatformMetrics report={report} collapsed={false} />
+        <ReportDetailRawOcrSection rawOutput={rawText} defaultCollapsed={true} />
+        <ReportDetailUnmappedOcrSection unmappedFields={unmappedFields} defaultCollapsed={false} />
+      </div>
+    </LanguageProvider>
+  )
+
+  // Canonical metrics render
+  assert.ok(htmlState1.includes('data-testid="platform-metrics-grid"'))
+  // Raw is collapsed
+  assert.ok(!htmlState1.includes('data-testid="raw-ocr-body"'))
+  // Unmapped is expanded
+  assert.ok(htmlState1.includes('data-testid="unmapped-ocr-fields-body"'))
+  assert.ok(htmlState1.includes('Unknown Tag'))
+
+  // State 2: Raw expanded, Unmapped collapsed, Canonical metrics collapsed
+  const htmlState2 = renderToStaticMarkup(
+    <LanguageProvider>
+      <div>
+        <ReportDetailPlatformMetrics report={report} collapsed={true} />
+        <ReportDetailRawOcrSection rawOutput={rawText} defaultCollapsed={false} />
+        <ReportDetailUnmappedOcrSection unmappedFields={unmappedFields} defaultCollapsed={true} />
+      </div>
+    </LanguageProvider>
+  )
+
+  // Canonical metrics collapsed
+  assert.ok(!htmlState2.includes('data-testid="platform-metrics-grid"'))
+  // Raw is expanded
+  assert.ok(htmlState2.includes('data-testid="raw-ocr-body"'))
+  assert.ok(htmlState2.includes(rawText))
+  // Unmapped is collapsed
+  assert.ok(!htmlState2.includes('data-testid="unmapped-ocr-fields-body"'))
 })

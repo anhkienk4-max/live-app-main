@@ -108,6 +108,96 @@ export function ReportDetailHeaderActions({
   )
 }
 
+export function ReportDetailRawOcrSection({
+  rawOutput,
+  rawDiagnosticOutput,
+  defaultCollapsed = true,
+}: {
+  rawOutput?: string | null
+  rawDiagnosticOutput?: string | null
+  defaultCollapsed?: boolean
+}) {
+  const { t } = useTranslation()
+  const [collapsed, setCollapsed] = React.useState(defaultCollapsed)
+
+  if (!rawOutput && !rawDiagnosticOutput) return null
+
+  return (
+    <div className="rounded-lg bg-muted/50 p-3 text-xs" data-testid="report-detail-raw-ocr-section">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium text-foreground">{t('rawOcrOutput')}</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          data-testid="toggle-raw-ocr-collapse"
+          onClick={() => setCollapsed(prev => !prev)}
+          className="h-7 text-xs"
+        >
+          {collapsed ? <ChevronDown className="mr-1.5 h-3.5 w-3.5" /> : <ChevronUp className="mr-1.5 h-3.5 w-3.5" />}
+          {collapsed ? t('expandMetrics') : t('collapseMetrics')}
+        </Button>
+      </div>
+      {!collapsed && (
+        <div className="mt-2 space-y-2" data-testid="raw-ocr-body">
+          {rawOutput && (
+            <pre className="whitespace-pre-wrap break-words rounded-lg border bg-muted/30 p-3 text-xs" data-testid="raw-ocr-output-pre">
+              {rawOutput}
+            </pre>
+          )}
+          {rawDiagnosticOutput && (
+            <pre className="whitespace-pre-wrap break-words rounded-lg border bg-muted/30 p-3 text-xs" data-testid="raw-diagnostic-output-pre">
+              {rawDiagnosticOutput}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function ReportDetailUnmappedOcrSection({
+  unmappedFields,
+  defaultCollapsed = true,
+}: {
+  unmappedFields?: Array<{ original_label: string; original_value?: string; source?: string; rejection_reason?: string }>
+  defaultCollapsed?: boolean
+}) {
+  const { t } = useTranslation()
+  const [collapsed, setCollapsed] = React.useState(defaultCollapsed)
+
+  if (!unmappedFields || unmappedFields.length === 0) return null
+
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3" data-testid="report-detail-unmapped-section">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="font-semibold text-amber-900">{t('rejectedUnmappedOcrFields')}</h4>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          data-testid="toggle-unmapped-ocr-collapse"
+          onClick={() => setCollapsed(prev => !prev)}
+          className="h-7 text-xs text-amber-900 hover:bg-amber-100"
+        >
+          {collapsed ? <ChevronDown className="mr-1.5 h-3.5 w-3.5" /> : <ChevronUp className="mr-1.5 h-3.5 w-3.5" />}
+          {collapsed ? t('expandMetrics') : t('collapseMetrics')}
+        </Button>
+      </div>
+      {!collapsed && (
+        <div className="mt-2 space-y-2" data-testid="unmapped-ocr-fields-body">
+          {unmappedFields.map((field, index) => (
+            <div className="text-sm text-amber-900" key={`${field.original_label}-${index}`} data-testid="unmapped-ocr-field-item">
+              <p>{t('originalLabel')}: {field.original_label} — {t('originalValue')}: {field.original_value || '—'}</p>
+              <p className="text-xs">{t('source')}: {field.source || t('unknownSource')}{field.rejection_reason ? ` — ${t('unmappedMetricHelp')}` : ''}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ReportDetailPlatformMetrics({
   report,
   collapsed = false,
@@ -592,7 +682,22 @@ export function ReportDetailModal({
           <Card className="border-amber-200">
             <CardContent className="space-y-4 pt-5">
               <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2"><h3 className="font-semibold">{t('reportOcrReview')}</h3><Badge variant="outline">{reviewData.status === 'review_required' ? t('statusReviewRequired') : reviewData.status === 'confirmed' ? t('statusConfirmed') : reviewData.status === 'failed' ? t('error') : reviewData.status === 'processing' ? t('loading') : reviewData.status === 'unavailable' ? t('manualInput') : t('pending')}</Badge></div><p className="text-sm text-muted-foreground">{t('ocrReviewHelp')}</p></div><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => void resetExtracted()}><RotateCcw className="mr-2 h-4 w-4" />{t('resetResults')}</Button><Button type="button" variant="outline" onClick={() => setEditingMetrics(value => !value)}><Pencil className="mr-2 h-4 w-4" />{editingMetrics ? t('finishEditing') : t('editOcrMetrics')}</Button><Button type="button" variant="outline" disabled={reviewData.status === 'processing'} onClick={() => void rerunOcr()}><ScanText className="mr-2 h-4 w-4" />{t('rescanOcr')}</Button><Button type="button" variant="outline" size="sm" data-testid="toggle-review-metrics-collapse" onClick={() => setMetricsCollapsed(prev => !prev)}>{metricsCollapsed ? <ChevronDown className="mr-1.5 h-4 w-4" /> : <ChevronUp className="mr-1.5 h-4 w-4" />}{metricsCollapsed ? t('expandMetrics') : t('collapseMetrics')}</Button></div></div>
-              {dashboardImage && <><OcrCropPreview imageUrl={dashboardImage.image_url} platform={report.dashboard_platform || 'other'} value={reviewData.crop_box || defaultOcrCrop(report.dashboard_platform || 'other')} onChange={() => undefined} review={reviewData} disabled />{reviewData.raw_output && <pre className="whitespace-pre-wrap break-words rounded-lg border bg-muted/30 p-3 text-xs">{reviewData.raw_output}</pre>}{reviewData.raw_diagnostic_output && <details className="rounded-lg bg-muted/50 p-3 text-xs"><summary className="cursor-pointer font-medium">{t('rawOcrOutput')}</summary><pre className="mt-2 whitespace-pre-wrap break-words">{reviewData.raw_diagnostic_output}</pre></details>}</>}
+              {dashboardImage && (
+                <>
+                  <OcrCropPreview
+                    imageUrl={dashboardImage.image_url}
+                    platform={report.dashboard_platform || 'other'}
+                    value={reviewData.crop_box || defaultOcrCrop(report.dashboard_platform || 'other')}
+                    onChange={() => undefined}
+                    review={reviewData}
+                    disabled
+                  />
+                  <ReportDetailRawOcrSection
+                    rawOutput={reviewData.raw_output}
+                    rawDiagnosticOutput={reviewData.raw_diagnostic_output}
+                  />
+                </>
+              )}
               {unresolvedCount > 0 && <p className="flex items-center gap-2 text-sm text-amber-800"><AlertTriangle className="h-4 w-4" />{t('reportReviewWarning', { count: unresolvedCount })}</p>}
               <OcrMetricFilterBar value={metricFilter} onChange={setMetricFilter} reviewCount={unresolvedCount} />
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -610,7 +715,7 @@ export function ReportDetailModal({
                   onClear={() => clearMetric(field)}
                 />)}
               </div>
-              {reviewData.unmapped_fields && reviewData.unmapped_fields.length > 0 && <div className="rounded-lg border border-amber-300 bg-amber-50 p-3"><h4 className="font-semibold text-amber-900">{t('rejectedUnmappedOcrFields')}</h4>{reviewData.unmapped_fields.map((field, index) => <div className="mt-2 text-sm text-amber-900" key={`${field.original_label}-${index}`}><p>{t('originalLabel')}: {field.original_label} · {t('originalValue')}: {field.original_value || '—'}</p><p className="text-xs">{t('source')}: {field.source || t('unknownSource')}{field.rejection_reason ? ` · ${t('unmappedMetricHelp')}` : ''}</p></div>)}</div>}
+              <ReportDetailUnmappedOcrSection unmappedFields={reviewData.unmapped_fields} />
               {reviewData.status === 'unavailable' && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{t('ocrUnavailableHelp')}</p>}
               <label className="text-xs font-medium">{t('reviewNotes')}<Textarea className="mt-1" value={reviewNotes} onChange={event => setReviewNotes(event.target.value)} /></label>
               <div className="flex flex-wrap justify-end gap-2">{unresolvedCount > 0 && <Button variant="outline" onClick={confirmAllMetrics}><Check className="mr-2 h-4 w-4" />{t('confirmAllReviewed')}</Button>}<Button variant="outline" disabled={busy} onClick={() => void saveDraft()}><Pencil className="mr-2 h-4 w-4" />{t('saveDraftRevision')}</Button><Button variant="outline" disabled={busy} onClick={() => void rejectReport()}><X className="mr-2 h-4 w-4" />{t('rejectReport')}</Button><Button disabled={busy || reviewData.status === 'processing' || reviewData.status === 'failed'} onClick={() => void confirmReport()}><Check className="mr-2 h-4 w-4" />{t('confirmMetrics')}</Button></div>

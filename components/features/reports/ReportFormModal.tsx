@@ -148,6 +148,8 @@ export function ReportFormModal({
   const [ocrApplicationResult, setOcrApplicationResult] = React.useState<OcrTextApplicationResult | null>(null)
   const [metricFilter, setMetricFilter] = React.useState<OcrMetricFilter>(defaultFinalReportMetricFilter)
   const [metricsCollapsed, setMetricsCollapsed] = React.useState(false)
+  const [unmappedCollapsed, setUnmappedCollapsed] = React.useState(true)
+  const [rawOcrCollapsed, setRawOcrCollapsed] = React.useState(true)
   const [showReviewWarning, setShowReviewWarning] = React.useState(false)
   const [visionMode, setVisionMode] = React.useState<VisionOcrMode | null>(null)
   const [visionResults, setVisionResults] = React.useState<HybridMetricResult[]>([])
@@ -784,8 +786,62 @@ export function ReportFormModal({
                 </div>
               )}
               {(review.status === 'review_required' || review.status === 'unavailable') && <>
-              {review.unmapped_fields && review.unmapped_fields.length > 0 && <div className="rounded-lg border border-amber-300 bg-amber-50 p-3" data-testid="report-ocr-unmapped-section"><h4 className="font-semibold text-amber-900">{t('rejectedUnmappedOcrFields')}</h4><div className="mt-2 space-y-2">{review.unmapped_fields.map((field, index) => <div className="grid gap-2 rounded border border-amber-200 bg-white p-2 sm:grid-cols-[minmax(180px,1fr)_minmax(220px,.8fr)] sm:items-center" key={`${field.original_label}-${index}`} data-testid="ocr-unmapped-field" data-ocr-original-label={field.original_label}><div className="text-sm text-amber-900"><p>{t('originalLabel')}: {field.original_label} Â· {t('originalValue')}: {field.original_value || 'â€”'}</p><p className="text-xs">{t('source')}: {field.source || t('unknownSource')}{field.rejection_reason ? ` Â· ${t('unmappedMetricHelp')}` : ''}</p></div><Select onValueChange={value => mapUnmappedField(index, value as CanonicalMetricKey)}><SelectTrigger><SelectValue placeholder={t('mapToNormalizedMetric')} /></SelectTrigger><SelectContent>{visibleMetricKeys.map(key => <SelectItem value={key} key={key}>{t(metricTranslationKeys[key])}</SelectItem>)}</SelectContent></Select></div>)}</div></div>}
-              {review.raw_diagnostic_output && <details className="rounded-lg bg-muted/50 p-3 text-sm" data-testid="report-ocr-raw-diagnostics"><summary className="cursor-pointer font-medium">{t('rawOcrOutput')}</summary><pre className="mt-3 whitespace-pre-wrap break-words text-xs">{review.raw_diagnostic_output}</pre></details>}
+              {review.unmapped_fields && review.unmapped_fields.length > 0 && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-3" data-testid="report-ocr-unmapped-section">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="font-semibold text-amber-900">{t('rejectedUnmappedOcrFields')}</h4>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      data-testid="toggle-form-unmapped-ocr-collapse"
+                      onClick={() => setUnmappedCollapsed(prev => !prev)}
+                      className="h-7 text-xs text-amber-900 hover:bg-amber-100"
+                    >
+                      {unmappedCollapsed ? <ChevronDown className="mr-1.5 h-3.5 w-3.5" /> : <ChevronUp className="mr-1.5 h-3.5 w-3.5" />}
+                      {unmappedCollapsed ? t('expandMetrics') : t('collapseMetrics')}
+                    </Button>
+                  </div>
+                  {!unmappedCollapsed && (
+                    <div className="mt-2 space-y-2" data-testid="form-unmapped-ocr-body">
+                      {review.unmapped_fields.map((field, index) => (
+                        <div className="grid gap-2 rounded border border-amber-200 bg-white p-2 sm:grid-cols-[minmax(180px,1fr)_minmax(220px,.8fr)] sm:items-center" key={`${field.original_label}-${index}`} data-testid="ocr-unmapped-field" data-ocr-original-label={field.original_label}>
+                          <div className="text-sm text-amber-900">
+                            <p>{t('originalLabel')}: {field.original_label} — {t('originalValue')}: {field.original_value || '—'}</p>
+                            <p className="text-xs">{t('source')}: {field.source || t('unknownSource')}{field.rejection_reason ? ` — ${t('unmappedMetricHelp')}` : ''}</p>
+                          </div>
+                          <Select onValueChange={value => mapUnmappedField(index, value as CanonicalMetricKey)}>
+                            <SelectTrigger><SelectValue placeholder={t('mapToNormalizedMetric')} /></SelectTrigger>
+                            <SelectContent>{visibleMetricKeys.map(key => <SelectItem value={key} key={key}>{t(metricTranslationKeys[key])}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {review.raw_diagnostic_output && (
+                <div className="rounded-lg bg-muted/50 p-3 text-sm" data-testid="report-ocr-raw-diagnostics">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">{t('rawOcrOutput')}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      data-testid="toggle-form-raw-ocr-collapse"
+                      onClick={() => setRawOcrCollapsed(prev => !prev)}
+                      className="h-7 text-xs"
+                    >
+                      {rawOcrCollapsed ? <ChevronDown className="mr-1.5 h-3.5 w-3.5" /> : <ChevronUp className="mr-1.5 h-3.5 w-3.5" />}
+                      {rawOcrCollapsed ? t('expandMetrics') : t('collapseMetrics')}
+                    </Button>
+                  </div>
+                  {!rawOcrCollapsed && (
+                    <pre className="mt-3 whitespace-pre-wrap break-words text-xs">{review.raw_diagnostic_output}</pre>
+                  )}
+                </div>
+              )}
+
               <div className="flex justify-end"><Button type="button" variant={ocrAcknowledged ? 'outline' : 'default'} onClick={confirmAllMetrics}><Check className="mr-2 h-4 w-4" />{ocrAcknowledged ? t('metricsReviewedForDraft') : t('confirmAllReviewed')}</Button></div>
               </>}
             </>}
