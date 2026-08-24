@@ -19,6 +19,7 @@ import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { useToast } from '@/components/ui/toast'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 import { useTranslation } from '@/lib/i18n'
+import { PageLoadError } from '@/components/ui/page-load-error'
 
 const actions: AuditAction[] = ['create', 'update', 'delete', 'soft_delete', 'restore', 'archive', 'unarchive', 'confirm', 'unconfirm', 'approve', 'reject', 'assign', 'unassign', 'register', 'cancel_registration', 'lock', 'reopen', 'import', 'export', 'ocr_run', 'ocr_rerun', 'ocr_reset', 'upload', 'remove_upload']
 const modules: AuditModule[] = ['calendar', 'live', 'reports', 'staff', 'brands', 'platforms', 'campaigns', 'swaps', 'imports', 'settings']
@@ -40,6 +41,8 @@ export function AuditHistory() {
   const [selected, setSelected] = React.useState<AuditLog | null>(null)
   const [restoreTarget, setRestoreTarget] = React.useState<ArchivedEntitySummary | null>(null)
   const [filters, setFilters] = React.useState({ query: '', from: '', to: '', actor: 'all', role: 'all', module: 'all', action: 'all', status: 'all', source: 'all' })
+  const [loading, setLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<unknown>(null)
 
   const canView = Boolean(currentUser && hasAnyPermission(currentUser, ['audit.view', 'audit.view_team']))
   const isAdmin = Boolean(currentUser && hasPermission(currentUser, 'audit.view'))
@@ -55,25 +58,37 @@ export function AuditHistory() {
   }
 
   const load = React.useCallback(async () => {
-    if (!currentUser || !canView) return
-    const [visible, deleted] = await Promise.all([
-      auditService.getAuditLogs({ user: currentUser, page, pageSize, filters, sort }),
-      isAdmin ? lifecycleService.getArchived(currentUser.id) : Promise.resolve([]),
-    ])
-    setLogs(visible.items)
-    setTotal(visible.total)
-    setTotalPages(visible.totalPages)
-    setActors(visible.actors)
-    if (visible.page !== page) setPage(visible.page)
-    setArchived(deleted)
+    if (!currentUser || !canView) {
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    setLoadError(null)
+    try {
+      const [visible, deleted] = await Promise.all([
+        auditService.getAuditLogs({ user: currentUser, page, pageSize, filters, sort }),
+        isAdmin ? lifecycleService.getArchived(currentUser.id) : Promise.resolve([]),
+      ])
+      setLogs(visible.items)
+      setTotal(visible.total)
+      setTotalPages(visible.totalPages)
+      setActors(visible.actors)
+      if (visible.page !== page) setPage(visible.page)
+      setArchived(deleted)
+    } catch (error) {
+      setLoadError(error)
+    } finally {
+      setLoading(false)
+    }
   }, [canView, currentUser, filters, isAdmin, page, pageSize, sort])
 
   React.useEffect(() => { void load() }, [load])
 
-  if (userLoading) return <p className="text-sm text-muted-foreground">{t('loading')}</p>
+  if (userLoading || loading) return <p className="text-sm text-muted-foreground">{t('loading')}</p>
   if (!currentUser || !canView) {
     return <Card><CardContent className="flex min-h-64 flex-col items-center justify-center text-center"><ShieldAlert className="mb-3 h-10 w-10 text-amber-600" /><h2 className="font-semibold">{t('accessDenied')}</h2><p className="mt-1 text-sm text-muted-foreground">{t('auditAccessDeniedHelp')}</p></CardContent></Card>
   }
+  if (loadError) return <PageLoadError error={loadError} onRetry={() => { void load() }} />
 
   const archivedTotalPages = Math.max(1, Math.ceil(archived.length / archivedPageSize))
   const safeArchivedPage = Math.min(archivedPage, archivedTotalPages)

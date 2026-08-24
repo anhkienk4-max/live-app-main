@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
+import { PageLoadError } from '@/components/ui/page-load-error'
 
 const list = (value?: string[]) => value?.join('\n') || ''
 const toList = (value: string) => value.split('\n').map(item => item.trim()).filter(Boolean)
@@ -50,11 +51,19 @@ export function PlatformList() {
   const [formOpen, setFormOpen] = React.useState(false)
   const [form, setForm] = React.useState(formFor())
   const [loading, setLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<unknown>(null)
   const [saving, setSaving] = React.useState(false)
 
   const loadData = React.useCallback(async () => {
-    const [loadedPlatforms, loadedCampaigns, loadedBrands, loadedUsers] = await Promise.all([platformService.getAll(), campaignService.getAll(), brandService.getAll(), userService.getAll()])
-    setPlatforms(loadedPlatforms); setCampaigns(loadedCampaigns); setBrands(loadedBrands); setUsers(loadedUsers); setLoading(false)
+    setLoadError(null)
+    try {
+      const [loadedPlatforms, loadedCampaigns, loadedBrands, loadedUsers] = await Promise.all([platformService.getAll(), campaignService.getAll(), brandService.getAll(), userService.getAll()])
+      setPlatforms(loadedPlatforms); setCampaigns(loadedCampaigns); setBrands(loadedBrands); setUsers(loadedUsers)
+    } catch (error) {
+      setLoadError(error)
+    } finally {
+      setLoading(false)
+    }
   }, [])
   React.useEffect(() => { void loadData() }, [loadData])
   const canManage = Boolean(currentUser && hasPermission(currentUser, 'platforms.manage'))
@@ -107,6 +116,7 @@ export function PlatformList() {
   ]
 
   if (loading) return <div className="py-12 text-center">{t('loading')}</div>
+  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
   return <>
     <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t('platformKnowledge')}</h2><p className="mt-1 text-muted-foreground">{t('credentialsSafe')}</p></div>{canManage && <Button onClick={() => openForm()}><Plus className="mr-2 h-4 w-4" />{t('create')} {t('platform')}</Button>}</div>
     <DataTable data={platforms} columns={columns} searchPlaceholder={`${t('search')} ${t('platforms')}`} />

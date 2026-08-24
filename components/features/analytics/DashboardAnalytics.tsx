@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { PageLoadError } from '@/components/ui/page-load-error'
 
 type RangeKey = 'today' | 'yesterday' | '7d' | '30d' | 'thisMonth' | 'lastMonth' | 'custom'
 type Filters = { range: RangeKey; start: string; end: string; brand: string; platform: string; campaign: string; host: string; support: string; technical: string }
@@ -51,16 +52,29 @@ export function DashboardAnalytics() {
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   const [filters, setFilters] = React.useState<Filters | null>(null)
   const [loading, setLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<unknown>(null)
+
+  const loadData = React.useCallback(async () => {
+    setLoadError(null)
+    try {
+      const [loadedReports, loadedShifts, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers, loadedRegistrations] = await Promise.all([
+        reportService.getConfirmed(), shiftService.getAll(), brandService.getAll(), platformService.getAll(), campaignService.getAll(), userService.getAll(), shiftRegistrationService.getAll(),
+      ])
+      setReports(loadedReports); setShifts(loadedShifts); setBrands(loadedBrands); setPlatforms(loadedPlatforms); setCampaigns(loadedCampaigns); setUsers(loadedUsers); setRegistrations(loadedRegistrations)
+    } catch (error) {
+      setLoadError(error)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   React.useEffect(() => {
     setFilters(initialFilters())
-    void Promise.all([reportService.getConfirmed(), shiftService.getAll(), brandService.getAll(), platformService.getAll(), campaignService.getAll(), userService.getAll(), shiftRegistrationService.getAll()])
-      .then(([loadedReports, loadedShifts, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers, loadedRegistrations]) => {
-        setReports(loadedReports); setShifts(loadedShifts); setBrands(loadedBrands); setPlatforms(loadedPlatforms); setCampaigns(loadedCampaigns); setUsers(loadedUsers); setRegistrations(loadedRegistrations); setLoading(false)
-      })
-  }, [])
+    void loadData()
+  }, [loadData])
 
   if (loading || !filters) return <div className="py-12 text-center">{t('loading')}</div>
+  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
 
   const matchesRole = (shift: Shift, role: OperationalRole, userId: string) => {
     const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id

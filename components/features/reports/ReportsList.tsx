@@ -33,6 +33,7 @@ import { useToast } from '@/components/ui/toast'
 import { ReportDetailModal } from './ReportDetailModal'
 import { ReportFormModal } from './ReportFormModal'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
+import { PageLoadError } from '@/components/ui/page-load-error'
 
 type Filters = {
   start: string
@@ -73,41 +74,44 @@ export function ReportsList() {
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
   const [users, setUsers] = React.useState<User[]>([])
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
-  const [myShiftIds, setMyShiftIds] = React.useState<Set<string>>(new Set())
   const [filters, setFilters] = React.useState<Filters>(emptyFilters)
   const [selectedReport, setSelectedReport] = React.useState<Report | null>(null)
   const [showForm, setShowForm] = React.useState(false)
   const [removeTarget, setRemoveTarget] = React.useState<Report | null>(null)
   const [removeImpact, setRemoveImpact] = React.useState<DeletionImpact | null>(null)
   const [loading, setLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<unknown>(null)
 
   const loadData = React.useCallback(async () => {
-    const [loadedReports, loadedShifts, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers, loadedRegistrations] = await Promise.all([
-      reportService.getAll(),
-      shiftService.getAll(),
-      brandService.getAll(),
-      platformService.getAll(),
-      campaignService.getAll(),
-      userService.getAll(),
-      shiftRegistrationService.getAll(),
-    ])
-    setReports(loadedReports)
-    setShifts(loadedShifts)
-    setBrands(loadedBrands)
-    setPlatforms(loadedPlatforms)
-    setCampaigns(loadedCampaigns)
-    setUsers(loadedUsers)
-    setRegistrations(loadedRegistrations)
-    setLoading(false)
+    setLoadError(null)
+    try {
+      const [loadedReports, loadedShifts, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers, loadedRegistrations] = await Promise.all([
+        reportService.getAll(),
+        shiftService.getAll(),
+        brandService.getAll(),
+        platformService.getAll(),
+        campaignService.getAll(),
+        userService.getAll(),
+        shiftRegistrationService.getAll(),
+      ])
+      setReports(loadedReports)
+      setShifts(loadedShifts)
+      setBrands(loadedBrands)
+      setPlatforms(loadedPlatforms)
+      setCampaigns(loadedCampaigns)
+      setUsers(loadedUsers)
+      setRegistrations(loadedRegistrations)
+    } catch (error) {
+      setLoadError(error)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   React.useEffect(() => { void loadData() }, [loadData])
-  React.useEffect(() => {
-    if (!currentUser) return
-    void shiftRegistrationService.getForUser(currentUser.id).then(registrations =>
-      setMyShiftIds(new Set(registrations.filter(isStaffedRegistration).map(registration => registration.shift_id)))
-    )
-  }, [currentUser])
+  const myShiftIds = React.useMemo(() => new Set(registrations
+    .filter(registration => registration.user_id === currentUser?.id && isStaffedRegistration(registration))
+    .map(registration => registration.shift_id)), [currentUser?.id, registrations])
 
   const requestRemove = async (report: Report) => {
     const images = await reportImageService.getByReport(report.id)
@@ -217,6 +221,7 @@ export function ReportsList() {
   }
 
   if (loading || userLoading) return <div className="py-12 text-center">{t('loading')}</div>
+  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
 
   return (
     <div className="space-y-6">
