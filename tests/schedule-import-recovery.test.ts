@@ -427,3 +427,97 @@ test('blank imported staffing preserves existing metadata', async () => {
   // blank import should not trigger update at all (maybeMerge returns early)
   assert.equal(updatedLabels, null)
 })
+
+test('SUCCESS PATH: exact identity with campaign and studio match merges staffing', async () => {
+  const existing = shift('success-exact', 'other-batch', { campaign_id: 'campaign-1', studio: 'Studio A', host_names: [], assistant_names: [], technical_names: [] })
+  let updated: { host_names: string[] } | null = null
+  const preview: ImportPreviewRow = {
+    row: { row_number: 2, date: shiftDraft.date, start_time: shiftDraft.start_time, end_time: shiftDraft.end_time, brand_name: 'Mars', platform_name: 'Shopee', title: 'Morning', studio: 'Studio A', campaign_name: 'campaign-1', host_names: ['Kiên'], assistant_names: ['A'], technical_names: ['B'], required_host_count: 1, required_support_count: 1, required_technical_count: 1, warnings: [], errors: [] },
+    shift: { ...shiftDraft, campaign_id: 'campaign-1', studio: 'Studio A', host_names: ['Kiên'], assistant_names: ['A'], technical_names: ['B'] },
+  }
+  const outcomes: unknown[] = []
+  await processScheduleImportRows({
+    batchId: 'batch-1',
+    previews: [preview],
+    batchRows: [batchRow('pending', 2)],
+    initialShifts: [existing],
+    createShift: async () => { throw new Error('should not create') },
+    refreshShifts: async () => [existing],
+    recordOutcome: async o => { outcomes.push(o) },
+    updateStaffingLabels: async (id, labels) => { updated = labels; return { ...existing, ...labels, updated_at: NOW } },
+  })
+  assert.deepEqual(updated?.host_names, ['Kiên'])
+  assert.equal((outcomes[0] as { outcome: string }).outcome, 'duplicate_skipped')
+})
+
+test('FAILED PATH: campaign null vs populated with single slot still merges via slot unique (safe)', async () => {
+  // Existing shift has no campaign, imported has campaign-1 but slot is unique -> should still merge via slot fallback
+  const existing = shift('failed-campaign-null', 'other-batch', { campaign_id: undefined, studio: 'Studio A', host_names: [] })
+  let updated: { host_names: string[] } | null = null
+  const preview: ImportPreviewRow = {
+    row: { row_number: 2, date: shiftDraft.date, start_time: shiftDraft.start_time, end_time: shiftDraft.end_time, brand_name: 'Mars', platform_name: 'Shopee', title: 'Morning', studio: 'Studio A', campaign_name: 'campaign-1', host_names: ['Kiên'], assistant_names: [], technical_names: [], required_host_count: 1, required_support_count: 1, required_technical_count: 1, warnings: [], errors: [] },
+    shift: { ...shiftDraft, campaign_id: 'campaign-1', studio: 'Studio A', host_names: ['Kiên'] },
+  }
+  await processScheduleImportRows({
+    batchId: 'batch-1',
+    previews: [preview],
+    batchRows: [batchRow('pending', 2)],
+    initialShifts: [existing],
+    createShift: async () => { throw new Error('should not create') },
+    refreshShifts: async () => [existing],
+    recordOutcome: async () => {},
+    updateStaffingLabels: async (id, labels) => { updated = labels; return { ...existing, ...labels, updated_at: NOW } },
+  })
+  // With unique slot, staffing is merged even though campaign differs (single safe candidate)
+  assert.deepEqual(updated?.host_names, ['Kiên'])
+})
+
+test('FAILED PATH: studio blank vs Studio A with multiple slot mates is ambiguous and does not merge', async () => {
+  const s1 = shift('s1-studio-a', 'other-batch', { studio: 'Studio A', campaign_id: 'campaign-1', host_names: [] })
+  const s2 = shift('s2-studio-b', 'other-batch', { studio: 'Studio B', campaign_id: 'campaign-1', host_names: [] })
+  let mergeCalled = false
+  const preview: ImportPreviewRow = {
+    row: { row_number: 2, date: shiftDraft.date, start_time: shiftDraft.start_time, end_time: shiftDraft.end_time, brand_name: 'Mars', platform_name: 'Shopee', title: 'Morning', studio: '', campaign_name: 'campaign-1', host_names: ['Kiên'], assistant_names: [], technical_names: [], required_host_count: 1, required_support_count: 1, required_technical_count: 1, warnings: [], errors: [] },
+    shift: { ...shiftDraft, studio: '', campaign_id: 'campaign-1', host_names: ['Kiên'] },
+  }
+  const outcomes: Array<{ outcome: string; failureCode?: string }> = []
+  await processScheduleImportRows({
+    batchId: 'batch-1',
+    previews: [preview],
+    batchRows: [batchRow('pending', 2)],
+    initialShifts: [s1, s2],
+    createShift: async () => { throw new Error('should not create') },
+    refreshShifts: async () => [s1, s2],
+    recordOutcome: async o => { outcomes.push(o as { outcome: string; failureCode?: string }) },
+    updateStaffingLabels: async () => { mergeCalled = true; return null },
+  })
+  assert.equal(mergeCalled, false, 'ambiguous slot must not merge to wrong shift')
+  assert.equal(outcomes[0].outcome, 'retryable')
+  assert.equal(outcomes[0].failureCode, 'IMPORT_RECONCILIATION_AMBIGUOUS')
+})
+
+test('duplicateCandidate ambiguous slot does not first-match wrong shift', async () => {
+  const s1 = shift('dup-s1', 'other-batch', { studio: 'Studio A', campaign_id: 'campaign-1', host_names: [] })
+  const s2 = shift('dup-s2', 'other-batch', { studio: 'Studio B', campaign_id: 'campaign-1', host_names: [] })
+  // Simulate Excel duplicate: preview has duplicateCandidate with blank studio (no exact)
+  const preview: ImportPreviewRow = {
+    row: { row_number: 2, date: shiftDraft.date, start_time: shiftDraft.start_time, end_time: shiftDraft.end_time, brand_name: 'Mars', platform_name: 'Shopee', title: 'Morning', studio: '', campaign_name: 'campaign-1', host_names: ['Kiên'], assistant_names: [], technical_names: [], required_host_count: 1, required_support_count: 1, required_technical_count: 1, warnings: ['duplicate'], errors: [] },
+    shift: undefined,
+    duplicateCandidate: { ...shiftDraft, studio: '', campaign_id: 'campaign-1', host_names: ['Kiên'] },
+  }
+  let mergeCalled = false
+  const outcomes: Array<{ outcome: string; failureCode?: string }> = []
+  await processScheduleImportRows({
+    batchId: 'batch-1',
+    previews: [preview],
+    batchRows: [batchRow('pending', 2)],
+    initialShifts: [s1, s2],
+    createShift: async () => { throw new Error('should not create') },
+    refreshShifts: async () => [s1, s2],
+    recordOutcome: async o => { outcomes.push(o as { outcome: string; failureCode?: string }) },
+    updateStaffingLabels: async () => { mergeCalled = true; return null },
+  })
+  assert.equal(mergeCalled, false)
+  assert.equal(outcomes[0].outcome, 'retryable')
+  assert.equal(outcomes[0].failureCode, 'IMPORT_RECONCILIATION_AMBIGUOUS')
+})
