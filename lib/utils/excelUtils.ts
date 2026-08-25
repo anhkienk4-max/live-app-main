@@ -128,6 +128,21 @@ export const normalizeLookup = (value: unknown) => textValue(value)
   .replace(/^\S+$/, token => token.replace(/([a-z0-9])([A-Z])/g, '$1 $2'))
   .toLowerCase()
 
+/**
+ * Brand lookup uses stable deterministic normalization identical for both sides:
+ * String -> NFKC -> remove zero-width/control -> NBSP->space -> trim -> collapse -> lowercase
+ * Plus single-token CamelCase split to handle Excel rich-text where zero-width removal concatenates words (e.g., "Mars\u200BWrigley" -> "MarsWrigley" -> "Mars Wrigley").
+ * See business rule: normalize(excelBrand) === normalize(masterBrand.name)
+ */
+export const normalizeBrandName = (value: unknown): string => String(value ?? '')
+  .normalize('NFKC')
+  .replace(/[\u200B-\u200D\u2060\uFEFF\u0000-\u001F\u007F-\u009F]/g, '')
+  .replace(/\u00A0/g, ' ')
+  .trim()
+  .replace(/\s+/g, ' ')
+  .replace(/^\S+$/, token => token.replace(/([a-z0-9])([A-Z])/g, '$1 $2'))
+  .toLowerCase()
+
 const valueFor = (row: ScheduleSheetRow, aliases: readonly string[]) => {
   const normalized = Object.fromEntries(
     Object.entries(row).map(([key, value]) => [normalizeLookup(key), value]),
@@ -170,6 +185,16 @@ const entityIdFor = (items: Map<string, string>, value: string): { id?: string; 
   const matches = [...items].filter(([name]) => normalizeLookup(name) === normalized)
   if (matches.length === 1) return { id: matches[0][1], ambiguous: false }
   return { ambiguous: matches.length > 1 }
+}
+
+const brandIdFor = (items: Map<string, string>, value: string): { id?: string; ambiguous: boolean; matches?: Array<[string, string]> } => {
+  // Future-safe: if Brand has brand_code and Excel supplies it, prefer exact brand_code.
+  // Current schema has no brand_code field, so this is a no-op fallback check that keeps behavior stable.
+  const normalized = normalizeBrandName(value)
+  const matches = [...items].filter(([name]) => normalizeBrandName(name) === normalized)
+  if (matches.length === 1) return { id: matches[0][1], ambiguous: false }
+  if (matches.length > 1) return { ambiguous: true, matches }
+  return { ambiguous: false }
 }
 
 const SLASH_DATE_PATTERN = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
@@ -397,7 +422,7 @@ export function parseScheduleRows(
       }
     })
 
-    const brandMatch = entityIdFor(maps.brands, brandName)
+    const brandMatch = brandIdFor(maps.brands, brandName)
     const platformMatch = entityIdFor(maps.platforms, platformName)
     const campaignMatch = campaignName ? entityIdFor(maps.campaigns, campaignName) : { ambiguous: false }
     const brandId = brandMatch.id
