@@ -80,18 +80,54 @@ function findExternalShift(batchId: string, candidate: ShiftDraft, shifts: Shift
   )
 }
 
+type DuplicateCandidateResolution =
+  | { kind: 'none' }
+  | { kind: 'unique'; shift: Shift }
+  | { kind: 'ambiguous'; shiftIds: string[] }
+
+type ExternalShiftResolution =
+  | { kind: 'none' }
+  | { kind: 'unique'; shift: Shift }
+  | { kind: 'ambiguous'; shiftIds: string[] }
+
+function resolveDuplicateCandidateShift(
+  preview: ImportPreviewRow,
+  shifts: Shift[],
+): DuplicateCandidateResolution {
+  const candidate = preview.duplicateCandidate
+  if (!candidate) return { kind: 'none' }
+  const exactMatches = shifts.filter(shift => hasExactScheduleImportIdentity(shift, candidate))
+  if (exactMatches.length === 1) return { kind: 'unique', shift: exactMatches[0] }
+  if (exactMatches.length > 1) return { kind: 'ambiguous', shiftIds: exactMatches.map(s => s.id).sort() }
+  const slotMatches = shifts.filter(shift => hasScheduleImportSlotIdentity(shift, candidate))
+  if (slotMatches.length === 1) return { kind: 'unique', shift: slotMatches[0] }
+  if (slotMatches.length > 1) return { kind: 'ambiguous', shiftIds: slotMatches.map(s => s.id).sort() }
+  return { kind: 'none' }
+}
+
+function resolveExternalShift(
+  batchId: string,
+  candidate: ShiftDraft,
+  shifts: Shift[],
+): ExternalShiftResolution {
+  const slotMatches = shifts.filter(shift =>
+    shift.import_batch_id !== batchId && hasScheduleImportSlotIdentity(shift, candidate),
+  )
+  if (slotMatches.length === 0) return { kind: 'none' }
+  // Prefer exact within slot matches if exactly one exact exists.
+  const exactMatches = slotMatches.filter(shift => hasExactScheduleImportIdentity(shift, candidate))
+  if (exactMatches.length === 1) return { kind: 'unique', shift: exactMatches[0] }
+  if (exactMatches.length > 1) return { kind: 'ambiguous', shiftIds: exactMatches.map(s => s.id).sort() }
+  if (slotMatches.length === 1) return { kind: 'unique', shift: slotMatches[0] }
+  return { kind: 'ambiguous', shiftIds: slotMatches.map(s => s.id).sort() }
+}
+
 function findDuplicateCandidateShift(
   preview: ImportPreviewRow,
   shifts: Shift[],
 ): Shift | undefined {
-  const candidate = preview.duplicateCandidate
-  if (!candidate) return undefined
-  // Duplicate candidate was built with exact brand/platform/campaign/studio/date/time.
-  // Find the matching existing shift by slot identity (date/time/brand/platform) and
-  // then exact identity if possible.
-  const exact = shifts.find(shift => hasExactScheduleImportIdentity(shift, candidate))
-  if (exact) return exact
-  return shifts.find(shift => hasScheduleImportSlotIdentity(shift, candidate))
+  const res = resolveDuplicateCandidateShift(preview, shifts)
+  return res.kind === 'unique' ? res.shift : undefined
 }
 
 export function mergeImportedStaffingLabels(
@@ -230,16 +266,27 @@ export async function processScheduleImportRows({
     // This happens when parseScheduleRows detected sameShift against existingShifts / earlier candidates.
     const duplicateCandidate = preview.duplicateCandidate
     if (!preview.shift && duplicateCandidate) {
-      const existing = findDuplicateCandidateShift(preview, knownShifts)
-      if (existing) {
-        await maybeMergeStaffing(existing, duplicateCandidate)
+      const resolution = resolveDuplicateCandidateShift(preview, knownShifts)
+      if (resolution.kind === 'unique') {
+        await maybeMergeStaffing(resolution.shift, duplicateCandidate)
+        await recordOutcome({
+          rowNumber: preview.row.row_number,
+          outcome: 'duplicate_skipped',
+          expectedOutcome,
+          shiftId: resolution.shift.id,
+        })
+        result.duplicateSkipped += 1
+        continue
       }
-      // Regardless of merge, this row is a duplicate of an existing shift.
+      if (resolution.kind === 'ambiguous') {
+        await persistRetryable(preview.row.row_number, expectedOutcome, 'IMPORT_RECONCILIATION_AMBIGUOUS')
+        continue
+      }
+      // No unique candidate found (e.g., exact/slot none) — still record as duplicate_skipped without link
       await recordOutcome({
         rowNumber: preview.row.row_number,
         outcome: 'duplicate_skipped',
         expectedOutcome,
-        shiftId: existing?.id,
       })
       result.duplicateSkipped += 1
       continue
@@ -270,16 +317,20 @@ export async function processScheduleImportRows({
       await persistRetryable(preview.row.row_number, expectedOutcome, 'IMPORT_BATCH_SLOT_IDENTITY_CONFLICT')
       continue
     }
-    const externalShift = findExternalShift(batchId, candidate, knownShifts)
-    if (externalShift) {
-      await maybeMergeStaffing(externalShift, candidate)
+    const externalResolution = resolveExternalShift(batchId, candidate, knownShifts)
+    if (externalResolution.kind === 'unique') {
+      await maybeMergeStaffing(externalResolution.shift, candidate)
       await recordOutcome({
         rowNumber: preview.row.row_number,
         outcome: 'duplicate_skipped',
         expectedOutcome,
-        shiftId: externalShift.id,
+        shiftId: externalResolution.shift.id,
       })
       result.duplicateSkipped += 1
+      continue
+    }
+    if (externalResolution.kind === 'ambiguous') {
+      await persistRetryable(preview.row.row_number, expectedOutcome, 'IMPORT_RECONCILIATION_AMBIGUOUS')
       continue
     }
 
@@ -328,16 +379,18 @@ export async function processScheduleImportRows({
           'IMPORT_RECONCILIATION_AMBIGUOUS',
         )
       } else {
-        const retryExternal = findExternalShift(batchId, candidate, knownShifts)
-        if (retryExternal) {
-          await maybeMergeStaffing(retryExternal, candidate)
+        const retryExternal = resolveExternalShift(batchId, candidate, knownShifts)
+        if (retryExternal.kind === 'unique') {
+          await maybeMergeStaffing(retryExternal.shift, candidate)
           await recordOutcome({
             rowNumber: preview.row.row_number,
             outcome: 'duplicate_skipped',
             expectedOutcome,
-            shiftId: retryExternal.id,
+            shiftId: retryExternal.shift.id,
           })
           result.duplicateSkipped += 1
+        } else if (retryExternal.kind === 'ambiguous') {
+          await persistRetryable(preview.row.row_number, expectedOutcome, 'IMPORT_RECONCILIATION_AMBIGUOUS')
         } else {
           await persistRetryable(
             preview.row.row_number,
