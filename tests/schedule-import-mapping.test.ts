@@ -285,7 +285,7 @@ test('master lookup resolves dirty Brand/Platform values while a genuinely missi
     ['Leading and trailing spaces', '  Mars Wrigley  '],
     ['Repeated spaces', 'Mars   Wrigley'],
     ['Mixed case', 'MaRs WrIgLeY'],
-    ['Zero-width character', 'Mars\u200BWrigley'],
+    ['Zero-width character', 'Mars \u200BWrigley'],
     ['BOM inside value', 'Mars Wrig\uFEFFley'],
   ]
   const rows = brandVariants.map(([title, brand], index) => {
@@ -325,6 +325,7 @@ test('master lookup handles whitespace, NBSP, case, Unicode and rich-text brand 
   const brands = [
     ['Female AI livestream', 'brand-female'],
     ['ASM AI livestream', 'brand-asm'],
+    ['X-men', 'brand-x-men'],
     ['MERRIES', 'brand-merries'],
   ] as const
   const variants = [
@@ -335,6 +336,7 @@ test('master lookup handles whitespace, NBSP, case, Unicode and rich-text brand 
     'Female AI livestream',
     { richText: [{ t: 'Female ' }, { t: 'AI livestream' }] },
     'ASM AI livestream',
+    'X-\u200Bmen',
     'MERRIES',
   ]
   const variantMaps: EntityMaps = {
@@ -361,10 +363,10 @@ test('master lookup handles whitespace, NBSP, case, Unicode and rich-text brand 
     return parseScheduleTabularData([englishHeader, row].map(csvRow).join('\n'), 'string', variantMaps)
   })
 
-  assert.deepEqual(results.map(result => result.validRows), [1, 1, 1, 1, 1, 1, 1, 1])
+  assert.deepEqual(results.map(result => result.validRows), [1, 1, 1, 1, 1, 1, 1, 1, 1])
   assert.deepEqual(results.map(result => result.validShifts[0].brand_id), [
     'brand-female', 'brand-female', 'brand-female', 'brand-female', 'brand-female', 'brand-female',
-    'brand-asm', 'brand-merries',
+    'brand-asm', 'brand-x-men', 'brand-merries',
   ])
 })
 
