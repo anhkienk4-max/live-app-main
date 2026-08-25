@@ -115,6 +115,21 @@ export interface DeletionImpact {
   related_records: AuditRelatedRecord[]
 }
 
+export interface BulkShiftDeletionOutcome {
+  shift_id: string
+  shift_title?: string
+  success: boolean
+  error_code?: string
+  error_message?: string
+}
+
+export interface BulkShiftDeletionResult {
+  outcomes: BulkShiftDeletionOutcome[]
+  succeeded: number
+  failed: number
+}
+
+
 export interface User extends LifecycleMetadata {
   id: string
   email: string

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import {
   ChevronLeft,
   ChevronRight,
@@ -34,6 +35,7 @@ import { ShiftFormDialog } from '../shifts/ShiftFormDialog'
 import { ShiftDetailModal } from '../shifts/ShiftDetailModal'
 import { DaySessionsDialog } from './DaySessionsDialog'
 import { BulkStaffingApprovalDialog } from './BulkStaffingApprovalDialog'
+import { BulkDeleteShiftsDialog } from './BulkDeleteShiftsDialog'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
@@ -72,6 +74,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const [editingShift, setEditingShift] = React.useState<Shift | null>(null)
   const [showFilters, setShowFilters] = React.useState(false)
   const [showBulkStaffingApproval, setShowBulkStaffingApproval] = React.useState(false)
+  const [showBulkDelete, setShowBulkDelete] = React.useState(false)
   const [searchTerm, setSearchTerm] = React.useState('')
   const [selectedShiftIds, setSelectedShiftIds] = React.useState<Set<string>>(new Set())
   const [filters, setFilters] = React.useState({
@@ -391,6 +394,17 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                 {t('newShift')}
               </Button>
             )}
+            {view === 'list' && currentUser && hasPermission(currentUser, 'shifts.delete') && (
+              <Button
+                variant="destructive"
+                onClick={() => setShowBulkDelete(true)}
+                disabled={selectedShiftIds.size === 0}
+                data-testid="open-bulk-delete-shifts"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                {t('deleteSelectedCount', { count: selectedShiftIds.size })}
+              </Button>
+            )}
             {currentUser && hasPermission(currentUser, 'shifts.approve_registration') && (
               <Button
                 variant="outline"
@@ -608,6 +622,24 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         }}
         onChanged={loadData}
       />
+
+      {currentUser && hasPermission(currentUser, 'shifts.delete') && (
+        <BulkDeleteShiftsDialog
+          open={showBulkDelete}
+          onOpenChange={setShowBulkDelete}
+          selectedShifts={filteredShifts.filter(shift => selectedShiftIds.has(shift.id))}
+          brands={brands}
+          platforms={platforms}
+          onSuccess={(deletedIds) => {
+            setSelectedShiftIds(previous => {
+              const next = new Set(previous)
+              deletedIds.forEach(id => next.delete(id))
+              return next
+            })
+            void loadData()
+          }}
+        />
+      )}
 
       {currentUser && hasPermission(currentUser, 'shifts.approve_registration') && (
         <BulkStaffingApprovalDialog

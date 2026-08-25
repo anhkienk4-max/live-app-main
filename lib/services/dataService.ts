@@ -25,6 +25,8 @@ import {
   AuditModule,
   AuditRelatedRecord,
   DeletionImpact,
+  BulkShiftDeletionOutcome,
+  BulkShiftDeletionResult,
   ReportRevision,
   LiveReportImage,
 } from '@/lib/types/database.types'
@@ -1313,6 +1315,34 @@ export const shiftService = {
     recordScheduleChange('soft_delete', id, before, { ...shifts[index] }, { actor_id: actorId, reason })
     audit('calendar', 'soft_delete', 'shift', id, impact.entity_name, { actorId, before, after: { ...shifts[index] }, reason, relatedRecords: impact.related_records })
     return impact
+  },
+
+  async bulkRemove(ids: string[], actorId: string, reason: string): Promise<BulkShiftDeletionResult> {
+    const outcomes: BulkShiftDeletionOutcome[] = []
+    for (const shiftId of ids) {
+      const shift = shifts.find(candidate => candidate.id === shiftId)
+      try {
+        const impact = await this.remove(shiftId, actorId, reason)
+        outcomes.push({
+          shift_id: shiftId,
+          shift_title: shift?.title,
+          success: Boolean(impact),
+          ...(impact ? {} : { error_message: 'Shift was not found.' }),
+        })
+      } catch (error) {
+        outcomes.push({
+          shift_id: shiftId,
+          shift_title: shift?.title,
+          success: false,
+          error_message: error instanceof Error ? error.message : 'Unable to remove shift.',
+        })
+      }
+    }
+    return {
+      outcomes,
+      succeeded: outcomes.filter(outcome => outcome.success).length,
+      failed: outcomes.filter(outcome => !outcome.success).length,
+    }
   },
 
   async restore(id: string, actorId: string, reason: string): Promise<Shift | null> {
