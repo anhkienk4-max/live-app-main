@@ -312,8 +312,8 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       {/* Search and Filters */}
       <Card className="p-4">
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative min-w-56 flex-1">
+          <div className="flex flex-wrap items-center gap-2 overflow-x-auto pb-1 sm:gap-3">
+            <div className="relative min-w-[200px] flex-1 shrink-0 sm:min-w-56">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
                 placeholder={t('searchShifts')}
@@ -325,6 +325,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
             <Button 
               variant={showFilters ? 'default' : 'outline'}
               onClick={() => setShowFilters(!showFilters)}
+              className="shrink-0"
             >
               <Filter className="h-4 w-4 mr-2" />
               {t('filters')}
@@ -411,7 +412,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-[50vh] overflow-y-auto">
                     <SelectItem value="all">{t('all')} {t('brands')}</SelectItem>
                     {brands.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
                   </SelectContent>
@@ -423,7 +424,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-[50vh] overflow-y-auto">
                     <SelectItem value="all">{t('all')} {t('platforms')}</SelectItem>
                     {platforms.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                   </SelectContent>
@@ -433,7 +434,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                 <label className="text-xs font-medium text-gray-600 mb-1 block">{t('campaign')}</label>
                 <Select value={filters.campaign} onValueChange={(value) => setFilters({ ...filters, campaign: value })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="all">{t('all')} {t('campaigns')}</SelectItem>{campaigns.map(campaign => <SelectItem key={campaign.id} value={campaign.id}>{campaign.name}</SelectItem>)}</SelectContent>
+                  <SelectContent className="max-h-[50vh] overflow-y-auto"><SelectItem value="all">{t('all')} {t('campaigns')}</SelectItem>{campaigns.map(campaign => <SelectItem key={campaign.id} value={campaign.id}>{campaign.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div>
@@ -442,7 +443,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-[50vh] overflow-y-auto">
                     <SelectItem value="all">{t('all')}</SelectItem>
                     <SelectItem value="scheduled">{t('scheduled')}</SelectItem>
                     <SelectItem value="preparing">{t('preparing')}</SelectItem>
@@ -459,7 +460,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-[50vh] overflow-y-auto">
                     <SelectItem value="all">{t('all')} {t('host')}</SelectItem>
                     {users.filter(u => u.operational_roles?.includes('host') || u.department === 'Live Host').map(u => <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>)}
                   </SelectContent>
@@ -469,14 +470,14 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                 <label className="text-xs font-medium text-gray-600 mb-1 block">{t('support')}</label>
                 <Select value={filters.support} onValueChange={(value) => setFilters({ ...filters, support: value })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="all">{t('all')} {t('support')}</SelectItem>{users.filter(u => u.operational_roles?.includes('support') || u.department === 'Live Support').map(u => <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>)}</SelectContent>
+                  <SelectContent className="max-h-[50vh] overflow-y-auto"><SelectItem value="all">{t('all')} {t('support')}</SelectItem>{users.filter(u => u.operational_roles?.includes('support') || u.department === 'Live Support').map(u => <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">{t('technical')}</label>
                 <Select value={filters.technical} onValueChange={(value) => setFilters({ ...filters, technical: value })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="all">{t('all')} {t('technical')}</SelectItem>{users.filter(u => u.operational_roles?.includes('technical')).map(u => <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>)}</SelectContent>
+                  <SelectContent className="max-h-[50vh] overflow-y-auto"><SelectItem value="all">{t('all')} {t('technical')}</SelectItem>{users.filter(u => u.operational_roles?.includes('technical')).map(u => <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               {hasActiveFilters && (
