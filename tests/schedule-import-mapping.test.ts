@@ -3,6 +3,7 @@ import test from 'node:test'
 import * as XLSX from 'xlsx'
 import {
   type EntityMaps,
+  parseScheduleRows,
   parseScheduleTabularData,
 } from '../lib/utils/excelUtils.ts'
 
@@ -318,6 +319,72 @@ test('master lookup resolves dirty Brand/Platform values while a genuinely missi
   const missingPreview = result.rows.find(preview => preview.row.brand_name === 'No Such Brand Anywhere')
   assert.ok(missingPreview)
   assert.match(missingPreview.row.errors.join(' '), /Brand "No Such Brand Anywhere" was not found/)
+})
+
+test('master lookup handles whitespace, NBSP, case, Unicode and rich-text brand values', () => {
+  const brands = [
+    ['Female AI livestream', 'brand-female'],
+    ['ASM AI livestream', 'brand-asm'],
+    ['MERRIES', 'brand-merries'],
+  ] as const
+  const variants = [
+    'Female AI livestream',
+    '  Female   AI livestream  ',
+    'Female\u00a0AI\u00a0livestream',
+    'female ai livestream',
+    'Female AI livestream',
+    { richText: [{ t: 'Female ' }, { t: 'AI livestream' }] },
+    'ASM AI livestream',
+    'MERRIES',
+  ]
+  const variantMaps: EntityMaps = {
+    brands: new Map(brands),
+    platforms: maps.platforms,
+    campaigns: maps.campaigns,
+  }
+  const results = variants.map((brand, index) => {
+    const row = [...scheduleRow]
+    row[3] = brand
+    row[6] = `Brand variant ${index}`
+    row[1] = `09:${String(index).padStart(2, '0')}`
+    row[2] = `10:${String(index).padStart(2, '0')}`
+    if (typeof brand === 'object') {
+      return parseScheduleRows([{
+        Date: row[0],
+        'Start time': row[1],
+        'End time': row[2],
+        Brand: brand,
+        Platform: row[4],
+        'Shift name': row[6],
+      }], variantMaps)
+    }
+    return parseScheduleTabularData([englishHeader, row].map(csvRow).join('\n'), 'string', variantMaps)
+  })
+
+  assert.deepEqual(results.map(result => result.validRows), [1, 1, 1, 1, 1, 1, 1, 1])
+  assert.deepEqual(results.map(result => result.validShifts[0].brand_id), [
+    'brand-female', 'brand-female', 'brand-female', 'brand-female', 'brand-female', 'brand-female',
+    'brand-asm', 'brand-merries',
+  ])
+})
+
+test('normalized master-data ambiguity does not auto-resolve', () => {
+  const ambiguousMaps: EntityMaps = {
+    brands: new Map([
+      ['Female AI livestream', 'brand-1'],
+      ['Female  AI livestream', 'brand-2'],
+    ]),
+    platforms: maps.platforms,
+    campaigns: maps.campaigns,
+  }
+  const result = parseScheduleTabularData(
+    [englishHeader, [...scheduleRow].map((value, index) => index === 3 ? 'female ai livestream' : value)].map(csvRow).join('\n'),
+    'string',
+    ambiguousMaps,
+  )
+
+  assert.equal(result.validRows, 0)
+  assert.match(result.rows[0].row.errors.join(' '), /Brand "female ai livestream" matches multiple/)
 })
 
 test('an imported brand in a successfully loaded but empty master map is still a not-found error', () => {

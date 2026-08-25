@@ -99,16 +99,26 @@ const SOURCE_ROW_NUMBER = '__schedule_source_row_number'
 const HEADER_SCAN_LIMIT = 30
 const HEADER_ERROR_MESSAGE = 'Schedule header was not found. Required columns: Date/Ngày, Time/Khung giờ or Start/End, Brand/Thương hiệu, and Platform/Nền tảng.'
 
-export const normalizeLookup = (value: unknown) => String(value ?? '')
-  .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '')
+const textValue = (value: unknown): string => {
+  if (value && typeof value === 'object') {
+    const cell = value as { richText?: Array<{ t?: unknown }>; v?: unknown }
+    if (Array.isArray(cell.richText)) return cell.richText.map(part => String(part.t ?? '')).join('')
+    if ('v' in cell) return String(cell.v ?? '')
+  }
+  return String(value ?? '')
+}
+
+export const normalizeLookup = (value: unknown) => textValue(value)
+  .normalize('NFKC')
+  .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\u2060\uFEFF]/g, '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
   .replace(/đ/g, 'd')
   .replace(/Đ/g, 'D')
-  .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
   .replace(/[_-]+/g, ' ')
   .replace(/\s+/g, ' ')
   .trim()
+  .replace(/^\S+$/, token => token.replace(/([a-z0-9])([A-Z])/g, '$1 $2'))
   .toLowerCase()
 
 const valueFor = (row: ScheduleSheetRow, aliases: readonly string[]) => {
@@ -148,13 +158,11 @@ function detectScheduleHeaderRow(rawRows: unknown[][]) {
   return best && hasRequiredScheduleHeaders(best.fields) ? best : null
 }
 
-const entityIdFor = (items: Map<string, string>, value: string) => {
-  const caseFolded = value.trim().toLowerCase()
+const entityIdFor = (items: Map<string, string>, value: string): { id?: string; ambiguous: boolean } => {
   const normalized = normalizeLookup(value)
-  for (const [name, id] of items) {
-    if (name.trim().toLowerCase() === caseFolded || normalizeLookup(name) === normalized) return id
-  }
-  return undefined
+  const matches = [...items].filter(([name]) => normalizeLookup(name) === normalized)
+  if (matches.length === 1) return { id: matches[0][1], ambiguous: false }
+  return { ambiguous: matches.length > 1 }
 }
 
 const SLASH_DATE_PATTERN = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
@@ -323,8 +331,8 @@ export function parseScheduleRows(
     const [rangeStart, rangeEnd] = normalizeTimeRange(valueFor(normalizedSource, scheduleHeaders.timeRange))
     const startTime = normalizeTime(valueFor(normalizedSource, scheduleHeaders.startTime)) || rangeStart
     const endTime = normalizeTime(valueFor(normalizedSource, scheduleHeaders.endTime)) || rangeEnd
-    const brandName = String(valueFor(normalizedSource, scheduleHeaders.brand) ?? '').trim()
-    const rawPlatformName = String(valueFor(normalizedSource, scheduleHeaders.platform) ?? '').trim()
+    const brandName = textValue(valueFor(normalizedSource, scheduleHeaders.brand)).trim()
+    const rawPlatformName = textValue(valueFor(normalizedSource, scheduleHeaders.platform)).trim()
     const platformAlias = normalizeLookup(rawPlatformName)
     const platformName = ['shp', 'shopee'].includes(platformAlias)
       ? 'Shopee Live'
@@ -382,12 +390,18 @@ export function parseScheduleRows(
       }
     })
 
-    const brandId = entityIdFor(maps.brands, brandName)
-    const platformId = entityIdFor(maps.platforms, platformName)
-    const campaignId = campaignName ? entityIdFor(maps.campaigns, campaignName) : undefined
-    if (brandName && !brandId) rowErrors.push(`Brand "${brandName}" was not found.`)
-    if (platformName && !platformId) rowErrors.push(`Platform "${platformName}" was not found.`)
-    if (campaignName && !campaignId) rowErrors.push(`Campaign "${campaignName}" was not found.`)
+    const brandMatch = entityIdFor(maps.brands, brandName)
+    const platformMatch = entityIdFor(maps.platforms, platformName)
+    const campaignMatch = campaignName ? entityIdFor(maps.campaigns, campaignName) : { ambiguous: false }
+    const brandId = brandMatch.id
+    const platformId = platformMatch.id
+    const campaignId = campaignMatch.id
+    if (brandName && brandMatch.ambiguous) rowErrors.push(`Brand "${brandName}" matches multiple master-data records.`)
+    else if (brandName && !brandId) rowErrors.push(`Brand "${brandName}" was not found.`)
+    if (platformName && platformMatch.ambiguous) rowErrors.push(`Platform "${platformName}" matches multiple master-data records.`)
+    else if (platformName && !platformId) rowErrors.push(`Platform "${platformName}" was not found.`)
+    if (campaignName && campaignMatch.ambiguous) rowErrors.push(`Campaign "${campaignName}" matches multiple master-data records.`)
+    else if (campaignName && !campaignId) rowErrors.push(`Campaign "${campaignName}" was not found.`)
 
     let shift: Omit<Shift, 'id' | 'created_at' | 'updated_at'> | undefined
     if (brandId && platformId && rowErrors.length === 0) {
@@ -509,9 +523,9 @@ const rowsFromWorkbook = (data: ArrayBuffer | string, type: 'array' | 'string') 
 }
 
 const normalizeEntityMaps = (maps: EntityMaps): EntityMaps => ({
-  brands: new Map([...maps.brands].map(([name, id]) => [name.toLowerCase(), id])),
-  platforms: new Map([...maps.platforms].map(([name, id]) => [name.toLowerCase(), id])),
-  campaigns: new Map([...maps.campaigns].map(([name, id]) => [name.toLowerCase(), id])),
+  brands: new Map(maps.brands),
+  platforms: new Map(maps.platforms),
+  campaigns: new Map(maps.campaigns),
 })
 
 export function parseScheduleTabularData(
