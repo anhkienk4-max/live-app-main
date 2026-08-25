@@ -1,7 +1,8 @@
-'use client'
+﻿'use client'
 
 import { Shift, Brand, Platform, User } from '@/lib/types/database.types'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { format } from 'date-fns'
 import { Calendar } from 'lucide-react'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
@@ -13,9 +14,19 @@ interface ListViewProps {
   platforms: Platform[]
   users: User[]
   onShiftClick?: (shift: Shift) => void
+  selectedShiftIds?: Set<string>
+  onToggleSelectShift?: (shiftId: string) => void
 }
 
-export function ListView({ shifts, brands, platforms, users, onShiftClick }: ListViewProps) {
+export function ListView({
+  shifts,
+  brands,
+  platforms,
+  users,
+  onShiftClick,
+  selectedShiftIds,
+  onToggleSelectShift,
+}: ListViewProps) {
   const { t } = useTranslation()
   const getBrandName = (brandId: string) => brands.find(b => b.id === brandId)?.name || 'Unknown'
   const getPlatformName = (platformId: string) => platforms.find(p => p.id === platformId)?.name || 'Unknown'
@@ -40,36 +51,53 @@ export function ListView({ shifts, brands, platforms, users, onShiftClick }: Lis
 
   return (
     <div className="space-y-2">
-      {sortedShifts.map((shift) => (
-        <button
-          type="button"
-          key={shift.id}
-          className="w-full rounded-lg border p-4 text-left transition-all hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          data-testid={`list-shift-${shift.id}`}
-          style={{ borderLeft: `4px solid ${getBrandColor(shift.brand_id)}` }}
-          onClick={() => onShiftClick?.(shift)}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6 flex-1">
-              <div className="text-sm font-semibold min-w-[110px]">
-                {format(new Date(shift.date), 'MMM d, yyyy')}
+      {sortedShifts.map((shift) => {
+        const isSelected = selectedShiftIds?.has(shift.id) ?? false
+        return (
+          <div
+            key={shift.id}
+            className={`w-full rounded-lg border p-4 text-left transition-all hover:shadow-lg flex items-center gap-3 ${
+              isSelected ? 'bg-blue-50/50 border-blue-300' : ''
+            }`}
+            data-testid={`list-shift-${shift.id}`}
+            style={{ borderLeft: `4px solid ${getBrandColor(shift.brand_id)}` }}
+          >
+            {onToggleSelectShift && (
+              <Checkbox
+                checked={isSelected}
+                onCheckedChange={() => onToggleSelectShift(shift.id)}
+                aria-label={`Select shift ${shift.title || shift.id}`}
+                className="shrink-0"
+              />
+            )}
+            <button
+              type="button"
+              className="flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+              onClick={() => onShiftClick?.(shift)}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-6 flex-1">
+                  <div className="text-sm font-semibold min-w-[110px]">
+                    {format(new Date(shift.date), 'MMM d, yyyy')}
+                  </div>
+                  <div className="min-w-[150px] text-sm font-medium">{formatShiftTimeRange(shift)}</div>
+                  <div className="text-sm font-semibold text-gray-900">{getBrandName(shift.brand_id)}</div>
+                  <div className="text-sm text-gray-600">{getPlatformName(shift.platform_id)}</div>
+                  <div className="text-sm text-gray-500"><span className="font-medium">{t('studio')}:</span> {shift.studio || t('notUpdated')}</div>
+                  <div className="text-sm text-gray-500">
+                    <span className="font-medium">{t('importHostNames')}:</span> {staffingName(shift.host_id, shift.host_names)}
+                  </div>
+                  <div className="text-sm text-gray-500"><span className="font-medium">{t('importAssistantNames')}:</span> {staffingName(shift.support_id, shift.assistant_names)}</div>
+                  <div className="text-sm text-gray-500"><span className="font-medium">{t('importTechnicalNames')}:</span> {staffingName(shift.technical_id, shift.technical_names)}</div>
+                </div>
+                <Badge variant={shift.status === 'live' ? 'destructive' : shift.status === 'completed' ? 'default' : 'secondary'}>
+                  {shift.status}
+                </Badge>
               </div>
-              <div className="min-w-[150px] text-sm font-medium">{formatShiftTimeRange(shift)}</div>
-              <div className="text-sm font-semibold text-gray-900">{getBrandName(shift.brand_id)}</div>
-              <div className="text-sm text-gray-600">{getPlatformName(shift.platform_id)}</div>
-              <div className="text-sm text-gray-500"><span className="font-medium">{t('studio')}:</span> {shift.studio || t('notUpdated')}</div>
-              <div className="text-sm text-gray-500">
-                <span className="font-medium">{t('importHostNames')}:</span> {staffingName(shift.host_id, shift.host_names)}
-              </div>
-              <div className="text-sm text-gray-500"><span className="font-medium">{t('importAssistantNames')}:</span> {staffingName(shift.support_id, shift.assistant_names)}</div>
-              <div className="text-sm text-gray-500"><span className="font-medium">{t('importTechnicalNames')}:</span> {staffingName(shift.technical_id, shift.technical_names)}</div>
-            </div>
-            <Badge variant={shift.status === 'live' ? 'destructive' : shift.status === 'completed' ? 'default' : 'secondary'}>
-              {shift.status}
-            </Badge>
+            </button>
           </div>
-        </button>
-      ))}
+        )
+      })}
     </div>
   )
 }

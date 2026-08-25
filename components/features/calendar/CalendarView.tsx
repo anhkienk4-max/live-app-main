@@ -7,7 +7,23 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ChevronLeft, ChevronRight, LayoutGrid, List, Clock, Calendar as CalendarIcon, Search, Filter, Plus, UserCheck, X } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  LayoutGrid,
+  List,
+  Clock,
+  Calendar as CalendarIcon,
+  Search,
+  Filter,
+  Plus,
+  UserCheck,
+  X,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Trash2,
+} from 'lucide-react'
 import { format, addMonths, addWeeks, addDays } from 'date-fns'
 import { MonthView } from './MonthView'
 import { WeekView } from './WeekView'
@@ -21,12 +37,24 @@ import { BulkStaffingApprovalDialog } from './BulkStaffingApprovalDialog'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
+import { useToast } from '@/components/ui/toast'
 import { enUS, vi } from 'date-fns/locale'
 import { pendingRegistrationsInScope, shiftsInCalendarScope } from '@/lib/utils/calendarStaffingApproval'
+import {
+  buildScheduleExportRows,
+  buildScheduleExportFilename,
+  downloadScheduleExportXlsx,
+  downloadScheduleExportCsv,
+  brandsToNameMap,
+  platformsToNameMap,
+  campaignsToNameMap,
+  usersToNameMap,
+} from '@/lib/utils/scheduleExportUtils'
 
 export function CalendarView({ createRequest = 0 }: { createRequest?: number }) {
   const { currentUser } = useCurrentUser()
   const { language, t } = useTranslation()
+  const { toast } = useToast()
   const dateLocale = language === 'vi' ? vi : enUS
   const [currentDate, setCurrentDate] = React.useState(new Date())
   const [view, setView] = React.useState<'month' | 'week' | 'day' | 'list'>('month')
@@ -45,6 +73,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const [showFilters, setShowFilters] = React.useState(false)
   const [showBulkStaffingApproval, setShowBulkStaffingApproval] = React.useState(false)
   const [searchTerm, setSearchTerm] = React.useState('')
+  const [selectedShiftIds, setSelectedShiftIds] = React.useState<Set<string>>(new Set())
   const [filters, setFilters] = React.useState({
     brand: 'all',
     platform: 'all',
@@ -55,15 +84,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     technical: 'all'
   })
 
-  React.useEffect(() => {
-    loadData()
-  }, [])
-
-  React.useEffect(() => {
-    if (createRequest > 0) setShowForm(true)
-  }, [createRequest])
-
-  const loadData = async () => {
+  const loadData = React.useCallback(async () => {
     const [shiftsData, brandsData, platformsData, campaignsData, usersData, registrationsData, reportsData] = await Promise.all([
       shiftService.getAll(),
       brandService.getAll(),
@@ -81,7 +102,46 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     setRegistrations(registrationsData)
     setReports(reportsData)
     setLoading(false)
-  }
+  }, [])
+
+  React.useEffect(() => {
+    let active = true
+    const fetchData = async () => {
+      const [shiftsData, brandsData, platformsData, campaignsData, usersData, registrationsData, reportsData] = await Promise.all([
+        shiftService.getAll(),
+        brandService.getAll(),
+        platformService.getAll(),
+        campaignService.getAll(),
+        userService.getAll(),
+        shiftRegistrationService.getAll(),
+        reportService.getAll(),
+      ])
+      if (active) {
+        setShifts(shiftsData)
+        setBrands(brandsData)
+        setPlatforms(platformsData)
+        setCampaigns(campaignsData)
+        setUsers(usersData)
+        setRegistrations(registrationsData)
+        setReports(reportsData)
+        setLoading(false)
+      }
+    }
+    void fetchData()
+    return () => {
+      active = false
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (createRequest > 0) {
+      const timer = setTimeout(() => setShowForm(true), 0)
+      return () => {
+        clearTimeout(timer)
+      }
+    }
+    return undefined
+  }, [createRequest])
 
   const filteredShifts = React.useMemo(() => {
     const matchesRole = (shift: Shift, role: OperationalRole, userId: string) => {
@@ -163,6 +223,60 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
 
   const hasActiveFilters = Object.values(filters).some(value => value !== 'all') || searchTerm !== ''
 
+  const toggleSelectShift = (shiftId: string) => {
+    setSelectedShiftIds(prev => {
+      const next = new Set(prev)
+      if (next.has(shiftId)) {
+        next.delete(shiftId)
+      } else {
+        next.add(shiftId)
+      }
+      return next
+    })
+  }
+
+  const handleExport = (formatType: 'xlsx' | 'csv', scope: 'filtered' | 'selected') => {
+    const targetShifts = scope === 'selected'
+      ? filteredShifts.filter(s => selectedShiftIds.has(s.id))
+      : filteredShifts
+
+    if (targetShifts.length === 0) {
+      toast({
+        title: t('exportExcel'),
+        description: 'No shifts available to export.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const brandsMap = brandsToNameMap(brands)
+    const platformsMap = platformsToNameMap(platforms)
+    const campaignsMap = campaignsToNameMap(campaigns)
+    const usersMap = usersToNameMap(users)
+
+    const rows = buildScheduleExportRows(
+      targetShifts,
+      brandsMap,
+      platformsMap,
+      campaignsMap,
+      usersMap,
+      registrations,
+    )
+    const filename = buildScheduleExportFilename(scope, targetShifts, formatType, currentDate)
+
+    if (formatType === 'xlsx') {
+      downloadScheduleExportXlsx(rows, filename)
+    } else {
+      downloadScheduleExportCsv(rows, filename)
+    }
+
+    toast({
+      title: 'Export successful',
+      description: `Exported ${targetShifts.length} shift(s) to ${filename}`,
+      variant: 'success',
+    })
+  }
+
   const getViewTitle = () => {
     switch (view) {
       case 'month':
@@ -227,6 +341,50 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
               {t('filters')}
               {hasActiveFilters && <span className="ml-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center">{Object.values(filters).filter(v => v !== 'all').length + (searchTerm ? 1 : 0)}</span>}
             </Button>
+            {hasPermission(currentUser, 'shifts.export') && (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button variant="outline" data-testid="export-schedule-dropdown-btn">
+                      <Download className="h-4 w-4 mr-2" />
+                      {t('exportExcel')}
+                      {selectedShiftIds.size > 0 && (
+                        <span className="ml-2 bg-blue-600 text-white rounded-full px-1.5 py-0.5 text-xs">
+                          {selectedShiftIds.size}
+                        </span>
+                      )}
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleExport('xlsx', 'filtered')} data-testid="export-filtered-xlsx">
+                    <FileSpreadsheet className="h-4 w-4 mr-2" />
+                    Filtered XLSX
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleExport('csv', 'filtered')} data-testid="export-filtered-csv">
+                    <FileText className="h-4 w-4 mr-2" />
+                    Filtered CSV
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => handleExport('xlsx', 'selected')}
+                    disabled={selectedShiftIds.size === 0}
+                    data-testid="export-selected-xlsx"
+                  >
+                    <FileSpreadsheet className="h-4 w-4 mr-2" />
+                    Selected XLSX
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => handleExport('csv', 'selected')}
+                    disabled={selectedShiftIds.size === 0}
+                    data-testid="export-selected-csv"
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    Selected CSV
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             {hasPermission(currentUser, 'shifts.assign_staff') && (
               <Button onClick={() => setShowForm(true)}>
                 <Plus className="h-4 w-4 mr-2" />
@@ -380,7 +538,17 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         {view === 'month' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} onShiftClick={setSelectedShift} onDayClick={setSelectedDay} /></div></div>}
         {view === 'week' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} onShiftClick={setSelectedShift} /></div></div>}
         {view === 'day' && <DayView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} users={users} onShiftClick={setSelectedShift} />}
-        {view === 'list' && <ListView shifts={filteredShifts} brands={brands} platforms={platforms} users={users} onShiftClick={setSelectedShift} />}
+        {view === 'list' && (
+          <ListView
+            shifts={filteredShifts}
+            brands={brands}
+            platforms={platforms}
+            users={users}
+            onShiftClick={setSelectedShift}
+            selectedShiftIds={selectedShiftIds}
+            onToggleSelectShift={toggleSelectShift}
+          />
+        )}
       </Card>
 
       {/* Modals */}
