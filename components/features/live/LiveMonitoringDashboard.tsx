@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { format } from 'date-fns'
-import { AlertCircle, Clock, DollarSign, FileText, Radio, RotateCcw, TrendingUp, Users } from 'lucide-react'
+import { AlertCircle, Clock, DollarSign, FileText, Filter, Radio, RotateCcw, TrendingUp, Users } from 'lucide-react'
 import {
   brandService,
   campaignService,
@@ -40,6 +40,7 @@ export function LiveMonitoringDashboard() {
   const [users, setUsers] = React.useState<User[]>([])
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   const [filters, setFilters] = React.useState<Filters | null>(null)
+  const [showFilters, setShowFilters] = React.useState(false)
   const [selectedShift, setSelectedShift] = React.useState<Shift | null>(null)
   const [updateShift, setUpdateShift] = React.useState<Shift | null>(null)
   const [loading, setLoading] = React.useState(true)
@@ -112,7 +113,7 @@ export function LiveMonitoringDashboard() {
 
   return <>
     <div className="space-y-6">
-      <Card><CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle>{t('liveFilters')}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{t('todaysDate')}: {format(new Date(), 'dd/MM/yyyy')}</p></div><Button variant="outline" onClick={() => setFilters(initialFilters())}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button></div></CardHeader><CardContent className="grid gap-3 md:grid-cols-4">
+      <Card><CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle>{t('liveFilters')}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{t('todaysDate')}: {format(new Date(), 'dd/MM/yyyy')}</p></div><div className="flex flex-wrap items-center gap-2"><Button variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="live-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button><Button variant="outline" onClick={() => setFilters(initialFilters())}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button></div></div></CardHeader>{showFilters && <CardContent id="live-filter-panel" className="grid gap-3 md:grid-cols-4">
         <label className="text-xs font-medium">{t('date')}<Input className="mt-1" type="date" value={filters.date} onChange={event => setFilters(current => current ? { ...current, date: event.target.value } : current)} /></label>
         <FilterSelect label={t('brand')} value={filters.brand} options={brands} onChange={value => setFilters(current => current ? { ...current, brand: value } : current)} />
         <FilterSelect label={t('platform')} value={filters.platform} options={platforms} onChange={value => setFilters(current => current ? { ...current, platform: value } : current)} />
@@ -121,7 +122,7 @@ export function LiveMonitoringDashboard() {
         <FilterSelect label={t('support')} value={filters.support} options={roleOptions('support')} onChange={value => setFilters(current => current ? { ...current, support: value } : current)} />
         <FilterSelect label={t('technical')} value={filters.technical} options={roleOptions('technical')} onChange={value => setFilters(current => current ? { ...current, technical: value } : current)} />
         <label className="text-xs font-medium">{t('status')}<Select value={filters.status} onValueChange={value => setFilters(current => current ? { ...current, status: value } : current)}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{(['scheduled','preparing','live','paused','completed','cancelled'] as Shift['status'][]).map(status => <SelectItem key={status} value={status}>{statusLabel(status)}</SelectItem>)}</SelectContent></Select></label>
-      </CardContent></Card>
+      </CardContent>}</Card>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
         <Metric title={t('liveInProgress')} value={filtered.filter(shift => shift.status === 'live').length.toString()} icon={<Radio className="h-5 w-5 text-red-600" />} />

@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { addDays, endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
-import { BarChart3, Calendar, FileText, Package, Radio, RotateCcw, TrendingUp, Users } from 'lucide-react'
+import { BarChart3, Calendar, FileText, Filter, Package, Radio, RotateCcw, TrendingUp, Users } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { brandService, campaignService, isStaffedRegistration, platformService, reportService, shiftRegistrationService, shiftService, userService } from '@/lib/services/dataService'
 import { Brand, Campaign, OperationalRole, Platform, Report, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
@@ -48,6 +48,7 @@ export function DashboardOverview() {
   const [users, setUsers] = React.useState<User[]>([])
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   const [filters, setFilters] = React.useState<Filters | null>(null)
+  const [showFilters, setShowFilters] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
 
@@ -116,7 +117,7 @@ export function DashboardOverview() {
 
   return <div className="space-y-7">
     <div><h1 className="text-3xl font-bold">{t('dashboardTitle')}</h1><p className="mt-1 text-muted-foreground">{t('dashboardSubtitle')}</p></div>
-    <Card><CardHeader><CardTitle className="text-base">{t('dashboardFilters')}</CardTitle></CardHeader><CardContent className="space-y-4">
+    <Card><CardHeader className="flex flex-row items-center justify-between space-y-0"><CardTitle className="text-base">{t('dashboardFilters')}</CardTitle><Button variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="dashboard-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button></CardHeader>{showFilters && <CardContent id="dashboard-filter-panel" className="space-y-4">
       <div className="grid gap-3 md:grid-cols-4">
         <label className="text-xs font-medium">{t('dateRange')}<Select value={filters.preset} onValueChange={value => setPreset(value as Preset)}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="today">{t('today')}</SelectItem><SelectItem value="yesterday">{t('yesterday')}</SelectItem><SelectItem value="7d">{t('last7Days')}</SelectItem><SelectItem value="30d">{t('last30Days')}</SelectItem><SelectItem value="thisMonth">{t('thisMonth')}</SelectItem><SelectItem value="lastMonth">{t('lastMonth')}</SelectItem><SelectItem value="custom">{t('customRange')}</SelectItem></SelectContent></Select></label>
         {filters.preset === 'custom' && <><label className="text-xs font-medium">{t('startDate')}<Input className="mt-1" type="date" value={filters.start} onChange={event => setFilters(current => current ? { ...current, start: event.target.value } : current)} /></label><label className="text-xs font-medium">{t('endDate')}<Input className="mt-1" type="date" value={filters.end} onChange={event => setFilters(current => current ? { ...current, end: event.target.value } : current)} /></label></>}
@@ -130,7 +131,7 @@ export function DashboardOverview() {
         <FilterSelect label={t('technical')} value={filters.technical} options={roleOptions('technical')} onChange={value => setFilters(current => current ? { ...current, technical: value } : current)} />
       </div>
       <Button variant="outline" onClick={() => setFilters(initialFilters())}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button>
-    </CardContent></Card>
+    </CardContent>}</Card>
 
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <Metric title={t('todaysLiveSessions')} value={filteredShifts.filter(shift => shift.date === today).length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600" />} />

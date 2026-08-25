@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { addDays, endOfMonth, format, startOfMonth, startOfWeek, subMonths } from 'date-fns'
-import { BarChart3, RotateCcw } from 'lucide-react'
+import { BarChart3, Filter, RotateCcw } from 'lucide-react'
 import {
   Bar,
   BarChart,
@@ -51,6 +51,7 @@ export function DashboardAnalytics() {
   const [users, setUsers] = React.useState<User[]>([])
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   const [filters, setFilters] = React.useState<Filters | null>(null)
+  const [showFilters, setShowFilters] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
 
@@ -172,11 +173,11 @@ export function DashboardAnalytics() {
   const roleOptions = (role: 'host' | 'support' | 'technical') => users.filter(user => user.operational_roles?.includes(role)).map(user => ({ id: user.id, name: user.full_name }))
 
   return <div className="space-y-6">
-    <Card><CardHeader><CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5" />{t('confirmedOnly')}</CardTitle></CardHeader><CardContent className="space-y-4">
+    <Card><CardHeader className="flex flex-row items-center justify-between space-y-0"><CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5" />{t('confirmedOnly')}</CardTitle><Button variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="analytics-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button></CardHeader>{showFilters && <CardContent id="analytics-filter-panel" className="space-y-4">
       <div className="grid gap-3 md:grid-cols-4"><label className="text-xs font-medium">{t('dateRange')}<Select value={filters.range} onValueChange={value => updateRange(value as RangeKey)}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="today">{t('today')}</SelectItem><SelectItem value="yesterday">{t('yesterday')}</SelectItem><SelectItem value="7d">{t('last7Days')}</SelectItem><SelectItem value="30d">{t('last30Days')}</SelectItem><SelectItem value="thisMonth">{t('thisMonth')}</SelectItem><SelectItem value="lastMonth">{t('lastMonth')}</SelectItem><SelectItem value="custom">{t('customRange')}</SelectItem></SelectContent></Select></label>{filters.range === 'custom' && <><label className="text-xs font-medium">{t('startDate')}<Input className="mt-1" type="date" value={filters.start} onChange={event => setFilters(current => current ? { ...current, start: event.target.value } : current)} /></label><label className="text-xs font-medium">{t('endDate')}<Input className="mt-1" type="date" value={filters.end} onChange={event => setFilters(current => current ? { ...current, end: event.target.value } : current)} /></label></>}</div>
       <div className="grid gap-3 md:grid-cols-3"><FilterSelect label={t('brand')} value={filters.brand} options={brands} onChange={value => setFilters(current => current ? { ...current, brand: value } : current)} /><FilterSelect label={t('platform')} value={filters.platform} options={platforms} onChange={value => setFilters(current => current ? { ...current, platform: value } : current)} /><FilterSelect label={t('campaign')} value={filters.campaign} options={campaigns} onChange={value => setFilters(current => current ? { ...current, campaign: value } : current)} /><FilterSelect label={t('host')} value={filters.host} options={roleOptions('host')} onChange={value => setFilters(current => current ? { ...current, host: value } : current)} /><FilterSelect label={t('support')} value={filters.support} options={roleOptions('support')} onChange={value => setFilters(current => current ? { ...current, support: value } : current)} /><FilterSelect label={t('technical')} value={filters.technical} options={roleOptions('technical')} onChange={value => setFilters(current => current ? { ...current, technical: value } : current)} /></div>
       <Button variant="outline" onClick={() => setFilters(initialFilters())}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button>
-    </CardContent></Card>
+    </CardContent>}</Card>
 
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
       <Metric title={t('confirmedRevenue')} value={formatCurrency(totals.revenue)} note={`${delta('revenue')} ${t('previousPeriod')}`} />
