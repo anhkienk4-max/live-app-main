@@ -107,7 +107,7 @@ test('failed master load: import is blocked and an explicit loading error is exp
 test('an existing normalized legitimate Brand still resolves once masters are ready', () => {
   const result = parseWhenMastersReady('ready', () =>
     parseScheduleTabularData(
-      `${csvRow(englishHeader)}\n${csvRow(withColumn(scheduleRow, 3, 'Mars\u200BWrigley'))}`,
+      `${csvRow(englishHeader)}\n${csvRow(withColumn(scheduleRow, 3, 'Mars \u200BWrigley'))}`,
       'string',
       maps,
     ))
