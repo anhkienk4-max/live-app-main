@@ -192,7 +192,7 @@ test('23505 re-reconciles and recovers the shift created by the same batch', asy
   assert.equal(flow.outcomes[0]?.shiftId, recovered.id)
 })
 
-test('external slot duplicate is skipped without linking it to the batch row', async () => {
+test('external slot duplicate is skipped but linked to existing shift for staffing reconciliation', async () => {
   const flow = workflow({ initialShifts: [shift('external', 'other-batch')] })
   const result = await flow.run()
 
@@ -202,10 +202,11 @@ test('external slot duplicate is skipped without linking it to the batch row', a
     rowNumber: 2,
     outcome: 'duplicate_skipped',
     expectedOutcome: 'pending',
+    shiftId: 'external',
   }])
 })
 
-test('23505 followed by an external slot match is duplicate_skipped', async () => {
+test('23505 followed by an external slot match is duplicate_skipped and linked', async () => {
   const external = shift('external-after-race', 'other-batch')
   const flow = workflow({
     createShift: async () => {
@@ -221,7 +222,7 @@ test('23505 followed by an external slot match is duplicate_skipped', async () =
   assert.equal(result.duplicateSkipped, 1)
   assert.equal(result.recovered, 0)
   assert.equal(flow.outcomes[0]?.outcome, 'duplicate_skipped')
-  assert.equal(flow.outcomes[0]?.shiftId, undefined)
+  assert.equal(flow.outcomes[0]?.shiftId, 'external-after-race')
 })
 
 test('validation_failed is a retryable current state when the corrected preview is valid', async () => {
@@ -258,4 +259,171 @@ test('finalized rows are never created or overwritten by retry processing', asyn
   assert.equal(flow.createCalls(), 0)
   assert.equal(result.finalizedSkipped, 1)
   assert.deepEqual(flow.outcomes, [])
+})
+
+test('existing shift staffing labels are merged when external duplicate is reconciled', async () => {
+  const existing = shift('existing-1', undefined, { host_names: [], assistant_names: [], technical_names: [] })
+  let updatedLabels: { host_names: string[]; assistant_names: string[]; technical_names: string[] } | null = null
+  const previewWithStaffing: ImportPreviewRow = {
+    row: {
+      row_number: 2,
+      date: shiftDraft.date,
+      start_time: shiftDraft.start_time,
+      end_time: shiftDraft.end_time,
+      brand_name: 'Mars Wrigley',
+      platform_name: 'Shopee Live',
+      title: shiftDraft.title ?? '',
+      studio: shiftDraft.studio,
+      host_names: ['Kiên'],
+      assistant_names: ['A'],
+      technical_names: ['B'],
+      required_host_count: 1,
+      required_support_count: 1,
+      required_technical_count: 1,
+      warnings: [],
+      errors: [],
+    },
+    shift: {
+      ...shiftDraft,
+      host_names: ['Kiên'],
+      assistant_names: ['A'],
+      technical_names: ['B'],
+    },
+  }
+  const result = await processScheduleImportRows({
+    batchId: 'batch-1',
+    previews: [previewWithStaffing],
+    batchRows: [batchRow('pending', 2)],
+    initialShifts: [existing],
+    createShift: async () => { throw new Error('should not create') },
+    refreshShifts: async () => [existing],
+    recordOutcome: async () => {},
+    updateStaffingLabels: async (id, labels) => {
+      updatedLabels = labels
+      return { ...existing, ...labels, updated_at: NOW }
+    },
+  })
+  assert.deepEqual(updatedLabels, { host_names: ['Kiên'], assistant_names: ['A'], technical_names: ['B'] })
+  assert.equal(result.duplicateSkipped, 1)
+})
+
+test('Host-only import preserves other staffing fields on existing shift', async () => {
+  const existing = shift('existing-2', undefined, { host_names: [], assistant_names: ['ExistingSupport'], technical_names: ['ExistingTech'] })
+  let updatedLabels: { host_names: string[]; assistant_names: string[]; technical_names: string[] } | null = null
+  const preview: ImportPreviewRow = {
+    row: {
+      row_number: 2,
+      date: shiftDraft.date,
+      start_time: shiftDraft.start_time,
+      end_time: shiftDraft.end_time,
+      brand_name: 'Mars Wrigley',
+      platform_name: 'Shopee Live',
+      title: shiftDraft.title ?? '',
+      studio: shiftDraft.studio,
+      host_names: ['Kiên'],
+      assistant_names: [],
+      technical_names: [],
+      required_host_count: 1,
+      required_support_count: 1,
+      required_technical_count: 1,
+      warnings: [],
+      errors: [],
+    },
+    shift: { ...shiftDraft, host_names: ['Kiên'], assistant_names: [], technical_names: [] },
+  }
+  await processScheduleImportRows({
+    batchId: 'batch-1',
+    previews: [preview],
+    batchRows: [batchRow('pending', 2)],
+    initialShifts: [existing],
+    createShift: async () => { throw new Error('should not create') },
+    refreshShifts: async () => [existing],
+    recordOutcome: async () => {},
+    updateStaffingLabels: async (id, labels) => {
+      updatedLabels = labels
+      return { ...existing, ...labels, updated_at: NOW }
+    },
+  })
+  assert.deepEqual(updatedLabels, { host_names: ['Kiên'], assistant_names: ['ExistingSupport'], technical_names: ['ExistingTech'] })
+})
+
+test('re-import same staffing does not duplicate names and is idempotent', async () => {
+  const existing = shift('existing-3', undefined, { host_names: ['Kiên'], assistant_names: ['A'], technical_names: ['B'] })
+  let updateCalled = false
+  const preview: ImportPreviewRow = {
+    row: {
+      row_number: 2,
+      date: shiftDraft.date,
+      start_time: shiftDraft.start_time,
+      end_time: shiftDraft.end_time,
+      brand_name: 'Mars Wrigley',
+      platform_name: 'Shopee Live',
+      title: shiftDraft.title ?? '',
+      studio: shiftDraft.studio,
+      host_names: ['Kiên'],
+      assistant_names: ['A'],
+      technical_names: ['B'],
+      required_host_count: 1,
+      required_support_count: 1,
+      required_technical_count: 1,
+      warnings: [],
+      errors: [],
+    },
+    shift: { ...shiftDraft, host_names: ['Kiên'], assistant_names: ['A'], technical_names: ['B'] },
+  }
+  await processScheduleImportRows({
+    batchId: 'batch-1',
+    previews: [preview],
+    batchRows: [batchRow('pending', 2)],
+    initialShifts: [existing],
+    createShift: async () => { throw new Error('should not create') },
+    refreshShifts: async () => [existing],
+    recordOutcome: async () => {},
+    updateStaffingLabels: async () => {
+      updateCalled = true
+      throw new Error('should not be called when labels equal')
+    },
+  })
+  assert.equal(updateCalled, false)
+})
+
+test('blank imported staffing preserves existing metadata', async () => {
+  const existing = shift('existing-4', undefined, { host_names: ['Kiên'], assistant_names: ['A'], technical_names: ['B'] })
+  let updatedLabels: { host_names: string[]; assistant_names: string[]; technical_names: string[] } | null = null
+  const preview: ImportPreviewRow = {
+    row: {
+      row_number: 2,
+      date: shiftDraft.date,
+      start_time: shiftDraft.start_time,
+      end_time: shiftDraft.end_time,
+      brand_name: 'Mars Wrigley',
+      platform_name: 'Shopee Live',
+      title: shiftDraft.title ?? '',
+      studio: shiftDraft.studio,
+      host_names: [],
+      assistant_names: [],
+      technical_names: [],
+      required_host_count: 1,
+      required_support_count: 1,
+      required_technical_count: 1,
+      warnings: [],
+      errors: [],
+    },
+    shift: { ...shiftDraft, host_names: [], assistant_names: [], technical_names: [] },
+  }
+  await processScheduleImportRows({
+    batchId: 'batch-1',
+    previews: [preview],
+    batchRows: [batchRow('pending', 2)],
+    initialShifts: [existing],
+    createShift: async () => { throw new Error('should not create') },
+    refreshShifts: async () => [existing],
+    recordOutcome: async () => {},
+    updateStaffingLabels: async (id, labels) => {
+      updatedLabels = labels
+      return { ...existing, ...labels, updated_at: NOW }
+    },
+  })
+  // blank import should not trigger update at all (maybeMerge returns early)
+  assert.equal(updatedLabels, null)
 })

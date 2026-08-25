@@ -38,6 +38,13 @@ export interface ImportError {
 export interface ImportPreviewRow {
   row: ScheduleImportRow
   shift?: Omit<Shift, 'id' | 'created_at' | 'updated_at'>
+  /**
+   * For duplicate rows (where shift was suppressed to avoid creating a duplicate shift),
+   * keep the would-be shift draft so reconciliation can merge imported staffing display
+   * names into the existing shift. This preserves duplicate semantics (validShifts excludes
+   * it) while allowing staffing metadata persistence.
+   */
+  duplicateCandidate?: Omit<Shift, 'id' | 'created_at' | 'updated_at'>
 }
 
 export interface ImportResult {
@@ -404,6 +411,7 @@ export function parseScheduleRows(
     else if (campaignName && !campaignId) rowErrors.push(`Campaign "${campaignName}" was not found.`)
 
     let shift: Omit<Shift, 'id' | 'created_at' | 'updated_at'> | undefined
+    let duplicateCandidate: Omit<Shift, 'id' | 'created_at' | 'updated_at'> | undefined
     if (brandId && platformId && rowErrors.length === 0) {
       shift = {
         date,
@@ -427,6 +435,7 @@ export function parseScheduleRows(
       const isDuplicate = existingShifts.some(existing => sameShift(existing, shift!)) || candidates.some(existing => sameShift(existing, shift!))
       if (isDuplicate) {
         rowWarnings.push('A shift with the same brand, platform, campaign, studio, date, and time already exists.')
+        duplicateCandidate = shift
         shift = undefined
       } else {
         candidates.push(shift)
@@ -456,6 +465,7 @@ export function parseScheduleRows(
         errors: rowErrors,
       }),
       shift,
+      duplicateCandidate,
     })
   })
 

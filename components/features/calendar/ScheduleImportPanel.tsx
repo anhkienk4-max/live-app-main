@@ -275,6 +275,13 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
             failureCode,
           })
         },
+        updateStaffingLabels: async (shiftId, labels) => {
+          // Use dataService directly to ensure both mock and Supabase paths are covered
+          // and to update the in-memory projection for subsequent reconciliation.
+          const updated = await shiftService.updateStaffingLabels(shiftId, labels)
+          if (updated) setExistingShifts(prev => prev.map(s => s.id === updated.id ? updated : s))
+          return updated
+        },
       })
       const importedCount = importResult.imported + importResult.recovered
       if (importResult.retryable > 0) {
