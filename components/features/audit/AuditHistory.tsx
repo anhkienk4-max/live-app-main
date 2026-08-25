@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { Eye, History, RotateCcw, ShieldAlert } from 'lucide-react'
+import { Eye, Filter, History, RotateCcw, ShieldAlert } from 'lucide-react'
 import { AuditAction, AuditLog, AuditModule, DeletionImpact } from '@/lib/types/database.types'
 import { auditService } from '@/lib/services/auditService'
 import { ArchivedEntitySummary, lifecycleService } from '@/lib/services/dataService'
@@ -41,6 +41,7 @@ export function AuditHistory() {
   const [selected, setSelected] = React.useState<AuditLog | null>(null)
   const [restoreTarget, setRestoreTarget] = React.useState<ArchivedEntitySummary | null>(null)
   const [filters, setFilters] = React.useState({ query: '', from: '', to: '', actor: 'all', role: 'all', module: 'all', action: 'all', status: 'all', source: 'all' })
+  const [showFilters, setShowFilters] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
 
@@ -120,7 +121,7 @@ export function AuditHistory() {
   return (
     <div className="space-y-6">
       <div><h1 className="flex items-center gap-2 text-2xl font-bold"><History className="h-6 w-6" />{t('auditHistoryTitle')}</h1><p className="text-sm text-muted-foreground">{t('auditHistoryDescription')}</p></div>
-      <Card><CardHeader><CardTitle className="text-base">{t('filters')}</CardTitle></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <Card><CardHeader className="flex flex-row items-center justify-between space-y-0"><CardTitle className="text-base">{t('filters')}</CardTitle><Button variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="audit-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button></CardHeader>{showFilters && <CardContent id="audit-filter-panel" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Input placeholder={t('entityActorSearch')} value={filters.query} onChange={event => updateFilters({ query: event.target.value })} />
         <Input type="date" value={filters.from} onChange={event => updateFilters({ from: event.target.value })} />
         <Input type="date" value={filters.to} onChange={event => updateFilters({ to: event.target.value })} />
@@ -131,7 +132,7 @@ export function AuditHistory() {
         <FilterSelect value={filters.status} onChange={value => updateFilters({ status: value })} items={['success','failed'].map(value => ({ value, label: value }))} placeholder={t('status')} />
         <FilterSelect value={filters.source} onChange={value => updateFilters({ source: value })} items={['manual','excel_import','google_sheets','system','ocr','upload'].map(value => ({ value, label: value }))} placeholder={t('source')} />
         <FilterSelect value={sort} onChange={value => { setSort(value as 'newest' | 'oldest'); setPage(1) }} items={[{ value: 'newest', label: t('newestFirst') }, { value: 'oldest', label: t('oldestFirst') }]} placeholder={t('auditSort')} includeAll={false} />
-      </CardContent></Card>
+      </CardContent>}</Card>
 
       <Card className="overflow-hidden"><CardContent className="p-0"><div className="max-h-[60vh] overflow-auto"><table className="w-full min-w-[900px] text-sm"><thead className="sticky top-0 z-10 bg-card shadow-sm"><tr className="border-b text-left"><th className="p-2">{t('time')}</th><th className="p-2">{t('actor')}</th><th className="p-2">{t('action')}</th><th className="p-2">{t('auditEntity')}</th><th className="p-2">{t('auditModule')}</th><th className="p-2">{t('status')}</th><th className="p-2">{t('auditDetails')}</th></tr></thead><tbody>{logs.map(entry => <tr className="border-b" key={entry.id}><td className="p-2 whitespace-nowrap">{new Date(entry.timestamp).toLocaleString()}</td><td className="p-2">{entry.actor_name}<p className="text-xs text-muted-foreground">{entry.actor_role}</p></td><td className="p-2"><Badge variant="outline">{entry.action.replaceAll('_', ' ')}</Badge></td><td className="p-2">{entry.entity_name}<p className="text-xs text-muted-foreground">{entry.entity_type} · {entry.entity_id}</p></td><td className="p-2">{entry.module}</td><td className="p-2"><Badge className={entry.status === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>{entry.status}</Badge></td><td className="p-2"><Button size="icon" variant="ghost" aria-label={t('viewAuditDetails')} onClick={() => setSelected(entry)}><Eye className="h-4 w-4" /></Button></td></tr>)}</tbody></table>{logs.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">{t('noAuditEvents')}</p>}</div><HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); window.localStorage.setItem('livestream-ops-audit-page-size', String(size)) }} /></CardContent></Card>
 

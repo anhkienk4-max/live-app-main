@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { DollarSign, Download, FileImage, FileSpreadsheet, FileText, Plus, RotateCcw, Search, TrendingUp, Trash2 } from 'lucide-react'
+import { DollarSign, Download, FileImage, FileSpreadsheet, FileText, Filter, Plus, RotateCcw, Search, TrendingUp, Trash2 } from 'lucide-react'
 import {
   brandService,
   campaignService,
@@ -75,6 +75,7 @@ export function ReportsList() {
   const [users, setUsers] = React.useState<User[]>([])
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   const [filters, setFilters] = React.useState<Filters>(emptyFilters)
+  const [showFilters, setShowFilters] = React.useState(false)
   const [selectedReport, setSelectedReport] = React.useState<Report | null>(null)
   const [showForm, setShowForm] = React.useState(false)
   const [removeTarget, setRemoveTarget] = React.useState<Report | null>(null)
@@ -241,9 +242,9 @@ export function ReportsList() {
       {completedShifts.length > 0 && <Card className="border-orange-200 bg-orange-50"><CardContent className="pt-5"><p className="font-semibold text-orange-900">{t('reportDraftCandidates', { count: completedShifts.length })}</p><p className="text-sm text-orange-700">{t('reportDraftPolicy')}</p></CardContent></Card>}
 
       <Card>
-        <CardHeader><CardTitle className="text-base">{t('filters')}</CardTitle></CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0"><CardTitle className="text-base">{t('filters')}</CardTitle><Button variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="reports-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button></CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-4">
+          {showFilters && <div id="reports-filter-panel" className="grid gap-3 md:grid-cols-4">
             <label className="text-xs font-medium">{t('startDate')}<Input className="mt-1" type="date" value={filters.start} onChange={event => setFilters(current => ({ ...current, start: event.target.value }))} /></label>
             <label className="text-xs font-medium">{t('endDate')}<Input className="mt-1" type="date" value={filters.end} onChange={event => setFilters(current => ({ ...current, end: event.target.value }))} /></label>
             <EntityFilter label={t('brand')} value={filters.brand} options={brands} onChange={value => setFilters(current => ({ ...current, brand: value }))} />
@@ -255,7 +256,7 @@ export function ReportsList() {
             <StatusFilter label={t('reportStatus')} value={filters.reportStatus} values={['draft', 'in_review', 'confirmed', 'reopened', 'archived']} onChange={value => setFilters(current => ({ ...current, reportStatus: value }))} />
             <StatusFilter label={t('metricsStatus')} value={filters.metricsStatus} values={['confirmed', 'unconfirmed']} onChange={value => setFilters(current => ({ ...current, metricsStatus: value }))} />
             <label className="text-xs font-medium md:col-span-2">{t('search')}<div className="relative mt-1"><Search className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" /><Input className="pl-9" value={filters.search} onChange={event => setFilters(current => ({ ...current, search: event.target.value }))} placeholder={t('reportSearchPlaceholder')} /></div></label>
-          </div>
+          </div>}
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => setFilters(emptyFilters)}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button>
             {currentUser && hasPermission(currentUser, 'reports.export') && <>
