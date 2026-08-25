@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { format } from 'date-fns'
 import { enUS, vi } from 'date-fns/locale'
-import { Eye, Loader2 } from 'lucide-react'
+import { Eye, Filter, Loader2 } from 'lucide-react'
 import type {
   OperationalRole,
   Shift,
@@ -64,6 +64,7 @@ export function BulkStaffingApprovalDialog({
   const [dateFilter, setDateFilter] = React.useState('')
   const [roleFilter, setRoleFilter] = React.useState<'all' | OperationalRole>('all')
   const [shiftFilter, setShiftFilter] = React.useState('all')
+  const [showFilters, setShowFilters] = React.useState(false)
   const [busyAction, setBusyAction] = React.useState<ShiftRegistrationReviewAction | null>(null)
   const [results, setResults] = React.useState<Map<string, ShiftRegistrationReviewResult>>(new Map())
 
@@ -141,35 +142,50 @@ export function BulkStaffingApprovalDialog({
           <p className="text-sm text-muted-foreground">{t('bulkStaffingApprovalDescription')}</p>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 gap-3 border-y py-3 sm:grid-cols-3">
-          <Input
-            type="date"
-            aria-label={t('date')}
-            value={dateFilter}
-            onChange={event => setDateFilter(event.target.value)}
-            data-testid="bulk-staffing-date-filter"
-          />
-          <Select value={roleFilter} onValueChange={value => setRoleFilter(value as 'all' | OperationalRole)}>
-            <SelectTrigger data-testid="bulk-staffing-role-filter"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t('all')} {t('operationalRoles')}</SelectItem>
-              <SelectItem value="host">{t('host')}</SelectItem>
-              <SelectItem value="support">{t('support')}</SelectItem>
-              <SelectItem value="technical">{t('technical')}</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={shiftFilter} onValueChange={setShiftFilter}>
-            <SelectTrigger data-testid="bulk-staffing-shift-filter"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t('allShifts')}</SelectItem>
-              {shifts.map(shift => (
-                <SelectItem key={shift.id} value={shift.id}>
-                  {shift.date} · {shift.start_time} · {shift.title || shift.id}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex flex-wrap items-center gap-2 border-b py-2">
+          <Button
+            variant={showFilters ? 'default' : 'outline'}
+            onClick={() => setShowFilters(!showFilters)}
+            aria-expanded={showFilters}
+            aria-controls="bulk-staffing-filter-panel"
+            data-testid="bulk-staffing-filter-toggle"
+          >
+            <Filter className="mr-2 h-4 w-4" />
+            {t('filters')}
+          </Button>
         </div>
+
+        {showFilters && (
+          <div id="bulk-staffing-filter-panel" className="grid grid-cols-1 gap-3 border-y py-3 sm:grid-cols-3">
+            <Input
+              type="date"
+              aria-label={t('date')}
+              value={dateFilter}
+              onChange={event => setDateFilter(event.target.value)}
+              data-testid="bulk-staffing-date-filter"
+            />
+            <Select value={roleFilter} onValueChange={value => setRoleFilter(value as 'all' | OperationalRole)}>
+              <SelectTrigger data-testid="bulk-staffing-role-filter"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('all')} {t('operationalRoles')}</SelectItem>
+                <SelectItem value="host">{t('host')}</SelectItem>
+                <SelectItem value="support">{t('support')}</SelectItem>
+                <SelectItem value="technical">{t('technical')}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={shiftFilter} onValueChange={setShiftFilter}>
+              <SelectTrigger data-testid="bulk-staffing-shift-filter"><SelectValue /></SelectTrigger>
+              <SelectContent className="max-h-64 overflow-y-auto">
+                <SelectItem value="all">{t('allShifts')}</SelectItem>
+                {shifts.map(shift => (
+                  <SelectItem key={shift.id} value={shift.id}>
+                    {shift.date} · {shift.start_time} · {shift.title || shift.id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         <DialogBody>
           {filteredRows.length === 0 ? (
