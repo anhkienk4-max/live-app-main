@@ -13,6 +13,10 @@ export interface StaffingReviewFilters {
   date: string
   role: 'all' | OperationalRole
   shiftId: string
+  campaign?: string
+  host?: string
+  support?: string
+  technical?: string
 }
 
 export function shiftsInCalendarScope(
@@ -69,6 +73,10 @@ export function filterStaffingReviewRows(
     if (filters.date && row.shift.date !== filters.date) return false
     if (filters.role !== 'all' && row.registration.operational_role !== filters.role) return false
     if (filters.shiftId !== 'all' && row.shift.id !== filters.shiftId) return false
+    if (filters.campaign && filters.campaign !== 'all' && (row.shift.campaign_id ?? 'none') !== filters.campaign) return false
+    if (filters.host && filters.host !== 'all' && row.shift.host_id !== filters.host) return false
+    if (filters.support && filters.support !== 'all' && row.shift.support_id !== filters.support) return false
+    if (filters.technical && filters.technical !== 'all' && row.shift.technical_id !== filters.technical) return false
     return true
   })
 }

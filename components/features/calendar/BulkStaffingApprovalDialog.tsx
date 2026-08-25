@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { format } from 'date-fns'
 import { enUS, vi } from 'date-fns/locale'
-import { Eye, Filter, Loader2 } from 'lucide-react'
+import { Eye, Filter, Loader2, RotateCcw } from 'lucide-react'
 import type {
   OperationalRole,
   Shift,
@@ -64,6 +64,10 @@ export function BulkStaffingApprovalDialog({
   const [dateFilter, setDateFilter] = React.useState('')
   const [roleFilter, setRoleFilter] = React.useState<'all' | OperationalRole>('all')
   const [shiftFilter, setShiftFilter] = React.useState('all')
+  const [campaignFilter, setCampaignFilter] = React.useState('all')
+  const [hostFilter, setHostFilter] = React.useState('all')
+  const [supportFilter, setSupportFilter] = React.useState('all')
+  const [technicalFilter, setTechnicalFilter] = React.useState('all')
   const [showFilters, setShowFilters] = React.useState(false)
   const [busyAction, setBusyAction] = React.useState<ShiftRegistrationReviewAction | null>(null)
   const [results, setResults] = React.useState<Map<string, ShiftRegistrationReviewResult>>(new Map())
@@ -76,7 +80,11 @@ export function BulkStaffingApprovalDialog({
     date: dateFilter,
     role: roleFilter,
     shiftId: shiftFilter,
-  }), [dateFilter, roleFilter, rows, shiftFilter])
+    campaign: campaignFilter,
+    host: hostFilter,
+    support: supportFilter,
+    technical: technicalFilter,
+  }), [campaignFilter, dateFilter, hostFilter, roleFilter, rows, shiftFilter, supportFilter, technicalFilter])
   const filteredIds = React.useMemo(
     () => filteredRows.map(row => row.registration.id),
     [filteredRows],
@@ -90,6 +98,28 @@ export function BulkStaffingApprovalDialog({
     [actionableIds, selectedIds],
   )
   const allFilteredSelected = filteredIds.length > 0 && filteredIds.every(id => selectedIds.has(id))
+  const campaignOptions = React.useMemo(() => {
+    const ids = [...new Set(rows.map(row => row.shift.campaign_id).filter((id): id is string => Boolean(id)))].sort()
+    return ids
+  }, [rows])
+  const hostOptions = React.useMemo(() => users
+    .filter(user => user.operational_roles?.includes('host'))
+    .slice().sort((a, b) => a.full_name.localeCompare(b.full_name)), [users])
+  const supportOptions = React.useMemo(() => users
+    .filter(user => user.operational_roles?.includes('support'))
+    .slice().sort((a, b) => a.full_name.localeCompare(b.full_name)), [users])
+  const technicalOptions = React.useMemo(() => users
+    .filter(user => user.operational_roles?.includes('technical'))
+    .slice().sort((a, b) => a.full_name.localeCompare(b.full_name)), [users])
+  const resetFilters = () => {
+    setDateFilter('')
+    setRoleFilter('all')
+    setShiftFilter('all')
+    setCampaignFilter('all')
+    setHostFilter('all')
+    setSupportFilter('all')
+    setTechnicalFilter('all')
+  }
 
   const toggleAllFiltered = () => {
     setSelectedIds(current => toggleStaffingReviewSelection(current, filteredIds, !allFilteredSelected))
@@ -156,34 +186,77 @@ export function BulkStaffingApprovalDialog({
         </div>
 
         {showFilters && (
-          <div id="bulk-staffing-filter-panel" className="grid grid-cols-1 gap-3 border-y py-3 sm:grid-cols-3">
-            <Input
-              type="date"
-              aria-label={t('date')}
-              value={dateFilter}
-              onChange={event => setDateFilter(event.target.value)}
-              data-testid="bulk-staffing-date-filter"
-            />
-            <Select value={roleFilter} onValueChange={value => setRoleFilter(value as 'all' | OperationalRole)}>
-              <SelectTrigger data-testid="bulk-staffing-role-filter"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('all')} {t('operationalRoles')}</SelectItem>
-                <SelectItem value="host">{t('host')}</SelectItem>
-                <SelectItem value="support">{t('support')}</SelectItem>
-                <SelectItem value="technical">{t('technical')}</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={shiftFilter} onValueChange={setShiftFilter}>
-              <SelectTrigger data-testid="bulk-staffing-shift-filter"><SelectValue /></SelectTrigger>
-              <SelectContent className="max-h-64 overflow-y-auto">
-                <SelectItem value="all">{t('allShifts')}</SelectItem>
-                {shifts.map(shift => (
-                  <SelectItem key={shift.id} value={shift.id}>
-                    {shift.date} · {shift.start_time} · {shift.title || shift.id}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div id="bulk-staffing-filter-panel" className="space-y-3 border-y py-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Input
+                type="date"
+                aria-label={t('date')}
+                value={dateFilter}
+                onChange={event => setDateFilter(event.target.value)}
+                data-testid="bulk-staffing-date-filter"
+              />
+              <Select value={roleFilter} onValueChange={value => setRoleFilter(value as 'all' | OperationalRole)}>
+                <SelectTrigger data-testid="bulk-staffing-role-filter"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('all')} {t('operationalRoles')}</SelectItem>
+                  <SelectItem value="host">{t('host')}</SelectItem>
+                  <SelectItem value="support">{t('support')}</SelectItem>
+                  <SelectItem value="technical">{t('technical')}</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={shiftFilter} onValueChange={setShiftFilter}>
+                <SelectTrigger data-testid="bulk-staffing-shift-filter"><SelectValue /></SelectTrigger>
+                <SelectContent className="max-h-64 overflow-y-auto">
+                  <SelectItem value="all">{t('allShifts')}</SelectItem>
+                  {[...shifts].sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`)).map(shift => (
+                    <SelectItem key={shift.id} value={shift.id}>
+                      {shift.date} · {shift.start_time} · {shift.title || shift.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Select value={campaignFilter} onValueChange={setCampaignFilter}>
+                <SelectTrigger data-testid="bulk-staffing-campaign-filter"><SelectValue /></SelectTrigger>
+                <SelectContent className="max-h-64 overflow-y-auto">
+                  <SelectItem value="all">{t('all')} {t('campaigns')}</SelectItem>
+                  {campaignOptions.map(id => (
+                    <SelectItem key={id} value={id}>{id}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={hostFilter} onValueChange={setHostFilter}>
+                <SelectTrigger data-testid="bulk-staffing-host-filter"><SelectValue /></SelectTrigger>
+                <SelectContent className="max-h-64 overflow-y-auto">
+                  <SelectItem value="all">{t('all')} {t('host')}</SelectItem>
+                  {hostOptions.map(user => (
+                    <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={supportFilter} onValueChange={setSupportFilter}>
+                <SelectTrigger data-testid="bulk-staffing-support-filter"><SelectValue /></SelectTrigger>
+                <SelectContent className="max-h-64 overflow-y-auto">
+                  <SelectItem value="all">{t('all')} {t('support')}</SelectItem>
+                  {supportOptions.map(user => (
+                    <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={technicalFilter} onValueChange={setTechnicalFilter}>
+                <SelectTrigger data-testid="bulk-staffing-technical-filter"><SelectValue /></SelectTrigger>
+                <SelectContent className="max-h-64 overflow-y-auto">
+                  <SelectItem value="all">{t('all')} {t('technical')}</SelectItem>
+                  {technicalOptions.map(user => (
+                    <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={resetFilters} data-testid="bulk-staffing-reset-filters"><RotateCcw className="mr-2 h-3 w-3" />{t('resetFilters')}</Button>
+            </div>
           </div>
         )}
 
