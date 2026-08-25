@@ -13,6 +13,7 @@ export type RegistrationStatus =
   | 'manually_assigned'
   | 'removed'
 export type ShiftStaffIdentityMatchMethod = 'exact' | 'normalized' | 'manual'
+export type ShiftRegistrationReviewAction = 'approve' | 'reject'
 export type ReportStatus = 'draft' | 'in_review' | 'confirmed' | 'reopened' | 'archived'
 export type KnowledgeStatus = 'active' | 'inactive' | 'draft'
 export type CampaignStatus = 'draft' | 'active' | 'completed' | 'cancelled'
@@ -113,6 +114,21 @@ export interface DeletionImpact {
   reversible: boolean
   related_records: AuditRelatedRecord[]
 }
+
+export interface BulkShiftDeletionOutcome {
+  shift_id: string
+  shift_title?: string
+  success: boolean
+  error_code?: string
+  error_message?: string
+}
+
+export interface BulkShiftDeletionResult {
+  outcomes: BulkShiftDeletionOutcome[]
+  succeeded: number
+  failed: number
+}
+
 
 export interface User extends LifecycleMetadata {
   id: string
@@ -750,6 +766,15 @@ export interface ShiftRegistration {
   match_method?: ShiftStaffIdentityMatchMethod
   created_at: string
   updated_at: string
+}
+
+export interface ShiftRegistrationReviewResult {
+  registration_id: string
+  action: ShiftRegistrationReviewAction
+  success: boolean
+  registration?: ShiftRegistration
+  error_code?: string
+  error_message?: string
 }
 
 export type ScheduleImportSource = 'excel' | 'google_sheets'
