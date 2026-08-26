@@ -53,6 +53,7 @@ export function SwapRequestFormModal({
   const [submitting, setSubmitting] = React.useState(false)
   const [errors, setErrors] = React.useState<Partial<FormData>>({})
   const [registeredRoles, setRegisteredRoles] = React.useState<Record<string, OperationalRole[]>>({})
+  const [registrationIds, setRegistrationIds] = React.useState<Record<string, string>>({})
   const { toast } = useToast()
   const { currentUser } = useCurrentUser()
   const { t } = useTranslation()
@@ -70,10 +71,13 @@ export function SwapRequestFormModal({
       setErrors({})
       void shiftRegistrationService.getForUser(currentUser.id).then(registrations => {
         const next: Record<string, OperationalRole[]> = {}
+        const ids: Record<string, string> = {}
         registrations.filter(isStaffedRegistration).forEach(registration => {
           ;(next[registration.shift_id] ??= []).push(registration.operational_role)
+          ids[`${registration.shift_id}:${registration.operational_role}`] = registration.id
         })
         setRegisteredRoles(next)
+        setRegistrationIds(ids)
       })
     }
   }, [currentUser, open, shifts])
@@ -110,6 +114,8 @@ export function SwapRequestFormModal({
 
     try {
       const operationalRole = formData.new_host_id ? 'host' : formData.new_support_id ? 'support' : 'technical'
+      const sourceRegistrationId = registrationIds[`${formData.shift_id}:${operationalRole}`]
+      if (!sourceRegistrationId) throw new Error('An active source registration is required.')
       const replacementStaffId = formData.new_host_id || formData.new_support_id || formData.new_technical_id
       const selectedShift = shifts.find(shift => shift.id === formData.shift_id)
       const originalStaffId = operationalRole === 'host' ? selectedShift?.host_id : operationalRole === 'support' ? selectedShift?.support_id : selectedShift?.technical_id
@@ -123,7 +129,9 @@ export function SwapRequestFormModal({
         new_host_id: formData.new_host_id || undefined,
         new_support_id: formData.new_support_id || undefined,
         new_technical_id: formData.new_technical_id || undefined,
-        reason: formData.reason.trim()
+        reason: formData.reason.trim(),
+        source_registration_id: sourceRegistrationId,
+        mode: 'replacement',
       })
 
       toast({ 

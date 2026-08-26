@@ -9,6 +9,7 @@ import { ToastProvider } from '../components/ui/toast.tsx'
 import { LanguageProvider } from '../lib/i18n.tsx'
 import { currentUserService, reportService, swapRequestService } from '../lib/services/dataService.ts'
 import { setSupabaseReportRepositoryForTests, type SupabaseReportRepository } from '../lib/services/supabaseReportService.ts'
+import { setSupabaseSwapRequestRepositoryForTests, type SupabaseSwapRequestRepository } from '../lib/services/supabaseSwapRequestService.ts'
 import type { User } from '../lib/types/database.types.ts'
 
 const storage = new Map<string, string>()
@@ -75,12 +76,12 @@ function renderReportsList() {
   ))
 }
 
-test('SwapRequestList shows safe-degradation message in Supabase mode', async () => {
+test('SwapRequestList keeps the normal UI in Supabase mode', async () => {
   await withEnvironment(async () => {
     setAuthMode('supabase')
     currentUserService.bindAuthenticatedUser(adminUser())
     const markup = renderSwapList()
-    assert.match(markup, /Shift Swap is temporarily unavailable while shared persistence is being upgraded/)
+    assert.doesNotMatch(markup, /Shift Swap is temporarily unavailable while shared persistence is being upgraded/)
   })
 })
 
@@ -113,24 +114,35 @@ test('ReportsList keeps normal UI in mock mode', async () => {
   })
 })
 
-test('swapRequestService mutations fail closed in Supabase mode', async () => {
+test('swapRequestService mutations route to the Supabase repository', async () => {
   await withEnvironment(async () => {
     setAuthMode('supabase')
     currentUserService.bindAuthenticatedUser(adminUser())
-
-    await assert.rejects(
-      swapRequestService.create({
-        shift_id: 'shift-1',
-        requester_id: '1',
-        operational_role: 'host',
-        replacement_staff_id: '2',
-        reason: 'schedule conflict',
-      }),
-      /Shift Swap is temporarily unavailable/,
-    )
-    await assert.rejects(swapRequestService.approve('swap-1', '1'), /Shift Swap is temporarily unavailable/)
-    await assert.rejects(swapRequestService.reject('swap-1', '1'), /Shift Swap is temporarily unavailable/)
-    await assert.rejects(swapRequestService.cancel('swap-1', '1', 'reason'), /Shift Swap is temporarily unavailable/)
+    const now = new Date().toISOString()
+    const request = { id: 'swap-1', shift_id: 'shift-1', requester_id: '1', operational_role: 'host' as const, replacement_staff_id: '2', reason: 'schedule conflict', status: 'pending' as const, created_at: now, updated_at: now }
+    const calls: string[] = []
+    const fakeRepository: SupabaseSwapRequestRepository = {
+      getAll: async () => { calls.push('getAll'); return [request] },
+      getPending: async () => { calls.push('getPending'); return [request] },
+      create: async () => { calls.push('create'); return request },
+      approve: async () => { calls.push('approve'); return { ...request, status: 'approved' } },
+      reject: async () => { calls.push('reject'); return { ...request, status: 'rejected' } },
+      cancel: async () => { calls.push('cancel'); return { ...request, status: 'rejected' } },
+      accept: async () => { calls.push('accept'); return { ...request, status: 'accepted' } },
+      respond: async () => { calls.push('respond'); return { ...request, status: 'rejected' } },
+    }
+    setSupabaseSwapRequestRepositoryForTests(fakeRepository)
+    try {
+      await swapRequestService.getAll()
+      await swapRequestService.getPending()
+      await swapRequestService.create({ shift_id: 'shift-1', requester_id: '1', operational_role: 'host', replacement_staff_id: '2', source_registration_id: 'reg-1', mode: 'replacement', reason: 'schedule conflict' })
+      await swapRequestService.approve('swap-1', '1')
+      await swapRequestService.reject('swap-1', '1')
+      await swapRequestService.cancel('swap-1', '1', 'reason')
+      assert.deepEqual(calls, ['getAll', 'getPending', 'create', 'approve', 'reject', 'cancel'])
+    } finally {
+      setSupabaseSwapRequestRepositoryForTests(undefined)
+    }
   })
 })
 

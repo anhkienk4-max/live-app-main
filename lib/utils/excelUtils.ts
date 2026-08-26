@@ -1085,7 +1085,7 @@ export function exportSwapsToExcel(
         Reason: swap.reason,
         Notes: swap.notes || '',
         'Approval History': (swap.approval_history || [])
-          .map(item => `${item.action} by ${users.get(item.by) || item.by} at ${item.at}${item.notes ? `: ${item.notes}` : ''}`)
+          .map(item => `${item.action} by ${users.get(item.actor_id) || item.actor_id} at ${item.at}${item.notes ? `: ${item.notes}` : ''}`)
           .join('\n'),
         'Created At': swap.created_at,
       }

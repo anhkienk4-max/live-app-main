@@ -62,6 +62,7 @@ import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 import { normalizeStaffingDisplayNames } from '@/lib/utils/scheduleImportPreview'
 import { deriveShiftStaffIdentityMatches } from '@/lib/utils/staffIdentityMatching'
+import { SwapRequestDialog } from '@/components/features/swaps/SwapRequestDialog'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
 
@@ -550,6 +551,7 @@ export function ShiftDetailModal({
   const [deleteImpact, setDeleteImpact] = React.useState<DeletionImpact | null>(null)
   const [registrationPage, setRegistrationPage] = React.useState(1)
   const [registrationPageSize, setRegistrationPageSize] = React.useState(10)
+  const [showSwapDialog, setShowSwapDialog] = React.useState(false)
   const canDeleteShift = Boolean(currentUser && hasPermission(currentUser, 'shifts.delete'))
   const canEditStaffingLabels = Boolean(currentUser && hasPermission(currentUser, 'shifts.edit'))
   const canAssignStaff = Boolean(currentUser && hasPermission(currentUser, 'shifts.assign_staff'))
@@ -591,6 +593,8 @@ export function ShiftDetailModal({
     () => buildShiftStaffing(shift, registrations, users),
     [registrations, shift, users],
   )
+  const myRegistration = React.useMemo(() => registrations.find(r => r.user_id === currentUser?.id && r.shift_id === shift.id && isStaffedRegistration(r)), [registrations, currentUser?.id, shift.id])
+  const canRequestSwap = Boolean(myRegistration && shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at)
   const dateTime = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time)
   const fallback = t('notProvided')
   const brand = brands.find(item => item.id === shift.brand_id)
@@ -850,6 +854,12 @@ export function ShiftDetailModal({
                     </CardContent>
                   </Card>
                 ) : null}
+                {canRequestSwap && myRegistration && (
+                  <Card><CardContent className="pt-5 flex justify-end"><Button variant="outline" onClick={() => setShowSwapDialog(true)}>Đổi ca</Button></CardContent></Card>
+                )}
+                {canRequestSwap && myRegistration && (
+                  <SwapRequestDialog open={showSwapDialog} onOpenChange={setShowSwapDialog} sourceShift={shift} sourceRegistration={myRegistration} shifts={[]} users={users} currentUser={currentUser!} onSuccess={loadStaffing} />
+                )}
 
                 <Card className="overflow-hidden">
                   <CardContent className="p-0">

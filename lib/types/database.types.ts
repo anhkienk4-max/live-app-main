@@ -18,7 +18,8 @@ export type ReportStatus = 'draft' | 'in_review' | 'confirmed' | 'reopened' | 'a
 export type KnowledgeStatus = 'active' | 'inactive' | 'draft'
 export type CampaignStatus = 'draft' | 'active' | 'completed' | 'cancelled'
 
-export type SwapStatus = 'pending' | 'approved' | 'rejected'
+export type SwapStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'approved' | 'completed'
+export type SwapMode = 'replacement' | 'move' | 'exchange'
 
 export interface LifecycleMetadata {
   deleted_at?: string
@@ -719,9 +720,18 @@ export interface OcrImageRecognition {
 
 export interface SwapRequest extends LifecycleMetadata {
   id: string
+  // Legacy single-shift field kept for compatibility; mirrors source_shift_id for replacement/move
   shift_id: string
   requester_id: string
   operational_role?: OperationalRole
+  // Canonical swap fields
+  mode?: SwapMode
+  source_shift_id?: string
+  target_shift_id?: string | null
+  source_registration_id?: string
+  counterpart_registration_id?: string | null
+  counterpart_id?: string | null
+  // Legacy assignment fields kept nullable for compat
   original_staff_id?: string
   replacement_staff_id?: string
   new_host_id?: string
@@ -730,14 +740,28 @@ export interface SwapRequest extends LifecycleMetadata {
   reason: string
   notes?: string
   approval_history?: Array<{
-    action: 'created' | 'approved' | 'rejected'
-    by: string
+    action: 'created' | 'accepted' | 'rejected' | 'cancelled' | 'approved' | 'completed'
+    actor_id: string
+    mode?: SwapMode
+    requester_id?: string
+    counterpart_id?: string | null
+    source_registration_id?: string
+    counterpart_registration_id?: string | null
+    source_shift_id?: string
+    target_shift_id?: string | null
+    operational_role?: OperationalRole
+    from_status?: SwapStatus | null
+    to_status?: SwapStatus
+    reason?: string
     at: string
     notes?: string
   }>
   status: SwapStatus
   approved_by?: string
   approved_at?: string
+  responded_at?: string
+  responded_by?: string
+  completed_at?: string
   created_at: string
   updated_at: string
 }
