@@ -1,5 +1,6 @@
 import { AuditAction, AuditLog, AuditModule, AuditRelatedRecord, SystemPermission, User } from '@/lib/types/database.types'
 import { resolveSystemPermission } from '@/lib/permissions'
+import { classifyOperationStatus } from '@/lib/utils/auditNormalize'
 
 type AuditInput = {
   actor: Pick<User, 'id' | 'full_name' | 'role' | 'system_permission'>
@@ -13,6 +14,8 @@ type AuditInput = {
   reason?: string
   source?: AuditLog['source']
   status?: AuditLog['status']
+  error_code?: string
+  retryable?: boolean
   related_records?: AuditRelatedRecord[]
   entity_exists?: boolean
   correlation_id?: string
@@ -59,6 +62,23 @@ const createMockAuditHistory = (): AuditLog[] => {
     const actor = actors[index % actors.length]
     const module = modules[index % modules.length]
     const number = index + 1
+    // Persisted contract remains success|failed only; warning/retryable are derived read-side via classifyOperationStatus
+    const derived: 'success' | 'warning' | 'failed' | 'retryable' =
+      number % 19 === 0 ? 'failed' : number % 17 === 0 ? 'retryable' : number % 13 === 0 ? 'warning' : 'success'
+    const status: AuditLog['status'] = derived === 'retryable' || derived === 'failed' ? 'failed' : 'success'
+    const after: Record<string, unknown> = { sequence: number, module }
+    // attach safe retryable/error/warning context without secrets — classification derives warning/retryable
+    if (derived === 'retryable') {
+      after.retryable = true
+      after.error_code = `ERR_RETRY_${String(number).padStart(3, '0')}`
+      after.batch_id = `batch-${String(number).padStart(3, '0')}`
+      after.outcome = 'retryable'
+    } else if (derived === 'warning') {
+      after.warning = 'partial staffing'
+      after.outcome = 'warning'
+    } else if (derived === 'failed' && index % 2 === 0) {
+      after.error_code = `ERR_${String(number).padStart(3, '0')}`
+    }
     return {
       id: `mock-audit-${String(number).padStart(3, '0')}`,
       timestamp: new Date(now - index * 60_000).toISOString(),
@@ -70,13 +90,15 @@ const createMockAuditHistory = (): AuditLog[] => {
       entity_type: module === 'reports' ? 'report' : module === 'live' ? 'live_snapshot' : 'shift',
       entity_id: `mock-${number}`,
       entity_name: `Mock audit record ${number}`,
-      after: { sequence: number, module },
+      after,
       source: module === 'imports' ? 'excel_import' : 'system',
-      status: number % 19 === 0 ? 'failed' : 'success',
+      status,
       correlation_id: `mock-request-${String(number).padStart(3, '0')}`,
       entity_exists: true,
       review_status: 'unreviewed',
-    }
+      ...(after.error_code ? { error_code: String(after.error_code) } : {}),
+      ...(after.retryable ? { retryable: true } : {}),
+    } as AuditLog
   })
 }
 
@@ -123,6 +145,8 @@ export function recordAuditEvent(input: AuditInput): AuditLog {
     related_records: input.related_records,
     entity_exists: input.entity_exists ?? true,
     review_status: 'unreviewed',
+    ...(input.error_code ? { error_code: input.error_code } : {}),
+    ...(typeof input.retryable === 'boolean' ? { retryable: input.retryable } : {}),
   }
   auditLogs.unshift(entry)
   persist()
@@ -138,19 +162,33 @@ const visibleLogsFor = (user: Pick<User, 'id' | 'role' | 'system_permission'>) =
   return auditLogs.filter(entry => entry.actor_id === user.id)
 }
 
+const normalizeStatus = (status: string) => {
+  const value = status.trim().toLowerCase()
+  if (value === 'successful' || value === 'success') return 'successful'
+  if (value === 'warn' || value === 'warning') return 'warning'
+  if (value === 'fail' || value === 'failed') return 'failed'
+  if (value === 'retryable' || value === 'retry') return 'retryable'
+  return value
+}
+
 const filterAuditLogs = (logs: AuditLog[], filters: AuditLogFilters) => {
   const query = filters.query?.trim().toLowerCase() || ''
+  const statusFilter = filters.status ? normalizeStatus(filters.status) : ''
   return logs.filter(entry => {
     const date = entry.timestamp.slice(0, 10)
+    const opStatus = classifyOperationStatus(entry)
+    // search includes actor, entity, related entities, correlation, reason, module/action, error_code
+    const relatedText = (entry.related_records ?? []).map(r => `${r.entity_name} ${r.entity_type}`).join(' ')
+    const haystack = `${entry.entity_name} ${entry.entity_type} ${entry.entity_id} ${entry.actor_name} ${entry.actor_role} ${entry.module} ${entry.action} ${entry.correlation_id} ${entry.reason ?? ''} ${entry.error_code ?? ''} ${relatedText}`.toLowerCase()
     return (!filters.from || date >= filters.from) &&
       (!filters.to || date <= filters.to) &&
       (!filters.actor || filters.actor === 'all' || entry.actor_id === filters.actor) &&
       (!filters.role || filters.role === 'all' || entry.actor_role === filters.role) &&
       (!filters.module || filters.module === 'all' || entry.module === filters.module) &&
       (!filters.action || filters.action === 'all' || entry.action === filters.action) &&
-      (!filters.status || filters.status === 'all' || entry.status === filters.status) &&
+      (!filters.status || filters.status === 'all' || opStatus === statusFilter) &&
       (!filters.source || filters.source === 'all' || entry.source === filters.source) &&
-      (!query || `${entry.entity_name} ${entry.entity_type} ${entry.actor_name}`.toLowerCase().includes(query))
+      (!query || haystack.includes(query))
   })
 }
 
