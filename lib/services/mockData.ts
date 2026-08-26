@@ -526,7 +526,7 @@ export const mockSwapRequests: SwapRequest[] = [
     new_host_id: '4',
     reason: 'Family emergency',
     status: 'pending',
-    approval_history: [{ action: 'created', by: '3', at: format(today, "yyyy-MM-dd'T'10:00:00'Z'") }],
+    approval_history: [{ action: 'created', actor_id: '3', mode: 'replacement', requester_id: '3', counterpart_id: null, source_shift_id: 's3', target_shift_id: null, operational_role: 'host', from_status: null, to_status: 'pending', reason: 'Family emergency', at: format(today, "yyyy-MM-dd'T'10:00:00'Z'") }],
     created_at: format(today, "yyyy-MM-dd'T'10:00:00'Z'"),
     updated_at: format(today, "yyyy-MM-dd'T'10:00:00'Z'"),
   },
