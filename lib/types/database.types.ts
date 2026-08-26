@@ -96,7 +96,10 @@ export interface AuditLog {
   after?: Record<string, unknown>
   reason?: string
   source: 'manual' | 'excel_import' | 'google_sheets' | 'system' | 'ocr' | 'upload'
+  // Persisted contract: success|failed only (warning/retryable derived read-side via auditNormalize::classifyOperationStatus)
   status: 'success' | 'failed'
+  error_code?: string
+  retryable?: boolean
   correlation_id: string
   related_records?: AuditRelatedRecord[]
   entity_exists: boolean
