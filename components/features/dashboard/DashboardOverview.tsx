@@ -145,6 +145,8 @@ export function DashboardOverview() {
       <Metric title={t('campaigns')} value={new Set(filteredShifts.map(shift => shift.campaign_id).filter(Boolean)).size.toString()} icon={<Package className="h-5 w-5 text-orange-600" />} />
     </div>
 
+    <Card><CardContent className="flex items-center justify-between p-4"><div><p className="font-medium text-sm">Data Quality</p><p className="text-xs text-muted-foreground">Import / report / staffing issues</p></div><Button variant="outline" size="sm" render={<Link href="/data-quality" />} nativeButton={false}>Open</Button></CardContent></Card>
+
     <Card><CardHeader><CardTitle>{t('quickActions')}</CardTitle><CardDescription>{t('operationsCenter')}</CardDescription></CardHeader><CardContent className="grid grid-cols-2 gap-3 md:grid-cols-4">
       <QuickAction href="/calendar" label={t('calendar')} icon={<Calendar className="h-6 w-6" />} /><QuickAction href="/live" label={t('liveMonitor')} icon={<Radio className="h-6 w-6" />} /><QuickAction href="/reports" label={t('reports')} icon={<FileText className="h-6 w-6" />} /><QuickAction href="/analytics" label={t('analytics')} icon={<BarChart3 className="h-6 w-6" />} />
     </CardContent></Card>
