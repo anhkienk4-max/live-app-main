@@ -7,9 +7,10 @@ import { createSupabaseSwapRequestRepository } from '../lib/services/supabaseSwa
 
 const migrationPath = new URL('../supabase/migrations/20260826082055_shift_swap_p0_hardening.sql', import.meta.url)
 const lockFixMigrationPath = new URL('../supabase/migrations/20260826083723_shift_swap_lock_helper_fix.sql', import.meta.url)
+const readText = async (path: URL) => (await readFile(path, 'utf8')).replace(/\r\n/g, '\n')
 
 test('P0 migration uses a typed swap request row for RETURNING and explicit modes', async () => {
-  const sql = await readFile(migrationPath, 'utf8')
+  const sql = await readText(migrationPath)
   assert.match(sql, /created_request\s+public\.swap_requests;/)
   assert.match(sql, /p_source_registration_id\s+text,\s*\n\s*p_mode\s+text,/)
   assert.match(sql, /p_mode\s+not in \('replacement','move','exchange'\)/)
@@ -18,7 +19,7 @@ test('P0 migration uses a typed swap request row for RETURNING and explicit mode
 })
 
 test('lock helper fixes the unnamed unnest column with an explicit alias', async () => {
-  const sql = await readFile(lockFixMigrationPath, 'utf8')
+  const sql = await readText(lockFixMigrationPath)
   assert.match(sql, /from unnest\(coalesce\(p_ids, '\{\}'::text\[\]\)\) as u\(value\)/)
   assert.match(sql, /select distinct u\.value[\s\S]*order by u\.value/)
   assert.doesNotMatch(sql, /select distinct value from unnest/)
@@ -27,7 +28,7 @@ test('lock helper fixes the unnamed unnest column with an explicit alias', async
 })
 
 test('P0 migration defines replacement/move/exchange guards and corrected exchange exclusions', async () => {
-  const sql = await readFile(migrationPath, 'utf8')
+  const sql = await readText(migrationPath)
   assert.match(sql, /p_mode = 'replacement'/)
   assert.match(sql, /p_mode = 'move'/)
   assert.match(sql, /else\n\s+if p_target_shift_id is null or p_counterpart_registration_id is null/)
@@ -38,7 +39,7 @@ test('P0 migration defines replacement/move/exchange guards and corrected exchan
 })
 
 test('P0 migration protects direct writes, legal transitions and counterpart reuse', async () => {
-  const sql = await readFile(migrationPath, 'utf8')
+  const sql = await readText(migrationPath)
   assert.match(sql, /revoke all on table public\.swap_requests from public, anon, authenticated;/)
   assert.match(sql, /grant select on table public\.swap_requests to authenticated;/)
   assert.match(sql, /swap_requests_counterpart_active_unique/)
@@ -54,7 +55,7 @@ test('P0 migration protects direct writes, legal transitions and counterpart reu
 })
 
 test('participant lock sets are normalized as complete deterministic sets', async () => {
-  const sql = await readFile(migrationPath, 'utf8')
+  const sql = await readText(migrationPath)
   assert.match(sql, /perform private\.lock_swap_rows\(array_remove\(array\[/)
   assert.match(sql, /lock_swap_registrations\(array_remove\(array\[p_source_registration_id,[\s\S]*p_counterpart_registration_id/)
   assert.match(sql, /case when p_mode = 'replacement' then 'user:' \|\| p_replacement_staff_id end/)
@@ -83,9 +84,9 @@ test('SQL and TypeScript use canonical actor_id history entries', async () => {
   const sql = await readFile(migrationPath, 'utf8')
   assert.match(sql, /'actor_id',actor_id/)
   assert.doesNotMatch(sql, /jsonb_build_object\([^\n]*'by'/)
-  const source = await readFile(new URL('../lib/services/dataService.ts', import.meta.url), 'utf8')
-  const mock = await readFile(new URL('../lib/services/mockData.ts', import.meta.url), 'utf8')
-  const excel = await readFile(new URL('../lib/utils/excelUtils.ts', import.meta.url), 'utf8')
+  const source = await readText(new URL('../lib/services/dataService.ts', import.meta.url))
+  const mock = await readText(new URL('../lib/services/mockData.ts', import.meta.url))
+  const excel = await readText(new URL('../lib/utils/excelUtils.ts', import.meta.url))
   assert.doesNotMatch(source, /approval_history:[^\n]*\bby:/)
   assert.doesNotMatch(mock, /approval_history:[^\n]*\bby:/)
   assert.match(excel, /item\.actor_id/)
@@ -96,7 +97,7 @@ test('SQL and TypeScript use canonical actor_id history entries', async () => {
 })
 
 test('mock create history is canonical for replacement and exchange', async () => {
-  const source = await readFile(new URL('../lib/services/dataService.ts', import.meta.url), 'utf8')
+  const source = await readText(new URL('../lib/services/dataService.ts', import.meta.url))
   const createBranches = [...source.matchAll(/const newRequest: SwapRequest = \{[\s\S]*?\n      \} as SwapRequest\n      newRequest\.approval_history = \[swapHistoryEntry\(newRequest, 'created',[\s\S]*?\n      swapRequests\.push\(newRequest\)/g)]
   assert.equal(createBranches.length, 2)
   assert.match(source, /source_registration_id: request\.source_registration_id/)
