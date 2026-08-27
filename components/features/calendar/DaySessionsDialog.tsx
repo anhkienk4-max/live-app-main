@@ -27,11 +27,14 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ShiftRegistrationActions } from './ShiftRegistrationActions'
+import { resolveRegistrationCta } from '@/lib/utils/shiftRegistration'
 
 interface DaySessionsDialogProps {
   open: boolean
   date: Date | null
   shifts: Shift[]
+  allShifts?: Shift[]
   brands: Brand[]
   platforms: Platform[]
   campaigns: Campaign[]
@@ -98,6 +101,7 @@ export function DaySessionsDialog({
   open,
   date,
   shifts,
+  allShifts,
   brands,
   platforms,
   campaigns,
@@ -177,13 +181,9 @@ export function DaySessionsDialog({
             const pendingRegistrations = registrations.filter(registration =>
               registration.shift_id === shift.id && registration.status === 'pending',
             )
-            const canRegister = Boolean(
-              currentUser &&
-              hasPermission(currentUser, 'shifts.register') &&
-              shift.status === 'scheduled' &&
-              !shift.registration_locked &&
-              myRegistrations.length === 0,
-            )
+            const registrationStates = currentUser
+              ? resolveRegistrationCta({ allShifts: allShifts ?? shifts, registrations, shift, user: currentUser })
+              : []
             const registrationStatus = myRegistrations.length
               ? myRegistrations.map(registration =>
                   `${t(registration.operational_role)}: ${
@@ -192,9 +192,13 @@ export function DaySessionsDialog({
                       : t(registration.status)
                   }`,
                 ).join(', ')
-              : shift.registration_locked
-                ? t('registrationClosed')
-                : t('available')
+              : registrationStates.some(state => state.state === 'eligible')
+                ? t('available')
+                : registrationStates.find(state => state.state === 'full')
+                  ? t('full')
+                  : registrationStates.find(state => state.state === 'conflict')
+                    ? t('scheduleConflict')
+                    : t('registrationClosed')
 
             return (
               <Card className="overflow-hidden" key={shift.id}>
@@ -298,20 +302,20 @@ export function DaySessionsDialog({
                         <FileText className="mr-1 h-4 w-4" />{t('openFinalReport')}
                       </Button>
                     )}
-                    {canRegister && currentUser?.operational_roles?.map(role => (
-                      <Button
-                        disabled={Boolean(busyAction)}
-                        key={role}
-                        onClick={() => void runAction(
-                          `register-${shift.id}-${role}`,
-                          () => shiftRegistrationService.register(shift.id, currentUser.id, role),
-                          t('registrationPending'),
-                        )}
-                        size="sm"
-                      >
-                        {t('registerForRole', { role: t(role) })}
-                      </Button>
-                    ))}
+                    <ShiftRegistrationActions
+                      allShifts={allShifts ?? shifts}
+                      currentUser={currentUser}
+                      disabled={Boolean(busyAction)}
+                      onRegister={role => currentUser
+                        ? runAction(
+                            `register-${shift.id}-${role}`,
+                            () => shiftRegistrationService.register(shift.id, currentUser.id, role),
+                            t('registrationPending'),
+                          )
+                        : Promise.resolve()}
+                      registrations={registrations}
+                      shift={shift}
+                    />
                     {myRegistrations.map(registration => {
                       const isManualAssignment = registration.source === 'manual_assignment' || registration.status === 'manually_assigned'
                       return (

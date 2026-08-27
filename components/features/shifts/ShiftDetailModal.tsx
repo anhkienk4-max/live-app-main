@@ -63,6 +63,7 @@ import { HistoryPagination } from '@/components/ui/history-pagination'
 import { normalizeStaffingDisplayNames } from '@/lib/utils/scheduleImportPreview'
 import { deriveShiftStaffIdentityMatches } from '@/lib/utils/staffIdentityMatching'
 import { SwapRequestDialog } from '@/components/features/swaps/SwapRequestDialog'
+import { ShiftRegistrationActions } from '@/components/features/calendar/ShiftRegistrationActions'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
 
@@ -416,6 +417,8 @@ interface ShiftDetailModalProps {
   platforms: Platform[]
   campaigns: Campaign[]
   users: User[]
+  allShifts?: Shift[]
+  allRegistrations?: ShiftRegistration[]
   onUpdate: () => void
   onEdit?: () => void
   onDelete: () => void
@@ -533,6 +536,8 @@ export function ShiftDetailModal({
   platforms,
   campaigns,
   users,
+  allShifts,
+  allRegistrations,
   onUpdate,
   onEdit,
   onDelete,
@@ -594,6 +599,7 @@ export function ShiftDetailModal({
     [registrations, shift, users],
   )
   const myRegistration = React.useMemo(() => registrations.find(r => r.user_id === currentUser?.id && r.shift_id === shift.id && isStaffedRegistration(r)), [registrations, currentUser?.id, shift.id])
+  const registrationContext = allRegistrations ?? registrations
   const canRequestSwap = Boolean(myRegistration && shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at)
   const dateTime = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time)
   const fallback = t('notProvided')
@@ -677,6 +683,14 @@ export function ShiftDetailModal({
         currentUser.id,
       ),
       t('staffIdentityAssigned'),
+    )
+  }
+
+  const registerForRole = async (role: OperationalRole) => {
+    if (!currentUser) return
+    await runStaffingAction(
+      () => shiftRegistrationService.register(shift.id, currentUser.id, role),
+      t('registrationPending'),
     )
   }
 
@@ -776,6 +790,13 @@ export function ShiftDetailModal({
               </TabsContent>
 
               <TabsContent value="staffing" className="space-y-4 pt-1">
+                <ShiftRegistrationActions
+                  allShifts={allShifts ?? [shift]}
+                  currentUser={currentUser}
+                  onRegister={registerForRole}
+                  registrations={registrationContext}
+                  shift={shift}
+                />
                 {canEditStaffingLabels ? (
                   <ShiftStaffingLabelsEditor
                     disabled={busy}

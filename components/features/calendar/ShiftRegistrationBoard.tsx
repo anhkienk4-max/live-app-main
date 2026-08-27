@@ -396,6 +396,8 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           platforms={platforms}
           campaigns={campaigns}
           users={users}
+          allShifts={shifts}
+          allRegistrations={registrations}
           onUpdate={() => {
             void (async () => {
               await loadData()

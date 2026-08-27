@@ -1,18 +1,23 @@
 ﻿'use client'
 
-import { Shift, Brand, Platform, User } from '@/lib/types/database.types'
+import { Shift, Brand, Platform, User, ShiftRegistration, OperationalRole } from '@/lib/types/database.types'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { format } from 'date-fns'
 import { Calendar } from 'lucide-react'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { useTranslation } from '@/lib/i18n'
+import { ShiftRegistrationActions } from './ShiftRegistrationActions'
 
 interface ListViewProps {
   shifts: Shift[]
   brands: Brand[]
   platforms: Platform[]
   users: User[]
+  registrations?: ShiftRegistration[]
+  allShifts?: Shift[]
+  currentUser?: User | null
+  onRegister?: (shiftId: string, role: OperationalRole) => Promise<void>
   onShiftClick?: (shift: Shift) => void
   selectedShiftIds?: Set<string>
   onToggleSelectShift?: (shiftId: string) => void
@@ -23,6 +28,10 @@ export function ListView({
   brands,
   platforms,
   users,
+  registrations = [],
+  allShifts = shifts,
+  currentUser = null,
+  onRegister,
   onShiftClick,
   selectedShiftIds,
   onToggleSelectShift,
@@ -95,6 +104,16 @@ export function ListView({
                 </Badge>
               </div>
             </button>
+            {onRegister && (
+              <ShiftRegistrationActions
+                allShifts={allShifts}
+                compact
+                currentUser={currentUser}
+                onRegister={role => onRegister(shift.id, role)}
+                registrations={registrations}
+                shift={shift}
+              />
+            )}
           </div>
         )
       })}

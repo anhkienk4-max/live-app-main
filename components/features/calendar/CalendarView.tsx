@@ -131,6 +131,18 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     return undefined
   }, [createRequest])
 
+  const registerForShift = React.useCallback(async (shiftId: string, role: OperationalRole) => {
+    if (!currentUser) return
+    try {
+      await shiftRegistrationService.register(shiftId, currentUser.id, role)
+      await loadData()
+      toast({ title: t('success'), description: t('registrationPending'), variant: 'success' })
+    } catch (error) {
+      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+      throw error
+    }
+  }, [currentUser, loadData, t, toast])
+
   const filteredShifts = React.useMemo(() => {
     const matchesRole = (shift: Shift, role: OperationalRole, userId: string) => {
       const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
@@ -538,13 +550,17 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       <Card className="min-w-0 overflow-hidden p-3 sm:p-6">
         {view === 'month' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} onShiftClick={setSelectedShift} onDayClick={setSelectedDay} /></div></div>}
         {view === 'week' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} onShiftClick={setSelectedShift} /></div></div>}
-        {view === 'day' && <DayView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} users={users} onShiftClick={setSelectedShift} />}
+        {view === 'day' && <DayView currentDate={currentDate} shifts={filteredShifts} allShifts={shifts} registrations={registrations} currentUser={currentUser} brands={brands} platforms={platforms} users={users} onRegister={registerForShift} onShiftClick={setSelectedShift} />}
         {view === 'list' && (
           <ListView
             shifts={filteredShifts}
             brands={brands}
             platforms={platforms}
             users={users}
+            allShifts={shifts}
+            registrations={registrations}
+            currentUser={currentUser}
+            onRegister={registerForShift}
             onShiftClick={setSelectedShift}
             selectedShiftIds={selectedShiftIds}
             onToggleSelectShift={toggleSelectShift}
@@ -591,6 +607,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         open={!!selectedDay}
         date={selectedDay}
         shifts={filteredShifts}
+        allShifts={shifts}
         brands={brands}
         platforms={platforms}
         campaigns={campaigns}
@@ -653,6 +670,8 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           platforms={platforms}
           campaigns={campaigns}
           users={users}
+          allShifts={shifts}
+          allRegistrations={registrations}
           onUpdate={() => {
             void (async () => {
               await loadData()
