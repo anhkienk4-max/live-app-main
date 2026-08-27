@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import { useTranslation } from '@/lib/i18n'
 
-type SwapMode = 'replacement' | 'move' | 'exchange'
+type CreatableSwapMode = 'replacement' | 'exchange'
 
 export function SwapRequestDialog({
   open,
@@ -32,7 +32,7 @@ export function SwapRequestDialog({
 }) {
   const { t } = useTranslation()
   const { toast } = useToast()
-  const [mode, setMode] = React.useState<SwapMode>('move')
+  const [mode, setMode] = React.useState<CreatableSwapMode>('replacement')
   const [targetShiftId, setTargetShiftId] = React.useState('')
   const [counterpartId, setCounterpartId] = React.useState('')
   const [replacementId, setReplacementId] = React.useState('')
@@ -84,17 +84,6 @@ export function SwapRequestDialog({
           reason: reason.trim(),
           mode: 'replacement',
         } as unknown as never)
-      } else if (mode === 'move') {
-        if (!targetShiftId) throw new Error('Target required')
-        await swapRequestService.create({
-          requester_id: currentUser.id,
-          operational_role: sourceRegistration.operational_role,
-          source_registration_id: sourceRegistration.id,
-          target_shift_id: targetShiftId,
-          reason: reason.trim(),
-          shift_id: sourceShift.id,
-          mode: 'move',
-        } as unknown as never)
       } else {
         if (!targetShiftId || !counterpartId) throw new Error('Target and counterpart required')
         await swapRequestService.create({
@@ -124,12 +113,11 @@ export function SwapRequestDialog({
         <DialogBody className="space-y-4">
           <div className="text-sm text-muted-foreground">Source: {sourceShift.date} {sourceShift.start_time}-{sourceShift.end_time} · {sourceRegistration.operational_role}</div>
           <label className="text-xs font-medium">Mode
-            <Select value={mode} onValueChange={v => { setMode(v as SwapMode); setCounterpartId(''); setTargetRegistrations([]) }}>
+            <Select value={mode} onValueChange={v => { setMode(v as CreatableSwapMode); setCounterpartId(''); setTargetRegistrations([]) }}>
               <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="replacement">Thay người</SelectItem>
-                <SelectItem value="move">Chuyển ca</SelectItem>
-                <SelectItem value="exchange">Đổi ca</SelectItem>
+                <SelectItem value="replacement">Thế ca</SelectItem>
+                <SelectItem value="exchange">Đổi chéo</SelectItem>
               </SelectContent>
             </Select>
           </label>

@@ -3029,6 +3029,7 @@ const swapHistoryEntry = (
   mode: request.mode,
   requester_id: request.requester_id,
   counterpart_id: request.counterpart_id ?? null,
+  replacement_staff_id: request.replacement_staff_id ?? null,
   source_registration_id: request.source_registration_id,
   counterpart_registration_id: request.counterpart_registration_id ?? null,
   source_shift_id: request.source_shift_id ?? request.shift_id,
@@ -3041,14 +3042,31 @@ const swapHistoryEntry = (
   ...(notes ? { notes } : {}),
 })
 
+const isCreatableSwapMode = (mode: unknown): mode is 'replacement' | 'exchange' =>
+  mode === 'replacement' || mode === 'exchange'
+
+const swapParticipantId = (request: SwapRequest): string | null =>
+  request.mode === 'replacement'
+    ? request.replacement_staff_id ?? null
+    : request.counterpart_id ?? null
+
+const canViewMockSwapRequest = (request: SwapRequest, actor: User): boolean =>
+  ['leader', 'admin'].includes(resolveSystemPermission(actor))
+  || request.requester_id === actor.id
+  || swapParticipantId(request) === actor.id
+
 export const swapRequestService = {
   async getAll(): Promise<SwapRequest[]> {
     if (getAuthMode() === 'supabase') return getSupabaseSwapRequestRepository().getAll()
-    return Promise.resolve(swapRequests.filter(request => !request.deleted_at))
+    const actor = actorFor()
+    return Promise.resolve(swapRequests.filter(request => !request.deleted_at && canViewMockSwapRequest(request, actor)))
   },
   async getPending(): Promise<SwapRequest[]> {
     if (getAuthMode() === 'supabase') return getSupabaseSwapRequestRepository().getPending()
-    return Promise.resolve(swapRequests.filter(sr => sr.status === 'pending' || sr.status === 'accepted'))
+    const actor = actorFor()
+    return Promise.resolve(swapRequests.filter(sr =>
+      (sr.status === 'pending' || sr.status === 'accepted') && canViewMockSwapRequest(sr, actor),
+    ))
   },
   async create(
     data: Omit<SwapRequest, 'id' | 'status' | 'created_at' | 'updated_at'> & { status?: SwapRequest['status']; mode?: string; source_registration_id?: string; target_shift_id?: string | null; counterpart_registration_id?: string | null; counterpart_id?: string | null },
@@ -3057,9 +3075,18 @@ export const swapRequestService = {
     const sourceRegId = (data as unknown as { source_registration_id?: string }).source_registration_id
     const targetShiftId = (data as unknown as { target_shift_id?: string | null }).target_shift_id ?? null
     const counterpartRegId = (data as unknown as { counterpart_registration_id?: string | null }).counterpart_registration_id ?? null
-    const effectiveMode: SwapRequest['mode'] = requestedMode === 'replacement' || requestedMode === 'move' || requestedMode === 'exchange'
+    if (requestedMode === 'move') throw new Error('MOVE requests are historical and cannot be created.')
+    const replacementId = data.replacement_staff_id || data.new_host_id || data.new_support_id || data.new_technical_id || null
+    const effectiveMode = isCreatableSwapMode(requestedMode)
       ? requestedMode
-      : counterpartRegId ? 'exchange' : targetShiftId ? 'move' : 'replacement'
+      : counterpartRegId ? 'exchange' : replacementId ? 'replacement' : null
+    if (!effectiveMode) throw new Error('Swap mode must be replacement or exchange.')
+    if (effectiveMode === 'replacement' && (targetShiftId || counterpartRegId || data.counterpart_id)) {
+      throw new Error('Replacement requests cannot include a target or counterpart registration.')
+    }
+    if (effectiveMode === 'exchange' && (!targetShiftId || !counterpartRegId || replacementId)) {
+      throw new Error('Exchange requests require a target and counterpart registration only.')
+    }
     // Supabase path — prefer new registration-based RPC
     if (getAuthMode() === 'supabase') {
       if (!sourceRegId) throw new Error('A source registration is required for swap requests.')
@@ -3067,7 +3094,7 @@ export const swapRequestService = {
         sourceRegistrationId: sourceRegId,
         targetShiftId,
         counterpartRegistrationId: counterpartRegId,
-        replacementStaffId: data.replacement_staff_id || data.new_host_id || data.new_support_id || data.new_technical_id || null,
+        replacementStaffId: replacementId,
         operational_role: data.operational_role,
         reason: data.reason,
         notes: data.notes,
@@ -3084,7 +3111,7 @@ export const swapRequestService = {
       sourceReg = shiftRegistrations.find(r => r.id === sourceRegId)
       if (!sourceReg) throw new Error('Source registration not found.')
       if (sourceReg.user_id !== requesterId) throw new Error('You can only request a swap for a role assigned to you.')
-      if (!isStaffedRegistration(sourceReg) && sourceReg.status !== 'pending') throw new Error('Source not active.')
+       if (!isStaffedRegistration(sourceReg)) throw new Error('Source not active.')
       sourceShift = shifts.find(s => s.id === sourceReg!.shift_id)
     } else {
       // legacy replacement path
@@ -3109,17 +3136,31 @@ export const swapRequestService = {
       throw new Error('Duplicate active swap request for this assignment.')
     }
     if (effectiveMode === 'replacement') {
-      const replacementId = data.replacement_staff_id || data.new_host_id || data.new_support_id || data.new_technical_id
       if (!replacementId || replacementId === requesterId) throw new Error('A different replacement staff member is required.')
       const replacement = users.find(u => u.id === replacementId)
       if (!replacement?.operational_roles?.includes(role)) throw new Error('Replacement staff is not eligible for this role.')
       if (replacement.status !== 'active' || replacement.archived_at) throw new Error('Replacement inactive.')
+      if (shiftRegistrations.some(registration =>
+        registration.shift_id === sourceShift!.id
+        && registration.user_id === replacementId
+        && isStaffedRegistration(registration),
+      )) throw new Error('Replacement already assigned to shift.')
+      if (findRegistrationConflict(replacementId, sourceShift)) throw new Error('Replacement staff has a schedule conflict.')
+      const occupiedAfterReplacement = shiftRegistrations.filter(registration =>
+        registration.shift_id === sourceShift!.id
+        && registration.operational_role === role
+        && isStaffedRegistration(registration)
+        && registration.id !== sourceReg!.id,
+      ).length
+      if (occupiedAfterReplacement >= (sourceShift[roleRequiredField[role]] ?? 1)) throw new Error('Source shift capacity full.')
       const newRequest: SwapRequest = {
         ...data,
         mode: 'replacement',
         source_shift_id: sourceShift.id,
         target_shift_id: null,
         source_registration_id: sourceReg.id,
+        counterpart_id: null,
+        counterpart_registration_id: null,
         operational_role: role,
         original_staff_id: requesterId,
         replacement_staff_id: replacementId,
@@ -3133,41 +3174,14 @@ export const swapRequestService = {
       audit('swaps','create','swap_request',newRequest.id,`Swap · ${role} · ${effectiveMode}`,{ actorId: requesterId, after:{...newRequest}, relatedRecords:[{entity_type:'shift',entity_id:sourceShift.id,entity_name:sourceShift.title||sourceShift.date}] })
       return Promise.resolve(newRequest)
     }
-    if (effectiveMode === 'move') {
-      if (!targetShiftId) throw new Error('Target shift required for move.')
-      if (targetShiftId === sourceReg.shift_id) throw new Error('Source and target must be different for move.')
-      const targetShift = shifts.find(s => s.id === targetShiftId)
-      if (!targetShift) throw new Error('Target shift not found.')
-      if (targetShift.status !== 'scheduled') throw new Error('Target shift not scheduled.')
-      // role same
-      // capacity check for target
-      const targetCount = shiftRegistrations.filter(r => r.shift_id === targetShiftId && r.operational_role === role && isStaffedRegistration(r)).length
-      const required = targetShift[roleRequiredField[role]] ?? 1
-      if (targetCount >= required) throw new Error('Target shift capacity full.')
-      if (findRegistrationConflict(requesterId, targetShift)) throw new Error('Move would cause schedule conflict.')
-      const newRequest: SwapRequest = {
-        ...data,
-        mode: 'move',
-        source_shift_id: sourceShift.id,
-        target_shift_id: targetShiftId,
-        source_registration_id: sourceReg.id,
-        operational_role: role,
-        id: generateId(),
-        status: 'pending',
-        created_at: nowIso(),
-        updated_at: nowIso(),
-      } as SwapRequest
-      newRequest.approval_history = [swapHistoryEntry(newRequest, 'created', requesterId, null, 'pending', newRequest.notes)]
-      swapRequests.push(newRequest)
-      audit('swaps','create','swap_request',newRequest.id,`Swap · ${role} · move`,{ actorId: requesterId, after:{...newRequest}, relatedRecords:[{entity_type:'shift',entity_id:sourceShift.id,entity_name:sourceShift.title||sourceShift.date},{entity_type:'shift',entity_id:targetShift.id,entity_name:targetShift.title||targetShift.date}] })
-      return Promise.resolve(newRequest)
-    }
     // exchange
     if (effectiveMode === 'exchange') {
       if (!targetShiftId) throw new Error('Target shift required for exchange.')
       if (!counterpartRegId) throw new Error('Counterpart required for exchange.')
       const targetShift = shifts.find(s => s.id === targetShiftId)
       if (!targetShift) throw new Error('Target shift not found.')
+      if (targetShift.status !== 'scheduled') throw new Error('Target shift not scheduled.')
+      if (targetShift.id === sourceShift.id) throw new Error('Source and target must be different for exchange.')
       const cpReg = shiftRegistrations.find(r => r.id === counterpartRegId)
       if (!cpReg) throw new Error('Counterpart not found.')
       if (cpReg.shift_id !== targetShiftId) throw new Error('Counterpart shift mismatch.')
@@ -3175,12 +3189,27 @@ export const swapRequestService = {
       if (!isStaffedRegistration(cpReg)) throw new Error('Counterpart not active.')
       const counterpartUser = users.find(u => u.id === cpReg.user_id)
       if (!counterpartUser || counterpartUser.status !== 'active' || counterpartUser.archived_at) throw new Error('Counterpart inactive.')
+      if (swapRequests.some(r => r.counterpart_registration_id === cpReg.id && ['pending', 'accepted', 'approved'].includes(r.status))) throw new Error('Duplicate counterpart swap request.')
+      const targetCapacity = targetShift[roleRequiredField[role]] ?? 1
+      const targetOccupied = shiftRegistrations.filter(r => r.shift_id === targetShift.id && r.operational_role === role && isStaffedRegistration(r) && r.id !== cpReg.id).length
+      if (targetOccupied >= targetCapacity) throw new Error('Target shift capacity full.')
+      const sourceCapacity = sourceShift[roleRequiredField[role]] ?? 1
+      const sourceOccupied = shiftRegistrations.filter(r => r.shift_id === sourceShift.id && r.operational_role === role && isStaffedRegistration(r) && r.id !== sourceReg!.id).length
+      if (sourceOccupied >= sourceCapacity) throw new Error('Source shift capacity full.')
+      if (findRegistrationConflict(requesterId, targetShift, sourceReg.id)) throw new Error('Requester has a schedule conflict.')
+      if (findRegistrationConflict(cpReg.user_id, sourceShift, cpReg.id)) throw new Error('Counterpart has a schedule conflict.')
+      if (shiftRegistrations.some(r => r.shift_id === targetShift.id && r.user_id === requesterId && isStaffedRegistration(r) && r.id !== sourceReg.id)) throw new Error('Requester already assigned to target.')
+      if (shiftRegistrations.some(r => r.shift_id === sourceShift.id && r.user_id === cpReg.user_id && isStaffedRegistration(r) && r.id !== cpReg.id)) throw new Error('Counterpart already assigned to source.')
       const newRequest: SwapRequest = {
         ...data,
         mode: 'exchange',
         source_shift_id: sourceShift.id,
         target_shift_id: targetShiftId,
         source_registration_id: sourceReg.id,
+        replacement_staff_id: undefined,
+        new_host_id: undefined,
+        new_support_id: undefined,
+        new_technical_id: undefined,
         counterpart_registration_id: cpReg.id,
         counterpart_id: cpReg.user_id,
         operational_role: role,
@@ -3204,10 +3233,10 @@ export const swapRequestService = {
     }
     const idx = swapRequests.findIndex(sr => sr.id === id)
     if (idx === -1) return Promise.resolve(null)
-    const req = swapRequests[idx]
-    if (req.mode !== 'exchange') throw new Error('Only exchange requires counterpart accept.')
+      const req = swapRequests[idx]
+    if (!isCreatableSwapMode(req.mode)) throw new Error('Historical MOVE requests are read-only.')
     if (req.status !== 'pending') throw new Error('Swap not pending.')
-    if (req.counterpart_id !== actorId) throw new Error('Only counterpart may accept.')
+    if (swapParticipantId(req) !== actorId) throw new Error('Only the selected participant may accept.')
     const before = { ...req }
     swapRequests[idx] = { ...req, status: 'accepted', responded_at: nowIso(), responded_by: actorId, updated_at: nowIso(), approval_history: [...(req.approval_history||[]), swapHistoryEntry(req, 'accepted', actorId, req.status, 'accepted')] }
     audit('swaps','update','swap_request',id,`Swap · ${req.operational_role} · accept`,{ actorId, before, after:{...swapRequests[idx]} })
@@ -3218,8 +3247,9 @@ export const swapRequestService = {
     const idx = swapRequests.findIndex(sr => sr.id === id)
     if (idx === -1) return Promise.resolve(null)
     const req = swapRequests[idx]
-    if (req.mode !== 'exchange' || req.status !== 'pending') throw new Error('Only a pending exchange can be responded to.')
-    if (req.counterpart_id !== actorId) throw new Error('Only the counterpart may respond.')
+    if (!isCreatableSwapMode(req.mode)) throw new Error('Historical MOVE requests are read-only.')
+    if (req.status !== 'pending') throw new Error('Only a pending swap can be responded to.')
+    if (swapParticipantId(req) !== actorId) throw new Error('Only the selected participant may respond.')
     const nextStatus = action === 'accept' ? 'accepted' : 'rejected'
     const now = nowIso()
     const before = { ...req }
@@ -3233,9 +3263,8 @@ export const swapRequestService = {
     const idx = swapRequests.findIndex(sr => sr.id === id)
     if (idx === -1) return Promise.resolve(null)
     const req = swapRequests[idx]
-    // State checks per mode
-    if (req.mode === 'exchange' && req.status !== 'accepted') throw new Error('Exchange must be accepted by counterpart before approval.')
-    if ((req.mode === 'move' || req.mode === 'replacement' || !req.mode) && req.status !== 'pending') throw new Error('Swap not pending.')
+    if (!isCreatableSwapMode(req.mode)) throw new Error('Historical MOVE requests are read-only.')
+    if (req.status !== 'accepted') throw new Error('Swap must be accepted by the selected participant before approval.')
     // Atomic execution with deterministic lock order and rollback on failure
     const snapshotRegs = [...shiftRegistrations]
     const snapshotShifts = shifts.map(s=>({...s}))
@@ -3243,31 +3272,23 @@ export const swapRequestService = {
     try {
       const srcReg = shiftRegistrations.find(r=> r.id===req.source_registration_id)
       if (!srcReg || !isStaffedRegistration(srcReg)) throw new Error('Source stale.')
+      if (srcReg.user_id !== req.requester_id) throw new Error('Source owner mismatch.')
       const srcShift = shifts.find(s=> s.id===req.source_shift_id)
       const tgtShift = req.target_shift_id ? shifts.find(s=> s.id===req.target_shift_id) : srcShift
       if (!srcShift || !tgtShift) throw new Error('Shift stale.')
+      if (srcShift.status !== 'scheduled' || tgtShift.status !== 'scheduled') throw new Error('Shift not scheduled.')
       const requester = users.find(u=> u.id===req.requester_id)
       if (!requester || requester.status!=='active' || requester.archived_at) throw new Error('Requester inactive.')
       // Revalidate role eligibility
       if (!requester.operational_roles?.includes(req.operational_role as OperationalRole)) throw new Error('Role mismatch.')
       // Capacity/conflict checks per mode with correct sequencing to avoid false positives
-      if (req.mode === 'move') {
-        // target capacity excluding none (requester not yet there), but check would fail if full
-        const tgtCount = shiftRegistrations.filter(r=> r.shift_id===tgtShift.id && r.operational_role===req.operational_role && isStaffedRegistration(r)).length
-        const required = tgtShift[roleRequiredField[req.operational_role as OperationalRole]] ?? 1
-        if (tgtCount >= required) throw new Error('Target shift capacity full.')
-        if (findRegistrationConflict(requester.id, tgtShift, srcReg.id)) throw new Error('Move would cause schedule conflict.')
-        // also check same-shift duplicate
-        if (shiftRegistrations.some(r=> r.shift_id===tgtShift.id && r.user_id===requester.id && isStaffedRegistration(r))) throw new Error('Already assigned to target.')
-        const ts = nowIso()
-        // create target, cancel source — target first to avoid transient duplicate check false positive? Actually cancel source first would free capacity but we already checked capacity without excluding source (different shift), so order not critical. Do target first.
-        shiftRegistrations.push({ id: generateId(), shift_id: tgtShift.id, user_id: requester.id, operational_role: req.operational_role as OperationalRole, status: 'approved', source: 'manual_assignment', requested_at: ts, reviewed_by: approverId, reviewed_at: ts, created_at: ts, updated_at: ts })
-        shiftRegistrations = shiftRegistrations.map(r=> r.id===srcReg.id ? {...r, status:'cancelled' as const, cancelled_at: ts, updated_at: ts} : r)
-      } else if (req.mode === 'exchange') {
-        const cpReg = shiftRegistrations.find(r=> r.id===req.counterpart_registration_id)
-        if (!cpReg || !isStaffedRegistration(cpReg)) throw new Error('Counterpart stale.')
-        const cpUser = users.find(u=> u.id===req.counterpart_id)
-        if (!cpUser || cpUser.status!=='active' || cpUser.archived_at) throw new Error('Counterpart inactive.')
+      if (req.mode === 'exchange') {
+         const cpReg = shiftRegistrations.find(r=> r.id===req.counterpart_registration_id)
+         if (!cpReg || !isStaffedRegistration(cpReg)) throw new Error('Counterpart stale.')
+         const cpUser = users.find(u=> u.id===req.counterpart_id)
+         if (!cpUser || cpUser.status!=='active' || cpUser.archived_at) throw new Error('Counterpart inactive.')
+         if (cpReg.shift_id !== tgtShift.id || cpReg.operational_role !== req.operational_role || cpReg.user_id !== req.counterpart_id || cpReg.user_id === requester.id) throw new Error('Counterpart mismatch.')
+         if (req.responded_by !== cpReg.user_id) throw new Error('Counterpart acceptance is stale.')
         // capacity checks excluding the registrations that will be cancelled
         const srcTgtCount = shiftRegistrations.filter(r=> r.shift_id===tgtShift!.id && r.operational_role===req.operational_role && isStaffedRegistration(r) && r.id!==cpReg.id).length
         const tgtSrcCount = shiftRegistrations.filter(r=> r.shift_id===srcShift.id && r.operational_role===req.operational_role && isStaffedRegistration(r) && r.id!==srcReg.id).length
@@ -3293,6 +3314,7 @@ export const swapRequestService = {
         if (!replacementId) throw new Error('Replacement staff was not selected.')
         const replacement = users.find(u=> u.id===replacementId)
         if (!replacement?.operational_roles?.includes(req.operational_role as OperationalRole)) throw new Error('Replacement staff is not eligible for this role.')
+        if (replacement.status !== 'active' || replacement.archived_at || replacement.deleted_at) throw new Error('Replacement inactive.')
         if (findRegistrationConflict(replacementId, srcShift)) throw new Error('Replacement staff has a schedule conflict.')
         const ts = nowIso()
         // keep current proven target-first → source-cancel transaction for replacement to avoid false capacity
@@ -3301,6 +3323,7 @@ export const swapRequestService = {
         const required = srcShift[roleRequiredField[req.operational_role as OperationalRole]] ?? 1
         // For replacement, we are replacing within same shift, so capacity after cancel is same count, need to ensure replacement not already there
         if (shiftRegistrations.some(r=> r.shift_id===srcShift.id && r.user_id===replacementId && isStaffedRegistration(r))) throw new Error('Replacement already assigned to shift.')
+        if (existingCount >= required) throw new Error('Source shift capacity full.')
         // target-first
         shiftRegistrations.push({ id: generateId(), shift_id: srcShift.id, user_id: replacementId, operational_role: req.operational_role as OperationalRole, status: 'approved', source: 'manual_assignment', requested_at: ts, reviewed_by: approverId, reviewed_at: ts, created_at: ts, updated_at: ts })
         shiftRegistrations = shiftRegistrations.map(r=> r.id===srcReg.id ? {...r, status:'cancelled' as const, cancelled_at: ts, updated_at: ts} : r)
@@ -3322,20 +3345,12 @@ export const swapRequestService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseSwapRequestRepository().reject(id)
     }
-    // For exchange, counterpart reject is via accept/reject path; this reject is leader/admin reject
     const idx = swapRequests.findIndex(sr => sr.id === id)
     if (idx === -1) return Promise.resolve(null)
     const req = swapRequests[idx]
-    // counterpart reject case handled via accept method; here leader reject for any pending/accepted
     if (!['pending','accepted'].includes(req.status)) throw new Error('Swap not pending.')
-    // Check permission: leader/admin or counterpart for exchange pending
-    const actor = requiredActorFor(approverId)
-    const isLeader = hasPermission(actor,'swaps.approve')
-    if (req.mode==='exchange' && req.status==='pending' && req.counterpart_id===approverId) {
-      // counterpart reject
-    } else {
-      ensureLeaderOrAdmin(approverId)
-    }
+    if (!isCreatableSwapMode(req.mode)) throw new Error('Historical MOVE requests are read-only.')
+    ensureLeaderOrAdmin(approverId)
     const before = { ...req }
     swapRequests[idx] = { ...req, status: 'rejected', approved_by: approverId, approved_at: nowIso(), updated_at: nowIso(), approval_history: [...(req.approval_history||[]), swapHistoryEntry(req, 'rejected', approverId, req.status, 'rejected')] }
     audit('swaps','reject','swap_request',id,`Swap · ${req.operational_role||'host'} · ${req.mode||'replacement'}`,{ actorId: approverId, before, after:{...swapRequests[idx]} })
@@ -3347,10 +3362,8 @@ export const swapRequestService = {
     if (idx === -1) return null
     const req = swapRequests[idx]
     if (!['pending','accepted'].includes(req.status)) throw new Error('Only pending/accepted swap requests can be cancelled.')
-    const actor = actorFor(actorId)
-    if (req.requester_id !== actorId && resolveSystemPermission(actor) === 'member') {
-      throw new Error('You can only cancel your own swap request.')
-    }
+    if (!isCreatableSwapMode(req.mode)) throw new Error('Historical MOVE requests are read-only.')
+    if (req.requester_id !== actorId) throw new Error('You can only cancel your own swap request.')
     const before={...req}
     swapRequests[idx] = { ...req, status: 'cancelled', deleted_at: nowIso(), deleted_by: actorId, deletion_reason: reason, updated_at: nowIso(), approval_history:[...(req.approval_history||[]), swapHistoryEntry(req, 'cancelled', actorId, req.status, 'cancelled', reason)] }
     audit('swaps','soft_delete','swap_request',id,`Swap · ${req.operational_role||'host'} · ${req.mode||'replacement'}`,{ actorId, before, after:{...swapRequests[idx]}, reason })

@@ -95,10 +95,10 @@ test('SQL and TypeScript use canonical actor_id history entries', async () => {
   assert.match(sql, /'mode',created_request\.mode/)
 })
 
-test('mock create history is canonical for replacement, move and exchange', async () => {
+test('mock create history is canonical for replacement and exchange', async () => {
   const source = await readFile(new URL('../lib/services/dataService.ts', import.meta.url), 'utf8')
   const createBranches = [...source.matchAll(/const newRequest: SwapRequest = \{[\s\S]*?\n      \} as SwapRequest\n      newRequest\.approval_history = \[swapHistoryEntry\(newRequest, 'created',[\s\S]*?\n      swapRequests\.push\(newRequest\)/g)]
-  assert.equal(createBranches.length, 3)
+  assert.equal(createBranches.length, 2)
   assert.match(source, /source_registration_id: request\.source_registration_id/)
   assert.match(source, /counterpart_registration_id: request\.counterpart_registration_id \?\? null/)
 })
