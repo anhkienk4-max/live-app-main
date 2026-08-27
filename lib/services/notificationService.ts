@@ -1,91 +1,109 @@
 'use client'
-import type { AppNotification, NotificationSeverity, NotificationType } from '@/lib/types/database.types'
+
+import { getAuthMode } from '@/lib/auth/authMode'
 import { currentUserService } from '@/lib/services/dataService'
+import type { AppNotification } from '@/lib/types/database.types'
+import {
+  getSupabaseNotificationRepository,
+  setSupabaseNotificationRepositoryForTests,
+  type SupabaseNotificationRepository,
+} from '@/lib/services/supabaseNotificationService'
 
-let notifications: AppNotification[] = []
+let mockNotifications: AppNotification[] = []
 let listeners: Array<() => void> = []
-const notify = () => listeners.forEach(l => l())
+const notify = () => listeners.forEach(listener => listener())
 
-function seedForUser(userId: string): AppNotification[] {
-  const now = Date.now()
-  return [
-    {
-      id: 'seed-shift-assigned',
-      type: 'shift_assigned',
-      title: 'Shift assigned',
-      message: 'You have been assigned to a shift',
-      severity: 'info',
-      user_id: userId,
-      related_entity_type: 'shift',
-      related_entity_id: 's1',
-      action_url: '/calendar',
-      read_at: null,
-      created_at: new Date(now - 1000 * 60 * 30).toISOString(),
-    },
-    {
-      id: 'seed-swap-request',
-      type: 'swap_request',
-      title: 'Swap request',
-      message: 'A swap request awaits review',
-      severity: 'warning',
-      user_id: userId,
-      related_entity_type: 'swap_request',
-      related_entity_id: 'sw1',
-      action_url: '/swaps',
-      read_at: null,
-      created_at: new Date(now - 1000 * 60 * 60).toISOString(),
-    },
-  ]
+function requireMockMode() {
+  if (getAuthMode() !== 'mock') throw new Error('In-memory notifications are available only in explicit mock mode.')
 }
 
-function ensureSeed(userId: string) {
-  if (notifications.some(n => n.user_id === userId)) return
-  notifications = [...seedForUser(userId), ...notifications]
+function getMockNotifications() {
+  requireMockMode()
+  return mockNotifications
+    .filter(notification => notification.user_id === currentUserService.getId())
+    .sort((left, right) => right.created_at.localeCompare(left.created_at))
 }
 
 export const notificationService = {
   async getAll(): Promise<AppNotification[]> {
-    const userId = currentUserService.getId()
-    ensureSeed(userId)
-    return [...notifications].filter(n => n.user_id === userId).sort((a,b)=> b.created_at.localeCompare(a.created_at))
+    return this.getForCurrentUser()
   },
+
   async getForCurrentUser(): Promise<AppNotification[]> {
-    return this.getAll()
+    if (getAuthMode() === 'supabase') return getSupabaseNotificationRepository().getForCurrentUser()
+    return [...getMockNotifications()]
   },
+
   async getUnreadCount(): Promise<number> {
-    const all = await this.getAll()
-    return all.filter(n => !n.read_at).length
+    const all = await this.getForCurrentUser()
+    return all.filter(notification => !notification.read_at).length
   },
+
   async markRead(id: string): Promise<void> {
-    const userId = currentUserService.getId()
-    notifications = notifications.map(n => n.id === id && n.user_id === userId ? { ...n, read_at: new Date().toISOString() } : n)
-    notify()
+    if (getAuthMode() === 'supabase') {
+      await getSupabaseNotificationRepository().markRead(id)
+    } else {
+      const userId = currentUserService.getId()
+      mockNotifications = mockNotifications.map(notification =>
+        notification.id === id && notification.user_id === userId
+          ? { ...notification, read_at: notification.read_at || new Date().toISOString() }
+          : notification,
+      )
+      notify()
+    }
   },
+
   async markAllRead(): Promise<void> {
-    const userId = currentUserService.getId()
-    notifications = notifications.map(n => n.user_id === userId && !n.read_at ? { ...n, read_at: new Date().toISOString() } : n)
-    notify()
+    if (getAuthMode() === 'supabase') {
+      await getSupabaseNotificationRepository().markAllRead()
+    } else {
+      const userId = currentUserService.getId()
+      const timestamp = new Date().toISOString()
+      mockNotifications = mockNotifications.map(notification =>
+        notification.user_id === userId && !notification.read_at
+          ? { ...notification, read_at: timestamp }
+          : notification,
+      )
+      notify()
+    }
   },
-  // internal helpers for event adapter (not exposed as public API)
-  _create(notification: Omit<AppNotification,'id'|'created_at'|'read_at'> & { id?: string }): AppNotification {
+
+  _create(notification: Omit<AppNotification, 'id' | 'created_at' | 'read_at'> & { id?: string }): AppNotification {
+    requireMockMode()
+    if (notification.event_key) {
+      const existing = mockNotifications.find(item => item.event_key === notification.event_key)
+      if (existing) return existing
+    }
     const item: AppNotification = {
-      id: notification.id || Math.random().toString(36).slice(2,9),
+      id: notification.id || `${notification.event_key || 'notification'}-${mockNotifications.length + 1}`,
       read_at: null,
       created_at: new Date().toISOString(),
       ...notification,
     }
-    notifications.unshift(item)
+    mockNotifications = [item, ...mockNotifications]
     notify()
     return item
   },
-  _subscribe(fn: () => void) {
-    listeners.push(fn)
-    return () => { listeners = listeners.filter(l => l !== fn) }
+
+  _subscribe(listener: () => void) {
+    listeners.push(listener)
+    return () => { listeners = listeners.filter(item => item !== listener) }
   },
+
+  _subscribeRealtime(userId: string, onChange: () => void) {
+    if (getAuthMode() !== 'supabase') return () => undefined
+    return getSupabaseNotificationRepository().subscribe(userId, onChange)
+  },
+
   _resetForTests() {
-    notifications = []
+    mockNotifications = []
     listeners = []
-  }
+    setSupabaseNotificationRepositoryForTests(undefined)
+  },
+
+  _setRepositoryForTests(repository: SupabaseNotificationRepository | undefined) {
+    setSupabaseNotificationRepositoryForTests(repository)
+  },
 }
 
-export type NotificationCreateInput = Omit<AppNotification,'id'|'created_at'|'read_at'>
+export type NotificationCreateInput = Omit<AppNotification, 'id' | 'created_at' | 'read_at'>

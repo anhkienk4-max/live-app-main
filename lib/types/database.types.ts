@@ -885,14 +885,17 @@ export interface ScheduleChangeLog {
 
 export type NotificationSeverity = 'info' | 'success' | 'warning' | 'error'
 export type NotificationType =
+  | 'registration_submitted'
   | 'shift_assigned'
   | 'staffing_approval'
   | 'staffing_rejection'
   | 'swap_request'
   | 'swap_accepted'
   | 'swap_rejected'
+  | 'swap_approved'
   | 'report_submitted'
   | 'report_reviewed'
+  | 'import_completed'
   | 'import_warning'
   | 'import_failure'
   | 'system'
@@ -907,6 +910,7 @@ export interface AppNotification {
   related_entity_type?: string
   related_entity_id?: string
   action_url?: string
+  event_key?: string
   read_at?: string | null
   created_at: string
 }

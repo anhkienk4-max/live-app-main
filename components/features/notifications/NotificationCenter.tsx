@@ -22,7 +22,25 @@ export function NotificationCenter() {
     setNotifications(items)
   }, [currentUser])
 
-  React.useEffect(() => { void load(); const unsub = notificationService._subscribe(load); return unsub }, [load])
+  React.useEffect(() => {
+    let active = true
+    let unsubscribeRealtime: () => void = () => undefined
+    const refresh = async () => {
+      try {
+        await load()
+      } catch {
+        if (active) setNotifications([])
+      }
+    }
+    void refresh()
+    if (currentUser) unsubscribeRealtime = notificationService._subscribeRealtime(currentUser.id, () => void refresh())
+    const unsubscribeMock = notificationService._subscribe(() => void refresh())
+    return () => {
+      active = false
+      unsubscribeRealtime()
+      unsubscribeMock()
+    }
+  }, [currentUser, load])
   React.useEffect(() => { if (open) void load() }, [open, load])
 
   const unreadCount = notifications.filter(n => !n.read_at).length
