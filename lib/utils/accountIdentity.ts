@@ -68,7 +68,7 @@ export interface CapabilityEntry {
 export const ACCOUNT_CAPABILITY_MATRIX: CapabilityEntry[] = [
   {
     flow: 'admin_create_invite',
-    existingImplementation: 'userService.create() — admin-only, email normalized, account_status pending_approval/active, audit staff.create',
+    existingImplementation: 'userService.create() — admin-only; Supabase browser flow uses a server Auth invite and create_staff_member_with_auth; mock mode keeps local create',
     missingImplementation: null,
     requiredPermission: 'staff.manage (admin)',
     persistenceEntity: 'User (public.users) + Supabase auth.users via invite',
@@ -77,15 +77,15 @@ export const ACCOUNT_CAPABILITY_MATRIX: CapabilityEntry[] = [
   {
     flow: 'first_login_password_setup',
     existingImplementation: 'Supabase auth sign-in + establishPasswordSession / getVerifiedUser (lib/auth/session.ts)',
-    missingImplementation: 'No dedicated first-login UI flow — relies on Supabase invite email',
+    missingImplementation: null,
     requiredPermission: 'self (unauthenticated → authenticated)',
     persistenceEntity: 'auth.users + User.email_verified',
     risk: 'Low — invite email handles; missing UI is TODO',
   },
   {
     flow: 'forgot_reset_password',
-    existingImplementation: null,
-    missingImplementation: 'Supabase auth password reset (resetPasswordForEmail) — not wired in app',
+    existingImplementation: 'forgot-password and reset-password pages use Supabase resetPasswordForEmail/updateUser',
+    missingImplementation: null,
     requiredPermission: 'self (unauthenticated)',
     persistenceEntity: 'auth.users',
     risk: 'Medium — users cannot self-recover without admin',

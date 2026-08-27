@@ -56,18 +56,16 @@ test('flow 1: Admin create/invite account — existing', async () => {
   assert.equal(normalizeAccountEmail('  ADMIN@Example.COM  '), 'admin@example.com')
 })
 
-test('flow 2: first login / password setup — existing invite email, missing dedicated UI', () => {
+test('flow 2: first login / password setup — recovery session has a dedicated UI', () => {
   const entry = ACCOUNT_CAPABILITY_MATRIX.find(e => e.flow === 'first_login_password_setup')!
   assert.ok(entry.existingImplementation?.includes('establishPasswordSession'))
-  assert.ok(entry.missingImplementation?.includes('No dedicated first-login UI'))
+  assert.equal(entry.missingImplementation, null)
 })
 
-test('flow 3: forgot/reset password — missing (TODO)', () => {
+test('flow 3: forgot/reset password — Supabase recovery UI', () => {
   const entry = ACCOUNT_CAPABILITY_MATRIX.find(e => e.flow === 'forgot_reset_password')!
-  assert.equal(entry.existingImplementation, null)
-  assert.ok(entry.missingImplementation?.includes('Supabase auth password reset'))
-  // Should be reported as TODO, not invented
-  assert.match(entry.missingImplementation || '', /TODO|not wired/)
+  assert.ok(entry.existingImplementation?.includes('resetPasswordForEmail'))
+  assert.equal(entry.missingImplementation, null)
 })
 
 test('flow 4: activate account — existing approvePendingAccount', () => {

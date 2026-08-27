@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import type { AuthIdentity } from '@/lib/auth/authIdentity'
+import { isAuthBusinessIdentityConsistent, type AuthIdentity } from '@/lib/auth/authIdentity'
 import { createClient } from '@/lib/supabase/client'
 import type {
   Brand,
@@ -12,6 +12,7 @@ import type {
 
 const businessUserColumns = [
   'id',
+  'auth_user_id',
   'email',
   'full_name',
   'avatar_url',
@@ -119,6 +120,7 @@ const campaignColumns = [
 type Nullable<T> = { [Key in keyof T]: T[Key] | null }
 type BusinessUserRow = Nullable<User> & {
   id: string
+  auth_user_id: string | null
   email: string
   full_name: string
   role: User['role']
@@ -238,6 +240,7 @@ function lifecycle(row: {
 function userFromRow(row: BusinessUserRow): User {
   return {
     id: row.id,
+    auth_user_id: row.auth_user_id ?? undefined,
     email: row.email,
     full_name: row.full_name,
     avatar_url: row.avatar_url ?? undefined,
@@ -490,7 +493,8 @@ export function createSupabaseMasterDataRepository(
           .is('deleted_at', null)
           .maybeSingle()
         const row = optionalData('authenticated business user lookup', result)
-        return row ? userFromRow(row as unknown as BusinessUserRow) : null
+        const user = row ? userFromRow(row as unknown as BusinessUserRow) : null
+        return user && isAuthBusinessIdentityConsistent(identity, user) ? user : null
       },
       async create(data) {
         const result = await client
@@ -503,7 +507,16 @@ export function createSupabaseMasterDataRepository(
           .rpc('update_staff_member', { p_user_id: id, p_data: businessUserUpdatePayload(data) })
           .maybeSingle()
         const row = optionalData('staff update', result)
-        return row ? userFromRow(row as unknown as BusinessUserRow) : null
+        if (!row) return null
+        const user = userFromRow(row as unknown as BusinessUserRow)
+        if (data.system_permission !== undefined) {
+          const metadataSync = await client
+            .rpc('sync_staff_auth_metadata', { p_user_id: id })
+            .maybeSingle()
+          const syncedRow = optionalData('staff Auth metadata sync', metadataSync)
+          return syncedRow ? userFromRow(syncedRow as unknown as BusinessUserRow) : user
+        }
+        return user
       },
       async approvePendingAccount(id) {
         const result = await client.rpc('approve_staff_account', { p_user_id: id }).maybeSingle()

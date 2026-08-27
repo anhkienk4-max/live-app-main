@@ -305,17 +305,23 @@ test('Staff browser save calls update_staff_member with the exact RPC contract a
     phone: undefined,
   })
 
-  assert.deepEqual(calls, [{
-    name: 'update_staff_member',
-    args: {
-      p_user_id: '5',
-      p_data: {
-        full_name: 'Updated Support',
-        system_permission: 'member',
-        operational_roles: ['support', 'technical'],
+  assert.deepEqual(calls, [
+    {
+      name: 'update_staff_member',
+      args: {
+        p_user_id: '5',
+        p_data: {
+          full_name: 'Updated Support',
+          system_permission: 'member',
+          operational_roles: ['support', 'technical'],
+        },
       },
     },
-  }])
+    {
+      name: 'sync_staff_auth_metadata',
+      args: { p_user_id: '5' },
+    },
+  ])
   assert.equal('auth_user_id' in (calls[0].args.p_data as Record<string, unknown>), false)
   assert.equal(updated?.full_name, 'Updated Support')
   assert.equal(updated?.system_permission, 'member')

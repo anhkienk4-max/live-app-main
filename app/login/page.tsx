@@ -24,30 +24,34 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [hasSubmitted, setHasSubmitted] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const router = useRouter()
   const { language, setLanguage, t } = useTranslation()
   const mockMode = getAuthMode() === 'mock'
+  const recoveryReason = typeof window === 'undefined'
+    ? null
+    : new URLSearchParams(window.location.search).get('reason')
+  const recoveryMessage = recoveryReason === 'session_expired' || recoveryReason === 'authentication_required'
+    ? t('sessionExpired')
+    : recoveryReason === 'auth_unavailable'
+      ? t('authServiceUnavailable')
+        : recoveryReason === 'identity_unavailable'
+          ? t('authIdentityUnavailable')
+          : null
+  const recoveryNotice = recoveryReason === 'signed_out' && !hasSubmitted
+    ? t('signedOutMessage')
+    : null
 
   useEffect(() => {
-    const reason = new URLSearchParams(window.location.search).get('reason')
     if (
       !mockMode
       && getSupabasePublicConfig()
-      && shouldClearLocalSessionForLoginReason(reason)
+      && shouldClearLocalSessionForLoginReason(recoveryReason)
     ) {
       void clearLocalSession(createClient())
     }
-    if (reason === 'session_expired' || reason === 'authentication_required') {
-      setError(t('sessionExpired'))
-    } else if (reason === 'auth_unavailable') {
-      setError(t('authServiceUnavailable'))
-    } else if (reason === 'identity_unavailable') {
-      setError(t('authIdentityUnavailable'))
-    } else if (reason === 'signed_out') {
-      setNotice(t('signedOutMessage'))
-    }
-  }, [mockMode, t])
+  }, [mockMode, recoveryReason])
 
   const redirectAfterLogin = () => {
     const next = safeLocalRedirect(new URLSearchParams(window.location.search).get('next'))
@@ -64,6 +68,7 @@ export default function LoginPage() {
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault()
+    setHasSubmitted(true)
     setLoading(true)
     setError(null)
     setNotice(null)
@@ -166,9 +171,9 @@ export default function LoginPage() {
             </>
           )}
 
-          {notice && (
+          {(notice || recoveryNotice) && (
             <div className="text-sm text-green-700 bg-green-50 p-3 rounded-lg border border-green-100" data-testid="login-notice">
-              {notice}
+              {notice || recoveryNotice}
             </div>
           )}
 
@@ -208,9 +213,9 @@ export default function LoginPage() {
                 </Button>
               </div>
             </div>
-            {error && (
+            {(error || (!hasSubmitted && recoveryMessage)) && (
               <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg border border-red-100" data-testid="login-error">
-                {error}
+                {error || recoveryMessage}
               </div>
             )}
             <Button
@@ -223,9 +228,9 @@ export default function LoginPage() {
             </Button>
           </form>
           <div className="space-y-3 text-center text-sm">
+            <Link className="text-blue-700 hover:underline" href="/forgot-password">{t('forgotPassword')}</Link>
             {mockMode && (
               <>
-                <button type="button" className="text-blue-700 hover:underline" onClick={() => setError(t('passwordResetMockHelp'))}>{t('forgotPassword')}</button>
                 <p className="text-gray-600">{t('noAccount')} <Link className="font-semibold text-blue-700 hover:underline" href="/register">{t('signUp')}</Link></p>
               </>
             )}
