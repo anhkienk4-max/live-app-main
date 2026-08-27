@@ -1,11 +1,12 @@
 'use client'
 
-import { Shift, Brand, Platform, User } from '@/lib/types/database.types'
+import { Shift, Brand, Platform, User, ShiftRegistration, OperationalRole } from '@/lib/types/database.types'
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import { Clock, User as UserIcon } from 'lucide-react'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { useTranslation } from '@/lib/i18n'
+import { ShiftRegistrationActions } from './ShiftRegistrationActions'
 
 interface DayViewProps {
   currentDate: Date
@@ -13,10 +14,14 @@ interface DayViewProps {
   brands: Brand[]
   platforms: Platform[]
   users: User[]
+  registrations?: ShiftRegistration[]
+  allShifts?: Shift[]
+  currentUser?: User | null
+  onRegister?: (shiftId: string, role: OperationalRole) => Promise<void>
   onShiftClick?: (shift: Shift) => void
 }
 
-export function DayView({ currentDate, shifts, brands, platforms, users, onShiftClick }: DayViewProps) {
+export function DayView({ currentDate, shifts, brands, platforms, users, registrations = [], allShifts = shifts, currentUser = null, onRegister, onShiftClick }: DayViewProps) {
   const { t } = useTranslation()
   const dateStr = format(currentDate, 'yyyy-MM-dd')
   const dayShifts = shifts.filter(s => s.date === dateStr).sort((a, b) => a.start_time.localeCompare(b.start_time))
@@ -37,14 +42,13 @@ export function DayView({ currentDate, shifts, brands, platforms, users, onShift
       ) : (
         <div className="space-y-3">
           {dayShifts.map((shift) => (
-            <button
-              type="button"
+            <div
               key={shift.id}
               className="w-full rounded-lg border p-4 text-left transition-all hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               data-testid={`day-shift-${shift.id}`}
               style={{ borderLeft: `6px solid ${getBrandColor(shift.brand_id)}` }}
-              onClick={() => onShiftClick?.(shift)}
             >
+              <button type="button" className="w-full text-left" onClick={() => onShiftClick?.(shift)}>
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
@@ -89,7 +93,17 @@ export function DayView({ currentDate, shifts, brands, platforms, users, onShift
                   )}
                 </div>
               </div>
-            </button>
+              </button>
+              {onRegister && (
+                <ShiftRegistrationActions
+                  allShifts={allShifts}
+                  currentUser={currentUser}
+                  onRegister={role => onRegister(shift.id, role)}
+                  registrations={registrations}
+                  shift={shift}
+                />
+              )}
+            </div>
           ))}
         </div>
       )}
