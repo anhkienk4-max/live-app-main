@@ -16,7 +16,7 @@ export interface SupabasePublicConfig {
 }
 
 export function resolveAuthMode(environment: AuthModeEnvironment): AuthMode {
-  return environment.nodeEnv === 'development'
+  return (environment.nodeEnv === 'development' || environment.nodeEnv === 'test')
     && environment.useMockData === 'true'
     ? 'mock'
     : 'supabase'
