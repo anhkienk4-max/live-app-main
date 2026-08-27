@@ -4,15 +4,17 @@ import * as React from 'react'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { shiftService, userService, brandService, campaignService } from '@/lib/services/dataService'
-import { Search, Calendar, User, Briefcase, Tag, Clock } from 'lucide-react'
+import { shiftService, userService, brandService, campaignService, reportService } from '@/lib/services/dataService'
+import { Search, Calendar, User, Briefcase, Tag, Clock, FileText, Users, LayoutGrid, Upload } from 'lucide-react'
 import { format } from 'date-fns'
 import { useRouter } from 'next/navigation'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { hasPermission } from '@/lib/permissions'
+import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 
 interface SearchResult {
   id: string
-  type: 'shift' | 'staff' | 'brand' | 'campaign'
+  type: 'shift' | 'staff' | 'brand' | 'campaign' | 'report' | 'action'
   title: string
   subtitle: string
   url: string
@@ -20,12 +22,21 @@ interface SearchResult {
   badge?: string
 }
 
+const normalize = (value: string) => value
+  .trim()
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/\s+/g, ' ')
+
 export function GlobalSearch() {
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
   const [results, setResults] = React.useState<SearchResult[]>([])
   const [loading, setLoading] = React.useState(false)
   const router = useRouter()
+  const { currentUser } = useCurrentUser()
+  const [cache, setCache] = React.useState<{ shifts: Awaited<ReturnType<typeof shiftService.getAll>>; brands: Awaited<ReturnType<typeof brandService.getAll>>; campaigns: Awaited<ReturnType<typeof campaignService.getAll>>; users: Awaited<ReturnType<typeof userService.getAll>>; reports: Awaited<ReturnType<typeof reportService.getAll>> } | null>(null)
 
   // Listen for Cmd/Ctrl + K
   React.useEffect(() => {
@@ -35,105 +46,139 @@ export function GlobalSearch() {
         setOpen(true)
       }
     }
-
     document.addEventListener('keydown', down)
     return () => document.removeEventListener('keydown', down)
   }, [])
 
-  // Perform search
+  // Preload lightweight data once when dialog opens
   React.useEffect(() => {
+    if (!open || cache) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const [shifts, users, brands, campaigns, reports] = await Promise.all([
+          shiftService.getAll(),
+          userService.getAll(),
+          brandService.getAll(),
+          campaignService.getAll(),
+          reportService.getAll().catch(()=> [] as never),
+        ])
+        if (!cancelled) setCache({ shifts, users, brands, campaigns, reports })
+      } catch { /* ignore preload errors */ }
+    })()
+    return () => { cancelled = true }
+  }, [open, cache])
+
+  // Perform search locally, deterministic, no per-keystroke fetch
+  React.useEffect(() => {
+    if (!open) return
     if (!query.trim()) {
-      setResults([])
+      // Show quick actions when empty, respecting permissions
+      const actions: SearchResult[] = []
+      if (!currentUser || hasPermission(currentUser, 'shifts.view_open') || hasPermission(currentUser, 'shifts.view_assigned')) {
+        actions.push({ id: 'action-calendar', type: 'action', title: 'Open Calendar', subtitle: 'View shifts', url: '/calendar', icon: <Calendar className="h-4 w-4" /> })
+      }
+      if (currentUser && hasPermission(currentUser, 'shifts.import')) {
+        actions.push({ id: 'action-import', type: 'action', title: 'Open Import Schedule', subtitle: 'Import shifts', url: '/calendar', icon: <Upload className="h-4 w-4" /> })
+      }
+      if (currentUser && hasPermission(currentUser, 'shifts.edit')) {
+        actions.push({ id: 'action-create-shift', type: 'action', title: 'Create Shift', subtitle: 'New shift', url: '/calendar', icon: <Calendar className="h-4 w-4" /> })
+      }
+      if (!currentUser || hasPermission(currentUser, 'reports.submit') || hasPermission(currentUser, 'reports.review')) {
+        actions.push({ id: 'action-reports', type: 'action', title: 'Open Reports', subtitle: 'View reports', url: '/reports', icon: <FileText className="h-4 w-4" /> })
+      }
+      if (!currentUser || hasPermission(currentUser, 'staff.manage')) {
+        actions.push({ id: 'action-staff', type: 'action', title: 'Open Staff', subtitle: 'Manage staff', url: '/staff', icon: <Users className="h-4 w-4" /> })
+      }
+      setResults(actions.slice(0,5))
       return
     }
-
-    const searchTimeout = setTimeout(async () => {
+    if (!cache) {
       setLoading(true)
-      try {
-        const [shifts, users, brands, campaigns] = await Promise.all([
-          shiftService.getAll(),
-          userService.search(query),
-          brandService.getAll(),
-          campaignService.getAll()
-        ])
+      return
+    }
+    const q = normalize(query)
+    const searchResults: SearchResult[] = []
+    const canViewShifts = !currentUser || hasPermission(currentUser, 'shifts.view_open') || hasPermission(currentUser, 'shifts.view_assigned')
+    const canViewStaff = !currentUser || hasPermission(currentUser, 'staff.manage')
+    const canViewBrands = true
+    const canViewCampaigns = true
+    const canViewReports = !currentUser || hasPermission(currentUser, 'reports.submit') || hasPermission(currentUser, 'reports.review')
 
-        const searchResults: SearchResult[] = []
-        const lowerQuery = query.toLowerCase()
-
-        // Search shifts
-        shifts
-          .filter(s => {
-            const brand = brands.find(b => b.id === s.brand_id)
-            return brand?.name.toLowerCase().includes(lowerQuery) ||
-                   s.product_notes?.toLowerCase().includes(lowerQuery)
-          })
-          .slice(0, 5)
-          .forEach(shift => {
-            const brand = brands.find(b => b.id === shift.brand_id)
-            searchResults.push({
-              id: shift.id,
-              type: 'shift',
-              title: `${brand?.name || 'Unknown'} - ${format(new Date(shift.date), 'MMM d')}`,
-              subtitle: formatShiftTimeRange(shift),
-              url: '/calendar',
-              icon: <Calendar className="h-4 w-4" />,
-              badge: shift.status
-            })
-          })
-
-        // Search staff
-        users.slice(0, 5).forEach(user => {
-          searchResults.push({
-            id: user.id,
-            type: 'staff',
-            title: user.full_name,
-            subtitle: user.email,
-            url: '/staff',
-            icon: <User className="h-4 w-4" />,
-            badge: user.role
-          })
+    // Search shifts (cap 5, secondary brand + date/time)
+    if (canViewShifts) {
+      cache.shifts.filter(s => {
+        const brand = cache.brands.find(b => b.id === s.brand_id)
+        return normalize(brand?.name || '').includes(q) || normalize(s.product_notes || '').includes(q) || normalize(s.title || '').includes(q) || normalize(s.date).includes(q)
+      }).slice(0, 5).forEach(shift => {
+        const brand = cache.brands.find(b => b.id === shift.brand_id)
+        searchResults.push({
+          id: shift.id,
+          type: 'shift',
+          title: `${brand?.name || 'Unknown'} · ${shift.title || 'Shift'}`,
+          subtitle: `${shift.date} · ${formatShiftTimeRange(shift)}`,
+          url: '/calendar',
+          icon: <Calendar className="h-4 w-4" />,
+          badge: shift.status
         })
+      })
+    }
+    // Search staff (cap 5, use cached users filtered locally, not remote search)
+    if (canViewStaff) {
+      cache.users.filter(u => normalize(u.full_name).includes(q) || normalize(u.email).includes(q)).slice(0, 5).forEach(user => {
+        searchResults.push({
+          id: user.id,
+          type: 'staff',
+          title: user.full_name,
+          subtitle: user.email,
+          url: '/staff',
+          icon: <User className="h-4 w-4" />,
+          badge: user.role
+        })
+      })
+    }
+    // Search brands (cap 3)
+    if (canViewBrands) {
+      cache.brands.filter(b => normalize(b.name).includes(q)).slice(0, 3).forEach(brand => {
+        searchResults.push({ id: brand.id, type: 'brand', title: brand.name, subtitle: 'Brand', url: '/brands', icon: <Briefcase className="h-4 w-4" /> })
+      })
+    }
+    // Search campaigns (cap 3)
+    if (canViewCampaigns) {
+      cache.campaigns.filter(c => normalize(c.name).includes(q)).slice(0, 3).forEach(campaign => {
+        searchResults.push({ id: campaign.id, type: 'campaign', title: campaign.name, subtitle: `${format(new Date(campaign.start_date), 'MMM d')} - ${format(new Date(campaign.end_date), 'MMM d')}`, url: '/campaigns', icon: <Tag className="h-4 w-4" /> })
+      })
+    }
+    // Search reports (cap 3, lightweight: use already cached reports, no OCR payload)
+    if (canViewReports) {
+      cache.reports.filter(r => {
+        const shift = cache.shifts.find(s => s.id === r.shift_id)
+        const brand = shift ? cache.brands.find(b => b.id === shift.brand_id)?.name : ''
+        return normalize(brand || '').includes(q) || normalize(shift?.date || '').includes(q) || normalize(r.id).includes(q)
+      }).slice(0, 3).forEach(report => {
+        const shift = cache.shifts.find(s => s.id === report.shift_id)
+        searchResults.push({
+          id: report.id,
+          type: 'report',
+          title: `Report ${report.id.slice(0,8)}`,
+          subtitle: shift ? `${shift.date} · ${shift.start_time}` : 'Report',
+          url: '/reports',
+          icon: <FileText className="h-4 w-4" />,
+          badge: report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
+        })
+      })
+    }
+    // Quick actions that match query (cap 3)
+    const actionCandidates: SearchResult[] = []
+    if (normalize('Open Calendar').includes(q) || normalize('calendar').includes(q)) actionCandidates.push({ id: 'action-calendar-q', type: 'action', title: 'Open Calendar', subtitle: 'View shifts', url: '/calendar', icon: <Calendar className="h-4 w-4" /> })
+    if (currentUser && hasPermission(currentUser, 'shifts.edit') && (normalize('Create Shift').includes(q) || normalize('create shift').includes(q))) actionCandidates.push({ id: 'action-create-shift-q', type: 'action', title: 'Create Shift', subtitle: 'New shift', url: '/calendar', icon: <Calendar className="h-4 w-4" /> })
+    if (normalize('Open Reports').includes(q)) actionCandidates.push({ id: 'action-reports-q', type: 'action', title: 'Open Reports', subtitle: 'View reports', url: '/reports', icon: <FileText className="h-4 w-4" /> })
+    if (actionCandidates.length) searchResults.push(...actionCandidates.slice(0,3))
 
-        // Search brands
-        brands
-          .filter(b => b.name.toLowerCase().includes(lowerQuery))
-          .slice(0, 3)
-          .forEach(brand => {
-            searchResults.push({
-              id: brand.id,
-              type: 'brand',
-              title: brand.name,
-              subtitle: 'Brand',
-              url: '/brands',
-              icon: <Briefcase className="h-4 w-4" />
-            })
-          })
-
-        // Search campaigns
-        campaigns
-          .filter(c => c.name.toLowerCase().includes(lowerQuery))
-          .slice(0, 3)
-          .forEach(campaign => {
-            searchResults.push({
-              id: campaign.id,
-              type: 'campaign',
-              title: campaign.name,
-              subtitle: `${format(new Date(campaign.start_date), 'MMM d')} - ${format(new Date(campaign.end_date), 'MMM d')}`,
-              url: '/campaigns',
-              icon: <Tag className="h-4 w-4" />
-            })
-          })
-
-        setResults(searchResults)
-      } catch (error) {
-        console.error('Search error:', error)
-      } finally {
-        setLoading(false)
-      }
-    }, 300)
-
-    return () => clearTimeout(searchTimeout)
-  }, [query])
+    // Cap total and keep deterministic order: shifts(5) + staff(5) + brands(3) + campaigns(3) + reports(3) already capped per entity
+    setResults(searchResults.slice(0, 18))
+    setLoading(false)
+  }, [query, cache, open, currentUser])
 
   const handleSelect = (result: SearchResult) => {
     setOpen(false)
