@@ -15,6 +15,7 @@ interface ShiftRegistrationActionsProps {
   disabled?: boolean
   onRegister: (role: OperationalRole) => Promise<void>
   registrations: ShiftRegistration[]
+  role?: OperationalRole
   shift: Shift
 }
 
@@ -25,6 +26,7 @@ export function ShiftRegistrationActions({
   disabled = false,
   onRegister,
   registrations,
+  role,
   shift,
 }: ShiftRegistrationActionsProps) {
   const { t } = useTranslation()
@@ -39,7 +41,7 @@ export function ShiftRegistrationActions({
     user: currentUser,
   })
 
-  const visibleStates = states.filter(state => state.state !== 'not_eligible')
+  const visibleStates = states.filter(state => state.state !== 'not_eligible' && (!role || state.role === role))
   if (visibleStates.length === 0) return null
 
   const runRegister = async (state: RegistrationCtaResult) => {

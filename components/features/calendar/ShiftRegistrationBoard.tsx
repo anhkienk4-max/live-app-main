@@ -38,6 +38,7 @@ import { useToast } from '@/components/ui/toast'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { ShiftDetailModal } from '@/components/features/shifts/ShiftDetailModal'
+import { ShiftRegistrationActions } from '@/components/features/calendar/ShiftRegistrationActions'
 
 type Mode = 'open' | 'mine'
 type Filters = { date: string; brand: string; platform: string; campaign: string; role: string }
@@ -106,12 +107,16 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
     window.localStorage.setItem('livestream-ops-open-shift-view', next)
   }
 
-  const runAction = async (id: string, action: () => Promise<unknown>, success: string) => {
+  const runAction = async (id: string, action: () => Promise<unknown>, success: string, openShiftId?: string) => {
     setBusyId(id)
     try {
       await action()
       toast({ title: t('success'), description: success, variant: 'success' })
       await loadData()
+      if (openShiftId) {
+        const refreshedShift = await shiftService.getById(openShiftId)
+        if (refreshedShift) setDetailShift(refreshedShift)
+      }
     } catch (error) {
       toast({
         title: t('error'),
@@ -196,16 +201,14 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         </CardContent>
       </Card>
 
-      {mode === 'open' && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">{visibleShifts.length} {t('openShifts').toLowerCase()}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">{visibleShifts.length} {mode === 'open' ? t('openShifts').toLowerCase() : t('myShifts').toLowerCase()}</p>
           <div className="inline-flex rounded-lg border bg-background p-1" aria-label="Open shift view">
             <ViewButton active={viewMode === 'card'} onClick={() => changeViewMode('card')} icon={<LayoutGrid className="h-4 w-4" />} label={t('cardView')} />
             <ViewButton active={viewMode === 'compact'} onClick={() => changeViewMode('compact')} icon={<List className="h-4 w-4" />} label={t('compactView')} />
             <ViewButton active={viewMode === 'table'} onClick={() => changeViewMode('table')} icon={<Table2 className="h-4 w-4" />} label={t('tableView')} />
           </div>
         </div>
-      )}
 
       {mode === 'open' && hasPermission(currentUser, 'shifts.approve_registration') && pendingApprovals.length > 0 && (
         <Card className="border-amber-200">
@@ -237,7 +240,17 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
       {visibleShifts.length === 0 ? (
         <Card><CardContent className="py-12 text-center text-muted-foreground">{mode === 'open' ? t('noOpenShifts') : t('noMyShifts')}</CardContent></Card>
       ) : viewMode === 'table' ? (
-        <ShiftSummaryTable shifts={visibleShifts} capacities={capacities} registrations={registrations} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+        <ShiftSummaryTable
+          allShifts={shifts}
+          currentUser={currentUser}
+          onRegister={(shiftId, role) => runAction(`${shiftId}-${role}`, () => shiftRegistrationService.register(shiftId, currentUser.id, role), t('registrationPending'), shiftId)}
+          shifts={visibleShifts}
+          registrations={registrations}
+          brands={brands}
+          platforms={platforms}
+          campaigns={campaigns}
+          onManage={setDetailShift}
+        />
       ) : viewMode === 'compact' ? (
         <CompactShiftList shifts={visibleShifts} capacities={capacities} registrations={registrations} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
       ) : (
@@ -468,16 +481,20 @@ function CompactShiftList({
 }
 
 function ShiftSummaryTable({
+  allShifts,
+  currentUser,
+  onRegister,
   shifts,
-  capacities,
   registrations,
   brands,
   platforms,
   campaigns,
   onManage,
 }: {
+  allShifts: Shift[]
+  currentUser: User
+  onRegister: (shiftId: string, role: OperationalRole) => Promise<void>
   shifts: Shift[]
-  capacities: CapacityMap
   registrations: ShiftRegistration[]
   brands: Brand[]
   platforms: Platform[]
@@ -485,16 +502,9 @@ function ShiftSummaryTable({
   onManage: (shift: Shift) => void
 }) {
   const { t } = useTranslation()
-  return <Card><CardContent className="overflow-x-auto pt-5"><table className="w-full min-w-[1050px] text-sm">
-    <thead><tr className="border-b text-left"><th className="p-2">{t('date')}</th><th className="p-2">{t('shiftTitle')}</th><th className="p-2">{t('brand')}</th><th className="p-2">{t('platform')}</th><th className="p-2">{t('campaign')}</th><th className="p-2">{t('host')}</th><th className="p-2">{t('support')}</th><th className="p-2">{t('technical')}</th><th className="p-2">{t('pending')}</th><th className="p-2">{t('status')}</th><th className="p-2">{t('actions')}</th></tr></thead>
-    <tbody>{shifts.map(shift => {
-      const roleValue = (role: OperationalRole) => {
-        const capacity = capacities[shift.id]?.find(item => item.role === role)
-        return `${capacity?.approved || 0}/${capacity?.required || 0}`
-      }
-      const pending = registrations.filter(item => item.shift_id === shift.id && item.status === 'pending').length
-      return <tr className="border-b" key={shift.id}><td className="whitespace-nowrap p-2">{shift.date}</td><td className="p-2 font-medium">{shift.title || '—'}</td><td className="p-2">{brandName(brands, shift.brand_id)}</td><td className="p-2">{platformName(platforms, shift.platform_id)}</td><td className="p-2">{campaignName(campaigns, shift.campaign_id)}</td><td className="p-2">{roleValue('host')}</td><td className="p-2">{roleValue('support')}</td><td className="p-2">{roleValue('technical')}</td><td className="p-2">{pending}</td><td className="p-2"><Badge variant="outline">{shift.registration_locked ? t('closed') : t('openShifts')}</Badge></td><td className="p-2"><Button data-testid={`open-shift-detail-table-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button></td></tr>
-    })}</tbody>
+  return <Card><CardContent className="overflow-x-auto pt-5"><table className="w-full min-w-[900px] text-sm">
+    <thead><tr className="border-b text-left"><th className="p-2">{t('date')}</th><th className="p-2">{t('time')}</th><th className="p-2">{t('brand')}</th><th className="p-2">{t('platform')}</th><th className="p-2">{t('role')}</th><th className="p-2">{t('status')}</th><th className="p-2">{t('actions')}</th></tr></thead>
+    <tbody>{shifts.flatMap(shift => roles.map(role => <tr className="border-b" key={`${shift.id}-${role}`}><td className="whitespace-nowrap p-2">{shift.date}</td><td className="whitespace-nowrap p-2">{formatShiftTimeRange(shift)}</td><td className="p-2">{brandName(brands, shift.brand_id)}</td><td className="p-2">{platformName(platforms, shift.platform_id)}</td><td className="p-2">{t(role)}</td><td className="p-2"><ShiftRegistrationActions allShifts={allShifts} compact currentUser={currentUser} onRegister={nextRole => onRegister(shift.id, nextRole)} registrations={registrations} role={role} shift={shift} /></td><td className="p-2"><Button data-testid={`open-shift-detail-table-${shift.id}-${role}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button></td></tr>))}</tbody>
   </table></CardContent></Card>
 }
 

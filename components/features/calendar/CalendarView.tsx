@@ -136,6 +136,8 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     try {
       await shiftRegistrationService.register(shiftId, currentUser.id, role)
       await loadData()
+      const refreshedShift = await shiftService.getById(shiftId)
+      if (refreshedShift) setSelectedShift(refreshedShift)
       toast({ title: t('success'), description: t('registrationPending'), variant: 'success' })
     } catch (error) {
       toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
