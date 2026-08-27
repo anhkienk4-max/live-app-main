@@ -70,6 +70,7 @@ export function BulkStaffingApprovalDialog({
   const [technicalFilter, setTechnicalFilter] = React.useState('all')
   const [showFilters, setShowFilters] = React.useState(false)
   const [busyAction, setBusyAction] = React.useState<ShiftRegistrationReviewAction | null>(null)
+  const [busyRegistrationId, setBusyRegistrationId] = React.useState<string | null>(null)
   const [results, setResults] = React.useState<Map<string, ShiftRegistrationReviewResult>>(new Map())
 
   const rows = React.useMemo(
@@ -98,6 +99,15 @@ export function BulkStaffingApprovalDialog({
     [actionableIds, selectedIds],
   )
   const allFilteredSelected = filteredIds.length > 0 && filteredIds.every(id => selectedIds.has(id))
+  const someFilteredSelected = filteredIds.some(id => selectedIds.has(id))
+
+  React.useEffect(() => {
+    setSelectedIds(current => {
+      const next = new Set([...current].filter(id => actionableIds.has(id)))
+      return next.size === current.size ? current : next
+    })
+  }, [actionableIds])
+
   const campaignOptions = React.useMemo(() => {
     const ids = [...new Set(rows.map(row => row.shift.campaign_id).filter((id): id is string => Boolean(id)))].sort()
     return ids
@@ -123,6 +133,42 @@ export function BulkStaffingApprovalDialog({
 
   const toggleAllFiltered = () => {
     setSelectedIds(current => toggleStaffingReviewSelection(current, filteredIds, !allFilteredSelected))
+  }
+
+  const reviewOne = async (registration: ShiftRegistration, action: ShiftRegistrationReviewAction) => {
+    if (busyAction || busyRegistrationId) return
+    if (!hasPermission(currentUser, 'shifts.approve_registration')) {
+      toast({ title: t('error'), description: t('permissionDenied'), variant: 'destructive' })
+      return
+    }
+    setBusyRegistrationId(registration.id)
+    try {
+      const reviewed = action === 'approve'
+        ? await shiftRegistrationService.approve(registration.id, currentUser.id)
+        : await shiftRegistrationService.reject(registration.id, currentUser.id)
+      setResults(current => new Map(current).set(registration.id, {
+        registration_id: registration.id,
+        action,
+        success: true,
+        registration: reviewed,
+      }))
+      setSelectedIds(current => {
+        const next = new Set(current)
+        next.delete(registration.id)
+        return next
+      })
+      await onChanged()
+    } catch (error) {
+      setResults(current => new Map(current).set(registration.id, {
+        registration_id: registration.id,
+        action,
+        success: false,
+        error_message: error instanceof Error ? error.message : t('validationError'),
+      }))
+      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+    } finally {
+      setBusyRegistrationId(null)
+    }
   }
 
   const reviewSelected = async (action: ShiftRegistrationReviewAction) => {
@@ -166,7 +212,7 @@ export function BulkStaffingApprovalDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="xl" className="h-[86vh] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden" data-testid="bulk-staffing-approval-dialog">
+      <DialogContent size="xl" className="flex h-[86vh] flex-col overflow-hidden" data-testid="bulk-staffing-approval-dialog">
         <DialogHeader>
           <DialogTitle>{t('bulkStaffingApproval')}</DialogTitle>
           <p className="text-sm text-muted-foreground">{t('bulkStaffingApprovalDescription')}</p>
@@ -260,7 +306,7 @@ export function BulkStaffingApprovalDialog({
           </div>
         )}
 
-        <DialogBody>
+        <DialogBody className="flex-1">
           {filteredRows.length === 0 ? (
             <div className="py-12 text-center text-muted-foreground" data-testid="bulk-staffing-empty">
               {t('noPendingStaffingRequests')}
@@ -271,7 +317,7 @@ export function BulkStaffingApprovalDialog({
                 <TableRow>
                   <TableHead className="w-10">
                     <Checkbox
-                      checked={allFilteredSelected}
+                      checked={allFilteredSelected ? true : someFilteredSelected ? 'indeterminate' : false}
                       onCheckedChange={toggleAllFiltered}
                       aria-label={t('selectAll')}
                     />
@@ -282,7 +328,7 @@ export function BulkStaffingApprovalDialog({
                   <TableHead>{t('role')}</TableHead>
                   <TableHead>{t('source')}</TableHead>
                   <TableHead>{t('status')}</TableHead>
-                  <TableHead className="w-16">{t('actions')}</TableHead>
+                      <TableHead>{t('actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -324,16 +370,19 @@ export function BulkStaffingApprovalDialog({
                         )}
                       </TableCell>
                       <TableCell>
-                        {onOpenShift && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => onOpenShift(shift)}
-                            aria-label={t('viewShiftDetail')}
-                          >
-                            <Eye className="h-4 w-4" />
+                        <div className="flex flex-wrap gap-1">
+                          {onOpenShift && (
+                            <Button size="sm" variant="ghost" onClick={() => onOpenShift(shift)} aria-label={t('viewShiftDetail')}>
+                              <Eye className="mr-1 h-4 w-4" />{t('viewDetails')}
+                            </Button>
+                          )}
+                          <Button size="sm" disabled={busyRegistrationId !== null || busyAction !== null} onClick={() => void reviewOne(registration, 'approve')}>
+                            {t('approve')}
                           </Button>
-                        )}
+                          <Button size="sm" variant="outline" disabled={busyRegistrationId !== null || busyAction !== null} onClick={() => void reviewOne(registration, 'reject')}>
+                            {t('reject')}
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   )
