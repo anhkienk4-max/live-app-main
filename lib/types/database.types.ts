@@ -144,6 +144,8 @@ export interface BulkShiftDeletionResult {
 
 export interface User extends LifecycleMetadata {
   id: string
+  /** Supabase Auth UUID linked to this business user in production. */
+  auth_user_id?: string
   email: string
   full_name: string
   avatar_url?: string

@@ -92,7 +92,7 @@ const currentBusinessUserFor = (actorId: string): User | null => {
     if (!authenticatedBusinessUser || authenticatedBusinessUser.id !== actorId) return null
     if (
       authenticatedBusinessUser.status !== 'active'
-      || authenticatedBusinessUser.account_status !== 'active'
+      || (authenticatedBusinessUser.account_status && authenticatedBusinessUser.account_status !== 'active')
       || authenticatedBusinessUser.deleted_at
       || authenticatedBusinessUser.archived_at
     ) return null
@@ -395,6 +395,31 @@ const writeSessionSetting = (scope: string, value: unknown) => {
   }
 }
 
+interface AccountInviteResponse {
+  user?: User
+  error?: { message?: string }
+}
+
+async function inviteStaffAccount(
+  data: Omit<User, 'id' | 'created_at' | 'updated_at'>,
+): Promise<User> {
+  const response = await fetch('/api/staff/invite', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  let payload: AccountInviteResponse = {}
+  try {
+    payload = await response.json() as AccountInviteResponse
+  } catch {
+    // Preserve a stable service error when a proxy/server returns a non-JSON body.
+  }
+  if (!response.ok || !payload.user) {
+    throw new Error(payload.error?.message || 'Staff invitation failed.')
+  }
+  return payload.user
+}
+
 // User Service
 export const userService = {
   async getAll(): Promise<User[]> {
@@ -437,6 +462,7 @@ export const userService = {
     if (supabaseMode && actorId === undefined) {
       // The RPC derives and authorizes the actor from auth.uid(). Do not block
       // the browser write on the transient client-side identity projection.
+      if (typeof window !== 'undefined') return inviteStaffAccount(normalizedData)
       return getSupabaseMasterDataRepository().businessUsers.create(normalizedData)
     }
     const resolvedActorId = actorId ?? currentUserService.getId()

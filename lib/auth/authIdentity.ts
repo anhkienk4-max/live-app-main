@@ -1,4 +1,5 @@
 import type { SystemPermission, User, UserRole } from '@/lib/types/database.types'
+import { normalizeAccountEmail } from '@/lib/utils/accountIdentity'
 
 export interface AuthIdentity {
   auth_user_id: string
@@ -95,4 +96,13 @@ export function mapAuthIdentityToBusinessUser(
       ? [...businessUser.operational_roles]
       : [],
   }
+}
+
+/** Server callers use this explicit check before accepting the mapping. */
+export function isAuthBusinessIdentityConsistent(
+  identity: AuthIdentity,
+  businessUser: Pick<User, 'id' | 'email'>,
+): boolean {
+  return identity.business_user_id === businessUser.id
+    && (!identity.email || normalizeAccountEmail(identity.email) === normalizeAccountEmail(businessUser.email))
 }
