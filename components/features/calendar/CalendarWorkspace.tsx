@@ -10,12 +10,35 @@ import { useTranslation } from '@/lib/i18n'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
 import { Button } from '@/components/ui/button'
+import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 
 export function CalendarWorkspace() {
   const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
   const [tab, setTab] = React.useState('calendar')
   const [createRequest, setCreateRequest] = React.useState(0)
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
+  React.useEffect(() => {
+    const action = searchParams.get('action')
+    if (!action) return
+    let handled = false
+    if (action === 'create' && hasPermission(currentUser, 'shifts.assign_staff')) {
+      setTab('calendar')
+      setCreateRequest(v => v + 1)
+      handled = true
+    } else if (action === 'import' && hasPermission(currentUser, 'shifts.import')) {
+      setTab('import')
+      handled = true
+    }
+    if (!handled && action !== 'create' && action !== 'import') return
+    const next = new URLSearchParams(searchParams.toString())
+    next.delete('action')
+    const qs = next.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [searchParams, pathname, router, currentUser])
   return (
     <Tabs value={tab} onValueChange={value => setTab(String(value))} className="min-w-0 w-full">
       <div className="flex flex-wrap justify-end gap-2">

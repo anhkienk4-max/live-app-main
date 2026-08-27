@@ -79,10 +79,10 @@ export function GlobalSearch() {
         actions.push({ id: 'action-calendar', type: 'action', title: 'Open Calendar', subtitle: 'View shifts', url: '/calendar', icon: <Calendar className="h-4 w-4" /> })
       }
       if (currentUser && hasPermission(currentUser, 'shifts.import')) {
-        actions.push({ id: 'action-import', type: 'action', title: 'Open Import Schedule', subtitle: 'Import shifts', url: '/calendar', icon: <Upload className="h-4 w-4" /> })
+        actions.push({ id: 'action-import', type: 'action', title: 'Open Import Schedule', subtitle: 'Import shifts', url: '/calendar?action=import', icon: <Upload className="h-4 w-4" /> })
       }
       if (currentUser && hasPermission(currentUser, 'shifts.edit')) {
-        actions.push({ id: 'action-create-shift', type: 'action', title: 'Create Shift', subtitle: 'New shift', url: '/calendar', icon: <Calendar className="h-4 w-4" /> })
+        actions.push({ id: 'action-create-shift', type: 'action', title: 'Create Shift', subtitle: 'New shift', url: '/calendar?action=create', icon: <Calendar className="h-4 w-4" /> })
       }
       if (!currentUser || hasPermission(currentUser, 'reports.submit') || hasPermission(currentUser, 'reports.review')) {
         actions.push({ id: 'action-reports', type: 'action', title: 'Open Reports', subtitle: 'View reports', url: '/reports', icon: <FileText className="h-4 w-4" /> })
@@ -168,10 +168,11 @@ export function GlobalSearch() {
         })
       })
     }
-    // Quick actions that match query (cap 3)
+    // Quick actions that match query (cap 3) — permission-aware, action URLs wired to calendar handlers
     const actionCandidates: SearchResult[] = []
     if (normalize('Open Calendar').includes(q) || normalize('calendar').includes(q)) actionCandidates.push({ id: 'action-calendar-q', type: 'action', title: 'Open Calendar', subtitle: 'View shifts', url: '/calendar', icon: <Calendar className="h-4 w-4" /> })
-    if (currentUser && hasPermission(currentUser, 'shifts.edit') && (normalize('Create Shift').includes(q) || normalize('create shift').includes(q))) actionCandidates.push({ id: 'action-create-shift-q', type: 'action', title: 'Create Shift', subtitle: 'New shift', url: '/calendar', icon: <Calendar className="h-4 w-4" /> })
+    if (currentUser && hasPermission(currentUser, 'shifts.edit') && (normalize('Create Shift').includes(q) || normalize('create shift').includes(q))) actionCandidates.push({ id: 'action-create-shift-q', type: 'action', title: 'Create Shift', subtitle: 'New shift', url: '/calendar?action=create', icon: <Calendar className="h-4 w-4" /> })
+    if (currentUser && hasPermission(currentUser, 'shifts.import') && (normalize('Open Import Schedule').includes(q) || normalize('import schedule').includes(q) || normalize('import').includes(q))) actionCandidates.push({ id: 'action-import-q', type: 'action', title: 'Open Import Schedule', subtitle: 'Import shifts', url: '/calendar?action=import', icon: <Upload className="h-4 w-4" /> })
     if (normalize('Open Reports').includes(q)) actionCandidates.push({ id: 'action-reports-q', type: 'action', title: 'Open Reports', subtitle: 'View reports', url: '/reports', icon: <FileText className="h-4 w-4" /> })
     if (actionCandidates.length) searchResults.push(...actionCandidates.slice(0,3))
 
@@ -233,27 +234,49 @@ export function GlobalSearch() {
                 </div>
               </div>
             ) : (
-              <div className="space-y-1">
-                {results.map((result) => (
-                  <button
-                    key={`${result.type}-${result.id}`}
-                    onClick={() => handleSelect(result)}
-                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-100 transition-colors text-left"
-                  >
-                    <div className="flex items-center justify-center w-8 h-8 bg-gray-100 rounded-lg">
-                      {result.icon}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm truncate">{result.title}</div>
-                      <div className="text-xs text-gray-600 truncate">{result.subtitle}</div>
-                    </div>
-                    {result.badge && (
-                      <Badge variant="secondary" className="text-xs">
-                        {result.badge}
-                      </Badge>
-                    )}
-                  </button>
-                ))}
+              <div className="space-y-3">
+                {(() => {
+                  const quickActions = results.filter(r => r.title === 'Create Shift' || r.title === 'Open Import Schedule')
+                  const goTo = results.filter(r => r.title === 'Open Calendar' || r.title === 'Open Reports' || r.title === 'Open Staff')
+                  const others = results.filter(r => !quickActions.includes(r) && !goTo.includes(r))
+                  const renderButton = (result: SearchResult) => (
+                    <button
+                      key={`${result.type}-${result.id}`}
+                      onClick={() => handleSelect(result)}
+                      className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-100 transition-colors text-left"
+                    >
+                      <div className="flex items-center justify-center w-8 h-8 bg-gray-100 rounded-lg">
+                        {result.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">{result.title}</div>
+                        <div className="text-xs text-gray-600 truncate">{result.subtitle}</div>
+                      </div>
+                      {result.badge && (
+                        <Badge variant="secondary" className="text-xs">
+                          {result.badge}
+                        </Badge>
+                      )}
+                    </button>
+                  )
+                  return (
+                    <>
+                      {others.length > 0 && <div className="space-y-1">{others.map(renderButton)}</div>}
+                      {quickActions.length > 0 && (
+                        <div>
+                          <div className="px-2 py-1 text-xs font-semibold text-gray-500">QUICK ACTIONS</div>
+                          <div className="space-y-1">{quickActions.map(renderButton)}</div>
+                        </div>
+                      )}
+                      {goTo.length > 0 && (
+                        <div>
+                          <div className="px-2 py-1 text-xs font-semibold text-gray-500">GO TO</div>
+                          <div className="space-y-1">{goTo.map(renderButton)}</div>
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             )}
           </div>
