@@ -855,6 +855,34 @@ export interface ScheduleChangeLog {
   status: 'success' | 'failed'
 }
 
+export type NotificationSeverity = 'info' | 'success' | 'warning' | 'error'
+export type NotificationType =
+  | 'shift_assigned'
+  | 'staffing_approval'
+  | 'staffing_rejection'
+  | 'swap_request'
+  | 'swap_accepted'
+  | 'swap_rejected'
+  | 'report_submitted'
+  | 'report_reviewed'
+  | 'import_warning'
+  | 'import_failure'
+  | 'system'
+
+export interface AppNotification {
+  id: string
+  type: NotificationType
+  title: string
+  message: string
+  severity: NotificationSeverity
+  user_id: string
+  related_entity_type?: string
+  related_entity_id?: string
+  action_url?: string
+  read_at?: string | null
+  created_at: string
+}
+
 export interface PersonalSettings {
   language: 'en' | 'vi'
   timezone: string
