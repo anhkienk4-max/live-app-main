@@ -81,7 +81,7 @@ export function GlobalSearch() {
       if (currentUser && hasPermission(currentUser, 'shifts.import')) {
         actions.push({ id: 'action-import', type: 'action', title: 'Open Import Schedule', subtitle: 'Import shifts', url: '/calendar?action=import', icon: <Upload className="h-4 w-4" /> })
       }
-      if (currentUser && hasPermission(currentUser, 'shifts.edit')) {
+      if (currentUser && hasPermission(currentUser, 'shifts.assign_staff')) {
         actions.push({ id: 'action-create-shift', type: 'action', title: 'Create Shift', subtitle: 'New shift', url: '/calendar?action=create', icon: <Calendar className="h-4 w-4" /> })
       }
       if (!currentUser || hasPermission(currentUser, 'reports.submit') || hasPermission(currentUser, 'reports.review')) {
@@ -171,7 +171,7 @@ export function GlobalSearch() {
     // Quick actions that match query (cap 3) — permission-aware, action URLs wired to calendar handlers
     const actionCandidates: SearchResult[] = []
     if (normalize('Open Calendar').includes(q) || normalize('calendar').includes(q)) actionCandidates.push({ id: 'action-calendar-q', type: 'action', title: 'Open Calendar', subtitle: 'View shifts', url: '/calendar', icon: <Calendar className="h-4 w-4" /> })
-    if (currentUser && hasPermission(currentUser, 'shifts.edit') && (normalize('Create Shift').includes(q) || normalize('create shift').includes(q))) actionCandidates.push({ id: 'action-create-shift-q', type: 'action', title: 'Create Shift', subtitle: 'New shift', url: '/calendar?action=create', icon: <Calendar className="h-4 w-4" /> })
+    if (currentUser && hasPermission(currentUser, 'shifts.assign_staff') && (normalize('Create Shift').includes(q) || normalize('create shift').includes(q))) actionCandidates.push({ id: 'action-create-shift-q', type: 'action', title: 'Create Shift', subtitle: 'New shift', url: '/calendar?action=create', icon: <Calendar className="h-4 w-4" /> })
     if (currentUser && hasPermission(currentUser, 'shifts.import') && (normalize('Open Import Schedule').includes(q) || normalize('import schedule').includes(q) || normalize('import').includes(q))) actionCandidates.push({ id: 'action-import-q', type: 'action', title: 'Open Import Schedule', subtitle: 'Import shifts', url: '/calendar?action=import', icon: <Upload className="h-4 w-4" /> })
     if (normalize('Open Reports').includes(q)) actionCandidates.push({ id: 'action-reports-q', type: 'action', title: 'Open Reports', subtitle: 'View reports', url: '/reports', icon: <FileText className="h-4 w-4" /> })
     if (actionCandidates.length) searchResults.push(...actionCandidates.slice(0,3))
