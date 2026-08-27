@@ -207,7 +207,7 @@ export function SwapDetailModal({
         </div>
 
         {/* Actions */}
-        {swap.status === 'pending' && canReview && (
+        {(swap.status === 'pending' || swap.status === 'accepted') && canReview && (
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Close
@@ -220,17 +220,19 @@ export function SwapDetailModal({
               <XCircle className="h-4 w-4 mr-2" />
               Reject
             </Button>
-            <Button 
-              className="bg-green-600 hover:bg-green-700"
-              onClick={handleApprove}
-            >
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Approve
-            </Button>
+            {swap.status === 'accepted' && (
+              <Button
+                className="bg-green-600 hover:bg-green-700"
+                onClick={handleApprove}
+              >
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Approve
+              </Button>
+            )}
           </DialogFooter>
         )}
 
-        {(swap.status !== 'pending' || !canReview) && (
+        {(!['pending', 'accepted'].includes(swap.status) || !canReview) && (
           <DialogFooter>
             <Button onClick={() => onOpenChange(false)}>
               Close

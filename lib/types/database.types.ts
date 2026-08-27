@@ -748,6 +748,7 @@ export interface SwapRequest extends LifecycleMetadata {
     mode?: SwapMode
     requester_id?: string
     counterpart_id?: string | null
+    replacement_staff_id?: string | null
     source_registration_id?: string
     counterpart_registration_id?: string | null
     source_shift_id?: string

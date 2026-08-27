@@ -47,6 +47,7 @@ function normalizeApprovalHistory(value: unknown): SwapRequest['approval_history
       mode,
       requester_id: optionalString('requester_id') ?? undefined,
       counterpart_id: optionalString('counterpart_id') ?? null,
+      replacement_staff_id: optionalString('replacement_staff_id') ?? null,
       source_registration_id: optionalString('source_registration_id') ?? undefined,
       counterpart_registration_id: optionalString('counterpart_registration_id') ?? null,
       source_shift_id: optionalString('source_shift_id') ?? undefined,
@@ -103,7 +104,7 @@ function one<T>(op:string, r:{data:T|null;error:SupabaseErrorShape|null}):T { if
 export interface SupabaseSwapRequestRepository {
   getAll(): Promise<SwapRequest[]>
   getPending(): Promise<SwapRequest[]>
-  create(data: { shift_id?: string; sourceRegistrationId: string; targetShiftId?: string | null; replacementStaffId?: string | null; counterpartRegistrationId?: string | null; operational_role?: OperationalRole; replacement_staff_id?: string; reason: string; notes?: string; mode: 'replacement' | 'move' | 'exchange' }): Promise<SwapRequest>
+  create(data: { shift_id?: string; sourceRegistrationId: string; targetShiftId?: string | null; replacementStaffId?: string | null; counterpartRegistrationId?: string | null; operational_role?: OperationalRole; replacement_staff_id?: string; reason: string; notes?: string; mode: 'replacement' | 'exchange' }): Promise<SwapRequest>
   approve(id: string, notes?: string): Promise<SwapRequest>
   reject(id: string, notes?: string): Promise<SwapRequest>
   cancel(id: string, reason: string): Promise<SwapRequest>
@@ -118,7 +119,6 @@ export function createSupabaseSwapRequestRepository(client: SupabaseClient): Sup
     async getPending() { return rows('pending swap request read', await select().eq('status','pending').is('deleted_at',null).order('created_at',{ascending:true})).map(r=>swapFromRow(r as unknown as NullableSwapRow)) },
     async create(data) {
       if (!data.sourceRegistrationId) throw new SwapRequestError('A source registration is required.', 'SOURCE_REGISTRATION_REQUIRED')
-      // legacy replacement
       const result = await client.rpc('create_shift_swap_request', {
         p_source_registration_id: data.sourceRegistrationId,
         p_mode: data.mode,
