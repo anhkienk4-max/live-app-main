@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Bell, Bot, Plug, RotateCcw, ShieldCheck, SlidersHorizontal, UserCog } from 'lucide-react'
+import { Bell, Bot, Plug, RotateCcw, ShieldCheck, SlidersHorizontal, UserCog, ShieldAlert } from 'lucide-react'
 import { settingsService } from '@/lib/services/dataService'
 import { OperationalRole, OperationalSettings, PersonalSettings } from '@/lib/types/database.types'
 import { hasPermission, permissionMatrix, resolveSystemPermission } from '@/lib/permissions'
@@ -17,9 +17,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/toast'
 import { getAuthMode } from '@/lib/auth/authMode'
 import { PageLoadError } from '@/components/ui/page-load-error'
+import { RecoveryPanel } from '@/components/features/settings/RecoveryPanel'
 
 const roles: OperationalRole[] = ['host', 'support', 'technical']
-type SettingsTab = 'personal' | 'team' | 'system' | 'integrations' | 'audit'
+type SettingsTab = 'personal' | 'team' | 'system' | 'integrations' | 'audit' | 'recovery'
 
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right)
 
@@ -204,6 +205,7 @@ export default function SettingsPage() {
           {isAdmin && <TabsTrigger className="flex-none px-4 py-1.5" value="system">{t('systemSettings')}{systemDirty ? ' •' : ''}</TabsTrigger>}
           {isAdmin && <TabsTrigger className="flex-none px-4 py-1.5" value="integrations">{t('integrations')}</TabsTrigger>}
           {isAdmin && <TabsTrigger className="flex-none px-4 py-1.5" value="audit">{t('audit')}</TabsTrigger>}
+          {isAdmin && <TabsTrigger className="flex-none px-4 py-1.5" value="recovery">Recovery</TabsTrigger>}
         </TabsList>
       </div>
 
@@ -294,6 +296,10 @@ export default function SettingsPage() {
       {isAdmin && <TabsContent value="audit"><form onSubmit={event => void saveSystem(event, 'audit')}>
         <Card><CardHeader><CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5" />{t('audit')}</CardTitle><CardDescription>{t('auditSettings')}</CardDescription></CardHeader><CardContent className="space-y-5"><div className="grid gap-4 md:grid-cols-2"><ToggleSetting label={t('auditEnabled')} checked={Boolean(system.audit_enabled)} onChange={checked => setSystem(current => current && ({ ...current, audit_enabled: checked }))} /><NumberSetting label={t('auditRetentionDays')} min={1} value={finiteNumber(system.audit_retention_days, 90)} onChange={value => setSystem(current => current && ({ ...current, audit_retention_days: value }))} /></div><div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">{t('auditMockNotice')}</div><Actions dirty={systemDirty} saving={savingTab === 'audit'} onReset={() => setSystem(savedSystem)} /></CardContent></Card>
       </form></TabsContent>}
+
+      {isAdmin && <TabsContent value="recovery">
+        <RecoveryPanel />
+      </TabsContent>}
     </Tabs>
   </div>
 }
