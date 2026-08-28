@@ -9,7 +9,7 @@ import { notificationService } from '../lib/services/notificationService.ts'
 import { createSupabaseNotificationRepository } from '../lib/services/supabaseNotificationService.ts'
 
 const migration = readFileSync(
-  new URL('../supabase/migrations/20260827100000_notifications_persistent_realtime.sql', import.meta.url),
+  new URL('../supabase/migrations/20260827110001_notifications_persistent_realtime.sql', import.meta.url),
   'utf8',
 )
 
