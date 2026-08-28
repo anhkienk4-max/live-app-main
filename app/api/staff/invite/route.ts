@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     if (authMatches.length === 1) return errorResponse('An account with this email already exists.', 409, 'ACCOUNT_EMAIL_EXISTS')
 
     const { data: invited, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: new URL('/api/auth/callback?next=/reset-password', request.url).toString(),
+      redirectTo: new URL('/auth/confirm?next=/reset-password', request.url).toString(),
     })
     if (inviteError || !invited.user) return errorResponse('Unable to send the account invitation.', 502, 'AUTH_INVITE_FAILED')
 
