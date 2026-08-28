@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { isAuthBusinessIdentityConsistent } from '../lib/auth/authIdentity.ts'
+import { isNonEnumeratingPasswordRecoveryError } from '../lib/auth/passwordRecovery.ts'
 import { isPublicAuthPath } from '../lib/supabase/middleware.ts'
 
 const migrationPath = new URL('../supabase/migrations/20260827100000_core_account_lifecycle.sql', import.meta.url)
@@ -50,18 +51,36 @@ test('password recovery uses Supabase APIs and never stores a password', async (
   assert.doesNotMatch(forgot + reset, /localStorage.*password|sessionStorage.*password/i)
 })
 
+test('password recovery keeps unknown-email responses generic but surfaces real failures', async () => {
+  assert.equal(isNonEnumeratingPasswordRecoveryError({ code: 'user_not_found' }), true)
+  assert.equal(isNonEnumeratingPasswordRecoveryError({ error_code: 'email_not_found' }), true)
+  assert.equal(isNonEnumeratingPasswordRecoveryError({ status: 500, code: 'server_error' }), false)
+  assert.equal(isNonEnumeratingPasswordRecoveryError(new Error('network unavailable')), false)
+
+  const forgot = await readFile(new URL('../app/forgot-password/page.tsx', import.meta.url), 'utf8')
+  assert.match(forgot, /getSupabasePublicConfig\(\)/)
+  assert.match(forgot, /passwordResetFailed/)
+  assert.match(forgot, /isNonEnumeratingPasswordRecoveryError/)
+})
+
 test('invite endpoint is server-authorized and uses the server-only secret client', async () => {
   const route = await readFile(new URL('../app/api/staff/invite/route.ts', import.meta.url), 'utf8')
   const admin = await readFile(new URL('../lib/server/supabaseAdmin.ts', import.meta.url), 'utf8')
   assert.match(route, /requireRole\(request, 'admin'\)/)
   assert.match(route, /create_staff_member_with_auth/)
   assert.match(route, /inviteUserByEmail/)
+  assert.match(route, /\/auth\/confirm\?next=\/reset-password/)
   assert.match(admin, /SUPABASE_SECRET_KEY/)
   assert.doesNotMatch(route + admin, /NEXT_PUBLIC_SUPABASE_ANON_KEY.*SECRET|service_role.*NEXT_PUBLIC/i)
 })
 
+test('invite and recovery links target the token-hash SSR confirmation route', async () => {
+  const forgot = await readFile(new URL('../app/forgot-password/page.tsx', import.meta.url), 'utf8')
+  assert.match(forgot, /\/auth\/confirm\?next=\/reset-password/)
+})
+
 test('invite and recovery callback routes remain public auth boundaries', () => {
-  for (const path of ['/login', '/forgot-password', '/reset-password', '/auth/auth-code-error']) {
+  for (const path of ['/login', '/forgot-password', '/reset-password', '/auth/confirm', '/auth/auth-code-error']) {
     assert.equal(isPublicAuthPath(path), true)
   }
 })

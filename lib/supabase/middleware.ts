@@ -36,6 +36,7 @@ export function isPublicAuthPath(pathname: string) {
   return pathname === '/login'
     || pathname === '/forgot-password'
     || pathname === '/reset-password'
+    || pathname === '/auth/confirm'
     || pathname === '/auth/auth-code-error'
 }
 

@@ -4,6 +4,7 @@ import * as React from 'react'
 import Link from 'next/link'
 import { useTranslation } from '@/lib/i18n'
 import { getAuthMode, getSupabasePublicConfig } from '@/lib/auth/authMode'
+import { isNonEnumeratingPasswordRecoveryError } from '@/lib/auth/passwordRecovery'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -21,15 +22,19 @@ export default function ForgotPasswordPage() {
     setLoading(true)
     setError(null)
     try {
-      if (getAuthMode() === 'mock' || !getSupabasePublicConfig()) {
+      if (getAuthMode() === 'mock') {
         setSent(true)
+        return
+      }
+      if (!getSupabasePublicConfig()) {
+        setError(t('passwordResetFailed'))
         return
       }
       const { error: resetError } = await createClient().auth.resetPasswordForEmail(
         email.trim().toLowerCase(),
-        { redirectTo: `${window.location.origin}/api/auth/callback?next=/reset-password` },
+        { redirectTo: `${window.location.origin}/auth/confirm?next=/reset-password` },
       )
-      if (resetError && resetError.message.length > 500) {
+      if (resetError && !isNonEnumeratingPasswordRecoveryError(resetError)) {
         setError(t('passwordResetFailed'))
         return
       }
