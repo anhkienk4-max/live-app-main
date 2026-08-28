@@ -10,6 +10,7 @@ import { format } from 'date-fns'
 import { CheckCircle, XCircle, Clock, User as UserIcon, Calendar, Briefcase } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { getSwapStatusPresentation } from '@/lib/utils/swapUi'
 
 interface SwapDetailModalProps {
   open: boolean
@@ -20,7 +21,10 @@ interface SwapDetailModalProps {
   newHost?: User
   brands: Brand[]
   platforms: Platform[]
-  canReview?: boolean
+  showParticipantActions?: boolean
+  showReviewerActions?: boolean
+  onAccept?: () => void
+  onParticipantReject?: () => void
   onApprove: () => void
   onReject: () => void
 }
@@ -34,31 +38,34 @@ export function SwapDetailModal({
   newHost,
   brands, 
   platforms,
-  canReview = false,
+  showParticipantActions = false,
+  showReviewerActions = false,
+  onAccept,
+  onParticipantReject,
   onApprove,
   onReject
 }: SwapDetailModalProps) {
   const { toast } = useToast()
+  const statusPresentation = getSwapStatusPresentation(swap.status)
   const getBrandName = (id: string) => brands.find(b => b.id === id)?.name || 'Unknown'
   const getBrandColor = (id: string) => brands.find(b => b.id === id)?.color || '#2563EB'
   const getPlatformName = (id: string) => platforms.find(p => p.id === id)?.name || 'Unknown'
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800'
-      case 'approved': return 'bg-green-100 text-green-800'
-      case 'rejected': return 'bg-red-100 text-red-800'
+  const getStatusColor = () => {
+    switch (statusPresentation.tone) {
+      case 'warning': return 'bg-yellow-100 text-yellow-800'
+      case 'info': return 'bg-blue-100 text-blue-800'
+      case 'success': return 'bg-green-100 text-green-800'
+      case 'danger': return 'bg-red-100 text-red-800'
       default: return 'bg-gray-100 text-gray-800'
     }
   }
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'pending': return <Clock className="h-5 w-5" />
-      case 'approved': return <CheckCircle className="h-5 w-5" />
-      case 'rejected': return <XCircle className="h-5 w-5" />
-      default: return null
-    }
+  const getStatusIcon = () => {
+    if (statusPresentation.tone === 'success') return <CheckCircle className="h-5 w-5" />
+    if (statusPresentation.tone === 'danger') return <XCircle className="h-5 w-5" />
+    if (statusPresentation.tone === 'warning' || statusPresentation.tone === 'info') return <Clock className="h-5 w-5" />
+    return null
   }
 
   const handleApprove = () => {
@@ -85,10 +92,10 @@ export function SwapDetailModal({
         <DialogHeader>
           <div className="flex items-center justify-between">
             <DialogTitle className="text-2xl">Swap Request Details</DialogTitle>
-            <Badge className={getStatusColor(swap.status)}>
+            <Badge className={getStatusColor()}>
               <span className="flex items-center gap-2">
-                {getStatusIcon(swap.status)}
-                {swap.status.toUpperCase()}
+                {getStatusIcon()}
+                {statusPresentation.label.toUpperCase()}
               </span>
             </Badge>
           </div>
@@ -191,11 +198,11 @@ export function SwapDetailModal({
                 {swap.approved_at && (
                   <div className="flex items-start gap-3">
                     <div className={`w-2 h-2 rounded-full mt-2 ${
-                      swap.status === 'approved' ? 'bg-green-600' : 'bg-red-600'
+                      swap.status === 'approved' || swap.status === 'completed' ? 'bg-green-600' : 'bg-red-600'
                     }`}></div>
                     <div className="flex-1">
                       <div className="text-sm font-medium">
-                        {swap.status === 'approved' ? 'Request Approved' : 'Request Rejected'}
+                        {swap.status === 'approved' || swap.status === 'completed' ? 'Request Approved' : 'Request Rejected'}
                       </div>
                       <div className="text-xs text-gray-600">{format(new Date(swap.approved_at), 'MMMM d, yyyy h:mm a')}</div>
                     </div>
@@ -207,12 +214,35 @@ export function SwapDetailModal({
         </div>
 
         {/* Actions */}
-        {(swap.status === 'pending' || swap.status === 'accepted') && canReview && (
+        {showParticipantActions && swap.status === 'pending' && (
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Close
             </Button>
-            <Button 
+            <Button
+              variant="outline"
+              className="text-red-600 border-red-600 hover:bg-red-50"
+              onClick={() => onParticipantReject?.()}
+            >
+              <XCircle className="h-4 w-4 mr-2" />
+              Reject
+            </Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700"
+              onClick={() => onAccept?.()}
+            >
+              <CheckCircle className="h-4 w-4 mr-2" />
+              Accept
+            </Button>
+          </DialogFooter>
+        )}
+
+        {showReviewerActions && swap.status === 'accepted' && (
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+            <Button
               variant="outline"
               className="text-red-600 border-red-600 hover:bg-red-50"
               onClick={handleReject}
@@ -220,19 +250,17 @@ export function SwapDetailModal({
               <XCircle className="h-4 w-4 mr-2" />
               Reject
             </Button>
-            {swap.status === 'accepted' && (
-              <Button
-                className="bg-green-600 hover:bg-green-700"
-                onClick={handleApprove}
-              >
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Approve
-              </Button>
-            )}
+            <Button
+              className="bg-green-600 hover:bg-green-700"
+              onClick={handleApprove}
+            >
+              <CheckCircle className="h-4 w-4 mr-2" />
+              Approve
+            </Button>
           </DialogFooter>
         )}
 
-        {(!['pending', 'accepted'].includes(swap.status) || !canReview) && (
+        {!showParticipantActions && !showReviewerActions && (
           <DialogFooter>
             <Button onClick={() => onOpenChange(false)}>
               Close
