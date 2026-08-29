@@ -1,9 +1,10 @@
 import { PlatformList } from '@/components/features/platforms/PlatformList'
+import { PageShell } from '@/components/ui/archetypes'
 
 export default function PlatformsPage() {
   return (
-    <div className="space-y-6">
+    <PageShell archetype="directory" className="space-y-6">
       <PlatformList />
-    </div>
+    </PageShell>
   )
 }

@@ -7,6 +7,7 @@ import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
 import type { DataQualityIssue } from '@/lib/types/dataQuality'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
+import { PageShell, PageHeader, PageHeaderContent } from '@/components/ui/archetypes'
 
 export default function DataQualityPage() {
   const { currentUser } = useCurrentUser()
@@ -35,9 +36,14 @@ export default function DataQualityPage() {
 
   if (!issues) return <ContentSkeleton />
   return (
-    <div className="space-y-6">
-      <div><h1 className="text-2xl font-bold">Data Quality</h1><p className="text-sm text-muted-foreground">Operational issues and recovery actions</p></div>
+    <PageShell archetype="analytics" className="space-y-6">
+      <PageHeader>
+        <PageHeaderContent>
+          <h1 className="text-2xl font-bold">Data Quality</h1>
+          <p className="text-sm text-muted-foreground">Operational issues and recovery actions</p>
+        </PageHeaderContent>
+      </PageHeader>
       <DataQualityPanel issues={issues} />
-    </div>
+    </PageShell>
   )
 }
