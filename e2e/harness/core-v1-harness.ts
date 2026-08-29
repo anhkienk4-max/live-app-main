@@ -50,30 +50,38 @@ export function productionSmokeGuard(): { isMock: boolean } {
 export async function loginWithCredentials(page: Page, email: string, password: string) {
   await page.goto('/login')
   await expect(page).toHaveURL(/\/login/)
-  // resilient selectors: support both data-testid and placeholder/name
   const emailInput = page.locator('[data-testid="login-email"], input[type="email"], input[name="email"]').first()
   const passwordInput = page.locator('[data-testid="login-password"], input[type="password"], input[name="password"]').first()
   const submit = page.locator('[data-testid="login-submit"], button[type="submit"]').first()
   await emailInput.fill(email)
   await passwordInput.fill(password)
   await submit.click()
-  // after login, either stays on login with error (invalid creds) or redirects to / or /calendar
-  await page.waitForURL(url => !String(url).includes('/login') || String(url).includes('reason='), { timeout: 15_000 }).catch(() => {})
+  // HARD: must leave /login and not land on a recovery reason. Invalid credentials or
+  // identity_unavailable must FAIL the test — do not swallow waitForURL.
+  await page.waitForURL(url => !String(url).includes('/login'), { timeout: 15_000 })
+  await expect(page).toHaveURL(url => !String(url).includes('/login'))
+  // Explicit fail for recovery reasons that indicate auth did not succeed
+  const url = page.url()
+  if (url.includes('reason=')) {
+    throw new Error(`Login failed — landed on ${url} (invalid credentials or identity_unavailable)`)
+  }
+  if (url.includes('/login')) {
+    const body = await page.locator('body').textContent().catch(() => '')
+    throw new Error(`Login did not navigate away from /login — url=${url} body=${String(body).slice(0, 300)}`)
+  }
 }
 
 export async function logout(page: Page) {
-  // clear storage to simulate browser close; Supabase session is httpOnly cookie so this is best-effort
   await page.context().clearCookies()
-  // try UI logout if present
   const logoutBtn = page.locator('[data-testid="logout"], [aria-label="Logout"]').first()
-  if (await logoutBtn.isVisible().catch(() => false)) await logoutBtn.click().catch(() => {})
+  // Best-effort only; not a critical PASS assertion — do not hide logout failures silently for critical flows.
+  const visible = await logoutBtn.isVisible().catch(() => false)
+  if (visible) await logoutBtn.click()
 }
 
 export async function gotoAndExpectVisibility(page: Page, path: string, shouldBeVisible: boolean) {
   await page.goto(path)
   if (!shouldBeVisible) {
-    // for restricted pages, we do NOT expect hidden via 403; the app gates via UI filtering.
-    // We check that approval/manage affordances are absent rather than path blocked.
     await expect(page.locator('body')).toBeVisible()
     return
   }

@@ -70,9 +70,9 @@ node --import tests/typescript-alias-loader.mjs --test tests/core-v1-3role-matri
 
 ## Separation
 
-- **Automated deterministic** (no creds, no network): `tests/core-v1-3role-matrix.test.ts` + `tests/harness/*`.
-- **Credential-required browser UAT** (env creds, live app): `e2e/core-v1-3role.uat.spec.ts` (skips when no creds).
-- **Production smoke** (read-only, no mock, no writes, no migration): `scripts/production-smoke.ts` + this checklist.
+- **Automated deterministic** (no creds, no network): `tests/core-v1-3role-matrix.test.ts` + `tests/harness/*` — executes in CI, frozen permission matrix, inactive/archive fail-closed, pure registration logic.
+- **Credential-required browser UAT** (env creds, live app): `e2e/core-v1-3role.uat.spec.ts` (skips when no creds) — full 3-role validation via real login + role-gated affordances; no `catch`-swallowed assertions.
+- **Production smoke** (unauthenticated, read-only, no mock, no writes, no migration): `scripts/production-smoke.ts` + this checklist — validates redirects/auth entry only. **Unauthenticated smoke does NOT equal full 3-role production validation**; role gating requires the credentialed UAT above.
 
 ## PASS/FAIL reporting
 
