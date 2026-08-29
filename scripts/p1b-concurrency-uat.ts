@@ -23,11 +23,37 @@ const required = [
 ] as const
 
 type Fixture = { shiftIds: string[]; registrationIds: string[]; swapIds: string[] }
+type FixtureSlot = {
+  date: string
+  startTime: string
+  endTime: string
+  startAt: string
+  endAt: string
+}
+
+const fixtureSlots: Record<string, FixtureSlot> = {
+  shift: {
+    date: '2099-12-01', startTime: '10:00', endTime: '12:00',
+    startAt: '2099-12-01T03:00:00.000Z', endAt: '2099-12-01T05:00:00.000Z',
+  },
+  'registration-shift': {
+    date: '2099-12-01', startTime: '13:00', endTime: '15:00',
+    startAt: '2099-12-01T06:00:00.000Z', endAt: '2099-12-01T08:00:00.000Z',
+  },
+  'swap-shift': {
+    date: '2099-12-01', startTime: '16:00', endTime: '18:00',
+    startAt: '2099-12-01T09:00:00.000Z', endAt: '2099-12-01T11:00:00.000Z',
+  },
+}
 
 function env(name: string): string {
   const value = process.env[name]?.trim()
   if (!value) throw new Error(`Missing required environment variable: ${name}`)
   return value
+}
+
+function normalizeEmail(value: unknown): string {
+  return String(value ?? '').trim().toLowerCase()
 }
 
 function assertStaging(url: string): void {
@@ -41,6 +67,12 @@ async function signIn(url: string, anonKey: string, email: string, password: str
   const { error } = await client.auth.signInWithPassword({ email, password })
   if (error) throw new Error(`Sign-in failed for configured test account: ${error.message}`)
   return client
+}
+
+async function assertAuthenticated(client: SupabaseClient, label: string): Promise<string> {
+  const { data, error } = await client.auth.getUser()
+  if (error || !data.user?.id) throw new Error(`${label} staging authentication did not produce a user session.`)
+  return data.user.id
 }
 
 async function rpc(client: SupabaseClient, fn: string, args: Record<string, unknown>): Promise<unknown> {
@@ -70,24 +102,45 @@ async function main(): Promise<void> {
     signIn(url, anonKey, env('P1B_RACE_MEMBER_EMAIL'), env('P1B_RACE_MEMBER_PASSWORD')),
     signIn(url, anonKey, env('P1B_RACE_MEMBER_2_EMAIL'), env('P1B_RACE_MEMBER_2_PASSWORD')),
   ])
+  const [adminAuthId, admin2AuthId, memberAuthId, member2AuthId] = await Promise.all([
+    assertAuthenticated(adminClient, 'Admin'),
+    assertAuthenticated(adminClient2, 'Admin (second session)'),
+    assertAuthenticated(memberClient, 'Member'),
+    assertAuthenticated(member2Client, 'Member 2'),
+  ])
+  if (adminAuthId !== admin2AuthId) throw new Error('Independent Admin sessions resolved to different identities.')
   const prefix = `p1b-race-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   const fixture: Fixture = { shiftIds: [], registrationIds: [], swapIds: [] }
 
-  const { data: users, error: usersError } = await admin.from('business_users').select('id,auth_user_id,email').in('email', [env('P1B_RACE_MEMBER_EMAIL').toLowerCase(), env('P1B_RACE_MEMBER_2_EMAIL').toLowerCase()])
-  if (usersError || !users || users.length < 2) throw new Error('Two mapped staging member users are required.')
-  const member = users[0]
-  const member2 = users[1]
+  const memberEmail = normalizeEmail(env('P1B_RACE_MEMBER_EMAIL'))
+  const member2Email = normalizeEmail(env('P1B_RACE_MEMBER_2_EMAIL'))
+  const { data: users, error: usersError } = await admin.from('business_users').select('id,auth_user_id,email').in('email', [memberEmail, member2Email])
+  if (usersError || !users) throw new Error('Unable to read mapped staging member users.')
+  const mappedUsers = new Map<string, { id: string; auth_user_id: string | null; email: string | null }>()
+  for (const row of users) {
+    const email = normalizeEmail(row.email)
+    if (![memberEmail, member2Email].includes(email)) continue
+    if (mappedUsers.has(email)) throw new Error(`Ambiguous business user mapping for ${email}.`)
+    mappedUsers.set(email, row as { id: string; auth_user_id: string | null; email: string | null })
+  }
+  if (mappedUsers.size !== 2) throw new Error('Both configured staging member emails must map to exactly one business user.')
+  const member = mappedUsers.get(memberEmail)!
+  const member2 = mappedUsers.get(member2Email)!
+  if (member.auth_user_id !== memberAuthId || member2.auth_user_id !== member2AuthId) {
+    throw new Error('Configured member sessions do not match their mapped business users.')
+  }
   const { data: dimensions, error: dimensionsError } = await admin.from('brands').select('id').limit(1).single()
   if (dimensionsError || !dimensions) throw new Error('An existing staging brand is required.')
   const { data: platform, error: platformError } = await admin.from('platforms').select('id').limit(1).single()
   if (platformError || !platform) throw new Error('An existing staging platform is required.')
 
-  const makeShift = async (suffix: string): Promise<{ id: string; version: number }> => {
+  const makeShift = async (suffix: keyof typeof fixtureSlots): Promise<{ id: string; version: number }> => {
     const id = `${prefix}-${suffix}`
+    const slot = fixtureSlots[suffix]
     const { data, error } = await admin.from('shifts').insert({
-      id, date: '2099-12-01', start_time: '10:00', end_time: '12:00',
-      timezone: 'Asia/Ho_Chi_Minh', start_at: '2099-12-01T03:00:00.000Z', end_at: '2099-12-01T05:00:00.000Z',
-      end_date: '2099-12-01', crosses_midnight: false, duration_minutes: 120,
+      id, date: slot.date, start_time: slot.startTime, end_time: slot.endTime,
+      timezone: 'Asia/Ho_Chi_Minh', start_at: slot.startAt, end_at: slot.endAt,
+      end_date: slot.date, crosses_midnight: false, duration_minutes: 120,
       brand_id: dimensions.id, platform_id: platform.id, required_host_count: 1,
       required_support_count: 1, required_technical_count: 1, registration_locked: false,
       registration_cutoff_at: '2099-11-30T03:00:00.000Z', status: 'scheduled',
@@ -107,7 +160,10 @@ async function main(): Promise<void> {
     if (successes.length !== 1) throw new Error(`Shift race expected one success, got ${successes.length}`)
     assertError(race.find(item => item.status === 'rejected') ?? race[0], 'P0001', 'STALE_WRITE')
     const { data: persisted } = await admin.from('shifts').select('title,version').eq('id', shift.id).single()
-    if (!persisted || persisted.version !== 2) throw new Error('Shift race did not advance exactly once.')
+    const shiftTitle = persisted?.title
+    if (!persisted || persisted.version !== shift.version + 1 || ![`${prefix}-winner-a`, `${prefix}-winner-b`].includes(shiftTitle)) {
+      throw new Error('Shift race did not preserve one winner and advance exactly once.')
+    }
     console.log('[PASS] shift revision race')
 
     const registrationShift = await makeShift('registration-shift')
@@ -124,8 +180,15 @@ async function main(): Promise<void> {
       rpc(adminClient, 'approve_shift_registration', { p_registration_id: registrationId, p_notes: prefix, p_expected_version: registration.version }),
       rpc(memberClient, 'cancel_own_shift_registration', { p_registration_id: registrationId, p_notes: prefix, p_expected_version: registration.version }),
     ])
-    if (registrationRace.filter(item => item.status === 'fulfilled').length !== 1) throw new Error('Registration race did not serialize to one winner.')
+    const registrationWinners = registrationRace.filter(item => item.status === 'fulfilled')
+    if (registrationWinners.length !== 1) throw new Error('Registration race did not serialize to one winner.')
     assertError(registrationRace.find(item => item.status === 'rejected') ?? registrationRace[0], 'P0001', 'STALE_WRITE')
+    const { data: persistedRegistration, error: persistedRegistrationError } = await admin.from('shift_registrations').select('status,version').eq('id', registrationId).single()
+    if (persistedRegistrationError || !persistedRegistration || persistedRegistration.version !== registration.version + 1 || !['approved', 'cancelled'].includes(persistedRegistration.status)) {
+      throw new Error('Registration race final state/version is inconsistent.')
+    }
+    const registrationWinner = (registrationWinners[0] as PromiseFulfilledResult<{ status?: string }>).value
+    if (registrationWinner?.status && registrationWinner.status !== persistedRegistration.status) throw new Error('Registration race final state does not match the winner.')
     console.log('[PASS] registration revision race')
 
     const swapShift = await makeShift('swap-shift')
@@ -145,8 +208,15 @@ async function main(): Promise<void> {
       rpc(member2Client, 'respond_shift_swap_request', { p_request_id: swap.id, p_action: 'accept', p_notes: prefix, p_expected_version: swap.version }),
       rpc(memberClient, 'cancel_own_shift_swap_request', { p_request_id: swap.id, p_reason: prefix, p_expected_version: swap.version }),
     ])
-    if (swapRace.filter(item => item.status === 'fulfilled').length !== 1) throw new Error('Swap race did not serialize to one winner.')
+    const swapWinners = swapRace.filter(item => item.status === 'fulfilled')
+    if (swapWinners.length !== 1) throw new Error('Swap race did not serialize to one winner.')
     assertError(swapRace.find(item => item.status === 'rejected') ?? swapRace[0], 'P0001', 'STALE_WRITE')
+    const { data: persistedSwap, error: persistedSwapError } = await admin.from('swap_requests').select('status,version').eq('id', swap.id).single()
+    if (persistedSwapError || !persistedSwap || persistedSwap.version !== swap.version + 1 || !['accepted', 'cancelled'].includes(persistedSwap.status)) {
+      throw new Error('Swap race final state/version is inconsistent.')
+    }
+    const swapWinner = (swapWinners[0] as PromiseFulfilledResult<{ status?: string }>).value
+    if (swapWinner?.status && swapWinner.status !== persistedSwap.status) throw new Error('Swap race final state does not match the winner.')
     console.log('[PASS] swap revision race')
 
     const nullResult = await Promise.allSettled([
@@ -155,11 +225,27 @@ async function main(): Promise<void> {
     assertError(nullResult[0], 'P0001', 'EXPECTED_VERSION_REQUIRED')
     console.log('[PASS] null expected-version guard')
   } finally {
-    if (fixture.swapIds.length) await admin.from('swap_requests').delete().in('id', fixture.swapIds)
-    if (fixture.registrationIds.length) await admin.from('shift_registrations').delete().in('id', fixture.registrationIds)
-    if (fixture.shiftIds.length) await admin.from('shifts').delete().in('id', fixture.shiftIds)
-    const { data: leftovers } = await admin.from('shifts').select('id').like('id', `${prefix}%`)
-    if (leftovers && leftovers.length) throw new Error(`Fixture cleanup left ${leftovers.length} shift rows.`)
+    if (fixture.swapIds.length) {
+      const { error } = await admin.from('swap_requests').delete().in('id', fixture.swapIds)
+      if (error) throw new Error(`Swap fixture cleanup failed: ${error.message}`)
+    }
+    if (fixture.registrationIds.length) {
+      const { error } = await admin.from('shift_registrations').delete().in('id', fixture.registrationIds)
+      if (error) throw new Error(`Registration fixture cleanup failed: ${error.message}`)
+    }
+    if (fixture.shiftIds.length) {
+      const { error } = await admin.from('shifts').delete().in('id', fixture.shiftIds)
+      if (error) throw new Error(`Shift fixture cleanup failed: ${error.message}`)
+    }
+    const [leftoverSwaps, leftoverRegistrations, leftoverShifts] = await Promise.all([
+      fixture.swapIds.length ? admin.from('swap_requests').select('id').in('id', fixture.swapIds) : Promise.resolve({ data: [], error: null }),
+      fixture.registrationIds.length ? admin.from('shift_registrations').select('id').in('id', fixture.registrationIds) : Promise.resolve({ data: [], error: null }),
+      admin.from('shifts').select('id').like('id', `${prefix}%`),
+    ])
+    if (leftoverSwaps.error || leftoverRegistrations.error || leftoverShifts.error) throw new Error('Fixture cleanup verification query failed.')
+    if (leftoverSwaps.data?.length || leftoverRegistrations.data?.length || leftoverShifts.data?.length) {
+      throw new Error('Fixture cleanup left one or more swap, registration, or shift rows.')
+    }
   }
 }
 
