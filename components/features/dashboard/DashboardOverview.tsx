@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import { PageLoadError } from '@/components/ui/page-load-error'
+import { PageShell, PageHeader, PageHeaderContent } from '@/components/ui/archetypes'
 
 const DashboardCharts = dynamic(
   () => import('@/components/features/dashboard/DashboardCharts').then(mod => ({ default: mod.DashboardCharts })),
@@ -115,14 +116,17 @@ export function DashboardOverview() {
   const setPreset = (preset: Preset) => setFilters(current => current ? { ...current, preset, ...(preset === 'custom' ? {} : rangeFor(preset)) } : current)
   const roleOptions = (role: 'host' | 'support' | 'technical') => users.filter(user => user.operational_roles?.includes(role)).map(user => ({ id: user.id, name: user.full_name }))
 
-  return <div className="space-y-6">
-    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-      <div><h1 className="text-3xl font-bold">{t('dashboardTitle')}</h1><p className="mt-1 text-muted-foreground">{t('dashboardSubtitle')}</p></div>
+  return <PageShell archetype="command" className="space-y-6">
+    <PageHeader>
+      <PageHeaderContent>
+        <h1 className="text-3xl font-bold">{t('dashboardTitle')}</h1>
+        <p className="text-muted-foreground">{t('dashboardSubtitle')}</p>
+      </PageHeaderContent>
       <div className="flex flex-wrap items-center gap-2">
         <Select value={filters.preset} onValueChange={value => setPreset(value as Preset)}><SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="today">{t('today')}</SelectItem><SelectItem value="yesterday">{t('yesterday')}</SelectItem><SelectItem value="7d">{t('last7Days')}</SelectItem><SelectItem value="30d">{t('last30Days')}</SelectItem><SelectItem value="thisMonth">{t('thisMonth')}</SelectItem><SelectItem value="lastMonth">{t('lastMonth')}</SelectItem><SelectItem value="custom">{t('customRange')}</SelectItem></SelectContent></Select>
         <Button variant={showFilters ? 'secondary' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="dashboard-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button>
       </div>
-    </div>
+    </PageHeader>
 
     {filters.preset === 'custom' && (
       <div className="flex flex-wrap items-center gap-4 rounded-md border bg-muted/30 px-4 py-3">
@@ -178,7 +182,7 @@ export function DashboardOverview() {
     />
 
     <Card><CardHeader className="flex-row items-center justify-between border-b px-4 py-3 space-y-0"><div><CardTitle className="text-base">{t('upcomingShifts')}</CardTitle></div><Button nativeButton={false} render={<Link href="/calendar" />} variant="outline" size="sm" className="h-8">{t('viewAll')}</Button></CardHeader><CardContent className="p-0">{upcoming.length ? <div className="divide-y">{upcoming.map(shift => <div className="flex items-center justify-between gap-4 p-4 hover:bg-muted/30 transition-colors" key={shift.id}><div className="min-w-0 flex-1"><p className="font-medium truncate">{shift.title || nameFor(brands, shift.brand_id)}</p><div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground"><span>{shift.date}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{formatShiftTimeRange(shift)}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{nameFor(platforms, shift.platform_id)}</span></div></div><Badge variant="secondary" className="shrink-0">{t('scheduled')}</Badge></div>)}</div> : <div className="p-8"><Empty text={t('noMatchingShifts')} /></div>}</CardContent></Card>
-  </div>
+  </PageShell>
 }
 
 function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: Array<{ id: string; name: string }>; onChange: (value: string) => void }) {
