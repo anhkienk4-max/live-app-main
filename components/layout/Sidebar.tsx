@@ -8,26 +8,14 @@ import { useTranslation } from '@/lib/i18n'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasAnyPermission } from '@/lib/permissions'
 
-const navigation = [
-  { name: 'Dashboard', href: '/', icon: Home },
-  { name: 'Calendar', href: '/calendar', icon: Calendar },
-  { name: 'Live', href: '/live', icon: Radio },
-  { name: 'Reports', href: '/reports', icon: FileText },
-  { name: 'Swaps', href: '/swaps', icon: RefreshCw },
-  { name: 'Analytics', href: '/analytics', icon: BarChart3 },
-  { name: 'Staff', href: '/staff', icon: Users },
-  { name: 'Brands', href: '/brands', icon: Package },
-  { name: 'Platforms', href: '/platforms', icon: Megaphone },
-  { name: 'Campaigns', href: '/campaigns', icon: Megaphone },
-  { name: 'Audit', href: '/audit', icon: History, restricted: true },
-  { name: 'Settings', href: '/settings', icon: Settings },
-  { name: 'Profile', href: '/profile', icon: User },
-]
+import { getNavigationForRole } from '@/lib/ui/role-ux'
+import { resolveSystemPermission } from '@/lib/permissions'
 
 export function Sidebar() {
   const pathname = usePathname()
   const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
+  const navigation = getNavigationForRole(resolveSystemPermission(currentUser))
 
   return (
     <aside className="hidden md:flex md:flex-shrink-0">
