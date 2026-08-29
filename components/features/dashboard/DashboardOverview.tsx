@@ -106,22 +106,25 @@ type CommonProps = {
   setPreset: (preset: Preset) => void
 }
 
-const matchesRole = (shift: Shift, role: OperationalRole, userId: string, registrations: ShiftRegistration[]) => {
-  const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
-  return assignment === userId || registrations.some(registration =>
+const isAssigned = (shift: Shift, role: OperationalRole | null, userId: string, registrations: ShiftRegistration[]) => {
+  return registrations.some(registration =>
     registration.shift_id === shift.id &&
     registration.user_id === userId &&
-    registration.operational_role === role &&
+    (role === null || registration.operational_role === role) &&
     isStaffedRegistration(registration)
   )
+}
+const matchesRoleFilter = (shift: Shift, role: OperationalRole, userId: string, registrations: ShiftRegistration[]) => {
+  const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
+  return assignment === userId || isAssigned(shift, role, userId, registrations)
 }
 const matchesDimensions = (shift: Shift, filters: Filters, registrations: ShiftRegistration[]) =>
   (filters.brand === 'all' || shift.brand_id === filters.brand) &&
   (filters.platform === 'all' || shift.platform_id === filters.platform) &&
   (filters.campaign === 'all' || shift.campaign_id === filters.campaign) &&
-  (filters.host === 'all' || matchesRole(shift, 'host', filters.host, registrations)) &&
-  (filters.support === 'all' || matchesRole(shift, 'support', filters.support, registrations)) &&
-  (filters.technical === 'all' || matchesRole(shift, 'technical', filters.technical, registrations))
+  (filters.host === 'all' || matchesRoleFilter(shift, 'host', filters.host, registrations)) &&
+  (filters.support === 'all' || matchesRoleFilter(shift, 'support', filters.support, registrations)) &&
+  (filters.technical === 'all' || matchesRoleFilter(shift, 'technical', filters.technical, registrations))
 
 const nameFor = (items: Array<{ id: string; name: string }>, id: string) => items.find(item => item.id === id)?.name || '—'
 
@@ -160,7 +163,7 @@ function AdminDashboard(props: CommonProps) {
     <PageHeader>
       <PageHeaderContent>
         <h1 className="text-3xl font-bold">{t('dashboardTitle')}</h1>
-        <p className="text-muted-foreground">System Operations Command Center</p>
+        <p className="text-muted-foreground">{t('systemOperationsCommandCenter')}</p>
       </PageHeaderContent>
       <DashboardFilterControls filters={filters} setPreset={setPreset} showFilters={showFilters} setShowFilters={setShowFilters} t={t} />
     </PageHeader>
@@ -180,7 +183,7 @@ function AdminDashboard(props: CommonProps) {
         <QuickAction href="/calendar" label={t('calendar')} icon={<Calendar className="h-5 w-5" />} />
         <QuickAction href="/live" label={t('liveMonitor')} icon={<Radio className="h-5 w-5" />} />
         <QuickAction href="/staff" label={t('staff')} icon={<Users className="h-5 w-5" />} />
-        <QuickAction href="/data-quality" label="Data Quality" icon={<ShieldAlert className="h-5 w-5 text-destructive" />} />
+        <QuickAction href="/data-quality" label={t('dataQuality')} icon={<ShieldAlert className="h-5 w-5 text-destructive" />} />
       </CardContent></Card>
 
       <div className="flex flex-col gap-4">
@@ -191,7 +194,7 @@ function AdminDashboard(props: CommonProps) {
           ]).size.toString()} icon={<Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />} />
           <Metric title={t('campaigns')} value={new Set(filteredShifts.map(shift => shift.campaign_id).filter(Boolean)).size.toString()} icon={<Package className="h-5 w-5 text-orange-600 dark:text-orange-400" />} />
         </div>
-        <Card className="flex-1 bg-destructive/5 dark:bg-destructive/10 border-destructive/20"><CardContent className="flex h-full items-center justify-between p-4"><div><p className="font-semibold text-sm text-destructive dark:text-red-400">Data Quality Alerts</p><p className="text-xs text-muted-foreground mt-0.5">Import / report / staffing issues</p></div><Button variant="outline" size="sm" render={<Link href="/data-quality" />} nativeButton={false} className="border-destructive/30 text-destructive hover:bg-destructive/10">Review</Button></CardContent></Card>
+        <Card className="flex-1 bg-muted/20 border-muted-foreground/20"><CardContent className="flex h-full items-center justify-between p-4"><div><p className="font-semibold text-sm text-foreground">{t('dataQuality')}</p><p className="text-xs text-muted-foreground mt-0.5">{t('dataQualityAlertsSubtitle')}</p></div><Button variant="outline" size="sm" render={<Link href="/data-quality" />} nativeButton={false}>{t('review')}</Button></CardContent></Card>
       </div>
     </div>
 
@@ -216,9 +219,11 @@ function LeaderDashboard(props: CommonProps) {
   const today = dateValue(new Date())
   const todaysShifts = filteredShifts.filter(shift => shift.date === today)
   
-  const pendingRegistrations = registrations.filter(r => r.status === 'pending')
+  const shiftIds = new Set(filteredShifts.map(shift => shift.id))
+  
+  const pendingRegistrations = registrations.filter(r => r.status === 'pending' && shiftIds.has(r.shift_id))
   const pendingSwaps = swapRequests.filter(s => s.status === 'pending')
-  const pendingReports = reports.filter(r => r.status === 'draft' || r.status === 'in_review')
+  const pendingReports = reports.filter(r => (r.status === 'draft' || r.status === 'in_review') && shiftIds.has(r.shift_id))
 
   const upcoming = filteredShifts.filter(shift => shift.date >= today && shift.status === 'scheduled').sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`)).slice(0, 5)
   const roleOptions = (role: 'host' | 'support' | 'technical') => users.filter(user => user.operational_roles?.includes(role)).map(user => ({ id: user.id, name: user.full_name }))
@@ -226,8 +231,8 @@ function LeaderDashboard(props: CommonProps) {
   return <PageShell archetype="command" className="space-y-6">
     <PageHeader>
       <PageHeaderContent>
-        <h1 className="text-3xl font-bold">Leader Dashboard</h1>
-        <p className="text-muted-foreground">Today's Operations & Decision Queue</p>
+        <h1 className="text-3xl font-bold">{t('leaderDashboard')}</h1>
+        <p className="text-muted-foreground">{t('todaysOperationsDecisionQueue')}</p>
       </PageHeaderContent>
       <DashboardFilterControls filters={filters} setPreset={setPreset} showFilters={showFilters} setShowFilters={setShowFilters} t={t} />
     </PageHeader>
@@ -236,39 +241,39 @@ function LeaderDashboard(props: CommonProps) {
     {showFilters && <DashboardFilterPanel filters={filters} setFilters={setFilters} brands={brands} platforms={platforms} campaigns={campaigns} roleOptions={roleOptions} t={t} />}
 
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <Metric title="Shifts Today" value={todaysShifts.length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
-      <Metric title="Live Now" value={filteredShifts.filter(shift => shift.status === 'live').length.toString()} icon={<Radio className="h-5 w-5 text-red-600 dark:text-red-400" />} />
-      <Metric title="Pending Registrations" value={pendingRegistrations.length.toString()} icon={<Users className="h-5 w-5 text-amber-600 dark:text-amber-400" />} />
-      <Metric title="Pending Swaps" value={pendingSwaps.length.toString()} icon={<ArrowLeftRight className="h-5 w-5 text-purple-600 dark:text-purple-400" />} />
+      <Metric title={t('shiftsToday')} value={todaysShifts.length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
+      <Metric title={t('liveNow')} value={filteredShifts.filter(shift => shift.status === 'live').length.toString()} icon={<Radio className="h-5 w-5 text-red-600 dark:text-red-400" />} />
+      <Metric title={t('pendingRegistrations')} value={pendingRegistrations.length.toString()} icon={<Users className="h-5 w-5 text-amber-600 dark:text-amber-400" />} />
+      <Metric title={t('pendingSwaps')} value={pendingSwaps.length.toString()} icon={<ArrowLeftRight className="h-5 w-5 text-purple-600 dark:text-purple-400" />} />
     </div>
 
     <div className="grid gap-4 md:grid-cols-2">
-      <Card><CardHeader><CardTitle>Action Queue</CardTitle><CardDescription>Requires your attention</CardDescription></CardHeader><CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <Card><CardHeader><CardTitle>{t('actionQueue')}</CardTitle><CardDescription>{t('attentionRequired')}</CardDescription></CardHeader><CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <QuickAction href="/calendar" label={t('calendar')} icon={<Calendar className="h-5 w-5" />} />
         <QuickAction href="/live" label={t('liveMonitor')} icon={<Radio className="h-5 w-5" />} />
         <QuickAction href="/reports" label={t('reports')} icon={<FileText className="h-5 w-5" />} />
-        <QuickAction href="/swaps" label="Swaps" icon={<ArrowLeftRight className="h-5 w-5" />} />
+        <QuickAction href="/swaps" label={t('swaps')} icon={<ArrowLeftRight className="h-5 w-5" />} />
       </CardContent></Card>
       
       <div className="flex flex-col gap-4">
         {(pendingRegistrations.length > 0 || pendingSwaps.length > 0) && (
           <Card className="flex-1 bg-amber-500/5 border-amber-500/20"><CardContent className="flex h-full items-center justify-between p-4">
             <div>
-              <p className="font-semibold text-sm text-amber-600 dark:text-amber-400">Attention Required</p>
+              <p className="font-semibold text-sm text-amber-600 dark:text-amber-400">{t('attentionRequired')}</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {pendingRegistrations.length} registrations, {pendingSwaps.length} swaps awaiting review
+                {t('attentionRequiredSubtitle').replace('{registrations}', String(pendingRegistrations.length)).replace('{swaps}', String(pendingSwaps.length))}
               </p>
             </div>
-            <Button variant="outline" size="sm" render={<Link href="/calendar" />} nativeButton={false} className="border-amber-500/30 text-amber-600 hover:bg-amber-500/10">Review</Button>
+            <Button variant="outline" size="sm" render={<Link href="/calendar" />} nativeButton={false} className="border-amber-500/30 text-amber-600 hover:bg-amber-500/10">{t('review')}</Button>
           </CardContent></Card>
         )}
         {pendingReports.length > 0 && (
           <Card className="flex-1 bg-blue-500/5 border-blue-500/20"><CardContent className="flex h-full items-center justify-between p-4">
             <div>
-              <p className="font-semibold text-sm text-blue-600 dark:text-blue-400">Reports Pending</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{pendingReports.length} reports need review</p>
+              <p className="font-semibold text-sm text-blue-600 dark:text-blue-400">{t('reportsPending')}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{t('reportsPendingSubtitle').replace('{reports}', String(pendingReports.length))}</p>
             </div>
-            <Button variant="outline" size="sm" render={<Link href="/reports" />} nativeButton={false} className="border-blue-500/30 text-blue-600 hover:bg-blue-500/10">Review</Button>
+            <Button variant="outline" size="sm" render={<Link href="/reports" />} nativeButton={false} className="border-blue-500/30 text-blue-600 hover:bg-blue-500/10">{t('review')}</Button>
           </CardContent></Card>
         )}
       </div>
@@ -283,27 +288,28 @@ function MemberDashboard(props: CommonProps) {
   
   const today = dateValue(new Date())
   
-  // Find member's shifts
-  const myShifts = shifts.filter(shift => matchesRole(shift, 'host', currentUser.id, registrations) || matchesRole(shift, 'support', currentUser.id, registrations) || matchesRole(shift, 'technical', currentUser.id, registrations))
+  // Find member's shifts using strictly canonical registration
+  const myShifts = shifts.filter(shift => isAssigned(shift, null, currentUser.id, registrations))
   
   const upcoming = myShifts.filter(shift => shift.date >= today && (shift.status === 'scheduled' || shift.status === 'live' || shift.status === 'preparing')).sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`))
   const nextShift = upcoming[0]
   
   const myPendingSwaps = swapRequests.filter(s => (s.requester_id === currentUser.id || s.counterpart_id === currentUser.id) && s.status === 'pending')
   const myReports = reports.filter(r => r.submitted_by === currentUser.id)
+  const myPendingRegistrations = registrations.filter(r => r.user_id === currentUser.id && r.status === 'pending')
 
   return <PageShell archetype="command" className="space-y-6">
     <PageHeader>
       <PageHeaderContent>
-        <h1 className="text-3xl font-bold">Welcome, {currentUser.full_name.split(' ')[0]}</h1>
-        <p className="text-muted-foreground">My Workspace</p>
+        <h1 className="text-3xl font-bold">{t('welcome')}, {currentUser.full_name.split(' ')[0]}</h1>
+        <p className="text-muted-foreground">{t('myWorkspace')}</p>
       </PageHeaderContent>
     </PageHeader>
 
     {nextShift && (
       <Card className="bg-primary/5 border-primary/20">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base text-primary">Next Assigned Shift</CardTitle>
+          <CardTitle className="text-base text-primary">{t('nextAssignedShift')}</CardTitle>
         </CardHeader>
         <CardContent className="flex items-center justify-between gap-4">
           <div>
@@ -313,26 +319,28 @@ function MemberDashboard(props: CommonProps) {
               <Clock className="w-4 h-4 ml-2" /> <span>{formatShiftTimeRange(nextShift)}</span>
             </div>
           </div>
-          <Button render={<Link href={`/calendar/shifts/${nextShift.id}`} />} nativeButton={false}>View Details</Button>
+          <Button render={<Link href="/calendar" />} nativeButton={false}>{t('viewDetails')}</Button>
         </CardContent>
       </Card>
     )}
 
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <Metric title="My Upcoming Shifts" value={upcoming.length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
-      <Metric title="Pending Swaps" value={myPendingSwaps.length.toString()} icon={<ArrowLeftRight className="h-5 w-5 text-purple-600 dark:text-purple-400" />} />
-      <Metric title="My Submitted Reports" value={myReports.length.toString()} icon={<CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />} />
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <Metric title={t('myUpcomingShifts')} value={upcoming.length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
+      <Metric title={t('pendingRegistrations')} value={myPendingRegistrations.length.toString()} icon={<Users className="h-5 w-5 text-amber-600 dark:text-amber-400" />} />
+      <Metric title={t('pendingSwaps')} value={myPendingSwaps.length.toString()} icon={<ArrowLeftRight className="h-5 w-5 text-purple-600 dark:text-purple-400" />} />
+      <Metric title={t('mySubmittedReports')} value={myReports.length.toString()} icon={<CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />} />
     </div>
 
     <div className="grid gap-4 md:grid-cols-2">
-      <Card><CardHeader><CardTitle>Quick Actions</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <QuickAction href="/calendar" label="My Calendar" icon={<Calendar className="h-5 w-5" />} />
-        <QuickAction href="/calendar" label="Open Shifts" icon={<Users className="h-5 w-5" />} />
-        <QuickAction href="/reports" label="Submit Report" icon={<FileText className="h-5 w-5" />} />
+      <Card><CardHeader><CardTitle>{t('quickActions')}</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <QuickAction href="/calendar" label={t('myCalendar')} icon={<Calendar className="h-5 w-5" />} />
+        <QuickAction href="/calendar" label={t('openShifts')} icon={<Users className="h-5 w-5" />} />
+        <QuickAction href="/reports" label={t('submitReport')} icon={<FileText className="h-5 w-5" />} />
+        <QuickAction href="/notifications" label={t('notifications')} icon={<Bell className="h-5 w-5" />} />
       </CardContent></Card>
     </div>
 
-    <UpcomingShiftsList upcoming={upcoming.slice(0, 5)} brands={brands} platforms={platforms} t={t} title="My Schedule" />
+    <UpcomingShiftsList upcoming={upcoming.slice(0, 5)} brands={brands} platforms={platforms} t={t} title={t('mySchedule')} />
   </PageShell>
 }
 
