@@ -227,23 +227,23 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
 
       {mode === 'open' && hasPermission(currentUser, 'shifts.approve_registration') && pendingApprovals.length > 0 && (
         <Card className="border-amber-200 bg-amber-50/30 shadow-none">
-          <CardHeader className="py-3 px-4"><CardTitle className="text-sm font-semibold">{t('pending')} ({pendingApprovals.length})</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
+          <CardHeader className="py-3 px-4 border-b border-amber-200/50 mb-3"><CardTitle className="text-sm font-semibold text-amber-800">{t('pending')} ({pendingApprovals.length})</CardTitle></CardHeader>
+          <CardContent className="space-y-2 px-4 pb-4">
             {pendingApprovals.map(registration => {
               const shift = shifts.find(candidate => candidate.id === registration.shift_id)
               const staff = users.find(user => user.id === registration.user_id)
               if (!shift || !staff) return null
               return (
-                <div key={registration.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+                <div key={registration.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200/50 bg-background/80 p-3 shadow-sm">
                   <div>
-                    <p className="font-medium">{staff.full_name} · {t(registration.operational_role)}</p>
-                    <p className="text-xs text-muted-foreground">{shift.title || shift.id} · {shift.date} {formatShiftTimeRange(shift)}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{format(new Date(registration.requested_at), 'dd/MM/yyyy HH:mm')}{registration.review_notes ? ` · ${registration.review_notes}` : ''}</p>
+                    <p className="font-medium text-sm">{staff.full_name} <span className="text-muted-foreground font-normal mx-1">·</span> {t(registration.operational_role)}</p>
+                    <p className="text-xs text-muted-foreground">{shift.title || shift.id} <span className="mx-1">·</span> {shift.date} {formatShiftTimeRange(shift)}</p>
+                    {registration.review_notes && <p className="mt-1 text-xs text-muted-foreground">{registration.review_notes}</p>}
                   </div>
                   <div className="flex gap-2">
-                    <Button size="sm" disabled={busyId === registration.id} onClick={() => runAction(registration.id, () => shiftRegistrationService.approve(registration.id, currentUser.id), t('registrationApproved'))}><Check className="mr-1 h-4 w-4" />{t('approve')}</Button>
-                    <Button size="sm" variant="outline" disabled={busyId === registration.id} onClick={() => runAction(registration.id, () => shiftRegistrationService.reject(registration.id, currentUser.id), t('rejected'))}><X className="mr-1 h-4 w-4" />{t('reject')}</Button>
-                    <Button size="sm" variant="ghost" disabled={busyId === registration.id} onClick={() => setRemovalTarget({ registration, kind: 'unassign' })}>{t('removeAssignment')}</Button>
+                    <Button size="sm" className="h-8" disabled={busyId === registration.id} onClick={() => runAction(registration.id, () => shiftRegistrationService.approve(registration.id, currentUser.id), t('registrationApproved'))}><Check className="mr-1 h-3 w-3" />{t('approve')}</Button>
+                    <Button size="sm" variant="outline" className="h-8 text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground" disabled={busyId === registration.id} onClick={() => runAction(registration.id, () => shiftRegistrationService.reject(registration.id, currentUser.id), t('rejected'))}><X className="mr-1 h-3 w-3" />{t('reject')}</Button>
+                    <Button size="sm" variant="ghost" className="h-8" disabled={busyId === registration.id} onClick={() => setRemovalTarget({ registration, kind: 'unassign' })}>{t('removeAssignment')}</Button>
                   </div>
                 </div>
               )

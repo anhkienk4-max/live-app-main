@@ -272,6 +272,7 @@ export function DaySessionsDialog({
                             </Button>
                             <Button
                               disabled={Boolean(busyAction)}
+                              className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
                               onClick={() => void runAction(
                                 `reject-${registration.id}`,
                                 () => shiftRegistrationService.reject(registration.id, currentUser.id),

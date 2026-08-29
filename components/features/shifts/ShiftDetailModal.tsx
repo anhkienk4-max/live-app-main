@@ -886,20 +886,20 @@ export function ShiftDetailModal({
                   <CardContent className="p-0">
                     <div className="max-h-[440px] space-y-2 overflow-auto p-5">
                       {registrations.length === 0 ? <p className="text-sm text-muted-foreground">{t('noData')}</p> : visibleRegistrations.map(registration => (
-                        <div key={registration.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+                        <div key={registration.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/50 p-3 shadow-sm">
                           <div className="min-w-0">
-                            <p className="break-words font-medium">{userName(registration.user_id)} · {t(registration.operational_role)}</p>
-                            <p className="text-xs text-muted-foreground">{registration.source} · {safeFormatShiftDate(registration.requested_at, 'Pp', language, fallback)}</p>
-                            {registration.review_notes ? <p className="mt-1 break-words text-xs">{registration.review_notes}</p> : null}
+                            <p className="break-words font-medium text-sm">{userName(registration.user_id)} <span className="text-muted-foreground font-normal mx-1">·</span> {t(registration.operational_role)}</p>
+                            <p className="text-xs text-muted-foreground">{registration.source} <span className="mx-1">·</span> {safeFormatShiftDate(registration.requested_at, 'Pp', language, fallback)}</p>
+                            {registration.review_notes ? <p className="mt-1 break-words text-xs text-muted-foreground">{registration.review_notes}</p> : null}
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <Badge className={registration.status === 'approved' || registration.status === 'manually_assigned' ? 'bg-green-100 text-green-800' : registration.status === 'pending' ? 'bg-amber-100 text-amber-800' : ''}>
+                            <Badge className={registration.status === 'approved' || registration.status === 'manually_assigned' ? 'bg-green-100 text-green-800 border-green-200' : registration.status === 'pending' ? 'bg-amber-100 text-amber-800 border-amber-200' : ''}>
                               {registration.status === 'manually_assigned' ? t('manuallyAssigned') : registration.status === 'removed' ? t('removed') : registration.status === 'available' ? t('available') : t(registration.status)}
                             </Badge>
                             {registration.status === 'pending' && currentUser && hasPermission(currentUser, 'shifts.approve_registration') ? (
                               <>
-                                <Button size="sm" disabled={busy} onClick={() => runStaffingAction(() => shiftRegistrationService.approve(registration.id, currentUser.id), t('registrationApproved'))}><Check className="mr-1 h-4 w-4" />{t('approve')}</Button>
-                                <Button size="sm" variant="outline" disabled={busy} onClick={() => runStaffingAction(() => shiftRegistrationService.reject(registration.id, currentUser.id), t('rejected'))}><X className="mr-1 h-4 w-4" />{t('reject')}</Button>
+                                <Button size="sm" className="h-8" disabled={busy} onClick={() => runStaffingAction(() => shiftRegistrationService.approve(registration.id, currentUser.id), t('registrationApproved'))}><Check className="mr-1 h-3 w-3" />{t('approve')}</Button>
+                                <Button size="sm" variant="outline" className="h-8 text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground" disabled={busy} onClick={() => runStaffingAction(() => shiftRegistrationService.reject(registration.id, currentUser.id), t('rejected'))}><X className="mr-1 h-3 w-3" />{t('reject')}</Button>
                               </>
                             ) : null}
                           </div>

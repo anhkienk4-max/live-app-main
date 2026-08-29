@@ -218,62 +218,64 @@ export function BulkStaffingApprovalDialog({
           <p className="text-sm text-muted-foreground">{t('bulkStaffingApprovalDescription')}</p>
         </DialogHeader>
 
-        <div className="flex flex-wrap items-center gap-2 border-b py-2">
+        <div className="flex flex-wrap items-center gap-2 border-b pb-3">
           <Button
-            variant={showFilters ? 'default' : 'outline'}
+            size="sm"
+            variant={showFilters ? 'secondary' : 'outline'}
             onClick={() => setShowFilters(!showFilters)}
             aria-expanded={showFilters}
             aria-controls="bulk-staffing-filter-panel"
             data-testid="bulk-staffing-filter-toggle"
           >
-            <Filter className="mr-2 h-4 w-4" />
+            <Filter className="mr-2 h-3 w-3" />
             {t('filters')}
           </Button>
         </div>
 
         {showFilters && (
-          <div id="bulk-staffing-filter-panel" className="space-y-3 border-y py-3">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <Input
-                type="date"
-                aria-label={t('date')}
-                value={dateFilter}
-                onChange={event => setDateFilter(event.target.value)}
-                data-testid="bulk-staffing-date-filter"
-              />
-              <Select value={roleFilter} onValueChange={value => setRoleFilter(value as 'all' | OperationalRole)}>
-                <SelectTrigger data-testid="bulk-staffing-role-filter"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('all')} {t('operationalRoles')}</SelectItem>
-                  <SelectItem value="host">{t('host')}</SelectItem>
-                  <SelectItem value="support">{t('support')}</SelectItem>
-                  <SelectItem value="technical">{t('technical')}</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={shiftFilter} onValueChange={setShiftFilter}>
-                <SelectTrigger data-testid="bulk-staffing-shift-filter"><SelectValue /></SelectTrigger>
-                <SelectContent className="max-h-64 overflow-y-auto">
-                  <SelectItem value="all">{t('allShifts')}</SelectItem>
-                  {[...shifts].sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`)).map(shift => (
-                    <SelectItem key={shift.id} value={shift.id}>
-                      {shift.date} · {shift.start_time} · {shift.title || shift.id}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <Select value={campaignFilter} onValueChange={setCampaignFilter}>
-                <SelectTrigger data-testid="bulk-staffing-campaign-filter"><SelectValue /></SelectTrigger>
-                <SelectContent className="max-h-64 overflow-y-auto">
-                  <SelectItem value="all">{t('all')} {t('campaigns')}</SelectItem>
-                  {campaignOptions.map(id => (
-                    <SelectItem key={id} value={id}>{id}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div id="bulk-staffing-filter-panel" className="space-y-2 border-b pb-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+                <Input
+                  type="date"
+                  className="h-8 text-xs"
+                  aria-label={t('date')}
+                  value={dateFilter}
+                  onChange={event => setDateFilter(event.target.value)}
+                  data-testid="bulk-staffing-date-filter"
+                />
+                <Select value={roleFilter} onValueChange={value => setRoleFilter(value as 'all' | OperationalRole)}>
+                  <SelectTrigger className="h-8 text-xs" data-testid="bulk-staffing-role-filter"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t('all')} {t('operationalRoles')}</SelectItem>
+                    <SelectItem value="host">{t('host')}</SelectItem>
+                    <SelectItem value="support">{t('support')}</SelectItem>
+                    <SelectItem value="technical">{t('technical')}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={shiftFilter} onValueChange={setShiftFilter}>
+                  <SelectTrigger className="h-8 text-xs" data-testid="bulk-staffing-shift-filter"><SelectValue /></SelectTrigger>
+                  <SelectContent className="max-h-64 overflow-y-auto">
+                    <SelectItem value="all">{t('allShifts')}</SelectItem>
+                    {[...shifts].sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`)).map(shift => (
+                      <SelectItem key={shift.id} value={shift.id}>
+                        {shift.date} · {shift.start_time} · {shift.title || shift.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={campaignFilter} onValueChange={setCampaignFilter}>
+                  <SelectTrigger className="h-8 text-xs" data-testid="bulk-staffing-campaign-filter"><SelectValue /></SelectTrigger>
+                  <SelectContent className="max-h-64 overflow-y-auto">
+                    <SelectItem value="all">{t('all')} {t('campaigns')}</SelectItem>
+                    {campaignOptions.map(id => (
+                      <SelectItem key={id} value={id}>{id}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
               <Select value={hostFilter} onValueChange={setHostFilter}>
-                <SelectTrigger data-testid="bulk-staffing-host-filter"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-8 text-xs" data-testid="bulk-staffing-host-filter"><SelectValue /></SelectTrigger>
                 <SelectContent className="max-h-64 overflow-y-auto">
                   <SelectItem value="all">{t('all')} {t('host')}</SelectItem>
                   {hostOptions.map(user => (
@@ -282,7 +284,7 @@ export function BulkStaffingApprovalDialog({
                 </SelectContent>
               </Select>
               <Select value={supportFilter} onValueChange={setSupportFilter}>
-                <SelectTrigger data-testid="bulk-staffing-support-filter"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-8 text-xs" data-testid="bulk-staffing-support-filter"><SelectValue /></SelectTrigger>
                 <SelectContent className="max-h-64 overflow-y-auto">
                   <SelectItem value="all">{t('all')} {t('support')}</SelectItem>
                   {supportOptions.map(user => (
@@ -291,7 +293,7 @@ export function BulkStaffingApprovalDialog({
                 </SelectContent>
               </Select>
               <Select value={technicalFilter} onValueChange={setTechnicalFilter}>
-                <SelectTrigger data-testid="bulk-staffing-technical-filter"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-8 text-xs" data-testid="bulk-staffing-technical-filter"><SelectValue /></SelectTrigger>
                 <SelectContent className="max-h-64 overflow-y-auto">
                   <SelectItem value="all">{t('all')} {t('technical')}</SelectItem>
                   {technicalOptions.map(user => (
@@ -314,7 +316,7 @@ export function BulkStaffingApprovalDialog({
           ) : (
             <Table data-testid="bulk-staffing-table">
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-muted/30">
                   <TableHead className="w-10">
                     <Checkbox
                       checked={allFilteredSelected ? true : someFilteredSelected ? 'indeterminate' : false}
@@ -370,16 +372,16 @@ export function BulkStaffingApprovalDialog({
                         )}
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-wrap gap-2 justify-end">
                           {onOpenShift && (
-                            <Button size="sm" variant="ghost" onClick={() => onOpenShift(shift)} aria-label={t('viewShiftDetail')}>
-                              <Eye className="mr-1 h-4 w-4" />{t('viewDetails')}
+                            <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => onOpenShift(shift)} aria-label={t('viewShiftDetail')}>
+                              <Eye className="mr-1 h-3 w-3" />{t('viewDetails')}
                             </Button>
                           )}
-                          <Button size="sm" disabled={busyRegistrationId !== null || busyAction !== null} onClick={() => void reviewOne(registration, 'approve')}>
+                          <Button size="sm" className="h-8" disabled={busyRegistrationId !== null || busyAction !== null} onClick={() => void reviewOne(registration, 'approve')}>
                             {t('approve')}
                           </Button>
-                          <Button size="sm" variant="outline" disabled={busyRegistrationId !== null || busyAction !== null} onClick={() => void reviewOne(registration, 'reject')}>
+                          <Button size="sm" variant="outline" className="h-8 text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground" disabled={busyRegistrationId !== null || busyAction !== null} onClick={() => void reviewOne(registration, 'reject')}>
                             {t('reject')}
                           </Button>
                         </div>
@@ -396,12 +398,13 @@ export function BulkStaffingApprovalDialog({
           <Button variant="outline" onClick={toggleAllFiltered} disabled={filteredIds.length === 0 || busyAction !== null}>
             {allFilteredSelected ? t('clearSelection') : t('selectAll')}
           </Button>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="text-sm font-medium text-foreground bg-muted px-3 py-1.5 rounded-full">
               {t('selectedCount', { count: selectedActionableIds.length })}
-            </span>
+            </div>
             <Button
               variant="outline"
+              className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
               disabled={selectedActionableIds.length === 0 || busyAction !== null}
               onClick={() => reviewSelected('reject')}
               data-testid="bulk-reject-selected"
