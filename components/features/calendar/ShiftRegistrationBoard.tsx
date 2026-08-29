@@ -211,7 +211,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
               <SelectContent><SelectItem value="all">{t('all')}</SelectItem>{roles.map(role => <SelectItem key={role} value={role}>{t(role)}</SelectItem>)}</SelectContent>
             </Select>
           </label>
-          <div className="flex items-end"><Button size="sm" className="w-full h-8" variant="outline" onClick={() => setFilters(initialFilters)}><RotateCcw className="mr-2 h-3 w-3" /><span className="hidden sm:inline">{t('resetFilters')}</span><span className="sm:hidden">Reset</span></Button></div>
+          <div className="flex items-end"><Button size="sm" className="w-full h-8" variant="outline" onClick={() => setFilters(initialFilters)}><RotateCcw className="mr-2 h-3 w-3" /><span className="hidden sm:inline">{t('resetFilters')}</span><span className="sm:hidden">{t('resetFilters')}</span></Button></div>
         </CardContent>
       </Card>
 
