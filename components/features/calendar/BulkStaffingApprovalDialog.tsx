@@ -394,32 +394,37 @@ export function BulkStaffingApprovalDialog({
           )}
         </DialogBody>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
-          <Button variant="outline" onClick={toggleAllFiltered} disabled={filteredIds.length === 0 || busyAction !== null}>
+        <div className="flex flex-col-reverse sm:flex-row items-center justify-between gap-3 border-t pt-3">
+          <Button className="w-full sm:w-auto" variant="outline" onClick={toggleAllFiltered} disabled={filteredIds.length === 0 || busyAction !== null}>
             {allFilteredSelected ? t('clearSelection') : t('selectAll')}
           </Button>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="text-sm font-medium text-foreground bg-muted px-3 py-1.5 rounded-full">
+          <div className="flex flex-col sm:flex-row w-full sm:w-auto items-center gap-3">
+            <div className="text-sm font-medium text-foreground bg-muted px-3 py-1.5 rounded-full whitespace-nowrap hidden sm:block">
               {t('selectedCount', { count: selectedActionableIds.length })}
             </div>
-            <Button
-              variant="outline"
-              className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
-              disabled={selectedActionableIds.length === 0 || busyAction !== null}
-              onClick={() => reviewSelected('reject')}
-              data-testid="bulk-reject-selected"
-            >
-              {busyAction === 'reject' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {t('rejectSelected')}
-            </Button>
-            <Button
-              disabled={selectedActionableIds.length === 0 || busyAction !== null}
-              onClick={() => reviewSelected('approve')}
-              data-testid="bulk-approve-selected"
-            >
-              {busyAction === 'approve' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {t('approveSelected')}
-            </Button>
+            <div className="flex w-full sm:w-auto gap-2">
+              <Button
+                variant="outline"
+                className="flex-1 sm:flex-none text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground px-2 sm:px-4 text-xs sm:text-sm"
+                disabled={selectedActionableIds.length === 0 || busyAction !== null}
+                onClick={() => reviewSelected('reject')}
+                data-testid="bulk-reject-selected"
+              >
+                {busyAction === 'reject' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <span className="hidden sm:inline">{t('rejectSelected')}</span>
+                <span className="sm:hidden">{t('reject')} ({selectedActionableIds.length})</span>
+              </Button>
+              <Button
+                className="flex-1 sm:flex-none px-2 sm:px-4 text-xs sm:text-sm"
+                disabled={selectedActionableIds.length === 0 || busyAction !== null}
+                onClick={() => reviewSelected('approve')}
+                data-testid="bulk-approve-selected"
+              >
+                {busyAction === 'approve' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <span className="hidden sm:inline">{t('approveSelected')}</span>
+                <span className="sm:hidden">{t('approve')} ({selectedActionableIds.length})</span>
+              </Button>
+            </div>
           </div>
         </div>
       </DialogContent>

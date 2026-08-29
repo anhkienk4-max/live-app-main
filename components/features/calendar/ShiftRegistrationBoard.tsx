@@ -27,6 +27,7 @@ import {
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
+import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { exportShiftStaffingToExcel } from '@/lib/utils/excelUtils'
 import { formatShiftEndDate, formatShiftTimeRange, resolveShiftDateTime } from '@/lib/utils/shiftUtils'
 import { selectMyShiftEntries, type MyShiftEntry } from '@/lib/utils/myShifts'
@@ -210,7 +211,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
               <SelectContent><SelectItem value="all">{t('all')}</SelectItem>{roles.map(role => <SelectItem key={role} value={role}>{t(role)}</SelectItem>)}</SelectContent>
             </Select>
           </label>
-          <div className="flex items-end"><Button size="sm" className="w-full h-8" variant="outline" onClick={() => setFilters(initialFilters)}><RotateCcw className="mr-2 h-3 w-3" />{t('resetFilters')}</Button></div>
+          <div className="flex items-end"><Button size="sm" className="w-full h-8" variant="outline" onClick={() => setFilters(initialFilters)}><RotateCcw className="mr-2 h-3 w-3" /><span className="hidden sm:inline">{t('resetFilters')}</span><span className="sm:hidden">Reset</span></Button></div>
         </CardContent>
       </Card>
 
@@ -241,9 +242,17 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                     {registration.review_notes && <p className="mt-1 text-xs text-muted-foreground">{registration.review_notes}</p>}
                   </div>
                   <div className="flex gap-2">
-                    <Button size="sm" className="h-8" disabled={busyId === registration.id} onClick={() => runAction(registration.id, () => shiftRegistrationService.approve(registration.id, currentUser.id), t('registrationApproved'))}><Check className="mr-1 h-3 w-3" />{t('approve')}</Button>
-                    <Button size="sm" variant="outline" className="h-8 text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground" disabled={busyId === registration.id} onClick={() => runAction(registration.id, () => shiftRegistrationService.reject(registration.id, currentUser.id), t('rejected'))}><X className="mr-1 h-3 w-3" />{t('reject')}</Button>
-                    <Button size="sm" variant="ghost" className="h-8" disabled={busyId === registration.id} onClick={() => setRemovalTarget({ registration, kind: 'unassign' })}>{t('removeAssignment')}</Button>
+                    <Button size="sm" className="h-8" disabled={busyId === registration.id} onClick={() => runAction(registration.id, () => shiftRegistrationService.approve(registration.id, currentUser.id), t('registrationApproved'))}><Check className="mr-1 h-3 w-3 hidden sm:inline" />{t('approve')}</Button>
+                    <Button size="sm" variant="outline" className="h-8 text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground" disabled={busyId === registration.id} onClick={() => runAction(registration.id, () => shiftRegistrationService.reject(registration.id, currentUser.id), t('rejected'))}><X className="mr-1 h-3 w-3 hidden sm:inline" />{t('reject')}</Button>
+                    <div className="hidden sm:block">
+                      <Button size="sm" variant="ghost" className="h-8" disabled={busyId === registration.id} onClick={() => setRemovalTarget({ registration, kind: 'unassign' })}>{t('removeAssignment')}</Button>
+                    </div>
+                    <div className="sm:hidden">
+                      <MobileActionMenu 
+                        actions={[{ key: 'remove', label: t('removeAssignment'), onClick: () => setRemovalTarget({ registration, kind: 'unassign' }), destructive: true }]}
+                        breakpoint="sm"
+                      />
+                    </div>
                   </div>
                 </div>
               )

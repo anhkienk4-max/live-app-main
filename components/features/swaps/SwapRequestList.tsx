@@ -19,7 +19,8 @@ import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
 import { downloadSwapRequestTemplate, exportSwapsToExcel } from '@/lib/utils/excelUtils'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
-import { getSwapStatusPresentation, getSwapUiActions } from '@/lib/utils/swapUi'
+import { getSwapUiActions, getSwapStatusPresentation } from '@/lib/utils/swapUi'
+import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -145,13 +146,28 @@ export function SwapRequestList() {
         <label className="text-xs font-medium">{t('role')}<Select value={filters.role} onValueChange={value => setFilters(current => ({ ...current, role: value }))}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{(['host','support','technical'] as OperationalRole[]).map(role => <SelectItem key={role} value={role}>{t(role)}</SelectItem>)}</SelectContent></Select></label>
         <label className="text-xs font-medium">{t('status')}<Select value={filters.status} onValueChange={value => setFilters(current => ({ ...current, status: value }))}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{(['pending','accepted','approved','rejected','cancelled','completed'] as const).map(status => <SelectItem key={status} value={status}>{(t as unknown as (k:string)=>string)(status)}</SelectItem>)}</SelectContent></Select></label>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline" onClick={() => setFilters(initialFilters)}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button>
-        {currentUser && hasPermission(currentUser, 'swaps.export') && <>
-          <Button variant="outline" disabled={!filtered.length} onClick={() => exportSwapsToExcel(filtered, shifts, exportMaps.users, exportMaps.brands, exportMaps.campaigns)}><FileSpreadsheet className="mr-2 h-4 w-4" />{t('exportFilteredSwaps')}</Button>
-          <Button variant="outline" disabled={!swaps.some(swap => swap.status !== 'pending')} onClick={() => exportSwapsToExcel(swaps.filter(swap => swap.status !== 'pending'), shifts, exportMaps.users, exportMaps.brands, exportMaps.campaigns, 'swap_history.xlsx')}><Download className="mr-2 h-4 w-4" />{t('exportSwapHistory')}</Button>
-          <Button variant="outline" onClick={downloadSwapRequestTemplate}><Download className="mr-2 h-4 w-4" />{t('downloadSwapTemplate')}</Button>
-        </>}
+      <div className="flex gap-2">
+        <div className="hidden lg:flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setFilters(initialFilters)}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button>
+          {currentUser && hasPermission(currentUser, 'swaps.export') && <>
+            <Button variant="outline" disabled={!filtered.length} onClick={() => exportSwapsToExcel(filtered, shifts, exportMaps.users, exportMaps.brands, exportMaps.campaigns)}><FileSpreadsheet className="mr-2 h-4 w-4" />{t('exportFilteredSwaps')}</Button>
+            <Button variant="outline" disabled={!swaps.some(swap => swap.status !== 'pending')} onClick={() => exportSwapsToExcel(swaps.filter(swap => swap.status !== 'pending'), shifts, exportMaps.users, exportMaps.brands, exportMaps.campaigns, 'swap_history.xlsx')}><Download className="mr-2 h-4 w-4" />{t('exportSwapHistory')}</Button>
+            <Button variant="outline" onClick={downloadSwapRequestTemplate}><Download className="mr-2 h-4 w-4" />{t('downloadSwapTemplate')}</Button>
+          </>}
+        </div>
+        <div className="lg:hidden flex w-full gap-2">
+          <Button className="flex-1" variant="outline" onClick={() => setFilters(initialFilters)}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button>
+          {currentUser && hasPermission(currentUser, 'swaps.export') && (
+            <MobileActionMenu
+              breakpoint="lg"
+              actions={[
+                { key: 'export-filtered', label: t('exportFilteredSwaps'), icon: <FileSpreadsheet className="h-4 w-4" />, onClick: () => exportSwapsToExcel(filtered, shifts, exportMaps.users, exportMaps.brands, exportMaps.campaigns), disabled: !filtered.length },
+                { key: 'export-history', label: t('exportSwapHistory'), icon: <Download className="h-4 w-4" />, onClick: () => exportSwapsToExcel(swaps.filter(swap => swap.status !== 'pending'), shifts, exportMaps.users, exportMaps.brands, exportMaps.campaigns, 'swap_history.xlsx'), disabled: !swaps.some(swap => swap.status !== 'pending') },
+                { key: 'export-template', label: t('downloadSwapTemplate'), icon: <Download className="h-4 w-4" />, onClick: downloadSwapRequestTemplate }
+              ]}
+            />
+          )}
+        </div>
       </div>
     </CardContent></Card>
 
@@ -160,13 +176,13 @@ export function SwapRequestList() {
       if (!shift) return null
       const actions = getSwapUiActions(swap, currentUser)
       const statusPresentation = getSwapStatusPresentation(swap.status)
-      const statusTone = {
+      const statusTone: Record<string, string> = {
         warning: 'bg-amber-100 text-amber-800 border-amber-200',
         info: 'bg-blue-100 text-blue-800 border-blue-200',
         success: 'bg-green-100 text-green-800 border-green-200',
         danger: 'bg-red-100 text-red-800 border-red-200',
         neutral: 'bg-gray-100 text-gray-800 border-gray-200',
-      }[statusPresentation.tone]
+      }
 
       return (
         <Card key={swap.id} className="overflow-hidden shadow-sm">
@@ -174,7 +190,7 @@ export function SwapRequestList() {
             <div className="flex flex-col md:flex-row">
               <div className="flex-1 p-4 md:border-r space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge className={statusTone}>{(t as unknown as (k:string)=>string)(statusPresentation.label)}</Badge>
+                  <Badge className={statusTone[statusPresentation.tone] || statusTone.neutral}>{(t as unknown as (k:string)=>string)(statusPresentation.label)}</Badge>
                   <Badge variant="outline" className="font-bold tracking-wider text-xs">{(swap.mode || 'replacement').toUpperCase()}</Badge>
                   <span className="text-xs text-muted-foreground">{format(new Date(swap.created_at), 'dd/MM/yyyy HH:mm')}</span>
                 </div>

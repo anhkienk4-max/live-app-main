@@ -22,6 +22,7 @@ import {
 import { hasPermission } from '@/lib/permissions'
 import { formatShiftEndDate, formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { useTranslation } from '@/lib/i18n'
+import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { useToast } from '@/components/ui/toast'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -289,7 +290,7 @@ export function DaySessionsDialog({
                     </div>
                   )}
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="hidden sm:flex flex-wrap gap-2">
                     <Button data-testid={`day-session-view-shift-${shift.id}`} onClick={() => onViewShift(shift)} size="sm" variant="outline">
                       {t('viewShiftDetail')}
                     </Button>
@@ -377,6 +378,28 @@ export function DaySessionsDialog({
                             <Lock className="mr-1 h-4 w-4" />{t('lockShift')}
                           </Button>
                     )}
+                  </div>
+                  
+                  <div className="sm:hidden flex gap-2 mt-2 w-full">
+                    <Button className="flex-1" data-testid={`day-session-view-shift-${shift.id}-mobile`} onClick={() => onViewShift(shift)} size="sm" variant="outline">
+                      {t('viewShiftDetail')}
+                    </Button>
+                    <MobileActionMenu
+                      breakpoint="sm"
+                      actions={[
+                        ...( ['preparing', 'live', 'paused'].includes(shift.status) ? [{ key: 'live', label: t('openLiveMonitor'), icon: <Radio className="h-4 w-4" />, onClick: () => window.location.assign('/live') }] : [] ),
+                        ...( shift.status === 'completed' ? [{ key: 'report', label: t('openFinalReport'), icon: <FileText className="h-4 w-4" />, onClick: () => window.location.assign('/reports') }] : [] ),
+                        ...( currentUser && hasPermission(currentUser, 'shifts.edit') ? [
+                          { key: 'edit', label: t('editShift'), icon: <Pencil className="h-4 w-4" />, onClick: () => onEditShift(shift) },
+                          { key: 'manage', label: t('manageStaff'), icon: <UserPlus className="h-4 w-4" />, onClick: () => onViewShift(shift) }
+                        ] : [] ),
+                        ...( currentUser && hasPermission(currentUser, 'shifts.lock') && shift.status === 'scheduled' ? [
+                          shift.registration_locked
+                            ? { key: 'reopen', label: t('reopenShift'), icon: <LockOpen className="h-4 w-4" />, onClick: () => void runAction(`reopen-${shift.id}`, () => shiftService.reopen(shift.id), t('reopenShift')) }
+                            : { key: 'lock', label: t('lockShift'), icon: <Lock className="h-4 w-4" />, onClick: () => void runAction(`lock-${shift.id}`, () => shiftService.lock(shift.id), t('lockShift')) }
+                        ] : [] )
+                      ]}
+                    />
                   </div>
                 </CardContent>
               </Card>

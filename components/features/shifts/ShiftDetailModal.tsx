@@ -508,22 +508,22 @@ export function ShiftDetailActions({
   const canEdit = Boolean(onEdit && currentUser && hasPermission(currentUser, 'shifts.edit'))
   const canDelete = Boolean(currentUser && hasPermission(currentUser, 'shifts.delete'))
   return (
-    <DialogFooter className="flex w-full flex-wrap justify-end gap-2">
-      {canEdit ? (
-        <Button type="button" variant="outline" disabled={busy} onClick={onEdit} data-testid="edit-shift-detail">
-          <Pencil className="mr-2 h-4 w-4" />
-          {editLabel}
-        </Button>
-      ) : null}
+    <DialogFooter className="flex w-full flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-0 sm:space-x-2 mt-4">
+      <Button className="w-full sm:w-auto" type="button" variant="outline" disabled={busy} onClick={onClose} data-testid="close-shift-detail">
+        {closeLabel}
+      </Button>
       {canDelete ? (
-        <Button type="button" variant="outline" className="text-red-600" disabled={busy} onClick={onDelete} data-testid="delete-shift-detail">
+        <Button className="w-full sm:w-auto text-red-600" type="button" variant="outline" disabled={busy} onClick={onDelete} data-testid="delete-shift-detail">
           <Trash2 className="mr-2 h-4 w-4" />
           {deleteLabel}
         </Button>
       ) : null}
-      <Button type="button" variant="outline" disabled={busy} onClick={onClose} data-testid="close-shift-detail">
-        {closeLabel}
-      </Button>
+      {canEdit ? (
+        <Button className="w-full sm:w-auto" type="button" variant="outline" disabled={busy} onClick={onEdit} data-testid="edit-shift-detail">
+          <Pencil className="mr-2 h-4 w-4" />
+          {editLabel}
+        </Button>
+      ) : null}
     </DialogFooter>
   )
 }

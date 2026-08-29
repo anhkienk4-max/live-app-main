@@ -25,6 +25,7 @@ import {
   exportReportsToExcel,
   exportReportDetailToExcel,
 } from '@/lib/utils/excelUtils'
+import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -254,23 +255,37 @@ export function ReportsList() {
           <div className="flex items-center gap-2">
             <Button variant="outline" size="icon" onClick={() => setFilters(emptyFilters)} title={t('resetFilters')}><RotateCcw className="h-4 w-4" /></Button>
             {currentUser && hasPermission(currentUser, 'reports.export') && (
-              <DropdownMenu>
-                <DropdownMenuTrigger className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2">
-                  <Download className="mr-2 h-4 w-4" />{t('exportFilteredReports')}
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => exportReportsToExcel(filteredReports, exportContext)} disabled={!filteredReports.length}>
-                    <FileSpreadsheet className="mr-2 h-4 w-4" />{t('exportFilteredReports')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => void exportImages()} disabled={!filteredReports.length}>
-                    <FileImage className="mr-2 h-4 w-4" />{t('exportImageMetadata')}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={downloadReportTemplate}>
-                    <Download className="mr-2 h-4 w-4" />{t('downloadReportTemplate')}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <>
+                <div className="hidden md:block">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2">
+                      <Download className="mr-2 h-4 w-4" />{t('exportFilteredReports')}
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => exportReportsToExcel(filteredReports, exportContext)} disabled={!filteredReports.length}>
+                        <FileSpreadsheet className="mr-2 h-4 w-4" />{t('exportFilteredReports')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => void exportImages()} disabled={!filteredReports.length}>
+                        <FileImage className="mr-2 h-4 w-4" />{t('exportImageMetadata')}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={downloadReportTemplate}>
+                        <Download className="mr-2 h-4 w-4" />{t('downloadReportTemplate')}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <div className="md:hidden">
+                  <MobileActionMenu
+                    breakpoint="md"
+                    actions={[
+                      { key: 'export-reports', label: t('exportFilteredReports'), icon: <FileSpreadsheet className="h-4 w-4" />, onClick: () => exportReportsToExcel(filteredReports, exportContext), disabled: !filteredReports.length },
+                      { key: 'export-images', label: t('exportImageMetadata'), icon: <FileImage className="h-4 w-4" />, onClick: () => void exportImages(), disabled: !filteredReports.length },
+                      { key: 'download-template', label: t('downloadReportTemplate'), icon: <Download className="h-4 w-4" />, onClick: downloadReportTemplate }
+                    ]}
+                  />
+                </div>
+              </>
             )}
           </div>
         </div>

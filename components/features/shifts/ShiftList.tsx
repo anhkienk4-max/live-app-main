@@ -5,6 +5,7 @@ import { shiftService, brandService, platformService, campaignService, userServi
 import { templateService } from '@/lib/services/templateService'
 import { Shift, Brand, Platform, Campaign, User, DeletionImpact } from '@/lib/types/database.types'
 import { formatShiftTimeRange, ShiftTemplate } from '@/lib/utils/shiftUtils'
+import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { DataTable, Column } from '@/components/ui/data-table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -222,18 +223,28 @@ export function ShiftList() {
       header: 'Actions',
       accessor: (row) => (
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" aria-label={t('viewShiftDetail')} title={t('viewShiftDetail')} onClick={() => setDetailShift(row)} data-testid={`view-shift-${row.id}`}>
+          <Button className="hidden lg:flex" variant="ghost" size="icon" aria-label={t('viewShiftDetail')} title={t('viewShiftDetail')} onClick={() => setDetailShift(row)} data-testid={`view-shift-${row.id}`}>
             <Eye className="h-4 w-4" />
           </Button>
-          {canEdit && <Button variant="ghost" size="icon" aria-label="Edit shift" onClick={() => handleEdit(row)} data-testid={`edit-shift-${row.id}`}>
+          {canEdit && <Button className="hidden lg:flex" variant="ghost" size="icon" aria-label="Edit shift" onClick={() => handleEdit(row)} data-testid={`edit-shift-${row.id}`}>
             <Pencil className="h-4 w-4" />
           </Button>}
-          <Button variant="ghost" size="icon" onClick={() => handleDuplicate(row)} data-testid={`duplicate-shift-${row.id}`}>
+          <Button className="hidden lg:flex" variant="ghost" size="icon" aria-label="Duplicate" onClick={() => handleDuplicate(row)} data-testid={`duplicate-shift-${row.id}`}>
             <Copy className="h-4 w-4" />
           </Button>
-          {canDelete && <Button variant="ghost" size="icon" aria-label="Delete or cancel shift" title="Delete or cancel shift" onClick={() => void requestDelete([row.id])} data-testid={`delete-shift-${row.id}`}>
+          {canDelete && <Button className="hidden lg:flex" variant="ghost" size="icon" aria-label="Delete or cancel shift" title="Delete or cancel shift" onClick={() => void requestDelete([row.id])} data-testid={`delete-shift-${row.id}`}>
             <Trash2 className="h-4 w-4 text-red-600" />
           </Button>}
+          
+          <MobileActionMenu
+            breakpoint="lg"
+            actions={[
+              { key: 'view', label: t('viewShiftDetail'), icon: <Eye className="h-4 w-4" />, onClick: () => setDetailShift(row) },
+              ...(canEdit ? [{ key: 'edit', label: t('edit'), icon: <Pencil className="h-4 w-4" />, onClick: () => handleEdit(row) }] : []),
+              { key: 'dup', label: 'Duplicate', icon: <Copy className="h-4 w-4" />, onClick: () => handleDuplicate(row) },
+              ...(canDelete ? [{ key: 'del', label: t('delete'), icon: <Trash2 className="h-4 w-4" />, onClick: () => void requestDelete([row.id]), destructive: true }] : [])
+            ]}
+          />
         </div>
       )
     }
@@ -249,13 +260,18 @@ export function ShiftList() {
           <p className="text-gray-600 mt-1">Manage livestream schedules and assignments</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setIsImportExportOpen(true)}>
+          <Button className="hidden sm:flex" variant="outline" onClick={() => setIsImportExportOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
             Import/Export
           </Button>
+          <MobileActionMenu
+            breakpoint="sm"
+            actions={[{ key: 'import', label: 'Import/Export', icon: <Upload className="h-4 w-4" />, onClick: () => setIsImportExportOpen(true) }]}
+          />
           <Button onClick={handleCreate} data-testid="add-shift-btn">
             <Plus className="h-4 w-4 mr-2" />
-            Add Shift
+            <span className="hidden sm:inline">Add Shift</span>
+            <span className="sm:hidden">Add</span>
           </Button>
         </div>
       </div>
