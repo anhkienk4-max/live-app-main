@@ -726,10 +726,10 @@ export function ShiftDetailModal({
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="details">{t('additionalInfo')}</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="overview" className="space-y-4 pt-1">
-                <Card>
-                  <CardContent className="grid gap-5 pt-6 sm:grid-cols-2">
-                    <OverviewItem icon={<Calendar className="h-5 w-5" />} label={t('date')} testId="shift-detail-date">
+              <TabsContent value="overview" className="space-y-3 pt-1">
+                <Card className="shadow-none">
+                  <CardContent className="grid gap-4 pt-5 sm:grid-cols-2">
+                    <OverviewItem icon={<Calendar className="h-4 w-4" />} label={t('date')} testId="shift-detail-date">
                       <p className="font-semibold">
                         {safeFormatShiftDate(shift.date, 'PP', language, fallback)}
                       </p>
@@ -737,7 +737,7 @@ export function ShiftDetailModal({
                         {safeFormatShiftDate(shift.date, 'EEEE', language, fallback)}
                       </p>
                     </OverviewItem>
-                    <OverviewItem icon={<Clock className="h-5 w-5" />} label={t('time')} testId="shift-detail-time">
+                    <OverviewItem icon={<Clock className="h-4 w-4" />} label={t('time')} testId="shift-detail-time">
                       <p className="font-semibold">
                         {shift.start_time || fallback} – {shift.end_time || fallback}
                       </p>
@@ -747,19 +747,19 @@ export function ShiftDetailModal({
                         </p>
                       ) : null}
                     </OverviewItem>
-                    <OverviewItem icon={<MapPin className="h-5 w-5" />} label={t('studio')}>
+                    <OverviewItem icon={<MapPin className="h-4 w-4" />} label={t('studio')}>
                       <p className="font-semibold">{shift.studio?.trim() || fallback}</p>
                     </OverviewItem>
-                    <OverviewItem icon={<Link2 className="h-5 w-5" />} label={t('shiftIdentifier')}>
-                      <p className="break-all font-mono text-sm font-semibold">{shift.id || fallback}</p>
+                    <OverviewItem icon={<Link2 className="h-4 w-4" />} label={t('shiftIdentifier')}>
+                      <p className="break-all font-mono text-xs font-semibold">{shift.id || fallback}</p>
                     </OverviewItem>
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardContent className="pt-6">
-                    <h3 className="mb-4 text-sm font-semibold text-muted-foreground">{t('brandAndPlatform')}</h3>
-                    <dl className="grid gap-5 sm:grid-cols-2">
+                <Card className="shadow-none">
+                  <CardContent className="pt-5">
+                    <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('brandAndPlatform')}</h3>
+                    <dl className="grid gap-4 sm:grid-cols-2">
                       <DetailValue label={t('brand')} value={brand?.name || fallback} color={brand?.color} />
                       <DetailValue label={t('platform')} value={platform?.name || fallback} />
                       <DetailValue className="sm:col-span-2" label={t('campaign')} value={campaign?.name || fallback} />
@@ -767,9 +767,9 @@ export function ShiftDetailModal({
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardContent className="pt-6">
-                    <h3 className="mb-4 text-sm font-semibold text-muted-foreground">{t('team')}</h3>
+                <Card className="shadow-none">
+                  <CardContent className="pt-5">
+                    <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('team')}</h3>
                     <div className="grid gap-4 lg:grid-cols-3">
                       {operationalRoles.map(role => (
                         <RoleAssignments

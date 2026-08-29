@@ -197,15 +197,20 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
 
   return (
-    <div className="space-y-5">
-      <Card>
-        <CardContent className="grid gap-3 pt-5 md:grid-cols-3 lg:grid-cols-6">
-          <label className="text-xs font-medium">{t('date')}<Input className="mt-1" type="date" value={filters.date} onChange={event => setFilters(current => ({ ...current, date: event.target.value }))} /></label>
+    <div className="space-y-4">
+      <Card className="border-none shadow-sm bg-background p-1 sm:p-2">
+        <CardContent className="grid gap-2 pt-2 pb-2 md:grid-cols-3 lg:grid-cols-6">
+          <label className="text-xs font-medium">{t('date')}<Input className="mt-1 h-8 text-xs" type="date" value={filters.date} onChange={event => setFilters(current => ({ ...current, date: event.target.value }))} /></label>
           <FilterSelect label={t('brand')} value={filters.brand} onChange={value => setFilters(current => ({ ...current, brand: value }))} options={brands} />
           <FilterSelect label={t('platform')} value={filters.platform} onChange={value => setFilters(current => ({ ...current, platform: value }))} options={platforms} />
           <FilterSelect label={t('campaign')} value={filters.campaign} onChange={value => setFilters(current => ({ ...current, campaign: value }))} options={campaigns} />
-          <label className="text-xs font-medium">{t('role')}<Select value={filters.role} onValueChange={value => setFilters(current => ({ ...current, role: value }))}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{roles.map(role => <SelectItem key={role} value={role}>{t(role)}</SelectItem>)}</SelectContent></Select></label>
-          <div className="flex items-end"><Button className="w-full" variant="outline" onClick={() => setFilters(initialFilters)}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button></div>
+          <label className="text-xs font-medium">{t('role')}
+            <Select value={filters.role} onValueChange={value => setFilters(current => ({ ...current, role: value }))}>
+              <SelectTrigger className="mt-1 h-8 w-full text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="all">{t('all')}</SelectItem>{roles.map(role => <SelectItem key={role} value={role}>{t(role)}</SelectItem>)}</SelectContent>
+            </Select>
+          </label>
+          <div className="flex items-end"><Button size="sm" className="w-full h-8" variant="outline" onClick={() => setFilters(initialFilters)}><RotateCcw className="mr-2 h-3 w-3" />{t('resetFilters')}</Button></div>
         </CardContent>
       </Card>
 
@@ -221,8 +226,8 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
       )}
 
       {mode === 'open' && hasPermission(currentUser, 'shifts.approve_registration') && pendingApprovals.length > 0 && (
-        <Card className="border-amber-200">
-          <CardHeader><CardTitle className="text-base">{t('pending')} ({pendingApprovals.length})</CardTitle></CardHeader>
+        <Card className="border-amber-200 bg-amber-50/30 shadow-none">
+          <CardHeader className="py-3 px-4"><CardTitle className="text-sm font-semibold">{t('pending')} ({pendingApprovals.length})</CardTitle></CardHeader>
           <CardContent className="space-y-2">
             {pendingApprovals.map(registration => {
               const shift = shifts.find(candidate => candidate.id === registration.shift_id)
@@ -272,7 +277,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
       ) : viewMode === 'compact' ? (
         <CompactShiftList shifts={visibleShifts} capacities={capacities} registrations={registrations} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
       ) : (
-        <div className="grid grid-cols-1 gap-5 2xl:grid-cols-2 min-[1900px]:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2 min-[1900px]:grid-cols-3">
           {visibleShifts.map(shift => {
             const shiftRegistrations = registrations.filter(registration => registration.shift_id === shift.id)
             const mine = shiftRegistrations.filter(registration =>
@@ -281,8 +286,8 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
             )
             const fullyStaffed = (capacities[shift.id] || []).every(capacity => capacity.approved >= capacity.required)
             return (
-              <Card key={shift.id}>
-                <CardHeader className="pb-3">
+              <Card key={shift.id} className="shadow-sm border-border overflow-hidden">
+                <CardHeader className="p-4 pb-2 bg-muted/10 border-b">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <CardTitle className="text-lg">{shift.title || `${brandName(brands, shift.brand_id)} live`}</CardTitle>
@@ -292,15 +297,18 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                     <Badge variant={shift.registration_locked ? 'secondary' : 'outline'}>{fullyStaffed ? t('full') : shift.registration_locked ? t('closed') : t('openShifts')}</Badge>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <Button
-                    data-testid={`open-shift-detail-card-${shift.id}`}
-                    onClick={() => setDetailShift(shift)}
-                    size="sm"
-                    variant="outline"
-                  >
-                    {t('viewShiftDetail')}
-                  </Button>
+                <CardContent className="p-4 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <Button
+                      data-testid={`open-shift-detail-card-${shift.id}`}
+                      onClick={() => setDetailShift(shift)}
+                      size="sm"
+                      variant="secondary"
+                      className="h-8 text-xs font-medium"
+                    >
+                      {t('viewShiftDetail')}
+                    </Button>
+                  </div>
                   <div className="grid grid-cols-3 gap-2 text-sm">
                     <Info label={t('brand')} value={brandName(brands, shift.brand_id)} />
                     <Info label={t('platform')} value={platformName(platforms, shift.platform_id)} />
@@ -449,7 +457,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
 
 function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: Array<{ id: string; name: string }> }) {
   const { t } = useTranslation()
-  return <label className="text-xs font-medium">{label}<Select value={value} onValueChange={onChange}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{options.map(option => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}</SelectContent></Select></label>
+  return <label className="text-xs font-medium">{label}<Select value={value} onValueChange={onChange}><SelectTrigger className="mt-1 w-full h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{options.map(option => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}</SelectContent></Select></label>
 }
 
 function Info({ label, value }: { label: string; value: string }) {
