@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { PageShell } from '@/components/ui/archetypes'
 
 export function AuthLayout({ children, title, subtitle }: { children: React.ReactNode; title: string; subtitle: string }) {
   return (
@@ -29,7 +30,7 @@ export function AuthLayout({ children, title, subtitle }: { children: React.Reac
 
       {/* Form Side */}
       <div className="flex w-full lg:w-1/2 flex-col items-center justify-center p-4 sm:p-8 lg:p-12">
-        <div className="w-full max-w-sm sm:max-w-md flex flex-col space-y-6">
+        <PageShell archetype="auth" className="flex flex-col space-y-6">
           <div className="flex flex-col space-y-2 text-center lg:text-left">
             <div className="lg:hidden mx-auto mb-4 flex size-12 items-center justify-center rounded-xl bg-blue-600 shadow-md">
               <svg className="size-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -43,7 +44,7 @@ export function AuthLayout({ children, title, subtitle }: { children: React.Reac
           <div className="grid gap-6">
             {children}
           </div>
-        </div>
+        </PageShell>
       </div>
     </div>
   )
