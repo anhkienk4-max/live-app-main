@@ -150,6 +150,8 @@ test('explicit zero staffing is preserved while blank staffing defaults to one',
   const blankRow = [...scheduleRow]
   blankRow[6] = 'Blank staffing'
   blankRow[7] = 'Studio B'
+  blankRow[1] = '14:00'
+  blankRow[2] = '18:00'
   blankRow[8] = ''
   blankRow[9] = '   '
   blankRow[10] = null
@@ -415,17 +417,18 @@ test('duplicate semantics: same time different brand is valid', () => {
   assert.equal(result.warnings.length, 0)
 })
 
-test('duplicate semantics: same time/brand different studio is valid', () => {
+test('duplicate semantics: same slot with different studio is duplicate', () => {
   const rows = [
     withColumn(scheduleRow, 7, 'Studio A'),
     withColumn(scheduleRow, 7, 'Studio B'),
   ]
   const result = parseScheduleTabularData([englishHeader, ...rows].map(csvRow).join('\n'), 'string', maps)
   assert.equal(result.validRows, 2)
-  assert.equal(result.warnings.length, 0)
+  assert.equal(result.validShifts.length, 1)
+  assert.ok(result.warnings.some(warning => /already exists/.test(warning.message)))
 })
 
-test('duplicate semantics: true exact duplicate is warned', () => {
+test('duplicate semantics: same slot with same metadata is duplicate', () => {
   const result = parseScheduleTabularData(
     [englishHeader, scheduleRow, scheduleRow].map(csvRow).join('\n'),
     'string',
@@ -460,7 +463,7 @@ test('duplicate semantics: whitespace variation in studio is treated as duplicat
   assert.ok(result.warnings.some(warning => /already exists/.test(warning.message)))
 })
 
-test('duplicate semantics: same time/brand/studio different campaign is valid', () => {
+test('duplicate semantics: same slot with different campaign is duplicate', () => {
   const rows = [
     withColumn(scheduleRow, 5, 'World Cup'),
     withColumn(scheduleRow, 5, 'Summer Sale'),
@@ -468,6 +471,41 @@ test('duplicate semantics: same time/brand/studio different campaign is valid', 
   const withExtraCampaign = { ...maps, campaigns: new Map([['World Cup', 'campaign-1'], ['Summer Sale', 'campaign-2']]) }
   const result = parseScheduleTabularData([englishHeader, ...rows].map(csvRow).join('\n'), 'string', withExtraCampaign)
   assert.equal(result.validRows, 2)
+  assert.equal(result.validShifts.length, 1)
+  assert.ok(result.warnings.some(warning => /already exists/.test(warning.message)))
+})
+
+test('duplicate semantics: same slot with different campaign and studio is duplicate', () => {
+  const rows = [
+    withColumn(withColumn(scheduleRow, 5, 'World Cup'), 7, 'Studio A'),
+    withColumn(withColumn(scheduleRow, 5, 'Summer Sale'), 7, 'Studio B'),
+  ]
+  const withExtraCampaign = { ...maps, campaigns: new Map([['World Cup', 'campaign-1'], ['Summer Sale', 'campaign-2']]) }
+  const result = parseScheduleTabularData([englishHeader, ...rows].map(csvRow).join('\n'), 'string', withExtraCampaign)
+  assert.equal(result.validRows, 2)
+  assert.equal(result.validShifts.length, 1)
+  assert.ok(result.warnings.some(warning => /already exists/.test(warning.message)))
+})
+
+test('duplicate semantics: different time is a distinct shift', () => {
+  const rows = [
+    scheduleRow,
+    withColumn(withColumn(scheduleRow, 1, '10:00'), 2, '14:00'),
+  ]
+  const result = parseScheduleTabularData([englishHeader, ...rows].map(csvRow).join('\n'), 'string', maps)
+  assert.equal(result.validRows, 2)
+  assert.equal(result.validShifts.length, 2)
+  assert.equal(result.warnings.length, 0)
+})
+
+test('duplicate semantics: different platform is a distinct shift', () => {
+  const rows = [
+    withColumn(scheduleRow, 4, 'Shopee Live'),
+    withColumn(scheduleRow, 4, 'TikTok Shop'),
+  ]
+  const result = parseScheduleTabularData([englishHeader, ...rows].map(csvRow).join('\n'), 'string', maps)
+  assert.equal(result.validRows, 2)
+  assert.equal(result.validShifts.length, 2)
   assert.equal(result.warnings.length, 0)
 })
 

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 import type { Shift, ShiftRegistration, User } from '../lib/types/database.types.ts'
 import { isStaffedRegistration } from '../lib/services/supabaseShiftRegistrationService.ts'
@@ -150,6 +152,22 @@ test('3c. duplicate shift import deterministic, existing-shift matching does not
 test('3d. import retry/idempotency does not create duplicate operational records', () => {
   const entry = IDEMPOTENCY_MATRIX.find(e => e.operation === 'repeated import confirm')!
   assert.equal(entry.status, 'PARTIAL')
+})
+
+test('3e. Shift duplicate natural key is DB-protected at canonical slot level', () => {
+  const idempotency = IDEMPOTENCY_MATRIX.find(e => e.operation === 'duplicate create shift')!
+  assert.equal(idempotency.status, 'PROTECTED')
+  assert.match(idempotency.notes, /shifts_active_slot_uidx/i)
+  const integrity = CORE_INTEGRITY_MATRIX.find(e => e.invariant === 'duplicate import deterministic')!
+  assert.match(integrity.currentEnforcement, /shifts_active_slot_uidx/i)
+})
+
+test('3f. concurrent duplicate creates are serialized by the canonical unique index', () => {
+  const migrationPath = fileURLToPath(new URL('../supabase/migrations/20260814085659_p1c_shift_persistence.sql', import.meta.url))
+  const migration = readFileSync(migrationPath, 'utf8')
+  assert.match(migration, /create unique index shifts_active_slot_uidx/i)
+  assert.match(migration, /on public\.shifts \(brand_id, platform_id, date, start_time, end_time\)/i)
+  assert.match(migration, /where deleted_at is null and archived_at is null/i)
 })
 
 // 4. MASTER DATA REFERENCES — archive retains history

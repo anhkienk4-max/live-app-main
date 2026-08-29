@@ -304,24 +304,15 @@ const validIsoDate = (value: string) => {
 
 const validTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value)
 
-const normalizeDimension = (value: string | null | undefined) =>
-  (value ?? '')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .normalize('NFKC')
-    .toLocaleLowerCase()
-
 const sameShift = (
-  shift: Pick<Shift, 'date' | 'start_time' | 'end_time' | 'brand_id' | 'platform_id' | 'campaign_id' | 'studio'>,
-  candidate: Pick<Shift, 'date' | 'start_time' | 'end_time' | 'brand_id' | 'platform_id' | 'campaign_id' | 'studio'>,
+  shift: Pick<Shift, 'date' | 'start_time' | 'end_time' | 'brand_id' | 'platform_id'>,
+  candidate: Pick<Shift, 'date' | 'start_time' | 'end_time' | 'brand_id' | 'platform_id'>,
 ) =>
   shift.date === candidate.date &&
   shift.start_time === candidate.start_time &&
   shift.end_time === candidate.end_time &&
   shift.brand_id === candidate.brand_id &&
-  shift.platform_id === candidate.platform_id &&
-  normalizeDimension(shift.campaign_id) === normalizeDimension(candidate.campaign_id) &&
-  normalizeDimension(shift.studio) === normalizeDimension(candidate.studio)
+  shift.platform_id === candidate.platform_id
 
 export function parseScheduleRows(
   sourceRows: ScheduleSheetRow[],

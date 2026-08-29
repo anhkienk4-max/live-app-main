@@ -249,15 +249,15 @@ test('summarizeImportResult matches parser counts and flags duplicates', () => {
   assert.equal(summary.failed_rows, 0)
 })
 
-test('existing duplicate semantics remain intact', () => {
+test('batch duplicate semantics use the canonical slot key', () => {
   const result = parseScheduleTabularData(
     [englishHeader, scheduleRow, withColumn(scheduleRow, 7, 'Studio B')].map(csvRow).join('\n'),
     'string',
     maps,
   )
   assert.equal(result.validRows, 2)
-  assert.equal(result.warningRows, 0)
-  assert.equal(result.validShifts.length, 2)
+  assert.equal(result.warningRows, 1)
+  assert.equal(result.validShifts.length, 1)
 })
 
 test('duplicate error detection only accepts the shifts active-slot constraint', () => {

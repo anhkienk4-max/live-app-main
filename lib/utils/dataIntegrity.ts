@@ -155,7 +155,7 @@ export interface IdempotencyEntry {
   notes: string
 }
 export const IDEMPOTENCY_MATRIX: IdempotencyEntry[] = [
-  { operation: 'duplicate create shift', status: 'PARTIAL', notes: 'Excel duplicate_skipped deterministic, but no DB unique constraint on natural key' },
+  { operation: 'duplicate create shift', status: 'PROTECTED', notes: 'shifts_active_slot_uidx enforces the canonical brand/platform/date/start/end key for active shifts; import duplicate_skipped remains deterministic' },
   { operation: 'repeated approve registration', status: 'PROTECTED', notes: 'RPC approve_shift_registration is idempotent, second approve fails closed via status check' },
   { operation: 'repeated import confirm', status: 'PARTIAL', notes: 'import batch status previewed→confirmed guarded, but retry after network failure requires client retry with same batchId' },
   { operation: 'repeated Swap transition (approved→completed)', status: 'PROTECTED', notes: 'Supabase RPC checks status, terminal states throw' },
@@ -214,7 +214,7 @@ export const CORE_INTEGRITY_MATRIX: IntegrityMatrixEntry[] = [
   { domain: 'ShiftRegistration', invariant: 'cancelled/rejected not counted as staffed', currentEnforcement: 'isStaffedRegistration = approved|manually_assigned only', testCoverage: 'isStaffedRegistration helper', gapSeverity: 'P1', recommendedFix: 'Keep helper, no change' },
   { domain: 'ShiftRegistration', invariant: 'imported host_names not canonical', currentEnforcement: 'display metadata host_names vs canonical ShiftRegistration', testCoverage: 'staffing display vs registration', gapSeverity: 'P2', recommendedFix: 'Document, keep display not mutating' },
   { domain: 'Shift', invariant: 'start < end, cross-day detected', currentEnforcement: 'resolveShiftDateTime + isShiftTemporalValid', testCoverage: 'temporal sanity test', gapSeverity: 'P1', recommendedFix: 'Keep validation, document cross-day' },
-  { domain: 'Shift', invariant: 'duplicate import deterministic', currentEnforcement: 'Excel duplicate_skipped via existing-shift matching', testCoverage: 'schedule import tests', gapSeverity: 'P1', recommendedFix: 'Keep deterministic, no silent mutate' },
+  { domain: 'Shift', invariant: 'duplicate import deterministic', currentEnforcement: 'shifts_active_slot_uidx plus Excel duplicate_skipped matching', testCoverage: 'schedule import tests', gapSeverity: 'P1', recommendedFix: 'Keep canonical slot-level uniqueness and deterministic duplicate handling' },
   { domain: 'Swap', invariant: 'REPLACEMENT completed: old cancelled, replacement active, same shift/role', currentEnforcement: 'swap RPC + status checks', testCoverage: 'swap integrity contract', gapSeverity: 'P0', recommendedFix: 'Keep RPC, test replacement' },
   { domain: 'Swap', invariant: 'EXCHANGE completed: exactly swapped, no third', currentEnforcement: 'swap RPC', testCoverage: 'swap integrity contract', gapSeverity: 'P0', recommendedFix: 'Keep RPC' },
   { domain: 'Swap', invariant: 'MOVE not newly created (historical compatibility)', currentEnforcement: 'app blocks MOVE creation, only historical', testCoverage: 'swap mode check', gapSeverity: 'P1', recommendedFix: 'Keep block' },
