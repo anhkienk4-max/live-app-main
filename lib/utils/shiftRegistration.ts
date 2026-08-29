@@ -30,15 +30,15 @@ const isActiveRegistration = (registration: ShiftRegistration) =>
   registration.status === 'pending' || isStaffed(registration)
 
 const shiftsOverlap = (left: Shift, right: Shift) => {
-  const leftTime = resolveShiftDateTime(left.date, left.start_time, left.end_time)
-  const rightTime = resolveShiftDateTime(right.date, right.start_time, right.end_time)
+  const leftTime = resolveShiftDateTime(left.date, left.start_time, left.end_time, left.timezone)
+  const rightTime = resolveShiftDateTime(right.date, right.start_time, right.end_time, right.timezone)
   if (!leftTime?.valid || !rightTime?.valid) return false
   return leftTime.startAt < rightTime.endAt && rightTime.startAt < leftTime.endAt
 }
 
 const isShiftClosed = (shift: Shift, now: Date) => {
   if (shift.status !== 'scheduled' || shift.registration_locked) return true
-  const endAt = shift.end_at ? new Date(shift.end_at) : resolveShiftDateTime(shift.date, shift.start_time, shift.end_time)?.endAt
+  const endAt = shift.end_at ? new Date(shift.end_at) : resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)?.endAt
   if (endAt && !Number.isNaN(endAt.getTime()) && endAt <= now) return true
   if (shift.registration_cutoff_at) {
     const cutoff = new Date(shift.registration_cutoff_at)

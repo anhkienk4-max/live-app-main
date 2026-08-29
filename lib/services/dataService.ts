@@ -32,7 +32,7 @@ import {
 } from '@/lib/types/database.types'
 import { buildDashboardOcrReviewFromRecognition, parseDashboardOcrText } from '@/lib/utils/ocrMetrics'
 import { recognizeDashboardImage } from '@/lib/services/imageOcrService'
-import { DEFAULT_REQUIRED_STAFF_COUNT, detectConflicts, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
+import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE, DEFAULT_REQUIRED_STAFF_COUNT, detectConflicts, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
 import {
   normalizeStaffingDisplayNames,
   toCanonicalScheduleImportPreviewRow,
@@ -249,8 +249,8 @@ const audit = (
   related_records: options?.relatedRecords,
   entity_exists: options?.entityExists,
 })
-const shiftStartAt = (shift: Shift) => resolveShiftDateTime(shift.date, shift.start_time, shift.end_time)?.startAt ?? new Date(Number.NaN)
-const shiftEndAt = (shift: Shift) => resolveShiftDateTime(shift.date, shift.start_time, shift.end_time)?.endAt ?? new Date(Number.NaN)
+const shiftStartAt = (shift: Shift) => resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)?.startAt ?? new Date(Number.NaN)
+const shiftEndAt = (shift: Shift) => resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)?.endAt ?? new Date(Number.NaN)
 const shiftsOverlap = (left: Shift, right: Shift) =>
   shiftStartAt(left) < shiftEndAt(right) && shiftEndAt(left) > shiftStartAt(right)
 
@@ -1142,7 +1142,8 @@ export const shiftService = {
       })
       return persisted
     }
-    const dateTime = shiftDateTimeFields(data.date, data.start_time, data.end_time)
+    const timezone = data.timezone || DEFAULT_BUSINESS_TIMEZONE
+    const dateTime = shiftDateTimeFields(data.date, data.start_time, data.end_time, timezone)
     if (!dateTime) throw new Error('Shift date or duration is invalid.')
     const requiredHostCount = normalizeCapacity(data.required_host_count, operationalSettings.default_host_count)
     const requiredSupportCount = normalizeCapacity(data.required_support_count, operationalSettings.default_support_count)
@@ -1154,6 +1155,7 @@ export const shiftService = {
       registration_locked: false,
       allow_multi_role: operationalSettings.allow_multi_role_per_shift,
       ...data,
+      timezone,
       host_names: data.host_names ?? [],
       assistant_names: data.assistant_names ?? [],
       technical_names: data.technical_names ?? [],
@@ -1249,7 +1251,8 @@ export const shiftService = {
     if (index === -1) return Promise.resolve(null)
     const before = { ...shifts[index] }
     const candidate = { ...shifts[index], ...data }
-    const dateTime = shiftDateTimeFields(candidate.date, candidate.start_time, candidate.end_time)
+    const timezone = candidate.timezone || DEFAULT_BUSINESS_TIMEZONE
+    const dateTime = shiftDateTimeFields(candidate.date, candidate.start_time, candidate.end_time, timezone)
     if (!dateTime) throw new Error('Shift date or duration is invalid.')
     const requiredHostCount = normalizeCapacity(candidate.required_host_count, operationalSettings.default_host_count)
     const requiredSupportCount = normalizeCapacity(candidate.required_support_count, operationalSettings.default_support_count)
@@ -1259,6 +1262,7 @@ export const shiftService = {
     }
     shifts[index] = {
       ...candidate,
+      timezone,
       required_host_count: requiredHostCount,
       required_support_count: requiredSupportCount,
       required_technical_count: requiredTechnicalCount,
@@ -1481,7 +1485,7 @@ export const shiftService = {
   },
 
   async getToday(): Promise<Shift[]> {
-    const today = new Date().toISOString().split('T')[0]
+    const today = businessLocalDate()
     return this.getByDate(today)
   },
 
@@ -3574,7 +3578,7 @@ export const settingsService = {
 // Dashboard Stats Service
 export const statsService = {
   async getDashboardStats() {
-    const today = new Date().toISOString().split('T')[0]
+    const today = businessLocalDate()
     const activeDataShifts = shifts.filter(shift => !shift.deleted_at)
     const todayShifts = activeDataShifts.filter(s => s.date === today)
     const liveShifts = activeDataShifts.filter(s => s.status === 'live')

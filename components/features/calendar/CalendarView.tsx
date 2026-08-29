@@ -42,6 +42,7 @@ import { useTranslation } from '@/lib/i18n'
 import { useToast } from '@/components/ui/toast'
 import { enUS, vi } from 'date-fns/locale'
 import { pendingRegistrationsInScope, shiftsInCalendarScope } from '@/lib/utils/calendarStaffingApproval'
+import { businessLocalDate } from '@/lib/utils/shiftUtils'
 import {
   buildScheduleExportRows,
   buildScheduleExportFilename,
@@ -189,7 +190,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   }, [shifts, filters, searchTerm, brands, platforms, registrations])
 
   const stats = React.useMemo(() => {
-    const today = format(new Date(), 'yyyy-MM-dd')
+    const today = businessLocalDate()
     return {
       total: filteredShifts.length,
       running: filteredShifts.filter(s => s.status === 'live').length,
