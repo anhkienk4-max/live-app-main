@@ -1,11 +1,13 @@
 // scripts/production-smoke.ts
-// Production Smoke command — read-only, no writes, no mock fallback.
+// Production Smoke command — read-only, unauthenticated, no writes, no mock fallback.
+// Unauthenticated smoke validates auth redirects and env guards only;
+// it does NOT equal full 3-role production validation (that requires E2E UAT with creds).
 // Usage:
 //   E2E_BASE_URL=https://your-production.example SMOKE_TARGET=production \
 //   node --import tests/typescript-alias-loader.mjs scripts/production-smoke.ts
 // Optional env-driven identities (no secrets hardcoded):
-//   E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD etc. for authenticated checks.
-// Without creds, runs unauthenticated redirect checks only.
+//   E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD etc. — NOT used by this unauth smoke;
+//   use e2e/core-v1-3role.uat.spec.ts for credentialed 3-role UAT.
 
 type SmokeResult = { label: string; area: string; role: string; passed: boolean; details?: string }
 
