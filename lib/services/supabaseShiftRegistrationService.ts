@@ -117,7 +117,11 @@ export class RegistrationRequestError extends Error {
 
 function requestError(operation: string, error: SupabaseErrorShape): RegistrationRequestError {
   const message = error.message?.trim() || `Supabase ${operation} failed.`
-  const code = message.includes('STALE_WRITE') ? 'STALE_WRITE' : error.code || 'REGISTRATION_REQUEST_FAILED'
+  const code = message.includes('STALE_WRITE')
+    ? 'STALE_WRITE'
+    : message.includes('EXPECTED_VERSION_REQUIRED')
+      ? 'EXPECTED_VERSION_REQUIRED'
+      : error.code || 'REGISTRATION_REQUEST_FAILED'
   return new RegistrationRequestError(message, code)
 }
 

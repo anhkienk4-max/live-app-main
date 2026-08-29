@@ -65,7 +65,15 @@ function normalizeApprovalHistory(value: unknown): SwapRequest['approval_history
 export class SwapRequestError extends Error {
   constructor(message: string, public readonly code = 'SWAP_REQUEST_FAILED') { super(message); this.name='SwapRequestError' }
 }
-function requestError(op: string, e: SupabaseErrorShape): SwapRequestError { const message = e.message?.trim() || `Supabase ${op} failed.`; return new SwapRequestError(message, message.includes('STALE_WRITE') ? 'STALE_WRITE' : e.code || 'SWAP_REQUEST_FAILED') }
+function requestError(op: string, e: SupabaseErrorShape): SwapRequestError {
+  const message = e.message?.trim() || `Supabase ${op} failed.`
+  const code = message.includes('STALE_WRITE')
+    ? 'STALE_WRITE'
+    : message.includes('EXPECTED_VERSION_REQUIRED')
+      ? 'EXPECTED_VERSION_REQUIRED'
+      : e.code || 'SWAP_REQUEST_FAILED'
+  return new SwapRequestError(message, code)
+}
 function swapFromRow(row: NullableSwapRow): SwapRequest {
   return {
     id: row.id as string,

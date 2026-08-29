@@ -105,7 +105,11 @@ export type ShiftStaffingLabels = Required<Pick<
 
 function requestError(operation: string, error: SupabaseErrorShape): ShiftRequestError {
   const message = error.message?.trim() || `Supabase ${operation} failed.`
-  const code = message.includes('STALE_WRITE') ? 'STALE_WRITE' : error.code || 'SHIFT_REQUEST_FAILED'
+  const code = message.includes('STALE_WRITE')
+    ? 'STALE_WRITE'
+    : message.includes('EXPECTED_VERSION_REQUIRED')
+      ? 'EXPECTED_VERSION_REQUIRED'
+      : error.code || 'SHIFT_REQUEST_FAILED'
   return new ShiftRequestError(message, code)
 }
 
