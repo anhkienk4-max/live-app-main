@@ -911,6 +911,7 @@ const en = {
   navNotifications: 'Notifications',
   auditHistory: 'Audit History',
   moreMenu: 'More',
+  navMain: 'Main navigation',
 } as const
 
 const vi: Record<keyof typeof en, string> = {
@@ -1818,6 +1819,7 @@ const vi: Record<keyof typeof en, string> = {
   navNotifications: 'Thông báo',
   auditHistory: 'Lịch sử kiểm toán',
   moreMenu: 'Thêm',
+  navMain: 'Thanh điều hướng chính',
 }
 
 const dictionary = { en, vi }

@@ -36,7 +36,7 @@ export function BottomNav() {
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border md:hidden pb-safe"
-      aria-label={t('moreMenu')}
+      aria-label={t('navMain')}
     >
       <div className="grid grid-cols-5 h-16">
         {primaryNav.map((item) => {
