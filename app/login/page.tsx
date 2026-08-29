@@ -124,13 +124,13 @@ export default function LoginPage() {
           disabled={true}
           variant="outline"
           className="h-11 w-full bg-white text-zinc-950 opacity-70 hover:bg-zinc-50"
-          title="Google Sign-In is not currently configured in the Supabase backend."
+          title={t('googleAuthHelp')}
         >
           <Globe className="mr-2 size-5" />
           {t('continueWithGoogle')}
         </Button>
         <p className="text-center text-xs text-muted-foreground">
-          Google Sign-In requires backend configuration.
+          {t('googleAuthMissing')}
         </p>
       </div>
 
@@ -157,6 +157,8 @@ export default function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoComplete="email"
+            aria-invalid={Boolean(error)}
             className="h-11"
             data-testid="email-input"
           />
@@ -166,7 +168,7 @@ export default function LoginPage() {
             <label htmlFor="password" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
               {t('password')}
             </label>
-            {mockMode && (
+            {mockMode ? (
               <button 
                 type="button" 
                 onClick={() => setError(t('passwordResetMockHelp'))}
@@ -174,6 +176,13 @@ export default function LoginPage() {
               >
                 {t('forgotPassword')}
               </button>
+            ) : (
+              <Link 
+                href="/forgot-password"
+                className="text-sm font-medium text-blue-600 hover:text-blue-500"
+              >
+                {t('forgotPassword')}
+              </Link>
             )}
           </div>
           <div className="relative">
@@ -184,6 +193,8 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              autoComplete="current-password"
+              aria-invalid={Boolean(error)}
               className="h-11 pr-11"
               data-testid="password-input"
             />
@@ -210,11 +221,9 @@ export default function LoginPage() {
       </form>
 
       <div className="text-center text-sm text-muted-foreground">
-        {mockMode && (
-          <p>
-            {t('noAccount')} <Link className="font-semibold text-blue-600 hover:text-blue-500" href="/register">{t('signUp')}</Link>
-          </p>
-        )}
+        <p>
+          {t('noAccount')} <Link className="font-semibold text-blue-600 hover:text-blue-500" href="/register">{t('signUp')}</Link>
+        </p>
       </div>
 
       <div className="mt-8 flex justify-center">

@@ -906,6 +906,8 @@ const en = {
   visionOcrDisable: 'Disable AI OCR',
   visionOcrClearConfiguration: 'Clear non-secret configuration',
   visionOcrMockDevelopmentOnly: 'The mock provider is available only in explicit development or test configuration.',
+  googleAuthMissing: 'Google Sign-In requires backend configuration.',
+  googleAuthHelp: 'Google Sign-In is not currently configured in the Supabase backend.',
 } as const
 
 const vi: Record<keyof typeof en, string> = {
@@ -1807,7 +1809,9 @@ const vi: Record<keyof typeof en, string> = {
   visionOcrTestMock: 'Kiểm tra nhà cung cấp mock',
   visionOcrDisable: 'Tắt OCR AI',
   visionOcrClearConfiguration: 'Xóa cấu hình không chứa bí mật',
-  visionOcrMockDevelopmentOnly: 'Nhà cung cấp mock chỉ khả dụng khi được bật rõ ràng trong môi trường phát triển hoặc kiểm thử.',
+  visionOcrMockDevelopmentOnly: 'Nhà cung cấp giả lập chỉ khả dụng trong cấu hình phát triển hoặc thử nghiệm.',
+  googleAuthMissing: 'Đăng nhập Google yêu cầu cấu hình backend.',
+  googleAuthHelp: 'Đăng nhập Google hiện chưa được cấu hình trong backend Supabase.',
 }
 
 const dictionary = { en, vi }
