@@ -278,7 +278,12 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
         updateStaffingLabels: async (shiftId, labels) => {
           // Use dataService directly to ensure both mock and Supabase paths are covered
           // and to update the in-memory projection for subsequent reconciliation.
-          const updated = await shiftService.updateStaffingLabels(shiftId, labels)
+          const updated = await shiftService.updateStaffingLabels(
+            shiftId,
+            labels,
+            undefined,
+            existingShifts.find(shift => shift.id === shiftId)?.version,
+          )
           if (updated) setExistingShifts(prev => prev.map(s => s.id === updated.id ? updated : s))
           return updated
         },

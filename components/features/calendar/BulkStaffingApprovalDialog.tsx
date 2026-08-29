@@ -184,6 +184,13 @@ export function BulkStaffingApprovalDialog({
         selectedActionableIds,
         action,
         currentUser.id,
+        undefined,
+        Object.fromEntries(
+          selectedActionableIds.map(id => [
+            id,
+            registrations.find(registration => registration.id === id)?.version ?? 1,
+          ]),
+        ),
       )
       setResults(new Map(reviewResults.map(result => [result.registration_id, result])))
       const succeeded = reviewResults.filter(result => result.success).length

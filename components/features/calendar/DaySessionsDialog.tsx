@@ -263,7 +263,7 @@ export function DaySessionsDialog({
                               disabled={Boolean(busyAction)}
                               onClick={() => void runAction(
                                 `approve-${registration.id}`,
-                                () => shiftRegistrationService.approve(registration.id, currentUser.id),
+                                () => shiftRegistrationService.approve(registration.id, currentUser.id, undefined, registration.version),
                                 t('registrationApproved'),
                               )}
                               size="xs"
@@ -274,7 +274,7 @@ export function DaySessionsDialog({
                               disabled={Boolean(busyAction)}
                               onClick={() => void runAction(
                                 `reject-${registration.id}`,
-                                () => shiftRegistrationService.reject(registration.id, currentUser.id),
+                                () => shiftRegistrationService.reject(registration.id, currentUser.id, undefined, registration.version),
                                 t('rejected'),
                               )}
                               size="xs"
@@ -327,7 +327,7 @@ export function DaySessionsDialog({
                               disabled={Boolean(busyAction) || Boolean(shift.registration_locked)}
                               onClick={() => void runAction(
                                 `cancel-${registration.id}`,
-                                () => shiftRegistrationService.cancel(registration.id, currentUser!.id),
+                                () => shiftRegistrationService.cancel(registration.id, currentUser!.id, undefined, registration.version),
                                 t('registrationCancelled'),
                               )}
                               size="sm"
@@ -355,7 +355,7 @@ export function DaySessionsDialog({
                             disabled={Boolean(busyAction)}
                             onClick={() => void runAction(
                               `reopen-${shift.id}`,
-                              () => shiftService.reopen(shift.id),
+                              () => shiftService.reopen(shift.id, undefined, shift.version),
                               t('reopenShift'),
                             )}
                             size="sm"
@@ -367,7 +367,7 @@ export function DaySessionsDialog({
                             disabled={Boolean(busyAction)}
                             onClick={() => void runAction(
                               `lock-${shift.id}`,
-                              () => shiftService.lock(shift.id),
+                              () => shiftService.lock(shift.id, undefined, shift.version),
                               t('lockShift'),
                             )}
                             size="sm"

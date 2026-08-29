@@ -249,6 +249,7 @@ export interface SupabaseShiftRegistrationRepository {
     registrationIds: string[],
     action: ShiftRegistrationReviewAction,
     notes?: string,
+    expectedVersions?: Record<string, number>,
   ): Promise<ShiftRegistrationReviewResult[]>
   assignManually(shiftId: string, userId: string, role: OperationalRole, notes?: string, expectedVersion?: number): Promise<ShiftRegistration>
   assignImported(
@@ -385,11 +386,12 @@ export function createSupabaseShiftRegistrationRepository(
       )
     },
 
-    async bulkReview(registrationIds, action, notes) {
+    async bulkReview(registrationIds, action, notes, expectedVersions) {
       const result = await client.rpc('bulk_review_shift_registrations', {
         p_registration_ids: registrationIds,
         p_action: action,
         p_notes: notes ?? null,
+        p_expected_versions: expectedVersions ?? {},
       })
       return optionalRows('bulk registration review', result)
         .map(rawRow => rawRow as unknown as BulkReviewRow)

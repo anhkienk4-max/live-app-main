@@ -620,7 +620,7 @@ export function ShiftDetailModal({
   const handleDelete = async (reason: string) => {
     if (!currentUser) return
     try {
-      await shiftService.remove(shift.id, currentUser.id, reason)
+      await shiftService.remove(shift.id, currentUser.id, reason, shift.version)
       toast({
         title: deleteImpact?.action === 'delete' ? t('shiftDeleted') : t('shiftCancelled'),
         description: deleteImpact?.consequence,
@@ -652,7 +652,7 @@ export function ShiftDetailModal({
   const saveStaffingLabels = async (labels: ShiftStaffingLabelValues) => {
     if (!currentUser) throw new Error(t('permissionDenied'))
     try {
-      const updated = await shiftService.updateStaffingLabels(shift.id, labels, currentUser.id)
+      const updated = await shiftService.updateStaffingLabels(shift.id, labels, currentUser.id, shift.version)
       if (!updated) throw new Error(t('validationError'))
       toast({ title: t('success'), description: t('shiftUpdated'), variant: 'success' })
       onUpdate()
@@ -681,6 +681,7 @@ export function ShiftDetailModal({
         importedName,
         matchMethod,
         currentUser.id,
+        shift.version,
       ),
       t('staffIdentityAssigned'),
     )
@@ -868,7 +869,7 @@ export function ShiftDetailModal({
                             <SelectContent>{users.filter(user => user.status === 'active' && user.operational_roles?.includes(selectedRole)).map(user => <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>)}</SelectContent>
                           </Select>
                         </label>
-                        <Button disabled={busy || !selectedStaff} onClick={() => runStaffingAction(() => shiftRegistrationService.assignManually(shift.id, selectedStaff, selectedRole, currentUser.id), t('registrationApproved'))}>
+                        <Button disabled={busy || !selectedStaff} onClick={() => runStaffingAction(() => shiftRegistrationService.assignManually(shift.id, selectedStaff, selectedRole, currentUser.id, shift.version), t('registrationApproved'))}>
                           <UserPlus className="mr-2 h-4 w-4" />{t('assignStaff')}
                         </Button>
                       </div>
@@ -927,8 +928,8 @@ export function ShiftDetailModal({
                   ) : null}
                   {currentUser && hasPermission(currentUser, 'shifts.lock') ? (
                     isLocked
-                      ? <Button variant="outline" disabled={busy || shift.status !== 'scheduled'} onClick={() => runStaffingAction(() => shiftService.reopen(shift.id), t('reopenShift'))}><LockOpen className="mr-2 h-4 w-4" />{t('reopenShift')}</Button>
-                      : <Button variant="outline" disabled={busy} onClick={() => runStaffingAction(() => shiftService.lock(shift.id), t('lockShift'))}><Lock className="mr-2 h-4 w-4" />{t('lockShift')}</Button>
+                      ? <Button variant="outline" disabled={busy || shift.status !== 'scheduled'} onClick={() => runStaffingAction(() => shiftService.reopen(shift.id, undefined, shift.version), t('reopenShift'))}><LockOpen className="mr-2 h-4 w-4" />{t('reopenShift')}</Button>
+                      : <Button variant="outline" disabled={busy} onClick={() => runStaffingAction(() => shiftService.lock(shift.id, undefined, shift.version), t('lockShift'))}><Lock className="mr-2 h-4 w-4" />{t('lockShift')}</Button>
                   ) : null}
                 </div>
               </TabsContent>

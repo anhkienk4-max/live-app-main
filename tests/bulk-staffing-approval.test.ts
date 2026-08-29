@@ -21,6 +21,10 @@ const migration = readFileSync(
   new URL('../supabase/migrations/20260824120000_bulk_staffing_approval.sql', import.meta.url),
   'utf8',
 )
+const p1bMigration = readFileSync(
+  new URL('../supabase/migrations/20260829130000_core_v1_data_integrity_p1b.sql', import.meta.url),
+  'utf8',
+)
 const calendarSource = readFileSync(
   new URL('../components/features/calendar/CalendarView.tsx', import.meta.url),
   'utf8',
@@ -168,8 +172,9 @@ test('Supabase bulk repository maps approve one, approve multiple and per-row fa
   } as unknown as SupabaseClient
   const repository = createSupabaseShiftRegistrationRepository(client)
 
-  const one = await repository.bulkReview(['reg-1'], 'approve')
+  const one = await repository.bulkReview(['reg-1'], 'approve', undefined, { 'reg-1': 3 })
   assert.equal(one[0].registration?.status, 'approved')
+  assert.deepEqual(calls[0].args.p_expected_versions, { 'reg-1': 3 })
   const multiple = await repository.bulkReview(['reg-2', 'reg-3'], 'approve')
   assert.equal(multiple[0].success, true)
   assert.equal(multiple[1].success, false)
@@ -236,7 +241,10 @@ test('canonical approval rechecks active role, capacity and conflicts before mut
 
 test('bulk RPC is authenticated-only, fail-closed and preserves canonical projections', () => {
   assert.match(migration, /revoke all on function public\.bulk_review_shift_registrations\(text\[\], text, text\) from public, anon;/)
-  assert.match(migration, /grant execute on function public\.bulk_review_shift_registrations\(text\[\], text, text\) to authenticated;/)
+  assert.match(p1bMigration, /revoke all on function public\.bulk_review_shift_registrations\(text\[\], text, text, jsonb\) from public, anon;/)
+  assert.match(p1bMigration, /grant execute on function public\.bulk_review_shift_registrations\(text\[\], text, text, jsonb\) to authenticated;/)
+  assert.match(p1bMigration, /p_expected_versions jsonb/)
+  assert.match(p1bMigration, /EXPECTED_VERSION_REQUIRED/)
   assert.doesNotMatch(migration, /service_role/)
   assert.doesNotMatch(migration, /p_actor|p_user_id/)
   assert.match(migration, /refresh_shift_registration_lock/)

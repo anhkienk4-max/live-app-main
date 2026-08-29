@@ -118,7 +118,7 @@ export function AuditHistory() {
   const restore = async (reason: string) => {
     if (!currentUser || !restoreTarget) return
     try {
-      await lifecycleService.restore(restoreTarget.entity_type, restoreTarget.entity_id, currentUser.id, reason)
+      await lifecycleService.restore(restoreTarget.entity_type, restoreTarget.entity_id, currentUser.id, reason, restoreTarget.version)
       toast({ title: t('restored'), description: restoreTarget.entity_name, variant: 'success' })
       setRestoreTarget(null)
       await load()

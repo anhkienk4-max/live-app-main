@@ -17,12 +17,17 @@ test('P1-B migration adds server-controlled revisions to operational entities', 
     assert.match(migration, new RegExp(`create trigger ${table}_bump_concurrency_version`, 'i'))
   }
   assert.match(migration, /message = 'STALE_WRITE'/i)
+  assert.match(migration, /message = 'EXPECTED_VERSION_REQUIRED'/i)
   assert.match(migration, /p_expected_version integer/i)
 })
 
 test('P1-B expected revision mismatch is deterministic and non-mutating', () => {
   assert.doesNotThrow(() => assertExpectedVersion('Shift', 4, 4))
   assert.doesNotThrow(() => assertExpectedVersion('Shift', undefined, undefined))
+  assert.throws(
+    () => assertExpectedVersion('Shift', 4, null),
+    error => error instanceof Error && error.message.startsWith('EXPECTED_VERSION_REQUIRED'),
+  )
   assert.throws(
     () => assertExpectedVersion('Shift', 5, 4),
     error => error instanceof Error && error.message.startsWith('STALE_WRITE'),
@@ -61,4 +66,5 @@ test('P1-B server contract exposes revision guards on every protected RPC family
     assert.match(migration, new RegExp(`create or replace function public\\.${name}\\([\\s\\S]*p_expected_version integer`, 'i'), name)
     assert.match(migration, new RegExp(`grant execute on function public\\.${name}\\([\\s\\S]*integer\\) to authenticated`, 'i'), name)
   }
+  assert.match(migration, /bulk_review_shift_registrations\(\s*p_registration_ids text\[\],[\s\S]*p_expected_versions jsonb/i)
 })

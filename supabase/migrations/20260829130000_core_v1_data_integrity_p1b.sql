@@ -67,7 +67,13 @@ security invoker
 set search_path = ''
 as $$
 begin
-  if p_expected_version is not null and p_expected_version <> p_actual_version then
+  if p_expected_version is null or p_expected_version < 1 then
+    raise exception using
+      errcode = 'P0001',
+      message = 'EXPECTED_VERSION_REQUIRED',
+      detail = pg_catalog.format('%s mutations require the positive revision that was read by the caller', p_entity);
+  end if;
+  if p_expected_version <> p_actual_version then
     raise exception using
       errcode = 'P0001',
       message = 'STALE_WRITE',
@@ -335,3 +341,126 @@ grant execute on function public.respond_shift_swap_request(text, text, text, in
 grant execute on function public.reject_shift_swap_request(text, text, integer) to authenticated;
 grant execute on function public.cancel_own_shift_swap_request(text, text, integer) to authenticated;
 grant execute on function public.approve_shift_swap_request(text, text, integer) to authenticated;
+
+-- Bulk registration review is revision-guarded per row.  The original
+-- three-argument overload remains available only to SECURITY DEFINER callers;
+-- authenticated clients must provide the snapshot version for every row.
+create or replace function public.bulk_review_shift_registrations(
+  p_registration_ids text[],
+  p_action text,
+  p_notes text,
+  p_expected_versions jsonb
+)
+returns table (
+  registration_id text,
+  review_action text,
+  success boolean,
+  error_code text,
+  error_message text,
+  reviewed_registration jsonb
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  input_id text;
+  expected_text text;
+  expected_version integer;
+  current_registration public.shift_registrations;
+  valid_ids text[] := array[]::text[];
+  processed_ids text[] := array[]::text[];
+begin
+  perform private.require_shift_actor(true);
+
+  if p_action is null or p_action not in ('approve', 'reject') then
+    raise exception using errcode = '22023', message = 'REGISTRATION_REVIEW_ACTION_INVALID';
+  end if;
+  if p_registration_ids is null or cardinality(p_registration_ids) = 0 then
+    raise exception using errcode = '22023', message = 'REGISTRATION_SELECTION_REQUIRED';
+  end if;
+  if cardinality(p_registration_ids) > 100 then
+    raise exception using errcode = '22023', message = 'REGISTRATION_SELECTION_LIMIT_EXCEEDED';
+  end if;
+  if p_expected_versions is null or jsonb_typeof(p_expected_versions) <> 'object' then
+    raise exception using errcode = 'P0001', message = 'EXPECTED_VERSION_REQUIRED';
+  end if;
+
+  -- Match the existing bulk RPC lock order before checking any row version.
+  perform 1
+  from public.shifts as shift
+  where shift.id in (
+    select distinct registration.shift_id
+    from public.shift_registrations as registration
+    where registration.id = any(p_registration_ids)
+  )
+  order by shift.id
+  for update;
+
+  perform 1
+  from public.shift_registrations as registration
+  where registration.id = any(p_registration_ids)
+  order by registration.id
+  for update;
+
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(staff.user_id, 91731))
+  from (
+    select distinct registration.user_id
+    from public.shift_registrations as registration
+    where registration.id = any(p_registration_ids)
+    order by registration.user_id
+  ) as staff;
+
+  foreach input_id in array p_registration_ids loop
+    input_id := btrim(coalesce(input_id, ''));
+    if input_id = '' or input_id = any(processed_ids) then
+      continue;
+    end if;
+    processed_ids := array_append(processed_ids, input_id);
+    registration_id := input_id;
+    review_action := p_action;
+    select * into current_registration
+    from public.shift_registrations
+    where id = input_id;
+    if not found then
+      success := false;
+      error_code := 'REGISTRATION_NOT_FOUND';
+      error_message := 'REGISTRATION_NOT_FOUND';
+      reviewed_registration := null;
+      return next;
+      continue;
+    end if;
+
+    expected_text := p_expected_versions ->> input_id;
+    begin
+      if expected_text is null or expected_text !~ '^[1-9][0-9]*$' then
+        raise exception using errcode = 'P0001', message = 'EXPECTED_VERSION_REQUIRED';
+      end if;
+      expected_version := expected_text::integer;
+      perform private.assert_expected_version('ShiftRegistration', expected_version, current_registration.version);
+      valid_ids := array_append(valid_ids, input_id);
+    exception when others then
+      success := false;
+      error_code := case
+        when sqlerrm in ('EXPECTED_VERSION_REQUIRED', 'STALE_WRITE') then sqlerrm
+        else sqlstate
+      end;
+      error_message := case
+        when sqlerrm in ('EXPECTED_VERSION_REQUIRED', 'STALE_WRITE') then sqlerrm
+        else 'REGISTRATION_REVIEW_FAILED'
+      end;
+      reviewed_registration := null;
+      return next;
+    end;
+  end loop;
+
+  if cardinality(valid_ids) > 0 then
+    return query
+      select * from public.bulk_review_shift_registrations(valid_ids, p_action, p_notes);
+  end if;
+end;
+$$;
+
+revoke all on function public.bulk_review_shift_registrations(text[], text, text) from public, anon, authenticated;
+revoke all on function public.bulk_review_shift_registrations(text[], text, text, jsonb) from public, anon;
+grant execute on function public.bulk_review_shift_registrations(text[], text, text, jsonb) to authenticated;

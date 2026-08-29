@@ -182,9 +182,12 @@ const nowIso = () => new Date().toISOString()
 export const assertExpectedVersion = (
   entity: string,
   currentVersion: number | undefined,
-  expectedVersion: number | undefined,
+  expectedVersion: number | null | undefined,
 ) => {
   if (expectedVersion === undefined) return
+  if (expectedVersion === null || !Number.isInteger(expectedVersion) || expectedVersion < 1) {
+    throw new Error(`EXPECTED_VERSION_REQUIRED: ${entity} mutations require the positive revision that was read by the caller.`)
+  }
   const actual = currentVersion ?? 1
   if (expectedVersion !== actual) {
     throw new Error(`STALE_WRITE: ${entity} changed since it was read.`)
@@ -1308,6 +1311,7 @@ export const shiftService = {
     id: string,
     labels: ShiftStaffingLabels,
     actorId = currentUserService.getId(),
+    expectedVersion?: number,
   ): Promise<Shift | null> {
     const actor = requiredActorFor(actorId)
     if (!hasPermission(actor, 'shifts.edit')) {
@@ -1322,7 +1326,7 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       const repository = getSupabaseShiftRepository()
       const before = await repository.getById(id)
-      const persisted = await repository.updateStaffingLabels(id, normalizedLabels, before?.version)
+      const persisted = await repository.updateStaffingLabels(id, normalizedLabels, expectedVersion)
       if (!persisted) return null
       upsertShiftProjection(persisted)
       recordScheduleChange('edit', id, before ? { ...before } : undefined, { ...persisted }, {
@@ -1391,13 +1395,12 @@ export const shiftService = {
     }
   },
 
-  async remove(id: string, actorId = currentUserService.getId(), reason = 'Removed by operator'): Promise<DeletionImpact | null> {
+  async remove(id: string, actorId = currentUserService.getId(), reason = 'Removed by operator', expectedVersion?: number): Promise<DeletionImpact | null> {
     if (getAuthMode() === 'supabase') {
       if (!hasPermission(requiredActorFor(actorId), 'shifts.delete')) {
         throw new Error('Only Admin can delete or archive shifts.')
       }
-      const current = await getSupabaseShiftRepository().getById(id)
-      const impact = await getSupabaseShiftRepository().remove(id, reason, current?.version)
+      const impact = await getSupabaseShiftRepository().remove(id, reason, expectedVersion)
       if (!impact) return null
       removeShiftProjection(id)
       recordScheduleChange('soft_delete', id, undefined, undefined, { actor_id: actorId, reason })
@@ -1410,6 +1413,7 @@ export const shiftService = {
     const impact = await this.getDeletionImpact(id)
     if (!impact) return null
     const before = { ...shifts[index] }
+    assertExpectedVersion('Shift', shifts[index].version, expectedVersion)
     if (impact.action === 'delete') {
       const [deleted] = shifts.splice(index, 1)
       recordScheduleChange('delete', id, { ...deleted }, undefined, { actor_id: actorId, reason })
@@ -1424,6 +1428,7 @@ export const shiftService = {
       deletion_reason: reason,
       registration_locked: true,
       updated_at: nowIso(),
+      version: nextVersion(shifts[index].version),
     }
     recordScheduleChange('soft_delete', id, before, { ...shifts[index] }, { actor_id: actorId, reason })
     audit('calendar', 'soft_delete', 'shift', id, impact.entity_name, { actorId, before, after: { ...shifts[index] }, reason, relatedRecords: impact.related_records })
@@ -1458,11 +1463,10 @@ export const shiftService = {
     }
   },
 
-  async restore(id: string, actorId: string, reason: string): Promise<Shift | null> {
+  async restore(id: string, actorId: string, reason: string, expectedVersion?: number): Promise<Shift | null> {
     if (getAuthMode() === 'supabase') {
       if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can restore shifts.')
-      const current = await getSupabaseShiftRepository().getById(id)
-      const persisted = await getSupabaseShiftRepository().restore(id, current?.version)
+      const persisted = await getSupabaseShiftRepository().restore(id, expectedVersion)
       if (!persisted) return null
       upsertShiftProjection(persisted)
       recordScheduleChange('restore', id, undefined, { ...persisted }, { actor_id: actorId, reason })
@@ -1473,7 +1477,7 @@ export const shiftService = {
     const index = shifts.findIndex(s => s.id === id)
     if (index === -1) return null
     const before = { ...shifts[index] }
-    assertExpectedVersion('Shift', shifts[index].version, undefined)
+    assertExpectedVersion('Shift', shifts[index].version, expectedVersion)
     shifts[index] = { ...shifts[index], status: 'scheduled', deleted_at: undefined, deleted_by: undefined, deletion_reason: undefined, registration_locked: false, updated_at: nowIso(), version: nextVersion(shifts[index].version) }
     recordScheduleChange('restore', id, before, { ...shifts[index] }, { actor_id: actorId, reason })
     audit('calendar', 'restore', 'shift', id, shifts[index].title || `${shifts[index].date} ${shifts[index].start_time}`, { actorId, before, after: { ...shifts[index] }, reason })
@@ -1524,12 +1528,12 @@ export const shiftService = {
     ))
   },
 
-  async lock(id: string, actorId = currentUserService.getId()): Promise<Shift | null> {
+  async lock(id: string, actorId = currentUserService.getId(), expectedVersion?: number): Promise<Shift | null> {
     if (getAuthMode() === 'supabase') {
       if (!hasPermission(requiredActorFor(actorId), 'shifts.lock')) {
         throw new Error('Only a Leader or Admin can lock registration.')
       }
-      const persisted = await getSupabaseShiftRepository().setRegistrationLock(id, true)
+      const persisted = await getSupabaseShiftRepository().setRegistrationLock(id, true, expectedVersion)
       if (!persisted) return null
       upsertShiftProjection(persisted)
       recordScheduleChange('lock', id, undefined, { ...persisted }, { actor_id: actorId, reason: 'Registration locked' })
@@ -1539,15 +1543,15 @@ export const shiftService = {
     if (!hasPermission(requiredActorFor(actorId), 'shifts.lock')) {
       throw new Error('Only a Leader or Admin can lock registration.')
     }
-    return this.update(id, { registration_locked: true }, actorId, { reason: 'Registration locked' })
+    return this.update(id, { registration_locked: true, version: expectedVersion }, actorId, { reason: 'Registration locked' })
   },
 
-  async reopen(id: string, actorId = currentUserService.getId()): Promise<Shift | null> {
+  async reopen(id: string, actorId = currentUserService.getId(), expectedVersion?: number): Promise<Shift | null> {
     if (getAuthMode() === 'supabase') {
       if (!hasPermission(requiredActorFor(actorId), 'shifts.lock')) {
         throw new Error('Only a Leader or Admin can reopen registration.')
       }
-      const persisted = await getSupabaseShiftRepository().setRegistrationLock(id, false)
+      const persisted = await getSupabaseShiftRepository().setRegistrationLock(id, false, expectedVersion)
       if (!persisted) return null
       upsertShiftProjection(persisted)
       recordScheduleChange('reopen', id, undefined, { ...persisted }, { actor_id: actorId, reason: 'Registration reopened' })
@@ -1559,7 +1563,7 @@ export const shiftService = {
     }
     const shift = shifts.find(candidate => candidate.id === id)
     if (!shift || shift.status !== 'scheduled' || shiftEndAt(shift) <= new Date()) return null
-    return this.update(id, { registration_locked: false }, actorId, { reason: 'Registration reopened' })
+    return this.update(id, { registration_locked: false, version: expectedVersion }, actorId, { reason: 'Registration reopened' })
   },
 }
 
@@ -1833,6 +1837,7 @@ export const shiftRegistrationService = {
     action: ShiftRegistrationReviewAction,
     reviewerId: string,
     notes?: string,
+    expectedVersions?: Record<string, number>,
   ): Promise<ShiftRegistrationReviewResult[]> {
     if (!hasPermission(requiredActorFor(reviewerId), 'shifts.approve_registration')) {
       throw new Error('Only a Leader or Admin can review registrations.')
@@ -1842,7 +1847,7 @@ export const shiftRegistrationService = {
     if (uniqueIds.length === 0) return []
 
     if (getAuthMode() === 'supabase') {
-      const results = await getSupabaseShiftRegistrationRepository().bulkReview(uniqueIds, action, notes)
+      const results = await getSupabaseShiftRegistrationRepository().bulkReview(uniqueIds, action, notes, expectedVersions)
       results.forEach(result => {
         if (!result.success || !result.registration) return
         const registration = result.registration
@@ -1893,8 +1898,8 @@ export const shiftRegistrationService = {
     for (const registrationId of uniqueIds) {
       try {
         const registration = action === 'approve'
-          ? await this.approve(registrationId, reviewerId, notes)
-          : await this.reject(registrationId, reviewerId, notes)
+          ? await this.approve(registrationId, reviewerId, notes, expectedVersions?.[registrationId])
+          : await this.reject(registrationId, reviewerId, notes, expectedVersions?.[registrationId])
         results.push({
           registration_id: registrationId,
           action,
@@ -1975,6 +1980,7 @@ export const shiftRegistrationService = {
         [assignmentField]: replacement?.user_id,
         registration_locked: false,
         updated_at: timestamp,
+        version: nextVersion(shift.version),
       }
     }
     recordScheduleChange('cancel_registration', shift.id, { ...registration }, { ...shiftRegistrations[index] }, { actor_id: userId, reason })
@@ -2191,6 +2197,7 @@ export const shiftRegistrationService = {
         [assignmentField]: replacement?.user_id,
         registration_locked: false,
         updated_at: timestamp,
+        version: nextVersion(shift.version),
       }
     }
     recordScheduleChange('remove_assignment', shift.id, { ...registration }, { ...shiftRegistrations[index] }, { actor_id: reviewerId, reason: notes })
@@ -3513,6 +3520,7 @@ export interface ArchivedEntitySummary {
   archived_at: string
   archived_by?: string
   reason?: string
+  version?: number
 }
 
 export const lifecycleService = {
@@ -3525,7 +3533,7 @@ export const lifecycleService = {
       ? (await getSupabaseReportRepository().getAllIncludingArchived())
       : [...reports]
     const summaries: ArchivedEntitySummary[] = [
-      ...archivedShifts.map(item => ({ entity_type: 'shift' as const, entity_id: item.id, entity_name: item.title || `${item.date} ${item.start_time}`, archived_at: item.deleted_at!, archived_by: item.deleted_by, reason: item.deletion_reason })),
+      ...archivedShifts.map(item => ({ entity_type: 'shift' as const, entity_id: item.id, entity_name: item.title || `${item.date} ${item.start_time}`, archived_at: item.deleted_at!, archived_by: item.deleted_by, reason: item.deletion_reason, version: item.version })),
       ...archivedReports.filter(item => item.deleted_at || item.archived_at).map(item => ({ entity_type: 'report' as const, entity_id: item.id, entity_name: `Report · ${item.shift_id}`, archived_at: item.deleted_at || item.archived_at!, archived_by: item.deleted_by || item.archived_by, reason: item.deletion_reason })),
       ...campaigns.filter(item => item.deleted_at || item.archived_at).map(item => ({ entity_type: 'campaign' as const, entity_id: item.id, entity_name: item.name, archived_at: item.deleted_at || item.archived_at!, archived_by: item.deleted_by || item.archived_by, reason: item.deletion_reason })),
       ...brands.filter(item => item.deleted_at || item.archived_at).map(item => ({ entity_type: 'brand' as const, entity_id: item.id, entity_name: item.name, archived_at: item.deleted_at || item.archived_at!, archived_by: item.deleted_by || item.archived_by, reason: item.deletion_reason })),
@@ -3535,10 +3543,10 @@ export const lifecycleService = {
     return summaries.sort((left, right) => right.archived_at.localeCompare(left.archived_at))
   },
 
-  async restore(entityType: ArchivedEntitySummary['entity_type'], entityId: string, actorId: string, reason: string): Promise<boolean> {
+  async restore(entityType: ArchivedEntitySummary['entity_type'], entityId: string, actorId: string, reason: string, expectedVersion?: number): Promise<boolean> {
     if (!reason.trim()) throw new Error('A restore reason is required.')
     const restored = entityType === 'shift'
-      ? await shiftService.restore(entityId, actorId, reason)
+      ? await shiftService.restore(entityId, actorId, reason, expectedVersion)
       : entityType === 'report'
         ? await reportService.restore(entityId, actorId, reason)
         : entityType === 'campaign'

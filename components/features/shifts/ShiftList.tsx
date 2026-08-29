@@ -90,7 +90,9 @@ export function ShiftList() {
   const handleDelete = async (reason: string) => {
     if (!currentUser) return
     try {
-      for (const id of deleteIds) await shiftService.remove(id, currentUser.id, reason)
+      for (const id of deleteIds) {
+        await shiftService.remove(id, currentUser.id, reason, shifts.find(shift => shift.id === id)?.version)
+      }
       toast({ title: 'Success', description: deleteIds.length === 1 ? 'Shift lifecycle updated' : `${deleteIds.length} shifts processed`, variant: 'success' })
       setSelectedIds(new Set())
       setShowBulkActions(false)

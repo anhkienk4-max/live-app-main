@@ -382,7 +382,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                                     disabled={!manualSelections[assignmentKey] || busyId === `assign-${assignmentKey}`}
                                     onClick={() => runAction(
                                       `assign-${assignmentKey}`,
-                                      () => shiftRegistrationService.assignManually(shift.id, manualSelections[assignmentKey], capacity.role, currentUser.id),
+                                      () => shiftRegistrationService.assignManually(shift.id, manualSelections[assignmentKey], capacity.role, currentUser.id, shift.version),
                                       t('registrationApproved'),
                                     )}
                                   >
@@ -408,8 +408,8 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                         </Button>
                       )}
                       {hasPermission(currentUser, 'shifts.lock') && (shift.registration_locked
-                        ? <Button size="sm" variant="outline" disabled={busyId === `lock-${shift.id}` || shift.status !== 'scheduled'} onClick={() => runAction(`lock-${shift.id}`, () => shiftService.reopen(shift.id), t('reopenShift'))}><LockOpen className="mr-1 h-4 w-4" />{t('reopenShift')}</Button>
-                        : <Button size="sm" variant="outline" disabled={busyId === `lock-${shift.id}`} onClick={() => runAction(`lock-${shift.id}`, () => shiftService.lock(shift.id), t('lockShift'))}><Lock className="mr-1 h-4 w-4" />{t('lockShift')}</Button>)}
+                        ? <Button size="sm" variant="outline" disabled={busyId === `lock-${shift.id}` || shift.status !== 'scheduled'} onClick={() => runAction(`lock-${shift.id}`, () => shiftService.reopen(shift.id, undefined, shift.version), t('reopenShift'))}><LockOpen className="mr-1 h-4 w-4" />{t('reopenShift')}</Button>
+                        : <Button size="sm" variant="outline" disabled={busyId === `lock-${shift.id}`} onClick={() => runAction(`lock-${shift.id}`, () => shiftService.lock(shift.id, undefined, shift.version), t('lockShift'))}><Lock className="mr-1 h-4 w-4" />{t('lockShift')}</Button>)}
                     </div>
                   )}
                 </CardContent>
