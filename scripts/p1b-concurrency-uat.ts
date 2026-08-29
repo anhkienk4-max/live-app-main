@@ -167,24 +167,23 @@ async function main(): Promise<void> {
     console.log('[PASS] shift revision race')
 
     const registrationShift = await makeShift('registration-shift')
-    const registrationId = `${prefix}-registration`
-    const { error: registrationError } = await admin.from('shift_registrations').insert({
-      id: registrationId, shift_id: registrationShift.id, user_id: member.id,
-      operational_role: 'host', status: 'pending', source: 'self_registration',
-    })
-    if (registrationError) throw new Error(`Fixture registration creation failed: ${registrationError.message}`)
+    const registration = await rpc(memberClient, 'register_for_shift', {
+      p_shift_id: registrationShift.id,
+      p_role: 'host',
+    }) as { id?: string; version?: number }
+    const registrationId = registration.id
+    const registrationVersion = registration.version
+    if (!registrationId || !Number.isInteger(registrationVersion)) throw new Error('Authenticated registration fixture creation returned no revision.')
     fixture.registrationIds.push(registrationId)
-    const { data: registration } = await admin.from('shift_registrations').select('version').eq('id', registrationId).single()
-    if (!registration) throw new Error('Fixture registration could not be read.')
     const registrationRace = await Promise.allSettled([
-      rpc(adminClient, 'approve_shift_registration', { p_registration_id: registrationId, p_notes: prefix, p_expected_version: registration.version }),
-      rpc(memberClient, 'cancel_own_shift_registration', { p_registration_id: registrationId, p_notes: prefix, p_expected_version: registration.version }),
+      rpc(adminClient, 'approve_shift_registration', { p_registration_id: registrationId, p_notes: prefix, p_expected_version: registrationVersion }),
+      rpc(memberClient, 'cancel_own_shift_registration', { p_registration_id: registrationId, p_notes: prefix, p_expected_version: registrationVersion }),
     ])
     const registrationWinners = registrationRace.filter(item => item.status === 'fulfilled')
     if (registrationWinners.length !== 1) throw new Error('Registration race did not serialize to one winner.')
     assertError(registrationRace.find(item => item.status === 'rejected') ?? registrationRace[0], 'P0001', 'STALE_WRITE')
     const { data: persistedRegistration, error: persistedRegistrationError } = await admin.from('shift_registrations').select('status,version').eq('id', registrationId).single()
-    if (persistedRegistrationError || !persistedRegistration || persistedRegistration.version !== registration.version + 1 || !['approved', 'cancelled'].includes(persistedRegistration.status)) {
+    if (persistedRegistrationError || !persistedRegistration || persistedRegistration.version !== registrationVersion + 1 || !['approved', 'cancelled'].includes(persistedRegistration.status)) {
       throw new Error('Registration race final state/version is inconsistent.')
     }
     const registrationWinner = (registrationWinners[0] as PromiseFulfilledResult<{ status?: string }>).value
@@ -192,12 +191,15 @@ async function main(): Promise<void> {
     console.log('[PASS] registration revision race')
 
     const swapShift = await makeShift('swap-shift')
-    const swapRegistrationId = `${prefix}-swap-registration`
-    const { error: swapRegistrationError } = await admin.from('shift_registrations').insert({
-      id: swapRegistrationId, shift_id: swapShift.id, user_id: member.id,
-      operational_role: 'host', status: 'manually_assigned', source: 'manual_assignment',
-    })
-    if (swapRegistrationError) throw new Error(`Fixture swap registration creation failed: ${swapRegistrationError.message}`)
+    const swapRegistration = await rpc(adminClient, 'manual_assign_shift_staff', {
+      p_shift_id: swapShift.id,
+      p_user_id: member.id,
+      p_role: 'host',
+      p_notes: prefix,
+      p_expected_version: swapShift.version,
+    }) as { id?: string; version?: number }
+    const swapRegistrationId = swapRegistration.id
+    if (!swapRegistrationId) throw new Error('Authenticated swap fixture assignment returned no registration.')
     fixture.registrationIds.push(swapRegistrationId)
     const swap = await rpc(memberClient, 'create_shift_swap_request', {
       p_source_registration_id: swapRegistrationId, p_mode: 'replacement', p_reason: prefix,
