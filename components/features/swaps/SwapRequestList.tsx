@@ -161,13 +161,92 @@ export function SwapRequestList() {
       const actions = getSwapUiActions(swap, currentUser)
       const statusPresentation = getSwapStatusPresentation(swap.status)
       const statusTone = {
-        warning: 'bg-amber-100 text-amber-800',
-        info: 'bg-blue-100 text-blue-800',
-        success: 'bg-green-100 text-green-800',
-        danger: 'bg-red-100 text-red-800',
-        neutral: 'bg-gray-100 text-gray-800',
+        warning: 'bg-amber-100 text-amber-800 border-amber-200',
+        info: 'bg-blue-100 text-blue-800 border-blue-200',
+        success: 'bg-green-100 text-green-800 border-green-200',
+        danger: 'bg-red-100 text-red-800 border-red-200',
+        neutral: 'bg-gray-100 text-gray-800 border-gray-200',
       }[statusPresentation.tone]
-      return <Card key={swap.id}><CardContent className="flex flex-wrap items-start justify-between gap-4 pt-5"><div className="space-y-2"><div className="flex items-center gap-2"><Badge className={statusTone}>{(t as unknown as (k:string)=>string)(statusPresentation.label)}</Badge><span className="text-xs text-muted-foreground">{format(new Date(swap.created_at), 'dd/MM/yyyy HH:mm')}</span><span className="text-xs text-muted-foreground">{swap.mode || 'replacement'}</span></div><p className="font-semibold">{nameFor(brands, shift.brand_id)} · {nameFor(platforms, shift.platform_id)}</p><p className="text-sm text-muted-foreground">{shift.date} · {formatShiftTimeRange(shift)} · {nameFor(campaigns, shift.campaign_id)}</p><p className="text-xs text-muted-foreground">Source → Target: {(swap.source_shift_id || swap.shift_id) ?? '—'} → {swap.target_shift_id ?? '—'} {swap.counterpart_id ? `· counterpart ${userName(swap.counterpart_id)}` : ''}</p><div className="grid gap-2 text-sm sm:grid-cols-3"><Value label={t('role')} value={t(roleFor(swap))} /><Value label={t('originalStaff')} value={userName(swap.original_staff_id || swap.requester_id)} /><Value label={t('replacementStaff')} value={userName(replacementFor(swap) || swap.counterpart_id || '')} /></div><p className="rounded bg-muted/50 p-2 text-sm">{swap.reason}</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={() => setSelectedSwap(swap)}>{t('viewDetails')}</Button>{actions.showCancel && <Button size="sm" variant="outline" onClick={() => setCancelTarget(swap)}><XCircle className="mr-1 h-4 w-4" />Cancel request</Button>}{actions.showAccept && <Button size="sm" onClick={() => void runReview(swap, 'accept')}><CheckCircle className="mr-1 h-4 w-4" />Accept</Button>}{actions.showCounterpartReject && <Button size="sm" variant="outline" onClick={() => void runReview(swap, 'counterpart_reject')}><XCircle className="mr-1 h-4 w-4" />Reject</Button>}{actions.showApprove && <Button size="sm" onClick={() => void runReview(swap, 'approve')}><CheckCircle className="mr-1 h-4 w-4" />{t('approve')}</Button>}{actions.showReviewerReject && <Button size="sm" variant="outline" onClick={() => void runReview(swap, 'reject')}><XCircle className="mr-1 h-4 w-4" />{t('reject')}</Button>}</div></CardContent></Card>
+
+      return (
+        <Card key={swap.id} className="overflow-hidden shadow-sm">
+          <CardContent className="p-0">
+            <div className="flex flex-col md:flex-row">
+              <div className="flex-1 p-4 md:border-r space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge className={statusTone}>{(t as unknown as (k:string)=>string)(statusPresentation.label)}</Badge>
+                  <Badge variant="outline" className="font-bold tracking-wider text-xs">{(swap.mode || 'replacement').toUpperCase()}</Badge>
+                  <span className="text-xs text-muted-foreground">{format(new Date(swap.created_at), 'dd/MM/yyyy HH:mm')}</span>
+                </div>
+                <div>
+                  <p className="font-semibold text-sm">{nameFor(brands, shift.brand_id)} · {nameFor(platforms, shift.platform_id)}</p>
+                  <p className="text-xs text-muted-foreground">{shift.date} · {formatShiftTimeRange(shift)} · {nameFor(campaigns, shift.campaign_id)}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 pt-2 text-sm">
+                  <div>
+                    <span className="text-xs text-muted-foreground block">{t('originalStaff')}</span>
+                    <span className="font-medium">{userName(swap.original_staff_id || swap.requester_id)}</span>
+                    <span className="text-xs text-muted-foreground block">{t(roleFor(swap))}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground block">{swap.mode === 'exchange' ? 'Exchange With' : t('replacementStaff')}</span>
+                    <span className="font-medium">{userName(replacementFor(swap) || swap.counterpart_id || '') || '—'}</span>
+                    {swap.mode === 'exchange' && <span className="text-xs text-muted-foreground block">{swap.target_shift_id ? 'Target Shift' : '—'}</span>}
+                  </div>
+                </div>
+                {swap.reason && (
+                  <div className="rounded-md bg-muted/50 p-2.5 text-xs text-muted-foreground border mt-2">
+                    {swap.reason}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex w-full flex-col justify-between bg-muted/10 p-4 md:w-64 shrink-0">
+                <div className="space-y-1 mb-4">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Actions & Status</p>
+                  {swap.status === 'pending' && <p className="text-xs text-amber-700 font-medium">Waiting for Participant</p>}
+                  {swap.status === 'accepted' && <p className="text-xs text-blue-700 font-medium">Waiting for Reviewer</p>}
+                  {swap.status === 'completed' && <p className="text-xs text-green-700 font-medium">Completed Successfully</p>}
+                  {swap.status === 'approved' && <p className="text-xs text-green-700 font-medium">Approved</p>}
+                  {swap.status === 'rejected' && <p className="text-xs text-red-700 font-medium">Rejected</p>}
+                  {swap.status === 'cancelled' && <p className="text-xs text-red-700 font-medium">Cancelled</p>}
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <Button variant="outline" size="sm" className="w-full justify-start h-8 bg-background" onClick={() => setSelectedSwap(swap)}>
+                    {t('viewDetails')}
+                  </Button>
+                  {actions.showCancel && (
+                    <Button size="sm" variant="outline" className="w-full justify-start h-8 text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground bg-background" onClick={() => setCancelTarget(swap)}>
+                      <XCircle className="mr-2 h-3.5 w-3.5" /> Cancel Request
+                    </Button>
+                  )}
+                  {actions.showAccept && (
+                    <Button size="sm" className="w-full justify-start h-8 bg-green-600 hover:bg-green-700 text-white" onClick={() => void runReview(swap, 'accept')}>
+                      <CheckCircle className="mr-2 h-3.5 w-3.5" /> Accept
+                    </Button>
+                  )}
+                  {actions.showCounterpartReject && (
+                    <Button size="sm" variant="outline" className="w-full justify-start h-8 text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground bg-background" onClick={() => void runReview(swap, 'counterpart_reject')}>
+                      <XCircle className="mr-2 h-3.5 w-3.5" /> Reject
+                    </Button>
+                  )}
+                  {actions.showApprove && (
+                    <Button size="sm" className="w-full justify-start h-8 bg-blue-600 hover:bg-blue-700 text-white" onClick={() => void runReview(swap, 'approve')}>
+                      <CheckCircle className="mr-2 h-3.5 w-3.5" /> {t('approve')}
+                    </Button>
+                  )}
+                  {actions.showReviewerReject && (
+                    <Button size="sm" variant="outline" className="w-full justify-start h-8 text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground bg-background" onClick={() => void runReview(swap, 'reject')}>
+                      <XCircle className="mr-2 h-3.5 w-3.5" /> {t('reject')}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )
     })}</div><HistoryPagination page={page} pageSize={pageSize} total={filtered.length} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1) }} /></CardContent></Card>}
 
     {showForm && currentUser && <SwapRequestFormModal open={showForm} onOpenChange={setShowForm} shifts={shifts.filter(shift => shift.status === 'scheduled' && (myShiftIds.has(shift.id) || shift.host_id === currentUser.id || shift.support_id === currentUser.id || shift.technical_id === currentUser.id))} users={users} brands={brands} platforms={platforms} onSuccess={() => { void loadData(); setShowForm(false) }} />}

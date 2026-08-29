@@ -88,185 +88,145 @@ export function SwapDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="lg" className="overflow-y-auto">
+      <DialogContent size="lg" className="overflow-y-auto max-w-2xl">
         <DialogHeader>
           <div className="flex items-center justify-between">
-            <DialogTitle className="text-2xl">Swap Request Details</DialogTitle>
-            <Badge className={getStatusColor()}>
-              <span className="flex items-center gap-2">
-                {getStatusIcon()}
-                {statusPresentation.label.toUpperCase()}
-              </span>
-            </Badge>
+            <DialogTitle className="text-xl">Swap Request Details</DialogTitle>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="font-bold tracking-wider text-[10px] uppercase">
+                {swap.mode || 'replacement'}
+              </Badge>
+              <Badge className={getStatusColor()}>
+                <span className="flex items-center gap-1.5">
+                  {getStatusIcon()}
+                  {statusPresentation.label}
+                </span>
+              </Badge>
+            </div>
           </div>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="space-y-4 text-sm">
           {/* Shift Information */}
-          <Card className="border-2" style={{ borderColor: getBrandColor(shift.brand_id) }}>
-            <CardContent className="pt-6">
-              <div className="flex items-start gap-4">
-                <Calendar className="h-6 w-6 text-gray-600 mt-1" />
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-gray-600 mb-2">Shift Details</div>
-                  <div className="space-y-2">
-                    <div className="font-semibold text-lg">
-                      {getBrandName(shift.brand_id)} - {getPlatformName(shift.platform_id)}
-                    </div>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-600">Date:</span>
-                        <span className="font-medium ml-2">{format(new Date(shift.date), 'MMMM d, yyyy')}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Time:</span>
-                        <span className="font-medium ml-2">{formatShiftTimeRange(shift)}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Status:</span>
-                        <Badge variant="secondary" className="ml-2">{shift.status}</Badge>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+          <div className="rounded-md border p-4 space-y-3 relative overflow-hidden shadow-sm">
+            <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: getBrandColor(shift.brand_id) }} />
+
+            <div className="flex items-center gap-2 font-semibold">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <span>{getBrandName(shift.brand_id)} · {getPlatformName(shift.platform_id)}</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 ml-6">
+              <div>
+                <span className="text-muted-foreground block text-xs">Date & Time</span>
+                <span className="font-medium">{format(new Date(shift.date), 'MMMM d, yyyy')} · {formatShiftTimeRange(shift)}</span>
               </div>
-            </CardContent>
-          </Card>
+              <div>
+                <span className="text-muted-foreground block text-xs">Shift Status</span>
+                <Badge variant="secondary" className="font-normal">{shift.status}</Badge>
+              </div>
+            </div>
+          </div>
 
           {/* People Involved */}
           <div className="grid grid-cols-2 gap-4">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-start gap-4">
-                  <UserIcon className="h-6 w-6 text-blue-600 mt-1" />
-                  <div>
-                    <div className="text-sm font-medium text-gray-600 mb-2">Requester</div>
-                    <div className="font-semibold">{requester.full_name}</div>
-                    <div className="text-sm text-gray-600">{requester.email}</div>
-                    <div className="text-xs text-gray-500 mt-1">{requester.department}</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="rounded-md border p-4 shadow-sm bg-muted/10">
+              <div className="flex items-center gap-2 font-semibold mb-3">
+                <UserIcon className="h-4 w-4 text-muted-foreground" />
+                <span>Requester</span>
+              </div>
+              <div className="ml-6 space-y-1">
+                <div className="font-medium">{requester.full_name}</div>
+                <div className="text-muted-foreground text-xs">{requester.email}</div>
+                {requester.department && <div className="text-muted-foreground text-xs">{requester.department}</div>}
+              </div>
+            </div>
 
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-start gap-4">
-                  <UserIcon className="h-6 w-6 text-green-600 mt-1" />
-                  <div>
-                    <div className="text-sm font-medium text-gray-600 mb-2">Proposed Replacement</div>
-                    {newHost ? (
-                      <>
-                        <div className="font-semibold">{newHost.full_name}</div>
-                        <div className="text-sm text-gray-600">{newHost.email}</div>
-                        <div className="text-xs text-gray-500 mt-1">{newHost.department}</div>
-                      </>
-                    ) : (
-                      <div className="text-sm text-gray-500">No replacement specified</div>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="rounded-md border p-4 shadow-sm bg-muted/10">
+              <div className="flex items-center gap-2 font-semibold mb-3">
+                <UserIcon className="h-4 w-4 text-muted-foreground" />
+                <span>{swap.mode === 'exchange' ? 'Exchange With' : 'Replacement Staff'}</span>
+              </div>
+              <div className="ml-6 space-y-1">
+                {newHost ? (
+                  <>
+                    <div className="font-medium">{newHost.full_name}</div>
+                    <div className="text-muted-foreground text-xs">{newHost.email}</div>
+                    {newHost.department && <div className="text-muted-foreground text-xs">{newHost.department}</div>}
+                  </>
+                ) : (
+                  <div className="text-muted-foreground text-xs italic">No replacement specified</div>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Reason */}
-          <Card className="bg-gray-50">
-            <CardContent className="pt-6">
-              <div className="flex items-start gap-4">
-                <Briefcase className="h-6 w-6 text-purple-600 mt-1" />
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-gray-600 mb-2">Reason for Swap</div>
-                  <p className="text-sm whitespace-pre-wrap">{swap.reason}</p>
-                </div>
+          {swap.reason && (
+            <div className="rounded-md bg-muted/30 p-4 border shadow-sm">
+              <div className="flex items-center gap-2 font-semibold mb-2">
+                <Briefcase className="h-4 w-4 text-muted-foreground" />
+                <span>Reason</span>
               </div>
-            </CardContent>
-          </Card>
+              <p className="ml-6 text-muted-foreground italic text-sm">"{swap.reason}"</p>
+            </div>
+          )}
 
           {/* Timeline */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-sm font-medium text-gray-600 mb-4">Timeline</div>
-              <div className="space-y-3">
-                <div className="flex items-start gap-3">
-                  <div className="w-2 h-2 bg-blue-600 rounded-full mt-2"></div>
-                  <div className="flex-1">
-                    <div className="text-sm font-medium">Request Submitted</div>
-                    <div className="text-xs text-gray-600">{format(new Date(swap.created_at), 'MMMM d, yyyy h:mm a')}</div>
-                  </div>
-                </div>
-                {swap.approved_at && (
-                  <div className="flex items-start gap-3">
-                    <div className={`w-2 h-2 rounded-full mt-2 ${
-                      swap.status === 'approved' || swap.status === 'completed' ? 'bg-green-600' : 'bg-red-600'
-                    }`}></div>
-                    <div className="flex-1">
-                      <div className="text-sm font-medium">
-                        {swap.status === 'approved' || swap.status === 'completed' ? 'Request Approved' : 'Request Rejected'}
-                      </div>
-                      <div className="text-xs text-gray-600">{format(new Date(swap.approved_at), 'MMMM d, yyyy h:mm a')}</div>
-                    </div>
-                  </div>
-                )}
+          <div className="rounded-md border p-4 shadow-sm">
+            <div className="font-semibold mb-3 flex items-center gap-2">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              Timeline
+            </div>
+            <div className="space-y-4 ml-8 border-l-2 pl-4 pb-1">
+              <div className="relative">
+                <div className="absolute -left-[21px] top-1 h-2 w-2 rounded-full bg-muted-foreground ring-4 ring-background"></div>
+                <div className="font-medium text-sm">Request Submitted</div>
+                <div className="text-xs text-muted-foreground">{format(new Date(swap.created_at), 'MMMM d, yyyy h:mm a')}</div>
               </div>
-            </CardContent>
-          </Card>
+              {swap.approved_at && (
+                <div className="relative">
+                  <div className={`absolute -left-[21px] top-1 h-2 w-2 rounded-full ring-4 ring-background ${
+                    swap.status === 'approved' || swap.status === 'completed' ? 'bg-green-500' : 'bg-red-500'
+                  }`}></div>
+                  <div className="font-medium text-sm">
+                    {swap.status === 'approved' || swap.status === 'completed' ? 'Request Approved' : 'Request Rejected'}
+                  </div>
+                  <div className="text-xs text-muted-foreground">{format(new Date(swap.approved_at), 'MMMM d, yyyy h:mm a')}</div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Actions */}
-        {showParticipantActions && swap.status === 'pending' && (
-          <DialogFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Close
-            </Button>
-            <Button
-              variant="outline"
-              className="text-red-600 border-red-600 hover:bg-red-50"
-              onClick={() => onParticipantReject?.()}
-            >
-              <XCircle className="h-4 w-4 mr-2" />
-              Reject
-            </Button>
-            <Button
-              className="bg-green-600 hover:bg-green-700"
-              onClick={() => onAccept?.()}
-            >
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Accept
-            </Button>
-          </DialogFooter>
-        )}
-
-        {showReviewerActions && swap.status === 'accepted' && (
-          <DialogFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Close
-            </Button>
-            <Button
-              variant="outline"
-              className="text-red-600 border-red-600 hover:bg-red-50"
-              onClick={handleReject}
-            >
-              <XCircle className="h-4 w-4 mr-2" />
-              Reject
-            </Button>
-            <Button
-              className="bg-green-600 hover:bg-green-700"
-              onClick={handleApprove}
-            >
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Approve
-            </Button>
-          </DialogFooter>
-        )}
-
-        {!showParticipantActions && !showReviewerActions && (
-          <DialogFooter>
-            <Button onClick={() => onOpenChange(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        )}
+        <DialogFooter className="mt-2 border-t pt-4 flex-row sm:justify-between items-center w-full">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+          <div className="flex gap-2">
+            {showParticipantActions && (
+              <>
+                <Button variant="outline" className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground" onClick={onParticipantReject}>
+                  <XCircle className="h-4 w-4 mr-2" /> Reject
+                </Button>
+                <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={onAccept}>
+                  <CheckCircle className="h-4 w-4 mr-2" /> Accept
+                </Button>
+              </>
+            )}
+            {showReviewerActions && (
+              <>
+                <Button variant="outline" className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground" onClick={handleReject}>
+                  <XCircle className="h-4 w-4 mr-2" /> Reject
+                </Button>
+                <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={handleApprove}>
+                  <CheckCircle className="h-4 w-4 mr-2" /> Approve
+                </Button>
+              </>
+            )}
+          </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
