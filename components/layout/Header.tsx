@@ -88,20 +88,20 @@ export function Header({ user }: HeaderProps) {
     .toUpperCase() || displayUser?.email?.[0].toUpperCase() || 'U'
 
   return (
-    <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
+    <header className="bg-card border-b sticky top-0 z-40">
       <div className="px-4 sm:px-6 lg:px-8">
-        <div className="flex h-16 items-center justify-between">
+        <div className="flex h-14 items-center justify-between">
           <div className="flex-1">
-            <h2 className="text-2xl font-bold text-gray-900 hidden md:block">
+            <h2 className="text-xl font-bold text-foreground hidden md:block tracking-tight">
               {t('operationsCenter')}
             </h2>
             <div className="md:hidden flex items-center">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center">
+                <svg className="w-5 h-5 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
               </div>
-              <h1 className="ml-2 text-lg font-bold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">
+              <h1 className="ml-2 text-lg font-bold text-foreground tracking-tight">
                 LiveStream Ops
               </h1>
             </div>
@@ -114,11 +114,11 @@ export function Header({ user }: HeaderProps) {
 
             <DropdownMenu>
               <DropdownMenuTrigger
-                render={<Button variant="ghost" className="relative h-10 w-10 rounded-full" data-testid="user-menu-btn" />}
+                render={<Button variant="ghost" className="relative h-9 w-9 rounded-full" data-testid="user-menu-btn" />}
               >
-                <Avatar className="h-10 w-10">
+                <Avatar className="h-9 w-9">
                   <AvatarImage src={displayUser?.user_metadata?.avatar_url} alt={displayUser?.user_metadata?.full_name || displayUser?.email} />
-                  <AvatarFallback className="bg-gradient-to-br from-blue-600 to-blue-700 text-white">
+                  <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                     {initials}
                   </AvatarFallback>
                 </Avatar>
@@ -127,8 +127,8 @@ export function Header({ user }: HeaderProps) {
                 <DropdownMenuGroup>
                   <DropdownMenuLabel className="font-normal">
                     <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium leading-none">{displayUser?.user_metadata?.full_name || 'User'}</p>
-                      <p className="text-xs leading-none text-gray-500">{displayUser?.email}</p>
+                      <p className="text-sm font-medium leading-none text-foreground">{displayUser?.user_metadata?.full_name || 'User'}</p>
+                      <p className="text-xs leading-none text-muted-foreground">{displayUser?.email}</p>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />

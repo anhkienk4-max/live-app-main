@@ -92,12 +92,12 @@ export default async function DashboardLayout({
       identity={identity}
       businessUser={businessUser}
     >
-      <div className="flex h-screen overflow-hidden bg-gray-50">
+      <div className="flex h-screen overflow-hidden bg-background">
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <Header user={user || undefined} />
-          <main className="min-w-0 flex-1 overflow-y-auto pb-20 md:pb-8">
-            <div className="w-full min-w-0 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+          <main className="min-w-0 flex-1 overflow-y-auto pb-16 md:pb-4">
+            <div className="w-full min-w-0 px-4 py-4 sm:px-6 lg:px-8">
               {children}
             </div>
           </main>

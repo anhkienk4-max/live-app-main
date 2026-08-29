@@ -19,7 +19,7 @@ export function BottomNav() {
   const { t } = useTranslation()
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 md:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border md:hidden">
       <div className="grid grid-cols-5 h-16">
         {navigation.map((item) => {
           const isActive = pathname === item.href
@@ -31,8 +31,8 @@ export function BottomNav() {
               className={cn(
                 'flex flex-col items-center justify-center gap-1 transition-colors',
                 isActive
-                  ? 'text-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'text-primary'
+                  : 'text-muted-foreground hover:text-foreground'
               )}
               data-testid={`nav-${item.name.toLowerCase()}`}
             >
