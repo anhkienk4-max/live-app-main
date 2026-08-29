@@ -29,6 +29,7 @@ import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
 import { exportShiftStaffingToExcel } from '@/lib/utils/excelUtils'
 import { formatShiftEndDate, formatShiftTimeRange, resolveShiftDateTime } from '@/lib/utils/shiftUtils'
+import { selectMyShiftEntries, type MyShiftEntry } from '@/lib/utils/myShifts'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -180,6 +181,13 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
       .sort((left, right) => `${left.date}${left.start_time}`.localeCompare(`${right.date}${right.start_time}`))
   }, [capacities, currentUser?.id, filters, mode, registrations, shifts])
 
+  const visibleMyEntries = React.useMemo(() => selectMyShiftEntries({
+    shifts,
+    registrations,
+    userId: currentUser?.id || '',
+    filters,
+  }), [currentUser?.id, filters, registrations, shifts])
+
   const pendingApprovals = registrations.filter(registration =>
     registration.status === 'pending' &&
     visibleShifts.some(shift => shift.id === registration.shift_id)
@@ -201,14 +209,16 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         </CardContent>
       </Card>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">{visibleShifts.length} {mode === 'open' ? t('openShifts').toLowerCase() : t('myShifts').toLowerCase()}</p>
-          <div className="inline-flex rounded-lg border bg-background p-1" aria-label="Open shift view">
+      {(mode === 'open' || mode === 'mine') && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">{mode === 'mine' ? visibleMyEntries.length : visibleShifts.length} {mode === 'mine' ? t('myShifts').toLowerCase() : t('openShifts').toLowerCase()}</p>
+          <div className="inline-flex rounded-lg border bg-background p-1" aria-label={mode === 'mine' ? 'My shift view' : 'Open shift view'}>
             <ViewButton active={viewMode === 'card'} onClick={() => changeViewMode('card')} icon={<LayoutGrid className="h-4 w-4" />} label={t('cardView')} />
             <ViewButton active={viewMode === 'compact'} onClick={() => changeViewMode('compact')} icon={<List className="h-4 w-4" />} label={t('compactView')} />
             <ViewButton active={viewMode === 'table'} onClick={() => changeViewMode('table')} icon={<Table2 className="h-4 w-4" />} label={t('tableView')} />
           </div>
         </div>
+      )}
 
       {mode === 'open' && hasPermission(currentUser, 'shifts.approve_registration') && pendingApprovals.length > 0 && (
         <Card className="border-amber-200">
@@ -237,8 +247,16 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         </Card>
       )}
 
-      {visibleShifts.length === 0 ? (
+      {(mode === 'mine' ? visibleMyEntries.length === 0 : visibleShifts.length === 0) ? (
         <Card><CardContent className="py-12 text-center text-muted-foreground">{mode === 'open' ? t('noOpenShifts') : t('noMyShifts')}</CardContent></Card>
+      ) : mode === 'mine' ? (
+        viewMode === 'table' ? (
+          <MyShiftTable entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+        ) : viewMode === 'compact' ? (
+          <MyShiftCompactList entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+        ) : (
+          <MyShiftCards entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+        )
       ) : viewMode === 'table' ? (
         <ShiftSummaryTable
           allShifts={shifts}
@@ -444,6 +462,48 @@ function RoleSummary({ label, value }: { label: string; value: number }) {
 
 function ViewButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
   return <Button type="button" size="sm" variant={active ? 'secondary' : 'ghost'} className="whitespace-nowrap" aria-label={label} aria-pressed={active} title={label} onClick={onClick}>{icon}<span className="ml-2 hidden sm:inline">{label}</span></Button>
+}
+
+type MyShiftViewProps = {
+  entries: MyShiftEntry[]
+  brands: Brand[]
+  platforms: Platform[]
+  campaigns: Campaign[]
+  onManage: (shift: Shift) => void
+}
+
+function MyShiftCards({ entries, brands, platforms, campaigns, onManage }: MyShiftViewProps) {
+  const { t } = useTranslation()
+  return <div className="grid grid-cols-1 gap-5 2xl:grid-cols-2 min-[1900px]:grid-cols-3">
+    {entries.map(({ shift, registration }) => <Card key={registration.id} data-testid={`my-shift-card-${registration.id}`}>
+      <CardHeader className="pb-3"><div className="flex items-start justify-between gap-3"><div>
+        <CardTitle className="text-lg">{shift.title || `${brandName(brands, shift.brand_id)} live`}</CardTitle>
+        <p className="mt-1 text-sm text-muted-foreground">{format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} Â· {formatShiftTimeRange(shift)}</p>
+      </div><Badge variant="secondary">{t(registration.operational_role)}</Badge></div></CardHeader>
+      <CardContent className="space-y-3"><div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
+        <Info label={t('brand')} value={brandName(brands, shift.brand_id)} /><Info label={t('platform')} value={platformName(platforms, shift.platform_id)} />
+        <Info label={t('campaign')} value={campaignName(campaigns, shift.campaign_id)} /><Info label={t('status')} value={registrationLabel(registration, t)} />
+      </div><div className="flex justify-end"><Button data-testid={`open-my-shift-detail-card-${registration.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewShiftDetail')}</Button></div></CardContent>
+    </Card>)}
+  </div>
+}
+
+function MyShiftCompactList({ entries, brands, platforms, campaigns, onManage }: MyShiftViewProps) {
+  const { t } = useTranslation()
+  return <div className="space-y-3">{entries.map(({ shift, registration }) => <Card key={registration.id} data-testid={`my-shift-compact-${registration.id}`}><CardContent className="grid gap-3 pt-5 md:grid-cols-[minmax(220px,1.5fr)_minmax(100px,.7fr)_minmax(120px,.8fr)_auto] md:items-center">
+    <div className="min-w-0"><p className="truncate font-semibold">{shift.title || `${brandName(brands, shift.brand_id)} live`}</p><p className="text-sm text-muted-foreground">{shift.date} Â· {formatShiftTimeRange(shift)} Â· {platformName(platforms, shift.platform_id)}</p><p className="truncate text-xs text-muted-foreground">{campaignName(campaigns, shift.campaign_id)}</p></div>
+    <Info label={t('role')} value={t(registration.operational_role)} /><Info label={t('status')} value={registrationLabel(registration, t)} />
+    <div className="flex items-center gap-2 md:justify-end"><Button data-testid={`open-my-shift-detail-compact-${registration.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button></div>
+  </CardContent></Card>)}</div>
+}
+
+function MyShiftTable({ entries, brands, platforms, campaigns, onManage }: MyShiftViewProps) {
+  const { t } = useTranslation()
+  return <Card><CardContent className="overflow-x-auto pt-5"><table className="w-full min-w-[850px] text-sm"><thead><tr className="border-b text-left">
+    <th className="p-2">{t('date')}</th><th className="p-2">{t('shiftTitle')}</th><th className="p-2">{t('brand')}</th><th className="p-2">{t('platform')}</th><th className="p-2">{t('campaign')}</th><th className="p-2">{t('role')}</th><th className="p-2">{t('status')}</th><th className="p-2">{t('actions')}</th>
+  </tr></thead><tbody>{entries.map(({ shift, registration }) => <tr className="border-b" key={registration.id} data-testid={`my-shift-row-${registration.id}`}>
+    <td className="whitespace-nowrap p-2">{shift.date} Â· {formatShiftTimeRange(shift)}</td><td className="p-2 font-medium">{shift.title || 'â€”'}</td><td className="p-2">{brandName(brands, shift.brand_id)}</td><td className="p-2">{platformName(platforms, shift.platform_id)}</td><td className="p-2">{campaignName(campaigns, shift.campaign_id)}</td><td className="p-2">{t(registration.operational_role)}</td><td className="p-2"><Badge variant="outline">{registrationLabel(registration, t)}</Badge></td><td className="p-2"><Button data-testid={`open-my-shift-detail-table-${registration.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button></td>
+  </tr>)}</tbody></table></CardContent></Card>
 }
 
 function CompactShiftList({
