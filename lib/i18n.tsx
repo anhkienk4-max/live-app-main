@@ -1809,7 +1809,7 @@ const vi: Record<keyof typeof en, string> = {
   visionOcrTestMock: 'Kiểm tra nhà cung cấp mock',
   visionOcrDisable: 'Tắt OCR AI',
   visionOcrClearConfiguration: 'Xóa cấu hình không chứa bí mật',
-  visionOcrMockDevelopmentOnly: 'Nhà cung cấp giả lập chỉ khả dụng trong cấu hình phát triển hoặc thử nghiệm.',
+  visionOcrMockDevelopmentOnly: 'Nhà cung cấp mock chỉ khả dụng khi được bật rõ ràng trong môi trường phát triển hoặc kiểm thử.',
   googleAuthMissing: 'Đăng nhập Google yêu cầu cấu hình backend.',
   googleAuthHelp: 'Đăng nhập Google hiện chưa được cấu hình trong backend Supabase.',
 }
