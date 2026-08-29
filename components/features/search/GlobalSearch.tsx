@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useTranslation } from '@/lib/i18n'
 
 interface SearchResult {
   id: string
@@ -30,6 +31,7 @@ const normalize = (value: string) => value
   .replace(/\s+/g, ' ')
 
 export function GlobalSearch() {
+  const { t } = useTranslation()
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
   const [results, setResults] = React.useState<SearchResult[]>([])
@@ -72,23 +74,29 @@ export function GlobalSearch() {
   // Perform search locally, deterministic, no per-keystroke fetch
   React.useEffect(() => {
     if (!open) return
+    const canViewShifts = !currentUser || hasPermission(currentUser, 'shifts.view_open') || hasPermission(currentUser, 'shifts.view_assigned')
+    const canAssignStaff = currentUser && hasPermission(currentUser, 'shifts.assign_staff')
+    const canImportShifts = currentUser && hasPermission(currentUser, 'shifts.import')
+    const canViewStaff = !currentUser || hasPermission(currentUser, 'staff.manage')
+    const canViewReports = !currentUser || hasPermission(currentUser, 'reports.submit') || hasPermission(currentUser, 'reports.review')
+
     if (!query.trim()) {
       // Show quick actions when empty, respecting permissions
       const actions: SearchResult[] = []
-      if (!currentUser || hasPermission(currentUser, 'shifts.view_open') || hasPermission(currentUser, 'shifts.view_assigned')) {
-        actions.push({ id: 'action-calendar', type: 'action', title: 'Open Calendar', subtitle: 'View shifts', url: '/calendar', icon: <Calendar className="h-4 w-4" /> })
+      if (canViewShifts) {
+        actions.push({ id: 'action-calendar', type: 'action', title: t('openCalendar'), subtitle: t('viewShifts'), url: '/calendar', icon: <Calendar className="h-4 w-4" /> })
       }
-      if (currentUser && hasPermission(currentUser, 'shifts.import')) {
-        actions.push({ id: 'action-import', type: 'action', title: 'Open Import Schedule', subtitle: 'Import shifts', url: '/calendar?action=import', icon: <Upload className="h-4 w-4" /> })
+      if (canImportShifts) {
+        actions.push({ id: 'action-import', type: 'action', title: t('openImportSchedule'), subtitle: t('importShifts'), url: '/calendar?action=import', icon: <Upload className="h-4 w-4" /> })
       }
-      if (currentUser && hasPermission(currentUser, 'shifts.assign_staff')) {
-        actions.push({ id: 'action-create-shift', type: 'action', title: 'Create Shift', subtitle: 'New shift', url: '/calendar?action=create', icon: <Calendar className="h-4 w-4" /> })
+      if (canAssignStaff) {
+        actions.push({ id: 'action-create-shift', type: 'action', title: t('createShift'), subtitle: t('newShift'), url: '/calendar?action=create', icon: <Calendar className="h-4 w-4" /> })
       }
-      if (!currentUser || hasPermission(currentUser, 'reports.submit') || hasPermission(currentUser, 'reports.review')) {
-        actions.push({ id: 'action-reports', type: 'action', title: 'Open Reports', subtitle: 'View reports', url: '/reports', icon: <FileText className="h-4 w-4" /> })
+      if (canViewReports) {
+        actions.push({ id: 'action-reports', type: 'action', title: t('openReports'), subtitle: t('viewReports'), url: '/reports', icon: <FileText className="h-4 w-4" /> })
       }
-      if (!currentUser || hasPermission(currentUser, 'staff.manage')) {
-        actions.push({ id: 'action-staff', type: 'action', title: 'Open Staff', subtitle: 'Manage staff', url: '/staff', icon: <Users className="h-4 w-4" /> })
+      if (canViewStaff) {
+        actions.push({ id: 'action-staff', type: 'action', title: t('openStaff'), subtitle: t('manageStaff'), url: '/staff', icon: <Users className="h-4 w-4" /> })
       }
       setResults(actions.slice(0,5))
       return
@@ -99,11 +107,8 @@ export function GlobalSearch() {
     }
     const q = normalize(query)
     const searchResults: SearchResult[] = []
-    const canViewShifts = !currentUser || hasPermission(currentUser, 'shifts.view_open') || hasPermission(currentUser, 'shifts.view_assigned')
-    const canViewStaff = !currentUser || hasPermission(currentUser, 'staff.manage')
     const canViewBrands = true
     const canViewCampaigns = true
-    const canViewReports = !currentUser || hasPermission(currentUser, 'reports.submit') || hasPermission(currentUser, 'reports.review')
 
     // Search shifts (cap 5, secondary brand + date/time)
     if (canViewShifts) {
@@ -140,7 +145,7 @@ export function GlobalSearch() {
     // Search brands (cap 3)
     if (canViewBrands) {
       cache.brands.filter(b => normalize(b.name).includes(q)).slice(0, 3).forEach(brand => {
-        searchResults.push({ id: brand.id, type: 'brand', title: brand.name, subtitle: 'Brand', url: '/brands', icon: <Briefcase className="h-4 w-4" /> })
+        searchResults.push({ id: brand.id, type: 'brand', title: brand.name, subtitle: t('brand'), url: '/brands', icon: <Briefcase className="h-4 w-4" /> })
       })
     }
     // Search campaigns (cap 3)
@@ -160,20 +165,22 @@ export function GlobalSearch() {
         searchResults.push({
           id: report.id,
           type: 'report',
-          title: `Report ${report.id.slice(0,8)}`,
-          subtitle: shift ? `${shift.date} · ${shift.start_time}` : 'Report',
+          title: `${t('report')} ${report.id.slice(0,8)}`,
+          subtitle: shift ? `${shift.date} · ${shift.start_time}` : t('report'),
           url: '/reports',
           icon: <FileText className="h-4 w-4" />,
-          badge: report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
+          badge: report.status || (report.metrics_confirmed ? t('confirmed') : t('draft'))
         })
       })
     }
     // Quick actions that match query (cap 3) — permission-aware, action URLs wired to calendar handlers
     const actionCandidates: SearchResult[] = []
-    if (normalize('Open Calendar').includes(q) || normalize('calendar').includes(q)) actionCandidates.push({ id: 'action-calendar-q', type: 'action', title: 'Open Calendar', subtitle: 'View shifts', url: '/calendar', icon: <Calendar className="h-4 w-4" /> })
-    if (currentUser && hasPermission(currentUser, 'shifts.assign_staff') && (normalize('Create Shift').includes(q) || normalize('create shift').includes(q))) actionCandidates.push({ id: 'action-create-shift-q', type: 'action', title: 'Create Shift', subtitle: 'New shift', url: '/calendar?action=create', icon: <Calendar className="h-4 w-4" /> })
-    if (currentUser && hasPermission(currentUser, 'shifts.import') && (normalize('Open Import Schedule').includes(q) || normalize('import schedule').includes(q) || normalize('import').includes(q))) actionCandidates.push({ id: 'action-import-q', type: 'action', title: 'Open Import Schedule', subtitle: 'Import shifts', url: '/calendar?action=import', icon: <Upload className="h-4 w-4" /> })
-    if (normalize('Open Reports').includes(q)) actionCandidates.push({ id: 'action-reports-q', type: 'action', title: 'Open Reports', subtitle: 'View reports', url: '/reports', icon: <FileText className="h-4 w-4" /> })
+    const normOpenCalendar = normalize(t('openCalendar'))
+    const normCalendar = normalize(t('calendar'))
+    if (normOpenCalendar.includes(q) || normCalendar.includes(q)) actionCandidates.push({ id: 'action-calendar-q', type: 'action', title: t('openCalendar'), subtitle: t('viewShifts'), url: '/calendar', icon: <Calendar className="h-4 w-4" /> })
+    if (canAssignStaff && (normalize(t('createShift')).includes(q) || normalize(t('newShift')).includes(q))) actionCandidates.push({ id: 'action-create-shift-q', type: 'action', title: t('createShift'), subtitle: t('newShift'), url: '/calendar?action=create', icon: <Calendar className="h-4 w-4" /> })
+    if (canImportShifts && (normalize(t('openImportSchedule')).includes(q) || normalize(t('importShifts')).includes(q))) actionCandidates.push({ id: 'action-import-q', type: 'action', title: t('openImportSchedule'), subtitle: t('importShifts'), url: '/calendar?action=import', icon: <Upload className="h-4 w-4" /> })
+    if (canViewReports && (normalize(t('openReports')).includes(q) || normalize(t('reports')).includes(q))) actionCandidates.push({ id: 'action-reports-q', type: 'action', title: t('openReports'), subtitle: t('viewReports'), url: '/reports', icon: <FileText className="h-4 w-4" /> })
     if (actionCandidates.length) searchResults.push(...actionCandidates.slice(0,3))
 
     // Cap total and keep deterministic order: shifts(5) + staff(5) + brands(3) + campaigns(3) + reports(3) already capped per entity

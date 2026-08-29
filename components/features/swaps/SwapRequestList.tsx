@@ -189,9 +189,9 @@ export function SwapRequestList() {
                     <span className="text-xs text-muted-foreground block">{t(roleFor(swap))}</span>
                   </div>
                   <div>
-                    <span className="text-xs text-muted-foreground block">{swap.mode === 'exchange' ? 'Exchange With' : t('replacementStaff')}</span>
+                    <span className="text-xs text-muted-foreground block">{swap.mode === 'exchange' ? t('exchangeWith') : t('replacementStaff')}</span>
                     <span className="font-medium">{userName(replacementFor(swap) || swap.counterpart_id || '') || '—'}</span>
-                    {swap.mode === 'exchange' && <span className="text-xs text-muted-foreground block">{swap.target_shift_id ? 'Target Shift' : '—'}</span>}
+                    {swap.mode === 'exchange' && <span className="text-xs text-muted-foreground block">{swap.target_shift_id ? t('targetShift') : '—'}</span>}
                   </div>
                 </div>
                 {swap.reason && (
@@ -203,13 +203,13 @@ export function SwapRequestList() {
 
               <div className="flex w-full flex-col justify-between bg-muted/10 p-4 md:w-64 shrink-0">
                 <div className="space-y-1 mb-4">
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Actions & Status</p>
-                  {swap.status === 'pending' && <p className="text-xs text-amber-700 font-medium">Waiting for Participant</p>}
-                  {swap.status === 'accepted' && <p className="text-xs text-blue-700 font-medium">Waiting for Reviewer</p>}
-                  {swap.status === 'completed' && <p className="text-xs text-green-700 font-medium">Completed Successfully</p>}
-                  {swap.status === 'approved' && <p className="text-xs text-green-700 font-medium">Approved</p>}
-                  {swap.status === 'rejected' && <p className="text-xs text-red-700 font-medium">Rejected</p>}
-                  {swap.status === 'cancelled' && <p className="text-xs text-red-700 font-medium">Cancelled</p>}
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">{t('actionsAndStatus')}</p>
+                  {swap.status === 'pending' && <p className="text-xs text-amber-700 font-medium">{t('waitingForParticipant')}</p>}
+                  {swap.status === 'accepted' && <p className="text-xs text-blue-700 font-medium">{t('waitingForReviewer')}</p>}
+                  {swap.status === 'completed' && <p className="text-xs text-green-700 font-medium">{t('completedSuccessfully')}</p>}
+                  {swap.status === 'approved' && <p className="text-xs text-green-700 font-medium">{t('approved')}</p>}
+                  {swap.status === 'rejected' && <p className="text-xs text-red-700 font-medium">{t('rejected')}</p>}
+                  {swap.status === 'cancelled' && <p className="text-xs text-red-700 font-medium">{t('cancelled')}</p>}
                 </div>
 
                 <div className="flex flex-col gap-2">

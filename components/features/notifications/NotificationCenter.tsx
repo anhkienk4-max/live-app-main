@@ -9,12 +9,14 @@ import { format } from 'date-fns'
 import { notificationService } from '@/lib/services/notificationService'
 import type { AppNotification } from '@/lib/types/database.types'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useTranslation } from '@/lib/i18n'
 
 export function NotificationCenter() {
   const [open, setOpen] = React.useState(false)
   const [notifications, setNotifications] = React.useState<AppNotification[]>([])
   const router = useRouter()
   const { currentUser } = useCurrentUser()
+  const { t } = useTranslation()
   const panelRef = React.useRef<HTMLDivElement>(null)
 
   const load = React.useCallback(async () => {
@@ -134,11 +136,11 @@ export function NotificationCenter() {
             </span>
             {isUnread ? (
               <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px] uppercase font-bold text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => void markAsRead(n.id, e)}>
-                Mark Read
+                {t('markRead')}
               </Button>
             ) : n.action_url && (
               <span className="text-[10px] font-bold text-primary opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-wider">
-                View &rarr;
+                {t('view')} &rarr;
               </span>
             )}
           </div>
@@ -169,17 +171,17 @@ export function NotificationCenter() {
         <Card className="absolute right-0 top-12 z-50 w-[100vw] sm:w-[420px] max-w-[100vw] overflow-hidden shadow-2xl rounded-xl border-border animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="flex items-center justify-between border-b bg-muted/40 p-4">
             <div>
-              <h3 className="font-semibold text-foreground">Notifications</h3>
-              <p className="text-xs text-muted-foreground">{unreadCount} unread</p>
+              <h3 className="font-semibold text-foreground">{t('notifications')}</h3>
+              <p className="text-xs text-muted-foreground">{unreadCount} {t('unread')}</p>
             </div>
             <div className="flex gap-1.5">
               {unreadCount > 0 && (
                 <Button size="sm" variant="outline" className="h-8 text-xs font-medium" onClick={markAllAsRead}>
                   <CheckCircle className="mr-1.5 h-3.5 w-3.5" />
-                  Mark all read
+                  {t('markAllRead')}
                 </Button>
               )}
-              <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => setOpen(false)}>
+              <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => setOpen(false)} aria-label={t('close')}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -191,15 +193,15 @@ export function NotificationCenter() {
                 <div className="mb-4 rounded-full bg-muted p-4">
                   <Bell className="h-8 w-8 text-muted-foreground/50" />
                 </div>
-                <p className="font-medium text-foreground">All caught up!</p>
-                <p className="text-xs text-muted-foreground mt-1">No new notifications to show</p>
+                <p className="font-medium text-foreground">{t('allCaughtUp')}</p>
+                <p className="text-xs text-muted-foreground mt-1">{t('noNewNotifications')}</p>
               </div>
             ) : (
               <div className="divide-y divide-border/50">
                 {groupedNotifications.new.length > 0 && (
                   <div className="bg-muted/20">
                     <div className="sticky top-0 z-10 bg-muted/95 px-4 py-2 backdrop-blur-sm">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">New</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{t('new')}</span>
                     </div>
                     <div className="divide-y divide-border/50">
                       {groupedNotifications.new.map(n => <NotificationItem key={n.id} n={n} />)}
@@ -210,7 +212,7 @@ export function NotificationCenter() {
                 {groupedNotifications.earlier.length > 0 && (
                   <div>
                     <div className="sticky top-0 z-10 bg-background/95 px-4 py-2 backdrop-blur-sm border-y divide-border/50">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Earlier</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{t('earlier')}</span>
                     </div>
                     <div className="divide-y divide-border/50">
                       {groupedNotifications.earlier.map(n => <NotificationItem key={n.id} n={n} />)}
