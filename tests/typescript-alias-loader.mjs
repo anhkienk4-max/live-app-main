@@ -7,6 +7,11 @@ import ts from 'typescript'
 const projectRoot = resolvePath(dirname(fileURLToPath(import.meta.url)), '..')
 
 function resolve(specifier, context, nextResolve) {
+  // Node ESM requires explicit .js for next/server subpath in this Next version.
+  if (specifier === 'next/server') {
+    const serverJs = resolvePath(projectRoot, 'node_modules/next/server.js')
+    if (existsSync(serverJs)) return { url: pathToFileURL(serverJs).href, shortCircuit: true }
+  }
   let candidate
   if (specifier.startsWith('@/')) {
     candidate = resolvePath(projectRoot, specifier.slice(2))
