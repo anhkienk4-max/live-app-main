@@ -115,14 +115,24 @@ export function DashboardOverview() {
   const setPreset = (preset: Preset) => setFilters(current => current ? { ...current, preset, ...(preset === 'custom' ? {} : rangeFor(preset)) } : current)
   const roleOptions = (role: 'host' | 'support' | 'technical') => users.filter(user => user.operational_roles?.includes(role)).map(user => ({ id: user.id, name: user.full_name }))
 
-  return <div className="space-y-7">
-    <div><h1 className="text-3xl font-bold">{t('dashboardTitle')}</h1><p className="mt-1 text-muted-foreground">{t('dashboardSubtitle')}</p></div>
-    <Card><CardHeader className="flex flex-row items-center justify-between space-y-0"><CardTitle className="text-base">{t('dashboardFilters')}</CardTitle><Button variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="dashboard-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button></CardHeader>{showFilters && <CardContent id="dashboard-filter-panel" className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-4">
-        <label className="text-xs font-medium">{t('dateRange')}<Select value={filters.preset} onValueChange={value => setPreset(value as Preset)}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="today">{t('today')}</SelectItem><SelectItem value="yesterday">{t('yesterday')}</SelectItem><SelectItem value="7d">{t('last7Days')}</SelectItem><SelectItem value="30d">{t('last30Days')}</SelectItem><SelectItem value="thisMonth">{t('thisMonth')}</SelectItem><SelectItem value="lastMonth">{t('lastMonth')}</SelectItem><SelectItem value="custom">{t('customRange')}</SelectItem></SelectContent></Select></label>
-        {filters.preset === 'custom' && <><label className="text-xs font-medium">{t('startDate')}<Input className="mt-1" type="date" value={filters.start} onChange={event => setFilters(current => current ? { ...current, start: event.target.value } : current)} /></label><label className="text-xs font-medium">{t('endDate')}<Input className="mt-1" type="date" value={filters.end} onChange={event => setFilters(current => current ? { ...current, end: event.target.value } : current)} /></label></>}
+  return <div className="space-y-6">
+    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div><h1 className="text-3xl font-bold">{t('dashboardTitle')}</h1><p className="mt-1 text-muted-foreground">{t('dashboardSubtitle')}</p></div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={filters.preset} onValueChange={value => setPreset(value as Preset)}><SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="today">{t('today')}</SelectItem><SelectItem value="yesterday">{t('yesterday')}</SelectItem><SelectItem value="7d">{t('last7Days')}</SelectItem><SelectItem value="30d">{t('last30Days')}</SelectItem><SelectItem value="thisMonth">{t('thisMonth')}</SelectItem><SelectItem value="lastMonth">{t('lastMonth')}</SelectItem><SelectItem value="custom">{t('customRange')}</SelectItem></SelectContent></Select>
+        <Button variant={showFilters ? 'secondary' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="dashboard-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button>
       </div>
-      <div className="grid gap-3 md:grid-cols-3">
+    </div>
+
+    {filters.preset === 'custom' && (
+      <div className="flex flex-wrap items-center gap-4 rounded-md border bg-muted/30 px-4 py-3">
+        <label className="flex items-center gap-2 text-sm font-medium">{t('startDate')}<Input className="w-auto h-8" type="date" value={filters.start} onChange={event => setFilters(current => current ? { ...current, start: event.target.value } : current)} /></label>
+        <label className="flex items-center gap-2 text-sm font-medium">{t('endDate')}<Input className="w-auto h-8" type="date" value={filters.end} onChange={event => setFilters(current => current ? { ...current, end: event.target.value } : current)} /></label>
+      </div>
+    )}
+
+    {showFilters && <Card id="dashboard-filter-panel"><CardContent className="space-y-4 pt-4">
+      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
         <FilterSelect label={t('brand')} value={filters.brand} options={brands} onChange={value => setFilters(current => current ? { ...current, brand: value } : current)} />
         <FilterSelect label={t('platform')} value={filters.platform} options={platforms} onChange={value => setFilters(current => current ? { ...current, platform: value } : current)} />
         <FilterSelect label={t('campaign')} value={filters.campaign} options={campaigns} onChange={value => setFilters(current => current ? { ...current, campaign: value } : current)} />
@@ -130,26 +140,32 @@ export function DashboardOverview() {
         <FilterSelect label={t('support')} value={filters.support} options={roleOptions('support')} onChange={value => setFilters(current => current ? { ...current, support: value } : current)} />
         <FilterSelect label={t('technical')} value={filters.technical} options={roleOptions('technical')} onChange={value => setFilters(current => current ? { ...current, technical: value } : current)} />
       </div>
-      <Button variant="outline" onClick={() => setFilters(initialFilters())}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button>
-    </CardContent>}</Card>
+      <Button variant="ghost" onClick={() => setFilters(initialFilters())} size="sm" className="h-8"><RotateCcw className="mr-2 h-3 w-3" />{t('resetFilters')}</Button>
+    </CardContent></Card>}
 
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
-      <Metric title={t('todaysLiveSessions')} value={filteredShifts.filter(shift => shift.date === today).length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600" />} />
-      <Metric title={t('confirmedRevenue')} value={formatCurrency(revenue)} note={`${delta} ${t('previousPeriod')}`} icon={<TrendingUp className="h-5 w-5 text-green-600" />} />
-      <Metric title={t('liveInProgress')} value={filteredShifts.filter(shift => shift.status === 'live').length.toString()} icon={<Radio className="h-5 w-5 text-red-600" />} />
-      <Metric title={t('totalStaff')} value={new Set([
-        ...filteredShifts.flatMap(shift => [shift.host_id, shift.support_id, shift.technical_id]).filter((id): id is string => Boolean(id)),
-        ...registrations.filter(registration => isStaffedRegistration(registration) && shiftIds.has(registration.shift_id)).map(registration => registration.user_id),
-      ]).size.toString()} icon={<Users className="h-5 w-5 text-purple-600" />} />
-      <Metric title={t('reportsSubmitted')} value={filteredReports.length.toString()} icon={<FileText className="h-5 w-5 text-amber-600" />} />
-      <Metric title={t('campaigns')} value={new Set(filteredShifts.map(shift => shift.campaign_id).filter(Boolean)).size.toString()} icon={<Package className="h-5 w-5 text-orange-600" />} />
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <Metric title={t('todaysLiveSessions')} value={filteredShifts.filter(shift => shift.date === today).length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
+      <Metric title={t('liveInProgress')} value={filteredShifts.filter(shift => shift.status === 'live').length.toString()} icon={<Radio className="h-5 w-5 text-red-600 dark:text-red-400" />} />
+      <Metric title={t('reportsSubmitted')} value={filteredReports.length.toString()} icon={<FileText className="h-5 w-5 text-amber-600 dark:text-amber-400" />} />
+      <Metric title={t('confirmedRevenue')} value={formatCurrency(revenue)} note={`${delta} ${t('previousPeriod')}`} icon={<TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />} />
     </div>
 
-    <Card><CardContent className="flex items-center justify-between p-4"><div><p className="font-medium text-sm">Data Quality</p><p className="text-xs text-muted-foreground">Import / report / staffing issues</p></div><Button variant="outline" size="sm" render={<Link href="/data-quality" />} nativeButton={false}>Open</Button></CardContent></Card>
+    <div className="grid gap-4 md:grid-cols-2">
+      <Card><CardHeader><CardTitle>{t('operationsCenter')}</CardTitle><CardDescription>{t('quickActions')}</CardDescription></CardHeader><CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <QuickAction href="/calendar" label={t('calendar')} icon={<Calendar className="h-5 w-5" />} /><QuickAction href="/live" label={t('liveMonitor')} icon={<Radio className="h-5 w-5" />} /><QuickAction href="/reports" label={t('reports')} icon={<FileText className="h-5 w-5" />} /><QuickAction href="/analytics" label={t('analytics')} icon={<BarChart3 className="h-5 w-5" />} />
+      </CardContent></Card>
 
-    <Card><CardHeader><CardTitle>{t('quickActions')}</CardTitle><CardDescription>{t('operationsCenter')}</CardDescription></CardHeader><CardContent className="grid grid-cols-2 gap-3 md:grid-cols-4">
-      <QuickAction href="/calendar" label={t('calendar')} icon={<Calendar className="h-6 w-6" />} /><QuickAction href="/live" label={t('liveMonitor')} icon={<Radio className="h-6 w-6" />} /><QuickAction href="/reports" label={t('reports')} icon={<FileText className="h-6 w-6" />} /><QuickAction href="/analytics" label={t('analytics')} icon={<BarChart3 className="h-6 w-6" />} />
-    </CardContent></Card>
+      <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-2 gap-4">
+          <Metric title={t('totalStaff')} value={new Set([
+            ...filteredShifts.flatMap(shift => [shift.host_id, shift.support_id, shift.technical_id]).filter((id): id is string => Boolean(id)),
+            ...registrations.filter(registration => isStaffedRegistration(registration) && shiftIds.has(registration.shift_id)).map(registration => registration.user_id),
+          ]).size.toString()} icon={<Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />} />
+          <Metric title={t('campaigns')} value={new Set(filteredShifts.map(shift => shift.campaign_id).filter(Boolean)).size.toString()} icon={<Package className="h-5 w-5 text-orange-600 dark:text-orange-400" />} />
+        </div>
+        <Card className="flex-1 bg-destructive/5 dark:bg-destructive/10 border-destructive/20"><CardContent className="flex h-full items-center justify-between p-4"><div><p className="font-semibold text-sm text-destructive dark:text-red-400">Data Quality Alerts</p><p className="text-xs text-muted-foreground mt-0.5">Import / report / staffing issues</p></div><Button variant="outline" size="sm" render={<Link href="/data-quality" />} nativeButton={false} className="border-destructive/30 text-destructive hover:bg-destructive/10">Review</Button></CardContent></Card>
+      </div>
+    </div>
 
     <DashboardCharts
       trend={trend}
@@ -161,7 +177,7 @@ export function DashboardOverview() {
       noDataLabel={t('noData')}
     />
 
-    <Card><CardHeader className="flex-row items-center justify-between"><div><CardTitle>{t('upcomingShifts')}</CardTitle><CardDescription>{t('dashboardFilters')}</CardDescription></div><Button nativeButton={false} render={<Link href="/calendar" />} variant="outline" size="sm">{t('viewAll')}</Button></CardHeader><CardContent>{upcoming.length ? <div className="space-y-3">{upcoming.map(shift => <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3" key={shift.id}><div><p className="font-medium">{shift.title || nameFor(brands, shift.brand_id)}</p><p className="text-sm text-muted-foreground">{shift.date} · {formatShiftTimeRange(shift)} · {nameFor(platforms, shift.platform_id)}</p></div><Badge variant="outline">{t('scheduled')}</Badge></div>)}</div> : <Empty text={t('noMatchingShifts')} />}</CardContent></Card>
+    <Card><CardHeader className="flex-row items-center justify-between border-b px-4 py-3 space-y-0"><div><CardTitle className="text-base">{t('upcomingShifts')}</CardTitle></div><Button nativeButton={false} render={<Link href="/calendar" />} variant="outline" size="sm" className="h-8">{t('viewAll')}</Button></CardHeader><CardContent className="p-0">{upcoming.length ? <div className="divide-y">{upcoming.map(shift => <div className="flex items-center justify-between gap-4 p-4 hover:bg-muted/30 transition-colors" key={shift.id}><div className="min-w-0 flex-1"><p className="font-medium truncate">{shift.title || nameFor(brands, shift.brand_id)}</p><div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground"><span>{shift.date}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{formatShiftTimeRange(shift)}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{nameFor(platforms, shift.platform_id)}</span></div></div><Badge variant="secondary" className="shrink-0">{t('scheduled')}</Badge></div>)}</div> : <div className="p-8"><Empty text={t('noMatchingShifts')} /></div>}</CardContent></Card>
   </div>
 }
 
@@ -169,7 +185,7 @@ function FilterSelect({ label, value, options, onChange }: { label: string; valu
   const { t } = useTranslation()
   return <label className="text-xs font-medium">{label}<Select value={value} onValueChange={onChange}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{options.map(option => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}</SelectContent></Select></label>
 }
-function Metric({ title, value, note, icon }: { title: string; value: string; note?: string; icon: React.ReactNode }) { return <Card><CardHeader className="flex-row items-center justify-between pb-2"><CardTitle className="text-sm text-muted-foreground">{title}</CardTitle>{icon}</CardHeader><CardContent><p className="text-2xl font-bold">{value}</p>{note && <p className="mt-1 text-xs text-muted-foreground">{note}</p>}</CardContent></Card> }
-function QuickAction({ href, label, icon }: { href: string; label: string; icon: React.ReactNode }) { return <Button nativeButton={false} render={<Link href={href} />} variant="outline" className="h-24 flex-col gap-2">{icon}<span>{label}</span></Button> }
+function Metric({ title, value, note, icon }: { title: string; value: string; note?: string; icon: React.ReactNode }) { return <Card className="shadow-none"><CardHeader className="flex-row items-center justify-between pb-2 pt-4 px-4 space-y-0"><CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>{icon}</CardHeader><CardContent className="px-4 pb-4"><p className="text-2xl font-bold">{value}</p>{note && <p className="mt-1 text-xs font-medium text-muted-foreground">{note}</p>}</CardContent></Card> }
+function QuickAction({ href, label, icon }: { href: string; label: string; icon: React.ReactNode }) { return <Button nativeButton={false} render={<Link href={href} />} variant="outline" className="h-20 flex-col gap-1.5 bg-muted/20">{icon}<span className="text-xs">{label}</span></Button> }
 function Empty({ text }: { text: string }) { return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{text}</div> }
 const nameFor = (items: Array<{ id: string; name: string }>, id: string) => items.find(item => item.id === id)?.name || '—'
