@@ -79,10 +79,8 @@ export function NotificationCenter() {
 
   const handleClick = async (n: AppNotification) => {
     if (!n.read_at) await notificationService.markRead(n.id)
-    if (n.action_url) {
-      router.push(n.action_url)
-      setOpen(false)
-    }
+    if (n.action_url) router.push(n.action_url)
+    setOpen(false)
   }
 
   const getIcon = (type: string, read: boolean) => {
@@ -161,7 +159,7 @@ export function NotificationCenter() {
       >
         <Bell className="h-5 w-5" />
         {unreadCount > 0 && (
-          <span className="absolute 1 top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white ring-2 ring-background">
+          <span className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white ring-2 ring-background">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
