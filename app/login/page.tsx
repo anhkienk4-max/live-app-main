@@ -4,9 +4,8 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
-import { Eye, EyeOff, Globe, Loader2 } from 'lucide-react'
+import { Eye, EyeOff, Globe, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useTranslation } from '@/lib/i18n'
 import { mockAuthService } from '@/lib/services/mockAuthService'
@@ -17,6 +16,7 @@ import {
   shouldClearLocalSessionForLoginReason,
 } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/client'
+import { AuthLayout } from '@/components/layouts/AuthLayout'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -95,152 +95,140 @@ export default function LoginPage() {
     setLoading(false)
   }
 
-  const handleGoogleLogin = async () => {
-    setLoading(true)
-    setError(null)
-
-    if (mockMode) {
-      const result = await mockAuthService.signInWithGoogle(email)
-      if (result.ok) {
-        redirectAfterLogin()
-        return
-      }
-      setError(authStatusMessage(result.status))
-      setLoading(false)
-      return
-    }
-
-    setError(t('authServiceUnavailable'))
-    setLoading(false)
-  }
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-50 p-4">
-      <Card className="w-full max-w-md shadow-xl border-0">
-        <CardHeader className="space-y-4 text-center pb-8">
-          <div className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl flex items-center justify-center">
-            <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <div>
-            <CardTitle className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">
-              LiveStream Ops
-            </CardTitle>
-            <CardDescription className="text-base mt-2">
-              {t('loginSubtitle')}
-            </CardDescription>
+    <AuthLayout title="LiveStream Ops" subtitle={t('loginSubtitle')}>
+      {mockMode && (
+        <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
+          <AlertCircle className="size-4 shrink-0" />
+          <p className="font-medium">{t('demoModeHelp')}</p>
+        </div>
+      )}
+
+      {notice && (
+        <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700" data-testid="login-notice">
+          <CheckCircle2 className="size-4 shrink-0" />
+          <p>{notice}</p>
+        </div>
+      )}
+
+      {error && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" data-testid="login-error">
+          <AlertCircle className="size-4 shrink-0" />
+          <p>{error}</p>
+        </div>
+      )}
+
+      <div className="grid gap-4">
+        <Button
+          type="button"
+          disabled={true}
+          variant="outline"
+          className="h-11 w-full bg-white text-zinc-950 opacity-70 hover:bg-zinc-50"
+          title="Google Sign-In is not currently configured in the Supabase backend."
+        >
+          <Globe className="mr-2 size-5" />
+          {t('continueWithGoogle')}
+        </Button>
+        <p className="text-center text-xs text-muted-foreground">
+          Google Sign-In requires backend configuration.
+        </p>
+      </div>
+
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <Separator className="w-full" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-background px-4 text-muted-foreground font-medium">
+            {t('continueWithEmail')}
+          </span>
+        </div>
+      </div>
+
+      <form onSubmit={handleEmailLogin} className="space-y-4">
+        <div className="space-y-2">
+          <label htmlFor="email" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+            {t('email')}
+          </label>
+          <Input
+            id="email"
+            type="email"
+            placeholder="name@company.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            className="h-11"
+            data-testid="email-input"
+          />
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label htmlFor="password" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+              {t('password')}
+            </label>
             {mockMode && (
-              <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-xs text-blue-700 font-medium">
-                  🔧 {t('demoModeHelp')}
-                </p>
-              </div>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {mockMode && (
-            <>
-              <Button
-                onClick={handleGoogleLogin}
-                disabled={loading}
-                variant="outline"
-                className="w-full h-12 text-base font-medium hover:bg-gray-50 transition-all"
-                data-testid="google-login-btn"
+              <button 
+                type="button" 
+                onClick={() => setError(t('passwordResetMockHelp'))}
+                className="text-sm font-medium text-blue-600 hover:text-blue-500"
               >
-                <Globe className="mr-2 h-5 w-5" />
-                {t('continueWithGoogle')}
-              </Button>
-
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <Separator className="w-full" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-white px-4 text-gray-500 font-medium">
-                    {t('continueWithEmail')}
-                  </span>
-                </div>
-              </div>
-            </>
-          )}
-
-          {notice && (
-            <div className="text-sm text-green-700 bg-green-50 p-3 rounded-lg border border-green-100" data-testid="login-notice">
-              {notice}
-            </div>
-          )}
-
-          <form onSubmit={handleEmailLogin} className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="email" className="text-sm font-medium text-gray-700">
-                {t('email')}
-              </label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="name@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="h-11"
-                data-testid="email-input"
-              />
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="password" className="text-sm font-medium text-gray-700">
-                {t('password')}
-              </label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="h-11 pr-11"
-                  data-testid="password-input"
-                />
-                <Button type="button" variant="ghost" size="icon-sm" className="absolute right-1 top-1.5" aria-label={showPassword ? t('hidePassword') : t('showPassword')} onClick={() => setShowPassword(value => !value)}>
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </Button>
-              </div>
-            </div>
-            {error && (
-              <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg border border-red-100" data-testid="login-error">
-                {error}
-              </div>
-            )}
-            <Button
-              type="submit"
-              disabled={loading}
-              className="w-full h-11 text-base font-medium bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 transition-all"
-              data-testid="email-login-btn"
-            >
-              {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t('signingIn')}</> : t('signIn')}
-            </Button>
-          </form>
-          <div className="space-y-3 text-center text-sm">
-            {mockMode && (
-              <>
-                <button type="button" className="text-blue-700 hover:underline" onClick={() => setError(t('passwordResetMockHelp'))}>{t('forgotPassword')}</button>
-                <p className="text-gray-600">{t('noAccount')} <Link className="font-semibold text-blue-700 hover:underline" href="/register">{t('signUp')}</Link></p>
-              </>
+                {t('forgotPassword')}
+              </button>
             )}
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            className="w-full"
-            onClick={() => setLanguage(language === 'en' ? 'vi' : 'en')}
-          >
-            <Globe className="mr-2 h-4 w-4" />
-            {language === 'en' ? t('vietnamese') : t('english')}
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
+          <div className="relative">
+            <Input
+              id="password"
+              type={showPassword ? 'text' : 'password'}
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="h-11 pr-11"
+              data-testid="password-input"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-1 top-1.5 size-8 text-muted-foreground hover:text-foreground"
+              aria-label={showPassword ? t('hidePassword') : t('showPassword')}
+              onClick={() => setShowPassword(value => !value)}
+            >
+              {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </Button>
+          </div>
+        </div>
+        <Button
+          type="submit"
+          disabled={loading}
+          className="h-11 w-full bg-blue-600 text-white hover:bg-blue-700"
+          data-testid="email-login-btn"
+        >
+          {loading ? <><Loader2 className="mr-2 size-4 animate-spin" />{t('signingIn')}</> : t('signIn')}
+        </Button>
+      </form>
+
+      <div className="text-center text-sm text-muted-foreground">
+        {mockMode && (
+          <p>
+            {t('noAccount')} <Link className="font-semibold text-blue-600 hover:text-blue-500" href="/register">{t('signUp')}</Link>
+          </p>
+        )}
+      </div>
+
+      <div className="mt-8 flex justify-center">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground"
+          onClick={() => setLanguage(language === 'en' ? 'vi' : 'en')}
+        >
+          <Globe className="mr-2 size-4" />
+          {language === 'en' ? t('vietnamese') : t('english')}
+        </Button>
+      </div>
+    </AuthLayout>
   )
 }
