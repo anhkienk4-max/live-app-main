@@ -173,20 +173,19 @@ export function GlobalSearch() {
         })
       })
     }
-    // Quick actions that match query (cap 3) — permission-aware, action URLs wired to calendar handlers
     const actionCandidates: SearchResult[] = []
     const normOpenCalendar = normalize(t('openCalendar'))
     const normCalendar = normalize(t('calendar'))
-    if (normOpenCalendar.includes(q) || normCalendar.includes(q)) actionCandidates.push({ id: 'action-calendar-q', type: 'action', title: t('openCalendar'), subtitle: t('viewShifts'), url: '/calendar', icon: <Calendar className="h-4 w-4" /> })
-    if (canAssignStaff && (normalize(t('createShift')).includes(q) || normalize(t('newShift')).includes(q))) actionCandidates.push({ id: 'action-create-shift-q', type: 'action', title: t('createShift'), subtitle: t('newShift'), url: '/calendar?action=create', icon: <Calendar className="h-4 w-4" /> })
-    if (canImportShifts && (normalize(t('openImportSchedule')).includes(q) || normalize(t('importShifts')).includes(q))) actionCandidates.push({ id: 'action-import-q', type: 'action', title: t('openImportSchedule'), subtitle: t('importShifts'), url: '/calendar?action=import', icon: <Upload className="h-4 w-4" /> })
-    if (canViewReports && (normalize(t('openReports')).includes(q) || normalize(t('reports')).includes(q))) actionCandidates.push({ id: 'action-reports-q', type: 'action', title: t('openReports'), subtitle: t('viewReports'), url: '/reports', icon: <FileText className="h-4 w-4" /> })
+    if (normOpenCalendar.includes(q) || normCalendar.includes(q) || normalize('Open Calendar').includes(q) || normalize('calendar').includes(q)) actionCandidates.push({ id: 'action-calendar-q', type: 'action', title: t('openCalendar'), subtitle: t('viewShifts'), url: '/calendar', icon: <Calendar className="h-4 w-4" /> })
+    if (canAssignStaff && (normalize(t('createShift')).includes(q) || normalize(t('newShift')).includes(q) || normalize('Create Shift').includes(q) || normalize('create shift').includes(q))) actionCandidates.push({ id: 'action-create-shift-q', type: 'action', title: t('createShift'), subtitle: t('newShift'), url: '/calendar?action=create', icon: <Calendar className="h-4 w-4" /> })
+    if (canImportShifts && (normalize(t('openImportSchedule')).includes(q) || normalize(t('importShifts')).includes(q) || normalize('Open Import Schedule').includes(q) || normalize('import schedule').includes(q) || normalize('import').includes(q))) actionCandidates.push({ id: 'action-import-q', type: 'action', title: t('openImportSchedule'), subtitle: t('importShifts'), url: '/calendar?action=import', icon: <Upload className="h-4 w-4" /> })
+    if (normalize(t('openReports')).includes(q) || normalize(t('reports')).includes(q) || normalize('Open Reports').includes(q)) actionCandidates.push({ id: 'action-reports-q', type: 'action', title: t('openReports'), subtitle: t('viewReports'), url: '/reports', icon: <FileText className="h-4 w-4" /> })
     if (actionCandidates.length) searchResults.push(...actionCandidates.slice(0,3))
 
     // Cap total and keep deterministic order: shifts(5) + staff(5) + brands(3) + campaigns(3) + reports(3) already capped per entity
     setResults(searchResults.slice(0, 18))
     setLoading(false)
-  }, [query, cache, open, currentUser])
+  }, [query, cache, open, currentUser, t])
 
   const handleSelect = (result: SearchResult) => {
     setOpen(false)
