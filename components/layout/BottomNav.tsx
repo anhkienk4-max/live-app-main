@@ -2,14 +2,12 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Calendar, Radio, FileText, User } from 'lucide-react'
+import { Menu } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
-
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { resolveSystemPermission } from '@/lib/permissions'
-import { getNavigationForRole } from '@/lib/ui/role-ux'
-import { Menu } from 'lucide-react'
+import { getNavigationForRole, filterNav } from '@/lib/ui/role-ux'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,16 +18,26 @@ import {
 export function BottomNav() {
   const pathname = usePathname()
   const { t } = useTranslation()
-
   const { currentUser } = useCurrentUser()
-  const roleNav = getNavigationForRole(resolveSystemPermission(currentUser))
 
-  const hasOverflow = roleNav.length > 5
+  const rawNav = getNavigationForRole(resolveSystemPermission(currentUser))
+  const roleNav = filterNav(rawNav, currentUser)
+
+  // At 390px: up to 4 primary slots + 1 overflow trigger (5th col)
+  const hasOverflow = roleNav.length > 4
   const primaryNav = hasOverflow ? roleNav.slice(0, 4) : roleNav
   const overflowNav = hasOverflow ? roleNav.slice(4) : []
 
+  const getLabel = (item: typeof roleNav[number]) =>
+    item.labelKey
+      ? t(item.labelKey as Parameters<typeof t>[0])
+      : t(item.name.toLowerCase() as Parameters<typeof t>[0])
+
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border md:hidden pb-safe">
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border md:hidden pb-safe"
+      aria-label={t('moreMenu')}
+    >
       <div className="grid grid-cols-5 h-16">
         {primaryNav.map((item) => {
           const isActive = pathname === item.href
@@ -47,7 +55,7 @@ export function BottomNav() {
               data-testid={`nav-${item.name.toLowerCase()}`}
             >
               <Icon className="h-5 w-5" />
-              <span className="text-xs font-medium">{t(item.name.toLowerCase() as Parameters<typeof t>[0])}</span>
+              <span className="text-xs font-medium">{getLabel(item)}</span>
             </Link>
           )
         })}
@@ -60,9 +68,10 @@ export function BottomNav() {
                 'text-muted-foreground hover:text-foreground outline-none cursor-pointer'
               )}
               data-testid="nav-menu-more"
+              aria-label={t('moreMenu')}
             >
               <Menu className="h-5 w-5" />
-              <span className="text-xs font-medium">Menu</span>
+              <span className="text-xs font-medium">{t('moreMenu')}</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 mb-2">
               {overflowNav.map((item) => {
@@ -78,7 +87,7 @@ export function BottomNav() {
                     />
                   }>
                     <Icon className="h-4 w-4" />
-                    {t(item.name.toLowerCase() as Parameters<typeof t>[0])}
+                    {getLabel(item)}
                   </DropdownMenuItem>
                 )
               })}

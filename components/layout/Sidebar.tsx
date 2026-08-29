@@ -2,20 +2,19 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Calendar, Radio, FileText, User, Settings, Users, Package, Megaphone, BarChart3, RefreshCw, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
-import { hasAnyPermission } from '@/lib/permissions'
-
-import { getNavigationForRole } from '@/lib/ui/role-ux'
 import { resolveSystemPermission } from '@/lib/permissions'
+import { getNavigationForRole, filterNav } from '@/lib/ui/role-ux'
 
 export function Sidebar() {
   const pathname = usePathname()
   const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
-  const navigation = getNavigationForRole(resolveSystemPermission(currentUser))
+
+  const rawNav = getNavigationForRole(resolveSystemPermission(currentUser))
+  const navigation = filterNav(rawNav, currentUser)
 
   return (
     <aside className="hidden md:flex md:flex-shrink-0">
@@ -32,9 +31,12 @@ export function Sidebar() {
             </h1>
           </div>
           <nav className="mt-5 flex-1 px-3 space-y-1">
-            {navigation.filter(item => !item.restricted || (currentUser && hasAnyPermission(currentUser, ['audit.view', 'audit.view_team']))).map((item) => {
+            {navigation.map((item) => {
               const isActive = pathname === item.href
               const Icon = item.icon
+              const label = item.labelKey
+                ? t(item.labelKey as Parameters<typeof t>[0])
+                : t(item.name.toLowerCase() as Parameters<typeof t>[0])
               return (
                 <Link
                   key={item.name}
@@ -53,7 +55,7 @@ export function Sidebar() {
                       isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'
                     )}
                   />
-                  {item.name === 'Audit' ? 'Audit History' : t(item.name.toLowerCase() as Parameters<typeof t>[0])}
+                  {label}
                 </Link>
               )
             })}
