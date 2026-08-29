@@ -20,6 +20,7 @@ import { PageLoadError } from '@/components/ui/page-load-error'
 import { PageShell, PageHeader, PageHeaderContent } from '@/components/ui/archetypes'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { resolveSystemPermission } from '@/lib/permissions'
+import { isCanonicalAssignedShift, getMemberAssignedShifts, getMemberPendingRegistrations, getMemberPendingSwaps, getLeaderPendingRegistrations, getLeaderPendingReports, getLeaderPendingSwaps } from '@/lib/ui/dashboard-role-data'
 
 const DashboardCharts = dynamic(
   () => import('@/components/features/dashboard/DashboardCharts').then(mod => ({ default: mod.DashboardCharts })),
@@ -106,17 +107,9 @@ type CommonProps = {
   setPreset: (preset: Preset) => void
 }
 
-const isAssigned = (shift: Shift, role: OperationalRole | null, userId: string, registrations: ShiftRegistration[]) => {
-  return registrations.some(registration =>
-    registration.shift_id === shift.id &&
-    registration.user_id === userId &&
-    (role === null || registration.operational_role === role) &&
-    isStaffedRegistration(registration)
-  )
-}
 const matchesRoleFilter = (shift: Shift, role: OperationalRole, userId: string, registrations: ShiftRegistration[]) => {
   const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
-  return assignment === userId || isAssigned(shift, role, userId, registrations)
+  return assignment === userId || isCanonicalAssignedShift(shift, role, userId, registrations)
 }
 const matchesDimensions = (shift: Shift, filters: Filters, registrations: ShiftRegistration[]) =>
   (filters.brand === 'all' || shift.brand_id === filters.brand) &&
@@ -221,9 +214,9 @@ function LeaderDashboard(props: CommonProps) {
   
   const shiftIds = new Set(filteredShifts.map(shift => shift.id))
   
-  const pendingRegistrations = registrations.filter(r => r.status === 'pending' && shiftIds.has(r.shift_id))
-  const pendingSwaps = swapRequests.filter(s => s.status === 'pending')
-  const pendingReports = reports.filter(r => (r.status === 'draft' || r.status === 'in_review') && shiftIds.has(r.shift_id))
+  const pendingRegistrations = getLeaderPendingRegistrations(registrations, shiftIds)
+  const pendingSwaps = getLeaderPendingSwaps(swapRequests, shiftIds)
+  const pendingReports = getLeaderPendingReports(reports, shiftIds)
 
   const upcoming = filteredShifts.filter(shift => shift.date >= today && shift.status === 'scheduled').sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`)).slice(0, 5)
   const roleOptions = (role: 'host' | 'support' | 'technical') => users.filter(user => user.operational_roles?.includes(role)).map(user => ({ id: user.id, name: user.full_name }))
@@ -289,14 +282,14 @@ function MemberDashboard(props: CommonProps) {
   const today = dateValue(new Date())
   
   // Find member's shifts using strictly canonical registration
-  const myShifts = shifts.filter(shift => isAssigned(shift, null, currentUser.id, registrations))
+  const myShifts = getMemberAssignedShifts(shifts, currentUser.id, registrations)
   
   const upcoming = myShifts.filter(shift => shift.date >= today && (shift.status === 'scheduled' || shift.status === 'live' || shift.status === 'preparing')).sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`))
   const nextShift = upcoming[0]
   
-  const myPendingSwaps = swapRequests.filter(s => (s.requester_id === currentUser.id || s.counterpart_id === currentUser.id) && s.status === 'pending')
+  const myPendingSwaps = getMemberPendingSwaps(swapRequests, currentUser.id)
   const myReports = reports.filter(r => r.submitted_by === currentUser.id)
-  const myPendingRegistrations = registrations.filter(r => r.user_id === currentUser.id && r.status === 'pending')
+  const myPendingRegistrations = getMemberPendingRegistrations(registrations, currentUser.id)
 
   return <PageShell archetype="command" className="space-y-6">
     <PageHeader>
