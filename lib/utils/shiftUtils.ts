@@ -50,8 +50,15 @@ export interface ResolvedShiftDateTime {
   warning?: string
 }
 
+export interface ShiftTimeConsistency {
+  consistent: boolean
+  mismatches: string[]
+  expected: ReturnType<typeof shiftDateTimeFields> | null
+}
+
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
+export const DEFAULT_BUSINESS_TIMEZONE = 'Asia/Ho_Chi_Minh'
 export const MAX_SHIFT_CAPACITY = 100
 export const DEFAULT_REQUIRED_STAFF_COUNT = 1
 export const DEFAULT_SHIFT_STAFFING = {
@@ -79,19 +86,18 @@ export function normalizeCapacity(
 }
 
 /**
- * Resolves a shift in workspace-local time. Local datetime strings intentionally
- * omit a UTC suffix so the shift's business date is never moved by serialization.
+ * Resolves a shift in business-local wall-clock time using IANA timezone rules.
  */
 export function resolveShiftDateTime(
   date: string,
   startTime: string,
   endTime: string,
-  timezone = 'Asia/Ho_Chi_Minh',
+  timezone = DEFAULT_BUSINESS_TIMEZONE,
 ): ResolvedShiftDateTime | null {
   const dateMatch = date.match(DATE_PATTERN)
   const startMatch = startTime.match(TIME_PATTERN)
   const endMatch = endTime.match(TIME_PATTERN)
-  if (!dateMatch || !startMatch || !endMatch) return null
+  if (!dateMatch || !startMatch || !endMatch || !isValidIanaTimeZone(timezone)) return null
 
   const [, yearText, monthText, dayText] = dateMatch
   const startMinutes = Number(startMatch[1]) * 60 + Number(startMatch[2])
@@ -100,29 +106,14 @@ export function resolveShiftDateTime(
   const durationMinutes = crossesMidnight
     ? 24 * 60 - startMinutes + endMinutes
     : endMinutes - startMinutes
-  const startAt = new Date(
-    Number(yearText),
-    Number(monthText) - 1,
-    Number(dayText),
-    Number(startMatch[1]),
-    Number(startMatch[2]),
-    0,
-    0,
-  )
-  const endAt = new Date(
-    Number(yearText),
-    Number(monthText) - 1,
-    Number(dayText) + (crossesMidnight ? 1 : 0),
-    Number(endMatch[1]),
-    Number(endMatch[2]),
-    0,
-    0,
-  )
-  const validDate = startAt.getFullYear() === Number(yearText) &&
-    startAt.getMonth() === Number(monthText) - 1 &&
-    startAt.getDate() === Number(dayText)
-  const valid = validDate && durationMinutes > 0 && durationMinutes <= 24 * 60
-  const endDate = formatLocalDate(endAt)
+  const validDate = isValidCalendarDate(Number(yearText), Number(monthText), Number(dayText))
+  const endDate = addCalendarDays(date, crossesMidnight ? 1 : 0)
+  const startAt = validDate ? zonedWallTimeToUtc(date, startTime, timezone) : new Date(Number.NaN)
+  const endAt = validDate ? zonedWallTimeToUtc(endDate, endTime, timezone) : new Date(Number.NaN)
+  const actualDurationMinutes = Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())
+    ? durationMinutes
+    : Math.round((endAt.getTime() - startAt.getTime()) / 60_000)
+  const valid = validDate && actualDurationMinutes > 0 && actualDurationMinutes <= 24 * 60
 
   return {
     startAt,
@@ -132,14 +123,14 @@ export function resolveShiftDateTime(
     startDate: date,
     endDate,
     crossesMidnight,
-    durationMinutes,
+    durationMinutes: actualDurationMinutes,
     timezone,
     valid,
     error: !validDate
       ? 'Shift date is invalid.'
-      : durationMinutes === 0
+      : actualDurationMinutes === 0
         ? 'Start time and end time cannot be the same.'
-        : durationMinutes > 24 * 60
+        : actualDurationMinutes > 24 * 60
           ? 'Shift duration cannot exceed 24 hours.'
           : undefined,
     warning: durationMinutes >= 20 * 60
@@ -148,30 +139,101 @@ export function resolveShiftDateTime(
   }
 }
 
-export function shiftDateTimeFields(date: string, startTime: string, endTime: string) {
-  const resolved = resolveShiftDateTime(date, startTime, endTime)
+export function shiftDateTimeFields(date: string, startTime: string, endTime: string, timezone = DEFAULT_BUSINESS_TIMEZONE) {
+  const resolved = resolveShiftDateTime(date, startTime, endTime, timezone)
   if (!resolved?.valid) return null
   return {
-    start_at: resolved.startAtLocal,
-    end_at: resolved.endAtLocal,
+    start_at: resolved.startAt.toISOString(),
+    end_at: resolved.endAt.toISOString(),
     end_date: resolved.endDate,
     crosses_midnight: resolved.crossesMidnight,
     duration_minutes: resolved.durationMinutes,
   }
 }
 
-export function formatShiftTimeRange(shift: Pick<Shift, 'date' | 'start_time' | 'end_time'>): string {
-  const resolved = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time)
+export function isValidIanaTimeZone(value: unknown): value is string {
+  if (typeof value !== 'string' || !value.trim()) return false
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value }).format()
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Returns the current calendar date in the business timezone, never browser-local. */
+export function businessLocalDate(now = new Date(), timezone = DEFAULT_BUSINESS_TIMEZONE): string {
+  const effectiveTimezone = isValidIanaTimeZone(timezone) ? timezone : DEFAULT_BUSINESS_TIMEZONE
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: effectiveTimezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now)
+  const values = Object.fromEntries(parts.filter(part => part.type !== 'literal').map(part => [part.type, part.value]))
+  return `${values.year}-${values.month}-${values.day}`
+}
+
+/**
+ * Compares persisted absolute timestamps and local projections without rewriting
+ * data. Callers can surface mismatches for reconciliation/diagnostics.
+ */
+export function inspectShiftTimeConsistency(
+  shift: Pick<Shift, 'date' | 'start_time' | 'end_time' | 'timezone' | 'start_at' | 'end_at' | 'end_date' | 'crosses_midnight' | 'duration_minutes'>,
+): ShiftTimeConsistency {
+  const expected = shiftDateTimeFields(
+    shift.date,
+    shift.start_time,
+    shift.end_time,
+    shift.timezone || DEFAULT_BUSINESS_TIMEZONE,
+  )
+  if (!expected) return { consistent: false, mismatches: ['invalid_shift_time'], expected: null }
+  const mismatches: string[] = []
+  if (shift.start_at && shift.start_at !== expected.start_at) mismatches.push('start_at')
+  if (shift.end_at && shift.end_at !== expected.end_at) mismatches.push('end_at')
+  if (shift.end_date && shift.end_date !== expected.end_date) mismatches.push('end_date')
+  if (shift.crosses_midnight !== undefined && shift.crosses_midnight !== expected.crosses_midnight) mismatches.push('crosses_midnight')
+  if (shift.duration_minutes !== undefined && shift.duration_minutes !== expected.duration_minutes) mismatches.push('duration_minutes')
+  return { consistent: mismatches.length === 0, mismatches, expected }
+}
+
+function isValidCalendarDate(year: number, month: number, day: number): boolean {
+  const candidate = new Date(Date.UTC(year, month - 1, day))
+  return candidate.getUTCFullYear() === year && candidate.getUTCMonth() === month - 1 && candidate.getUTCDate() === day
+}
+
+function addCalendarDays(date: string, days: number): string {
+  return format(addDays(parseISO(date), days), 'yyyy-MM-dd')
+}
+
+function zonedWallTimeToUtc(date: string, time: string, timezone: string): Date {
+  const [year, month, day] = date.split('-').map(Number)
+  const [hour, minute] = time.split(':').map(Number)
+  const wallTimestamp = Date.UTC(year, month - 1, day, hour, minute)
+  let candidate = new Date(wallTimestamp)
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(candidate)
+    const values = Object.fromEntries(parts.filter(part => part.type !== 'literal').map(part => [part.type, Number(part.value)]))
+    const representedWallTimestamp = Date.UTC(values.year, values.month - 1, values.day, values.hour, values.minute)
+    const offset = representedWallTimestamp - candidate.getTime()
+    const next = new Date(wallTimestamp - offset)
+    if (next.getTime() === candidate.getTime()) break
+    candidate = next
+  }
+  return candidate
+}
+
+export function formatShiftTimeRange(shift: Pick<Shift, 'date' | 'start_time' | 'end_time' | 'timezone'>): string {
+  const resolved = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
   return `${shift.start_time} - ${shift.end_time}${resolved?.crossesMidnight ? ' (+1 day)' : ''}`
 }
 
-export function formatShiftEndDate(shift: Pick<Shift, 'date' | 'start_time' | 'end_time'>): string | null {
-  const resolved = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time)
+export function formatShiftEndDate(shift: Pick<Shift, 'date' | 'start_time' | 'end_time' | 'timezone'>): string | null {
+  const resolved = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
   return resolved?.crossesMidnight ? resolved.endDate : null
-}
-
-function formatLocalDate(value: Date): string {
-  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
 }
 
 // Generate recurring shifts
@@ -244,7 +306,7 @@ export function detectConflicts(
 ): ShiftConflict[] {
   const conflicts: ShiftConflict[] = []
   
-  const resolvedNew = resolveShiftDateTime(newShift.date, newShift.start_time, newShift.end_time)
+  const resolvedNew = resolveShiftDateTime(newShift.date, newShift.start_time, newShift.end_time, newShift.timezone)
   if (!resolvedNew?.valid) {
     conflicts.push({
       type: 'time',
@@ -260,7 +322,7 @@ export function detectConflicts(
     // Skip if same shift (for updates)
     if (shift.id === excludeShiftId) return
     
-    const resolvedExisting = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time)
+    const resolvedExisting = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
     if (!resolvedExisting?.valid) return
     const hasOverlap =
       resolvedNew.startAt < resolvedExisting.endAt &&

@@ -158,7 +158,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
       .map(registration => registration.shift_id))
     return shifts
       .filter(shift => mode === 'open'
-        ? shift.status === 'scheduled' && (resolveShiftDateTime(shift.date, shift.start_time, shift.end_time)?.endAt.getTime() ?? 0) > Date.now()
+        ? shift.status === 'scheduled' && (resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)?.endAt.getTime() ?? 0) > Date.now()
         : userShiftIds.has(shift.id))
       .filter(shift => !filters.date || shift.date === filters.date)
       .filter(shift => filters.brand === 'all' || shift.brand_id === filters.brand)

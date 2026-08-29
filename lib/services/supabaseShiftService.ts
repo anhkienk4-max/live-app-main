@@ -7,6 +7,7 @@ import type {
   Shift,
   ShiftStatus,
 } from '@/lib/types/database.types'
+import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE } from '@/lib/utils/shiftUtils'
 
 const shiftColumns = [
   'id',
@@ -155,6 +156,7 @@ function shiftFromRow(row: ShiftRow): Shift {
     date: row.date,
     start_time: normalizeTime(row.start_time),
     end_time: normalizeTime(row.end_time),
+    timezone: row.timezone || DEFAULT_BUSINESS_TIMEZONE,
     start_at: row.start_at ?? undefined,
     end_at: row.end_at ?? undefined,
     end_date: row.end_date ?? undefined,
@@ -194,6 +196,7 @@ function createPayload(data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>): R
     date: data.date,
     start_time: data.start_time,
     end_time: data.end_time,
+    timezone: data.timezone || DEFAULT_BUSINESS_TIMEZONE,
     brand_id: data.brand_id,
     platform_id: data.platform_id,
     campaign_id: data.campaign_id,
@@ -335,7 +338,7 @@ export function createSupabaseShiftRepository(
     },
 
     async getToday() {
-      const today = new Date().toISOString().split('T')[0]
+      const today = businessLocalDate()
       return this.getByDate(today)
     },
 

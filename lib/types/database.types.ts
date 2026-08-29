@@ -227,6 +227,8 @@ export interface Shift extends LifecycleMetadata {
   date: string
   start_time: string
   end_time: string
+  /** IANA business timezone; legacy callers omit it and use the business default. */
+  timezone?: string
   start_at?: string
   end_at?: string
   end_date?: string
