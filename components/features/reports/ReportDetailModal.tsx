@@ -89,7 +89,7 @@ export function ReportDetailHeaderActions({
   const { t } = useTranslation()
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <Badge className={report.metrics_confirmed ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>
+      <Badge variant={report.metrics_confirmed ? 'default' : 'secondary'} className={report.metrics_confirmed ? 'bg-green-600/10 text-green-700 hover:bg-green-600/20 dark:text-green-400' : 'bg-amber-600/10 text-amber-700 hover:bg-amber-600/20 dark:text-amber-400'}>
         {report.status === 'reopened' ? t('reopened') : report.metrics_confirmed ? t('confirmed') : t('needsReview')}
       </Badge>
       <div className="flex flex-wrap gap-2">
@@ -212,12 +212,12 @@ export function ReportDetailPlatformMetrics({
   const metricKeys = [...platformCanonicalMetricKeys(report.dashboard_platform || 'other')]
 
   return (
-    <Card>
-      <CardContent className="pt-6">
+    <Card className="shadow-none">
+      <CardContent className="p-4 sm:p-5">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold">{t('platformLivestreamMetrics')}</h3>
-            <Badge variant="outline">
+            <Badge variant="secondary" className="font-mono text-[10px]">
               {report.dashboard_platform === 'tiktok_shop' ? 'TikTok Shop' : report.dashboard_platform === 'shopee_live' ? 'Shopee Live' : t('otherPlatform')}
             </Badge>
           </div>
@@ -227,21 +227,21 @@ export function ReportDetailPlatformMetrics({
             size="sm"
             data-testid="toggle-metrics-collapse"
             onClick={onToggleCollapse}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            className="flex h-7 items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
           >
             {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
             {collapsed ? t('expandMetrics') : t('collapseMetrics')}
           </Button>
         </div>
         {!collapsed && (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5" data-testid="platform-metrics-grid">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" data-testid="platform-metrics-grid">
             {metricKeys.map(key => {
               const value = report.platform_metrics?.[key] ?? report.normalized_metrics?.[key]
               if (value == null || value === '') return null
               return (
-                <div className="rounded-lg border p-3" key={key}>
-                  <p className="text-xs text-muted-foreground">{t(metricTranslationKeys[key])}</p>
-                  <p className="mt-1 break-words font-semibold">{formatMetricValue(key, value)}</p>
+                <div key={key}>
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{t(metricTranslationKeys[key])}</p>
+                  <p className="mt-0.5 break-words font-semibold">{formatMetricValue(key, value)}</p>
                 </div>
               )
             })}
@@ -259,9 +259,9 @@ export function FinalReportRecapReadOnly({ recap }: { recap?: FinalReportRecap }
     <div className="grid gap-4 lg:grid-cols-2">
       {finalReportRecapFields.map(field => (
         <div className="min-w-0" key={field.key}>
-          <p className="text-sm font-medium">{t(field.translationKey)}</p>
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{t(field.translationKey)}</p>
           <p
-            className="mt-1 whitespace-pre-wrap rounded-lg bg-muted/50 p-3 text-sm"
+            className="mt-1.5 whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-sm"
             data-testid={`final-recap-${field.key}`}
           >
             {recap?.[field.key] || t('noInsightsProvided')}
@@ -736,52 +736,44 @@ export function ReportDetailModal({
 
           <TabsContent value="overview" className="space-y-6">
             {/* Key Metrics */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm text-gray-600">{t('totalRevenue')}</div>
-                      <div className="text-2xl font-bold text-green-600">{formatCurrency(report.revenue)}</div>
-                    </div>
-                    <DollarSign className="h-8 w-8 text-green-600" />
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Card className="shadow-none">
+                <CardContent className="flex items-center p-4">
+                  <div className="flex-1 space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">{t('totalRevenue')}</p>
+                    <p className="text-lg font-bold text-green-600">{formatCurrency(report.revenue)}</p>
                   </div>
+                  <DollarSign className="h-5 w-5 text-green-600/70" />
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm text-gray-600">{t('metricOrders')}</div>
-                      <div className="text-2xl font-bold">{report.orders}</div>
-                    </div>
-                    <TrendingUp className="h-8 w-8 text-blue-600" />
+              <Card className="shadow-none">
+                <CardContent className="flex items-center p-4">
+                  <div className="flex-1 space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">{t('metricOrders')}</p>
+                    <p className="text-lg font-bold">{report.orders}</p>
                   </div>
+                  <TrendingUp className="h-5 w-5 text-blue-600/70" />
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm text-gray-600">{t('peakViewers')}</div>
-                      <div className="text-2xl font-bold">{report.peak_viewer}</div>
-                    </div>
-                    <Users className="h-8 w-8 text-purple-600" />
+              <Card className="shadow-none">
+                <CardContent className="flex items-center p-4">
+                  <div className="flex-1 space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">{t('peakViewers')}</p>
+                    <p className="text-lg font-bold">{report.peak_viewer}</p>
                   </div>
+                  <Users className="h-5 w-5 text-purple-600/70" />
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm text-gray-600">{t('averageViewers')}</div>
-                      <div className="text-2xl font-bold">{report.average_viewer}</div>
-                    </div>
-                    <Users className="h-8 w-8 text-orange-600" />
+              <Card className="shadow-none">
+                <CardContent className="flex items-center p-4">
+                  <div className="flex-1 space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">{t('averageViewers')}</p>
+                    <p className="text-lg font-bold">{report.average_viewer}</p>
                   </div>
+                  <Users className="h-5 w-5 text-orange-600/70" />
                 </CardContent>
               </Card>
             </div>
@@ -789,30 +781,30 @@ export function ReportDetailModal({
             <ReportDetailPlatformMetrics report={report} collapsed={metricsCollapsed} onToggleCollapse={() => setMetricsCollapsed(prev => !prev)} />
 
             {/* Engagement */}
-            <Card>
-              <CardContent className="pt-6">
+            <Card className="shadow-none">
+              <CardContent className="p-4 sm:p-5">
                 <h3 className="font-semibold mb-4">{t('engagementMetrics')}</h3>
-                <div className="grid gap-4 sm:grid-cols-3 sm:gap-6">
-                  <div className="flex items-center gap-3">
-                    <ThumbsUp className="h-6 w-6 text-blue-600" />
-                    <div>
-                      <div className="text-sm text-gray-600">{t('metricLikes')}</div>
-                      <div className="text-xl font-bold">{report.likes?.toLocaleString() ?? '—'}</div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <ThumbsUp className="h-4 w-4" />
+                      <span className="text-[10px] font-medium uppercase tracking-wider">{t('metricLikes')}</span>
                     </div>
+                    <div className="text-lg font-bold">{report.likes?.toLocaleString() ?? '—'}</div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <MessageCircle className="h-6 w-6 text-green-600" />
-                    <div>
-                      <div className="text-sm text-gray-600">{t('metricComments')}</div>
-                      <div className="text-xl font-bold">{report.comments}</div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <MessageCircle className="h-4 w-4" />
+                      <span className="text-[10px] font-medium uppercase tracking-wider">{t('metricComments')}</span>
                     </div>
+                    <div className="text-lg font-bold">{report.comments}</div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <Share2 className="h-6 w-6 text-purple-600" />
-                    <div>
-                      <div className="text-sm text-gray-600">{t('metricShares')}</div>
-                      <div className="text-xl font-bold">{report.shares}</div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Share2 className="h-4 w-4" />
+                      <span className="text-[10px] font-medium uppercase tracking-wider">{t('metricShares')}</span>
                     </div>
+                    <div className="text-lg font-bold">{report.shares}</div>
                   </div>
                 </div>
               </CardContent>
