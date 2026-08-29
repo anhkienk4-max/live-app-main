@@ -22,7 +22,7 @@ async function sourceRegistration(date: string, requesterId = '2') {
     required_technical_count: 1,
     status: 'scheduled',
   } as unknown as Shift)
-  const registration = await shiftRegistrationService.assignManually(shift.id, requesterId, 'host', '1')
+  const registration = await shiftRegistrationService.assignManually(shift.id, requesterId, 'host', '1', shift.version)
   return { shift, registration }
 }
 
@@ -69,11 +69,11 @@ test('replacement requires the exact selected participant before Leader approval
     reason: 'Need a replacement',
   } as never)
 
-  await assert.rejects(() => swapRequestService.approve(request.id, '1'), /must be accepted/i)
-  await assert.rejects(() => swapRequestService.respond(request.id, '4', 'accept'), /selected participant/i)
-  const accepted = await swapRequestService.respond(request.id, '3', 'accept')
+  await assert.rejects(() => swapRequestService.approve(request.id, '1', request.version), /must be accepted/i)
+  await assert.rejects(() => swapRequestService.respond(request.id, '4', 'accept', request.version), /selected participant/i)
+  const accepted = await swapRequestService.respond(request.id, '3', 'accept', request.version)
   assert.equal(accepted?.status, 'accepted')
-  const completed = await swapRequestService.approve(request.id, '1')
+  const completed = await swapRequestService.approve(request.id, '1', accepted?.version)
   assert.equal(completed?.status, 'completed')
   assert.deepEqual(completed?.approval_history?.map(entry => entry.action), ['created', 'accepted', 'approved', 'completed'])
   assert.equal(completed?.approval_history?.[0]?.replacement_staff_id, '3')
@@ -86,7 +86,7 @@ test('selected replacement can reject and requester can cancel pending or accept
     requester_id: '2', shift_id: first.shift.id, source_registration_id: first.registration.id,
     replacement_staff_id: '3', operational_role: 'host', mode: 'replacement', reason: 'Reject path',
   } as never)
-  const rejected = await swapRequestService.respond(rejectedRequest.id, '3', 'reject')
+  const rejected = await swapRequestService.respond(rejectedRequest.id, '3', 'reject', rejectedRequest.version)
   assert.equal(rejected?.status, 'rejected')
 
   const second = await sourceRegistration('2032-01-03')
@@ -94,8 +94,8 @@ test('selected replacement can reject and requester can cancel pending or accept
     requester_id: '2', shift_id: second.shift.id, source_registration_id: second.registration.id,
     replacement_staff_id: '3', operational_role: 'host', mode: 'replacement', reason: 'Cancel path',
   } as never)
-  await swapRequestService.respond(cancelledRequest.id, '3', 'accept')
-  const cancelled = await swapRequestService.cancel(cancelledRequest.id, '2', 'No longer needed')
+  const accepted = await swapRequestService.respond(cancelledRequest.id, '3', 'accept', cancelledRequest.version)
+  const cancelled = await swapRequestService.cancel(cancelledRequest.id, '2', 'No longer needed', accepted?.version)
   assert.equal(cancelled?.status, 'cancelled')
 })
 

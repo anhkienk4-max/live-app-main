@@ -184,8 +184,7 @@ export const assertExpectedVersion = (
   currentVersion: number | undefined,
   expectedVersion: number | null | undefined,
 ) => {
-  if (expectedVersion === undefined) return
-  if (expectedVersion === null || !Number.isInteger(expectedVersion) || expectedVersion < 1) {
+  if (expectedVersion === null || expectedVersion === undefined || !Number.isInteger(expectedVersion) || expectedVersion < 1) {
     throw new Error(`EXPECTED_VERSION_REQUIRED: ${entity} mutations require the positive revision that was read by the caller.`)
   }
   const actual = currentVersion ?? 1

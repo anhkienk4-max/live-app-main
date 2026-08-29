@@ -23,11 +23,12 @@ test('P1-B migration adds server-controlled revisions to operational entities', 
 
 test('P1-B expected revision mismatch is deterministic and non-mutating', () => {
   assert.doesNotThrow(() => assertExpectedVersion('Shift', 4, 4))
-  assert.doesNotThrow(() => assertExpectedVersion('Shift', undefined, undefined))
-  assert.throws(
-    () => assertExpectedVersion('Shift', 4, null),
-    error => error instanceof Error && error.message.startsWith('EXPECTED_VERSION_REQUIRED'),
-  )
+  for (const missing of [undefined, null, 0, -1]) {
+    assert.throws(
+      () => assertExpectedVersion('Shift', 4, missing),
+      error => error instanceof Error && error.message.startsWith('EXPECTED_VERSION_REQUIRED'),
+    )
+  }
   assert.throws(
     () => assertExpectedVersion('Shift', 5, 4),
     error => error instanceof Error && error.message.startsWith('STALE_WRITE'),
