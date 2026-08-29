@@ -25,6 +25,7 @@ const registrationColumns = [
   'match_method',
   'created_at',
   'updated_at',
+  'version',
 ].join(',')
 
 const shiftColumns = [
@@ -71,7 +72,7 @@ const shiftColumns = [
 
 type Nullable<T> = { [Key in keyof T]: T[Key] | null }
 type RegistrationRow = Nullable<ShiftRegistration> &
-  Pick<ShiftRegistration, 'id' | 'shift_id' | 'user_id' | 'operational_role' | 'status' | 'source' | 'requested_at' | 'created_at' | 'updated_at'>
+  Pick<ShiftRegistration, 'id' | 'shift_id' | 'user_id' | 'operational_role' | 'status' | 'source' | 'requested_at' | 'created_at' | 'updated_at' | 'version'>
 type ShiftRow = Nullable<Shift> &
   Pick<Shift, 'id' | 'date' | 'start_time' | 'end_time' | 'brand_id' | 'platform_id' | 'status' | 'created_at' | 'updated_at'> & {
     timezone: string
@@ -116,7 +117,8 @@ export class RegistrationRequestError extends Error {
 
 function requestError(operation: string, error: SupabaseErrorShape): RegistrationRequestError {
   const message = error.message?.trim() || `Supabase ${operation} failed.`
-  return new RegistrationRequestError(message, error.code || 'REGISTRATION_REQUEST_FAILED')
+  const code = message.includes('STALE_WRITE') ? 'STALE_WRITE' : error.code || 'REGISTRATION_REQUEST_FAILED'
+  return new RegistrationRequestError(message, code)
 }
 
 function requiredRow<T>(
@@ -158,6 +160,7 @@ function registrationFromRow(row: RegistrationRow): ShiftRegistration {
     match_method: row.match_method ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    version: row.version ?? undefined,
   }
 }
 
@@ -239,15 +242,15 @@ export interface SupabaseShiftRegistrationRepository {
   getCapacity(shiftId: string): Promise<ShiftRoleCapacity[]>
   getMyApprovedShifts(userId: string): Promise<Shift[]>
   register(shiftId: string, role: OperationalRole): Promise<ShiftRegistration>
-  cancel(id: string, notes?: string): Promise<ShiftRegistration>
-  approve(id: string, notes?: string): Promise<ShiftRegistration>
-  reject(id: string, notes?: string): Promise<ShiftRegistration>
+  cancel(id: string, notes?: string, expectedVersion?: number): Promise<ShiftRegistration>
+  approve(id: string, notes?: string, expectedVersion?: number): Promise<ShiftRegistration>
+  reject(id: string, notes?: string, expectedVersion?: number): Promise<ShiftRegistration>
   bulkReview(
     registrationIds: string[],
     action: ShiftRegistrationReviewAction,
     notes?: string,
   ): Promise<ShiftRegistrationReviewResult[]>
-  assignManually(shiftId: string, userId: string, role: OperationalRole, notes?: string): Promise<ShiftRegistration>
+  assignManually(shiftId: string, userId: string, role: OperationalRole, notes?: string, expectedVersion?: number): Promise<ShiftRegistration>
   assignImported(
     shiftId: string,
     userId: string,
@@ -255,8 +258,9 @@ export interface SupabaseShiftRegistrationRepository {
     importedName: string,
     matchMethod: NonNullable<ShiftRegistration['match_method']>,
     notes?: string,
+    expectedVersion?: number,
   ): Promise<ShiftRegistration>
-  removeAssignment(id: string, notes?: string): Promise<ShiftRegistration>
+  removeAssignment(id: string, notes?: string, expectedVersion?: number): Promise<ShiftRegistration>
 }
 
 export function createSupabaseShiftRegistrationRepository(
@@ -348,30 +352,33 @@ export function createSupabaseShiftRegistrationRepository(
       )
     },
 
-    async cancel(id, notes) {
+    async cancel(id, notes, expectedVersion) {
       const result = await client.rpc('cancel_own_shift_registration', {
         p_registration_id: id,
         p_notes: notes ?? null,
+        p_expected_version: expectedVersion ?? null,
       }).single()
       return registrationFromRow(
         requiredRow('registration cancel', result) as unknown as RegistrationRow,
       )
     },
 
-    async approve(id, notes) {
+    async approve(id, notes, expectedVersion) {
       const result = await client.rpc('approve_shift_registration', {
         p_registration_id: id,
         p_notes: notes ?? null,
+        p_expected_version: expectedVersion ?? null,
       }).single()
       return registrationFromRow(
         requiredRow('registration approve', result) as unknown as RegistrationRow,
       )
     },
 
-    async reject(id, notes) {
+    async reject(id, notes, expectedVersion) {
       const result = await client.rpc('reject_shift_registration', {
         p_registration_id: id,
         p_notes: notes ?? null,
+        p_expected_version: expectedVersion ?? null,
       }).single()
       return registrationFromRow(
         requiredRow('registration reject', result) as unknown as RegistrationRow,
@@ -398,19 +405,20 @@ export function createSupabaseShiftRegistrationRepository(
         }))
     },
 
-    async assignManually(shiftId, userId, role, notes) {
+    async assignManually(shiftId, userId, role, notes, expectedVersion) {
       const result = await client.rpc('manual_assign_shift_staff', {
         p_shift_id: shiftId,
         p_user_id: userId,
         p_role: role,
         p_notes: notes ?? null,
+        p_expected_version: expectedVersion ?? null,
       }).single()
       return registrationFromRow(
         requiredRow('registration manual assign', result) as unknown as RegistrationRow,
       )
     },
 
-    async assignImported(shiftId, userId, role, importedName, matchMethod, notes) {
+    async assignImported(shiftId, userId, role, importedName, matchMethod, notes, expectedVersion) {
       const result = await client.rpc('manual_assign_imported_shift_staff', {
         p_shift_id: shiftId,
         p_user_id: userId,
@@ -418,16 +426,18 @@ export function createSupabaseShiftRegistrationRepository(
         p_imported_name: importedName,
         p_match_method: matchMethod,
         p_notes: notes ?? null,
+        p_expected_version: expectedVersion ?? null,
       }).single()
       return registrationFromRow(
         requiredRow('imported staffing assignment', result) as unknown as RegistrationRow,
       )
     },
 
-    async removeAssignment(id, notes) {
+    async removeAssignment(id, notes, expectedVersion) {
       const result = await client.rpc('remove_shift_staffing', {
         p_registration_id: id,
         p_notes: notes ?? null,
+        p_expected_version: expectedVersion ?? null,
       }).single()
       return registrationFromRow(
         requiredRow('registration remove assignment', result) as unknown as RegistrationRow,

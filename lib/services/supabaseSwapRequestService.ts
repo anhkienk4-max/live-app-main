@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { OperationalRole, SwapRequest, SwapStatus } from '@/lib/types/database.types'
 
 const swapRequestColumns = [
-  'id','requester_id','source_registration_id','source_shift_id','target_shift_id','counterpart_registration_id','counterpart_id','operational_role','mode','status','reason','notes','created_at','updated_at','responded_at','responded_by','approved_at','approved_by','completed_at','shift_id','original_staff_id','replacement_staff_id','new_host_id','new_support_id','new_technical_id','approval_history','deleted_at','deleted_by','deletion_reason',
+  'id','requester_id','source_registration_id','source_shift_id','target_shift_id','counterpart_registration_id','counterpart_id','operational_role','mode','status','reason','notes','created_at','updated_at','version','responded_at','responded_by','approved_at','approved_by','completed_at','shift_id','original_staff_id','replacement_staff_id','new_host_id','new_support_id','new_technical_id','approval_history','deleted_at','deleted_by','deletion_reason',
 ].join(',')
 
 type NullableSwapRow = { [K in keyof SwapRequest]: SwapRequest[K] | null } & { mode: string | null }
@@ -65,7 +65,7 @@ function normalizeApprovalHistory(value: unknown): SwapRequest['approval_history
 export class SwapRequestError extends Error {
   constructor(message: string, public readonly code = 'SWAP_REQUEST_FAILED') { super(message); this.name='SwapRequestError' }
 }
-function requestError(op: string, e: SupabaseErrorShape): SwapRequestError { return new SwapRequestError(e.message?.trim() || `Supabase ${op} failed.`, e.code || 'SWAP_REQUEST_FAILED') }
+function requestError(op: string, e: SupabaseErrorShape): SwapRequestError { const message = e.message?.trim() || `Supabase ${op} failed.`; return new SwapRequestError(message, message.includes('STALE_WRITE') ? 'STALE_WRITE' : e.code || 'SWAP_REQUEST_FAILED') }
 function swapFromRow(row: NullableSwapRow): SwapRequest {
   return {
     id: row.id as string,
@@ -94,6 +94,7 @@ function swapFromRow(row: NullableSwapRow): SwapRequest {
     completed_at: row.completed_at as string | undefined,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
+    version: row.version == null ? undefined : Number(row.version),
     deleted_at: row.deleted_at as string | undefined,
     deleted_by: row.deleted_by as string | undefined,
   }
@@ -105,11 +106,11 @@ export interface SupabaseSwapRequestRepository {
   getAll(): Promise<SwapRequest[]>
   getPending(): Promise<SwapRequest[]>
   create(data: { shift_id?: string; sourceRegistrationId: string; targetShiftId?: string | null; replacementStaffId?: string | null; counterpartRegistrationId?: string | null; operational_role?: OperationalRole; replacement_staff_id?: string; reason: string; notes?: string; mode: 'replacement' | 'exchange' }): Promise<SwapRequest>
-  approve(id: string, notes?: string): Promise<SwapRequest>
-  reject(id: string, notes?: string): Promise<SwapRequest>
-  cancel(id: string, reason: string): Promise<SwapRequest>
-  accept(id: string, notes?: string): Promise<SwapRequest>
-  respond(id: string, action: 'accept' | 'reject', notes?: string): Promise<SwapRequest>
+  approve(id: string, notes?: string, expectedVersion?: number): Promise<SwapRequest>
+  reject(id: string, notes?: string, expectedVersion?: number): Promise<SwapRequest>
+  cancel(id: string, reason: string, expectedVersion?: number): Promise<SwapRequest>
+  accept(id: string, notes?: string, expectedVersion?: number): Promise<SwapRequest>
+  respond(id: string, action: 'accept' | 'reject', notes?: string, expectedVersion?: number): Promise<SwapRequest>
 }
 
 export function createSupabaseSwapRequestRepository(client: SupabaseClient): SupabaseSwapRequestRepository {
@@ -131,24 +132,24 @@ export function createSupabaseSwapRequestRepository(client: SupabaseClient): Sup
       // fallback to legacy RPC if new fails due to missing overload — try legacy
       return swapFromRow(one('swap request create', result) as unknown as NullableSwapRow)
     },
-    async approve(id, notes) {
-      const result = await client.rpc('approve_shift_swap_request', { p_request_id: id, p_notes: notes ?? null }).single()
+    async approve(id, notes, expectedVersion) {
+      const result = await client.rpc('approve_shift_swap_request', { p_request_id: id, p_notes: notes ?? null, p_expected_version: expectedVersion ?? null }).single()
       return swapFromRow(one('swap request approve', result) as unknown as NullableSwapRow)
     },
-    async reject(id, notes) {
-      const result = await client.rpc('reject_shift_swap_request', { p_request_id: id, p_notes: notes ?? null }).single()
+    async reject(id, notes, expectedVersion) {
+      const result = await client.rpc('reject_shift_swap_request', { p_request_id: id, p_notes: notes ?? null, p_expected_version: expectedVersion ?? null }).single()
       return swapFromRow(one('swap request reject', result) as unknown as NullableSwapRow)
     },
-    async accept(id, notes) {
-      const result = await client.rpc('respond_shift_swap_request', { p_request_id: id, p_action: 'accept', p_notes: notes ?? null }).single()
+    async accept(id, notes, expectedVersion) {
+      const result = await client.rpc('respond_shift_swap_request', { p_request_id: id, p_action: 'accept', p_notes: notes ?? null, p_expected_version: expectedVersion ?? null }).single()
       return swapFromRow(one('swap request accept', result) as unknown as NullableSwapRow)
     },
-    async respond(id, action, notes) {
-      const result = await client.rpc('respond_shift_swap_request', { p_request_id: id, p_action: action, p_notes: notes ?? null }).single()
+    async respond(id, action, notes, expectedVersion) {
+      const result = await client.rpc('respond_shift_swap_request', { p_request_id: id, p_action: action, p_notes: notes ?? null, p_expected_version: expectedVersion ?? null }).single()
       return swapFromRow(one('swap request response', result) as unknown as NullableSwapRow)
     },
-    async cancel(id, reason) {
-      const result = await client.rpc('cancel_own_shift_swap_request', { p_request_id: id, p_reason: reason }).single()
+    async cancel(id, reason, expectedVersion) {
+      const result = await client.rpc('cancel_own_shift_swap_request', { p_request_id: id, p_reason: reason, p_expected_version: expectedVersion ?? null }).single()
       return swapFromRow(one('swap request cancel', result) as unknown as NullableSwapRow)
     },
   }

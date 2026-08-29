@@ -898,8 +898,8 @@ export function ShiftDetailModal({
                             </Badge>
                             {registration.status === 'pending' && currentUser && hasPermission(currentUser, 'shifts.approve_registration') ? (
                               <>
-                                <Button size="sm" disabled={busy} onClick={() => runStaffingAction(() => shiftRegistrationService.approve(registration.id, currentUser.id), t('registrationApproved'))}><Check className="mr-1 h-4 w-4" />{t('approve')}</Button>
-                                <Button size="sm" variant="outline" disabled={busy} onClick={() => runStaffingAction(() => shiftRegistrationService.reject(registration.id, currentUser.id), t('rejected'))}><X className="mr-1 h-4 w-4" />{t('reject')}</Button>
+                                <Button size="sm" disabled={busy} onClick={() => runStaffingAction(() => shiftRegistrationService.approve(registration.id, currentUser.id, undefined, registration.version), t('registrationApproved'))}><Check className="mr-1 h-4 w-4" />{t('approve')}</Button>
+                                <Button size="sm" variant="outline" disabled={busy} onClick={() => runStaffingAction(() => shiftRegistrationService.reject(registration.id, currentUser.id, undefined, registration.version), t('rejected'))}><X className="mr-1 h-4 w-4" />{t('reject')}</Button>
                               </>
                             ) : null}
                           </div>

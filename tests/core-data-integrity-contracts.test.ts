@@ -228,8 +228,11 @@ test('8. STALE WRITE protection matrix', () => {
     assert.ok(e.currentProtection.includes('updated_at') || e.currentProtection.includes('transaction'))
     assert.ok(['P0','P1','P2'].includes(e.severity))
   }
-  // Do not implement optimistic concurrency in this task
-  assert.ok(true, 'matrix is documentation only')
+  for (const entity of ['Shift', 'ShiftRegistration', 'SwapRequest']) {
+    const entry = STALE_WRITE_MATRIX.find(item => item.entity === entity)!
+    assert.ok(entry.currentProtection.includes('version'), `${entity} uses server revision checks`)
+    assert.equal(entry.missingProtection.includes('version'), false)
+  }
 })
 
 // 9. SOFT DELETE / ARCHIVE contract — historical retained

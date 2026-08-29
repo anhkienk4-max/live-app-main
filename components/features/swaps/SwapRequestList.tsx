@@ -93,10 +93,10 @@ export function SwapRequestList() {
   const runReview = async (swap: SwapRequest, action: 'approve' | 'reject' | 'accept' | 'counterpart_reject') => {
     if (!currentUser) return
     try {
-      if (action === 'accept') await swapRequestService.respond(swap.id, currentUser.id, 'accept')
-      else if (action === 'counterpart_reject') await swapRequestService.respond(swap.id, currentUser.id, 'reject')
-      else if (action === 'approve') await swapRequestService.approve(swap.id, currentUser.id)
-      else await swapRequestService.reject(swap.id, currentUser.id)
+      if (action === 'accept') await swapRequestService.respond(swap.id, currentUser.id, 'accept', swap.version)
+      else if (action === 'counterpart_reject') await swapRequestService.respond(swap.id, currentUser.id, 'reject', swap.version)
+      else if (action === 'approve') await swapRequestService.approve(swap.id, currentUser.id, swap.version)
+      else await swapRequestService.reject(swap.id, currentUser.id, swap.version)
       toast({ title: t('success'), description: (t as unknown as (k:string)=>string)(action === 'approve' ? 'approved' : action === 'accept' ? 'accepted' : 'rejected'), variant: 'success' })
       await loadData()
     } catch (error) {
@@ -117,7 +117,7 @@ export function SwapRequestList() {
   const cancelSwap = async (reason: string) => {
     if (!currentUser || !cancelTarget) return
     try {
-      await swapRequestService.cancel(cancelTarget.id, currentUser.id, reason)
+      await swapRequestService.cancel(cancelTarget.id, currentUser.id, reason, cancelTarget.version)
       toast({ title: 'Swap request cancelled', variant: 'success' })
       setCancelTarget(null)
       await loadData()

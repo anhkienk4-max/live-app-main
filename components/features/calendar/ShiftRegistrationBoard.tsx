@@ -144,8 +144,8 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const confirmRemoval = async (reason: string) => {
     if (!currentUser || !removalTarget) return
     try {
-      if (removalTarget.kind === 'cancel') await shiftRegistrationService.cancel(removalTarget.registration.id, currentUser.id, reason)
-      else await shiftRegistrationService.removeAssignment(removalTarget.registration.id, currentUser.id, reason)
+      if (removalTarget.kind === 'cancel') await shiftRegistrationService.cancel(removalTarget.registration.id, currentUser.id, reason, removalTarget.registration.version)
+      else await shiftRegistrationService.removeAssignment(removalTarget.registration.id, currentUser.id, reason, removalTarget.registration.version)
       toast({ title: t('success'), description: removalTarget.kind === 'cancel' ? t('registrationCancelled') : t('removeAssignment'), variant: 'success' })
       setRemovalTarget(null)
       await loadData()
@@ -236,8 +236,8 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                     <p className="mt-1 text-xs text-muted-foreground">{format(new Date(registration.requested_at), 'dd/MM/yyyy HH:mm')}{registration.review_notes ? ` · ${registration.review_notes}` : ''}</p>
                   </div>
                   <div className="flex gap-2">
-                    <Button size="sm" disabled={busyId === registration.id} onClick={() => runAction(registration.id, () => shiftRegistrationService.approve(registration.id, currentUser.id), t('registrationApproved'))}><Check className="mr-1 h-4 w-4" />{t('approve')}</Button>
-                    <Button size="sm" variant="outline" disabled={busyId === registration.id} onClick={() => runAction(registration.id, () => shiftRegistrationService.reject(registration.id, currentUser.id), t('rejected'))}><X className="mr-1 h-4 w-4" />{t('reject')}</Button>
+                    <Button size="sm" disabled={busyId === registration.id} onClick={() => runAction(registration.id, () => shiftRegistrationService.approve(registration.id, currentUser.id, undefined, registration.version), t('registrationApproved'))}><Check className="mr-1 h-4 w-4" />{t('registrationApproved')}</Button>
+                    <Button size="sm" variant="outline" disabled={busyId === registration.id} onClick={() => runAction(registration.id, () => shiftRegistrationService.reject(registration.id, currentUser.id, undefined, registration.version), t('rejected'))}><X className="mr-1 h-4 w-4" />{t('reject')}</Button>
                     <Button size="sm" variant="ghost" disabled={busyId === registration.id} onClick={() => setRemovalTarget({ registration, kind: 'unassign' })}>{t('removeAssignment')}</Button>
                   </div>
                 </div>

@@ -44,6 +44,7 @@ const shiftColumns = [
   'updated_by',
   'created_at',
   'updated_at',
+  'version',
   'deleted_at',
   'deleted_by',
   'archived_at',
@@ -64,6 +65,7 @@ type ShiftRow = Nullable<Shift> &
     | 'status'
     | 'created_at'
     | 'updated_at'
+    | 'version'
   > & {
     timezone: string
     crosses_midnight: boolean
@@ -103,7 +105,8 @@ export type ShiftStaffingLabels = Required<Pick<
 
 function requestError(operation: string, error: SupabaseErrorShape): ShiftRequestError {
   const message = error.message?.trim() || `Supabase ${operation} failed.`
-  return new ShiftRequestError(message, error.code || 'SHIFT_REQUEST_FAILED')
+  const code = message.includes('STALE_WRITE') ? 'STALE_WRITE' : error.code || 'SHIFT_REQUEST_FAILED'
+  return new ShiftRequestError(message, code)
 }
 
 function requiredRow<T>(
@@ -186,6 +189,7 @@ function shiftFromRow(row: ShiftRow): Shift {
     updated_by: row.updated_by ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    version: row.version ?? undefined,
     ...lifecycle(row),
   }
 }
@@ -259,11 +263,11 @@ export interface SupabaseShiftRepository {
   getToday(): Promise<Shift[]>
   getDeletionImpact(id: string): Promise<DeletionImpact | null>
   create(data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>): Promise<Shift>
-  update(id: string, data: Partial<Shift>, confirmImpact?: boolean): Promise<Shift | null>
-  updateStaffingLabels(id: string, labels: ShiftStaffingLabels): Promise<Shift | null>
-  setRegistrationLock(id: string, locked: boolean): Promise<Shift | null>
-  remove(id: string, reason: string): Promise<DeletionImpact | null>
-  restore(id: string): Promise<Shift | null>
+  update(id: string, data: Partial<Shift>, confirmImpact?: boolean, expectedVersion?: number): Promise<Shift | null>
+  updateStaffingLabels(id: string, labels: ShiftStaffingLabels, expectedVersion?: number): Promise<Shift | null>
+  setRegistrationLock(id: string, locked: boolean, expectedVersion?: number): Promise<Shift | null>
+  remove(id: string, reason: string, expectedVersion?: number): Promise<DeletionImpact | null>
+  restore(id: string, expectedVersion?: number): Promise<Shift | null>
 }
 
 export function createSupabaseShiftRepository(
@@ -372,40 +376,44 @@ export function createSupabaseShiftRepository(
       return shiftFromRow(requiredRow('shift create', result) as unknown as ShiftRow)
     },
 
-    async update(id, data, confirmImpact = false) {
+    async update(id, data, confirmImpact = false, expectedVersion) {
       const result = await client.rpc('update_shift', {
         p_shift_id: id,
         p_patch: updatePayload(data),
         p_confirm_impact: confirmImpact,
+        p_expected_version: expectedVersion ?? null,
       }).single()
       if (result.error) throw requestError('shift update', result.error)
       return result.data ? shiftFromRow(result.data as unknown as ShiftRow) : null
     },
 
-    async updateStaffingLabels(id, labels) {
+    async updateStaffingLabels(id, labels, expectedVersion) {
       const result = await client.rpc('update_shift_staffing_labels', {
         p_shift_id: id,
         p_host_names: labels.host_names,
         p_assistant_names: labels.assistant_names,
         p_technical_names: labels.technical_names,
+        p_expected_version: expectedVersion ?? null,
       }).single()
       if (result.error) throw requestError('shift staffing label update', result.error)
       return result.data ? shiftFromRow(result.data as unknown as ShiftRow) : null
     },
 
-    async setRegistrationLock(id, locked) {
+    async setRegistrationLock(id, locked, expectedVersion) {
       const result = await client.rpc('set_shift_registration_lock', {
         p_shift_id: id,
         p_locked: locked,
+        p_expected_version: expectedVersion ?? null,
       }).single()
       if (result.error) throw requestError('shift lock update', result.error)
       return result.data ? shiftFromRow(result.data as unknown as ShiftRow) : null
     },
 
-    async remove(id, reason) {
+    async remove(id, reason, expectedVersion) {
       const result = await client.rpc('soft_delete_shift', {
         p_shift_id: id,
         p_reason: reason ?? null,
+        p_expected_version: expectedVersion ?? null,
       }).single()
       if (result.error) throw requestError('shift soft delete', result.error)
       const shift = shiftFromRow(requiredRow('shift soft delete', result) as unknown as ShiftRow)
@@ -420,9 +428,10 @@ export function createSupabaseShiftRepository(
       }
     },
 
-    async restore(id) {
+    async restore(id, expectedVersion) {
       const result = await client.rpc('restore_shift', {
         p_shift_id: id,
+        p_expected_version: expectedVersion ?? null,
       }).single()
       if (result.error) throw requestError('shift restore', result.error)
       return result.data ? shiftFromRow(result.data as unknown as ShiftRow) : null

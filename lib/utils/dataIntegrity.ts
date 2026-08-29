@@ -172,10 +172,10 @@ export interface StaleMatrixEntry {
   severity: 'P0' | 'P1' | 'P2'
 }
 export const STALE_WRITE_MATRIX: StaleMatrixEntry[] = [
-  { entity: 'Shift', currentProtection: ['updated_at', 'transaction'], missingProtection: ['version'], severity: 'P1' },
-  { entity: 'ShiftRegistration', currentProtection: ['updated_at', 'transaction', 'unique_constraint'], missingProtection: ['version'], severity: 'P1' },
+  { entity: 'Shift', currentProtection: ['updated_at', 'transaction', 'version'], missingProtection: [], severity: 'P1' },
+  { entity: 'ShiftRegistration', currentProtection: ['updated_at', 'transaction', 'unique_constraint', 'version'], missingProtection: [], severity: 'P1' },
   { entity: 'Report', currentProtection: ['updated_at', 'transaction'], missingProtection: ['version'], severity: 'P2' },
-  { entity: 'SwapRequest', currentProtection: ['updated_at', 'transaction'], missingProtection: ['version'], severity: 'P1' },
+  { entity: 'SwapRequest', currentProtection: ['updated_at', 'transaction', 'version'], missingProtection: [], severity: 'P1' },
   { entity: 'User', currentProtection: ['updated_at'], missingProtection: ['version', 'lock'], severity: 'P2' },
   { entity: 'ScheduleImportBatch', currentProtection: ['updated_at', 'transaction'], missingProtection: ['version'], severity: 'P2' },
 ]

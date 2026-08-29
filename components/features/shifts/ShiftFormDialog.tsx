@@ -248,7 +248,7 @@ export function ShiftFormDialog({
         toast({ title: 'Success', description: `Created ${generated.length} recurring shifts`, variant: 'success' })
         await onSuccess()
       } else if (shift) {
-        const updatedShift = await shiftService.update(shift.id, formData)
+        const updatedShift = await shiftService.update(shift.id, { ...formData, version: shift.version })
         if (!updatedShift) throw new Error('Shift was not found.')
         toast({ title: 'Success', description: 'Shift updated', variant: 'success' })
         await onSuccess(updatedShift)

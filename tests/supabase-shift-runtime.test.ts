@@ -543,6 +543,7 @@ test('Supabase staffing label update sends normalized arrays through the dedicat
       p_host_names: ['Hương'],
       p_assistant_names: ['An', 'Linh'],
       p_technical_names: ['Minh', 'Tuấn'],
+      p_expected_version: null,
     })
     assert.equal(client.rpcCalls.some(call => call.name === 'update_shift'), false)
     assert.equal(client.rpcCalls.some(call => call.name === 'set_shift_registration_lock'), false)

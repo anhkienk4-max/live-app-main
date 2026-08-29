@@ -134,5 +134,5 @@ test('Supabase service sends explicit mode and exact registration identifiers', 
     },
   })
   assert.equal(calls[1].name, 'reject_shift_swap_request')
-  assert.deepEqual(calls[1].args, { p_request_id: 'swap-1', p_notes: 'not available' })
+  assert.deepEqual(calls[1].args, { p_request_id: 'swap-1', p_notes: 'not available', p_expected_version: null })
 })

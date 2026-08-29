@@ -258,6 +258,8 @@ export interface Shift extends LifecycleMetadata {
   updated_by?: string
   created_at: string
   updated_at: string
+  /** Server-controlled optimistic concurrency revision. */
+  version?: number
 }
 
 export interface DashboardUpdate extends LifecycleMetadata {
@@ -770,6 +772,8 @@ export interface SwapRequest extends LifecycleMetadata {
   completed_at?: string
   created_at: string
   updated_at: string
+  /** Server-controlled optimistic concurrency revision. */
+  version?: number
 }
 
 export interface Settings {
@@ -796,6 +800,8 @@ export interface ShiftRegistration {
   match_method?: ShiftStaffIdentityMatchMethod
   created_at: string
   updated_at: string
+  /** Server-controlled optimistic concurrency revision. */
+  version?: number
 }
 
 export interface ShiftRegistrationReviewResult {

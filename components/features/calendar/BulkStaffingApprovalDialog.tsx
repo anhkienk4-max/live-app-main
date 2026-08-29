@@ -144,8 +144,8 @@ export function BulkStaffingApprovalDialog({
     setBusyRegistrationId(registration.id)
     try {
       const reviewed = action === 'approve'
-        ? await shiftRegistrationService.approve(registration.id, currentUser.id)
-        : await shiftRegistrationService.reject(registration.id, currentUser.id)
+        ? await shiftRegistrationService.approve(registration.id, currentUser.id, undefined, registration.version)
+        : await shiftRegistrationService.reject(registration.id, currentUser.id, undefined, registration.version)
       setResults(current => new Map(current).set(registration.id, {
         registration_id: registration.id,
         action,

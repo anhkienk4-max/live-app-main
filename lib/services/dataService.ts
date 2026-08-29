@@ -178,6 +178,20 @@ const roleRequiredField: Record<OperationalRole, 'required_host_count' | 'requir
 }
 
 const nowIso = () => new Date().toISOString()
+
+export const assertExpectedVersion = (
+  entity: string,
+  currentVersion: number | undefined,
+  expectedVersion: number | undefined,
+) => {
+  if (expectedVersion === undefined) return
+  const actual = currentVersion ?? 1
+  if (expectedVersion !== actual) {
+    throw new Error(`STALE_WRITE: ${entity} changed since it was read.`)
+  }
+}
+
+const nextVersion = (version: number | undefined): number => (version ?? 1) + 1
 const syncMockAuthAccount = (user: User) => {
   if (typeof window === 'undefined') return
   try {
@@ -1166,6 +1180,7 @@ export const shiftService = {
       id: generateId(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      version: 1,
     }
     shifts.push(newShift)
     ;(Object.entries(roleAssignmentField) as Array<[OperationalRole, keyof Shift]>).forEach(([role, field]) => {
@@ -1206,8 +1221,10 @@ export const shiftService = {
     options: { reason?: string } = {},
   ): Promise<Shift | null> {
     if (getAuthMode() === 'supabase') {
+      const expectedVersion = data.version
       const lockPatch = data.registration_locked
       const shiftPatch = { ...data }
+      delete shiftPatch.version
       delete shiftPatch.registration_locked
       // Staffing is managed through staffing RPCs only; direct IDs are
       // projections and must never reach update_shift.
@@ -1220,14 +1237,14 @@ export const shiftService = {
         delete shiftPatch.allow_multi_role
         delete shiftPatch.registration_cutoff_at
       }
-      let persisted = await getSupabaseShiftRepository().update(id, shiftPatch, false)
+      let persisted = await getSupabaseShiftRepository().update(id, shiftPatch, false, expectedVersion)
       if (!persisted) return null
       // Only invoke the lock/reopen RPC when registration_locked actually
       // changes; the edit form always submits the current boolean, and calling
       // set_shift_registration_lock on an unchanged value would reject with
       // SHIFT_CANNOT_REOPEN for non-scheduled/past shifts.
       if (lockPatch !== undefined && persisted.registration_locked !== lockPatch) {
-        const locked = await getSupabaseShiftRepository().setRegistrationLock(id, Boolean(lockPatch))
+        const locked = await getSupabaseShiftRepository().setRegistrationLock(id, Boolean(lockPatch), persisted.version)
         if (locked) persisted = locked
       }
       upsertShiftProjection(persisted)
@@ -1249,6 +1266,7 @@ export const shiftService = {
     }
     const index = shifts.findIndex(s => s.id === id)
     if (index === -1) return Promise.resolve(null)
+    assertExpectedVersion('Shift', shifts[index].version, data.version)
     const before = { ...shifts[index] }
     const candidate = { ...shifts[index], ...data }
     const timezone = candidate.timezone || DEFAULT_BUSINESS_TIMEZONE
@@ -1268,6 +1286,7 @@ export const shiftService = {
       required_technical_count: requiredTechnicalCount,
       ...dateTime,
       updated_at: new Date().toISOString(),
+      version: nextVersion(shifts[index].version),
     }
     const action = data.registration_locked === true
       ? 'lock'
@@ -1303,7 +1322,7 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       const repository = getSupabaseShiftRepository()
       const before = await repository.getById(id)
-      const persisted = await repository.updateStaffingLabels(id, normalizedLabels)
+      const persisted = await repository.updateStaffingLabels(id, normalizedLabels, before?.version)
       if (!persisted) return null
       upsertShiftProjection(persisted)
       recordScheduleChange('edit', id, before ? { ...before } : undefined, { ...persisted }, {
@@ -1332,6 +1351,7 @@ export const shiftService = {
       ...normalizedLabels,
       updated_by: actor.id,
       updated_at: new Date().toISOString(),
+      version: nextVersion(shifts[index].version),
     }
     recordScheduleChange('edit', id, before, { ...shifts[index] }, { actor_id: actor.id })
     audit('calendar', 'update', 'shift', id, shifts[index].title || `${shifts[index].date} ${shifts[index].start_time}`, {
@@ -1376,7 +1396,8 @@ export const shiftService = {
       if (!hasPermission(requiredActorFor(actorId), 'shifts.delete')) {
         throw new Error('Only Admin can delete or archive shifts.')
       }
-      const impact = await getSupabaseShiftRepository().remove(id, reason)
+      const current = await getSupabaseShiftRepository().getById(id)
+      const impact = await getSupabaseShiftRepository().remove(id, reason, current?.version)
       if (!impact) return null
       removeShiftProjection(id)
       recordScheduleChange('soft_delete', id, undefined, undefined, { actor_id: actorId, reason })
@@ -1440,7 +1461,8 @@ export const shiftService = {
   async restore(id: string, actorId: string, reason: string): Promise<Shift | null> {
     if (getAuthMode() === 'supabase') {
       if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can restore shifts.')
-      const persisted = await getSupabaseShiftRepository().restore(id)
+      const current = await getSupabaseShiftRepository().getById(id)
+      const persisted = await getSupabaseShiftRepository().restore(id, current?.version)
       if (!persisted) return null
       upsertShiftProjection(persisted)
       recordScheduleChange('restore', id, undefined, { ...persisted }, { actor_id: actorId, reason })
@@ -1451,7 +1473,8 @@ export const shiftService = {
     const index = shifts.findIndex(s => s.id === id)
     if (index === -1) return null
     const before = { ...shifts[index] }
-    shifts[index] = { ...shifts[index], status: 'scheduled', deleted_at: undefined, deleted_by: undefined, deletion_reason: undefined, registration_locked: false, updated_at: nowIso() }
+    assertExpectedVersion('Shift', shifts[index].version, undefined)
+    shifts[index] = { ...shifts[index], status: 'scheduled', deleted_at: undefined, deleted_by: undefined, deletion_reason: undefined, registration_locked: false, updated_at: nowIso(), version: nextVersion(shifts[index].version) }
     recordScheduleChange('restore', id, before, { ...shifts[index] }, { actor_id: actorId, reason })
     audit('calendar', 'restore', 'shift', id, shifts[index].title || `${shifts[index].date} ${shifts[index].start_time}`, { actorId, before, after: { ...shifts[index] }, reason })
     return shifts[index]
@@ -1711,14 +1734,14 @@ export const shiftRegistrationService = {
     return Promise.resolve(registration)
   },
 
-  async approve(id: string, reviewerId: string, notes?: string): Promise<ShiftRegistration> {
+  async approve(id: string, reviewerId: string, notes?: string, expectedVersion?: number): Promise<ShiftRegistration> {
     if (getAuthMode() === 'supabase') {
       if (reviewerId !== 'system') {
         if (!hasPermission(requiredActorFor(reviewerId), 'shifts.approve_registration')) {
           throw new Error('Only a Leader or Admin can approve registrations.')
         }
       }
-      const registration = await getSupabaseShiftRegistrationRepository().approve(id, notes)
+      const registration = await getSupabaseShiftRegistrationRepository().approve(id, notes, expectedVersion)
       recordScheduleChange('approve', registration.shift_id, undefined, { ...registration }, { actor_id: reviewerId, reason: notes })
       audit('calendar', 'approve', 'shift_registration', id, `${registration.user_id} · ${registration.operational_role}`, { actorId: reviewerId, after: { ...registration }, reason: notes })
       return registration
@@ -1727,6 +1750,7 @@ export const shiftRegistrationService = {
     const index = shiftRegistrations.findIndex(registration => registration.id === id)
     if (index === -1) throw new Error('Registration was not found.')
     const registration = shiftRegistrations[index]
+    assertExpectedVersion('ShiftRegistration', registration.version, expectedVersion)
     if (registration.status !== 'pending') throw new Error('Only a pending registration can be approved.')
     const shift = shifts.find(candidate => candidate.id === registration.shift_id)
     if (!shift) throw new Error('Shift was not found.')
@@ -1759,26 +1783,27 @@ export const shiftRegistrationService = {
       reviewed_at: timestamp,
       review_notes: notes,
       updated_at: timestamp,
+      version: nextVersion(registration.version),
     }
     const shiftIndex = shifts.findIndex(candidate => candidate.id === shift.id)
     const assignmentField = roleAssignmentField[registration.operational_role]
     if (!shifts[shiftIndex][assignmentField]) {
-      shifts[shiftIndex] = { ...shifts[shiftIndex], [assignmentField]: registration.user_id, updated_at: timestamp }
+      shifts[shiftIndex] = { ...shifts[shiftIndex], [assignmentField]: registration.user_id, updated_at: timestamp, version: nextVersion(shifts[shiftIndex].version) }
     }
     if (operationalSettings.auto_lock_filled_shifts && isFullyStaffed(shifts[shiftIndex])) {
-      shifts[shiftIndex] = { ...shifts[shiftIndex], registration_locked: true, updated_at: timestamp }
+      shifts[shiftIndex] = { ...shifts[shiftIndex], registration_locked: true, updated_at: timestamp, version: nextVersion(shifts[shiftIndex].version) }
     }
     recordScheduleChange('approve', shift.id, { status: registration.status }, { ...shiftRegistrations[index] }, { actor_id: reviewerId, reason: notes })
     audit('calendar', 'approve', 'shift_registration', id, `${actorFor(registration.user_id).full_name} · ${registration.operational_role}`, { actorId: reviewerId === 'system' ? currentUserService.getId() : reviewerId, before: { ...registration }, after: { ...shiftRegistrations[index] }, reason: notes, source: reviewerId === 'system' ? 'system' : 'manual' })
     return Promise.resolve(shiftRegistrations[index])
   },
 
-  async reject(id: string, reviewerId: string, notes?: string): Promise<ShiftRegistration> {
+  async reject(id: string, reviewerId: string, notes?: string, expectedVersion?: number): Promise<ShiftRegistration> {
     if (getAuthMode() === 'supabase') {
       if (!hasPermission(requiredActorFor(reviewerId), 'shifts.approve_registration')) {
         throw new Error('Only a Leader or Admin can reject registrations.')
       }
-      const registration = await getSupabaseShiftRegistrationRepository().reject(id, notes)
+      const registration = await getSupabaseShiftRegistrationRepository().reject(id, notes, expectedVersion)
       recordScheduleChange('reject', registration.shift_id, undefined, { ...registration }, { actor_id: reviewerId, reason: notes })
       audit('calendar', 'reject', 'shift_registration', id, `${registration.user_id} · ${registration.operational_role}`, { actorId: reviewerId, before: { status: 'pending' }, after: { ...registration }, reason: notes })
       return registration
@@ -1787,6 +1812,7 @@ export const shiftRegistrationService = {
     const index = shiftRegistrations.findIndex(registration => registration.id === id)
     if (index === -1) throw new Error('Registration was not found.')
     if (shiftRegistrations[index].status !== 'pending') throw new Error('Only a pending registration can be rejected.')
+    assertExpectedVersion('ShiftRegistration', shiftRegistrations[index].version, expectedVersion)
     const timestamp = nowIso()
     shiftRegistrations[index] = {
       ...shiftRegistrations[index],
@@ -1795,6 +1821,7 @@ export const shiftRegistrationService = {
       reviewed_at: timestamp,
       review_notes: notes,
       updated_at: timestamp,
+      version: nextVersion(shiftRegistrations[index].version),
     }
     recordScheduleChange('reject', shiftRegistrations[index].shift_id, { status: 'pending' }, { ...shiftRegistrations[index] }, { actor_id: reviewerId, reason: notes })
     audit('calendar', 'reject', 'shift_registration', id, `${actorFor(shiftRegistrations[index].user_id).full_name} · ${shiftRegistrations[index].operational_role}`, { actorId: reviewerId, before: { status: 'pending' }, after: { ...shiftRegistrations[index] }, reason: notes })
@@ -1906,12 +1933,12 @@ export const shiftRegistrationService = {
     return results
   },
 
-  async cancel(id: string, userId: string, reason?: string): Promise<ShiftRegistration> {
+  async cancel(id: string, userId: string, reason?: string, expectedVersion?: number): Promise<ShiftRegistration> {
     if (getAuthMode() === 'supabase') {
       if (!hasPermission(requiredActorFor(userId), 'shifts.cancel_registration')) {
         throw new Error('Only the registrant can cancel their own registration.')
       }
-      const registration = await getSupabaseShiftRegistrationRepository().cancel(id, reason)
+      const registration = await getSupabaseShiftRegistrationRepository().cancel(id, reason, expectedVersion)
       recordScheduleChange('cancel_registration', registration.shift_id, undefined, { ...registration }, { actor_id: userId, reason })
       audit('calendar', 'cancel_registration', 'shift_registration', id, `${registration.user_id} · ${registration.operational_role}`, { actorId: userId, after: { ...registration }, reason })
       return registration
@@ -1921,6 +1948,7 @@ export const shiftRegistrationService = {
       throw new Error('Registration was not found.')
     }
     const registration = shiftRegistrations[index]
+    assertExpectedVersion('ShiftRegistration', registration.version, expectedVersion)
     const shiftIndex = shifts.findIndex(candidate => candidate.id === registration.shift_id)
     const shift = shifts[shiftIndex]
     if (!shift || shift.registration_locked || registrationCutoffAt(shift) <= new Date()) {
@@ -1932,6 +1960,7 @@ export const shiftRegistrationService = {
       status: 'cancelled',
       cancelled_at: timestamp,
       updated_at: timestamp,
+      version: nextVersion(registration.version),
     }
     const assignmentField = roleAssignmentField[registration.operational_role]
     if (shift[assignmentField] === userId) {
@@ -1958,12 +1987,13 @@ export const shiftRegistrationService = {
     userId: string,
     role: OperationalRole,
     reviewerId: string,
+    expectedVersion?: number,
   ): Promise<ShiftRegistration> {
     if (getAuthMode() === 'supabase') {
       if (!hasPermission(requiredActorFor(reviewerId), 'shifts.assign_staff')) {
         throw new Error('Only a Leader or Admin can assign staff.')
       }
-      const registration = await getSupabaseShiftRegistrationRepository().assignManually(shiftId, userId, role)
+      const registration = await getSupabaseShiftRegistrationRepository().assignManually(shiftId, userId, role, undefined, expectedVersion)
       recordScheduleChange('manual_assign', shiftId, undefined, { ...registration }, { actor_id: reviewerId })
       audit('calendar', 'assign', 'shift_registration', registration.id, `${registration.user_id} · ${role}`, { actorId: reviewerId, after: { ...registration }, relatedRecords: [{ entity_type: 'shift', entity_id: shiftId, entity_name: shiftId }] })
       return registration
@@ -1972,6 +2002,7 @@ export const shiftRegistrationService = {
     const user = users.find(candidate => candidate.id === userId)
     ensureLeaderOrAdmin(reviewerId)
     if (!shift || !user) throw new Error('Shift or staff member was not found.')
+    assertExpectedVersion('Shift', shift.version, expectedVersion)
     if (!user.operational_roles?.includes(role)) throw new Error('The staff member is not eligible for this role.')
     if (capacityFor(shift, role).approved >= (shift[roleRequiredField[role]] ?? 1)) {
       throw new Error('This role is already full.')
@@ -1999,15 +2030,16 @@ export const shiftRegistrationService = {
       requested_at: timestamp,
       created_at: timestamp,
       updated_at: timestamp,
+      version: 1,
     }
     shiftRegistrations.push(registration)
     const shiftIndex = shifts.findIndex(candidate => candidate.id === shiftId)
     const assignmentField = roleAssignmentField[role]
     if (!shifts[shiftIndex][assignmentField]) {
-      shifts[shiftIndex] = { ...shifts[shiftIndex], [assignmentField]: userId, updated_at: timestamp }
+      shifts[shiftIndex] = { ...shifts[shiftIndex], [assignmentField]: userId, updated_at: timestamp, version: nextVersion(shifts[shiftIndex].version) }
     }
     if (operationalSettings.auto_lock_filled_shifts && isFullyStaffed(shifts[shiftIndex])) {
-      shifts[shiftIndex] = { ...shifts[shiftIndex], registration_locked: true, updated_at: timestamp }
+      shifts[shiftIndex] = { ...shifts[shiftIndex], registration_locked: true, updated_at: timestamp, version: nextVersion(shifts[shiftIndex].version) }
     }
     recordScheduleChange('manual_assign', shiftId, undefined, { ...registration }, { actor_id: reviewerId })
     audit('calendar', 'assign', 'shift_registration', registration.id, `${user.full_name} · ${role}`, { actorId: reviewerId, after: { ...registration }, relatedRecords: [{ entity_type: 'shift', entity_id: shift.id, entity_name: shift.title || shift.date }] })
@@ -2021,6 +2053,7 @@ export const shiftRegistrationService = {
     importedName: string,
     matchMethod: NonNullable<ShiftRegistration['match_method']>,
     reviewerId: string,
+    expectedVersion?: number,
   ): Promise<ShiftRegistration> {
     if (!hasPermission(requiredActorFor(reviewerId), 'shifts.assign_staff')) {
       throw new Error('Only a Leader or Admin can assign imported staffing names.')
@@ -2035,6 +2068,8 @@ export const shiftRegistrationService = {
         role,
         trimmedImportedName,
         matchMethod,
+        undefined,
+        expectedVersion,
       )
       recordScheduleChange('manual_assign', shiftId, undefined, { ...registration }, { actor_id: reviewerId })
       audit('calendar', 'assign', 'shift_registration', registration.id, `${registration.user_id} · ${role}`, {
@@ -2048,6 +2083,7 @@ export const shiftRegistrationService = {
     const shift = shifts.find(candidate => candidate.id === shiftId)
     const user = users.find(candidate => candidate.id === userId)
     if (!shift || !user) throw new Error('Shift or staff member was not found.')
+    assertExpectedVersion('Shift', shift.version, expectedVersion)
     if (!user.operational_roles?.includes(role) || user.status !== 'active') {
       throw new Error('The staff member is not eligible for this role.')
     }
@@ -2093,15 +2129,16 @@ export const shiftRegistrationService = {
       match_method: matchMethod,
       created_at: timestamp,
       updated_at: timestamp,
+      version: 1,
     }
     shiftRegistrations.push(registration)
     const shiftIndex = shifts.findIndex(candidate => candidate.id === shiftId)
     const assignmentField = roleAssignmentField[role]
     if (!shifts[shiftIndex][assignmentField]) {
-      shifts[shiftIndex] = { ...shifts[shiftIndex], [assignmentField]: userId, updated_at: timestamp }
+      shifts[shiftIndex] = { ...shifts[shiftIndex], [assignmentField]: userId, updated_at: timestamp, version: nextVersion(shifts[shiftIndex].version) }
     }
     if (operationalSettings.auto_lock_filled_shifts && isFullyStaffed(shifts[shiftIndex])) {
-      shifts[shiftIndex] = { ...shifts[shiftIndex], registration_locked: true, updated_at: timestamp }
+      shifts[shiftIndex] = { ...shifts[shiftIndex], registration_locked: true, updated_at: timestamp, version: nextVersion(shifts[shiftIndex].version) }
     }
     recordScheduleChange('manual_assign', shiftId, undefined, { ...registration }, { actor_id: reviewerId })
     audit('calendar', 'assign', 'shift_registration', registration.id, `${user.full_name} · ${role}`, {
@@ -2112,12 +2149,12 @@ export const shiftRegistrationService = {
     return registration
   },
 
-  async removeAssignment(id: string, reviewerId: string, notes?: string): Promise<ShiftRegistration> {
+  async removeAssignment(id: string, reviewerId: string, notes?: string, expectedVersion?: number): Promise<ShiftRegistration> {
     if (getAuthMode() === 'supabase') {
       if (!hasPermission(requiredActorFor(reviewerId), 'shifts.assign_staff')) {
         throw new Error('Only a Leader or Admin can remove staff assignments.')
       }
-      const registration = await getSupabaseShiftRegistrationRepository().removeAssignment(id, notes)
+      const registration = await getSupabaseShiftRegistrationRepository().removeAssignment(id, notes, expectedVersion)
       recordScheduleChange('remove_assignment', registration.shift_id, undefined, { ...registration }, { actor_id: reviewerId, reason: notes })
       audit('calendar', 'unassign', 'shift_registration', id, `${registration.user_id} · ${registration.operational_role}`, { actorId: reviewerId, after: { ...registration }, reason: notes })
       return registration
@@ -2126,6 +2163,7 @@ export const shiftRegistrationService = {
     const index = shiftRegistrations.findIndex(registration => registration.id === id)
     if (index === -1) throw new Error('Registration was not found.')
     const registration = shiftRegistrations[index]
+    assertExpectedVersion('ShiftRegistration', registration.version, expectedVersion)
     const shiftIndex = shifts.findIndex(candidate => candidate.id === registration.shift_id)
     if (shiftIndex === -1) throw new Error('Shift was not found.')
     const shift = shifts[shiftIndex]
@@ -2138,6 +2176,7 @@ export const shiftRegistrationService = {
       review_notes: notes,
       cancelled_at: timestamp,
       updated_at: timestamp,
+      version: nextVersion(registration.version),
     }
     const assignmentField = roleAssignmentField[registration.operational_role]
     if (shift[assignmentField] === registration.user_id) {
@@ -3162,7 +3201,7 @@ export const swapRequestService = {
         mode: 'replacement',
         source_shift_id: sourceShift.id,
         target_shift_id: null,
-        source_registration_id: sourceReg.id,
+        source_registration_id: sourceReg!.id,
         counterpart_id: null,
         counterpart_registration_id: null,
         operational_role: role,
@@ -3174,6 +3213,7 @@ export const swapRequestService = {
         updated_at: nowIso(),
       } as SwapRequest
       newRequest.approval_history = [swapHistoryEntry(newRequest, 'created', requesterId, null, 'pending', newRequest.notes)]
+      newRequest.version = 1
       swapRequests.push(newRequest)
       audit('swaps','create','swap_request',newRequest.id,`Swap · ${role} · ${effectiveMode}`,{ actorId: requesterId, after:{...newRequest}, relatedRecords:[{entity_type:'shift',entity_id:sourceShift.id,entity_name:sourceShift.title||sourceShift.date}] })
       return Promise.resolve(newRequest)
@@ -3200,16 +3240,16 @@ export const swapRequestService = {
       const sourceCapacity = sourceShift[roleRequiredField[role]] ?? 1
       const sourceOccupied = shiftRegistrations.filter(r => r.shift_id === sourceShift.id && r.operational_role === role && isStaffedRegistration(r) && r.id !== sourceReg!.id).length
       if (sourceOccupied >= sourceCapacity) throw new Error('Source shift capacity full.')
-      if (findRegistrationConflict(requesterId, targetShift, sourceReg.id)) throw new Error('Requester has a schedule conflict.')
+      if (findRegistrationConflict(requesterId, targetShift, sourceReg!.id)) throw new Error('Requester has a schedule conflict.')
       if (findRegistrationConflict(cpReg.user_id, sourceShift, cpReg.id)) throw new Error('Counterpart has a schedule conflict.')
-      if (shiftRegistrations.some(r => r.shift_id === targetShift.id && r.user_id === requesterId && isStaffedRegistration(r) && r.id !== sourceReg.id)) throw new Error('Requester already assigned to target.')
+      if (shiftRegistrations.some(r => r.shift_id === targetShift.id && r.user_id === requesterId && isStaffedRegistration(r) && r.id !== sourceReg!.id)) throw new Error('Requester already assigned to target.')
       if (shiftRegistrations.some(r => r.shift_id === sourceShift.id && r.user_id === cpReg.user_id && isStaffedRegistration(r) && r.id !== cpReg.id)) throw new Error('Counterpart already assigned to source.')
       const newRequest: SwapRequest = {
         ...data,
         mode: 'exchange',
         source_shift_id: sourceShift.id,
         target_shift_id: targetShiftId,
-        source_registration_id: sourceReg.id,
+        source_registration_id: sourceReg!.id,
         replacement_staff_id: undefined,
         new_host_id: undefined,
         new_support_id: undefined,
@@ -3223,17 +3263,18 @@ export const swapRequestService = {
         updated_at: nowIso(),
       } as SwapRequest
       newRequest.approval_history = [swapHistoryEntry(newRequest, 'created', requesterId, null, 'pending', newRequest.notes)]
+      newRequest.version = 1
       swapRequests.push(newRequest)
       audit('swaps','create','swap_request',newRequest.id,`Swap · ${role} · exchange`,{ actorId: requesterId, after:{...newRequest}, relatedRecords:[{entity_type:'shift',entity_id:sourceShift.id,entity_name:sourceShift.title||sourceShift.date},{entity_type:'shift',entity_id:targetShift.id,entity_name:targetShift.title||targetShift.date}] })
       return Promise.resolve(newRequest)
     }
     throw new Error('Swap mode invalid.')
   },
-  async accept(id: string, actorId: string): Promise<SwapRequest | null> {
+  async accept(id: string, actorId: string, expectedVersion?: number): Promise<SwapRequest | null> {
     if (getAuthMode() === 'supabase') {
       const repo = getSupabaseSwapRequestRepository() as unknown as { accept: (id:string,notes?:string)=>Promise<SwapRequest> }
-      if ((repo as unknown as { accept?: unknown }).accept) return (repo as unknown as { accept: (a:string, b?:string)=>Promise<SwapRequest> }).accept(id)
-      return (getSupabaseSwapRequestRepository() as unknown as { respond: (a:string,b:string)=>Promise<SwapRequest> }).respond(id,'accept')
+      if ((repo as unknown as { accept?: unknown }).accept) return (repo as unknown as { accept: (a:string, b?:string, c?:number)=>Promise<SwapRequest> }).accept(id, undefined, expectedVersion)
+      return (getSupabaseSwapRequestRepository() as unknown as { respond: (a:string,b:string,c?:string,d?:number)=>Promise<SwapRequest> }).respond(id,'accept', undefined, expectedVersion)
     }
     const idx = swapRequests.findIndex(sr => sr.id === id)
     if (idx === -1) return Promise.resolve(null)
@@ -3242,31 +3283,34 @@ export const swapRequestService = {
     if (req.status !== 'pending') throw new Error('Swap not pending.')
     if (swapParticipantId(req) !== actorId) throw new Error('Only the selected participant may accept.')
     const before = { ...req }
-    swapRequests[idx] = { ...req, status: 'accepted', responded_at: nowIso(), responded_by: actorId, updated_at: nowIso(), approval_history: [...(req.approval_history||[]), swapHistoryEntry(req, 'accepted', actorId, req.status, 'accepted')] }
+    assertExpectedVersion('SwapRequest', req.version, expectedVersion)
+    swapRequests[idx] = { ...req, status: 'accepted', responded_at: nowIso(), responded_by: actorId, updated_at: nowIso(), version: nextVersion(req.version), approval_history: [...(req.approval_history||[]), swapHistoryEntry(req, 'accepted', actorId, req.status, 'accepted')] }
     audit('swaps','update','swap_request',id,`Swap · ${req.operational_role} · accept`,{ actorId, before, after:{...swapRequests[idx]} })
     return Promise.resolve(swapRequests[idx])
   },
-  async respond(id: string, actorId: string, action: 'accept' | 'reject'): Promise<SwapRequest | null> {
-    if (getAuthMode() === 'supabase') return getSupabaseSwapRequestRepository().respond(id, action)
+  async respond(id: string, actorId: string, action: 'accept' | 'reject', expectedVersion?: number): Promise<SwapRequest | null> {
+    if (getAuthMode() === 'supabase') return getSupabaseSwapRequestRepository().respond(id, action, undefined, expectedVersion)
     const idx = swapRequests.findIndex(sr => sr.id === id)
     if (idx === -1) return Promise.resolve(null)
     const req = swapRequests[idx]
+    assertExpectedVersion('SwapRequest', req.version, expectedVersion)
     if (!isCreatableSwapMode(req.mode)) throw new Error('Historical MOVE requests are read-only.')
     if (req.status !== 'pending') throw new Error('Only a pending swap can be responded to.')
     if (swapParticipantId(req) !== actorId) throw new Error('Only the selected participant may respond.')
     const nextStatus = action === 'accept' ? 'accepted' : 'rejected'
     const now = nowIso()
     const before = { ...req }
-    swapRequests[idx] = { ...req, status: nextStatus, responded_at: now, responded_by: actorId, updated_at: now, approval_history: [...(req.approval_history || []), swapHistoryEntry(req, nextStatus, actorId, req.status, nextStatus)] }
+    swapRequests[idx] = { ...req, status: nextStatus, responded_at: now, responded_by: actorId, updated_at: now, version: nextVersion(req.version), approval_history: [...(req.approval_history || []), swapHistoryEntry(req, nextStatus, actorId, req.status, nextStatus)] }
     audit('swaps', 'update', 'swap_request', id, `Swap · ${req.operational_role} · ${action}`, { actorId, before, after: { ...swapRequests[idx] } })
     return Promise.resolve(swapRequests[idx])
   },
-  async approve(id: string, approverId: string): Promise<SwapRequest | null> {
-    if (getAuthMode() === 'supabase') return getSupabaseSwapRequestRepository().approve(id)
+  async approve(id: string, approverId: string, expectedVersion?: number): Promise<SwapRequest | null> {
+    if (getAuthMode() === 'supabase') return getSupabaseSwapRequestRepository().approve(id, undefined, expectedVersion)
     ensureLeaderOrAdmin(approverId)
     const idx = swapRequests.findIndex(sr => sr.id === id)
     if (idx === -1) return Promise.resolve(null)
     const req = swapRequests[idx]
+    assertExpectedVersion('SwapRequest', req.version, expectedVersion)
     if (!isCreatableSwapMode(req.mode)) throw new Error('Historical MOVE requests are read-only.')
     if (req.status !== 'accepted') throw new Error('Swap must be accepted by the selected participant before approval.')
     // Atomic execution with deterministic lock order and rollback on failure
@@ -3334,7 +3378,7 @@ export const swapRequestService = {
         // also cancel other staffed of same role if replacement is same? Actually legacy cancels all staffed of that role? Keep simple: cancel source only (as per approved logic previously cancelled all staffed? But we want to preserve other assignments, so cancel only source)
       }
       const ts2 = nowIso()
-      swapRequests[idx] = { ...req, status: 'completed', approved_by: approverId, approved_at: ts2, completed_at: ts2, updated_at: ts2, approval_history: [...(req.approval_history||[]), swapHistoryEntry(req, 'approved', approverId, req.status, 'approved'), swapHistoryEntry(req, 'completed', approverId, 'approved', 'completed')] }
+      swapRequests[idx] = { ...req, status: 'completed', approved_by: approverId, approved_at: ts2, completed_at: ts2, updated_at: ts2, version: nextVersion(req.version), approval_history: [...(req.approval_history||[]), swapHistoryEntry(req, 'approved', approverId, req.status, 'approved'), swapHistoryEntry(req, 'completed', approverId, 'approved', 'completed')] }
       audit('swaps','approve','swap_request',req.id,`Swap · ${req.operational_role} · ${req.mode||'replacement'}`,{ actorId: approverId, before:{...req}, after:{...swapRequests[idx]} })
       return Promise.resolve(swapRequests[idx])
     } catch (e) {
@@ -3345,31 +3389,33 @@ export const swapRequestService = {
       throw e
     }
   },
-  async reject(id: string, approverId: string): Promise<SwapRequest | null> {
+  async reject(id: string, approverId: string, expectedVersion?: number): Promise<SwapRequest | null> {
     if (getAuthMode() === 'supabase') {
-      return getSupabaseSwapRequestRepository().reject(id)
+      return getSupabaseSwapRequestRepository().reject(id, undefined, expectedVersion)
     }
     const idx = swapRequests.findIndex(sr => sr.id === id)
     if (idx === -1) return Promise.resolve(null)
     const req = swapRequests[idx]
+    assertExpectedVersion('SwapRequest', req.version, expectedVersion)
     if (!['pending','accepted'].includes(req.status)) throw new Error('Swap not pending.')
     if (!isCreatableSwapMode(req.mode)) throw new Error('Historical MOVE requests are read-only.')
     ensureLeaderOrAdmin(approverId)
     const before = { ...req }
-    swapRequests[idx] = { ...req, status: 'rejected', approved_by: approverId, approved_at: nowIso(), updated_at: nowIso(), approval_history: [...(req.approval_history||[]), swapHistoryEntry(req, 'rejected', approverId, req.status, 'rejected')] }
+    swapRequests[idx] = { ...req, status: 'rejected', approved_by: approverId, approved_at: nowIso(), updated_at: nowIso(), version: nextVersion(req.version), approval_history: [...(req.approval_history||[]), swapHistoryEntry(req, 'rejected', approverId, req.status, 'rejected')] }
     audit('swaps','reject','swap_request',id,`Swap · ${req.operational_role||'host'} · ${req.mode||'replacement'}`,{ actorId: approverId, before, after:{...swapRequests[idx]} })
     return Promise.resolve(swapRequests[idx])
   },
-  async cancel(id: string, actorId: string, reason: string): Promise<SwapRequest | null> {
-    if (getAuthMode() === 'supabase') return getSupabaseSwapRequestRepository().cancel(id, reason)
+  async cancel(id: string, actorId: string, reason: string, expectedVersion?: number): Promise<SwapRequest | null> {
+    if (getAuthMode() === 'supabase') return getSupabaseSwapRequestRepository().cancel(id, reason, expectedVersion)
     const idx = swapRequests.findIndex(request => request.id === id)
     if (idx === -1) return null
     const req = swapRequests[idx]
+    assertExpectedVersion('SwapRequest', req.version, expectedVersion)
     if (!['pending','accepted'].includes(req.status)) throw new Error('Only pending/accepted swap requests can be cancelled.')
     if (!isCreatableSwapMode(req.mode)) throw new Error('Historical MOVE requests are read-only.')
     if (req.requester_id !== actorId) throw new Error('You can only cancel your own swap request.')
     const before={...req}
-    swapRequests[idx] = { ...req, status: 'cancelled', deleted_at: nowIso(), deleted_by: actorId, deletion_reason: reason, updated_at: nowIso(), approval_history:[...(req.approval_history||[]), swapHistoryEntry(req, 'cancelled', actorId, req.status, 'cancelled', reason)] }
+    swapRequests[idx] = { ...req, status: 'cancelled', deleted_at: nowIso(), deleted_by: actorId, deletion_reason: reason, updated_at: nowIso(), version: nextVersion(req.version), approval_history:[...(req.approval_history||[]), swapHistoryEntry(req, 'cancelled', actorId, req.status, 'cancelled', reason)] }
     audit('swaps','soft_delete','swap_request',id,`Swap · ${req.operational_role||'host'} · ${req.mode||'replacement'}`,{ actorId, before, after:{...swapRequests[idx]}, reason })
     return swapRequests[idx]
   },
