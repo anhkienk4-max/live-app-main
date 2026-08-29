@@ -65,6 +65,8 @@ const en = {
   other: 'Other',
   status: 'Status',
   actions: 'Actions',
+  moreActions: 'More actions',
+  accept: 'Accept',
   date: 'Date',
   startDate: 'Start date',
   endDate: 'End date',
@@ -152,6 +154,7 @@ const en = {
   mySchedule: 'My Schedule',
   dataQualityAlerts: 'Data Quality Alerts',
   review: 'Review',
+  reviewReport: 'Review report',
   dataQuality: 'Data Quality',
   attentionRequiredSubtitle: '{registrations} registrations, {swaps} swaps awaiting review',
   reportsPendingSubtitle: '{reports} reports need review',
@@ -938,6 +941,7 @@ const en = {
 
 const vi: Record<keyof typeof en, string> = {
   dashboard: 'Tổng quan',
+  reviewReport: 'Kiểm tra báo cáo',
   calendar: 'Lịch',
   live: 'Trực tiếp',
   reports: 'Báo cáo',
@@ -995,6 +999,8 @@ const vi: Record<keyof typeof en, string> = {
   other: 'Khác',
   status: 'Trạng thái',
   actions: 'Thao tác',
+  moreActions: 'Thêm thao tác',
+  accept: 'Chấp nhận',
   date: 'Ngày',
   startDate: 'Ngày bắt đầu',
   endDate: 'Ngày kết thúc',

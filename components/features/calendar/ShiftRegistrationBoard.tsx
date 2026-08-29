@@ -28,6 +28,8 @@ import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
+import { ActionBar } from '@/components/ui/action-bar'
+import { buildStaffingApprovalActions } from '@/lib/ui/action-priority'
 import { exportShiftStaffingToExcel } from '@/lib/utils/excelUtils'
 import { formatShiftEndDate, formatShiftTimeRange, resolveShiftDateTime } from '@/lib/utils/shiftUtils'
 import { selectMyShiftEntries, type MyShiftEntry } from '@/lib/utils/myShifts'
@@ -241,19 +243,19 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                     <p className="text-xs text-muted-foreground">{shift.title || shift.id} <span className="mx-1">·</span> {shift.date} {formatShiftTimeRange(shift)}</p>
                     {registration.review_notes && <p className="mt-1 text-xs text-muted-foreground">{registration.review_notes}</p>}
                   </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" className="h-8" disabled={busyId === registration.id} onClick={() => runAction(registration.id, () => shiftRegistrationService.approve(registration.id, currentUser.id), t('registrationApproved'))}><Check className="mr-1 h-3 w-3 hidden sm:inline" />{t('approve')}</Button>
-                    <Button size="sm" variant="outline" className="h-8 text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground" disabled={busyId === registration.id} onClick={() => runAction(registration.id, () => shiftRegistrationService.reject(registration.id, currentUser.id), t('rejected'))}><X className="mr-1 h-3 w-3 hidden sm:inline" />{t('reject')}</Button>
-                    <div className="hidden sm:block">
-                      <Button size="sm" variant="ghost" className="h-8" disabled={busyId === registration.id} onClick={() => setRemovalTarget({ registration, kind: 'unassign' })}>{t('removeAssignment')}</Button>
-                    </div>
-                    <div className="sm:hidden">
-                      <MobileActionMenu 
-                        actions={[{ key: 'remove', label: t('removeAssignment'), onClick: () => setRemovalTarget({ registration, kind: 'unassign' }), destructive: true }]}
-                        breakpoint="sm"
-                      />
-                    </div>
-                  </div>
+                  <ActionBar
+                    compact
+                    collapseAt="sm"
+                    actions={buildStaffingApprovalActions(
+                      { isBusy: busyId === registration.id, canApprove: true, canReject: true, canRemove: true },
+                      {
+                        approve: () => runAction(registration.id, () => shiftRegistrationService.approve(registration.id, currentUser.id), t('registrationApproved')),
+                        reject: () => runAction(registration.id, () => shiftRegistrationService.reject(registration.id, currentUser.id), t('rejected')),
+                        remove: () => setRemovalTarget({ registration, kind: 'unassign' }),
+                      },
+                      { approve: t('approve'), reject: t('reject'), remove: t('removeAssignment') }
+                    )}
+                  />
                 </div>
               )
             })}

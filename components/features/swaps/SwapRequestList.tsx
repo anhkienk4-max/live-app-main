@@ -21,6 +21,8 @@ import { downloadSwapRequestTemplate, exportSwapsToExcel } from '@/lib/utils/exc
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { getSwapUiActions, getSwapStatusPresentation } from '@/lib/utils/swapUi'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
+import { ActionBar } from '@/components/ui/action-bar'
+import { buildSwapActions } from '@/lib/ui/action-priority'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -217,48 +219,41 @@ export function SwapRequestList() {
                 )}
               </div>
 
-              <div className="flex w-full flex-col justify-between bg-muted/10 p-4 md:w-64 shrink-0">
-                <div className="space-y-1 mb-4">
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">{t('actionsAndStatus')}</p>
-                  {swap.status === 'pending' && <p className="text-xs text-amber-700 font-medium">{t('waitingForParticipant')}</p>}
-                  {swap.status === 'accepted' && <p className="text-xs text-blue-700 font-medium">{t('waitingForReviewer')}</p>}
-                  {swap.status === 'completed' && <p className="text-xs text-green-700 font-medium">{t('completedSuccessfully')}</p>}
-                  {swap.status === 'approved' && <p className="text-xs text-green-700 font-medium">{t('approved')}</p>}
-                  {swap.status === 'rejected' && <p className="text-xs text-red-700 font-medium">{t('rejected')}</p>}
-                  {swap.status === 'cancelled' && <p className="text-xs text-red-700 font-medium">{t('cancelled')}</p>}
+                <div className="flex w-full flex-col justify-between bg-muted/10 p-4 md:w-64 shrink-0">
+                  <div className="space-y-1 mb-4">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">{t('actionsAndStatus')}</p>
+                    {swap.status === 'pending' && <p className="text-xs text-amber-700 font-medium">{t('waitingForParticipant')}</p>}
+                    {swap.status === 'accepted' && <p className="text-xs text-blue-700 font-medium">{t('waitingForReviewer')}</p>}
+                    {swap.status === 'completed' && <p className="text-xs text-green-700 font-medium">{t('completedSuccessfully')}</p>}
+                    {swap.status === 'approved' && <p className="text-xs text-green-700 font-medium">{t('approved')}</p>}
+                    {swap.status === 'rejected' && <p className="text-xs text-red-700 font-medium">{t('rejected')}</p>}
+                    {swap.status === 'cancelled' && <p className="text-xs text-red-700 font-medium">{t('cancelled')}</p>}
+                  </div>
+                  <ActionBar
+                    direction="col"
+                    compact
+                    collapseAt="md"
+                    actions={buildSwapActions(
+                      actions,
+                      {
+                        onViewDetails: () => setSelectedSwap(swap),
+                        onAccept: actions.showAccept ? () => void runReview(swap, 'accept') : undefined,
+                        onCounterpartReject: actions.showCounterpartReject ? () => void runReview(swap, 'counterpart_reject') : undefined,
+                        onApprove: actions.showApprove ? () => void runReview(swap, 'approve') : undefined,
+                        onReviewerReject: actions.showReviewerReject ? () => void runReview(swap, 'reject') : undefined,
+                        onCancel: actions.showCancel ? () => setCancelTarget(swap) : undefined,
+                      },
+                      {
+                        viewDetails: t('viewDetails'),
+                        accept: t('accept') || 'Accept',
+                        reject: t('reject'),
+                        approve: t('approve'),
+                        reviewerReject: t('reject'),
+                        cancel: t('cancelRegistration') || 'Cancel Request',
+                      }
+                    )}
+                  />
                 </div>
-
-                <div className="flex flex-col gap-2">
-                  <Button variant="outline" size="sm" className="w-full justify-start h-8 bg-background" onClick={() => setSelectedSwap(swap)}>
-                    {t('viewDetails')}
-                  </Button>
-                  {actions.showCancel && (
-                    <Button size="sm" variant="outline" className="w-full justify-start h-8 text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground bg-background" onClick={() => setCancelTarget(swap)}>
-                      <XCircle className="mr-2 h-3.5 w-3.5" /> Cancel Request
-                    </Button>
-                  )}
-                  {actions.showAccept && (
-                    <Button size="sm" className="w-full justify-start h-8 bg-green-600 hover:bg-green-700 text-white" onClick={() => void runReview(swap, 'accept')}>
-                      <CheckCircle className="mr-2 h-3.5 w-3.5" /> Accept
-                    </Button>
-                  )}
-                  {actions.showCounterpartReject && (
-                    <Button size="sm" variant="outline" className="w-full justify-start h-8 text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground bg-background" onClick={() => void runReview(swap, 'counterpart_reject')}>
-                      <XCircle className="mr-2 h-3.5 w-3.5" /> Reject
-                    </Button>
-                  )}
-                  {actions.showApprove && (
-                    <Button size="sm" className="w-full justify-start h-8 bg-blue-600 hover:bg-blue-700 text-white" onClick={() => void runReview(swap, 'approve')}>
-                      <CheckCircle className="mr-2 h-3.5 w-3.5" /> {t('approve')}
-                    </Button>
-                  )}
-                  {actions.showReviewerReject && (
-                    <Button size="sm" variant="outline" className="w-full justify-start h-8 text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground bg-background" onClick={() => void runReview(swap, 'reject')}>
-                      <XCircle className="mr-2 h-3.5 w-3.5" /> {t('reject')}
-                    </Button>
-                  )}
-                </div>
-              </div>
             </div>
           </CardContent>
         </Card>

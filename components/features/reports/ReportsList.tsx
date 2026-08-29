@@ -26,6 +26,8 @@ import {
   exportReportDetailToExcel,
 } from '@/lib/utils/excelUtils'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
+import { ActionBar } from '@/components/ui/action-bar'
+import { buildReportActions } from '@/lib/ui/action-priority'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -336,30 +338,40 @@ export function ReportsList() {
                     <Value label={t('host')} value={roleNames(shift, 'host')} />
                     <Value label={t('metricsStatus')} value={report.metrics_confirmed ? t('confirmed') : t('needsReview')} />
                   </div>
-                  <div className="flex items-center gap-2 mt-auto">
-                    <Button className="flex-1 text-xs" variant="secondary" size="sm" onClick={() => setSelectedReport(report)}>{t('viewDetails')}</Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 w-8 shrink-0">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {currentUser && hasPermission(currentUser, 'reports.export') && (
-                          <DropdownMenuItem onClick={() => exportReportDetailToExcel(report, exportContext)}>
-                            <Download className="mr-2 h-4 w-4" />{t('exportExcel')}
-                          </DropdownMenuItem>
-                        )}
-                        {((!report.metrics_confirmed && canRemove) || (report.metrics_confirmed && canArchive)) && (
-                          <>
-                            {currentUser && hasPermission(currentUser, 'reports.export') && <DropdownMenuSeparator />}
-                            <DropdownMenuItem className="text-red-600 focus:bg-red-50 focus:text-red-700" onClick={() => void requestRemove(report)}>
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              {report.metrics_confirmed ? t('archiveReport') : t('deleteDraftReport')}
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
+                  <ActionBar
+                    stretch
+                    compact
+                    collapseAt="sm"
+                    className="mt-auto w-full"
+                    actions={buildReportActions(
+                      {
+                        canSubmit: false, // not used at row level
+                        canReview: currentUser ? hasPermission(currentUser, 'reports.review') : false,
+                        canDelete: Boolean((!report.metrics_confirmed && canRemove) || (report.metrics_confirmed && canArchive)),
+                        canExport: currentUser ? hasPermission(currentUser, 'reports.export') : false,
+                        isConfirmed: Boolean(report.metrics_confirmed),
+                        isDraft: !report.metrics_confirmed,
+                      },
+                      {
+                        onView: () => setSelectedReport(report),
+                        onReview: () => setSelectedReport(report),
+                        onExport: () => exportReportDetailToExcel(report, exportContext),
+                        onDelete: () => void requestRemove(report),
+                      },
+                      {
+                        view: t('viewDetails'),
+                        reviewReport: t('review'),
+                        export: t('exportExcel'),
+                        archive: t('archiveReport'),
+                        delete: t('deleteDraftReport'),
+                      },
+                      {
+                        export: <Download />,
+                        archive: <Trash2 />,
+                        delete: <Trash2 />,
+                      }
+                    )}
+                  />
                 </CardContent>
               </Card>
             )
