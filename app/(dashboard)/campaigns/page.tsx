@@ -1,9 +1,10 @@
 import { CampaignList } from '@/components/features/campaigns/CampaignList'
+import { PageShell } from '@/components/ui/archetypes'
 
 export default function CampaignsPage() {
   return (
-    <div className="space-y-6" data-testid="campaigns-page">
+    <PageShell archetype="directory" className="space-y-6" data-testid="campaigns-page">
       <CampaignList />
-    </div>
+    </PageShell>
   )
 }

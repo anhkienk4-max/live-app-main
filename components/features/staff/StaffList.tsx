@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Archive, CheckCircle2, Eye, Pencil, Power, PowerOff, RotateCcw, UserPlus, XCircle } from 'lucide-react'
+import { Archive, CheckCircle2, Eye, MoreHorizontal, Pencil, Power, PowerOff, RotateCcw, UserPlus, XCircle } from 'lucide-react'
 import { isStaffedRegistration, shiftRegistrationService, shiftService, userService } from '@/lib/services/dataService'
 import { OperationalRole, Shift, ShiftRegistration, SystemPermission, User } from '@/lib/types/database.types'
 import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Column, DataTable } from '@/components/ui/data-table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
 import { StaffFormDialog } from './StaffFormDialog'
@@ -197,22 +198,38 @@ export function StaffList() {
     {
       header: t('actions'),
       accessor: row => (
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 justify-end">
           <Button variant="ghost" size="icon" aria-label={t('viewDetails')} onClick={() => setDetailStaff(row)}><Eye className="h-4 w-4" /></Button>
           {canManage && <>
-            {row.archived_at || row.deleted_at ? (
-              <Button variant="ghost" size="icon" aria-label={t('restore')} onClick={() => setRestoreTarget(row)} data-testid={`restore-staff-${row.id}`}><RotateCcw className="h-4 w-4 text-green-600" /></Button>
-            ) : <>
-            {row.account_status === 'pending_approval' && <>
-              <Button variant="ghost" size="icon" aria-label={t('approvePendingAccount')} onClick={() => void approveAccount(row)} data-testid={`approve-staff-${row.id}`}><CheckCircle2 className="h-4 w-4 text-green-600" /></Button>
-              <Button variant="ghost" size="icon" aria-label={t('rejectPendingAccount')} onClick={() => void rejectAccount(row)} data-testid={`reject-staff-${row.id}`}><XCircle className="h-4 w-4 text-red-600" /></Button>
+            {row.account_status === 'pending_approval' && !row.archived_at && !row.deleted_at && <>
+              <Button variant="ghost" size="icon" aria-label={t('approvePendingAccount')} onClick={() => void approveAccount(row)} data-testid={`approve-staff-${row.id}`}><CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" /></Button>
+              <Button variant="ghost" size="icon" aria-label={t('rejectPendingAccount')} onClick={() => void rejectAccount(row)} data-testid={`reject-staff-${row.id}`}><XCircle className="h-4 w-4 text-red-600 dark:text-red-400" /></Button>
             </>}
-            <Button variant="ghost" size="icon" aria-label={t('edit')} onClick={() => { setSelectedStaff(row); setIsFormOpen(true) }} data-testid={`edit-staff-${row.id}`}><Pencil className="h-4 w-4" /></Button>
-            {row.id !== currentUser?.id && <Button variant="ghost" size="icon" aria-label={t(row.status === 'active' ? 'deactivate' : 'activate')} onClick={() => setStatusTarget(row)} data-testid={`toggle-staff-${row.id}`}>
-              {row.status === 'active' ? <PowerOff className="h-4 w-4 text-amber-600" /> : <Power className="h-4 w-4 text-green-600" />}
-            </Button>}
-            {row.id !== currentUser?.id && <Button variant="ghost" size="icon" aria-label={t('archive')} onClick={() => setArchiveTarget(row)} data-testid={`archive-staff-${row.id}`}><Archive className="h-4 w-4 text-red-600" /></Button>}
-            </>}
+            <DropdownMenu>
+              <DropdownMenuTrigger className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-muted h-9 w-9" aria-label={t('actions')}>
+                <MoreHorizontal className="h-4 w-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                {row.archived_at || row.deleted_at ? (
+                  <DropdownMenuItem onClick={() => setRestoreTarget(row)} data-testid={`restore-staff-${row.id}`}><RotateCcw className="mr-2 h-4 w-4" />{t('restore')}</DropdownMenuItem>
+                ) : (
+                  <>
+                    <DropdownMenuItem onClick={() => { setSelectedStaff(row); setIsFormOpen(true) }} data-testid={`edit-staff-${row.id}`}><Pencil className="mr-2 h-4 w-4" />{t('edit')}</DropdownMenuItem>
+                    {row.id !== currentUser?.id && (
+                      <DropdownMenuItem onClick={() => setStatusTarget(row)} data-testid={`toggle-staff-${row.id}`}>
+                        {row.status === 'active' ? <><PowerOff className="mr-2 h-4 w-4" />{t('deactivate')}</> : <><Power className="mr-2 h-4 w-4" />{t('activate')}</>}
+                      </DropdownMenuItem>
+                    )}
+                    {row.id !== currentUser?.id && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem variant="destructive" onClick={() => setArchiveTarget(row)} data-testid={`archive-staff-${row.id}`}><Archive className="mr-2 h-4 w-4" />{t('archive')}</DropdownMenuItem>
+                      </>
+                    )}
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>}
         </div>
       ),
@@ -223,11 +240,11 @@ export function StaffList() {
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { void loadStaff() }} />
 
   return <>
-    <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+    <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
       <div><h2 className="text-2xl font-bold">{t('staffManagement')}</h2><p className="mt-1 text-muted-foreground">{t('staffManagementSubtitle')}</p></div>
-      {canManage && <div className="flex gap-2">
-        <Button variant="outline" onClick={() => setShowArchived(value => !value)} data-testid="toggle-archived-staff"><Archive className="mr-2 h-4 w-4" />{t(showArchived ? 'active' : 'archivedRecords')}</Button>
-        {!showArchived && <Button onClick={() => { setSelectedStaff(null); setIsFormOpen(true) }} data-testid="add-staff-btn"><UserPlus className="mr-2 h-4 w-4" />{t('addStaff')}</Button>}
+      {canManage && <div className="flex flex-col sm:flex-row w-full md:w-auto gap-2">
+        <Button className="w-full sm:w-auto" variant="outline" onClick={() => setShowArchived(value => !value)} data-testid="toggle-archived-staff"><Archive className="mr-2 h-4 w-4" />{t(showArchived ? 'active' : 'archivedRecords')}</Button>
+        {!showArchived && <Button className="w-full sm:w-auto" onClick={() => { setSelectedStaff(null); setIsFormOpen(true) }} data-testid="add-staff-btn"><UserPlus className="mr-2 h-4 w-4" />{t('addStaff')}</Button>}
       </div>}
     </div>
 
@@ -297,12 +314,12 @@ function Filter({ value, onChange, label, options }: { value: string; onChange: 
 
 function StaffDetail({ user, shifts, workload, onClose, onEdit }: { user: User; shifts: Shift[]; workload: (role: OperationalRole) => number; onClose: () => void; onEdit?: () => void }) {
   const { t } = useTranslation()
-  return <Dialog open onOpenChange={open => !open && onClose()}><DialogContent size="xl" className="overflow-y-auto"><DialogHeader><div className="flex items-start justify-between gap-3"><div><DialogTitle>{user.full_name}</DialogTitle><p className="mt-1 text-sm text-muted-foreground">{user.email}</p></div>{onEdit && <Button onClick={onEdit}><Pencil className="mr-2 h-4 w-4" />{t('edit')}</Button>}</div></DialogHeader>
-    <div className="grid gap-3 sm:grid-cols-3">
-      <Card><CardContent className="pt-5"><p className="text-xs text-muted-foreground">{t('systemPermissions')}</p><Badge className="mt-2">{t(resolveSystemPermission(user))}</Badge></CardContent></Card>
-      <Card className="sm:col-span-2"><CardContent className="pt-5"><p className="text-xs text-muted-foreground">{t('operationalRoles')}</p><div className="mt-2 flex flex-wrap gap-2">{user.operational_roles?.length ? user.operational_roles.map(role => <Badge variant="outline" key={role}>{t(role)}</Badge>) : '—'}</div></CardContent></Card>
-      {operationalRoles.map(role => <Card key={role}><CardContent className="pt-5"><p className="text-xs text-muted-foreground">{t(role)} · {t('workload')}</p><p className="mt-1 text-2xl font-bold">{workload(role)}</p></CardContent></Card>)}
+  return <Dialog open onOpenChange={open => !open && onClose()}><DialogContent size="xl" className="overflow-y-auto"><DialogHeader className="border-b pb-4 mb-2"><div className="flex items-start justify-between gap-3"><div><DialogTitle>{user.full_name}</DialogTitle><p className="mt-1 text-sm text-muted-foreground">{user.email}</p></div>{onEdit && <Button onClick={onEdit} size="sm"><Pencil className="mr-2 h-4 w-4" />{t('edit')}</Button>}</div></DialogHeader>
+    <div className="grid gap-3 sm:grid-cols-5 mb-4">
+      <Card className="shadow-none sm:col-span-2"><CardContent className="p-4"><p className="text-xs font-medium text-muted-foreground">{t('systemPermissions')}</p><Badge className="mt-1.5">{t(resolveSystemPermission(user))}</Badge></CardContent></Card>
+      <Card className="shadow-none sm:col-span-3"><CardContent className="p-4"><p className="text-xs font-medium text-muted-foreground">{t('operationalRoles')}</p><div className="mt-1.5 flex flex-wrap gap-1.5">{user.operational_roles?.length ? user.operational_roles.map(role => <Badge variant="outline" key={role}>{t(role)}</Badge>) : '—'}</div></CardContent></Card>
+      {operationalRoles.map(role => <Card key={role} className="shadow-none sm:col-span-1"><CardContent className="p-4"><p className="text-xs font-medium text-muted-foreground truncate">{t(role)}</p><p className="mt-1 text-xl font-bold">{workload(role)}</p></CardContent></Card>)}
     </div>
-    <div><h3 className="mb-3 font-semibold">{t('assignedShifts')} ({shifts.length})</h3>{shifts.length ? <div className="space-y-2">{shifts.sort((left, right) => `${left.date}${left.start_time}`.localeCompare(`${right.date}${right.start_time}`)).map(shift => <div className="rounded-lg border p-3" key={shift.id}><p className="font-medium">{shift.title || shift.id}</p><p className="text-sm text-muted-foreground">{shift.date} · {formatShiftTimeRange(shift)} · {t(shift.status)}</p></div>)}</div> : <p className="text-sm text-muted-foreground">{t('noData')}</p>}</div>
+    <div className="rounded-md border"><div className="bg-muted/30 px-4 py-2 border-b"><h3 className="font-semibold text-sm">{t('assignedShifts')} ({shifts.length})</h3></div><div className="p-0">{shifts.length ? <div className="divide-y max-h-[300px] overflow-y-auto">{shifts.sort((left, right) => `${left.date}${left.start_time}`.localeCompare(`${right.date}${right.start_time}`)).map(shift => <div className="flex items-center justify-between gap-4 p-3 hover:bg-muted/10 transition-colors" key={shift.id}><div className="min-w-0 flex-1"><p className="font-medium truncate">{shift.title || shift.id}</p><div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground"><span>{shift.date}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{formatShiftTimeRange(shift)}</span></div></div><Badge variant="secondary" className="shrink-0">{t(shift.status)}</Badge></div>)}</div> : <div className="p-4"><p className="text-sm text-muted-foreground">{t('noData')}</p></div>}</div></div>
   </DialogContent></Dialog>
 }

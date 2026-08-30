@@ -1,7 +1,8 @@
 'use client'
 
 import * as React from 'react'
-import { DollarSign, Download, FileImage, FileSpreadsheet, FileText, Filter, Plus, RotateCcw, Search, TrendingUp, Trash2 } from 'lucide-react'
+import { DollarSign, Download, FileImage, FileSpreadsheet, FileText, Filter, Plus, RotateCcw, Search, TrendingUp, Trash2, MoreHorizontal } from 'lucide-react'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import {
   brandService,
   campaignService,
@@ -24,6 +25,11 @@ import {
   exportReportsToExcel,
   exportReportDetailToExcel,
 } from '@/lib/utils/excelUtils'
+import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
+import { ActionBar } from '@/components/ui/action-bar'
+import { deriveReportAttention } from '@/lib/ui/operational-attention'
+import { AttentionItem } from '@/components/ui/operational-status'
+import { buildReportActions } from '@/lib/ui/action-priority'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -232,21 +238,66 @@ export function ReportsList() {
           <Button onClick={() => setShowForm(true)} disabled={!completedShifts.length} data-testid="open-final-report-modal"><Plus className="mr-2 h-4 w-4" />{t('createFinalReport')}</Button>
         </div>
       )}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric title={t('reportCount')} value={filteredReports.length.toLocaleString()} icon={<FileText className="h-7 w-7 text-blue-600" />} />
-        <Metric title={t('confirmedRevenue')} value={formatCurrency(totalRevenue)} icon={<DollarSign className="h-7 w-7 text-green-600" />} />
-        <Metric title={t('averageOrderValue')} value={formatCurrency(confirmed.reduce((sum, report) => sum + (typeof report.normalized_metrics?.average_order_value === 'number' ? report.normalized_metrics.average_order_value : report.average_order_value ?? (report.orders ? confirmedRevenue(report) / report.orders : 0)), 0))} icon={<TrendingUp className="h-7 w-7 text-purple-600" />} />
-        <Metric title={t('needsReview')} value={filteredReports.filter(report => !report.metrics_confirmed).length.toLocaleString()} icon={<FileText className="h-7 w-7 text-amber-600" />} />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Metric title={t('reportCount')} value={filteredReports.length.toLocaleString()} icon={<FileText className="h-5 w-5 text-blue-600" />} />
+        <Metric title={t('confirmedRevenue')} value={formatCurrency(totalRevenue)} icon={<DollarSign className="h-5 w-5 text-green-600" />} />
+        <Metric title={t('averageOrderValue')} value={formatCurrency(confirmed.reduce((sum, report) => sum + (typeof report.normalized_metrics?.average_order_value === 'number' ? report.normalized_metrics.average_order_value : report.average_order_value ?? (report.orders ? confirmedRevenue(report) / report.orders : 0)), 0))} icon={<TrendingUp className="h-5 w-5 text-purple-600" />} />
+        <Metric title={t('needsReview')} value={filteredReports.filter(report => !report.metrics_confirmed).length.toLocaleString()} icon={<FileText className="h-5 w-5 text-amber-600" />} />
       </div>
 
       {completedShifts.length > 0 && <Card className="border-orange-200 bg-orange-50"><CardContent className="pt-5"><p className="font-semibold text-orange-900">{t('reportDraftCandidates', { count: completedShifts.length })}</p><p className="text-sm text-orange-700">{t('reportDraftPolicy')}</p></CardContent></Card>}
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0"><CardTitle className="text-base">{t('filters')}</CardTitle><Button variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="reports-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button></CardHeader>
-        <CardContent className="space-y-4">
-          {showFilters && <div id="reports-filter-panel" className="grid gap-3 md:grid-cols-4">
-            <label className="text-xs font-medium">{t('startDate')}<Input className="mt-1" type="date" value={filters.start} onChange={event => setFilters(current => ({ ...current, start: event.target.value }))} /></label>
-            <label className="text-xs font-medium">{t('endDate')}<Input className="mt-1" type="date" value={filters.end} onChange={event => setFilters(current => ({ ...current, end: event.target.value }))} /></label>
+      <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 shadow-none">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-1 items-center gap-2">
+            <div className="relative max-w-sm flex-1">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input className="pl-9 bg-background" value={filters.search} onChange={event => setFilters(current => ({ ...current, search: event.target.value }))} placeholder={t('reportSearchPlaceholder')} />
+            </div>
+            <Button variant={showFilters ? 'secondary' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="reports-filter-panel" className="shrink-0"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" onClick={() => setFilters(emptyFilters)} title={t('resetFilters')}><RotateCcw className="h-4 w-4" /></Button>
+            {currentUser && hasPermission(currentUser, 'reports.export') && (
+              <>
+                <div className="hidden md:block">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2">
+                      <Download className="mr-2 h-4 w-4" />{t('exportFilteredReports')}
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => exportReportsToExcel(filteredReports, exportContext)} disabled={!filteredReports.length}>
+                        <FileSpreadsheet className="mr-2 h-4 w-4" />{t('exportFilteredReports')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => void exportImages()} disabled={!filteredReports.length}>
+                        <FileImage className="mr-2 h-4 w-4" />{t('exportImageMetadata')}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={downloadReportTemplate}>
+                        <Download className="mr-2 h-4 w-4" />{t('downloadReportTemplate')}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <div className="md:hidden">
+                  <MobileActionMenu
+                    breakpoint="md"
+                    actions={[
+                      { key: 'export-reports', label: t('exportFilteredReports'), icon: <FileSpreadsheet className="h-4 w-4" />, onClick: () => exportReportsToExcel(filteredReports, exportContext), disabled: !filteredReports.length },
+                      { key: 'export-images', label: t('exportImageMetadata'), icon: <FileImage className="h-4 w-4" />, onClick: () => void exportImages(), disabled: !filteredReports.length },
+                      { key: 'download-template', label: t('downloadReportTemplate'), icon: <Download className="h-4 w-4" />, onClick: downloadReportTemplate }
+                    ]}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {showFilters && (
+          <div id="reports-filter-panel" className="grid gap-4 rounded-md bg-muted/40 p-4 md:grid-cols-4 lg:grid-cols-5">
+            <label className="text-xs font-medium text-foreground">{t('startDate')}<Input className="mt-1.5 bg-background" type="date" value={filters.start} onChange={event => setFilters(current => ({ ...current, start: event.target.value }))} /></label>
+            <label className="text-xs font-medium text-foreground">{t('endDate')}<Input className="mt-1.5 bg-background" type="date" value={filters.end} onChange={event => setFilters(current => ({ ...current, end: event.target.value }))} /></label>
             <EntityFilter label={t('brand')} value={filters.brand} options={brands} onChange={value => setFilters(current => ({ ...current, brand: value }))} />
             <EntityFilter label={t('platform')} value={filters.platform} options={platforms} onChange={value => setFilters(current => ({ ...current, platform: value }))} />
             <EntityFilter label={t('campaign')} value={filters.campaign} options={campaigns} onChange={value => setFilters(current => ({ ...current, campaign: value }))} />
@@ -255,21 +306,12 @@ export function ReportsList() {
             <EntityFilter label={t('technical')} value={filters.technical} options={users.filter(user => user.operational_roles?.includes('technical')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, technical: value }))} />
             <StatusFilter label={t('reportStatus')} value={filters.reportStatus} values={['draft', 'in_review', 'confirmed', 'reopened', 'archived']} onChange={value => setFilters(current => ({ ...current, reportStatus: value }))} />
             <StatusFilter label={t('metricsStatus')} value={filters.metricsStatus} values={['confirmed', 'unconfirmed']} onChange={value => setFilters(current => ({ ...current, metricsStatus: value }))} />
-            <label className="text-xs font-medium md:col-span-2">{t('search')}<div className="relative mt-1"><Search className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" /><Input className="pl-9" value={filters.search} onChange={event => setFilters(current => ({ ...current, search: event.target.value }))} placeholder={t('reportSearchPlaceholder')} /></div></label>
-          </div>}
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => setFilters(emptyFilters)}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button>
-            {currentUser && hasPermission(currentUser, 'reports.export') && <>
-              <Button variant="outline" onClick={() => exportReportsToExcel(filteredReports, exportContext)} disabled={!filteredReports.length}><FileSpreadsheet className="mr-2 h-4 w-4" />{t('exportFilteredReports')}</Button>
-              <Button variant="outline" onClick={() => void exportImages()} disabled={!filteredReports.length}><FileImage className="mr-2 h-4 w-4" />{t('exportImageMetadata')}</Button>
-              <Button variant="outline" onClick={downloadReportTemplate}><Download className="mr-2 h-4 w-4" />{t('downloadReportTemplate')}</Button>
-            </>}
           </div>
-        </CardContent>
-      </Card>
+        )}
+      </div>
 
       {filteredReports.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noReports')}</CardContent></Card> : (
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredReports.map(report => {
             const shift = shiftById.get(report.shift_id)
             if (!shift) return null
@@ -277,7 +319,67 @@ export function ReportsList() {
             const statusLabel = reportStatus === 'in_review' ? t('inReview') : t(reportStatus)
             const canRemove = Boolean(currentUser && (hasPermission(currentUser, 'reports.review') || report.submitted_by === currentUser.id))
             const canArchive = Boolean(currentUser && hasPermission(currentUser, 'audit.restore'))
-            return <Card key={report.id}><CardHeader><div className="flex items-center justify-between gap-2"><Badge variant="outline">{shift.date}</Badge><Badge className={report.metrics_confirmed ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{statusLabel}</Badge></div><CardTitle className="pt-2 text-lg">{nameById(brands, shift.brand_id)}</CardTitle><p className="text-sm text-muted-foreground">{nameById(platforms, shift.platform_id)} · {nameById(campaigns, shift.campaign_id)}</p></CardHeader><CardContent className="space-y-4"><div className="grid grid-cols-2 gap-3"><Value label={t('revenue')} value={formatCurrency(confirmedRevenue(report))} /><Value label={t('orders')} value={report.orders.toLocaleString()} /><Value label={t('host')} value={roleNames(shift, 'host')} /><Value label={t('metricsStatus')} value={report.metrics_confirmed ? t('confirmed') : t('needsReview')} /></div><div className="flex gap-2"><Button className="flex-1" variant="outline" onClick={() => setSelectedReport(report)}>{t('viewDetails')}</Button>{currentUser && hasPermission(currentUser, 'reports.export') && <Button variant="outline" size="sm" onClick={() => exportReportDetailToExcel(report, exportContext)} title={t('exportReportDetail')} aria-label={t('exportReportDetail')}><Download className="mr-1.5 h-4 w-4" />{t('exportExcel')}</Button>}{((!report.metrics_confirmed && canRemove) || (report.metrics_confirmed && canArchive)) && <Button variant="ghost" size="icon" aria-label={report.metrics_confirmed ? t('archiveReport') : t('deleteDraftReport')} title={report.metrics_confirmed ? t('archiveReport') : t('deleteDraftReport')} onClick={() => void requestRemove(report)}><Trash2 className="h-4 w-4 text-red-600" /></Button>}</div></CardContent></Card>
+            
+            const attentionItems = deriveReportAttention(report.id, reportStatus, shift.date)
+            
+            return (
+              <Card key={report.id} className="flex flex-col shadow-none transition-shadow hover:shadow-sm">
+                <CardHeader className="p-4 pb-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <Badge variant="secondary" className="font-mono text-[10px]">{shift.date}</Badge>
+                    <Badge variant={report.metrics_confirmed ? 'default' : 'secondary'} className={report.metrics_confirmed ? 'bg-green-600/10 text-green-700 hover:bg-green-600/20 dark:text-green-400' : 'bg-amber-600/10 text-amber-700 hover:bg-amber-600/20 dark:text-amber-400'}>
+                      {statusLabel}
+                    </Badge>
+                  </div>
+                  <div className="mt-2.5">
+                    <CardTitle className="text-base font-semibold leading-none tracking-tight">{nameById(brands, shift.brand_id)}</CardTitle>
+                    <p className="mt-1.5 text-xs text-muted-foreground line-clamp-1">{nameById(platforms, shift.platform_id)} · {nameById(campaigns, shift.campaign_id)}</p>
+                  </div>
+                </CardHeader>
+                <CardContent className="flex flex-1 flex-col p-4 pt-0">
+                  <div className="grid grid-cols-2 gap-x-2 gap-y-3 mb-4 flex-1">
+                    <Value label={t('revenue')} value={formatCurrency(confirmedRevenue(report))} />
+                    <Value label={t('orders')} value={report.orders.toLocaleString()} />
+                    <Value label={t('host')} value={roleNames(shift, 'host')} />
+                    <Value label={t('metricsStatus')} value={report.metrics_confirmed ? t('confirmed') : t('needsReview')} />
+                  </div>
+                  {attentionItems.length > 0 && (
+                    <div className="space-y-2 mb-4">
+                      {attentionItems.map(item => <AttentionItem key={item.key} item={item} />)}
+                    </div>
+                  )}
+                  <ActionBar
+                    stretch
+                    compact
+                    collapseAt="sm"
+                    className="mt-auto w-full"
+                    actions={buildReportActions(
+                      {
+                        status: reportStatus,
+                        canDelete: Boolean((!report.metrics_confirmed && canRemove) || (report.metrics_confirmed && canArchive)),
+                        canExport: currentUser ? hasPermission(currentUser, 'reports.export') : false,
+                      },
+                      {
+                        onView: () => setSelectedReport(report),
+                        onExport: () => exportReportDetailToExcel(report, exportContext),
+                        onDelete: () => void requestRemove(report),
+                      },
+                      {
+                        view: t('viewDetails'),
+                        export: t('exportExcel'),
+                        archive: t('archiveReport'),
+                        delete: t('deleteDraftReport'),
+                      },
+                      {
+                        export: <Download />,
+                        archive: <Trash2 />,
+                        delete: <Trash2 />,
+                      }
+                    )}
+                  />
+                </CardContent>
+              </Card>
+            )
           })}
         </div>
       )}
@@ -290,21 +392,33 @@ export function ReportsList() {
 }
 
 function Metric({ title, value, icon }: { title: string; value: string; icon: React.ReactNode }) {
-  return <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">{title}</CardTitle></CardHeader><CardContent className="flex items-center justify-between"><p className="text-2xl font-bold">{value}</p>{icon}</CardContent></Card>
+  return (
+    <Card className="shadow-none">
+      <CardContent className="flex items-center p-4">
+        <div className="flex-1 space-y-1">
+          <p className="text-sm font-medium text-muted-foreground">{title}</p>
+          <p className="text-2xl font-bold tracking-tight">{value}</p>
+        </div>
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted/50">
+          {icon}
+        </div>
+      </CardContent>
+    </Card>
+  )
 }
 
 function EntityFilter({ label, value, options, onChange }: { label: string; value: string; options: Array<{ id: string; name: string }>; onChange: (value: string) => void }) {
   const { t } = useTranslation()
-  return <label className="text-xs font-medium">{label}<Select value={value} onValueChange={onChange}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{options.map(option => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}</SelectContent></Select></label>
+  return <label className="text-xs font-medium text-foreground">{label}<Select value={value} onValueChange={onChange}><SelectTrigger className="mt-1.5 w-full bg-background"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{options.map(option => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}</SelectContent></Select></label>
 }
 
 function StatusFilter({ label, value, values, onChange }: { label: string; value: string; values: string[]; onChange: (value: string) => void }) {
   const { t, translate } = useTranslation()
-  return <label className="text-xs font-medium">{label}<Select value={value} onValueChange={onChange}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{values.map(status => <SelectItem key={status} value={status}>{status === 'in_review' ? t('inReview') : status === 'draft' ? t('draft') : status === 'confirmed' ? t('confirmed') : status === 'reopened' ? t('reopened') : status === 'archived' ? t('archived') : translate(status)}</SelectItem>)}</SelectContent></Select></label>
+  return <label className="text-xs font-medium text-foreground">{label}<Select value={value} onValueChange={onChange}><SelectTrigger className="mt-1.5 w-full bg-background"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{values.map(status => <SelectItem key={status} value={status}>{status === 'in_review' ? t('inReview') : status === 'draft' ? t('draft') : status === 'confirmed' ? t('confirmed') : status === 'reopened' ? t('reopened') : status === 'archived' ? t('archived') : translate(status)}</SelectItem>)}</SelectContent></Select></label>
 }
 
 function Value({ label, value }: { label: string; value: string }) {
-  return <div><p className="text-xs text-muted-foreground">{label}</p><p className="truncate font-semibold">{value}</p></div>
+  return <div><p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p><p className="truncate text-sm font-semibold">{value}</p></div>
 }
 
 function confirmedRevenue(report: Report) {

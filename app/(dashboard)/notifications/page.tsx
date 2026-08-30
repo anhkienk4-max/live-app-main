@@ -7,6 +7,7 @@ import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { format } from 'date-fns'
+import { PageShell, PageHeader, PageHeaderContent, PageActions } from '@/components/ui/archetypes'
 
 export default function NotificationsPage() {
   const { currentUser } = useCurrentUser()
@@ -37,8 +38,15 @@ export default function NotificationsPage() {
   }, [currentUser, load])
   React.useEffect(() => { if (currentUser) void load() }, [currentUser, load])
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between"><h1 className="text-2xl font-bold">Notifications</h1><Button variant="outline" size="sm" onClick={()=> void notificationService.markAllRead().then(load)}>Mark all read</Button></div>
+    <PageShell archetype="queue" className="space-y-6">
+      <PageHeader>
+        <PageHeaderContent>
+          <h1 className="text-2xl font-bold">Notifications</h1>
+        </PageHeaderContent>
+        <PageActions>
+          <Button variant="outline" size="sm" onClick={()=> void notificationService.markAllRead().then(load)}>Mark all read</Button>
+        </PageActions>
+      </PageHeader>
       <Card><CardContent className="divide-y p-0">
         {items.length===0 ? <div className="p-12 text-center text-muted-foreground">No notifications</div> : items.map(n=> (
           <div key={n.id} className={`flex justify-between p-4 ${n.read_at ? 'opacity-60' : ''}`}>
@@ -49,6 +57,6 @@ export default function NotificationsPage() {
           </div>
         ))}
       </CardContent></Card>
-    </div>
+    </PageShell>
   )
 }

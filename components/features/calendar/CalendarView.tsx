@@ -25,7 +25,8 @@ import {
   FileText,
   Trash2,
 } from 'lucide-react'
-import { format, addMonths, addWeeks, addDays } from 'date-fns'
+import { format, addMonths, startOfWeek, endOfWeek, addDays, subMonths, parseISO, isSameDay, addWeeks } from 'date-fns'
+import { getCurrentBusinessDate, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
 import { MonthView } from './MonthView'
 import { WeekView } from './WeekView'
 import { DayView } from './DayView'
@@ -190,7 +191,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   }, [shifts, filters, searchTerm, brands, platforms, registrations])
 
   const stats = React.useMemo(() => {
-    const today = businessLocalDate()
+    const today = getCurrentBusinessDate()
     return {
       total: filteredShifts.length,
       running: filteredShifts.filter(s => s.status === 'live').length,
@@ -302,30 +303,30 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     <div className="min-w-0 space-y-6">
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5 xl:gap-4">
-        <Card className="p-4">
-          <div className="text-sm text-gray-600">{t('totalShifts')}</div>
-          <div className="text-2xl font-bold">{stats.total}</div>
+        <Card className="p-3 border-none shadow-sm bg-muted/20">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('totalShifts')}</div>
+          <div className="mt-1 text-2xl font-bold">{stats.total}</div>
         </Card>
-        <Card className="p-4">
-          <div className="text-sm text-gray-600">{t('liveNow')}</div>
-          <div className="text-2xl font-bold text-red-600">{stats.running}</div>
+        <Card className="p-3 border-none shadow-sm bg-red-50/50">
+          <div className="text-xs font-medium text-red-600/80 uppercase tracking-wider">{t('liveNow')}</div>
+          <div className="mt-1 text-2xl font-bold text-red-600">{stats.running}</div>
         </Card>
-        <Card className="p-4">
-          <div className="text-sm text-gray-600">{t('scheduled')}</div>
-          <div className="text-2xl font-bold text-blue-600">{stats.upcoming}</div>
+        <Card className="p-3 border-none shadow-sm bg-blue-50/50">
+          <div className="text-xs font-medium text-blue-600/80 uppercase tracking-wider">{t('scheduled')}</div>
+          <div className="mt-1 text-2xl font-bold text-blue-600">{stats.upcoming}</div>
         </Card>
-        <Card className="p-4">
-          <div className="text-sm text-gray-600">{t('completed')}</div>
-          <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
+        <Card className="p-3 border-none shadow-sm bg-green-50/50">
+          <div className="text-xs font-medium text-green-600/80 uppercase tracking-wider">{t('completed')}</div>
+          <div className="mt-1 text-2xl font-bold text-green-600">{stats.completed}</div>
         </Card>
-        <Card className="p-4">
-          <div className="text-sm text-gray-600">{t('today')}</div>
-          <div className="text-2xl font-bold">{stats.todayShifts}</div>
+        <Card className="p-3 border-none shadow-sm bg-muted/20">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('today')}</div>
+          <div className="mt-1 text-2xl font-bold">{stats.todayShifts}</div>
         </Card>
       </div>
 
       {/* Search and Filters */}
-      <Card className="p-4">
+      <Card className="p-2 sm:p-3 border-none shadow-sm bg-background">
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2 overflow-x-auto pb-1 sm:gap-3">
             <div className="relative min-w-[200px] flex-1 shrink-0 sm:min-w-56">
@@ -338,7 +339,8 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
               />
             </div>
             <Button 
-              variant={showFilters ? 'default' : 'outline'}
+              variant={showFilters ? 'secondary' : 'outline'}
+              size="sm"
               onClick={() => setShowFilters(!showFilters)}
               className="shrink-0"
             >
@@ -350,7 +352,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={
-                    <Button variant="outline" data-testid="export-schedule-dropdown-btn">
+                    <Button variant="outline" size="sm" data-testid="export-schedule-dropdown-btn">
                       <Download className="h-4 w-4 mr-2" />
                       {t('exportExcel')}
                       {selectedShiftIds.size > 0 && (
@@ -391,7 +393,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
               </DropdownMenu>
             )}
             {hasPermission(currentUser, 'shifts.assign_staff') && (
-              <Button onClick={() => setShowForm(true)}>
+              <Button size="sm" onClick={() => setShowForm(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 {t('newShift')}
               </Button>
@@ -399,6 +401,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
             {view === 'list' && currentUser && hasPermission(currentUser, 'shifts.delete') && (
               <Button
                 variant="destructive"
+                size="sm"
                 onClick={() => setShowBulkDelete(true)}
                 disabled={selectedShiftIds.size === 0}
                 data-testid="open-bulk-delete-shifts"
@@ -410,6 +413,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
             {currentUser && hasPermission(currentUser, 'shifts.approve_registration') && (
               <Button
                 variant="outline"
+                size="sm"
                 onClick={() => setShowBulkStaffingApproval(true)}
                 data-testid="open-bulk-staffing-approval"
               >

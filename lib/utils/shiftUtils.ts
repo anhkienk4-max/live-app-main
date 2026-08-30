@@ -236,6 +236,9 @@ export function formatShiftEndDate(shift: Pick<Shift, 'date' | 'start_time' | 'e
   return resolved?.crossesMidnight ? resolved.endDate : null
 }
 
+export function getCurrentBusinessDate(timezone = 'Asia/Ho_Chi_Minh', now = new Date()): string {
+  return businessLocalDate(now, timezone)
+}
 // Generate recurring shifts
 export function generateRecurringShifts(
   baseShift: Omit<Shift, 'id' | 'created_at' | 'updated_at'>,

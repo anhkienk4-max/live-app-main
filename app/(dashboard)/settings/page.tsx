@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/toast'
 import { getAuthMode } from '@/lib/auth/authMode'
 import { PageLoadError } from '@/components/ui/page-load-error'
+import { PageShell, PageHeader, PageHeaderContent } from '@/components/ui/archetypes'
 
 const roles: OperationalRole[] = ['host', 'support', 'technical']
 type SettingsTab = 'personal' | 'team' | 'system' | 'integrations' | 'audit'
@@ -189,8 +190,13 @@ export default function SettingsPage() {
     ? mockVisionAvailable
     : false
 
-  return <div className="min-w-0 space-y-6" data-testid="settings-page">
-    <div><h1 className="text-3xl font-bold">{t('settings')}</h1><p className="mt-1 text-muted-foreground">{t('settingsSubtitle')}</p></div>
+  return <PageShell archetype="configuration" className="min-w-0 space-y-6" data-testid="settings-page">
+    <PageHeader>
+      <PageHeaderContent>
+        <h1 className="text-3xl font-bold">{t('settings')}</h1>
+        <p className="text-muted-foreground">{t('settingsSubtitle')}</p>
+      </PageHeaderContent>
+    </PageHeader>
 
     {showMockSwitcher && (
       <Card className="border-dashed"><CardHeader><CardTitle className="text-base">{t('developerTools')}</CardTitle><CardDescription>{t('mockMode')}</CardDescription></CardHeader><CardContent><label className="text-sm font-medium">{t('currentProfile')}<Select value={currentUser.id} onValueChange={value => void setCurrentUser(value)}><SelectTrigger className="mt-1 max-w-md"><SelectValue /></SelectTrigger><SelectContent>{users.filter(user => user.status === 'active').map(user => <SelectItem key={user.id} value={user.id}>{user.full_name} · {resolveSystemPermission(user)}</SelectItem>)}</SelectContent></Select></label></CardContent></Card>
@@ -295,7 +301,7 @@ export default function SettingsPage() {
         <Card><CardHeader><CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5" />{t('audit')}</CardTitle><CardDescription>{t('auditSettings')}</CardDescription></CardHeader><CardContent className="space-y-5"><div className="grid gap-4 md:grid-cols-2"><ToggleSetting label={t('auditEnabled')} checked={Boolean(system.audit_enabled)} onChange={checked => setSystem(current => current && ({ ...current, audit_enabled: checked }))} /><NumberSetting label={t('auditRetentionDays')} min={1} value={finiteNumber(system.audit_retention_days, 90)} onChange={value => setSystem(current => current && ({ ...current, audit_retention_days: value }))} /></div><div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">{t('auditMockNotice')}</div><Actions dirty={systemDirty} saving={savingTab === 'audit'} onReset={() => setSystem(savedSystem)} /></CardContent></Card>
       </form></TabsContent>}
     </Tabs>
-  </div>
+  </PageShell>
 }
 
 function Actions({ dirty, saving, onReset }: { dirty: boolean; saving: boolean; onReset: () => void }) {

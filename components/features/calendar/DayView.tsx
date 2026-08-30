@@ -4,9 +4,12 @@ import { Shift, Brand, Platform, User, ShiftRegistration, OperationalRole } from
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import { Clock, User as UserIcon } from 'lucide-react'
-import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { formatShiftTimeRange, getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
 import { useTranslation } from '@/lib/i18n'
 import { ShiftRegistrationActions } from './ShiftRegistrationActions'
+import { isStaffedRegistration } from '@/lib/services/dataService'
+import { deriveShiftAttention } from '@/lib/ui/operational-attention'
+import { OperationalStatusStrip } from '@/components/ui/operational-status'
 
 interface DayViewProps {
   currentDate: Date
@@ -91,6 +94,40 @@ export function DayView({ currentDate, shifts, brands, platforms, users, registr
                   {shift.product_notes && (
                     <div className="mt-3 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">{shift.product_notes}</div>
                   )}
+                  {/* E5 Exception Strip */}
+                  {(() => {
+                    const shiftRegistrations = registrations.filter(r => r.shift_id === shift.id)
+                    const pendingCount = shiftRegistrations.filter(r => r.status === 'pending').length
+                    const todayDate = getCurrentBusinessDate()
+                    const isUpcoming = shift.date >= todayDate
+                    
+                    const required = {
+                      host: shift.required_host_count ?? 1,
+                      support: shift.required_support_count ?? 0,
+                      technical: shift.required_technical_count ?? 0,
+                    }
+                    const staffed = {
+                      host: shiftRegistrations.filter(r => r.operational_role === 'host' && isStaffedRegistration(r)).length,
+                      support: shiftRegistrations.filter(r => r.operational_role === 'support' && isStaffedRegistration(r)).length,
+                      technical: shiftRegistrations.filter(r => r.operational_role === 'technical' && isStaffedRegistration(r)).length,
+                    }
+
+                    const attention = deriveShiftAttention({
+                      shiftId: shift.id,
+                      shiftDate: shift.date,
+                      shiftStatus: shift.status,
+                      pendingCount,
+                      isUpcoming,
+                      required,
+                      staffed,
+                    })
+                    if (attention.length === 0) return null
+                    return (
+                      <div className="mt-3">
+                        <OperationalStatusStrip items={attention} compact />
+                      </div>
+                    )
+                  })()}
                 </div>
               </div>
               </button>
