@@ -229,12 +229,13 @@ export function OperationalStatusStrip({
   className,
   compact = false,
 }: OperationalStatusStripProps) {
+  const { t } = useTranslation()
   const visible = maxVisible !== undefined ? items.slice(0, maxVisible) : items
 
   if (visible.length === 0) return null
 
   return (
-    <div className={cn('flex flex-col gap-2', className)} aria-label="Operational status">
+    <div className={cn('flex flex-col gap-2', className)} aria-label={t('operationalStatusAriaLabel')}>
       {visible.map(item =>
         compact ? (
           <AttentionBanner key={item.key} item={item} />

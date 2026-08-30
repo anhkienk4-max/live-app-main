@@ -288,8 +288,8 @@ function LeaderDashboard(props: CommonProps) {
       <OperationalStatusStrip items={attention.items} className="gap-2" />
     ) : (
       <HealthyState
-        message="No pending decisions"
-        description="All staffing, swaps, and reports are up to date"
+        message={t('noPendingDecisions')}
+        description={t('allUpToDate')}
       />
     )}
 
@@ -366,8 +366,8 @@ function MemberDashboard(props: CommonProps) {
       <OperationalStatusStrip items={memberAttention.items} className="gap-2" />
     ) : (
       <HealthyState
-        message="All clear"
-        description="No pending registrations or swap requests"
+        message={t('allClear')}
+        description={t('noPendingRequests')}
       />
     )}
 
