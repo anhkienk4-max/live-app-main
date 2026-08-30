@@ -64,6 +64,8 @@ import { normalizeStaffingDisplayNames } from '@/lib/utils/scheduleImportPreview
 import { deriveShiftStaffIdentityMatches } from '@/lib/utils/staffIdentityMatching'
 import { SwapRequestDialog } from '@/components/features/swaps/SwapRequestDialog'
 import { ShiftRegistrationActions } from '@/components/features/calendar/ShiftRegistrationActions'
+import { deriveShiftAttention } from '@/lib/ui/operational-attention'
+import { OperationalStatusStrip } from '@/components/ui/operational-status'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
 
@@ -609,6 +611,20 @@ export function ShiftDetailModal({
   const userName = (id?: string) => id ? users.find(user => user.id === id)?.full_name || fallback : fallback
   const statusKey: TranslationKey = shift.status === 'live' ? 'liveStatus' : shift.status
 
+  // E5: Exception-first attention derivation
+  const staffedCount = registrations.filter(isStaffedRegistration).length
+  const pendingCount = registrations.filter(r => r.status === 'pending').length
+  const todayDate = format(new Date(), 'yyyy-MM-dd')
+  const isUpcoming = shift.date >= todayDate
+  const attention = deriveShiftAttention({
+    shiftId: shift.id,
+    shiftDate: shift.date,
+    shiftStatus: shift.status,
+    staffedCount,
+    pendingCount,
+    isUpcoming,
+  })
+
   const requestDelete = async () => {
     if (!canDeleteShift) {
       toast({ title: t('error'), description: t('permissionDenied'), variant: 'destructive' })
@@ -716,6 +732,11 @@ export function ShiftDetailModal({
                 {t(statusKey)}
               </Badge>
             </div>
+            {attention.length > 0 && (
+              <div className="mt-3">
+                <OperationalStatusStrip items={attention} compact />
+              </div>
+            )}
           </DialogHeader>
 
           <DialogBody className="pb-1">

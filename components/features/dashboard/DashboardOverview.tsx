@@ -18,9 +18,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { PageShell, PageHeader, PageHeaderContent } from '@/components/ui/archetypes'
+import { OperationalStatusStrip, HealthyState } from '@/components/ui/operational-status'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { resolveSystemPermission } from '@/lib/permissions'
 import { isCanonicalAssignedShift, getMemberAssignedShifts, getMemberPendingRegistrations, getMemberPendingSwaps, getLeaderPendingRegistrations, getLeaderPendingReports, getLeaderPendingSwaps } from '@/lib/ui/dashboard-role-data'
+import { deriveLeaderAttention, deriveMemberAttention, deriveDataQualityAttention } from '@/lib/ui/operational-attention'
+import { getAllIssues } from '@/lib/utils/dataQuality'
 
 const DashboardCharts = dynamic(
   () => import('@/components/features/dashboard/DashboardCharts').then(mod => ({ default: mod.DashboardCharts })),
@@ -134,6 +137,12 @@ function AdminDashboard(props: CommonProps) {
   const previousIds = new Set(shifts.filter(shift => shift.date >= previousStart && shift.date <= previousEnd && matchesDimensions(shift, filters, registrations)).map(shift => shift.id))
   const previousReports = reports.filter(report => previousIds.has(report.shift_id) && report.status === 'confirmed')
   
+  const dqIssues = React.useMemo(() => getAllIssues({ shifts: filteredShifts, reports, registrations }), [filteredShifts, reports, registrations])
+  const errorCount = dqIssues.filter(i => i.severity === 'error').length
+  const warningCount = dqIssues.filter(i => i.severity === 'warning').length
+  const infoCount = dqIssues.filter(i => i.severity === 'info').length
+  const dqAttention = deriveDataQualityAttention(errorCount, warningCount, infoCount)
+  
   const revenue = filteredReports.reduce((sum, report) => sum + report.revenue, 0)
   const previousRevenue = previousReports.reduce((sum, report) => sum + report.revenue, 0)
   const delta = previousRevenue ? `${(((revenue - previousRevenue) / previousRevenue) * 100).toFixed(1)}%` : '—'
@@ -187,7 +196,13 @@ function AdminDashboard(props: CommonProps) {
           ]).size.toString()} icon={<Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />} />
           <Metric title={t('campaigns')} value={new Set(filteredShifts.map(shift => shift.campaign_id).filter(Boolean)).size.toString()} icon={<Package className="h-5 w-5 text-orange-600 dark:text-orange-400" />} />
         </div>
-        <Card className="flex-1 bg-muted/20 border-muted-foreground/20"><CardContent className="flex h-full items-center justify-between p-4"><div><p className="font-semibold text-sm text-foreground">{t('dataQuality')}</p><p className="text-xs text-muted-foreground mt-0.5">{t('dataQualityAlertsSubtitle')}</p></div><Button variant="outline" size="sm" render={<Link href="/data-quality" />} nativeButton={false}>{t('review')}</Button></CardContent></Card>
+        {dqAttention.length > 0 ? (
+          <div className="flex-1">
+            <OperationalStatusStrip items={dqAttention} className="gap-2" compact />
+          </div>
+        ) : (
+          <Card className="flex-1 bg-muted/20 border-muted-foreground/20"><CardContent className="flex h-full items-center justify-between p-4"><div><p className="font-semibold text-sm text-foreground">{t('dataQuality')}</p><p className="text-xs text-muted-foreground mt-0.5">{t('dataQualityAlertsSubtitle')}</p></div><Button variant="outline" size="sm" render={<Link href="/data-quality" />} nativeButton={false}>{t('review')}</Button></CardContent></Card>
+        )}
       </div>
     </div>
 
@@ -218,6 +233,18 @@ function LeaderDashboard(props: CommonProps) {
   const pendingSwaps = getLeaderPendingSwaps(swapRequests, shiftIds)
   const pendingReports = getLeaderPendingReports(reports, shiftIds)
 
+  // Retrieve data quality issues scoped to current timeframe
+  const dqIssues = React.useMemo(() => getAllIssues({ shifts: filteredShifts, reports, registrations }), [filteredShifts, reports, registrations])
+  const dqErrorCount = dqIssues.filter(i => i.severity === 'error').length
+
+  // E5: derive exception-first attention summary
+  const attention = deriveLeaderAttention({
+    pendingRegistrationCount: pendingRegistrations.length,
+    pendingSwapCount: pendingSwaps.length,
+    pendingReportCount: pendingReports.length,
+    dqErrorCount,
+  })
+
   const upcoming = filteredShifts.filter(shift => shift.date >= today && shift.status === 'scheduled').sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`)).slice(0, 5)
   const roleOptions = (role: 'host' | 'support' | 'technical') => users.filter(user => user.operational_roles?.includes(role)).map(user => ({ id: user.id, name: user.full_name }))
 
@@ -233,6 +260,16 @@ function LeaderDashboard(props: CommonProps) {
     <DashboardCustomDateRange filters={filters} setFilters={setFilters} t={t} />
     {showFilters && <DashboardFilterPanel filters={filters} setFilters={setFilters} brands={brands} platforms={platforms} campaigns={campaigns} roleOptions={roleOptions} t={t} />}
 
+    {/* E5: Exception-first — show action queue before passive metrics */}
+    {attention.items.length > 0 ? (
+      <OperationalStatusStrip items={attention.items} className="gap-2" />
+    ) : (
+      <HealthyState
+        message="No pending decisions"
+        description="All staffing, swaps, and reports are up to date"
+      />
+    )}
+
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <Metric title={t('shiftsToday')} value={todaysShifts.length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
       <Metric title={t('liveNow')} value={filteredShifts.filter(shift => shift.status === 'live').length.toString()} icon={<Radio className="h-5 w-5 text-red-600 dark:text-red-400" />} />
@@ -247,29 +284,6 @@ function LeaderDashboard(props: CommonProps) {
         <QuickAction href="/reports" label={t('reports')} icon={<FileText className="h-5 w-5" />} />
         <QuickAction href="/swaps" label={t('swaps')} icon={<ArrowLeftRight className="h-5 w-5" />} />
       </CardContent></Card>
-      
-      <div className="flex flex-col gap-4">
-        {(pendingRegistrations.length > 0 || pendingSwaps.length > 0) && (
-          <Card className="flex-1 bg-amber-500/5 border-amber-500/20"><CardContent className="flex h-full items-center justify-between p-4">
-            <div>
-              <p className="font-semibold text-sm text-amber-600 dark:text-amber-400">{t('attentionRequired')}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {t('attentionRequiredSubtitle').replace('{registrations}', String(pendingRegistrations.length)).replace('{swaps}', String(pendingSwaps.length))}
-              </p>
-            </div>
-            <Button variant="outline" size="sm" render={<Link href="/calendar" />} nativeButton={false} className="border-amber-500/30 text-amber-600 hover:bg-amber-500/10">{t('review')}</Button>
-          </CardContent></Card>
-        )}
-        {pendingReports.length > 0 && (
-          <Card className="flex-1 bg-blue-500/5 border-blue-500/20"><CardContent className="flex h-full items-center justify-between p-4">
-            <div>
-              <p className="font-semibold text-sm text-blue-600 dark:text-blue-400">{t('reportsPending')}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{t('reportsPendingSubtitle').replace('{reports}', String(pendingReports.length))}</p>
-            </div>
-            <Button variant="outline" size="sm" render={<Link href="/reports" />} nativeButton={false} className="border-blue-500/30 text-blue-600 hover:bg-blue-500/10">{t('review')}</Button>
-          </CardContent></Card>
-        )}
-      </div>
     </div>
 
     <UpcomingShiftsList upcoming={upcoming} brands={brands} platforms={platforms} t={t} />
@@ -291,6 +305,18 @@ function MemberDashboard(props: CommonProps) {
   const myReports = reports.filter(r => r.submitted_by === currentUser.id)
   const myPendingRegistrations = getMemberPendingRegistrations(registrations, currentUser.id)
 
+  // E5: derive personal exception summary
+  // swap 'needs action' only when it is pending and actor is counterpart (resolver contract)
+  const swapNeedsAction = myPendingSwaps.some(
+    s => s.status === 'pending' && s.counterpart_id === currentUser.id
+  )
+  const memberAttention = deriveMemberAttention({
+    pendingRegistrationCount: myPendingRegistrations.length,
+    pendingSwapCount: myPendingSwaps.length,
+    hasUpcomingShift: upcoming.length > 0,
+    swapNeedsAction,
+  })
+
   return <PageShell archetype="command" className="space-y-6">
     <PageHeader>
       <PageHeaderContent>
@@ -298,6 +324,16 @@ function MemberDashboard(props: CommonProps) {
         <p className="text-muted-foreground">{t('myWorkspace')}</p>
       </PageHeaderContent>
     </PageHeader>
+
+    {/* E5: personal exception-first strip */}
+    {memberAttention.items.length > 0 ? (
+      <OperationalStatusStrip items={memberAttention.items} className="gap-2" />
+    ) : (
+      <HealthyState
+        message="All clear"
+        description="No pending registrations or swap requests"
+      />
+    )}
 
     {nextShift && (
       <Card className="bg-primary/5 border-primary/20">
