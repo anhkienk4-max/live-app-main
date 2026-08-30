@@ -25,7 +25,8 @@ import {
   FileText,
   Trash2,
 } from 'lucide-react'
-import { format, addMonths, addWeeks, addDays } from 'date-fns'
+import { format, addMonths, startOfWeek, endOfWeek, addDays, subMonths, parseISO, isSameDay, addWeeks } from 'date-fns'
+import { getCurrentBusinessDate, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
 import { MonthView } from './MonthView'
 import { WeekView } from './WeekView'
 import { DayView } from './DayView'
@@ -189,7 +190,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   }, [shifts, filters, searchTerm, brands, platforms, registrations])
 
   const stats = React.useMemo(() => {
-    const today = format(new Date(), 'yyyy-MM-dd')
+    const today = getCurrentBusinessDate()
     return {
       total: filteredShifts.length,
       running: filteredShifts.filter(s => s.status === 'live').length,

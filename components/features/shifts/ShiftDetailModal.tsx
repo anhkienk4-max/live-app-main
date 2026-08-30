@@ -57,7 +57,7 @@ import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
 import { exportShiftStaffingToExcel } from '@/lib/utils/excelUtils'
 import { useTranslation, type Language, type TranslationKey } from '@/lib/i18n'
-import { resolveShiftDateTime } from '@/lib/utils/shiftUtils'
+import { formatShiftTimeRange, formatShiftEndDate, calculateDuration, formatDuration, getCurrentBusinessDate, resolveShiftDateTime } from '@/lib/utils/shiftUtils'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 import { normalizeStaffingDisplayNames } from '@/lib/utils/scheduleImportPreview'
@@ -612,17 +612,29 @@ export function ShiftDetailModal({
   const statusKey: TranslationKey = shift.status === 'live' ? 'liveStatus' : shift.status
 
   // E5: Exception-first attention derivation
-  const staffedCount = registrations.filter(isStaffedRegistration).length
   const pendingCount = registrations.filter(r => r.status === 'pending').length
-  const todayDate = format(new Date(), 'yyyy-MM-dd')
+  const todayDate = getCurrentBusinessDate()
   const isUpcoming = shift.date >= todayDate
+  
+  const required = {
+    host: shift.required_host_count ?? 1,
+    support: shift.required_support_count ?? 0,
+    technical: shift.required_technical_count ?? 0,
+  }
+  const staffed = {
+    host: registrations.filter(r => r.operational_role === 'host' && isStaffedRegistration(r)).length,
+    support: registrations.filter(r => r.operational_role === 'support' && isStaffedRegistration(r)).length,
+    technical: registrations.filter(r => r.operational_role === 'technical' && isStaffedRegistration(r)).length,
+  }
+  
   const attention = deriveShiftAttention({
     shiftId: shift.id,
     shiftDate: shift.date,
     shiftStatus: shift.status,
-    staffedCount,
     pendingCount,
     isUpcoming,
+    required,
+    staffed,
   })
 
   const requestDelete = async () => {

@@ -101,12 +101,22 @@ export interface ShiftAttentionInput {
   shiftId: string
   shiftDate: string
   shiftStatus: string
-  /** Count of staffed registrations (approved + manually_assigned) for this shift */
-  staffedCount: number
   /** Count of pending registrations for this shift */
   pendingCount: number
   /** True if this shift is today or in the near future (caller decides threshold) */
   isUpcoming: boolean
+  /** Required staffing counts */
+  required: {
+    host: number
+    support: number
+    technical: number
+  }
+  /** Actual staffed counts (approved + manually_assigned ONLY) */
+  staffed: {
+    host: number
+    support: number
+    technical: number
+  }
 }
 
 /**
@@ -133,12 +143,22 @@ export function deriveShiftAttention(input: ShiftAttentionInput): OperationalAtt
     })
   }
 
-  if (input.staffedCount === 0 && input.isUpcoming) {
+  const missingHost = Math.max(0, input.required.host - input.staffed.host)
+  const missingSupport = Math.max(0, input.required.support - input.staffed.support)
+  const missingTechnical = Math.max(0, input.required.technical - input.staffed.technical)
+  const totalMissing = missingHost + missingSupport + missingTechnical
+
+  if (totalMissing > 0 && input.isUpcoming) {
+    const missingRoles = []
+    if (missingHost > 0) missingRoles.push('Host')
+    if (missingSupport > 0) missingRoles.push('Support')
+    if (missingTechnical > 0) missingRoles.push('Technical')
+    
     items.push({
       key: `shift-${input.shiftId}-gap`,
       severity: 'attention',
       label: 'Staffing gap',
-      description: 'No confirmed staff for this shift',
+      description: `Missing ${missingRoles.join(', ')}`,
       href: '/calendar',
     })
   }
