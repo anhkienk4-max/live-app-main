@@ -10,6 +10,31 @@ export type FileEntityType =
 
 export type FileAssetStatus = 'active' | 'archived' | 'deleted'
 
+export type FileDestinationScope = 'general' | 'report' | 'approval' | 'campaign' | 'backup' | 'delivery'
+
+export type FileDestinationStatus = 'active' | 'archived' | 'invalid'
+
+/** Neutral upload destination; provider-specific fields are optional extensions. */
+export interface FileDestination {
+  provider: FileProviderName
+  external_folder_id?: string
+  folder_url?: string
+}
+
+/** Persistence-ready destination contract; no provider implementation is implied. */
+export interface SavedFileDestination {
+  id: string
+  name: string
+  provider: FileProviderName
+  external_folder_id?: string
+  folder_url?: string
+  scope: FileDestinationScope
+  status: FileDestinationStatus
+  created_by: string
+  created_at: string
+  last_validated_at?: string
+}
+
 /** Metadata only. Binary content must never be placed on this object. */
 export interface FileAsset {
   id: string
@@ -40,6 +65,7 @@ export interface FileUploadInput {
   created_by: string
   logical_path: string
   external_parent_id?: string
+  destination?: FileDestination
 }
 
 export interface FileUploadResult {

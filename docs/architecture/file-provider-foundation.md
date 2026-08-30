@@ -64,6 +64,30 @@ never mutate it. The adapter retries only transient 429/5xx responses with a
 bounded backoff; configuration, authentication, and not-found failures are not
 blindly retried. No user-facing Google OAuth or provider selection is exposed.
 
+### Custom Drive destinations (FILE-2.2)
+
+Uploads may provide the neutral `FileDestination` extension on
+`FileUploadInput`:
+
+- `provider: 'google_drive'`
+- either `external_folder_id` or a supported `folder_url` (not both)
+
+Supported links are `/drive/folders/<id>`, `/drive/u/0/folders/<id>`, and
+`/open?id=<id>` on `drive.google.com`. A custom folder is validated with the
+system account before upload: it must be an active folder with
+`capabilities.canAddChildren=true`. Invalid URLs, missing folders, non-folders,
+trashed folders, and read-only folders fail with deterministic Drive errors and
+never fall back to the managed root. A missing destination keeps the existing
+logical-path-under-root behavior.
+
+Drive requests include `supportsAllDrives=true` (and list requests include
+`includeItemsFromAllDrives=true`) so My Drive, shared-with-me folders, and
+Shared Drive folders use the same adapter contract. Pasting a URL grants no
+permission and never changes ACLs or creates public sharing.
+
+`SavedFileDestination` is a provider-neutral persistence contract for later
+UI/storage work; FILE-2.2 adds no database tables or migrations.
+
 ## Current legacy storage inventory
 
 `CURRENT_SUPABASE_STORAGE_USAGE`:
