@@ -345,9 +345,9 @@ export function ReportsList() {
                     className="mt-auto w-full"
                     actions={buildReportActions(
                       {
+                        status: reportStatus,
                         canDelete: Boolean((!report.metrics_confirmed && canRemove) || (report.metrics_confirmed && canArchive)),
                         canExport: currentUser ? hasPermission(currentUser, 'reports.export') : false,
-                        isConfirmed: Boolean(report.metrics_confirmed),
                       },
                       {
                         onView: () => setSelectedReport(report),

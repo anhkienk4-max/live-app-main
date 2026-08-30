@@ -303,14 +303,28 @@ export function buildSwapActions(
 
 /**
  * Report row actions.
- * Review = PRIMARY when report is draft/in_review and actor has permission.
- * Archive/Delete = DESTRUCTIVE.
- * View = SECONDARY.
+ *
+ * Canonical ReportStatus states: draft | in_review | confirmed | reopened | archived
+ *
+ * - archived  → terminal for ALL mutation actions (no archive, no delete)
+ * - confirmed → read-only metrics; no fabricated Review CTA
+ * - reopened  → treated as editable (metrics_confirmed may still be true
+ *               from prior confirmation; status wins over that field)
+ * - draft / in_review → unconfirmed; delete allowed with permission
+ *
+ * No Review CTA is generated here — that is a detail-modal concern.
+ * View = SECONDARY (always). Export = OVERFLOW (permission-gated).
+ * Delete/Archive = DESTRUCTIVE; never shown for archived reports.
  */
+export type ReportStatus = 'draft' | 'in_review' | 'confirmed' | 'reopened' | 'archived'
+
 export interface ReportActionInput {
+  /** Canonical workflow status — authoritative gate for mutation actions. */
+  status: ReportStatus
+  /** Permission gate: actor may delete/archive this report. */
   canDelete: boolean
+  /** Permission gate: actor may export this report. */
   canExport: boolean
-  isConfirmed: boolean
 }
 
 export function buildReportActions(
@@ -335,7 +349,10 @@ export function buildReportActions(
 ): PrioritizedAction[] {
   const result: PrioritizedAction[] = []
 
-  // View is SECONDARY (always accessible)
+  const isArchived = input.status === 'archived'
+  const isConfirmedOrReopened = input.status === 'confirmed' || input.status === 'reopened'
+
+  // View is SECONDARY (always accessible regardless of status)
   result.push({
     key: 'view',
     label: labels.view,
@@ -344,9 +361,9 @@ export function buildReportActions(
     onClick: handlers.onView,
     testId: 'action-view-report',
   })
-  
-  // Export is OVERFLOW
-  if (input.canExport && handlers.onExport) {
+
+  // Export is OVERFLOW (permission-gated; available on all non-archived states)
+  if (!isArchived && input.canExport && handlers.onExport) {
     result.push({
       key: 'export',
       label: labels.export,
@@ -357,13 +374,16 @@ export function buildReportActions(
     })
   }
 
-  // Archive/delete = DESTRUCTIVE
-  if (input.canDelete && handlers.onDelete) {
+  // Archive/Delete = DESTRUCTIVE
+  // - archived reports: no mutation action (terminal)
+  // - confirmed/reopened: label is 'archive' (existing service contract)
+  // - draft/in_review: label is 'delete'
+  if (!isArchived && input.canDelete && handlers.onDelete) {
     result.push({
       key: 'delete',
-      label: input.isConfirmed ? labels.archive : labels.delete,
+      label: isConfirmedOrReopened ? labels.archive : labels.delete,
       tier: 'destructive',
-      icon: input.isConfirmed ? icons?.archive : icons?.delete,
+      icon: isConfirmedOrReopened ? icons?.archive : icons?.delete,
       onClick: handlers.onDelete,
       testId: 'action-delete-report',
     })
@@ -415,8 +435,8 @@ export function buildShiftActions(
     testId: 'action-view-shift',
   })
 
-  // Edit is SECONDARY
-  if (input.canEdit) {
+  // Edit is SECONDARY (only when both permitted AND handler provided)
+  if (input.canEdit && handlers.onEdit) {
     result.push({
       key: 'edit',
       label: labels.edit,
@@ -439,8 +459,8 @@ export function buildShiftActions(
     })
   }
 
-  // Delete is DESTRUCTIVE
-  if (input.canDelete) {
+  // Delete is DESTRUCTIVE (only when both permitted AND handler provided)
+  if (input.canDelete && handlers.onDelete) {
     result.push({
       key: 'delete',
       label: labels.delete,
