@@ -86,18 +86,27 @@ export function SwapRequestFormModal({
   const { t } = useTranslation();
   const tr = t as unknown as (key: string) => string;
 
+  const currentUserId = currentUser?.id;
+
+  // A. Form initialization
   React.useEffect(() => {
-    if (open && currentUser) {
+    if (open && currentUserId) {
       setFormData({
         shift_id: "",
-        requester_id: currentUser.id,
+        requester_id: currentUserId,
         operational_role: "",
         replacement_staff_id: "",
         reason: "",
       });
       setErrors({});
+    }
+  }, [open, currentUserId]);
+
+  // B. Canonical registration loading
+  React.useEffect(() => {
+    if (open && currentUserId) {
       void shiftRegistrationService
-        .getForUser(currentUser.id)
+        .getForUser(currentUserId)
         .then((registrations) => {
           const next: Record<string, OperationalRole[]> = {};
           const ids: Record<string, string> = {};
@@ -114,7 +123,7 @@ export function SwapRequestFormModal({
           setRegistrationIds(ids);
         });
     }
-  }, [currentUser, open, shifts]);
+  }, [open, currentUserId]);
 
   const byRole = (role: "host" | "support" | "technical") =>
     users.filter(

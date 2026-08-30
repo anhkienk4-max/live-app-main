@@ -21,15 +21,15 @@ async function setupShifts(): Promise<{ s1: Shift; s2: Shift; r1: ShiftRegistrat
   // Create approved registrations for hostA on s1 and hostB on s2
   // Use shiftRegistrationService manual assign via leader
   const admin = await userService.getById('1')
-  const r1 = await shiftRegistrationService.assignManually(s1.id, hostA.id, 'host', admin!.id)
-  const r2 = await shiftRegistrationService.assignManually(s2.id, hostB.id, 'host', admin!.id)
+  const r1 = await shiftRegistrationService.assignManually(s1.id, hostA.id, 'host', admin!.id, 1)
+  const r2 = await shiftRegistrationService.assignManually(s2.id, hostB.id, 'host', admin!.id, 1)
   // Actually need hostA/B to exist as business users; create them
   return { s1, s2, r1, r2, hostA, hostB }
 }
 
 test('replacement success', async () => {
   const s = await shiftService.create({ date: '2031-11-01', start_time: '10:00', end_time: '12:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'RS', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  const r = await shiftRegistrationService.assignManually(s.id, '2', 'host', '1')
+  const r = await shiftRegistrationService.assignManually(s.id, '2', 'host', '1', 1)
   const req = await swapRequestService.create({ shift_id: s.id, requester_id: '2', operational_role: 'host', source_registration_id: r.id, replacement_staff_id: '3', reason: 'swap', mode: 'replacement' } as unknown as never)
   assert.equal(req.status, 'pending')
   assert.equal(req.approval_history?.[0]?.action, 'created')
@@ -37,10 +37,10 @@ test('replacement success', async () => {
   assert.equal(req.approval_history?.[0]?.mode, 'replacement')
   assert.equal(req.approval_history?.[0]?.source_registration_id, r.id)
   assert.equal(req.approval_history?.[0]?.to_status, 'pending')
-  await assert.rejects(() => swapRequestService.approve(req.id, '1'), /must be accepted/i)
-  const accepted = await swapRequestService.respond(req.id, '3', 'accept')
+  await assert.rejects(() => swapRequestService.approve(req.id, '1', 1), /must be accepted/i)
+  const accepted = await swapRequestService.respond(req.id, '3', 'accept', 1)
   assert.equal(accepted?.status, 'accepted')
-  const approved = await swapRequestService.approve(req.id, '1')
+  const approved = await swapRequestService.approve(req.id, '1', 1)
   assert.equal(approved?.status, 'completed')
   assert.deepEqual(approved?.approval_history?.map(entry => entry.action), ['created', 'accepted', 'approved', 'completed'])
   assert.ok(approved?.approval_history?.every(entry => !('by' in entry)))
@@ -49,15 +49,15 @@ test('replacement success', async () => {
 test('MOVE cannot be created but remains a readable type', async () => {
   const s1 = await shiftService.create({ date: '2031-11-02', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'M1', required_host_count: 2, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
   const s2 = await shiftService.create({ date: '2031-11-03', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'M2', required_host_count: 2, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  const r = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1')
+  const r = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1', 1)
   await assert.rejects(() => swapRequestService.create({ requester_id: '2', source_registration_id: r.id, target_shift_id: s2.id, reason: 'move', shift_id: s1.id, operational_role: 'host', mode: 'move' } as unknown as never), /historical.*cannot be created/i)
 })
 
 test('EXCHANGE success with accept', async () => {
   const s1 = await shiftService.create({ date: '2031-11-04', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'E1', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
   const s2 = await shiftService.create({ date: '2031-11-05', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'E2', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1')
-  const r2 = await shiftRegistrationService.assignManually(s2.id, '3', 'host', '1')
+  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1', 1)
+  const r2 = await shiftRegistrationService.assignManually(s2.id, '3', 'host', '1', 1)
   const req = await swapRequestService.create({ requester_id: '2', source_registration_id: r1.id, target_shift_id: s2.id, counterpart_registration_id: r2.id, reason: 'exchange', shift_id: s1.id, operational_role: 'host' } as unknown as never)
   assert.equal(req.mode, 'exchange')
   assert.equal(req.approval_history?.[0]?.mode, 'exchange')
@@ -67,7 +67,7 @@ test('EXCHANGE success with accept', async () => {
   assert.equal(req.approval_history?.[0]?.target_shift_id, s2.id)
   const accepted = await (swapRequestService as unknown as { accept: (id:string, actor:string)=>Promise<never> }).accept(req.id, '3')
   assert.equal(accepted.status, 'accepted')
-  const approved = await swapRequestService.approve(req.id, '1')
+  const approved = await swapRequestService.approve(req.id, '1', 1)
   assert.equal(approved?.status, 'completed')
   assert.deepEqual(approved?.approval_history?.map(entry => entry.action), ['created', 'accepted', 'approved', 'completed'])
   assert.ok(approved?.approval_history?.every(entry => !('by' in entry)))
@@ -79,7 +79,7 @@ test('EXCHANGE success with accept', async () => {
 
 test('duplicate active blocked', async () => {
   const s = await shiftService.create({ date: '2031-11-06', start_time: '10:00', end_time: '12:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Dup', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  const r = await shiftRegistrationService.assignManually(s.id, '2', 'host', '1')
+  const r = await shiftRegistrationService.assignManually(s.id, '2', 'host', '1', 1)
   const s2 = await shiftService.create({ date: '2031-11-07', start_time: '10:00', end_time: '12:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'DupT', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
   await swapRequestService.create({ requester_id: '2', source_registration_id: r.id, replacement_staff_id: '3', reason: 'dup', shift_id: s.id, operational_role: 'host', mode: 'replacement' } as unknown as never)
   await assert.rejects(()=> swapRequestService.create({ requester_id: '2', source_registration_id: r.id, replacement_staff_id: '3', reason: 'dup2', shift_id: s.id, operational_role: 'host', mode: 'replacement' } as unknown as never), /Duplicate/)
@@ -88,8 +88,8 @@ test('duplicate active blocked', async () => {
 test('wrong actor blocked for accept', async () => {
   const s1 = await shiftService.create({ date: '2031-11-08', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'W1', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
   const s2 = await shiftService.create({ date: '2031-11-09', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'W2', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1')
-  const r2 = await shiftRegistrationService.assignManually(s2.id, '3', 'host', '1')
+  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1', 1)
+  const r2 = await shiftRegistrationService.assignManually(s2.id, '3', 'host', '1', 1)
   const req = await swapRequestService.create({ requester_id: '2', source_registration_id: r1.id, target_shift_id: s2.id, counterpart_registration_id: r2.id, reason: 'ex', shift_id: s1.id, operational_role: 'host' } as unknown as never)
   await assert.rejects(()=> (swapRequestService as unknown as { accept: (a:string,b:string)=>Promise<never> }).accept(req.id, '2'), /Only the selected participant/)
 })
@@ -97,25 +97,25 @@ test('wrong actor blocked for accept', async () => {
 test('replacement becoming busy after accept is blocked at approval', async () => {
   const s1 = await shiftService.create({ date: '2031-11-10', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Cap1', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
   const s2 = await shiftService.create({ date: '2031-11-10', start_time: '10:00', end_time: '12:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Cap2', required_host_count: 2, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1')
+  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1', 1)
   const req = await swapRequestService.create({ requester_id: '2', source_registration_id: r1.id, replacement_staff_id: '3', reason: 'busy after accept', shift_id: s1.id, operational_role: 'host', mode: 'replacement' } as unknown as never)
-  await swapRequestService.respond(req.id, '3', 'accept')
-  await shiftRegistrationService.assignManually(s2.id, '3', 'host', '1')
-  await assert.rejects(()=> swapRequestService.approve(req.id, '1'), /conflict/i)
+  await swapRequestService.respond(req.id, '3', 'accept', 1)
+  await shiftRegistrationService.assignManually(s2.id, '3', 'host', '1', 1)
+  await assert.rejects(()=> swapRequestService.approve(req.id, '1', 1), /conflict/i)
 })
 
 test('rollback preserves both original assignments on failed exchange', async () => {
   const s1 = await shiftService.create({ date: '2031-11-12', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Roll1', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
   const s2 = await shiftService.create({ date: '2031-11-13', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Roll2', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1')
-  const r2 = await shiftRegistrationService.assignManually(s2.id, '3', 'host', '1')
+  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1', 1)
+  const r2 = await shiftRegistrationService.assignManually(s2.id, '3', 'host', '1', 1)
   const req = await swapRequestService.create({ requester_id: '2', source_registration_id: r1.id, target_shift_id: s2.id, counterpart_registration_id: r2.id, reason: 'rollback', shift_id: s1.id, operational_role: 'host' } as unknown as never)
   await (swapRequestService as unknown as { accept: (a:string,b:string)=>Promise<never> }).accept(req.id, '3')
   // Introduce the conflict after acceptance to exercise approval-time revalidation.
   const sOverlap = await shiftService.create({ date: '2031-11-13', start_time: '10:00', end_time: '12:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Overlap', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  await shiftRegistrationService.assignManually(sOverlap.id, '2', 'host', '1')
+  await shiftRegistrationService.assignManually(sOverlap.id, '2', 'host', '1', 1)
   let err: unknown
-  try { await swapRequestService.approve(req.id, '1') } catch (e) { err = e }
+  try { await swapRequestService.approve(req.id, '1', 1) } catch (e) { err = e }
   assert.ok(err instanceof Error && /conflict/i.test(err.message), `expected conflict, got ${err}`)
   const afterS1 = await shiftRegistrationService.getForShift(s1.id)
   const afterS2 = await shiftRegistrationService.getForShift(s2.id)
@@ -134,15 +134,15 @@ test('rollback preserves both original assignments on failed exchange', async ()
 
 test('role mismatch blocked', async () => {
   const s1 = await shiftService.create({ date: '2031-11-14', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Role1', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1')
+  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1', 1)
   const s2 = await shiftService.create({ date: '2031-11-15', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Role2', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  const r2 = await shiftRegistrationService.assignManually(s2.id, '5', 'support', '1')
+  const r2 = await shiftRegistrationService.assignManually(s2.id, '5', 'support', '1', 1)
   await assert.rejects(()=> swapRequestService.create({ requester_id: '2', source_registration_id: r1.id, target_shift_id: s2.id, counterpart_registration_id: r2.id, reason: 'role mismatch', shift_id: s1.id, operational_role: 'host' } as unknown as never), /Role mismatch|SHIFT_MISMATCH/i)
 })
 
 test('inactive user blocked', async () => {
   const s1 = await shiftService.create({ date: '2031-11-16', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Inact1', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1')
+  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1', 1)
   // make requester inactive by archiving user 2
   const u2 = await userService.getById('2')
   // mock: set status inactive via direct users array? For test, we can archive via userService
@@ -158,63 +158,63 @@ test('inactive user blocked', async () => {
 test('stale source blocked', async () => {
   const s1 = await shiftService.create({ date: '2031-11-18', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Stale1', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
   const s2 = await shiftService.create({ date: '2031-11-19', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Stale2', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1')
+  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1', 1)
   const req = await swapRequestService.create({ requester_id: '2', source_registration_id: r1.id, replacement_staff_id: '3', reason: 'stale', shift_id: s1.id, operational_role: 'host', mode: 'replacement' } as unknown as never)
-  await swapRequestService.respond(req.id, '3', 'accept')
+  await swapRequestService.respond(req.id, '3', 'accept', 1)
   // cancel source registration to make it stale
   await shiftRegistrationService.removeAssignment(r1.id, '1')
-  await assert.rejects(()=> swapRequestService.approve(req.id, '1'), /Source stale|not active/i)
+  await assert.rejects(()=> swapRequestService.approve(req.id, '1', 1), /Source stale|not active/i)
 })
 
 test('cancel success', async () => {
   const s1 = await shiftService.create({ date: '2031-11-20', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Cancel1', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
   const s2 = await shiftService.create({ date: '2031-11-21', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Cancel2', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1')
+  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1', 1)
   const req = await swapRequestService.create({ requester_id: '2', source_registration_id: r1.id, replacement_staff_id: '3', reason: 'cancel', shift_id: s1.id, operational_role: 'host', mode: 'replacement' } as unknown as never)
-  const cancelled = await swapRequestService.cancel(req.id, '2', 'no need')
+  const cancelled = await swapRequestService.cancel(req.id, '2', 'no need', 1)
   assert.equal(cancelled?.status, 'cancelled')
 })
 
 test('reject success via counterpart', async () => {
   const s1 = await shiftService.create({ date: '2031-11-22', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Rej1', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
   const s2 = await shiftService.create({ date: '2031-11-23', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Rej2', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1')
-  const r2 = await shiftRegistrationService.assignManually(s2.id, '3', 'host', '1')
+  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1', 1)
+  const r2 = await shiftRegistrationService.assignManually(s2.id, '3', 'host', '1', 1)
   const req = await swapRequestService.create({ requester_id: '2', source_registration_id: r1.id, target_shift_id: s2.id, counterpart_registration_id: r2.id, reason: 'reject', shift_id: s1.id, operational_role: 'host' } as unknown as never)
-  const rejected = await swapRequestService.respond(req.id, '3', 'reject')
+  const rejected = await swapRequestService.respond(req.id, '3', 'reject', 1)
   assert.equal(rejected?.status, 'rejected')
 })
 
 test('replacement overlap conflict is blocked', async () => {
   const s1 = await shiftService.create({ date: '2031-11-24', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Over1', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
   const s2 = await shiftService.create({ date: '2031-11-25', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Over2', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1')
+  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1', 1)
   const req = await swapRequestService.create({ requester_id: '2', source_registration_id: r1.id, replacement_staff_id: '3', reason: 'overlap', shift_id: s1.id, operational_role: 'host', mode: 'replacement' } as unknown as never)
-  await swapRequestService.respond(req.id, '3', 'accept')
+  await swapRequestService.respond(req.id, '3', 'accept', 1)
   const sOverlap = await shiftService.create({ date: '2031-11-24', start_time: '10:00', end_time: '12:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'OverLap', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  await shiftRegistrationService.assignManually(sOverlap.id, '3', 'host', '1')
-  await assert.rejects(()=> swapRequestService.approve(req.id, '1'), /conflict/i)
+  await shiftRegistrationService.assignManually(sOverlap.id, '3', 'host', '1', 1)
+  await assert.rejects(()=> swapRequestService.approve(req.id, '1', 1), /conflict/i)
 })
 
 test('stale counterpart blocked', async () => {
   const s1 = await shiftService.create({ date: '2031-11-26', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'StaleCp1', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
   const s2 = await shiftService.create({ date: '2031-11-27', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'StaleCp2', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1')
-  const r2 = await shiftRegistrationService.assignManually(s2.id, '3', 'host', '1')
+  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1', 1)
+  const r2 = await shiftRegistrationService.assignManually(s2.id, '3', 'host', '1', 1)
   const req = await swapRequestService.create({ requester_id: '2', source_registration_id: r1.id, target_shift_id: s2.id, counterpart_registration_id: r2.id, reason: 'stale cp', shift_id: s1.id, operational_role: 'host' } as unknown as never)
   await (swapRequestService as unknown as { accept: (a:string,b:string)=>Promise<never> }).accept(req.id, '3')
   await shiftRegistrationService.removeAssignment(r2.id, '1')
-  await assert.rejects(()=> swapRequestService.approve(req.id, '1'), /Counterpart stale|not active/i)
+  await assert.rejects(()=> swapRequestService.approve(req.id, '1', 1), /Counterpart stale|not active/i)
 })
 
 test('successful EXCHANGE produces exactly 2 new staffed registrations and no stale duplicates', async () => {
   const s1 = await shiftService.create({ date: '2031-11-28', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Ex1', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
   const s2 = await shiftService.create({ date: '2031-11-29', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Ex2', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1')
-  const r2 = await shiftRegistrationService.assignManually(s2.id, '3', 'host', '1')
+  const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1', 1)
+  const r2 = await shiftRegistrationService.assignManually(s2.id, '3', 'host', '1', 1)
   const req = await swapRequestService.create({ requester_id: '2', source_registration_id: r1.id, target_shift_id: s2.id, counterpart_registration_id: r2.id, reason: '2 new', shift_id: s1.id, operational_role: 'host' } as unknown as never)
   await (swapRequestService as unknown as { accept: (a:string,b:string)=>Promise<never> }).accept(req.id, '3')
-  await swapRequestService.approve(req.id, '1')
+  await swapRequestService.approve(req.id, '1', 1)
   const s1Regs = await shiftRegistrationService.getForShift(s1.id)
   const s2Regs = await shiftRegistrationService.getForShift(s2.id)
   const s1Staffed = s1Regs.filter(r=> r.operational_role==='host' && (r.status==='approved' || r.status==='manually_assigned'))
