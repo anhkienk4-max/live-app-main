@@ -7,6 +7,12 @@ import ts from 'typescript'
 const projectRoot = resolvePath(dirname(fileURLToPath(import.meta.url)), '..')
 
 function resolve(specifier, context, nextResolve) {
+  // `server-only` is a Next.js build-time boundary. Node contract tests run
+  // outside React Server Components, so resolve its documented empty marker.
+  if (specifier === 'server-only') {
+    const empty = resolvePath(projectRoot, 'node_modules/server-only/empty.js')
+    if (existsSync(empty)) return { url: pathToFileURL(empty).href, shortCircuit: true }
+  }
   // Node ESM requires explicit .js for next/server subpath in this Next version.
   if (specifier === 'next/server') {
     const serverJs = resolvePath(projectRoot, 'node_modules/next/server.js')
