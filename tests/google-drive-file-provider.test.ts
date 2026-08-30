@@ -6,6 +6,7 @@ import type { FileUploadInput } from '@/lib/files/fileProvider'
 import { FileProviderError } from '@/lib/server/fileProviderResolver'
 import { createGoogleDriveFileProvider } from '@/lib/server/googleDriveFileProvider'
 import { createGoogleDriveAuth, GoogleDriveError, resolveGoogleDriveAuthMode } from '@/lib/server/googleDriveAuth'
+import { parseGoogleDriveFolderUrl, validateGoogleDriveFolder } from '@/lib/server/googleDriveDestination'
 
 const env = {
   NODE_ENV: 'production',
@@ -45,19 +46,24 @@ type FakeState = {
   uploadCalls: number
   failUpload429: number
   rootMimeType: string
+  rootDriveId?: string
+  customFolder?: { mimeType: string; trashed?: boolean; driveId?: string; capabilities?: { canAddChildren?: boolean; canEdit?: boolean } }
+  allDriveFlags: { list: boolean; create: boolean; get: boolean; update: boolean }
 }
 
 function fakeDrive(state: FakeState) {
   return {
     files: {
-      async list(params: { q: string }) {
+      async list(params: { q: string; supportsAllDrives?: boolean; includeItemsFromAllDrives?: boolean }) {
         state.listCalls += 1
+        state.allDriveFlags.list = params.supportsAllDrives === true && params.includeItemsFromAllDrives === true
         const name = params.q.match(/name = '((?:\\\\|\\')*)'/)?.[1]?.replace(/\\'/g, "'") ?? ''
         const parent = params.q.match(/'([^']+)' in parents/)?.[1] ?? ''
         const id = state.folderIds.get(`${parent}/${name}`)
         return { data: { files: id ? [{ id, name, mimeType: 'application/vnd.google-apps.folder', parents: [parent] }] : [] } }
       },
-      async create(params: { requestBody: Record<string, unknown>; media?: { mimeType: string; body: Buffer } }) {
+      async create(params: { requestBody: Record<string, unknown>; media?: { mimeType: string; body: Buffer }; supportsAllDrives?: boolean }) {
+        state.allDriveFlags.create = params.supportsAllDrives === true
         if (params.media) {
           state.uploadCalls += 1
           if (state.failUpload429 > 0) {
@@ -74,14 +80,19 @@ function fakeDrive(state: FakeState) {
         state.folderIds.set(`${parent}/${params.requestBody.name as string}`, id)
         return { data: { id, name: params.requestBody.name as string, mimeType: 'application/vnd.google-apps.folder', parents: [parent] } }
       },
-      async get(params: { fileId: string; fields: string }) {
+      async get(params: { fileId: string; fields: string; supportsAllDrives?: boolean }) {
+        state.allDriveFlags.get = params.supportsAllDrives === true
         if (params.fileId === 'missing') {
           throw Object.assign(new Error('not found'), { response: { status: 404 } })
         }
-        if (params.fileId === 'root-folder') return { data: { id: 'root-folder', name: 'Root', mimeType: state.rootMimeType, trashed: false } }
+        if (params.fileId === 'root-folder') return { data: { id: 'root-folder', name: 'Root', mimeType: state.rootMimeType, trashed: false, driveId: state.rootDriveId } }
+        if (params.fileId === 'custom-folder' && state.customFolder) {
+          return { data: { id: 'custom-folder', name: 'Custom', ...state.customFolder } }
+        }
         return { data: { id: params.fileId, name: 'báo cáo.png', mimeType: 'image/png', size: '4', md5Checksum: 'md5', parents: ['folder-3'], webViewLink: 'https://drive.google.com/file/d/drive-file-1/view' } }
       },
-      async update(params: { fileId: string; requestBody: Record<string, unknown> }) {
+      async update(params: { fileId: string; requestBody: Record<string, unknown>; supportsAllDrives?: boolean }) {
+        state.allDriveFlags.update = params.supportsAllDrives === true
         state.trashed = params.requestBody.trashed === true
         return { data: { id: params.fileId, trashed: state.trashed } }
       },
@@ -90,7 +101,15 @@ function fakeDrive(state: FakeState) {
 }
 
 function state(): FakeState {
-  return { folderIds: new Map(), folderCreates: 0, listCalls: 0, uploadCalls: 0, failUpload429: 0, rootMimeType: 'application/vnd.google-apps.folder' }
+  return {
+    folderIds: new Map(),
+    folderCreates: 0,
+    listCalls: 0,
+    uploadCalls: 0,
+    failUpload429: 0,
+    rootMimeType: 'application/vnd.google-apps.folder',
+    allDriveFlags: { list: false, create: false, get: false, update: false },
+  }
 }
 
 test('OAuth refresh-token mode is the default and requires every credential', () => {
@@ -118,6 +137,70 @@ test('service-account mode is explicit and malformed keys fail closed', () => {
 
 test('root folder configuration is required independently of auth mode', () => {
   assert.throws(() => createGoogleDriveFileProvider({ env: { ...env, GOOGLE_DRIVE_ROOT_FOLDER_ID: '' } }), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_NOT_CONFIGURED')
+})
+
+test('supported Google Drive folder URL formats resolve deterministically', () => {
+  assert.equal(parseGoogleDriveFolderUrl('https://drive.google.com/drive/folders/folder-123'), 'folder-123')
+  assert.equal(parseGoogleDriveFolderUrl('https://drive.google.com/drive/u/0/folders/folder-123?usp=sharing'), 'folder-123')
+  assert.equal(parseGoogleDriveFolderUrl('https://drive.google.com/open?id=folder-123'), 'folder-123')
+})
+
+test('malformed, non-Drive and file URLs are rejected', () => {
+  for (const value of [
+    'not a URL',
+    'https://example.com/drive/folders/folder-123',
+    'https://drive.google.com/file/d/file-123/view',
+    'https://drive.google.com/drive/folders/',
+    'https://drive.google.com/drive/folders/bad%20id',
+  ]) {
+    assert.throws(() => parseGoogleDriveFolderUrl(value), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_FOLDER_URL_INVALID')
+  }
+})
+
+test('custom folder validation rejects missing, non-folder, trashed and read-only targets', async () => {
+  const cases = [
+    { expected: 'GOOGLE_DRIVE_FOLDER_NOT_FOUND' as const, configure: () => undefined, id: 'missing' },
+    { expected: 'GOOGLE_DRIVE_FOLDER_INVALID' as const, configure: (target: FakeState) => { target.customFolder = { mimeType: 'text/plain' } }, id: 'custom-folder' },
+    { expected: 'GOOGLE_DRIVE_FOLDER_INVALID' as const, configure: (target: FakeState) => { target.customFolder = { mimeType: 'application/vnd.google-apps.folder', trashed: true } }, id: 'custom-folder' },
+    { expected: 'GOOGLE_DRIVE_FOLDER_NOT_WRITABLE' as const, configure: (target: FakeState) => { target.customFolder = { mimeType: 'application/vnd.google-apps.folder', capabilities: { canAddChildren: false, canEdit: false } } }, id: 'custom-folder' },
+  ]
+  for (const item of cases) {
+    const driveState = state()
+    item.configure(driveState)
+    const provider = createGoogleDriveFileProvider({ env, drive: fakeDrive(driveState), retryDelayMs: 0 })
+    await assert.rejects(
+      () => provider.upload({ ...input, destination: { provider: 'google_drive', external_folder_id: item.id } }),
+      (error: unknown) => error instanceof GoogleDriveError && error.code === item.expected,
+    )
+  }
+})
+
+test('writable custom folder is accepted and receives the file directly', async () => {
+  const driveState = state()
+  driveState.customFolder = {
+    mimeType: 'application/vnd.google-apps.folder',
+    capabilities: { canAddChildren: true, canEdit: true },
+  }
+  const folder = await validateGoogleDriveFolder(fakeDrive(driveState), 'custom-folder')
+  assert.equal(folder.id, 'custom-folder')
+  const provider = createGoogleDriveFileProvider({ env, drive: fakeDrive(driveState), retryDelayMs: 0 })
+  await provider.upload({ ...input, destination: { provider: 'google_drive', folder_url: 'https://drive.google.com/drive/folders/custom-folder' } })
+  assert.deepEqual(driveState.uploaded?.parents, ['custom-folder'])
+  assert.equal(driveState.folderCreates, 0)
+  assert.equal(driveState.allDriveFlags.get, true)
+  assert.equal(driveState.allDriveFlags.create, true)
+})
+
+test('invalid custom destination never falls back to the managed root', async () => {
+  const driveState = state()
+  driveState.customFolder = { mimeType: 'text/plain' }
+  const provider = createGoogleDriveFileProvider({ env, drive: fakeDrive(driveState), retryDelayMs: 0 })
+  await assert.rejects(
+    () => provider.upload({ ...input, destination: { provider: 'google_drive', external_folder_id: 'custom-folder' } }),
+    (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_FOLDER_INVALID',
+  )
+  assert.equal(driveState.folderCreates, 0)
+  assert.equal(driveState.uploadCalls, 0)
 })
 
 test('health check validates the configured root folder', async () => {
