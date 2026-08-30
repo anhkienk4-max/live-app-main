@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { format } from 'date-fns'
 import { CheckCircle, XCircle, Clock, User as UserIcon, Calendar, Briefcase } from 'lucide-react'
-import { useToast } from '@/components/ui/toast'
+
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { getSwapStatusPresentation } from '@/lib/utils/swapUi'
 
@@ -45,7 +45,7 @@ export function SwapDetailModal({
   onApprove,
   onReject
 }: SwapDetailModalProps) {
-  const { toast } = useToast()
+
   const statusPresentation = getSwapStatusPresentation(swap.status)
   const getBrandName = (id: string) => brands.find(b => b.id === id)?.name || 'Unknown'
   const getBrandColor = (id: string) => brands.find(b => b.id === id)?.color || '#2563EB'
@@ -69,21 +69,23 @@ export function SwapDetailModal({
   }
 
   const handleApprove = () => {
-    toast({ 
-      title: 'Request Approved', 
-      description: 'The swap request has been approved',
-      variant: 'success' 
-    })
     onApprove()
+    onOpenChange(false)
   }
 
   const handleReject = () => {
-    toast({ 
-      title: 'Request Rejected', 
-      description: 'The swap request has been rejected',
-      variant: 'destructive' 
-    })
     onReject()
+    onOpenChange(false)
+  }
+
+  const handleAccept = () => {
+    if (onAccept) onAccept()
+    onOpenChange(false)
+  }
+
+  const handleParticipantReject = () => {
+    if (onParticipantReject) onParticipantReject()
+    onOpenChange(false)
   }
 
   return (
@@ -207,10 +209,10 @@ export function SwapDetailModal({
           <div className="flex gap-2">
             {showParticipantActions && (
               <>
-                <Button variant="outline" className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground" onClick={onParticipantReject}>
+                <Button variant="outline" className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground" onClick={handleParticipantReject}>
                   <XCircle className="h-4 w-4 mr-2" /> Reject
                 </Button>
-                <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={onAccept}>
+                <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={handleAccept}>
                   <CheckCircle className="h-4 w-4 mr-2" /> Accept
                 </Button>
               </>

@@ -8,15 +8,24 @@ type ToastProps = {
   id: string
   title?: string
   description?: string
-  variant?: 'default' | 'destructive' | 'success'
+  variant?: 'default' | 'destructive' | 'success' | 'info'
+  duration?: number
+  action?: React.ReactNode
   onClose: () => void
 }
 
-export function Toast({ title, description, variant = 'default', onClose }: ToastProps) {
+export function Toast({ title, description, variant = 'default', duration, action, onClose }: ToastProps) {
   React.useEffect(() => {
-    const timer = setTimeout(onClose, 5000)
+    let t = duration
+    if (!t) {
+      if (variant === 'success') t = 5000
+      else if (variant === 'info') t = 6000
+      else if (variant === 'destructive') t = 8000
+      else t = 5000
+    }
+    const timer = setTimeout(onClose, t)
     return () => clearTimeout(timer)
-  }, [onClose])
+  }, [onClose, variant, duration])
 
   return (
     <div
@@ -24,6 +33,7 @@ export function Toast({ title, description, variant = 'default', onClose }: Toas
         'pointer-events-auto flex w-full max-w-md rounded-lg border shadow-lg',
         variant === 'destructive' && 'border-red-200 bg-red-50',
         variant === 'success' && 'border-green-200 bg-green-50',
+        variant === 'info' && 'border-blue-200 bg-blue-50',
         variant === 'default' && 'border-gray-200 bg-white'
       )}
     >
@@ -33,6 +43,7 @@ export function Toast({ title, description, variant = 'default', onClose }: Toas
             'text-sm font-semibold',
             variant === 'destructive' && 'text-red-900',
             variant === 'success' && 'text-green-900',
+            variant === 'info' && 'text-blue-900',
             variant === 'default' && 'text-gray-900'
           )}>
             {title}
@@ -43,10 +54,16 @@ export function Toast({ title, description, variant = 'default', onClose }: Toas
             'mt-1 text-sm',
             variant === 'destructive' && 'text-red-700',
             variant === 'success' && 'text-green-700',
+            variant === 'info' && 'text-blue-700',
             variant === 'default' && 'text-gray-600'
           )}>
             {description}
           </p>
+        )}
+        {action && (
+          <div className="mt-2 pointer-events-auto">
+            {action}
+          </div>
         )}
       </div>
       <button
@@ -78,7 +95,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      <div className="fixed bottom-0 right-0 z-50 p-4 space-y-2 pointer-events-none">
+      <div className="fixed bottom-0 right-0 z-[9999] p-4 space-y-2 pointer-events-none">
         {toasts.map(t => (
           <Toast key={t.id} {...t} />
         ))}
