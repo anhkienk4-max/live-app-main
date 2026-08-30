@@ -216,12 +216,23 @@ function fakeClient(database: FakeDatabase, options: FakeClientOptions = {}) {
       const batch = database.batches.find(item => item.id === id)
       if (!batch) throw { code: 'P0001', message: 'IMPORT_BATCH_NOT_FOUND' }
       if (batch.status === 'confirmed') {
+        if (database.rows.some(row => row.batch_id === id && ['pending', 'retryable'].includes(String(row.outcome)))) {
+          throw { code: 'P0001', message: 'IMPORT_BATCH_UNRESOLVED_ROWS' }
+        }
         syncCounts(database, id)
         return { ...batch }
       }
       if (!['previewed', 'failed'].includes(String(batch.status))) {
         throw { code: 'P0001', message: 'IMPORT_BATCH_NOT_ACTIVE' }
       }
+      const unresolved = database.rows.some(row => {
+        if (row.batch_id !== id) return false
+        if (row.outcome === 'retryable') return true
+        if (row.outcome !== 'pending') return false
+        const sourceRow = row.source_row as Row
+        return !(Array.isArray(sourceRow?.errors) && sourceRow.errors.length > 0)
+      })
+      if (unresolved) throw { code: 'P0001', message: 'IMPORT_BATCH_UNRESOLVED_ROWS' }
       batch.status = 'confirmed'
       batch.confirmed_at = NOW
       for (const row of database.rows.filter(item => item.batch_id === id && item.outcome === 'pending')) {
@@ -493,6 +504,7 @@ test('supabase port confirm finalizes pending rows and syncs outcome counters', 
     })
     db.shifts.push({ id: 'shift-1', import_batch_id: batch.id })
     await port.linkRowToShift(batch.id, 2, 'shift-1', 'pending')
+    await port.recordRowOutcome(batch.id, 4, 'duplicate_skipped', { expectedOutcome: 'pending' })
 
     const confirmed = await port.markBatchStatus(batch.id, 'confirmed')
 
@@ -555,13 +567,7 @@ test('supabase port refuses to cancel a confirmed batch', async () => {
     const client = fakeClient(db)
     const port = createSupabaseScheduleImportPort(client)
 
-    const batch = await port.createBatch({
-      source: 'excel',
-      sourceName: 'a.xlsx',
-      createdBy: '1',
-      summary,
-      previewRows: [previewRow(2), previewRow(3), previewRow(4)],
-    })
+    const batch = await port.createBatch({ source: 'excel', sourceName: 'a.xlsx', createdBy: '1', summary })
     await port.markBatchStatus(batch.id, 'confirmed')
 
     await assert.rejects(
@@ -714,7 +720,7 @@ test('batch confirmation is idempotent after the first confirmation', async () =
       sourceName: 'a.xlsx',
       createdBy: '1',
       summary,
-      previewRows: [previewRow(2), previewRow(3), previewRow(4)],
+      previewRows: [previewRow(2, { errors: ['Brand was not found.'] })],
     })
     const first = await port.markBatchStatus(batch.id, 'confirmed')
     const second = await port.markBatchStatus(batch.id, 'confirmed')
@@ -722,7 +728,94 @@ test('batch confirmation is idempotent after the first confirmation', async () =
     assert.equal(first?.status, 'confirmed')
     assert.equal(second?.status, 'confirmed')
     assert.equal(db.batches.length, 1)
-    assert.equal(db.rows.filter(row => row.batch_id === batch.id).length, 3)
+    assert.equal(db.rows.filter(row => row.batch_id === batch.id).length, 1)
+  })
+})
+
+test('batch confirmation rejects retryable and valid unprocessed pending rows', async () => {
+  await withEnvironment(async () => {
+    const db: FakeDatabase = { batches: [], rows: [], shifts: [] }
+    const client = fakeClient(db)
+    const port = createSupabaseScheduleImportPort(client)
+
+    const pendingBatch = await port.createBatch({
+      source: 'excel',
+      sourceName: 'pending.xlsx',
+      createdBy: '1',
+      summary,
+      previewRows: [previewRow(2)],
+    })
+    await assert.rejects(
+      port.markBatchStatus(pendingBatch.id, 'confirmed'),
+      (error: unknown) => error instanceof ScheduleImportRequestError
+        && /IMPORT_BATCH_UNRESOLVED_ROWS/.test(error.message),
+    )
+
+    const retryBatch = await port.createBatch({
+      source: 'excel',
+      sourceName: 'retry.xlsx',
+      createdBy: '1',
+      summary,
+      previewRows: [previewRow(3)],
+    })
+    await port.markRowRetryable(retryBatch.id, 3, 'NETWORK_TIMEOUT', 'pending')
+    await assert.rejects(
+      port.markBatchStatus(retryBatch.id, 'confirmed'),
+      (error: unknown) => error instanceof ScheduleImportRequestError
+        && /IMPORT_BATCH_UNRESOLVED_ROWS/.test(error.message),
+    )
+  })
+})
+
+test('retryable row resolves before confirmation and remains replay-safe', async () => {
+  await withEnvironment(async () => {
+    const db: FakeDatabase = { batches: [], rows: [], shifts: [] }
+    const client = fakeClient(db)
+    const port = createSupabaseScheduleImportPort(client)
+    const batch = await port.createBatch({
+      source: 'excel',
+      sourceName: 'recover.xlsx',
+      createdBy: '1',
+      summary,
+      previewRows: [previewRow(2)],
+    })
+    db.shifts.push({ id: 'shift-recovered', import_batch_id: batch.id })
+    await port.markRowRetryable(batch.id, 2, 'NETWORK_TIMEOUT', 'pending')
+    await port.linkRowToShift(batch.id, 2, 'shift-recovered', 'retryable')
+    const confirmed = await port.markBatchStatus(batch.id, 'confirmed')
+    const replay = await port.markBatchStatus(batch.id, 'confirmed')
+
+    assert.equal(confirmed?.status, 'confirmed')
+    assert.equal(replay?.status, 'confirmed')
+    assert.equal(db.rows.find(row => row.row_number === 2)?.outcome, 'imported')
+  })
+})
+
+test('confirmed finalized replay is idempotent but conflicting replay is rejected', async () => {
+  await withEnvironment(async () => {
+    const db: FakeDatabase = { batches: [], rows: [], shifts: [] }
+    const client = fakeClient(db)
+    const port = createSupabaseScheduleImportPort(client)
+    const batch = await port.createBatch({
+      source: 'excel',
+      sourceName: 'final.xlsx',
+      createdBy: '1',
+      summary,
+      previewRows: [previewRow(2)],
+    })
+    db.shifts.push(
+      { id: 'shift-final', import_batch_id: batch.id },
+      { id: 'shift-other', import_batch_id: 'other-batch' },
+    )
+    await port.linkRowToShift(batch.id, 2, 'shift-final', 'pending')
+    await port.markBatchStatus(batch.id, 'confirmed')
+
+    await port.linkRowToShift(batch.id, 2, 'shift-final', 'pending')
+    await assert.rejects(
+      port.linkRowToShift(batch.id, 2, 'shift-other', 'pending'),
+      (error: unknown) => error instanceof ScheduleImportRequestError
+        && /IMPORT_ROW_ALREADY_FINALIZED/.test(error.message),
+    )
   })
 })
 
@@ -754,7 +847,7 @@ test('batch state machine: recording outcomes on a confirmed batch is rejected',
       sourceName: 'a.xlsx',
       createdBy: '1',
       summary,
-      previewRows: [previewRow(2)],
+      previewRows: [previewRow(2, { errors: ['Brand was not found.'] })],
     })
     db.shifts.push({ id: 'shift-1', import_batch_id: batch.id })
     await port.markBatchStatus(batch.id, 'confirmed')

@@ -160,12 +160,37 @@ begin
   -- pending-row finalization; later calls only return the persisted batch and
   -- never create or relink operational shifts.
   if v_batch.status = 'confirmed' then
+    if exists (
+      select 1
+      from public.schedule_import_batch_rows
+      where batch_id = p_batch_id
+        and outcome in ('pending', 'retryable')
+    ) then
+      raise exception using errcode = 'P0001', message = 'IMPORT_BATCH_UNRESOLVED_ROWS';
+    end if;
     perform private.sync_schedule_import_batch_counts(p_batch_id);
     select * into v_batch from public.schedule_import_batches where id = p_batch_id;
     return v_batch;
   end if;
   if v_batch.status not in ('previewed', 'failed') then
     raise exception using errcode = 'P0001', message = 'IMPORT_BATCH_NOT_ACTIVE';
+  end if;
+
+  if exists (
+    select 1
+    from public.schedule_import_batch_rows
+    where batch_id = p_batch_id
+      and outcome in ('retryable', 'pending')
+      and (
+        outcome = 'retryable'
+        or coalesce(
+          case when jsonb_typeof(source_row->'errors') = 'array'
+            then jsonb_array_length(source_row->'errors') else 0 end,
+          0
+        ) = 0
+      )
+  ) then
+    raise exception using errcode = 'P0001', message = 'IMPORT_BATCH_UNRESOLVED_ROWS';
   end if;
 
   update public.schedule_import_batches
