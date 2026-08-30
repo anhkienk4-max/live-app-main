@@ -27,6 +27,8 @@ import {
 } from '@/lib/utils/excelUtils'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { ActionBar } from '@/components/ui/action-bar'
+import { deriveReportAttention } from '@/lib/ui/operational-attention'
+import { AttentionItem } from '@/components/ui/operational-status'
 import { buildReportActions } from '@/lib/ui/action-priority'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -317,6 +319,9 @@ export function ReportsList() {
             const statusLabel = reportStatus === 'in_review' ? t('inReview') : t(reportStatus)
             const canRemove = Boolean(currentUser && (hasPermission(currentUser, 'reports.review') || report.submitted_by === currentUser.id))
             const canArchive = Boolean(currentUser && hasPermission(currentUser, 'audit.restore'))
+            
+            const attentionItems = deriveReportAttention(report.id, reportStatus, shift.date)
+            
             return (
               <Card key={report.id} className="flex flex-col shadow-none transition-shadow hover:shadow-sm">
                 <CardHeader className="p-4 pb-3">
@@ -338,6 +343,11 @@ export function ReportsList() {
                     <Value label={t('host')} value={roleNames(shift, 'host')} />
                     <Value label={t('metricsStatus')} value={report.metrics_confirmed ? t('confirmed') : t('needsReview')} />
                   </div>
+                  {attentionItems.length > 0 && (
+                    <div className="space-y-2 mb-4">
+                      {attentionItems.map(item => <AttentionItem key={item.key} item={item} />)}
+                    </div>
+                  )}
                   <ActionBar
                     stretch
                     compact

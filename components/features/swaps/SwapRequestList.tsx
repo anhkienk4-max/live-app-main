@@ -18,8 +18,10 @@ import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
 import { downloadSwapRequestTemplate, exportSwapsToExcel } from '@/lib/utils/excelUtils'
-import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { getSwapUiActions, getSwapStatusPresentation } from '@/lib/utils/swapUi'
+import { deriveSwapAttention } from '@/lib/ui/operational-attention'
+import { AttentionItem } from '@/components/ui/operational-status'
+import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { ActionBar } from '@/components/ui/action-bar'
 import { buildSwapActions } from '@/lib/ui/action-priority'
@@ -185,6 +187,12 @@ export function SwapRequestList() {
         danger: 'bg-red-100 text-red-800 border-red-200',
         neutral: 'bg-gray-100 text-gray-800 border-gray-200',
       }
+      
+      const attentionItems = deriveSwapAttention({
+        swapId: swap.id,
+        status: swap.status,
+        actorHasValidAction: actions.showAccept || actions.showCounterpartReject || actions.showApprove || actions.showReviewerReject || actions.showCancel
+      })
 
       return (
         <Card key={swap.id} className="overflow-hidden shadow-sm">
@@ -222,12 +230,20 @@ export function SwapRequestList() {
                 <div className="flex w-full flex-col justify-between bg-muted/10 p-4 md:w-64 shrink-0">
                   <div className="space-y-1 mb-4">
                     <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">{t('actionsAndStatus')}</p>
-                    {swap.status === 'pending' && <p className="text-xs text-amber-700 font-medium">{t('waitingForParticipant')}</p>}
-                    {swap.status === 'accepted' && <p className="text-xs text-blue-700 font-medium">{t('waitingForReviewer')}</p>}
-                    {swap.status === 'completed' && <p className="text-xs text-green-700 font-medium">{t('completedSuccessfully')}</p>}
-                    {swap.status === 'approved' && <p className="text-xs text-green-700 font-medium">{t('approved')}</p>}
-                    {swap.status === 'rejected' && <p className="text-xs text-red-700 font-medium">{t('rejected')}</p>}
-                    {swap.status === 'cancelled' && <p className="text-xs text-red-700 font-medium">{t('cancelled')}</p>}
+                    {attentionItems.length > 0 ? (
+                      <div className="space-y-2 mb-2">
+                        {attentionItems.map(item => <AttentionItem key={item.key} item={item} />)}
+                      </div>
+                    ) : (
+                      <>
+                        {swap.status === 'pending' && <p className="text-xs text-amber-700 font-medium">{t('waitingForParticipant')}</p>}
+                        {swap.status === 'accepted' && <p className="text-xs text-blue-700 font-medium">{t('waitingForReviewer')}</p>}
+                        {swap.status === 'completed' && <p className="text-xs text-green-700 font-medium">{t('completedSuccessfully')}</p>}
+                        {swap.status === 'approved' && <p className="text-xs text-green-700 font-medium">{t('approved')}</p>}
+                        {swap.status === 'rejected' && <p className="text-xs text-red-700 font-medium">{t('rejected')}</p>}
+                        {swap.status === 'cancelled' && <p className="text-xs text-red-700 font-medium">{t('cancelled')}</p>}
+                      </>
+                    )}
                   </div>
                   <ActionBar
                     direction="col"

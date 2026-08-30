@@ -43,6 +43,8 @@ import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { ShiftDetailModal } from '@/components/features/shifts/ShiftDetailModal'
 import { ShiftRegistrationActions } from '@/components/features/calendar/ShiftRegistrationActions'
+import { deriveStaffingAttention } from '@/lib/ui/operational-attention'
+import { AttentionBanner } from '@/components/ui/operational-status'
 
 type Mode = 'open' | 'mine'
 type Filters = { date: string; brand: string; platform: string; campaign: string; role: string }
@@ -230,7 +232,11 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
 
       {mode === 'open' && hasPermission(currentUser, 'shifts.approve_registration') && pendingApprovals.length > 0 && (
         <Card className="border-amber-200 bg-amber-50/30 shadow-none">
-          <CardHeader className="py-3 px-4 border-b border-amber-200/50 mb-3"><CardTitle className="text-sm font-semibold text-amber-800">{t('pending')} ({pendingApprovals.length})</CardTitle></CardHeader>
+          {deriveStaffingAttention({ pendingCount: pendingApprovals.length }).map(item => (
+            <div key={item.key} className="mb-3">
+              <AttentionBanner item={item} actionLabel="" className="border-0 rounded-b-none border-b border-amber-200/50 bg-transparent" />
+            </div>
+          ))}
           <CardContent className="space-y-2 px-4 pb-4">
             {pendingApprovals.map(registration => {
               const shift = shifts.find(candidate => candidate.id === registration.shift_id)

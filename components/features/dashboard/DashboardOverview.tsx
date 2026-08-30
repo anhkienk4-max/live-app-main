@@ -9,7 +9,7 @@ import { brandService, campaignService, isStaffedRegistration, platformService, 
 import { Brand, Campaign, OperationalRole, Platform, Report, Shift, ShiftRegistration, SwapRequest, User } from '@/lib/types/database.types'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
-import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { formatShiftTimeRange, getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -21,6 +21,7 @@ import { PageShell, PageHeader, PageHeaderContent } from '@/components/ui/archet
 import { OperationalStatusStrip, HealthyState } from '@/components/ui/operational-status'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { resolveSystemPermission } from '@/lib/permissions'
+import { getSwapUiActions } from '@/lib/utils/swapUi'
 import { isCanonicalAssignedShift, getMemberAssignedShifts, getMemberPendingRegistrations, getMemberPendingSwaps, getLeaderPendingRegistrations, getLeaderPendingReports, getLeaderPendingSwaps } from '@/lib/ui/dashboard-role-data'
 import { deriveLeaderAttention, deriveMemberAttention, deriveDataQualityAttention } from '@/lib/ui/operational-attention'
 import { getAllIssues } from '@/lib/utils/dataQuality'
@@ -34,7 +35,7 @@ type Preset = 'today' | 'yesterday' | '7d' | '30d' | 'thisMonth' | 'lastMonth' |
 type Filters = { preset: Preset; start: string; end: string; brand: string; platform: string; campaign: string; host: string; support: string; technical: string }
 const dateValue = (date: Date) => format(date, 'yyyy-MM-dd')
 const rangeFor = (preset: Exclude<Preset, 'custom'>) => {
-  const today = new Date()
+  const today = new Date(`${getCurrentBusinessDate()}T00:00:00`)
   if (preset === 'today') return { start: dateValue(today), end: dateValue(today) }
   if (preset === 'yesterday') return { start: dateValue(addDays(today, -1)), end: dateValue(addDays(today, -1)) }
   if (preset === '7d') return { start: dateValue(addDays(today, -6)), end: dateValue(today) }
@@ -137,7 +138,9 @@ function AdminDashboard(props: CommonProps) {
   const previousIds = new Set(shifts.filter(shift => shift.date >= previousStart && shift.date <= previousEnd && matchesDimensions(shift, filters, registrations)).map(shift => shift.id))
   const previousReports = reports.filter(report => previousIds.has(report.shift_id) && report.status === 'confirmed')
   
-  const dqIssues = React.useMemo(() => getAllIssues({ shifts: filteredShifts, reports, registrations }), [filteredShifts, reports, registrations])
+  const scopedReports = reports.filter(report => shiftIds.has(report.shift_id))
+  const scopedRegistrations = registrations.filter(reg => shiftIds.has(reg.shift_id))
+  const dqIssues = React.useMemo(() => getAllIssues({ shifts: filteredShifts, reports: scopedReports, registrations: scopedRegistrations }), [filteredShifts, scopedReports, scopedRegistrations])
   const errorCount = dqIssues.filter(i => i.severity === 'error').length
   const warningCount = dqIssues.filter(i => i.severity === 'warning').length
   const infoCount = dqIssues.filter(i => i.severity === 'info').length
@@ -146,7 +149,7 @@ function AdminDashboard(props: CommonProps) {
   const revenue = filteredReports.reduce((sum, report) => sum + report.revenue, 0)
   const previousRevenue = previousReports.reduce((sum, report) => sum + report.revenue, 0)
   const delta = previousRevenue ? `${(((revenue - previousRevenue) / previousRevenue) * 100).toFixed(1)}%` : '—'
-  const today = dateValue(new Date())
+  const today = getCurrentBusinessDate()
   const trend = Object.entries(filteredReports.reduce<Record<string, { revenue: number; orders: number }>>((result, report) => {
     const shift = shifts.find(candidate => candidate.id === report.shift_id)
     if (shift) { (result[shift.date] ??= { revenue: 0, orders: 0 }).revenue += report.revenue; result[shift.date].orders += report.orders }
@@ -221,10 +224,10 @@ function AdminDashboard(props: CommonProps) {
 }
 
 function LeaderDashboard(props: CommonProps) {
-  const { shifts, reports, brands, platforms, campaigns, users, registrations, swapRequests, filters, setFilters, showFilters, setShowFilters, t, setPreset } = props
+  const { shifts, reports, brands, platforms, campaigns, users, registrations, swapRequests, filters, setFilters, showFilters, setShowFilters, currentUser, t, setPreset } = props
   
   const filteredShifts = shifts.filter(shift => shift.date >= filters.start && shift.date <= filters.end && matchesDimensions(shift, filters, registrations))
-  const today = dateValue(new Date())
+  const today = getCurrentBusinessDate()
   const todaysShifts = filteredShifts.filter(shift => shift.date === today)
   
   const shiftIds = new Set(filteredShifts.map(shift => shift.id))
@@ -234,13 +237,27 @@ function LeaderDashboard(props: CommonProps) {
   const pendingReports = getLeaderPendingReports(reports, shiftIds)
 
   // Retrieve data quality issues scoped to current timeframe
-  const dqIssues = React.useMemo(() => getAllIssues({ shifts: filteredShifts, reports, registrations }), [filteredShifts, reports, registrations])
+  const scopedReports = reports.filter(report => shiftIds.has(report.shift_id))
+  const scopedRegistrations = registrations.filter(reg => shiftIds.has(reg.shift_id))
+  const dqIssues = React.useMemo(() => getAllIssues({ shifts: filteredShifts, reports: scopedReports, registrations: scopedRegistrations }), [filteredShifts, scopedReports, scopedRegistrations])
   const dqErrorCount = dqIssues.filter(i => i.severity === 'error').length
 
   // E5: derive exception-first attention summary
+  let actionableSwapCount = 0
+  let waitingSwapCount = 0
+  pendingSwaps.forEach(s => {
+    const actions = getSwapUiActions(s, currentUser)
+    if (actions.showAccept || actions.showCounterpartReject || actions.showApprove || actions.showReviewerReject || actions.showCancel) {
+      actionableSwapCount++
+    } else {
+      waitingSwapCount++
+    }
+  })
+
   const attention = deriveLeaderAttention({
     pendingRegistrationCount: pendingRegistrations.length,
-    pendingSwapCount: pendingSwaps.length,
+    actionableSwapCount,
+    waitingSwapCount,
     pendingReportCount: pendingReports.length,
     dqErrorCount,
   })
@@ -293,7 +310,7 @@ function LeaderDashboard(props: CommonProps) {
 function MemberDashboard(props: CommonProps) {
   const { shifts, reports, brands, platforms, currentUser, registrations, swapRequests, t } = props
   
-  const today = dateValue(new Date())
+  const today = getCurrentBusinessDate()
   
   // Find member's shifts using strictly canonical registration
   const myShifts = getMemberAssignedShifts(shifts, currentUser.id, registrations)
@@ -306,9 +323,12 @@ function MemberDashboard(props: CommonProps) {
   const myPendingRegistrations = getMemberPendingRegistrations(registrations, currentUser.id)
 
   // E5: derive personal exception summary
-  // swap 'needs action' only when it is pending and actor is counterpart (resolver contract)
+  // swap 'needs action' only when it is pending and actor has valid mutation action (resolver contract)
   const swapNeedsAction = myPendingSwaps.some(
-    s => s.status === 'pending' && s.counterpart_id === currentUser.id
+    s => {
+      const actions = getSwapUiActions(s, currentUser)
+      return actions.showAccept || actions.showCounterpartReject || actions.showApprove || actions.showReviewerReject || actions.showCancel
+    }
   )
   const memberAttention = deriveMemberAttention({
     pendingRegistrationCount: myPendingRegistrations.length,

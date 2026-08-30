@@ -89,6 +89,8 @@ function getSeverityConfig(severity: AttentionSeverity): SeverityConfig {
   }
 }
 
+import { useTranslation, type TranslationKey } from '@/lib/i18n'
+
 // ---------------------------------------------------------------------------
 // AttentionItem — single row for one operational attention entry
 // ---------------------------------------------------------------------------
@@ -99,6 +101,7 @@ interface AttentionItemProps {
 }
 
 export function AttentionItem({ item, className }: AttentionItemProps) {
+  const { t } = useTranslation()
   const config = getSeverityConfig(item.severity)
 
   const content = (
@@ -107,8 +110,8 @@ export function AttentionItem({ item, className }: AttentionItemProps) {
         {config.icon}
       </span>
       <div className="min-w-0 flex-1">
-        <p className={cn('text-sm font-medium leading-tight', config.labelClass)}>
-          {item.label}
+        <p className={cn('text-sm font-medium leading-tight whitespace-normal break-words', config.labelClass)}>
+          {t(item.label as TranslationKey, item.labelParams as Record<string, string | number>)}
           {item.count !== undefined && (
             <Badge className={cn('ml-2 text-[10px] py-0 px-1.5', config.badgeClass)} variant={config.badgeVariant}>
               {item.count}
@@ -116,7 +119,9 @@ export function AttentionItem({ item, className }: AttentionItemProps) {
           )}
         </p>
         {item.description && (
-          <p className="mt-0.5 text-xs text-muted-foreground leading-snug">{item.description}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground leading-snug whitespace-normal break-words">
+            {t(item.description as TranslationKey, item.descriptionParams as Record<string, string | number>)}
+          </p>
         )}
       </div>
     </div>
@@ -148,18 +153,19 @@ interface AttentionBannerProps {
 }
 
 export function AttentionBanner({ item, actionLabel = 'Review', className }: AttentionBannerProps) {
+  const { t } = useTranslation()
   const config = getSeverityConfig(item.severity)
 
   return (
     <div
-      className={cn('flex items-center justify-between gap-3 rounded-md border px-4 py-3', config.containerClass, className)}
+      className={cn('flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border px-4 py-3 items-start', config.containerClass, className)}
       role={config.ariaRole}
     >
-      <div className="flex items-center gap-2 min-w-0">
+      <div className="flex items-start sm:items-center gap-2 min-w-0">
         <span className={cn('shrink-0', config.labelClass)}>{config.icon}</span>
-        <div className="min-w-0">
-          <p className={cn('text-sm font-semibold leading-tight truncate', config.labelClass)}>
-            {item.label}
+        <div className="min-w-0 flex-1">
+          <p className={cn('text-sm font-semibold leading-tight whitespace-normal break-words', config.labelClass)}>
+            {t(item.label as TranslationKey, item.labelParams as Record<string, string | number>)}
             {item.count !== undefined && (
               <Badge className={cn('ml-2 text-[10px] py-0 px-1.5', config.badgeClass)} variant={config.badgeVariant}>
                 {item.count}
@@ -167,7 +173,9 @@ export function AttentionBanner({ item, actionLabel = 'Review', className }: Att
             )}
           </p>
           {item.description && (
-            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{item.description}</p>
+            <p className="text-xs text-muted-foreground mt-0.5 whitespace-normal break-words">
+              {t(item.description as TranslationKey, item.descriptionParams as Record<string, string | number>)}
+            </p>
           )}
         </div>
       </div>

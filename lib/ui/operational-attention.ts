@@ -33,10 +33,12 @@ export interface OperationalAttention {
   /** Unique stable key for React rendering */
   key: string
   severity: AttentionSeverity
-  /** Short (≤40 char) primary label */
+  /** Short (≤40 char) primary label (supports translation keys) */
   label: string
-  /** Optional secondary description */
+  labelParams?: Record<string, string | number>
+  /** Optional secondary description (supports translation keys) */
   description?: string
+  descriptionParams?: Record<string, string | number>
   /** Href to route the user to the resolution surface */
   href?: string
   /** Count associated with the item, e.g. "3 pending" */
@@ -136,8 +138,9 @@ export function deriveShiftAttention(input: ShiftAttentionInput): OperationalAtt
     items.push({
       key: `shift-${input.shiftId}-pending`,
       severity: 'warning',
-      label: 'Pending registrations',
-      description: `${input.pendingCount} registration${input.pendingCount > 1 ? 's' : ''} awaiting decision`,
+      label: 'pendingRegistrations',
+      description: 'pendingRegistrationsDesc',
+      descriptionParams: { count: input.pendingCount },
       count: input.pendingCount,
       href: '/calendar',
     })
@@ -157,8 +160,9 @@ export function deriveShiftAttention(input: ShiftAttentionInput): OperationalAtt
     items.push({
       key: `shift-${input.shiftId}-gap`,
       severity: 'attention',
-      label: 'Staffing gap',
-      description: `Missing ${missingRoles.join(', ')}`,
+      label: 'staffingGap',
+      description: 'missingRoles',
+      descriptionParams: { roles: missingRoles.join(', ') },
       href: '/calendar',
     })
   }
@@ -186,8 +190,9 @@ export function deriveStaffingAttention(input: StaffingAttentionInput): Operatio
   return [{
     key: 'staffing-pending',
     severity: 'warning',
-    label: 'Staffing decisions needed',
-    description: `${input.pendingCount} pending registration${input.pendingCount > 1 ? 's' : ''} awaiting approval`,
+    label: 'staffingDecisionsNeeded',
+    description: 'staffingDecisionsNeededDesc',
+    descriptionParams: { count: input.pendingCount },
     count: input.pendingCount,
     href: '/calendar',
   }]
@@ -224,8 +229,8 @@ export function deriveSwapAttention(input: SwapAttentionInput): OperationalAtten
     return [{
       key: `swap-${input.swapId}`,
       severity: input.actorHasValidAction ? 'warning' : 'info',
-      label: input.actorHasValidAction ? 'Swap requires your response' : 'Swap pending response',
-      description: input.actorHasValidAction ? 'A participant action is needed from you' : 'Waiting for participant response',
+      label: input.actorHasValidAction ? 'swapRequiresResponse' : 'swapPendingResponse',
+      description: input.actorHasValidAction ? 'swapParticipantActionNeeded' : 'swapWaitingForParticipant',
       href: '/swaps',
     }]
   }
@@ -234,8 +239,8 @@ export function deriveSwapAttention(input: SwapAttentionInput): OperationalAtten
     return [{
       key: `swap-${input.swapId}-accepted`,
       severity: input.actorHasValidAction ? 'warning' : 'info',
-      label: input.actorHasValidAction ? 'Swap awaiting your approval' : 'Swap awaiting reviewer',
-      description: input.actorHasValidAction ? 'Reviewer action required' : 'Submitted for review',
+      label: input.actorHasValidAction ? 'swapAwaitingApproval' : 'swapAwaitingReviewer',
+      description: input.actorHasValidAction ? 'swapReviewerActionRequired' : 'swapSubmittedForReview',
       href: '/swaps',
     }]
   }
@@ -270,24 +275,27 @@ export function deriveReportAttention(
       return [{
         key: `report-${reportId}-in-review`,
         severity: 'info',
-        label: 'Report in review',
-        description: shiftDate ? `Shift ${shiftDate} — awaiting confirmation` : 'Awaiting reviewer confirmation',
+        label: 'reportPendingReview',
+        description: shiftDate ? 'reportInReviewDescShift' : 'reportInReviewDesc',
+        descriptionParams: shiftDate ? { shiftDate } : undefined,
         href: '/reports',
       }]
     case 'reopened':
       return [{
         key: `report-${reportId}-reopened`,
         severity: 'warning',
-        label: 'Report reopened',
-        description: shiftDate ? `Shift ${shiftDate} — requires attention` : 'Reopened report requires attention',
+        label: 'reportNeedsAttention',
+        description: shiftDate ? 'reportReopenedDescShift' : 'reportReopenedDesc',
+        descriptionParams: shiftDate ? { shiftDate } : undefined,
         href: '/reports',
       }]
     case 'draft':
       return [{
         key: `report-${reportId}-draft`,
         severity: 'warning',
-        label: 'Draft report incomplete',
-        description: shiftDate ? `Shift ${shiftDate} — not yet submitted` : 'Report has not been submitted',
+        label: 'reportDraftNeedsCompletion',
+        description: shiftDate ? 'reportDraftDescShift' : 'reportDraftDesc',
+        descriptionParams: shiftDate ? { shiftDate } : undefined,
         href: '/reports',
       }]
     default:
@@ -319,32 +327,36 @@ export function deriveImportRowAttention(
       return [{
         key: `import-row-${rowId}-failed`,
         severity: 'critical',
-        label: 'Import row failed validation',
-        description: message ?? 'Row could not be imported due to validation errors',
+        label: 'validationError',
+        description: 'importRowCaveat',
+        descriptionParams: { message: message ?? '' },
         href: '/calendar',
       }]
     case 'retryable':
       return [{
         key: `import-row-${rowId}-retryable`,
         severity: 'attention',
-        label: 'Import row retryable',
-        description: message ?? 'Row failed but may succeed on retry',
+        label: 'importRetryable',
+        description: 'importRowRetry',
+        descriptionParams: { message: message ?? '' },
         href: '/calendar',
       }]
     case 'warning':
       return [{
         key: `import-row-${rowId}-warning`,
         severity: 'warning',
-        label: 'Import row has warning',
-        description: message ?? 'Row imported with caveats',
+        label: 'importWarning',
+        description: 'importRowCaveat',
+        descriptionParams: { message: message ?? '' },
         href: '/calendar',
       }]
     case 'duplicate_skipped':
       return [{
         key: `import-row-${rowId}-dup`,
         severity: 'info',
-        label: 'Duplicate row skipped',
-        description: message ?? 'Row was a duplicate and was not imported',
+        label: 'importDuplicate',
+        description: 'importRowDuplicate',
+        descriptionParams: { message: message ?? '' },
       }]
     case 'imported':
     case 'pending':
@@ -373,38 +385,41 @@ function dqSeverityToAttention(sev: DataQualitySeverity): AttentionSeverity {
  * Only produces items for issues that actually have non-zero counts.
  */
 export function deriveDataQualityAttention(
-  errorCount: number,
-  warningCount: number,
-  infoCount: number,
+  errors: number,
+  warnings: number,
+  info: number,
 ): OperationalAttention[] {
   const items: OperationalAttention[] = []
-  if (errorCount > 0) {
+  if (errors > 0) {
     items.push({
-      key: 'dq-errors',
+      key: 'dq-critical',
       severity: 'critical',
-      label: 'Data quality errors',
-      description: `${errorCount} error${errorCount > 1 ? 's' : ''} require resolution`,
-      count: errorCount,
+      label: 'dataQualityErrors',
+      description: 'dqErrorsDesc',
+      descriptionParams: { count: errors },
+      count: errors,
       href: '/data-quality',
     })
   }
-  if (warningCount > 0) {
+  if (warnings > 0) {
     items.push({
-      key: 'dq-warnings',
+      key: 'dq-warning',
       severity: 'warning',
-      label: 'Data quality warnings',
-      description: `${warningCount} warning${warningCount > 1 ? 's' : ''} to review`,
-      count: warningCount,
+      label: 'dataQualityWarnings',
+      description: 'dqWarningsDesc',
+      descriptionParams: { count: warnings },
+      count: warnings,
       href: '/data-quality',
     })
   }
-  if (infoCount > 0) {
+  if (info > 0) {
     items.push({
       key: 'dq-info',
       severity: 'info',
-      label: 'Data quality notices',
-      description: `${infoCount} informational notice${infoCount > 1 ? 's' : ''}`,
-      count: infoCount,
+      label: 'dataQualityNotices',
+      description: 'dqNoticesDesc',
+      descriptionParams: { count: info },
+      count: info,
       href: '/data-quality',
     })
   }
@@ -417,7 +432,8 @@ export function deriveDataQualityAttention(
 
 export interface LeaderAttentionInput {
   pendingRegistrationCount: number
-  pendingSwapCount: number
+  actionableSwapCount: number
+  waitingSwapCount: number
   pendingReportCount: number
   /** Data quality error count (from existing DQ system) */
   dqErrorCount: number
@@ -437,13 +453,24 @@ export function deriveLeaderAttention(input: LeaderAttentionInput): AttentionSum
     })
   }
 
-  if (input.pendingSwapCount > 0) {
+  if (input.actionableSwapCount > 0) {
     items.push({
-      key: 'leader-pending-swaps',
+      key: 'leader-actionable-swaps',
       severity: 'warning',
       label: 'Swap decisions needed',
-      description: `${input.pendingSwapCount} swap request${input.pendingSwapCount > 1 ? 's' : ''} awaiting review`,
-      count: input.pendingSwapCount,
+      description: `${input.actionableSwapCount} swap request${input.actionableSwapCount > 1 ? 's' : ''} awaiting review`,
+      count: input.actionableSwapCount,
+      href: '/swaps',
+    })
+  }
+
+  if (input.waitingSwapCount > 0) {
+    items.push({
+      key: 'leader-waiting-swaps',
+      severity: 'info',
+      label: 'Swaps pending participant',
+      description: `${input.waitingSwapCount} swap request${input.waitingSwapCount > 1 ? 's' : ''} waiting on participants`,
+      count: input.waitingSwapCount,
       href: '/swaps',
     })
   }
