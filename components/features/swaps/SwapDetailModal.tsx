@@ -75,6 +75,7 @@ export function SwapDetailModal({
       variant: 'success' 
     })
     onApprove()
+    onOpenChange(false)
   }
 
   const handleReject = () => {
@@ -84,6 +85,17 @@ export function SwapDetailModal({
       variant: 'destructive' 
     })
     onReject()
+    onOpenChange(false)
+  }
+
+  const handleAccept = () => {
+    if (onAccept) onAccept()
+    onOpenChange(false)
+  }
+
+  const handleParticipantReject = () => {
+    if (onParticipantReject) onParticipantReject()
+    onOpenChange(false)
   }
 
   return (
@@ -207,10 +219,10 @@ export function SwapDetailModal({
           <div className="flex gap-2">
             {showParticipantActions && (
               <>
-                <Button variant="outline" className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground" onClick={onParticipantReject}>
+                <Button variant="outline" className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground" onClick={handleParticipantReject}>
                   <XCircle className="h-4 w-4 mr-2" /> Reject
                 </Button>
-                <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={onAccept}>
+                <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={handleAccept}>
                   <CheckCircle className="h-4 w-4 mr-2" /> Accept
                 </Button>
               </>

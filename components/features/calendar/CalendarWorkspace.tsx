@@ -15,15 +15,17 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 export function CalendarWorkspace() {
   const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
-  const [tab, setTab] = React.useState('calendar')
-  const [createRequest, setCreateRequest] = React.useState(0)
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
+  const [tab, setTab] = React.useState(() => searchParams.get('view') || 'calendar')
+  const [createRequest, setCreateRequest] = React.useState(0)
+
   React.useEffect(() => {
     const action = searchParams.get('action')
-    if (!action) return
+    const view = searchParams.get('view')
+    if (!action && !view) return
     let handled = false
     if (action === 'create' && hasPermission(currentUser, 'shifts.assign_staff')) {
       setTab('calendar')
@@ -32,10 +34,14 @@ export function CalendarWorkspace() {
     } else if (action === 'import' && hasPermission(currentUser, 'shifts.import')) {
       setTab('import')
       handled = true
+    } else if (view && ['calendar', 'open', 'mine', 'import', 'history'].includes(view)) {
+      setTab(view)
+      handled = true
     }
-    if (!handled && action !== 'create' && action !== 'import') return
+    if (!handled && action !== 'create' && action !== 'import' && !view) return
     const next = new URLSearchParams(searchParams.toString())
     next.delete('action')
+    next.delete('view')
     const qs = next.toString()
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
   }, [searchParams, pathname, router, currentUser])

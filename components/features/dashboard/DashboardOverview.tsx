@@ -398,8 +398,8 @@ function MemberDashboard(props: CommonProps) {
 
     <div className="grid gap-4 md:grid-cols-2">
       <Card><CardHeader><CardTitle>{t('quickActions')}</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <QuickAction href="/calendar" label={t('myCalendar')} icon={<Calendar className="h-5 w-5" />} />
-        <QuickAction href="/calendar" label={t('openShifts')} icon={<Users className="h-5 w-5" />} />
+        <QuickAction href="/calendar?view=mine" label={t('myCalendar')} icon={<Calendar className="h-5 w-5" />} />
+        <QuickAction href="/calendar?view=open" label={t('openShifts')} icon={<Users className="h-5 w-5" />} />
         <QuickAction href="/reports" label={t('submitReport')} icon={<FileText className="h-5 w-5" />} />
         <QuickAction href="/notifications" label={t('notifications')} icon={<Bell className="h-5 w-5" />} />
       </CardContent></Card>
