@@ -83,12 +83,19 @@ function findMutableMockRow(
   return { rows, index }
 }
 
+async function assertMockBatchAllowsOutcome(batchId: string): Promise<void> {
+  const batch = (await scheduleImportService.getAll()).find(item => item.id === batchId)
+  if (batch?.status === 'confirmed') throw new Error('IMPORT_BATCH_NOT_ACTIVE')
+}
+
 const mockPort: ScheduleImportBatchPort = {
   async createBatch({ source, sourceName, createdBy, summary, previewRows }) {
     return scheduleImportService.createPreview(source, sourceName, toPreviewCounters(summary), createdBy, previewRows)
   },
 
   async recordBatchRows(batchId, rows) {
+    const existing = recordedBatchRows.get(batchId)
+    if (existing) return existing.map(row => ({ ...row }))
     const pendingRows = rows.map(row => ({
       ...row,
       status: 'pending' as const,
@@ -104,6 +111,16 @@ const mockPort: ScheduleImportBatchPort = {
   },
 
   async linkRowToShift(batchId, sourceRowNumber, shiftId, expectedOutcome, outcome = 'imported') {
+    const existingRows = recordedBatchRows.get(batchId)
+    const existing = existingRows?.find(row => row.source_row_number === sourceRowNumber)
+    if (existing && ['imported', 'warning', 'duplicate_skipped'].includes(existing.status)) {
+      if (
+        existing.status === outcome
+        && existing.resulting_shift_id === shiftId
+      ) return { ...existing }
+      throw new Error('IMPORT_ROW_ALREADY_FINALIZED')
+    }
+    await assertMockBatchAllowsOutcome(batchId)
     const { rows, index } = findMutableMockRow(batchId, sourceRowNumber, expectedOutcome)
     rows[index] = {
       ...rows[index],
@@ -114,6 +131,7 @@ const mockPort: ScheduleImportBatchPort = {
   },
 
   async markRowRetryable(batchId, sourceRowNumber, failureCode, expectedOutcome) {
+    await assertMockBatchAllowsOutcome(batchId)
     const { rows, index } = findMutableMockRow(batchId, sourceRowNumber, expectedOutcome)
     rows[index] = {
       ...rows[index],
@@ -124,6 +142,16 @@ const mockPort: ScheduleImportBatchPort = {
   },
 
   async recordRowOutcome(batchId, sourceRowNumber, outcome, options) {
+    const existingRows = recordedBatchRows.get(batchId)
+    const existing = existingRows?.find(row => row.source_row_number === sourceRowNumber)
+    if (existing && ['imported', 'warning', 'duplicate_skipped'].includes(existing.status)) {
+      if (
+        existing.status === outcome
+        && (outcome === 'duplicate_skipped' || existing.resulting_shift_id === options?.shiftId)
+      ) return { ...existing }
+      throw new Error('IMPORT_ROW_ALREADY_FINALIZED')
+    }
+    await assertMockBatchAllowsOutcome(batchId)
     const { rows, index } = findMutableMockRow(
       batchId,
       sourceRowNumber,
@@ -143,7 +171,19 @@ const mockPort: ScheduleImportBatchPort = {
   },
 
   async markBatchStatus(id, status) {
-    if (status === 'confirmed') return scheduleImportService.confirm(id)
+    if (status === 'confirmed') {
+      const existingBatch = (await scheduleImportService.getAll()).find(batch => batch.id === id)
+      if (existingBatch?.status === 'confirmed') return existingBatch
+      const rows = recordedBatchRows.get(id)
+      rows?.forEach(row => {
+        if (row.status !== 'pending') return
+        const errors = row.normalized_values?.errors ?? []
+        row.status = errors.length > 0 ? 'validation_failed' : 'duplicate_skipped'
+        row.resulting_shift_id = undefined
+        row.failure_code = undefined
+      })
+      return scheduleImportService.confirm(id)
+    }
     if (status === 'failed') return scheduleImportService.fail(id)
     return null
   },

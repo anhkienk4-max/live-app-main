@@ -176,7 +176,7 @@ function fakeClient(database: FakeDatabase, options: FakeClientOptions = {}) {
       const id = String(args.p_batch_id ?? '')
       const batch = database.batches.find(item => item.id === id)
       if (!batch) throw { code: 'P0001', message: 'IMPORT_BATCH_NOT_FOUND' }
-      if (!['previewed', 'failed'].includes(String(batch.status))) {
+      if (!['previewed', 'failed', 'confirmed'].includes(String(batch.status))) {
         throw { code: 'P0001', message: 'IMPORT_BATCH_NOT_ACTIVE' }
       }
       const outcomes = (Array.isArray(args.p_outcomes) ? args.p_outcomes : []) as Array<Record<string, unknown>>
@@ -184,8 +184,15 @@ function fakeClient(database: FakeDatabase, options: FakeClientOptions = {}) {
         const target = database.rows.find(row => row.batch_id === id && row.row_number === Number(item.row_number))
         if (!target) throw { code: 'P0001', message: 'IMPORT_ROW_NOT_FOUND' }
         if (['imported', 'warning', 'duplicate_skipped'].includes(String(target.outcome))) {
+          const requestedOutcome = String(item.outcome ?? '')
+          const requestedShiftId = (item.shift_id as string | undefined) ?? null
+          if (
+            target.outcome === requestedOutcome
+            && (requestedOutcome === 'duplicate_skipped' || target.shift_id === requestedShiftId)
+          ) continue
           throw { code: 'P0001', message: 'IMPORT_ROW_ALREADY_FINALIZED' }
         }
+        if (batch.status === 'confirmed') throw { code: 'P0001', message: 'IMPORT_BATCH_NOT_ACTIVE' }
         if (target.outcome !== item.expected_outcome) {
           throw { code: 'P0001', message: 'IMPORT_ROW_OUTCOME_CONFLICT' }
         }
@@ -208,6 +215,10 @@ function fakeClient(database: FakeDatabase, options: FakeClientOptions = {}) {
       const id = String(args.p_batch_id ?? '')
       const batch = database.batches.find(item => item.id === id)
       if (!batch) throw { code: 'P0001', message: 'IMPORT_BATCH_NOT_FOUND' }
+      if (batch.status === 'confirmed') {
+        syncCounts(database, id)
+        return { ...batch }
+      }
       if (!['previewed', 'failed'].includes(String(batch.status))) {
         throw { code: 'P0001', message: 'IMPORT_BATCH_NOT_ACTIVE' }
       }
@@ -544,7 +555,13 @@ test('supabase port refuses to cancel a confirmed batch', async () => {
     const client = fakeClient(db)
     const port = createSupabaseScheduleImportPort(client)
 
-    const batch = await port.createBatch({ source: 'excel', sourceName: 'a.xlsx', createdBy: '1', summary })
+    const batch = await port.createBatch({
+      source: 'excel',
+      sourceName: 'a.xlsx',
+      createdBy: '1',
+      summary,
+      previewRows: [previewRow(2), previewRow(3), previewRow(4)],
+    })
     await port.markBatchStatus(batch.id, 'confirmed')
 
     await assert.rejects(
@@ -686,20 +703,26 @@ test('crash recovery: shift created but outcome not recorded leaves row pending 
   })
 })
 
-test('batch state machine: confirm on confirmed batch is rejected', async () => {
+test('batch confirmation is idempotent after the first confirmation', async () => {
   await withEnvironment(async () => {
     const db: FakeDatabase = { batches: [], rows: [], shifts: [] }
     const client = fakeClient(db)
     const port = createSupabaseScheduleImportPort(client)
 
-    const batch = await port.createBatch({ source: 'excel', sourceName: 'a.xlsx', createdBy: '1', summary })
-    await port.markBatchStatus(batch.id, 'confirmed')
+    const batch = await port.createBatch({
+      source: 'excel',
+      sourceName: 'a.xlsx',
+      createdBy: '1',
+      summary,
+      previewRows: [previewRow(2), previewRow(3), previewRow(4)],
+    })
+    const first = await port.markBatchStatus(batch.id, 'confirmed')
+    const second = await port.markBatchStatus(batch.id, 'confirmed')
 
-    await assert.rejects(
-      port.markBatchStatus(batch.id, 'confirmed'),
-      (error: unknown) => error instanceof ScheduleImportRequestError
-        && /IMPORT_BATCH_NOT_ACTIVE/.test(error.message),
-    )
+    assert.equal(first?.status, 'confirmed')
+    assert.equal(second?.status, 'confirmed')
+    assert.equal(db.batches.length, 1)
+    assert.equal(db.rows.filter(row => row.batch_id === batch.id).length, 3)
   })
 })
 
@@ -735,6 +758,11 @@ test('batch state machine: recording outcomes on a confirmed batch is rejected',
     })
     db.shifts.push({ id: 'shift-1', import_batch_id: batch.id })
     await port.markBatchStatus(batch.id, 'confirmed')
+    const row = db.rows.find(item => item.batch_id === batch.id && item.row_number === 2)
+    assert.ok(row)
+    // A confirmed batch may only replay an already-finalized row. Keep this
+    // row unresolved to prove the lifecycle guard still rejects late writes.
+    row.outcome = 'retryable'
 
     await assert.rejects(
       port.linkRowToShift(batch.id, 2, 'shift-1', 'pending'),
