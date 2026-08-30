@@ -234,7 +234,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         <Card className="border-amber-200 bg-amber-50/30 shadow-none">
           {deriveStaffingAttention({ pendingCount: pendingApprovals.length }).map(item => (
             <div key={item.key} className="mb-3">
-              <AttentionBanner item={item} actionLabel="" className="border-0 rounded-b-none border-b border-amber-200/50 bg-transparent" />
+              <AttentionBanner item={item} className="border-0 rounded-b-none border-b border-amber-200/50 bg-transparent" />
             </div>
           ))}
           <CardContent className="space-y-2 px-4 pb-4">

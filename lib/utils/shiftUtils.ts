@@ -174,14 +174,14 @@ function formatLocalDate(value: Date): string {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
 }
 
-export function getCurrentBusinessDate(timezone = 'Asia/Ho_Chi_Minh'): string {
+export function getCurrentBusinessDate(timezone = 'Asia/Ho_Chi_Minh', now = new Date()): string {
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
   })
-  return formatter.format(new Date())
+  return formatter.format(now)
 }
 
 // Generate recurring shifts

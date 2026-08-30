@@ -152,9 +152,25 @@ interface AttentionBannerProps {
   className?: string
 }
 
-export function AttentionBanner({ item, actionLabel = 'Review', className }: AttentionBannerProps) {
+export function AttentionBanner({ item, actionLabel, className }: AttentionBannerProps) {
   const { t } = useTranslation()
   const config = getSeverityConfig(item.severity)
+
+  const translateParams = (params?: Record<string, string | number | string[]>) => {
+    if (!params) return undefined
+    const newParams: Record<string, string | number> = {}
+    for (const [key, value] of Object.entries(params)) {
+      if (Array.isArray(value)) {
+        newParams[key] = value.map(v => t(v as any)).join(', ')
+      } else {
+        newParams[key] = value
+      }
+    }
+    return newParams
+  }
+
+  const labelParams = translateParams(item.labelParams)
+  const descriptionParams = translateParams(item.descriptionParams)
 
   return (
     <div
@@ -165,7 +181,7 @@ export function AttentionBanner({ item, actionLabel = 'Review', className }: Att
         <span className={cn('shrink-0', config.labelClass)}>{config.icon}</span>
         <div className="min-w-0 flex-1">
           <p className={cn('text-sm font-semibold leading-tight whitespace-normal break-words', config.labelClass)}>
-            {t(item.label as TranslationKey, item.labelParams as Record<string, string | number>)}
+            {t(item.label as TranslationKey, labelParams)}
             {item.count !== undefined && (
               <Badge className={cn('ml-2 text-[10px] py-0 px-1.5', config.badgeClass)} variant={config.badgeVariant}>
                 {item.count}
@@ -174,12 +190,12 @@ export function AttentionBanner({ item, actionLabel = 'Review', className }: Att
           </p>
           {item.description && (
             <p className="text-xs text-muted-foreground mt-0.5 whitespace-normal break-words">
-              {t(item.description as TranslationKey, item.descriptionParams as Record<string, string | number>)}
+              {t(item.description as TranslationKey, descriptionParams)}
             </p>
           )}
         </div>
       </div>
-      {item.href && (
+      {item.href && actionLabel && (
         <Button
           size="sm"
           variant="outline"

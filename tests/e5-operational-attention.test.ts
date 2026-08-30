@@ -6,10 +6,13 @@ import {
   deriveDataQualityAttention,
   deriveReportAttention,
   deriveStaffingAttention,
+  deriveLeaderAttention,
+  deriveMemberAttention,
   sortOperationalAttention,
   type ShiftAttentionInput,
   type SwapAttentionInput,
 } from '../lib/ui/operational-attention'
+import { getCurrentBusinessDate } from '../lib/utils/shiftUtils'
 import type { SwapStatus, ReportStatus } from '../lib/types/database.types'
 
 test('E5 Operational Attention Derivation', async (t) => {
@@ -201,6 +204,69 @@ test('E5 Operational Attention Derivation', async (t) => {
       assert.equal(sorted[1].severity, 'warning')
       assert.equal(sorted[2].severity, 'info')
       assert.equal(sorted[3].severity, 'success')
+    })
+  })
+
+  await t.test('deriveLeaderAttention', async (t) => {
+    await t.test('aggregates E5 explicit swap counts correctly', () => {
+      const summary = deriveLeaderAttention({
+        pendingRegistrationCount: 0,
+        actionableSwapCount: 1,
+        waitingSwapCount: 2,
+        pendingReportCount: 0,
+        dqErrorCount: 0,
+      })
+      
+      assert.equal(summary.items.length, 2)
+      assert.equal(summary.items[0].severity, 'warning')
+      assert.equal(summary.items[0].label, 'swapDecisionsNeeded')
+      assert.equal(summary.items[0].count, 1)
+
+      assert.equal(summary.items[1].severity, 'info')
+      assert.equal(summary.items[1].label, 'swapPendingParticipant')
+      assert.equal(summary.items[1].count, 2)
+    })
+  })
+
+  await t.test('deriveMemberAttention', async (t) => {
+    await t.test('aggregates explicit actionable vs waiting swap counts correctly', () => {
+      const summary = deriveMemberAttention({
+        pendingRegistrationCount: 0,
+        actionableSwapCount: 1,
+        waitingSwapCount: 1,
+        hasUpcomingShift: true,
+      })
+      
+      assert.equal(summary.items.length, 2)
+      assert.equal(summary.items[0].severity, 'warning')
+      assert.equal(summary.items[0].label, 'swapRequiresResponse')
+      assert.equal(summary.items[0].count, 1)
+
+      assert.equal(summary.items[1].severity, 'info')
+      assert.equal(summary.items[1].label, 'swapRequestPending')
+      assert.equal(summary.items[1].count, 1)
+    })
+  })
+
+  await t.test('getCurrentBusinessDate', async (t) => {
+    await t.test('returns expected local date around midnight for Asia/Ho_Chi_Minh', () => {
+      // 2026-08-30T23:59:00+07:00 (16:59 UTC)
+      const lateNight = new Date(Date.UTC(2026, 7, 30, 16, 59, 0))
+      assert.equal(getCurrentBusinessDate('Asia/Ho_Chi_Minh', lateNight), '2026-08-30')
+
+      // 2026-08-31T00:01:00+07:00 (17:01 UTC)
+      const justAfterMidnight = new Date(Date.UTC(2026, 7, 30, 17, 1, 0))
+      assert.equal(getCurrentBusinessDate('Asia/Ho_Chi_Minh', justAfterMidnight), '2026-08-31')
+    })
+    
+    await t.test('returns expected local date for New York across boundaries', () => {
+      // 2026-08-30T23:59:00-04:00 (03:59 UTC on 31st)
+      const lateNightNY = new Date(Date.UTC(2026, 7, 31, 3, 59, 0))
+      assert.equal(getCurrentBusinessDate('America/New_York', lateNightNY), '2026-08-30')
+      
+      // 2026-08-31T00:01:00-04:00 (04:01 UTC on 31st)
+      const midnightNY = new Date(Date.UTC(2026, 7, 31, 4, 1, 0))
+      assert.equal(getCurrentBusinessDate('America/New_York', midnightNY), '2026-08-31')
     })
   })
 })

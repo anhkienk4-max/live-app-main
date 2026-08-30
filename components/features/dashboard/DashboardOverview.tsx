@@ -245,7 +245,13 @@ function LeaderDashboard(props: CommonProps) {
   // E5: derive exception-first attention summary
   let actionableSwapCount = 0
   let waitingSwapCount = 0
-  pendingSwaps.forEach(s => {
+  
+  const operationalSwaps = swapRequests.filter(s => 
+    (s.status === 'pending' || s.status === 'accepted') && 
+    (shiftIds.has(s.shift_id) || (s.source_shift_id && shiftIds.has(s.source_shift_id)) || (s.target_shift_id && shiftIds.has(s.target_shift_id)))
+  )
+  
+  operationalSwaps.forEach(s => {
     const actions = getSwapUiActions(s, currentUser)
     if (actions.showAccept || actions.showCounterpartReject || actions.showApprove || actions.showReviewerReject || actions.showCancel) {
       actionableSwapCount++
@@ -323,18 +329,28 @@ function MemberDashboard(props: CommonProps) {
   const myPendingRegistrations = getMemberPendingRegistrations(registrations, currentUser.id)
 
   // E5: derive personal exception summary
-  // swap 'needs action' only when it is pending and actor has valid mutation action (resolver contract)
-  const swapNeedsAction = myPendingSwaps.some(
-    s => {
-      const actions = getSwapUiActions(s, currentUser)
-      return actions.showAccept || actions.showCounterpartReject || actions.showApprove || actions.showReviewerReject || actions.showCancel
-    }
+  let actionableSwapCount = 0
+  let waitingSwapCount = 0
+  
+  const personalOperationalSwaps = swapRequests.filter(s => 
+    (s.status === 'pending' || s.status === 'accepted') && 
+    (s.requester_id === currentUser.id || s.counterpart_id === currentUser.id)
   )
+  
+  personalOperationalSwaps.forEach(s => {
+    const actions = getSwapUiActions(s, currentUser)
+    if (actions.showAccept || actions.showCounterpartReject || actions.showApprove || actions.showReviewerReject || actions.showCancel) {
+      actionableSwapCount++
+    } else {
+      waitingSwapCount++
+    }
+  })
+
   const memberAttention = deriveMemberAttention({
     pendingRegistrationCount: myPendingRegistrations.length,
-    pendingSwapCount: myPendingSwaps.length,
+    actionableSwapCount,
+    waitingSwapCount,
     hasUpcomingShift: upcoming.length > 0,
-    swapNeedsAction,
   })
 
   return <PageShell archetype="command" className="space-y-6">

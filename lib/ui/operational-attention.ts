@@ -35,10 +35,10 @@ export interface OperationalAttention {
   severity: AttentionSeverity
   /** Short (≤40 char) primary label (supports translation keys) */
   label: string
-  labelParams?: Record<string, string | number>
+  labelParams?: Record<string, string | number | string[]>
   /** Optional secondary description (supports translation keys) */
   description?: string
-  descriptionParams?: Record<string, string | number>
+  descriptionParams?: Record<string, string | number | string[]>
   /** Href to route the user to the resolution surface */
   href?: string
   /** Count associated with the item, e.g. "3 pending" */
@@ -153,16 +153,16 @@ export function deriveShiftAttention(input: ShiftAttentionInput): OperationalAtt
 
   if (totalMissing > 0 && input.isUpcoming) {
     const missingRoles = []
-    if (missingHost > 0) missingRoles.push('Host')
-    if (missingSupport > 0) missingRoles.push('Support')
-    if (missingTechnical > 0) missingRoles.push('Technical')
+    if (missingHost > 0) missingRoles.push('host')
+    if (missingSupport > 0) missingRoles.push('support')
+    if (missingTechnical > 0) missingRoles.push('technical')
     
     items.push({
       key: `shift-${input.shiftId}-gap`,
       severity: 'attention',
       label: 'staffingGap',
       description: 'missingRoles',
-      descriptionParams: { roles: missingRoles.join(', ') },
+      descriptionParams: { roles: missingRoles },
       href: '/calendar',
     })
   }
@@ -194,7 +194,6 @@ export function deriveStaffingAttention(input: StaffingAttentionInput): Operatio
     description: 'staffingDecisionsNeededDesc',
     descriptionParams: { count: input.pendingCount },
     count: input.pendingCount,
-    href: '/calendar',
   }]
 }
 
@@ -446,8 +445,9 @@ export function deriveLeaderAttention(input: LeaderAttentionInput): AttentionSum
     items.push({
       key: 'leader-pending-registrations',
       severity: 'warning',
-      label: 'Staffing decisions needed',
-      description: `${input.pendingRegistrationCount} pending registration${input.pendingRegistrationCount > 1 ? 's' : ''} to review`,
+      label: 'staffingDecisionsNeeded',
+      description: 'staffingDecisionsNeededDesc',
+      descriptionParams: { count: input.pendingRegistrationCount },
       count: input.pendingRegistrationCount,
       href: '/calendar',
     })
@@ -457,8 +457,9 @@ export function deriveLeaderAttention(input: LeaderAttentionInput): AttentionSum
     items.push({
       key: 'leader-actionable-swaps',
       severity: 'warning',
-      label: 'Swap decisions needed',
-      description: `${input.actionableSwapCount} swap request${input.actionableSwapCount > 1 ? 's' : ''} awaiting review`,
+      label: 'swapDecisionsNeeded',
+      description: 'swapDecisionsNeededDesc',
+      descriptionParams: { count: input.actionableSwapCount },
       count: input.actionableSwapCount,
       href: '/swaps',
     })
@@ -468,8 +469,9 @@ export function deriveLeaderAttention(input: LeaderAttentionInput): AttentionSum
     items.push({
       key: 'leader-waiting-swaps',
       severity: 'info',
-      label: 'Swaps pending participant',
-      description: `${input.waitingSwapCount} swap request${input.waitingSwapCount > 1 ? 's' : ''} waiting on participants`,
+      label: 'swapPendingParticipant',
+      description: 'swapPendingParticipantDesc',
+      descriptionParams: { count: input.waitingSwapCount },
       count: input.waitingSwapCount,
       href: '/swaps',
     })
@@ -479,8 +481,9 @@ export function deriveLeaderAttention(input: LeaderAttentionInput): AttentionSum
     items.push({
       key: 'leader-pending-reports',
       severity: 'info',
-      label: 'Reports awaiting completion',
-      description: `${input.pendingReportCount} draft/in-review report${input.pendingReportCount > 1 ? 's' : ''}`,
+      label: 'reportsAwaitingCompletion',
+      description: 'reportsAwaitingCompletionDesc',
+      descriptionParams: { count: input.pendingReportCount },
       count: input.pendingReportCount,
       href: '/reports',
     })
@@ -490,8 +493,9 @@ export function deriveLeaderAttention(input: LeaderAttentionInput): AttentionSum
     items.push({
       key: 'leader-dq-errors',
       severity: 'critical',
-      label: 'Data quality errors',
-      description: `${input.dqErrorCount} data quality error${input.dqErrorCount > 1 ? 's' : ''} detected`,
+      label: 'dataQualityErrors',
+      description: 'dataQualityErrorsDetectedDesc',
+      descriptionParams: { count: input.dqErrorCount },
       count: input.dqErrorCount,
       href: '/data-quality',
     })
@@ -507,12 +511,12 @@ export function deriveLeaderAttention(input: LeaderAttentionInput): AttentionSum
 export interface MemberAttentionInput {
   /** Personal pending registrations */
   pendingRegistrationCount: number
-  /** Personal pending/accepted swaps (requester or counterpart) */
-  pendingSwapCount: number
+  /** Personal actionable swaps */
+  actionableSwapCount: number
+  /** Personal waiting swaps */
+  waitingSwapCount: number
   /** True if the member has an upcoming assigned shift (within the data scope) */
   hasUpcomingShift: boolean
-  /** True if the member's swap requires their action (resolver said so) */
-  swapNeedsAction: boolean
 }
 
 export function deriveMemberAttention(input: MemberAttentionInput): AttentionSummary {
@@ -522,22 +526,34 @@ export function deriveMemberAttention(input: MemberAttentionInput): AttentionSum
     items.push({
       key: 'member-pending-registrations',
       severity: 'info',
-      label: 'Registration awaiting approval',
-      description: `${input.pendingRegistrationCount} pending registration${input.pendingRegistrationCount > 1 ? 's' : ''}`,
+      label: 'registrationAwaitingApproval',
+      description: 'registrationAwaitingApprovalDesc',
+      descriptionParams: { count: input.pendingRegistrationCount },
       count: input.pendingRegistrationCount,
       href: '/calendar',
     })
   }
 
-  if (input.pendingSwapCount > 0) {
+  if (input.actionableSwapCount > 0) {
     items.push({
-      key: 'member-pending-swaps',
-      severity: input.swapNeedsAction ? 'warning' : 'info',
-      label: input.swapNeedsAction ? 'Swap requires your response' : 'Swap request pending',
-      description: input.swapNeedsAction
-        ? 'You have a swap request awaiting your response'
-        : 'Your swap request is pending approval',
-      count: input.pendingSwapCount,
+      key: 'member-actionable-swaps',
+      severity: 'warning',
+      label: 'swapRequiresResponse',
+      description: 'swapRequiresResponseDesc',
+      descriptionParams: { count: input.actionableSwapCount },
+      count: input.actionableSwapCount,
+      href: '/swaps',
+    })
+  }
+  
+  if (input.waitingSwapCount > 0) {
+    items.push({
+      key: 'member-waiting-swaps',
+      severity: 'info',
+      label: 'swapRequestPending',
+      description: 'swapRequestPendingDesc',
+      descriptionParams: { count: input.waitingSwapCount },
+      count: input.waitingSwapCount,
       href: '/swaps',
     })
   }
