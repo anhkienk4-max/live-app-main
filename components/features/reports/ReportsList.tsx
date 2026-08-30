@@ -345,22 +345,17 @@ export function ReportsList() {
                     className="mt-auto w-full"
                     actions={buildReportActions(
                       {
-                        canSubmit: false, // not used at row level
-                        canReview: currentUser ? hasPermission(currentUser, 'reports.review') : false,
                         canDelete: Boolean((!report.metrics_confirmed && canRemove) || (report.metrics_confirmed && canArchive)),
                         canExport: currentUser ? hasPermission(currentUser, 'reports.export') : false,
                         isConfirmed: Boolean(report.metrics_confirmed),
-                        isDraft: !report.metrics_confirmed,
                       },
                       {
                         onView: () => setSelectedReport(report),
-                        onReview: () => setSelectedReport(report),
                         onExport: () => exportReportDetailToExcel(report, exportContext),
                         onDelete: () => void requestRemove(report),
                       },
                       {
                         view: t('viewDetails'),
-                        reviewReport: t('review'),
                         export: t('exportExcel'),
                         archive: t('archiveReport'),
                         delete: t('deleteDraftReport'),

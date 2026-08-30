@@ -237,8 +237,8 @@ export function ShiftList() {
             },
             {
               view: t('viewShiftDetail'),
-              edit: t('edit') || 'Edit',
-              duplicate: 'Duplicate',
+              edit: t('edit'),
+              duplicate: t('duplicate'),
               delete: t('delete'),
             },
             {

@@ -245,11 +245,11 @@ export function SwapRequestList() {
                       },
                       {
                         viewDetails: t('viewDetails'),
-                        accept: t('accept') || 'Accept',
+                        accept: t('accept'),
                         reject: t('reject'),
                         approve: t('approve'),
                         reviewerReject: t('reject'),
-                        cancel: t('cancelRegistration') || 'Cancel Request',
+                        cancel: t('cancelRegistration'),
                       }
                     )}
                   />

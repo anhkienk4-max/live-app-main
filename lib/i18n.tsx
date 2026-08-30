@@ -318,8 +318,10 @@ const en = {
   warningRows: 'Warning rows',
   confirmImport: 'Confirm import',
   duplicateWarning: 'Duplicate shift warning',
+  duplicate: 'Duplicate',
   correctRows: 'Correct rows before confirming',
   googleSheetsHelp: 'Use a public Google Sheets URL or mock://schedule for the local mock boundary.',
+  // Error messages
   noImportHistory: 'No schedule imports have been previewed yet.',
   reportOcrReview: 'Report & OCR review',
   submitReport: 'Submit report',
@@ -1251,8 +1253,10 @@ const vi: Record<keyof typeof en, string> = {
   warningRows: 'Dòng cảnh báo',
   confirmImport: 'Xác nhận import',
   duplicateWarning: 'Cảnh báo ca trùng',
+  duplicate: 'Nhân bản',
   correctRows: 'Chỉnh sửa dòng lỗi trước khi xác nhận',
   googleSheetsHelp: 'Dùng URL Google Sheets công khai hoặc mock://schedule cho ranh giới mock cục bộ.',
+  // Error messages
   noImportHistory: 'Chưa có lịch sử xem trước/import lịch.',
   reportOcrReview: 'Báo cáo & rà soát OCR',
   submitReport: 'Gửi báo cáo',

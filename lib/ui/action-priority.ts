@@ -159,7 +159,7 @@ export function buildStaffingApprovalActions(
 ): PrioritizedAction[] {
   const result: PrioritizedAction[] = []
 
-  if (input.canApprove) {
+  if (input.canApprove && handlers.approve) {
     result.push({
       key: 'approve',
       label: labels.approve,
@@ -170,7 +170,7 @@ export function buildStaffingApprovalActions(
     })
   }
 
-  if (input.canReject) {
+  if (input.canReject && handlers.reject) {
     result.push({
       key: 'reject',
       label: labels.reject,
@@ -181,7 +181,7 @@ export function buildStaffingApprovalActions(
     })
   }
 
-  if (input.canRemove) {
+  if (input.canRemove && handlers.remove) {
     result.push({
       key: 'remove',
       label: labels.remove,
@@ -244,7 +244,7 @@ export function buildSwapActions(
   })
 
   // Accept (counterpart positive response) = PRIMARY
-  if (flags.showAccept) {
+  if (flags.showAccept && handlers.onAccept) {
     result.push({
       key: 'accept',
       label: labels.accept,
@@ -255,7 +255,7 @@ export function buildSwapActions(
   }
 
   // Approve (reviewer final approval) = PRIMARY
-  if (flags.showApprove) {
+  if (flags.showApprove && handlers.onApprove) {
     result.push({
       key: 'approve',
       label: labels.approve,
@@ -266,7 +266,7 @@ export function buildSwapActions(
   }
 
   // Counterpart reject = DESTRUCTIVE
-  if (flags.showCounterpartReject) {
+  if (flags.showCounterpartReject && handlers.onCounterpartReject) {
     result.push({
       key: 'counterpart-reject',
       label: labels.reject,
@@ -277,7 +277,7 @@ export function buildSwapActions(
   }
 
   // Reviewer reject = DESTRUCTIVE
-  if (flags.showReviewerReject) {
+  if (flags.showReviewerReject && handlers.onReviewerReject) {
     result.push({
       key: 'reviewer-reject',
       label: labels.reviewerReject,
@@ -288,7 +288,7 @@ export function buildSwapActions(
   }
 
   // Requester cancel = DESTRUCTIVE
-  if (flags.showCancel) {
+  if (flags.showCancel && handlers.onCancel) {
     result.push({
       key: 'cancel',
       label: labels.cancel,
@@ -308,50 +308,32 @@ export function buildSwapActions(
  * View = SECONDARY.
  */
 export interface ReportActionInput {
-  canSubmit: boolean
-  canReview: boolean
   canDelete: boolean
   canExport: boolean
   isConfirmed: boolean
-  isDraft: boolean
 }
 
 export function buildReportActions(
   input: ReportActionInput,
   handlers: {
     onView: () => void
-    onReview?: () => void
     onDelete?: () => void
     onExport?: () => void
   },
   labels: {
     view: string
-    reviewReport: string
     archive: string
     delete: string
     export: string
   },
   icons?: {
     view?: React.ReactNode
-    reviewReport?: React.ReactNode
     archive?: React.ReactNode
     delete?: React.ReactNode
     export?: React.ReactNode
   }
 ): PrioritizedAction[] {
   const result: PrioritizedAction[] = []
-
-  // Review is PRIMARY for unconfirmed reports when actor has permission
-  if (input.canReview && !input.isConfirmed) {
-    result.push({
-      key: 'review',
-      label: labels.reviewReport,
-      tier: 'primary',
-      icon: icons?.reviewReport,
-      onClick: handlers.onReview,
-      testId: 'action-review-report',
-    })
-  }
 
   // View is SECONDARY (always accessible)
   result.push({

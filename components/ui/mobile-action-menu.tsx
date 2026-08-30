@@ -33,7 +33,7 @@ export function MobileActionMenu({ actions, breakpoint = 'md', align = 'end' }: 
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className={`inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-11 w-11 md:h-9 md:w-9 shrink-0 ${displayClass}`} aria-label={t('actions') || 'Actions'}>
+      <DropdownMenuTrigger className={`inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-11 w-11 md:h-9 md:w-9 shrink-0 ${displayClass}`} aria-label={t('actions')}>
         <MoreHorizontal className="h-5 w-5 md:h-4 md:w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align={align}>

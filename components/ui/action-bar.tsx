@@ -65,8 +65,8 @@ export function ActionBar({
   const overflow = actions.filter(a => a.tier === 'overflow')
   const destructive = actions.filter(a => a.tier === 'destructive')
 
-  // Actions that go into the desktop overflow menu (overflow + destructive)
-  const desktopOverflowActions = [...overflow, ...destructive]
+  // Actions that go into the desktop overflow menu
+  const desktopOverflowActions = [...overflow]
 
   // Actions that go into the mobile menu (secondary + overflow + destructive)
   const mobileMenuActions = toMobileMenuActions(actions)
@@ -137,7 +137,7 @@ export function ActionBar({
         <DropdownMenu>
           <DropdownMenuTrigger
             className={`inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground shrink-0 ${collapseHide} ${compact ? 'h-8 w-8' : 'h-9 w-9'}`}
-            aria-label={t('moreActions') || 'More actions'}
+            aria-label={t('moreActions')}
             data-testid="action-overflow-trigger"
           >
             <MoreHorizontal className="h-4 w-4" />
@@ -149,21 +149,6 @@ export function ActionBar({
                 disabled={action.disabled}
                 onClick={action.onClick}
                 data-testid={action.testId ?? `action-overflow-${action.key}`}
-              >
-                {action.icon && <span className="mr-2">{action.icon}</span>}
-                {action.label}
-              </DropdownMenuItem>
-            ))}
-            {overflow.length > 0 && destructive.length > 0 && (
-              <DropdownMenuSeparator />
-            )}
-            {destructive.map(action => (
-              <DropdownMenuItem
-                key={action.key}
-                disabled={action.disabled}
-                onClick={action.onClick}
-                className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                data-testid={action.testId ?? `action-overflow-destructive-${action.key}`}
               >
                 {action.icon && <span className="mr-2">{action.icon}</span>}
                 {action.label}
