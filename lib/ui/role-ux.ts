@@ -73,6 +73,7 @@ const leaderNav: NavItem[] = [
   navCatalogue.live,
   navCatalogue.swaps,
   navCatalogue.reports,
+  navCatalogue.analytics,
   navCatalogue.staff,
   navCatalogue.brands,
   navCatalogue.platforms,
@@ -88,9 +89,13 @@ const leaderNav: NavItem[] = [
 const memberNav: NavItem[] = [
   navCatalogue.dashboard,
   navCatalogue.calendar,
+  navCatalogue.live,
   navCatalogue.swaps,
-  navCatalogue.notifications,
   navCatalogue.reports,
+  navCatalogue.brands,
+  navCatalogue.platforms,
+  navCatalogue.campaigns,
+  navCatalogue.notifications,
   navCatalogue.settings,
   navCatalogue.profile,
 ]

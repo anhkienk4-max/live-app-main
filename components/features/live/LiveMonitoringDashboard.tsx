@@ -23,6 +23,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DashboardUpdateModal } from './DashboardUpdateModal'
+import { hasPermission } from '@/lib/permissions'
+import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+
 import { LiveSessionModal } from './LiveSessionModal'
 import { PageLoadError } from '@/components/ui/page-load-error'
 
@@ -31,6 +34,7 @@ const todayValue = () => format(new Date(), 'yyyy-MM-dd')
 const initialFilters = (): Filters => ({ date: todayValue(), brand: 'all', platform: 'all', campaign: 'all', host: 'all', support: 'all', technical: 'all', status: 'all' })
 
 export function LiveMonitoringDashboard() {
+  const { currentUser } = useCurrentUser()
   const { t } = useTranslation()
   const [shifts, setShifts] = React.useState<Shift[]>([])
   const [updates, setUpdates] = React.useState<Record<string, DashboardUpdate[]>>({})
@@ -140,7 +144,16 @@ export function LiveMonitoringDashboard() {
               <div className="grid grid-cols-3 gap-2 text-sm"><Value label={t('host')} value={roleNames(shift, 'host')} /><Value label={t('support')} value={roleNames(shift, 'support')} /><Value label={t('technical')} value={roleNames(shift, 'technical')} /></div>
               <div className="grid grid-cols-3 gap-2 border-t pt-3"><Value label={t('revenue')} value={latest ? formatCurrency(latest.revenue) : '—'} /><Value label={t('orders')} value={latest ? latest.orders.toLocaleString() : '—'} /><Value label={t('viewers')} value={latest ? latest.current_viewers.toLocaleString() : '—'} /></div>
               {latest && <p className="flex items-center gap-2 text-xs text-muted-foreground"><Clock className="h-3 w-3" />{format(new Date(latest.time), 'HH:mm dd/MM/yyyy')}</p>}
-              <div className="flex gap-2"><Button className="flex-1" variant="outline" onClick={() => setSelectedShift(shift)} data-testid={`open-live-session-${shift.id}`}>{t('viewDetails')}</Button>{(shift.status === 'live' || shift.status === 'preparing' || shift.status === 'paused') && <Button className="flex-1" onClick={() => setUpdateShift(shift)} data-testid={`open-live-dashboard-update-${shift.id}`}>{t('submitDashboardUpdate')}</Button>}</div>
+              <div className="flex gap-2">
+                <Button className="flex-1" variant="outline" onClick={() => setSelectedShift(shift)} data-testid={`open-live-session-${shift.id}`}>
+                  {t('viewDetails')}
+                </Button>
+                {(shift.status === 'live' || shift.status === 'preparing' || shift.status === 'paused') && currentUser && hasPermission(currentUser, 'shifts.edit') && (
+                  <Button className="flex-1" onClick={() => setUpdateShift(shift)} data-testid={`open-live-dashboard-update-${shift.id}`}>
+                    {t('submitDashboardUpdate')}
+                  </Button>
+                )}
+              </div>
             </CardContent></Card>
           })}
         </div>
