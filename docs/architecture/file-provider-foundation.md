@@ -12,8 +12,9 @@ Business modules call the neutral `fileStorageService` gateway and use
 objects and folders. Names are sanitized and uploads are centrally validated.
 
 Google Drive and OneDrive adapter boundaries were defined in FILE-0/1. The
-FILE-2 Google Drive adapter uses a server-owned service account, while
-OneDrive remains unimplemented. A configured but unavailable provider fails
+FILE-2 Google Drive adapter supports an explicit system OAuth refresh-token
+mode (preferred for personal My Drive) and a service-account mode for Shared
+Drives, while OneDrive remains unimplemented. A configured but unavailable provider fails
 with `FILE_PROVIDER_NOT_IMPLEMENTED`; no fake upload succeeds. Development/test
 may use the deterministic mock provider. Production fails closed for missing,
 unsupported, or mock configuration. Credentials are server-only and must never
@@ -21,12 +22,33 @@ use `NEXT_PUBLIC_*` variables.
 
 ## Google Drive adapter (FILE-2)
 
-The system account is authenticated with a Google service account. Configure
-these server-only variables:
+The recommended system account is a dedicated normal Google account in My
+Drive, authenticated with an OAuth refresh token. Configure these server-only
+variables:
 
+- `GOOGLE_DRIVE_AUTH_MODE=oauth_refresh_token` (the default; set explicitly in production)
+- `GOOGLE_DRIVE_CLIENT_ID`
+- `GOOGLE_DRIVE_CLIENT_SECRET`
+- `GOOGLE_DRIVE_REFRESH_TOKEN`
+- `GOOGLE_DRIVE_ROOT_FOLDER_ID`
+
+Run `node --import ./tests/typescript-alias-loader.mjs scripts/google-drive-oauth-bootstrap.ts`
+locally to obtain the refresh token. The script uses offline access and
+consent, prints an authorization URL, accepts the returned code, and prints
+the token once for secure server/Vercel storage. Never commit or expose it in
+browser code or logs.
+
+For Google Workspace Shared Drives, an explicit service-account mode remains
+available with these server-only variables:
+
+- `GOOGLE_DRIVE_AUTH_MODE=service_account`
 - `GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL`
 - `GOOGLE_DRIVE_PRIVATE_KEY` (PEM; escaped `\\n` is accepted)
 - `GOOGLE_DRIVE_ROOT_FOLDER_ID`
+
+Service-account mode is not a personal My Drive storage model; its configured
+root must be a Shared Drive folder (or an equivalent Workspace deployment).
+The adapter health check rejects a service-account root without a Drive ID.
 
 The adapter resolves each sanitized `logical_path` segment as a folder below
 the configured root and caches successful folder IDs in-process. Existing
@@ -54,7 +76,6 @@ blindly retried. No user-facing Google OAuth or provider selection is exposed.
 This task does not migrate or change that behavior. Future work should migrate
 those call sites deliberately:
 
-1. FILE-2: implement the Google Drive adapter
-2. FILE-3: migrate report images
-3. FILE-4: implement the OneDrive adapter
-4. FILE-5: scheduled database backup to a configured provider
+1. FILE-3: migrate report images
+2. FILE-4: implement the OneDrive adapter
+3. FILE-5: scheduled database backup to a configured provider
