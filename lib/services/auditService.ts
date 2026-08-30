@@ -1,6 +1,8 @@
 import { AuditAction, AuditLog, AuditModule, AuditRelatedRecord, SystemPermission, User } from '@/lib/types/database.types'
 import { resolveSystemPermission } from '@/lib/permissions'
 import { classifyOperationStatus } from '@/lib/utils/auditNormalize'
+import { getAuthMode } from '@/lib/auth/authMode'
+import { getSupabaseAuditRepository } from '@/lib/services/supabaseAuditService'
 
 type AuditInput = {
   actor: Pick<User, 'id' | 'full_name' | 'role' | 'system_permission'>
@@ -60,13 +62,13 @@ const createMockAuditHistory = (): AuditLog[] => {
 
   return Array.from({ length: 87 }, (_, index) => {
     const actor = actors[index % actors.length]
-    const module = modules[index % modules.length]
+    const auditModule = modules[index % modules.length]
     const number = index + 1
     // Persisted contract remains success|failed only; warning/retryable are derived read-side via classifyOperationStatus
     const derived: 'success' | 'warning' | 'failed' | 'retryable' =
       number % 19 === 0 ? 'failed' : number % 17 === 0 ? 'retryable' : number % 13 === 0 ? 'warning' : 'success'
     const status: AuditLog['status'] = derived === 'retryable' || derived === 'failed' ? 'failed' : 'success'
-    const after: Record<string, unknown> = { sequence: number, module }
+    const after: Record<string, unknown> = { sequence: number, module: auditModule }
     // attach safe retryable/error/warning context without secrets — classification derives warning/retryable
     if (derived === 'retryable') {
       after.retryable = true
@@ -85,13 +87,13 @@ const createMockAuditHistory = (): AuditLog[] => {
       actor_id: actor.id,
       actor_name: actor.name,
       actor_role: actor.role,
-      module,
+      module: auditModule,
       action: actions[index % actions.length],
-      entity_type: module === 'reports' ? 'report' : module === 'live' ? 'live_snapshot' : 'shift',
+      entity_type: auditModule === 'reports' ? 'report' : auditModule === 'live' ? 'live_snapshot' : 'shift',
       entity_id: `mock-${number}`,
       entity_name: `Mock audit record ${number}`,
       after,
-      source: module === 'imports' ? 'excel_import' : 'system',
+      source: auditModule === 'imports' ? 'excel_import' : 'system',
       status,
       correlation_id: `mock-request-${String(number).padStart(3, '0')}`,
       entity_exists: true,
@@ -124,7 +126,6 @@ const persist = () => {
 }
 
 export function recordAuditEvent(input: AuditInput): AuditLog {
-  hydrate()
   const entry: AuditLog = {
     id: generateId(),
     timestamp: new Date().toISOString(),
@@ -148,6 +149,11 @@ export function recordAuditEvent(input: AuditInput): AuditLog {
     ...(input.error_code ? { error_code: input.error_code } : {}),
     ...(typeof input.retryable === 'boolean' ? { retryable: input.retryable } : {}),
   }
+  // Supabase mutations are audited by database triggers in the same
+  // transaction. Keep this compatibility return value for existing callers,
+  // but never persist a second client-owned event in production mode.
+  if (getAuthMode() === 'supabase') return entry
+  hydrate()
   auditLogs.unshift(entry)
   persist()
   return entry
@@ -194,6 +200,7 @@ const filterAuditLogs = (logs: AuditLog[], filters: AuditLogFilters) => {
 
 export const auditService = {
   async getVisibleFor(user: Pick<User, 'id' | 'role' | 'system_permission'>): Promise<AuditLog[]> {
+    if (getAuthMode() === 'supabase') return getSupabaseAuditRepository().getVisibleFor(user)
     hydrate()
     return visibleLogsFor(user)
   },
@@ -211,6 +218,7 @@ export const auditService = {
     filters?: AuditLogFilters
     sort?: 'newest' | 'oldest'
   }): Promise<AuditLogPage> {
+    if (getAuthMode() === 'supabase') return getSupabaseAuditRepository().getAuditLogs({ user, page, pageSize, filters, sort })
     hydrate()
     const scoped = visibleLogsFor(user)
     const actors = [...new Map(scoped.map(entry => [entry.actor_id, entry.actor_name])).entries()]
@@ -236,6 +244,7 @@ export const auditService = {
   },
 
   async getById(id: string): Promise<AuditLog | null> {
+    if (getAuthMode() === 'supabase') return getSupabaseAuditRepository().getById(id)
     hydrate()
     return auditLogs.find(entry => entry.id === id) || null
   },
@@ -245,6 +254,7 @@ export const auditService = {
     actor: Pick<User, 'role' | 'system_permission'>,
     data: Pick<AuditLog, 'admin_note' | 'review_status' | 'handling_reason'>,
   ): Promise<AuditLog> {
+    if (getAuthMode() === 'supabase') return getSupabaseAuditRepository().addAdministrativeReview(id, data)
     if (resolveSystemPermission(actor) !== 'admin') {
       throw new Error('Only Admin can add an administrative audit review.')
     }
@@ -257,6 +267,7 @@ export const auditService = {
   },
 
   async exportAll(user: Pick<User, 'role' | 'system_permission'>): Promise<AuditLog[]> {
+    if (getAuthMode() === 'supabase') return getSupabaseAuditRepository().exportAll(user)
     if (resolveSystemPermission(user) !== 'admin') throw new Error('Only Admin can export all audit events.')
     hydrate()
     return [...auditLogs]

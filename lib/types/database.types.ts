@@ -85,6 +85,10 @@ export interface AuditRelatedRecord {
 export interface AuditLog {
   id: string
   timestamp: string
+  /** Persisted audit identity fields; timestamp/actor_id remain UI aliases. */
+  created_at?: string
+  actor_auth_user_id?: string
+  actor_business_user_id?: string
   actor_id: string
   actor_name: string
   actor_role: SystemPermission
@@ -95,6 +99,10 @@ export interface AuditLog {
   entity_name: string
   before?: Record<string, unknown>
   after?: Record<string, unknown>
+  before_data?: Record<string, unknown>
+  after_data?: Record<string, unknown>
+  changed_fields?: string[]
+  metadata?: Record<string, unknown>
   reason?: string
   source: 'manual' | 'excel_import' | 'google_sheets' | 'system' | 'ocr' | 'upload'
   // Persisted contract: success|failed only (warning/retryable derived read-side via auditNormalize::classifyOperationStatus)
