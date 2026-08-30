@@ -1,19 +1,23 @@
+import 'server-only'
+
 import type { FileProvider, FileProviderName, FileUploadInput, FileUploadResult } from '@/lib/files/fileProvider'
 import { assertMetadataContainsNoBinary, validateFileUploadInput } from '@/lib/files/fileValidation'
 import { FileProviderError, notImplementedProvider, resolveFileProviderName } from '@/lib/server/fileProviderResolver'
+import { createGoogleDriveFileProvider } from '@/lib/server/googleDriveFileProvider'
 import { mockFileProvider } from '@/lib/server/mockFileProvider'
 
 type Environment = Record<string, string | undefined>
 
-function providerFor(name: FileProviderName | 'mock'): FileProvider {
+function providerFor(name: FileProviderName | 'mock', env: Environment): FileProvider {
   if (name === 'mock') return mockFileProvider
+  if (name === 'google_drive') return createGoogleDriveFileProvider({ env })
   return notImplementedProvider(name)
 }
 
 export function createFileStorageService(options: { env?: Environment; provider?: FileProvider } = {}) {
   if (typeof window !== 'undefined') throw new FileProviderError('FILE_PROVIDER_SERVER_ONLY')
   const env = options.env ?? process.env
-  const provider = options.provider ?? providerFor(resolveFileProviderName(env))
+  const provider = options.provider ?? providerFor(resolveFileProviderName(env), env)
   return {
     providerName: provider.name,
     async upload(input: FileUploadInput): Promise<FileUploadResult> {
