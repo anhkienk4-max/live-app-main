@@ -5,7 +5,7 @@ import { isAuthBusinessIdentityConsistent } from '../lib/auth/authIdentity.ts'
 import { isNonEnumeratingPasswordRecoveryError } from '../lib/auth/passwordRecovery.ts'
 import { isPublicAuthPath } from '../lib/supabase/middleware.ts'
 
-const migrationPath = new URL('../supabase/migrations/20260827100000_core_account_lifecycle.sql', import.meta.url)
+const migrationPath = new URL('../supabase/migrations/20260827094704_core_account_lifecycle.sql', import.meta.url)
 
 test('Core V1 migration links an existing Auth UUID and cannot be called anonymously', async () => {
   const sql = await readFile(migrationPath, 'utf8')

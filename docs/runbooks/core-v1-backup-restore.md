@@ -58,6 +58,8 @@ Auth-dependent RPC behavior is classified `RESTORED_SCHEMA_VERIFIED_AUTH_RUNTIME
 
 The staging snapshot used for the Core V1 drill had migration count 26 (latest `20260830113000`), 16 RLS-enabled public tables, 39 non-internal triggers, and these counts: business_users 8, brands 3, platforms 6, campaigns 1, shifts 53, shift_registrations 19, swap_requests 1, reports 1, notifications 26, schedule_import_batches 10, schedule_import_batch_rows 582, audit_logs 40, audit_log_reviews 0. The isolated restore matched all listed counts and non-sensitive fingerprints.
 
+The earlier full data drill therefore covers the schema/data snapshot through `20260830113000`. After the later `20260830114000_core_v1_persistent_audit_read_permission` change, a targeted schema-only recovery delta check was run from staging into a fresh disposable local PostgreSQL target. It restored `audit_logs_read` as Admin OR Leader scoped to `calendar`, `live`, `reports`, `campaigns`, `swaps`, or `imports`, with no Member own-event clause; `audit_log_reviews_read` remained Admin-only. The disposable target and temporary dump were destroyed after validation.
+
 ## Limitations and provider checks
 
 - Auth users/configuration and password hashes are not part of the normal `public,private,storage` dump: `AUTH_RECOVERY_DEPENDENCY=PROVIDER_MANAGED / SEPARATE PROCEDURE`.

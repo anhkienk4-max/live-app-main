@@ -244,6 +244,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
               if (!shift || !staff) return null
               return (
                 <div key={registration.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200/50 bg-background/80 p-3 shadow-sm">
+                  <div>
                     <p className="font-medium text-sm">{staff.full_name} <span className="text-muted-foreground font-normal mx-1">·</span> {t(registration.operational_role)}</p>
                     <p className="text-xs text-muted-foreground">{shift.title || shift.id} <span className="mx-1">·</span> {shift.date} {formatShiftTimeRange(shift)}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{format(new Date(registration.requested_at), 'dd/MM/yyyy HH:mm')}{registration.review_notes ? ` · ${registration.review_notes}` : ''}</p>
