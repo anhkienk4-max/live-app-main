@@ -4,27 +4,11 @@ import { google } from 'googleapis'
 
 import type { FileProvider, FileProviderMetadata, FileUploadInput, FileUploadResult } from '@/lib/files/fileProvider'
 import { sanitizeFileName } from '@/lib/files/fileValidation'
-import { FileProviderError } from '@/lib/server/fileProviderResolver'
+import { createGoogleDriveAuth, GoogleDriveError, type GoogleDriveEnvironment, type GoogleDriveErrorCode } from '@/lib/server/googleDriveAuth'
 
 const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder'
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive'
 const DEFAULT_RETRY_DELAY_MS = 100
 const MAX_RETRIES = 2
-
-export type GoogleDriveErrorCode =
-  | 'GOOGLE_DRIVE_NOT_CONFIGURED'
-  | 'GOOGLE_DRIVE_AUTH_FAILED'
-  | 'GOOGLE_DRIVE_ROOT_FOLDER_INVALID'
-  | 'GOOGLE_DRIVE_UPLOAD_FAILED'
-  | 'GOOGLE_DRIVE_FILE_NOT_FOUND'
-  | 'GOOGLE_DRIVE_DELETE_FAILED'
-
-export class GoogleDriveError extends FileProviderError {
-  constructor(public readonly code: GoogleDriveErrorCode, message: string = code) {
-    super(code, message)
-    this.name = 'GoogleDriveError'
-  }
-}
 
 type DriveFile = {
   id?: string | null
@@ -38,6 +22,7 @@ type DriveFile = {
   webViewLink?: string | null
   webContentLink?: string | null
   trashed?: boolean | null
+  driveId?: string | null
 }
 
 type DriveFilesResource = {
@@ -48,8 +33,6 @@ type DriveFilesResource = {
 }
 
 export type GoogleDriveClient = { files: DriveFilesResource }
-
-export type GoogleDriveEnvironment = Record<string, string | undefined>
 
 type GoogleDriveOptions = {
   env?: GoogleDriveEnvironment
@@ -95,15 +78,10 @@ async function wait(ms: number): Promise<void> {
   await new Promise(resolve => setTimeout(resolve, ms))
 }
 
-function requiredEnv(env: GoogleDriveEnvironment): { email: string; privateKey: string; rootFolderId: string } {
-  const email = env.GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL?.trim()
-  const privateKey = env.GOOGLE_DRIVE_PRIVATE_KEY?.replace(/\\n/g, '\n').trim()
+function requiredRootFolderId(env: GoogleDriveEnvironment): string {
   const rootFolderId = env.GOOGLE_DRIVE_ROOT_FOLDER_ID?.trim()
-  if (!email || !privateKey || !rootFolderId) throw new GoogleDriveError('GOOGLE_DRIVE_NOT_CONFIGURED')
-  if (!email.includes('@') || !privateKey.includes('BEGIN PRIVATE KEY') || !privateKey.includes('END PRIVATE KEY')) {
-    throw new GoogleDriveError('GOOGLE_DRIVE_AUTH_FAILED')
-  }
-  return { email, privateKey, rootFolderId }
+  if (!rootFolderId) throw new GoogleDriveError('GOOGLE_DRIVE_NOT_CONFIGURED', 'Missing GOOGLE_DRIVE_ROOT_FOLDER_ID.')
+  return rootFolderId
 }
 
 function queryName(name: string): string {
@@ -140,11 +118,12 @@ function toMetadata(file: DriveFile): FileProviderMetadata {
 
 export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}): FileProvider {
   const env = options.env ?? process.env
-  const { email, privateKey, rootFolderId } = requiredEnv(env)
+  const rootFolderId = requiredRootFolderId(env)
+  const { auth, mode: authMode } = createGoogleDriveAuth(env)
   const retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS
   const drive = options.drive ?? (google.drive({
     version: 'v3',
-    auth: new google.auth.JWT({ email, key: privateKey, scopes: [DRIVE_SCOPE] }),
+    auth: auth as Parameters<typeof google.drive>[0]['auth'],
   }) as unknown as GoogleDriveClient)
   const folderCache = new Map<string, string>()
 
@@ -302,7 +281,7 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
     async healthCheck() {
       let file: DriveFile
       try {
-        file = await driveFile(rootFolderId, 'id,name,mimeType,trashed')
+        file = await driveFile(rootFolderId, 'id,name,mimeType,trashed,driveId')
       } catch (error) {
         if (error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_FILE_NOT_FOUND') {
           throw new GoogleDriveError('GOOGLE_DRIVE_ROOT_FOLDER_INVALID')
@@ -310,6 +289,9 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
         throw error
       }
       if (file.mimeType !== DRIVE_FOLDER_MIME || file.trashed) throw new GoogleDriveError('GOOGLE_DRIVE_ROOT_FOLDER_INVALID')
+      if (authMode === 'service_account' && !file.driveId) {
+        throw new GoogleDriveError('GOOGLE_DRIVE_ROOT_FOLDER_INVALID', 'Service-account mode requires a Shared Drive root folder.')
+      }
       return { ok: true, provider: 'google_drive' }
     },
   }

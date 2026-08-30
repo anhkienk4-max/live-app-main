@@ -4,10 +4,21 @@ import test from 'node:test'
 import { createFileStorageService } from '@/lib/services/fileStorageService'
 import type { FileUploadInput } from '@/lib/files/fileProvider'
 import { FileProviderError } from '@/lib/server/fileProviderResolver'
-import { createGoogleDriveFileProvider, GoogleDriveError } from '@/lib/server/googleDriveFileProvider'
+import { createGoogleDriveFileProvider } from '@/lib/server/googleDriveFileProvider'
+import { createGoogleDriveAuth, GoogleDriveError, resolveGoogleDriveAuthMode } from '@/lib/server/googleDriveAuth'
 
 const env = {
   NODE_ENV: 'production',
+  GOOGLE_DRIVE_AUTH_MODE: 'oauth_refresh_token',
+  GOOGLE_DRIVE_CLIENT_ID: 'client-id',
+  GOOGLE_DRIVE_CLIENT_SECRET: 'client-secret',
+  GOOGLE_DRIVE_REFRESH_TOKEN: 'refresh-token',
+  GOOGLE_DRIVE_ROOT_FOLDER_ID: 'root-folder',
+}
+
+const serviceAccountEnv = {
+  NODE_ENV: 'production',
+  GOOGLE_DRIVE_AUTH_MODE: 'service_account',
   GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL: 'storage@example.iam.gserviceaccount.com',
   GOOGLE_DRIVE_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\\nkey\\n-----END PRIVATE KEY-----',
   GOOGLE_DRIVE_ROOT_FOLDER_ID: 'root-folder',
@@ -82,9 +93,30 @@ function state(): FakeState {
   return { folderIds: new Map(), folderCreates: 0, listCalls: 0, uploadCalls: 0, failUpload429: 0, rootMimeType: 'application/vnd.google-apps.folder' }
 }
 
-test('missing and malformed service-account configuration fail closed', () => {
-  assert.throws(() => createGoogleDriveFileProvider({ env: { NODE_ENV: 'production' } }), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_NOT_CONFIGURED')
-  assert.throws(() => createGoogleDriveFileProvider({ env: { ...env, GOOGLE_DRIVE_PRIVATE_KEY: 'not-a-pem' } }), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_AUTH_FAILED')
+test('OAuth refresh-token mode is the default and requires every credential', () => {
+  assert.equal(resolveGoogleDriveAuthMode({ NODE_ENV: 'production' }), 'oauth_refresh_token')
+  assert.throws(() => createGoogleDriveAuth({ NODE_ENV: 'production' }), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_NOT_CONFIGURED')
+  assert.throws(() => createGoogleDriveAuth({ ...env, GOOGLE_DRIVE_CLIENT_ID: '' }), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_NOT_CONFIGURED')
+  assert.throws(() => createGoogleDriveAuth({ ...env, GOOGLE_DRIVE_CLIENT_SECRET: '' }), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_NOT_CONFIGURED')
+  assert.throws(() => createGoogleDriveAuth({ ...env, GOOGLE_DRIVE_REFRESH_TOKEN: '' }), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_NOT_CONFIGURED')
+})
+
+test('OAuth client receives the refresh token without a browser OAuth flow', () => {
+  const result = createGoogleDriveAuth(env)
+  assert.equal(result.mode, 'oauth_refresh_token')
+  assert.equal((result.auth as { credentials?: { refresh_token?: string } }).credentials?.refresh_token, 'refresh-token')
+})
+
+test('service-account mode is explicit and malformed keys fail closed', () => {
+  assert.equal(resolveGoogleDriveAuthMode(serviceAccountEnv), 'service_account')
+  assert.equal(createGoogleDriveAuth(serviceAccountEnv).mode, 'service_account')
+  assert.throws(() => createGoogleDriveAuth({ ...serviceAccountEnv, GOOGLE_DRIVE_PRIVATE_KEY: 'not-a-pem' }), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_AUTH_FAILED')
+  assert.throws(() => createGoogleDriveAuth({ ...serviceAccountEnv, GOOGLE_DRIVE_AUTH_MODE: 'invalid' }), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_AUTH_FAILED')
+  assert.throws(() => createGoogleDriveAuth({ ...serviceAccountEnv, GOOGLE_DRIVE_AUTH_MODE: undefined }), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_NOT_CONFIGURED')
+  assert.throws(() => createGoogleDriveAuth({ NODE_ENV: 'production', GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL: serviceAccountEnv.GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL, GOOGLE_DRIVE_PRIVATE_KEY: serviceAccountEnv.GOOGLE_DRIVE_PRIVATE_KEY }), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_NOT_CONFIGURED')
+})
+
+test('root folder configuration is required independently of auth mode', () => {
   assert.throws(() => createGoogleDriveFileProvider({ env: { ...env, GOOGLE_DRIVE_ROOT_FOLDER_ID: '' } }), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_NOT_CONFIGURED')
 })
 
