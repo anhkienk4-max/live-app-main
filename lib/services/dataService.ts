@@ -1168,6 +1168,7 @@ export const shiftService = {
   },
 
   async create(data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>): Promise<Shift> {
+    data.status = 'scheduled'
     if (getAuthMode() === 'supabase') {
       const persisted = await getSupabaseShiftRepository().create(data)
       upsertShiftProjection(persisted)

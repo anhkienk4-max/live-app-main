@@ -317,18 +317,8 @@ export function ShiftFormDialog({
               <Input required type="date" value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })} />
             </div>
             <div>
-              <label className="text-sm font-medium">Status</label>
-              <Select value={formData.status} onValueChange={(v: any) => setFormData({ ...formData, status: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="scheduled">Scheduled</SelectItem>
-                  <SelectItem value="preparing">Preparing</SelectItem>
-                  <SelectItem value="live">Live</SelectItem>
-                  <SelectItem value="paused">Paused</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
+              <label className="text-sm font-medium mb-2 block">Status</label>
+              <Badge variant="outline" className="capitalize text-sm py-1">{formData.status}</Badge>
             </div>
             <div>
               <label className="text-sm font-medium">Start Time *</label>

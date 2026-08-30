@@ -66,6 +66,7 @@ import { SwapRequestDialog } from '@/components/features/swaps/SwapRequestDialog
 import { ShiftRegistrationActions } from '@/components/features/calendar/ShiftRegistrationActions'
 import { deriveShiftAttention } from '@/lib/ui/operational-attention'
 import { OperationalStatusStrip } from '@/components/ui/operational-status'
+import { ShiftLifecycleActions } from './ShiftLifecycleActions'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
 
@@ -750,6 +751,9 @@ export function ShiftDetailModal({
                 <OperationalStatusStrip items={attention} compact />
               </div>
             )}
+            <div className="mt-3">
+              <ShiftLifecycleActions shift={shift} onSuccess={onUpdate} />
+            </div>
           </DialogHeader>
 
           <DialogBody className="pb-1">

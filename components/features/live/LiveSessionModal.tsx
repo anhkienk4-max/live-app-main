@@ -24,6 +24,7 @@ import { ReportDetailModal } from '@/components/features/reports/ReportDetailMod
 import { commonReportMetricKeys, platformMetricKeys } from '@/lib/utils/ocrMetrics'
 import { ReportMetricKey } from '@/lib/types/database.types'
 import { HistoryPagination } from '@/components/ui/history-pagination'
+import { ShiftLifecycleActions } from '@/components/features/shifts/ShiftLifecycleActions'
 
 interface LiveSessionModalProps {
   open: boolean
@@ -138,6 +139,7 @@ export function LiveSessionModal({
                   {shift.status === 'live' && <span className="inline-block w-2 h-2 bg-white rounded-full mr-2 animate-ping"></span>}
                   {statusLabel}
                 </Badge>
+                <ShiftLifecycleActions shift={shift} onSuccess={onUpdate} />
                 {['preparing', 'live', 'paused'].includes(shift.status) && currentUser && hasPermission(currentUser, 'shifts.edit') && (
                   <>
                     <Button size="sm" onClick={() => setShowUpdate(true)} data-testid={`open-live-dashboard-update-${shift.id}`}>
