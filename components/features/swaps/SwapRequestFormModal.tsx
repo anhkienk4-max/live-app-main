@@ -27,9 +27,8 @@ interface SwapRequestFormModalProps {
 interface FormData {
   shift_id: string
   requester_id: string
-  new_host_id: string
-  new_support_id: string
-  new_technical_id: string
+  operational_role: OperationalRole | ''
+  replacement_staff_id: string
   reason: string
 }
 
@@ -45,13 +44,12 @@ export function SwapRequestFormModal({
   const [formData, setFormData] = React.useState<FormData>({
     shift_id: '',
     requester_id: '',
-    new_host_id: '',
-    new_support_id: '',
-    new_technical_id: '',
+    operational_role: '',
+    replacement_staff_id: '',
     reason: ''
   })
   const [submitting, setSubmitting] = React.useState(false)
-  const [errors, setErrors] = React.useState<Partial<FormData>>({})
+  const [errors, setErrors] = React.useState<Partial<Record<keyof FormData, string>>>({})
   const [registeredRoles, setRegisteredRoles] = React.useState<Record<string, OperationalRole[]>>({})
   const [registrationIds, setRegistrationIds] = React.useState<Record<string, string>>({})
   const { toast } = useToast()
@@ -61,11 +59,10 @@ export function SwapRequestFormModal({
   React.useEffect(() => {
     if (open && currentUser) {
       setFormData({
-        shift_id: shifts[0]?.id || '',
+        shift_id: '',
         requester_id: currentUser.id,
-        new_host_id: '',
-        new_support_id: '',
-        new_technical_id: '',
+        operational_role: '',
+        replacement_staff_id: '',
         reason: ''
       })
       setErrors({})
@@ -82,41 +79,52 @@ export function SwapRequestFormModal({
     }
   }, [currentUser, open, shifts])
 
-  const validateForm = (): boolean => {
-    const newErrors: Partial<FormData> = {}
+  const byRole = (role: 'host' | 'support' | 'technical') => users.filter(u => u.status === 'active' && (u.operational_roles?.includes(role) || (role === 'host' && u.department === 'Live Host') || (role === 'support' && u.department === 'Live Support')))
 
-    if (!formData.shift_id) newErrors.shift_id = 'Please select a shift'
-    const selectedRoles = [formData.new_host_id, formData.new_support_id, formData.new_technical_id].filter(Boolean)
-    if (selectedRoles.length === 0) newErrors.new_host_id = 'Select one replacement role'
-    if (selectedRoles.length > 1) newErrors.new_host_id = 'Create one request per operational role'
-    const selectedRole: OperationalRole = formData.new_host_id ? 'host' : formData.new_support_id ? 'support' : 'technical'
-    if (selectedRoles.length === 1 && !availableRoles.includes(selectedRole)) newErrors.new_host_id = 'You can only swap a role assigned to you.'
-    if (!formData.reason.trim()) newErrors.reason = 'Reason is required'
-    if (formData.reason.trim().length < 10) newErrors.reason = 'Please provide a detailed reason (min 10 characters)'
+  const validateForm = (): boolean => {
+    const newErrors: Partial<Record<keyof FormData, string>> = {}
+
+    if (!formData.shift_id) newErrors.shift_id = 'Select one of your assigned shifts'
+    if (!formData.operational_role) newErrors.operational_role = 'Select the role you want replaced'
+    if (!formData.replacement_staff_id) newErrors.replacement_staff_id = 'Select a replacement person'
+
+    if (formData.replacement_staff_id && formData.operational_role) {
+       const eligible = byRole(formData.operational_role)
+       if (!eligible.find(u => u.id === formData.replacement_staff_id)) {
+         newErrors.replacement_staff_id = 'Replacement must be eligible for the selected role'
+       }
+    }
+
+    if (!formData.reason.trim() || formData.reason.trim().length < 10) {
+      newErrors.reason = 'Reason must be at least 10 characters'
+    }
 
     setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
+    if (Object.keys(newErrors).length > 0) {
+      toast({
+        title: 'Validation Error',
+        description: Object.values(newErrors)[0] as string,
+        variant: 'destructive'
+      })
+      return false
+    }
+    return true
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!validateForm()) {
-      toast({ 
-        title: 'Validation Error', 
-        description: 'Please fill in all required fields',
-        variant: 'destructive' 
-      })
       return
     }
 
     setSubmitting(true)
 
     try {
-      const operationalRole = formData.new_host_id ? 'host' : formData.new_support_id ? 'support' : 'technical'
+      const operationalRole = formData.operational_role as OperationalRole
       const sourceRegistrationId = registrationIds[`${formData.shift_id}:${operationalRole}`]
       if (!sourceRegistrationId) throw new Error('An active source registration is required.')
-      const replacementStaffId = formData.new_host_id || formData.new_support_id || formData.new_technical_id
+      const replacementStaffId = formData.replacement_staff_id
       const selectedShift = shifts.find(shift => shift.id === formData.shift_id)
       const originalStaffId = operationalRole === 'host' ? selectedShift?.host_id : operationalRole === 'support' ? selectedShift?.support_id : selectedShift?.technical_id
       if (!currentUser || currentUser.id !== formData.requester_id) throw new Error(t('permissionDenied'))
@@ -126,9 +134,9 @@ export function SwapRequestFormModal({
         operational_role: operationalRole,
         original_staff_id: originalStaffId,
         replacement_staff_id: replacementStaffId,
-        new_host_id: formData.new_host_id || undefined,
-        new_support_id: formData.new_support_id || undefined,
-        new_technical_id: formData.new_technical_id || undefined,
+        new_host_id: operationalRole === 'host' ? replacementStaffId : undefined,
+        new_support_id: operationalRole === 'support' ? replacementStaffId : undefined,
+        new_technical_id: operationalRole === 'technical' ? replacementStaffId : undefined,
         reason: formData.reason.trim(),
         source_registration_id: sourceRegistrationId,
         mode: 'replacement',
@@ -154,22 +162,20 @@ export function SwapRequestFormModal({
 
   const getBrandName = (brandId: string) => brands.find(b => b.id === brandId)?.name || 'Unknown'
   const getPlatformName = (platformId: string) => platforms.find(p => p.id === platformId)?.name || 'Unknown'
-  const byRole = (role: 'host' | 'support' | 'technical') => users.filter(u => u.status === 'active' && (u.operational_roles?.includes(role) || (role === 'host' && u.department === 'Live Host') || (role === 'support' && u.department === 'Live Support')))
 
+  const eligibleShifts = React.useMemo(() => shifts.filter(s => (registeredRoles[s.id] || []).length > 0), [shifts, registeredRoles])
   const selectedShift = shifts.find(s => s.id === formData.shift_id)
+
   const availableRoles = React.useMemo(() => {
     if (!selectedShift || !currentUser) return []
-    const roles = new Set<OperationalRole>(registeredRoles[selectedShift.id] || [])
-    if (selectedShift.host_id === currentUser.id) roles.add('host')
-    if (selectedShift.support_id === currentUser.id) roles.add('support')
-    if (selectedShift.technical_id === currentUser.id) roles.add('technical')
-    return [...roles]
+    return registeredRoles[selectedShift.id] || []
   }, [currentUser, registeredRoles, selectedShift])
-  const replacementField: Record<OperationalRole, 'new_host_id' | 'new_support_id' | 'new_technical_id'> = {
-    host: 'new_host_id',
-    support: 'new_support_id',
-    technical: 'new_technical_id',
-  }
+
+  React.useEffect(() => {
+    if (formData.shift_id && availableRoles.length === 1 && formData.operational_role !== availableRoles[0]) {
+      setFormData(f => ({ ...f, operational_role: availableRoles[0] }))
+    }
+  }, [formData.shift_id, availableRoles, formData.operational_role])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -187,12 +193,12 @@ export function SwapRequestFormModal({
             <label className="text-sm font-medium mb-2 block">
               Select Your Shift <span className="text-red-500">*</span>
             </label>
-            <Select value={formData.shift_id} onValueChange={(value) => setFormData({ ...formData, shift_id: value, new_host_id: '', new_support_id: '', new_technical_id: '' })}>
+            <Select value={formData.shift_id} onValueChange={(value) => setFormData({ ...formData, shift_id: value, operational_role: '', replacement_staff_id: '' })}>
               <SelectTrigger className={errors.shift_id ? 'border-red-500' : ''}>
                 <SelectValue placeholder="Choose a shift..." />
               </SelectTrigger>
               <SelectContent>
-                {shifts.map((shift) => (
+                {eligibleShifts.map((shift) => (
                   <SelectItem key={shift.id} value={shift.id}>
                     {getBrandName(shift.brand_id)} - {getPlatformName(shift.platform_id)} 
                     ({format(new Date(`${shift.date}T00:00:00`), 'MMM d')}, {formatShiftTimeRange(shift)})
@@ -228,15 +234,49 @@ export function SwapRequestFormModal({
             </div>
           )}
 
-          {/* Replacement team selection */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {availableRoles.map(role => {
-            const field = replacementField[role]
-            return <div key={role}><label className="text-sm font-medium mb-2 block">{t('replacementStaff')} · {t(role)}</label><Select value={formData[field] || 'none'} onValueChange={(value) => setFormData(current => ({ ...current, [field]: value === 'none' ? '' : value }))}><SelectTrigger className={errors.new_host_id ? 'border-red-500' : ''}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">—</SelectItem>{byRole(role).filter(user => user.id !== currentUser?.id).map(user => <SelectItem key={user.id} value={user.id}>{user.full_name} ({user.email})</SelectItem>)}</SelectContent></Select></div>
-          })}
-          {availableRoles.length === 0 && <p className="text-sm text-muted-foreground">{t('noMyShifts')}</p>}
-          {errors.new_host_id && <div className="text-xs text-red-500 mt-1 md:col-span-3">{errors.new_host_id}</div>}
-          </div>
+          {/* Role and Replacement selection */}
+          {formData.shift_id && availableRoles.length > 0 && (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className="text-sm font-medium mb-2 block">
+                  Role to Replace <span className="text-red-500">*</span>
+                </label>
+                <Select value={formData.operational_role || 'none'} onValueChange={(value) => setFormData({ ...formData, operational_role: value === 'none' ? '' : value as OperationalRole, replacement_staff_id: '' })}>
+                  <SelectTrigger className={errors.operational_role ? 'border-red-500' : ''}>
+                    <SelectValue placeholder="Select role..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">—</SelectItem>
+                    {availableRoles.map(role => (
+                      <SelectItem key={role} value={role}>{t(role)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.operational_role && <div className="text-xs text-red-500 mt-1">{errors.operational_role}</div>}
+              </div>
+
+              {formData.operational_role && (
+                <div>
+                  <label className="text-sm font-medium mb-2 block">
+                    Replacement Person <span className="text-red-500">*</span>
+                  </label>
+                  <Select value={formData.replacement_staff_id || 'none'} onValueChange={(value) => setFormData({ ...formData, replacement_staff_id: value === 'none' ? '' : value })}>
+                    <SelectTrigger className={errors.replacement_staff_id ? 'border-red-500' : ''}>
+                      <SelectValue placeholder="Select replacement..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">—</SelectItem>
+                      {byRole(formData.operational_role as OperationalRole).filter(user => user.id !== currentUser?.id).map(user => (
+                        <SelectItem key={user.id} value={user.id}>{user.full_name} ({user.email})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.replacement_staff_id && <div className="text-xs text-red-500 mt-1">{errors.replacement_staff_id}</div>}
+                </div>
+              )}
+            </div>
+          )}
+          {formData.shift_id && availableRoles.length === 0 && <p className="text-sm text-muted-foreground">{t('noMyShifts')}</p>}
 
           {/* Reason */}
           <div>
