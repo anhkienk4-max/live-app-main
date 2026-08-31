@@ -13,6 +13,8 @@ import { format } from 'date-fns'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { BottomActionBar, ResponsiveActions } from '@/components/ui/mobile-actions'
+import type { PrioritizedAction } from '@/lib/ui/action-priority'
 
 interface SwapRequestFormModalProps {
   open: boolean
@@ -98,8 +100,8 @@ export function SwapRequestFormModal({
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
 
     if (!validateForm()) {
       toast({ 
@@ -171,10 +173,29 @@ export function SwapRequestFormModal({
     technical: 'new_technical_id',
   }
 
+  const formActions: PrioritizedAction[] = [
+    {
+      key: 'cancel',
+      label: 'Cancel',
+      onClick: () => onOpenChange(false),
+      disabled: submitting,
+      tier: 'secondary'
+    },
+    {
+      key: 'submit',
+      label: 'Submit Request',
+      onClick: handleSubmit,
+      disabled: submitting,
+      icon: submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : undefined,
+      tier: 'primary'
+    }
+  ]
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="lg" className="overflow-y-auto">
-        <DialogHeader>
+      <DialogContent size="lg" className="h-[calc(100vh-1rem)] overflow-y-auto sm:h-auto sm:max-h-[92vh] flex flex-col p-0">
+        <div className="flex-1 overflow-y-auto p-6 pb-24 sm:pb-6">
+        <DialogHeader className="mb-6">
           <DialogTitle>Request Shift Swap</DialogTitle>
           <DialogDescription>
             Request to swap your assigned shift with another host. Requires approval from team leader or admin.
@@ -268,21 +289,17 @@ export function SwapRequestFormModal({
           </div>
 
           {/* Actions */}
-          <DialogFooter>
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={() => onOpenChange(false)}
-              disabled={submitting}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Submit Request
-            </Button>
-          </DialogFooter>
+          <div className="hidden sm:flex justify-end pt-4">
+            <ResponsiveActions actions={formActions} />
+          </div>
         </form>
+        </div>
+        <BottomActionBar 
+          actions={formActions} 
+          alwaysVisible={false}
+          showBelow="sm"
+          className="absolute"
+        />
       </DialogContent>
     </Dialog>
   )

@@ -60,6 +60,8 @@ import { toVisionPlatform, type HybridMetricResult } from '@/lib/visionOcr/types
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
+import { BottomActionBar, ResponsiveActions } from '@/components/ui/mobile-actions'
+import type { PrioritizedAction } from '@/lib/ui/action-priority'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -575,8 +577,8 @@ export function ReportFormModal({
     return true
   }
 
-  const submit = (event: React.FormEvent) => {
-    event.preventDefault()
+  const submit = (event?: React.FormEvent) => {
+    if (event) event.preventDefault()
     if (reviewing || visionScanning || submitting) return
     if (!validateSubmission()) return
     if (reviewRequiredCount(review) > 0) {
@@ -643,6 +645,24 @@ export function ReportFormModal({
     }
   }
 
+  const formActions: PrioritizedAction[] = [
+    {
+      key: 'cancel',
+      label: t('cancel'),
+      onClick: () => onOpenChange(false),
+      disabled: submitting,
+      tier: 'secondary'
+    },
+    {
+      key: 'submit',
+      label: t('saveFinalReport'),
+      onClick: submit,
+      disabled: submitting || reviewing || visionScanning,
+      icon: submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : undefined,
+      tier: 'primary'
+    }
+  ]
+
   const visibleMetricKeys = [...platformCanonicalMetricKeys(dashboardPlatform)]
   const lowConfidence = reviewRequiredCount(review)
   const filteredMetricKeys = finalReportMetricKeysForFilter({
@@ -658,13 +678,14 @@ export function ReportFormModal({
 
   return (<>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="full" className="h-[calc(100vh-1rem)] overflow-y-auto sm:h-[92vh]">
-        <DialogHeader>
-          <DialogTitle>{t('createFinalReport')}</DialogTitle>
-          <DialogDescription>{t('createFinalReportDescription')}</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={submit} className="space-y-6">
-          <div className="grid gap-4 lg:grid-cols-2">
+      <DialogContent size="full" className="h-[calc(100vh-1rem)] overflow-y-auto sm:h-[92vh] flex flex-col p-0">
+        <div className="flex-1 overflow-y-auto p-6 pb-24 sm:pb-6">
+          <DialogHeader className="mb-6">
+            <DialogTitle>{t('createFinalReport')}</DialogTitle>
+            <DialogDescription>{t('createFinalReportDescription')}</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={submit} className="space-y-6">
+            <div className="grid gap-4 lg:grid-cols-2">
             <label className="text-sm font-medium">{t('liveOrCompletedShift')} *<Select value={shiftId} onValueChange={changeShift}><SelectTrigger className="mt-1 w-full"><SelectValue placeholder={t('chooseLiveOrCompletedShift')} /></SelectTrigger><SelectContent>{completedShifts.map(shift => <SelectItem key={shift.id} value={shift.id}>{entityName(brands, shift.brand_id)} Â· {entityName(platforms, shift.platform_id)} Â· {format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} {shift.start_time} Â· {t(shift.status)}</SelectItem>)}</SelectContent></Select></label>
             <label className="text-sm font-medium">{t('platformDashboardType')} *<Select value={dashboardPlatform} disabled={inferredPlatform !== 'other'} onValueChange={value => { const next = value as ReportDashboardPlatform; setDashboardPlatform(next); setCropBox(defaultOcrCrop(next)); resetExtracted() }}><SelectTrigger className="mt-1 w-full" data-testid="report-platform-selector"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="tiktok_shop">TikTok Shop</SelectItem><SelectItem value="shopee_live">Shopee Live</SelectItem>{inferredPlatform === 'other' && <SelectItem value="other">{t('selectDashboardPlatform')}</SelectItem>}</SelectContent></Select></label>
           </div>
@@ -901,8 +922,17 @@ export function ReportFormModal({
               </div>
             </section>
           )}
-          <DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>{t('cancel')}</Button><Button type="submit" disabled={submitting || reviewing || visionScanning}>{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t('saveFinalReport')}</Button></DialogFooter>
+          <div className="hidden sm:flex justify-end pt-4">
+            <ResponsiveActions actions={formActions} />
+          </div>
         </form>
+        </div>
+        <BottomActionBar 
+          actions={formActions} 
+          alwaysVisible={false}
+          showBelow="sm"
+          className="absolute"
+        />
       </DialogContent>
     </Dialog>
     <AlertDialog

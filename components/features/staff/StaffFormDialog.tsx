@@ -85,8 +85,8 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
     }))
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
     if (!currentUser || !hasPermission(currentUser, 'staff.manage')) {
       toast({ title: t('error'), description: t('permissionDenied'), variant: 'destructive' })
       return

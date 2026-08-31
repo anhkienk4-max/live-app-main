@@ -11,6 +11,8 @@ import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
 import { Button } from '@/components/ui/button'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
+import type { PrioritizedAction } from '@/lib/ui/action-priority'
+import { BottomActionBar, ResponsiveActions } from '@/components/ui/mobile-actions'
 
 export function CalendarWorkspace() {
   const { t } = useTranslation()
@@ -39,12 +41,32 @@ export function CalendarWorkspace() {
     const qs = next.toString()
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
   }, [searchParams, pathname, router, currentUser])
+  const actions: PrioritizedAction[] = []
+  if (hasPermission(currentUser, 'shifts.assign_staff')) {
+    actions.push({
+      key: 'newShift',
+      tier: 'primary',
+      label: t('newShift'),
+      icon: <Plus />,
+      onClick: () => { setTab('calendar'); setCreateRequest(value => value + 1) }
+    })
+  }
+  if (hasPermission(currentUser, 'shifts.import')) {
+    actions.push({
+      key: 'import',
+      tier: 'secondary',
+      label: t('importSchedule'),
+      icon: <Upload />,
+      onClick: () => setTab('import')
+    })
+  }
+
   return (
     <Tabs value={tab} onValueChange={value => setTab(String(value))} className="min-w-0 w-full">
-      <div className="flex flex-wrap justify-end gap-2">
-        {hasPermission(currentUser, 'shifts.assign_staff') && <Button onClick={() => { setTab('calendar'); setCreateRequest(value => value + 1) }}><Plus className="mr-2 h-4 w-4" />{t('newShift')}</Button>}
-        {hasPermission(currentUser, 'shifts.import') && <Button variant="outline" onClick={() => setTab('import')}><Upload className="mr-2 h-4 w-4" />{t('importSchedule')}</Button>}
+      <div className="flex flex-wrap justify-end gap-2 hidden md:flex">
+        <ResponsiveActions actions={actions} collapseAt="md" />
       </div>
+      <BottomActionBar actions={actions} showBelow="md" />
       <div className="max-w-full overflow-x-auto pb-1">
         <TabsList className="h-auto w-max min-w-full flex-nowrap justify-start sm:min-w-0">
           <TabsTrigger className="!flex-none px-3 py-1.5" value="calendar">{t('shiftCalendar')}</TabsTrigger>

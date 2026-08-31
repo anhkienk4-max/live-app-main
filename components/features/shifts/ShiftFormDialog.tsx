@@ -25,6 +25,8 @@ import { AlertCircle, Sparkles } from 'lucide-react'
 import { format } from 'date-fns'
 import { useTranslation } from '@/lib/i18n'
 import { getAuthMode } from '@/lib/auth/authMode'
+import { BottomActionBar, ResponsiveActions } from '@/components/ui/mobile-actions'
+import type { PrioritizedAction } from '@/lib/ui/action-priority'
 
 interface ShiftFormDialogProps {
   open: boolean
@@ -224,8 +226,8 @@ export function ShiftFormDialog({
     if (showRecurring) generatePreview()
   }, [recurrenceRule, formData.date, showRecurring])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
     const resolvedDateTime = resolveShiftDateTime(formData.date, formData.start_time, formData.end_time)
     if (!resolvedDateTime?.valid) {
       toast({ title: 'Invalid shift time', description: resolvedDateTime?.error || 'Enter a valid date and time.', variant: 'destructive' })
@@ -268,10 +270,28 @@ export function ShiftFormDialog({
   const resolvedDateTime = resolveShiftDateTime(formData.date, formData.start_time, formData.end_time)
   const duration = resolvedDateTime?.durationMinutes ?? 0
 
+  const formActions: PrioritizedAction[] = [
+    {
+      key: 'cancel',
+      label: 'Cancel',
+      onClick: () => onOpenChange(false),
+      disabled: loading,
+      tier: 'secondary'
+    },
+    {
+      key: 'submit',
+      label: loading ? 'Saving...' : showRecurring ? `Create ${previewShifts.length} Shifts` : shift ? 'Update' : 'Create',
+      onClick: handleSubmit,
+      disabled: loading,
+      tier: 'primary'
+    }
+  ]
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="xl" className="overflow-y-auto">
-        <DialogHeader>
+      <DialogContent size="xl" className="h-[calc(100vh-1rem)] overflow-y-auto sm:h-auto sm:max-h-[92vh] flex flex-col p-0">
+        <div className="flex-1 overflow-y-auto p-6 pb-24 sm:pb-6">
+        <DialogHeader className="mb-6">
           <DialogTitle>
             {shift ? 'Edit Shift' : duplicateFrom ? 'Duplicate Shift' : 'Create New Shift'}
           </DialogTitle>
@@ -555,13 +575,18 @@ export function ShiftFormDialog({
             </div>
           )}
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Cancel</Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? 'Saving...' : showRecurring ? `Create ${previewShifts.length} Shifts` : shift ? 'Update' : 'Create'}
-            </Button>
-          </DialogFooter>
+          {/* Actions */}
+          <div className="hidden sm:flex justify-end pt-4">
+            <ResponsiveActions actions={formActions} />
+          </div>
         </form>
+        </div>
+        <BottomActionBar 
+          actions={formActions} 
+          alwaysVisible={false}
+          showBelow="sm"
+          className="absolute"
+        />
       </DialogContent>
     </Dialog>
   )

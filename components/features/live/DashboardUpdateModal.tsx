@@ -64,6 +64,8 @@ import { AlertDialog } from '@/components/ui/alert-dialog'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
+import { BottomActionBar, ResponsiveActions } from '@/components/ui/mobile-actions'
+import type { PrioritizedAction } from '@/lib/ui/action-priority'
 import { AlertTriangle, ChevronDown, ChevronUp, Loader2, RefreshCw, ScanText, Upload, X } from 'lucide-react'
 
 interface DashboardUpdateModalProps {
@@ -434,8 +436,8 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
     setVisionRunStatus(null)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
     if (scanning || visionScanning || submitting) return
 
     if (!validateForm()) {
@@ -493,10 +495,29 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
     metricMatchesFilter(metricFilter, metricValues[key], ocrReview?.metrics[key]),
   )
 
+  const formActions: PrioritizedAction[] = [
+    {
+      key: 'cancel',
+      label: t('cancel'),
+      onClick: () => onOpenChange(false),
+      disabled: submitting,
+      tier: 'secondary'
+    },
+    {
+      key: 'submit',
+      label: t('addUpdate'),
+      onClick: handleSubmit,
+      disabled: submitting || scanning || visionScanning,
+      icon: submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : undefined,
+      tier: 'primary'
+    }
+  ]
+
   return (<>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="xl" className="overflow-y-auto">
-        <DialogHeader>
+      <DialogContent size="xl" className="h-[calc(100vh-1rem)] overflow-y-auto sm:h-auto sm:max-h-[92vh] flex flex-col p-0">
+        <div className="flex-1 overflow-y-auto p-6 pb-24 sm:pb-6">
+        <DialogHeader className="mb-6">
           <DialogTitle>{t('liveSnapshotTitle')}</DialogTitle>
           <DialogDescription>{t('liveSnapshotDescription')}</DialogDescription>
         </DialogHeader>
@@ -739,21 +760,17 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
           </div>
 
           {/* Actions */}
-          <DialogFooter>
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={() => onOpenChange(false)}
-              disabled={submitting}
-            >
-              {t('cancel')}
-            </Button>
-            <Button type="submit" disabled={submitting || scanning || visionScanning}>
-              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {t('addUpdate')}
-            </Button>
-          </DialogFooter>
+          <div className="hidden sm:flex justify-end pt-4">
+            <ResponsiveActions actions={formActions} />
+          </div>
         </form>
+        </div>
+        <BottomActionBar 
+          actions={formActions} 
+          alwaysVisible={false}
+          showBelow="sm"
+          className="absolute"
+        />
       </DialogContent>
     </Dialog>
     <AlertDialog

@@ -66,6 +66,8 @@ import { SwapRequestDialog } from '@/components/features/swaps/SwapRequestDialog
 import { ShiftRegistrationActions } from '@/components/features/calendar/ShiftRegistrationActions'
 import { deriveShiftAttention } from '@/lib/ui/operational-attention'
 import { OperationalStatusStrip } from '@/components/ui/operational-status'
+import { BottomActionBar, ResponsiveActions } from '@/components/ui/mobile-actions'
+import type { PrioritizedAction } from '@/lib/ui/action-priority'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
 
@@ -509,24 +511,54 @@ export function ShiftDetailActions({
 }) {
   const canEdit = Boolean(onEdit && currentUser && hasPermission(currentUser, 'shifts.edit'))
   const canDelete = Boolean(currentUser && hasPermission(currentUser, 'shifts.delete'))
+  
+  const actions: PrioritizedAction[] = [
+    {
+      key: 'close',
+      label: closeLabel,
+      onClick: onClose,
+      disabled: busy,
+      tier: 'secondary',
+      testId: 'close-shift-detail',
+    }
+  ]
+  
+  if (canDelete) {
+    actions.push({
+      key: 'delete',
+      label: deleteLabel,
+      onClick: onDelete,
+      disabled: busy,
+      tier: 'destructive',
+      icon: <Trash2 className="h-4 w-4" />,
+      testId: 'delete-shift-detail',
+    })
+  }
+  
+  if (canEdit) {
+    actions.push({
+      key: 'edit',
+      label: editLabel,
+      onClick: onEdit!,
+      disabled: busy,
+      tier: 'primary',
+      icon: <Pencil className="h-4 w-4" />,
+      testId: 'edit-shift-detail',
+    })
+  }
+
   return (
-    <DialogFooter className="flex w-full flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-0 sm:space-x-2 mt-4">
-      <Button className="w-full sm:w-auto" type="button" variant="outline" disabled={busy} onClick={onClose} data-testid="close-shift-detail">
-        {closeLabel}
-      </Button>
-      {canDelete ? (
-        <Button className="w-full sm:w-auto text-red-600" type="button" variant="outline" disabled={busy} onClick={onDelete} data-testid="delete-shift-detail">
-          <Trash2 className="mr-2 h-4 w-4" />
-          {deleteLabel}
-        </Button>
-      ) : null}
-      {canEdit ? (
-        <Button className="w-full sm:w-auto" type="button" variant="outline" disabled={busy} onClick={onEdit} data-testid="edit-shift-detail">
-          <Pencil className="mr-2 h-4 w-4" />
-          {editLabel}
-        </Button>
-      ) : null}
-    </DialogFooter>
+    <>
+      <div className="hidden sm:flex justify-end pt-4 mb-2">
+        <ResponsiveActions actions={actions} />
+      </div>
+      <BottomActionBar 
+        actions={actions}
+        alwaysVisible={false}
+        showBelow="sm"
+        className="absolute"
+      />
+    </>
   )
 }
 
@@ -727,10 +759,11 @@ export function ShiftDetailModal({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           size="xl"
-          className="h-[calc(100vh-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:h-[92vh]"
+          className="h-[calc(100vh-1rem)] flex flex-col p-0 overflow-y-auto sm:h-[92vh]"
           data-testid="shift-detail-modal"
         >
-          <DialogHeader>
+          <div className="flex-1 overflow-y-auto p-6 pb-24 sm:pb-6">
+          <DialogHeader className="mb-6">
             <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <DialogTitle className="break-words pr-2 text-xl sm:text-2xl" data-testid="shift-detail-title">
@@ -1009,6 +1042,7 @@ export function ShiftDetailModal({
             deleteLabel={t('delete')}
             closeLabel={t('close')}
           />
+          </div>
         </DialogContent>
       </Dialog>
       <LifecycleActionDialog

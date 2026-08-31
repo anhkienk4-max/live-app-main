@@ -24,6 +24,8 @@ import { ReportDetailModal } from '@/components/features/reports/ReportDetailMod
 import { commonReportMetricKeys, platformMetricKeys } from '@/lib/utils/ocrMetrics'
 import { ReportMetricKey } from '@/lib/types/database.types'
 import { HistoryPagination } from '@/components/ui/history-pagination'
+import { ResponsiveActions, BottomActionBar } from '@/components/ui/mobile-actions'
+import type { PrioritizedAction } from '@/lib/ui/action-priority'
 
 interface LiveSessionModalProps {
   open: boolean
@@ -124,19 +126,62 @@ export function LiveSessionModal({
     }
   }
 
+  const headerActions: PrioritizedAction[] = []
+  if (['preparing', 'live', 'paused'].includes(shift.status)) {
+    headerActions.push({
+      key: 'add-update',
+      label: 'Add Update',
+      icon: <Plus className="mr-2 h-4 w-4" />,
+      onClick: () => setShowUpdate(true),
+      tier: 'primary',
+      testId: `open-live-dashboard-update-${shift.id}`,
+    })
+    headerActions.push({
+      key: 'upload-snapshot',
+      label: 'Upload Snapshot',
+      icon: <Upload className="mr-2 h-4 w-4" />,
+      onClick: () => setShowUpdate(true),
+      tier: 'secondary',
+    })
+  }
+  if (currentUser && hasPermission(currentUser, 'reports.submit')) {
+    if (report) {
+      headerActions.push({
+        key: 'view-report',
+        label: report.status === 'confirmed' ? 'Xem báo cáo' : report.status === 'reopened' ? 'Tiếp tục chỉnh sửa' : 'Tiếp tục báo cáo',
+        onClick: () => setShowReportDetail(true),
+        tier: 'secondary',
+      })
+    } else {
+      headerActions.push({
+        key: 'create-report',
+        label: 'Tạo báo cáo',
+        onClick: () => setShowReportForm(true),
+        tier: 'secondary',
+        testId: 'open-final-report-modal',
+      })
+    }
+  }
+
   return (<>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="full" className="h-auto overflow-y-auto sm:h-[92vh]">
+      <DialogContent size="full" className="h-[calc(100vh-1rem)] overflow-y-auto sm:h-auto sm:max-h-[92vh] flex flex-col p-0">
+        <div className="flex-1 overflow-y-auto p-6 pb-24 sm:pb-6">
         <DialogHeader>
-          <div className="flex flex-wrap items-start justify-between gap-3 pr-8">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 sm:gap-3 sm:pr-8 mb-4">
             <div>
               <DialogTitle className="text-2xl">{getBrandName(shift.brand_id)} - Live Session</DialogTitle>
               <div className="text-sm text-gray-600 mt-1">{format(new Date(`${shift.date}T00:00:00`), 'MMMM d, yyyy')} • {formatShiftTimeRange(shift)}</div>
             </div>
-            <div className="flex flex-wrap items-center gap-2"><Badge variant={shift.status === 'live' ? 'destructive' : 'secondary'} className={shift.status === 'live' ? 'animate-pulse' : ''}>
-              {shift.status === 'live' && <span className="inline-block w-2 h-2 bg-white rounded-full mr-2 animate-ping"></span>}
-              {statusLabel}
-            </Badge>{['preparing', 'live', 'paused'].includes(shift.status) && <><Button size="sm" onClick={() => setShowUpdate(true)} data-testid={`open-live-dashboard-update-${shift.id}`}><Plus className="mr-2 h-4 w-4" />Add Update</Button><Button size="sm" variant="outline" onClick={() => setShowUpdate(true)}><Upload className="mr-2 h-4 w-4" />Upload Snapshot</Button></>}{currentUser && hasPermission(currentUser, 'reports.submit') && (report ? <Button size="sm" variant="outline" onClick={() => setShowReportDetail(true)}>{report.status === 'confirmed' ? 'Xem báo cáo' : report.status === 'reopened' ? 'Tiếp tục chỉnh sửa' : 'Tiếp tục báo cáo'}</Button> : <Button size="sm" variant="outline" onClick={() => setShowReportForm(true)} data-testid="open-final-report-modal">Tạo báo cáo</Button>)}</div>
+            <div className="flex items-center gap-2">
+              <Badge variant={shift.status === 'live' ? 'destructive' : 'secondary'} className={shift.status === 'live' ? 'animate-pulse' : ''}>
+                {shift.status === 'live' && <span className="inline-block w-2 h-2 bg-white rounded-full mr-2 animate-ping"></span>}
+                {statusLabel}
+              </Badge>
+              <div className="hidden sm:block">
+                <ResponsiveActions actions={headerActions} />
+              </div>
+            </div>
           </div>
         </DialogHeader>
 
@@ -346,6 +391,13 @@ export function LiveSessionModal({
             </CardContent></Card>
           </TabsContent>
         </Tabs>
+        </div>
+        <BottomActionBar 
+          actions={headerActions} 
+          alwaysVisible={false}
+          showBelow="sm"
+          className="absolute"
+        />
       </DialogContent>
     </Dialog>
     {showUpdate && <DashboardUpdateModal open shift={shift} platformName={platforms.find(platform => platform.id === shift.platform_id)?.name} onOpenChange={setShowUpdate} onSuccess={() => { void loadUpdates(); onUpdate() }} />}
