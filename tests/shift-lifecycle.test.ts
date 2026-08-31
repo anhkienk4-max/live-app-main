@@ -39,7 +39,8 @@ describe('Shift Lifecycle UI State Flow', () => {
     const shift = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00',
     } as any)
-    const live = await shiftService.update(shift.id, { status: 'live', version: shift.version })
+    const prep = await shiftService.update(shift.id, { status: 'preparing', version: shift.version })
+    const live = await shiftService.update(shift.id, { status: 'live', version: prep!.version })
     const paused = await shiftService.update(shift.id, { status: 'paused', version: live!.version })
     assert.strictEqual(paused!.status, 'paused')
   })
@@ -48,7 +49,8 @@ describe('Shift Lifecycle UI State Flow', () => {
     const shift = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00',
     } as any)
-    const paused = await shiftService.update(shift.id, { status: 'paused', version: shift.version })
+    const prep = await shiftService.update(shift.id, { status: 'preparing', version: shift.version })
+    const paused = await shiftService.update(shift.id, { status: 'paused', version: prep!.version })
     const live = await shiftService.update(shift.id, { status: 'live', version: paused!.version })
     assert.strictEqual(live!.status, 'live')
   })
@@ -57,7 +59,8 @@ describe('Shift Lifecycle UI State Flow', () => {
     const shift = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00',
     } as any)
-    const live = await shiftService.update(shift.id, { status: 'live', version: shift.version })
+    const prep = await shiftService.update(shift.id, { status: 'preparing', version: shift.version })
+    const live = await shiftService.update(shift.id, { status: 'live', version: prep!.version })
     const completed = await shiftService.update(shift.id, { status: 'completed', version: live!.version })
     assert.strictEqual(completed!.status, 'completed')
   })
@@ -66,7 +69,8 @@ describe('Shift Lifecycle UI State Flow', () => {
     const shift = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00',
     } as any)
-    const paused = await shiftService.update(shift.id, { status: 'paused', version: shift.version })
+    const prep = await shiftService.update(shift.id, { status: 'preparing', version: shift.version })
+    const paused = await shiftService.update(shift.id, { status: 'paused', version: prep!.version })
     const completed = await shiftService.update(shift.id, { status: 'completed', version: paused!.version })
     assert.strictEqual(completed!.status, 'completed')
   })
@@ -120,10 +124,15 @@ describe('Shift Lifecycle UI State Flow', () => {
     const completed = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00',
     } as any)
-    const live = await shiftService.update(completed.id, { status: 'live', version: completed.version })
+    const prep = await shiftService.update(completed.id, { status: 'preparing', version: completed.version })
+    const live = await shiftService.update(completed.id, { status: 'live', version: prep!.version })
     const done = await shiftService.update(completed.id, { status: 'completed', version: live!.version })
     await assert.rejects(
       () => shiftService.update(completed.id, { status: 'live', version: done!.version }),
+      /SHIFT_STATUS_TRANSITION_NOT_ALLOWED/,
+    )
+    await assert.rejects(
+      () => shiftService.update(completed.id, { status: 'preparing', version: done!.version }),
       /SHIFT_STATUS_TRANSITION_NOT_ALLOWED/,
     )
 
@@ -133,6 +142,10 @@ describe('Shift Lifecycle UI State Flow', () => {
     const removed = await shiftService.update(cancelled.id, { status: 'cancelled', version: cancelled.version })
     await assert.rejects(
       () => shiftService.update(cancelled.id, { status: 'preparing', version: removed!.version }),
+      /SHIFT_STATUS_TRANSITION_NOT_ALLOWED/,
+    )
+    await assert.rejects(
+      () => shiftService.update(cancelled.id, { status: 'live', version: removed!.version }),
       /SHIFT_STATUS_TRANSITION_NOT_ALLOWED/,
     )
   })

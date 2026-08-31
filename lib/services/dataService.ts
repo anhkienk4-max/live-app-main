@@ -1145,8 +1145,8 @@ const removeShiftProjection = (id: string) => {
 }
 
 const allowedShiftLifecycleTransitions: Record<Shift['status'], readonly Shift['status'][]> = {
-  scheduled: ['scheduled', 'preparing'],
-  preparing: ['scheduled', 'preparing', 'live', 'paused'],
+  scheduled: ['scheduled', 'preparing', 'cancelled'],
+  preparing: ['scheduled', 'preparing', 'live', 'paused', 'cancelled'],
   live: ['live', 'paused', 'completed'],
   paused: ['live', 'paused', 'completed'],
   completed: ['completed'],
