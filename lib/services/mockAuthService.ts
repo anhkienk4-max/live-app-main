@@ -184,4 +184,18 @@ export const mockAuthService = {
     recordAuthAudit('email_auto_verified_mock', auditActor(user), { provider: 'google' })
     return { ok: false, code: 'invalid_credentials', status: 'pending_approval' }
   },
+
+  async resetPasswordEmail(email: string): Promise<{ ok: boolean }> {
+    const normalizedEmail = normalizeEmail(email)
+    const stored = readAccounts().find(account => account.user.email.toLowerCase() === normalizedEmail)
+    if (stored) {
+      recordAuthAudit('account_approved', auditActor(stored.user), { note: 'simulated_password_reset_requested' })
+    }
+    return { ok: true }
+  },
+
+  async updatePassword(password: string): Promise<{ ok: boolean }> {
+    // Note: Mock mode password reset update isn't fully supported since session tokens aren't simulated
+    return { ok: true }
+  }
 }

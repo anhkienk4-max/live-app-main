@@ -8,6 +8,8 @@ export interface PasswordSessionClient {
       error: unknown | null
     }>
     signOut(options: { scope: 'local' }): Promise<{ error: unknown | null }>
+    resetPasswordForEmail(email: string, options?: { redirectTo?: string }): Promise<{ error: unknown | null }>
+    updateUser(attributes: { password?: string }): Promise<{ error: unknown | null }>
   }
 }
 
@@ -34,6 +36,31 @@ export async function establishPasswordSession(
       password,
     })
     return !error && Boolean(data.session) && Boolean(data.user)
+  } catch {
+    return false
+  }
+}
+
+export async function requestPasswordResetEmail(
+  client: PasswordSessionClient,
+  email: string,
+  redirectTo?: string
+): Promise<boolean> {
+  try {
+    const { error } = await client.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo })
+    return !error
+  } catch {
+    return false
+  }
+}
+
+export async function updateSessionPassword(
+  client: PasswordSessionClient,
+  password: string
+): Promise<boolean> {
+  try {
+    const { error } = await client.auth.updateUser({ password })
+    return !error
   } catch {
     return false
   }
