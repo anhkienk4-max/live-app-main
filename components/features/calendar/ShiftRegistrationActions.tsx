@@ -55,7 +55,7 @@ export function ShiftRegistrationActions({
   }
 
   return (
-    <div className={`flex flex-wrap items-center gap-2 ${compact ? '' : 'border-t pt-3'}`} data-testid={`shift-registration-actions-${shift.id}`}>
+    <div aria-live="polite" className={`flex flex-wrap items-center gap-2 ${compact ? '' : 'border-t pt-3'}`} data-testid={`shift-registration-actions-${shift.id}`}>
       {visibleStates.map(state => {
         const label = t(state.role)
         if (state.state === 'eligible') {
@@ -73,18 +73,18 @@ export function ShiftRegistrationActions({
           )
         }
         if (state.state === 'pending') {
-          return <Badge key={state.role} variant="secondary">{label}: {t('registrationPending')}</Badge>
+          return <Badge aria-label={`${label}: ${t('registrationPending')}`} data-state="pending" key={state.role} variant="secondary">{label}: {t('registrationPending')}</Badge>
         }
         if (state.state === 'approved') {
-          return <Badge key={state.role} variant="secondary">{label}: {t('registrationApproved')}</Badge>
+          return <Badge aria-label={`${label}: ${t('registrationApproved')}`} data-state="approved" key={state.role} variant="secondary">{label}: {t('registrationApproved')}</Badge>
         }
         if (state.state === 'full') {
-          return <Badge key={state.role} variant="outline">{label}: {t('full')}</Badge>
+          return <Badge aria-label={`${label}: ${t('full')}`} data-state="full" key={state.role} variant="outline">{label}: {t('full')}</Badge>
         }
         if (state.state === 'conflict') {
-          return <Badge key={state.role} variant="outline">{label}: {t('scheduleConflict')}</Badge>
+          return <Badge aria-label={`${label}: ${t('scheduleConflict')}`} data-state="conflict" key={state.role} title={t('scheduleConflict')} variant="outline">{label}: {t('scheduleConflict')}</Badge>
         }
-        return <Badge key={state.role} variant="outline">{label}: {t('registrationClosed')}</Badge>
+        return <Badge aria-label={`${label}: ${t('registrationClosed')}`} data-state="closed" key={state.role} title={t('registrationClosed')} variant="outline">{label}: {t('registrationClosed')}</Badge>
       })}
     </div>
   )

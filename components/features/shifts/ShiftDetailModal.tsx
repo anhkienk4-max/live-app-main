@@ -64,6 +64,7 @@ import { normalizeStaffingDisplayNames } from '@/lib/utils/scheduleImportPreview
 import { deriveShiftStaffIdentityMatches } from '@/lib/utils/staffIdentityMatching'
 import { SwapRequestDialog } from '@/components/features/swaps/SwapRequestDialog'
 import { ShiftRegistrationActions } from '@/components/features/calendar/ShiftRegistrationActions'
+import { StaffingSummary } from '@/components/features/calendar/StaffingSummary'
 import { deriveShiftAttention } from '@/lib/ui/operational-attention'
 import { OperationalStatusStrip } from '@/components/ui/operational-status'
 import { BottomActionBar, ResponsiveActions } from '@/components/ui/mobile-actions'
@@ -867,6 +868,7 @@ export function ShiftDetailModal({
               </TabsContent>
 
               <TabsContent value="staffing" className="space-y-4 pt-1">
+                <StaffingSummary registrations={registrations} shift={shift} />
                 <ShiftRegistrationActions
                   allShifts={allShifts ?? [shift]}
                   currentUser={currentUser}
@@ -961,6 +963,13 @@ export function ShiftDetailModal({
 
                 <Card className="overflow-hidden">
                   <CardContent className="p-0">
+                    <div className="border-b px-5 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="text-sm font-semibold">{t('registrationQueue')}</h3>
+                        <span className="text-xs text-muted-foreground">{registrations.length} · {pendingCount} {t('pendingCount').toLowerCase()}</span>
+                      </div>
+                      {pendingCount === 0 && <p className="mt-1 text-xs text-muted-foreground">{t('noPendingRegistrations')}</p>}
+                    </div>
                     <div className="max-h-[440px] space-y-2 overflow-auto p-5">
                       {registrations.length === 0 ? <p className="text-sm text-muted-foreground" data-testid="shift-detail-staffing-empty">{t(roleSurface.emptyStateKey)}</p> : visibleRegistrations.map(registration => (
                         <div key={registration.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/50 p-3 shadow-sm">

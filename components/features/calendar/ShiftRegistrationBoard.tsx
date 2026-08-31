@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { format } from 'date-fns'
-import { Check, Clock3, Download, LayoutGrid, List, Lock, LockOpen, RotateCcw, Table2, UserPlus, X } from 'lucide-react'
+import { Download, LayoutGrid, List, Lock, LockOpen, RotateCcw, Table2, UserPlus } from 'lucide-react'
 import {
   brandService,
   campaignService,
@@ -295,7 +295,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           onManage={setDetailShift}
         />
       ) : viewMode === 'compact' ? (
-        <CompactShiftList shifts={visibleShifts} capacities={capacities} registrations={registrations} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+        <CompactShiftList allShifts={shifts} currentUser={currentUser} onRegister={(shiftId, role) => runAction(`${shiftId}-${role}`, () => shiftRegistrationService.register(shiftId, currentUser.id, role), t('registrationPending'))} shifts={visibleShifts} capacities={capacities} registrations={registrations} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
       ) : (
         <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2 min-[1900px]:grid-cols-3">
           {visibleShifts.map(shift => {
@@ -337,7 +337,6 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                   <div className="space-y-2">
                     {(capacities[shift.id] || []).map(capacity => {
                       const myRegistration = mine.find(registration => registration.operational_role === capacity.role)
-                      const eligible = currentUser.operational_roles?.includes(capacity.role)
                       const assignmentKey = `${shift.id}-${capacity.role}`
                       const approvedAssignments = shiftRegistrations.filter(registration =>
                         registration.operational_role === capacity.role && isStaffedRegistration(registration)
@@ -367,23 +366,23 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                               <RoleSummary label={t('missingCount')} value={capacity.remaining} />
                             </div>
                           </div>
-                          {myRegistration ? (
-                            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                              <Badge className={isStaffedRegistration(myRegistration) ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{registrationLabel(myRegistration, t)}</Badge>
-                              {myRegistration.source === 'manual_assignment' || myRegistration.status === 'manually_assigned' ? (
-                                <Badge variant="outline">{t('assignedByManager')}</Badge>
-                              ) : hasPermission(currentUser, 'shifts.cancel_registration') && !shift.registration_locked ? (
-                                <Button size="sm" variant="outline" disabled={busyId === myRegistration.id} onClick={() => setRemovalTarget({ registration: myRegistration, kind: 'cancel' })}>{t('cancelRegistration')}</Button>
-                              ) : null}
-                            </div>
-                          ) : mode === 'open' && !shift.registration_locked && eligible && capacity.remaining > 0 ? (
-                            <Button size="sm" disabled={busyId === `${shift.id}-${capacity.role}`} onClick={() => runAction(`${shift.id}-${capacity.role}`, () => shiftRegistrationService.register(shift.id, currentUser.id, capacity.role), t('registrationPending'))}><UserPlus className="mr-1 h-4 w-4" />{t('register')}</Button>
-                          ) : (
-                            <Button size="sm" variant="outline" disabled>
-                              {eligible ? <Lock className="mr-1 h-3 w-3" /> : <Clock3 className="mr-1 h-3 w-3" />}
-                              {!eligible ? t('roleNotEligible') : shift.registration_locked ? t('closed') : t('full')}
-                            </Button>
-                          )}
+                          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                            <ShiftRegistrationActions
+                              allShifts={shifts}
+                              compact
+                              currentUser={currentUser}
+                              disabled={busyId === `${shift.id}-${capacity.role}`}
+                              onRegister={role => runAction(`${shift.id}-${role}`, () => shiftRegistrationService.register(shift.id, currentUser.id, role), t('registrationPending'))}
+                              registrations={registrations}
+                              role={capacity.role}
+                              shift={shift}
+                            />
+                            {myRegistration?.source === 'manual_assignment' || myRegistration?.status === 'manually_assigned' ? (
+                              <Badge variant="outline">{t('assignedByManager')}</Badge>
+                            ) : myRegistration && hasPermission(currentUser, 'shifts.cancel_registration') && !shift.registration_locked ? (
+                              <Button size="sm" variant="outline" disabled={busyId === myRegistration.id} onClick={() => setRemovalTarget({ registration: myRegistration, kind: 'cancel' })}>{t('cancelRegistration')}</Button>
+                            ) : null}
+                          </div>
                           {canManageAssignments && (
                             <div className="space-y-2 border-t pt-3">
                               {approvedAssignments.map(registration => (
@@ -535,6 +534,9 @@ function MyShiftTable({ entries, brands, platforms, campaigns, onManage }: MyShi
 }
 
 function CompactShiftList({
+  allShifts,
+  currentUser,
+  onRegister,
   shifts,
   capacities,
   registrations,
@@ -543,6 +545,9 @@ function CompactShiftList({
   campaigns,
   onManage,
 }: {
+  allShifts: Shift[]
+  currentUser: User
+  onRegister: (shiftId: string, role: OperationalRole) => Promise<void>
   shifts: Shift[]
   capacities: CapacityMap
   registrations: ShiftRegistration[]
@@ -563,7 +568,7 @@ function CompactShiftList({
       <Info label={t('host')} value={roleValue('host')} />
       <Info label={t('support')} value={roleValue('support')} />
       <Info label={t('technical')} value={roleValue('technical')} />
-      <div className="flex items-center gap-2 md:justify-end"><Badge variant={pending ? 'outline' : 'secondary'}>{t('pending')}: {pending}</Badge><Button data-testid={`open-shift-detail-compact-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button></div>
+      <div className="flex flex-wrap items-center gap-2 md:justify-end"><Badge aria-label={`${t('pendingCount')}: ${pending}`} variant={pending ? 'outline' : 'secondary'}>{t('pending')}: {pending}</Badge><ShiftRegistrationActions allShifts={allShifts} compact currentUser={currentUser} onRegister={role => onRegister(shift.id, role)} registrations={registrations} shift={shift} /><Button data-testid={`open-shift-detail-compact-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button></div>
     </CardContent></Card>
   })}</div>
 }

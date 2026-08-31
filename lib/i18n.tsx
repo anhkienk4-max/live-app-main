@@ -336,6 +336,11 @@ const en = {
   confirmedCount: 'Confirmed',
   pendingCount: 'Pending approval',
   missingCount: 'Still needed',
+  assignedCount: '\u0110\u00e3 ph\u00e2n c\u00f4ng',
+  staffingSummary: 'T\u1ed5ng quan nh\u00e2n s\u1ef1',
+  staffingSummaryHelp: 'Ph\u00e2n c\u00f4ng \u0111\u00e3 x\u00e1c nh\u1eadn t\u00e1ch ri\u00eang v\u1edbi y\u00eau c\u1ea7u \u0111ang ch\u1edd.',
+  registrationQueue: 'Danh s\u00e1ch \u0111\u0103ng k\u00fd',
+  noPendingRegistrations: 'Kh\u00f4ng c\u00f3 \u0111\u0103ng k\u00fd \u0111ang ch\u1edd. Ph\u00e2n c\u00f4ng hi\u1ec7n t\u1ea1i kh\u00f4ng thay \u0111\u1ed5i.',
   cardView: 'Card view',
   compactView: 'Compact list',
   tableView: 'Table view',
@@ -1996,6 +2001,11 @@ const vi: Record<keyof typeof en, string> = {
   auditHistory: 'Lịch sử kiểm toán',
   moreMenu: 'Thêm',
   navMain: 'Thanh điều hướng chính',
+  assignedCount: 'Assigned',
+  staffingSummary: 'Staffing summary',
+  staffingSummaryHelp: 'Confirmed assignments are separate from pending requests.',
+  registrationQueue: 'Registration queue',
+  noPendingRegistrations: 'No pending registrations. Current assignments remain unchanged.',
 }
 
 const dictionary = { en, vi }

@@ -16,6 +16,14 @@ export interface RegistrationCtaResult {
   registration?: ShiftRegistration
 }
 
+export interface StaffingRoleSummary {
+  role: OperationalRole
+  required: number
+  assigned: number
+  pending: number
+  gap: number
+}
+
 const roles: OperationalRole[] = ['host', 'support', 'technical']
 const requiredField: Record<OperationalRole, 'required_host_count' | 'required_support_count' | 'required_technical_count'> = {
   host: 'required_host_count',
@@ -34,6 +42,26 @@ const shiftsOverlap = (left: Shift, right: Shift) => {
   const rightTime = resolveShiftDateTime(right.date, right.start_time, right.end_time)
   if (!leftTime?.valid || !rightTime?.valid) return false
   return leftTime.startAt < rightTime.endAt && rightTime.startAt < leftTime.endAt
+}
+
+/**
+ * Derive the four operational staffing numbers from the canonical
+ * ShiftRegistration rows. Pending rows are intentionally never counted as
+ * assigned; imported schedule labels are not part of this calculation.
+ */
+export function getStaffingRoleSummary(
+  shift: Shift,
+  registrations: ShiftRegistration[],
+): StaffingRoleSummary[] {
+  return roles.map(role => {
+    const required = shift[requiredField[role]] ?? (role === 'host' ? 1 : 0)
+    const forRole = registrations.filter(registration =>
+      registration.shift_id === shift.id && registration.operational_role === role,
+    )
+    const assigned = forRole.filter(registration => isStaffed(registration)).length
+    const pending = forRole.filter(registration => registration.status === 'pending').length
+    return { role, required, assigned, pending, gap: Math.max(0, required - assigned) }
+  })
 }
 
 const isShiftClosed = (shift: Shift, now: Date) => {
