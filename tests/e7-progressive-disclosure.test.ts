@@ -7,6 +7,7 @@ const shiftDetail = read('../components/features/shifts/ShiftDetailModal.tsx')
 const audit = read('../components/features/audit/AuditHistory.tsx')
 const report = read('../components/features/reports/ReportDetailModal.tsx')
 const dashboard = read('../components/features/dashboard/DashboardOverview.tsx')
+const swap = read('../components/features/swaps/SwapDetailModal.tsx')
 const disclosure = read('../components/ui/progressive-disclosure.tsx')
 
 test('E7 progressive disclosure keeps decision context visible', () => {
@@ -55,4 +56,13 @@ test('E7 avoids nested disclosure stacks on representative surfaces', () => {
   const auditDetails = (audit.match(/<ProgressiveDisclosure/g) || []).length
   assert.equal(shiftDetails, 1)
   assert.equal(auditDetails, 1)
+})
+
+test('E8 swap review exposes the next actor without hiding decision context', () => {
+  assert.match(swap, /data-testid="swap-action-context"/)
+  assert.match(swap, /swapParticipantActionNeeded/)
+  assert.match(swap, /swapReviewerActionRequired/)
+  assert.match(swap, /swapAwaitingReviewer/)
+  assert.match(swap, /showParticipantActions/)
+  assert.match(swap, /showReviewerActions/)
 })

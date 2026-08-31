@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { format } from 'date-fns'
 import { CheckCircle, XCircle, Clock, User as UserIcon, Calendar, Briefcase } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
+import { useTranslation } from '@/lib/i18n'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { getSwapStatusPresentation } from '@/lib/utils/swapUi'
 
@@ -46,7 +47,18 @@ export function SwapDetailModal({
   onReject
 }: SwapDetailModalProps) {
   const { toast } = useToast()
+  const { t } = useTranslation()
   const statusPresentation = getSwapStatusPresentation(swap.status)
+  const isActive = swap.status === 'pending' || swap.status === 'accepted'
+  const actionContext = showParticipantActions
+    ? t('swapParticipantActionNeeded')
+    : showReviewerActions
+      ? t('swapReviewerActionRequired')
+      : swap.status === 'pending'
+        ? t('swapWaitingForParticipant')
+        : swap.status === 'accepted'
+          ? t('swapAwaitingReviewer')
+          : t('swapSubmittedForReview')
   const getBrandName = (id: string) => brands.find(b => b.id === id)?.name || 'Unknown'
   const getBrandColor = (id: string) => brands.find(b => b.id === id)?.color || '#2563EB'
   const getPlatformName = (id: string) => platforms.find(p => p.id === id)?.name || 'Unknown'
@@ -104,6 +116,11 @@ export function SwapDetailModal({
               </Badge>
             </div>
           </div>
+          {isActive && (
+            <p className="mt-2 text-sm text-muted-foreground" data-testid="swap-action-context">
+              {actionContext}
+            </p>
+          )}
         </DialogHeader>
 
         <div className="space-y-4 text-sm">
@@ -168,7 +185,7 @@ export function SwapDetailModal({
                 <Briefcase className="h-4 w-4 text-muted-foreground" />
                 <span>Reason</span>
               </div>
-              <p className="ml-6 text-muted-foreground italic text-sm">"{swap.reason}"</p>
+              <p className="ml-6 text-muted-foreground italic text-sm">&quot;{swap.reason}&quot;</p>
             </div>
           )}
 
