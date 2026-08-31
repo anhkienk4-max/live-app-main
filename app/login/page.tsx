@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Eye, EyeOff, Globe, Loader2 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useTranslation } from '@/lib/i18n'
 import { mockAuthService } from '@/lib/services/mockAuthService'
 import { getAuthMode, getSupabasePublicConfig, safeLocalRedirect } from '@/lib/auth/authMode'
@@ -18,7 +18,7 @@ import {
 } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/client'
 
-export default function LoginPage() {
+function LoginPageContent() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -27,11 +27,10 @@ export default function LoginPage() {
   const [hasSubmitted, setHasSubmitted] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { language, setLanguage, t } = useTranslation()
   const mockMode = getAuthMode() === 'mock'
-  const recoveryReason = typeof window === 'undefined'
-    ? null
-    : new URLSearchParams(window.location.search).get('reason')
+  const recoveryReason = searchParams.get('reason')
   const recoveryMessage = recoveryReason === 'session_expired' || recoveryReason === 'authentication_required'
     ? t('sessionExpired')
     : recoveryReason === 'auth_unavailable'
@@ -247,5 +246,13 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageContent />
+    </Suspense>
   )
 }

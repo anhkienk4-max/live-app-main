@@ -117,8 +117,10 @@ test('Core V1: permissionMatrix immutability contract — system_permission bind
 // ---------------------------------------------------------------------------
 // 3. Authentication / protected routes contract
 // ---------------------------------------------------------------------------
-test('Core V1: isPublicAuthPath gates exactly /login (refresh boundary)', () => {
-  assert.equal(isPublicAuthPath('/login'), true)
+test('Core V1: public auth entries bypass session refresh while dashboard stays protected', () => {
+  for (const path of ['/login', '/register', '/forgot-password', '/reset-password', '/auth/confirm', '/auth/auth-code-error']) {
+    assert.equal(isPublicAuthPath(path), true)
+  }
   assert.equal(isPublicAuthPath('/'), false)
   assert.equal(isPublicAuthPath('/calendar'), false)
   assert.equal(isPublicAuthPath('/api/anything'), false)

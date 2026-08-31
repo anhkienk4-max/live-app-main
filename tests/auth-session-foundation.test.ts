@@ -23,6 +23,7 @@ import {
 import { createVisionOcrPostHandler } from '../lib/server/visionOcrRouteHandler.ts'
 import {
   createSessionUpdater,
+  isPublicAuthPath,
   type SessionClientFactory,
 } from '../lib/supabase/middleware.ts'
 
@@ -38,6 +39,14 @@ test('registration page uses the canonical auth-mode boundary', async () => {
   const register = await readFile(new URL('../app/register/page.tsx', import.meta.url), 'utf8')
   assert.match(register, /getAuthMode\(\) === 'mock'/)
   assert.doesNotMatch(register, /NEXT_PUBLIC_USE_MOCK_DATA !== 'false'/)
+})
+
+test('public auth entries include registration while production remains fail-closed', () => {
+  for (const path of ['/login', '/register', '/forgot-password', '/reset-password', '/auth/confirm', '/auth/auth-code-error']) {
+    assert.equal(isPublicAuthPath(path), true, `${path} must remain a public auth boundary`)
+  }
+  assert.equal(isPublicAuthPath('/dashboard'), false)
+  assert.equal(resolveAuthMode({ nodeEnv: 'production', useMockData: 'true' }), 'supabase')
 })
 
 test('Supabase public configuration requires both non-empty values', () => {

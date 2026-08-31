@@ -34,6 +34,7 @@ function copySessionState(source: NextResponse, target: NextResponse) {
 
 export function isPublicAuthPath(pathname: string) {
   return pathname === '/login'
+    || pathname === '/register'
     || pathname === '/forgot-password'
     || pathname === '/reset-password'
     || pathname === '/auth/confirm'

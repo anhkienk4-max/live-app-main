@@ -80,7 +80,7 @@ test('invite and recovery links target the token-hash SSR confirmation route', a
 })
 
 test('invite and recovery callback routes remain public auth boundaries', () => {
-  for (const path of ['/login', '/forgot-password', '/reset-password', '/auth/confirm', '/auth/auth-code-error']) {
+  for (const path of ['/login', '/register', '/forgot-password', '/reset-password', '/auth/confirm', '/auth/auth-code-error']) {
     assert.equal(isPublicAuthPath(path), true)
   }
 })
