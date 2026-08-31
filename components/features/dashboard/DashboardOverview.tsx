@@ -383,7 +383,7 @@ function MemberDashboard(props: CommonProps) {
               <Clock className="w-4 h-4 ml-2" /> <span>{formatShiftTimeRange(nextShift)}</span>
             </div>
           </div>
-          <Button render={<Link href="/calendar" />} nativeButton={false}>{t('viewDetails')}</Button>
+          <Button render={<Link href={calendarCtaHref('mine')} />} nativeButton={false}>{t('viewDetails')}</Button>
         </CardContent>
       </Card>
     )}
