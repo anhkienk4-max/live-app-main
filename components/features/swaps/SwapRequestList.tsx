@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { CheckCircle, Download, FileSpreadsheet, Plus, RotateCcw, XCircle } from 'lucide-react'
+import { Download, FileSpreadsheet, Plus, RotateCcw } from 'lucide-react'
 import { format } from 'date-fns'
 import {
   brandService,
@@ -35,6 +35,7 @@ import { SwapDetailModal } from './SwapDetailModal'
 import { SwapRequestFormModal } from './SwapRequestFormModal'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { HistoryPagination } from '@/components/ui/history-pagination'
+import { PageLoadError } from '@/components/ui/page-load-error'
 
 type Filters = { start: string; end: string; requester: string; brand: string; campaign: string; role: string; status: string }
 const initialFilters: Filters = { start: '', end: '', requester: 'all', brand: 'all', campaign: 'all', role: 'all', status: 'all' }
@@ -54,17 +55,28 @@ export function SwapRequestList() {
   const [selectedSwap, setSelectedSwap] = React.useState<SwapRequest | null>(null)
   const [myShiftIds, setMyShiftIds] = React.useState<Set<string>>(new Set())
   const [loading, setLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<unknown>(null)
   const [cancelTarget, setCancelTarget] = React.useState<SwapRequest | null>(null)
   const [page, setPage] = React.useState(1)
   const [pageSize, setPageSize] = React.useState(10)
 
   const loadData = React.useCallback(async () => {
-    const [loadedSwaps, loadedShifts, loadedUsers, loadedBrands, loadedPlatforms, loadedCampaigns] = await Promise.all([
-      swapRequestService.getAll(), shiftService.getAll(), userService.getAll(), brandService.getAll(), platformService.getAll(), campaignService.getAll(),
-    ])
-    setSwaps(loadedSwaps); setShifts(loadedShifts); setUsers(loadedUsers); setBrands(loadedBrands); setPlatforms(loadedPlatforms); setCampaigns(loadedCampaigns); setLoading(false)
+    setLoadError(null)
+    setLoading(true)
+    try {
+      const [loadedSwaps, loadedShifts, loadedUsers, loadedBrands, loadedPlatforms, loadedCampaigns] = await Promise.all([
+        swapRequestService.getAll(), shiftService.getAll(), userService.getAll(), brandService.getAll(), platformService.getAll(), campaignService.getAll(),
+      ])
+      setSwaps(loadedSwaps); setShifts(loadedShifts); setUsers(loadedUsers); setBrands(loadedBrands); setPlatforms(loadedPlatforms); setCampaigns(loadedCampaigns)
+    } catch (error) {
+      setLoadError(error)
+    } finally {
+      setLoading(false)
+    }
   }, [])
-  React.useEffect(() => { void loadData() }, [loadData])
+  React.useEffect(() => {
+    queueMicrotask(() => { void loadData() })
+  }, [loadData])
   React.useEffect(() => {
     if (!currentUser) return
     void shiftRegistrationService.getForUser(currentUser.id).then(registrations => {
@@ -88,8 +100,8 @@ export function SwapRequestList() {
       (filters.role === 'all' || roleFor(swap) === filters.role) &&
       (filters.status === 'all' || swap.status === filters.status)
   })
-  React.useEffect(() => setPage(1), [filters])
-  const visibleSwaps = filtered.slice((page - 1) * pageSize, page * pageSize)
+  const effectivePage = Math.min(page, Math.max(1, Math.ceil(filtered.length / pageSize)))
+  const visibleSwaps = filtered.slice((effectivePage - 1) * pageSize, effectivePage * pageSize)
   const exportMaps = {
     users: new Map(users.map(user => [user.id, user.full_name])),
     brands: new Map(brands.map(brand => [brand.id, brand.name])),
@@ -132,11 +144,12 @@ export function SwapRequestList() {
     }
   }
 
-  if (loading || userLoading) return <div className="py-12 text-center">{t('loading')}</div>
+  if (loading || userLoading) return <div className="py-12 text-center" aria-live="polite">{t('loading')}</div>
+  if (loadError) return <PageLoadError error={loadError} onRetry={() => { void loadData() }} />
 
   return <div className="space-y-6">
     <div className="grid gap-4 sm:grid-cols-4">
-      {(['pending','accepted','approved','rejected','cancelled','completed'] as const).map(status => <Card key={status}><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">{(t as unknown as (k:string)=>string)(status)}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{filtered.filter(swap => swap.status === status).length}</p></CardContent></Card>)}
+      {(['pending','accepted','approved','rejected','cancelled','completed'] as const).map(status => <Card key={status} data-testid={`swap-status-${status}`}><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">{(t as unknown as (k:string)=>string)(status)}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{filtered.filter(swap => swap.status === status).length}</p></CardContent></Card>)}
       <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">{t('all')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{filtered.length}</p></CardContent></Card>
     </div>
 
@@ -175,7 +188,7 @@ export function SwapRequestList() {
       </div>
     </CardContent></Card>
 
-    {filtered.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noSwaps')}</CardContent></Card> : <Card className="overflow-hidden"><CardContent className="p-0"><div className="max-h-[60vh] space-y-3 overflow-auto p-4">{visibleSwaps.map(swap => {
+    {filtered.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground" data-testid="swap-empty-state">{swaps.length === 0 ? t('noSwaps') : t('noMatchingSwaps')}</CardContent></Card> : <Card className="overflow-hidden"><CardContent className="p-0"><div className="max-h-[60vh] space-y-3 overflow-auto p-4">{visibleSwaps.map(swap => {
       const shift = shiftById.get(swap.shift_id)
       if (!shift) return null
       const actions = getSwapUiActions(swap, currentUser)
@@ -236,12 +249,12 @@ export function SwapRequestList() {
                       </div>
                     ) : (
                       <>
-                        {swap.status === 'pending' && <p className="text-xs text-amber-700 font-medium">{t('waitingForParticipant')}</p>}
-                        {swap.status === 'accepted' && <p className="text-xs text-blue-700 font-medium">{t('waitingForReviewer')}</p>}
-                        {swap.status === 'completed' && <p className="text-xs text-green-700 font-medium">{t('completedSuccessfully')}</p>}
-                        {swap.status === 'approved' && <p className="text-xs text-green-700 font-medium">{t('approved')}</p>}
-                        {swap.status === 'rejected' && <p className="text-xs text-red-700 font-medium">{t('rejected')}</p>}
-                        {swap.status === 'cancelled' && <p className="text-xs text-red-700 font-medium">{t('cancelled')}</p>}
+                        {swap.status === 'pending' && <p className="text-xs text-amber-700 font-medium" data-testid="swap-next-actor">{actions.showAccept ? t('swapParticipantActionNeeded') : t('swapWaitingForParticipant')}</p>}
+                        {swap.status === 'accepted' && <p className="text-xs text-blue-700 font-medium" data-testid="swap-next-actor">{actions.showApprove ? t('swapReviewerActionRequired') : t('swapAwaitingReviewer')}</p>}
+                        {swap.status === 'completed' && <p className="text-xs text-green-700 font-medium" data-testid="swap-next-actor">{t('completedSuccessfully')}</p>}
+                        {swap.status === 'approved' && <p className="text-xs text-green-700 font-medium" data-testid="swap-next-actor">{t('approved')}</p>}
+                        {swap.status === 'rejected' && <p className="text-xs text-red-700 font-medium" data-testid="swap-next-actor">{t('rejected')}</p>}
+                        {swap.status === 'cancelled' && <p className="text-xs text-red-700 font-medium" data-testid="swap-next-actor">{t('cancelled')}</p>}
                       </>
                     )}
                   </div>
@@ -277,7 +290,7 @@ export function SwapRequestList() {
     })}</div><HistoryPagination page={page} pageSize={pageSize} total={filtered.length} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1) }} /></CardContent></Card>}
 
     {showForm && currentUser && <SwapRequestFormModal open={showForm} onOpenChange={setShowForm} shifts={shifts.filter(shift => shift.status === 'scheduled' && (myShiftIds.has(shift.id) || shift.host_id === currentUser.id || shift.support_id === currentUser.id || shift.technical_id === currentUser.id))} users={users} brands={brands} platforms={platforms} onSuccess={() => { void loadData(); setShowForm(false) }} />}
-    {selectedSwap && <SwapDetailModal open swap={selectedSwap} shift={shiftById.get(selectedSwap.shift_id)!} requester={users.find(user => user.id === selectedSwap.requester_id)!} newHost={users.find(user => user.id === replacementFor(selectedSwap))} brands={brands} platforms={platforms} showParticipantActions={getSwapUiActions(selectedSwap, currentUser).showAccept} showReviewerActions={getSwapUiActions(selectedSwap, currentUser).showReviewerReject} onAccept={() => runReview(selectedSwap, 'accept')} onParticipantReject={() => runReview(selectedSwap, 'counterpart_reject')} onOpenChange={open => !open && setSelectedSwap(null)} onApprove={() => runReview(selectedSwap, 'approve')} onReject={() => runReview(selectedSwap, 'reject')} />}
+    {selectedSwap && <SwapDetailModal open swap={selectedSwap} shift={shiftById.get(selectedSwap.shift_id)!} targetShift={selectedSwap.target_shift_id ? shiftById.get(selectedSwap.target_shift_id) : undefined} requester={users.find(user => user.id === selectedSwap.requester_id)!} newHost={users.find(user => user.id === replacementFor(selectedSwap))} brands={brands} platforms={platforms} showParticipantActions={getSwapUiActions(selectedSwap, currentUser).showAccept} showReviewerActions={getSwapUiActions(selectedSwap, currentUser).showApprove || getSwapUiActions(selectedSwap, currentUser).showReviewerReject} showRequesterActions={getSwapUiActions(selectedSwap, currentUser).showCancel} onAccept={() => runReview(selectedSwap, 'accept')} onParticipantReject={() => runReview(selectedSwap, 'counterpart_reject')} onOpenChange={open => !open && setSelectedSwap(null)} onApprove={() => runReview(selectedSwap, 'approve')} onReject={() => runReview(selectedSwap, 'reject')} onCancel={() => setCancelTarget(selectedSwap)} />}
     <LifecycleActionDialog open={Boolean(cancelTarget)} onOpenChange={open => !open && setCancelTarget(null)} title="Cancel swap request" impact={cancelImpact} confirmText="Cancel request" onConfirm={cancelSwap} />
   </div>
 }
@@ -286,4 +299,3 @@ function EntityFilter({ label, value, options, onChange }: { label: string; valu
   const { t } = useTranslation()
   return <label className="text-xs font-medium">{label}<Select value={value} onValueChange={onChange}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{options.map(option => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}</SelectContent></Select></label>
 }
-function Value({ label, value }: { label: string; value: string }) { return <div><p className="text-xs text-muted-foreground">{label}</p><p className="font-medium">{value}</p></div> }

@@ -109,10 +109,10 @@ export function SwapRequestDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>Đổi ca</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle data-testid="swap-request-title">{t('swapsTitle')}</DialogTitle></DialogHeader>
         <DialogBody className="space-y-4">
-          <div className="text-sm text-muted-foreground">Source: {sourceShift.date} {sourceShift.start_time}-{sourceShift.end_time} · {sourceRegistration.operational_role}</div>
-          <label className="text-xs font-medium">Mode
+          <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground" data-testid="swap-source-context"><span className="font-medium text-foreground">{t('swapSourceContext')}:</span> {sourceShift.date} {sourceShift.start_time}-{sourceShift.end_time} · {t(sourceRegistration.operational_role)}</div>
+          <label className="text-xs font-medium">{t('swapMode')}
             <Select value={mode} onValueChange={v => { setMode(v as CreatableSwapMode); setCounterpartId(''); setTargetRegistrations([]) }}>
               <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -141,7 +141,7 @@ export function SwapRequestDialog({
                 </Select>
               </label>
               {mode === 'exchange' && (
-                <label className="text-xs font-medium">Counterpart registration
+                <label className="text-xs font-medium">{t('swapCounterpartRegistration')}
                   <Select value={counterpartId} onValueChange={setCounterpartId}>
                     <SelectTrigger className="mt-1"><SelectValue placeholder="Select counterpart" /></SelectTrigger>
                     <SelectContent className="max-h-64 overflow-y-auto">
@@ -155,7 +155,7 @@ export function SwapRequestDialog({
           <label className="text-xs font-medium">Reason
             <Textarea value={reason} onChange={e=>setReason(e.target.value)} placeholder="Reason" />
           </label>
-          <Button onClick={submit} disabled={busy} className="w-full">{busy ? 'Submitting...' : 'Submit'}</Button>
+          <Button onClick={submit} disabled={busy} className="w-full" data-testid="swap-submit">{busy ? t('swapSubmitting') : t('swapSubmit')}</Button>
         </DialogBody>
       </DialogContent>
     </Dialog>
