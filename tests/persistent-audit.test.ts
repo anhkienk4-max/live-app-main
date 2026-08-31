@@ -10,6 +10,10 @@ const patchMigration = readFileSync(
   'supabase/migrations/20260830114000_core_v1_persistent_audit_read_permission.sql',
   'utf8',
 )
+const auditSnapshotFixMigration = readFileSync(
+  'supabase/migrations/20260831130000_core_v1_audit_update_before_state.sql',
+  'utf8',
+)
 const auditService = readFileSync('lib/services/auditService.ts', 'utf8')
 const supabaseService = readFileSync('lib/services/supabaseAuditService.ts', 'utf8')
 const auditHistory = readFileSync('components/features/audit/AuditHistory.tsx', 'utf8')
@@ -109,6 +113,20 @@ test('audit captures lifecycle semantics and changed fields in the same transact
   assert.match(migration, /after insert or update or delete/i)
   assert.match(migration, /insert into public\.audit_logs/i)
   assert.match(migration, /written after the mutation and roll back with it/i)
+})
+
+test('audit snapshots preserve OLD/NEW state for every DML operation', () => {
+  assert.match(
+    auditSnapshotFixMigration,
+    /before_row\s*:=\s*private\.audit_sanitize_row\(case\s+when\s+tg_op\s*<>\s*'INSERT'\s+then\s+to_jsonb\(old\)\s+else\s+null\s+end\)/i,
+  )
+  assert.match(
+    auditSnapshotFixMigration,
+    /after_row\s*:=\s*private\.audit_sanitize_row\(case\s+when\s+tg_op\s*<>\s*'DELETE'\s+then\s+to_jsonb\(new\)\s+else\s+null\s+end\)/i,
+  )
+  assert.doesNotMatch(auditSnapshotFixMigration, /case\s+when\s+tg_op\s*=\s*'DELETE'\s+then\s+to_jsonb\(old\)/i)
+  assert.match(auditSnapshotFixMigration, /security definer\s+set search_path = ''/i)
+  assert.match(auditSnapshotFixMigration, /revoke all on function private\.capture_audit_row_change\(\) from public, anon, authenticated/i)
 })
 
 test('administrative review metadata is separate and server-authorized', () => {
