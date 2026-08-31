@@ -20,6 +20,7 @@ import { useToast } from '@/components/ui/toast'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 import { useTranslation } from '@/lib/i18n'
 import { PageLoadError } from '@/components/ui/page-load-error'
+import { ProgressiveDisclosure } from '@/components/ui/progressive-disclosure'
 import {
   classifyOperationStatus,
   getErrorRecoveryContext,
@@ -194,5 +195,23 @@ function AuditDetail({ entry, currentUser, onClose, onUpdated }: { entry: AuditL
 }
 
 function Meta({ label, value }: { label: string; value: string }) { return <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 break-words font-medium">{value}</p></div> }
-function Snapshot({ title, value, changed }: { title: string; value?: Record<string, unknown>; changed: Set<string> }) { return <div><h3 className="mb-2 font-semibold">{title}</h3><div className="max-h-[420px] overflow-auto rounded-lg border"><table className="w-full min-w-[420px] text-xs"><tbody>{Object.entries(value || {}).map(([key, field]) => <tr className={changed.has(key) ? 'border-b bg-amber-50' : 'border-b'} key={key}><th className="w-1/3 p-2 text-left align-top">{key}</th><td className="break-all p-2 font-mono">{JSON.stringify(field)}</td></tr>)}</tbody></table>{!value && <p className="p-3 text-muted-foreground">No snapshot.</p>}</div></div> }
+function Snapshot({ title, value, changed }: { title: string; value?: Record<string, unknown>; changed: Set<string> }) {
+  return (
+    <ProgressiveDisclosure level="expandable" summary={title}>
+      <div className="max-h-[420px] overflow-auto rounded-lg border">
+        <table className="w-full min-w-[420px] text-xs">
+          <tbody>
+            {Object.entries(value || {}).map(([key, field]) => (
+              <tr className={changed.has(key) ? 'border-b bg-amber-50' : 'border-b'} key={key}>
+                <th className="w-1/3 p-2 text-left align-top">{key}</th>
+                <td className="break-all p-2 font-mono">{JSON.stringify(field)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!value && <p className="p-3 text-muted-foreground">No snapshot.</p>}
+      </div>
+    </ProgressiveDisclosure>
+  )
+}
 function entityLink(entry: AuditLog) { const links: Record<string, string> = { shift: '/calendar', shift_registration: '/calendar', report: '/reports', campaign: '/campaigns', brand: '/brands', platform: '/platforms', staff: '/staff', swap_request: '/swaps', live_snapshot: '/live' }; return links[entry.entity_type] }

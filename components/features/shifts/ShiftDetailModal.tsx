@@ -67,6 +67,7 @@ import { ShiftRegistrationActions } from '@/components/features/calendar/ShiftRe
 import { deriveShiftAttention } from '@/lib/ui/operational-attention'
 import { OperationalStatusStrip } from '@/components/ui/operational-status'
 import { BottomActionBar, ResponsiveActions } from '@/components/ui/mobile-actions'
+import { ProgressiveDisclosure } from '@/components/ui/progressive-disclosure'
 import type { PrioritizedAction } from '@/lib/ui/action-priority'
 import { getRoleUxSurfaceConfig } from '@/lib/ui/role-ux'
 
@@ -1028,16 +1029,17 @@ export function ShiftDetailModal({
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardContent className="pt-6">
-                    <h3 className="mb-4 text-sm font-semibold text-muted-foreground">{t('metadata')}</h3>
-                    <dl className="grid gap-4 text-sm sm:grid-cols-2">
-                      <DetailValue label={t('createdAt')} value={safeFormatShiftDate(shift.created_at, 'Pp', language, fallback)} />
-                      <DetailValue label={t('updatedAt')} value={safeFormatShiftDate(shift.updated_at, 'Pp', language, fallback)} />
-                      <DetailValue className="sm:col-span-2" label={t('updatedBy')} value={shift.updated_by ? userName(shift.updated_by) : fallback} />
-                    </dl>
-                  </CardContent>
-                </Card>
+                <ProgressiveDisclosure
+                  data-testid="shift-detail-advanced-metadata"
+                  level="detail_only"
+                  summary={t('metadata')}
+                >
+                  <dl className="grid gap-4 text-sm sm:grid-cols-2">
+                    <DetailValue label={t('createdAt')} value={safeFormatShiftDate(shift.created_at, 'Pp', language, fallback)} />
+                    <DetailValue label={t('updatedAt')} value={safeFormatShiftDate(shift.updated_at, 'Pp', language, fallback)} />
+                    <DetailValue className="sm:col-span-2" label={t('updatedBy')} value={shift.updated_by ? userName(shift.updated_by) : fallback} />
+                  </dl>
+                </ProgressiveDisclosure>
               </TabsContent>
             </Tabs>
           </DialogBody>
