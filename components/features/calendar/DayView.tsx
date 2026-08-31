@@ -30,9 +30,12 @@ export function DayView({ currentDate, shifts, brands, platforms, users, registr
   const dayShifts = shifts.filter(s => s.date === dateStr).sort((a, b) => a.start_time.localeCompare(b.start_time))
   
   const getBrandColor = (brandId: string) => brands.find(b => b.id === brandId)?.color || '#2563EB'
-  const getBrandName = (brandId: string) => brands.find(b => b.id === brandId)?.name || 'Unknown'
-  const getPlatformName = (platformId: string) => platforms.find(p => p.id === platformId)?.name || 'Unknown'
-  const getUserName = (userId?: string) => userId ? users.find(u => u.id === userId)?.full_name || 'Unassigned' : 'Unassigned'
+  const getBrandName = (brandId: string) => brands.find(b => b.id === brandId)?.name || t('notProvided')
+  const getPlatformName = (platformId: string) => platforms.find(p => p.id === platformId)?.name || t('notProvided')
+  const getUserName = (userId?: string) => userId ? users.find(u => u.id === userId)?.full_name || t('notAssigned') : t('notAssigned')
+  const getStatusLabel = (status: Shift['status']) => t(status === 'live' ? 'liveStatus' : status)
+  const staffingName = (userId: string | undefined, importedNames: string[] | undefined) =>
+    userId ? getUserName(userId) : importedNames?.join(', ') || t('notAssigned')
 
   return (
     <div>
@@ -51,15 +54,21 @@ export function DayView({ currentDate, shifts, brands, platforms, users, registr
               data-testid={`day-shift-${shift.id}`}
               style={{ borderLeft: `6px solid ${getBrandColor(shift.brand_id)}` }}
             >
-              <button type="button" className="w-full text-left" onClick={() => onShiftClick?.(shift)}>
+              <button
+                type="button"
+                aria-label={`${shift.title || getBrandName(shift.brand_id)} · ${formatShiftTimeRange(shift)} · ${getStatusLabel(shift.status)}`}
+                className="w-full text-left"
+                onClick={() => onShiftClick?.(shift)}
+              >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <span className="text-lg font-semibold">{formatShiftTimeRange(shift)}</span>
                     <Badge variant={shift.status === 'live' ? 'destructive' : shift.status === 'completed' ? 'default' : 'secondary'}>
-                      {shift.status}
+                      {getStatusLabel(shift.status)}
                     </Badge>
                   </div>
+                  <p className="mb-2 break-words text-base font-semibold">{shift.title?.trim() || `${getBrandName(shift.brand_id)} live`}</p>
                   <div className="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-3">
                     <div>
                       <span className="font-medium">Brand:</span>
@@ -78,17 +87,17 @@ export function DayView({ currentDate, shifts, brands, platforms, users, registr
                     <div className="flex items-center gap-2">
                       <UserIcon className="h-4 w-4 text-blue-600" />
                       <span className="text-gray-600">Host:</span>
-                      <span className="font-medium">{getUserName(shift.host_id)}</span>
+                      <span className="font-medium">{staffingName(shift.host_id, shift.host_names)}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <UserIcon className="h-4 w-4 text-green-600" />
                       <span className="text-gray-600">Support:</span>
-                      <span className="font-medium">{getUserName(shift.support_id)}</span>
+                      <span className="font-medium">{staffingName(shift.support_id, shift.assistant_names)}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <UserIcon className="h-4 w-4 text-purple-600" />
                       <span className="text-gray-600">Technical:</span>
-                      <span className="font-medium">{getUserName(shift.technical_id)}</span>
+                      <span className="font-medium">{staffingName(shift.technical_id, shift.technical_names)}</span>
                     </div>
                   </div>
                   {shift.product_notes && (

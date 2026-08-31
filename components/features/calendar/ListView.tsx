@@ -44,6 +44,7 @@ export function ListView({
   const getPlatformName = (platformId: string) => platforms.find(p => p.id === platformId)?.name || 'Unknown'
   const getBrandColor = (brandId: string) => brands.find(b => b.id === brandId)?.color || '#2563EB'
   const getUserName = (userId?: string) => userId ? users.find(u => u.id === userId)?.full_name || t('notAssigned') : t('notAssigned')
+  const getStatusLabel = (status: Shift['status']) => t(status === 'live' ? 'liveStatus' : status)
   const staffingName = (userId: string | undefined, importedNames: string[] | undefined) =>
     userId ? getUserName(userId) : importedNames?.join(', ') || t('notAssigned')
 
@@ -84,6 +85,7 @@ export function ListView({
             )}
             <button
               type="button"
+              aria-label={`${shift.title || getBrandName(shift.brand_id)} · ${formatShiftTimeRange(shift)} · ${getStatusLabel(shift.status)}`}
               className="flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
               onClick={() => onShiftClick?.(shift)}
             >
@@ -93,7 +95,8 @@ export function ListView({
                     {format(new Date(shift.date), 'MMM d, yyyy')}
                   </div>
                   <div className="min-w-[150px] text-sm font-medium">{formatShiftTimeRange(shift)}</div>
-                  <div className="text-sm font-semibold text-gray-900">{getBrandName(shift.brand_id)}</div>
+                  <div className="min-w-[150px] text-sm font-semibold text-gray-900">{shift.title?.trim() || `${getBrandName(shift.brand_id)} live`}</div>
+                  <div className="text-sm text-gray-700">{getBrandName(shift.brand_id)}</div>
                   <div className="text-sm text-gray-600">{getPlatformName(shift.platform_id)}</div>
                   <div className="text-sm text-gray-500"><span className="font-medium">{t('studio')}:</span> {shift.studio || t('notUpdated')}</div>
                   <div className="text-sm text-gray-500">
@@ -103,7 +106,7 @@ export function ListView({
                   <div className="text-sm text-gray-500"><span className="font-medium">{t('importTechnicalNames')}:</span> {staffingName(shift.technical_id, shift.technical_names)}</div>
                 </div>
                 <Badge variant={shift.status === 'live' ? 'destructive' : shift.status === 'completed' ? 'default' : 'secondary'}>
-                  {shift.status}
+                  {getStatusLabel(shift.status)}
                 </Badge>
               </div>
               {/* E5 Exception Strip */}

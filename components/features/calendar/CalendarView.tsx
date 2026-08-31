@@ -295,7 +295,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     }
   }
 
-  if (loading) return <div className="text-center py-12">{t('loading')}</div>
+  if (loading) return <div aria-live="polite" className="py-12 text-center" data-testid="calendar-loading">{t('loading')}</div>
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoadError(null); setLoading(true); void loadData() }} />
 
   return (
@@ -554,10 +554,17 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
 
       {/* Calendar Views */}
       <Card className="min-w-0 overflow-hidden p-3 sm:p-6">
-        {view === 'month' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} onShiftClick={setSelectedShift} onDayClick={setSelectedDay} /></div></div>}
-        {view === 'week' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} onShiftClick={setSelectedShift} /></div></div>}
-        {view === 'day' && <DayView currentDate={currentDate} shifts={filteredShifts} allShifts={shifts} registrations={registrations} currentUser={currentUser} brands={brands} platforms={platforms} users={users} onRegister={registerForShift} onShiftClick={setSelectedShift} />}
-        {view === 'list' && (
+        {filteredShifts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center" data-testid="calendar-empty-state">
+            <CalendarIcon className="h-12 w-12 text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">{t('noMatchingShifts')}</p>
+            {hasActiveFilters ? <Button onClick={clearFilters} size="sm" variant="outline">{t('resetFilters')}</Button> : null}
+          </div>
+        ) : null}
+        {filteredShifts.length > 0 && view === 'month' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} onShiftClick={setSelectedShift} onDayClick={setSelectedDay} /></div></div>}
+        {filteredShifts.length > 0 && view === 'week' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} onShiftClick={setSelectedShift} /></div></div>}
+        {filteredShifts.length > 0 && view === 'day' && <DayView currentDate={currentDate} shifts={filteredShifts} allShifts={shifts} registrations={registrations} currentUser={currentUser} brands={brands} platforms={platforms} users={users} onRegister={registerForShift} onShiftClick={setSelectedShift} />}
+        {filteredShifts.length > 0 && view === 'list' && (
           <ListView
             shifts={filteredShifts}
             brands={brands}

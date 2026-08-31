@@ -54,6 +54,7 @@ export function MonthView({
     brands.find(brand => brand.id === brandId)?.color || '#2563EB'
   const brandName = (brandId: string) =>
     brands.find(brand => brand.id === brandId)?.name || ''
+  const statusLabel = (status: Shift['status']) => t(status === 'live' ? 'liveStatus' : status)
 
   return (
     <div className="min-w-0">
@@ -104,6 +105,7 @@ export function MonthView({
                     <button
                       className={`${visibility} h-7 w-full min-w-0 items-center gap-1 overflow-hidden rounded px-1.5 text-left text-[11px] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
                       data-testid={`calendar-event-${shift.id}`}
+                      aria-label={`${shift.start_time} · ${displayTitle} · ${t('status')}: ${statusLabel(shift.status)}`}
                       key={shift.id}
                       onClick={event => {
                         event.stopPropagation()
@@ -119,7 +121,7 @@ export function MonthView({
                       <span className="shrink-0 font-semibold">{shift.start_time}{crossesMidnight ? ' +1' : ''}</span>
                       <span className="min-w-0 flex-1 truncate whitespace-nowrap">{displayTitle}</span>
                       <span
-                        aria-label={shift.status}
+                        aria-label={`${t('status')}: ${statusLabel(shift.status)}`}
                         className={`h-2 w-2 shrink-0 rounded-full ${
                           shift.status === 'live'
                             ? 'bg-red-500'
@@ -129,8 +131,9 @@ export function MonthView({
                                 ? 'bg-gray-400'
                                 : 'bg-blue-500'
                         }`}
-                        title={shift.status}
+                        title={statusLabel(shift.status)}
                       />
+                      <span className="hidden min-w-0 truncate text-[10px] text-muted-foreground xl:inline">{statusLabel(shift.status)}</span>
                     </button>
                   )
                 })}
