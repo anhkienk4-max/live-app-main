@@ -33,7 +33,7 @@ export function PageShell({ archetype, className, children, ...props }: PageShel
   }, [archetype])
 
   return (
-    <div className={cn('w-full mx-auto', maxWidthClass, className)} {...props}>
+    <div data-page-archetype={archetype} className={cn('w-full mx-auto', maxWidthClass, className)} {...props}>
       <div className={cn('flex flex-col w-full', archetype === 'auth' ? '' : 'py-6')}>
         {children}
       </div>
@@ -96,6 +96,36 @@ export function PageSectionBody({ className, children, ...props }: React.HTMLAtt
       {children}
     </div>
   )
+}
+
+export type PageStateKind = 'loading' | 'empty' | 'error' | 'partial' | 'success'
+
+export interface PageStateProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'title'> {
+  kind: PageStateKind
+  title: React.ReactNode
+  description?: React.ReactNode
+  action?: React.ReactNode
+}
+
+/** Shared state semantics; pages remain responsible for their domain-specific copy and actions. */
+export function PageState({ kind, title, description, action, className, ...props }: PageStateProps) {
+  return (
+    <div
+      role={kind === 'error' ? 'alert' : 'status'}
+      aria-live="polite"
+      data-page-state={kind}
+      className={cn('flex flex-col items-center justify-center gap-2 py-10 text-center', className)}
+      {...props}
+    >
+      <p className="font-medium">{title}</p>
+      {description ? <p className="max-w-prose text-sm text-muted-foreground">{description}</p> : null}
+      {action ? <div className="mt-2">{action}</div> : null}
+    </div>
+  )
+}
+
+export function EmptyState(props: Omit<PageStateProps, 'kind'>) {
+  return <PageState kind="empty" {...props} />
 }
 
 // -----------------------------------------------------------------------------

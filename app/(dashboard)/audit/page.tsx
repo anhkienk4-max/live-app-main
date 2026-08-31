@@ -3,7 +3,7 @@ import { PageShell } from '@/components/ui/archetypes'
 
 export default function AuditPage() {
   return (
-    <PageShell archetype="directory" className="space-y-6">
+    <PageShell archetype="trace" className="space-y-6">
       <AuditHistory />
     </PageShell>
   )
