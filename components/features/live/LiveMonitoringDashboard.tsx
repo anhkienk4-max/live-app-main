@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { format } from 'date-fns'
-import { AlertCircle, Clock, DollarSign, FileText, Filter, Radio, RotateCcw, TrendingUp, Users } from 'lucide-react'
+import { AlertCircle, Clock, DollarSign, FileText, Filter, Radio, RotateCcw, TrendingUp } from 'lucide-react'
 import {
   brandService,
   campaignService,
@@ -16,7 +16,7 @@ import {
 import { Brand, Campaign, DashboardUpdate, OperationalRole, Platform, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
-import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { formatDuration, formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -45,6 +45,7 @@ export function LiveMonitoringDashboard() {
   const [updateShift, setUpdateShift] = React.useState<Shift | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
+  const [renderedAt] = React.useState(() => Date.now())
 
   const loadData = React.useCallback(async () => {
     setLoadError(null)
@@ -67,14 +68,17 @@ export function LiveMonitoringDashboard() {
     }
   }, [])
 
-  React.useEffect(() => { setFilters(initialFilters()); void loadData() }, [loadData])
+  React.useEffect(() => {
+    queueMicrotask(() => setFilters(initialFilters()))
+    queueMicrotask(() => { void loadData() })
+  }, [loadData])
   React.useEffect(() => {
     const interval = window.setInterval(() => void loadData(), 30000)
     return () => window.clearInterval(interval)
   }, [loadData])
 
-  if (loading || !filters) return <div className="py-12 text-center">{t('loading')}</div>
-  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
+  if (loading || !filters) return <div className="py-12 text-center" aria-live="polite" data-testid="live-loading">{t('loading')}</div>
+  if (loadError) return <PageLoadError error={new Error(t('liveLoadError'))} onRetry={() => { setLoading(true); void loadData() }} />
 
   const matchesRole = (shift: Shift, role: OperationalRole, userId: string) => {
     const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
@@ -98,6 +102,8 @@ export function LiveMonitoringDashboard() {
   const latestUpdate = (shiftId: string) => [...(updates[shiftId] || [])].sort((a, b) => b.time.localeCompare(a.time))[0]
   const totalRevenue = filtered.reduce((sum, shift) => sum + (latestUpdate(shift.id)?.revenue || 0), 0)
   const totalOrders = filtered.reduce((sum, shift) => sum + (latestUpdate(shift.id)?.orders || 0), 0)
+  const attentionCount = filtered.filter(shift => shift.status === 'live' && !latestUpdate(shift.id)).length
+  const activeFilterCount = Object.entries(filters).filter(([key, value]) => value && value !== 'all' && !(key === 'date' && value === todayValue())).length
   const roleOptions = (role: 'host' | 'support' | 'technical') => users.filter(user => user.operational_roles?.includes(role)).map(user => ({ id: user.id, name: user.full_name }))
   const nameFor = (items: Array<{ id: string; name: string }>, id?: string) => id ? items.find(item => item.id === id)?.name || '—' : '—'
   const userName = (id?: string) => id ? users.find(user => user.id === id)?.full_name || '—' : '—'
@@ -113,7 +119,7 @@ export function LiveMonitoringDashboard() {
 
   return <>
     <div className="space-y-6">
-      <Card><CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle>{t('liveFilters')}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{t('todaysDate')}: {format(new Date(), 'dd/MM/yyyy')}</p></div><div className="flex flex-wrap items-center gap-2"><Button variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="live-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button><Button variant="outline" onClick={() => setFilters(initialFilters())}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button></div></div></CardHeader>{showFilters && <CardContent id="live-filter-panel" className="grid gap-3 md:grid-cols-4">
+      <Card><CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle>{t('liveFilters')}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{t('todaysDate')}: {format(new Date(), 'dd/MM/yyyy')}</p></div><div className="flex flex-wrap items-center gap-2"><Button variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="live-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}{activeFilterCount > 0 && <span className="ml-1 rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground" data-testid="live-active-filter-count">{activeFilterCount}</span>}</Button><Button variant="outline" onClick={() => setFilters(initialFilters())}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button></div></div></CardHeader>{showFilters && <CardContent id="live-filter-panel" className="grid gap-3 md:grid-cols-4">
         <label className="text-xs font-medium">{t('date')}<Input className="mt-1" type="date" value={filters.date} onChange={event => setFilters(current => current ? { ...current, date: event.target.value } : current)} /></label>
         <FilterSelect label={t('brand')} value={filters.brand} options={brands} onChange={value => setFilters(current => current ? { ...current, brand: value } : current)} />
         <FilterSelect label={t('platform')} value={filters.platform} options={platforms} onChange={value => setFilters(current => current ? { ...current, platform: value } : current)} />
@@ -128,18 +134,25 @@ export function LiveMonitoringDashboard() {
         <Metric title={t('liveInProgress')} value={filtered.filter(shift => shift.status === 'live').length.toString()} icon={<Radio className="h-5 w-5 text-red-600" />} />
         <Metric title={t('revenue')} value={formatCurrency(totalRevenue)} icon={<DollarSign className="h-5 w-5 text-green-600" />} />
         <Metric title={t('orders')} value={totalOrders.toLocaleString()} icon={<TrendingUp className="h-5 w-5 text-blue-600" />} />
-        <Metric title={t('needsReview')} value={filtered.filter(shift => shift.status === 'completed').length.toString()} icon={<FileText className="h-5 w-5 text-amber-600" />} />
+        <Metric title={t('liveNeedsAttention')} value={attentionCount.toString()} icon={<FileText className="h-5 w-5 text-amber-600" />} />
         <Metric title={t('updatesMissing')} value={filtered.filter(shift => shift.status === 'live' && !latestUpdate(shift.id)).length.toString()} icon={<AlertCircle className="h-5 w-5 text-red-600" />} />
       </div>
 
-      {filtered.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noLiveShifts')}</CardContent></Card> : (
+      {filtered.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground" data-testid="live-empty-state">{shifts.length === 0 ? t('liveNoSessionsYet') : t('liveNoMatchingSessions')}</CardContent></Card> : (
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           {filtered.map(shift => {
             const latest = latestUpdate(shift.id)
+            const needsAttention = shift.status === 'live' && !latest
+            const elapsed = shift.start_at && shift.status === 'live'
+              ? formatDuration(Math.max(0, Math.floor((renderedAt - new Date(shift.start_at).getTime()) / 60000)))
+              : null
+            const attentionLabel = needsAttention ? t('liveAttentionMissingUpdate') : t('liveHealthy')
             return <Card key={shift.id} className="border-2"><CardHeader><div className="flex items-center justify-between"><Badge className={shift.status === 'live' ? 'bg-red-100 text-red-800' : ''}>{statusLabel(shift.status)}</Badge><span className="text-sm text-muted-foreground">{nameFor(platforms, shift.platform_id)}</span></div><CardTitle className="pt-2 text-lg">{shift.title || nameFor(brands, shift.brand_id)}</CardTitle><p className="text-sm text-muted-foreground">{formatShiftTimeRange(shift)} · {nameFor(campaigns, shift.campaign_id)}</p></CardHeader><CardContent className="space-y-3">
+              <div className={needsAttention ? 'rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900' : 'text-xs text-muted-foreground'} data-testid={needsAttention ? 'live-session-attention' : 'live-session-health'}>{attentionLabel}</div>
               <div className="grid grid-cols-3 gap-2 text-sm"><Value label={t('host')} value={roleNames(shift, 'host')} /><Value label={t('support')} value={roleNames(shift, 'support')} /><Value label={t('technical')} value={roleNames(shift, 'technical')} /></div>
               <div className="grid grid-cols-3 gap-2 border-t pt-3"><Value label={t('revenue')} value={latest ? formatCurrency(latest.revenue) : '—'} /><Value label={t('orders')} value={latest ? latest.orders.toLocaleString() : '—'} /><Value label={t('viewers')} value={latest ? latest.current_viewers.toLocaleString() : '—'} /></div>
-              {latest && <p className="flex items-center gap-2 text-xs text-muted-foreground"><Clock className="h-3 w-3" />{format(new Date(latest.time), 'HH:mm dd/MM/yyyy')}</p>}
+              {latest ? <p className="flex items-center gap-2 text-xs text-muted-foreground"><Clock className="h-3 w-3" />{t('liveLastUpdated')}: {format(new Date(latest.time), 'HH:mm dd/MM/yyyy')}</p> : <p className="text-xs text-muted-foreground">{t('liveNoCapture')}</p>}
+              {elapsed && <p className="text-xs text-muted-foreground">{t('liveElapsed')}: {elapsed}</p>}
               <div className="flex gap-2"><Button className="flex-1" variant="outline" onClick={() => setSelectedShift(shift)} data-testid={`open-live-session-${shift.id}`}>{t('viewDetails')}</Button>{(shift.status === 'live' || shift.status === 'preparing' || shift.status === 'paused') && <Button className="flex-1" onClick={() => setUpdateShift(shift)} data-testid={`open-live-dashboard-update-${shift.id}`}>{t('submitDashboardUpdate')}</Button>}</div>
             </CardContent></Card>
           })}

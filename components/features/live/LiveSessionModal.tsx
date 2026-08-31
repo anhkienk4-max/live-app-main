@@ -13,7 +13,7 @@ import { Clock, DollarSign, TrendingUp, Users, ExternalLink, Camera, Plus, Uploa
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
 import { DashboardUpdateModal } from './DashboardUpdateModal'
-import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { formatDuration, formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { DeletionImpact } from '@/lib/types/database.types'
@@ -55,6 +55,9 @@ export function LiveSessionModal({
   const { toast } = useToast()
   const [updates, setUpdates] = React.useState<DashboardUpdate[]>([])
   const [loading, setLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<unknown>(null)
+  const [reportLoading, setReportLoading] = React.useState(true)
+  const [renderedAt] = React.useState(() => Date.now())
   const [showUpdate, setShowUpdate] = React.useState(false)
   const [removeTarget, setRemoveTarget] = React.useState<DashboardUpdate | null>(null)
   const [report, setReport] = React.useState<Report | null>(null)
@@ -66,19 +69,30 @@ export function LiveSessionModal({
 
   const loadUpdates = async () => {
     setLoading(true)
-    const data = await dashboardUpdateService.getByShift(shift.id)
-    setUpdates(data)
-    setLoading(false)
+    setLoadError(null)
+    try {
+      setUpdates(await dashboardUpdateService.getByShift(shift.id))
+    } catch (error) {
+      setLoadError(error)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const loadReport = async () => {
-    setReport(await reportService.getByShift(shift.id))
+    setReportLoading(true)
+    try {
+      setReport(await reportService.getByShift(shift.id))
+    } catch (error) {
+      setLoadError(error)
+    } finally {
+      setReportLoading(false)
+    }
   }
 
   React.useEffect(() => {
     if (open && shift) {
-      void loadUpdates()
-      void loadReport()
+      queueMicrotask(() => { void Promise.all([loadUpdates(), loadReport()]) })
     }
   }, [open, shift])
 
@@ -98,11 +112,11 @@ export function LiveSessionModal({
   const statusLabel = shift.status === 'live' ? t('liveStatus') : t(shift.status)
 
   const orderedUpdates = [...updates].sort((left, right) => left.time.localeCompare(right.time))
-  const visibleUpdates = updates.slice((snapshotPage - 1) * snapshotPageSize, snapshotPage * snapshotPageSize)
+  const visibleUpdates = orderedUpdates.slice((snapshotPage - 1) * snapshotPageSize, snapshotPage * snapshotPageSize)
   const latestUpdate = orderedUpdates.length > 0 ? orderedUpdates[orderedUpdates.length - 1] : null
-  const totalRevenue = latestUpdate?.revenue || 0
-  const totalOrders = latestUpdate?.orders || 0
-  const peakViewers = Math.max(...updates.map(u => u.peak_viewers), 0)
+  const totalRevenue = latestUpdate?.revenue ?? null
+  const totalOrders = latestUpdate?.orders ?? null
+  const peakViewers = updates.length > 0 ? Math.max(...updates.map(u => u.peak_viewers)) : null
   const removeImpact: DeletionImpact | null = removeTarget ? {
     entity_type: 'live_snapshot',
     entity_id: removeTarget.id,
@@ -144,7 +158,7 @@ export function LiveSessionModal({
       tier: 'secondary',
     })
   }
-  if (currentUser && hasPermission(currentUser, 'reports.submit')) {
+  if (currentUser && hasPermission(currentUser, 'reports.submit') && !reportLoading) {
     if (report) {
       headerActions.push({
         key: 'view-report',
@@ -162,6 +176,12 @@ export function LiveSessionModal({
       })
     }
   }
+
+  const elapsed = shift.start_at && shift.status === 'live'
+    ? formatDuration(Math.max(0, Math.floor((renderedAt - new Date(shift.start_at).getTime()) / 60000)))
+    : null
+  const needsAttention = shift.status === 'live' && !latestUpdate
+  const attentionLabel = needsAttention ? t('liveAttentionMissingUpdate') : t('liveHealthy')
 
   return (<>
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -185,6 +205,13 @@ export function LiveSessionModal({
           </div>
         </DialogHeader>
 
+        <div className="grid gap-3 rounded-lg border bg-muted/20 p-4 sm:grid-cols-2 lg:grid-cols-4" data-testid="live-session-summary">
+          <div><p className="text-xs font-medium text-muted-foreground">{t('liveSessionIdentity')}</p><p className="font-semibold">{shift.title || getBrandName(shift.brand_id)}</p><p className="text-xs text-muted-foreground">{getBrandName(shift.brand_id)} · {getPlatformName(shift.platform_id)} · {getCampaignName(shift.campaign_id)}</p></div>
+          <div><p className="text-xs font-medium text-muted-foreground">{t('liveSessionState')}</p><p className="font-semibold">{statusLabel}</p><p className="text-xs text-muted-foreground">{t('liveShiftState')}: {t(shift.status)}</p></div>
+          <div><p className="text-xs font-medium text-muted-foreground">{t('liveSessionHealth')}</p><p className={needsAttention ? 'font-semibold text-amber-700' : 'font-semibold text-emerald-700'}>{attentionLabel}</p><p className="text-xs text-muted-foreground">{latestUpdate ? `${t('liveLastUpdated')}: ${format(new Date(latestUpdate.time), 'dd/MM/yyyy HH:mm')}` : t('liveNoCapture')}</p></div>
+          <div><p className="text-xs font-medium text-muted-foreground">{t('liveStartedAt')}</p><p className="font-semibold">{format(new Date(shift.start_at || `${shift.date}T${shift.start_time}`), 'dd/MM/yyyy HH:mm')}</p><p className="text-xs text-muted-foreground">{elapsed ? `${t('liveElapsed')}: ${elapsed}` : formatShiftTimeRange(shift)}</p></div>
+        </div>
+
         <Tabs defaultValue="overview" className="mt-4">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -194,14 +221,15 @@ export function LiveSessionModal({
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
+            <div className="flex items-center justify-between"><h3 className="text-sm font-semibold">{t('livePrimaryMetrics')}</h3><span className={needsAttention ? 'text-xs font-medium text-amber-700' : 'text-xs font-medium text-emerald-700'}>{attentionLabel}</span></div>
             {/* Live Stats */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-sm text-gray-600">Revenue</div>
-                      <div className="text-2xl font-bold text-green-600">{formatCurrency(totalRevenue)}</div>
+                      <div className="text-sm text-gray-600">{t('revenue')}</div>
+                      <div className="text-2xl font-bold text-green-600">{totalRevenue == null ? t('notAvailable') : formatCurrency(totalRevenue)}</div>
                     </div>
                     <DollarSign className="h-8 w-8 text-green-600" />
                   </div>
@@ -211,8 +239,8 @@ export function LiveSessionModal({
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-sm text-gray-600">Orders</div>
-                      <div className="text-2xl font-bold">{totalOrders}</div>
+                      <div className="text-sm text-gray-600">{t('orders')}</div>
+                      <div className="text-2xl font-bold">{totalOrders == null ? t('notAvailable') : totalOrders.toLocaleString()}</div>
                     </div>
                     <TrendingUp className="h-8 w-8 text-blue-600" />
                   </div>
@@ -222,8 +250,8 @@ export function LiveSessionModal({
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-sm text-gray-600">Peak Viewers</div>
-                      <div className="text-2xl font-bold">{peakViewers}</div>
+                      <div className="text-sm text-gray-600">{t('peakViewers')}</div>
+                      <div className="text-2xl font-bold">{peakViewers == null ? t('notAvailable') : peakViewers.toLocaleString()}</div>
                     </div>
                     <Users className="h-8 w-8 text-purple-600" />
                   </div>
@@ -233,14 +261,16 @@ export function LiveSessionModal({
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-sm text-gray-600">Current Viewers</div>
-                      <div className="text-2xl font-bold">{latestUpdate?.current_viewers || 0}</div>
+                      <div className="text-sm text-gray-600">{t('currentViewers')}</div>
+                      <div className="text-2xl font-bold">{latestUpdate == null ? t('notAvailable') : latestUpdate.current_viewers.toLocaleString()}</div>
                     </div>
                     <Users className="h-8 w-8 text-orange-600" />
                   </div>
                 </CardContent>
               </Card>
             </div>
+
+            <Card data-testid="live-staffing-summary"><CardContent className="pt-4"><div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold">{t('liveStaffing')}</h3><span className="text-xs text-muted-foreground">{t('liveAssigned')}</span></div><div className="grid gap-3 sm:grid-cols-3"><div><p className="text-xs text-muted-foreground">{t('host')}</p><p className="font-medium">{roleNames('host')}</p></div><div><p className="text-xs text-muted-foreground">{t('support')}</p><p className="font-medium">{roleNames('support')}</p></div><div><p className="text-xs text-muted-foreground">{t('technical')}</p><p className="font-medium">{roleNames('technical')}</p></div></div></CardContent></Card>
 
             {/* Live Link */}
             {shift.live_link && (
@@ -273,7 +303,9 @@ export function LiveSessionModal({
 
           <TabsContent value="updates" className="space-y-4">
             <div className="flex justify-end"><div className="inline-flex rounded-lg border p-1"><Button size="sm" variant={!showAllSnapshotMetrics ? 'secondary' : 'ghost'} onClick={() => setShowAllSnapshotMetrics(false)}>Chỉ số có dữ liệu</Button><Button size="sm" variant={showAllSnapshotMetrics ? 'secondary' : 'ghost'} onClick={() => setShowAllSnapshotMetrics(true)}>Tất cả chỉ số</Button></div></div>
-            {loading ? (
+            {loadError ? (
+              <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert" data-testid="live-session-load-error">{t('liveLoadError')}</div>
+            ) : loading ? (
               <div className="text-center py-12 text-gray-600">Loading updates...</div>
             ) : updates.length === 0 ? (
               <Card className="p-12">
@@ -297,14 +329,14 @@ export function LiveSessionModal({
                       </div>
                       <SnapshotPlatformMetrics update={update} showAll={showAllSnapshotMetrics} />
                       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                        <SnapshotMetric label="Revenue" value={formatCurrency(update.revenue)} />
-                        <SnapshotMetric label="GMV" value={formatCurrency(update.gmv ?? update.revenue)} />
-                        <SnapshotMetric label="Orders" value={update.orders.toLocaleString()} />
-                        <SnapshotMetric label="Current viewers" value={update.current_viewers.toLocaleString()} />
-                        <SnapshotMetric label="Peak viewers" value={update.peak_viewers.toLocaleString()} />
-                        <SnapshotMetric label="Total views" value={update.total_views?.toLocaleString() || 'N/A'} />
-                        <SnapshotMetric label="Likes / Comments" value={`${update.likes?.toLocaleString() || 'N/A'} / ${update.comments?.toLocaleString() || 'N/A'}`} />
-                        <SnapshotMetric label="Shares" value={update.shares?.toLocaleString() || 'N/A'} />
+                        <SnapshotMetric label={t('revenue')} value={formatCurrency(update.revenue)} />
+                        <SnapshotMetric label={t('gmv')} value={formatCurrency(update.gmv ?? update.revenue)} />
+                        <SnapshotMetric label={t('orders')} value={update.orders.toLocaleString()} />
+                        <SnapshotMetric label={t('currentViewers')} value={update.current_viewers.toLocaleString()} />
+                        <SnapshotMetric label={t('peakViewers')} value={update.peak_viewers.toLocaleString()} />
+                        <SnapshotMetric label={t('totalViews')} value={update.total_views?.toLocaleString() ?? t('notAvailable')} />
+                        <SnapshotMetric label={t('engagement')} value={`${update.likes?.toLocaleString() ?? t('notAvailable')} / ${update.comments?.toLocaleString() ?? t('notAvailable')}`} />
+                        <SnapshotMetric label={t('metricShares')} value={update.shares?.toLocaleString() ?? t('notAvailable')} />
                       </div>
                       {update.screenshot_url && (
                         <img src={update.screenshot_url} alt="Dashboard Screenshot" className="w-full h-40 object-cover rounded-lg mb-4" />
