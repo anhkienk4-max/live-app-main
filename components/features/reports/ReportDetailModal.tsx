@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Report, Shift, Brand, Platform, User, Campaign, FinalReportRecap, OcrReviewData, ShiftRegistration, NormalizedReportMetrics, ReportMetricKey, LiveReportImage, ReportRevision } from '@/lib/types/database.types'
+import { Report, Shift, Brand, Platform, User, Campaign, FinalReportRecap, OcrReviewData, ShiftRegistration, NormalizedReportMetrics, ReportMetricKey, LiveReportImage, ReportRevision, ReportStatus } from '@/lib/types/database.types'
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -73,6 +73,14 @@ interface ReportDetailModalProps {
   onUpdated?: () => void
 }
 
+function getReportStatus(report: Report): ReportStatus {
+  return report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
+}
+
+function translateReportStatus(t: (key: string) => string, status: ReportStatus) {
+  return t(status === 'in_review' ? 'inReview' : status)
+}
+
 export function ReportDetailHeaderActions({
   report,
   canExport = true,
@@ -87,10 +95,11 @@ export function ReportDetailHeaderActions({
   onReopen?: () => void
 }) {
   const { t } = useTranslation()
+  const status = getReportStatus(report)
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <Badge variant={report.metrics_confirmed ? 'default' : 'secondary'} className={report.metrics_confirmed ? 'bg-green-600/10 text-green-700 hover:bg-green-600/20 dark:text-green-400' : 'bg-amber-600/10 text-amber-700 hover:bg-amber-600/20 dark:text-amber-400'}>
-        {report.status === 'reopened' ? t('reopened') : report.metrics_confirmed ? t('confirmed') : t('needsReview')}
+      <Badge data-testid="report-status" variant={status === 'confirmed' ? 'default' : status === 'archived' ? 'outline' : 'secondary'} className={status === 'confirmed' ? 'bg-green-600/10 text-green-700 hover:bg-green-600/20 dark:text-green-400' : status === 'reopened' || status === 'draft' ? 'bg-amber-600/10 text-amber-700 hover:bg-amber-600/20 dark:text-amber-400' : ''}>
+        {translateReportStatus(t, status)}
       </Badge>
       <div className="flex flex-wrap gap-2">
         {canReview && (
@@ -289,6 +298,7 @@ export function ReportDetailModal({
   const { currentUser } = useCurrentUser()
   const { t } = useTranslation()
   const { toast } = useToast()
+  const reportStatus = getReportStatus(report)
   const [reviewNotes, setReviewNotes] = React.useState('')
   const [finalRecap, setFinalRecap] = React.useState<FinalReportRecap>({
     ...emptyFinalReportRecap(),
@@ -318,15 +328,16 @@ export function ReportDetailModal({
   React.useEffect(() => { if (open) void liveReportImageService.getByReport(report.id).then(setLiveImages) }, [open, report.id])
   React.useEffect(() => {
     if (open) {
-      setFinalRecap({
-        ...emptyFinalReportRecap(),
-        ...report.final_recap,
-      })
+      queueMicrotask(() => setFinalRecap({
+          ...emptyFinalReportRecap(),
+          ...report.final_recap,
+        }))
     }
   }, [open, report])
   const getBrandName = (id: string) => brands.find(b => b.id === id)?.name || t('noData')
   const getBrandColor = (id: string) => brands.find(b => b.id === id)?.color || '#2563EB'
   const getPlatformName = (id: string) => platforms.find(p => p.id === id)?.name || t('noData')
+  const getCampaignName = (id?: string) => id ? campaigns.find(campaign => campaign.id === id)?.name || t('noData') : t('noData')
   const getUserName = (id?: string) => id ? users.find(u => u.id === id)?.full_name || t('noData') : t('noData')
 
   const confirmReport = async () => {
@@ -668,14 +679,24 @@ export function ReportDetailModal({
                 {format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} · {formatShiftTimeRange(shift)}
               </div>
             </div>
-            <Badge variant="outline">{shift.status}</Badge>
+            <Badge variant="outline" data-testid="report-shift-status">{(t as unknown as (key: string) => string)(shift.status)}</Badge>
           </div>
         </DialogHeader>
 
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <Badge className={report.metrics_confirmed ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{report.status === 'reopened' ? t('reopened') : report.metrics_confirmed ? t('confirmed') : t('needsReview')}</Badge>
+          <Badge data-testid="report-status-summary" className={reportStatus === 'confirmed' ? 'bg-green-100 text-green-800' : reportStatus === 'archived' ? 'bg-muted text-muted-foreground' : 'bg-amber-100 text-amber-800'}>{translateReportStatus((t as unknown as (key: string) => string), reportStatus)}</Badge>
           <div className="flex flex-wrap gap-2">{report.metrics_confirmed && currentUser && hasPermission(currentUser, 'reports.review') && <Button variant="outline" size="sm" onClick={() => setShowReopen(true)}><LockOpen className="mr-2 h-4 w-4" />{t('reopenReport')}</Button>}{canExport && <Button variant="outline" size="sm" onClick={exportDetail} data-testid="export-report-detail"><Download className="mr-2 h-4 w-4" />{t('exportReportDetail')}</Button>}</div>
         </div>
+
+        <div className="grid gap-3 rounded-lg border bg-muted/20 p-4 sm:grid-cols-2 lg:grid-cols-4" data-testid="report-summary">
+          <div><p className="text-xs font-medium text-muted-foreground">{t('reportShiftContext')}</p><p className="font-semibold">{shift.title || t('finalReport')}</p><p className="text-xs text-muted-foreground">{shift.date} · {formatShiftTimeRange(shift)}</p></div>
+          <div><p className="text-xs font-medium text-muted-foreground">{t('reportPeriodContext')}</p><p className="font-semibold">{format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')}</p><p className="text-xs text-muted-foreground">{getBrandName(shift.brand_id)} · {getPlatformName(shift.platform_id)}</p></div>
+          <div><p className="text-xs font-medium text-muted-foreground">{t('campaign')}</p><p className="font-semibold">{getCampaignName(shift.campaign_id)}</p><p className="text-xs text-muted-foreground">{t('reportUpdatedAt')}: {format(new Date(report.updated_at), 'dd/MM/yyyy HH:mm')}</p></div>
+          <div><p className="text-xs font-medium text-muted-foreground">{report.submitted_by ? t('reportOwner') : t('reportNoActionRequired')}</p><p className="font-semibold">{getUserName(report.submitted_by || report.updated_by)}</p><p className="text-xs text-muted-foreground">{report.reviewed_by ? `${t('reportReviewer')}: ${getUserName(report.reviewed_by)}` : t('notAvailable')}</p></div>
+        </div>
+        {reportStatus === 'draft' && <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="report-next-action">{t('reportActionRequired')}: {t('reportDraftNeedsCompletion')}</p>}
+        {reportStatus === 'in_review' && <p className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900" data-testid="report-next-action">{t('reportPendingReview')}</p>}
+        {reportStatus === 'reopened' && <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="report-next-action">{t('reportActionRequired')}: {t('reportNeedsAttention')}</p>}
 
         <DialogBody className="space-y-4 pb-1">
         {!report.metrics_confirmed && currentUser && hasPermission(currentUser, 'reports.review') && (

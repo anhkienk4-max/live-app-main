@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { format } from 'date-fns'
 import { DollarSign, Download, FileImage, FileSpreadsheet, FileText, Filter, Plus, RotateCcw, Search, TrendingUp, Trash2, MoreHorizontal } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import {
@@ -19,6 +20,7 @@ import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
+import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import {
   downloadReportTemplate,
   exportReportImageMetadataToExcel,
@@ -115,7 +117,9 @@ export function ReportsList() {
     }
   }, [])
 
-  React.useEffect(() => { void loadData() }, [loadData])
+  React.useEffect(() => {
+    queueMicrotask(() => { void loadData() })
+  }, [loadData])
   const myShiftIds = React.useMemo(() => new Set(registrations
     .filter(registration => registration.user_id === currentUser?.id && isStaffedRegistration(registration))
     .map(registration => registration.shift_id)), [currentUser?.id, registrations])
@@ -200,7 +204,7 @@ export function ReportsList() {
     if (filters.metricsStatus === 'unconfirmed' && report.metrics_confirmed) return false
     if (filters.search) {
       const query = filters.search.toLowerCase()
-      const haystack = [report.id, nameById(brands, shift.brand_id), nameById(platforms, shift.platform_id), nameById(campaigns, shift.campaign_id)].join(' ').toLowerCase()
+      const haystack = [report.id, shift.title, nameById(brands, shift.brand_id), nameById(platforms, shift.platform_id), nameById(campaigns, shift.campaign_id)].join(' ').toLowerCase()
       if (!haystack.includes(query)) return false
     }
     return true
@@ -227,8 +231,14 @@ export function ReportsList() {
     toast({ title: t('success'), description: t('exportImageMetadata'), variant: 'success' })
   }
 
-  if (loading || userLoading) return <div className="py-12 text-center">{t('loading')}</div>
-  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
+  const activeFilterCount = Object.entries(filters).filter(([key, value]) => value && value !== 'all' && !(key === 'search' && !value.trim())).length
+  const reportNeedsAction = filteredReports.filter(report => {
+    const status = report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
+    return status === 'draft' || status === 'in_review' || status === 'reopened'
+  }).length
+
+  if (loading || userLoading) return <div className="py-12 text-center" aria-live="polite" data-testid="reports-loading">{t('loading')}</div>
+  if (loadError) return <PageLoadError error={new Error(t('reportLoadError'))} onRetry={() => { setLoading(true); void loadData() }} />
 
   return (
     <div className="space-y-6">
@@ -242,7 +252,7 @@ export function ReportsList() {
         <Metric title={t('reportCount')} value={filteredReports.length.toLocaleString()} icon={<FileText className="h-5 w-5 text-blue-600" />} />
         <Metric title={t('confirmedRevenue')} value={formatCurrency(totalRevenue)} icon={<DollarSign className="h-5 w-5 text-green-600" />} />
         <Metric title={t('averageOrderValue')} value={formatCurrency(confirmed.reduce((sum, report) => sum + (typeof report.normalized_metrics?.average_order_value === 'number' ? report.normalized_metrics.average_order_value : report.average_order_value ?? (report.orders ? confirmedRevenue(report) / report.orders : 0)), 0))} icon={<TrendingUp className="h-5 w-5 text-purple-600" />} />
-        <Metric title={t('needsReview')} value={filteredReports.filter(report => !report.metrics_confirmed).length.toLocaleString()} icon={<FileText className="h-5 w-5 text-amber-600" />} />
+        <Metric title={t('reportActionRequired')} value={reportNeedsAction.toLocaleString()} icon={<FileText className="h-5 w-5 text-amber-600" />} />
       </div>
 
       {completedShifts.length > 0 && <Card className="border-orange-200 bg-orange-50"><CardContent className="pt-5"><p className="font-semibold text-orange-900">{t('reportDraftCandidates', { count: completedShifts.length })}</p><p className="text-sm text-orange-700">{t('reportDraftPolicy')}</p></CardContent></Card>}
@@ -254,7 +264,7 @@ export function ReportsList() {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input className="pl-9 bg-background" value={filters.search} onChange={event => setFilters(current => ({ ...current, search: event.target.value }))} placeholder={t('reportSearchPlaceholder')} />
             </div>
-            <Button variant={showFilters ? 'secondary' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="reports-filter-panel" className="shrink-0"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button>
+            <Button variant={showFilters ? 'secondary' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="reports-filter-panel" className="shrink-0"><Filter className="mr-2 h-4 w-4" />{t('filters')}{activeFilterCount > 0 && <span className="ml-1 rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground" data-testid="reports-active-filter-count">{activeFilterCount}</span>}</Button>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="icon" onClick={() => setFilters(emptyFilters)} title={t('resetFilters')}><RotateCcw className="h-4 w-4" /></Button>
@@ -310,7 +320,7 @@ export function ReportsList() {
         )}
       </div>
 
-      {filteredReports.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noReports')}</CardContent></Card> : (
+      {filteredReports.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground" data-testid="reports-empty-state">{reports.length === 0 ? t('noReportsYet') : t('noMatchingReports')}</CardContent></Card> : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredReports.map(report => {
             const shift = shiftById.get(report.shift_id)
@@ -323,17 +333,19 @@ export function ReportsList() {
             const attentionItems = deriveReportAttention(report.id, reportStatus, shift.date)
             
             return (
-              <Card key={report.id} className="flex flex-col shadow-none transition-shadow hover:shadow-sm">
+              <Card key={report.id} className="flex flex-col shadow-none transition-shadow hover:shadow-sm" data-testid="report-card" data-report-status={reportStatus}>
                 <CardHeader className="p-4 pb-3">
                   <div className="flex items-center justify-between gap-2">
-                    <Badge variant="secondary" className="font-mono text-[10px]">{shift.date}</Badge>
-                    <Badge variant={report.metrics_confirmed ? 'default' : 'secondary'} className={report.metrics_confirmed ? 'bg-green-600/10 text-green-700 hover:bg-green-600/20 dark:text-green-400' : 'bg-amber-600/10 text-amber-700 hover:bg-amber-600/20 dark:text-amber-400'}>
+                    <Badge variant="secondary" className="font-mono text-[10px]">{shift.date} · {formatShiftTimeRange(shift)}</Badge>
+                    <Badge variant={reportStatus === 'confirmed' ? 'default' : reportStatus === 'archived' ? 'outline' : 'secondary'} className={reportStatus === 'confirmed' ? 'bg-green-600/10 text-green-700 hover:bg-green-600/20 dark:text-green-400' : reportStatus === 'reopened' || reportStatus === 'draft' ? 'bg-amber-600/10 text-amber-700 hover:bg-amber-600/20 dark:text-amber-400' : ''}>
                       {statusLabel}
                     </Badge>
                   </div>
                   <div className="mt-2.5">
-                    <CardTitle className="text-base font-semibold leading-none tracking-tight">{nameById(brands, shift.brand_id)}</CardTitle>
+                    <CardTitle className="text-base font-semibold leading-tight tracking-tight">{shift.title || t('finalReport')}</CardTitle>
+                    <p className="mt-1 text-xs font-medium text-muted-foreground">{nameById(brands, shift.brand_id)}</p>
                     <p className="mt-1.5 text-xs text-muted-foreground line-clamp-1">{nameById(platforms, shift.platform_id)} · {nameById(campaigns, shift.campaign_id)}</p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">{t('reportId')}: <span className="font-mono">{report.id}</span></p>
                   </div>
                 </CardHeader>
                 <CardContent className="flex flex-1 flex-col p-4 pt-0">
@@ -342,6 +354,9 @@ export function ReportsList() {
                     <Value label={t('orders')} value={report.orders.toLocaleString()} />
                     <Value label={t('host')} value={roleNames(shift, 'host')} />
                     <Value label={t('metricsStatus')} value={report.metrics_confirmed ? t('confirmed') : t('needsReview')} />
+                    <Value label={t('reportUpdatedAt')} value={format(new Date(report.updated_at), 'dd/MM/yyyy HH:mm')} />
+                    <Value label={t('reportOwner')} value={userName(report.submitted_by || report.updated_by)} />
+                    {report.reviewed_by && <Value label={t('reportReviewer')} value={userName(report.reviewed_by)} />}
                   </div>
                   {attentionItems.length > 0 && (
                     <div className="space-y-2 mb-4">
