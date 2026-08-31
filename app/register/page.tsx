@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useTranslation } from '@/lib/i18n'
 import { mockAuthService } from '@/lib/services/mockAuthService'
+import { getAuthMode } from '@/lib/auth/authMode'
 import { AuthLayout } from '@/components/layouts/AuthLayout'
 
 type FormErrors = Partial<Record<'fullName' | 'email' | 'password' | 'confirmPassword' | 'form', string>>
@@ -21,7 +22,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = React.useState(false)
   const [errors, setErrors] = React.useState<FormErrors>({})
   const [created, setCreated] = React.useState(false)
-  const useMockData = process.env.NEXT_PUBLIC_USE_MOCK_DATA !== 'false'
+  const useMockData = getAuthMode() === 'mock'
 
   const validate = () => {
     const next: FormErrors = {}

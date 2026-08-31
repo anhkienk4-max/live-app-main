@@ -7,6 +7,7 @@ import {
   resolveSupabasePublicConfig,
   safeLocalRedirect,
 } from '../lib/auth/authMode.ts'
+import { readFile } from 'node:fs/promises'
 import { createAuthProxy } from '../lib/auth/proxy.ts'
 import {
   clearLocalSession,
@@ -31,6 +32,12 @@ test('production cannot enable mock auth and development requires an explicit fl
   assert.equal(resolveAuthMode({ nodeEnv: 'development', useMockData: 'false' }), 'supabase')
   assert.equal(resolveAuthMode({ nodeEnv: 'development' }), 'supabase')
   assert.equal(resolveAuthMode({ nodeEnv: 'development', useMockData: 'true' }), 'mock')
+})
+
+test('registration page uses the canonical auth-mode boundary', async () => {
+  const register = await readFile(new URL('../app/register/page.tsx', import.meta.url), 'utf8')
+  assert.match(register, /getAuthMode\(\) === 'mock'/)
+  assert.doesNotMatch(register, /NEXT_PUBLIC_USE_MOCK_DATA !== 'false'/)
 })
 
 test('Supabase public configuration requires both non-empty values', () => {
