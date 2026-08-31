@@ -11,6 +11,7 @@ import {
 } from '../lib/utils/ocrMetrics.ts'
 import { reviewInputValues } from '../lib/utils/ocrReview.ts'
 import { applySelectedMetricsToState } from '../lib/utils/ocrCanonical.ts'
+import { serializeCanonicalMetrics } from '../lib/utils/ocrMetricSerialization.ts'
 import { parseScheduleRows } from '../lib/utils/excelUtils.ts'
 import {
   getScheduleImportSourceField,
@@ -56,11 +57,33 @@ test('Shopee raw OCR text produces normalized metrics', () => {
   assert.equal(review.metrics.total_viewers?.value, 25860)
   assert.equal(review.metrics.pcu?.value, 107)
   assert.equal(review.metrics.ctr?.value, 3.2)
-  assert.equal(review.metrics.click_to_order_rate?.value, 2)
+  assert.equal(review.metrics.click_to_order_rate?.value, 20)
   assert.equal(review.metrics.buyers?.value, 50)
   assert.equal(review.metrics.items_sold?.value, 124)
   assert.equal(review.metrics.likes?.value, 75)
   assert.equal(review.metrics.shares?.value, 12)
+})
+
+test('Shopee explicit whole-number percentages preserve their unit through apply and canonical serialization', () => {
+  for (const rate of [1, 9.8, 20, 50, 100]) {
+    const review = parseDashboardOcrText('shopee_live', [
+      `Orders: 109`,
+      `Click to Order: ${rate}%`,
+    ].join('\n'), 'raw_text_exact')
+    assert.equal(review.metrics.orders?.value, 109)
+    assert.equal(review.metrics.click_to_order_rate?.value, rate)
+
+    const applied = reviewInputValues(review)
+    assert.equal(applied.orders, 109)
+    assert.equal(applied.click_to_order_rate, rate)
+
+    const canonical = serializeCanonicalMetrics('shopee_live', {
+      orders: 109,
+      click_to_order_rate: rate,
+    })
+    assert.equal(canonical.orders, 109)
+    assert.equal(canonical.click_to_order_rate, rate)
+  }
 })
 
 test('normalized keys exactly match form field names', () => {

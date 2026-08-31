@@ -617,6 +617,12 @@ function parseMetricOcrValue(
   const declaredLayout = platform === 'other'
     ? undefined
     : platformMetricLayouts[platform].find(cell => cell.key === key)
+  if (declaredLayout?.valueKind === 'percentage' && /%\s*$/.test(raw.trim())) {
+    const explicitValue = parseOcrValue(raw)
+    if (typeof explicitValue === 'number' && explicitValue >= 0 && explicitValue <= 100) {
+      return explicitValue
+    }
+  }
   return parseOcrValue(normalizeLayoutCardValue(declaredLayout, normalizedRaw))
 }
 
