@@ -18,6 +18,13 @@
 
 export type ActionTier = 'primary' | 'secondary' | 'overflow' | 'destructive' | 'terminal'
 
+export type CalendarCtaTab = 'open' | 'mine'
+
+/** Stable deep links for Member calendar workflows. */
+export function calendarCtaHref(tab: CalendarCtaTab): string {
+  return `/calendar?tab=${tab}`
+}
+
 export interface PrioritizedAction {
   key: string
   /** Human-readable label. Use i18n keys at call site. */
@@ -243,7 +250,10 @@ export function buildSwapActions(
     testId: 'action-view-details',
   })
 
-  // Accept (counterpart positive response) = PRIMARY
+  // Accept (counterpart positive response) = PRIMARY. The state resolver keeps
+  // this mutually exclusive with approval; retain the first valid forward
+  // action if stale/conflicting flags ever arrive.
+  let hasPrimaryForwardAction = false
   if (flags.showAccept && handlers.onAccept) {
     result.push({
       key: 'accept',
@@ -252,10 +262,11 @@ export function buildSwapActions(
       onClick: handlers.onAccept,
       testId: 'action-accept',
     })
+    hasPrimaryForwardAction = true
   }
 
   // Approve (reviewer final approval) = PRIMARY
-  if (flags.showApprove && handlers.onApprove) {
+  if (flags.showApprove && handlers.onApprove && !hasPrimaryForwardAction) {
     result.push({
       key: 'approve',
       label: labels.approve,

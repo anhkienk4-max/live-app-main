@@ -14,14 +14,23 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import type { PrioritizedAction } from '@/lib/ui/action-priority'
 import { BottomActionBar, ResponsiveActions } from '@/components/ui/mobile-actions'
 
+const calendarTabs = ['calendar', 'open', 'mine', 'import', 'history'] as const
+type CalendarTab = typeof calendarTabs[number]
+
+function isCalendarTab(value: string | null): value is CalendarTab {
+  return value !== null && (calendarTabs as readonly string[]).includes(value)
+}
+
 export function CalendarWorkspace() {
   const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
-  const [tab, setTab] = React.useState('calendar')
-  const [createRequest, setCreateRequest] = React.useState(0)
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const queryTab = searchParams.get('tab')
+  const initialTab = isCalendarTab(queryTab) ? queryTab : 'calendar'
+  const [tab, setTab] = React.useState<CalendarTab>(initialTab)
+  const [createRequest, setCreateRequest] = React.useState(0)
 
   React.useEffect(() => {
     const action = searchParams.get('action')
@@ -62,7 +71,16 @@ export function CalendarWorkspace() {
   }
 
   return (
-    <Tabs value={tab} onValueChange={value => setTab(String(value))} className="min-w-0 w-full">
+    <Tabs value={isCalendarTab(queryTab) ? queryTab : tab} onValueChange={value => {
+      if (!isCalendarTab(String(value))) return
+      setTab(String(value) as CalendarTab)
+      if (isCalendarTab(queryTab)) {
+        const next = new URLSearchParams(searchParams.toString())
+        next.delete('tab')
+        const qs = next.toString()
+        router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+      }
+    }} className="min-w-0 w-full">
       <div className="flex flex-wrap justify-end gap-2 hidden md:flex">
         <ResponsiveActions actions={actions} collapseAt="md" />
       </div>

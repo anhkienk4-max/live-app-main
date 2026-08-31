@@ -25,6 +25,7 @@ import { getSwapUiActions } from '@/lib/utils/swapUi'
 import { isCanonicalAssignedShift, getMemberAssignedShifts, getMemberPendingRegistrations, getMemberPendingSwaps, getLeaderPendingRegistrations, getLeaderPendingReports, getLeaderPendingSwaps } from '@/lib/ui/dashboard-role-data'
 import { deriveLeaderAttention, deriveMemberAttention, deriveDataQualityAttention } from '@/lib/ui/operational-attention'
 import { getAllIssues } from '@/lib/utils/dataQuality'
+import { calendarCtaHref } from '@/lib/ui/action-priority'
 
 const DashboardCharts = dynamic(
   () => import('@/components/features/dashboard/DashboardCharts').then(mod => ({ default: mod.DashboardCharts })),
@@ -398,8 +399,8 @@ function MemberDashboard(props: CommonProps) {
 
     <div className="grid gap-4 md:grid-cols-2">
       <Card><CardHeader><CardTitle>{t('quickActions')}</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <QuickAction href="/calendar" label={t('myCalendar')} icon={<Calendar className="h-5 w-5" />} />
-        <QuickAction href="/calendar" label={t('openShifts')} icon={<Users className="h-5 w-5" />} />
+        <QuickAction href={calendarCtaHref('mine')} label={t('myCalendar')} icon={<Calendar className="h-5 w-5" />} />
+        <QuickAction href={calendarCtaHref('open')} label={t('openShifts')} icon={<Users className="h-5 w-5" />} />
         <QuickAction href="/reports" label={t('submitReport')} icon={<FileText className="h-5 w-5" />} />
         <QuickAction href="/notifications" label={t('notifications')} icon={<Bell className="h-5 w-5" />} />
       </CardContent></Card>
