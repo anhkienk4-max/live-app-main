@@ -1144,6 +1144,21 @@ const removeShiftProjection = (id: string) => {
   shifts = shifts.filter(shift => shift.id !== id)
 }
 
+const allowedShiftLifecycleTransitions: Record<Shift['status'], readonly Shift['status'][]> = {
+  scheduled: ['scheduled', 'preparing'],
+  preparing: ['scheduled', 'preparing', 'live', 'paused'],
+  live: ['live', 'paused', 'completed'],
+  paused: ['live', 'paused', 'completed'],
+  completed: ['completed'],
+  cancelled: ['cancelled'],
+}
+
+const assertShiftLifecycleTransition = (from: Shift['status'], to: Shift['status']) => {
+  if (from !== to && !allowedShiftLifecycleTransitions[from].includes(to)) {
+    throw new Error('SHIFT_STATUS_TRANSITION_NOT_ALLOWED')
+  }
+}
+
 export const shiftService = {
   async getAll(): Promise<Shift[]> {
     if (getAuthMode() === 'supabase') {
@@ -1301,6 +1316,7 @@ export const shiftService = {
     assertExpectedVersion('Shift', shifts[index].version, data.version)
     const before = { ...shifts[index] }
     const candidate = { ...shifts[index], ...data }
+    assertShiftLifecycleTransition(shifts[index].status, candidate.status)
     const timezone = candidate.timezone || DEFAULT_BUSINESS_TIMEZONE
     const dateTime = shiftDateTimeFields(candidate.date, candidate.start_time, candidate.end_time, timezone)
     if (!dateTime) throw new Error('Shift date or duration is invalid.')

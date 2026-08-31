@@ -1,6 +1,12 @@
 import { test, describe, beforeEach } from 'node:test'
 import * as assert from 'node:assert'
+import { readFileSync } from 'node:fs'
 import { shiftService } from '../lib/services/dataService'
+
+const adminLifecycleMigration = readFileSync(
+  'supabase/migrations/20260831120000_core_v1_shift_lifecycle_admin_guard.sql',
+  'utf8',
+)
 
 describe('Shift Lifecycle UI State Flow', () => {
   beforeEach(() => {
@@ -108,5 +114,32 @@ describe('Shift Lifecycle UI State Flow', () => {
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00', title: 'Test', status: 'live'
     } as any)
     assert.strictEqual(created.status, 'scheduled')
+  })
+
+  test('mock updates reject illegal lifecycle transitions', async () => {
+    const completed = await shiftService.create({
+      brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00',
+    } as any)
+    const live = await shiftService.update(completed.id, { status: 'live', version: completed.version })
+    const done = await shiftService.update(completed.id, { status: 'completed', version: live!.version })
+    await assert.rejects(
+      () => shiftService.update(completed.id, { status: 'live', version: done!.version }),
+      /SHIFT_STATUS_TRANSITION_NOT_ALLOWED/,
+    )
+
+    const cancelled = await shiftService.create({
+      brand_id: 'b1', platform_id: 'p1', date: '2026-10-11', start_time: '10:00', end_time: '12:00',
+    } as any)
+    const removed = await shiftService.update(cancelled.id, { status: 'cancelled', version: cancelled.version })
+    await assert.rejects(
+      () => shiftService.update(cancelled.id, { status: 'preparing', version: removed!.version }),
+      /SHIFT_STATUS_TRANSITION_NOT_ALLOWED/,
+    )
+  })
+
+  test('normal Admin lifecycle uses the same canonical state machine as Leader', () => {
+    assert.match(adminLifecycleMigration, /actor_permission in \('leader', 'admin'\)/i)
+    assert.match(adminLifecycleMigration, /SHIFT_STATUS_TRANSITION_NOT_ALLOWED/i)
+    assert.doesNotMatch(adminLifecycleMigration, /p_override|override_reason/i)
   })
 })

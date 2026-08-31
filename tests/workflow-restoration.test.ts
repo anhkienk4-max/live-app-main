@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createElement } from 'react'
+import React, { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import {
@@ -138,8 +138,12 @@ test('all nine final recap fields persist, reopen, display, and export while leg
     required_support_count: 1,
     required_technical_count: 1,
     registration_locked: true,
-    status: 'completed',
+    status: 'scheduled',
   })
+  await shiftService.update(shift.id, { status: 'preparing', version: 1 }, '1')
+  await shiftService.update(shift.id, { status: 'live', version: 2 }, '1')
+  await shiftService.update(shift.id, { status: 'completed', version: 3 }, '1')
+
   const report = await reportService.create({
     shift_id: shift.id,
     revenue: 1250000,
