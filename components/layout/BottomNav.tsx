@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { resolveSystemPermission } from '@/lib/permissions'
-import { getNavigationForRole, filterNav } from '@/lib/ui/role-ux'
+import { getNavigationForRole, filterNav, getNavigationPlacement, isNavItemActive } from '@/lib/ui/role-ux'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,13 +20,17 @@ export function BottomNav() {
   const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
 
-  const rawNav = getNavigationForRole(resolveSystemPermission(currentUser))
+  const systemPermission = resolveSystemPermission(currentUser)
+  const rawNav = getNavigationForRole(systemPermission)
   const roleNav = filterNav(rawNav, currentUser)
 
-  // At 390px: up to 4 primary slots + 1 overflow trigger (5th col)
-  const hasOverflow = roleNav.length > 4
-  const primaryNav = hasOverflow ? roleNav.slice(0, 4) : roleNav
-  const overflowNav = hasOverflow ? roleNav.slice(4) : []
+  // At 390px: up to 4 primary slots + 1 overflow trigger (5th col).
+  // Secondary/utility items never displace the role's primary destinations.
+  const rolePrimaryNav = roleNav.filter(item => getNavigationPlacement(item, systemPermission) === 'primary')
+  const roleOverflowNav = roleNav.filter(item => getNavigationPlacement(item, systemPermission) !== 'primary')
+  const primaryNav = rolePrimaryNav.slice(0, 4)
+  const overflowNav = [...rolePrimaryNav.slice(4), ...roleOverflowNav]
+  const hasOverflow = overflowNav.length > 0
 
   const getLabel = (item: typeof roleNav[number]) =>
     item.labelKey
@@ -40,12 +44,13 @@ export function BottomNav() {
     >
       <div className="grid grid-cols-5 h-16">
         {primaryNav.map((item) => {
-          const isActive = pathname === item.href
+          const isActive = isNavItemActive(pathname, item.href)
           const Icon = item.icon
           return (
             <Link
               key={item.name}
               href={item.href}
+              aria-current={isActive ? 'page' : undefined}
               className={cn(
                 'flex flex-col items-center justify-center gap-1 transition-colors',
                 isActive
@@ -82,8 +87,9 @@ export function BottomNav() {
                       href={item.href}
                       className={cn(
                         'flex items-center gap-3 py-2 cursor-pointer w-full',
-                        pathname === item.href ? 'text-primary font-medium bg-primary/5' : ''
+                        isNavItemActive(pathname, item.href) ? 'text-primary font-medium bg-primary/5' : ''
                       )}
+                      aria-current={isNavItemActive(pathname, item.href) ? 'page' : undefined}
                     />
                   }>
                     <Icon className="h-4 w-4" />

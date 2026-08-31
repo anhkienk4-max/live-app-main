@@ -3,9 +3,15 @@ import { SystemPermission, User as UserType } from '@/lib/types/database.types'
 import { hasAnyPermission, hasPermission, resolveSystemPermission, Permission } from '@/lib/permissions'
 
 export type NavItem = {
+  key: string
   name: string
   href: string
   icon: LucideIcon
+  group: 'work' | 'operations' | 'insights' | 'management' | 'system'
+  roleNavigation: Partial<Record<SystemPermission, {
+    placement: 'primary' | 'secondary' | 'utility' | 'contextual' | 'hidden'
+    order: number
+  }>>
   /** i18n key override; falls back to name.toLowerCase() */
   labelKey?: string
   /**
@@ -24,76 +30,41 @@ export type NavItem = {
 
 // Full catalogue of all application destinations
 const navCatalogue: Record<string, NavItem> = {
-  dashboard:     { name: 'Dashboard',     href: '/',              icon: Home },
-  calendar:      { name: 'Calendar',      href: '/calendar',      icon: Calendar },
-  live:          { name: 'Live',          href: '/live',          icon: Radio },
-  reports:       { name: 'Reports',       href: '/reports',       icon: FileText },
-  swaps:         { name: 'Swaps',         href: '/swaps',         icon: RefreshCw },
-  analytics:     { name: 'Analytics',     href: '/analytics',     icon: BarChart3 },
+  dashboard:     { key: 'dashboard', name: 'Dashboard', href: '/', icon: Home, group: 'work', roleNavigation: { admin: { placement: 'primary', order: 10 }, leader: { placement: 'primary', order: 10 }, member: { placement: 'primary', order: 10 } } },
+  calendar:      { key: 'calendar', name: 'Calendar', href: '/calendar', icon: Calendar, group: 'work', roleNavigation: { admin: { placement: 'primary', order: 20 }, leader: { placement: 'primary', order: 20 }, member: { placement: 'primary', order: 20 } } },
+  live:          { key: 'live', name: 'Live', href: '/live', icon: Radio, group: 'operations', roleNavigation: { admin: { placement: 'primary', order: 30 }, leader: { placement: 'primary', order: 30 }, member: { placement: 'secondary', order: 10 } } },
+  reports:       { key: 'reports', name: 'Reports', href: '/reports', icon: FileText, group: 'insights', roleNavigation: { admin: { placement: 'primary', order: 50 }, leader: { placement: 'primary', order: 50 }, member: { placement: 'secondary', order: 20 } } },
+  swaps:         { key: 'swaps', name: 'Swaps', href: '/swaps', icon: RefreshCw, group: 'operations', roleNavigation: { admin: { placement: 'primary', order: 40 }, leader: { placement: 'primary', order: 40 }, member: { placement: 'primary', order: 30 } } },
+  analytics:     { key: 'analytics', name: 'Analytics', href: '/analytics', icon: BarChart3, group: 'insights', roleNavigation: { admin: { placement: 'secondary', order: 10 }, leader: { placement: 'secondary', order: 40 }, member: { placement: 'utility', order: 40 } } },
   // B: Staff page is readable; canManage gates mutations only
-  staff:         { name: 'Staff',         href: '/staff',         icon: Users },
+  staff:         { key: 'staff', name: 'Staff', href: '/staff', icon: Users, group: 'management', roleNavigation: { admin: { placement: 'primary', order: 60 }, leader: { placement: 'secondary', order: 30 }, member: { placement: 'hidden', order: 0 } } },
   // B: Brands page is readable; canManage gates mutations only
-  brands:        { name: 'Brands',        href: '/brands',        icon: Package },
+  brands:        { key: 'brands', name: 'Brands', href: '/brands', icon: Package, group: 'management', roleNavigation: { admin: { placement: 'secondary', order: 20 }, leader: { placement: 'utility', order: 20 }, member: { placement: 'hidden', order: 0 } } },
   // B: Platforms page is readable; canManage gates mutations only
-  platforms:     { name: 'Platforms',     href: '/platforms',     icon: Megaphone },
+  platforms:     { key: 'platforms', name: 'Platforms', href: '/platforms', icon: Megaphone, group: 'management', roleNavigation: { admin: { placement: 'secondary', order: 30 }, leader: { placement: 'utility', order: 30 }, member: { placement: 'hidden', order: 0 } } },
   // B: Campaigns page is readable; canManage / edit_operational gates mutations only
-  campaigns:     { name: 'Campaigns',     href: '/campaigns',     icon: Megaphone },
+  campaigns:     { key: 'campaigns', name: 'Campaigns', href: '/campaigns', icon: Megaphone, group: 'management', roleNavigation: { admin: { placement: 'secondary', order: 40 }, leader: { placement: 'secondary', order: 60 }, member: { placement: 'hidden', order: 0 } } },
   // A: Audit page genuinely restricted — AuditHistory renders nothing without audit.view/view_team
-  audit:         { name: 'Audit',         href: '/audit',         icon: History,  labelKey: 'auditHistory', requiredPermissions: ['audit.view', 'audit.view_team'] },
-  settings:      { name: 'Settings',      href: '/settings',      icon: Settings },
-  profile:       { name: 'Profile',       href: '/profile',       icon: User },
+  audit:         { key: 'audit', name: 'Audit', href: '/audit', icon: History, group: 'system', labelKey: 'auditHistory', requiredPermissions: ['audit.view', 'audit.view_team'], roleNavigation: { admin: { placement: 'secondary', order: 50 }, leader: { placement: 'secondary', order: 70 }, member: { placement: 'hidden', order: 0 } } },
+  settings:      { key: 'settings', name: 'Settings', href: '/settings', icon: Settings, group: 'system', roleNavigation: { admin: { placement: 'utility', order: 10 }, leader: { placement: 'utility', order: 10 }, member: { placement: 'utility', order: 10 } } },
+  profile:       { key: 'profile', name: 'Profile', href: '/profile', icon: User, group: 'system', roleNavigation: { admin: { placement: 'utility', order: 20 }, leader: { placement: 'utility', order: 20 }, member: { placement: 'utility', order: 20 } } },
   // navNotifications key avoids clash with existing 'notifications: Notification preferences' key
-  notifications: { name: 'Notifications', href: '/notifications', icon: Bell,     labelKey: 'navNotifications' },
+  notifications: { key: 'notifications', name: 'Notifications', href: '/notifications', icon: Bell, group: 'system', labelKey: 'navNotifications', roleNavigation: { admin: { placement: 'utility', order: 30 }, leader: { placement: 'utility', order: 30 }, member: { placement: 'primary', order: 40 } } },
 }
+
+export const navigationItems = Object.values(navCatalogue)
 
 // ADMIN priority: operational exceptions > schedule/system > staffing > users/permissions > reports > system/recovery
 // All 13 destinations; admin holds all requiredPermissions so filterNav passes everything through.
-const adminNav: NavItem[] = [
-  navCatalogue.dashboard,
-  navCatalogue.calendar,
-  navCatalogue.live,
-  navCatalogue.swaps,
-  navCatalogue.staff,
-  navCatalogue.reports,
-  navCatalogue.analytics,
-  navCatalogue.brands,
-  navCatalogue.platforms,
-  navCatalogue.campaigns,
-  navCatalogue.audit,
-  navCatalogue.settings,
-  navCatalogue.profile,
-]
+// Role-specific placement is derived from navCatalogue below.
 
 // LEADER priority: today's ops > staffing gaps > swap approvals > schedule > reports
 // staff/brands/platforms/campaigns included as readable (classification B).
 // audit included — leader has audit.view_team so filterNav keeps it.
-const leaderNav: NavItem[] = [
-  navCatalogue.dashboard,
-  navCatalogue.calendar,
-  navCatalogue.live,
-  navCatalogue.swaps,
-  navCatalogue.reports,
-  navCatalogue.staff,
-  navCatalogue.brands,
-  navCatalogue.platforms,
-  navCatalogue.campaigns,
-  navCatalogue.audit,
-  navCatalogue.settings,
-  navCatalogue.profile,
-]
 
 // MEMBER priority: next shift (Calendar) > swaps > notifications > reports > settings > profile
 // Omissions of admin/leader-centric reference pages (analytics, brands, platforms, campaigns,
 // staff, audit) are classification C — UX simplification, not permission denial.
-const memberNav: NavItem[] = [
-  navCatalogue.dashboard,
-  navCatalogue.calendar,
-  navCatalogue.swaps,
-  navCatalogue.notifications,
-  navCatalogue.reports,
-  navCatalogue.settings,
-  navCatalogue.profile,
-]
 
 /**
  * Shared permission filter — single source of truth for Sidebar and BottomNav.
@@ -112,12 +83,23 @@ export function filterNav(
 }
 
 export function getNavigationForRole(systemPermission: SystemPermission | undefined): NavItem[] {
-  switch (systemPermission) {
-    case 'admin':  return adminNav
-    case 'leader': return leaderNav
-    case 'member':
-    default:       return memberNav // safe fallback
-  }
+  const role = systemPermission ?? 'member'
+  return navigationItems
+    .filter(item => item.roleNavigation[role]?.placement !== 'hidden')
+    .sort((left, right) => (
+      (left.roleNavigation[role]?.order ?? Number.MAX_SAFE_INTEGER)
+      - (right.roleNavigation[role]?.order ?? Number.MAX_SAFE_INTEGER)
+    ))
+}
+
+export function getNavigationPlacement(item: NavItem, systemPermission: SystemPermission | undefined) {
+  return item.roleNavigation[systemPermission ?? 'member']?.placement ?? 'hidden'
+}
+
+export function isNavItemActive(pathname: string | null | undefined, href: string) {
+  const path = (pathname ?? '/').split('?')[0].replace(/\/$/, '') || '/'
+  const target = href.replace(/\/$/, '') || '/'
+  return target === '/' ? path === '/' : path === target || path.startsWith(`${target}/`)
 }
 
 export type ExceptionSeverity = 'critical' | 'action_required' | 'pending' | 'informational' | 'resolved'

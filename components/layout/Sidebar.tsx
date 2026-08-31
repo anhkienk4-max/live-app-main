@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { resolveSystemPermission } from '@/lib/permissions'
-import { getNavigationForRole, filterNav } from '@/lib/ui/role-ux'
+import { getNavigationForRole, filterNav, isNavItemActive } from '@/lib/ui/role-ux'
 
 export function Sidebar() {
   const pathname = usePathname()
@@ -32,7 +32,7 @@ export function Sidebar() {
           </div>
           <nav className="mt-5 flex-1 px-3 space-y-1">
             {navigation.map((item) => {
-              const isActive = pathname === item.href
+              const isActive = isNavItemActive(pathname, item.href)
               const Icon = item.icon
               const label = item.labelKey
                 ? t(item.labelKey as Parameters<typeof t>[0])
@@ -41,6 +41,7 @@ export function Sidebar() {
                 <Link
                   key={item.name}
                   href={item.href}
+                  aria-current={isActive ? 'page' : undefined}
                   className={cn(
                     'group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-all',
                     isActive
