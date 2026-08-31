@@ -32,7 +32,7 @@ import {
 } from '@/lib/types/database.types'
 import { buildDashboardOcrReviewFromRecognition, parseDashboardOcrText } from '@/lib/utils/ocrMetrics'
 import { recognizeDashboardImage } from '@/lib/services/imageOcrService'
-import { DEFAULT_REQUIRED_STAFF_COUNT, detectConflicts, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
+import { DEFAULT_REQUIRED_STAFF_COUNT, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
 import {
   normalizeStaffingDisplayNames,
   toCanonicalScheduleImportPreviewRow,
@@ -70,21 +70,21 @@ import {
 } from './mockData'
 
 // In-memory data store
-let users = [...mockUsers]
-let brands = [...mockBrands]
-let platforms = [...mockPlatforms]
-let campaigns = [...mockCampaigns]
+const users = [...mockUsers]
+const brands = [...mockBrands]
+const platforms = [...mockPlatforms]
+const campaigns = [...mockCampaigns]
 let shifts: Shift[] = mockShifts.map(shift => ({
   ...shift,
   ...shiftDateTimeFields(shift.date, shift.start_time, shift.end_time),
 }))
-let reports = [...mockReports]
+const reports = [...mockReports]
 let reportImages: ReportImage[] = []
 let liveReportImages: LiveReportImage[] = []
-let dashboardUpdates = [...mockDashboardUpdates]
+const dashboardUpdates = [...mockDashboardUpdates]
 let swapRequests = [...mockSwapRequests]
-let scheduleImports: ScheduleImportBatch[] = []
-let scheduleChangeLogs: ScheduleChangeLog[] = []
+const scheduleImports: ScheduleImportBatch[] = []
+const scheduleChangeLogs: ScheduleChangeLog[] = []
 let authenticatedBusinessUser: User | null = null
 
 const currentBusinessUserFor = (actorId: string): User | null => {
@@ -333,7 +333,7 @@ let operationalSettings: OperationalSettings = {
   default_technical_count: DEFAULT_REQUIRED_STAFF_COUNT,
 }
 
-let personalSettings = new Map<string, PersonalSettings>()
+const personalSettings = new Map<string, PersonalSettings>()
 let systemSettings: Record<string, string | number | boolean> = {
   export_include_metadata: true,
   export_file_format: 'xlsx',
@@ -2971,7 +2971,9 @@ function logOcrPipeline(stage: string, details: Record<string, unknown>) {
     process.env.NODE_ENV === 'production'
     && process.env.NEXT_PUBLIC_USE_MOCK_DATA !== 'true'
   ) return
-  console.debug(`[OCR pipeline:${stage}]`, details)
+  void stage
+  void details
+  // debug removed — was console.debug(`[OCR pipeline:${stage}]`, details); kept as no-op for hygiene
 }
 
 // Dashboard Update Service
