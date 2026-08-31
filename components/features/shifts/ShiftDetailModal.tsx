@@ -64,6 +64,7 @@ import { normalizeStaffingDisplayNames } from '@/lib/utils/scheduleImportPreview
 import { deriveShiftStaffIdentityMatches } from '@/lib/utils/staffIdentityMatching'
 import { SwapRequestDialog } from '@/components/features/swaps/SwapRequestDialog'
 import { ShiftRegistrationActions } from '@/components/features/calendar/ShiftRegistrationActions'
+import { getRoleUxSurfaceConfig } from '@/lib/ui/role-ux'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
 
@@ -545,6 +546,7 @@ export function ShiftDetailModal({
   const { toast } = useToast()
   const { language, t } = useTranslation()
   const { currentUser } = useCurrentUser()
+  const roleSurface = getRoleUxSurfaceConfig(currentUser, 'shiftDetail')
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   const [capacities, setCapacities] = React.useState<ShiftRoleCapacity[]>([])
   const [selectedRole, setSelectedRole] = React.useState<OperationalRole>('host')
@@ -701,6 +703,9 @@ export function ShiftDetailModal({
           size="xl"
           className="h-[calc(100vh-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:h-[92vh]"
           data-testid="shift-detail-modal"
+          data-role="shift-detail"
+          data-role-priority={roleSurface.priority}
+          data-role-can-access={roleSurface.canAccess}
         >
           <DialogHeader>
             <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -710,6 +715,9 @@ export function ShiftDetailModal({
                 </DialogTitle>
                 <p className="mt-1 break-words text-sm text-muted-foreground">
                   {brand?.name || fallback} · {platform?.name || fallback}
+                </p>
+                <p className="sr-only" data-testid="shift-detail-role-context">
+                  {roleSurface.responsibility}
                 </p>
               </div>
               <Badge className={`${getShiftStatusClass(shift.status)} w-fit shrink-0`} variant="outline" data-testid="shift-detail-status">
@@ -885,7 +893,7 @@ export function ShiftDetailModal({
                 <Card className="overflow-hidden">
                   <CardContent className="p-0">
                     <div className="max-h-[440px] space-y-2 overflow-auto p-5">
-                      {registrations.length === 0 ? <p className="text-sm text-muted-foreground">{t('noData')}</p> : visibleRegistrations.map(registration => (
+                      {registrations.length === 0 ? <p className="text-sm text-muted-foreground" data-testid="shift-detail-staffing-empty">{t(roleSurface.emptyStateKey)}</p> : visibleRegistrations.map(registration => (
                         <div key={registration.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
                           <div className="min-w-0">
                             <p className="break-words font-medium">{userName(registration.user_id)} · {t(registration.operational_role)}</p>

@@ -38,6 +38,7 @@ import { useToast } from '@/components/ui/toast'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { ShiftDetailModal } from '@/components/features/shifts/ShiftDetailModal'
+import { getRoleUxSurfaceConfig } from '@/lib/ui/role-ux'
 
 type Mode = 'open' | 'mine'
 type Filters = { date: string; brand: string; platform: string; campaign: string; role: string }
@@ -66,6 +67,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const [removalTarget, setRemovalTarget] = React.useState<{ registration: ShiftRegistration; kind: 'cancel' | 'unassign' } | null>(null)
   const [viewMode, setViewMode] = React.useState<ViewMode>('card')
   const [detailShift, setDetailShift] = React.useState<Shift | null>(null)
+  const roleSurface = getRoleUxSurfaceConfig(currentUser, mode === 'mine' ? 'myShifts' : 'openShifts')
 
   const loadData = React.useCallback(async () => {
     setLoadError(null)
@@ -184,7 +186,8 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" data-role-surface={mode === 'mine' ? 'my-shifts' : 'open-shifts'} data-role-priority={roleSurface.priority}>
+      <p className="sr-only" data-testid="role-surface-context">{roleSurface.responsibility}</p>
       <Card>
         <CardContent className="grid gap-3 pt-5 md:grid-cols-3 lg:grid-cols-6">
           <label className="text-xs font-medium">{t('date')}<Input className="mt-1" type="date" value={filters.date} onChange={event => setFilters(current => ({ ...current, date: event.target.value }))} /></label>
@@ -235,7 +238,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
       )}
 
       {visibleShifts.length === 0 ? (
-        <Card><CardContent className="py-12 text-center text-muted-foreground">{mode === 'open' ? t('noOpenShifts') : t('noMyShifts')}</CardContent></Card>
+        <Card><CardContent className="py-12 text-center text-muted-foreground" data-testid="role-aware-empty-state">{t(roleSurface.emptyStateKey)}</CardContent></Card>
       ) : viewMode === 'table' ? (
         <ShiftSummaryTable shifts={visibleShifts} capacities={capacities} registrations={registrations} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
       ) : viewMode === 'compact' ? (
