@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { AlertTriangle, Check, CheckCircle2, Download, FileSpreadsheet, Link2, Moon, Plus, Upload, X } from 'lucide-react'
+import { AlertTriangle, Check, Download, FileSpreadsheet, Link2, Moon, Plus, Upload, X } from 'lucide-react'
 import {
   brandService,
   campaignService,
@@ -14,7 +14,7 @@ import {
 import { Brand, Campaign, DeletionImpact, Platform, ScheduleChangeLog, ScheduleImportBatch, Shift, User } from '@/lib/types/database.types'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
-import { useTranslation } from '@/lib/i18n'
+import { useTranslation, type TranslationKey } from '@/lib/i18n'
 import {
   downloadExcelTemplate,
   downloadScheduleImportErrors,
@@ -52,9 +52,18 @@ import {
   updateRowDraft,
 } from '@/lib/utils/scheduleImportDraft'
 import {
+  type ImportBatchRow,
   mapImportResultToBatchRows,
   summarizeImportResult,
 } from '@/lib/utils/scheduleImportBatch'
+import {
+  batchPresentationCounts,
+  previewPresentationCounts,
+  previewPresentationStatus,
+  type ImportPresentationCounts,
+  type ImportPreviewPresentationStatus,
+  type ImportResultPresentationStatus,
+} from '@/lib/utils/scheduleImportUx'
 import { processScheduleImportRows } from '@/lib/utils/scheduleImportRecovery'
 import { scheduleImportBatchPort } from '@/lib/services/scheduleImportBatchPort'
 import {
@@ -63,6 +72,44 @@ import {
 } from '@/lib/utils/scheduleImportReadiness'
 
 type Source = { type: 'excel' | 'google_sheets'; name: string }
+type PreviewFilter = 'all' | 'ready' | 'warning' | 'invalid' | 'duplicate' | 'retryable'
+
+type CompletedImport = {
+  source: Source
+  batch: ScheduleImportBatch
+  rows: ImportBatchRow[]
+}
+
+const importStatusLabelKey: Record<ImportResultPresentationStatus, TranslationKey> = {
+  ready: 'importStatusReady',
+  warning: 'importStatusWarning',
+  invalid: 'importStatusInvalid',
+  duplicate: 'importStatusDuplicate',
+  retryable: 'importStatusRetryable',
+  imported: 'importedResult',
+}
+
+function importStatusLabel(status: ImportResultPresentationStatus, t: (key: TranslationKey) => string) {
+  return t(importStatusLabelKey[status])
+}
+
+function previewStatusForRow(preview: ImportResult['rows'][number]): ImportPreviewPresentationStatus {
+  return previewPresentationStatus(preview)
+}
+
+function safeImportError(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message.trim() : ''
+  if (!message || /sqlstate|pgrst|postgrest|postgres|rpc|stack trace|23505|42501/i.test(message)) return fallback
+  return message
+}
+
+function rowStatusClass(status: ImportResultPresentationStatus) {
+  if (status === 'invalid') return 'border-red-200 bg-red-50/70'
+  if (status === 'warning' || status === 'retryable') return 'border-amber-200 bg-amber-50/70'
+  if (status === 'duplicate') return 'border-slate-200 bg-slate-50/70'
+  if (status === 'imported') return 'border-emerald-200 bg-emerald-50/60'
+  return 'border-border bg-background'
+}
 
 export function ScheduleImportStaffingInput({
   field,
@@ -101,9 +148,11 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   const [batch, setBatch] = React.useState<ScheduleImportBatch | null>(null)
   const [busy, setBusy] = React.useState(false)
   const [masterState, setMasterState] = React.useState<MasterDataState>('loading')
-  const [previewFilter, setPreviewFilter] = React.useState<'all' | 'valid' | 'warning' | 'error'>('all')
+  const [previewFilter, setPreviewFilter] = React.useState<PreviewFilter>('all')
+  const [previewSearch, setPreviewSearch] = React.useState('')
   const [cancelOpen, setCancelOpen] = React.useState(false)
   const [draftRows, setDraftRows] = React.useState<DraftRows>({})
+  const [completedImport, setCompletedImport] = React.useState<CompletedImport | null>(null)
 
   React.useEffect(() => {
     void Promise.all([
@@ -132,6 +181,9 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
 
   const recordPreview = async (next: ImportResult, nextSource: Source) => {
     const normalizedNext = normalizeScheduleImportResult(next)
+    setCompletedImport(null)
+    setPreviewFilter('all')
+    setPreviewSearch('')
     setResult(normalizedNext)
     setSource(nextSource)
     const createdBy = currentUser?.id || currentUserService.getId()
@@ -162,7 +214,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       const next = await importShiftsFromExcel(file, maps.brands, maps.platforms, maps.campaigns, undefined, existingShifts)
       await recordPreview(next, { type: 'excel', name: file.name })
     } catch (error) {
-      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+      toast({ title: t('error'), description: safeImportError(error, t('importPreviewLoadError')), variant: 'destructive' })
     } finally {
       setBusy(false)
       event.target.value = ''
@@ -181,7 +233,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       const next = await importShiftsFromGoogleSheetsUrl(googleUrl, maps.brands, maps.platforms, maps.campaigns, existingShifts)
       await recordPreview(next, { type: 'google_sheets', name: googleUrl })
     } catch (error) {
-      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+      toast({ title: t('error'), description: safeImportError(error, t('importPreviewLoadError')), variant: 'destructive' })
     } finally {
       setBusy(false)
     }
@@ -257,7 +309,8 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   }
 
   const confirmImport = async () => {
-    if (!result || !batch || result.validRows === 0) return
+    if (!result || !batch || !source || result.validRows === 0) return
+    const completedSource = source
     setBusy(true)
     try {
       const batchRows = await scheduleImportBatchPort.listBatchRows(batch.id)
@@ -289,8 +342,15 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
         },
       })
       const importedCount = importResult.imported + importResult.recovered
+      let completedBatch: ScheduleImportBatch | null = null
       if (importResult.retryable > 0) {
-        await scheduleImportBatchPort.markBatchStatus(batch.id, 'failed')
+        completedBatch = await scheduleImportBatchPort.markBatchStatus(batch.id, 'failed')
+        const finalRows = await scheduleImportBatchPort.listBatchRows(batch.id)
+        setCompletedImport({ source: completedSource, batch: completedBatch ?? { ...batch, status: 'failed' }, rows: finalRows })
+        setResult(null)
+        setBatch(null)
+        setSource(null)
+        setDraftRows({})
         toast({
           title: t('error'),
           description: `${importedCount} row(s) imported; ${importResult.retryable} row(s) were marked for retry.`,
@@ -300,16 +360,25 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
         onImported?.()
         return
       }
-      await scheduleImportBatchPort.markBatchStatus(batch.id, 'confirmed')
-      toast({ title: t('success'), description: `${result.validRows} ${t('validRows')}`, variant: 'success' })
+      completedBatch = await scheduleImportBatchPort.markBatchStatus(batch.id, 'confirmed')
+      const finalRows = await scheduleImportBatchPort.listBatchRows(batch.id)
+      setCompletedImport({ source: completedSource, batch: completedBatch ?? { ...batch, status: 'confirmed' }, rows: finalRows })
+      const finalCounts = batchPresentationCounts(finalRows)
+      const attention = finalCounts.warning + finalCounts.invalid + finalCounts.duplicate + finalCounts.retryable
+      toast({
+        title: t('success'),
+        description: attention > 0 ? t('importPartialSuccess', { imported: finalCounts.imported, attention }) : t('importCompleted'),
+        variant: 'success',
+      })
       setResult(null)
       setBatch(null)
       setSource(null)
+      setDraftRows({})
       setExistingShifts(await shiftService.getAll())
       onImported?.()
     } catch (error) {
       await scheduleImportBatchPort.markBatchStatus(batch.id, 'failed').catch(() => undefined)
-      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+      toast({ title: t('error'), description: safeImportError(error, t('importPreviewLoadError')), variant: 'destructive' })
     } finally {
       setBusy(false)
     }
@@ -332,9 +401,10 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       setResult(null)
       setBatch(null)
       setSource(null)
+      setCompletedImport(null)
       toast({ title: 'Import preview removed', variant: 'success' })
     } catch (error) {
-      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+      toast({ title: t('error'), description: safeImportError(error, t('importPreviewLoadError')), variant: 'destructive' })
       throw error
     }
   }
@@ -344,71 +414,93 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     return <Card><CardContent className="py-12 text-center text-muted-foreground">{t('permissionDenied')}</CardContent></Card>
   }
 
+  const previewCounts = result ? previewPresentationCounts(result) : null
+  const visiblePreviews = result?.rows.filter(preview => {
+    const status = previewStatusForRow(preview)
+    if (previewFilter !== 'all' && previewFilter !== status) return false
+    const query = previewSearch.trim().toLocaleLowerCase()
+    if (!query) return true
+    return [
+      preview.row.title,
+      preview.row.brand_name,
+      preview.row.platform_name,
+      preview.row.campaign_name,
+      preview.row.studio,
+      preview.row.host_names?.join(' ') ?? '',
+      preview.row.assistant_names?.join(' ') ?? '',
+      preview.row.technical_names?.join(' ') ?? '',
+      String(preview.row.row_number),
+    ].some(value => String(value ?? '').toLocaleLowerCase().includes(query))
+  }) ?? []
+  const completedCounts = completedImport ? batchPresentationCounts(completedImport.rows) : null
+  const previewAttention = previewCounts
+    ? previewCounts.warning + previewCounts.invalid + previewCounts.duplicate + previewCounts.retryable
+    : 0
+
   return (
     <div className="space-y-5">
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><FileSpreadsheet className="h-5 w-5" />{t('importExcel')}</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><FileSpreadsheet className="h-5 w-5" />{t('importInput')}: {t('importExcel')}</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">XLSX / XLS</p>
+            <p className="text-sm text-muted-foreground">{t('importFormatExcel')}</p>
+            <p className="text-xs text-muted-foreground">{t('importDateTimeHelp')}</p>
             <div className="flex flex-wrap gap-2">
               <Button onClick={() => fileInputRef.current?.click()} disabled={busy || !masterGate.allowed}><Upload className="mr-2 h-4 w-4" />{t('importExcel')}</Button>
-              <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="sr-only" onChange={handleFile} />
+              <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="sr-only" aria-label={t('importFormatExcel')} onChange={handleFile} />
               <Button variant="outline" onClick={downloadExcelTemplate}><Download className="mr-2 h-4 w-4" />{t('downloadTemplate')}</Button>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Link2 className="h-5 w-5" />{t('importGoogleSheets')}</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Link2 className="h-5 w-5" />{t('importInput')}: {t('importGoogleSheets')}</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">{t('googleSheetsHelp')}</p>
-            <div className="flex flex-col gap-2 sm:flex-row"><Input className="min-w-0" value={googleUrl} onChange={event => setGoogleUrl(event.target.value)} placeholder="https://docs.google.com/spreadsheets/... or mock://schedule" /><Button className="shrink-0" onClick={handleGoogle} disabled={busy || !masterGate.allowed || !googleUrl}>{t('importGoogleSheets')}</Button></div>
+            <p className="text-sm text-muted-foreground">{t('importFormatGoogle')}. {t('googleSheetsHelp')}</p>
+            <p className="text-xs text-muted-foreground">{t('importDateTimeHelp')}</p>
+            <div className="flex flex-col gap-2 sm:flex-row"><Input className="min-w-0" value={googleUrl} onChange={event => setGoogleUrl(event.target.value)} aria-label={t('importFormatGoogle')} placeholder="https://docs.google.com/spreadsheets/... or mock://schedule" /><Button className="shrink-0" onClick={handleGoogle} disabled={busy || !masterGate.allowed || !googleUrl}>{t('importGoogleSheets')}</Button></div>
           </CardContent>
         </Card>
       </div>
 
+      {busy && <p className="text-sm font-medium text-blue-700" role="status" aria-live="polite" data-testid="schedule-import-processing">{t('importProcessing')}</p>}
+
       {masterGate.message && (
-        <p className="text-sm font-medium text-red-700">{masterGate.message}</p>
+        <p className="text-sm font-medium text-red-700" role="alert" data-testid="schedule-import-master-error">{masterGate.message}</p>
       )}
 
       {result && source && (
         <Card>
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div><CardTitle>{t('importPreview')}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{t('source')}: {source.name}</p></div>
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="outline">{t('totalRows')}: {result.totalRows}</Badge>
-                <Badge className="bg-green-100 text-green-800">{t('validRows')}: {result.validRows}</Badge>
-                <Badge className="bg-red-100 text-red-800">{t('invalidRows')}: {result.invalidRows}</Badge>
-                <Badge className="bg-amber-100 text-amber-800">{t('warningRows')}: {result.warningRows}</Badge>
-              </div>
+              <div><CardTitle>{t('reviewBeforeImport')}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{t('importSourceSelected')}: <span className="font-medium text-foreground">{source.name}</span></p><p className="mt-1 text-xs text-muted-foreground">{t('batchPreviewState')}</p></div>
+              {previewCounts && <ImportSummary counts={previewCounts} t={t} />}
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="rounded-md border border-blue-200 bg-blue-50/60 px-3 py-2 text-sm text-blue-900" role="status" data-testid="schedule-import-preview-state">{t('batchPreviewState')}</div>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap gap-1">
-                {(['all', 'valid', 'warning', 'error'] as const).map(filter => (
-                  <Button key={filter} size="sm" variant={previewFilter === filter ? 'default' : 'outline'} onClick={() => setPreviewFilter(filter)}>
-                    {filter === 'all' ? t('all') : filter === 'valid' ? t('validRows') : filter === 'warning' ? t('warningRows') : t('invalidRows')}
+              <div className="flex flex-wrap gap-1" aria-label={t('importOutcomeRows')}>
+                {(['all', 'ready', 'warning', 'invalid', 'duplicate', 'retryable'] as const).map(filter => (
+                  <Button key={filter} size="sm" variant={previewFilter === filter ? 'default' : 'outline'} onClick={() => setPreviewFilter(filter)} aria-pressed={previewFilter === filter}>
+                    {filter === 'all' ? t('importStatusAll') : filter === 'ready' ? t('importStatusReady') : filter === 'warning' ? t('importStatusWarning') : filter === 'invalid' ? t('importStatusInvalid') : filter === 'duplicate' ? t('importStatusDuplicate') : t('importStatusRetryable')}
+                    {previewCounts && <span className="ml-1">({filter === 'all' ? previewCounts.total : previewCounts[filter]})</span>}
                   </Button>
                 ))}
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex min-w-0 flex-wrap gap-2">
+                <Input className="w-full sm:w-64" value={previewSearch} onChange={event => setPreviewSearch(event.target.value)} aria-label={t('importSearchRows')} placeholder={t('importSearchRows')} />
                 <Button size="sm" variant="outline" onClick={addPreviewRow}><Plus className="mr-2 h-4 w-4" />{t('addImportRow')}</Button>
                 {(result.errors.length > 0 || result.warnings.length > 0) && <Button size="sm" variant="outline" onClick={() => downloadScheduleImportErrors(result)}><Download className="mr-2 h-4 w-4" />Download errors</Button>}
               </div>
             </div>
-            <div className="max-h-[560px] overflow-auto rounded-lg border">
+            {visiblePreviews.length === 0 && <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground" role="status">{result.rows.length === 0 ? t('importNoRows') : t('importNoMatchingRows')}</p>}
+            <div className="hidden max-h-[560px] overflow-auto rounded-lg border md:block">
               <table className="min-w-[1780px] w-full text-sm">
-                <thead className="sticky top-0 z-10 bg-background"><tr className="border-b text-left"><th className="p-2">#</th><th className="p-2">{t('date')}</th><th className="p-2">{t('time')}</th><th className="p-2">{t('brand')}</th><th className="p-2">{t('platform')}</th><th className="p-2">{t('campaign')}</th><th className="p-2">{t('shiftTitle')}</th><th className="p-2">{t('studio')}</th><th className="p-2">{t('importHostNames')}</th><th className="p-2">{t('importAssistantNames')}</th><th className="p-2">{t('importTechnicalNames')}</th><th className="p-2">{t('requiredHostCount')}</th><th className="p-2">{t('requiredSupportCount')}</th><th className="p-2">{t('requiredTechnicalCount')}</th><th className="min-w-64 p-2">{t('status')}</th></tr></thead>
+                <thead className="sticky top-0 z-10 bg-background"><tr className="border-b text-left"><th className="p-2">{t('importSourceRow')}</th><th className="p-2">{t('date')}</th><th className="p-2">{t('time')}</th><th className="p-2">{t('brand')}</th><th className="p-2">{t('platform')}</th><th className="p-2">{t('campaign')}</th><th className="p-2">{t('shiftTitle')}</th><th className="p-2">{t('studio')}</th><th className="p-2">{t('importHostNames')}</th><th className="p-2">{t('importAssistantNames')}</th><th className="p-2">{t('importTechnicalNames')}</th><th className="p-2">{t('requiredHostCount')}</th><th className="p-2">{t('requiredSupportCount')}</th><th className="p-2">{t('requiredTechnicalCount')}</th><th className="min-w-64 p-2">{t('status')}</th></tr></thead>
                 <tbody>
-                  {result.rows.filter(preview =>
-                    previewFilter === 'all' ||
-                    (previewFilter === 'valid' && preview.row.errors.length === 0 && preview.row.warnings.length === 0) ||
-                    (previewFilter === 'warning' && preview.row.warnings.length > 0) ||
-                    (previewFilter === 'error' && preview.row.errors.length > 0)
-                  ).map(preview => {
+                  {visiblePreviews.map(preview => {
                     const rowNumber = preview.row.row_number
+                    const rowStatus = previewStatusForRow(preview)
                     const editing = draftRows[rowNumber]
                     const cellValue = (field: DraftField): string => {
                       const committedText = committedRowValue(preview.row, field)
@@ -429,7 +521,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                     const entityValue = (field: DraftField, fallback: string) =>
                       editing ? rowDraftValue(draftRows, rowNumber, field, fallback) : fallback
                     return (
-                      <tr key={rowNumber} className={`border-b align-top${editing ? ' bg-amber-50/50' : ''}`}>
+                      <tr key={rowNumber} data-status={rowStatus} className={`border-b align-top${editing ? ' bg-amber-50/50' : ''}`}>
                         <td className="p-2">{rowNumber}</td>
                         <td className="p-2"><Input className="w-36" value={cellValue('date')} onChange={changeField('date')} onKeyDown={handleCellKeyDown} /></td>
                         <td className="p-2"><div className="flex gap-1"><Input className="w-24" value={cellValue('start_time')} onChange={changeField('start_time')} onKeyDown={handleCellKeyDown} /><Input className="w-24" value={cellValue('end_time')} onChange={changeField('end_time')} onKeyDown={handleCellKeyDown} /></div>{preview.row.crosses_midnight && <p className="mt-1 flex items-center gap-1 whitespace-nowrap text-xs text-indigo-700"><Moon className="h-3 w-3" />{t('endsNextDay')}: {displayDate(preview.row.end_date)}</p>}</td>
@@ -467,7 +559,9 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                               <span className="text-xs text-amber-700">Editing draft — Enter to confirm</span>
                             </div>
                           )}
-                          {!editing && preview.row.errors.length === 0 && preview.row.warnings.length === 0 && <CheckCircle2 className="h-5 w-5 text-green-600" />}
+                          {!editing && <Badge variant="outline" className={rowStatusClass(rowStatus)}>{importStatusLabel(rowStatus, t)}</Badge>}
+                          {rowStatus === 'invalid' && <p className="mt-1 text-xs text-red-700">{t('importValidationDetails')}</p>}
+                          {rowStatus === 'duplicate' && <p className="mt-1 text-xs text-slate-700">{t('duplicatePreserved')}</p>}
                           {preview.row.errors.map(message => <p key={message} className="mb-1 text-xs text-red-700">{message}</p>)}
                           {preview.row.warnings.map(message => <p key={message} className="mb-1 flex gap-1 text-xs text-amber-700"><AlertTriangle className="h-3 w-3 shrink-0" />{message}</p>)}
                         </td>
@@ -477,18 +571,79 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                 </tbody>
               </table>
             </div>
+            <div className="space-y-2 md:hidden" data-testid="schedule-import-mobile-rows">
+              {visiblePreviews.map(preview => {
+                const status = previewStatusForRow(preview)
+                const identity = [preview.row.date, `${preview.row.start_time}–${preview.row.end_time}`, preview.row.title || preview.row.brand_name].filter(Boolean).join(' · ')
+                return <div key={preview.row.row_number} className={`rounded-md border p-3 ${rowStatusClass(status)}`}>
+                  <div className="flex items-start justify-between gap-2"><div><p className="text-xs text-muted-foreground">{t('importSourceRow')} {preview.row.row_number}</p><p className="font-medium">{identity || t('importNoRows')}</p></div><Badge variant="outline">{importStatusLabel(status, t)}</Badge></div>
+                  <p className="mt-1 text-xs text-muted-foreground">{preview.row.brand_name} · {preview.row.platform_name}{preview.row.campaign_name ? ` · ${preview.row.campaign_name}` : ''}</p>
+                  {preview.row.errors.map(message => <p key={message} className="mt-1 text-xs text-red-700">{message}</p>)}
+                  {preview.row.warnings.map(message => <p key={message} className="mt-1 text-xs text-amber-700">{message}</p>)}
+                </div>
+              })}
+            </div>
             {result.invalidRows > 0 && <p className="text-sm text-red-700">{t('correctRows')}</p>}
+            {previewCounts && <p className="text-sm text-muted-foreground" data-testid="schedule-import-confirm-summary">{t('confirmImportSummary', { ready: previewCounts.ready, attention: previewAttention })}</p>}
             <div className="flex flex-wrap justify-end gap-2">
               <Button variant="outline" onClick={() => setCancelOpen(true)}>{t('cancel')}</Button>
-              <Button variant="outline" onClick={confirmImport} disabled={busy || result.validRows === 0}>{busy ? t('loading') : `Import valid rows (${result.validRows})`}</Button>
-              <Button onClick={confirmImport} disabled={busy || result.invalidRows > 0 || result.validRows === 0}>{busy ? t('loading') : `Import all after fix (${result.validRows})`}</Button>
+              <Button variant="outline" onClick={confirmImport} disabled={busy || result.validRows === 0} aria-label={t('confirmImport')}>{busy ? t('loading') : `${t('confirmImport')} (${result.validRows})`}</Button>
+              <Button onClick={confirmImport} disabled={busy || result.invalidRows > 0 || result.validRows === 0} aria-label={t('confirmImport')}>{busy ? t('loading') : t('confirmImport')}</Button>
             </div>
           </CardContent>
         </Card>
       )}
+      {completedImport && completedCounts && <ImportCompletionCard completed={completedImport} counts={completedCounts} t={t} />}
       <LifecycleActionDialog open={cancelOpen} onOpenChange={setCancelOpen} title="Remove import preview" impact={cancelImpact} confirmText="Remove preview" onConfirm={removePreview} />
     </div>
   )
+}
+
+type ImportTranslate = (key: TranslationKey, variables?: Record<string, string | number>) => string
+
+function ImportSummary({ counts, t }: { counts: ImportPresentationCounts; t: ImportTranslate }) {
+  const items: Array<[TranslationKey, number, string]> = [
+    ['readyToImport', counts.ready, 'text-emerald-700'],
+    ['importWarning', counts.warning, 'text-amber-700'],
+    ['importValidationFailed', counts.invalid, 'text-red-700'],
+    ['importDuplicateSkipped', counts.duplicate, 'text-slate-700'],
+    ['importRetryable', counts.retryable, 'text-orange-700'],
+  ]
+  return <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs" data-testid="schedule-import-summary" aria-label={t('importSummary')}>
+    <span className="font-semibold text-foreground">{t('totalRows')}: {counts.total}</span>
+    {items.map(([label, count, color]) => <span key={label} className={color}>{t(label)}: {count}</span>)}
+  </div>
+}
+
+function ImportCompletionCard({ completed, counts, t }: { completed: CompletedImport; counts: ImportPresentationCounts; t: ImportTranslate }) {
+  const attentionRows = completed.rows.filter(row => row.status !== 'imported')
+  const statusForRow = (row: ImportBatchRow): ImportResultPresentationStatus => {
+    if (row.status === 'imported') return 'imported'
+    if (row.status === 'warning') return 'warning'
+    if (row.status === 'duplicate_skipped') return 'duplicate'
+    if (row.status === 'retryable') return 'retryable'
+    if (row.status === 'validation_failed') return 'invalid'
+    return 'ready'
+  }
+  return <Card data-testid="schedule-import-result" className="border-emerald-200">
+    <CardHeader><CardTitle className="flex flex-wrap items-center justify-between gap-2"><span>{t('importCompleted')}</span><Badge variant="outline">{completed.source.name}</Badge></CardTitle></CardHeader>
+    <CardContent className="space-y-3">
+      <ImportSummary counts={counts} t={t} />
+      {counts.imported === 0 && <p className="text-sm text-muted-foreground">{t('importNothingPersisted')}</p>}
+      {counts.retryable > 0 && <p className="text-sm text-orange-700">{t('retryableRecovery')} {t('retryUnavailable')}</p>}
+      {attentionRows.length > 0 && <details open className="rounded-md border border-amber-200 bg-amber-50/50 p-3"><summary className="cursor-pointer text-sm font-medium">{t('importRowsNotCreated')}: {attentionRows.length}</summary><div className="mt-2 space-y-2">{attentionRows.map(row => <div key={row.id} className="rounded border bg-background p-2 text-sm"><div className="flex items-center justify-between gap-2"><span>{t('importSourceRow')} {row.source_row_number}</span><Badge variant="outline" className={rowStatusClass(statusForRow(row))}>{importStatusLabel(statusForRow(row), t)}</Badge></div>{row.failure_code && <p className="mt-1 text-xs text-muted-foreground">{statusForRow(row) === 'retryable' ? t('retryableRecovery') : statusForRow(row) === 'invalid' ? t('importValidationDetails') : t('notImported')}</p>}{row.validation_issues.map(issue => <p key={issue} className="mt-1 text-xs text-red-700">{issue}</p>)}</div>)}</div></details>}
+    </CardContent>
+  </Card>
+}
+
+function batchStatusLabel(status: ScheduleImportBatch['status'], t: ImportTranslate) {
+  const key: Record<ScheduleImportBatch['status'], TranslationKey> = {
+    previewed: 'importHistoryStatusPreviewed',
+    confirmed: 'importHistoryStatusConfirmed',
+    failed: 'importHistoryStatusFailed',
+    cancelled: 'importHistoryStatusCancelled',
+  }
+  return t(key[status])
 }
 
 function PreviewEntitySelect({ value, onChange, options, optional = false }: { value: string; onChange: (value: string) => void; options: Array<{ id: string; name: string }>; optional?: boolean }) {
@@ -544,8 +699,8 @@ export function ImportHistoryPanel() {
     setFilters(current => ({ ...current, [key]: value }))
     setChangePage(1)
   }
-  if (loading) return <div className="py-12 text-center">{t('loading')}</div>
-  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoadError(null); setLoading(true); void loadHistory() }} />
+  if (loading) return <div className="py-12 text-center" role="status" aria-live="polite" data-testid="schedule-import-history-loading">{t('loading')}</div>
+  if (loadError) return <PageLoadError error={new Error(t('importLoadError'))} onRetry={() => { setLoadError(null); setLoading(true); void loadHistory() }} />
   const visibleChanges = changes.filter(log => {
     const shift = shifts.find(item => item.id === log.shift_id)
     return (!filters.date || log.timestamp.slice(0, 10) === filters.date) &&
@@ -567,7 +722,7 @@ export function ImportHistoryPanel() {
       <TabsContent value="imports">
         {history.length === 0
           ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noImportHistory')}</CardContent></Card>
-          : <Card className="overflow-hidden"><CardContent className="p-0"><div className="max-h-[520px] overflow-auto p-5"><table className="w-full text-sm"><thead className="sticky top-0 bg-card"><tr className="border-b text-left"><th className="p-2">{t('date')}</th><th className="p-2">{t('source')}</th><th className="p-2">{t('status')}</th><th className="p-2 text-right">{t('totalRows')}</th><th className="p-2 text-right">{t('validRows')}</th><th className="p-2 text-right">{t('invalidRows')}</th><th className="p-2 text-right">{t('warningRows')}</th><th className="p-2 text-right">Imported</th><th className="p-2 text-right">Retryable</th></tr></thead><tbody>{pagedImports.map(batch => <tr className="border-b" key={batch.id}><td className="p-2">{new Date(batch.created_at).toLocaleString()}</td><td className="p-2"><p className="font-medium">{batch.source === 'google_sheets' ? 'Google Sheets' : 'Excel'}</p><p className="max-w-72 truncate text-xs text-muted-foreground">{batch.source_name}</p></td><td className="p-2"><Badge variant="outline">{batch.status}</Badge></td><td className="p-2 text-right">{batch.total_rows}</td><td className="p-2 text-right">{batch.valid_rows}</td><td className="p-2 text-right">{batch.invalid_rows}</td><td className="p-2 text-right">{batch.warning_rows}</td><td className="p-2 text-right">{batch.imported_rows ?? '—'}</td><td className="p-2 text-right">{batch.retryable_rows ?? '—'}</td></tr>)}</tbody></table></div><HistoryPagination page={importPage} pageSize={importPageSize} total={history.length} onPageChange={setImportPage} onPageSizeChange={size => { setImportPageSize(size); setImportPage(1) }} /></CardContent></Card>}
+          : <Card className="overflow-hidden"><CardContent className="p-0"><div className="max-h-[520px] overflow-auto p-5"><table className="w-full text-sm"><thead className="sticky top-0 bg-card"><tr className="border-b text-left"><th className="p-2">{t('date')}</th><th className="p-2">{t('source')}</th><th className="p-2">{t('status')}</th><th className="p-2 text-right">{t('totalRows')}</th><th className="p-2 text-right">{t('validRows')}</th><th className="p-2 text-right">{t('invalidRows')}</th><th className="p-2 text-right">{t('warningRows')}</th><th className="p-2 text-right">{t('importedResult')}</th><th className="p-2 text-right">{t('importRetryable')}</th></tr></thead><tbody>{pagedImports.map(batch => <tr className="border-b" key={batch.id}><td className="p-2">{new Date(batch.created_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}</td><td className="p-2"><p className="font-medium">{batch.source === 'google_sheets' ? t('importGoogleSheets') : t('importExcel')}</p><p className="max-w-72 truncate text-xs text-muted-foreground">{batch.source_name}</p></td><td className="p-2"><Badge variant="outline">{batchStatusLabel(batch.status, t)}</Badge></td><td className="p-2 text-right">{batch.total_rows}</td><td className="p-2 text-right">{batch.valid_rows}</td><td className="p-2 text-right">{batch.invalid_rows}</td><td className="p-2 text-right">{batch.warning_rows}</td><td className="p-2 text-right">{batch.imported_rows ?? '—'}</td><td className="p-2 text-right">{batch.retryable_rows ?? '—'}</td></tr>)}</tbody></table></div><HistoryPagination page={importPage} pageSize={importPageSize} total={history.length} onPageChange={setImportPage} onPageSizeChange={size => { setImportPageSize(size); setImportPage(1) }} /></CardContent></Card>}
       </TabsContent>
       <TabsContent value="changes">
         <Card>
