@@ -68,6 +68,7 @@ import { deriveShiftAttention } from '@/lib/ui/operational-attention'
 import { OperationalStatusStrip } from '@/components/ui/operational-status'
 import { BottomActionBar, ResponsiveActions } from '@/components/ui/mobile-actions'
 import type { PrioritizedAction } from '@/lib/ui/action-priority'
+import { getRoleUxSurfaceConfig } from '@/lib/ui/role-ux'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
 
@@ -511,6 +512,7 @@ export function ShiftDetailActions({
 }) {
   const canEdit = Boolean(onEdit && currentUser && hasPermission(currentUser, 'shifts.edit'))
   const canDelete = Boolean(currentUser && hasPermission(currentUser, 'shifts.delete'))
+  const roleSurface = getRoleUxSurfaceConfig(currentUser, 'shiftDetail')
   
   const actions: PrioritizedAction[] = [
     {
@@ -549,7 +551,7 @@ export function ShiftDetailActions({
 
   return (
     <>
-      <div className="hidden sm:flex justify-end pt-4 mb-2">
+      <div className="hidden sm:flex justify-end pt-4 mb-2" data-role-priority={roleSurface.priority}>
         <ResponsiveActions actions={actions} />
       </div>
       <BottomActionBar 
@@ -557,6 +559,7 @@ export function ShiftDetailActions({
         alwaysVisible={false}
         showBelow="sm"
         className="absolute"
+        data-role-priority={roleSurface.priority}
       />
     </>
   )
@@ -579,6 +582,7 @@ export function ShiftDetailModal({
   const { toast } = useToast()
   const { language, t } = useTranslation()
   const { currentUser } = useCurrentUser()
+  const roleSurface = getRoleUxSurfaceConfig(currentUser, 'shiftDetail')
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   const [capacities, setCapacities] = React.useState<ShiftRoleCapacity[]>([])
   const [selectedRole, setSelectedRole] = React.useState<OperationalRole>('host')
@@ -761,6 +765,9 @@ export function ShiftDetailModal({
           size="xl"
           className="h-[calc(100vh-1rem)] flex flex-col p-0 overflow-y-auto sm:h-[92vh]"
           data-testid="shift-detail-modal"
+          data-role="shift-detail"
+          data-role-priority={roleSurface.priority}
+          data-role-can-access={roleSurface.canAccess}
         >
           <div className="flex-1 overflow-y-auto p-6 pb-24 sm:pb-6">
           <DialogHeader className="mb-6">
@@ -771,6 +778,9 @@ export function ShiftDetailModal({
                 </DialogTitle>
                 <p className="mt-1 break-words text-sm text-muted-foreground">
                   {brand?.name || fallback} · {platform?.name || fallback}
+                </p>
+                <p className="sr-only" data-testid="shift-detail-role-context">
+                  {roleSurface.responsibility}
                 </p>
               </div>
               <Badge className={`${getShiftStatusClass(shift.status)} w-fit shrink-0`} variant="outline" data-testid="shift-detail-status">
@@ -951,7 +961,7 @@ export function ShiftDetailModal({
                 <Card className="overflow-hidden">
                   <CardContent className="p-0">
                     <div className="max-h-[440px] space-y-2 overflow-auto p-5">
-                      {registrations.length === 0 ? <p className="text-sm text-muted-foreground">{t('noData')}</p> : visibleRegistrations.map(registration => (
+                      {registrations.length === 0 ? <p className="text-sm text-muted-foreground" data-testid="shift-detail-staffing-empty">{t(roleSurface.emptyStateKey)}</p> : visibleRegistrations.map(registration => (
                         <div key={registration.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/50 p-3 shadow-sm">
                           <div className="min-w-0">
                             <p className="break-words font-medium text-sm">{userName(registration.user_id)} <span className="text-muted-foreground font-normal mx-1">·</span> {t(registration.operational_role)}</p>
