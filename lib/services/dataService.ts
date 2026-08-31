@@ -1168,9 +1168,12 @@ export const shiftService = {
   },
 
   async create(data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>): Promise<Shift> {
-    data.status = 'scheduled'
+    const createData = {
+      ...data,
+      status: 'scheduled' as const
+    }
     if (getAuthMode() === 'supabase') {
-      const persisted = await getSupabaseShiftRepository().create(data)
+      const persisted = await getSupabaseShiftRepository().create(createData)
       upsertShiftProjection(persisted)
       recordScheduleChange('create', persisted.id, undefined, { ...persisted }, {
         source: persisted.import_batch_id
@@ -1185,23 +1188,23 @@ export const shiftService = {
       })
       return persisted
     }
-    const timezone = data.timezone || DEFAULT_BUSINESS_TIMEZONE
-    const dateTime = shiftDateTimeFields(data.date, data.start_time, data.end_time, timezone)
+    const timezone = createData.timezone || DEFAULT_BUSINESS_TIMEZONE
+    const dateTime = shiftDateTimeFields(createData.date, createData.start_time, createData.end_time, timezone)
     if (!dateTime) throw new Error('Shift date or duration is invalid.')
-    const requiredHostCount = normalizeCapacity(data.required_host_count, operationalSettings.default_host_count)
-    const requiredSupportCount = normalizeCapacity(data.required_support_count, operationalSettings.default_support_count)
-    const requiredTechnicalCount = normalizeCapacity(data.required_technical_count, operationalSettings.default_technical_count)
+    const requiredHostCount = normalizeCapacity(createData.required_host_count, operationalSettings.default_host_count)
+    const requiredSupportCount = normalizeCapacity(createData.required_support_count, operationalSettings.default_support_count)
+    const requiredTechnicalCount = normalizeCapacity(createData.required_technical_count, operationalSettings.default_technical_count)
     if (requiredHostCount === null || requiredSupportCount === null || requiredTechnicalCount === null) {
       throw new Error('Required staffing counts must be non-negative whole numbers within the allowed capacity.')
     }
     const newShift: Shift = {
       registration_locked: false,
       allow_multi_role: operationalSettings.allow_multi_role_per_shift,
-      ...data,
+      ...createData,
       timezone,
-      host_names: data.host_names ?? [],
-      assistant_names: data.assistant_names ?? [],
-      technical_names: data.technical_names ?? [],
+      host_names: createData.host_names ?? [],
+      assistant_names: createData.assistant_names ?? [],
+      technical_names: createData.technical_names ?? [],
       required_host_count: requiredHostCount,
       required_support_count: requiredSupportCount,
       required_technical_count: requiredTechnicalCount,

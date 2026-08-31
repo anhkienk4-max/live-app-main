@@ -454,11 +454,16 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           users={users}
           allShifts={shifts}
           allRegistrations={registrations}
-          onUpdate={() => {
+          onUpdate={(updatedShift?: Shift) => {
             void (async () => {
-              await loadData()
-              const refreshed = await shiftService.getById(detailShift.id)
-              if (refreshed) setDetailShift({ ...refreshed })
+              if (updatedShift) {
+                setDetailShift(updatedShift)
+                await loadData()
+              } else {
+                await loadData()
+                const refreshed = await shiftService.getById(detailShift.id)
+                if (refreshed) setDetailShift({ ...refreshed })
+              }
             })()
           }}
           onDelete={() => {

@@ -72,6 +72,13 @@ export function LiveMonitoringDashboard() {
   }, [])
 
   React.useEffect(() => { setFilters(initialFilters()); void loadData() }, [loadData])
+  const handleShiftUpdate = React.useCallback(async (updatedShift?: Shift) => {
+    await loadData()
+    if (updatedShift) {
+      setSelectedShift(prev => prev?.id === updatedShift.id ? updatedShift : prev)
+      setUpdateShift(prev => prev?.id === updatedShift.id ? updatedShift : prev)
+    }
+  }, [loadData])
   React.useEffect(() => {
     const interval = window.setInterval(() => void loadData(), 30000)
     return () => window.clearInterval(interval)
@@ -159,7 +166,7 @@ export function LiveMonitoringDashboard() {
         </div>
       )}
     </div>
-    {selectedShift && <LiveSessionModal open shift={selectedShift} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onOpenChange={open => !open && setSelectedShift(null)} onUpdate={loadData} />}
+    {selectedShift && <LiveSessionModal open shift={selectedShift} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onOpenChange={open => !open && setSelectedShift(null)} onUpdate={handleShiftUpdate} />}
     {updateShift && <DashboardUpdateModal open shift={updateShift} platformName={nameFor(platforms, updateShift.platform_id)} onOpenChange={open => !open && setUpdateShift(null)} onSuccess={loadData} />}
   </>
 }

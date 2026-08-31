@@ -679,11 +679,16 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           users={users}
           allShifts={shifts}
           allRegistrations={registrations}
-          onUpdate={() => {
+          onUpdate={(updatedShift?: Shift) => {
             void (async () => {
-              await loadData()
-              const refreshedShift = await shiftService.getById(selectedShift.id)
-              if (refreshedShift) setSelectedShift({ ...refreshedShift })
+              if (updatedShift) {
+                setSelectedShift(updatedShift)
+                await loadData()
+              } else {
+                await loadData()
+                const refreshedShift = await shiftService.getById(selectedShift.id)
+                if (refreshedShift) setSelectedShift({ ...refreshedShift })
+              }
             })()
           }}
           onEdit={() => {
