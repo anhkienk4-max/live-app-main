@@ -100,6 +100,11 @@ const en = {
   rejected: 'Rejected',
   // Operational Attention
   operationalStatusAriaLabel: 'Operational status',
+  criticalSeverity: 'Critical',
+  warningSeverity: 'Warning',
+  attentionSeverity: 'Attention',
+  infoSeverity: 'Information',
+  successSeverity: 'Healthy',
   noPendingDecisions: 'No pending decisions',
   allUpToDate: 'All staffing, swaps, and reports are up to date',
   allClear: 'All clear',
@@ -1094,6 +1099,11 @@ const vi: Record<keyof typeof en, string> = {
   pendingRegistrations: 'Đăng ký đang chờ',
   pendingRegistrationsDesc: '{count} đăng ký đang chờ quyết định',
   operationalStatusAriaLabel: 'Trạng thái vận hành',
+  criticalSeverity: 'Nghiêm trọng',
+  warningSeverity: 'Cảnh báo',
+  attentionSeverity: 'Cần chú ý',
+  infoSeverity: 'Thông tin',
+  successSeverity: 'Ổn định',
   noPendingDecisions: 'Không có quyết định chờ xử lý',
   allUpToDate: 'Tất cả nhân sự, đổi ca và báo cáo đã được cập nhật',
   allClear: 'Mọi thứ đã ổn',
@@ -2403,7 +2413,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguageState] = React.useState<Language>('en')
   React.useEffect(() => {
     const saved = window.localStorage.getItem('livestream-ops-language')
-    if (saved === 'en' || saved === 'vi') setLanguageState(saved)
+    if (saved === 'en' || saved === 'vi') queueMicrotask(() => setLanguageState(saved))
   }, [])
   const setLanguage = React.useCallback((next: Language) => {
     setLanguageState(next)

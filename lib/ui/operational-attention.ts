@@ -17,13 +17,20 @@
  */
 
 import type { ReportStatus, RegistrationStatus, SwapStatus, ScheduleImportRowOutcome } from '@/lib/types/database.types'
-import type { DataQualitySeverity } from '@/lib/types/dataQuality'
+import { calendarCtaHref } from '@/lib/ui/action-priority'
 
 // ---------------------------------------------------------------------------
 // Attention taxonomy
 // ---------------------------------------------------------------------------
 
 export type AttentionSeverity = 'critical' | 'warning' | 'attention' | 'info' | 'success'
+export type AttentionUrgency = 'now' | 'overdue' | 'soon' | 'upcoming' | 'informational'
+export type AttentionScope = 'personal' | 'team' | 'organization'
+
+export interface AttentionEntity {
+  type: string
+  id: string
+}
 
 /**
  * Single operational attention item (pure data).
@@ -43,6 +50,16 @@ export interface OperationalAttention {
   href?: string
   /** Count associated with the item, e.g. "3 pending" */
   count?: number
+  /** Operational urgency is independent from visual severity/CTA priority. */
+  urgency?: AttentionUrgency
+  /** Visibility scope; callers only provide data already authorized for the actor. */
+  scope?: AttentionScope
+  /** Canonical entity behind the exception. */
+  entity?: AttentionEntity
+  /** Explicitly marks whether this item represents an action for this actor. */
+  actionable?: boolean
+  /** Optional ISO deadline used for deterministic ranking. */
+  deadline?: string
 }
 
 /**
@@ -62,9 +79,34 @@ export interface AttentionSummary {
 // ---------------------------------------------------------------------------
 
 const SEVERITY_ORDER: AttentionSeverity[] = ['critical', 'warning', 'attention', 'info', 'success']
+const URGENCY_ORDER: AttentionUrgency[] = ['now', 'overdue', 'soon', 'upcoming', 'informational']
 
 function severityRank(severity: AttentionSeverity): number {
   return SEVERITY_ORDER.indexOf(severity)
+}
+
+function defaultUrgency(severity: AttentionSeverity): AttentionUrgency {
+  if (severity === 'critical') return 'now'
+  if (severity === 'warning') return 'soon'
+  if (severity === 'attention') return 'upcoming'
+  return 'informational'
+}
+
+function urgencyRank(urgency: AttentionUrgency): number {
+  return URGENCY_ORDER.indexOf(urgency)
+}
+
+function inferEntity(key: string): AttentionEntity | undefined {
+  const match = /^(shift|swap|report|import-row)-(.+?)(?:-(?:pending|gap|accepted|failed|retryable|warning|dup|in-review|reopened|draft))?$/.exec(key)
+  if (match) return { type: match[1], id: match[2] }
+  if (key.startsWith('dq-')) return { type: 'data-quality', id: key.slice(3) }
+  return undefined
+}
+
+function inferScope(key: string): AttentionScope {
+  if (key.startsWith('member-')) return 'personal'
+  if (key.startsWith('dq-')) return 'organization'
+  return 'team'
 }
 
 /**
@@ -72,13 +114,50 @@ function severityRank(severity: AttentionSeverity): number {
  * Within the same severity: stable (preserves insertion order via index).
  */
 export function sortOperationalAttention(items: OperationalAttention[]): OperationalAttention[] {
-  return [...items].sort((a, b) => severityRank(a.severity) - severityRank(b.severity))
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      const severity = severityRank(a.item.severity) - severityRank(b.item.severity)
+      if (severity !== 0) return severity
+      const urgency = urgencyRank(a.item.urgency ?? defaultUrgency(a.item.severity)) - urgencyRank(b.item.urgency ?? defaultUrgency(b.item.severity))
+      if (urgency !== 0) return urgency
+      const deadline = (a.item.deadline ?? '').localeCompare(b.item.deadline ?? '')
+      if (deadline !== 0) return deadline
+      const key = a.item.key.localeCompare(b.item.key)
+      return key !== 0 ? key : a.index - b.index
+    })
+    .map(({ item }) => item)
 }
 
 function buildSummary(items: OperationalAttention[]): AttentionSummary {
-  const sorted = sortOperationalAttention(items)
+  const enriched = items.map(item => decorateAttention([item], inferScope(item.key))[0])
+  const sorted = deduplicateOperationalAttention(sortOperationalAttention(enriched))
   const topSeverity = sorted.length > 0 ? sorted[0].severity : null
   return { items: sorted, topSeverity, healthy: sorted.length === 0 }
+}
+
+/** Remove duplicate representations of one exception within a surface. */
+export function deduplicateOperationalAttention(items: OperationalAttention[]): OperationalAttention[] {
+  const seen = new Set<string>()
+  return items.filter(item => {
+    if (seen.has(item.key)) return false
+    seen.add(item.key)
+    return true
+  })
+}
+
+export function isActionableAttention(item: OperationalAttention): boolean {
+  return item.actionable ?? Boolean(item.href)
+}
+
+function decorateAttention(items: OperationalAttention[], fallbackScope: AttentionScope): OperationalAttention[] {
+  return items.map(item => ({
+    ...item,
+    urgency: item.urgency ?? defaultUrgency(item.severity),
+    scope: item.scope ?? fallbackScope,
+    entity: item.entity ?? inferEntity(item.key),
+    actionable: item.actionable ?? Boolean(item.href),
+  }))
 }
 
 // ---------------------------------------------------------------------------
@@ -167,7 +246,7 @@ export function deriveShiftAttention(input: ShiftAttentionInput): OperationalAtt
     })
   }
 
-  return items
+  return decorateAttention(items, 'team')
 }
 
 // ---------------------------------------------------------------------------
@@ -187,14 +266,14 @@ export interface StaffingAttentionInput {
  */
 export function deriveStaffingAttention(input: StaffingAttentionInput): OperationalAttention[] {
   if (input.pendingCount === 0) return []
-  return [{
+  return decorateAttention([{
     key: 'staffing-pending',
     severity: 'warning',
     label: 'staffingDecisionsNeeded',
     description: 'staffingDecisionsNeededDesc',
     descriptionParams: { count: input.pendingCount },
     count: input.pendingCount,
-  }]
+  }], 'team')
 }
 
 // ---------------------------------------------------------------------------
@@ -225,23 +304,23 @@ export function deriveSwapAttention(input: SwapAttentionInput): OperationalAtten
   if (terminal.includes(input.status)) return []
 
   if (input.status === 'pending') {
-    return [{
+    return decorateAttention([{
       key: `swap-${input.swapId}`,
       severity: input.actorHasValidAction ? 'warning' : 'info',
       label: input.actorHasValidAction ? 'swapRequiresResponse' : 'swapPendingResponse',
       description: input.actorHasValidAction ? 'swapParticipantActionNeeded' : 'swapWaitingForParticipant',
       href: '/swaps',
-    }]
+    }], 'personal')
   }
 
   if (input.status === 'accepted') {
-    return [{
+    return decorateAttention([{
       key: `swap-${input.swapId}-accepted`,
       severity: input.actorHasValidAction ? 'warning' : 'info',
       label: input.actorHasValidAction ? 'swapAwaitingApproval' : 'swapAwaitingReviewer',
       description: input.actorHasValidAction ? 'swapReviewerActionRequired' : 'swapSubmittedForReview',
       href: '/swaps',
-    }]
+    }], 'personal')
   }
 
   return []
@@ -271,32 +350,32 @@ export function deriveReportAttention(
     case 'confirmed':
       return [] // healthy — surfaced separately as success if needed
     case 'in_review':
-      return [{
+      return decorateAttention([{
         key: `report-${reportId}-in-review`,
         severity: 'info',
         label: 'reportPendingReview',
         description: shiftDate ? 'reportInReviewDescShift' : 'reportInReviewDesc',
         descriptionParams: shiftDate ? { shiftDate } : undefined,
         href: '/reports',
-      }]
+      }], 'personal')
     case 'reopened':
-      return [{
+      return decorateAttention([{
         key: `report-${reportId}-reopened`,
         severity: 'warning',
         label: 'reportNeedsAttention',
         description: shiftDate ? 'reportReopenedDescShift' : 'reportReopenedDesc',
         descriptionParams: shiftDate ? { shiftDate } : undefined,
         href: '/reports',
-      }]
+      }], 'personal')
     case 'draft':
-      return [{
+      return decorateAttention([{
         key: `report-${reportId}-draft`,
         severity: 'warning',
         label: 'reportDraftNeedsCompletion',
         description: shiftDate ? 'reportDraftDescShift' : 'reportDraftDesc',
         descriptionParams: shiftDate ? { shiftDate } : undefined,
         href: '/reports',
-      }]
+      }], 'personal')
     default:
       return []
   }
@@ -323,40 +402,40 @@ export function deriveImportRowAttention(
 ): OperationalAttention[] {
   switch (outcome) {
     case 'validation_failed':
-      return [{
+      return decorateAttention([{
         key: `import-row-${rowId}-failed`,
         severity: 'critical',
         label: 'validationError',
         description: 'importRowCaveat',
         descriptionParams: { message: message ?? '' },
         href: '/calendar',
-      }]
+      }], 'team')
     case 'retryable':
-      return [{
+      return decorateAttention([{
         key: `import-row-${rowId}-retryable`,
         severity: 'attention',
         label: 'importRetryable',
         description: 'importRowRetry',
         descriptionParams: { message: message ?? '' },
         href: '/calendar',
-      }]
+      }], 'team')
     case 'warning':
-      return [{
+      return decorateAttention([{
         key: `import-row-${rowId}-warning`,
         severity: 'warning',
         label: 'importWarning',
         description: 'importRowCaveat',
         descriptionParams: { message: message ?? '' },
         href: '/calendar',
-      }]
+      }], 'team')
     case 'duplicate_skipped':
-      return [{
+      return decorateAttention([{
         key: `import-row-${rowId}-dup`,
         severity: 'info',
         label: 'importDuplicate',
         description: 'importRowDuplicate',
         descriptionParams: { message: message ?? '' },
-      }]
+      }], 'team')
     case 'imported':
     case 'pending':
       return []
@@ -368,16 +447,6 @@ export function deriveImportRowAttention(
 // ---------------------------------------------------------------------------
 // Data quality attention derivation
 // ---------------------------------------------------------------------------
-
-/**
- * Maps DataQualitySeverity to AttentionSeverity.
- * error → critical, warning → warning, info → info
- */
-function dqSeverityToAttention(sev: DataQualitySeverity): AttentionSeverity {
-  if (sev === 'error') return 'critical'
-  if (sev === 'warning') return 'warning'
-  return 'info'
-}
 
 /**
  * Summarizes data quality issues into attention items.
@@ -422,7 +491,7 @@ export function deriveDataQualityAttention(
       href: '/data-quality',
     })
   }
-  return items
+  return decorateAttention(items, 'organization')
 }
 
 // ---------------------------------------------------------------------------
@@ -449,7 +518,7 @@ export function deriveLeaderAttention(input: LeaderAttentionInput): AttentionSum
       description: 'staffingDecisionsNeededDesc',
       descriptionParams: { count: input.pendingRegistrationCount },
       count: input.pendingRegistrationCount,
-      href: '/calendar',
+      href: calendarCtaHref('open'),
     })
   }
 
@@ -530,7 +599,7 @@ export function deriveMemberAttention(input: MemberAttentionInput): AttentionSum
       description: 'registrationAwaitingApprovalDesc',
       descriptionParams: { count: input.pendingRegistrationCount },
       count: input.pendingRegistrationCount,
-      href: '/calendar',
+      href: calendarCtaHref('open'),
     })
   }
 

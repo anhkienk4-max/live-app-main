@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { addDays, endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
-import { BarChart3, Bell, Calendar, Clock, FileText, Filter, Package, Radio, RotateCcw, TrendingUp, Users, ArrowLeftRight, CheckCircle, ShieldAlert } from 'lucide-react'
+import { Bell, Calendar, Clock, FileText, Filter, Package, Radio, RotateCcw, TrendingUp, Users, ArrowLeftRight, CheckCircle, ShieldAlert } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { brandService, campaignService, isStaffedRegistration, platformService, reportService, shiftRegistrationService, shiftService, swapRequestService, userService } from '@/lib/services/dataService'
 import { Brand, Campaign, OperationalRole, Platform, Report, Shift, ShiftRegistration, SwapRequest, User } from '@/lib/types/database.types'
@@ -58,7 +58,7 @@ export function DashboardOverview() {
   const [users, setUsers] = React.useState<User[]>([])
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   const [swapRequests, setSwapRequests] = React.useState<SwapRequest[]>([])
-  const [filters, setFilters] = React.useState<Filters | null>(null)
+  const [filters, setFilters] = React.useState<Filters | null>(() => initialFilters())
   const [showFilters, setShowFilters] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
@@ -78,8 +78,7 @@ export function DashboardOverview() {
   }, [])
 
   React.useEffect(() => {
-    setFilters(initialFilters())
-    void loadData()
+    React.startTransition(() => { void loadData() })
   }, [loadData])
 
   if (loading || !filters || !currentUser) return <ContentSkeleton />
@@ -141,7 +140,7 @@ function AdminDashboard(props: CommonProps) {
   
   const scopedReports = reports.filter(report => shiftIds.has(report.shift_id))
   const scopedRegistrations = registrations.filter(reg => shiftIds.has(reg.shift_id))
-  const dqIssues = React.useMemo(() => getAllIssues({ shifts: filteredShifts, reports: scopedReports, registrations: scopedRegistrations }), [filteredShifts, scopedReports, scopedRegistrations])
+  const dqIssues = getAllIssues({ shifts: filteredShifts, reports: scopedReports, registrations: scopedRegistrations })
   const errorCount = dqIssues.filter(i => i.severity === 'error').length
   const warningCount = dqIssues.filter(i => i.severity === 'warning').length
   const infoCount = dqIssues.filter(i => i.severity === 'info').length
@@ -177,6 +176,9 @@ function AdminDashboard(props: CommonProps) {
     <DashboardCustomDateRange filters={filters} setFilters={setFilters} t={t} />
     {showFilters && <DashboardFilterPanel filters={filters} setFilters={setFilters} brands={brands} platforms={platforms} campaigns={campaigns} roleOptions={roleOptions} t={t} />}
 
+    {/* E6: surface real data-quality exceptions before passive metrics. */}
+    {dqAttention.length > 0 && <OperationalStatusStrip items={dqAttention} className="gap-2" />}
+
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <Metric title={t('todaysLiveSessions')} value={filteredShifts.filter(shift => shift.date === today).length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
       <Metric title={t('liveInProgress')} value={filteredShifts.filter(shift => shift.status === 'live').length.toString()} icon={<Radio className="h-5 w-5 text-red-600 dark:text-red-400" />} />
@@ -200,11 +202,7 @@ function AdminDashboard(props: CommonProps) {
           ]).size.toString()} icon={<Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />} />
           <Metric title={t('campaigns')} value={new Set(filteredShifts.map(shift => shift.campaign_id).filter(Boolean)).size.toString()} icon={<Package className="h-5 w-5 text-orange-600 dark:text-orange-400" />} />
         </div>
-        {dqAttention.length > 0 ? (
-          <div className="flex-1">
-            <OperationalStatusStrip items={dqAttention} className="gap-2" compact />
-          </div>
-        ) : (
+        {dqAttention.length === 0 && (
           <Card className="flex-1 bg-muted/20 border-muted-foreground/20"><CardContent className="flex h-full items-center justify-between p-4"><div><p className="font-semibold text-sm text-foreground">{t('dataQuality')}</p><p className="text-xs text-muted-foreground mt-0.5">{t('dataQualityAlertsSubtitle')}</p></div><Button variant="outline" size="sm" render={<Link href="/data-quality" />} nativeButton={false}>{t('review')}</Button></CardContent></Card>
         )}
       </div>
@@ -240,7 +238,7 @@ function LeaderDashboard(props: CommonProps) {
   // Retrieve data quality issues scoped to current timeframe
   const scopedReports = reports.filter(report => shiftIds.has(report.shift_id))
   const scopedRegistrations = registrations.filter(reg => shiftIds.has(reg.shift_id))
-  const dqIssues = React.useMemo(() => getAllIssues({ shifts: filteredShifts, reports: scopedReports, registrations: scopedRegistrations }), [filteredShifts, scopedReports, scopedRegistrations])
+  const dqIssues = getAllIssues({ shifts: filteredShifts, reports: scopedReports, registrations: scopedRegistrations })
   const dqErrorCount = dqIssues.filter(i => i.severity === 'error').length
 
   // E5: derive exception-first attention summary

@@ -24,7 +24,7 @@ import { AlertTriangle, XCircle, Clock, Info, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import type { AttentionSeverity, OperationalAttention } from '@/lib/ui/operational-attention'
+import { deduplicateOperationalAttention, sortOperationalAttention, type AttentionSeverity, type OperationalAttention } from '@/lib/ui/operational-attention'
 
 // ---------------------------------------------------------------------------
 // Severity configuration
@@ -89,6 +89,10 @@ function getSeverityConfig(severity: AttentionSeverity): SeverityConfig {
   }
 }
 
+function severityLabelKey(severity: AttentionSeverity) {
+  return `${severity}Severity` as TranslationKey
+}
+
 import { useTranslation, type TranslationKey } from '@/lib/i18n'
 
 // ---------------------------------------------------------------------------
@@ -110,6 +114,7 @@ export function AttentionItem({ item, className }: AttentionItemProps) {
         {config.icon}
       </span>
       <div className="min-w-0 flex-1">
+        <span className="sr-only">{t(severityLabelKey(item.severity))}: </span>
         <p className={cn('text-sm font-medium leading-tight whitespace-normal break-words', config.labelClass)}>
           {t(item.label as TranslationKey, item.labelParams as Record<string, string | number>)}
           {item.count !== undefined && (
@@ -161,7 +166,7 @@ export function AttentionBanner({ item, actionLabel, className }: AttentionBanne
     const newParams: Record<string, string | number> = {}
     for (const [key, value] of Object.entries(params)) {
       if (Array.isArray(value)) {
-        newParams[key] = value.map(v => t(v as any)).join(', ')
+        newParams[key] = value.map(v => t(v as TranslationKey)).join(', ')
       } else {
         newParams[key] = value
       }
@@ -180,6 +185,7 @@ export function AttentionBanner({ item, actionLabel, className }: AttentionBanne
       <div className="flex items-start sm:items-center gap-2 min-w-0">
         <span className={cn('shrink-0', config.labelClass)}>{config.icon}</span>
         <div className="min-w-0 flex-1">
+          <span className="sr-only">{t(severityLabelKey(item.severity))}: </span>
           <p className={cn('text-sm font-semibold leading-tight whitespace-normal break-words', config.labelClass)}>
             {t(item.label as TranslationKey, labelParams)}
             {item.count !== undefined && (
@@ -230,7 +236,10 @@ export function OperationalStatusStrip({
   compact = false,
 }: OperationalStatusStripProps) {
   const { t } = useTranslation()
-  const visible = maxVisible !== undefined ? items.slice(0, maxVisible) : items
+  const uniqueItems = deduplicateOperationalAttention(sortOperationalAttention(items))
+  const visible = maxVisible === undefined
+    ? uniqueItems
+    : uniqueItems.filter((item, index) => index < maxVisible || item.severity === 'critical')
 
   if (visible.length === 0) return null
 
