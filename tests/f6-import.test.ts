@@ -212,8 +212,8 @@ test('F6 mock confirmation persists one shift, history, and is repeat-safe', asy
     assert.equal(candidate.campaign_id, 'campaign-flash-sale')
     assert.equal(candidate.start_time, '10:00')
     assert.equal(candidate.end_time, '13:00')
-    assert.equal(candidate.start_at, `${candidate.date}T10:00:00`)
-    assert.equal(candidate.end_at, `${candidate.date}T13:00:00`)
+    assert.equal(candidate.start_at, new Date(`${candidate.date}T10:00:00+07:00`).toISOString())
+    assert.equal(candidate.end_at, new Date(`${candidate.date}T13:00:00+07:00`).toISOString())
 
     const batch = await scheduleImportBatchPort.createBatch({
       source: 'google_sheets',

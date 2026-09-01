@@ -1483,9 +1483,28 @@ export const shiftService = {
   async bulkRemove(ids: string[], actorId: string, reason: string): Promise<BulkShiftDeletionResult> {
     const outcomes: BulkShiftDeletionOutcome[] = []
     for (const shiftId of ids) {
-      const shift = shifts.find(candidate => candidate.id === shiftId)
+      let shift: Shift | null = null
       try {
-        const impact = await this.remove(shiftId, actorId, reason)
+        shift = await this.getById(shiftId)
+        if (!shift) {
+          outcomes.push({
+            shift_id: shiftId,
+            success: false,
+            error_message: 'Shift was not found.',
+          })
+          continue
+        }
+        const expectedVersion = shift.version
+        if (typeof expectedVersion !== 'number' || !Number.isInteger(expectedVersion) || expectedVersion < 1) {
+          outcomes.push({
+            shift_id: shiftId,
+            shift_title: shift.title,
+            success: false,
+            error_message: 'Shift version is unavailable for deletion.',
+          })
+          continue
+        }
+        const impact = await this.remove(shiftId, actorId, reason, expectedVersion)
         outcomes.push({
           shift_id: shiftId,
           shift_title: shift?.title,

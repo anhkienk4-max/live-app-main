@@ -32,34 +32,51 @@ const cryptoMock = {
 Object.defineProperty(globalThis, 'crypto', { value: cryptoMock, configurable: true })
 Object.defineProperty(mockWindow, 'crypto', { value: cryptoMock, configurable: true })
 
+async function withMockEnvironment(run: () => Promise<void>) {
+  const previousNodeEnv = process.env.NODE_ENV
+  const previousMockFlag = process.env.NEXT_PUBLIC_USE_MOCK_DATA
+  try {
+    process.env.NODE_ENV = 'development'
+    process.env.NEXT_PUBLIC_USE_MOCK_DATA = 'true'
+    await run()
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV
+    else process.env.NODE_ENV = previousNodeEnv
+    if (previousMockFlag === undefined) delete process.env.NEXT_PUBLIC_USE_MOCK_DATA
+    else process.env.NEXT_PUBLIC_USE_MOCK_DATA = previousMockFlag
+  }
+}
+
 test('mock registration stays pending until approval and then logs in', async () => {
-  storage.clear()
-  const { mockAuthService } = await import('../lib/services/mockAuthService')
-  const { userService } = await import('../lib/services/dataService')
+  await withMockEnvironment(async () => {
+    storage.clear()
+    const { mockAuthService } = await import('../lib/services/mockAuthService')
+    const { userService } = await import('../lib/services/dataService')
 
-  const result = await mockAuthService.registerEmail({
-    fullName: 'Pending Tester',
-    email: 'pending-tester@example.com',
-    password: 'secret1234',
+    const result = await mockAuthService.registerEmail({
+      fullName: 'Pending Tester',
+      email: 'pending-tester@example.com',
+      password: 'secret1234',
+    })
+
+    assert.equal(result.ok, true)
+    assert.equal(result.status, 'pending_approval')
+    if (!result.ok) throw new Error('Expected registration to succeed')
+    assert.equal(result.user.email_verified, true)
+    assert.equal(result.user.account_status, 'pending_approval')
+
+    const blocked = await mockAuthService.signInEmail('pending-tester@example.com', 'secret1234')
+    assert.equal(blocked.ok, false)
+    assert.equal(blocked.status, 'pending_approval')
+
+    const updated = await userService.approvePendingAccount(result.user.id)
+    assert.equal(updated?.account_status, 'active')
+    assert.equal(updated?.status, 'active')
+
+    const allowed = await mockAuthService.signInEmail('pending-tester@example.com', 'secret1234')
+    assert.equal(allowed.ok, true)
+    assert.equal(allowed.status, 'active')
   })
-
-  assert.equal(result.ok, true)
-  assert.equal(result.status, 'pending_approval')
-  if (!result.ok) throw new Error('Expected registration to succeed')
-  assert.equal(result.user.email_verified, true)
-  assert.equal(result.user.account_status, 'pending_approval')
-
-  const blocked = await mockAuthService.signInEmail('pending-tester@example.com', 'secret1234')
-  assert.equal(blocked.ok, false)
-  assert.equal(blocked.status, 'pending_approval')
-
-  const updated = await userService.approvePendingAccount(result.user.id)
-  assert.equal(updated?.account_status, 'active')
-  assert.equal(updated?.status, 'active')
-
-  const allowed = await mockAuthService.signInEmail('pending-tester@example.com', 'secret1234')
-  assert.equal(allowed.ok, true)
-  assert.equal(allowed.status, 'active')
 })
 
 test('staffing defaults fall back to one and preserve explicit values', () => {

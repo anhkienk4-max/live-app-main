@@ -80,7 +80,7 @@ test('bulkRemove returns per-shift partial outcomes without weakening single rem
     assert.equal(result.outcomes[1].error_message, 'Shift was not found.')
 
     const preserved = await shiftService.create(shiftData('Single Delete', '2035-01-04'))
-    const impact = await shiftService.remove(preserved.id, admin.id, 'single test')
+    const impact = await shiftService.remove(preserved.id, admin.id, 'single test', preserved.version)
     assert.equal(impact?.action, 'delete')
     assert.equal(await shiftService.getById(preserved.id), null)
   })
