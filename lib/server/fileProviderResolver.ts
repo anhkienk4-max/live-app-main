@@ -36,9 +36,15 @@ export function notImplementedProvider(name: FileProviderName): FileProvider {
   return {
     name,
     upload: fail,
+    list: fail,
     getMetadata: fail,
+    read: fail,
     getViewUrl: fail,
     getDownloadUrl: fail,
+    normalizeId(value: string) {
+      if (!value.trim()) throw new FileProviderError('FILE_PROVIDER_INVALID_ID')
+      return value.trim()
+    },
     delete: fail,
     healthCheck: fail,
   }

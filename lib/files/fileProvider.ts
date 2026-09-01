@@ -80,15 +80,20 @@ export interface FileProviderMetadata {
   mime_type?: string
   size_bytes?: number
   checksum_sha256?: string
+  parent_ids?: string[]
+  kind?: 'file' | 'folder'
   provider_metadata?: Record<string, unknown>
 }
 
 export interface FileProvider {
   readonly name: FileProviderName | 'mock'
   upload(input: FileUploadInput): Promise<FileUploadResult>
+  list(parentId?: string): Promise<FileProviderMetadata[]>
   getMetadata(externalFileId: string): Promise<FileProviderMetadata>
+  read(externalFileId: string): Promise<Uint8Array>
   getViewUrl(externalFileId: string): Promise<string>
   getDownloadUrl(externalFileId: string): Promise<string>
+  normalizeId(value: string): string
   delete(externalFileId: string): Promise<void>
   healthCheck(): Promise<{ ok: boolean; provider: string }>
 }
