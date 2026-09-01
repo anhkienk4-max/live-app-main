@@ -5,8 +5,17 @@ import { createFileStorageService } from '@/lib/services/fileStorageService'
 import type { FileUploadInput } from '@/lib/files/fileProvider'
 import { FileProviderError } from '@/lib/server/fileProviderResolver'
 import { createGoogleDriveFileProvider } from '@/lib/server/googleDriveFileProvider'
-import { createGoogleDriveAuth, GoogleDriveError, resolveGoogleDriveAuthMode } from '@/lib/server/googleDriveAuth'
-import { parseGoogleDriveFolderUrl, validateGoogleDriveFolder } from '@/lib/server/googleDriveDestination'
+import {
+  createGoogleDriveAuthorizationUrl,
+  createGoogleDriveAuth,
+  createGoogleDriveOAuthState,
+  exchangeGoogleDriveAuthorizationCode,
+  GoogleDriveError,
+  resolveGoogleDriveAuthMode,
+  resolveGoogleDriveOAuthRedirectUri,
+  validateGoogleDriveOAuthState,
+} from '@/lib/server/googleDriveAuth'
+import { normalizeGoogleDriveFileId, parseGoogleDriveFolderUrl, validateGoogleDriveFolder } from '@/lib/server/googleDriveDestination'
 
 const env = {
   NODE_ENV: 'production',
@@ -49,6 +58,7 @@ type FakeState = {
   rootDriveId?: string
   customFolder?: { mimeType: string; trashed?: boolean; driveId?: string; capabilities?: { canAddChildren?: boolean; canEdit?: boolean } }
   allDriveFlags: { list: boolean; create: boolean; get: boolean; update: boolean }
+  readData: Uint8Array
 }
 
 function fakeDrive(state: FakeState) {
@@ -60,6 +70,7 @@ function fakeDrive(state: FakeState) {
         const name = params.q.match(/name = '((?:\\\\|\\')*)'/)?.[1]?.replace(/\\'/g, "'") ?? ''
         const parent = params.q.match(/'([^']+)' in parents/)?.[1] ?? ''
         const id = state.folderIds.get(`${parent}/${name}`)
+        if (!params.q.includes("name = '")) return { data: { files: [{ id: 'drive-file-1', name: 'report.png', mimeType: 'image/png', size: '4', parents: [parent] }, { id: 'folder-3', name: 'Folder', mimeType: 'application/vnd.google-apps.folder', parents: [parent] }] } }
         return { data: { files: id ? [{ id, name, mimeType: 'application/vnd.google-apps.folder', parents: [parent] }] : [] } }
       },
       async create(params: { requestBody: Record<string, unknown>; media?: { mimeType: string; body: Buffer }; supportsAllDrives?: boolean }) {
@@ -80,7 +91,7 @@ function fakeDrive(state: FakeState) {
         state.folderIds.set(`${parent}/${params.requestBody.name as string}`, id)
         return { data: { id, name: params.requestBody.name as string, mimeType: 'application/vnd.google-apps.folder', parents: [parent] } }
       },
-      async get(params: { fileId: string; fields: string; supportsAllDrives?: boolean }) {
+      async get(params: { fileId: string; fields?: string; alt?: 'media'; responseType?: 'arraybuffer'; supportsAllDrives?: boolean }) {
         state.allDriveFlags.get = params.supportsAllDrives === true
         if (params.fileId === 'missing') {
           throw Object.assign(new Error('not found'), { response: { status: 404 } })
@@ -89,6 +100,7 @@ function fakeDrive(state: FakeState) {
         if (params.fileId === 'custom-folder' && state.customFolder) {
           return { data: { id: 'custom-folder', name: 'Custom', ...state.customFolder } }
         }
+        if (params.alt === 'media') return { data: state.readData }
         return { data: { id: params.fileId, name: 'báo cáo.png', mimeType: 'image/png', size: '4', md5Checksum: 'md5', parents: ['folder-3'], webViewLink: 'https://drive.google.com/file/d/drive-file-1/view' } }
       },
       async update(params: { fileId: string; requestBody: Record<string, unknown>; supportsAllDrives?: boolean }) {
@@ -109,6 +121,7 @@ function state(): FakeState {
     failUpload429: 0,
     rootMimeType: 'application/vnd.google-apps.folder',
     allDriveFlags: { list: false, create: false, get: false, update: false },
+    readData: new Uint8Array([1, 2, 3, 4]),
   }
 }
 
@@ -118,6 +131,71 @@ test('OAuth refresh-token mode is the default and requires every credential', ()
   assert.throws(() => createGoogleDriveAuth({ ...env, GOOGLE_DRIVE_CLIENT_ID: '' }), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_NOT_CONFIGURED')
   assert.throws(() => createGoogleDriveAuth({ ...env, GOOGLE_DRIVE_CLIENT_SECRET: '' }), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_NOT_CONFIGURED')
   assert.throws(() => createGoogleDriveAuth({ ...env, GOOGLE_DRIVE_REFRESH_TOKEN: '' }), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_NOT_CONFIGURED')
+})
+
+test('OAuth state, redirect and code exchange are validated without exposing secrets', async () => {
+  const testEnv = { ...env, NODE_ENV: 'test' }
+  const state = createGoogleDriveOAuthState()
+  assert.equal(state.length > 20, true)
+  assert.equal(resolveGoogleDriveOAuthRedirectUri(testEnv), 'http://127.0.0.1:53682/oauth2callback')
+  const authorizationUrl = createGoogleDriveAuthorizationUrl({ env: testEnv, state })
+  assert.equal(new URL(authorizationUrl).searchParams.get('state'), state)
+  assert.throws(() => validateGoogleDriveOAuthState('wrong', state), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_OAUTH_STATE_INVALID')
+
+  let exchangedCode = ''
+  const oauthClient = {
+    generateAuthUrl: () => 'https://accounts.google.com/o/oauth2/auth',
+    async getToken(code: string) {
+      exchangedCode = code
+      return { tokens: { refresh_token: 'refresh-token', expiry_date: 123 } }
+    },
+  }
+  const tokens = await exchangeGoogleDriveAuthorizationCode({ env: testEnv, code: ' auth-code ', expectedState: state, receivedState: state, oauthClient })
+  assert.equal(exchangedCode, 'auth-code')
+  assert.deepEqual(tokens, { refresh_token: 'refresh-token', expiry_date: 123 })
+  await assert.rejects(() => exchangeGoogleDriveAuthorizationCode({ env: testEnv, code: 'auth-code', expectedState: state, receivedState: 'wrong', oauthClient }), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_OAUTH_STATE_INVALID')
+})
+
+test('revoked OAuth grants normalize to re-authentication-required', async () => {
+  const oauthClient = {
+    generateAuthUrl: () => 'https://accounts.google.com/o/oauth2/auth',
+    async getToken() {
+      throw Object.assign(new Error('invalid grant'), { response: { status: 400, data: { error: 'invalid_grant' } } })
+    },
+  }
+  await assert.rejects(() => exchangeGoogleDriveAuthorizationCode({ env: { ...env, NODE_ENV: 'test' }, code: 'auth-code', oauthClient }), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_REAUTH_REQUIRED')
+})
+
+test('Google OAuth client refreshes an expired token and retries the API once', async () => {
+  const auth = createGoogleDriveAuth(env).auth as {
+    credentials: { access_token?: string; refresh_token?: string; expiry_date?: number }
+    forceRefreshOnFailure: boolean
+    transporter: { request(options: { url?: string | URL }): Promise<unknown> }
+    request(options: { url: string; method: string }): Promise<unknown>
+  }
+  auth.credentials = { access_token: 'expired-access-token', refresh_token: 'refresh-token', expiry_date: Date.now() + 600_000 }
+  auth.forceRefreshOnFailure = true
+  let refreshRequests = 0
+  let apiRequests = 0
+  auth.transporter.request = async (options) => {
+    if (String(options.url).includes('/token')) {
+      refreshRequests += 1
+      return { data: { access_token: 'fresh-access-token', expires_in: 3600, token_type: 'Bearer' }, status: 200, config: {}, headers: {} }
+    }
+    apiRequests += 1
+    if (apiRequests === 1) throw Object.assign(new Error('expired'), { response: { status: 401, config: { data: undefined } } })
+    return { data: { ok: true }, status: 200, config: {}, headers: {} }
+  }
+  const result = await auth.request({ url: 'https://www.googleapis.com/drive/v3/files', method: 'GET' })
+  assert.deepEqual((result as { data: unknown }).data, { ok: true })
+  assert.equal(refreshRequests, 1)
+  assert.equal(apiRequests, 2)
+})
+
+test('production OAuth redirects fail closed unless HTTPS is explicitly configured', () => {
+  assert.throws(() => resolveGoogleDriveOAuthRedirectUri({ NODE_ENV: 'production' }), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_NOT_CONFIGURED')
+  assert.throws(() => resolveGoogleDriveOAuthRedirectUri({ NODE_ENV: 'production', GOOGLE_DRIVE_OAUTH_REDIRECT_URI: 'http://example.test/callback' }), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_AUTH_FAILED')
+  assert.equal(resolveGoogleDriveOAuthRedirectUri({ NODE_ENV: 'production', GOOGLE_DRIVE_OAUTH_REDIRECT_URI: 'https://app.example.test/auth/google/callback' }), 'https://app.example.test/auth/google/callback')
 })
 
 test('OAuth client receives the refresh token without a browser OAuth flow', () => {
@@ -143,6 +221,16 @@ test('supported Google Drive folder URL formats resolve deterministically', () =
   assert.equal(parseGoogleDriveFolderUrl('https://drive.google.com/drive/folders/folder-123'), 'folder-123')
   assert.equal(parseGoogleDriveFolderUrl('https://drive.google.com/drive/u/0/folders/folder-123?usp=sharing'), 'folder-123')
   assert.equal(parseGoogleDriveFolderUrl('https://drive.google.com/open?id=folder-123'), 'folder-123')
+})
+
+test('Google Drive file and Docs URLs normalize to provider IDs', () => {
+  assert.equal(normalizeGoogleDriveFileId('drive-file-1'), 'drive-file-1')
+  assert.equal(normalizeGoogleDriveFileId('https://drive.google.com/file/d/drive-file-1/view'), 'drive-file-1')
+  assert.equal(normalizeGoogleDriveFileId('https://drive.google.com/open?id=drive-file-1'), 'drive-file-1')
+  assert.equal(normalizeGoogleDriveFileId('https://docs.google.com/spreadsheets/d/sheet-1/edit'), 'sheet-1')
+  for (const value of ['https://drive.google.com/drive/folders/folder-1', 'https://example.com/file/d/file-1', 'bad id']) {
+    assert.throws(() => normalizeGoogleDriveFileId(value), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_FILE_ID_INVALID')
+  }
 })
 
 test('malformed, non-Drive and file URLs are rejected', () => {
@@ -236,6 +324,15 @@ test('upload maps sanitized metadata, MIME and binary content without sharing ca
   assert.equal('permissions' in driveState, false)
 })
 
+test('list and read stay provider-neutral and use normalized IDs', async () => {
+  const driveState = state()
+  const provider = createGoogleDriveFileProvider({ env, drive: fakeDrive(driveState), retryDelayMs: 0 })
+  const entries = await provider.list()
+  assert.deepEqual(entries.map(entry => entry.kind), ['file', 'folder'])
+  assert.deepEqual([...await provider.read('https://drive.google.com/file/d/drive-file-1/view')], [1, 2, 3, 4])
+  assert.equal(provider.normalizeId('https://docs.google.com/document/d/doc-1/edit'), 'doc-1')
+})
+
 test('view and download URLs remain private provider-authenticated links', async () => {
   const provider = createGoogleDriveFileProvider({ env, drive: fakeDrive(state()), retryDelayMs: 0 })
   assert.equal(await provider.getViewUrl('drive-file-1'), 'https://drive.google.com/file/d/drive-file-1/view')
@@ -266,7 +363,29 @@ test('authentication failures are deterministic and do not retry blindly', async
     files: { ...drive.files, async get() { throw Object.assign(new Error('forbidden'), { response: { status: 403 } }) } },
   }
   const provider = createGoogleDriveFileProvider({ env, drive: authDrive, retryDelayMs: 0 })
-  await assert.rejects(() => provider.healthCheck(), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_AUTH_FAILED')
+  await assert.rejects(() => provider.healthCheck(), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_PERMISSION_DENIED')
+})
+
+test('Drive error statuses normalize to stable application errors', async () => {
+  const cases = [
+    [401, 'GOOGLE_DRIVE_REAUTH_REQUIRED'],
+    [403, 'GOOGLE_DRIVE_PERMISSION_DENIED'],
+    [429, 'GOOGLE_DRIVE_RATE_LIMITED'],
+    [503, 'GOOGLE_DRIVE_PROVIDER_UNAVAILABLE'],
+  ] as const
+  for (const [status, code] of cases) {
+    const drive = fakeDrive(state())
+    const failingDrive = { ...drive, files: { ...drive.files, async get() { throw Object.assign(new Error('provider failure'), { response: { status } }) } } }
+    const provider = createGoogleDriveFileProvider({ env, drive: failingDrive, retryDelayMs: 0 })
+    await assert.rejects(() => provider.healthCheck(), (error: unknown) => error instanceof GoogleDriveError && error.code === code)
+  }
+})
+
+test('provider-level invalid_grant failures do not fall back to a generic operation error', async () => {
+  const drive = fakeDrive(state())
+  const failingDrive = { ...drive, files: { ...drive.files, async get() { throw Object.assign(new Error('invalid grant'), { response: { status: 400, data: { error: 'invalid_grant' } } }) } } }
+  const provider = createGoogleDriveFileProvider({ env, drive: failingDrive, retryDelayMs: 0 })
+  await assert.rejects(() => provider.healthCheck(), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_REAUTH_REQUIRED')
 })
 
 test('gateway resolves FILE_PROVIDER=google_drive without exposing a browser provider', () => {

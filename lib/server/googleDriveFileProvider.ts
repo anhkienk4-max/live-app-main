@@ -5,7 +5,7 @@ import { google } from 'googleapis'
 import type { FileProvider, FileProviderMetadata, FileUploadInput, FileUploadResult } from '@/lib/files/fileProvider'
 import { sanitizeFileName } from '@/lib/files/fileValidation'
 import { createGoogleDriveAuth, GoogleDriveError, type GoogleDriveEnvironment, type GoogleDriveErrorCode } from '@/lib/server/googleDriveAuth'
-import { DRIVE_FOLDER_MIME, resolveGoogleDriveDestination, validateGoogleDriveFolder } from '@/lib/server/googleDriveDestination'
+import { DRIVE_FOLDER_MIME, normalizeGoogleDriveFileId, resolveGoogleDriveDestination, validateGoogleDriveFolder } from '@/lib/server/googleDriveDestination'
 
 const DEFAULT_RETRY_DELAY_MS = 100
 const MAX_RETRIES = 2
@@ -32,7 +32,7 @@ type DriveFile = {
 type DriveFilesResource = {
   list(params: { q: string; spaces: string; fields: string; pageSize?: number; orderBy?: string; includeItemsFromAllDrives?: boolean; supportsAllDrives?: boolean }): Promise<{ data: { files?: DriveFile[] | null } }>
   create(params: { requestBody: Record<string, unknown>; fields: string; media?: { mimeType: string; body: Buffer }; supportsAllDrives?: boolean }): Promise<{ data: DriveFile }>
-  get(params: { fileId: string; fields: string; supportsAllDrives?: boolean }): Promise<{ data: DriveFile }>
+  get(params: { fileId: string; fields?: string; alt?: 'media'; responseType?: 'arraybuffer'; supportsAllDrives?: boolean }): Promise<{ data: DriveFile }>
   update(params: { fileId: string; requestBody: Record<string, unknown>; fields: string; supportsAllDrives?: boolean }): Promise<{ data: DriveFile }>
 }
 
@@ -62,6 +62,18 @@ function isAuthFailure(error: unknown): boolean {
   return status === 401 || status === 403
 }
 
+function isNetworkFailure(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const code = (error as { code?: unknown }).code
+  return ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN'].includes(String(code))
+}
+
+function isReauthenticationFailure(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const value = error as { response?: { status?: unknown; data?: { error?: unknown } } }
+  return Number(value.response?.status) === 400 && String(value.response?.data?.error ?? '').toLowerCase() === 'invalid_grant'
+}
+
 function errorMessage(error: unknown): string | undefined {
   if (!error || typeof error !== 'object') return undefined
   const value = error as { message?: unknown; response?: { data?: { error?: { message?: unknown } } } }
@@ -72,8 +84,14 @@ function errorMessage(error: unknown): string | undefined {
 function toDriveError(error: unknown, fallback: GoogleDriveErrorCode): GoogleDriveError {
   if (error instanceof GoogleDriveError) return error
   const status = statusOf(error)
-  if (isAuthFailure(error)) return new GoogleDriveError('GOOGLE_DRIVE_AUTH_FAILED')
+  if (isReauthenticationFailure(error)) return new GoogleDriveError('GOOGLE_DRIVE_REAUTH_REQUIRED')
+  if (status === 401) return new GoogleDriveError('GOOGLE_DRIVE_REAUTH_REQUIRED')
+  if (status === 403) return new GoogleDriveError('GOOGLE_DRIVE_PERMISSION_DENIED')
   if (status === 404) return new GoogleDriveError(fallback)
+  if (status === 429) return new GoogleDriveError('GOOGLE_DRIVE_RATE_LIMITED')
+  if (status !== undefined && status >= 500 && status <= 599) return new GoogleDriveError('GOOGLE_DRIVE_PROVIDER_UNAVAILABLE')
+  if (isNetworkFailure(error)) return new GoogleDriveError('GOOGLE_DRIVE_NETWORK_ERROR')
+  if (isAuthFailure(error)) return new GoogleDriveError('GOOGLE_DRIVE_AUTH_FAILED')
   return new GoogleDriveError(fallback, errorMessage(error) ?? fallback)
 }
 
@@ -110,6 +128,8 @@ function toMetadata(file: DriveFile): FileProviderMetadata {
     name: file.name ?? id,
     mime_type: file.mimeType ?? undefined,
     size_bytes: toSize(file.size),
+    parent_ids: file.parents ?? [],
+    kind: file.mimeType === DRIVE_FOLDER_MIME ? 'folder' : 'file',
     provider_metadata: {
       drive_file_id: id,
       parent_ids: file.parents ?? [],
@@ -203,9 +223,9 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
   }
 
   async function driveFile(externalFileId: string, fields: string): Promise<DriveFile> {
-    if (!externalFileId.trim()) throw new GoogleDriveError('GOOGLE_DRIVE_FILE_NOT_FOUND')
+    const id = normalizeGoogleDriveFileId(externalFileId)
     const response = await request(
-      () => drive.files.get({ fileId: externalFileId, fields, supportsAllDrives: true }),
+      () => drive.files.get({ fileId: id, fields, supportsAllDrives: true }),
       'GOOGLE_DRIVE_FILE_NOT_FOUND',
     )
     return response.data
@@ -267,8 +287,36 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
         },
       }
     },
+    async list(parentId) {
+      const id = normalizeGoogleDriveFileId(parentId ?? rootFolderId)
+      const response = await request(
+        () => drive.files.list({
+          q: `'${id}' in parents and trashed = false`,
+          spaces: 'drive',
+          fields: 'files(id,name,mimeType,size,md5Checksum,parents,createdTime,modifiedTime)',
+          pageSize: 1000,
+          orderBy: 'name,createdTime',
+          includeItemsFromAllDrives: true,
+          supportsAllDrives: true,
+        }),
+        'GOOGLE_DRIVE_RESPONSE_INVALID',
+      )
+      return (response.data.files ?? []).map(file => toMetadata(file))
+    },
     async getMetadata(externalFileId) {
       return toMetadata(await driveFile(externalFileId, 'id,name,mimeType,size,md5Checksum,parents,createdTime,modifiedTime'))
+    },
+    async read(externalFileId) {
+      const id = normalizeGoogleDriveFileId(externalFileId)
+      const response = await request(
+        () => drive.files.get({ fileId: id, alt: 'media', responseType: 'arraybuffer', supportsAllDrives: true }),
+        'GOOGLE_DRIVE_FILE_NOT_FOUND',
+      )
+      const value = (response as unknown as { data: unknown }).data
+      if (value instanceof Uint8Array) return new Uint8Array(value)
+      if (value instanceof ArrayBuffer) return new Uint8Array(value)
+      if (Buffer.isBuffer(value)) return new Uint8Array(value)
+      throw new GoogleDriveError('GOOGLE_DRIVE_RESPONSE_INVALID')
     },
     async getViewUrl(externalFileId) {
       const file = await driveFile(externalFileId, 'id,webViewLink')
@@ -280,10 +328,14 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
       const id = fileId(file, 'GOOGLE_DRIVE_FILE_NOT_FOUND')
       return `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?alt=media`
     },
+    normalizeId(value) {
+      return normalizeGoogleDriveFileId(value)
+    },
     async delete(externalFileId) {
       try {
+        const id = normalizeGoogleDriveFileId(externalFileId)
         await request(
-          () => drive.files.update({ fileId: externalFileId, requestBody: { trashed: true }, fields: 'id,trashed', supportsAllDrives: true }),
+          () => drive.files.update({ fileId: id, requestBody: { trashed: true }, fields: 'id,trashed', supportsAllDrives: true }),
           'GOOGLE_DRIVE_DELETE_FAILED',
         )
       } catch (error) {

@@ -49,9 +49,12 @@ test('gateway delegates to the configured provider without provider-specific bus
         },
       }
     },
+    async list() { calls.push('list'); return [] },
     async getMetadata(id) { calls.push(`metadata:${id}`); return { id, name: 'file' } },
+    async read(id) { calls.push(`read:${id}`); return new Uint8Array() },
     async getViewUrl(id) { calls.push(`view:${id}`); return `https://provider.test/view/${id}` },
     async getDownloadUrl(id) { calls.push(`download:${id}`); return `https://provider.test/download/${id}` },
+    normalizeId(id) { calls.push(`normalize:${id}`); return id },
     async delete(id) { calls.push(`delete:${id}`) },
     async healthCheck() { calls.push('health'); return { ok: true, provider: 'google_drive' } },
   }

@@ -26,9 +26,12 @@ export function createFileStorageService(options: { env?: Environment; provider?
       if (result.asset.provider_metadata) assertMetadataContainsNoBinary(result.asset.provider_metadata)
       return result
     },
+    list: (parentId?: string) => provider.list(parentId),
     getMetadata: (externalFileId: string) => provider.getMetadata(externalFileId),
+    read: (externalFileId: string) => provider.read(externalFileId),
     getViewUrl: (externalFileId: string) => provider.getViewUrl(externalFileId),
     getDownloadUrl: (externalFileId: string) => provider.getDownloadUrl(externalFileId),
+    normalizeId: (value: string) => provider.normalizeId(value),
     delete: (externalFileId: string) => provider.delete(externalFileId),
     healthCheck: () => provider.healthCheck(),
   }
@@ -38,9 +41,12 @@ export function createFileStorageService(options: { env?: Environment; provider?
 export const fileStorageService = {
   get providerName() { return createFileStorageService().providerName },
   upload(input: FileUploadInput) { return createFileStorageService().upload(input) },
+  list(parentId?: string) { return createFileStorageService().list(parentId) },
   getMetadata(externalFileId: string) { return createFileStorageService().getMetadata(externalFileId) },
+  read(externalFileId: string) { return createFileStorageService().read(externalFileId) },
   getViewUrl(externalFileId: string) { return createFileStorageService().getViewUrl(externalFileId) },
   getDownloadUrl(externalFileId: string) { return createFileStorageService().getDownloadUrl(externalFileId) },
+  normalizeId(value: string) { return createFileStorageService().normalizeId(value) },
   delete(externalFileId: string) { return createFileStorageService().delete(externalFileId) },
   healthCheck() { return createFileStorageService().healthCheck() },
 }

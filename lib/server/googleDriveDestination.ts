@@ -28,8 +28,12 @@ export type ResolvedGoogleDriveDestination = {
   custom: boolean
 }
 
-function validFolderId(value: string): boolean {
+export function isValidGoogleDriveId(value: string): boolean {
   return /^[A-Za-z0-9_-]+$/.test(value)
+}
+
+function validFolderId(value: string): boolean {
+  return isValidGoogleDriveId(value)
 }
 
 function invalidUrl(): never {
@@ -68,6 +72,29 @@ export function parseGoogleDriveFolderUrl(value: string): string {
   }
 
   if (!id || !validFolderId(id)) return invalidUrl()
+  return id
+}
+
+/** Normalize raw Drive IDs and supported Drive/Docs file URLs. */
+export function normalizeGoogleDriveFileId(value: string): string {
+  const raw = String(value ?? '').trim()
+  if (isValidGoogleDriveId(raw)) return raw
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    throw new GoogleDriveError('GOOGLE_DRIVE_FILE_ID_INVALID', 'Invalid Google Drive file ID or URL.')
+  }
+  const host = url.hostname.toLowerCase()
+  if (!['drive.google.com', 'www.drive.google.com', 'docs.google.com'].includes(host)) {
+    throw new GoogleDriveError('GOOGLE_DRIVE_FILE_ID_INVALID', 'Invalid Google Drive file ID or URL.')
+  }
+  const segments = url.pathname.split('/').filter(Boolean)
+  let id: string | null = null
+  if (host.includes('drive.google.com') && segments.length >= 3 && segments[0] === 'file' && segments[1] === 'd') id = segments[2]
+  if (host.includes('drive.google.com') && segments.length === 1 && segments[0] === 'open') id = url.searchParams.get('id')
+  if (host === 'docs.google.com' && segments.length >= 3 && ['spreadsheets', 'document', 'presentation'].includes(segments[0]) && segments[1] === 'd') id = segments[2]
+  if (!id || !isValidGoogleDriveId(id)) throw new GoogleDriveError('GOOGLE_DRIVE_FILE_ID_INVALID', 'Invalid Google Drive file ID or URL.')
   return id
 }
 
