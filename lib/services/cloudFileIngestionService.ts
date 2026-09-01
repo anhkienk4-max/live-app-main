@@ -132,6 +132,7 @@ function safeMetadata(metadata: FileProviderMetadata, normalizedId: string, file
 function validateFileMetadata(
   metadata: FileProviderMetadata,
   expectedContentType?: string,
+  purpose?: CloudFileIngestionPurpose,
 ): { filename: string; mimeType: string; declaredSize?: number } {
   if (!metadata || typeof metadata !== 'object' || typeof metadata.id !== 'string' || !metadata.id.trim()) {
     throw new CloudFileIngestionError('CLOUD_INGESTION_MALFORMED_RESPONSE')
@@ -146,6 +147,14 @@ function validateFileMetadata(
   const mimeType = String(metadata.mime_type ?? '').trim().toLowerCase()
   if (!mimeType) throw new CloudFileIngestionError('CLOUD_INGESTION_MALFORMED_RESPONSE')
   if (!ALLOWED_FILE_MIME_TYPES.has(mimeType)) throw new CloudFileIngestionError('CLOUD_INGESTION_FILE_TYPE_UNSUPPORTED')
+  const purposeTypes = purpose === 'schedule_import'
+    ? new Set(['application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'])
+    : purpose === 'report'
+      ? new Set(['image/jpeg', 'image/png', 'image/webp'])
+      : undefined
+  if (purposeTypes && !purposeTypes.has(mimeType)) {
+    throw new CloudFileIngestionError('CLOUD_INGESTION_FILE_TYPE_UNSUPPORTED')
+  }
   if (expectedContentType && mimeType !== expectedContentType.trim().toLowerCase()) {
     throw new CloudFileIngestionError('CLOUD_INGESTION_FILE_TYPE_UNSUPPORTED')
   }
@@ -216,7 +225,7 @@ export function createCloudFileIngestionService(options: CloudFileIngestionServi
         normalizedId = provider.normalizeId(request.resource)
         if (!normalizedId.trim()) throw new CloudFileIngestionError('CLOUD_INGESTION_RESOURCE_INVALID')
         metadata = await provider.getMetadata(normalizedId)
-        const validated = validateFileMetadata(metadata, request.expectedContentType)
+        const validated = validateFileMetadata(metadata, request.expectedContentType, request.purpose)
         content = await provider.read(normalizedId)
         if (!(content instanceof Uint8Array)) throw new CloudFileIngestionError('CLOUD_INGESTION_MALFORMED_RESPONSE')
         if (content.byteLength === 0) throw new CloudFileIngestionError('CLOUD_INGESTION_EMPTY_FILE')
