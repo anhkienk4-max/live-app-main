@@ -5,6 +5,7 @@ import {
   resolveGoogleApplicationAccess,
   type GoogleCallbackClient,
 } from '@/lib/auth/googleOAuth'
+import { classifyGoogleOAuthError, type AuthCodeErrorReason } from '@/lib/auth/authError'
 import { createSupabaseMasterDataRepository } from '@/lib/services/supabaseMasterDataService'
 import { type AuthUserSource } from '@/lib/auth/authIdentity'
 
@@ -45,8 +46,10 @@ function safeCallbackPath(value: string | null): string | null {
   }
 }
 
-function errorRedirect(request: Request) {
-  const response = NextResponse.redirect(new URL('/auth/auth-code-error', request.url))
+function errorRedirect(request: Request, reason: Exclude<AuthCodeErrorReason, 'expired_link'>) {
+  const location = new URL('/auth/auth-code-error', request.url)
+  location.searchParams.set('reason', reason)
+  const response = NextResponse.redirect(location)
   response.headers.set('Cache-Control', 'no-store')
   return response
 }
@@ -59,22 +62,25 @@ export function createGoogleCallbackGetHandler(
     const requestUrl = new URL(request.url)
     const code = requestUrl.searchParams.get('code')?.trim()
     const next = safeCallbackPath(requestUrl.searchParams.get('next'))
+    const callbackErrorReason = classifyGoogleOAuthError(
+      requestUrl.searchParams.get('error_description'),
+    )
 
-    if (!code || !next) return errorRedirect(request)
+    if (!code || !next) return errorRedirect(request, callbackErrorReason)
 
     try {
       const client = await createSupabaseClient()
       const { data, error } = await client.auth.exchangeCodeForSession(code)
       const user = data?.user as AuthUser | null | undefined
       if (error || !user || !(await resolveAuthorization(client, user))) {
-        return errorRedirect(request)
+        return errorRedirect(request, callbackErrorReason)
       }
 
       const response = NextResponse.redirect(new URL(next, requestUrl.origin))
       response.headers.set('Cache-Control', 'no-store')
       return response
     } catch {
-      return errorRedirect(request)
+      return errorRedirect(request, callbackErrorReason)
     }
   }
 }

@@ -728,6 +728,10 @@ const en = {
   accountInviteUnavailable: 'Account invitations are not configured on this server.',
   authCodeErrorTitle: 'Authentication link expired',
   authCodeErrorHelp: 'Request a new recovery or invitation link, then try again.',
+  authOAuthErrorTitle: 'Google Sign-In could not be completed',
+  authOAuthErrorHelp: 'Please try again. If the problem continues, contact an administrator.',
+  googleAuthUnauthorized: 'This Google account is not authorized to access Livestream Operations.',
+  googleAuthUnauthorizedHelp: 'Use an Admin-provisioned account or contact an administrator.',
   registrationSuccess: 'Account created',
   emailAutoVerifiedMock: 'Email verified automatically in demo mode.',
   mockVerificationHelp: 'Demo mode verifies the email automatically, then requires Admin approval before login.',
@@ -1008,6 +1012,10 @@ const en = {
 } as const
 
 const vi: Record<keyof typeof en, string> = {
+  authOAuthErrorTitle: 'Google Sign-In khong the hoan tat',
+  authOAuthErrorHelp: 'Hay thu lai. Neu van tiep tuc, hay lien he quan tri vien.',
+  googleAuthUnauthorized: 'Tai khoan Google nay khong duoc phep truy cap Livestream Operations.',
+  googleAuthUnauthorizedHelp: 'Hay dung tai khoan da duoc Admin cap phep hoac lien he quan tri vien.',
   forgotPasswordTitle: 'Đặt lại mật khẩu',
   forgotPasswordHelp: 'Nhập email để nhận liên kết khôi phục.',
   sendResetLink: 'Gửi liên kết đặt lại',

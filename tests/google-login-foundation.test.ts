@@ -3,7 +3,8 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 import { googleOAuthCallbackUrl, resolveGoogleApplicationAccess, startGoogleOAuth } from '../lib/auth/googleOAuth.ts'
-import { createGoogleCallbackGetHandler } from '../app/api/auth/callback/route.ts'
+import { classifyGoogleOAuthError } from '../lib/auth/authError.ts'
+import { GET as callbackGET, createGoogleCallbackGetHandler } from '../app/api/auth/callback/route.ts'
 import type { AuthUserSource } from '../lib/auth/authIdentity.ts'
 import type { GoogleCallbackClient, GoogleOAuthClient } from '../lib/auth/googleOAuth.ts'
 
@@ -180,6 +181,34 @@ test('OAuth provider error fails safely without exposing provider details', asyn
   assert.equal(new URL(response.headers.get('location') || '').pathname, '/auth/auth-code-error')
   assert.equal(response.headers.get('location')?.includes('provider secret'), false)
   assert.equal(calls, 1)
+})
+
+test('Before User Created Google denial gets a distinct callback error reason', async () => {
+  const response = await callbackGET(new Request(
+    'https://staging.example.test/api/auth/callback?error=server_error&error_code=unexpected_failure&error_description=Google+account+creation+is+not+allowed.+Use+an+approved+invitation.',
+  ))
+  const location = new URL(response.headers.get('location') || '')
+  assert.equal(location.pathname, '/auth/auth-code-error')
+  assert.equal(location.searchParams.get('reason'), 'google_not_authorized')
+  assert.equal(classifyGoogleOAuthError('provider failure'), 'oauth_error')
+})
+
+test('non-Google OAuth failures remain generic and cannot use the expired-link reason', async () => {
+  const response = await callbackGET(new Request(
+    'https://staging.example.test/api/auth/callback?error=server_error&error_description=provider+failure',
+  ))
+  const location = new URL(response.headers.get('location') || '')
+  assert.equal(location.searchParams.get('reason'), 'oauth_error')
+  assert.notEqual(location.searchParams.get('reason'), 'expired_link')
+})
+
+test('auth-code-error UI reserves expired copy for explicit recovery or invitation failures', async () => {
+  const page = await readFile(new URL('../app/auth/auth-code-error/page.tsx', import.meta.url), 'utf8')
+  const translations = await readFile(new URL('../lib/i18n.tsx', import.meta.url), 'utf8')
+  assert.match(page, /reason === 'google_not_authorized'/)
+  assert.match(page, /reason === 'expired_link'/)
+  assert.match(translations, /googleAuthUnauthorized: 'This Google account is not authorized to access Livestream Operations\.'/)
+  assert.match(translations, /authCodeErrorTitle: 'Authentication link expired'/)
 })
 
 test('missing callback code fails safely before client exchange', async () => {

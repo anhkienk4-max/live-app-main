@@ -30,8 +30,9 @@ function safeNextPath(value: string | null): string | null {
 }
 
 function redirectToError(request: Request) {
-  const origin = new URL(request.url).origin
-  const response = NextResponse.redirect(new URL('/auth/auth-code-error', origin))
+  const location = new URL('/auth/auth-code-error', request.url)
+  location.searchParams.set('reason', 'expired_link')
+  const response = NextResponse.redirect(location)
   response.headers.set('Cache-Control', 'no-store')
   return response
 }

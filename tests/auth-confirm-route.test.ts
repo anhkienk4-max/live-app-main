@@ -71,6 +71,23 @@ test('missing or invalid token hashes fail closed without calling Supabase', asy
   assert.equal(calls, 0)
 })
 
+test('expired recovery or invitation failures carry the expired-link presentation reason', async () => {
+  const handler = createAuthConfirmGetHandler(async () => ({
+    auth: {
+      async verifyOtp() {
+        return { error: new Error('expired token') }
+      },
+    },
+  }))
+
+  const response = await handler(new Request(
+    'http://localhost:3000/auth/confirm?token_hash=expired-token&type=recovery&next=/reset-password',
+  ))
+  const location = locationOf(response)
+  assert.equal(location.pathname, '/auth/auth-code-error')
+  assert.equal(location.searchParams.get('reason'), 'expired_link')
+})
+
 test('unsafe external next paths are rejected', async () => {
   let calls = 0
   const handler = createAuthConfirmGetHandler(async () => ({
@@ -120,6 +137,7 @@ test('existing code callback remains an independent auth boundary', async () => 
   const response = await callbackGET(new Request('http://localhost:3000/api/auth/callback'))
   assert.equal(response.status, 307)
   assert.equal(locationOf(response).pathname, '/auth/auth-code-error')
+  assert.equal(locationOf(response).searchParams.get('reason'), 'oauth_error')
 })
 
 test('exported GET handler is wired to the confirmation implementation', async () => {
