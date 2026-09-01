@@ -17,6 +17,7 @@ import {
   shouldClearLocalSessionForLoginReason,
 } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/client'
+import { googleOAuthCallbackUrl, startGoogleOAuth } from '@/lib/auth/googleOAuth'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -29,6 +30,7 @@ export default function LoginPage() {
   const router = useRouter()
   const { language, setLanguage, t } = useTranslation()
   const mockMode = getAuthMode() === 'mock'
+  const supabaseConfigured = Boolean(getSupabasePublicConfig())
   const recoveryReason = typeof window === 'undefined'
     ? null
     : new URLSearchParams(window.location.search).get('reason')
@@ -115,8 +117,24 @@ export default function LoginPage() {
       return
     }
 
-    setError(t('authServiceUnavailable'))
-    setLoading(false)
+    if (!supabaseConfigured) {
+      setError(t('googleAuthMissing'))
+      setLoading(false)
+      return
+    }
+
+    const next = safeLocalRedirect(new URLSearchParams(window.location.search).get('next'))
+    const googleUrl = await startGoogleOAuth(
+      createClient(),
+      googleOAuthCallbackUrl(window.location.origin, next),
+    )
+    if (!googleUrl) {
+      setError(t('googleAuthMissing'))
+      setLoading(false)
+      return
+    }
+
+    window.location.assign(googleUrl)
   }
 
   return (
@@ -145,7 +163,7 @@ export default function LoginPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {mockMode && (
+          {(mockMode || supabaseConfigured) && (
             <>
               <Button
                 onClick={handleGoogleLogin}
@@ -229,7 +247,7 @@ export default function LoginPage() {
           </form>
           <div className="space-y-3 text-center text-sm">
             <Link className="text-blue-700 hover:underline" href="/forgot-password">{t('forgotPassword')}</Link>
-            {mockMode && (
+          {mockMode && (
               <>
                 <p className="text-gray-600">{t('noAccount')} <Link className="font-semibold text-blue-700 hover:underline" href="/register">{t('signUp')}</Link></p>
               </>

@@ -1,27 +1,82 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import type { AuthUser } from '@supabase/supabase-js'
 
-export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
-  const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/'
+import {
+  resolveGoogleApplicationAccess,
+  type GoogleCallbackClient,
+} from '@/lib/auth/googleOAuth'
+import { createSupabaseMasterDataRepository } from '@/lib/services/supabaseMasterDataService'
+import { type AuthUserSource } from '@/lib/auth/authIdentity'
 
-  if (code) {
-    const supabase = await createClient()
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
-    if (!error) {
-      const forwardedHost = request.headers.get('x-forwarded-host')
-      const isLocalEnv = process.env.NODE_ENV === 'development'
-      if (isLocalEnv) {
-        return NextResponse.redirect(`${origin}${next}`)
-      } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${next}`)
-      } else {
-        return NextResponse.redirect(`${origin}${next}`)
+type GoogleCallbackClientFactory = () => Promise<GoogleCallbackClient>
+type GoogleAuthorizationResolver = (
+  client: GoogleCallbackClient,
+  user: AuthUserSource,
+) => Promise<boolean>
+
+async function defaultCreateClient(): Promise<GoogleCallbackClient> {
+  const { createClient } = await import('@/lib/supabase/server')
+  return createClient()
+}
+
+async function defaultResolveAuthorization(
+  client: GoogleCallbackClient,
+  user: AuthUserSource,
+): Promise<boolean> {
+  const repository = createSupabaseMasterDataRepository(client)
+  const authorized = await resolveGoogleApplicationAccess(
+    user,
+    identity => repository.businessUsers.getByAuthIdentity(identity),
+  )
+  return Boolean(authorized)
+}
+
+function safeCallbackPath(value: string | null): string | null {
+  if (value === null) return '/'
+  if (!value.startsWith('/') || value.startsWith('//')) return null
+
+  try {
+    const parsed = new URL(value, 'http://google-callback.invalid')
+    if (parsed.origin !== 'http://google-callback.invalid') return null
+    if (parsed.username || parsed.password) return null
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`
+  } catch {
+    return null
+  }
+}
+
+function errorRedirect(request: Request) {
+  const response = NextResponse.redirect(new URL('/auth/auth-code-error', request.url))
+  response.headers.set('Cache-Control', 'no-store')
+  return response
+}
+
+export function createGoogleCallbackGetHandler(
+  createSupabaseClient: GoogleCallbackClientFactory = defaultCreateClient,
+  resolveAuthorization: GoogleAuthorizationResolver = defaultResolveAuthorization,
+) {
+  return async function GET(request: Request) {
+    const requestUrl = new URL(request.url)
+    const code = requestUrl.searchParams.get('code')?.trim()
+    const next = safeCallbackPath(requestUrl.searchParams.get('next'))
+
+    if (!code || !next) return errorRedirect(request)
+
+    try {
+      const client = await createSupabaseClient()
+      const { data, error } = await client.auth.exchangeCodeForSession(code)
+      const user = data?.user as AuthUser | null | undefined
+      if (error || !user || !(await resolveAuthorization(client, user))) {
+        return errorRedirect(request)
       }
+
+      const response = NextResponse.redirect(new URL(next, requestUrl.origin))
+      response.headers.set('Cache-Control', 'no-store')
+      return response
+    } catch {
+      return errorRedirect(request)
     }
   }
-
-  // return the user to an error page with instructions
-  return NextResponse.redirect(`${origin}/auth/auth-code-error`)
 }
+
+export const GET = createGoogleCallbackGetHandler()
