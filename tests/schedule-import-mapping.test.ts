@@ -93,6 +93,34 @@ test('Excel staffing display aliases preserve Vietnamese spelling and newlines',
   assert.deepEqual(result.rows[0].row.technical_names, ['Minh', 'Tuấn'])
 })
 
+test('legacy XLS workbook reads through the same schedule parser', () => {
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([englishHeader, scheduleRow]), 'Schedule')
+  const bytes = XLSX.write(workbook, { type: 'array', bookType: 'biff8' }) as ArrayBuffer
+  const result = parseScheduleTabularData(bytes, 'array', maps)
+
+  assert.equal(result.validRows, 1)
+  assert.equal(result.validShifts[0].date, '2026-09-01')
+  assert.equal(result.validShifts[0].start_time, '09:00')
+  assert.equal(result.validShifts[0].platform_id, 'platform-1')
+})
+
+test('malformed or empty workbook bytes return one controlled header error', () => {
+  const emptyWorkbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(emptyWorkbook, XLSX.utils.aoa_to_sheet([]), 'Schedule')
+  const emptyBytes = XLSX.write(emptyWorkbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+
+  for (const bytes of [emptyBytes, new Uint8Array([1, 2, 3]).buffer]) {
+    const result = parseScheduleTabularData(bytes, 'array', maps)
+    assert.equal(result.success, false)
+    assert.equal(result.rows.length, 0)
+    assert.equal(result.validRows, 0)
+    assert.equal(result.invalidRows, 0)
+    assert.equal(result.errors.length, 1)
+    assert.equal(result.errors[0].field, 'header')
+  }
+})
+
 test('Excel import detects the real header after title and blank rows', () => {
   const workbook = XLSX.utils.book_new()
   const worksheet = XLSX.utils.aoa_to_sheet([

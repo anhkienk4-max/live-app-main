@@ -113,10 +113,12 @@ function rowStatusClass(status: ImportResultPresentationStatus) {
 
 export function ScheduleImportStaffingInput({
   field,
+  rowNumber,
   value,
   onChange,
 }: {
   field: typeof previewStaffingFields[number]
+  rowNumber?: number
   value: number | string
   onChange: (value: string) => void
 }) {
@@ -124,6 +126,7 @@ export function ScheduleImportStaffingInput({
     <Input
       className="w-20"
       data-testid={`schedule-preview-${field}`}
+      aria-label={`${rowNumber === undefined ? '' : `Row ${rowNumber} `}${field.replaceAll('_', ' ')}`}
       min="0"
       onChange={event => onChange(event.target.value)}
       step="1"
@@ -138,6 +141,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   const { t } = useTranslation()
   const { toast } = useToast()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const completedImportRef = React.useRef<HTMLDivElement>(null)
   const [brands, setBrands] = React.useState<Brand[]>([])
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
@@ -153,6 +157,10 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   const [cancelOpen, setCancelOpen] = React.useState(false)
   const [draftRows, setDraftRows] = React.useState<DraftRows>({})
   const [completedImport, setCompletedImport] = React.useState<CompletedImport | null>(null)
+
+  React.useEffect(() => {
+    if (completedImport) completedImportRef.current?.focus()
+  }, [completedImport])
 
   React.useEffect(() => {
     void Promise.all([
@@ -523,18 +531,19 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                     return (
                       <tr key={rowNumber} data-status={rowStatus} className={`border-b align-top${editing ? ' bg-amber-50/50' : ''}`}>
                         <td className="p-2">{rowNumber}</td>
-                        <td className="p-2"><Input className="w-36" value={cellValue('date')} onChange={changeField('date')} onKeyDown={handleCellKeyDown} /></td>
-                        <td className="p-2"><div className="flex gap-1"><Input className="w-24" value={cellValue('start_time')} onChange={changeField('start_time')} onKeyDown={handleCellKeyDown} /><Input className="w-24" value={cellValue('end_time')} onChange={changeField('end_time')} onKeyDown={handleCellKeyDown} /></div>{preview.row.crosses_midnight && <p className="mt-1 flex items-center gap-1 whitespace-nowrap text-xs text-indigo-700"><Moon className="h-3 w-3" />{t('endsNextDay')}: {displayDate(preview.row.end_date)}</p>}</td>
-                        <td className="p-2"><PreviewEntitySelect value={entityValue('brand_name', preview.row.brand_name)} onChange={value => draftChange(rowNumber, 'brand_name', value)} options={brands} /></td>
-                        <td className="p-2"><PreviewEntitySelect value={entityValue('platform_name', preview.row.platform_name)} onChange={value => draftChange(rowNumber, 'platform_name', value)} options={platforms} /></td>
-                        <td className="p-2"><PreviewEntitySelect optional value={entityValue('campaign_name', preview.row.campaign_name || '')} onChange={value => draftChange(rowNumber, 'campaign_name', value)} options={campaigns} /></td>
-                        <td className="p-2"><Input className="w-48" value={cellValue('title')} onChange={changeField('title')} onKeyDown={handleCellKeyDown} /></td>
-                        <td className="p-2"><Input className="w-36" value={cellValue('studio')} onChange={changeField('studio')} onKeyDown={handleCellKeyDown} /></td>
+                        <td className="p-2"><Input aria-label={`Row ${rowNumber} date`} className="w-36" value={cellValue('date')} onChange={changeField('date')} onKeyDown={handleCellKeyDown} /></td>
+                        <td className="p-2"><div className="flex gap-1"><Input aria-label={`Row ${rowNumber} start time`} className="w-24" value={cellValue('start_time')} onChange={changeField('start_time')} onKeyDown={handleCellKeyDown} /><Input aria-label={`Row ${rowNumber} end time`} className="w-24" value={cellValue('end_time')} onChange={changeField('end_time')} onKeyDown={handleCellKeyDown} /></div>{preview.row.crosses_midnight && <p className="mt-1 flex items-center gap-1 whitespace-nowrap text-xs text-indigo-700"><Moon className="h-3 w-3" />{t('endsNextDay')}: {displayDate(preview.row.end_date)}</p>}</td>
+                        <td className="p-2"><PreviewEntitySelect ariaLabel={`Row ${rowNumber} brand`} value={entityValue('brand_name', preview.row.brand_name)} onChange={value => draftChange(rowNumber, 'brand_name', value)} options={brands} /></td>
+                        <td className="p-2"><PreviewEntitySelect ariaLabel={`Row ${rowNumber} platform`} value={entityValue('platform_name', preview.row.platform_name)} onChange={value => draftChange(rowNumber, 'platform_name', value)} options={platforms} /></td>
+                        <td className="p-2"><PreviewEntitySelect ariaLabel={`Row ${rowNumber} campaign`} optional value={entityValue('campaign_name', preview.row.campaign_name || '')} onChange={value => draftChange(rowNumber, 'campaign_name', value)} options={campaigns} /></td>
+                        <td className="p-2"><Input aria-label={`Row ${rowNumber} shift title`} className="w-48" value={cellValue('title')} onChange={changeField('title')} onKeyDown={handleCellKeyDown} /></td>
+                        <td className="p-2"><Input aria-label={`Row ${rowNumber} studio`} className="w-36" value={cellValue('studio')} onChange={changeField('studio')} onKeyDown={handleCellKeyDown} /></td>
                         {previewStaffingNameFields.map(field => (
                           <td className="p-2" key={field}>
                             <Input
                               className="w-40"
                               data-testid={`schedule-preview-${field}`}
+                              aria-label={`Row ${rowNumber} ${field.replaceAll('_', ' ')}`}
                               value={cellValue(field)}
                               onChange={changeField(field)}
                               onKeyDown={handleCellKeyDown}
@@ -546,6 +555,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                           <td className="p-2" key={field}>
                             <ScheduleImportStaffingInput
                               field={field}
+                              rowNumber={rowNumber}
                               value={cellValue(field)}
                               onChange={value => draftChange(rowNumber, field, value)}
                             />
@@ -587,13 +597,13 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
             {previewCounts && <p className="text-sm text-muted-foreground" data-testid="schedule-import-confirm-summary">{t('confirmImportSummary', { ready: previewCounts.ready, attention: previewAttention })}</p>}
             <div className="flex flex-wrap justify-end gap-2">
               <Button variant="outline" onClick={() => setCancelOpen(true)}>{t('cancel')}</Button>
-              <Button variant="outline" onClick={confirmImport} disabled={busy || result.validRows === 0} aria-label={t('confirmImport')}>{busy ? t('loading') : `${t('confirmImport')} (${result.validRows})`}</Button>
+              <Button variant="outline" onClick={confirmImport} disabled={busy || result.validRows === 0} aria-label={`${t('confirmImport')} (${result.validRows})`}>{busy ? t('loading') : `${t('confirmImport')} (${result.validRows})`}</Button>
               <Button onClick={confirmImport} disabled={busy || result.invalidRows > 0 || result.validRows === 0} aria-label={t('confirmImport')}>{busy ? t('loading') : t('confirmImport')}</Button>
             </div>
           </CardContent>
         </Card>
       )}
-      {completedImport && completedCounts && <ImportCompletionCard completed={completedImport} counts={completedCounts} t={t} />}
+      {completedImport && completedCounts && <div ref={completedImportRef} tabIndex={-1}><ImportCompletionCard completed={completedImport} counts={completedCounts} t={t} /></div>}
       <LifecycleActionDialog open={cancelOpen} onOpenChange={setCancelOpen} title="Remove import preview" impact={cancelImpact} confirmText="Remove preview" onConfirm={removePreview} />
     </div>
   )
@@ -625,7 +635,7 @@ function ImportCompletionCard({ completed, counts, t }: { completed: CompletedIm
     if (row.status === 'validation_failed') return 'invalid'
     return 'ready'
   }
-  return <Card data-testid="schedule-import-result" className="border-emerald-200">
+  return <Card data-testid="schedule-import-result" role="status" aria-live="polite" className="border-emerald-200">
     <CardHeader><CardTitle className="flex flex-wrap items-center justify-between gap-2"><span>{t('importCompleted')}</span><Badge variant="outline">{completed.source.name}</Badge></CardTitle></CardHeader>
     <CardContent className="space-y-3">
       <ImportSummary counts={counts} t={t} />
@@ -646,14 +656,14 @@ function batchStatusLabel(status: ScheduleImportBatch['status'], t: ImportTransl
   return t(key[status])
 }
 
-function PreviewEntitySelect({ value, onChange, options, optional = false }: { value: string; onChange: (value: string) => void; options: Array<{ id: string; name: string }>; optional?: boolean }) {
+function PreviewEntitySelect({ value, onChange, options, optional = false, ariaLabel }: { value: string; onChange: (value: string) => void; options: Array<{ id: string; name: string }>; optional?: boolean; ariaLabel: string }) {
   const resolved = value
     ? options.find(option => normalizeLookup(option.name) === normalizeLookup(value))
     : undefined
   const unmatched = Boolean(value) && !resolved
   return (
     <Select value={resolved ? resolved.name : value || (optional ? 'none' : '')} onValueChange={next => onChange(next === 'none' ? '' : next)}>
-      <SelectTrigger className="w-44"><SelectValue placeholder="Select mapping" /></SelectTrigger>
+      <SelectTrigger aria-label={ariaLabel} className="w-44"><SelectValue placeholder="Select mapping" /></SelectTrigger>
       <SelectContent>
         {optional && <SelectItem value="none">—</SelectItem>}
         {unmatched && <SelectItem value={value}>{value}</SelectItem>}

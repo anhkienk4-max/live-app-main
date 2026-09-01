@@ -16,11 +16,16 @@
  *   - buildScheduleExportFilename — scope naming
  */
 import assert from 'node:assert/strict'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
+import * as XLSX from 'xlsx'
 import {
   buildScheduleExportRows,
   buildScheduleExportFilename,
   SCHEDULE_EXPORT_COLUMN_ORDER,
+  downloadScheduleExportXlsx,
   usersToNameMap,
 } from '../lib/utils/scheduleExportUtils.ts'
 import type { Shift, ShiftRegistration, User } from '../lib/types/database.types.ts'
@@ -109,6 +114,23 @@ const users: User[] = [
   },
 ]
 const usersMap = usersToNameMap(users)
+
+test('downloadScheduleExportXlsx round-trips core date/time data', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'f6-xlsx-'))
+  const filename = join(directory, 'schedule.xlsx')
+  try {
+    const rows = buildScheduleExportRows([makeShift()], brands, platforms, campaigns, usersMap, [])
+    downloadScheduleExportXlsx(rows, filename)
+    const workbook = XLSX.read(await readFile(filename), { type: 'buffer', cellDates: false })
+    const [roundTripped] = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Schedule, { defval: '' })
+    assert.equal(roundTripped?.Date, '2026-08-25')
+    assert.equal(roundTripped?.['Start Time'], '14:00')
+    assert.equal(roundTripped?.['End Time'], '16:00')
+    assert.equal(roundTripped?.Brand, 'Mars Wrigley')
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
 
 // ---------------------------------------------------------------------------
 // Tests

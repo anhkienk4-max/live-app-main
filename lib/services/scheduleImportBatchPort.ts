@@ -14,7 +14,7 @@ import type {
   ImportBatchRow,
   ImportBatchSummary,
 } from '@/lib/utils/scheduleImportBatch'
-import { toPreviewCounters } from '@/lib/utils/scheduleImportBatch'
+import { summarizeBatchRows, toPreviewCounters } from '@/lib/utils/scheduleImportBatch'
 
 export interface CreateImportBatchInput {
   source: ScheduleImportSource
@@ -64,6 +64,13 @@ export interface ScheduleImportBatchPort {
 
 const recordedBatchRows = new Map<string, ImportBatchRow[]>()
 
+async function syncMockBatchCounters(batchId: string): Promise<void> {
+  await scheduleImportService.updateOutcomeCounters(
+    batchId,
+    summarizeBatchRows(recordedBatchRows.get(batchId) ?? []),
+  )
+}
+
 function findMutableMockRow(
   batchId: string,
   sourceRowNumber: number,
@@ -103,6 +110,7 @@ const mockPort: ScheduleImportBatchPort = {
       failure_code: undefined,
     }))
     recordedBatchRows.set(batchId, pendingRows)
+    await syncMockBatchCounters(batchId)
     return pendingRows
   },
 
@@ -127,6 +135,7 @@ const mockPort: ScheduleImportBatchPort = {
       resulting_shift_id: shiftId,
       status: outcome,
     }
+    await syncMockBatchCounters(batchId)
     return rows[index]
   },
 
@@ -138,6 +147,7 @@ const mockPort: ScheduleImportBatchPort = {
       status: 'retryable',
       failure_code: failureCode,
     }
+    await syncMockBatchCounters(batchId)
     return rows[index]
   },
 
@@ -163,6 +173,7 @@ const mockPort: ScheduleImportBatchPort = {
       resulting_shift_id: options?.shiftId ?? rows[index].resulting_shift_id,
       failure_code: options?.failureCode ?? rows[index].failure_code,
     }
+    await syncMockBatchCounters(batchId)
     return rows[index]
   },
 
@@ -182,8 +193,10 @@ const mockPort: ScheduleImportBatchPort = {
         row.resulting_shift_id = undefined
         row.failure_code = undefined
       })
+      await syncMockBatchCounters(id)
       return scheduleImportService.confirm(id)
     }
+    await syncMockBatchCounters(id)
     if (status === 'failed') return scheduleImportService.fail(id)
     return null
   },

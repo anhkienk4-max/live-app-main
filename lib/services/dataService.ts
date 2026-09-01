@@ -3517,6 +3517,24 @@ export const scheduleImportService = {
     return Promise.resolve(scheduleImports[index])
   },
 
+  /**
+   * Keeps the mock batch projection in sync with its persisted row outcomes.
+   * Supabase calculates these counters transactionally in its RPCs; the mock
+   * adapter uses this narrow hook so Import History has the same contract.
+   */
+  async updateOutcomeCounters(
+    id: string,
+    counters: Pick<ScheduleImportBatch, 'imported_rows' | 'failed_rows' | 'retryable_rows' | 'duplicate_rows'>,
+  ): Promise<ScheduleImportBatch | null> {
+    const index = scheduleImports.findIndex(batch => batch.id === id)
+    if (index === -1) return null
+    scheduleImports[index] = {
+      ...scheduleImports[index],
+      ...counters,
+    }
+    return Promise.resolve(scheduleImports[index])
+  },
+
   async updatePreview(
     id: string,
     summary: Pick<ScheduleImportBatch, 'total_rows' | 'valid_rows' | 'invalid_rows' | 'warning_rows' | 'duplicate_rows'>,

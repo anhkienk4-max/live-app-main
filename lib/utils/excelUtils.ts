@@ -244,12 +244,24 @@ function inferSlashDateOrder(sourceRows: ScheduleSheetRow[]): {
 
 type ExcelDateParts = { y: number; m: number; d: number }
 
-// SheetJS attaches `SSF` to `module.exports`. Under Node ESM `import *` exposes the
-// namespace without `SSF`; the default export still carries it. Bundlers expose `SSF`
-// directly. Resolve once so numeric Excel serials decode in every environment.
+type ExcelDateFormatter = { parse_date_code?: (value: number) => ExcelDateParts }
+
+// SheetJS exposes SSF as a named namespace export in its browser/ESM build. The
+// CommonJS build used by Node's ESM interop wraps module.exports under `default`;
+// resolve that shape dynamically so webpack does not try to bind a non-existent
+// default export while numeric serials continue to decode in Node-based tooling.
+const resolveExcelDateFormatter = (): ExcelDateFormatter | undefined => {
+  const namespace = XLSX as unknown as { SSF?: ExcelDateFormatter }
+  if (namespace.SSF?.parse_date_code) return namespace.SSF
+
+  const cjsModule = Reflect.get(namespace, 'default')
+  if (!cjsModule || (typeof cjsModule !== 'object' && typeof cjsModule !== 'function')) return undefined
+  const formatter = Reflect.get(cjsModule, 'SSF') as ExcelDateFormatter | undefined
+  return formatter?.parse_date_code ? formatter : undefined
+}
+
 const parseExcelDateCode = (value: number): ExcelDateParts | undefined =>
-  (XLSX.SSF ?? (XLSX as unknown as { default?: { SSF?: { parse_date_code?: (value: number) => ExcelDateParts } } }).default?.SSF)
-    ?.parse_date_code?.(value)
+  resolveExcelDateFormatter()?.parse_date_code?.(value)
 
 const normalizeDate = (value: unknown, slashDateOrder: SlashDateOrder): string => {
   if (typeof value === 'number') {
