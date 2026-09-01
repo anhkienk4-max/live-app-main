@@ -62,7 +62,10 @@ test('Google initiation uses provider google and the canonical callback', async 
   assert.equal(url, 'https://accounts.google.test/oauth')
   assert.deepEqual(request, {
     provider: 'google',
-    options: { redirectTo },
+    options: {
+      redirectTo,
+      queryParams: { prompt: 'select_account' },
+    },
   })
 })
 

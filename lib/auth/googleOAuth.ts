@@ -8,7 +8,10 @@ export interface GoogleOAuthClient {
   auth: {
     signInWithOAuth(options: {
       provider: 'google'
-      options: { redirectTo: string }
+      options: {
+        redirectTo: string
+        queryParams: { prompt: 'select_account' }
+      }
     }): Promise<{
       data: { url?: string | null }
       error: unknown | null
@@ -32,7 +35,10 @@ export async function startGoogleOAuth(
   try {
     const { data, error } = await client.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo },
+      options: {
+        redirectTo,
+        queryParams: { prompt: 'select_account' },
+      },
     })
     return error || !data.url ? null : data.url
   } catch {
