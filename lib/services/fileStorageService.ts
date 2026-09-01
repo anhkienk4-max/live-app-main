@@ -4,6 +4,7 @@ import type { FileProvider, FileProviderName, FileUploadInput, FileUploadResult 
 import { assertMetadataContainsNoBinary, validateFileUploadInput } from '@/lib/files/fileValidation'
 import { FileProviderError, notImplementedProvider, resolveFileProviderName } from '@/lib/server/fileProviderResolver'
 import { createGoogleDriveFileProvider } from '@/lib/server/googleDriveFileProvider'
+import { createOneDriveFileProvider } from '@/lib/server/oneDriveFileProvider'
 import { mockFileProvider } from '@/lib/server/mockFileProvider'
 
 type Environment = Record<string, string | undefined>
@@ -11,6 +12,7 @@ type Environment = Record<string, string | undefined>
 function providerFor(name: FileProviderName | 'mock', env: Environment): FileProvider {
   if (name === 'mock') return mockFileProvider
   if (name === 'google_drive') return createGoogleDriveFileProvider({ env })
+  if (name === 'onedrive') return createOneDriveFileProvider({ env })
   return notImplementedProvider(name)
 }
 
