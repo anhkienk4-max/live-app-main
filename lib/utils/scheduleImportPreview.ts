@@ -7,6 +7,14 @@ export type PreviewStaffingValues = Record<PreviewStaffingField, number | string
 export type ValidatedStaffingValues = Record<PreviewStaffingField, number | null>
 export type PreviewStaffingNameField = 'host_names' | 'assistant_names' | 'technical_names'
 export type PreviewStaffingNameValues = Record<PreviewStaffingNameField, string[]>
+export type ScheduleImportSourcePresence = Partial<Record<
+  | 'campaign_name'
+  | 'studio'
+  | 'title'
+  | 'notes'
+  | PreviewStaffingField
+  | PreviewStaffingNameField,
+  boolean>>
 
 export const previewStaffingFields = [
   'required_host_count',
@@ -227,7 +235,7 @@ export function validateStaffingValues(
 
 export function normalizeScheduleImportSourceRow(
   sourceRow: Record<string, unknown>,
-): Record<string, unknown> & PreviewStaffingValues & PreviewStaffingNameValues {
+): Record<string, unknown> & PreviewStaffingValues & PreviewStaffingNameValues & { source_presence?: ScheduleImportSourcePresence } {
   const staffingAliases = new Set(
     [
       ...Object.values(staffingSourceAliases).flat(),
@@ -261,6 +269,7 @@ export function buildScheduleImportPreviewSourceRow(row: ScheduleImportRow) {
     required_support_count: row.required_support_count,
     required_technical_count: row.required_technical_count,
     Notes: row.notes || '',
+    source_presence: row.source_presence,
   })
 }
 
@@ -279,6 +288,7 @@ export function toCanonicalScheduleImportPreviewRow(
     required_host_count: canonical.required_host_count,
     required_support_count: canonical.required_support_count,
     required_technical_count: canonical.required_technical_count,
+    source_presence: canonical.source_presence as ScheduleImportSourcePresence | undefined,
   } as ScheduleImportRow
 }
 

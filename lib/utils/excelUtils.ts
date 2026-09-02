@@ -25,6 +25,7 @@ import {
   PreviewStaffingField,
   PreviewStaffingNameField,
   previewStaffingFields,
+  type ScheduleImportSourcePresence,
   toCanonicalScheduleImportPreviewRow,
   validateStaffingValues,
 } from '@/lib/utils/scheduleImportPreview'
@@ -40,9 +41,9 @@ export interface ImportPreviewRow {
   shift?: Omit<Shift, 'id' | 'created_at' | 'updated_at'>
   /**
    * For duplicate rows (where shift was suppressed to avoid creating a duplicate shift),
-   * keep the would-be shift draft so reconciliation can merge imported staffing display
-   * names into the existing shift. This preserves duplicate semantics (validShifts excludes
-   * it) while allowing staffing metadata persistence.
+   * keep the would-be shift draft so reconciliation can enrich the existing shift.
+   * This preserves duplicate semantics (validShifts excludes it) while allowing explicit
+   * metadata and staffing updates to persist.
    */
   duplicateCandidate?: Omit<Shift, 'id' | 'created_at' | 'updated_at'>
 }
@@ -316,6 +317,24 @@ const validIsoDate = (value: string) => {
 
 const validTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value)
 
+const explicitSourceValue = (value: unknown) => {
+  if (value === null || value === undefined) return false
+  if (typeof value === 'number') return Number.isFinite(value)
+  const text = String(value).trim()
+  return text !== '' && !/^(?:nan|null|undefined)$/i.test(text)
+}
+
+const sourceFieldProvided = (source: ScheduleSheetRow, aliases: readonly string[]) =>
+  Object.entries(source).some(([key, value]) =>
+    aliases.some(alias => normalizeLookup(key) === normalizeLookup(alias)) && explicitSourceValue(value),
+  )
+
+const staffingFieldProvided = (source: ScheduleSheetRow, field: PreviewStaffingField | PreviewStaffingNameField) =>
+  Object.entries(source).some(([key, value]) => {
+    const matched = getCanonicalStaffingField(key) ?? getCanonicalStaffingNameField(key)
+    return matched === field && explicitSourceValue(value)
+  })
+
 const sameShift = (
   shift: Pick<Shift, 'date' | 'start_time' | 'end_time' | 'brand_id' | 'platform_id'>,
   candidate: Pick<Shift, 'date' | 'start_time' | 'end_time' | 'brand_id' | 'platform_id'>,
@@ -375,6 +394,18 @@ export function parseScheduleRows(
     const rawStudio = String(valueFor(normalizedSource, scheduleHeaders.studio) ?? '')
     const studio = rawStudio.trim()
     const notes = String(valueFor(normalizedSource, scheduleHeaders.notes) ?? '').trim()
+    const sourcePresence = (sourceValues.source_presence as ScheduleImportSourcePresence | undefined) ?? {
+      campaign_name: sourceFieldProvided(sourceValues, scheduleHeaders.campaign),
+      studio: sourceFieldProvided(sourceValues, scheduleHeaders.studio),
+      title: sourceFieldProvided(sourceValues, scheduleHeaders.title),
+      notes: sourceFieldProvided(sourceValues, scheduleHeaders.notes),
+      required_host_count: staffingFieldProvided(sourceValues, 'required_host_count'),
+      required_support_count: staffingFieldProvided(sourceValues, 'required_support_count'),
+      required_technical_count: staffingFieldProvided(sourceValues, 'required_technical_count'),
+      host_names: staffingFieldProvided(sourceValues, 'host_names'),
+      assistant_names: staffingFieldProvided(sourceValues, 'assistant_names'),
+      technical_names: staffingFieldProvided(sourceValues, 'technical_names'),
+    }
     const staffingValues = {
       required_host_count: normalizedSource.required_host_count,
       required_support_count: normalizedSource.required_support_count,
@@ -457,7 +488,7 @@ export function parseScheduleRows(
       }
       const isDuplicate = existingShifts.some(existing => sameShift(existing, shift!)) || candidates.some(existing => sameShift(existing, shift!))
       if (isDuplicate) {
-        rowWarnings.push('A shift with the same brand, platform, campaign, studio, date, and time already exists.')
+        rowWarnings.push('A shift with the same brand, platform, date, and time already exists.')
         duplicateCandidate = shift
         shift = undefined
       } else {
@@ -484,6 +515,7 @@ export function parseScheduleRows(
         ...staffingNames,
         ...staffingValues,
         notes: notes || undefined,
+        source_presence: sourcePresence,
         warnings: rowWarnings,
         errors: rowErrors,
       }),

@@ -95,6 +95,7 @@ function workflow(overrides: {
   initialShifts?: Shift[]
   createShift?: () => Promise<Shift>
   refreshShifts?: () => Promise<Shift[]>
+  updateShift?: (id: string, patch: Partial<Shift>) => Promise<Shift | null>
 } = {}) {
   const outcomes: RecordedOutcome[] = []
   let createCalls = 0
@@ -113,6 +114,10 @@ function workflow(overrides: {
           : shift('created', 'batch-1')
       },
       refreshShifts: overrides.refreshShifts ?? (async () => []),
+      updateShift: overrides.updateShift ?? (async (id, patch) => {
+        const current = (overrides.initialShifts ?? []).find(item => item.id === id)
+        return current ? { ...current, ...patch, version: (current.version ?? 1) + 1 } : null
+      }),
       recordOutcome: async outcome => {
         outcomes.push(outcome)
       },
@@ -125,7 +130,7 @@ test('reconciliation uses exact identity and the same import batch only', () => 
   assert.equal(hasExactScheduleImportIdentity(exact, shiftDraft), true)
   assert.equal(
     hasExactScheduleImportIdentity(shift('different-studio', 'batch-1', { studio: 'Studio B' }), shiftDraft),
-    false,
+    true,
   )
   assert.deepEqual(reconcileScheduleImportShift('batch-1', shiftDraft, [exact]), {
     kind: 'recovered',
@@ -163,15 +168,15 @@ test('multiple exact same-batch shifts block as ambiguous', async () => {
   assert.equal(flow.outcomes[0]?.failureCode, 'IMPORT_RECONCILIATION_AMBIGUOUS')
 })
 
-test('same-batch slot with a different exact identity blocks instead of fuzzy recovery', async () => {
+test('same-batch slot with changed metadata enriches the existing shift', async () => {
   const flow = workflow({
     initialShifts: [shift('different-studio', 'batch-1', { studio: 'Studio B' })],
   })
   const result = await flow.run()
 
   assert.equal(flow.createCalls(), 0)
-  assert.equal(result.retryable, 1)
-  assert.equal(flow.outcomes[0]?.failureCode, 'IMPORT_BATCH_SLOT_IDENTITY_CONFLICT')
+  assert.equal(result.recovered, 1)
+  assert.equal(flow.outcomes[0]?.outcome, 'imported')
 })
 
 test('23505 re-reconciles and recovers the shift created by the same batch', async () => {
@@ -304,7 +309,7 @@ test('existing shift staffing labels are merged when external duplicate is recon
     },
   })
   assert.deepEqual(updatedLabels, { host_names: ['Kiên'], assistant_names: ['A'], technical_names: ['B'] })
-  assert.equal(result.duplicateSkipped, 1)
+  assert.equal(result.recovered, 1)
 })
 
 test('Host-only import preserves other staffing fields on existing shift', async () => {
@@ -447,7 +452,7 @@ test('SUCCESS PATH: exact identity with campaign and studio match merges staffin
     updateStaffingLabels: async (id, labels) => { updated = labels; return { ...existing, ...labels, updated_at: NOW } },
   })
   assert.deepEqual(updated?.host_names, ['Kiên'])
-  assert.equal((outcomes[0] as { outcome: string }).outcome, 'duplicate_skipped')
+  assert.equal((outcomes[0] as { outcome: string }).outcome, 'imported')
 })
 
 test('FAILED PATH: campaign null vs populated with single slot still merges via slot unique (safe)', async () => {

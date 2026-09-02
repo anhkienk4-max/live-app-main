@@ -87,9 +87,16 @@ export function commitRowDraftToSource<T extends Record<string, unknown>>(
   draft: DraftRow,
 ): T {
   const next: Record<string, unknown> = { ...sourceRow }
+  const sourcePresence = {
+    ...((next.source_presence as Record<string, boolean> | undefined) ?? {}),
+  }
   for (const [field, value] of Object.entries(draft)) {
     if (value === undefined) continue
     next[getScheduleImportSourceField(field)] = value
+    if (['campaign_name', 'studio', 'title', 'notes', ...previewStaffingFields, ...previewStaffingNameFields].includes(field as DraftField)) {
+      sourcePresence[field] = value.trim().length > 0
+    }
   }
+  next.source_presence = sourcePresence
   return next as T
 }
