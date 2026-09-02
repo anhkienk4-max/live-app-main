@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { shiftRegistrationService, shiftService, brandService, platformService, campaignService, userService, reportService, isStaffedRegistration } from '@/lib/services/dataService'
+import { shiftRegistrationService, shiftService, brandService, platformService, campaignService, userService, reportService } from '@/lib/services/dataService'
 import { Shift, Brand, Platform, Campaign, User, OperationalRole, ShiftRegistration, Report } from '@/lib/types/database.types'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -25,8 +25,8 @@ import {
   FileText,
   Trash2,
 } from 'lucide-react'
-import { format, addMonths, startOfWeek, endOfWeek, addDays, subMonths, parseISO, isSameDay, addWeeks } from 'date-fns'
-import { getCurrentBusinessDate, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
+import { format, addMonths, addDays, addWeeks } from 'date-fns'
+import { getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
 import { MonthView } from './MonthView'
 import { WeekView } from './WeekView'
 import { DayView } from './DayView'
@@ -43,7 +43,6 @@ import { useTranslation } from '@/lib/i18n'
 import { useToast } from '@/components/ui/toast'
 import { enUS, vi } from 'date-fns/locale'
 import { pendingRegistrationsInScope, shiftsInCalendarScope } from '@/lib/utils/calendarStaffingApproval'
-import { businessLocalDate } from '@/lib/utils/shiftUtils'
 import {
   buildScheduleExportRows,
   buildScheduleExportFilename,
@@ -55,12 +54,36 @@ import {
   usersToNameMap,
 } from '@/lib/utils/scheduleExportUtils'
 import { PageLoadError } from '@/components/ui/page-load-error'
+import {
+  buildStudioFilterOptions,
+  filterCalendarShifts,
+  calendarTimeScope,
+  UNASSIGNED_STUDIO_FILTER,
+  type CalendarFilterState,
+} from '@/lib/utils/calendarFilters'
+
+const DEFAULT_CALENDAR_FILTERS: CalendarFilterState = {
+  brand: 'all',
+  platform: 'all',
+  campaign: 'all',
+  studio: 'all',
+  status: 'all',
+  host: 'all',
+  support: 'all',
+  technical: 'all',
+  time: 'all',
+  customFrom: '',
+  customTo: '',
+}
 
 export function CalendarView({ createRequest = 0 }: { createRequest?: number }) {
   const { currentUser } = useCurrentUser()
   const { language, t } = useTranslation()
   const { toast } = useToast()
   const dateLocale = language === 'vi' ? vi : enUS
+  const timeFilterLabels = language === 'vi'
+    ? { all: 'Tất cả thời gian', week: 'Tuần đang xem', month: 'Tháng đang xem', studios: 'Tất cả Studio', unassigned: 'Chưa gán Studio' }
+    : { all: 'All time', week: 'Current week', month: 'Current month', studios: 'All studios', unassigned: 'Unassigned' }
   const [currentDate, setCurrentDate] = React.useState(new Date())
   const [view, setView] = React.useState<'month' | 'week' | 'day' | 'list'>('month')
   const [shifts, setShifts] = React.useState<Shift[]>([])
@@ -81,15 +104,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const [showBulkDelete, setShowBulkDelete] = React.useState(false)
   const [searchTerm, setSearchTerm] = React.useState('')
   const [selectedShiftIds, setSelectedShiftIds] = React.useState<Set<string>>(new Set())
-  const [filters, setFilters] = React.useState({
-    brand: 'all',
-    platform: 'all',
-    campaign: 'all',
-    status: 'all',
-    host: 'all',
-    support: 'all',
-    technical: 'all'
-  })
+  const [filters, setFilters] = React.useState<CalendarFilterState>(DEFAULT_CALENDAR_FILTERS)
 
   const loadData = React.useCallback(async () => {
     setLoading(true)
@@ -147,48 +162,21 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     }
   }, [currentUser, loadData, t, toast])
 
-  const filteredShifts = React.useMemo(() => {
-    const matchesRole = (shift: Shift, role: OperationalRole, userId: string) => {
-      const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
-      return assignment === userId || registrations.some(registration =>
-        registration.shift_id === shift.id &&
-        registration.user_id === userId &&
-        registration.operational_role === role &&
-        isStaffedRegistration(registration)
-      )
-    }
-    return shifts.filter(shift => {
-      // Brand filter
-      if (filters.brand !== 'all' && shift.brand_id !== filters.brand) return false
-      
-      // Platform filter
-      if (filters.platform !== 'all' && shift.platform_id !== filters.platform) return false
-      if (filters.campaign !== 'all' && shift.campaign_id !== filters.campaign) return false
-      
-      // Status filter
-      if (filters.status !== 'all' && shift.status !== filters.status) return false
-      
-      // Host filter
-      if (filters.host !== 'all' && !matchesRole(shift, 'host', filters.host)) return false
-      if (filters.support !== 'all' && !matchesRole(shift, 'support', filters.support)) return false
-      if (filters.technical !== 'all' && !matchesRole(shift, 'technical', filters.technical)) return false
-      
-      // Search filter
-      if (searchTerm) {
-        const brand = brands.find(b => b.id === shift.brand_id)
-        const platform = platforms.find(p => p.id === shift.platform_id)
-        const searchLower = searchTerm.toLowerCase()
-        
-        const matchesBrand = brand?.name.toLowerCase().includes(searchLower)
-        const matchesPlatform = platform?.name.toLowerCase().includes(searchLower)
-        const matchesNotes = shift.product_notes?.toLowerCase().includes(searchLower)
-        
-        if (!matchesBrand && !matchesPlatform && !matchesNotes) return false
-      }
-      
-      return true
-    })
-  }, [shifts, filters, searchTerm, brands, platforms, registrations])
+  const filteredShifts = React.useMemo(
+    () => filterCalendarShifts(shifts, filters, searchTerm, {
+      currentDate,
+      brands,
+      platforms,
+      campaigns,
+      registrations,
+    }),
+    [shifts, filters, searchTerm, currentDate, brands, platforms, campaigns, registrations],
+  )
+  const studioOptions = React.useMemo(() => buildStudioFilterOptions(shifts), [shifts])
+  const timeScope = React.useMemo(
+    () => calendarTimeScope(filters.time, currentDate, filters.customFrom, filters.customTo),
+    [filters.time, filters.customFrom, filters.customTo, currentDate],
+  )
 
   const stats = React.useMemo(() => {
     const today = getCurrentBusinessDate()
@@ -221,11 +209,22 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   }
 
   const clearFilters = () => {
-    setFilters({ brand: 'all', platform: 'all', campaign: 'all', status: 'all', host: 'all', support: 'all', technical: 'all' })
+    setFilters(DEFAULT_CALENDAR_FILTERS)
     setSearchTerm('')
   }
 
-  const hasActiveFilters = Object.values(filters).some(value => value !== 'all') || searchTerm !== ''
+  const activeFilterCount = [
+    filters.brand,
+    filters.platform,
+    filters.campaign,
+    filters.studio,
+    filters.status,
+    filters.host,
+    filters.support,
+    filters.technical,
+    filters.time,
+  ].filter(value => value !== 'all').length + (searchTerm ? 1 : 0)
+  const hasActiveFilters = activeFilterCount > 0
 
   const toggleSelectShift = (shiftId: string) => {
     setSelectedShiftIds(prev => {
@@ -346,7 +345,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
             >
               <Filter className="h-4 w-4 mr-2" />
               {t('filters')}
-              {hasActiveFilters && <span className="ml-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center">{Object.values(filters).filter(v => v !== 'all').length + (searchTerm ? 1 : 0)}</span>}
+              {hasActiveFilters && <span className="ml-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center">{activeFilterCount}</span>}
             </Button>
             {hasPermission(currentUser, 'shifts.export') && (
               <DropdownMenu>
@@ -454,6 +453,40 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                 <Select value={filters.campaign} onValueChange={(value) => setFilters({ ...filters, campaign: value })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent className="max-h-[50vh] overflow-y-auto"><SelectItem value="all">{t('all')} {t('campaigns')}</SelectItem>{campaigns.map(campaign => <SelectItem key={campaign.id} value={campaign.id}>{campaign.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">{t('time')}</label>
+                <Select value={filters.time} onValueChange={(value) => setFilters({ ...filters, time: value as CalendarFilterState['time'] })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{timeFilterLabels.all}</SelectItem>
+                    <SelectItem value="today">{t('today')}</SelectItem>
+                    <SelectItem value="current_week">{timeFilterLabels.week}</SelectItem>
+                    <SelectItem value="current_month">{timeFilterLabels.month}</SelectItem>
+                    <SelectItem value="custom">{t('customRange')}</SelectItem>
+                  </SelectContent>
+                </Select>
+                {!timeScope.valid && <p className="mt-1 text-xs text-red-600" role="alert">{timeScope.error}</p>}
+              </div>
+              {filters.time === 'custom' && <>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">{t('startDate')}</label>
+                  <Input type="date" value={filters.customFrom} onChange={(event) => setFilters({ ...filters, customFrom: event.target.value })} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">{t('endDate')}</label>
+                  <Input type="date" value={filters.customTo} onChange={(event) => setFilters({ ...filters, customTo: event.target.value })} />
+                </div>
+              </>}
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">{t('studio')}</label>
+                <Select value={filters.studio} onValueChange={(value) => setFilters({ ...filters, studio: value })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent className="max-h-[50vh] overflow-y-auto">
+                    <SelectItem value="all">{timeFilterLabels.studios}</SelectItem>
+                    {studioOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.value === UNASSIGNED_STUDIO_FILTER ? timeFilterLabels.unassigned : option.label}</SelectItem>)}
+                  </SelectContent>
                 </Select>
               </div>
               <div>
