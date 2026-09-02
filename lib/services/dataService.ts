@@ -236,6 +236,13 @@ const requireSupabaseAdmin = (actorId = currentUserService.getId()) => {
   }
   return actor
 }
+const requireSupabaseCampaignEditor = (actorId = currentUserService.getId()) => {
+  const actor = requiredActorFor(actorId)
+  if (!hasPermission(actor, 'campaigns.edit_operational')) {
+    throw new Error('Only a Leader or Admin can update campaigns.')
+  }
+  return actor
+}
 const audit = (
   module: AuditModule,
   action: AuditAction,
@@ -1012,7 +1019,7 @@ export const campaignService = {
     actorId = currentUserService.getId(),
   ): Promise<Campaign | null> {
     if (getAuthMode() === 'supabase') {
-      const actor = requireSupabaseAdmin(actorId)
+      const actor = requireSupabaseCampaignEditor(actorId)
       const before = await getSupabaseMasterDataRepository().campaigns.getById(id)
       if (!before) return null
       const persisted = await getSupabaseMasterDataRepository().campaigns.update(id, data)
