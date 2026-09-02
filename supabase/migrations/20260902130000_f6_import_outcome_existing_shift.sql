@@ -1,0 +1,182 @@
+-- F6: allow an import outcome to link an explicitly enriched existing Shift.
+-- The source row remains the DB-side authority for the canonical slot; an
+-- existing Shift's original import_batch_id is never rewritten.
+
+create or replace function public.record_schedule_import_batch_outcomes(
+  p_batch_id text,
+  p_outcomes jsonb
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_actor_id text;
+  v_batch public.schedule_import_batches;
+  v_index integer;
+  v_count integer;
+  v_item jsonb;
+  v_outcome text;
+  v_expected_outcome text;
+  v_current_outcome text;
+  v_current_shift_id text;
+  v_current_failure_code text;
+  v_requested_shift_id text;
+  v_requested_failure_code text;
+  v_source_row jsonb;
+begin
+  v_actor_id := private.require_shift_actor(true);
+  if p_outcomes is null or jsonb_typeof(p_outcomes) <> 'array' then
+    raise exception using errcode = '22023', message = 'IMPORT_OUTCOMES_INVALID';
+  end if;
+  v_count := jsonb_array_length(p_outcomes);
+  if v_count > 10000 then
+    raise exception using errcode = '22023', message = 'IMPORT_OUTCOMES_LIMIT';
+  end if;
+
+  select * into v_batch from public.schedule_import_batches
+  where id = p_batch_id for update;
+  if v_batch.id is null then
+    raise exception using errcode = 'P0001', message = 'IMPORT_BATCH_NOT_FOUND';
+  end if;
+  if v_batch.status not in ('previewed', 'failed', 'confirmed') then
+    raise exception using errcode = 'P0001', message = 'IMPORT_BATCH_NOT_ACTIVE';
+  end if;
+
+  for v_index in 0..v_count - 1 loop
+    v_item := p_outcomes->v_index;
+    v_outcome := v_item->>'outcome';
+    v_expected_outcome := v_item->>'expected_outcome';
+    v_requested_shift_id := nullif(v_item->>'shift_id', '');
+    v_requested_failure_code := nullif(v_item->>'failure_code', '');
+
+    if v_item->>'row_number' is null
+      or v_item->>'row_number' !~ '^[0-9]+$'
+    then
+      raise exception using errcode = '22023', message = 'IMPORT_ROW_NUMBER_INVALID';
+    end if;
+    if v_outcome not in ('imported', 'validation_failed', 'duplicate_skipped', 'warning', 'retryable') then
+      raise exception using errcode = '22023', message = 'IMPORT_OUTCOME_INVALID';
+    end if;
+    if v_expected_outcome not in ('pending', 'validation_failed', 'retryable') then
+      raise exception using errcode = '22023', message = 'IMPORT_EXPECTED_OUTCOME_INVALID';
+    end if;
+    if v_outcome in ('imported', 'warning') and v_requested_shift_id is null then
+      raise exception using errcode = '22023', message = 'IMPORT_OUTCOME_SHIFT_REQUIRED';
+    end if;
+    if v_outcome = 'retryable' and v_requested_failure_code is null then
+      raise exception using errcode = '22023', message = 'IMPORT_OUTCOME_FAILURE_CODE_REQUIRED';
+    end if;
+
+    select outcome, shift_id, failure_code, source_row
+      into v_current_outcome, v_current_shift_id, v_current_failure_code, v_source_row
+    from public.schedule_import_batch_rows
+    where batch_id = p_batch_id
+      and row_number = (v_item->>'row_number')::int
+    for update;
+    if not found then
+      raise exception using errcode = 'P0001', message = 'IMPORT_ROW_NOT_FOUND';
+    end if;
+
+    -- A replay of the same finalized result is a successful no-op. This is
+    -- what lets two confirmations race safely after one already recorded the
+    -- row. Duplicate-skipped rows intentionally have no persisted shift link;
+    -- the incoming candidate link is therefore ignored for this comparison.
+    if v_current_outcome in ('imported', 'warning', 'duplicate_skipped') then
+      if v_current_outcome = v_outcome
+        and (
+          v_current_outcome = 'duplicate_skipped'
+          or v_current_shift_id = v_requested_shift_id
+        )
+        and v_current_failure_code is null
+      then
+        continue;
+      end if;
+      raise exception using errcode = 'P0001', message = 'IMPORT_ROW_ALREADY_FINALIZED';
+    end if;
+
+    -- A confirmed batch is immutable except for the idempotent finalized-row
+    -- replay above. Any unresolved row is a real lifecycle conflict.
+    if v_batch.status = 'confirmed' then
+      raise exception using errcode = 'P0001', message = 'IMPORT_BATCH_NOT_ACTIVE';
+    end if;
+    if v_current_outcome <> v_expected_outcome then
+      raise exception using errcode = 'P0001', message = 'IMPORT_ROW_OUTCOME_CONFLICT';
+    end if;
+
+    -- Imported/warning outcomes may link either to a Shift created by this
+    -- batch or to the one existing Shift whose canonical slot is represented
+    -- by the persisted source row. No caller-supplied identity fields are
+    -- consulted, and the existing Shift's import provenance is untouched.
+    if v_outcome in ('imported', 'warning') and not exists (
+      select 1
+      from public.shifts as linked_shift
+      where linked_shift.id = v_requested_shift_id
+        and (
+          linked_shift.import_batch_id = p_batch_id
+          or (
+            nullif(btrim(v_source_row->>'date'), '') is not null
+            and nullif(btrim(v_source_row->>'start_time'), '') is not null
+            and nullif(btrim(v_source_row->>'end_time'), '') is not null
+            and nullif(btrim(v_source_row->>'brand_name'), '') is not null
+            and nullif(btrim(v_source_row->>'platform_name'), '') is not null
+            and linked_shift.date::text = btrim(v_source_row->>'date')
+            and left(linked_shift.start_time::text, 5) = btrim(v_source_row->>'start_time')
+            and left(linked_shift.end_time::text, 5) = btrim(v_source_row->>'end_time')
+            and exists (
+              select 1
+              from public.brands as source_brand
+              where source_brand.id = linked_shift.brand_id
+                and lower(btrim(source_brand.name)) = lower(btrim(v_source_row->>'brand_name'))
+                and (
+                  select count(*)
+                  from public.brands as matching_brand
+                  where lower(btrim(matching_brand.name)) = lower(btrim(v_source_row->>'brand_name'))
+                ) = 1
+            )
+            and exists (
+              select 1
+              from public.platforms as source_platform
+              where source_platform.id = linked_shift.platform_id
+                and lower(btrim(source_platform.name)) = lower(btrim(v_source_row->>'platform_name'))
+                and (
+                  select count(*)
+                  from public.platforms as matching_platform
+                  where lower(btrim(matching_platform.name)) = lower(btrim(v_source_row->>'platform_name'))
+                ) = 1
+            )
+          )
+        )
+    ) then
+      raise exception using errcode = '22023', message = 'IMPORT_OUTCOME_SHIFT_MISMATCH';
+    end if;
+
+    update public.schedule_import_batch_rows
+    set
+      outcome = v_outcome,
+      shift_id = case
+        when v_outcome in ('imported', 'warning') then v_requested_shift_id
+        else null
+      end,
+      failure_code = case
+        when v_outcome = 'retryable' then v_requested_failure_code
+        else null
+      end
+    where batch_id = p_batch_id
+      and row_number = (v_item->>'row_number')::int
+      and outcome = v_expected_outcome;
+    if not found then
+      raise exception using errcode = 'P0001', message = 'IMPORT_ROW_OUTCOME_CONFLICT';
+    end if;
+  end loop;
+end;
+$$;
+
+revoke all on function public.record_schedule_import_batch_outcomes(text, jsonb)
+  from public, anon, authenticated;
+grant execute on function public.record_schedule_import_batch_outcomes(text, jsonb)
+  to authenticated;
+
+comment on function public.record_schedule_import_batch_outcomes(text, jsonb) is
+  'CAS-protected schedule import outcomes; links created or canonically enriched existing shifts.';
