@@ -91,7 +91,7 @@ test('F6 separates preview from persistence and requires an explicit confirmatio
   assert.match(panel, /data-testid="schedule-import-confirm-summary"/)
   assert.match(panel, /scheduleImportBatchPort\.createBatch/)
   assert.match(panel, /scheduleImportBatchPort\.markBatchStatus\(batch\.id, 'confirmed'\)/)
-  assert.match(panel, /disabled=\{busy \|\| result\.invalidRows > 0 \|\| result\.validRows === 0\}/)
+  assert.match(panel, /disabled=\{busy \|\| result\.validRows === 0\}/)
 })
 
 test('F6 maps row outcomes to human states and preserves duplicate/retryable semantics', () => {

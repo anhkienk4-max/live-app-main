@@ -853,6 +853,18 @@ export interface ScheduleImportRow {
   required_support_count: number | string
   required_technical_count: number | string
   notes?: string
+  /** Source fields explicitly supplied by the imported row (defaults excluded). */
+  source_presence?: Partial<Record<
+    | 'campaign_name'
+    | 'studio'
+    | 'title'
+    | 'notes'
+    | 'required_host_count'
+    | 'required_support_count'
+    | 'required_technical_count'
+    | 'host_names'
+    | 'assistant_names'
+    | 'technical_names', boolean>>
   warnings: string[]
   errors: string[]
 }

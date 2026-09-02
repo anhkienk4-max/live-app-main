@@ -329,6 +329,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
         initialShifts: existingShifts,
         createShift: shiftService.create,
         refreshShifts: shiftService.getAll,
+        updateShift: (shiftId, patch) => shiftService.update(shiftId, patch),
         recordOutcome: async ({ rowNumber, outcome, expectedOutcome, shiftId, failureCode }) => {
           await scheduleImportBatchPort.recordRowOutcome(batch.id, rowNumber, outcome, {
             expectedOutcome,
@@ -336,14 +337,14 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
             failureCode,
           })
         },
-        updateStaffingLabels: async (shiftId, labels) => {
+        updateStaffingLabels: async (shiftId, labels, expectedVersion) => {
           // Use dataService directly to ensure both mock and Supabase paths are covered
           // and to update the in-memory projection for subsequent reconciliation.
           const updated = await shiftService.updateStaffingLabels(
             shiftId,
             labels,
             undefined,
-            existingShifts.find(shift => shift.id === shiftId)?.version,
+            expectedVersion ?? existingShifts.find(shift => shift.id === shiftId)?.version,
           )
           if (updated) setExistingShifts(prev => prev.map(s => s.id === updated.id ? updated : s))
           return updated
@@ -598,7 +599,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
             <div className="flex flex-wrap justify-end gap-2">
               <Button variant="outline" onClick={() => setCancelOpen(true)}>{t('cancel')}</Button>
               <Button variant="outline" onClick={confirmImport} disabled={busy || result.validRows === 0} aria-label={`${t('confirmImport')} (${result.validRows})`}>{busy ? t('loading') : `${t('confirmImport')} (${result.validRows})`}</Button>
-              <Button onClick={confirmImport} disabled={busy || result.invalidRows > 0 || result.validRows === 0} aria-label={t('confirmImport')}>{busy ? t('loading') : t('confirmImport')}</Button>
+              <Button onClick={confirmImport} disabled={busy || result.validRows === 0} aria-label={t('confirmImport')}>{busy ? t('loading') : t('confirmImport')}</Button>
             </div>
           </CardContent>
         </Card>

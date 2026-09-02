@@ -1,4 +1,4 @@
-import type { Shift } from '@/lib/types/database.types'
+import type { ScheduleImportRow, Shift } from '@/lib/types/database.types'
 import type { ImportPreviewRow } from '@/lib/utils/excelUtils'
 import type {
   ImportBatchRetryableRowStatus,
@@ -25,8 +25,6 @@ export function hasExactScheduleImportIdentity(shift: Shift, candidate: ShiftDra
     && normalizeTime(shift.end_time) === normalizeTime(candidate.end_time)
     && shift.brand_id === candidate.brand_id
     && shift.platform_id === candidate.platform_id
-    && normalizeDimension(shift.campaign_id) === normalizeDimension(candidate.campaign_id)
-    && normalizeDimension(shift.studio) === normalizeDimension(candidate.studio)
 }
 
 export function hasScheduleImportSlotIdentity(shift: Shift, candidate: ShiftDraft): boolean {
@@ -156,6 +154,34 @@ export function mergeImportedStaffingLabels(
   }
 }
 
+export function buildScheduleImportEnrichmentPatch(
+  existing: Shift,
+  imported: ShiftDraft,
+  sourcePresence: ScheduleImportRow['source_presence'] = {},
+): Partial<Pick<Shift, 'campaign_id' | 'studio' | 'title' | 'product_notes' | 'required_host_count' | 'required_support_count' | 'required_technical_count'>> {
+  const provided = (value: boolean | undefined, fallback: boolean) => value === undefined ? fallback : value
+  const patch: Partial<Pick<Shift, 'campaign_id' | 'studio' | 'title' | 'product_notes' | 'required_host_count' | 'required_support_count' | 'required_technical_count'>> = {}
+  if (provided(sourcePresence.campaign_name, Boolean(imported.campaign_id)) && imported.campaign_id && existing.campaign_id !== imported.campaign_id) {
+    patch.campaign_id = imported.campaign_id
+  }
+  if (provided(sourcePresence.studio, Boolean(imported.studio)) && imported.studio && existing.studio !== imported.studio) {
+    patch.studio = imported.studio
+  }
+  if (provided(sourcePresence.title, Boolean(imported.title)) && imported.title && existing.title !== imported.title) {
+    patch.title = imported.title
+  }
+  if (provided(sourcePresence.notes, Boolean(imported.product_notes)) && imported.product_notes && existing.product_notes !== imported.product_notes) {
+    patch.product_notes = imported.product_notes
+  }
+  const counts = ['required_host_count', 'required_support_count', 'required_technical_count'] as const
+  counts.forEach(field => {
+    if (provided(sourcePresence[field], imported[field] !== undefined) && imported[field] !== undefined && existing[field] !== imported[field]) {
+      patch[field] = imported[field]
+    }
+  })
+  return patch
+}
+
 function staffingLabelsEqual(a: ShiftStaffingLabels, b: ShiftStaffingLabels): boolean {
   const eq = (x: string[], y: string[]) =>
     x.length === y.length && x.every((v, i) => v === y[i])
@@ -186,11 +212,13 @@ interface ProcessScheduleImportRowsInput {
   createShift: (data: ShiftDraft) => Promise<Shift>
   refreshShifts: () => Promise<Shift[]>
   recordOutcome: (input: RecordOutcomeInput) => Promise<void>
+  /** Update supported Shift metadata through the canonical CAS-aware service. */
+  updateShift?: (shiftId: string, patch: Partial<Shift>) => Promise<Shift | null>
   /**
    * Update staffing display labels on an existing shift.
    * If not provided, staffing merge is skipped (e.g., tests without staffing).
    */
-  updateStaffingLabels?: (shiftId: string, labels: ShiftStaffingLabels) => Promise<Shift | null>
+  updateStaffingLabels?: (shiftId: string, labels: ShiftStaffingLabels, expectedVersion?: number) => Promise<Shift | null>
 }
 
 export async function processScheduleImportRows({
@@ -201,6 +229,7 @@ export async function processScheduleImportRows({
   createShift,
   refreshShifts,
   recordOutcome,
+  updateShift,
   updateStaffingLabels,
 }: ProcessScheduleImportRowsInput): Promise<ScheduleImportRecoveryResult> {
   const result: ScheduleImportRecoveryResult = {
@@ -222,33 +251,81 @@ export async function processScheduleImportRows({
     result.retryable += 1
   }
 
-  const maybeMergeStaffing = async (existing: Shift, imported: ShiftDraft) => {
-    if (!updateStaffingLabels) return
-    // Only merge if imported actually provides at least one staffing name
-    const hasImportedNames =
-      (imported.host_names && imported.host_names.length > 0) ||
-      (imported.assistant_names && imported.assistant_names.length > 0) ||
-      (imported.technical_names && imported.technical_names.length > 0)
-    if (!hasImportedNames) return
-    const merged = mergeImportedStaffingLabels(existing, imported)
-    const current: ShiftStaffingLabels = {
-      host_names: existing.host_names ?? [],
-      assistant_names: existing.assistant_names ?? [],
-      technical_names: existing.technical_names ?? [],
-    }
-    if (staffingLabelsEqual(current, merged)) return
-    try {
-      const updated = await updateStaffingLabels(existing.id, merged)
+  const replaceKnownShift = (updated: Shift) => {
+    const idx = knownShifts.findIndex(s => s.id === updated.id)
+    if (idx !== -1) knownShifts[idx] = updated
+    else knownShifts.push(updated)
+  }
+
+  const enrichExistingShift = async (existing: Shift, imported: ShiftDraft, sourcePresence: ScheduleImportRow['source_presence']) => {
+    let current = existing
+    let enriched = false
+    const patch = buildScheduleImportEnrichmentPatch(existing, imported, sourcePresence)
+    if (Object.keys(patch).length > 0 && updateShift) {
+      const updated = await updateShift(existing.id, { ...patch, version: existing.version })
       if (updated) {
-        // keep knownShifts in sync for subsequent slot checks / idempotency
-        const idx = knownShifts.findIndex(s => s.id === existing.id)
-        if (idx !== -1) knownShifts[idx] = updated
-        else knownShifts.push(updated)
+        current = updated
+        enriched = true
+        replaceKnownShift(updated)
       }
-    } catch {
-      // Staffing merge is best-effort; do not block import reconciliation on its failure.
-      // The core duplicate/recovered outcome is still recorded.
     }
+    if (updateStaffingLabels) {
+      const hasImportedNames =
+        ((sourcePresence?.host_names ?? Boolean(imported.host_names?.length)) && Boolean(imported.host_names?.length)) ||
+        ((sourcePresence?.assistant_names ?? Boolean(imported.assistant_names?.length)) && Boolean(imported.assistant_names?.length)) ||
+        ((sourcePresence?.technical_names ?? Boolean(imported.technical_names?.length)) && Boolean(imported.technical_names?.length))
+      if (hasImportedNames) {
+        const merged = mergeImportedStaffingLabels(current, imported)
+        const before: ShiftStaffingLabels = {
+          host_names: current.host_names ?? [],
+          assistant_names: current.assistant_names ?? [],
+          technical_names: current.technical_names ?? [],
+        }
+        if (!staffingLabelsEqual(before, merged)) {
+          const updated = await updateStaffingLabels(current.id, merged, current.version)
+          if (updated) {
+            current = updated
+            enriched = true
+            replaceKnownShift(updated)
+          }
+        }
+      }
+    }
+    return { shift: current, enriched }
+  }
+
+  const recordExisting = async (
+    preview: ImportPreviewRow,
+    existing: Shift,
+    imported: ShiftDraft,
+    expectedOutcome: ImportBatchRetryableRowStatus,
+    sameBatch = false,
+  ) => {
+    let enrichment: { shift: Shift; enriched: boolean }
+    try {
+      enrichment = await enrichExistingShift(existing, imported, preview.row.source_presence)
+    } catch (error) {
+      await persistRetryable(preview.row.row_number, expectedOutcome, scheduleImportFailureCode(error))
+      return
+    }
+    if (enrichment.enriched || sameBatch) {
+      const hasNonDuplicateWarning = preview.row.warnings.some(message => !message.toLowerCase().includes('same brand, platform'))
+      await recordOutcome({
+        rowNumber: preview.row.row_number,
+        outcome: hasNonDuplicateWarning ? 'warning' : 'imported',
+        expectedOutcome,
+        shiftId: enrichment.shift.id,
+      })
+      result.recovered += 1
+      return
+    }
+    await recordOutcome({
+      rowNumber: preview.row.row_number,
+      outcome: 'duplicate_skipped',
+      expectedOutcome,
+      shiftId: existing.id,
+    })
+    result.duplicateSkipped += 1
   }
 
   for (const preview of previews) {
@@ -268,14 +345,7 @@ export async function processScheduleImportRows({
     if (!preview.shift && duplicateCandidate) {
       const resolution = resolveDuplicateCandidateShift(preview, knownShifts)
       if (resolution.kind === 'unique') {
-        await maybeMergeStaffing(resolution.shift, duplicateCandidate)
-        await recordOutcome({
-          rowNumber: preview.row.row_number,
-          outcome: 'duplicate_skipped',
-          expectedOutcome,
-          shiftId: resolution.shift.id,
-        })
-        result.duplicateSkipped += 1
+        await recordExisting(preview, resolution.shift, duplicateCandidate, expectedOutcome)
         continue
       }
       if (resolution.kind === 'ambiguous') {
@@ -303,14 +373,7 @@ export async function processScheduleImportRows({
       continue
     }
     if (reconcile.kind === 'recovered') {
-      await maybeMergeStaffing(reconcile.shift, candidate)
-      await recordOutcome({
-        rowNumber: preview.row.row_number,
-        outcome: finalOutcome,
-        expectedOutcome,
-        shiftId: reconcile.shift.id,
-      })
-      result.recovered += 1
+      await recordExisting(preview, reconcile.shift, candidate, expectedOutcome, true)
       continue
     }
     if (hasSameBatchSlotConflict(batchId, candidate, knownShifts)) {
@@ -319,14 +382,7 @@ export async function processScheduleImportRows({
     }
     const externalResolution = resolveExternalShift(batchId, candidate, knownShifts)
     if (externalResolution.kind === 'unique') {
-      await maybeMergeStaffing(externalResolution.shift, candidate)
-      await recordOutcome({
-        rowNumber: preview.row.row_number,
-        outcome: 'duplicate_skipped',
-        expectedOutcome,
-        shiftId: externalResolution.shift.id,
-      })
-      result.duplicateSkipped += 1
+      await recordExisting(preview, externalResolution.shift, candidate, expectedOutcome)
       continue
     }
     if (externalResolution.kind === 'ambiguous') {
@@ -361,14 +417,7 @@ export async function processScheduleImportRows({
       knownShifts = await refreshShifts()
       const retryReconcile = reconcileScheduleImportShift(batchId, candidate, knownShifts)
       if (retryReconcile.kind === 'recovered') {
-        await maybeMergeStaffing(retryReconcile.shift, candidate)
-        await recordOutcome({
-          rowNumber: preview.row.row_number,
-          outcome: finalOutcome,
-          expectedOutcome,
-          shiftId: retryReconcile.shift.id,
-        })
-        result.recovered += 1
+        await recordExisting(preview, retryReconcile.shift, candidate, expectedOutcome, true)
       } else if (
         retryReconcile.kind === 'ambiguous'
         || hasSameBatchSlotConflict(batchId, candidate, knownShifts)
@@ -381,14 +430,7 @@ export async function processScheduleImportRows({
       } else {
         const retryExternal = resolveExternalShift(batchId, candidate, knownShifts)
         if (retryExternal.kind === 'unique') {
-          await maybeMergeStaffing(retryExternal.shift, candidate)
-          await recordOutcome({
-            rowNumber: preview.row.row_number,
-            outcome: 'duplicate_skipped',
-            expectedOutcome,
-            shiftId: retryExternal.shift.id,
-          })
-          result.duplicateSkipped += 1
+          await recordExisting(preview, retryExternal.shift, candidate, expectedOutcome)
         } else if (retryExternal.kind === 'ambiguous') {
           await persistRetryable(preview.row.row_number, expectedOutcome, 'IMPORT_RECONCILIATION_AMBIGUOUS')
         } else {
