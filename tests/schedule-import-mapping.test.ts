@@ -43,6 +43,11 @@ const scheduleRow = [
 
 const csvRow = (values: unknown[]) => values.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')
 const withColumn = (row: unknown[], index: number, value: unknown) => row.map((cell, i) => (i === index ? value : cell))
+const workbookBytes = (sheets: Array<[string, unknown[][]]>): ArrayBuffer => {
+  const workbook = XLSX.utils.book_new()
+  sheets.forEach(([name, rows]) => XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), name))
+  return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+}
 
 test('schedule import detects a normal row-one header', () => {
   const result = parseScheduleTabularData(
@@ -138,6 +143,91 @@ test('Excel import detects the real header after title and blank rows', () => {
   assert.equal(result.rows[0].row.row_number, 5)
   assert.equal(result.validShifts[0].platform_id, 'platform-1')
   assert.equal(result.validShifts[0].studio, 'Studio A')
+})
+
+test('Excel import ignores a cover sheet before a valid schedule sheet', () => {
+  const result = parseScheduleTabularData(workbookBytes([
+    ['Cover', [['MARS LIVESTREAM PLAN'], ['Prepared for operations']]],
+    ['Schedule', [englishHeader, scheduleRow]],
+  ]), 'array', maps)
+  assert.equal(result.validRows, 1)
+  assert.equal(result.validShifts[0]?.title, 'Morning shift')
+})
+
+test('Excel import ignores an unrelated table before a valid schedule sheet', () => {
+  const result = parseScheduleTabularData(workbookBytes([
+    ['Summary', [['Metric', 'Value'], ['Total shifts', 1]]],
+    ['Schedule', [englishHeader, scheduleRow]],
+  ]), 'array', maps)
+  assert.equal(result.validRows, 1)
+  assert.equal(result.rows[0]?.row.brand_name, 'Mars Wrigley')
+})
+
+test('Excel import combines rows from two valid schedule sheets', () => {
+  const second = withColumn(scheduleRow, 3, 'Snickers')
+  const result = parseScheduleTabularData(workbookBytes([
+    ['Schedule A', [englishHeader, scheduleRow]],
+    ['Schedule B', [englishHeader, second]],
+  ]), 'array', maps)
+  assert.equal(result.validRows, 2)
+  assert.equal(result.validShifts.length, 2)
+  assert.deepEqual(result.validShifts.map(shift => shift.brand_id), ['brand-1', 'brand-2'])
+})
+
+test('Excel import assigns unique row numbers across valid schedule sheets', () => {
+  const result = parseScheduleTabularData(workbookBytes([
+    ['Schedule A', [englishHeader, scheduleRow]],
+    ['Schedule B', [englishHeader, withColumn(scheduleRow, 3, 'Snickers')]],
+  ]), 'array', maps)
+  const rowNumbers = result.rows.map(preview => preview.row.row_number)
+  assert.equal(new Set(rowNumbers).size, rowNumbers.length)
+})
+
+test('Excel import ignores an empty sheet and parses a later valid schedule', () => {
+  const result = parseScheduleTabularData(workbookBytes([
+    ['Empty', []],
+    ['Schedule', [englishHeader, scheduleRow]],
+  ]), 'array', maps)
+  assert.equal(result.validRows, 1)
+})
+
+test('Excel import returns the controlled header error when no sheet has a schedule header', () => {
+  const result = parseScheduleTabularData(workbookBytes([
+    ['Cover', [['Title', 'Value'], ['Plan', 'Q3']]],
+    ['Notes', [['Owner', 'Operations'], ['Updated', 'Today']]],
+  ]), 'array', maps)
+  assert.equal(result.success, false)
+  assert.equal(result.rows.length, 0)
+  assert.equal(result.errors.length, 1)
+  assert.equal(result.errors[0]?.field, 'header')
+})
+
+test('Excel multi-sheet parsing preserves single-sheet row and value behavior', () => {
+  const single = parseScheduleTabularData(workbookBytes([['Schedule', [englishHeader, scheduleRow]]]), 'array', maps)
+  assert.equal(single.validRows, 1)
+  assert.equal(single.rows[0]?.row.row_number, 2)
+  assert.equal(single.validShifts[0]?.date, '2026-09-01')
+})
+
+test('Excel multi-sheet parsing does not lose distinct valid shifts', () => {
+  const second = withColumn(withColumn(scheduleRow, 0, '2026-09-02'), 1, '14:00')
+  const result = parseScheduleTabularData(workbookBytes([
+    ['Schedule A', [englishHeader, scheduleRow]],
+    ['Schedule B', [englishHeader, second]],
+  ]), 'array', maps)
+  assert.equal(result.validRows, 2)
+  assert.deepEqual(result.validShifts.map(shift => [shift.date, shift.start_time]), [['2026-09-01', '09:00'], ['2026-09-02', '14:00']])
+})
+
+test('repeated canonical slots across worksheets keep duplicate semantics', () => {
+  const result = parseScheduleTabularData(workbookBytes([
+    ['Schedule A', [englishHeader, scheduleRow]],
+    ['Schedule B', [englishHeader, scheduleRow]],
+  ]), 'array', maps)
+  assert.equal(result.validRows, 2)
+  assert.equal(result.validShifts.length, 1)
+  assert.equal(new Set(result.rows.map(preview => preview.row.row_number)).size, 2)
+  assert.ok(result.warnings.some(warning => /already exists/.test(warning.message)))
 })
 
 test('Vietnamese headers and Khung giờ map to the canonical schedule fields', () => {
@@ -445,7 +535,7 @@ test('duplicate semantics: same time different brand is valid', () => {
   assert.equal(result.warnings.length, 0)
 })
 
-test('duplicate semantics: same slot with different studio is duplicate', () => {
+test('duplicate semantics: same slot with different studio is enrichment-ready', () => {
   const rows = [
     withColumn(scheduleRow, 7, 'Studio A'),
     withColumn(scheduleRow, 7, 'Studio B'),
@@ -453,7 +543,7 @@ test('duplicate semantics: same slot with different studio is duplicate', () => 
   const result = parseScheduleTabularData([englishHeader, ...rows].map(csvRow).join('\n'), 'string', maps)
   assert.equal(result.validRows, 2)
   assert.equal(result.validShifts.length, 1)
-  assert.ok(result.warnings.some(warning => /already exists/.test(warning.message)))
+  assert.equal(result.warnings.length, 0)
 })
 
 test('duplicate semantics: same slot with same metadata is duplicate', () => {
@@ -480,7 +570,7 @@ test('duplicate semantics: existing matching DB shift is warned', () => {
   assert.ok(result.warnings.some(warning => /already exists/.test(warning.message)))
 })
 
-test('duplicate semantics: whitespace variation in studio is treated as duplicate', () => {
+test('duplicate semantics: whitespace variation in studio is enrichment-ready', () => {
   const rows = [
     withColumn(scheduleRow, 7, 'Studio A'),
     withColumn(scheduleRow, 7, '  studio   a  '),
@@ -488,10 +578,10 @@ test('duplicate semantics: whitespace variation in studio is treated as duplicat
   const result = parseScheduleTabularData([englishHeader, ...rows].map(csvRow).join('\n'), 'string', maps)
   assert.equal(result.validRows, 2)
   assert.equal(result.validShifts.length, 1)
-  assert.ok(result.warnings.some(warning => /already exists/.test(warning.message)))
+  assert.equal(result.warnings.length, 0)
 })
 
-test('duplicate semantics: same slot with different campaign is duplicate', () => {
+test('duplicate semantics: same slot with different campaign is enrichment-ready', () => {
   const rows = [
     withColumn(scheduleRow, 5, 'World Cup'),
     withColumn(scheduleRow, 5, 'Summer Sale'),
@@ -500,10 +590,10 @@ test('duplicate semantics: same slot with different campaign is duplicate', () =
   const result = parseScheduleTabularData([englishHeader, ...rows].map(csvRow).join('\n'), 'string', withExtraCampaign)
   assert.equal(result.validRows, 2)
   assert.equal(result.validShifts.length, 1)
-  assert.ok(result.warnings.some(warning => /already exists/.test(warning.message)))
+  assert.equal(result.warnings.length, 0)
 })
 
-test('duplicate semantics: same slot with different campaign and studio is duplicate', () => {
+test('duplicate semantics: same slot with different campaign and studio is enrichment-ready', () => {
   const rows = [
     withColumn(withColumn(scheduleRow, 5, 'World Cup'), 7, 'Studio A'),
     withColumn(withColumn(scheduleRow, 5, 'Summer Sale'), 7, 'Studio B'),
@@ -512,7 +602,7 @@ test('duplicate semantics: same slot with different campaign and studio is dupli
   const result = parseScheduleTabularData([englishHeader, ...rows].map(csvRow).join('\n'), 'string', withExtraCampaign)
   assert.equal(result.validRows, 2)
   assert.equal(result.validShifts.length, 1)
-  assert.ok(result.warnings.some(warning => /already exists/.test(warning.message)))
+  assert.equal(result.warnings.length, 0)
 })
 
 test('duplicate semantics: different time is a distinct shift', () => {

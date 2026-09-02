@@ -2,6 +2,15 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ScheduleImportRow, Shift } from '../lib/types/database.types.ts'
 import { parseScheduleRows, type ImportPreviewRow } from '../lib/utils/excelUtils.ts'
+import {
+  buildScheduleImportPreviewSourceRow,
+  normalizeScheduleImportResult,
+} from '../lib/utils/scheduleImportPreview.ts'
+import {
+  commitRowDraftToSource,
+  updateRowDraft,
+} from '../lib/utils/scheduleImportDraft.ts'
+import { previewPresentationStatus } from '../lib/utils/scheduleImportUx.ts'
 import { processScheduleImportRows } from '../lib/utils/scheduleImportRecovery.ts'
 import type { ImportBatchRow } from '../lib/utils/scheduleImportBatch.ts'
 
@@ -229,4 +238,134 @@ test('metadata update uses the current version before staffing synchronization',
   assert.equal(run.updateCalls, 1)
   assert.equal(run.staffingVersion, 2)
   assert.equal(run.current.version, 3)
+})
+
+test('preview keeps an unchanged existing slot as duplicate', () => {
+  const existing = shift('existing')
+  const result = parseScheduleRows([{
+    Date: baseShift.date, Start: baseShift.start_time, End: baseShift.end_time,
+    Brand: 'Brand A', Platform: 'Platform A', Campaign: 'Campaign A', 'Shift title': 'Original title', Studio: 'Studio A',
+    'Host count': 1, 'Support count': 1, 'Technical count': 1,
+  }], maps, [existing])
+  assert.equal(previewPresentationStatus(result.rows[0]!), 'duplicate')
+})
+
+test('preview classifies explicit metadata and staffing changes as ready', () => {
+  const existing = shift('existing')
+  const changes: Array<[string, Partial<ScheduleImportRow>, NonNullable<ScheduleImportRow['source_presence']>]> = [
+    ['campaign', { campaign_name: 'Campaign B' }, { campaign_name: true }],
+    ['studio', { studio: 'Studio B' }, { studio: true }],
+    ['title', { title: 'Updated title' }, { title: true }],
+    ['notes', { notes: 'Updated notes' }, { notes: true }],
+    ['host count', { required_host_count: 2 }, { required_host_count: true }],
+    ['support count', { required_support_count: 2 }, { required_support_count: true }],
+    ['technical count', { required_technical_count: 2 }, { required_technical_count: true }],
+    ['host names', { host_names: ['Host'] }, { host_names: true }],
+    ['assistant names', { assistant_names: ['Assistant'] }, { assistant_names: true }],
+    ['technical names', { technical_names: ['Technical'] }, { technical_names: true }],
+  ]
+  for (const [label, values, sourcePresence] of changes) {
+    const result = parseScheduleRows([{
+      Date: baseShift.date, Start: baseShift.start_time, End: baseShift.end_time,
+      Brand: 'Brand A', Platform: 'Platform A', Campaign: values.campaign_name ?? 'Campaign A',
+      'Shift title': values.title ?? 'Original title', Studio: values.studio ?? 'Studio A',
+      Notes: values.notes ?? '',
+      'Host count': values.required_host_count ?? 1, 'Support count': values.required_support_count ?? 1,
+      'Technical count': values.required_technical_count ?? 1,
+      Host: values.host_names?.join(', ') ?? '', Assistant: values.assistant_names?.join(', ') ?? '',
+      Technical: values.technical_names?.join(', ') ?? '',
+      source_presence: sourcePresence,
+    }], maps, [existing])
+    assert.equal(previewPresentationStatus(result.rows[0]!), 'ready', label)
+    assert.equal(result.rows[0]?.row.warnings.length, 0)
+  }
+})
+
+test('explicit zero count is previewed as enrichment when it differs', () => {
+  const existing = shift('existing', { required_support_count: 1 })
+  const result = parseScheduleRows([{
+    Date: baseShift.date, Start: baseShift.start_time, End: baseShift.end_time,
+    Brand: 'Brand A', Platform: 'Platform A', Campaign: 'Campaign A', 'Shift title': 'Original title', Studio: 'Studio A',
+    'Host count': 1, 'Support count': 0, 'Technical count': 1,
+  }], maps, [existing])
+  assert.equal(result.rows[0]?.row.source_presence?.required_support_count, true)
+  assert.equal(previewPresentationStatus(result.rows[0]!), 'ready')
+})
+
+test('draft support edit survives the preview pipeline and becomes ready', () => {
+  const existing = shift('existing')
+  const initial = normalizeScheduleImportResult(parseScheduleRows([{
+    Date: baseShift.date, Start: baseShift.start_time, End: baseShift.end_time,
+    Brand: 'Brand A', Platform: 'Platform A', Campaign: 'Campaign A', 'Shift title': 'Original title', Studio: 'Studio A',
+    'Host count': 1, 'Support count': 1, 'Technical count': 1,
+  }], maps, [existing]))
+  assert.equal(previewPresentationStatus(initial.rows[0]!), 'duplicate')
+  const row = initial.rows[0]!.row
+  const drafts = updateRowDraft({}, row.row_number, row, 'required_support_count', '2')
+  const source = buildScheduleImportPreviewSourceRow(row)
+  const nextSource = commitRowDraftToSource(source, drafts[row.row_number]!)
+  const reparsed = normalizeScheduleImportResult(parseScheduleRows([nextSource], maps, [existing]))
+  assert.equal(reparsed.rows[0]?.row.source_presence?.required_support_count, true)
+  assert.equal(previewPresentationStatus(reparsed.rows[0]!), 'ready')
+})
+
+test('draft assistant edit survives the preview pipeline and becomes ready', () => {
+  const existing = shift('existing')
+  const initial = normalizeScheduleImportResult(parseScheduleRows([{
+    Date: baseShift.date, Start: baseShift.start_time, End: baseShift.end_time,
+    Brand: 'Brand A', Platform: 'Platform A', Campaign: 'Campaign A', 'Shift title': 'Original title', Studio: 'Studio A',
+    'Host count': 1, 'Support count': 1, 'Technical count': 1,
+  }], maps, [existing]))
+  const row = initial.rows[0]!.row
+  const drafts = updateRowDraft({}, row.row_number, row, 'assistant_names', 'New Assistant')
+  const source = buildScheduleImportPreviewSourceRow(row)
+  const nextSource = commitRowDraftToSource(source, drafts[row.row_number]!)
+  const reparsed = normalizeScheduleImportResult(parseScheduleRows([nextSource], maps, [existing]))
+  assert.equal(reparsed.rows[0]?.row.source_presence?.assistant_names, true)
+  assert.deepEqual(reparsed.rows[0]?.row.assistant_names, ['New Assistant'])
+  assert.equal(previewPresentationStatus(reparsed.rows[0]!), 'ready')
+})
+
+test('missing optional source columns remain absent rather than becoming enrichment', () => {
+  const result = parseScheduleRows([{
+    Date: baseShift.date, Start: baseShift.start_time, End: baseShift.end_time,
+    Brand: 'Brand A', Platform: 'Platform A',
+  }], maps, [shift('existing')])
+  const presence = result.rows[0]?.row.source_presence
+  assert.equal(presence?.campaign_name, false)
+  assert.equal(presence?.studio, false)
+  assert.equal(presence?.title, false)
+  assert.equal(presence?.notes, false)
+  assert.equal(presence?.required_host_count, false)
+  assert.equal(presence?.required_support_count, false)
+  assert.equal(presence?.required_technical_count, false)
+  assert.equal(previewPresentationStatus(result.rows[0]!), 'duplicate')
+})
+
+test('confirm-time support count enrichment updates existing Shift without creating another', async () => {
+  const run = await runEnrichment(shift('existing'), { required_support_count: 2 }, { required_support_count: true })
+  assert.equal(run.creates, 0)
+  assert.equal(run.updateCalls, 1)
+  assert.equal(run.current.required_support_count, 2)
+  assert.deepEqual(run.outcomes, ['imported'])
+})
+
+test('confirm-time assistant enrichment updates labels without creating another Shift', async () => {
+  const run = await runEnrichment(shift('existing'), { assistant_names: ['New Assistant'] }, { assistant_names: true })
+  assert.equal(run.creates, 0)
+  assert.equal(run.updateCalls, 0)
+  assert.equal(run.staffingVersion, 1)
+  assert.deepEqual(run.current.assistant_names, ['New Assistant'])
+  assert.deepEqual(run.outcomes, ['imported'])
+})
+
+test('enrichment with cross-midnight timing remains a warning, not a duplicate', () => {
+  const existing = shift('existing', { start_time: '22:00', end_time: '02:00' })
+  const result = parseScheduleRows([{
+    Date: baseShift.date, Start: '22:00', End: '02:00', Brand: 'Brand A', Platform: 'Platform A',
+    Campaign: 'Campaign A', 'Shift title': 'Updated overnight', Studio: 'Studio A',
+    'Host count': 1, 'Support count': 2, 'Technical count': 1,
+  }], maps, [existing])
+  assert.equal(result.rows[0]?.row.errors.length, 0)
+  assert.equal(previewPresentationStatus(result.rows[0]!), 'warning')
 })

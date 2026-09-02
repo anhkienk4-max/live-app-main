@@ -1,5 +1,6 @@
 import type { ImportPreviewRow, ImportResult } from '@/lib/utils/excelUtils'
 import type { ImportBatchRow } from '@/lib/utils/scheduleImportBatch'
+import { hasScheduleImportEnrichment } from '@/lib/utils/scheduleImportPreview'
 
 export type ImportPreviewPresentationStatus = 'ready' | 'warning' | 'invalid' | 'duplicate'
 export type ImportResultPresentationStatus = ImportPreviewPresentationStatus | 'imported' | 'retryable'
@@ -16,7 +17,10 @@ export interface ImportPresentationCounts {
 
 export function previewPresentationStatus(preview: ImportPreviewRow): ImportPreviewPresentationStatus {
   if (preview.row.errors.length > 0) return 'invalid'
-  if (!preview.shift && preview.duplicateCandidate) return 'duplicate'
+  if (!preview.shift && preview.duplicateCandidate) {
+    const reference = preview.duplicateReference
+    if (!reference || !hasScheduleImportEnrichment(reference, preview.duplicateCandidate, preview.row.source_presence)) return 'duplicate'
+  }
   if (preview.row.warnings.length > 0) return 'warning'
   return 'ready'
 }
