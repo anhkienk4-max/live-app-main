@@ -1,7 +1,6 @@
 'use client'
 
 import * as React from 'react'
-import { addDays, endOfMonth, format, startOfMonth, startOfWeek, subMonths } from 'date-fns'
 import { BarChart3, Filter, RotateCcw } from 'lucide-react'
 import {
   Bar,
@@ -24,21 +23,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { PageLoadError } from '@/components/ui/page-load-error'
+import { addDateOnlyDays, calculateAnalyticsMetrics, reportMetric, resolveAnalyticsDateRange, startOfBusinessWeek } from '@/lib/utils/analytics'
 
 type RangeKey = 'today' | 'yesterday' | '7d' | '30d' | 'thisMonth' | 'lastMonth' | 'custom'
 type Filters = { range: RangeKey; start: string; end: string; brand: string; platform: string; campaign: string; host: string; support: string; technical: string }
 type MetricKey = 'revenue' | 'gmv' | 'orders' | 'viewers' | 'productClicks' | 'ctr' | 'cvr' | 'averageOrderValue' | 'liveDuration' | 'reportCount'
-const dateValue = (date: Date) => format(date, 'yyyy-MM-dd')
-const addRange = (range: Exclude<RangeKey, 'custom'>) => {
-  const today = new Date()
-  if (range === 'today') return { start: dateValue(today), end: dateValue(today) }
-  if (range === 'yesterday') return { start: dateValue(addDays(today, -1)), end: dateValue(addDays(today, -1)) }
-  if (range === '7d') return { start: dateValue(addDays(today, -6)), end: dateValue(today) }
-  if (range === '30d') return { start: dateValue(addDays(today, -29)), end: dateValue(today) }
-  if (range === 'thisMonth') return { start: dateValue(startOfMonth(today)), end: dateValue(today) }
-  const previous = subMonths(today, 1)
-  return { start: dateValue(startOfMonth(previous)), end: dateValue(endOfMonth(previous)) }
-}
+const addRange = (range: Exclude<RangeKey, 'custom'>) => resolveAnalyticsDateRange(range)
 const initialFilters = (): Filters => ({ range: '30d', ...addRange('30d'), brand: 'all', platform: 'all', campaign: 'all', host: 'all', support: 'all', technical: 'all' })
 
 export function DashboardAnalytics() {
@@ -50,7 +40,7 @@ export function DashboardAnalytics() {
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
   const [users, setUsers] = React.useState<User[]>([])
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
-  const [filters, setFilters] = React.useState<Filters | null>(null)
+  const [filters, setFilters] = React.useState<Filters | null>(() => initialFilters())
   const [showFilters, setShowFilters] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
@@ -70,7 +60,8 @@ export function DashboardAnalytics() {
   }, [])
 
   React.useEffect(() => {
-    setFilters(initialFilters())
+    // Initial data hydration intentionally updates the loading/data state from the async callback.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadData()
   }, [loadData])
 
@@ -97,33 +88,17 @@ export function DashboardAnalytics() {
   const currentShifts = shifts.filter(shift => matches(shift, filters.start, filters.end))
   const currentIds = new Set(currentShifts.map(shift => shift.id))
   const currentReports = reports.filter(report => currentIds.has(report.shift_id))
-  const periodDays = Math.max(1, Math.round((new Date(`${filters.end}T00:00:00`).getTime() - new Date(`${filters.start}T00:00:00`).getTime()) / 86400000) + 1)
-  const previousEnd = dateValue(addDays(new Date(`${filters.start}T00:00:00`), -1))
-  const previousStart = dateValue(addDays(new Date(`${previousEnd}T00:00:00`), -(periodDays - 1)))
+  const periodDays = Math.max(1, Math.round((Date.parse(`${filters.end}T00:00:00Z`) - Date.parse(`${filters.start}T00:00:00Z`)) / 86400000) + 1)
+  const previousEnd = addDateOnlyDays(filters.start, -1)
+  const previousStart = addDateOnlyDays(previousEnd, -(periodDays - 1))
   const previousIds = new Set(shifts.filter(shift => matches(shift, previousStart, previousEnd)).map(shift => shift.id))
   const previousReports = reports.filter(report => previousIds.has(report.shift_id))
   const aggregation = periodDays <= 31 ? 'daily' : periodDays <= 120 ? 'weekly' : 'monthly'
-  const bucketFor = (date: string) => aggregation === 'daily' ? date : aggregation === 'weekly' ? dateValue(startOfWeek(new Date(`${date}T00:00:00`), { weekStartsOn: 1 })) : date.slice(0, 7)
+  const bucketFor = (date: string) => aggregation === 'daily' ? date : aggregation === 'weekly' ? startOfBusinessWeek(date) : date.slice(0, 7)
   const shiftById = new Map(shifts.map(shift => [shift.id, shift]))
 
-  const summarize = (items: Report[]): Record<MetricKey, number> => {
-    const revenue = items.reduce((sum, report) => sum + reportMetric(report, 'revenue'), 0)
-    const orders = items.reduce((sum, report) => sum + reportMetric(report, 'orders'), 0)
-    return {
-      revenue,
-      gmv: items.reduce((sum, report) => sum + reportMetric(report, 'gmv'), 0),
-      orders,
-      viewers: items.reduce((sum, report) => sum + reportMetric(report, 'engaged_viewers'), 0),
-      productClicks: items.reduce((sum, report) => sum + reportMetric(report, 'product_clicks'), 0),
-      ctr: average(items.map(report => reportMetric(report, 'ctr'))),
-      cvr: average(items.map(report => reportMetric(report, 'conversion_rate'))),
-      averageOrderValue: orders ? revenue / orders : 0,
-      liveDuration: items.reduce((sum, report) => sum + reportMetric(report, 'live_duration_seconds') / 60, 0),
-      reportCount: items.length,
-    }
-  }
-  const totals = summarize(currentReports)
-  const previous = summarize(previousReports)
+  const totals = calculateAnalyticsMetrics(currentReports)
+  const previous = calculateAnalyticsMetrics(previousReports)
   const delta = (key: MetricKey) => previous[key] === 0 ? '—' : `${(((totals[key] - previous[key]) / previous[key]) * 100).toFixed(1)}%`
 
   const trend = Object.entries(currentReports.reduce<Record<string, ReturnType<typeof emptyTrend>>>((result, report) => {
@@ -211,20 +186,6 @@ export function DashboardAnalytics() {
 }
 
 function emptyTrend() { return { revenue: 0, orders: 0, viewers: 0, ctrTotal: 0, cvrTotal: 0, count: 0 } }
-function average(values: number[]) { return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0 }
-function reportMetric(report: Report, key: 'revenue' | 'gmv' | 'orders' | 'engaged_viewers' | 'product_clicks' | 'ctr' | 'conversion_rate' | 'live_duration_seconds') {
-  const normalized = report.normalized_metrics?.[key]
-  if (typeof normalized === 'number') return normalized
-  if (key === 'revenue' && typeof report.platform_metrics?.sales === 'number') return report.platform_metrics.sales
-  if (key === 'revenue') return report.revenue
-  if (key === 'gmv') return report.gmv ?? report.revenue
-  if (key === 'orders') return report.orders
-  if (key === 'engaged_viewers') return report.viewers ?? report.average_viewer
-  if (key === 'product_clicks') return report.product_clicks ?? 0
-  if (key === 'ctr') return report.ctr ?? 0
-  if (key === 'conversion_rate') return report.cvr ?? 0
-  return (report.live_duration_minutes ?? 0) * 60
-}
 function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: Array<{ id: string; name: string }>; onChange: (value: string) => void }) {
   const { t } = useTranslation()
   return <label className="text-xs font-medium">{label}<Select value={value} onValueChange={onChange}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{options.map(option => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}</SelectContent></Select></label>
