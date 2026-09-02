@@ -16,20 +16,23 @@ export default function RegisterPage() {
   const { language, setLanguage, t } = useTranslation()
   const [fullName, setFullName] = React.useState('')
   const [email, setEmail] = React.useState('')
+  const [phone, setPhone] = React.useState('')
+  const [department, setDepartment] = React.useState('')
   const [password, setPassword] = React.useState('')
   const [confirmPassword, setConfirmPassword] = React.useState('')
   const [showPassword, setShowPassword] = React.useState(false)
   const [loading, setLoading] = React.useState(false)
   const [errors, setErrors] = React.useState<FormErrors>({})
   const [created, setCreated] = React.useState(false)
+  const [requestSubmitted, setRequestSubmitted] = React.useState(false)
   const useMockData = getAuthMode() === 'mock'
 
   const validate = () => {
     const next: FormErrors = {}
     if (!fullName.trim()) next.fullName = t('fullNameRequired')
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) next.email = t('emailInvalid')
-    if (password.length < 8) next.password = t('passwordMinLength')
-    if (password !== confirmPassword) next.confirmPassword = t('passwordMismatch')
+    if (useMockData && password.length < 8) next.password = t('passwordMinLength')
+    if (useMockData && password !== confirmPassword) next.confirmPassword = t('passwordMismatch')
     setErrors(next)
     return Object.keys(next).length === 0
   }
@@ -41,7 +44,21 @@ export default function RegisterPage() {
     setErrors({})
     try {
       if (!useMockData) {
-        setErrors({ form: t('supabaseNotConfigured') })
+        const response = await fetch('/api/account-requests', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            full_name: fullName,
+            phone: phone || null,
+            department: department || null,
+          }),
+        })
+        if (!response.ok) {
+          setErrors({ form: response.status === 429 ? t('accountRequestRateLimited') : t('accountRequestSubmitFailed') })
+          return
+        }
+        setRequestSubmitted(true)
         return
       }
       const result = await mockAuthService.registerEmail({ fullName, email, password })
@@ -53,6 +70,22 @@ export default function RegisterPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (requestSubmitted) {
+    return (
+      <AuthLayout title={t('accountRequestReceivedTitle')} subtitle={t('accountRequestReceivedHelp')}>
+        <div className="flex flex-col items-center justify-center space-y-6 py-8" data-testid="account-request-success">
+          <div className="rounded-full bg-green-100 p-3">
+            <CheckCircle2 className="size-12 text-green-600" />
+          </div>
+          <p className="text-center text-sm text-muted-foreground">{t('accountRequestReceived')}</p>
+          <Link href="/login" className="flex h-11 w-full items-center justify-center rounded-md bg-blue-600 px-8 text-sm font-medium text-white transition-colors hover:bg-blue-700">
+            {t('signIn')}
+          </Link>
+        </div>
+      </AuthLayout>
+    )
   }
 
   if (created) {
@@ -81,7 +114,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <AuthLayout title={t('createAccount')} subtitle={t('registrationSubtitle')}>
+    <AuthLayout title={t(useMockData ? 'createAccount' : 'accountRequestTitle')} subtitle={t(useMockData ? 'registrationSubtitle' : 'accountRequestSubtitle')}>
       <form className="space-y-4" onSubmit={submit} noValidate>
         <Field label={t('fullName')} error={errors.fullName}>
           <Input 
@@ -106,8 +139,30 @@ export default function RegisterPage() {
             className="h-11"
           />
         </Field>
+
+        <Field label={`${t('phone')} (${t('optional')})`}>
+          <Input
+            autoComplete="tel"
+            className="h-11"
+            value={phone}
+            onChange={event => setPhone(event.target.value)}
+            data-testid="account-request-phone"
+            placeholder={t('accountRequestOptionalField')}
+          />
+        </Field>
+
+        <Field label={`${t('department')} (${t('optional')})`}>
+          <Input
+            autoComplete="organization"
+            className="h-11"
+            value={department}
+            onChange={event => setDepartment(event.target.value)}
+            data-testid="account-request-department"
+            placeholder={t('accountRequestOptionalField')}
+          />
+        </Field>
         
-        <Field label={t('password')} error={errors.password}>
+        {useMockData && <Field label={t('password')} error={errors.password}>
           <PasswordInput 
             value={password} 
             onChange={setPassword} 
@@ -118,9 +173,9 @@ export default function RegisterPage() {
             autoComplete="new-password"
             error={Boolean(errors.password)}
           />
-        </Field>
+        </Field>}
         
-        <Field label={t('confirmPassword')} error={errors.confirmPassword}>
+        {useMockData && <Field label={t('confirmPassword')} error={errors.confirmPassword}>
           <PasswordInput 
             value={confirmPassword} 
             onChange={setConfirmPassword} 
@@ -131,7 +186,7 @@ export default function RegisterPage() {
             autoComplete="new-password"
             error={Boolean(errors.confirmPassword)}
           />
-        </Field>
+        </Field>}
         
         {errors.form && (
           <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" data-testid="register-form-error">
@@ -140,7 +195,7 @@ export default function RegisterPage() {
           </div>
         )}
         
-        <p className="text-xs text-muted-foreground">{t('mockVerificationHelp')}</p>
+        <p className="text-xs text-muted-foreground">{t(useMockData ? 'mockVerificationHelp' : 'accountRequestFormHelp')}</p>
         
         <Button 
           className="h-11 w-full bg-blue-600 text-white hover:bg-blue-700" 
@@ -148,7 +203,7 @@ export default function RegisterPage() {
           disabled={loading} 
           data-testid="create-account-btn"
         >
-          {loading ? <><Loader2 className="mr-2 size-4 animate-spin" />{t('creatingAccount')}</> : t('createAccount')}
+          {loading ? <><Loader2 className="mr-2 size-4 animate-spin" />{t('submittingAccountRequest')}</> : t(useMockData ? 'createAccount' : 'submitAccountRequest')}
         </Button>
       </form>
 
