@@ -23,6 +23,10 @@ export type OneDriveErrorCode =
   | 'ONEDRIVE_PROVIDER_UNAVAILABLE'
   | 'ONEDRIVE_RESPONSE_INVALID'
   | 'ONEDRIVE_OPERATION_UNSUPPORTED'
+  | 'ONEDRIVE_FILE_CONFLICT'
+  | 'ONEDRIVE_UPLOAD_FAILED'
+  | 'ONEDRIVE_FOLDER_AMBIGUOUS'
+  | 'ONEDRIVE_FOLDER_CREATE_FAILED'
 
 export class OneDriveError extends FileProviderError {
   constructor(public readonly code: OneDriveErrorCode, message: string = code, public readonly retryAfterSeconds?: number) {

@@ -394,7 +394,7 @@ test('gateway resolves FILE_PROVIDER=google_drive without exposing a browser pro
   assert.equal(new FileProviderError('x').name, 'FileProviderError')
 })
 
-test('configured OneDrive keeps unsupported mutations explicit', async () => {
+test('configured OneDrive selects the supported provider path', () => {
   const gateway = createFileStorageService({ env: { NODE_ENV: 'production', FILE_PROVIDER: 'onedrive', ONEDRIVE_CLIENT_ID: 'client-id', ONEDRIVE_CLIENT_SECRET: 'client-secret', ONEDRIVE_REFRESH_TOKEN: 'refresh-token' } })
-  await assert.rejects(() => gateway.upload(input), (error: unknown) => error instanceof FileProviderError && error.code === 'ONEDRIVE_OPERATION_UNSUPPORTED')
+  assert.equal(gateway.providerName, 'onedrive')
 })

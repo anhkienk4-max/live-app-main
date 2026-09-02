@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { FileProvider } from '@/lib/files/fileProvider'
@@ -115,10 +116,45 @@ test('Graph transport failures normalize at the provider boundary', async () => 
   await assert.rejects(() => provider.getMetadata('item-1'), (error: unknown) => error instanceof OneDriveError && error.code === 'ONEDRIVE_NETWORK_ERROR')
 })
 
-test('upload and delete remain explicit unsupported mutations under the read-only OneDrive scope', async () => {
-  const provider = createOneDriveFileProvider({ auth: authClient(), graph: graphClient([]) })
-  await assert.rejects(() => provider.upload({} as never), (error: unknown) => error instanceof OneDriveError && error.code === 'ONEDRIVE_OPERATION_UNSUPPORTED')
-  await assert.rejects(() => provider.delete('item-1'), (error: unknown) => error instanceof OneDriveError && error.code === 'ONEDRIVE_OPERATION_UNSUPPORTED')
+test('upload is supported with sanitized names while delete remains explicit unsupported', async () => {
+  const graph = graphClient([response(200, { value: [] })])
+  const originalFetch = globalThis.fetch
+  const requests: Array<{ url: string; method: string; body: Uint8Array }> = []
+  globalThis.fetch = (async (input, init) => {
+    requests.push({
+      url: String(input),
+      method: String(init?.method ?? 'GET'),
+      body: init?.body instanceof Uint8Array ? init.body : new Uint8Array(),
+    })
+    return {
+      ok: true,
+      status: 200,
+      async json() { return { ...item('uploaded-1'), name: 'report-.pdf' } },
+    } as Response
+  }) as typeof fetch
+  try {
+    const provider = createOneDriveFileProvider({ auth: authClient(), graph })
+    const result = await provider.upload({
+      name: '../report?.pdf',
+      mime_type: 'application/pdf',
+      size_bytes: 4,
+      content: new Uint8Array([1, 2, 3, 4]),
+      entity_type: 'report',
+      entity_id: 'report-1',
+      created_by: 'user-1',
+      logical_path: 'reports',
+      external_parent_id: 'root',
+    })
+    assert.equal(result.asset.provider, 'onedrive')
+    assert.equal(result.asset.name, 'report-.pdf')
+    assert.equal(requests.length, 1)
+    assert.match(requests[0].url, /drive\/root:\/report-\.pdf:\/content$/)
+    assert.equal(requests[0].method, 'PUT')
+    assert.deepEqual([...requests[0].body], [1, 2, 3, 4])
+    await assert.rejects(() => provider.delete('item-1'), (error: unknown) => error instanceof OneDriveError && error.code === 'ONEDRIVE_OPERATION_UNSUPPORTED')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
 
 test('Microsoft OAuth state, redirect, exchange and refresh failure are deterministic', async () => {

@@ -1,8 +1,11 @@
 import 'server-only'
 
-import type { FileProvider, FileProviderMetadata, FileUploadInput, FileUploadResult } from '@/lib/files/fileProvider'
+import type { FileProviderMetadata, FileUploadInput, FileUploadResult } from '@/lib/files/fileProvider'
+import { sanitizeFileName } from '@/lib/files/fileValidation'
 import { OneDriveError, type OneDriveAuthClient, type OneDriveEnvironment, type OneDriveFetch, createOneDriveAuthClient } from '@/lib/server/oneDriveAuth'
 import { normalizeOneDriveItemId } from '@/lib/server/oneDriveDestination'
+import { CloudFolderRef } from '@/lib/storage/types'
+import { FolderCapableFileProvider } from '@/lib/storage/folderCapable'
 
 const GRAPH_BASE_URL = 'https://graph.microsoft.com/v1.0'
 
@@ -96,7 +99,7 @@ function nativeGraph(fetchImpl: OneDriveFetch): OneDriveGraphClient {
   }
 }
 
-export function createOneDriveFileProvider(options: OneDriveOptions = {}): FileProvider {
+export function createOneDriveFileProvider(options: OneDriveOptions = {}): FolderCapableFileProvider {
   const auth = options.auth ?? createOneDriveAuthClient({ env: options.env, fetchImpl: options.fetchImpl })
   const graph = options.graph ?? nativeGraph(options.fetchImpl ?? (fetch as unknown as OneDriveFetch))
 
@@ -123,11 +126,115 @@ export function createOneDriveFileProvider(options: OneDriveOptions = {}): FileP
     }
   }
 
-  const provider: FileProvider = {
+  async function graphFetch(path: string, options: { method?: string; body?: Record<string, unknown>; headers?: Record<string, string> } = {}): Promise<Response> {
+    const token = await auth.getAccessToken();
+    const response = await fetch(`${GRAPH_BASE_URL}${path}`, {
+      method: options.method || 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+    if (response.status === 401) {
+      await auth.refreshAccessToken();
+      const newToken = await auth.getAccessToken();
+      const retry = await fetch(`${GRAPH_BASE_URL}${path}`, {
+        method: options.method || 'GET',
+        headers: {
+          'Authorization': `Bearer ${newToken}`,
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined,
+      });
+      if (!retry.ok) throw responseError(retry, 'item');
+      return retry;
+    }
+    if (!response.ok) throw responseError(response, 'item');
+    return response;
+  }
+
+  async function createFolder(parentId: string, name: string): Promise<string> {
+    const id = parentId ? normalizeOneDriveItemId(parentId) : 'root';
+    const path = id === 'root' ? '/drive/root/children' : `/drive/items/${encodeURIComponent(id)}/children`;
+    const response = await graphFetch(path, { method: 'POST', body: { name, folder: {} } });
+    const data = await response.json() as GraphItem;
+    return idFromItem(data);
+  }
+
+  async function uploadFile(parentId: string, filename: string, content: Uint8Array, mimeType: string): Promise<GraphItem> {
+    const id = parentId ? normalizeOneDriveItemId(parentId) : 'root';
+    const path = id === 'root' ? `/drive/root:/${encodeURIComponent(filename)}:/content` : `/drive/items/${encodeURIComponent(id)}:/${encodeURIComponent(filename)}:/content`;
+    const response = await fetch(`${GRAPH_BASE_URL}${path}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${await auth.getAccessToken()}`,
+        'Content-Type': mimeType,
+      },
+      body: Buffer.from(content),
+    });
+    if (response.status === 401) {
+      await auth.refreshAccessToken();
+      const retry = await fetch(`${GRAPH_BASE_URL}${path}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${await auth.getAccessToken()}`,
+          'Content-Type': mimeType,
+        },
+        body: Buffer.from(content),
+      });
+      if (!retry.ok) throw responseError(retry, 'item');
+      return await retry.json() as GraphItem;
+    }
+    if (!response.ok) throw responseError(response, 'item');
+    return await response.json() as GraphItem;
+  }
+
+  const provider: FolderCapableFileProvider = {
     name: 'onedrive',
-    async upload(_input: FileUploadInput): Promise<FileUploadResult> {
-      void _input
-      throw new OneDriveError('ONEDRIVE_OPERATION_UNSUPPORTED', 'OneDrive upload is not enabled by the current contract.')
+    async upload(input: FileUploadInput): Promise<FileUploadResult> {
+      const parentId = input.external_parent_id || 'root';
+      const id = parentId ? normalizeOneDriveItemId(parentId) : 'root';
+      const safeName = sanitizeFileName(input.name)
+      // Check for existing file with same name
+      const children = await this.list(id);
+      const existing = children.find(c => c.name === safeName && c.kind === 'file');
+      if (existing) {
+        throw new OneDriveError('ONEDRIVE_FILE_CONFLICT', 'File already exists');
+      }
+      let content: Uint8Array;
+      if (input.content instanceof Uint8Array) {
+        content = input.content;
+      } else if (input.content instanceof ArrayBuffer) {
+        content = new Uint8Array(input.content);
+      } else if (typeof Blob !== 'undefined' && input.content instanceof Blob) {
+        content = new Uint8Array(await input.content.arrayBuffer());
+      } else {
+        throw new OneDriveError('ONEDRIVE_UPLOAD_FAILED', 'Unsupported content type');
+      }
+      const item = await uploadFile(id, safeName, content, input.mime_type);
+      const meta = metadata(item);
+      return {
+        asset: {
+          id: meta.id,
+          provider: 'onedrive',
+          external_file_id: meta.id,
+          external_parent_id: parentId,
+          name: meta.name,
+          mime_type: meta.mime_type || input.mime_type,
+          size_bytes: meta.size_bytes || input.size_bytes,
+          checksum_sha256: input.checksum_sha256,
+          entity_type: input.entity_type,
+          entity_id: input.entity_id,
+          status: 'active',
+          created_by: input.created_by,
+          created_at: new Date().toISOString(),
+          provider_metadata: meta.provider_metadata,
+        },
+        view_url: meta.provider_metadata?.web_url as string | undefined,
+      };
     },
     async list(parentId) {
       const id = parentId ? normalizeOneDriveItemId(parentId) : 'root'
@@ -169,6 +276,33 @@ export function createOneDriveFileProvider(options: OneDriveOptions = {}): FileP
     async healthCheck() {
       await json<GraphItem>('/drive/root')
       return { ok: true, provider: 'onedrive' }
+    },
+    async ensureFolder(parentId: string, name: string): Promise<CloudFolderRef> {
+      const id = parentId ? normalizeOneDriveItemId(parentId) : 'root';
+      // list children to check existing
+      const children = await this.list(id);
+      const normalizedName = name.trim().toLowerCase();
+      const matches = children.filter(c => c.name.trim().toLowerCase() === normalizedName && c.kind === 'folder');
+      if (matches.length > 1) throw new OneDriveError('ONEDRIVE_FOLDER_AMBIGUOUS', 'Multiple folders match the same name');
+      if (matches.length === 1) {
+        const folder = matches[0];
+        return { provider: 'onedrive', id: folder.id, name: folder.name, parentId: id };
+      }
+      // create folder
+      try {
+        const createdId = await createFolder(id, name);
+        return { provider: 'onedrive', id: createdId, name, parentId: id };
+      } catch {
+        // re-list on conflict
+        const afterList = await this.list(id);
+        const afterMatches = afterList.filter(c => c.name.trim().toLowerCase() === normalizedName && c.kind === 'folder');
+        if (afterMatches.length === 1) {
+          const folder = afterMatches[0];
+          return { provider: 'onedrive', id: folder.id, name: folder.name, parentId: id };
+        }
+        if (afterMatches.length > 1) throw new OneDriveError('ONEDRIVE_FOLDER_AMBIGUOUS', 'Multiple folders match after creation attempt');
+        throw new OneDriveError('ONEDRIVE_FOLDER_CREATE_FAILED');
+      }
     },
   }
   return provider

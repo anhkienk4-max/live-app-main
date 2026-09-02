@@ -2,10 +2,12 @@ import 'server-only'
 
 import { google } from 'googleapis'
 
-import type { FileProvider, FileProviderMetadata, FileUploadInput, FileUploadResult } from '@/lib/files/fileProvider'
+import type { FileProviderMetadata, FileUploadInput, FileUploadResult } from '@/lib/files/fileProvider'
 import { sanitizeFileName } from '@/lib/files/fileValidation'
 import { createGoogleDriveAuth, GoogleDriveError, type GoogleDriveEnvironment, type GoogleDriveErrorCode } from '@/lib/server/googleDriveAuth'
 import { DRIVE_FOLDER_MIME, normalizeGoogleDriveFileId, resolveGoogleDriveDestination, validateGoogleDriveFolder } from '@/lib/server/googleDriveDestination'
+import { CloudFolderRef } from '@/lib/storage/types'
+import { FolderCapableFileProvider } from '@/lib/storage/folderCapable'
 
 const DEFAULT_RETRY_DELAY_MS = 100
 const MAX_RETRIES = 2
@@ -140,7 +142,7 @@ function toMetadata(file: DriveFile): FileProviderMetadata {
   }
 }
 
-export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}): FileProvider {
+export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}): FolderCapableFileProvider {
   const env = options.env ?? process.env
   const rootFolderId = requiredRootFolderId(env)
   const { auth, mode: authMode } = createGoogleDriveAuth(env)
@@ -238,7 +240,7 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
     throw new GoogleDriveError('GOOGLE_DRIVE_UPLOAD_FAILED')
   }
 
-  const provider: FileProvider = {
+  const provider: FolderCapableFileProvider = {
     name: 'google_drive',
     async upload(input): Promise<FileUploadResult> {
       const content = await contentBuffer(input.content)
@@ -360,6 +362,29 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
         throw new GoogleDriveError('GOOGLE_DRIVE_ROOT_FOLDER_INVALID', 'Service-account mode requires a Shared Drive root folder.')
       }
       return { ok: true, provider: 'google_drive' }
+    },
+    async ensureFolder(parentId: string, name: string): Promise<CloudFolderRef> {
+      const id = normalizeGoogleDriveFileId(parentId)
+      const existingId = await findChildFolder(id, name)
+      if (existingId) {
+        return { provider: 'google_drive', id: existingId, name, parentId: id }
+      }
+      try {
+        const created = await request(
+          () => drive.files.create({
+            requestBody: { name, mimeType: DRIVE_FOLDER_MIME, parents: [id] },
+            fields: 'id,name,mimeType,parents',
+            supportsAllDrives: true,
+          }),
+          'GOOGLE_DRIVE_UPLOAD_FAILED',
+        )
+        const createdId = fileId(created.data, 'GOOGLE_DRIVE_UPLOAD_FAILED')
+        return { provider: 'google_drive', id: createdId, name, parentId: id }
+      } catch (error) {
+        const after = await findChildFolder(id, name)
+        if (after) return { provider: 'google_drive', id: after, name, parentId: id }
+        throw toDriveError(error, 'GOOGLE_DRIVE_UPLOAD_FAILED')
+      }
     },
   }
   return provider
