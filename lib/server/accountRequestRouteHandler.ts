@@ -8,6 +8,7 @@ import {
   type AuthenticatedServerUser,
   type ServerUserResolver,
 } from '@/lib/server/authGuards'
+import { requestIp } from '@/lib/server/apiSecurity'
 import type { AccountRequestService } from '@/lib/server/accountRequestService'
 
 const submissionSchema = z.object({
@@ -49,9 +50,9 @@ function errorResponse(message: string, status: 400 | 503 = 400) {
 
 function defaultService(): AccountRequestService {
   return {
-    async submitAccountRequest(input) {
+    async submitAccountRequest(input, clientIp) {
       const service = await import('@/lib/server/accountRequestService')
-      return service.submitAccountRequest(input)
+      return service.submitAccountRequest(input, clientIp)
     },
     async listAccountRequests(status) {
       const service = await import('@/lib/server/accountRequestService')
@@ -86,12 +87,18 @@ export function createAccountRequestPostHandler(options: HandlerOptions = {}) {
     if (!parsed.success) return errorResponse('Invalid account request payload.')
 
     try {
-      await service.submitAccountRequest(parsed.data)
+      await service.submitAccountRequest(parsed.data, requestIp(request))
       return NextResponse.json(acknowledgement, {
         status: 202,
         headers: { 'Cache-Control': 'no-store' },
       })
-    } catch {
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'ACCOUNT_REQUEST_RATE_LIMITED') {
+        return NextResponse.json({ ok: false, error: { code: 'ACCOUNT_REQUEST_RATE_LIMITED', message: 'Too many requests. Please try again later.' } }, {
+          status: 429,
+          headers: { 'Cache-Control': 'no-store', 'Retry-After': '900' },
+        })
+      }
       return errorResponse('Unable to submit the account request.', 503)
     }
   }

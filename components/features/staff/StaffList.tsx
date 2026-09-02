@@ -19,6 +19,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
 import { StaffFormDialog } from './StaffFormDialog'
+import { AccountRequestPanel } from './AccountRequestPanel'
 import { PageLoadError } from '@/components/ui/page-load-error'
 
 type StaffFilters = {
@@ -247,6 +248,8 @@ export function StaffList() {
         {!showArchived && <Button className="w-full sm:w-auto" onClick={() => { setSelectedStaff(null); setIsFormOpen(true) }} data-testid="add-staff-btn"><UserPlus className="mr-2 h-4 w-4" />{t('addStaff')}</Button>}
       </div>}
     </div>
+
+    {canManage && <AccountRequestPanel />}
 
     <DataTable
       data={visibleStaff}
