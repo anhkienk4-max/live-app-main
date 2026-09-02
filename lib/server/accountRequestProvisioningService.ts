@@ -62,14 +62,16 @@ export interface ProvisioningStaffGateway {
     expectedVersion: number
     authUserId: string
     staffId: string | null
+    actorAuthUserId: string
   }): Promise<AccountRequest>
   complete(input: {
     requestId: string
     expectedVersion: number
     provisioningStatus: 'invited' | 'linked'
+    actorAuthUserId: string
   }): Promise<AccountRequest>
-  fail(input: { requestId: string; expectedVersion: number; errorCode: string }): Promise<AccountRequest>
-  begin(input: { requestId: string; expectedVersion: number; retry: boolean }): Promise<AccountRequest>
+  fail(input: { requestId: string; expectedVersion: number; errorCode: string; actorAuthUserId: string }): Promise<AccountRequest>
+  begin(input: { requestId: string; expectedVersion: number; retry: boolean; actorAuthUserId: string }): Promise<AccountRequest>
 }
 
 export interface AccountRequestProvisioningService {
@@ -78,6 +80,7 @@ export interface AccountRequestProvisioningService {
     expectedVersion: number
     retry: boolean
     redirectTo: string
+    actorAuthUserId: string
   }): Promise<AccountRequest>
 }
 
@@ -168,6 +171,7 @@ async function createDefaultAuthGateway(): Promise<ProvisioningAuthGateway> {
 
 function createDefaultStaffGateway(): ProvisioningStaffGateway {
   let client: SupabaseClient | undefined
+  let privilegedClient: SupabaseClient | undefined
   async function dataClient() {
     if (!client) {
       const { createClient } = await import('@/lib/supabase/server')
@@ -179,8 +183,15 @@ function createDefaultStaffGateway(): ProvisioningStaffGateway {
     const { createSupabaseMasterDataRepository } = await import('@/lib/services/supabaseMasterDataService')
     return createSupabaseMasterDataRepository(await dataClient())
   }
+  async function internalClient() {
+    if (!privilegedClient) {
+      const { createSupabaseAdminClient } = await import('@/lib/server/supabaseAdmin')
+      privilegedClient = createSupabaseAdminClient()
+    }
+    return privilegedClient
+  }
   async function rpc<T>(name: string, args: Record<string, unknown>): Promise<T> {
-    const result = await (await dataClient()).rpc(name, args).maybeSingle()
+    const result = await (await internalClient()).rpc(name, args).maybeSingle()
     if (result.error || !result.data) throw new AccountRequestProvisioningError(errorCode(result.error))
     return result.data as T
   }
@@ -193,32 +204,36 @@ function createDefaultStaffGateway(): ProvisioningStaffGateway {
       return (await repository()).businessUsers.getById(staffId)
     },
     async begin(input) {
-      return rpc<AccountRequest>('begin_account_request_provisioning', {
+      return rpc<AccountRequest>('server_begin_account_request_provisioning', {
         p_request_id: input.requestId,
         p_expected_version: input.expectedVersion,
         p_retry: input.retry,
+        p_actor_auth_user_id: input.actorAuthUserId,
       })
     },
     async ensureIdentity(input) {
-      return rpc<AccountRequest>('ensure_account_request_identity', {
+      return rpc<AccountRequest>('server_ensure_account_request_identity', {
         p_request_id: input.requestId,
         p_expected_version: input.expectedVersion,
         p_auth_user_id: input.authUserId,
         p_staff_id: input.staffId,
+        p_actor_auth_user_id: input.actorAuthUserId,
       })
     },
     async complete(input) {
-      return rpc<AccountRequest>('complete_account_request_provisioning', {
+      return rpc<AccountRequest>('server_complete_account_request_provisioning', {
         p_request_id: input.requestId,
         p_expected_version: input.expectedVersion,
         p_provisioning_status: input.provisioningStatus,
+        p_actor_auth_user_id: input.actorAuthUserId,
       })
     },
     async fail(input) {
-      return rpc<AccountRequest>('fail_account_request_provisioning', {
+      return rpc<AccountRequest>('server_fail_account_request_provisioning', {
         p_request_id: input.requestId,
         p_expected_version: input.expectedVersion,
         p_error_code: input.errorCode,
+        p_actor_auth_user_id: input.actorAuthUserId,
       })
     },
   }
@@ -253,6 +268,7 @@ export function createAccountRequestProvisioningService(
         requestId: input.requestId,
         expectedVersion: input.expectedVersion,
         retry: input.retry,
+        actorAuthUserId: input.actorAuthUserId,
       })
       if (request.provisioning_status === 'invited' || request.provisioning_status === 'linked') {
         return request
@@ -310,6 +326,7 @@ export function createAccountRequestProvisioningService(
           expectedVersion: request.version,
           authUserId: authUser.id,
           staffId: existingStaff?.id ?? null,
+          actorAuthUserId: input.actorAuthUserId,
         })
         identityPrepared = true
         const metadata = {
@@ -322,6 +339,7 @@ export function createAccountRequestProvisioningService(
           requestId: request.id,
           expectedVersion: request.version,
           provisioningStatus: outcome,
+          actorAuthUserId: input.actorAuthUserId,
         })
       } catch (error) {
         const normalized = normalizeError(error, 'ACCOUNT_PROVISIONING_FAILED')
@@ -333,6 +351,7 @@ export function createAccountRequestProvisioningService(
             requestId: request.id,
             expectedVersion: request.version,
             errorCode: normalized.code,
+            actorAuthUserId: input.actorAuthUserId,
           })
         } catch { /* preserve the original safe error */ }
         throw normalized
