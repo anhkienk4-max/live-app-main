@@ -1,4 +1,4 @@
-import type { ScheduleImportRow } from '@/lib/types/database.types'
+import type { ScheduleImportRow, Shift } from '@/lib/types/database.types'
 import type { ImportResult } from '@/lib/utils/excelUtils'
 import { DEFAULT_SHIFT_STAFFING, MAX_SHIFT_CAPACITY } from '@/lib/utils/shiftUtils'
 
@@ -15,6 +15,97 @@ export type ScheduleImportSourcePresence = Partial<Record<
   | PreviewStaffingField
   | PreviewStaffingNameField,
   boolean>>
+
+type ScheduleImportEnrichmentShape = Pick<Shift,
+  | 'campaign_id'
+  | 'studio'
+  | 'title'
+  | 'product_notes'
+  | 'required_host_count'
+  | 'required_support_count'
+  | 'required_technical_count'
+  | 'host_names'
+  | 'assistant_names'
+  | 'technical_names'
+>
+
+const sourceValueProvided = (value: boolean | undefined, fallback: boolean) =>
+  value === undefined ? fallback : value
+
+const normalizedNames = (values: string[] | undefined) =>
+  [...new Set((values ?? []).map(value => String(value).trim()).filter(Boolean))]
+
+const namesEqual = (left: string[] | undefined, right: string[] | undefined) => {
+  const a = normalizedNames(left)
+  const b = normalizedNames(right)
+  return a.length === b.length && a.every((value, index) => value === b[index])
+}
+
+/**
+ * Builds the metadata/count patch that an existing canonical Shift may accept.
+ * Identity fields are intentionally absent: enrichment never moves a Shift.
+ */
+export function buildScheduleImportEnrichmentPatch(
+  existing: ScheduleImportEnrichmentShape,
+  imported: ScheduleImportEnrichmentShape,
+  sourcePresence: ScheduleImportSourcePresence = {},
+): Partial<Pick<Shift,
+  | 'campaign_id'
+  | 'studio'
+  | 'title'
+  | 'product_notes'
+  | 'required_host_count'
+  | 'required_support_count'
+  | 'required_technical_count'
+>> {
+  const patch: Partial<Pick<Shift,
+    | 'campaign_id'
+    | 'studio'
+    | 'title'
+    | 'product_notes'
+    | 'required_host_count'
+    | 'required_support_count'
+    | 'required_technical_count'
+  >> = {}
+  if (sourceValueProvided(sourcePresence.campaign_name, Boolean(imported.campaign_id)) && imported.campaign_id && existing.campaign_id !== imported.campaign_id) {
+    patch.campaign_id = imported.campaign_id
+  }
+  if (sourceValueProvided(sourcePresence.studio, Boolean(imported.studio)) && imported.studio && existing.studio !== imported.studio) {
+    patch.studio = imported.studio
+  }
+  if (sourceValueProvided(sourcePresence.title, Boolean(imported.title)) && imported.title && existing.title !== imported.title) {
+    patch.title = imported.title
+  }
+  if (sourceValueProvided(sourcePresence.notes, Boolean(imported.product_notes)) && imported.product_notes && existing.product_notes !== imported.product_notes) {
+    patch.product_notes = imported.product_notes
+  }
+  const counts = ['required_host_count', 'required_support_count', 'required_technical_count'] as const
+  counts.forEach(field => {
+    if (sourceValueProvided(sourcePresence[field], imported[field] !== undefined) && imported[field] !== undefined && existing[field] !== imported[field]) {
+      patch[field] = imported[field]
+    }
+  })
+  return patch
+}
+
+/**
+ * Matches preview status with confirm-time enrichment semantics. Staffing
+ * labels are handled by their dedicated RPC, so they are included here even
+ * though they do not belong in the metadata update patch above.
+ */
+export function hasScheduleImportEnrichment(
+  existing: ScheduleImportEnrichmentShape,
+  imported: ScheduleImportEnrichmentShape,
+  sourcePresence: ScheduleImportSourcePresence = {},
+): boolean {
+  if (Object.keys(buildScheduleImportEnrichmentPatch(existing, imported, sourcePresence)).length > 0) return true
+  const staffingFields = ['host_names', 'assistant_names', 'technical_names'] as const
+  return staffingFields.some(field =>
+    sourceValueProvided(sourcePresence[field], Boolean(imported[field]?.length))
+    && Boolean(imported[field]?.length)
+    && !namesEqual(existing[field], imported[field]),
+  )
+}
 
 export const previewStaffingFields = [
   'required_host_count',

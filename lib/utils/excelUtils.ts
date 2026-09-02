@@ -21,6 +21,7 @@ import {
 import {
   getCanonicalStaffingField,
   getCanonicalStaffingNameField,
+  hasScheduleImportEnrichment,
   normalizeScheduleImportSourceRow,
   PreviewStaffingField,
   PreviewStaffingNameField,
@@ -44,8 +45,10 @@ export interface ImportPreviewRow {
    * keep the would-be shift draft so reconciliation can enrich the existing shift.
    * This preserves duplicate semantics (validShifts excludes it) while allowing explicit
    * metadata and staffing updates to persist.
-   */
+  */
   duplicateCandidate?: Omit<Shift, 'id' | 'created_at' | 'updated_at'>
+  /** The unique canonical slot used to classify a duplicate as unchanged or enrichment. */
+  duplicateReference?: Omit<Shift, 'id' | 'created_at' | 'updated_at'>
 }
 
 export interface ImportResult {
@@ -104,7 +107,7 @@ const canonicalScheduleHeaders: Record<ScheduleHeaderField, string> = {
 }
 
 const SOURCE_ROW_NUMBER = '__schedule_source_row_number'
-const HEADER_SCAN_LIMIT = 30
+const HEADER_SCAN_LIMIT = 100
 const HEADER_ERROR_MESSAGE = 'Schedule header was not found. Required columns: Date/Ngày, Time/Khung giờ or Start/End, Brand/Thương hiệu, and Platform/Nền tảng.'
 
 const textValue = (value: unknown): string => {
@@ -466,6 +469,7 @@ export function parseScheduleRows(
 
     let shift: Omit<Shift, 'id' | 'created_at' | 'updated_at'> | undefined
     let duplicateCandidate: Omit<Shift, 'id' | 'created_at' | 'updated_at'> | undefined
+    let duplicateReference: Omit<Shift, 'id' | 'created_at' | 'updated_at'> | undefined
     if (brandId && platformId && rowErrors.length === 0) {
       shift = {
         date,
@@ -486,10 +490,14 @@ export function parseScheduleRows(
         product_notes: notes || undefined,
         ...shiftDateTimeFields(date, startTime, endTime)!,
       }
-      const isDuplicate = existingShifts.some(existing => sameShift(existing, shift!)) || candidates.some(existing => sameShift(existing, shift!))
-      if (isDuplicate) {
-        rowWarnings.push('A shift with the same brand, platform, date, and time already exists.')
+      const duplicateMatch = existingShifts.find(existing => sameShift(existing, shift!))
+        ?? candidates.find(existing => sameShift(existing, shift!))
+      if (duplicateMatch) {
+        duplicateReference = duplicateMatch
         duplicateCandidate = shift
+        if (!hasScheduleImportEnrichment(duplicateMatch, shift, sourcePresence)) {
+          rowWarnings.push('A shift with the same brand, platform, date, and time already exists.')
+        }
         shift = undefined
       } else {
         candidates.push(shift)
@@ -521,6 +529,7 @@ export function parseScheduleRows(
       }),
       shift,
       duplicateCandidate,
+      duplicateReference,
     })
   })
 
@@ -554,28 +563,24 @@ const headerErrorResult = (): ImportResult => ({
   warningRows: 0,
 })
 
-const rowsFromWorkbook = (data: ArrayBuffer | string, type: 'array' | 'string') => {
-  const workbook = XLSX.read(data, {
-    type,
-    cellDates: false,
-    raw: type === 'string',
-  })
-  const worksheet = workbook.Sheets[workbook.SheetNames[0]]
-  if (!worksheet) throw new ScheduleImportHeaderError(HEADER_ERROR_MESSAGE)
+const rowsFromWorksheet = (worksheet: XLSX.WorkSheet): {
+  rows: ScheduleSheetRow[]
+  hasScheduleHeader: boolean
+} => {
   const rawRows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, {
     header: 1,
     defval: '',
     blankrows: true,
   })
   const detected = detectScheduleHeaderRow(rawRows)
-  if (!detected) throw new ScheduleImportHeaderError(HEADER_ERROR_MESSAGE)
+  if (!detected) return { rows: [], hasScheduleHeader: false }
 
   const headers = rawRows[detected.index].map((header, columnIndex) => {
     const field = headerFieldFor(header)
     return field ? canonicalScheduleHeaders[field] : String(header ?? '').trim() || `__column_${columnIndex}`
   })
 
-  return rawRows.slice(detected.index + 1).flatMap((values, dataIndex) => {
+  const rows = rawRows.slice(detected.index + 1).flatMap((values, dataIndex) => {
     if (!values.some(value => String(value ?? '').trim() !== '')) return []
     const row: ScheduleSheetRow = { [SOURCE_ROW_NUMBER]: detected.index + dataIndex + 2 }
     headers.forEach((header, columnIndex) => {
@@ -585,6 +590,45 @@ const rowsFromWorkbook = (data: ArrayBuffer | string, type: 'array' | 'string') 
     })
     return [row]
   })
+  return { rows, hasScheduleHeader: true }
+}
+
+const rowsFromWorkbook = (data: ArrayBuffer | string, type: 'array' | 'string') => {
+  const workbook = XLSX.read(data, {
+    type,
+    cellDates: false,
+    raw: type === 'string',
+  })
+  let foundScheduleHeader = false
+  let parsedScheduleSheets = 0
+  let nextGlobalRowNumber = 2
+  const rows: ScheduleSheetRow[] = []
+
+  for (const sheetName of workbook.SheetNames) {
+    const worksheet = workbook.Sheets[sheetName]
+    if (!worksheet) continue
+    const sheetResult = rowsFromWorksheet(worksheet)
+    if (!sheetResult.hasScheduleHeader) continue
+    foundScheduleHeader = true
+    // A sheet containing only a header is intentionally ignored as empty.
+    if (sheetResult.rows.length === 0) continue
+
+    parsedScheduleSheets += 1
+    const preserveSourceRows = parsedScheduleSheets === 1
+    for (const row of sheetResult.rows) {
+      if (!preserveSourceRows) {
+        row[SOURCE_ROW_NUMBER] = nextGlobalRowNumber
+        nextGlobalRowNumber += 1
+      } else {
+        const sourceRowNumber = row[SOURCE_ROW_NUMBER]
+        if (typeof sourceRowNumber === 'number') nextGlobalRowNumber = Math.max(nextGlobalRowNumber, sourceRowNumber + 1)
+      }
+      rows.push(row)
+    }
+  }
+
+  if (!foundScheduleHeader) throw new ScheduleImportHeaderError(HEADER_ERROR_MESSAGE)
+  return rows
 }
 
 const normalizeEntityMaps = (maps: EntityMaps): EntityMaps => ({
