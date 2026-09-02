@@ -14,6 +14,7 @@ export type AccountRequestServiceErrorCode =
   | 'ACCOUNT_REQUEST_REVIEW_STALE'
   | 'ACCOUNT_REQUEST_REJECTION_REASON_REQUIRED'
   | 'ACCOUNT_REQUEST_REJECTION_REASON_TOO_LONG'
+  | 'ACCOUNT_REQUEST_RATE_LIMITED'
   | 'STAFF_ADMIN_REQUIRED'
 
 export class AccountRequestServiceError extends Error {
@@ -27,7 +28,7 @@ export class AccountRequestServiceError extends Error {
 }
 
 export interface AccountRequestService {
-  submitAccountRequest(input: AccountRequestSubmission): Promise<void>
+  submitAccountRequest(input: AccountRequestSubmission, clientIp?: string): Promise<void>
   listAccountRequests(status: AccountRequestStatus | 'all'): Promise<AccountRequest[]>
   getAccountRequest(id: string): Promise<AccountRequest | null>
   approveAccountRequest(requestId: string, expectedVersion: number): Promise<AccountRequest>
@@ -40,6 +41,7 @@ const serviceErrorCodes: AccountRequestServiceErrorCode[] = [
   'ACCOUNT_REQUEST_REVIEW_STALE',
   'ACCOUNT_REQUEST_REJECTION_REASON_REQUIRED',
   'ACCOUNT_REQUEST_REJECTION_REASON_TOO_LONG',
+  'ACCOUNT_REQUEST_RATE_LIMITED',
   'STAFF_ADMIN_REQUIRED',
 ]
 
@@ -52,8 +54,8 @@ function throwIfError(operation: string, error: { message?: string; code?: strin
   if (error) throw new AccountRequestServiceError(`Unable to ${operation}.`, errorCode(error))
 }
 
-export async function submitAccountRequest(input: AccountRequestSubmission): Promise<void> {
-  const supabase = await createClient()
+export async function submitAccountRequest(input: AccountRequestSubmission, clientIp?: string): Promise<void> {
+  const supabase = await createClient({ clientIp })
   const { error } = await supabase.rpc('submit_account_request', {
     p_email: input.email,
     p_full_name: input.full_name,

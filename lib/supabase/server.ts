@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { requireSupabasePublicConfig } from '@/lib/auth/authMode'
 
-export async function createClient() {
+export async function createClient(options: { clientIp?: string } = {}) {
   const { url, anonKey } = requireSupabasePublicConfig()
   const cookieStore = await cookies()
 
@@ -26,6 +26,9 @@ export async function createClient() {
           }
         },
       },
-    }
+      global: options.clientIp
+        ? { headers: { 'x-forwarded-for': options.clientIp } }
+        : undefined,
+    },
   )
 }
