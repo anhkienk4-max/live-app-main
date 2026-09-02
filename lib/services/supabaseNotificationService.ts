@@ -31,6 +31,7 @@ function requestError(operation: string, error: SupabaseErrorShape): Error {
 }
 
 const notificationTypes = new Set<NotificationType>([
+  'account_request_submitted',
   'registration_submitted',
   'shift_assigned',
   'staffing_approval',
