@@ -903,6 +903,7 @@ export interface ScheduleChangeLog {
 
 export type NotificationSeverity = 'info' | 'success' | 'warning' | 'error'
 export type NotificationType =
+  | 'account_request_submitted'
   | 'registration_submitted'
   | 'shift_assigned'
   | 'staffing_approval'
