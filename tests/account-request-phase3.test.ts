@@ -17,6 +17,10 @@ const migration = await readFile(
   new URL('../supabase/migrations/20260902140000_account_request_provisioning.sql', import.meta.url),
   'utf8',
 )
+const boundaryMigration = await readFile(
+  new URL('../supabase/migrations/20260902160000_account_request_provisioning_boundary.sql', import.meta.url),
+  'utf8',
+)
 const phase1Migration = await readFile(
   new URL('../supabase/migrations/20260901190744_account_requests_foundation.sql', import.meta.url),
   'utf8',
@@ -109,7 +113,7 @@ class FakeProvisioningStaff implements ProvisioningStaffGateway {
     return this.users.find(user => user.id === staffId) ?? null
   }
 
-  async begin(input: { requestId: string; expectedVersion: number; retry: boolean }) {
+  async begin(input: { requestId: string; expectedVersion: number; retry: boolean; actorAuthUserId?: string }) {
     this.assertRequest(input.requestId)
     if (this.request.status !== 'approved') throw new AccountRequestProvisioningError('ACCOUNT_REQUEST_NOT_APPROVED')
     if (this.request.provisioning_status === 'invited' || this.request.provisioning_status === 'linked') return this.request
@@ -123,7 +127,7 @@ class FakeProvisioningStaff implements ProvisioningStaffGateway {
     return this.request
   }
 
-  async ensureIdentity(input: { requestId: string; expectedVersion: number; authUserId: string; staffId: string | null }) {
+  async ensureIdentity(input: { requestId: string; expectedVersion: number; authUserId: string; staffId: string | null; actorAuthUserId?: string }) {
     this.assertRequest(input.requestId)
     if (this.request.version !== input.expectedVersion) throw new AccountRequestProvisioningError('ACCOUNT_PROVISIONING_STALE')
     this.ensureCalls += 1
@@ -140,7 +144,7 @@ class FakeProvisioningStaff implements ProvisioningStaffGateway {
     return this.request
   }
 
-  async complete(input: { requestId: string; expectedVersion: number; provisioningStatus: 'invited' | 'linked' }) {
+  async complete(input: { requestId: string; expectedVersion: number; provisioningStatus: 'invited' | 'linked'; actorAuthUserId?: string }) {
     this.assertRequest(input.requestId)
     if (this.request.version !== input.expectedVersion) throw new AccountRequestProvisioningError('ACCOUNT_PROVISIONING_STALE')
     this.completeCalls += 1
@@ -149,7 +153,7 @@ class FakeProvisioningStaff implements ProvisioningStaffGateway {
     return this.request
   }
 
-  async fail(input: { requestId: string; expectedVersion: number; errorCode: string }) {
+  async fail(input: { requestId: string; expectedVersion: number; errorCode: string; actorAuthUserId?: string }) {
     this.assertRequest(input.requestId)
     if (this.request.version !== input.expectedVersion) throw new AccountRequestProvisioningError('ACCOUNT_PROVISIONING_STALE')
     this.failCalls += 1
@@ -207,19 +211,21 @@ async function provision(staff: FakeProvisioningStaff, auth: FakeAuth, input: Pa
     expectedVersion: 0,
     retry: false,
     redirectTo: 'https://example.com/auth/confirm',
+    actorAuthUserId: 'admin-auth',
     ...input,
   })
 }
 
 test('migration exposes Admin-only server-side provisioning RPCs with hardened permissions', () => {
+  const boundarySql = boundaryMigration.replace(/\s+/g, ' ')
   for (const name of ['begin_account_request_provisioning', 'ensure_account_request_identity', 'complete_account_request_provisioning', 'fail_account_request_provisioning']) {
     const body = migration.slice(migration.indexOf(`create or replace function public.${name}`))
     assert.match(body, /language plpgsql[\s\S]*security definer[\s\S]*set search_path = ''/i)
     assert.match(body, /private\.require_staff_admin\(\)/i)
-    assert.match(migration, new RegExp(`revoke all on function public\\.${name}\\(`, 'i'))
-    assert.match(migration, new RegExp(`grant execute on function public\\.${name}\\([^\\n]+\\) to authenticated`, 'i'))
+    assert.match(boundarySql, new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public, anon, authenticated, service_role`, 'i'))
+    assert.doesNotMatch(boundarySql, new RegExp(`grant execute on function public\\.${name}\\([^)]*\\) to (public|anon|authenticated|service_role)`, 'i'))
   }
-  assert.doesNotMatch(migration, /grant execute on function public\.[^(]+\([^\n]+\) to (public|anon)/i)
+  assert.doesNotMatch(boundarySql, /grant execute on function public\.[^(]+\([^)]*\) to (public|anon|authenticated)/i)
 })
 
 test('provision endpoint is Admin-only and rejects browser-controlled identity fields', async () => {
@@ -359,9 +365,9 @@ test('concurrent attempts expose one in-progress claim and perform at most one i
   const staff = new FakeProvisioningStaff()
   const auth = new FakeAuth()
   const service = serviceFor(staff, auth)
-  const first = service.provision({ requestId, expectedVersion: 0, retry: false, redirectTo: 'https://example.com/auth/confirm' })
+  const first = service.provision({ requestId, expectedVersion: 0, retry: false, redirectTo: 'https://example.com/auth/confirm', actorAuthUserId: 'admin-auth' })
   await assert.rejects(
-    () => service.provision({ requestId, expectedVersion: 0, retry: false, redirectTo: 'https://example.com/auth/confirm' }),
+    () => service.provision({ requestId, expectedVersion: 0, retry: false, redirectTo: 'https://example.com/auth/confirm', actorAuthUserId: 'admin-auth' }),
     error => error instanceof AccountRequestProvisioningError && error.code === 'ACCOUNT_PROVISIONING_IN_PROGRESS',
   )
   await first
@@ -373,8 +379,8 @@ test('repeated successful provisioning is terminal-idempotent with no duplicate 
   const staff = new FakeProvisioningStaff()
   const auth = new FakeAuth()
   const service = serviceFor(staff, auth)
-  const first = await service.provision({ requestId, expectedVersion: 0, retry: false, redirectTo: 'https://example.com/auth/confirm' })
-  const second = await service.provision({ requestId, expectedVersion: first.version, retry: false, redirectTo: 'https://example.com/auth/confirm' })
+  const first = await service.provision({ requestId, expectedVersion: 0, retry: false, redirectTo: 'https://example.com/auth/confirm', actorAuthUserId: 'admin-auth' })
+  const second = await service.provision({ requestId, expectedVersion: first.version, retry: false, redirectTo: 'https://example.com/auth/confirm', actorAuthUserId: 'admin-auth' })
   assert.equal(second.provisioning_status, 'invited')
   assert.equal(auth.invites, 1)
   assert.equal(staff.users.length, 1)

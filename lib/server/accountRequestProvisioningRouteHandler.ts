@@ -63,7 +63,7 @@ export function createAccountRequestProvisioningPostHandler(dependencies: {
   const service = dependencies.service || accountRequestProvisioningService
   return async function POST(request: Request, requestId: string) {
     try {
-      await requireRole(request, 'admin', dependencies.resolveUser)
+      const user = await requireRole(request, 'admin', dependencies.resolveUser)
       const parsedId = z.string().uuid().safeParse(requestId)
       if (!parsedId.success) return response('ACCOUNT_PROVISIONING_INVALID_REQUEST', 'Invalid account request id.', 400)
       let body: unknown
@@ -75,6 +75,7 @@ export function createAccountRequestProvisioningPostHandler(dependencies: {
         expectedVersion: parsed.data.expected_version,
         retry: parsed.data.retry,
         redirectTo: new URL('/auth/confirm?next=/reset-password', request.url).toString(),
+        actorAuthUserId: user.id,
       })
       return Response.json({ ok: true, request: result }, {
         headers: { 'Cache-Control': 'no-store' },
