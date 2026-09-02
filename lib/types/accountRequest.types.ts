@@ -9,6 +9,8 @@ export type AccountRequestProvisioningStatus =
 
 export interface AccountRequest {
   id: string
+  /** Server-controlled optimistic concurrency revision. */
+  version: number
   email: string
   full_name: string
   phone: string | null
