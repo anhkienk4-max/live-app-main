@@ -18,6 +18,10 @@ function resolve(specifier, context, nextResolve) {
     const serverJs = resolvePath(projectRoot, 'node_modules/next/server.js')
     if (existsSync(serverJs)) return { url: pathToFileURL(serverJs).href, shortCircuit: true }
   }
+  if (specifier === 'next/headers') {
+    const headersJs = resolvePath(projectRoot, 'node_modules/next/headers.js')
+    if (existsSync(headersJs)) return { url: pathToFileURL(headersJs).href, shortCircuit: true }
+  }
   let candidate
   if (specifier.startsWith('@/')) {
     candidate = resolvePath(projectRoot, specifier.slice(2))
