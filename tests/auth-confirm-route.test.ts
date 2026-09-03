@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
-import { GET, createAuthConfirmGetHandler } from '../app/auth/confirm/route.ts'
+import { GET } from '../app/auth/confirm/route.ts'
+import { createAuthConfirmGetHandler } from '../lib/auth/authConfirm.ts'
 import { GET as callbackGET } from '../app/api/auth/callback/route.ts'
 
 function locationOf(response: Response) {
@@ -111,9 +112,12 @@ test('Supabase verification failures redirect without leaking token details', as
 
 test('confirmation route uses the server Supabase client for cookie-backed sessions', async () => {
   const source = await readFile(new URL('../app/auth/confirm/route.ts', import.meta.url), 'utf8')
-  assert.match(source, /@\/lib\/supabase\/server/)
-  assert.doesNotMatch(source, /@\/lib\/supabase\/client/)
-  assert.match(source, /verifyOtp\(/)
+  const implementation = await readFile(new URL('../lib/auth/authConfirm.ts', import.meta.url), 'utf8')
+  assert.match(implementation, /@\/lib\/supabase\/server/)
+  assert.doesNotMatch(implementation, /@\/lib\/supabase\/client/)
+  assert.match(implementation, /verifyOtp\(/)
+  assert.match(source, /createAuthConfirmGetHandler/)
+  assert.doesNotMatch(source, /export\s+(?:async\s+)?function\s+createAuthConfirmGetHandler/)
 })
 
 test('existing code callback remains an independent auth boundary', async () => {
