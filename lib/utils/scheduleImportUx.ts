@@ -60,6 +60,22 @@ export function batchPresentationCounts(rows: ImportBatchRow[]): ImportPresentat
   return counts
 }
 
+/** Rows with either a clean import or an advisory warning are persisted. */
+export function isPersistedImportRow(row: ImportBatchRow): boolean {
+  return row.status === 'imported' || row.status === 'warning'
+}
+
+/** These outcomes did not create or persist a shift. */
+export function isNotImportedResultRow(row: ImportBatchRow): boolean {
+  return row.status === 'duplicate_skipped'
+    || row.status === 'validation_failed'
+    || row.status === 'retryable'
+}
+
+export function persistedImportCount(counts: ImportPresentationCounts): number {
+  return counts.imported + counts.warning
+}
+
 export function presentationStatusIsException(status: ImportResultPresentationStatus): boolean {
   return status === 'warning' || status === 'invalid' || status === 'duplicate' || status === 'retryable'
 }

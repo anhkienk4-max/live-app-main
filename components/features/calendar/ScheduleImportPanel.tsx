@@ -58,6 +58,8 @@ import {
 } from '@/lib/utils/scheduleImportBatch'
 import {
   batchPresentationCounts,
+  isNotImportedResultRow,
+  persistedImportCount,
   previewPresentationCounts,
   previewPresentationStatus,
   type ImportPresentationCounts,
@@ -376,7 +378,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       const attention = finalCounts.warning + finalCounts.invalid + finalCounts.duplicate + finalCounts.retryable
       toast({
         title: t('success'),
-        description: attention > 0 ? t('importPartialSuccess', { imported: finalCounts.imported, attention }) : t('importCompleted'),
+        description: attention > 0 ? t('importPartialSuccess', { imported: persistedImportCount(finalCounts), attention }) : t('importCompleted'),
         variant: 'success',
       })
       setResult(null)
@@ -612,7 +614,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
 
 type ImportTranslate = (key: TranslationKey, variables?: Record<string, string | number>) => string
 
-function ImportSummary({ counts, t }: { counts: ImportPresentationCounts; t: ImportTranslate }) {
+function ImportSummary({ counts, t, persistedCount }: { counts: ImportPresentationCounts; t: ImportTranslate; persistedCount?: number }) {
   const items: Array<[TranslationKey, number, string]> = [
     ['readyToImport', counts.ready, 'text-emerald-700'],
     ['importWarning', counts.warning, 'text-amber-700'],
@@ -622,12 +624,14 @@ function ImportSummary({ counts, t }: { counts: ImportPresentationCounts; t: Imp
   ]
   return <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs" data-testid="schedule-import-summary" aria-label={t('importSummary')}>
     <span className="font-semibold text-foreground">{t('totalRows')}: {counts.total}</span>
+    {persistedCount !== undefined && <span className="font-semibold text-emerald-700" data-testid="schedule-import-persisted-count">{t('importedResult')}: {persistedCount}</span>}
     {items.map(([label, count, color]) => <span key={label} className={color}>{t(label)}: {count}</span>)}
   </div>
 }
 
 function ImportCompletionCard({ completed, counts, t }: { completed: CompletedImport; counts: ImportPresentationCounts; t: ImportTranslate }) {
-  const attentionRows = completed.rows.filter(row => row.status !== 'imported')
+  const warningRows = completed.rows.filter(row => row.status === 'warning')
+  const notImportedRows = completed.rows.filter(isNotImportedResultRow)
   const statusForRow = (row: ImportBatchRow): ImportResultPresentationStatus => {
     if (row.status === 'imported') return 'imported'
     if (row.status === 'warning') return 'warning'
@@ -639,10 +643,11 @@ function ImportCompletionCard({ completed, counts, t }: { completed: CompletedIm
   return <Card data-testid="schedule-import-result" role="status" aria-live="polite" className="border-emerald-200">
     <CardHeader><CardTitle className="flex flex-wrap items-center justify-between gap-2"><span>{t('importCompleted')}</span><Badge variant="outline">{completed.source.name}</Badge></CardTitle></CardHeader>
     <CardContent className="space-y-3">
-      <ImportSummary counts={counts} t={t} />
-      {counts.imported === 0 && <p className="text-sm text-muted-foreground">{t('importNothingPersisted')}</p>}
+      <ImportSummary counts={counts} t={t} persistedCount={persistedImportCount(counts)} />
+      {persistedImportCount(counts) === 0 && <p className="text-sm text-muted-foreground">{t('importNothingPersisted')}</p>}
       {counts.retryable > 0 && <p className="text-sm text-orange-700">{t('retryableRecovery')} {t('retryUnavailable')}</p>}
-      {attentionRows.length > 0 && <details open className="rounded-md border border-amber-200 bg-amber-50/50 p-3"><summary className="cursor-pointer text-sm font-medium">{t('importRowsNotCreated')}: {attentionRows.length}</summary><div className="mt-2 space-y-2">{attentionRows.map(row => <div key={row.id} className="rounded border bg-background p-2 text-sm"><div className="flex items-center justify-between gap-2"><span>{t('importSourceRow')} {row.source_row_number}</span><Badge variant="outline" className={rowStatusClass(statusForRow(row))}>{importStatusLabel(statusForRow(row), t)}</Badge></div>{row.failure_code && <p className="mt-1 text-xs text-muted-foreground">{statusForRow(row) === 'retryable' ? t('retryableRecovery') : statusForRow(row) === 'invalid' ? t('importValidationDetails') : t('notImported')}</p>}{row.validation_issues.map(issue => <p key={issue} className="mt-1 text-xs text-red-700">{issue}</p>)}</div>)}</div></details>}
+      {warningRows.length > 0 && <details open className="rounded-md border border-amber-200 bg-amber-50/50 p-3" data-testid="schedule-import-warning-rows"><summary className="cursor-pointer text-sm font-medium">{t('importRowsImportedWithWarnings')}: {warningRows.length}</summary><p className="mt-1 text-xs text-muted-foreground">{t('importWarningPersistedHelp')}</p><div className="mt-2 space-y-2">{warningRows.map(row => <div key={row.id} className="rounded border bg-background p-2 text-sm"><div className="flex items-center justify-between gap-2"><span>{t('importSourceRow')} {row.source_row_number}</span><Badge variant="outline" className={rowStatusClass(statusForRow(row))}>{importStatusLabel(statusForRow(row), t)}</Badge></div>{row.normalized_values.warnings.map(issue => <p key={issue} className="mt-1 text-xs text-amber-800">{issue}</p>)}</div>)}</div></details>}
+      {notImportedRows.length > 0 && <details open className="rounded-md border border-amber-200 bg-amber-50/50 p-3" data-testid="schedule-import-not-imported-rows"><summary className="cursor-pointer text-sm font-medium">{t('importRowsNotCreated')}: {notImportedRows.length}</summary><div className="mt-2 space-y-2">{notImportedRows.map(row => <div key={row.id} className="rounded border bg-background p-2 text-sm"><div className="flex items-center justify-between gap-2"><span>{t('importSourceRow')} {row.source_row_number}</span><Badge variant="outline" className={rowStatusClass(statusForRow(row))}>{importStatusLabel(statusForRow(row), t)}</Badge></div>{row.failure_code && <p className="mt-1 text-xs text-muted-foreground">{statusForRow(row) === 'retryable' ? t('retryableRecovery') : statusForRow(row) === 'invalid' ? t('importValidationDetails') : t('notImported')}</p>}{row.validation_issues.map(issue => <p key={issue} className="mt-1 text-xs text-red-700">{issue}</p>)}</div>)}</div></details>}
     </CardContent>
   </Card>
 }
