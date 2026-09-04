@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "record_type": "data-contracts",
+  "contracts": [
+    {"id": "DATA-USER", "entity": "User", "source": "lib/types/database.types.ts", "fields": ["role", "system_permission", "operational_roles", "account_status", "status"]},
+    {"id": "DATA-PERSONAL-SETTINGS", "entity": "PersonalSettings", "source": "lib/types/database.types.ts", "fields": ["preferred_roles", "language", "timezone", "default_calendar_view"]},
+    {"id": "DATA-SHIFT", "entity": "Shift", "source": "lib/types/database.types.ts", "fields": ["date", "start_time", "end_time", "brand_id", "platform_id", "campaign_id", "studio"]},
+    {"id": "DATA-REGISTRATION", "entity": "ShiftRegistration", "source": "lib/types/database.types.ts", "fields": ["shift_id", "user_id", "operational_role", "status", "source", "imported_name"]},
+    {"id": "DATA-IMPORT", "entity": "ScheduleImportBatch/Row", "source": "lib/types/database.types.ts", "fields": ["source", "status", "outcome", "source_row", "shift_id"]},
+    {"id": "DATA-REPORT", "entity": "Report", "source": "lib/types/database.types.ts", "fields": ["status", "metrics", "revisions", "images"]},
+    {"id": "DATA-SWAP", "entity": "SwapRequest", "source": "lib/types/database.types.ts", "fields": ["mode", "status", "source_shift_id", "target_shift_id", "version"]},
+    {"id": "DATA-NOTIFICATION", "entity": "AppNotification", "source": "lib/types/database.types.ts", "fields": ["type", "severity", "user_id", "read_at", "action_url"]},
+    {"id": "DATA-AUDIT", "entity": "AuditLog", "source": "lib/types/database.types.ts", "fields": ["actor_business_user_id", "module", "action", "before_data", "after_data", "status", "correlation_id"]},
+    {"id": "DATA-MASTER-DATA", "entity": "Brand/Platform/Campaign", "source": "lib/types/database.types.ts", "fields": ["id", "name", "status", "created_at", "updated_at"]}
+  ],
+  "invariants": [
+    {"id": "DATA-INV-001", "expression": "preferred_roles != operational_roles", "source_rule": "BR-001"},
+    {"id": "DATA-INV-002", "expression": "confirmed_assignment > imported_staffing_label > unassigned", "source_rule": "BR-005"}
+  ]
+}

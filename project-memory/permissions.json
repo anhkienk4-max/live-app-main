@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "record_type": "permissions",
+  "source": "lib/permissions.ts",
+  "role_mapping": {"admin": "admin", "leader": "leader", "staff": "member"},
+  "roles": [
+    {"id": "member", "permissions": ["shifts.view_assigned", "shifts.view_open", "shifts.register", "shifts.cancel_registration", "reports.submit", "swaps.request", "profile.edit_own", "settings.member"]},
+    {"id": "leader", "permissions": ["shifts.view_assigned", "shifts.view_open", "shifts.register", "shifts.cancel_registration", "reports.submit", "swaps.request", "profile.edit_own", "settings.member", "shifts.approve_registration", "shifts.assign_staff", "shifts.edit", "shifts.lock", "shifts.import", "shifts.export", "reports.review", "reports.export", "swaps.approve", "swaps.export", "settings.leader", "campaigns.edit_operational", "audit.view_team"]},
+    {"id": "admin", "permissions": ["shifts.view_assigned", "shifts.view_open", "shifts.register", "shifts.cancel_registration", "reports.submit", "swaps.request", "profile.edit_own", "settings.member", "shifts.approve_registration", "shifts.assign_staff", "shifts.edit", "shifts.lock", "shifts.import", "shifts.export", "reports.review", "reports.export", "swaps.approve", "swaps.export", "settings.leader", "campaigns.edit_operational", "audit.view_team", "staff.manage", "brands.manage", "platforms.manage", "campaigns.manage", "settings.admin", "permissions.manage", "audit.view", "audit.restore", "audit.review", "data.force_delete", "shifts.delete"]}
+  ],
+  "authority": {"frontend_visibility": "not_authorization", "backend_or_rpc_permission": "authoritative"}
+}

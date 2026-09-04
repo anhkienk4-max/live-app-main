@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "record_type": "business-rules",
+  "rules": [
+    {"id": "BR-001", "name": "Preferred and operational roles are distinct", "expression": "preferred_roles != operational_roles", "status": "CANONICAL", "source": "GL-03 requirement"},
+    {"id": "BR-002", "name": "Authoritative persistence is required for mutation success", "expression": "server_mutation_success requires authoritative_persistence", "status": "CANONICAL", "source": "GL-03 requirement"},
+    {"id": "BR-003", "name": "Same-dimension multi-select uses OR", "expression": "same_filter_dimension.multi_select = OR", "status": "CANONICAL", "source": "GL-03 requirement"},
+    {"id": "BR-004", "name": "Different filter dimensions use AND", "expression": "different_filter_dimensions = AND", "status": "CANONICAL", "source": "GL-03 requirement"},
+    {"id": "BR-005", "name": "Staffing display precedence", "expression": "confirmed_assignment > imported_staffing_label > unassigned", "precedence": ["confirmed assignment", "imported staffing label", "unassigned"], "status": "CANONICAL", "source": "GL-03 requirement"},
+    {"id": "BR-006", "name": "Frontend hiding is not authorization", "expression": "frontend_hiding != authorization", "status": "CANONICAL", "source": "GL-03 requirement"},
+    {"id": "BR-007", "name": "Backend and RPC permission is authoritative", "expression": "backend_or_rpc_permission = authoritative", "status": "CANONICAL", "source": "GL-03 requirement"}
+  ]
+}

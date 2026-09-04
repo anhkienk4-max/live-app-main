@@ -68,3 +68,23 @@ After `/continue`, resume, or auto-compaction:
 3. Compare live state against session summary
 4. Report conflicts before proceeding with any prior TODO
 <!-- END:session-recovery-protocol -->
+
+## Project Memory V1 Protocol
+
+Project memory is shared by Gemini, Codex Antigravity, Codex VS Code, Codex CLI, and OpenCode.
+Machine-readable records under `project-memory/` are canonical. Session context, chat history,
+and generated Markdown are projections or navigation aids and are never the source of truth.
+
+### Before Task
+
+- Verify live Git state: status, branch, recent log, `HEAD`, and `origin/main`.
+- Read the relevant records under `project-memory/` before making decisions.
+- Resolve conflicts in favor of live Git, then canonical project-memory JSON, then generated views.
+
+### After Task
+
+- Run the relevant tests and record objective evidence.
+- Run `npm run memory:validate` and inspect the generated projection.
+- Run `npm run memory:sync` when objective repository facts changed.
+- Update canonical memory records only for verified facts or explicitly decided business rules.
+- Validate that no business decision was invented or changed by automation.

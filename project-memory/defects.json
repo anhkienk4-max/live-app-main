@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "record_type": "defects",
+  "defects": [
+    {"id": "RW-001", "title": "Calendar operational-role row filtering", "status": "FIXED", "resolution": "merged PR #20", "source": "GL-03 requirement"},
+    {"id": "RW-002", "title": "Global categorical filters are single-select", "status": "OPEN", "priority": "UNSPECIFIED", "source": "GL-03 requirement"},
+    {"id": "RW-003", "title": "Imported Excel staffing display inconsistent across Shift surfaces", "status": "OPEN", "priority": "P1", "note": "Implementation currently happening on another branch", "source": "GL-03 requirement"},
+    {"id": "RW-004", "title": "Admin self operational_roles false-success", "status": "OPEN", "priority": "P1", "source": "GL-03 requirement"}
+  ]
+}

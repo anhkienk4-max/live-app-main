@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "record_type": "ui-contracts",
+  "contracts": [
+    {"id": "UI-CALENDAR", "surface": "Calendar", "route": "/calendar", "implementation": "app/(dashboard)/calendar/page.tsx", "contract": "Calendar is the operational shift browsing surface."},
+    {"id": "UI-STAFFING", "surface": "Staffing", "route": "/staff", "implementation": "app/(dashboard)/staff/page.tsx", "contract": "Staffing is the staff and registration management surface."},
+    {"id": "UI-SWAP", "surface": "Swap", "route": "/swaps", "implementation": "app/(dashboard)/swaps/page.tsx", "contract": "Swap requests are exposed as a dedicated operational surface."},
+    {"id": "UI-REPORTS", "surface": "Reports", "route": "/reports", "implementation": "app/(dashboard)/reports/page.tsx", "contract": "Reports expose post-live reporting and review workflows."},
+    {"id": "UI-LIVE", "surface": "Live Monitoring", "route": "/live", "implementation": "app/(dashboard)/live/page.tsx", "contract": "Live monitoring exposes session update workflows."},
+    {"id": "UI-MASTER-DATA", "surface": "Brands/Platforms/Campaigns", "route": "/brands, /platforms, /campaigns", "implementation": "app/(dashboard)", "contract": "Master data has separate navigable surfaces."},
+    {"id": "UI-ANALYTICS", "surface": "Analytics", "route": "/analytics", "implementation": "app/(dashboard)/analytics/page.tsx", "contract": "Analytics exposes operational metrics and insights."},
+    {"id": "UI-AUDIT", "surface": "Audit", "route": "/audit", "implementation": "app/(dashboard)/audit/page.tsx", "contract": "Audit history is a dedicated review surface."},
+    {"id": "UI-SETTINGS-PROFILE", "surface": "Settings/Profile", "route": "/settings, /profile", "implementation": "app/(dashboard)", "contract": "Settings and profile are separate account surfaces."}
+  ]
+}

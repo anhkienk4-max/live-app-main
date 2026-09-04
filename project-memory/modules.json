@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "record_type": "modules",
+  "maturity_states": ["IMPLEMENTED", "UNIT_VERIFIED", "INTEGRATION_VERIFIED", "E2E_VERIFIED", "UAT_VERIFIED", "RELEASED"],
+  "modules": [
+    {"id": "F1", "name": "Calendar", "maturity": "IMPLEMENTED", "evidence": ["app/(dashboard)/calendar/page.tsx", "components/features/calendar"]},
+    {"id": "F2", "name": "Staffing", "maturity": "IMPLEMENTED", "evidence": ["app/(dashboard)/staff/page.tsx", "components/features/calendar/ShiftRegistrationBoard.tsx", "lib/services/supabaseShiftRegistrationService.ts"]},
+    {"id": "F3", "name": "Swap", "maturity": "IMPLEMENTED", "evidence": ["app/(dashboard)/swaps/page.tsx", "components/features/swaps", "lib/services/supabaseSwapRequestService.ts"]},
+    {"id": "F4", "name": "Reports", "maturity": "IMPLEMENTED", "evidence": ["app/(dashboard)/reports/page.tsx", "components/features/reports", "lib/services/supabaseReportService.ts"]},
+    {"id": "F5", "name": "Live Monitoring", "maturity": "IMPLEMENTED", "evidence": ["app/(dashboard)/live/page.tsx", "components/features/live"]},
+    {"id": "F6", "name": "Import", "maturity": "IMPLEMENTED", "evidence": ["components/features/calendar/ScheduleImportPanel.tsx", "lib/utils/excelUtils.ts", "lib/services/supabaseScheduleImportService.ts"]},
+    {"id": "F7", "name": "Staff/Auth", "maturity": "IMPLEMENTED", "evidence": ["app/login/page.tsx", "app/register/page.tsx", "app/(dashboard)/staff/page.tsx", "lib/auth"]},
+    {"id": "F8", "name": "Notifications", "maturity": "IMPLEMENTED", "evidence": ["app/(dashboard)/notifications/page.tsx", "components/features/notifications", "lib/services/supabaseNotificationService.ts"]},
+    {"id": "F9", "name": "Brands/Platforms/Campaigns", "maturity": "IMPLEMENTED", "evidence": ["app/(dashboard)/brands/page.tsx", "app/(dashboard)/platforms/page.tsx", "app/(dashboard)/campaigns/page.tsx"]},
+    {"id": "F10", "name": "Analytics", "maturity": "IMPLEMENTED", "evidence": ["app/(dashboard)/analytics/page.tsx", "components/features/analytics"]},
+    {"id": "F11", "name": "Audit", "maturity": "IMPLEMENTED", "evidence": ["app/(dashboard)/audit/page.tsx", "components/features/audit", "lib/services/supabaseAuditService.ts"]},
+    {"id": "SETTINGS_PROFILE", "name": "Settings/Profile", "maturity": "IMPLEMENTED", "evidence": ["app/(dashboard)/settings/page.tsx", "app/(dashboard)/profile/page.tsx"]},
+    {"id": "EXTERNAL_PROVIDERS", "name": "External Providers", "maturity": "IMPLEMENTED", "evidence": ["lib/server/googleDriveAuth.ts", "lib/server/oneDriveAuth.ts", "lib/files/fileProvider.ts"]}
+  ]
+}

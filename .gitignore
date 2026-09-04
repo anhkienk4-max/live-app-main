@@ -77,5 +77,6 @@ Thumbs.db
 .upm/
 
 .vercel
+.serena/
 .env*
 !.env.example

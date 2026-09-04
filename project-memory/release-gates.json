@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "record_type": "release-gates",
+  "gates": [
+    {"id": "GATE-MEMORY-JSON", "name": "Canonical JSON format and consistency", "status": "REQUIRED", "command": "npm run memory:validate", "evidence": ["project-memory/*.json"]},
+    {"id": "GATE-MEMORY-GENERATED", "name": "Generated projection is synchronized", "status": "REQUIRED", "command": "npm run memory:sync", "evidence": ["project-memory/generated/project-memory.md", "PROJECT_STATE.md"]},
+    {"id": "GATE-TESTS", "name": "Relevant test suite", "status": "REQUIRED", "command": "project-specific test command", "evidence": ["tests/"]},
+    {"id": "GATE-TYPECHECK", "name": "Typecheck", "status": "REQUIRED", "command": "npm run type-check", "evidence": ["tsconfig.json"]},
+    {"id": "GATE-LINT", "name": "Lint", "status": "REQUIRED", "command": "npm run lint", "evidence": ["eslint.config.mjs"]},
+    {"id": "GATE-BUILD", "name": "Build when tooling affects build", "status": "CONDITIONAL", "command": "npm run build", "evidence": ["package.json"]},
+    {"id": "GATE-BUSINESS-SCOPE", "name": "No business runtime source changes", "status": "REQUIRED", "evidence": ["git diff --name-only origin/main...HEAD"]},
+    {"id": "GATE-G1", "name": "Honest technical baseline", "status": "NOT_YET_CLOSED", "evidence": ["project-memory/evidence/"]},
+    {"id": "GATE-PRODUCTION-UAT", "name": "Production UAT", "status": "PAUSED", "evidence": ["project-memory/evidence/"]},
+    {"id": "GATE-GO-LIVE", "name": "Go-live authorization", "status": "NO", "evidence": ["project-memory/release-gates.json"]}
+  ],
+  "release_policy": "No module is RELEASED without explicit verification evidence. Implementation alone is not completion."
+}

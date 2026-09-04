@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "record_type": "flows",
+  "flows": [
+    {"id": "FLOW-CALENDAR", "name": "Calendar and shift operations", "maturity": "IMPLEMENTED", "entrypoints": ["app/(dashboard)/calendar/page.tsx", "components/features/calendar"]},
+    {"id": "FLOW-STAFFING", "name": "Staffing registration and approval", "maturity": "IMPLEMENTED", "entrypoints": ["components/features/calendar/ShiftRegistrationBoard.tsx", "lib/services/supabaseShiftRegistrationService.ts"]},
+    {"id": "FLOW-SWAP", "name": "Shift swap request lifecycle", "maturity": "IMPLEMENTED", "entrypoints": ["app/(dashboard)/swaps/page.tsx", "lib/services/supabaseSwapRequestService.ts"]},
+    {"id": "FLOW-REPORTS", "name": "Report submission, review, and OCR", "maturity": "IMPLEMENTED", "entrypoints": ["app/(dashboard)/reports/page.tsx", "app/api/ocr/route.ts", "app/api/ocr/vision/route.ts"]},
+    {"id": "FLOW-LIVE", "name": "Live monitoring updates", "maturity": "IMPLEMENTED", "entrypoints": ["app/(dashboard)/live/page.tsx", "components/features/live"]},
+    {"id": "FLOW-IMPORT", "name": "Schedule import and reconciliation", "maturity": "IMPLEMENTED", "entrypoints": ["components/features/calendar/ScheduleImportPanel.tsx", "lib/services/supabaseScheduleImportService.ts"]},
+    {"id": "FLOW-AUTH", "name": "Authentication and account lifecycle", "maturity": "IMPLEMENTED", "entrypoints": ["app/login/page.tsx", "app/register/page.tsx", "app/api/account-requests/route.ts"]},
+    {"id": "FLOW-NOTIFICATIONS", "name": "Notification delivery and read state", "maturity": "IMPLEMENTED", "entrypoints": ["app/(dashboard)/notifications/page.tsx", "lib/services/supabaseNotificationService.ts"]},
+    {"id": "FLOW-MASTER-DATA", "name": "Brands, platforms, and campaigns", "maturity": "IMPLEMENTED", "entrypoints": ["app/(dashboard)/brands/page.tsx", "app/(dashboard)/platforms/page.tsx", "app/(dashboard)/campaigns/page.tsx"]},
+    {"id": "FLOW-ANALYTICS", "name": "Analytics and operational metrics", "maturity": "IMPLEMENTED", "entrypoints": ["app/(dashboard)/analytics/page.tsx", "components/features/analytics"]},
+    {"id": "FLOW-AUDIT", "name": "Audit history and review", "maturity": "IMPLEMENTED", "entrypoints": ["app/(dashboard)/audit/page.tsx", "lib/services/supabaseAuditService.ts"]}
+  ]
+}

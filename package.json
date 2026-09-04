@@ -6,7 +6,11 @@
     "dev": "node --import ./tests/typescript-alias-loader.mjs scripts/check-runtime-environment.ts && next dev",
     "build": "node --import ./tests/typescript-alias-loader.mjs scripts/check-runtime-environment.ts && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "type-check": "corepack pnpm exec tsc --noEmit --incremental false",
+    "memory:validate": "node scripts/memory-validate.mjs",
+    "memory:sync": "node scripts/memory-sync.mjs",
+    "memory:report": "node scripts/memory-report.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
