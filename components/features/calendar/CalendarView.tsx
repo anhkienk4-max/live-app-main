@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import {
   ChevronLeft,
@@ -63,14 +64,14 @@ import {
 } from '@/lib/utils/calendarFilters'
 
 const DEFAULT_CALENDAR_FILTERS: CalendarFilterState = {
-  brand: 'all',
-  platform: 'all',
-  campaign: 'all',
-  studio: 'all',
-  status: 'all',
-  host: 'all',
-  support: 'all',
-  technical: 'all',
+  brandIds: [],
+  platformIds: [],
+  campaignIds: [],
+  studios: [],
+  statuses: [],
+  hostIds: [],
+  supportIds: [],
+  technicalIds: [],
   time: 'all',
   customFrom: '',
   customTo: '',
@@ -214,16 +215,15 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   }
 
   const activeFilterCount = [
-    filters.brand,
-    filters.platform,
-    filters.campaign,
-    filters.studio,
-    filters.status,
-    filters.host,
-    filters.support,
-    filters.technical,
-    filters.time,
-  ].filter(value => value !== 'all').length + (searchTerm ? 1 : 0)
+    filters.brandIds,
+    filters.platformIds,
+    filters.campaignIds,
+    filters.studios,
+    filters.statuses,
+    filters.hostIds,
+    filters.supportIds,
+    filters.technicalIds,
+  ].reduce((count, values) => count + values.length, 0) + (filters.time !== 'all' ? 1 : 0) + (searchTerm ? 1 : 0)
   const hasActiveFilters = activeFilterCount > 0
 
   const toggleSelectShift = (shiftId: string) => {
@@ -424,37 +424,9 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
 
           {showFilters && (
             <div className="grid grid-cols-1 gap-4 border-t pt-4 sm:grid-cols-2 lg:grid-cols-3">
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">{t('brand')}</label>
-                <Select value={filters.brand} onValueChange={(value) => setFilters({ ...filters, brand: value })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[50vh] overflow-y-auto">
-                    <SelectItem value="all">{t('all')} {t('brands')}</SelectItem>
-                    {brands.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">{t('platform')}</label>
-                <Select value={filters.platform} onValueChange={(value) => setFilters({ ...filters, platform: value })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[50vh] overflow-y-auto">
-                    <SelectItem value="all">{t('all')} {t('platforms')}</SelectItem>
-                    {platforms.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">{t('campaign')}</label>
-                <Select value={filters.campaign} onValueChange={(value) => setFilters({ ...filters, campaign: value })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent className="max-h-[50vh] overflow-y-auto"><SelectItem value="all">{t('all')} {t('campaigns')}</SelectItem>{campaigns.map(campaign => <SelectItem key={campaign.id} value={campaign.id}>{campaign.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
+               <MultiSelectFilter label={t('brand')} value={filters.brandIds} onChange={brandIds => setFilters({ ...filters, brandIds })} options={brands.map(brand => ({ value: brand.id, label: brand.name }))} placeholder={`${t('all')} ${t('brands')}`} testId="calendar-brand-filter" />
+               <MultiSelectFilter label={t('platform')} value={filters.platformIds} onChange={platformIds => setFilters({ ...filters, platformIds })} options={platforms.map(platform => ({ value: platform.id, label: platform.name }))} placeholder={`${t('all')} ${t('platforms')}`} testId="calendar-platform-filter" />
+               <MultiSelectFilter label={t('campaign')} value={filters.campaignIds} onChange={campaignIds => setFilters({ ...filters, campaignIds })} options={campaigns.map(campaign => ({ value: campaign.id, label: campaign.name }))} placeholder={`${t('all')} ${t('campaigns')}`} testId="calendar-campaign-filter" />
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">{t('time')}</label>
                 <Select value={filters.time} onValueChange={(value) => setFilters({ ...filters, time: value as CalendarFilterState['time'] })}>
@@ -479,59 +451,11 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                   <Input type="date" value={filters.customTo} onChange={(event) => setFilters({ ...filters, customTo: event.target.value })} />
                 </div>
               </>}
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">{t('studio')}</label>
-                <Select value={filters.studio} onValueChange={(value) => setFilters({ ...filters, studio: value })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent className="max-h-[50vh] overflow-y-auto">
-                    <SelectItem value="all">{timeFilterLabels.studios}</SelectItem>
-                    {studioOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.value === UNASSIGNED_STUDIO_FILTER ? timeFilterLabels.unassigned : option.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">{t('status')}</label>
-                <Select value={filters.status} onValueChange={(value) => setFilters({ ...filters, status: value })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[50vh] overflow-y-auto">
-                    <SelectItem value="all">{t('all')}</SelectItem>
-                    <SelectItem value="scheduled">{t('scheduled')}</SelectItem>
-                    <SelectItem value="preparing">{t('preparing')}</SelectItem>
-                    <SelectItem value="live">{t('liveStatus')}</SelectItem>
-                    <SelectItem value="paused">{t('paused')}</SelectItem>
-                    <SelectItem value="completed">{t('completed')}</SelectItem>
-                    <SelectItem value="cancelled">{t('cancelled')}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">{t('host')}</label>
-                <Select value={filters.host} onValueChange={(value) => setFilters({ ...filters, host: value })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[50vh] overflow-y-auto">
-                    <SelectItem value="all">{t('all')} {t('host')}</SelectItem>
-                    {users.filter(u => u.operational_roles?.includes('host') || u.department === 'Live Host').map(u => <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">{t('support')}</label>
-                <Select value={filters.support} onValueChange={(value) => setFilters({ ...filters, support: value })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent className="max-h-[50vh] overflow-y-auto"><SelectItem value="all">{t('all')} {t('support')}</SelectItem>{users.filter(u => u.operational_roles?.includes('support') || u.department === 'Live Support').map(u => <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">{t('technical')}</label>
-                <Select value={filters.technical} onValueChange={(value) => setFilters({ ...filters, technical: value })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent className="max-h-[50vh] overflow-y-auto"><SelectItem value="all">{t('all')} {t('technical')}</SelectItem>{users.filter(u => u.operational_roles?.includes('technical')).map(u => <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
+               <MultiSelectFilter label={t('studio')} value={filters.studios} onChange={studios => setFilters({ ...filters, studios })} options={studioOptions.map(option => ({ value: option.value, label: option.value === UNASSIGNED_STUDIO_FILTER ? timeFilterLabels.unassigned : option.label }))} placeholder={timeFilterLabels.studios} testId="calendar-studio-filter" />
+               <MultiSelectFilter label={t('status')} value={filters.statuses} onChange={statuses => setFilters({ ...filters, statuses: statuses as CalendarFilterState['statuses'] })} options={['scheduled','preparing','live','paused','completed','cancelled'].map(status => ({ value: status, label: status === 'live' ? t('liveStatus') : (t as (key: string) => string)(status) }))} placeholder={t('all')} testId="calendar-status-filter" />
+               <MultiSelectFilter label={t('host')} value={filters.hostIds} onChange={hostIds => setFilters({ ...filters, hostIds })} options={users.filter(u => u.operational_roles?.includes('host') || u.department === 'Live Host').map(u => ({ value: u.id, label: u.full_name }))} placeholder={`${t('all')} ${t('host')}`} testId="calendar-host-filter" />
+               <MultiSelectFilter label={t('support')} value={filters.supportIds} onChange={supportIds => setFilters({ ...filters, supportIds })} options={users.filter(u => u.operational_roles?.includes('support') || u.department === 'Live Support').map(u => ({ value: u.id, label: u.full_name }))} placeholder={`${t('all')} ${t('support')}`} testId="calendar-support-filter" />
+               <MultiSelectFilter label={t('technical')} value={filters.technicalIds} onChange={technicalIds => setFilters({ ...filters, technicalIds })} options={users.filter(u => u.operational_roles?.includes('technical')).map(u => ({ value: u.id, label: u.full_name }))} placeholder={`${t('all')} ${t('technical')}`} testId="calendar-technical-filter" />
               {hasActiveFilters && (
                 <div className="sm:col-span-2 lg:col-span-3">
                   <Button variant="outline" size="sm" onClick={clearFilters}>

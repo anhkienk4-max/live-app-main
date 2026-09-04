@@ -24,12 +24,14 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { addDateOnlyDays, calculateAnalyticsMetrics, reportMetric, resolveAnalyticsDateRange, startOfBusinessWeek } from '@/lib/utils/analytics'
+import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
+import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 
 type RangeKey = 'today' | 'yesterday' | '7d' | '30d' | 'thisMonth' | 'lastMonth' | 'custom'
-type Filters = { range: RangeKey; start: string; end: string; brand: string; platform: string; campaign: string; host: string; support: string; technical: string }
+type Filters = { range: RangeKey; start: string; end: string; brandIds: string[]; platformIds: string[]; campaignIds: string[]; hostIds: string[]; supportIds: string[]; technicalIds: string[] }
 type MetricKey = 'revenue' | 'gmv' | 'orders' | 'viewers' | 'productClicks' | 'ctr' | 'cvr' | 'averageOrderValue' | 'liveDuration' | 'reportCount'
 const addRange = (range: Exclude<RangeKey, 'custom'>) => resolveAnalyticsDateRange(range)
-const initialFilters = (): Filters => ({ range: '30d', ...addRange('30d'), brand: 'all', platform: 'all', campaign: 'all', host: 'all', support: 'all', technical: 'all' })
+const initialFilters = (): Filters => ({ range: '30d', ...addRange('30d'), brandIds: [], platformIds: [], campaignIds: [], hostIds: [], supportIds: [], technicalIds: [] })
 
 export function DashboardAnalytics() {
   const { t } = useTranslation()
@@ -79,12 +81,12 @@ export function DashboardAnalytics() {
   }
   const matches = (shift: Shift, start: string, end: string) =>
     shift.date >= start && shift.date <= end &&
-    (filters.brand === 'all' || shift.brand_id === filters.brand) &&
-    (filters.platform === 'all' || shift.platform_id === filters.platform) &&
-    (filters.campaign === 'all' || shift.campaign_id === filters.campaign) &&
-    (filters.host === 'all' || matchesRole(shift, 'host', filters.host)) &&
-    (filters.support === 'all' || matchesRole(shift, 'support', filters.support)) &&
-    (filters.technical === 'all' || matchesRole(shift, 'technical', filters.technical))
+    matchesMultiSelect(shift.brand_id, filters.brandIds) &&
+    matchesMultiSelect(shift.platform_id, filters.platformIds) &&
+    matchesMultiSelect(shift.campaign_id, filters.campaignIds) &&
+    (filters.hostIds.length === 0 || filters.hostIds.some(userId => matchesRole(shift, 'host', userId))) &&
+    (filters.supportIds.length === 0 || filters.supportIds.some(userId => matchesRole(shift, 'support', userId))) &&
+    (filters.technicalIds.length === 0 || filters.technicalIds.some(userId => matchesRole(shift, 'technical', userId)))
   const currentShifts = shifts.filter(shift => matches(shift, filters.start, filters.end))
   const currentIds = new Set(currentShifts.map(shift => shift.id))
   const currentReports = reports.filter(report => currentIds.has(report.shift_id))
@@ -150,7 +152,7 @@ export function DashboardAnalytics() {
   return <div className="space-y-6">
     <Card><CardHeader className="flex flex-row items-center justify-between space-y-0"><CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5" />{t('confirmedOnly')}</CardTitle><Button variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="analytics-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button></CardHeader>{showFilters && <CardContent id="analytics-filter-panel" className="space-y-4">
       <div className="grid gap-3 md:grid-cols-4"><label className="text-xs font-medium">{t('dateRange')}<Select value={filters.range} onValueChange={value => updateRange(value as RangeKey)}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="today">{t('today')}</SelectItem><SelectItem value="yesterday">{t('yesterday')}</SelectItem><SelectItem value="7d">{t('last7Days')}</SelectItem><SelectItem value="30d">{t('last30Days')}</SelectItem><SelectItem value="thisMonth">{t('thisMonth')}</SelectItem><SelectItem value="lastMonth">{t('lastMonth')}</SelectItem><SelectItem value="custom">{t('customRange')}</SelectItem></SelectContent></Select></label>{filters.range === 'custom' && <><label className="text-xs font-medium">{t('startDate')}<Input className="mt-1" type="date" value={filters.start} onChange={event => setFilters(current => current ? { ...current, start: event.target.value } : current)} /></label><label className="text-xs font-medium">{t('endDate')}<Input className="mt-1" type="date" value={filters.end} onChange={event => setFilters(current => current ? { ...current, end: event.target.value } : current)} /></label></>}</div>
-      <div className="grid gap-3 md:grid-cols-3"><FilterSelect label={t('brand')} value={filters.brand} options={brands} onChange={value => setFilters(current => current ? { ...current, brand: value } : current)} /><FilterSelect label={t('platform')} value={filters.platform} options={platforms} onChange={value => setFilters(current => current ? { ...current, platform: value } : current)} /><FilterSelect label={t('campaign')} value={filters.campaign} options={campaigns} onChange={value => setFilters(current => current ? { ...current, campaign: value } : current)} /><FilterSelect label={t('host')} value={filters.host} options={roleOptions('host')} onChange={value => setFilters(current => current ? { ...current, host: value } : current)} /><FilterSelect label={t('support')} value={filters.support} options={roleOptions('support')} onChange={value => setFilters(current => current ? { ...current, support: value } : current)} /><FilterSelect label={t('technical')} value={filters.technical} options={roleOptions('technical')} onChange={value => setFilters(current => current ? { ...current, technical: value } : current)} /></div>
+      <div className="grid gap-3 md:grid-cols-3"><FilterSelect label={t('brand')} value={filters.brandIds} options={brands} onChange={value => setFilters(current => current ? { ...current, brandIds: value } : current)} /><FilterSelect label={t('platform')} value={filters.platformIds} options={platforms} onChange={value => setFilters(current => current ? { ...current, platformIds: value } : current)} /><FilterSelect label={t('campaign')} value={filters.campaignIds} options={campaigns} onChange={value => setFilters(current => current ? { ...current, campaignIds: value } : current)} /><FilterSelect label={t('host')} value={filters.hostIds} options={roleOptions('host')} onChange={value => setFilters(current => current ? { ...current, hostIds: value } : current)} /><FilterSelect label={t('support')} value={filters.supportIds} options={roleOptions('support')} onChange={value => setFilters(current => current ? { ...current, supportIds: value } : current)} /><FilterSelect label={t('technical')} value={filters.technicalIds} options={roleOptions('technical')} onChange={value => setFilters(current => current ? { ...current, technicalIds: value } : current)} /></div>
       <Button variant="outline" onClick={() => setFilters(initialFilters())}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button>
     </CardContent>}</Card>
 
@@ -186,9 +188,8 @@ export function DashboardAnalytics() {
 }
 
 function emptyTrend() { return { revenue: 0, orders: 0, viewers: 0, ctrTotal: 0, cvrTotal: 0, count: 0 } }
-function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: Array<{ id: string; name: string }>; onChange: (value: string) => void }) {
-  const { t } = useTranslation()
-  return <label className="text-xs font-medium">{label}<Select value={value} onValueChange={onChange}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{options.map(option => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}</SelectContent></Select></label>
+function FilterSelect({ label, value, options, onChange }: { label: string; value: string[]; options: Array<{ id: string; name: string }>; onChange: (value: string[]) => void }) {
+  return <MultiSelectFilter label={label} value={value} onChange={onChange} options={options.map(option => ({ value: option.id, label: option.name }))} />
 }
 function Metric({ title, value, note }: { title: string; value: string; note: string }) { return <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">{title}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{value}</p><p className="mt-1 text-xs text-muted-foreground">{note}</p></CardContent></Card> }
 type ChartField = { key: string; name: string; color: string; currency?: boolean }

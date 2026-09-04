@@ -25,6 +25,8 @@ import { getSwapUiActions } from '@/lib/utils/swapUi'
 import { isCanonicalAssignedShift, getMemberAssignedShifts, getMemberPendingRegistrations, getMemberPendingSwaps, getLeaderPendingRegistrations, getLeaderPendingReports, getLeaderPendingSwaps } from '@/lib/ui/dashboard-role-data'
 import { deriveLeaderAttention, deriveMemberAttention, deriveDataQualityAttention } from '@/lib/ui/operational-attention'
 import { getAllIssues } from '@/lib/utils/dataQuality'
+import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
+import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 
 const DashboardCharts = dynamic(
   () => import('@/components/features/dashboard/DashboardCharts').then(mod => ({ default: mod.DashboardCharts })),
@@ -32,7 +34,7 @@ const DashboardCharts = dynamic(
 )
 
 type Preset = 'today' | 'yesterday' | '7d' | '30d' | 'thisMonth' | 'lastMonth' | 'custom'
-type Filters = { preset: Preset; start: string; end: string; brand: string; platform: string; campaign: string; host: string; support: string; technical: string }
+type Filters = { preset: Preset; start: string; end: string; brandIds: string[]; platformIds: string[]; campaignIds: string[]; hostIds: string[]; supportIds: string[]; technicalIds: string[] }
 const dateValue = (date: Date) => format(date, 'yyyy-MM-dd')
 const rangeFor = (preset: Exclude<Preset, 'custom'>) => {
   const today = new Date(`${getCurrentBusinessDate()}T00:00:00`)
@@ -44,7 +46,7 @@ const rangeFor = (preset: Exclude<Preset, 'custom'>) => {
   const previous = subMonths(today, 1)
   return { start: dateValue(startOfMonth(previous)), end: dateValue(endOfMonth(previous)) }
 }
-const initialFilters = (): Filters => ({ preset: '30d', ...rangeFor('30d'), brand: 'all', platform: 'all', campaign: 'all', host: 'all', support: 'all', technical: 'all' })
+const initialFilters = (): Filters => ({ preset: '30d', ...rangeFor('30d'), brandIds: [], platformIds: [], campaignIds: [], hostIds: [], supportIds: [], technicalIds: [] })
 
 export function DashboardOverview() {
   const { t } = useTranslation()
@@ -116,12 +118,12 @@ const matchesRoleFilter = (shift: Shift, role: OperationalRole, userId: string, 
   return assignment === userId || isCanonicalAssignedShift(shift, role, userId, registrations)
 }
 const matchesDimensions = (shift: Shift, filters: Filters, registrations: ShiftRegistration[]) =>
-  (filters.brand === 'all' || shift.brand_id === filters.brand) &&
-  (filters.platform === 'all' || shift.platform_id === filters.platform) &&
-  (filters.campaign === 'all' || shift.campaign_id === filters.campaign) &&
-  (filters.host === 'all' || matchesRoleFilter(shift, 'host', filters.host, registrations)) &&
-  (filters.support === 'all' || matchesRoleFilter(shift, 'support', filters.support, registrations)) &&
-  (filters.technical === 'all' || matchesRoleFilter(shift, 'technical', filters.technical, registrations))
+  matchesMultiSelect(shift.brand_id, filters.brandIds) &&
+  matchesMultiSelect(shift.platform_id, filters.platformIds) &&
+  matchesMultiSelect(shift.campaign_id, filters.campaignIds) &&
+  (filters.hostIds.length === 0 || filters.hostIds.some(userId => matchesRoleFilter(shift, 'host', userId, registrations))) &&
+  (filters.supportIds.length === 0 || filters.supportIds.some(userId => matchesRoleFilter(shift, 'support', userId, registrations))) &&
+  (filters.technicalIds.length === 0 || filters.technicalIds.some(userId => matchesRoleFilter(shift, 'technical', userId, registrations)))
 
 const nameFor = (items: Array<{ id: string; name: string }>, id: string) => items.find(item => item.id === id)?.name || '—'
 
@@ -434,12 +436,12 @@ function DashboardFilterPanel({ filters, setFilters, brands, platforms, campaign
   return (
     <Card id="dashboard-filter-panel"><CardContent className="space-y-4 pt-4">
       <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
-        <FilterSelect label={t('brand')} value={filters.brand} options={brands} onChange={value => setFilters(current => current ? { ...current, brand: value } : current)} />
-        <FilterSelect label={t('platform')} value={filters.platform} options={platforms} onChange={value => setFilters(current => current ? { ...current, platform: value } : current)} />
-        <FilterSelect label={t('campaign')} value={filters.campaign} options={campaigns} onChange={value => setFilters(current => current ? { ...current, campaign: value } : current)} />
-        <FilterSelect label={t('host')} value={filters.host} options={roleOptions('host')} onChange={value => setFilters(current => current ? { ...current, host: value } : current)} />
-        <FilterSelect label={t('support')} value={filters.support} options={roleOptions('support')} onChange={value => setFilters(current => current ? { ...current, support: value } : current)} />
-        <FilterSelect label={t('technical')} value={filters.technical} options={roleOptions('technical')} onChange={value => setFilters(current => current ? { ...current, technical: value } : current)} />
+        <FilterSelect label={t('brand')} value={filters.brandIds} options={brands} onChange={value => setFilters(current => current ? { ...current, brandIds: value } : current)} />
+        <FilterSelect label={t('platform')} value={filters.platformIds} options={platforms} onChange={value => setFilters(current => current ? { ...current, platformIds: value } : current)} />
+        <FilterSelect label={t('campaign')} value={filters.campaignIds} options={campaigns} onChange={value => setFilters(current => current ? { ...current, campaignIds: value } : current)} />
+        <FilterSelect label={t('host')} value={filters.hostIds} options={roleOptions('host')} onChange={value => setFilters(current => current ? { ...current, hostIds: value } : current)} />
+        <FilterSelect label={t('support')} value={filters.supportIds} options={roleOptions('support')} onChange={value => setFilters(current => current ? { ...current, supportIds: value } : current)} />
+        <FilterSelect label={t('technical')} value={filters.technicalIds} options={roleOptions('technical')} onChange={value => setFilters(current => current ? { ...current, technicalIds: value } : current)} />
       </div>
       <Button variant="ghost" onClick={() => setFilters(initialFilters())} size="sm" className="h-8"><RotateCcw className="mr-2 h-3 w-3" />{t('resetFilters')}</Button>
     </CardContent></Card>
@@ -452,9 +454,8 @@ function UpcomingShiftsList({ upcoming, brands, platforms, t, title }: { upcomin
   )
 }
 
-function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: Array<{ id: string; name: string }>; onChange: (value: string) => void }) {
-  const { t } = useTranslation()
-  return <label className="text-xs font-medium">{label}<Select value={value} onValueChange={onChange}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{options.map(option => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}</SelectContent></Select></label>
+function FilterSelect({ label, value, options, onChange }: { label: string; value: string[]; options: Array<{ id: string; name: string }>; onChange: (value: string[]) => void }) {
+  return <MultiSelectFilter label={label} value={value} onChange={onChange} options={options.map(option => ({ value: option.id, label: option.name }))} />
 }
 function Metric({ title, value, note, icon }: { title: string; value: string; note?: string; icon: React.ReactNode }) { return <Card className="shadow-none"><CardHeader className="flex-row items-center justify-between pb-2 pt-4 px-4 space-y-0"><CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>{icon}</CardHeader><CardContent className="px-4 pb-4"><p className="text-2xl font-bold">{value}</p>{note && <p className="mt-1 text-xs font-medium text-muted-foreground">{note}</p>}</CardContent></Card> }
 function QuickAction({ href, label, icon }: { href: string; label: string; icon: React.ReactNode }) { return <Button nativeButton={false} render={<Link href={href} />} variant="outline" className="h-20 flex-col gap-1.5 bg-muted/20">{icon}<span className="text-xs">{label}</span></Button> }

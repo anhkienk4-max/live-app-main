@@ -29,15 +29,16 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import { useToast } from '@/components/ui/toast'
+import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
 import { SwapDetailModal } from './SwapDetailModal'
 import { SwapRequestFormModal } from './SwapRequestFormModal'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 
-type Filters = { start: string; end: string; requester: string; brand: string; campaign: string; role: string; status: string }
-const initialFilters: Filters = { start: '', end: '', requester: 'all', brand: 'all', campaign: 'all', role: 'all', status: 'all' }
+type Filters = { start: string; end: string; requesterIds: string[]; brandIds: string[]; campaignIds: string[]; roles: OperationalRole[]; statuses: string[] }
+const initialFilters: Filters = { start: '', end: '', requesterIds: [], brandIds: [], campaignIds: [], roles: [], statuses: [] }
 
 export function SwapRequestList() {
   const { currentUser, loading: userLoading } = useCurrentUser()
@@ -82,11 +83,11 @@ export function SwapRequestList() {
     if (!shift) return false
     return (!filters.start || shift.date >= filters.start) &&
       (!filters.end || shift.date <= filters.end) &&
-      (filters.requester === 'all' || swap.requester_id === filters.requester) &&
-      (filters.brand === 'all' || shift.brand_id === filters.brand) &&
-      (filters.campaign === 'all' || shift.campaign_id === filters.campaign) &&
-      (filters.role === 'all' || roleFor(swap) === filters.role) &&
-      (filters.status === 'all' || swap.status === filters.status)
+      matchesMultiSelect(swap.requester_id, filters.requesterIds) &&
+      matchesMultiSelect(shift.brand_id, filters.brandIds) &&
+      matchesMultiSelect(shift.campaign_id, filters.campaignIds) &&
+      matchesMultiSelect(roleFor(swap), filters.roles) &&
+      matchesMultiSelect(swap.status, filters.statuses)
   })
   React.useEffect(() => setPage(1), [filters])
   const visibleSwaps = filtered.slice((page - 1) * pageSize, page * pageSize)
@@ -144,11 +145,11 @@ export function SwapRequestList() {
       <div className="grid gap-3 md:grid-cols-4">
         <label className="text-xs font-medium">{t('startDate')}<Input className="mt-1" type="date" value={filters.start} onChange={event => setFilters(current => ({ ...current, start: event.target.value }))} /></label>
         <label className="text-xs font-medium">{t('endDate')}<Input className="mt-1" type="date" value={filters.end} onChange={event => setFilters(current => ({ ...current, end: event.target.value }))} /></label>
-        <EntityFilter label={t('requester')} value={filters.requester} options={users.map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, requester: value }))} />
-        <EntityFilter label={t('brand')} value={filters.brand} options={brands} onChange={value => setFilters(current => ({ ...current, brand: value }))} />
-        <EntityFilter label={t('campaign')} value={filters.campaign} options={campaigns} onChange={value => setFilters(current => ({ ...current, campaign: value }))} />
-        <label className="text-xs font-medium">{t('role')}<Select value={filters.role} onValueChange={value => setFilters(current => ({ ...current, role: value }))}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{(['host','support','technical'] as OperationalRole[]).map(role => <SelectItem key={role} value={role}>{t(role)}</SelectItem>)}</SelectContent></Select></label>
-        <label className="text-xs font-medium">{t('status')}<Select value={filters.status} onValueChange={value => setFilters(current => ({ ...current, status: value }))}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{(['pending','accepted','approved','rejected','cancelled','completed'] as const).map(status => <SelectItem key={status} value={status}>{(t as unknown as (k:string)=>string)(status)}</SelectItem>)}</SelectContent></Select></label>
+        <EntityFilter label={t('requester')} value={filters.requesterIds} options={users.map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, requesterIds: value }))} />
+        <EntityFilter label={t('brand')} value={filters.brandIds} options={brands} onChange={value => setFilters(current => ({ ...current, brandIds: value }))} />
+        <EntityFilter label={t('campaign')} value={filters.campaignIds} options={campaigns} onChange={value => setFilters(current => ({ ...current, campaignIds: value }))} />
+        <MultiSelectFilter label={t('role')} value={filters.roles} options={(['host','support','technical'] as OperationalRole[]).map(role => ({ value: role, label: t(role) }))} onChange={value => setFilters(current => ({ ...current, roles: value as OperationalRole[] }))} />
+        <MultiSelectFilter label={t('status')} value={filters.statuses} options={(['pending','accepted','approved','rejected','cancelled','completed'] as const).map(status => ({ value: status, label: (t as unknown as (k:string)=>string)(status) }))} onChange={value => setFilters(current => ({ ...current, statuses: value }))} />
       </div>
       <div className="flex gap-2">
         <div className="hidden lg:flex flex-wrap gap-2">
@@ -282,8 +283,7 @@ export function SwapRequestList() {
   </div>
 }
 
-function EntityFilter({ label, value, options, onChange }: { label: string; value: string; options: Array<{ id: string; name: string }>; onChange: (value: string) => void }) {
-  const { t } = useTranslation()
-  return <label className="text-xs font-medium">{label}<Select value={value} onValueChange={onChange}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{options.map(option => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}</SelectContent></Select></label>
+function EntityFilter({ label, value, options, onChange }: { label: string; value: string[]; options: Array<{ id: string; name: string }>; onChange: (value: string[]) => void }) {
+  return <MultiSelectFilter label={label} value={value} options={options.map(option => ({ value: option.id, label: option.name }))} onChange={onChange} />
 }
 function Value({ label, value }: { label: string; value: string }) { return <div><p className="text-xs text-muted-foreground">{label}</p><p className="font-medium">{value}</p></div> }

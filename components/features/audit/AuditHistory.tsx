@@ -20,6 +20,7 @@ import { useToast } from '@/components/ui/toast'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 import { useTranslation } from '@/lib/i18n'
 import { PageLoadError } from '@/components/ui/page-load-error'
+import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import {
   classifyOperationStatus,
   getErrorRecoveryContext,
@@ -50,7 +51,7 @@ export function AuditHistory() {
   const [archivedPageSize, setArchivedPageSize] = React.useState(10)
   const [selected, setSelected] = React.useState<AuditLog | null>(null)
   const [restoreTarget, setRestoreTarget] = React.useState<ArchivedEntitySummary | null>(null)
-  const [filters, setFilters] = React.useState({ query: '', from: '', to: '', actor: 'all', role: 'all', module: 'all', action: 'all', status: 'all', source: 'all' })
+  const [filters, setFilters] = React.useState({ query: '', from: '', to: '', actorIds: [] as string[], roles: [] as string[], modules: [] as string[], actions: [] as string[], statuses: [] as string[], sources: [] as string[] })
   const [showFilters, setShowFilters] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
@@ -77,7 +78,7 @@ export function AuditHistory() {
     setLoadError(null)
     try {
       const [visible, deleted] = await Promise.all([
-        auditService.getAuditLogs({ user: currentUser, page, pageSize, filters, sort }),
+        auditService.getAuditLogs({ user: currentUser, page, pageSize, filters: { ...filters, actor: filters.actorIds, role: filters.roles, module: filters.modules, action: filters.actions, status: filters.statuses, source: filters.sources }, sort }),
         isAdmin ? lifecycleService.getArchived(currentUser.id) : Promise.resolve([]),
       ])
       setLogs(visible.items)
@@ -135,13 +136,13 @@ export function AuditHistory() {
         <Input placeholder={t('entityActorSearch')} value={filters.query} onChange={event => updateFilters({ query: event.target.value })} />
         <Input type="date" value={filters.from} onChange={event => updateFilters({ from: event.target.value })} />
         <Input type="date" value={filters.to} onChange={event => updateFilters({ to: event.target.value })} />
-        <FilterSelect value={filters.actor} onChange={value => updateFilters({ actor: value })} items={actors.map(actor => ({ value: actor.id, label: actor.name }))} placeholder={t('actor')} />
-        <FilterSelect value={filters.role} onChange={value => updateFilters({ role: value })} items={['member','leader','admin'].map(value => ({ value, label: value }))} placeholder={t('role')} />
-        <FilterSelect value={filters.module} onChange={value => updateFilters({ module: value })} items={modules.map(value => ({ value, label: value }))} placeholder={t('auditModule')} />
-        <FilterSelect value={filters.action} onChange={value => updateFilters({ action: value })} items={actions.map(value => ({ value, label: value.replaceAll('_', ' ') }))} placeholder={t('action')} />
-        <FilterSelect value={filters.status} onChange={value => updateFilters({ status: value })} items={['success','warning','failed','retryable'].map(value => ({ value, label: value }))} placeholder={t('status')} />
-        <FilterSelect value={filters.source} onChange={value => updateFilters({ source: value })} items={['manual','excel_import','google_sheets','system','ocr','upload'].map(value => ({ value, label: value }))} placeholder={t('source')} />
-        <FilterSelect value={sort} onChange={value => { setSort(value as 'newest' | 'oldest'); setPage(1) }} items={[{ value: 'newest', label: t('newestFirst') }, { value: 'oldest', label: t('oldestFirst') }]} placeholder={t('auditSort')} includeAll={false} />
+         <FilterSelect value={filters.actorIds} onChange={value => updateFilters({ actorIds: value })} items={actors.map(actor => ({ value: actor.id, label: actor.name }))} placeholder={t('actor')} />
+         <FilterSelect value={filters.roles} onChange={value => updateFilters({ roles: value })} items={['member','leader','admin'].map(value => ({ value, label: value }))} placeholder={t('role')} />
+         <FilterSelect value={filters.modules} onChange={value => updateFilters({ modules: value })} items={modules.map(value => ({ value, label: value }))} placeholder={t('auditModule')} />
+         <FilterSelect value={filters.actions} onChange={value => updateFilters({ actions: value })} items={actions.map(value => ({ value, label: value.replaceAll('_', ' ') }))} placeholder={t('action')} />
+         <FilterSelect value={filters.statuses} onChange={value => updateFilters({ statuses: value })} items={['success','warning','failed','retryable'].map(value => ({ value, label: value }))} placeholder={t('status')} />
+         <FilterSelect value={filters.sources} onChange={value => updateFilters({ sources: value })} items={['manual','excel_import','google_sheets','system','ocr','upload'].map(value => ({ value, label: value }))} placeholder={t('source')} />
+         <label className="text-xs font-medium">{t('auditSort')}<Select value={sort} onValueChange={value => { setSort(value as 'newest' | 'oldest'); setPage(1) }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="newest">{t('newestFirst')}</SelectItem><SelectItem value="oldest">{t('oldestFirst')}</SelectItem></SelectContent></Select></label>
       </CardContent>}</Card>
 
       <Card className="overflow-hidden"><CardContent className="p-0"><div className="max-h-[60vh] overflow-auto"><table className="w-full min-w-[900px] text-sm"><thead className="sticky top-0 z-10 bg-card shadow-sm"><tr className="border-b text-left"><th className="p-2">{t('time')}</th><th className="p-2">{t('actor')}</th><th className="p-2">{t('action')}</th><th className="p-2">{t('auditEntity')}</th><th className="p-2">{t('auditModule')}</th><th className="p-2">{t('status')}</th><th className="p-2">{t('auditDetails')}</th></tr></thead><tbody>{logs.map(entry => {
@@ -162,9 +163,8 @@ export function AuditHistory() {
   )
 }
 
-function FilterSelect({ value, onChange, items, placeholder, includeAll = true }: { value: string; onChange: (value: string) => void; items: Array<{ value: string; label: string }>; placeholder: string; includeAll?: boolean }) {
-  const { t } = useTranslation()
-  return <Select value={value} onValueChange={onChange}><SelectTrigger><SelectValue placeholder={placeholder} /></SelectTrigger><SelectContent>{includeAll && <SelectItem value="all">{t('all')} {placeholder.toLowerCase()}</SelectItem>}{items.map(item => <SelectItem value={item.value} key={item.value}>{item.label}</SelectItem>)}</SelectContent></Select>
+function FilterSelect({ value, onChange, items, placeholder }: { value: string[]; onChange: (value: string[]) => void; items: Array<{ value: string; label: string }>; placeholder: string }) {
+  return <MultiSelectFilter label={placeholder} value={value} onChange={onChange} options={items} placeholder={'All ' + placeholder.toLowerCase()} />
 }
 
 function AuditDetail({ entry, currentUser, onClose, onUpdated }: { entry: AuditLog; currentUser: NonNullable<ReturnType<typeof useCurrentUser>['currentUser']>; onClose: () => void; onUpdated: () => Promise<void> }) {

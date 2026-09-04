@@ -34,7 +34,9 @@ import { useToast } from '@/components/ui/toast'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 import { PageLoadError } from '@/components/ui/page-load-error'
+import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import { DEFAULT_SHIFT_STAFFING } from '@/lib/utils/shiftUtils'
+import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
 import {
   buildScheduleImportPreviewSourceRow,
   normalizeScheduleImportResult,
@@ -686,7 +688,7 @@ export function ImportHistoryPanel() {
   const [shifts, setShifts] = React.useState<Shift[]>([])
   const [users, setUsers] = React.useState<User[]>([])
   const [brands, setBrands] = React.useState<Brand[]>([])
-  const [filters, setFilters] = React.useState({ date: '', actor: 'all', action: 'all', shift: 'all', brand: 'all', source: 'all' })
+  const [filters, setFilters] = React.useState({ date: '', actorIds: [] as string[], actionIds: [] as string[], shiftIds: [] as string[], brandIds: [] as string[], sources: [] as string[] })
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
   const [importPage, setImportPage] = React.useState(1)
@@ -711,7 +713,7 @@ export function ImportHistoryPanel() {
       setLoading(false)
     }), [])
   React.useEffect(() => { void loadHistory() }, [loadHistory])
-  const updateChangeFilter = (key: keyof typeof filters, value: string) => {
+  const updateChangeFilter = (key: keyof typeof filters, value: string | string[]) => {
     setFilters(current => ({ ...current, [key]: value }))
     setChangePage(1)
   }
@@ -720,11 +722,11 @@ export function ImportHistoryPanel() {
   const visibleChanges = changes.filter(log => {
     const shift = shifts.find(item => item.id === log.shift_id)
     return (!filters.date || log.timestamp.slice(0, 10) === filters.date) &&
-      (filters.actor === 'all' || log.actor_id === filters.actor) &&
-      (filters.action === 'all' || log.action === filters.action) &&
-      (filters.shift === 'all' || log.shift_id === filters.shift) &&
-      (filters.brand === 'all' || shift?.brand_id === filters.brand) &&
-      (filters.source === 'all' || log.source === filters.source)
+      matchesMultiSelect(log.actor_id, filters.actorIds) &&
+      matchesMultiSelect(log.action, filters.actionIds) &&
+      matchesMultiSelect(log.shift_id, filters.shiftIds) &&
+      matchesMultiSelect(shift?.brand_id, filters.brandIds) &&
+      matchesMultiSelect(log.source, filters.sources)
   })
   const pagedImports = history.slice((importPage - 1) * importPageSize, importPage * importPageSize)
   const pagedChanges = visibleChanges.slice((changePage - 1) * changePageSize, changePage * changePageSize)
@@ -745,11 +747,11 @@ export function ImportHistoryPanel() {
           <CardContent className="space-y-4 pt-5">
             <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
               <Input type="date" value={filters.date} onChange={event => updateChangeFilter('date', event.target.value)} />
-              <HistorySelect value={filters.actor} onChange={value => updateChangeFilter('actor', value)} allLabel={t('actor')} options={users.map(user => ({ id: user.id, name: user.full_name }))} />
-              <HistorySelect value={filters.action} onChange={value => updateChangeFilter('action', value)} allLabel={t('action')} options={actions.map(action => ({ id: action, name: action }))} />
-              <HistorySelect value={filters.shift} onChange={value => updateChangeFilter('shift', value)} allLabel={t('shiftTitle')} options={shifts.map(shift => ({ id: shift.id, name: shift.title || `${shift.date} ${shift.start_time}` }))} />
-              <HistorySelect value={filters.brand} onChange={value => updateChangeFilter('brand', value)} allLabel={t('brand')} options={brands} />
-              <HistorySelect value={filters.source} onChange={value => updateChangeFilter('source', value)} allLabel={t('source')} options={['manual','excel_import','google_sheets','system'].map(source => ({ id: source, name: source.replaceAll('_', ' ') }))} />
+              <HistorySelect value={filters.actorIds} onChange={value => updateChangeFilter('actorIds', value)} allLabel={t('actor')} options={users.map(user => ({ id: user.id, name: user.full_name }))} />
+              <HistorySelect value={filters.actionIds} onChange={value => updateChangeFilter('actionIds', value)} allLabel={t('action')} options={actions.map(action => ({ id: action, name: action }))} />
+              <HistorySelect value={filters.shiftIds} onChange={value => updateChangeFilter('shiftIds', value)} allLabel={t('shiftTitle')} options={shifts.map(shift => ({ id: shift.id, name: shift.title || `${shift.date} ${shift.start_time}` }))} />
+              <HistorySelect value={filters.brandIds} onChange={value => updateChangeFilter('brandIds', value)} allLabel={t('brand')} options={brands} />
+              <HistorySelect value={filters.sources} onChange={value => updateChangeFilter('sources', value)} allLabel={t('source')} options={['manual','excel_import','google_sheets','system'].map(source => ({ id: source, name: source.replaceAll('_', ' ') }))} />
             </div>
             <div className="max-h-[520px] overflow-auto">
               <table className="min-w-[1100px] w-full text-sm">
@@ -765,9 +767,8 @@ export function ImportHistoryPanel() {
   )
 }
 
-function HistorySelect({ value, onChange, allLabel, options }: { value: string; onChange: (value: string) => void; allLabel: string; options: Array<{ id: string; name: string }> }) {
-  const { t } = useTranslation()
-  return <Select value={value} onValueChange={onChange}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')} {allLabel}</SelectItem>{options.map(option => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}</SelectContent></Select>
+function HistorySelect({ value, onChange, allLabel, options }: { value: string[]; onChange: (value: string[]) => void; allLabel: string; options: Array<{ id: string; name: string }> }) {
+  return <MultiSelectFilter label={allLabel} value={value} options={options.map(option => ({ value: option.id, label: option.name }))} onChange={onChange} />
 }
 
 function ChangeValue({ value }: { value?: Record<string, unknown> }) {

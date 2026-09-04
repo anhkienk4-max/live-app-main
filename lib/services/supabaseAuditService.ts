@@ -36,6 +36,8 @@ type AuditReviewRow = {
   handling_reason: string | null
 }
 
+type AuditRepositoryFilters = Record<string, string | readonly string[]>
+
 type SupabaseErrorShape = { code?: string; message?: string; details?: string; hint?: string }
 
 const auditColumns = [
@@ -105,7 +107,7 @@ export type SupabaseAuditRepository = {
     user: Pick<User, 'id' | 'role' | 'system_permission'>
     page: number
     pageSize: number
-    filters?: Record<string, string>
+    filters?: AuditRepositoryFilters
     sort?: 'newest' | 'oldest'
   }): Promise<{ items: AuditLog[]; total: number; page: number; pageSize: number; totalPages: number; actors: Array<{ id: string; name: string }> }>
   getById(id: string): Promise<AuditLog | null>
@@ -126,7 +128,7 @@ export function createSupabaseAuditRepository(client: SupabaseClient): SupabaseA
   const queryRows = async (input: {
     page?: number
     pageSize?: number
-    filters?: Record<string, string>
+    filters?: AuditRepositoryFilters
     sort?: 'newest' | 'oldest'
   }) => {
     const page = Math.max(1, input.page ?? 1)
@@ -136,13 +138,21 @@ export function createSupabaseAuditRepository(client: SupabaseClient): SupabaseA
     const filters = input.filters ?? {}
     if (filters.from) query = query.gte('created_at', `${filters.from}T00:00:00.000Z`)
     if (filters.to) query = query.lt('created_at', `${filters.to}T23:59:59.999Z`)
-    if (filters.actor && filters.actor !== 'all') query = query.eq('actor_business_user_id', filters.actor)
-    if (filters.role && filters.role !== 'all') query = query.eq('actor_role', filters.role)
-    if (filters.module && filters.module !== 'all') query = query.eq('module', filters.module)
-    if (filters.action && filters.action !== 'all') query = query.eq('action', filters.action)
-    if (filters.status && filters.status !== 'all') query = query.eq('status', filters.status === 'failed' || filters.status === 'retryable' ? 'failed' : 'success')
-    if (filters.source && filters.source !== 'all') query = query.eq('source', filters.source)
-    if (filters.query?.trim()) query = query.ilike('entity_name', `%${filters.query.trim().replaceAll('%', '\\%')}%`)
+    const selected = (value: string | readonly string[] | undefined) => Array.isArray(value) ? value.filter(item => item !== 'all') : value && value !== 'all' ? [value] : []
+    const actor = selected(filters.actor)
+    const role = selected(filters.role)
+    const moduleFilters = selected(filters.module)
+    const action = selected(filters.action)
+    const status = selected(filters.status).map(value => value === 'failed' || value === 'retryable' ? 'failed' : 'success')
+    const source = selected(filters.source)
+    if (actor.length) query = query.in('actor_business_user_id', actor)
+    if (role.length) query = query.in('actor_role', role)
+    if (moduleFilters.length) query = query.in('module', moduleFilters)
+    if (action.length) query = query.in('action', action)
+    if (status.length) query = query.in('status', [...new Set(status)])
+    if (source.length) query = query.in('source', source)
+    const queryText = typeof filters.query === 'string' ? filters.query.trim() : ''
+    if (queryText) query = query.ilike('entity_name', '%' + queryText.replaceAll('%', '\\%') + '%')
     const result = await query.range((page - 1) * pageSize, page * pageSize - 1)
     if (result.error) throw requestError('audit read', result.error)
     const rows = await loadReview((result.data ?? []) as unknown as AuditRow[])

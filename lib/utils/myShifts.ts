@@ -1,11 +1,12 @@
 import type { Shift, ShiftRegistration } from '../types/database.types'
+import { matchesMultiSelect } from './multiSelectFilter'
 
 export type MyShiftFilters = {
   date: string
-  brand: string
-  platform: string
-  campaign: string
-  role: string
+  brand: string | readonly string[]
+  platform: string | readonly string[]
+  campaign: string | readonly string[]
+  role: string | readonly string[]
 }
 
 export type MyShiftEntry = {
@@ -37,10 +38,13 @@ export function selectMyShiftEntries({
     .filter((entry): entry is MyShiftEntry => Boolean(entry.shift))
     .filter(({ shift, registration }) => {
       if (filters.date && shift.date !== filters.date) return false
-      if (filters.brand !== 'all' && shift.brand_id !== filters.brand) return false
-      if (filters.platform !== 'all' && shift.platform_id !== filters.platform) return false
-      if (filters.campaign !== 'all' && shift.campaign_id !== filters.campaign) return false
-      if (filters.role !== 'all' && registration.operational_role !== filters.role) return false
+      const matches = (candidate: string, selected: string | readonly string[]) => Array.isArray(selected)
+        ? matchesMultiSelect(candidate, selected)
+        : selected === 'all' || selected === candidate
+      if (!matches(shift.brand_id, filters.brand)) return false
+      if (!matches(shift.platform_id, filters.platform)) return false
+      if (!matches(shift.campaign_id || '', filters.campaign)) return false
+      if (!matches(registration.operational_role, filters.role)) return false
       return true
     })
     .sort((left, right) => {

@@ -29,12 +29,12 @@ export type AuditLogFilters = {
   query?: string
   from?: string
   to?: string
-  actor?: string
-  role?: string
-  module?: string
-  action?: string
-  status?: string
-  source?: string
+  actor?: string | readonly string[]
+  role?: string | readonly string[]
+  module?: string | readonly string[]
+  action?: string | readonly string[]
+  status?: string | readonly string[]
+  source?: string | readonly string[]
 }
 
 export type AuditLogPage = {
@@ -179,7 +179,14 @@ const normalizeStatus = (status: string) => {
 
 const filterAuditLogs = (logs: AuditLog[], filters: AuditLogFilters) => {
   const query = filters.query?.trim().toLowerCase() || ''
-  const statusFilter = filters.status ? normalizeStatus(filters.status) : ''
+  const values = (selected: string | readonly string[] | undefined) => Array.isArray(selected)
+    ? selected.filter(value => value !== 'all')
+    : selected && selected !== 'all' ? [selected] : []
+  const statusFilters = values(filters.status).map(normalizeStatus)
+  const matches = (candidate: string, selected: string | readonly string[] | undefined) => {
+    const options = values(selected)
+    return options.length === 0 || options.includes(candidate)
+  }
   return logs.filter(entry => {
     const date = entry.timestamp.slice(0, 10)
     const opStatus = classifyOperationStatus(entry)
@@ -188,12 +195,12 @@ const filterAuditLogs = (logs: AuditLog[], filters: AuditLogFilters) => {
     const haystack = `${entry.entity_name} ${entry.entity_type} ${entry.entity_id} ${entry.actor_name} ${entry.actor_role} ${entry.module} ${entry.action} ${entry.correlation_id} ${entry.reason ?? ''} ${entry.error_code ?? ''} ${relatedText}`.toLowerCase()
     return (!filters.from || date >= filters.from) &&
       (!filters.to || date <= filters.to) &&
-      (!filters.actor || filters.actor === 'all' || entry.actor_id === filters.actor) &&
-      (!filters.role || filters.role === 'all' || entry.actor_role === filters.role) &&
-      (!filters.module || filters.module === 'all' || entry.module === filters.module) &&
-      (!filters.action || filters.action === 'all' || entry.action === filters.action) &&
-      (!filters.status || filters.status === 'all' || opStatus === statusFilter) &&
-      (!filters.source || filters.source === 'all' || entry.source === filters.source) &&
+      matches(entry.actor_id, filters.actor) &&
+      matches(entry.actor_role, filters.role) &&
+      matches(entry.module, filters.module) &&
+      matches(entry.action, filters.action) &&
+      (statusFilters.length === 0 || statusFilters.includes(opStatus)) &&
+      matches(entry.source, filters.source) &&
       (!query || haystack.includes(query))
   })
 }

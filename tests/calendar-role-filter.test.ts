@@ -39,8 +39,8 @@ test('role-filtered pending approvals include only pending registrations in the 
 
 test('brand plus role filtering keeps only matching shifts and reset restores every role', () => {
   const filters: CalendarFilterState = {
-    brand: 'brand-a', platform: 'all', campaign: 'all', studio: 'all', status: 'all',
-    host: 'all', support: 'all', technical: 'all', time: 'all', customFrom: '', customTo: '',
+    brandIds: ['brand-a'], platformIds: [], campaignIds: [], studios: [], statuses: [],
+    hostIds: [], supportIds: [], technicalIds: [], time: 'all', customFrom: '', customTo: '',
   }
   const shifts = [
     { id: 'target', brand_id: 'brand-a', date: '2026-09-15' },
@@ -54,9 +54,16 @@ test('brand plus role filtering keeps only matching shifts and reset restores ev
 
 test('table role filtering emits one row per selected role while preserving combined/reset behavior', () => {
   const source = readFileSync(new URL('../components/features/calendar/ShiftRegistrationBoard.tsx', import.meta.url), 'utf8')
-  assert.match(source, /roleFilter=\{filters\.role\}/)
+  assert.match(source, /roleFilter=\{filters\.roles\}/)
   assert.match(source, /getVisibleOperationalRoles\(roleFilter\)\.map\(role => <tr/)
   assert.match(source, /setFilters\(initialFilters\)/)
-  assert.match(source, /getVisibleRoleCapacities\(capacities\[shift\.id\] \|\| \[\], filters\.role\)/)
-  assert.match(source, /matchesRoleFilter\(registration, filters\.role\)/)
+  assert.match(source, /getVisibleRoleCapacities\(capacities\[shift\.id\] \|\| \[\], filters\.roles\)/)
+  assert.match(source, /matchesRoleFilter\(registration, filters\.roles\)/)
+})
+
+test('Host plus Technical scope excludes Support from child rows and pending approvals', () => {
+  assert.deepEqual(getVisibleOperationalRoles(['host', 'technical']), ['host', 'technical'])
+  assert.deepEqual(getVisibleRoleCapacities(capacities, ['host', 'technical']).map((item: { role: string }) => item.role), ['host', 'technical'])
+  assert.equal(matchesRoleFilter(registration('support'), ['host', 'technical']), false)
+  assert.equal(matchesRoleFilter(registration('technical'), ['host', 'technical']), true)
 })

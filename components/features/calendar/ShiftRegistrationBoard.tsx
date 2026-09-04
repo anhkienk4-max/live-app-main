@@ -33,7 +33,8 @@ import { buildStaffingApprovalActions } from '@/lib/ui/action-priority'
 import { exportShiftStaffingToExcel } from '@/lib/utils/excelUtils'
 import { formatShiftEndDate, formatShiftTimeRange, resolveShiftDateTime } from '@/lib/utils/shiftUtils'
 import { selectMyShiftEntries, type MyShiftEntry } from '@/lib/utils/myShifts'
-import { getVisibleOperationalRoles, getVisibleRoleCapacities, matchesRoleFilter } from '@/lib/utils/shiftRegistrationRoleView'
+import { getVisibleOperationalRoles, getVisibleRoleCapacities, matchesRoleFilter, type RoleSelection } from '@/lib/utils/shiftRegistrationRoleView'
+import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -48,11 +49,11 @@ import { deriveStaffingAttention } from '@/lib/ui/operational-attention'
 import { AttentionBanner } from '@/components/ui/operational-status'
 
 type Mode = 'open' | 'mine'
-type Filters = { date: string; brand: string; platform: string; campaign: string; role: string }
+type Filters = { date: string; brandIds: string[]; platformIds: string[]; campaignIds: string[]; roles: OperationalRole[] }
 type CapacityMap = Record<string, ShiftRoleCapacity[]>
 type ViewMode = 'card' | 'compact' | 'table'
 
-const initialFilters: Filters = { date: '', brand: 'all', platform: 'all', campaign: 'all', role: 'all' }
+const initialFilters: Filters = { date: '', brandIds: [], platformIds: [], campaignIds: [], roles: [] }
 
 export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const { currentUser, loading: userLoading } = useCurrentUser()
@@ -172,15 +173,15 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         ? shift.status === 'scheduled' && (resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)?.endAt.getTime() ?? 0) > Date.now()
         : userShiftIds.has(shift.id))
       .filter(shift => !filters.date || shift.date === filters.date)
-      .filter(shift => filters.brand === 'all' || shift.brand_id === filters.brand)
-      .filter(shift => filters.platform === 'all' || shift.platform_id === filters.platform)
-      .filter(shift => filters.campaign === 'all' || shift.campaign_id === filters.campaign)
-      .filter(shift => filters.role === 'all' || getVisibleRoleCapacities(capacities[shift.id] || [], filters.role).some(capacity =>
-        capacity.role === filters.role &&
+      .filter(shift => filters.brandIds.length === 0 || filters.brandIds.includes(shift.brand_id))
+      .filter(shift => filters.platformIds.length === 0 || filters.platformIds.includes(shift.platform_id))
+      .filter(shift => filters.campaignIds.length === 0 || filters.campaignIds.includes(shift.campaign_id || ''))
+      .filter(shift => filters.roles.length === 0 || getVisibleRoleCapacities(capacities[shift.id] || [], filters.roles).some(capacity =>
+        filters.roles.includes(capacity.role) &&
         (mode === 'open' ? true : registrations.some(registration =>
           registration.shift_id === shift.id &&
           registration.user_id === currentUser?.id &&
-          registration.operational_role === filters.role
+          filters.roles.includes(registration.operational_role)
         ))
       ))
       .sort((left, right) => `${left.date}${left.start_time}`.localeCompare(`${right.date}${right.start_time}`))
@@ -190,12 +191,18 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
     shifts,
     registrations,
     userId: currentUser?.id || '',
-    filters,
+    filters: {
+      date: filters.date,
+      brand: filters.brandIds,
+      platform: filters.platformIds,
+      campaign: filters.campaignIds,
+      role: filters.roles,
+    },
   }), [currentUser?.id, filters, registrations, shifts])
 
   const pendingApprovals = registrations.filter(registration =>
     registration.status === 'pending' &&
-    matchesRoleFilter(registration, filters.role) &&
+    matchesRoleFilter(registration, filters.roles) &&
     visibleShifts.some(shift => shift.id === registration.shift_id)
   )
 
@@ -207,15 +214,10 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
       <Card className="border-none shadow-sm bg-background p-1 sm:p-2">
         <CardContent className="grid gap-2 pt-2 pb-2 md:grid-cols-3 lg:grid-cols-6">
           <label className="text-xs font-medium">{t('date')}<Input className="mt-1 h-8 text-xs" type="date" value={filters.date} onChange={event => setFilters(current => ({ ...current, date: event.target.value }))} /></label>
-          <FilterSelect label={t('brand')} value={filters.brand} onChange={value => setFilters(current => ({ ...current, brand: value }))} options={brands} />
-          <FilterSelect label={t('platform')} value={filters.platform} onChange={value => setFilters(current => ({ ...current, platform: value }))} options={platforms} />
-          <FilterSelect label={t('campaign')} value={filters.campaign} onChange={value => setFilters(current => ({ ...current, campaign: value }))} options={campaigns} />
-          <label className="text-xs font-medium">{t('role')}
-            <Select value={filters.role} onValueChange={value => setFilters(current => ({ ...current, role: value }))}>
-              <SelectTrigger className="mt-1 h-8 w-full text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="all">{t('all')}</SelectItem>{getVisibleOperationalRoles('all').map(role => <SelectItem key={role} value={role}>{t(role)}</SelectItem>)}</SelectContent>
-            </Select>
-          </label>
+          <MultiSelectFilter label={t('brand')} value={filters.brandIds} onChange={brandIds => setFilters(current => ({ ...current, brandIds }))} options={brands.map(brand => ({ value: brand.id, label: brand.name }))} placeholder={t('all')} testId="registration-brand-filter" />
+          <MultiSelectFilter label={t('platform')} value={filters.platformIds} onChange={platformIds => setFilters(current => ({ ...current, platformIds }))} options={platforms.map(platform => ({ value: platform.id, label: platform.name }))} placeholder={t('all')} testId="registration-platform-filter" />
+          <MultiSelectFilter label={t('campaign')} value={filters.campaignIds} onChange={campaignIds => setFilters(current => ({ ...current, campaignIds }))} options={campaigns.map(campaign => ({ value: campaign.id, label: campaign.name }))} placeholder={t('all')} testId="registration-campaign-filter" />
+          <MultiSelectFilter label={t('role')} value={filters.roles} onChange={roles => setFilters(current => ({ ...current, roles: roles as OperationalRole[] }))} options={getVisibleOperationalRoles('all').map(role => ({ value: role, label: t(role) }))} placeholder={t('all')} testId="registration-role-filter" />
           <div className="flex items-end"><Button size="sm" className="w-full h-8" variant="outline" onClick={() => setFilters(initialFilters)}><RotateCcw className="mr-2 h-3 w-3" /><span className="hidden sm:inline">{t('resetFilters')}</span><span className="sm:hidden">{t('resetFilters')}</span></Button></div>
         </CardContent>
       </Card>
@@ -287,14 +289,14 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           onRegister={(shiftId, role) => runAction(`${shiftId}-${role}`, () => shiftRegistrationService.register(shiftId, currentUser.id, role), t('registrationPending'), shiftId)}
           shifts={visibleShifts}
           registrations={registrations}
-          roleFilter={filters.role}
+          roleFilter={filters.roles}
           brands={brands}
           platforms={platforms}
           campaigns={campaigns}
           onManage={setDetailShift}
         />
       ) : viewMode === 'compact' ? (
-        <CompactShiftList shifts={visibleShifts} capacities={capacities} registrations={registrations} roleFilter={filters.role} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+        <CompactShiftList shifts={visibleShifts} capacities={capacities} registrations={registrations} roleFilter={filters.roles} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
       ) : (
         <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2 min-[1900px]:grid-cols-3">
           {visibleShifts.map(shift => {
@@ -303,7 +305,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
               registration.user_id === currentUser.id &&
               !['cancelled', 'rejected', 'removed'].includes(registration.status)
             )
-            const visibleCapacities = getVisibleRoleCapacities(capacities[shift.id] || [], filters.role)
+            const visibleCapacities = getVisibleRoleCapacities(capacities[shift.id] || [], filters.roles)
             const fullyStaffed = visibleCapacities.every(capacity => capacity.approved >= capacity.required)
             return (
               <Card key={shift.id} className="shadow-sm border-border overflow-hidden">
@@ -480,11 +482,6 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   )
 }
 
-function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: Array<{ id: string; name: string }> }) {
-  const { t } = useTranslation()
-  return <label className="text-xs font-medium">{label}<Select value={value} onValueChange={onChange}><SelectTrigger className="mt-1 w-full h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{options.map(option => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}</SelectContent></Select></label>
-}
-
 function Info({ label, value }: { label: string; value: string }) {
   return <div><p className="text-xs text-muted-foreground">{label}</p><p className="truncate font-medium">{value}</p></div>
 }
@@ -552,7 +549,7 @@ function CompactShiftList({
   shifts: Shift[]
   capacities: CapacityMap
   registrations: ShiftRegistration[]
-  roleFilter: string
+  roleFilter: RoleSelection
   brands: Brand[]
   platforms: Platform[]
   campaigns: Campaign[]
@@ -591,7 +588,7 @@ function ShiftSummaryTable({
   onRegister: (shiftId: string, role: OperationalRole) => Promise<void>
   shifts: Shift[]
   registrations: ShiftRegistration[]
-  roleFilter: string
+  roleFilter: RoleSelection
   brands: Brand[]
   platforms: Platform[]
   campaigns: Campaign[]

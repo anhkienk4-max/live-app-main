@@ -16,19 +16,19 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Column, DataTable } from '@/components/ui/data-table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
 import { StaffFormDialog } from './StaffFormDialog'
 import { AccountRequestPanel } from './AccountRequestPanel'
 import { PageLoadError } from '@/components/ui/page-load-error'
+import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 
 type StaffFilters = {
-  permission: 'all' | SystemPermission
-  role: 'all' | OperationalRole
-  status: 'all' | User['status']
+  permissionIds: SystemPermission[]
+  roleIds: OperationalRole[]
+  statuses: User['status'][]
 }
 
-const initialFilters: StaffFilters = { permission: 'all', role: 'all', status: 'all' }
+const initialFilters: StaffFilters = { permissionIds: [], roleIds: [], statuses: [] }
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
 
 export function StaffList() {
@@ -96,9 +96,9 @@ export function StaffList() {
       : staff
     return permitted
       .filter(user => showArchived ? Boolean(user.archived_at || user.deleted_at) : !user.archived_at && !user.deleted_at)
-      .filter(user => filters.permission === 'all' || resolveSystemPermission(user) === filters.permission)
-      .filter(user => filters.role === 'all' || user.operational_roles?.includes(filters.role))
-      .filter(user => filters.status === 'all' || user.status === filters.status)
+      .filter(user => filters.permissionIds.length === 0 || filters.permissionIds.includes(resolveSystemPermission(user)))
+      .filter(user => filters.roleIds.length === 0 || filters.roleIds.some(role => user.operational_roles?.includes(role)))
+      .filter(user => filters.statuses.length === 0 || filters.statuses.includes(user.status))
   }, [currentUser, filters, showArchived, staff])
 
   const assignedShifts = React.useCallback((userId: string) => {
@@ -304,15 +304,15 @@ export function StaffList() {
 function StaffFilterControls({ filters, onChange }: { filters: StaffFilters; onChange: (filters: StaffFilters) => void }) {
   const { t } = useTranslation()
   return <div className="flex flex-wrap gap-2">
-    <Filter value={filters.permission} onChange={value => onChange({ ...filters, permission: value as StaffFilters['permission'] })} label={t('systemPermissions')} options={['admin', 'leader', 'member']} />
-    <Filter value={filters.role} onChange={value => onChange({ ...filters, role: value as StaffFilters['role'] })} label={t('operationalRoles')} options={operationalRoles} />
-    <Filter value={filters.status} onChange={value => onChange({ ...filters, status: value as StaffFilters['status'] })} label={t('status')} options={['active', 'inactive']} />
+    <Filter value={filters.permissionIds} onChange={value => onChange({ ...filters, permissionIds: value as SystemPermission[] })} label={t('systemPermissions')} options={['admin', 'leader', 'member']} />
+    <Filter value={filters.roleIds} onChange={value => onChange({ ...filters, roleIds: value as OperationalRole[] })} label={t('operationalRoles')} options={operationalRoles} />
+    <Filter value={filters.statuses} onChange={value => onChange({ ...filters, statuses: value as User['status'][] })} label={t('status')} options={['active', 'inactive']} />
   </div>
 }
 
-function Filter({ value, onChange, label, options }: { value: string; onChange: (value: string) => void; label: string; options: string[] }) {
-  const { t, translate } = useTranslation()
-  return <Select value={value} onValueChange={onChange}><SelectTrigger className="w-40" aria-label={label}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')} {label}</SelectItem>{options.map(option => <SelectItem key={option} value={option}>{translate(option)}</SelectItem>)}</SelectContent></Select>
+function Filter({ value, onChange, label, options }: { value: string[]; onChange: (value: string[]) => void; label: string; options: string[] }) {
+  const { translate } = useTranslation()
+  return <MultiSelectFilter label={label} value={value} onChange={onChange} options={options.map(option => ({ value: option, label: translate(option) }))} className="w-40" />
 }
 
 function StaffDetail({ user, shifts, workload, onClose, onEdit }: { user: User; shifts: Shift[]; workload: (role: OperationalRole) => number; onClose: () => void; onEdit?: () => void }) {

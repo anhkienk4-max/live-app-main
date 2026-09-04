@@ -34,38 +34,39 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
 import { ReportDetailModal } from './ReportDetailModal'
 import { ReportFormModal } from './ReportFormModal'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { PageLoadError } from '@/components/ui/page-load-error'
+import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
+import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 
 type Filters = {
   start: string
   end: string
-  brand: string
-  platform: string
-  campaign: string
-  host: string
-  support: string
-  technical: string
-  reportStatus: string
-  metricsStatus: string
+  brandIds: string[]
+  platformIds: string[]
+  campaignIds: string[]
+  hostIds: string[]
+  supportIds: string[]
+  technicalIds: string[]
+  reportStatuses: string[]
+  metricsStatuses: string[]
   search: string
 }
 
 const emptyFilters: Filters = {
   start: '',
   end: '',
-  brand: 'all',
-  platform: 'all',
-  campaign: 'all',
-  host: 'all',
-  support: 'all',
-  technical: 'all',
-  reportStatus: 'all',
-  metricsStatus: 'all',
+  brandIds: [],
+  platformIds: [],
+  campaignIds: [],
+  hostIds: [],
+  supportIds: [],
+  technicalIds: [],
+  reportStatuses: [],
+  metricsStatuses: [],
   search: '',
 }
 
@@ -188,16 +189,16 @@ export function ReportsList() {
     if (!shift) return false
     if (filters.start && shift.date < filters.start) return false
     if (filters.end && shift.date > filters.end) return false
-    if (filters.brand !== 'all' && shift.brand_id !== filters.brand) return false
-    if (filters.platform !== 'all' && shift.platform_id !== filters.platform) return false
-    if (filters.campaign !== 'all' && shift.campaign_id !== filters.campaign) return false
-    if (filters.host !== 'all' && !matchesRole(shift, 'host', filters.host)) return false
-    if (filters.support !== 'all' && !matchesRole(shift, 'support', filters.support)) return false
-    if (filters.technical !== 'all' && !matchesRole(shift, 'technical', filters.technical)) return false
+    if (!matchesMultiSelect(shift.brand_id, filters.brandIds)) return false
+    if (!matchesMultiSelect(shift.platform_id, filters.platformIds)) return false
+    if (!matchesMultiSelect(shift.campaign_id, filters.campaignIds)) return false
+    if (filters.hostIds.length > 0 && !filters.hostIds.some(userId => matchesRole(shift, 'host', userId))) return false
+    if (filters.supportIds.length > 0 && !filters.supportIds.some(userId => matchesRole(shift, 'support', userId))) return false
+    if (filters.technicalIds.length > 0 && !filters.technicalIds.some(userId => matchesRole(shift, 'technical', userId))) return false
     const status = report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
-    if (filters.reportStatus !== 'all' && status !== filters.reportStatus) return false
-    if (filters.metricsStatus === 'confirmed' && !report.metrics_confirmed) return false
-    if (filters.metricsStatus === 'unconfirmed' && report.metrics_confirmed) return false
+    if (filters.reportStatuses.length > 0 && !filters.reportStatuses.includes(status)) return false
+    const metricsStatus = report.metrics_confirmed ? 'confirmed' : 'unconfirmed'
+    if (filters.metricsStatuses.length > 0 && !filters.metricsStatuses.includes(metricsStatus)) return false
     if (filters.search) {
       const query = filters.search.toLowerCase()
       const haystack = [report.id, nameById(brands, shift.brand_id), nameById(platforms, shift.platform_id), nameById(campaigns, shift.campaign_id)].join(' ').toLowerCase()
@@ -298,14 +299,14 @@ export function ReportsList() {
           <div id="reports-filter-panel" className="grid gap-4 rounded-md bg-muted/40 p-4 md:grid-cols-4 lg:grid-cols-5">
             <label className="text-xs font-medium text-foreground">{t('startDate')}<Input className="mt-1.5 bg-background" type="date" value={filters.start} onChange={event => setFilters(current => ({ ...current, start: event.target.value }))} /></label>
             <label className="text-xs font-medium text-foreground">{t('endDate')}<Input className="mt-1.5 bg-background" type="date" value={filters.end} onChange={event => setFilters(current => ({ ...current, end: event.target.value }))} /></label>
-            <EntityFilter label={t('brand')} value={filters.brand} options={brands} onChange={value => setFilters(current => ({ ...current, brand: value }))} />
-            <EntityFilter label={t('platform')} value={filters.platform} options={platforms} onChange={value => setFilters(current => ({ ...current, platform: value }))} />
-            <EntityFilter label={t('campaign')} value={filters.campaign} options={campaigns} onChange={value => setFilters(current => ({ ...current, campaign: value }))} />
-            <EntityFilter label={t('host')} value={filters.host} options={users.filter(user => user.operational_roles?.includes('host')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, host: value }))} />
-            <EntityFilter label={t('support')} value={filters.support} options={users.filter(user => user.operational_roles?.includes('support')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, support: value }))} />
-            <EntityFilter label={t('technical')} value={filters.technical} options={users.filter(user => user.operational_roles?.includes('technical')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, technical: value }))} />
-            <StatusFilter label={t('reportStatus')} value={filters.reportStatus} values={['draft', 'in_review', 'confirmed', 'reopened', 'archived']} onChange={value => setFilters(current => ({ ...current, reportStatus: value }))} />
-            <StatusFilter label={t('metricsStatus')} value={filters.metricsStatus} values={['confirmed', 'unconfirmed']} onChange={value => setFilters(current => ({ ...current, metricsStatus: value }))} />
+            <EntityFilter label={t('brand')} value={filters.brandIds} options={brands} onChange={value => setFilters(current => ({ ...current, brandIds: value }))} />
+            <EntityFilter label={t('platform')} value={filters.platformIds} options={platforms} onChange={value => setFilters(current => ({ ...current, platformIds: value }))} />
+            <EntityFilter label={t('campaign')} value={filters.campaignIds} options={campaigns} onChange={value => setFilters(current => ({ ...current, campaignIds: value }))} />
+            <EntityFilter label={t('host')} value={filters.hostIds} options={users.filter(user => user.operational_roles?.includes('host')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, hostIds: value }))} />
+            <EntityFilter label={t('support')} value={filters.supportIds} options={users.filter(user => user.operational_roles?.includes('support')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, supportIds: value }))} />
+            <EntityFilter label={t('technical')} value={filters.technicalIds} options={users.filter(user => user.operational_roles?.includes('technical')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, technicalIds: value }))} />
+            <StatusFilter label={t('reportStatus')} value={filters.reportStatuses} values={['draft', 'in_review', 'confirmed', 'reopened', 'archived']} onChange={value => setFilters(current => ({ ...current, reportStatuses: value }))} />
+            <StatusFilter label={t('metricsStatus')} value={filters.metricsStatuses} values={['confirmed', 'unconfirmed']} onChange={value => setFilters(current => ({ ...current, metricsStatuses: value }))} />
           </div>
         )}
       </div>
@@ -407,14 +408,13 @@ function Metric({ title, value, icon }: { title: string; value: string; icon: Re
   )
 }
 
-function EntityFilter({ label, value, options, onChange }: { label: string; value: string; options: Array<{ id: string; name: string }>; onChange: (value: string) => void }) {
-  const { t } = useTranslation()
-  return <label className="text-xs font-medium text-foreground">{label}<Select value={value} onValueChange={onChange}><SelectTrigger className="mt-1.5 w-full bg-background"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{options.map(option => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}</SelectContent></Select></label>
+function EntityFilter({ label, value, options, onChange }: { label: string; value: string[]; options: Array<{ id: string; name: string }>; onChange: (value: string[]) => void }) {
+  return <MultiSelectFilter label={label} value={value} onChange={onChange} options={options.map(option => ({ value: option.id, label: option.name }))} />
 }
 
-function StatusFilter({ label, value, values, onChange }: { label: string; value: string; values: string[]; onChange: (value: string) => void }) {
+function StatusFilter({ label, value, values, onChange }: { label: string; value: string[]; values: string[]; onChange: (value: string[]) => void }) {
   const { t, translate } = useTranslation()
-  return <label className="text-xs font-medium text-foreground">{label}<Select value={value} onValueChange={onChange}><SelectTrigger className="mt-1.5 w-full bg-background"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{values.map(status => <SelectItem key={status} value={status}>{status === 'in_review' ? t('inReview') : status === 'draft' ? t('draft') : status === 'confirmed' ? t('confirmed') : status === 'reopened' ? t('reopened') : status === 'archived' ? t('archived') : translate(status)}</SelectItem>)}</SelectContent></Select></label>
+  return <MultiSelectFilter label={label} value={value} onChange={onChange} options={values.map(status => ({ value: status, label: status === 'in_review' ? t('inReview') : status === 'draft' ? t('draft') : status === 'confirmed' ? t('confirmed') : status === 'reopened' ? t('reopened') : status === 'archived' ? t('archived') : translate(status) }))} />
 }
 
 function Value({ label, value }: { label: string; value: string }) {

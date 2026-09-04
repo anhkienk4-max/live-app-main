@@ -1,19 +1,20 @@
 import { endOfMonth, endOfWeek, format, startOfMonth, startOfWeek } from 'date-fns'
 import type { Brand, Campaign, Platform, Shift, ShiftRegistration } from '@/lib/types/database.types'
 import { businessLocalDate } from '@/lib/utils/shiftUtils'
+import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
 
 export type CalendarTimeFilter = 'all' | 'today' | 'current_week' | 'current_month' | 'custom'
 export const UNASSIGNED_STUDIO_FILTER = '__unassigned__'
 
 export interface CalendarFilterState {
-  brand: string
-  platform: string
-  campaign: string
-  studio: string
-  status: string
-  host: string
-  support: string
-  technical: string
+  brandIds: string[]
+  platformIds: string[]
+  campaignIds: string[]
+  studios: string[]
+  statuses: Shift['status'][]
+  hostIds: string[]
+  supportIds: string[]
+  technicalIds: string[]
   time: CalendarTimeFilter
   customFrom: string
   customTo: string
@@ -126,18 +127,20 @@ export function filterCalendarShifts(
   return shifts.filter(shift => {
     if (scope.from && shift.date < scope.from) return false
     if (scope.to && shift.date > scope.to) return false
-    if (filters.brand !== 'all' && shift.brand_id !== filters.brand) return false
-    if (filters.platform !== 'all' && shift.platform_id !== filters.platform) return false
-    if (filters.campaign !== 'all' && shift.campaign_id !== filters.campaign) return false
-    if (filters.studio !== 'all') {
-      if (filters.studio === UNASSIGNED_STUDIO_FILTER) {
-        if (normalizeStudio(shift.studio)) return false
-      } else if (normalizeStudio(shift.studio) !== filters.studio) return false
+    if (!matchesMultiSelect(shift.brand_id, filters.brandIds)) return false
+    if (!matchesMultiSelect(shift.platform_id, filters.platformIds)) return false
+    if (!matchesMultiSelect(shift.campaign_id, filters.campaignIds)) return false
+    if (filters.studios.length > 0) {
+      const normalizedStudio = normalizeStudio(shift.studio)
+      const matchesStudio = filters.studios.some(studio => studio === UNASSIGNED_STUDIO_FILTER
+        ? !normalizedStudio
+        : normalizedStudio === studio)
+      if (!matchesStudio) return false
     }
-    if (filters.status !== 'all' && shift.status !== filters.status) return false
-    if (filters.host !== 'all' && !roleMatches(shift, 'host', filters.host, registrations)) return false
-    if (filters.support !== 'all' && !roleMatches(shift, 'support', filters.support, registrations)) return false
-    if (filters.technical !== 'all' && !roleMatches(shift, 'technical', filters.technical, registrations)) return false
+    if (!matchesMultiSelect(shift.status, filters.statuses)) return false
+    if (filters.hostIds.length > 0 && !filters.hostIds.some(userId => roleMatches(shift, 'host', userId, registrations))) return false
+    if (filters.supportIds.length > 0 && !filters.supportIds.some(userId => roleMatches(shift, 'support', userId, registrations))) return false
+    if (filters.technicalIds.length > 0 && !filters.technicalIds.some(userId => roleMatches(shift, 'technical', userId, registrations))) return false
     if (search) {
       const brand = brands.find(item => item.id === shift.brand_id)?.name ?? ''
       const platform = platforms.find(item => item.id === shift.platform_id)?.name ?? ''

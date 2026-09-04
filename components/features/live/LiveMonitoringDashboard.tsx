@@ -21,17 +21,18 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DashboardUpdateModal } from './DashboardUpdateModal'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
+import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 
 import { LiveSessionModal } from './LiveSessionModal'
 import { PageLoadError } from '@/components/ui/page-load-error'
 
-type Filters = { date: string; brand: string; platform: string; campaign: string; host: string; support: string; technical: string; status: string }
+type Filters = { date: string; brandIds: string[]; platformIds: string[]; campaignIds: string[]; hostIds: string[]; supportIds: string[]; technicalIds: string[]; statuses: Shift['status'][] }
 const todayValue = () => format(new Date(), 'yyyy-MM-dd')
-const initialFilters = (): Filters => ({ date: todayValue(), brand: 'all', platform: 'all', campaign: 'all', host: 'all', support: 'all', technical: 'all', status: 'all' })
+const initialFilters = (): Filters => ({ date: todayValue(), brandIds: [], platformIds: [], campaignIds: [], hostIds: [], supportIds: [], technicalIds: [], statuses: [] })
 
 export function LiveMonitoringDashboard() {
   const { currentUser } = useCurrentUser()
@@ -98,13 +99,13 @@ export function LiveMonitoringDashboard() {
   }
   const filtered = shifts.filter(shift =>
     (!filters.date || shift.date === filters.date) &&
-    (filters.brand === 'all' || shift.brand_id === filters.brand) &&
-    (filters.platform === 'all' || shift.platform_id === filters.platform) &&
-    (filters.campaign === 'all' || shift.campaign_id === filters.campaign) &&
-    (filters.host === 'all' || matchesRole(shift, 'host', filters.host)) &&
-    (filters.support === 'all' || matchesRole(shift, 'support', filters.support)) &&
-    (filters.technical === 'all' || matchesRole(shift, 'technical', filters.technical)) &&
-    (filters.status === 'all' || shift.status === filters.status)
+    matchesMultiSelect(shift.brand_id, filters.brandIds) &&
+    matchesMultiSelect(shift.platform_id, filters.platformIds) &&
+    matchesMultiSelect(shift.campaign_id, filters.campaignIds) &&
+    (filters.hostIds.length === 0 || filters.hostIds.some(userId => matchesRole(shift, 'host', userId))) &&
+    (filters.supportIds.length === 0 || filters.supportIds.some(userId => matchesRole(shift, 'support', userId))) &&
+    (filters.technicalIds.length === 0 || filters.technicalIds.some(userId => matchesRole(shift, 'technical', userId))) &&
+    matchesMultiSelect(shift.status, filters.statuses)
   )
   const latestUpdate = (shiftId: string) => [...(updates[shiftId] || [])].sort((a, b) => b.time.localeCompare(a.time))[0]
   const totalRevenue = filtered.reduce((sum, shift) => sum + (latestUpdate(shift.id)?.revenue || 0), 0)
@@ -126,13 +127,13 @@ export function LiveMonitoringDashboard() {
     <div className="space-y-6">
       <Card><CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle>{t('liveFilters')}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{t('todaysDate')}: {format(new Date(), 'dd/MM/yyyy')}</p></div><div className="flex flex-wrap items-center gap-2"><Button variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="live-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button><Button variant="outline" onClick={() => setFilters(initialFilters())}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button></div></div></CardHeader>{showFilters && <CardContent id="live-filter-panel" className="grid gap-3 md:grid-cols-4">
         <label className="text-xs font-medium">{t('date')}<Input className="mt-1" type="date" value={filters.date} onChange={event => setFilters(current => current ? { ...current, date: event.target.value } : current)} /></label>
-        <FilterSelect label={t('brand')} value={filters.brand} options={brands} onChange={value => setFilters(current => current ? { ...current, brand: value } : current)} />
-        <FilterSelect label={t('platform')} value={filters.platform} options={platforms} onChange={value => setFilters(current => current ? { ...current, platform: value } : current)} />
-        <FilterSelect label={t('campaign')} value={filters.campaign} options={campaigns} onChange={value => setFilters(current => current ? { ...current, campaign: value } : current)} />
-        <FilterSelect label={t('host')} value={filters.host} options={roleOptions('host')} onChange={value => setFilters(current => current ? { ...current, host: value } : current)} />
-        <FilterSelect label={t('support')} value={filters.support} options={roleOptions('support')} onChange={value => setFilters(current => current ? { ...current, support: value } : current)} />
-        <FilterSelect label={t('technical')} value={filters.technical} options={roleOptions('technical')} onChange={value => setFilters(current => current ? { ...current, technical: value } : current)} />
-        <label className="text-xs font-medium">{t('status')}<Select value={filters.status} onValueChange={value => setFilters(current => current ? { ...current, status: value } : current)}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{(['scheduled','preparing','live','paused','completed','cancelled'] as Shift['status'][]).map(status => <SelectItem key={status} value={status}>{statusLabel(status)}</SelectItem>)}</SelectContent></Select></label>
+         <FilterSelect label={t('brand')} value={filters.brandIds} options={brands} onChange={value => setFilters(current => current ? { ...current, brandIds: value } : current)} />
+         <FilterSelect label={t('platform')} value={filters.platformIds} options={platforms} onChange={value => setFilters(current => current ? { ...current, platformIds: value } : current)} />
+         <FilterSelect label={t('campaign')} value={filters.campaignIds} options={campaigns} onChange={value => setFilters(current => current ? { ...current, campaignIds: value } : current)} />
+         <FilterSelect label={t('host')} value={filters.hostIds} options={roleOptions('host')} onChange={value => setFilters(current => current ? { ...current, hostIds: value } : current)} />
+         <FilterSelect label={t('support')} value={filters.supportIds} options={roleOptions('support')} onChange={value => setFilters(current => current ? { ...current, supportIds: value } : current)} />
+         <FilterSelect label={t('technical')} value={filters.technicalIds} options={roleOptions('technical')} onChange={value => setFilters(current => current ? { ...current, technicalIds: value } : current)} />
+         <MultiSelectFilter label={t('status')} value={filters.statuses} onChange={value => setFilters(current => current ? { ...current, statuses: value as Shift['status'][] } : current)} options={(['scheduled','preparing','live','paused','completed','cancelled'] as Shift['status'][]).map(status => ({ value: status, label: statusLabel(status) }))} placeholder={t('all')} testId="live-status-filter" />
       </CardContent>}</Card>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
@@ -171,9 +172,8 @@ export function LiveMonitoringDashboard() {
   </>
 }
 
-function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: Array<{ id: string; name: string }>; onChange: (value: string) => void }) {
-  const { t } = useTranslation()
-  return <label className="text-xs font-medium">{label}<Select value={value} onValueChange={onChange}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem>{options.map(option => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}</SelectContent></Select></label>
+function FilterSelect({ label, value, options, onChange }: { label: string; value: string[]; options: Array<{ id: string; name: string }>; onChange: (value: string[]) => void }) {
+  return <MultiSelectFilter label={label} value={value} onChange={onChange} options={options.map(option => ({ value: option.id, label: option.name }))} />
 }
 function Metric({ title, value, icon }: { title: string; value: string; icon: React.ReactNode }) { return <Card><CardHeader className="flex-row items-center justify-between pb-2"><CardTitle className="text-sm text-muted-foreground">{title}</CardTitle>{icon}</CardHeader><CardContent><p className="text-2xl font-bold">{value}</p></CardContent></Card> }
 function Value({ label, value }: { label: string; value: string }) { return <div><p className="text-xs text-muted-foreground">{label}</p><p className="truncate font-medium">{value}</p></div> }
