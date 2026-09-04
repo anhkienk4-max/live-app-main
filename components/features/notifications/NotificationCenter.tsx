@@ -15,18 +15,13 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { notificationService } from "@/lib/services/notificationService";
+import { resolveNotificationDestination } from "@/lib/services/notificationRoutes";
 import type { AppNotification } from "@/lib/types/database.types";
 import { useCurrentUser } from "@/lib/hooks/useCurrentUser";
 import { useTranslation } from "@/lib/i18n";
 import { useToast } from "@/components/ui/toast";
 
-function resolveNotificationDestination(n: AppNotification) {
-  if (n.action_url) return n.action_url;
-  if (n.type.includes("swap")) return "/swaps";
-  if (n.type.includes("report")) return "/reports";
-  if (n.type === "shift_assigned") return "/calendar?tab=mine";
-  return "/notifications";
-}
+export { resolveNotificationDestination };
 
 export function NotificationCenter() {
   const [open, setOpen] = React.useState(false);
@@ -136,17 +131,44 @@ export function NotificationCenter() {
 
   const markAsRead = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    await notificationService.markRead(id);
+    try {
+      await notificationService.markRead(id);
+    } catch {
+      toast({
+        title: t('error'),
+        description: t('notificationUpdateFailed'),
+        variant: 'destructive',
+      });
+    }
     await load();
   };
 
   const markAllAsRead = async () => {
-    await notificationService.markAllRead();
+    try {
+      await notificationService.markAllRead();
+    } catch {
+      toast({
+        title: t('error'),
+        description: t('notificationUpdateFailed'),
+        variant: 'destructive',
+      });
+    }
     await load();
   };
 
   const handleClick = async (n: AppNotification) => {
-    if (!n.read_at) await notificationService.markRead(n.id);
+    if (!n.read_at) {
+      try {
+        await notificationService.markRead(n.id);
+      } catch {
+        toast({
+          title: t('error'),
+          description: t('notificationUpdateFailed'),
+          variant: 'destructive',
+        });
+      }
+      await load();
+    }
     router.push(resolveNotificationDestination(n));
     setOpen(false);
   };
