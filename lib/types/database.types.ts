@@ -981,4 +981,11 @@ export interface OperationalSettings {
   default_host_count: number
   default_support_count: number
   default_technical_count: number
+  require_shift_capacity_validation: boolean
+  require_time_overlap_validation: boolean
+  allow_leader_schedule_edit: boolean
+  strict_host_role_binding: boolean
+  default_view_mode: string
+  calendar_density: string
+  show_unassigned_shifts: boolean
 }

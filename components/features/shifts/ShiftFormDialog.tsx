@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { shiftService } from '@/lib/services/dataService'
+import { settingsService, shiftService } from '@/lib/services/dataService'
 import { Shift, Brand, Platform, Campaign, User, ShiftStatus } from '@/lib/types/database.types'
 import {
   DEFAULT_SHIFT_STAFFING,
@@ -74,9 +74,11 @@ export function ShiftFormDialog({
   onSuccess
 }: ShiftFormDialogProps) {
   const [loading, setLoading] = React.useState(false)
+  const [operationalDefaultsReady, setOperationalDefaultsReady] = React.useState(() => getAuthMode() !== 'supabase')
   const [showRecurring, setShowRecurring] = React.useState(false)
   const [conflicts, setConflicts] = React.useState<any[]>([])
   const [previewShifts, setPreviewShifts] = React.useState<any[]>([])
+  const countInputsTouched = React.useRef(false)
   
   const [formData, setFormData] = React.useState<ShiftFormState>({
     title: '',
@@ -112,6 +114,8 @@ export function ShiftFormDialog({
   const { t } = useTranslation()
 
   React.useEffect(() => {
+    let active = true
+    const usesAuthoritativeDefaults = open && !shift && !duplicateFrom && getAuthMode() === 'supabase'
     if (shift) {
       setFormData({
         title: shift.title || '',
@@ -157,6 +161,7 @@ export function ShiftFormDialog({
         product_notes: duplicateFrom.product_notes || ''
       })
     } else {
+      countInputsTouched.current = false
       setFormData({
         title: '',
         date: '',
@@ -176,11 +181,29 @@ export function ShiftFormDialog({
         live_link: '',
         product_notes: ''
       })
+      if (usesAuthoritativeDefaults) {
+        void settingsService.getOperational().then(settings => {
+          if (!active) return
+          setOperationalDefaultsReady(true)
+          if (countInputsTouched.current) return
+          setFormData(current => ({
+            ...current,
+            required_host_count: settings.default_host_count,
+            required_support_count: settings.default_support_count,
+            required_technical_count: settings.default_technical_count,
+          }))
+        }).catch(() => {
+          if (active) {
+            toast({ title: 'Error', description: 'Failed to load operational settings', variant: 'destructive' })
+          }
+        })
+      }
     }
     setShowRecurring(false)
     setConflicts([])
     setPreviewShifts([])
-  }, [shift, duplicateFrom, open])
+    return () => { active = false }
+  }, [shift, duplicateFrom, open, toast])
 
   const checkConflicts = React.useCallback(async () => {
     if (!formData.date || !formData.start_time || !formData.end_time) return
@@ -226,6 +249,10 @@ export function ShiftFormDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!operationalDefaultsReady) {
+      toast({ title: 'Error', description: 'Operational settings are not ready.', variant: 'destructive' })
+      return
+    }
     const resolvedDateTime = resolveShiftDateTime(formData.date, formData.start_time, formData.end_time)
     if (!resolvedDateTime?.valid) {
       toast({ title: 'Invalid shift time', description: resolvedDateTime?.error || 'Enter a valid date and time.', variant: 'destructive' })
@@ -387,6 +414,7 @@ export function ShiftFormDialog({
                   max="20"
                   value={formData.required_host_count}
                   onChange={(event) => {
+                    countInputsTouched.current = true
                     const nextValue = event.target.value
                     const normalized = normalizeCapacity(nextValue === '' ? undefined : nextValue, DEFAULT_SHIFT_STAFFING.required_host_count)
                     setFormData({ ...formData, required_host_count: normalized ?? DEFAULT_SHIFT_STAFFING.required_host_count })
@@ -402,6 +430,7 @@ export function ShiftFormDialog({
                   max="20"
                   value={formData.required_support_count}
                   onChange={(event) => {
+                    countInputsTouched.current = true
                     const nextValue = event.target.value
                     const normalized = normalizeCapacity(nextValue === '' ? undefined : nextValue, DEFAULT_SHIFT_STAFFING.required_support_count)
                     setFormData({ ...formData, required_support_count: normalized ?? DEFAULT_SHIFT_STAFFING.required_support_count })
@@ -417,6 +446,7 @@ export function ShiftFormDialog({
                   max="20"
                   value={formData.required_technical_count}
                   onChange={(event) => {
+                    countInputsTouched.current = true
                     const nextValue = event.target.value
                     const normalized = normalizeCapacity(nextValue === '' ? undefined : nextValue, DEFAULT_SHIFT_STAFFING.required_technical_count)
                     setFormData({ ...formData, required_technical_count: normalized ?? DEFAULT_SHIFT_STAFFING.required_technical_count })

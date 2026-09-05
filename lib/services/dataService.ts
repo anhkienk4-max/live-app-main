@@ -52,6 +52,7 @@ import {
 import { getSupabaseShiftRegistrationRepository } from '@/lib/services/supabaseShiftRegistrationService'
 import { getSupabaseReportRepository } from '@/lib/services/supabaseReportService'
 import { getSupabaseSwapRequestRepository } from '@/lib/services/supabaseSwapRequestService'
+import { getSupabaseSettingsRepository } from '@/lib/services/supabaseSettingsService'
 import {
   liveReportImageCategories,
   maximumLiveReportImages,
@@ -357,6 +358,13 @@ let operationalSettings: OperationalSettings = {
   default_host_count: DEFAULT_REQUIRED_STAFF_COUNT,
   default_support_count: DEFAULT_REQUIRED_STAFF_COUNT,
   default_technical_count: DEFAULT_REQUIRED_STAFF_COUNT,
+  require_shift_capacity_validation: true,
+  require_time_overlap_validation: true,
+  allow_leader_schedule_edit: false,
+  strict_host_role_binding: true,
+  default_view_mode: 'timeline',
+  calendar_density: 'comfortable',
+  show_unassigned_shifts: true,
 }
 
 let personalSettings = new Map<string, PersonalSettings>()
@@ -3725,11 +3733,21 @@ export const settingsService = {
   },
 
   async getOperational(): Promise<OperationalSettings> {
+    if (getAuthMode() === 'supabase') {
+      const dbSettings = await getSupabaseSettingsRepository().getOperationalSettings()
+      operationalSettings = { ...operationalSettings, ...dbSettings }
+      return Promise.resolve({ ...operationalSettings })
+    }
     operationalSettings = readSessionSetting<OperationalSettings>('operational') || operationalSettings
     return Promise.resolve({ ...operationalSettings })
   },
 
   async updateOperational(data: Partial<OperationalSettings>): Promise<OperationalSettings> {
+    if (getAuthMode() === 'supabase') {
+      const persisted = await getSupabaseSettingsRepository().updateOperationalSettings(data)
+      operationalSettings = { ...operationalSettings, ...persisted }
+      return Promise.resolve({ ...operationalSettings })
+    }
     operationalSettings = { ...operationalSettings, ...data }
     writeSessionSetting('operational', operationalSettings)
     return Promise.resolve({ ...operationalSettings })
