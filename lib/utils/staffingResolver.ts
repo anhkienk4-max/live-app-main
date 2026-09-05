@@ -75,46 +75,56 @@ export function resolveStaffingLabelsForRole(
   const roleRegistrations = registrations.filter(r => r.operational_role === role)
   const approved = roleRegistrations.filter(r => r.status === 'approved')
   
-  const labels: StaffingLabel[] = approved.map(r => {
+  const labels: StaffingLabel[] = []
+  const authoritativeNames = new Set<string>()
+
+  // 1. Add authoritative assignments (approved registrations)
+  for (const r of approved) {
+    let name: string
+    let isImportedOnly = false
     if (r.user_id) {
       const u = users.find(u => u.id === r.user_id)
-      return {
+      name = u?.full_name || t('unknownUser')
+    } else {
+      name = r.imported_name || t('unassigned')
+      isImportedOnly = !!r.imported_name
+    }
+    if (!authoritativeNames.has(name)) {
+      authoritativeNames.add(name)
+      const label: StaffingLabel = {
         id: `reg-${r.id}`,
-        name: u?.full_name || t('unknownUser'),
+        name,
         isUnassigned: false,
-        isImportedOnly: false,
-        avatarUrl: u?.avatar_url
+        isImportedOnly,
       }
+      if (r.user_id) {
+        const u = users.find(u => u.id === r.user_id)
+        if (u?.avatar_url) label.avatarUrl = u.avatar_url
+      }
+      labels.push(label)
     }
-    return {
-      id: `reg-${r.id}`,
-      name: r.imported_name || t('unassigned'),
-      isUnassigned: !r.imported_name,
-      isImportedOnly: !!r.imported_name,
-    }
-  })
+  }
 
   const requiredCount = role === 'host' ? (shift.required_host_count ?? 1) : role === 'support' ? (shift.required_support_count ?? 0) : (shift.required_technical_count ?? 0)
-  const missingCount = Math.max(0, requiredCount - approved.length)
-  
   const roleImportedNames = role === 'host' ? shift.host_names : role === 'support' ? shift.assistant_names : shift.technical_names
-  if (missingCount > 0 && roleImportedNames?.length) {
-    // Collect all assigned imported names across ALL roles to avoid duplicates
-    const allAssignedImported = new Set(registrations.filter(r => r.status === 'approved').map(r => r.imported_name).filter(Boolean))
+
+  // 2. Add imported names that are not already authoritative, up to required count
+  if (roleImportedNames?.length) {
     for (const name of roleImportedNames) {
-      if (!allAssignedImported.has(name)) {
+      if (labels.length >= requiredCount) break
+      if (!authoritativeNames.has(name)) {
+        authoritativeNames.add(name)
         labels.push({
           id: `imp-${name}`,
           name,
           isUnassigned: false,
           isImportedOnly: true,
         })
-        allAssignedImported.add(name) // Prevent assigning same person to multiple missing host slots
-        if (labels.length >= requiredCount) break
       }
     }
   }
 
+  // 3. Pad with unassigned if still below required count
   while (labels.length < requiredCount) {
     labels.push({
       id: `unassigned-${role}-${labels.length}`,
