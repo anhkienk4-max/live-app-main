@@ -680,9 +680,7 @@ export const userService = {
       ? await getSupabaseMasterDataRepository().businessUsers.getAll()
       : users
     return Promise.resolve(directory.filter(user =>
-      user.status === 'active' && (user.operational_roles?.includes(role) ||
-        (role === 'host' && user.department === 'Live Host') ||
-        (role === 'support' && user.department === 'Live Support'))
+      user.status === 'active' && user.operational_roles?.includes(role)
     ))
   },
 }

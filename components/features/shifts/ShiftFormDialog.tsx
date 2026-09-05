@@ -483,7 +483,7 @@ export function ShiftFormDialog({
                 <Select value={formData.host_id} onValueChange={(v) => setFormData({ ...formData, host_id: v })}>
                   <SelectTrigger><SelectValue placeholder="Assign host..." /></SelectTrigger>
                   <SelectContent>
-                    {users.filter(u => u.status === 'active' && (u.operational_roles?.includes('host') || (!u.operational_roles && (u.role === 'staff' || u.role === 'leader')))).map(u => (
+                    {users.filter(u => u.status === 'active' && u.operational_roles?.includes('host')).map(u => (
                       <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
                     ))}
                   </SelectContent>
@@ -494,7 +494,7 @@ export function ShiftFormDialog({
                 <Select value={formData.support_id} onValueChange={(v) => setFormData({ ...formData, support_id: v })}>
                   <SelectTrigger><SelectValue placeholder="Assign support..." /></SelectTrigger>
                   <SelectContent>
-                    {users.filter(u => u.status === 'active' && (u.operational_roles?.includes('support') || (!u.operational_roles && u.department === 'Live Support'))).map(u => (
+                    {users.filter(u => u.status === 'active' && u.operational_roles?.includes('support')).map(u => (
                       <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
                     ))}
                   </SelectContent>

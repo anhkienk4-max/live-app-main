@@ -129,9 +129,7 @@ export function SwapRequestFormModal({
     users.filter(
       (u) =>
         u.status === "active" &&
-        (u.operational_roles?.includes(role) ||
-          (role === "host" && u.department === "Live Host") ||
-          (role === "support" && u.department === "Live Support")),
+        u.operational_roles?.includes(role),
     );
 
   const validateForm = (): boolean => {
