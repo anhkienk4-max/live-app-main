@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import { userService } from '@/lib/services/dataService'
 import { User, UserRole, OperationalRole, SystemPermission } from '@/lib/types/database.types'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -46,7 +47,8 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
     avatar_url: '',
   })
   const { toast } = useToast()
-  const { currentUser } = useCurrentUser()
+  const router = useRouter()
+  const { currentUser, reload: reloadCurrentUser } = useCurrentUser()
   const { t } = useTranslation()
   const isSelf = Boolean(staff && currentUser?.id === staff.id)
 
@@ -101,13 +103,19 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
       setLoading(true)
       const payload = { ...formData, full_name: formData.full_name.trim(), email: normalizedEmail }
       if (staff) {
-        await userService.update(staff.id, isSelf ? {
+        const updated = await userService.update(staff.id, isSelf ? {
           full_name: payload.full_name,
           phone: payload.phone,
           department: payload.department,
           avatar_url: payload.avatar_url,
+          operational_roles: payload.operational_roles,
         } : payload)
+        if (!updated) throw new Error('Update denied or returned no data')
         toast({ title: t('success'), description: t('staffUpdated'), variant: 'success' })
+        if (isSelf) {
+          void reloadCurrentUser()
+          router.refresh()
+        }
       } else {
         // Generate avatar URL if not provided
         const avatarUrl = formData.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${normalizedEmail}`
