@@ -269,10 +269,27 @@ export function ShiftFormDialog({
       if (showRecurring && recurrenceRule.frequency !== 'none') {
         const baseShift = { ...formData }
         const generated = generateRecurringShifts(baseShift, recurrenceRule)
+        let successCount = 0
+        const errors: string[] = []
         for (const shiftData of generated) {
-          await shiftService.create(shiftData)
+          try {
+            await shiftService.create(shiftData)
+            successCount++
+          } catch (e) {
+            errors.push(e instanceof Error ? e.message : 'Unknown error')
+          }
         }
-        toast({ title: 'Success', description: `Created ${generated.length} recurring shifts`, variant: 'success' })
+        if (successCount === generated.length) {
+          toast({ title: 'Success', description: `Created ${successCount} recurring shifts`, variant: 'success' })
+        } else if (successCount > 0) {
+          toast({
+            title: 'Partial success',
+            description: `Created ${successCount} of ${generated.length} recurring shifts. ${errors.length} failed.`,
+            variant: 'destructive'
+          })
+        } else {
+          toast({ title: 'Failed', description: 'Failed to create recurring shifts.', variant: 'destructive' })
+        }
         await onSuccess()
       } else if (shift) {
         const updatedShift = await shiftService.update(shift.id, { ...formData, version: shift.version })
