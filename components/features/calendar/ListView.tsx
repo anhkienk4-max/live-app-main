@@ -11,6 +11,7 @@ import { ShiftRegistrationActions } from './ShiftRegistrationActions'
 import { isStaffedRegistration } from '@/lib/services/dataService'
 import { deriveShiftAttention } from '@/lib/ui/operational-attention'
 import { OperationalStatusStrip } from '@/components/ui/operational-status'
+import { resolveStaffingLabelsForRole } from '@/lib/utils/staffingResolver'
 
 interface ListViewProps {
   shifts: Shift[]
@@ -43,9 +44,11 @@ export function ListView({
   const getBrandName = (brandId: string) => brands.find(b => b.id === brandId)?.name || 'Unknown'
   const getPlatformName = (platformId: string) => platforms.find(p => p.id === platformId)?.name || 'Unknown'
   const getBrandColor = (brandId: string) => brands.find(b => b.id === brandId)?.color || '#2563EB'
-  const getUserName = (userId?: string) => userId ? users.find(u => u.id === userId)?.full_name || t('notAssigned') : t('notAssigned')
-  const staffingName = (userId: string | undefined, importedNames: string[] | undefined) =>
-    userId ? getUserName(userId) : importedNames?.join(', ') || t('notAssigned')
+  const getRoleStaffingNames = (shift: Shift, role: OperationalRole) => {
+    return resolveStaffingLabelsForRole(shift, registrations, users, role, t)
+      .map(l => l.name)
+      .join(', ')
+  }
 
   const sortedShifts = [...shifts].sort((a, b) => {
     if (a.date !== b.date) return a.date.localeCompare(b.date)
@@ -97,10 +100,10 @@ export function ListView({
                   <div className="text-sm text-gray-600">{getPlatformName(shift.platform_id)}</div>
                   <div className="text-sm text-gray-500"><span className="font-medium">{t('studio')}:</span> {shift.studio || t('notUpdated')}</div>
                   <div className="text-sm text-gray-500">
-                    <span className="font-medium">{t('importHostNames')}:</span> {staffingName(shift.host_id, shift.host_names)}
+                    <span className="font-medium">{t('importHostNames')}:</span> {getRoleStaffingNames(shift, 'host')}
                   </div>
-                  <div className="text-sm text-gray-500"><span className="font-medium">{t('importAssistantNames')}:</span> {staffingName(shift.support_id, shift.assistant_names)}</div>
-                  <div className="text-sm text-gray-500"><span className="font-medium">{t('importTechnicalNames')}:</span> {staffingName(shift.technical_id, shift.technical_names)}</div>
+                  <div className="text-sm text-gray-500"><span className="font-medium">{t('importAssistantNames')}:</span> {getRoleStaffingNames(shift, 'support')}</div>
+                  <div className="text-sm text-gray-500"><span className="font-medium">{t('importTechnicalNames')}:</span> {getRoleStaffingNames(shift, 'technical')}</div>
                 </div>
                 <Badge variant={shift.status === 'live' ? 'destructive' : shift.status === 'completed' ? 'default' : 'secondary'}>
                   {shift.status}

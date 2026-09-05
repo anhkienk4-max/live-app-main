@@ -67,6 +67,7 @@ import { ShiftRegistrationActions } from '@/components/features/calendar/ShiftRe
 import { deriveShiftAttention } from '@/lib/ui/operational-attention'
 import { OperationalStatusStrip } from '@/components/ui/operational-status'
 import { ShiftLifecycleActions } from './ShiftLifecycleActions'
+import { resolveStaffingLabelsForRole, StaffingLabel } from '@/lib/utils/staffingResolver'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
 
@@ -405,12 +406,7 @@ const statusStyles: Record<ShiftStatus, string> = {
   cancelled: 'border-gray-200 bg-gray-100 text-gray-700',
 }
 
-export interface ShiftStaffAssignment {
-  role: OperationalRole
-  user: User | null
-  userId: string
-  status: 'approved' | 'manually_assigned'
-}
+
 
 interface ShiftDetailModalProps {
   open: boolean
@@ -444,50 +440,6 @@ export function safeFormatShiftDate(
     : fallback
 }
 
-export function buildShiftStaffing(
-  shift: Shift,
-  registrations: ShiftRegistration[],
-  users: User[],
-): Record<OperationalRole, ShiftStaffAssignment[]> {
-  const usersById = new Map(users.map(user => [user.id, user]))
-  const result: Record<OperationalRole, ShiftStaffAssignment[]> = {
-    host: [],
-    support: [],
-    technical: [],
-  }
-
-  for (const role of operationalRoles) {
-    const assignments = new Map<string, ShiftStaffAssignment>()
-    const directUserId = shift[roleAssignmentField[role]]
-    if (directUserId) {
-      assignments.set(directUserId, {
-        role,
-        user: usersById.get(directUserId) || null,
-        userId: directUserId,
-        status: 'approved',
-      })
-    }
-
-    for (const registration of registrations) {
-      if (
-        registration.shift_id !== shift.id ||
-        registration.operational_role !== role ||
-        !isStaffedRegistration(registration)
-      ) continue
-
-      assignments.set(registration.user_id, {
-        role,
-        user: usersById.get(registration.user_id) || null,
-        userId: registration.user_id,
-        status: registration.status === 'manually_assigned' ? 'manually_assigned' : 'approved',
-      })
-    }
-
-    result[role] = [...assignments.values()]
-  }
-
-  return result
-}
 
 export function ShiftDetailActions({
   currentUser,
@@ -597,10 +549,7 @@ export function ShiftDetailModal({
     setIsLocked(Boolean(shift.registration_locked))
   }, [shift.id, shift.registration_locked])
 
-  const staffing = React.useMemo(
-    () => buildShiftStaffing(shift, registrations, users),
-    [registrations, shift, users],
-  )
+
   const myRegistration = React.useMemo(() => registrations.find(r => r.user_id === currentUser?.id && r.shift_id === shift.id && isStaffedRegistration(r)), [registrations, currentUser?.id, shift.id])
   const registrationContext = allRegistrations ?? registrations
   const canRequestSwap = Boolean(myRegistration && shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at)
@@ -811,7 +760,7 @@ export function ShiftDetailModal({
                     <div className="grid gap-4 lg:grid-cols-3">
                       {operationalRoles.map(role => (
                         <RoleAssignments
-                          assignments={staffing[role]}
+                          labels={resolveStaffingLabelsForRole(shift, registrations, users, role, t)}
                           key={role}
                           label={t(role)}
                           notAssignedLabel={t('notAssigned')}
@@ -1075,7 +1024,7 @@ function DetailValue({
 }
 
 function RoleAssignments({
-  assignments,
+  labels,
   label,
   notAssignedLabel,
   required,
@@ -1083,7 +1032,7 @@ function RoleAssignments({
   t,
   testId,
 }: {
-  assignments: ShiftStaffAssignment[]
+  labels: StaffingLabel[]
   label: string
   notAssignedLabel: string
   required?: number
@@ -1099,26 +1048,28 @@ function RoleAssignments({
         <h4 className="font-semibold">{label}</h4>
         <Badge variant="outline">{requiredLabel}: {requiredValue}</Badge>
       </div>
-      {assignments.length === 0 ? (
+      {labels.length === 0 ? (
         <p className="text-sm text-muted-foreground">{notAssignedLabel}</p>
       ) : (
         <div className="space-y-3">
-          {assignments.map(assignment => {
-            const name = assignment.user?.full_name?.trim() || notAssignedLabel
-            const initials = name === notAssignedLabel
+          {labels.map((lbl, idx) => {
+            const name = lbl.name
+            const initials = lbl.isUnassigned
               ? '?'
               : name.split(/\s+/).slice(0, 2).map(part => part[0]?.toUpperCase()).join('')
             return (
-              <div className="flex min-w-0 items-center gap-3" key={assignment.userId}>
+              <div className="flex min-w-0 items-center gap-3" key={lbl.id + idx}>
                 <Avatar>
-                  {assignment.user?.avatar_url ? <AvatarImage alt={name} src={assignment.user.avatar_url} /> : null}
+                  {lbl.avatarUrl ? <AvatarImage alt={name} src={lbl.avatarUrl} /> : null}
                   <AvatarFallback>{initials}</AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1">
-                  <p className="break-words font-medium">{name}</p>
-                  <Badge className="mt-1" variant="secondary">
-                    {assignment.status === 'manually_assigned' ? t('manuallyAssigned') : t('approved')}
-                  </Badge>
+                  <p className={`break-words font-medium ${lbl.isUnassigned ? 'text-muted-foreground italic' : ''}`}>{name}</p>
+                  {!lbl.isUnassigned && (
+                    <Badge className="mt-1" variant="secondary">
+                      {lbl.isImportedOnly ? t('scheduleStaffingName') : t('approved')}
+                    </Badge>
+                  )}
                 </div>
               </div>
             )

@@ -9,6 +9,7 @@ import { useTranslation } from '@/lib/i18n'
 import { ShiftRegistrationActions } from './ShiftRegistrationActions'
 import { isStaffedRegistration } from '@/lib/services/dataService'
 import { deriveShiftAttention } from '@/lib/ui/operational-attention'
+import { resolveStaffingLabelsForRole } from '@/lib/utils/staffingResolver'
 import { OperationalStatusStrip } from '@/components/ui/operational-status'
 
 interface DayViewProps {
@@ -74,22 +75,44 @@ export function DayView({ currentDate, shifts, brands, platforms, users, registr
                       <span className="ml-2">{shift.studio || t('notUpdated')}</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-6 text-sm">
-                    <div className="flex items-center gap-2">
-                      <UserIcon className="h-4 w-4 text-blue-600" />
-                      <span className="text-gray-600">Host:</span>
-                      <span className="font-medium">{getUserName(shift.host_id)}</span>
+                  <div className="flex flex-col gap-2 text-sm mt-3">
+                    <div className="flex items-start gap-2">
+                      <UserIcon className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+                      <span className="text-gray-600 w-20 shrink-0">Host:</span>
+                      <div className="flex flex-wrap gap-1">
+                        {resolveStaffingLabelsForRole(shift, registrations, users, 'host', t).map(lbl => (
+                          <span key={lbl.id} className={`font-medium ${lbl.isUnassigned ? 'text-gray-400 italic' : ''}`}>
+                            {lbl.name}
+                          </span>
+                        )).reduce((prev, curr) => <>{prev}{prev ? ', ' : ''}{curr}</>, <></>)}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <UserIcon className="h-4 w-4 text-green-600" />
-                      <span className="text-gray-600">Support:</span>
-                      <span className="font-medium">{getUserName(shift.support_id)}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <UserIcon className="h-4 w-4 text-purple-600" />
-                      <span className="text-gray-600">Technical:</span>
-                      <span className="font-medium">{getUserName(shift.technical_id)}</span>
-                    </div>
+                    {(shift.required_support_count ?? 0) > 0 && (
+                      <div className="flex items-start gap-2">
+                        <UserIcon className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                        <span className="text-gray-600 w-20 shrink-0">Support:</span>
+                        <div className="flex flex-wrap gap-1">
+                          {resolveStaffingLabelsForRole(shift, registrations, users, 'support', t).map(lbl => (
+                            <span key={lbl.id} className={`font-medium ${lbl.isUnassigned ? 'text-gray-400 italic' : ''}`}>
+                              {lbl.name}
+                            </span>
+                          )).reduce((prev, curr) => <>{prev}{prev ? ', ' : ''}{curr}</>, <></>)}
+                        </div>
+                      </div>
+                    )}
+                    {(shift.required_technical_count ?? 0) > 0 && (
+                      <div className="flex items-start gap-2">
+                        <UserIcon className="h-4 w-4 text-purple-600 mt-0.5 shrink-0" />
+                        <span className="text-gray-600 w-20 shrink-0">Technical:</span>
+                        <div className="flex flex-wrap gap-1">
+                          {resolveStaffingLabelsForRole(shift, registrations, users, 'technical', t).map(lbl => (
+                            <span key={lbl.id} className={`font-medium ${lbl.isUnassigned ? 'text-gray-400 italic' : ''}`}>
+                              {lbl.name}
+                            </span>
+                          )).reduce((prev, curr) => <>{prev}{prev ? ', ' : ''}{curr}</>, <></>)}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   {shift.product_notes && (
                     <div className="mt-3 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">{shift.product_notes}</div>

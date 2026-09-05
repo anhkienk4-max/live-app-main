@@ -1,20 +1,23 @@
 'use client'
 
-import { Shift, Brand, Platform, User } from '@/lib/types/database.types'
+import { Shift, Brand, Platform, User, ShiftRegistration } from '@/lib/types/database.types'
 import { Badge } from '@/components/ui/badge'
 import { format, startOfWeek, addDays } from 'date-fns'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { useTranslation } from '@/lib/i18n'
+import { resolveStaffingLabels } from '@/lib/utils/staffingResolver'
 
 interface WeekViewProps {
   currentDate: Date
   shifts: Shift[]
   brands: Brand[]
   platforms: Platform[]
+  users: User[]
+  registrations: ShiftRegistration[]
   onShiftClick?: (shift: Shift) => void
 }
 
-export function WeekView({ currentDate, shifts, brands, platforms, onShiftClick }: WeekViewProps) {
+export function WeekView({ currentDate, shifts, brands, platforms, users, registrations, onShiftClick }: WeekViewProps) {
   const { t } = useTranslation()
   const weekStart = startOfWeek(currentDate)
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
@@ -49,7 +52,18 @@ export function WeekView({ currentDate, shifts, brands, platforms, onShiftClick 
                 >
                   <div className="font-medium">{formatShiftTimeRange(shift)}</div>
                   <div className="text-xs truncate text-gray-700">{getBrandName(shift.brand_id)}</div>
-                  <div className="truncate text-[11px] text-gray-600">{t('studio')}: {shift.studio || t('notUpdated')}</div>
+                  <div className="truncate text-[11px] text-gray-600 mb-1">{t('studio')}: {shift.studio || t('notUpdated')}</div>
+                  <div className="flex flex-wrap gap-1 mb-1">
+                    {(() => {
+                      const shiftRegistrations = registrations.filter(r => r.shift_id === shift.id)
+                      const labels = resolveStaffingLabels(shift, shiftRegistrations, users, t)
+                      return labels.map((lbl, idx) => (
+                        <span key={lbl.id + idx} className={`text-[10px] px-1 rounded bg-white/50 border border-gray-200 truncate max-w-full ${lbl.isUnassigned ? 'text-gray-400 italic' : 'text-gray-700 font-medium'}`}>
+                          {lbl.name}
+                        </span>
+                      ))
+                    })()}
+                  </div>
                   <Badge variant={shift.status === 'live' ? 'destructive' : 'secondary'} className="text-[10px] mt-1">
                     {shift.status}
                   </Badge>
