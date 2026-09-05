@@ -20,12 +20,19 @@ export function BulkActionsToolbar({ selectedCount, onBulkDelete, onDeselectAll,
   const { toast } = useToast()
 
   const handleBulkStatusChange = async (status: 'scheduled' | 'live' | 'completed' | 'cancelled') => {
-    for (const shift of shifts) {
-      await shiftService.update(shift.id, { status })
+    const result = await shiftService.bulkUpdateStatus(shifts, status)
+    await onUpdate()
+    if (result.failed === 0) {
+      toast({ title: 'Success', description: `Updated ${result.succeeded} shifts`, variant: 'success' })
+      onDeselectAll()
+      return
     }
-    toast({ title: 'Success', description: `Updated ${selectedCount} shifts`, variant: 'success' })
-    onUpdate()
-    onDeselectAll()
+    const conflicts = result.outcomes.filter(outcome => !outcome.success && outcome.error_message?.includes('STALE_WRITE')).length
+    toast({
+      title: result.succeeded > 0 ? 'Partial update' : 'Action failed',
+      description: `Updated ${result.succeeded} of ${shifts.length} shifts. ${result.failed} failed${conflicts > 0 ? ` (${conflicts} version conflict)` : ''}: ${result.outcomes.filter(outcome => !outcome.success).map(outcome => outcome.shift_title || outcome.shift_id).join(', ')}`,
+      variant: 'destructive',
+    })
   }
 
   return (

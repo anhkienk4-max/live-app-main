@@ -8,6 +8,7 @@ import {
   ReportImage,
   DashboardUpdate,
   SwapRequest,
+  ShiftStatus,
   OperationalRole,
   OcrReviewData,
   OcrCropBox,
@@ -27,6 +28,8 @@ import {
   DeletionImpact,
   BulkShiftDeletionOutcome,
   BulkShiftDeletionResult,
+  BulkShiftStatusOutcome,
+  BulkShiftStatusResult,
   ReportRevision,
   LiveReportImage,
 } from '@/lib/types/database.types'
@@ -1524,6 +1527,33 @@ export const shiftService = {
           shift_title: shift?.title,
           success: false,
           error_message: error instanceof Error ? error.message : 'Unable to remove shift.',
+        })
+      }
+    }
+    return {
+      outcomes,
+      succeeded: outcomes.filter(outcome => outcome.success).length,
+      failed: outcomes.filter(outcome => !outcome.success).length,
+    }
+  },
+
+  async bulkUpdateStatus(shiftsToUpdate: Shift[], status: ShiftStatus): Promise<BulkShiftStatusResult> {
+    const outcomes: BulkShiftStatusOutcome[] = []
+    for (const shift of shiftsToUpdate) {
+      try {
+        const updated = await this.update(shift.id, { status, version: shift.version })
+        outcomes.push({
+          shift_id: shift.id,
+          shift_title: shift.title,
+          success: updated !== null,
+          ...(updated ? {} : { error_message: 'Shift was not found.' }),
+        })
+      } catch (error) {
+        outcomes.push({
+          shift_id: shift.id,
+          shift_title: shift.title,
+          success: false,
+          error_message: error instanceof Error ? error.message : 'Unable to update shift.',
         })
       }
     }

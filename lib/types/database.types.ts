@@ -141,6 +141,20 @@ export interface BulkShiftDeletionResult {
   failed: number
 }
 
+export interface BulkShiftStatusOutcome {
+  shift_id: string
+  shift_title?: string
+  success: boolean
+  error_code?: string
+  error_message?: string
+}
+
+export interface BulkShiftStatusResult {
+  outcomes: BulkShiftStatusOutcome[]
+  succeeded: number
+  failed: number
+}
+
 
 export interface User extends LifecycleMetadata {
   id: string
