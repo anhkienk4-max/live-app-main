@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
+import { getAuthMode } from '@/lib/auth/authMode'
+import { removeProfileAvatar, uploadProfileAvatar } from '@/lib/services/profileAvatarStorageService'
 
 const acceptedAvatarTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
 const maxAvatarBytes = 5 * 1024 * 1024
@@ -89,19 +91,39 @@ export default function ProfilePage() {
       return
     }
     setSaving(true)
+    const supabaseMode = getAuthMode() === 'supabase'
+    const previousStoragePath = currentUser.avatar_storage_path
+    let uploadedStoragePath: string | undefined
     try {
       let avatarUrl = removeAvatar ? undefined : currentUser.avatar_url
       let storagePath = removeAvatar ? undefined : currentUser.avatar_storage_path
       if (avatarFile) {
-        avatarUrl = await fileToDataUrl(avatarFile)
-        storagePath = `mock/profiles/${currentUser.id}/avatar/${avatarFile.name}`
+        if (supabaseMode) {
+          const uploaded = await uploadProfileAvatar(avatarFile, currentUser.id)
+          avatarUrl = uploaded.avatarUrl
+          storagePath = uploaded.storagePath
+          uploadedStoragePath = uploaded.storagePath
+        } else {
+          avatarUrl = await fileToDataUrl(avatarFile)
+          storagePath = `mock/profiles/${currentUser.id}/avatar/${avatarFile.name}`
+        }
       }
-      await userService.update(currentUser.id, {
-        ...form,
-        full_name: form.full_name.trim(),
-        avatar_url: avatarUrl,
-        avatar_storage_path: storagePath,
-      })
+      try {
+        await userService.update(currentUser.id, {
+          ...form,
+          full_name: form.full_name.trim(),
+          avatar_url: avatarUrl,
+          avatar_storage_path: storagePath,
+        })
+      } catch (error) {
+        if (uploadedStoragePath) {
+          await removeProfileAvatar(uploadedStoragePath, currentUser.id).catch(() => undefined)
+        }
+        throw error
+      }
+      if (supabaseMode && previousStoragePath && previousStoragePath !== storagePath) {
+        await removeProfileAvatar(previousStoragePath, currentUser.id).catch(() => undefined)
+      }
       cancelAvatarChange()
       await reload()
       toast({ title: t('success'), description: avatarDirty ? t('avatarSaved') : t('profileSaved'), variant: 'success' })
