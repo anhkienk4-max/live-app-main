@@ -249,7 +249,7 @@ export function ShiftFormDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!operationalDefaultsReady) {
+    if (!shift && !duplicateFrom && !operationalDefaultsReady) {
       toast({ title: 'Error', description: 'Operational settings are not ready.', variant: 'destructive' })
       return
     }
