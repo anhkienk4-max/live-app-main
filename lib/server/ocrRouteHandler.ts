@@ -7,7 +7,10 @@ import type {
 } from '@/lib/types/database.types'
 import { ocrErrorResponse, ocrSuccessResponse } from '@/lib/services/ocrApiContract'
 import { clampOcrCrop, defaultOcrCrop } from '@/lib/utils/ocrImage'
-import { type LayoutMetricCell } from '@/lib/utils/ocrMetrics'
+import {
+  platformMetricLayouts,
+  type LayoutMetricCell,
+} from '@/lib/utils/ocrMetrics'
 import {
   detectDashboardRegions,
   platformRoiMetricLayouts,
@@ -186,7 +189,7 @@ export function createOcrPostHandler(options?: {
             metadata.height,
             regionResult.selected,
           )
-          : { output: {}, words: [] }
+          : { output: {}, cardDiagnostics: {}, words: [] }
         const words = passWords.concat(cardRecognition.words)
         const response: OcrImageRecognition = {
           engine: 'tesseract.js',
@@ -196,6 +199,7 @@ export function createOcrPostHandler(options?: {
             label: labelResult.data.text.trim(),
             numeric: numericResult.data.text.trim(),
             card: cardRecognition.output,
+            card_diagnostics: cardRecognition.cardDiagnostics,
           },
           confidence: Math.min(labelResult.data.confidence, numericResult.data.confidence),
           words,
@@ -239,6 +243,7 @@ async function recognizeMetricCards(
 ) {
   const output: Record<string, string[]> = {}
   const words: OcrRecognizedWord[] = []
+  const cardDiagnostics: NonNullable<OcrImageRecognition['pass_output']['card_diagnostics']> = {}
 
   await worker.setParameters({
     tessedit_pageseg_mode: dependencies.PSM.SINGLE_LINE,
@@ -248,6 +253,10 @@ async function recognizeMetricCards(
   })
 
   for (const cell of platformRoiMetricLayouts[platform]) {
+    if (
+      platform === 'shopee_live'
+      && (cell.x < 0 || cell.x > 1 || cell.y < 0 || cell.y > 1)
+    ) continue
     const crop = toRegionMetricCellCrop(region, cell, imageWidth, imageHeight)
     const resizeScale = platform === 'tiktok_shop' ? 7 : 5
     const basePipeline = () => dependencies.sharp(imageBytes)
@@ -265,7 +274,12 @@ async function recognizeMetricCards(
     const primaryImage = await basePipeline().png().toBuffer()
     const primaryResult = await worker.recognize(primaryImage, { rotateAuto: false }, { text: true })
     const primaryText = normalizeCardText(primaryResult.data.text)
-    const variants = [{ text: primaryText, confidence: primaryResult.data.confidence, crop }]
+    const variants = [{
+      text: primaryText,
+      confidence: primaryResult.data.confidence,
+      crop,
+      preprocessingPass: 'inverted_grayscale',
+    }]
 
     if (!/\d/.test(primaryText) || primaryResult.data.confidence < 60) {
       const thresholdImage = await basePipeline().threshold(175).png().toBuffer()
@@ -274,9 +288,70 @@ async function recognizeMetricCards(
         text: normalizeCardText(thresholdResult.data.text),
         confidence: thresholdResult.data.confidence,
         crop,
+        preprocessingPass: 'fixed_threshold',
       })
     }
+    if (
+      platform === 'tiktok_shop'
+      && cell.key === 'advertising_cost'
+      && !variants.some(variant => /^\d{1,3}[.,]\d{2}M$/i.test(variant.text.trim()))
+    ) {
+      const recoveryCrop = {
+        left: Math.max(0, crop.left - Math.round(crop.width * .06)),
+        top: Math.max(0, crop.top - Math.round(crop.height * .12)),
+        width: Math.min(imageWidth - Math.max(0, crop.left - Math.round(crop.width * .06)), Math.round(crop.width * 1.12)),
+        height: Math.min(imageHeight - Math.max(0, crop.top - Math.round(crop.height * .12)), Math.round(crop.height * 1.25)),
+      }
+      await worker.setParameters({
+        tessedit_pageseg_mode: dependencies.PSM.SPARSE_TEXT,
+        tessedit_char_whitelist: '0123456789.,',
+        preserve_interword_spaces: '1',
+        user_defined_dpi: '300',
+      })
+      const recoveryImage = await dependencies.sharp(imageBytes)
+        .extract(recoveryCrop)
+        .resize({
+          width: recoveryCrop.width * 15,
+          height: recoveryCrop.height * 15,
+          fit: 'fill',
+          kernel: dependencies.sharp.kernel.lanczos3,
+        })
+        .grayscale()
+        .normalize()
+        .threshold(230)
+        .png()
+        .toBuffer()
+      const recoveryResult = await worker.recognize(
+        recoveryImage,
+        { rotateAuto: false },
+        { text: true },
+      )
+      const recoveryDigits = normalizeCardText(recoveryResult.data.text).replace(/\D/g, '')
+      const decimalPlaces = platformMetricLayouts[platform]
+        .find(layout => layout.key === cell.key)?.displayFormat?.decimalPlaces || 2
+      if (recoveryDigits.length === decimalPlaces + 1) {
+        variants.push({
+          text: `${recoveryDigits.slice(0, -decimalPlaces)}.${recoveryDigits.slice(-decimalPlaces)}M`,
+          confidence: recoveryResult.data.confidence,
+          crop: recoveryCrop,
+          preprocessingPass: 'fixed_threshold',
+        })
+      }
+    }
     output[cell.key] = variants.map(variant => variant.text)
+    cardDiagnostics[cell.key] = variants.map(variant => ({
+      text: variant.text,
+      confidence: variant.confidence,
+      preprocessing_pass: variant.preprocessingPass,
+      evidence_source_family: 'anchor_aligned_card_crop' as const,
+      evidence_group: `anchor_card:${cell.key}`,
+      bounding_box: {
+        x: variant.crop.left,
+        y: variant.crop.top,
+        width: variant.crop.width,
+        height: variant.crop.height,
+      },
+    }))
     variants.forEach((variant, variantIndex) => {
       if (!/\d/.test(variant.text)) return
       words.push({
@@ -288,6 +363,8 @@ async function recognizeMetricCards(
         platform,
         source: 'image_ocr',
         pass: 'card',
+        evidence_source_family: 'anchor_aligned_card_crop',
+        evidence_group: `anchor_card:${cell.key}`,
         bounding_box: {
           x: variant.crop.left,
           y: variant.crop.top,
@@ -306,7 +383,7 @@ async function recognizeMetricCards(
     })
   }
 
-  return { output, words }
+  return { output, cardDiagnostics, words }
 }
 
 function normalizeCardText(value: string) {

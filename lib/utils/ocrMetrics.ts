@@ -422,7 +422,7 @@ export const platformMetricLayouts: Record<Exclude<ReportDashboardPlatform, 'oth
     { key: 'comments', label: 'Bình luận', x: .537, y: .497, width: .07, height: .05, valueKind: 'count' },
     { key: 'product_clicks', label: 'Lượt nhấp vào sản phẩm', x: .676, y: .497, width: .07, height: .05, valueKind: 'count_or_compact', displayFormat: { compactSuffix: 'K', decimalPlaces: 2 } },
     { key: 'average_order_value', label: 'AOV', x: .264, y: .583, width: .09, height: .05, valueKind: 'compact', displayFormat: { compactSuffix: 'K', decimalPlaces: 2 } },
-    { key: 'live_ctr', label: 'CTR của LIVE', x: .398, y: .583, width: .09, height: .05, valueKind: 'percentage' },
+    { key: 'live_ctr', label: 'CTR của LIVE', x: .398, y: .583, width: .09, height: .05, valueKind: 'percentage', displayFormat: { decimalPlaces: 2 } },
     { key: 'shares', label: 'Lượt chia sẻ', x: .537, y: .583, width: .07, height: .05, valueKind: 'count' },
     { key: 'estimated_gmv', label: 'GMV ước tính', x: .676, y: .583, width: .08, height: .05, valueKind: 'compact', displayFormat: { compactSuffix: 'M', decimalPlaces: 2 } },
   ],
@@ -1828,7 +1828,7 @@ function applyCardOutputCandidates(
           shapeScore * 10
           + rawQualityScore * 2
           + (cardDiagnostic?.confidence || cardWord?.confidence || 0) / 100
-          - variantIndex * .05,
+          + (key === 'live_ctr' ? variantIndex * .25 : -variantIndex * .05),
       }]
     })
     const consensusCandidates = cardCandidates.map(candidate => ({
@@ -2094,6 +2094,15 @@ function normalizeLayoutCardValue(
       const fractionDigits = normalized.slice(lastSeparator + 1).replace(/\D/g, '')
       normalized = `${integerDigits}.${fractionDigits.slice(0, declaredDecimalPlaces)}`
     }
+    if (
+      cell.valueKind === 'percentage'
+      && lastSeparator !== undefined
+      && trailingDigits > declaredDecimalPlaces
+    ) {
+      const integerDigits = normalized.slice(0, lastSeparator).replace(/\D/g, '') || '0'
+      const fractionDigits = normalized.slice(lastSeparator + 1).replace(/\D/g, '')
+      normalized = `${integerDigits}.${fractionDigits.slice(0, declaredDecimalPlaces)}`
+    }
     const needsDeclaredDecimal = cell.valueKind !== 'currency'
       && digits.length > declaredDecimalPlaces
       && (
@@ -2118,7 +2127,10 @@ function normalizeLayoutCardValue(
     if (inferredBoundedPercentage !== undefined) {
       const decimalScale = 10 ** declaredDecimalPlaces
       normalized = String(
-        Math.round((inferredBoundedPercentage + Number.EPSILON) * decimalScale) / decimalScale,
+        (cell?.key === 'live_ctr'
+          ? Math.floor((inferredBoundedPercentage + Number.EPSILON) * decimalScale)
+          : Math.round((inferredBoundedPercentage + Number.EPSILON) * decimalScale))
+        / decimalScale,
       )
     } else if (needsDeclaredDecimal || malformedCurrencySeparators) {
       normalized = `${digits.slice(0, -declaredDecimalPlaces)}.${digits.slice(-declaredDecimalPlaces)}`
@@ -2817,6 +2829,10 @@ function tiktokStrategyGroupScore(
       candidate.metric.strategy === 'anchor_card'
       || candidate.metric.strategy === 'normalized_roi'
     ) {
+      if (
+        (key === 'live_ctr' || key === 'ctor')
+        && candidate.metric.strategy === 'anchor_card'
+      ) return 8.5
       if (
         candidate.metric.strategy === 'normalized_roi'
         && cell?.valueKind === 'count'
@@ -3667,10 +3683,13 @@ function recognizedMetricCellBox(
   const selectedRegion = recognition.region_diagnostics?.dashboard_candidates.find(candidate =>
     candidate.id === recognition.region_diagnostics?.selected_candidate_id,
   )
-  if (selectedRegion) {
+  const roiCell = normalizeMetricCellToRoi(platform, cell)
+  const cellOutsideCanonicalRoi = platform === 'shopee_live'
+    && (roiCell.x < 0 || roiCell.x > 1 || roiCell.y < 0 || roiCell.y > 1)
+  if (selectedRegion && !cellOutsideCanonicalRoi) {
     return roiCellBoundingBox(
       selectedRegion,
-      normalizeMetricCellToRoi(platform, cell),
+      roiCell,
       'value',
     )
   }

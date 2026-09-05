@@ -60,15 +60,22 @@ export function roiCellBoundingBox(
 ) {
   const labelHeight = candidate.platform === 'tiktok_shop' ? .045 : .055
   const labelCenterY = cell.y - (candidate.platform === 'tiktok_shop' ? .055 : .075)
-  const centerY = kind === 'label' ? labelCenterY : cell.y
+  const tiktokValueCenterY = candidate.platform === 'tiktok_shop'
+    && ['advertising_cost', 'average_order_value', 'live_ctr'].includes(cell.key)
+    ? cell.y - .008
+    : cell.y
+  const centerY = kind === 'label' ? labelCenterY : tiktokValueCenterY
   const tiktokValueWidth = candidate.platform === 'tiktok_shop'
     ? cell.key === 'gmv'
       ? Math.min(.48, cell.width * 1.08)
       : cell.key === 'current_viewers'
         ? Math.min(.14, cell.width * 1.2)
-        : cell.key === 'average_view_duration_seconds'
-          || cell.key === 'average_order_value'
-          ? Math.min(.24, cell.width * 1.5)
+          : cell.key === 'average_view_duration_seconds'
+            ? Math.min(.24, cell.width * 1.5)
+            : cell.key === 'advertising_cost'
+              ? Math.min(.13, cell.width * 1.6)
+          : ['advertising_cost', 'average_order_value', 'live_ctr'].includes(cell.key)
+            ? cell.width
           : Math.min(.22, cell.width * (
             cell.key === 'items_sold' ? 1.6 : 1.35
           ))
@@ -79,7 +86,9 @@ export function roiCellBoundingBox(
   const height = kind === 'label'
     ? labelHeight
     : candidate.platform === 'tiktok_shop'
-      ? cell.key === 'gmv' ? Math.min(cell.height, .12) : Math.min(cell.height, .07)
+      ? cell.key === 'gmv' ? Math.min(cell.height, .12)
+        : cell.key === 'shares' ? Math.min(cell.height * 1.5, .1)
+        : Math.min(cell.height, .07)
       : Math.min(cell.height, cell.key === 'sales' ? .16 : .09)
   const corners = [
     roiPointToImage(candidate, cell.x - width / 2, centerY - height / 2),
