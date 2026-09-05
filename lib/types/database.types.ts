@@ -301,6 +301,7 @@ export interface DashboardUpdate extends LifecycleMetadata {
   comments?: number
   shares?: number
   screenshot_url?: string
+  screenshot_storage_path?: string
   dashboard_platform?: ReportDashboardPlatform
   normalized_metrics?: Partial<Record<ReportMetricKey, ReportMetricValue>>
   ocr_review?: OcrReviewData

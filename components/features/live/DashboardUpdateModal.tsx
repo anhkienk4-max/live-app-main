@@ -63,6 +63,8 @@ import {
 import { AlertDialog } from '@/components/ui/alert-dialog'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
+import { getAuthMode } from '@/lib/auth/authMode'
+import { removeDashboardScreenshot, uploadDashboardScreenshot } from '@/lib/services/liveDashboardStorageService'
 import { useTranslation } from '@/lib/i18n'
 import { AlertTriangle, ChevronDown, ChevronUp, Loader2, RefreshCw, ScanText, Upload, X } from 'lucide-react'
 
@@ -90,6 +92,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
   const ocrDerivedMetricKeysRef = React.useRef(new Set<CanonicalMetricKey>())
   const cropProposalKeyRef = React.useRef('')
   const [formData, setFormData] = React.useState<FormData>(emptyForm)
+  const [screenshotFile, setScreenshotFile] = React.useState<File | null>(null)
   const [submitting, setSubmitting] = React.useState(false)
   const [ocrReview, setOcrReview] = React.useState<OcrReviewData | null>(null)
   const [scanning, setScanning] = React.useState(false)
@@ -122,6 +125,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
     manualMetricKeysRef.current.clear()
     ocrDerivedMetricKeysRef.current.clear()
     setFormData(emptyForm())
+    setScreenshotFile(null)
     setOcrReview(null)
     setMetricValues({})
     setRawOcrText('')
@@ -180,6 +184,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
     if (file) {
       if (dashboardPlatform === 'tiktok_shop') setProposingCrop(true)
       setFormData({ ...formData, screenshot_url: URL.createObjectURL(file) })
+      setScreenshotFile(file)
       setCropBox(defaultOcrCrop(dashboardPlatform))
       toast({ 
         title: t('dashboardScreenshot'),
@@ -451,15 +456,23 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
 
   const persistUpdate = async () => {
     setSubmitting(true)
+    let uploadedStoragePath: string | undefined
 
     try {
       if (dashboardPlatform === 'other') throw new Error('Dashboard platform is required.')
       const serializedMetrics = serializeLiveMetricState(dashboardPlatform, metricValues)
+      let screenshotUrl = formData.screenshot_url || undefined
+      if (getAuthMode() === 'supabase' && screenshotFile) {
+        const uploaded = await uploadDashboardScreenshot(screenshotFile, shift.id)
+        uploadedStoragePath = uploaded.storagePath
+        screenshotUrl = uploaded.screenshotUrl
+      }
       await dashboardUpdateService.create({
         shift_id: shift.id,
         time: new Date().toISOString(),
         ...serializedMetrics,
-        screenshot_url: formData.screenshot_url || undefined,
+        screenshot_url: screenshotUrl,
+        screenshot_storage_path: uploadedStoragePath,
         notes: formData.notes || undefined,
         dashboard_platform: dashboardPlatform,
         ocr_review: ocrReview || undefined,
@@ -471,6 +484,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
       onSuccess()
       onOpenChange(false)
     } catch {
+      if (uploadedStoragePath) await removeDashboardScreenshot(uploadedStoragePath, shift.id).catch(() => undefined)
       toast({ title: t('error'), description: t('validationError'), variant: 'destructive' })
     } finally {
       setSubmitting(false)
@@ -518,7 +532,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
                   size="icon"
                   variant="destructive"
                   className="absolute top-2 right-2"
-                  onClick={() => { setFormData({ ...formData, screenshot_url: '' }); setOcrReview(null) }}
+                  onClick={() => { setFormData({ ...formData, screenshot_url: '' }); setScreenshotFile(null); setOcrReview(null) }}
                 >
                   <X className="h-4 w-4" />
                 </Button>

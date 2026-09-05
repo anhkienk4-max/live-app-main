@@ -53,6 +53,7 @@ import { getSupabaseShiftRegistrationRepository } from '@/lib/services/supabaseS
 import { getSupabaseReportRepository } from '@/lib/services/supabaseReportService'
 import { getSupabaseSwapRequestRepository } from '@/lib/services/supabaseSwapRequestService'
 import { getSupabaseSettingsRepository } from '@/lib/services/supabaseSettingsService'
+import { getSupabaseDashboardUpdateRepository } from '@/lib/services/supabaseDashboardUpdateService'
 import {
   liveReportImageCategories,
   maximumLiveReportImages,
@@ -3134,10 +3135,12 @@ function logOcrPipeline(stage: string, details: Record<string, unknown>) {
 // Dashboard Update Service
 export const dashboardUpdateService = {
   async getByShift(shiftId: string): Promise<DashboardUpdate[]> {
+    if (getAuthMode() === 'supabase') return getSupabaseDashboardUpdateRepository().getByShift(shiftId)
     return Promise.resolve(dashboardUpdates.filter(update => update.shift_id === shiftId && !update.deleted_at))
   },
 
   async create(data: Omit<DashboardUpdate, 'id' | 'created_at' | 'updated_at'>): Promise<DashboardUpdate> {
+    if (getAuthMode() === 'supabase') return getSupabaseDashboardUpdateRepository().create(data)
     const shift = shifts.find(candidate => candidate.id === data.shift_id)
     if (!shift || !['preparing', 'live', 'paused'].includes(shift.status)) {
       throw new Error('Dashboard updates are only available for an active live workflow.')
@@ -3155,6 +3158,7 @@ export const dashboardUpdateService = {
   },
 
   async remove(id: string, actorId: string, reason: string): Promise<boolean> {
+    if (getAuthMode() === 'supabase') return getSupabaseDashboardUpdateRepository().remove(id, reason)
     const index = dashboardUpdates.findIndex(update => update.id === id)
     if (index === -1) return false
     const update = dashboardUpdates[index]
