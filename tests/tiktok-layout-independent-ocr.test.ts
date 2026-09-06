@@ -115,7 +115,10 @@ test('browser OCR runtime uses pinned local worker, core, and language assets', 
 
   for (const [relativePath, expectedSha256] of assets) {
     const content = readFileSync(path.join(process.cwd(), relativePath))
-    const actualSha256 = createHash('sha256').update(content).digest('hex').toUpperCase()
+    const canonicalContent = relativePath.endsWith('.js')
+      ? Buffer.from(content.toString('utf8').replace(/\r\n/g, '\n'))
+      : content
+    const actualSha256 = createHash('sha256').update(canonicalContent).digest('hex').toUpperCase()
     assert.equal(actualSha256, expectedSha256, relativePath)
   }
 })

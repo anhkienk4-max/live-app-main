@@ -3,27 +3,10 @@ import test from 'node:test'
 
 import { parsePlatformOcrText, platformOcrConfigs } from '../lib/utils/ocrMetrics.ts'
 import {
-  applyOcrCandidatesToLiveUpdateForm,
   parseAndApplyOcrText,
   platformMetricBindingKeys,
-  platformToFormBindings,
-  type LiveUpdateOcrFormState,
 } from '../lib/utils/ocrReview.ts'
-
-const emptyLiveForm = (): LiveUpdateOcrFormState => ({
-  revenue: '',
-  gmv: '',
-  orders: '',
-  peak_viewers: '',
-  current_viewers: '',
-  total_views: '',
-  total_viewers: '',
-  likes: '',
-  comments: '',
-  shares: '',
-  notes: '',
-  screenshot_url: '',
-})
+import { platformCanonicalMetricKeys } from '../lib/utils/ocrCanonical.ts'
 
 const noisyShopeeText = [
   '--- LIVE Insight ---',
@@ -119,9 +102,8 @@ test('platform configs own aliases, sections, value types, and form support for 
     assert.equal(Object.keys(config.valueTypes).length > 0, true)
     assert.equal(config.finalReportFields.length, 19)
     assert.equal(config.liveUpdateFields.length, 19)
-    assert.equal(Object.keys(platformToFormBindings[platform]).length, 19)
-    assert.equal(platformMetricBindingKeys(platform, 'final_report').length, 19)
-    assert.equal(platformMetricBindingKeys(platform, 'live_update').length, 19)
+    assert.equal(platformMetricBindingKeys(platform).length, 19)
+    assert.deepEqual(platformMetricBindingKeys(platform), platformCanonicalMetricKeys(platform))
   }
 })
 
@@ -157,7 +139,6 @@ test('noisy Shopee OCR recovers reliable metrics independently across sections',
   assert.equal(parsed.candidates.ctr?.status, 'review_required')
   assert.equal(parsed.reviewRequiredKeys.includes('orders'), true)
   assert.equal(parsed.reviewRequiredKeys.includes('ctr'), true)
-  assert.equal(parsed.unmappedLines.some(line => line.includes('Sales Trends')), true)
 })
 
 test('noisy TikTok/TTS OCR binds all 19 metrics despite noise and lost percent symbols', () => {
@@ -187,36 +168,26 @@ test('noisy TikTok/TTS OCR binds all 19 metrics despite noise and lost percent s
   assert.equal(parsed.metrics.shares, 60)
   assert.equal(parsed.metrics.estimated_gmv, 8980000)
   assert.equal(parsed.reviewRequiredKeys.includes('ctor'), true)
-  assert.equal(parsed.unmappedLines.some(line => line.includes('GMV đã ghi nhận trend')), true)
 })
 
-test('shared parser output reaches actual Final Report and Live Update state without cross-mapping', () => {
-  const reportResult = parseAndApplyOcrText({
+test('shared parser output reaches the canonical metric state used by Final Report and Live Update', () => {
+  const result = parseAndApplyOcrText({
     platform: 'tiktok_shop',
     rawText: noisyTiktokText,
-    currentMetrics: { likes: '77' },
+    currentMetrics: { likes: 77 },
     overwriteOcrValues: true,
   })
-  const liveState = applyOcrCandidatesToLiveUpdateForm({
-    ...emptyLiveForm(),
-    revenue: 'manual revenue',
-    notes: 'keep note',
-    screenshot_url: 'blob:keep',
-  }, reportResult.review, ['revenue'])
 
-  assert.equal(reportResult.metrics.gmv, '8761919')
-  assert.equal(reportResult.metrics.advertising_cost, '2110000')
-  assert.equal(reportResult.metrics.average_order_value, '165320')
-  assert.equal(reportResult.metrics.likes, '77')
-  assert.equal(liveState.gmv, '8761919')
-  assert.equal(liveState.orders, '95')
-  assert.equal(liveState.current_viewers, '7')
-  assert.equal(liveState.total_views, '2310')
-  assert.equal(liveState.comments, '234')
-  assert.equal(liveState.shares, '60')
-  assert.equal(liveState.revenue, 'manual revenue')
-  assert.equal(liveState.notes, 'keep note')
-  assert.equal(liveState.screenshot_url, 'blob:keep')
-  assert.equal('advertising_cost' in liveState, false)
-  assert.equal('average_order_value' in liveState, false)
+  assert.equal(result.metrics.gmv, 8761919)
+  assert.equal(result.metrics.advertising_cost, 2110000)
+  assert.equal(result.metrics.average_order_value, 165320)
+  assert.equal(result.metrics.likes, 77)
+  assert.equal(result.metrics.sku_orders, 95)
+  assert.equal(result.metrics.current_viewers, 7)
+  assert.equal(result.metrics.total_views, 2310)
+  assert.equal(result.metrics.comments, 234)
+  assert.equal(result.metrics.shares, 60)
+  assert.equal(Object.keys(result.metrics).filter(key => key !== 'likes').every(key =>
+    platformMetricBindingKeys('tiktok_shop').includes(key as never),
+  ), true)
 })

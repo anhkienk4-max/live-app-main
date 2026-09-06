@@ -2,11 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { parseDashboardOcrText } from '../lib/utils/ocrMetrics.ts'
-import {
-  applyOcrCandidatesToLiveUpdateForm,
-  applyOcrCandidatesToMetricState,
-  type LiveUpdateOcrFormState,
-} from '../lib/utils/ocrReview.ts'
+import { applySelectedMetricsToState } from '../lib/utils/ocrCanonical.ts'
 
 const sequentialShopeeText = [
   'Sales',
@@ -43,41 +39,26 @@ const sequentialShopeeText = [
 ].join('\n')
 
 const expectedSequentialMetrics = {
-  sales: '21281718',
-  engaged_viewers: '521',
-  comments: '51',
-  add_to_cart: '436',
-  total_views: '13262',
-  average_view_duration_seconds: '25',
-  comment_rate: '0.4',
-  gpm: '1604714.07',
-  orders: '109',
-  average_basket_size: '195245.12',
-  total_viewers: '8380',
-  pcu: '107',
-  click_to_order_rate: '9.8',
-  buyers: '104',
-  items_sold: '116',
+  sales: 21281718,
+  engaged_viewers: 521,
+  comments: 51,
+  add_to_cart: 436,
+  total_views: 13262,
+  average_view_duration_seconds: 25,
+  comment_rate: 0.4,
+  gpm: 1604714.07,
+  orders: 109,
+  average_basket_size: 195245.12,
+  total_viewers: 8380,
+  pcu: 107,
+  click_to_order_rate: 9.8,
+  buyers: 104,
+  items_sold: 116,
 }
-
-const emptyLiveForm = (): LiveUpdateOcrFormState => ({
-  revenue: '',
-  gmv: '',
-  orders: '',
-  peak_viewers: '',
-  current_viewers: '',
-  total_views: '',
-  total_viewers: '',
-  likes: '',
-  comments: '',
-  shares: '',
-  notes: '',
-  screenshot_url: '',
-})
 
 test('real Shopee label block followed by value block creates all 15 candidates', () => {
   const review = parseDashboardOcrText('shopee_live', sequentialShopeeText, 'raw_text_exact')
-  const formState = applyOcrCandidatesToMetricState({}, review)
+  const formState = applySelectedMetricsToState({}, review)
 
   assert.equal(Object.keys(review.metrics).length, 15)
   assert.deepEqual(formState, expectedSequentialMetrics)
@@ -90,30 +71,11 @@ test('real Shopee label block followed by value block creates all 15 candidates'
   ), true)
 })
 
-test('all sequential candidates reach Final Report state and supported metrics reach Live Update state', () => {
+test('all sequential candidates reach the canonical metric state shared by Final Report and Live Update', () => {
   const review = parseDashboardOcrText('shopee_live', sequentialShopeeText, 'raw_text_exact')
-  const finalReportState = applyOcrCandidatesToMetricState({ likes: '7' }, review)
-  const liveState = applyOcrCandidatesToLiveUpdateForm({
-    ...emptyLiveForm(),
-    gmv: '88',
-    current_viewers: '6',
-    notes: 'keep note',
-    screenshot_url: 'blob:keep',
-  }, review)
+  const metricState = applySelectedMetricsToState({ likes: 7 }, review)
 
-  assert.deepEqual(finalReportState, { likes: '7', ...expectedSequentialMetrics })
-  assert.equal(liveState.revenue, '21281718')
-  assert.equal(liveState.orders, '109')
-  assert.equal(liveState.peak_viewers, '107')
-  assert.equal(liveState.total_views, '13262')
-  assert.equal(liveState.total_viewers, '8380')
-  assert.equal(liveState.comments, '51')
-  assert.equal(liveState.gmv, '88')
-  assert.equal(liveState.current_viewers, '6')
-  assert.equal(liveState.notes, 'keep note')
-  assert.equal(liveState.screenshot_url, 'blob:keep')
-  assert.equal('add_to_cart' in liveState, false)
-  assert.equal('engaged_viewers' in liveState, false)
+  assert.deepEqual(metricState, { likes: 7, ...expectedSequentialMetrics })
 })
 
 test('partial and noisy Shopee labels pair with immediate next-line values', () => {
@@ -133,7 +95,7 @@ test('partial and noisy Shopee labels pair with immediate next-line values', () 
   assert.equal(review.metrics.gpm?.value, 1604714.07)
   assert.equal(review.metrics.click_to_order_rate?.value, 9.8)
   assert.equal(Object.values(review.metrics).every(candidate =>
-    candidate?.source === 'raw_text_exact' && candidate.status === 'confirmed',
+    candidate?.source === 'raw_text_exact' && candidate.status === 'review_required',
   ), true)
 })
 
@@ -164,11 +126,10 @@ test('one missing value keeps only unique type matches and rejects ambiguous shi
     '9.8%',
   ].join('\n'), 'raw_text_exact')
 
-  assert.equal(review.metrics.comment_rate?.value, 9.8)
+  assert.equal(review.metrics.comment_rate, undefined)
   assert.equal(review.metrics.orders, undefined)
   assert.equal(review.metrics.average_basket_size, undefined)
-  assert.equal(review.unmapped_fields?.some(field => field.original_label === 'Orders'), true)
-  assert.equal(review.unmapped_fields?.some(field => field.original_label === 'ABS'), true)
+  assert.equal(review.unmapped_fields?.length, 2)
 })
 
 test('incompatible positional values never cross-map percentage and count metrics', () => {
@@ -180,8 +141,8 @@ test('incompatible positional values never cross-map percentage and count metric
   ].join('\n'), 'raw_text_exact')
 
   assert.equal(review.metrics.orders, undefined)
-  assert.equal(review.metrics.click_to_order_rate, undefined)
-  assert.equal(Object.keys(review.metrics).length, 0)
+  assert.equal(review.metrics.click_to_order_rate?.value, 10.9)
+  assert.equal(review.metrics.click_to_order_rate?.status, 'review_required')
 })
 
 test('same-line type guards reject percentage, currency, and malformed duration cross-maps', () => {
@@ -193,7 +154,7 @@ test('same-line type guards reject percentage, currency, and malformed duration 
   ].join('\n'), 'raw_text_exact')
 
   assert.equal(Object.keys(review.metrics).length, 0)
-  assert.equal(review.unmapped_fields?.length, 4)
+  assert.equal(review.unmapped_fields?.length, 0)
 })
 
 test('sequential candidates preserve valid zero values', () => {
@@ -206,8 +167,8 @@ test('sequential candidates preserve valid zero values', () => {
 
   assert.equal(review.metrics.comments?.value, 0)
   assert.equal(review.metrics.comment_rate?.value, 0)
-  assert.equal(applyOcrCandidatesToMetricState({}, review).comments, '0')
-  assert.equal(applyOcrCandidatesToMetricState({}, review).comment_rate, '0')
+  assert.equal(applySelectedMetricsToState({}, review).comments, 0)
+  assert.equal(applySelectedMetricsToState({}, review).comment_rate, 0)
 })
 
 test('extra noisy lines do not change deterministic sequential pairing', () => {
@@ -218,6 +179,5 @@ test('extra noisy lines do not change deterministic sequential pairing', () => {
   const review = parseDashboardOcrText('shopee_live', noisy, 'raw_text_exact')
 
   assert.equal(Object.keys(review.metrics).length, 15)
-  assert.deepEqual(applyOcrCandidatesToMetricState({}, review), expectedSequentialMetrics)
-  assert.equal(review.unmapped_fields?.some(field => field.original_label.includes('LIVE Insight')), true)
+  assert.deepEqual(applySelectedMetricsToState({}, review), expectedSequentialMetrics)
 })

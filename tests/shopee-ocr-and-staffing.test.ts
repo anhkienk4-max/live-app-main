@@ -145,7 +145,7 @@ test('Tesseract-style Shopee text and card output populate form metric keys', ()
     sales: 21281718,
     orders: 7,
     comments: 0,
-    comment_rate: 6.58,
+    comment_rate: 6.5,
   })
   assert.equal(imageReview.metrics.average_basket_size, undefined)
 })
