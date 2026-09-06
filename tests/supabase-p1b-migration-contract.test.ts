@@ -202,6 +202,19 @@ test('production bootstrap resolves all six Auth users and verifies server-contr
   assert.doesNotMatch(bootstrap, /update\s+auth\.users|insert\s+into\s+auth\.users/i)
 })
 
+test('production compatibility data is optional on a fresh zero-user database', async () => {
+  const { bootstrap } = await migrationText()
+
+  assert.match(
+    bootstrap,
+    /if not exists \([\s\S]*?from auth\.users[\s\S]*?admin@livestream\.com[\s\S]*?technical1@livestream\.com[\s\S]*?then\s+return;/i,
+  )
+  assert.match(
+    bootstrap,
+    /if \([\s\S]*?from public\.business_users[\s\S]*?where id in \('1', '2'\)[\s\S]*?\) <> 2 then\s+return;[\s\S]*?insert into public\.platforms/i,
+  )
+})
+
 test('production bootstrap is rerun-safe, preserves newer rows and excludes demo data', async () => {
   const { bootstrap } = await migrationText()
 

@@ -10,6 +10,24 @@ declare
   auth_metadata jsonb;
   auth_email_verified boolean;
 begin
+  -- This is compatibility data for the original production tenant, not a
+  -- schema prerequisite. Fresh projects legitimately have none of these
+  -- identities and must still be able to replay the migration chain.
+  if not exists (
+    select 1
+    from auth.users as auth_user
+    where lower(auth_user.email) in (
+      'admin@livestream.com',
+      'leader@livestream.com',
+      'host1@livestream.com',
+      'host2@livestream.com',
+      'support1@livestream.com',
+      'technical1@livestream.com'
+    )
+  ) then
+    return;
+  end if;
+
   for expected in
     select *
     from (
@@ -130,6 +148,16 @@ begin
 end;
 $$;
 
+do $$
+begin
+  if (
+    select count(*)
+    from public.business_users
+    where id in ('1', '2')
+  ) <> 2 then
+    return;
+  end if;
+
 insert into public.platforms (
   id,
   name,
@@ -172,3 +200,5 @@ set
   updated_by = excluded.updated_by,
   updated_at = excluded.updated_at
 where public.platforms.updated_at < excluded.updated_at;
+end;
+$$;
