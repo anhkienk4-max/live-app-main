@@ -1,6 +1,6 @@
-"use client"
+﻿"use client"
 
-﻿import * as React from "react"
+ï»¿import * as React from "react"
 import { Badge } from "@/components/ui/badge"
 import { useTranslation, type TranslationKey } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
@@ -23,9 +23,9 @@ const statusMapping: Record<RegistrationStatus, { variant: "default" | "secondar
 export function RegistrationStatusBadge({ status, className, ...props }: RegistrationStatusBadgeProps) {
   const { t } = useTranslation()
   const mapping = statusMapping[status]
-  
+
   if (!mapping) return null
-  
+
   return (
     <Badge variant={mapping.variant} className={cn("capitalize", className)} {...props}>
       {t(mapping.label)}

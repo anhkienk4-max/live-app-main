@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import * as React from "react"
 import { Badge } from "@/components/ui/badge"
@@ -20,10 +20,10 @@ const roleMapping: Record<SystemPermission, { variant: "default" | "secondary" |
 export function SystemRoleBadge({ role, className, ...props }: SystemRoleBadgeProps) {
   const { t } = useTranslation()
   const mapping = roleMapping[role]
-  
+
   if (!mapping) return null
   const Icon = mapping.icon
-  
+
   return (
     <Badge variant={mapping.variant} className={cn("flex w-fit items-center gap-1", className)} {...props}>
       <Icon className="h-3 w-3" />

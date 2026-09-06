@@ -23,9 +23,9 @@ const statusMapping: Record<ScheduleImportRowOutcome, { variant: "default" | "se
 export function ImportOutcomeBadge({ status, label, className, ...props }: ImportOutcomeBadgeProps) {
   const { t } = useTranslation()
   const mapping = statusMapping[status]
-  
+
   if (!mapping) return null
-  
+
   return (
     <Badge variant={mapping.variant} className={cn("capitalize", className)} {...props}>
       {label || t(mapping.labelKey)}

@@ -1,6 +1,6 @@
-"use client"
+﻿"use client"
 
-﻿import * as React from "react"
+ï»¿import * as React from "react"
 import { useTranslation, type TranslationKey } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { Mic, Headphones, Wrench } from "lucide-react"
@@ -19,10 +19,10 @@ const roleMapping: Record<OperationalRole, { label: TranslationKey, icon: React.
 export function OperationalRoleChip({ role, className, ...props }: OperationalRoleChipProps) {
   const { t } = useTranslation()
   const mapping = roleMapping[role]
-  
+
   if (!mapping) return null
   const Icon = mapping.icon
-  
+
   return (
     <span className={cn("inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium bg-muted text-foreground border border-border", className)} {...props}>
       <Icon className="h-3 w-3 text-muted-foreground" />
