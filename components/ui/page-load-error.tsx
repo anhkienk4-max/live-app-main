@@ -1,7 +1,8 @@
-'use client'
+"use client"
 
-import { Button } from '@/components/ui/button'
-import { useTranslation } from '@/lib/i18n'
+import { Button } from "@/components/ui/button"
+import { useTranslation } from "@/lib/i18n"
+import { PageError } from "@/components/ui/states"
 
 interface PageLoadErrorProps {
   error: unknown
@@ -12,12 +13,10 @@ export function PageLoadError({ error, onRetry }: PageLoadErrorProps) {
   const { t } = useTranslation()
 
   return (
-    <div className="space-y-3 py-12 text-center" role="alert">
-      <p className="font-medium">{t('error')}</p>
-      <p className="text-sm text-muted-foreground">
-        {error instanceof Error ? error.message : t('tryAgain')}
-      </p>
-      <Button type="button" variant="outline" onClick={onRetry}>{t('tryAgain')}</Button>
-    </div>
+    <PageError
+      title={t("error")}
+      description={error instanceof Error ? error.message : t("tryAgain")}
+      action={<Button type="button" variant="outline" onClick={onRetry}>{t("tryAgain")}</Button>}
+    />
   )
 }
