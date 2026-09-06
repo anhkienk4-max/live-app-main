@@ -2,14 +2,14 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-09-03T18:03:28+07:00
+Generated at: 2026-09-06T14:12:50+07:00
 
 ## Repository
 
-- Branch: `chore/project-memory-v1`
-- HEAD: `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
+- Branch: `integration/production-hardening-final`
+- HEAD: `90cdb778eb48653c61c4d00de54b09955182e1cc`
 - origin/main: `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
-- Worktree: `C:/Users/KienNguyen/Downloads/T5 ADA/code/live-app-project-memory`
+- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-production-integration`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
 ## Hardening
@@ -22,9 +22,9 @@ Generated at: 2026-09-03T18:03:28+07:00
 ## Inventory
 
 - Routes: 31
-- Source files in tracked inventory roots: 426
-- Tests: 96
-- Migrations: 41
+- Source files in tracked inventory roots: 448
+- Tests: 106
+- Migrations: 45
 
 ## Modules
 

@@ -9,10 +9,10 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "chore/project-memory-v1",
-    "head": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
+    "branch": "integration/production-hardening-final",
+    "head": "90cdb778eb48653c61c4d00de54b09955182e1cc",
     "origin_main": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
-    "worktree": "C:/Users/KienNguyen/Downloads/T5 ADA/code/live-app-project-memory"
+    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-production-integration"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -65,13 +65,13 @@
     "source_files": {
       "roots": {
         "app": 34,
-        "components": 84,
-        "lib": 145,
+        "components": 85,
+        "lib": 152,
         "scripts": 13,
-        "supabase": 51,
-        "tests": 99
+        "supabase": 55,
+        "tests": 109
       },
-      "total": 426
+      "total": 448
     },
     "tests": {
       "files": [
@@ -114,10 +114,16 @@
         "tests/f9-delete-archive-integrity.test.ts",
         "tests/file-provider-foundation.test.ts",
         "tests/final-report-kpi-filter.test.tsx",
+        "tests/gl11-notifications-hardening.test.ts",
+        "tests/gl19c-authoritative-operational-settings.test.ts",
+        "tests/gl19d-bulk-shift-behavior.test.ts",
+        "tests/gl19d-bulk-shift-version.test.ts",
         "tests/google-drive-file-provider.test.ts",
+        "tests/live-dashboard-persistence.test.ts",
         "tests/live-report-images.test.tsx",
         "tests/mock-auth-and-staffing.test.ts",
         "tests/multi-platform-ocr-pipeline.test.ts",
+        "tests/multi-select-filter.test.ts",
         "tests/my-shifts-canonical.test.ts",
         "tests/notification-persistence.test.ts",
         "tests/ocr-form-autofill.test.ts",
@@ -127,6 +133,7 @@
         "tests/ocr-text-application.test.ts",
         "tests/one-drive-file-provider.test.ts",
         "tests/openai-vision-ocr-provider.test.ts",
+        "tests/operational-role-authority.test.ts",
         "tests/p1c-import-idempotency.test.ts",
         "tests/p3-uat-export-collapse.test.tsx",
         "tests/perf-p0-scoped-refresh.test.ts",
@@ -134,7 +141,10 @@
         "tests/persistent-audit.test.ts",
         "tests/platform-metric-dom-binding.test.tsx",
         "tests/preview-loading-performance.test.tsx",
+        "tests/profile-avatar-storage.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
+        "tests/rw003-staffing-resolver.test.ts",
+        "tests/rw004-admin-self-update.test.ts",
         "tests/s2-shift-staffing.test.ts",
         "tests/s2b-staff-management-writes.test.ts",
         "tests/s4e-import-recovery-migration.test.ts",
@@ -172,7 +182,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 96
+      "count": 106
     },
     "migrations": {
       "files": [
@@ -216,9 +226,13 @@
         "supabase/migrations/20260903085439_fix_account_request_identity_composite_assignment.sql",
         "supabase/migrations/20260903110000_f10_report_active_business_user_rls.sql",
         "supabase/migrations/20260903120000_core_v1_recursive_audit_sanitizer.sql",
-        "supabase/migrations/20260903130000_f11_sanitizer_case_normalization.sql"
+        "supabase/migrations/20260903130000_f11_sanitizer_case_normalization.sql",
+        "supabase/migrations/20260905110000_gl19c_authoritative_settings.sql",
+        "supabase/migrations/20260905190925_profile_avatar_storage.sql",
+        "supabase/migrations/20260905191836_live_dashboard_update_persistence.sql",
+        "supabase/migrations/20260906100000_gl19c_operational_settings_consumers.sql"
       ],
-      "count": 41
+      "count": 45
     }
   },
   "verification": {
@@ -228,5 +242,5 @@
     "lint": "FAIL_BASELINE",
     "build": "PASS"
   },
-  "synced_at": "2026-09-03T18:03:28+07:00"
+  "synced_at": "2026-09-06T14:12:50+07:00"
 }
