@@ -17,7 +17,7 @@ describe('Shift Lifecycle UI State Flow', () => {
   test('A scheduled → preparing', async () => {
     const shift = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00',
-    } as any)
+    } as Parameters<typeof shiftService.create>[0])
     assert.strictEqual(shift.status, 'scheduled')
     
     const updated = await shiftService.update(shift.id, { status: 'preparing', version: shift.version })
@@ -29,7 +29,7 @@ describe('Shift Lifecycle UI State Flow', () => {
   test('B preparing → live', async () => {
     const shift = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00',
-    } as any)
+    } as Parameters<typeof shiftService.create>[0])
     const prep = await shiftService.update(shift.id, { status: 'preparing', version: shift.version })
     const live = await shiftService.update(shift.id, { status: 'live', version: prep!.version })
     assert.strictEqual(live!.status, 'live')
@@ -38,7 +38,7 @@ describe('Shift Lifecycle UI State Flow', () => {
   test('C live → paused', async () => {
     const shift = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00',
-    } as any)
+    } as Parameters<typeof shiftService.create>[0])
     const prep = await shiftService.update(shift.id, { status: 'preparing', version: shift.version })
     const live = await shiftService.update(shift.id, { status: 'live', version: prep!.version })
     const paused = await shiftService.update(shift.id, { status: 'paused', version: live!.version })
@@ -48,7 +48,7 @@ describe('Shift Lifecycle UI State Flow', () => {
   test('D paused → live', async () => {
     const shift = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00',
-    } as any)
+    } as Parameters<typeof shiftService.create>[0])
     const prep = await shiftService.update(shift.id, { status: 'preparing', version: shift.version })
     const paused = await shiftService.update(shift.id, { status: 'paused', version: prep!.version })
     const live = await shiftService.update(shift.id, { status: 'live', version: paused!.version })
@@ -58,7 +58,7 @@ describe('Shift Lifecycle UI State Flow', () => {
   test('E live → completed', async () => {
     const shift = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00',
-    } as any)
+    } as Parameters<typeof shiftService.create>[0])
     const prep = await shiftService.update(shift.id, { status: 'preparing', version: shift.version })
     const live = await shiftService.update(shift.id, { status: 'live', version: prep!.version })
     const completed = await shiftService.update(shift.id, { status: 'completed', version: live!.version })
@@ -68,7 +68,7 @@ describe('Shift Lifecycle UI State Flow', () => {
   test('F paused → completed', async () => {
     const shift = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00',
-    } as any)
+    } as Parameters<typeof shiftService.create>[0])
     const prep = await shiftService.update(shift.id, { status: 'preparing', version: shift.version })
     const paused = await shiftService.update(shift.id, { status: 'paused', version: prep!.version })
     const completed = await shiftService.update(shift.id, { status: 'completed', version: paused!.version })
@@ -78,7 +78,7 @@ describe('Shift Lifecycle UI State Flow', () => {
   test('G scheduled → cancelled', async () => {
     const shift = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00',
-    } as any)
+    } as Parameters<typeof shiftService.create>[0])
     const cancelled = await shiftService.update(shift.id, { status: 'cancelled', version: shift.version })
     assert.strictEqual(cancelled!.status, 'cancelled')
   })
@@ -86,7 +86,7 @@ describe('Shift Lifecycle UI State Flow', () => {
   test('H preparing → cancelled', async () => {
     const shift = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00',
-    } as any)
+    } as Parameters<typeof shiftService.create>[0])
     const prep = await shiftService.update(shift.id, { status: 'preparing', version: shift.version })
     const cancelled = await shiftService.update(shift.id, { status: 'cancelled', version: prep!.version })
     assert.strictEqual(cancelled!.status, 'cancelled')
@@ -95,7 +95,7 @@ describe('Shift Lifecycle UI State Flow', () => {
   test('N expected_version from current shift is passed', async () => {
     const shift = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00',
-    } as any)
+    } as Parameters<typeof shiftService.create>[0])
     const updated = await shiftService.update(shift.id, { status: 'preparing', version: shift.version })
     assert.strictEqual(updated!.version, shift.version + 1)
   })
@@ -103,27 +103,28 @@ describe('Shift Lifecycle UI State Flow', () => {
   test('O stale version returns STALE_WRITE', async () => {
     const shift = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00',
-    } as any)
+    } as Parameters<typeof shiftService.create>[0])
     await shiftService.update(shift.id, { status: 'preparing', version: shift.version })
     try {
       await shiftService.update(shift.id, { status: 'live', version: shift.version }) // Stale version
       assert.fail('Should have thrown an error')
-    } catch (e: any) {
-      assert.ok(e.message.includes('STALE_WRITE') || e.message.includes('Mismatched expected version'))
+    } catch (error: unknown) {
+      assert.ok(error instanceof Error)
+      assert.ok(error.message.includes('STALE_WRITE') || error.message.includes('Mismatched expected version'))
     }
   })
 
   test('new shift forced to scheduled', async () => {
     const created = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00', title: 'Test', status: 'live'
-    } as any)
+    } as Parameters<typeof shiftService.create>[0])
     assert.strictEqual(created.status, 'scheduled')
   })
 
   test('mock updates reject illegal lifecycle transitions', async () => {
     const completed = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00',
-    } as any)
+    } as Parameters<typeof shiftService.create>[0])
     const prep = await shiftService.update(completed.id, { status: 'preparing', version: completed.version })
     const live = await shiftService.update(completed.id, { status: 'live', version: prep!.version })
     const done = await shiftService.update(completed.id, { status: 'completed', version: live!.version })
@@ -138,7 +139,7 @@ describe('Shift Lifecycle UI State Flow', () => {
 
     const cancelled = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-11', start_time: '10:00', end_time: '12:00',
-    } as any)
+    } as Parameters<typeof shiftService.create>[0])
     const removed = await shiftService.update(cancelled.id, { status: 'cancelled', version: cancelled.version })
     await assert.rejects(
       () => shiftService.update(cancelled.id, { status: 'preparing', version: removed!.version }),

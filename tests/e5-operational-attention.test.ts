@@ -1,4 +1,4 @@
-import test, { describe, it } from 'node:test'
+import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   deriveShiftAttention,
@@ -9,8 +9,7 @@ import {
   deriveLeaderAttention,
   deriveMemberAttention,
   sortOperationalAttention,
-  type ShiftAttentionInput,
-  type SwapAttentionInput,
+  type OperationalAttention,
 } from '../lib/ui/operational-attention'
 import { getCurrentBusinessDate } from '../lib/utils/shiftUtils'
 import type { SwapStatus, ReportStatus } from '../lib/types/database.types'
@@ -198,7 +197,7 @@ test('E5 Operational Attention Derivation', async (t) => {
         { key: '1', severity: 'critical', label: 'A' },
         { key: '4', severity: 'success', label: 'D' },
         { key: '2', severity: 'warning', label: 'B' },
-      ] as any[]
+      ] satisfies OperationalAttention[]
       const sorted = sortOperationalAttention(unsorted)
       assert.equal(sorted[0].severity, 'critical')
       assert.equal(sorted[1].severity, 'warning')

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { Shift, ShiftRegistration, User, SwapRequest, Report } from '../lib/types/database.types'
+import { Shift, ShiftRegistration, SwapRequest, Report } from '../lib/types/database.types'
+import type { RegistrationStatus, ReportStatus, SwapStatus } from '../lib/types/database.types'
 import {
   isCanonicalAssignedShift,
   getMemberAssignedShifts,
@@ -26,7 +27,7 @@ const mockShift = (id: string, date = '2026-08-30', start_time = '12:00:00'): Sh
   updated_at: ''
 } as unknown as Shift)
 
-const mockRegistration = (id: string, shift_id: string, user_id: string, status: any): ShiftRegistration => ({
+const mockRegistration = (id: string, shift_id: string, user_id: string, status: RegistrationStatus): ShiftRegistration => ({
   id,
   shift_id,
   user_id,
@@ -38,7 +39,7 @@ const mockRegistration = (id: string, shift_id: string, user_id: string, status:
   updated_at: ''
 })
 
-const mockSwap = (id: string, status: any, requester_id: string, counterpart_id: string | null, shift_id: string, source_shift_id?: string, target_shift_id?: string | null): SwapRequest => ({
+const mockSwap = (id: string, status: SwapStatus, requester_id: string, counterpart_id: string | null, shift_id: string, source_shift_id?: string, target_shift_id?: string | null): SwapRequest => ({
   id,
   status,
   requester_id,
@@ -51,7 +52,7 @@ const mockSwap = (id: string, status: any, requester_id: string, counterpart_id:
   updated_at: ''
 } as unknown as SwapRequest)
 
-const mockReport = (id: string, shift_id: string, status: any): Report => ({
+const mockReport = (id: string, shift_id: string, status: ReportStatus): Report => ({
   id,
   shift_id,
   status,
