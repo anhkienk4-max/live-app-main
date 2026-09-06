@@ -13,14 +13,13 @@ import {
 
 // Identity model: Supabase Auth User → Business User → Staff Profile
 test('IDENTITY MODEL: Supabase Auth User → Business User → Staff Profile mapping', async () => {
-  const { User } = await import('../lib/types/database.types.ts')
   // Document IDs/fields/services
   // Supabase Auth User: id (uuid) via supabase.auth.user, email, provider
   // Business User: User.id (same as auth uid), User.email (normalized), User.account_status/status, User.system_permission/role, service: userService + currentUserService + supabaseMasterDataService.businessUsers
   // Staff Profile: User.operational_roles, department, plus ShiftRegistration linkage via staffIdentityMatching
   assert.ok(true, 'model documented')
   // Verify User type has expected identity fields
-  const sample: any = { id: 'auth-123', email: 'test@example.com', full_name: 'Test', role: 'staff', status: 'active', account_status: 'active', created_at: '', updated_at: '', join_date: '' }
+  const sample = { id: 'auth-123', email: 'test@example.com', full_name: 'Test', role: 'staff', status: 'active', account_status: 'active', created_at: '', updated_at: '', join_date: '' }
   assert.equal(normalizeAccountEmail(sample.email), 'test@example.com')
   assert.equal(isAccountIdentityDeterministic(sample), true)
 })
@@ -29,8 +28,9 @@ test('IDENTITY MODEL: Supabase Auth User → Business User → Staff Profile map
 test('ACCOUNT FLOW MATRIX: 10 future flows mapped to existing/missing', () => {
   assert.equal(ACCOUNT_CAPABILITY_MATRIX.length, 10)
   const flows = ACCOUNT_CAPABILITY_MATRIX.map(e => e.flow)
-  for (const expected of ['admin_create_invite','first_login_password_setup','forgot_reset_password','activate','deactivate','reactivate','role_change','session_revocation','auth_business_reconciliation','business_staff_reconciliation']) {
-    assert.ok(flows.includes(expected as any), `missing flow ${expected}`)
+  const expectedFlows = ['admin_create_invite','first_login_password_setup','forgot_reset_password','activate','deactivate','reactivate','role_change','session_revocation','auth_business_reconciliation','business_staff_reconciliation'] satisfies typeof flows
+  for (const expected of expectedFlows) {
+    assert.ok(flows.includes(expected), `missing flow ${expected}`)
   }
   for (const entry of ACCOUNT_CAPABILITY_MATRIX) {
     assert.ok(entry.requiredPermission, `missing permission for ${entry.flow}`)
@@ -82,7 +82,7 @@ test('flow 5: deactivate account — existing archive soft-delete retains histor
   const origMock = process.env.NEXT_PUBLIC_USE_MOCK_DATA
   process.env.NODE_ENV = 'development'
   process.env.NEXT_PUBLIC_USE_MOCK_DATA = 'true'
-  const { userService, currentUserService } = await import('../lib/services/dataService.ts')
+  const { userService } = await import('../lib/services/dataService.ts')
   const adminId = '1' // mock admin
   // ensure admin exists and is active
   const all = await userService.getAll()
@@ -92,14 +92,15 @@ test('flow 5: deactivate account — existing archive soft-delete retains histor
   if (pending) {
     targetId = pending.id
   } else {
-    const created = await userService.create({ email: `deact${Date.now()}@test.local`, full_name: 'Deact Test', role: 'staff', system_permission: 'member', status: 'active', account_status: 'active', join_date: new Date().toISOString(), created_at: '', updated_at: '' } as any, adminId)
+    const created = await userService.create({ email: `deact${Date.now()}@test.local`, full_name: 'Deact Test', role: 'staff', system_permission: 'member', status: 'active', account_status: 'active', join_date: new Date().toISOString(), created_at: '', updated_at: '' } as Parameters<typeof userService.create>[0], adminId)
     targetId = created.id
   }
   const archived = await userService.archive(targetId, adminId, 'test deactivate')
   assert.ok(archived?.archived_at, 'archive sets archived_at')
   assert.equal(archived?.status, 'inactive')
   assert.ok(!archived?.deleted_at || archived?.archived_at, 'soft delete, not hard delete')
-  process.env.NODE_ENV = origEnv as any
+  if (origEnv === undefined) delete process.env.NODE_ENV
+  else process.env.NODE_ENV = origEnv
   if (origMock === undefined) delete process.env.NEXT_PUBLIC_USE_MOCK_DATA
   else process.env.NEXT_PUBLIC_USE_MOCK_DATA = origMock
 })
@@ -123,7 +124,7 @@ test('flow 7: role change — existing update with self-elevation guard', async 
   const leader = users.find(u => u.system_permission === 'leader')
   if (leader) {
     await assert.rejects(
-      () => userService.update(leader.id, { system_permission: 'admin' as any }, leader.id),
+      () => userService.update(leader.id, { system_permission: 'admin' }, leader.id),
       /Self privilege|Only Admin/,
       'Leader cannot self-elevate to Admin'
     )
@@ -137,7 +138,8 @@ test('flow 7: role change — existing update with self-elevation guard', async 
       'Member cannot change accounts'
     )
   }
-  process.env.NODE_ENV = origEnv as any
+  if (origEnv === undefined) delete process.env.NODE_ENV
+  else process.env.NODE_ENV = origEnv
   if (origMock === undefined) delete process.env.NEXT_PUBLIC_USE_MOCK_DATA
   else process.env.NEXT_PUBLIC_USE_MOCK_DATA = origMock
 })
@@ -167,7 +169,7 @@ test('flow 10: Business User ↔ Staff Profile reconciliation — distinct conce
   const entry = ACCOUNT_CAPABILITY_MATRIX.find(e => e.flow === 'business_staff_reconciliation')!
   assert.ok(entry.existingImplementation?.includes('staffIdentityMatching'))
   // Staff profile and auth account are distinct
-  const user: any = { id: 'u1', operational_roles: ['host'] }
+  const user = { id: 'u1', operational_roles: ['host'] }
   assert.equal(user.id, 'u1')
   assert.deepEqual(user.operational_roles, ['host'])
   // Business User id is auth identity, operational_roles is staffing — can be empty and still business user exists
@@ -216,7 +218,8 @@ test('SECURITY: Leader cannot elevate itself to Admin', async () => {
   } else {
     assert.ok(true, 'no leader in mock data — guard still holds via permission check')
   }
-  process.env.NODE_ENV = origEnv as any
+  if (origEnv === undefined) delete process.env.NODE_ENV
+  else process.env.NODE_ENV = origEnv
   if (origMock === undefined) delete process.env.NEXT_PUBLIC_USE_MOCK_DATA
   else process.env.NEXT_PUBLIC_USE_MOCK_DATA = origMock
 })
@@ -228,7 +231,7 @@ test('SECURITY: role changes require authorized actor', () => {
 
 test('SECURITY: staff profile and auth account are distinct concepts', () => {
   // User has id (auth) and operational_roles (staffing) — can exist without operational_roles
-  const user: any = { id: 'auth-123', email: 'a@x', full_name: 'A', role: 'staff', system_permission: 'member', status: 'active', account_status: 'active' }
+  const user = { id: 'auth-123', email: 'a@x', full_name: 'A', role: 'staff', system_permission: 'member', status: 'active', account_status: 'active' }
   // Staff profile linkage is via operational_roles, not id alone
   assert.ok(!user.operational_roles || user.operational_roles.length === 0 || true)
   // Business User ↔ Staff Profile reconciliation via staffIdentityMatching, not via id equality alone
@@ -242,7 +245,7 @@ test('SECURITY: deleting/deactivating account must not silently delete historica
   process.env.NEXT_PUBLIC_USE_MOCK_DATA = 'true'
   const { userService } = await import('../lib/services/dataService.ts')
   const adminId = '1'
-  const created = await userService.create({ email: `hist${Date.now()}@test.local`, full_name: 'Hist Test', role: 'staff', system_permission: 'member', status: 'active', account_status: 'active', join_date: new Date().toISOString(), created_at: '', updated_at: '' } as any, adminId)
+  const created = await userService.create({ email: `hist${Date.now()}@test.local`, full_name: 'Hist Test', role: 'staff', system_permission: 'member', status: 'active', account_status: 'active', join_date: new Date().toISOString(), created_at: '', updated_at: '' } as Parameters<typeof userService.create>[0], adminId)
   // archive should not hard delete — user still retrievable via getAllIncludingDeleted
   await userService.archive(created.id, adminId, 'test history')
   const allIncluding = await userService.getAllIncludingDeleted(adminId)
@@ -253,7 +256,8 @@ test('SECURITY: deleting/deactivating account must not silently delete historica
   await userService.restore(created.id, adminId, 'test restore')
   const restored = await userService.getById(created.id)
   assert.equal(restored?.status, 'active')
-  process.env.NODE_ENV = origEnv as any
+  if (origEnv === undefined) delete process.env.NODE_ENV
+  else process.env.NODE_ENV = origEnv
   if (origMock === undefined) delete process.env.NEXT_PUBLIC_USE_MOCK_DATA
   else process.env.NEXT_PUBLIC_USE_MOCK_DATA = origMock
 })
