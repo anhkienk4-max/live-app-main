@@ -8,13 +8,16 @@ export interface StaffingLabel {
   avatarUrl?: string
 }
 
+const isStaffed = (registration: ShiftRegistration) =>
+  registration.status === 'approved' || registration.status === 'manually_assigned'
+
 export function resolveStaffingLabels(
   shift: Shift,
   registrations: ShiftRegistration[],
   users: User[],
   t: (key: string) => string
 ): StaffingLabel[] {
-  const approved = registrations.filter(r => r.status === 'approved')
+  const approved = registrations.filter(isStaffed)
   
   const labels: StaffingLabel[] = approved.map(r => {
     if (r.user_id) {
@@ -73,7 +76,7 @@ export function resolveStaffingLabelsForRole(
   t: (key: string) => string
 ): StaffingLabel[] {
   const roleRegistrations = registrations.filter(r => r.operational_role === role)
-  const approved = roleRegistrations.filter(r => r.status === 'approved')
+  const approved = roleRegistrations.filter(isStaffed)
   
   const labels: StaffingLabel[] = []
   const authoritativeNames = new Set<string>()
@@ -108,10 +111,9 @@ export function resolveStaffingLabelsForRole(
   const requiredCount = role === 'host' ? (shift.required_host_count ?? 1) : role === 'support' ? (shift.required_support_count ?? 0) : (shift.required_technical_count ?? 0)
   const roleImportedNames = role === 'host' ? shift.host_names : role === 'support' ? shift.assistant_names : shift.technical_names
 
-  // 2. Add imported names that are not already authoritative, up to required count
+  // 2. Keep all imported display metadata that is not already authoritative.
   if (roleImportedNames?.length) {
     for (const name of roleImportedNames) {
-      if (labels.length >= requiredCount) break
       if (!authoritativeNames.has(name)) {
         authoritativeNames.add(name)
         labels.push({

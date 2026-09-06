@@ -6,12 +6,12 @@ import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import {
-  buildShiftStaffing,
   getShiftStatusClass,
   safeFormatShiftDate,
   ShiftDetailActions,
 } from '../components/features/shifts/ShiftDetailModal.tsx'
 import { resolveShiftDateTime } from '../lib/utils/shiftUtils.ts'
+import { resolveStaffingLabelsForRole } from '../lib/utils/staffingResolver.ts'
 import type { Shift, ShiftRegistration, ShiftStatus, User } from '../lib/types/database.types.ts'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
@@ -68,7 +68,7 @@ const registration = (
   updated_at: '2026-08-01T10:00:00.000Z',
 })
 
-test('Shift Detail aggregates direct and approved multi-person staffing without borrowing pending records', () => {
+test('Shift Detail uses canonical staffed registrations without borrowing pending records', () => {
   const users = [
     user('host-1', 'Direct Host'),
     user('host-2', 'Approved Host'),
@@ -76,25 +76,27 @@ test('Shift Detail aggregates direct and approved multi-person staffing without 
     user('technical-1', 'Direct Technical'),
     user('technical-2', 'Manual Technical'),
   ]
-  const staffing = buildShiftStaffing(baseShift, [
+  const registrations = [
     registration('registration-host', 'host-2', 'host', 'approved'),
     registration('registration-support', 'support-1', 'support', 'pending'),
     registration('registration-technical', 'technical-2', 'technical', 'manually_assigned'),
-  ], users)
+  ]
+  const labels = (role: 'host' | 'support' | 'technical') =>
+    resolveStaffingLabelsForRole(baseShift, registrations, users, role, key => key)
 
-  assert.deepEqual(staffing.host.map(item => item.user?.full_name), ['Direct Host', 'Approved Host'])
-  assert.deepEqual(staffing.support, [])
-  assert.deepEqual(staffing.technical.map(item => item.user?.full_name), ['Direct Technical', 'Manual Technical'])
-  assert.equal(staffing.technical[1].status, 'manually_assigned')
+  assert.deepEqual(labels('host').map(item => item.name), ['Approved Host', 'unassigned'])
+  assert.deepEqual(labels('support').map(item => item.name), ['unassigned'])
+  assert.deepEqual(labels('technical').map(item => item.name), ['Manual Technical'])
 })
 
-test('Shift Detail de-duplicates a direct assignment represented by registration history', () => {
-  const staffing = buildShiftStaffing(baseShift, [
+test('Shift Detail ignores legacy direct projections when canonical registration history exists', () => {
+  const staffing = resolveStaffingLabelsForRole(baseShift, [
     registration('registration-host', 'host-1', 'host', 'manually_assigned'),
-  ], [user('host-1', 'Direct Host')])
+  ], [user('host-1', 'Direct Host')], 'host', key => key)
 
-  assert.equal(staffing.host.length, 1)
-  assert.equal(staffing.host[0].status, 'manually_assigned')
+  assert.equal(staffing.length, 2)
+  assert.equal(staffing[0].name, 'Direct Host')
+  assert.equal(staffing[0].isImportedOnly, false)
 })
 
 test('overnight shift resolves to the next day with a positive duration', () => {
@@ -157,7 +159,7 @@ test('Calendar, Day Sessions, Shift List, compact and table surfaces share the c
   assert.match(calendar, /onShiftClick=\{setSelectedShift\}/)
   assert.match(daySessions, /day-session-view-shift-/)
   assert.match(shiftList, /<ShiftDetailModal/)
-  assert.match(shiftList, /view-shift-\$\{row\.id\}/)
+  assert.match(shiftList, /onView: \(\) => setDetailShift\(row\)/)
   assert.match(registrationBoard, /open-shift-detail-compact-/)
   assert.match(registrationBoard, /open-shift-detail-table-/)
   assert.doesNotMatch(registrationBoard, /onManage=\{\(\) => changeViewMode\('card'\)\}/)

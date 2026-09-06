@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { resolveStaffingLabels, resolveStaffingLabelsForRole } from '../lib/utils/staffingResolver.ts'
+import { resolveStaffingLabelsForRole } from '../lib/utils/staffingResolver.ts'
 import type { Shift, ShiftRegistration, User } from '../lib/types/database.types.ts'
 
 const t = (key: string) => key // translation mock
@@ -48,7 +48,7 @@ test('RW003 authoritative assignment overrides duplicate imported name', () => {
       shift_id: 's1',
       user_id: 'u1',
       operational_role: 'host',
-      status: 'approved',
+      status: 'manually_assigned',
       source: 'manual',
       imported_name: 'Nguyen Van A',
       requested_at: '2026-01-01T00:00:00.000Z',
@@ -184,10 +184,10 @@ test('RW003 canonical resolver produces deterministic output', () => {
   const users: User[] = []
   const labels = resolveStaffingLabelsForRole(shift, registrations, users, 'host', t)
   // Order should be consistent: first the approved (none), then imported in array order
-  assert.equal(labels.length, 1) // only one required
-  // Since required_host_count=1, only first imported name is taken
+  assert.equal(labels.length, 2)
   assert.equal(labels[0].name, 'Z')
-  // If we increase required, order should be as in array
+  assert.equal(labels[1].name, 'A')
+  // Increasing capacity does not change the imported metadata order.
   const shift2: Shift = { ...baseShift, required_host_count: 2, host_names: ['Z', 'A'] }
   const labels2 = resolveStaffingLabelsForRole(shift2, registrations, users, 'host', t)
   assert.equal(labels2.length, 2)

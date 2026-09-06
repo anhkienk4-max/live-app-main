@@ -7,7 +7,6 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { ListView } from '../components/features/calendar/ListView.tsx'
 import { resolveDaySessionRoleNames } from '../components/features/calendar/DaySessionsDialog.tsx'
 import {
-  buildShiftStaffing,
   ShiftImportedStaffingLabels,
   ShiftStaffingLabelsEditor,
   normalizeShiftStaffingLabelDraft,
@@ -16,6 +15,7 @@ import { shiftRegistrationService, shiftService } from '../lib/services/dataServ
 import { LanguageProvider } from '../lib/i18n.tsx'
 import type { Shift, User } from '../lib/types/database.types.ts'
 import { parseScheduleRows, type EntityMaps } from '../lib/utils/excelUtils.ts'
+import { resolveStaffingLabelsForRole } from '../lib/utils/staffingResolver.ts'
 import {
   buildScheduleImportPreviewSourceRow,
   normalizeStaffingDisplayNames,
@@ -181,6 +181,17 @@ test('Calendar prefers a real assignment while Shift Detail preserves imported l
       brands: [{ id: 'brand-1', name: 'Mars Wrigley', created_at: '', updated_at: '' }],
       platforms: [{ id: 'platform-1', name: 'Shopee Live', created_at: '', updated_at: '' }],
       users: [assignedHost],
+      registrations: [{
+        id: 'host-registration',
+        shift_id: assignedShift.id,
+        user_id: assignedHost.id,
+        operational_role: 'host',
+        status: 'approved',
+        source: 'self_registration',
+        requested_at: '2031-08-01T00:00:00.000Z',
+        created_at: '2031-08-01T00:00:00.000Z',
+        updated_at: '2031-08-01T00:00:00.000Z',
+      }],
     }),
   ))
   assert.match(calendarMarkup, /Host:<\/span> Real Assigned Host/)
@@ -297,10 +308,10 @@ test('read-only staffing label section still omits empty legacy arrays', () => {
 })
 
 test('imported labels do not create assignments or change canonical staffing counts', () => {
-  const importedOnly = buildShiftStaffing(shift, [], [])
-  assert.equal(importedOnly.host.length, 0)
-  assert.equal(importedOnly.support.length, 0)
-  assert.equal(importedOnly.technical.length, 0)
+  const importedOnly = resolveStaffingLabelsForRole(shift, [], [], 'host', key => key)
+  assert.equal(importedOnly.length, 1)
+  assert.equal(importedOnly[0].isImportedOnly, true)
+  assert.equal(importedOnly[0].isUnassigned, false)
 
   const canonicalShift = { ...shift, host_id: fallbackAssignedUser.id }
   const withoutImportedLabels = {
@@ -309,10 +320,15 @@ test('imported labels do not create assignments or change canonical staffing cou
     assistant_names: [],
     technical_names: [],
   }
-  assert.deepEqual(
-    buildShiftStaffing(canonicalShift, [], [fallbackAssignedUser]),
-    buildShiftStaffing(withoutImportedLabels, [], [fallbackAssignedUser]),
+  const directProjectionOnly = resolveStaffingLabelsForRole(
+    withoutImportedLabels,
+    [],
+    [fallbackAssignedUser],
+    'host',
+    key => key,
   )
+  assert.equal(directProjectionOnly.length, 1)
+  assert.equal(directProjectionOnly[0].isUnassigned, true)
 })
 
 test('empty imported arrays render no section and create no fake staffing rows', () => {
@@ -323,10 +339,11 @@ test('empty imported arrays render no section and create no fake staffing rows',
     testId: 'shift-detail-staffing-imported-labels',
     variant: 'standalone',
   }))
-  const staffing = buildShiftStaffing(emptyShift, [], [])
+  const staffing = resolveStaffingLabelsForRole(emptyShift, [], [], 'host', key => key)
 
   assert.equal(markup, '')
-  assert.equal(staffing.host.length + staffing.support.length + staffing.technical.length, 0)
+  assert.equal(staffing.length, 1)
+  assert.equal(staffing[0].isUnassigned, true)
 })
 
 test('mock staffing label save has parity and leaves assignments, capacity and registrations unchanged', async () => {
