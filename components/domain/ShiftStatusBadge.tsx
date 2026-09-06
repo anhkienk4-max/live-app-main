@@ -1,6 +1,6 @@
-﻿"use client"
+"use client"
 
-ï»¿import * as React from "react"
+import * as React from "react"
 import { Badge } from "@/components/ui/badge"
 import { useTranslation, type TranslationKey } from "@/lib/i18n"
 import { cn } from "@/lib/utils"

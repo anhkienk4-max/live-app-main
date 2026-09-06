@@ -1,6 +1,6 @@
-﻿"use client"
+"use client"
 
-ï»¿import * as React from "react"
+import * as React from "react"
 import { useTranslation, type TranslationKey } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { Mic, Headphones, Wrench } from "lucide-react"
