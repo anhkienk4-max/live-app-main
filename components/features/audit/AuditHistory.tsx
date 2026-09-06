@@ -35,6 +35,10 @@ import {
 const actions: AuditAction[] = ['create', 'update', 'delete', 'soft_delete', 'restore', 'archive', 'unarchive', 'confirm', 'unconfirm', 'approve', 'reject', 'assign', 'unassign', 'register', 'cancel_registration', 'lock', 'reopen', 'import', 'export', 'ocr_run', 'ocr_rerun', 'ocr_reset', 'upload', 'remove_upload']
 const modules: AuditModule[] = ['calendar', 'live', 'reports', 'staff', 'brands', 'platforms', 'campaigns', 'swaps', 'imports', 'settings']
 
+export async function requireRestoreSuccess(restore: () => Promise<boolean | null>): Promise<void> {
+  if (!await restore()) throw new Error('Restore operation failed silently')
+}
+
 export function AuditHistory() {
   const { currentUser, loading: userLoading } = useCurrentUser()
   const { toast } = useToast()
@@ -119,10 +123,7 @@ export function AuditHistory() {
   const restore = async (reason: string) => {
     if (!currentUser || !restoreTarget) return
     try {
-      const result = await lifecycleService.restore(restoreTarget.entity_type, restoreTarget.entity_id, currentUser.id, reason, restoreTarget.version)
-      if (!result) {
-        throw new Error('Restore operation failed silently')
-      }
+      await requireRestoreSuccess(() => lifecycleService.restore(restoreTarget.entity_type, restoreTarget.entity_id, currentUser.id, reason, restoreTarget.version))
       toast({ title: t('restored'), description: restoreTarget.entity_name, variant: 'success' })
       setRestoreTarget(null)
       await load()

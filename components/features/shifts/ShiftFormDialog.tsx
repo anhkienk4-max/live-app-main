@@ -61,6 +61,26 @@ interface ShiftFormState {
   product_notes: string
 }
 
+type ShiftDraft = Omit<Shift, 'id' | 'created_at' | 'updated_at'>
+
+export async function createRecurringShiftBatch(
+  shifts: ShiftDraft[],
+  createShift: (shift: ShiftDraft) => Promise<Shift | null> = shiftService.create.bind(shiftService),
+) {
+  let successCount = 0
+  const errors: string[] = []
+  for (const shiftData of shifts) {
+    try {
+      const created = await createShift(shiftData)
+      if (!created) throw new Error('Shift creation returned no persisted shift.')
+      successCount++
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : 'Unknown error')
+    }
+  }
+  return { successCount, errors }
+}
+
 export function ShiftFormDialog({
   open,
   onOpenChange,
@@ -269,16 +289,7 @@ export function ShiftFormDialog({
       if (showRecurring && recurrenceRule.frequency !== 'none') {
         const baseShift = { ...formData }
         const generated = generateRecurringShifts(baseShift, recurrenceRule)
-        let successCount = 0
-        const errors: string[] = []
-        for (const shiftData of generated) {
-          try {
-            await shiftService.create(shiftData)
-            successCount++
-          } catch (e) {
-            errors.push(e instanceof Error ? e.message : 'Unknown error')
-          }
-        }
+        const { successCount, errors } = await createRecurringShiftBatch(generated)
         if (successCount === generated.length) {
           toast({ title: 'Success', description: `Created ${successCount} recurring shifts`, variant: 'success' })
         } else if (successCount > 0) {
