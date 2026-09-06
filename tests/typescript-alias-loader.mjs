@@ -22,6 +22,10 @@ function resolve(specifier, context, nextResolve) {
     const headersJs = resolvePath(projectRoot, 'node_modules/next/headers.js')
     if (existsSync(headersJs)) return { url: pathToFileURL(headersJs).href, shortCircuit: true }
   }
+  if (specifier === 'next/link') {
+    const linkShim = resolvePath(projectRoot, 'tests/next-link-test-shim.mjs')
+    if (existsSync(linkShim)) return { url: pathToFileURL(linkShim).href, shortCircuit: true }
+  }
   let candidate
   if (specifier.startsWith('@/')) {
     candidate = resolvePath(projectRoot, specifier.slice(2))
