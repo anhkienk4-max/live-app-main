@@ -1,4 +1,4 @@
-import { mergeProps } from "@base-ui/react/merge-props"
+﻿import { mergeProps } from "@base-ui/react/merge-props"
 import { useRender } from "@base-ui/react/use-render"
 import { cva, type VariantProps } from "class-variance-authority"
 
@@ -19,6 +19,12 @@ const badgeVariants = cva(
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",
+        // Semantic operational variants — use @theme-exposed utilities
+        success: "bg-success-surface text-success-foreground border-success/20",
+        warning: "bg-warning-surface text-warning-foreground border-warning/20",
+        danger:  "bg-danger-surface text-danger-foreground border-danger/20",
+        info:    "bg-info-surface text-info-foreground border-info/20",
+        live:    "bg-live text-live-foreground border-transparent",
       },
     },
     defaultVariants: {

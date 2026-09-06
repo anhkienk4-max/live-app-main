@@ -1,21 +1,21 @@
-'use client'
+﻿'use client'
 
 /**
- * E5 — Exception-First UX shared primitives
+ * E5 - Exception-First UX shared primitives
  *
  * Small, reusable components for surfacing operational attention.
  *
  * Severity styling:
- *   critical  → red  (actual failure/error)
- *   warning   → amber (pending decision / risk)
- *   attention → orange (upcoming risk / retryable)
- *   info      → blue  (informational / waiting)
- *   success   → green (healthy) — used sparingly
+ *   critical  -> danger  (actual failure/error)
+ *   warning   -> warning (pending decision / risk)
+ *   attention -> warning (upcoming risk / retryable)
+ *   info      -> info    (informational / waiting)
+ *   success   -> success (healthy) -- used sparingly
  *
  * Accessibility:
  *   - Severity conveyed via icon + label text, NOT color alone.
  *   - alert role used for critical/warning items.
- *   - Minimal aria-live usage — only on dynamic exception counts.
+ *   - Minimal aria-live usage -- only on dynamic exception counts.
  */
 
 import * as React from 'react'
@@ -34,7 +34,7 @@ type SeverityConfig = {
   icon: React.ReactNode
   containerClass: string
   labelClass: string
-  badgeVariant: 'destructive' | 'secondary' | 'outline'
+  badgeVariant: 'destructive' | 'secondary' | 'danger' | 'warning' | 'info' | 'success'
   badgeClass: string
   ariaRole: 'alert' | 'status' | undefined
 }
@@ -44,46 +44,47 @@ function getSeverityConfig(severity: AttentionSeverity): SeverityConfig {
     case 'critical':
       return {
         icon: <XCircle className="h-4 w-4 shrink-0" aria-hidden="true" />,
-        containerClass: 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30',
-        labelClass: 'text-red-700 dark:text-red-400',
-        badgeVariant: 'destructive',
+        containerClass: 'border-danger/20 bg-danger-surface',
+        labelClass: 'text-danger-foreground',
+        badgeVariant: 'danger',
         badgeClass: '',
         ariaRole: 'alert',
       }
     case 'warning':
       return {
         icon: <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />,
-        containerClass: 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30',
-        labelClass: 'text-amber-700 dark:text-amber-400',
-        badgeVariant: 'secondary',
-        badgeClass: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300',
+        containerClass: 'border-warning/20 bg-warning-surface',
+        labelClass: 'text-warning-foreground',
+        badgeVariant: 'warning',
+        badgeClass: '',
         ariaRole: 'alert',
       }
     case 'attention':
       return {
         icon: <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />,
-        containerClass: 'border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/30',
-        labelClass: 'text-orange-700 dark:text-orange-400',
-        badgeVariant: 'secondary',
-        badgeClass: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300',
+        containerClass: 'border-warning/15 bg-warning-surface',
+        labelClass: 'text-warning-foreground',
+        badgeVariant: 'warning',
+        badgeClass: '',
         ariaRole: undefined,
       }
     case 'info':
       return {
         icon: <Info className="h-4 w-4 shrink-0" aria-hidden="true" />,
-        containerClass: 'border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30',
-        labelClass: 'text-blue-700 dark:text-blue-400',
-        badgeVariant: 'secondary',
-        badgeClass: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+        containerClass: 'border-info/20 bg-info-surface',
+        labelClass: 'text-info-foreground',
+        badgeVariant: 'info',
+        badgeClass: '',
         ariaRole: 'status',
       }
     case 'success':
+    default:
       return {
         icon: <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />,
-        containerClass: 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30',
-        labelClass: 'text-green-700 dark:text-green-400',
-        badgeVariant: 'secondary',
-        badgeClass: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+        containerClass: 'border-success/20 bg-success-surface',
+        labelClass: 'text-success-foreground',
+        badgeVariant: 'success',
+        badgeClass: '',
         ariaRole: 'status',
       }
   }
@@ -92,7 +93,7 @@ function getSeverityConfig(severity: AttentionSeverity): SeverityConfig {
 import { useTranslation, type TranslationKey } from '@/lib/i18n'
 
 // ---------------------------------------------------------------------------
-// AttentionItem — single row for one operational attention entry
+// AttentionItem - single row for one operational attention entry
 // ---------------------------------------------------------------------------
 
 interface AttentionItemProps {
@@ -143,7 +144,7 @@ export function AttentionItem({ item, className }: AttentionItemProps) {
 }
 
 // ---------------------------------------------------------------------------
-// AttentionBanner — compact strip for high-urgency items (critical/warning)
+// AttentionBanner - compact strip for high-urgency items (critical/warning)
 // ---------------------------------------------------------------------------
 
 interface AttentionBannerProps {
@@ -211,7 +212,7 @@ export function AttentionBanner({ item, actionLabel, className }: AttentionBanne
 }
 
 // ---------------------------------------------------------------------------
-// OperationalStatusStrip — list of attention items stacked vertically
+// OperationalStatusStrip - list of attention items stacked vertically
 // ---------------------------------------------------------------------------
 
 interface OperationalStatusStripProps {
@@ -248,7 +249,7 @@ export function OperationalStatusStrip({
 }
 
 // ---------------------------------------------------------------------------
-// HealthyState — calm display when no exceptions present
+// HealthyState - calm display when no exceptions present
 // ---------------------------------------------------------------------------
 
 interface HealthyStateProps {
@@ -261,15 +262,14 @@ export function HealthyState({ message, description, className }: HealthyStatePr
   return (
     <div
       className={cn(
-        'flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2.5',
-        'dark:border-green-800 dark:bg-green-950/20',
+        'flex items-center gap-2 rounded-md border border-success/20 bg-success-surface px-3 py-2.5',
         className,
       )}
       role="status"
     >
-      <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" aria-hidden="true" />
+      <CheckCircle2 className="h-4 w-4 shrink-0 text-success" aria-hidden="true" />
       <div>
-        <p className="text-sm font-medium text-green-700 dark:text-green-400">{message}</p>
+        <p className="text-sm font-medium text-success-foreground">{message}</p>
         {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
       </div>
     </div>
@@ -277,7 +277,7 @@ export function HealthyState({ message, description, className }: HealthyStatePr
 }
 
 // ---------------------------------------------------------------------------
-// ExceptionSection — titled section wrapping operational status
+// ExceptionSection - titled section wrapping operational status
 // ---------------------------------------------------------------------------
 
 interface ExceptionSectionProps {

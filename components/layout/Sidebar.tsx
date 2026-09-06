@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -18,19 +18,22 @@ export function Sidebar() {
 
   return (
     <aside className="hidden md:flex md:flex-shrink-0">
-      <div className="flex flex-col w-64 border-r bg-card">
-        <div className="flex flex-col flex-grow pt-4 pb-4 overflow-y-auto">
-          <div className="flex items-center flex-shrink-0 px-5 mb-6">
-            <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center">
-              <svg className="w-5 h-5 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div className="flex flex-col w-[248px] border-r border-border bg-sidebar">
+        <div className="flex flex-col flex-grow pt-3 pb-3 overflow-y-auto">
+          {/* Wordmark */}
+          <div className="flex items-center flex-shrink-0 px-4 mb-4 h-[40px]">
+            <div className="w-6 h-6 bg-primary rounded-[var(--radius-md)] flex items-center justify-center flex-shrink-0">
+              <svg className="w-3.5 h-3.5 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
             </div>
-            <h1 className="ml-3 text-lg font-bold text-foreground tracking-tight">
+            <span className="ml-2.5 text-sm font-semibold text-foreground tracking-tight leading-none">
               LiveStream Ops
-            </h1>
+            </span>
           </div>
-          <nav className="mt-5 flex-1 px-3 space-y-1">
+
+          {/* Navigation */}
+          <nav className="flex-1 px-2 space-y-0.5" aria-label={t('navMain')}>
             {navigation.map((item) => {
               const isActive = pathname === item.href
               const Icon = item.icon
@@ -42,18 +45,20 @@ export function Sidebar() {
                   key={item.name}
                   href={item.href}
                   className={cn(
-                    'group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-all',
+                    'group flex items-center px-2.5 py-1.5 text-sm font-medium rounded-[var(--radius-md)] transition-colors',
                     isActive
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      ? 'bg-primary/8 text-primary'
+                      : 'text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
                   )}
                   data-testid={`sidebar-${item.name.toLowerCase()}`}
+                  aria-current={isActive ? 'page' : undefined}
                 >
                   <Icon
                     className={cn(
-                      'mr-3 flex-shrink-0 h-4 w-4',
-                      isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'
+                      'mr-2.5 flex-shrink-0 h-4 w-4',
+                      isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-sidebar-accent-foreground'
                     )}
+                    aria-hidden="true"
                   />
                   {label}
                 </Link>

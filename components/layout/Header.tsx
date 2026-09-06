@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -88,52 +88,65 @@ export function Header({ user }: HeaderProps) {
     .toUpperCase() || displayUser?.email?.[0].toUpperCase() || 'U'
 
   return (
-    <header className="bg-card border-b sticky top-0 z-40">
-      <div className="px-4 sm:px-6 lg:px-8">
-        <div className="flex h-14 items-center justify-between">
-          <div className="flex-1">
-            <h2 className="text-xl font-bold text-foreground hidden md:block tracking-tight">
-              {t('operationsCenter')}
-            </h2>
-            <div className="md:hidden flex items-center">
-              <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center">
-                <svg className="w-5 h-5 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <h1 className="ml-2 text-lg font-bold text-foreground tracking-tight">
-                LiveStream Ops
-              </h1>
+    <header className="bg-card border-b border-border sticky top-0 z-40">
+      <div className="px-4 sm:px-6">
+        <div className="flex h-14 items-center justify-between gap-3">
+
+          {/* Left: wordmark (mobile only — desktop shows sidebar wordmark) */}
+          <div className="flex items-center md:hidden">
+            <div className="w-6 h-6 bg-primary rounded-[var(--radius-md)] flex items-center justify-center flex-shrink-0">
+              <svg className="w-3.5 h-3.5 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
             </div>
+            <span className="ml-2 text-sm font-semibold text-foreground tracking-tight">
+              LiveStream Ops
+            </span>
           </div>
 
-          <div className="flex items-center gap-4">
+          {/* Spacer on desktop (sidebar owns the wordmark) */}
+          <div className="hidden md:flex flex-1" />
+
+          {/* Right: actions cluster */}
+          <div className="flex items-center gap-1.5">
             <GlobalSearch />
             <NotificationCenter />
-            <Button type="button" variant="outline" size="sm" onClick={() => setLanguage(language === 'en' ? 'vi' : 'en')} aria-label={t('language')}>{language === 'en' ? 'VI' : 'EN'}</Button>
 
+            {/* Language toggle */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setLanguage(language === 'en' ? 'vi' : 'en')}
+              aria-label={t('language')}
+              className="h-8 w-8 px-0 text-xs font-medium text-muted-foreground"
+            >
+              {language === 'en' ? 'VI' : 'EN'}
+            </Button>
+
+            {/* User menu */}
             <DropdownMenu>
               <DropdownMenuTrigger
-                render={<Button variant="ghost" className="relative h-9 w-9 rounded-full" data-testid="user-menu-btn" />}
+                render={<Button variant="ghost" className="relative h-8 w-8 rounded-full p-0" data-testid="user-menu-btn" />}
               >
-                <Avatar className="h-9 w-9">
+                <Avatar className="h-7 w-7">
                   <AvatarImage src={displayUser?.user_metadata?.avatar_url} alt={displayUser?.user_metadata?.full_name || displayUser?.email} />
-                  <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                  <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-semibold">
                     {initials}
                   </AvatarFallback>
                 </Avatar>
               </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56" align="end">
+              <DropdownMenuContent className="w-52" align="end">
                 <DropdownMenuGroup>
-                  <DropdownMenuLabel className="font-normal">
-                    <div className="flex flex-col space-y-1">
+                  <DropdownMenuLabel className="font-normal py-2">
+                    <div className="flex flex-col gap-0.5">
                       <p className="text-sm font-medium leading-none text-foreground">{displayUser?.user_metadata?.full_name || 'User'}</p>
                       <p className="text-xs leading-none text-muted-foreground">{displayUser?.email}</p>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => void handleSignOut()} disabled={signingOut} data-testid="signout-btn">
-                    <LogOut className="mr-2 h-4 w-4" />
+                    <LogOut className="mr-2 h-3.5 w-3.5" aria-hidden="true" />
                     <span>{t('signOut')}</span>
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
