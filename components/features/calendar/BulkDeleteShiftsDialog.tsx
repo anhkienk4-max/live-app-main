@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
+import { ShiftStatusBadge } from '@/components/domain/ShiftStatusBadge'
 import { format } from 'date-fns'
 import { Trash2, AlertTriangle, XCircle } from 'lucide-react'
 import { useTranslation } from '@/lib/i18n'
@@ -146,9 +146,7 @@ export function BulkDeleteShiftsDialog({
                       <span>{formatShiftTimeRange(shift)}</span>
                     </div>
                   </div>
-                  <Badge variant={shift.status === 'live' ? 'destructive' : shift.status === 'completed' ? 'default' : 'secondary'} className="text-xs shrink-0">
-                    {shift.status}
-                  </Badge>
+                  <ShiftStatusBadge status={shift.status} className="text-xs shrink-0" />
                 </div>
               ))}
             </div>

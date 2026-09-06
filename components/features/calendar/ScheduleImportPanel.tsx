@@ -93,6 +93,9 @@ const importStatusLabelKey: Record<ImportResultPresentationStatus, TranslationKe
   imported: 'importedResult',
 }
 
+
+
+
 function importStatusLabel(status: ImportResultPresentationStatus, t: (key: TranslationKey) => string) {
   return t(importStatusLabelKey[status])
 }
@@ -574,7 +577,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                               <span className="text-xs text-amber-700">Editing draft — Enter to confirm</span>
                             </div>
                           )}
-                          {!editing && <Badge variant="outline" className={rowStatusClass(rowStatus)}>{importStatusLabel(rowStatus, t)}</Badge>}
+                          {!editing && <Badge variant="outline">{importStatusLabel(rowStatus, t)}</Badge>}
                           {rowStatus === 'invalid' && <p className="mt-1 text-xs text-red-700">{t('importValidationDetails')}</p>}
                           {rowStatus === 'duplicate' && <p className="mt-1 text-xs text-slate-700">{t('duplicatePreserved')}</p>}
                           {preview.row.errors.map(message => <p key={message} className="mb-1 text-xs text-red-700">{message}</p>)}
@@ -648,8 +651,8 @@ function ImportCompletionCard({ completed, counts, t }: { completed: CompletedIm
       <ImportSummary counts={counts} t={t} persistedCount={persistedImportCount(counts)} />
       {persistedImportCount(counts) === 0 && <p className="text-sm text-muted-foreground">{t('importNothingPersisted')}</p>}
       {counts.retryable > 0 && <p className="text-sm text-orange-700">{t('retryableRecovery')} {t('retryUnavailable')}</p>}
-      {warningRows.length > 0 && <details open className="rounded-md border border-amber-200 bg-amber-50/50 p-3" data-testid="schedule-import-warning-rows"><summary className="cursor-pointer text-sm font-medium">{t('importRowsImportedWithWarnings')}: {warningRows.length}</summary><p className="mt-1 text-xs text-muted-foreground">{t('importWarningPersistedHelp')}</p><div className="mt-2 space-y-2">{warningRows.map(row => <div key={row.id} className="rounded border bg-background p-2 text-sm"><div className="flex items-center justify-between gap-2"><span>{t('importSourceRow')} {row.source_row_number}</span><Badge variant="outline" className={rowStatusClass(statusForRow(row))}>{importStatusLabel(statusForRow(row), t)}</Badge></div>{row.normalized_values.warnings.map(issue => <p key={issue} className="mt-1 text-xs text-amber-800">{issue}</p>)}</div>)}</div></details>}
-      {notImportedRows.length > 0 && <details open className="rounded-md border border-amber-200 bg-amber-50/50 p-3" data-testid="schedule-import-not-imported-rows"><summary className="cursor-pointer text-sm font-medium">{t('importRowsNotCreated')}: {notImportedRows.length}</summary><div className="mt-2 space-y-2">{notImportedRows.map(row => <div key={row.id} className="rounded border bg-background p-2 text-sm"><div className="flex items-center justify-between gap-2"><span>{t('importSourceRow')} {row.source_row_number}</span><Badge variant="outline" className={rowStatusClass(statusForRow(row))}>{importStatusLabel(statusForRow(row), t)}</Badge></div>{row.failure_code && <p className="mt-1 text-xs text-muted-foreground">{statusForRow(row) === 'retryable' ? t('retryableRecovery') : statusForRow(row) === 'invalid' ? t('importValidationDetails') : t('notImported')}</p>}{row.validation_issues.map(issue => <p key={issue} className="mt-1 text-xs text-red-700">{issue}</p>)}</div>)}</div></details>}
+      {warningRows.length > 0 && <details open className="rounded-md border border-amber-200 bg-amber-50/50 p-3" data-testid="schedule-import-warning-rows"><summary className="cursor-pointer text-sm font-medium">{t('importRowsImportedWithWarnings')}: {warningRows.length}</summary><p className="mt-1 text-xs text-muted-foreground">{t('importWarningPersistedHelp')}</p><div className="mt-2 space-y-2">{warningRows.map(row => <div key={row.id} className="rounded border bg-background p-2 text-sm"><div className="flex items-center justify-between gap-2"><span>{t('importSourceRow')} {row.source_row_number}</span><Badge variant="outline">{importStatusLabel(statusForRow(row), t)}</Badge></div>{row.normalized_values.warnings.map(issue => <p key={issue} className="mt-1 text-xs text-amber-800">{issue}</p>)}</div>)}</div></details>}
+      {notImportedRows.length > 0 && <details open className="rounded-md border border-amber-200 bg-amber-50/50 p-3" data-testid="schedule-import-not-imported-rows"><summary className="cursor-pointer text-sm font-medium">{t('importRowsNotCreated')}: {notImportedRows.length}</summary><div className="mt-2 space-y-2">{notImportedRows.map(row => <div key={row.id} className="rounded border bg-background p-2 text-sm"><div className="flex items-center justify-between gap-2"><span>{t('importSourceRow')} {row.source_row_number}</span><Badge variant="outline">{importStatusLabel(statusForRow(row), t)}</Badge></div>{row.failure_code && <p className="mt-1 text-xs text-muted-foreground">{statusForRow(row) === 'retryable' ? t('retryableRecovery') : statusForRow(row) === 'invalid' ? t('importValidationDetails') : t('notImported')}</p>}{row.validation_issues.map(issue => <p key={issue} className="mt-1 text-xs text-red-700">{issue}</p>)}</div>)}</div></details>}
     </CardContent>
   </Card>
 }

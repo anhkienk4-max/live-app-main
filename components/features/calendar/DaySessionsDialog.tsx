@@ -25,6 +25,7 @@ import { useTranslation } from '@/lib/i18n'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { useToast } from '@/components/ui/toast'
 import { Badge } from '@/components/ui/badge'
+import { ShiftStatusBadge } from '@/components/domain/ShiftStatusBadge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -217,9 +218,7 @@ export function DaySessionsDialog({
                       )}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Badge variant={shift.status === 'live' ? 'destructive' : 'outline'}>
-                        {shift.status === 'live' ? t('liveStatus') : t(shift.status)}
-                      </Badge>
+                      <ShiftStatusBadge status={shift.status} />
                       <Badge variant="secondary">{registrationStatus}</Badge>
                     </div>
                   </div>
