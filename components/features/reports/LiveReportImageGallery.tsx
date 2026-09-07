@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Image from 'next/image'
 import {
   ArrowDown,
   ArrowUp,
@@ -182,7 +183,7 @@ export function LiveReportImageEditor({
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {[...images].sort((left, right) => left.sort_order - right.sort_order).map((image, index) => (
             <LiveReportImageEditorCard
-              key={image.id}
+              key={`${image.id}-${image.category}-${image.title ?? ''}-${image.description ?? ''}-${image.captured_at ?? ''}`}
               image={image}
               index={index}
               total={images.length}
@@ -235,21 +236,15 @@ function LiveReportImageEditorCard({
     captured_at: image.captured_at || '',
   })
 
-  React.useEffect(() => {
-    setMetadata({
-      category: image.category,
-      title: image.title || '',
-      description: image.description || '',
-      captured_at: image.captured_at || '',
-    })
-  }, [image])
-
   return (
     <article className="space-y-3 rounded-lg border p-3" data-testid={`live-image-card-${image.id}`}>
       <div className="relative">
-        <img
+        <Image
+          unoptimized
           src={image.thumbnail_url || image.file_url}
           alt={image.title || image.file_name}
+          width={1280}
+          height={720}
           className="aspect-video w-full rounded-md border object-cover"
         />
         {image.is_cover && (
@@ -330,10 +325,6 @@ export function LiveReportImageGallery({
   const viewerIndex = filtered.findIndex(image => image.id === viewerId)
   const viewerImage = viewerIndex >= 0 ? filtered[viewerIndex] : null
 
-  React.useEffect(() => {
-    if (viewerId && !filtered.some(image => image.id === viewerId)) setViewerId(null)
-  }, [filtered, viewerId])
-
   return (
     <section className="space-y-4" data-testid="live-report-image-gallery">
       {cover && (
@@ -343,7 +334,7 @@ export function LiveReportImageGallery({
           onClick={() => setViewerId(cover.id)}
           data-testid="live-report-cover"
         >
-          <img src={cover.file_url} alt={cover.title || cover.file_name} className="max-h-[420px] w-full object-cover transition-transform group-hover:scale-[1.01]" />
+          <Image unoptimized src={cover.file_url} alt={cover.title || cover.file_name} width={1280} height={720} className="max-h-[420px] w-full object-cover transition-transform group-hover:scale-[1.01]" />
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 pt-12 text-white">
             <Badge className="mb-2 bg-amber-500 text-white"><Star className="mr-1 h-3 w-3 fill-current" />{t('reportCover')}</Badge>
             <p className="font-semibold">{cover.title || cover.file_name}</p>
@@ -378,7 +369,7 @@ export function LiveReportImageGallery({
                 onClick={() => setViewerId(image.id)}
                 data-testid={`gallery-image-${image.id}`}
               >
-                <img src={image.thumbnail_url || image.file_url} alt={image.title || image.file_name} className="aspect-video w-full object-cover" />
+                <Image unoptimized src={image.thumbnail_url || image.file_url} alt={image.title || image.file_name} width={1280} height={720} className="aspect-video w-full object-cover" />
                 <div className="space-y-2 p-3">
                   <Badge variant="outline">{t(liveReportImageCategoryTranslationKeys[image.category])}</Badge>
                   <LiveReportImageMetadata image={image} />
@@ -392,7 +383,7 @@ export function LiveReportImageGallery({
           <DialogHeader><DialogTitle className="text-white">{viewerImage?.title || viewerImage?.file_name}</DialogTitle></DialogHeader>
           {viewerImage && (
             <div className="relative flex min-h-[70vh] items-center justify-center">
-              <img src={viewerImage.file_url} alt={viewerImage.title || viewerImage.file_name} className="max-h-[78vh] max-w-full object-contain" />
+              <Image unoptimized src={viewerImage.file_url} alt={viewerImage.title || viewerImage.file_name} width={1920} height={1080} className="max-h-[78vh] max-w-full object-contain" />
               <Button className="absolute left-2" type="button" size="icon" variant="secondary" disabled={viewerIndex <= 0} aria-label={t('previousImage')} onClick={() => setViewerId(filtered[viewerIndex - 1]?.id || null)}><ChevronLeft className="h-5 w-5" /></Button>
               <Button className="absolute right-2" type="button" size="icon" variant="secondary" disabled={viewerIndex >= filtered.length - 1} aria-label={t('nextImage')} onClick={() => setViewerId(filtered[viewerIndex + 1]?.id || null)}><ChevronRight className="h-5 w-5" /></Button>
             </div>
