@@ -60,7 +60,6 @@ export default function NotificationsPage() {
       unsubscribeMock()
     }
   }, [currentUser, load])
-  React.useEffect(() => { if (currentUser) void load() }, [currentUser, load])
   return (
     <PageShell archetype="queue" className="space-y-6">
       <PageHeader>

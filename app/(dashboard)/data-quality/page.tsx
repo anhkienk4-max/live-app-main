@@ -14,6 +14,7 @@ export default function DataQualityPage() {
   const [issues, setIssues] = React.useState<DataQualityIssue[] | null>(null)
 
   React.useEffect(()=> {
+    const frame = requestAnimationFrame(() => {
     if (!currentUser) { setIssues([]); return }
     // permission checked BEFORE fetch — avoid loading broad data then only hiding in UI
     const canImport = hasPermission(currentUser,'shifts.import')
@@ -32,6 +33,8 @@ export default function DataQualityPage() {
       const all = getAllIssues({ reports, shifts, registrations: regs, importResult, batchId: lastImport?.id })
       setIssues(all)
     })()
+    })
+    return () => cancelAnimationFrame(frame)
   }, [currentUser])
 
   if (!issues) return <ContentSkeleton />
