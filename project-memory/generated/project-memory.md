@@ -2,12 +2,12 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-09-06T14:38:40+07:00
+Generated at: 2026-09-08T00:30:42+07:00
 
 ## Repository
 
 - Branch: `integration/production-hardening-final`
-- HEAD: `a45d69823e1f393291496279914830ac75a3e7aa`
+- HEAD: `259fa58263b06c62ae9eb87559483a7513aa2022`
 - origin/main: `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 - Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-production-integration`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
@@ -22,9 +22,9 @@ Generated at: 2026-09-06T14:38:40+07:00
 ## Inventory
 
 - Routes: 31
-- Source files in tracked inventory roots: 448
-- Tests: 106
-- Migrations: 45
+- Source files in tracked inventory roots: 456
+- Tests: 107
+- Migrations: 48
 
 ## Modules
 
