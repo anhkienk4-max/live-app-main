@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { NextRequest, NextResponse } from 'next/server'
 
-import { hasPermission, permissionMatrix, resolveSystemPermission } from '../lib/permissions.ts'
+import { hasPermission, resolveSystemPermission } from '../lib/permissions.ts'
 import { createAuthIdentity, mapAuthIdentityToBusinessUser } from '../lib/auth/authIdentity.ts'
 import { AuthorizationError, requirePermission, requireRole, requireUser } from '../lib/server/authGuards.ts'
 import { resolveAuthMode, resolveSupabasePublicConfig } from '../lib/auth/authMode.ts'
@@ -158,7 +158,7 @@ test('Core V1: auth proxy — supabase mode without config redirects unauthentic
 
 test('Core V1: session updater — unauthenticated getClaims redirects to /login?reason=session_expired', async () => {
   const updater = createSessionUpdater(
-    ((_req, _onResponse) => ({
+    (() => ({
       auth: {
         getClaims: async () => ({ data: null, error: { message: 'no session' } }) as unknown as never,
       },
@@ -172,7 +172,7 @@ test('Core V1: session updater — unauthenticated getClaims redirects to /login
 
 test('Core V1: session updater — authenticated claim passes through with no-store', async () => {
   const updater = createSessionUpdater(
-    ((_req, _onResponse) => ({
+    (() => ({
       auth: {
         getClaims: async () => ({ data: { claims: { sub: 'user-1' } }, error: null }) as unknown as never,
       },
@@ -361,7 +361,7 @@ test('Core V1: Supabase public config requires both url+anonKey and trims', () =
 // ---------------------------------------------------------------------------
 test('Core V1: refresh persistence — protected paths require private no-store on pass-through', async () => {
   const updater = createSessionUpdater(
-    ((_req, _onResponse) => ({
+    (() => ({
       auth: { getClaims: async () => ({ data: { claims: { sub: 'u1' } }, error: null }) as unknown as never },
     })) as unknown as Parameters<typeof createSessionUpdater>[0],
   )

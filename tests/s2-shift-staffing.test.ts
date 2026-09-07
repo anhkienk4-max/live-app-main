@@ -24,7 +24,7 @@ class FakeQuery {
     private readonly database: FakeDatabase,
     private readonly table: TableName,
   ) {}
-  select(_columns?: string) { return this }
+  select() { return this }
   eq(column: string, value: unknown) { this.filters.push(row => row[column] === value); return this }
   is(column: string, value: null) { this.filters.push(row => (row[column] ?? null) === value); return this }
   in(column: string, values: unknown[]) { this.filters.push(row => values.includes(row[column])); return this }

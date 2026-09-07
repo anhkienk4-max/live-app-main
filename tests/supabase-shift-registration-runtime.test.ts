@@ -12,7 +12,7 @@ import {
   setSupabaseShiftRegistrationRepositoryForTests,
 } from '../lib/services/supabaseShiftRegistrationService.ts'
 import { createSupabaseShiftRepository, setSupabaseShiftRepositoryForTests } from '../lib/services/supabaseShiftService.ts'
-import type { ShiftRegistration, User } from '../lib/types/database.types.ts'
+import type { User } from '../lib/types/database.types.ts'
 
 type Row = Record<string, unknown>
 type TableName = 'shifts' | 'shift_registrations'
@@ -44,7 +44,7 @@ class FakeQuery {
     private readonly options: FakeClientOptions,
   ) {}
 
-  select(_columns?: string) {
+  select() {
     return this
   }
 

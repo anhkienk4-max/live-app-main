@@ -300,7 +300,7 @@ test('host missing or blank defaults to one, explicit zero is preserved, and inv
     { Date: '2026-07-20', 'Start time': '09:00', 'End time': '13:00', Brand: 'TechGear Pro', Platform: 'Shopee Live', 'Shift title': 'I', 'Required Host count': '101' },
   ]
 
-  const result = parseScheduleRows(rows as any, {
+  const result = parseScheduleRows(rows as Record<string, unknown>[], {
     brands: new Map([['TechGear Pro', 'brand-1']]),
     platforms: new Map([['Shopee Live', 'platform-1']]),
     campaigns: new Map(),
@@ -327,7 +327,7 @@ test('support and technical missing values default to one and template staffing 
     Brand: 'TechGear Pro',
     Platform: 'Shopee Live',
     'Shift title': 'A',
-  }] as any, {
+  }] as Record<string, unknown>[], {
     brands: new Map([['techgear pro', 'brand-1']]),
     platforms: new Map([['shopee live', 'platform-1']]),
     campaigns: new Map(),
@@ -370,7 +370,7 @@ test('staffing preview normalization defaults empty values, preserves zero, and 
     Platform: 'Shopee Live',
     'Shift title': 'Alias',
     'Host Count': 2,
-  }] as any, {
+  }] as Record<string, unknown>[], {
     brands: new Map([['TechGear Pro', 'brand-1']]),
     platforms: new Map([['Shopee Live', 'platform-1']]),
     campaigns: new Map(),

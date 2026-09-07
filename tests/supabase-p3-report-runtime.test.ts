@@ -42,6 +42,7 @@ interface FakeDatabase {
   report_revisions: Row[]
   report_images: Row[]
   live_report_images: Row[]
+  rpcCalls: Array<{ name: string; args: Record<string, unknown> }>
 }
 
 class FakeQuery {
@@ -57,7 +58,7 @@ class FakeQuery {
     private readonly table: TableName,
   ) {}
 
-  select(_columns?: string) { return this }
+  select() { return this }
   eq(column: string, value: unknown) { this.filters.push(row => row[column] === value); return this }
   is(column: string, value: null) { this.filters.push(row => (row[column] ?? null) === value); return this }
   not(column: string, _operator: string, value: string | null) {
@@ -453,16 +454,14 @@ function fakeClient(database: FakeDatabase, options: { deniedRpc?: RpcName } = {
     },
   }
 
-  const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = []
-
   return {
-    rpcCalls,
+    rpcCalls: database.rpcCalls,
     storage,
     from(table: TableName) {
       return new FakeQuery(database, table)
     },
     rpc(name: string, args: Record<string, unknown>) {
-      rpcCalls.push({ name, args })
+      database.rpcCalls.push({ name, args })
       const handler = rpcHandlers[name as RpcName]
       if (options.deniedRpc === name) {
         const rejected = { data: null, error: { code: '42501', message: `permission denied for rpc ${name}` } }
@@ -554,16 +553,6 @@ function adminUser(): User {
   }
 }
 
-function memberUser(): User {
-  return {
-    ...adminUser(),
-    id: '3',
-    email: 'member@example.test',
-    role: 'staff',
-    system_permission: 'member',
-  }
-}
-
 function setAuthMode(mode: 'mock' | 'supabase') {
   process.env.NODE_ENV = mode === 'mock' ? 'development' : 'production'
   process.env.NEXT_PUBLIC_USE_MOCK_DATA = mode === 'mock' ? 'true' : 'false'
@@ -574,7 +563,7 @@ async function withEnvironment(run: () => Promise<void>) {
   const previousMockFlag = process.env.NEXT_PUBLIC_USE_MOCK_DATA
   const previousFetch = globalThis.fetch
   try {
-    globalThis.fetch = ((url: string) => Promise.resolve({
+    globalThis.fetch = (() => Promise.resolve({
       ok: true,
       blob: () => Promise.resolve(new Blob(['fake-image-data'], { type: 'image/jpeg' })),
     })) as typeof fetch
@@ -594,7 +583,12 @@ function database(): FakeDatabase {
     report_revisions: [],
     report_images: [],
     live_report_images: [],
+    rpcCalls: [],
   }
+}
+
+function created_rpc_call(db: FakeDatabase, name: string): boolean {
+  return db.rpcCalls.some(call => call.name === name)
 }
 
 test('Supabase report reads return persisted rows through the repository', async () => {
@@ -620,7 +614,6 @@ test('Supabase report reads return persisted rows through the repository', async
     assert.equal(await reportService.getById('missing'), null)
   })
 })
-
 test('Supabase getConfirmed returns only confirmed reports', async () => {
   await withEnvironment(async () => {
     setAuthMode('supabase')
@@ -634,7 +627,6 @@ test('Supabase getConfirmed returns only confirmed reports', async () => {
     assert.equal(confirmed[0].metrics_confirmed, true)
   })
 })
-
 test('Supabase report create persists through create_report RPC with revision', async () => {
   await withEnvironment(async () => {
     setAuthMode('supabase')
@@ -707,7 +699,6 @@ test('Supabase confirmMetrics prevents confirmation with unresolved metrics', as
     )
   })
 })
-
 test('Supabase confirmMetrics routes through update_report with confirm event', async () => {
   await withEnvironment(async () => {
     setAuthMode('supabase')
@@ -886,7 +877,7 @@ test('Supabase live report image setCover calls set_live_report_image_cover RPC'
     setSupabaseReportRepositoryForTests(createSupabaseReportRepository(client))
     currentUserService.bindAuthenticatedUser(adminUser())
 
-    const img1 = await liveReportImageService.create(
+    await liveReportImageService.create(
       { report_id: 'report-1', category: 'live_session', file_name: 'a.jpg', file_url: 'https://t.co/a', mime_type: 'image/jpeg', size_bytes: 100, sort_order: 0, is_cover: true },
       '1',
     )
@@ -1002,7 +993,3 @@ test('Supabase RPC authorization errors surface without fallback', async () => {
     )
   })
 })
-
-function created_rpc_call(db: FakeDatabase, name: string): boolean {
-  return true // The RPC handlers push to db directly; this is a placeholder for clarity
-}

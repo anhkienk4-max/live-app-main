@@ -1,31 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { shiftService, shiftRegistrationService, swapRequestService, userService } from '../lib/services/dataService.ts'
-import type { Shift, ShiftRegistration, User } from '../lib/types/database.types.ts'
+import type { Shift } from '../lib/types/database.types.ts'
 
 process.env.NEXT_PUBLIC_USE_MOCK_DATA = 'true'
 process.env.NODE_ENV = 'development'
-
-function makeUser(id: string, role: 'host'|'support'|'technical'): User {
-  return {
-    id, email: `${id}@test`, full_name: id, role: 'staff', system_permission: 'member', operational_roles: [role], status: 'active', account_status: 'active', join_date: '2024-01-01', created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-01T00:00:00Z',
-  } as User
-}
-async function setupShifts(): Promise<{ s1: Shift; s2: Shift; r1: ShiftRegistration; r2: ShiftRegistration; hostA: User; hostB: User }> {
-  const hostA = makeUser('hostA','host')
-  const hostB = makeUser('hostB','host')
-  // ensure users exist in mock store: create via userService? For mock we can directly use shiftService etc. Simpler: use existing mock users
-  // Create two shifts on different dates to avoid overlap
-  const s1 = await shiftService.create({ date: '2031-10-01', start_time: '09:00', end_time: '12:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'S1', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  const s2 = await shiftService.create({ date: '2031-10-02', start_time: '09:00', end_time: '12:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'S2', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  // Create approved registrations for hostA on s1 and hostB on s2
-  // Use shiftRegistrationService manual assign via leader
-  const admin = await userService.getById('1')
-  const r1 = await shiftRegistrationService.assignManually(s1.id, hostA.id, 'host', admin!.id, 1)
-  const r2 = await shiftRegistrationService.assignManually(s2.id, hostB.id, 'host', admin!.id, 1)
-  // Actually need hostA/B to exist as business users; create them
-  return { s1, s2, r1, r2, hostA, hostB }
-}
 
 test('replacement success', async () => {
   const s = await shiftService.create({ date: '2031-11-01', start_time: '10:00', end_time: '12:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'RS', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
@@ -80,7 +59,6 @@ test('EXCHANGE success with accept', async () => {
 test('duplicate active blocked', async () => {
   const s = await shiftService.create({ date: '2031-11-06', start_time: '10:00', end_time: '12:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Dup', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
   const r = await shiftRegistrationService.assignManually(s.id, '2', 'host', '1', 1)
-  const s2 = await shiftService.create({ date: '2031-11-07', start_time: '10:00', end_time: '12:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'DupT', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
   await swapRequestService.create({ requester_id: '2', source_registration_id: r.id, replacement_staff_id: '3', reason: 'dup', shift_id: s.id, operational_role: 'host', mode: 'replacement' } as unknown as never)
   await assert.rejects(()=> swapRequestService.create({ requester_id: '2', source_registration_id: r.id, replacement_staff_id: '3', reason: 'dup2', shift_id: s.id, operational_role: 'host', mode: 'replacement' } as unknown as never), /Duplicate/)
 })
@@ -144,10 +122,8 @@ test('inactive user blocked', async () => {
   const s1 = await shiftService.create({ date: '2031-11-16', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Inact1', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
   const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1', 1)
   // make requester inactive by archiving user 2
-  const u2 = await userService.getById('2')
   // mock: set status inactive via direct users array? For test, we can archive via userService
   await userService.archive('2', '1', 'test inactive')
-  const s2 = await shiftService.create({ date: '2031-11-17', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Inact2', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
   const req = await swapRequestService.create({ requester_id: '2', source_registration_id: r1.id, replacement_staff_id: '3', reason: 'inactive', shift_id: s1.id, operational_role: 'host', mode: 'replacement' } as unknown as never).catch(e=> e)
   // create should fail due to inactive or approve should fail
   // restore user for other tests
@@ -157,7 +133,6 @@ test('inactive user blocked', async () => {
 
 test('stale source blocked', async () => {
   const s1 = await shiftService.create({ date: '2031-11-18', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Stale1', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  const s2 = await shiftService.create({ date: '2031-11-19', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Stale2', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
   const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1', 1)
   const req = await swapRequestService.create({ requester_id: '2', source_registration_id: r1.id, replacement_staff_id: '3', reason: 'stale', shift_id: s1.id, operational_role: 'host', mode: 'replacement' } as unknown as never)
   await swapRequestService.respond(req.id, '3', 'accept', 1)
@@ -168,7 +143,6 @@ test('stale source blocked', async () => {
 
 test('cancel success', async () => {
   const s1 = await shiftService.create({ date: '2031-11-20', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Cancel1', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  const s2 = await shiftService.create({ date: '2031-11-21', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Cancel2', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
   const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1', 1)
   const req = await swapRequestService.create({ requester_id: '2', source_registration_id: r1.id, replacement_staff_id: '3', reason: 'cancel', shift_id: s1.id, operational_role: 'host', mode: 'replacement' } as unknown as never)
   const cancelled = await swapRequestService.cancel(req.id, '2', 'no need', 1)
@@ -187,7 +161,6 @@ test('reject success via counterpart', async () => {
 
 test('replacement overlap conflict is blocked', async () => {
   const s1 = await shiftService.create({ date: '2031-11-24', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Over1', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
-  const s2 = await shiftService.create({ date: '2031-11-25', start_time: '09:00', end_time: '11:00', brand_id: 'brand-1', platform_id: 'platform-1', title: 'Over2', required_host_count: 1, required_support_count: 1, required_technical_count: 1, status: 'scheduled' } as unknown as Shift)
   const r1 = await shiftRegistrationService.assignManually(s1.id, '2', 'host', '1', 1)
   const req = await swapRequestService.create({ requester_id: '2', source_registration_id: r1.id, replacement_staff_id: '3', reason: 'overlap', shift_id: s1.id, operational_role: 'host', mode: 'replacement' } as unknown as never)
   await swapRequestService.respond(req.id, '3', 'accept', 1)

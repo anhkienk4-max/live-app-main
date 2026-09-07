@@ -40,7 +40,7 @@ class FakeQuery {
     private readonly options: FakeClientOptions,
   ) {}
 
-  select(_columns?: string) {
+  select() {
     return this
   }
 

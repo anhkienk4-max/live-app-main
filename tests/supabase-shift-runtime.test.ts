@@ -16,7 +16,7 @@ import {
   setSupabaseReportRepositoryForTests,
   type SupabaseReportRepository,
 } from '../lib/services/supabaseReportService.ts'
-import type { Report, Shift, User } from '../lib/types/database.types.ts'
+import type { Report, User } from '../lib/types/database.types.ts'
 
 type Row = Record<string, unknown>
 type TableName = 'shifts' | 'shift_registrations' | 'schedule_imports'
@@ -50,7 +50,7 @@ class FakeQuery {
     private readonly options: FakeClientOptions,
   ) {}
 
-  select(_columns?: string) {
+  select() {
     return this
   }
 

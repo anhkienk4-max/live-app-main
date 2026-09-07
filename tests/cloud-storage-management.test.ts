@@ -86,7 +86,7 @@ function createMockProvider(initialFiles: MockFile[] = []): FolderCapableFilePro
         provider_metadata: {},
       }
     },
-    async read(externalFileId: string) { return new Uint8Array() },
+    async read() { return new Uint8Array() },
     async getViewUrl(externalFileId: string) { return `https://mock/${externalFileId}` },
     async getDownloadUrl(externalFileId: string) { return `https://mock/download/${externalFileId}` },
     normalizeId(value: string) { return value },
@@ -253,7 +253,7 @@ test('executeStorage: idempotent - repeated execution creates no duplicate folde
   ])
   const resolver = createBrandResolver({ 'brand-1': { id: 'brand-1', name: 'OPELLA', status: 'active' } })
   const manager = new CloudStorageManager({ provider, brandResolver: resolver, rootFolderId: 'root' })
-  const first = await manager.executeStorage({
+  await manager.executeStorage({
     year: 2026,
     month: 9,
     brandId: 'brand-1',
@@ -267,7 +267,7 @@ test('executeStorage: idempotent - repeated execution creates no duplicate folde
       entityId: 'report-1',
     },
   })
-  const second = await manager.executeStorage({
+  await manager.executeStorage({
     year: 2026,
     month: 9,
     brandId: 'brand-1',
@@ -357,7 +357,7 @@ test('concurrency: ensureFolder re-lists on conflict', async () => {
   const resolver = createBrandResolver({ 'brand-1': { id: 'brand-1', name: 'OPELLA', status: 'active' } })
   const manager = new CloudStorageManager({ provider, brandResolver: resolver, rootFolderId: 'root' })
   // This will attempt to ensure year folder; first attempt fails, re-list finds the manual folder
-  const result = await manager.executeStorage({
+  await manager.executeStorage({
     year: 2026,
     month: 9,
     brandId: 'brand-1',
