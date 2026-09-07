@@ -116,7 +116,10 @@ export function ReportsList() {
     }
   }, [])
 
-  React.useEffect(() => { void loadData() }, [loadData])
+  React.useEffect(() => {
+    const frame = requestAnimationFrame(() => { void loadData() })
+    return () => cancelAnimationFrame(frame)
+  }, [loadData])
   const myShiftIds = React.useMemo(() => new Set(registrations
     .filter(registration => registration.user_id === currentUser?.id && isStaffedRegistration(registration))
     .map(registration => registration.shift_id)), [currentUser?.id, registrations])
@@ -157,7 +160,7 @@ export function ReportsList() {
   const shiftById = React.useMemo(() => new Map(shifts.map(shift => [shift.id, shift])), [shifts])
   const nameById = (items: Array<{ id: string; name: string }>, id?: string) => id ? items.find(item => item.id === id)?.name || '—' : '—'
   const userName = (id?: string) => id ? users.find(user => user.id === id)?.full_name || '—' : '—'
-  const matchesRole = (shift: Shift, role: OperationalRole, userId: string) => {
+  const matchesRole = React.useCallback((shift: Shift, role: OperationalRole, userId: string) => {
     const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
     return assignment === userId || registrations.some(registration =>
       registration.shift_id === shift.id &&
@@ -165,7 +168,7 @@ export function ReportsList() {
       registration.operational_role === role &&
       isStaffedRegistration(registration)
     )
-  }
+  }, [registrations])
   const roleNames = (shift: Shift, role: OperationalRole) => {
     const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
     const ids = new Set([
@@ -205,7 +208,7 @@ export function ReportsList() {
       if (!haystack.includes(query)) return false
     }
     return true
-  }), [brands, campaigns, filters, platforms, registrations, reports, shiftById])
+  }), [brands, campaigns, filters, matchesRole, platforms, reports, shiftById])
 
   const confirmed = filteredReports.filter(report => report.metrics_confirmed)
   const totalRevenue = confirmed.reduce((sum, report) => sum + confirmedRevenue(report), 0)

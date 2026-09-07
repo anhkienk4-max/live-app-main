@@ -32,40 +32,43 @@ export function CalendarWorkspace() {
   const [createRequest, setCreateRequest] = React.useState(0);
 
   React.useEffect(() => {
-    const action = searchParams.get("action");
-    const currentTab = searchParams.get("tab");
-    if (!action && !currentTab) return;
-    let nextTab = tab;
-    if (
-      action === "create" &&
-      hasPermission(currentUser, "shifts.assign_staff")
-    ) {
-      nextTab = "calendar";
-      setCreateRequest((v) => v + 1);
-    } else if (
-      action === "import" &&
-      hasPermission(currentUser, "shifts.import")
-    ) {
-      nextTab = "import";
-    }
+    const frame = requestAnimationFrame(() => {
+      const action = searchParams.get("action");
+      const currentTab = searchParams.get("tab");
+      if (!action && !currentTab) return;
+      let nextTab = tab;
+      if (
+        action === "create" &&
+        hasPermission(currentUser, "shifts.assign_staff")
+      ) {
+        nextTab = "calendar";
+        setCreateRequest((v) => v + 1);
+      } else if (
+        action === "import" &&
+        hasPermission(currentUser, "shifts.import")
+      ) {
+        nextTab = "import";
+      }
 
-    if (
-      currentTab &&
-      ["calendar", "open", "mine", "import", "history"].includes(currentTab)
-    ) {
-      nextTab = currentTab;
-    }
+      if (
+        currentTab &&
+        ["calendar", "open", "mine", "import", "history"].includes(currentTab)
+      ) {
+        nextTab = currentTab;
+      }
 
-    if (nextTab !== tab) {
-      setTab(nextTab);
-    }
+      if (nextTab !== tab) {
+        setTab(nextTab);
+      }
 
-    if (action) {
-      const next = new URLSearchParams(searchParams.toString());
-      next.delete("action");
-      const qs = next.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-    }
+      if (action) {
+        const next = new URLSearchParams(searchParams.toString());
+        next.delete("action");
+        const qs = next.toString();
+        router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      }
+    })
+    return () => cancelAnimationFrame(frame)
   }, [searchParams, pathname, router, currentUser, tab]);
 
   const handleTabChange = (value: string) => {

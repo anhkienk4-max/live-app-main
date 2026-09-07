@@ -63,8 +63,11 @@ export function AuditHistory() {
   const isAdmin = Boolean(currentUser && hasPermission(currentUser, 'audit.view'))
 
   React.useEffect(() => {
-    const stored = Number(window.localStorage.getItem('livestream-ops-audit-page-size'))
-    if ([10, 20, 50, 100].includes(stored)) setPageSize(stored)
+    const frame = requestAnimationFrame(() => {
+      const stored = Number(window.localStorage.getItem('livestream-ops-audit-page-size'))
+      if ([10, 20, 50, 100].includes(stored)) setPageSize(stored)
+    })
+    return () => cancelAnimationFrame(frame)
   }, [])
 
   const updateFilters = (next: Partial<typeof filters>) => {
@@ -96,7 +99,10 @@ export function AuditHistory() {
     }
   }, [canView, currentUser, filters, isAdmin, page, pageSize, sort])
 
-  React.useEffect(() => { void load() }, [load])
+  React.useEffect(() => {
+    const frame = requestAnimationFrame(() => { void load() })
+    return () => cancelAnimationFrame(frame)
+  }, [load])
 
   if (userLoading || loading) return <p className="text-sm text-muted-foreground">{t('loading')}</p>
   if (!currentUser || !canView) {

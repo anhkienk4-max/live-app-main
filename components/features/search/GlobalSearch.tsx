@@ -74,6 +74,7 @@ export function GlobalSearch() {
   // Perform search locally, deterministic, no per-keystroke fetch
   React.useEffect(() => {
     if (!open) return
+    const frame = requestAnimationFrame(() => {
     const canViewShifts = !currentUser || hasPermission(currentUser, 'shifts.view_open') || hasPermission(currentUser, 'shifts.view_assigned')
     const canAssignStaff = currentUser && hasPermission(currentUser, 'shifts.assign_staff')
     const canImportShifts = currentUser && hasPermission(currentUser, 'shifts.import')
@@ -185,6 +186,8 @@ export function GlobalSearch() {
     // Cap total and keep deterministic order: shifts(5) + staff(5) + brands(3) + campaigns(3) + reports(3) already capped per entity
     setResults(searchResults.slice(0, 18))
     setLoading(false)
+    })
+    return () => cancelAnimationFrame(frame)
   }, [query, cache, open, currentUser, t])
 
   const handleSelect = (result: SearchResult) => {

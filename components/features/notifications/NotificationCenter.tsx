@@ -100,7 +100,9 @@ export function NotificationCenter() {
   }, [currentUser, load]);
 
   React.useEffect(() => {
-    if (open) void load();
+    if (!open) return
+    const frame = requestAnimationFrame(() => { void load() })
+    return () => cancelAnimationFrame(frame)
   }, [open, load]);
 
   React.useEffect(() => {

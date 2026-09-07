@@ -136,9 +136,10 @@ export function ShiftFormDialog({
 
   React.useEffect(() => {
     let active = true
-    const usesAuthoritativeDefaults = open && !shift && !duplicateFrom && getAuthMode() === 'supabase'
-    if (shift) {
-      setFormData({
+    const frame = requestAnimationFrame(() => {
+      const usesAuthoritativeDefaults = open && !shift && !duplicateFrom && getAuthMode() === 'supabase'
+      if (shift) {
+        setFormData({
         title: shift.title || '',
         date: shift.date,
         start_time: shift.start_time,
@@ -158,9 +159,9 @@ export function ShiftFormDialog({
         status: shift.status,
         live_link: shift.live_link || '',
         product_notes: shift.product_notes || ''
-      })
-    } else if (duplicateFrom) {
-      setFormData({
+        })
+      } else if (duplicateFrom) {
+        setFormData({
         title: duplicateFrom.title || '',
         date: '',
         start_time: duplicateFrom.start_time,
@@ -180,10 +181,10 @@ export function ShiftFormDialog({
         status: 'scheduled',
         live_link: '',
         product_notes: duplicateFrom.product_notes || ''
-      })
-    } else {
-      countInputsTouched.current = false
-      setFormData({
+        })
+      } else {
+        countInputsTouched.current = false
+        setFormData({
         title: '',
         date: '',
         start_time: '09:00',
@@ -201,29 +202,33 @@ export function ShiftFormDialog({
         status: 'scheduled',
         live_link: '',
         product_notes: ''
-      })
-      if (usesAuthoritativeDefaults) {
-        void settingsService.getOperational().then(settings => {
-          if (!active) return
-          setOperationalDefaultsReady(true)
-          if (countInputsTouched.current) return
-          setFormData(current => ({
-            ...current,
-            required_host_count: settings.default_host_count,
-            required_support_count: settings.default_support_count,
-            required_technical_count: settings.default_technical_count,
-          }))
-        }).catch(() => {
-          if (active) {
-            toast({ title: 'Error', description: 'Failed to load operational settings', variant: 'destructive' })
-          }
         })
+        if (usesAuthoritativeDefaults) {
+          void settingsService.getOperational().then(settings => {
+            if (!active) return
+            setOperationalDefaultsReady(true)
+            if (countInputsTouched.current) return
+            setFormData(current => ({
+              ...current,
+              required_host_count: settings.default_host_count,
+              required_support_count: settings.default_support_count,
+              required_technical_count: settings.default_technical_count,
+            }))
+          }).catch(() => {
+            if (active) {
+              toast({ title: 'Error', description: 'Failed to load operational settings', variant: 'destructive' })
+            }
+          })
+        }
       }
+      setShowRecurring(false)
+      setConflicts([])
+      setPreviewShifts([])
+    })
+    return () => {
+      active = false
+      cancelAnimationFrame(frame)
     }
-    setShowRecurring(false)
-    setConflicts([])
-    setPreviewShifts([])
-    return () => { active = false }
   }, [shift, duplicateFrom, open, toast])
 
   const checkConflicts = React.useCallback(async () => {
@@ -234,7 +239,8 @@ export function ShiftFormDialog({
   }, [formData, shift])
 
   React.useEffect(() => {
-    checkConflicts()
+    const frame = requestAnimationFrame(() => { void checkConflicts() })
+    return () => cancelAnimationFrame(frame)
   }, [formData.date, formData.start_time, formData.end_time, formData.host_id, formData.support_id, formData.technical_id, checkConflicts])
 
   const applyTemplate = (templateId: string) => {
@@ -257,16 +263,18 @@ export function ShiftFormDialog({
     }
   }
 
-  const generatePreview = () => {
+  const generatePreview = React.useCallback(() => {
     if (recurrenceRule.frequency === 'none') return
     const baseShift = { ...formData }
     const generated = generateRecurringShifts(baseShift, recurrenceRule)
     setPreviewShifts(generated.slice(0, 10))
-  }
+  }, [formData, recurrenceRule])
 
   React.useEffect(() => {
-    if (showRecurring) generatePreview()
-  }, [recurrenceRule, formData.date, showRecurring])
+    if (!showRecurring) return
+    const frame = requestAnimationFrame(generatePreview)
+    return () => cancelAnimationFrame(frame)
+  }, [generatePreview, showRecurring])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

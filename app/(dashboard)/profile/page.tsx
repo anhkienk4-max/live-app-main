@@ -39,9 +39,12 @@ export default function ProfilePage() {
 
   React.useEffect(() => () => revokePreview(), [revokePreview])
   React.useEffect(() => {
-    if (currentUser) {
-      setForm({ full_name: currentUser.full_name, phone: currentUser.phone || '', department: currentUser.department || '' })
-    }
+    const frame = requestAnimationFrame(() => {
+      if (currentUser) {
+        setForm({ full_name: currentUser.full_name, phone: currentUser.phone || '', department: currentUser.department || '' })
+      }
+    })
+    return () => cancelAnimationFrame(frame)
   }, [currentUser])
 
   if (loading || !currentUser) return <div className="py-12 text-center">{t('loading')}</div>

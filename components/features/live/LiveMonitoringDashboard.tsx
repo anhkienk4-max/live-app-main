@@ -72,7 +72,10 @@ export function LiveMonitoringDashboard() {
     }
   }, [])
 
-  React.useEffect(() => { setFilters(initialFilters()); void loadData() }, [loadData])
+  React.useEffect(() => {
+    const frame = requestAnimationFrame(() => { setFilters(initialFilters()); void loadData() })
+    return () => cancelAnimationFrame(frame)
+  }, [loadData])
   const handleShiftUpdate = React.useCallback(async (updatedShift?: Shift) => {
     await loadData()
     if (updatedShift) {

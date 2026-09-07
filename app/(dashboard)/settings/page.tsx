@@ -69,7 +69,10 @@ export default function SettingsPage() {
     }
   }, [currentUser, language])
 
-  React.useEffect(() => { void loadSettings() }, [loadSettings])
+  React.useEffect(() => {
+    const frame = requestAnimationFrame(() => { void loadSettings() })
+    return () => cancelAnimationFrame(frame)
+  }, [loadSettings])
 
   const personalDirty = !same(personal, savedPersonal)
   const operationalDirty = !same(operational, savedOperational)
