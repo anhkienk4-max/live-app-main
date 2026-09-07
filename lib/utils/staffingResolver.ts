@@ -18,7 +18,7 @@ export function resolveStaffingLabels(
   t: (key: string) => string
 ): StaffingLabel[] {
   const approved = registrations.filter(isStaffed)
-  
+
   const labels: StaffingLabel[] = approved.map(r => {
     if (r.user_id) {
       const u = users.find(u => u.id === r.user_id)
@@ -40,7 +40,7 @@ export function resolveStaffingLabels(
 
   const requiredCount = (shift.required_host_count ?? 1) + (shift.required_support_count ?? 0) + (shift.required_technical_count ?? 0)
   const missingCount = Math.max(0, requiredCount - approved.length)
-  
+
   if (missingCount > 0 && shift.host_names?.length) {
     const assignedImported = new Set(approved.map(r => r.imported_name).filter(Boolean))
     for (const name of shift.host_names) {
@@ -77,7 +77,7 @@ export function resolveStaffingLabelsForRole(
 ): StaffingLabel[] {
   const roleRegistrations = registrations.filter(r => r.operational_role === role)
   const approved = roleRegistrations.filter(isStaffed)
-  
+
   const labels: StaffingLabel[] = []
   const authoritativeNames = new Set<string>()
 
