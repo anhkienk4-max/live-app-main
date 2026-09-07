@@ -26,6 +26,7 @@ export function ActivityTimeline({ entityId }: ActivityTimelineProps) {
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
+    const frame = requestAnimationFrame(() => {
     // Mock timeline data - in production, fetch from API
     const mockEvents: TimelineEvent[] = [
       {
@@ -77,6 +78,8 @@ export function ActivityTimeline({ entityId }: ActivityTimelineProps) {
     ]
     setEvents(mockEvents)
     setLoading(false)
+    })
+    return () => cancelAnimationFrame(frame)
   }, [entityId])
 
   const getEventIcon = (type: string) => {
