@@ -26,7 +26,7 @@ import {
   FileText,
   Trash2,
 } from 'lucide-react'
-import { format, addMonths, addDays, addWeeks } from 'date-fns'
+import { format, addMonths, addDays, addWeeks, startOfWeek } from 'date-fns'
 import { getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
 import { MonthView } from './MonthView'
 import { WeekView } from './WeekView'
@@ -311,7 +311,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       case 'month':
         return format(currentDate, 'MMMM yyyy', { locale: dateLocale })
       case 'week':
-        return t('weekOf', { date: format(currentDate, 'PP', { locale: dateLocale }) })
+        return t('weekOf', { date: format(startOfWeek(currentDate), 'PP', { locale: dateLocale }) })
       case 'day':
         return format(currentDate, 'PPPP', { locale: dateLocale })
       case 'list':
@@ -325,153 +325,179 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoadError(null); setLoading(true); void loadData() }} />
 
   return (
-    <div className="min-w-0 space-y-6">
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5 xl:gap-4">
-        <Card className="p-3 border-none shadow-sm bg-muted/20">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('totalShifts')}</div>
-          <div className="mt-1 text-2xl font-bold">{stats.total}</div>
-        </Card>
-        <Card className="p-3 border-none shadow-sm bg-red-50/50">
-          <div className="text-xs font-medium text-red-600/80 uppercase tracking-wider">{t('liveNow')}</div>
-          <div className="mt-1 text-2xl font-bold text-red-600">{stats.running}</div>
-        </Card>
-        <Card className="p-3 border-none shadow-sm bg-blue-50/50">
-          <div className="text-xs font-medium text-blue-600/80 uppercase tracking-wider">{t('scheduled')}</div>
-          <div className="mt-1 text-2xl font-bold text-blue-600">{stats.upcoming}</div>
-        </Card>
-        <Card className="p-3 border-none shadow-sm bg-green-50/50">
-          <div className="text-xs font-medium text-green-600/80 uppercase tracking-wider">{t('completed')}</div>
-          <div className="mt-1 text-2xl font-bold text-green-600">{stats.completed}</div>
-        </Card>
-        <Card className="p-3 border-none shadow-sm bg-muted/20">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('today')}</div>
-          <div className="mt-1 text-2xl font-bold">{stats.todayShifts}</div>
-        </Card>
-      </div>
-
-      {/* Search and Filters */}
-      <Card className="p-2 sm:p-3 border-none shadow-sm bg-background">
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2 overflow-x-auto pb-1 sm:gap-3">
-            <div className="relative min-w-[200px] flex-1 shrink-0 sm:min-w-56">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder={t('searchShifts')}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Button 
-              variant={showFilters ? 'secondary' : 'outline'}
-              size="sm"
-              onClick={() => setShowFilters(!showFilters)}
-              className="shrink-0"
-            >
-              <Filter className="h-4 w-4 mr-2" />
-              {t('filters')}
-              {hasActiveFilters && <span className="ml-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center">{activeFilterCount}</span>}
-            </Button>
-            {hasPermission(currentUser, 'shifts.export') && (
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <Button variant="outline" size="sm" data-testid="export-schedule-dropdown-btn">
-                      <Download className="h-4 w-4 mr-2" />
-                      {t('exportExcel')}
-                      {visibleSelection.selectedVisibleShiftIds.length > 0 && (
-                        <span className="ml-2 bg-blue-600 text-white rounded-full px-1.5 py-0.5 text-xs">
-                          {visibleSelection.selectedVisibleShiftIds.length}
-                        </span>
-                      )}
-                    </Button>
-                  }
-                />
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => handleExport('xlsx', 'filtered')} data-testid="export-filtered-xlsx">
-                    <FileSpreadsheet className="h-4 w-4 mr-2" />
-                    Filtered XLSX
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleExport('csv', 'filtered')} data-testid="export-filtered-csv">
-                    <FileText className="h-4 w-4 mr-2" />
-                    Filtered CSV
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => handleExport('xlsx', 'selected')}
-                    disabled={visibleSelection.selectedVisibleShiftIds.length === 0}
-                    data-testid="export-selected-xlsx"
-                  >
-                    <FileSpreadsheet className="h-4 w-4 mr-2" />
-                    Selected XLSX
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => handleExport('csv', 'selected')}
-                    disabled={visibleSelection.selectedVisibleShiftIds.length === 0}
-                    data-testid="export-selected-csv"
-                  >
-                    <FileText className="h-4 w-4 mr-2" />
-                    Selected CSV
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+    <div className="min-w-0 space-y-0">
+      {/* Unified Command Toolbar */}
+      <div className="flex flex-col">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between px-0 pb-2 border-b border-border">
+          {/* Left: Date Navigation */}
+          <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
+            {view !== 'list' && (
+              <>
+                <Button variant="outline" size="icon" onClick={() => navigate('prev')} className="h-9 w-9">
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" onClick={() => setCurrentDate(new Date())} className="h-9">
+                  {t('today')}
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => navigate('next')} className="h-9 w-9">
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </>
             )}
-            {hasPermission(currentUser, 'shifts.assign_staff') && (
-              <Button size="sm" onClick={() => setShowForm(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                {t('newShift')}
-              </Button>
-            )}
-            {canSelectListShifts && (
-              <Button
-                variant="outline"
-                size="sm"
-                role="checkbox"
-                aria-checked={visibleSelection.allVisibleSelected ? true : visibleSelection.partiallySelected ? 'mixed' : false}
-                onClick={toggleAllVisibleShifts}
-                disabled={visibleSelection.visibleShiftIds.length === 0}
-                data-testid="toggle-all-visible-shifts"
-              >
-                {visibleSelection.allVisibleSelected ? t('deselectAll') : t('selectAll')}
-              </Button>
-            )}
-            {view === 'list' && currentUser && hasPermission(currentUser, 'shifts.delete') && (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setShowBulkDelete(true)}
-                disabled={visibleSelection.selectedVisibleShiftIds.length === 0}
-                data-testid="open-bulk-delete-shifts"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                {t('deleteSelectedCount', { count: visibleSelection.selectedVisibleShiftIds.length })}
-              </Button>
-            )}
-            {currentUser && hasPermission(currentUser, 'shifts.approve_registration') && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowBulkStaffingApproval(true)}
-                data-testid="open-bulk-staffing-approval"
-              >
-                <UserCheck className="mr-2 h-4 w-4" />
-                {t('bulkStaffingApproval')} ({pendingStaffingRegistrations.length})
-              </Button>
-            )}
+            <h2 className="flex min-w-0 shrink-0 items-center text-base font-bold sm:text-lg lg:text-xl ml-1 sm:ml-2 whitespace-nowrap">
+              <CalendarIcon className="h-5 w-5 mr-2 text-muted-foreground" />
+              {getViewTitle()}
+            </h2>
           </div>
 
-          {showFilters && (
-            <div className="grid grid-cols-1 gap-4 border-t pt-4 sm:grid-cols-2 lg:grid-cols-3">
-               <MultiSelectFilter label={t('brand')} value={filters.brandIds} onChange={brandIds => setFilters({ ...filters, brandIds })} options={brands.map(brand => ({ value: brand.id, label: brand.name }))} placeholder={`${t('all')} ${t('brands')}`} testId="calendar-brand-filter" />
-               <MultiSelectFilter label={t('platform')} value={filters.platformIds} onChange={platformIds => setFilters({ ...filters, platformIds })} options={platforms.map(platform => ({ value: platform.id, label: platform.name }))} placeholder={`${t('all')} ${t('platforms')}`} testId="calendar-platform-filter" />
-               <MultiSelectFilter label={t('campaign')} value={filters.campaignIds} onChange={campaignIds => setFilters({ ...filters, campaignIds })} options={campaigns.map(campaign => ({ value: campaign.id, label: campaign.name }))} placeholder={`${t('all')} ${t('campaigns')}`} testId="calendar-campaign-filter" />
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">{t('time')}</label>
-                <Select value={filters.time} onValueChange={(value) => setFilters({ ...filters, time: value as CalendarFilterState['time'] })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{timeFilterLabels.all}</SelectItem>
+          {/* Right: View Toggles & Primary Actions */}
+          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+            <div className="flex w-fit overflow-hidden rounded-md border bg-muted/20 p-1">
+              <Button variant={view === 'month' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('month')} className="h-7 text-xs">
+                <LayoutGrid className="h-3.5 w-3.5 mr-1.5" />
+                {t('month')}
+              </Button>
+              <Button variant={view === 'week' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('week')} className="h-7 text-xs">
+                {t('week')}
+              </Button>
+              <Button variant={view === 'day' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('day')} className="h-7 text-xs">
+                <Clock className="h-3.5 w-3.5 mr-1.5" />
+                {t('day')}
+              </Button>
+              <Button variant={view === 'list' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('list')} className="h-7 text-xs">
+                <List className="h-3.5 w-3.5 mr-1.5" />
+                {t('list')}
+              </Button>
+            </div>
+
+          </div>
+        </div>
+
+        {/* Search + Secondary Actions */}
+        <div className="pt-2">
+          <div className="flex flex-wrap items-center gap-2">
+              <div className="relative min-w-[200px] flex-1 shrink-0 sm:min-w-56">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder={t('searchShifts')}
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9 h-9"
+                />
+              </div>
+              <Button
+                variant={showFilters ? 'secondary' : 'outline'}
+                size="sm"
+                onClick={() => setShowFilters(!showFilters)}
+                className="shrink-0 h-9"
+              >
+                <Filter className="h-4 w-4 mr-2" />
+                {t('filters')}
+                {hasActiveFilters && <span className="ml-2 bg-primary text-primary-foreground rounded-full w-5 h-5 text-xs flex items-center justify-center">{activeFilterCount}</span>}
+              </Button>
+              {hasPermission(currentUser, 'shifts.export') && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button variant="outline" size="sm" className="h-9" data-testid="export-schedule-dropdown-btn">
+                        <Download className="h-4 w-4 mr-2" />
+                        {t('exportExcel')}
+                        {visibleSelection.selectedVisibleShiftIds.length > 0 && (
+                          <span className="ml-2 bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 text-xs">
+                            {visibleSelection.selectedVisibleShiftIds.length}
+                          </span>
+                        )}
+                      </Button>
+                    }
+                  />
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => handleExport('xlsx', 'filtered')} data-testid="export-filtered-xlsx">
+                      <FileSpreadsheet className="h-4 w-4 mr-2" />
+                      Filtered XLSX
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExport('csv', 'filtered')} data-testid="export-filtered-csv">
+                      <FileText className="h-4 w-4 mr-2" />
+                      Filtered CSV
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => handleExport('xlsx', 'selected')}
+                      disabled={visibleSelection.selectedVisibleShiftIds.length === 0}
+                      data-testid="export-selected-xlsx"
+                    >
+                      <FileSpreadsheet className="h-4 w-4 mr-2" />
+                      Selected XLSX
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => handleExport('csv', 'selected')}
+                      disabled={visibleSelection.selectedVisibleShiftIds.length === 0}
+                      data-testid="export-selected-csv"
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      Selected CSV
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+
+              {hasPermission(currentUser, 'shifts.assign_staff') && (
+                <Button size="sm" className="h-9" onClick={() => setShowForm(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  {t('newShift')}
+                </Button>
+              )}
+              {canSelectListShifts && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9"
+                  role="checkbox"
+                  aria-checked={visibleSelection.allVisibleSelected ? true : visibleSelection.partiallySelected ? 'mixed' : false}
+                  onClick={toggleAllVisibleShifts}
+                  disabled={visibleSelection.visibleShiftIds.length === 0}
+                  data-testid="toggle-all-visible-shifts"
+                >
+                  {visibleSelection.allVisibleSelected ? t('deselectAll') : t('selectAll')}
+                </Button>
+              )}
+              {view === 'list' && currentUser && hasPermission(currentUser, 'shifts.delete') && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="h-9"
+                  onClick={() => setShowBulkDelete(true)}
+                  disabled={visibleSelection.selectedVisibleShiftIds.length === 0}
+                  data-testid="open-bulk-delete-shifts"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {t('deleteSelectedCount', { count: visibleSelection.selectedVisibleShiftIds.length })}
+                </Button>
+              )}
+              {currentUser && hasPermission(currentUser, 'shifts.approve_registration') && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9"
+                  onClick={() => setShowBulkStaffingApproval(true)}
+                  data-testid="open-bulk-staffing-approval"
+                >
+                  <UserCheck className="mr-2 h-4 w-4" />
+                  {t('bulkStaffingApproval')} ({pendingStaffingRegistrations.length})
+                </Button>
+              )}
+            </div>
+
+            {showFilters && (
+              <div className="grid grid-cols-1 gap-4 border-t pt-4 sm:grid-cols-2 lg:grid-cols-4">
+                 <MultiSelectFilter label={t('brand')} value={filters.brandIds} onChange={brandIds => setFilters({ ...filters, brandIds })} options={brands.map(brand => ({ value: brand.id, label: brand.name }))} placeholder={`${t('all')} ${t('brands')}`} testId="calendar-brand-filter" />
+                 <MultiSelectFilter label={t('platform')} value={filters.platformIds} onChange={platformIds => setFilters({ ...filters, platformIds })} options={platforms.map(platform => ({ value: platform.id, label: platform.name }))} placeholder={`${t('all')} ${t('platforms')}`} testId="calendar-platform-filter" />
+                 <MultiSelectFilter label={t('campaign')} value={filters.campaignIds} onChange={campaignIds => setFilters({ ...filters, campaignIds })} options={campaigns.map(campaign => ({ value: campaign.id, label: campaign.name }))} placeholder={`${t('all')} ${t('campaigns')}`} testId="calendar-campaign-filter" />
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('time')}</label>
+                  <Select value={filters.time} onValueChange={(value) => setFilters({ ...filters, time: value as CalendarFilterState['time'] })}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{timeFilterLabels.all}</SelectItem>
                     <SelectItem value="today">{t('today')}</SelectItem>
                     <SelectItem value="current_week">{timeFilterLabels.week}</SelectItem>
                     <SelectItem value="current_month">{timeFilterLabels.month}</SelectItem>
@@ -482,11 +508,11 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
               </div>
               {filters.time === 'custom' && <>
                 <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">{t('startDate')}</label>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('startDate')}</label>
                   <Input type="date" value={filters.customFrom} onChange={(event) => setFilters({ ...filters, customFrom: event.target.value })} />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">{t('endDate')}</label>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('endDate')}</label>
                   <Input type="date" value={filters.customTo} onChange={(event) => setFilters({ ...filters, customTo: event.target.value })} />
                 </div>
               </>}
@@ -506,53 +532,12 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
             </div>
           )}
         </div>
-      </Card>
-
-      {/* Calendar Controls */}
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          {view !== 'list' && (
-            <>
-              <Button variant="outline" size="icon" onClick={() => navigate('prev')}>
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button variant="outline" onClick={() => setCurrentDate(new Date())}>
-                {t('today')}
-              </Button>
-              <Button variant="outline" size="icon" onClick={() => navigate('next')}>
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </>
-          )}
-          <h2 className="flex min-w-0 items-center text-lg font-bold sm:text-xl">
-            <CalendarIcon className="h-5 w-5 mr-2" />
-            {getViewTitle()}
-          </h2>
-        </div>
-
-        <div className="flex w-fit max-w-full overflow-x-auto rounded-lg border">
-          <Button variant={view === 'month' ? 'default' : 'ghost'} size="sm" onClick={() => setView('month')}>
-            <LayoutGrid className="h-4 w-4 mr-2" />
-            {t('month')}
-          </Button>
-          <Button variant={view === 'week' ? 'default' : 'ghost'} size="sm" onClick={() => setView('week')}>
-            {t('week')}
-          </Button>
-          <Button variant={view === 'day' ? 'default' : 'ghost'} size="sm" onClick={() => setView('day')}>
-            <Clock className="h-4 w-4 mr-2" />
-            {t('day')}
-          </Button>
-          <Button variant={view === 'list' ? 'default' : 'ghost'} size="sm" onClick={() => setView('list')}>
-            <List className="h-4 w-4 mr-2" />
-            {t('list')}
-          </Button>
-        </div>
       </div>
 
       {/* Calendar Views */}
-      <Card className="min-w-0 overflow-hidden p-3 sm:p-6">
+      <Card className="min-w-0 overflow-hidden pt-4">
         {view === 'month' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} onShiftClick={setSelectedShift} onDayClick={setSelectedDay} /></div></div>}
-        {view === 'week' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} users={users} registrations={registrations} onShiftClick={setSelectedShift} /></div></div>}
+        {view === 'week' && <div className="w-full"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} users={users} registrations={registrations} onShiftClick={setSelectedShift} /></div>}
         {view === 'day' && <DayView currentDate={currentDate} shifts={filteredShifts} allShifts={shifts} registrations={registrations} currentUser={currentUser} brands={brands} platforms={platforms} users={users} onRegister={registerForShift} onShiftClick={setSelectedShift} />}
         {view === 'list' && (
           <ListView

@@ -1,7 +1,7 @@
 'use client'
 
 import { Shift, Brand, Platform, User, ShiftRegistration, OperationalRole } from '@/lib/types/database.types'
-import { Badge } from '@/components/ui/badge'
+import { ShiftStatusBadge } from '@/components/domain/ShiftStatusBadge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { format } from 'date-fns'
 import { Calendar } from 'lucide-react'
@@ -57,25 +57,25 @@ export function ListView({
 
   if (sortedShifts.length === 0) {
     return (
-      <div className="text-center py-12 text-gray-500">
-        <Calendar className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+      <div className="text-center py-12 text-muted-foreground bg-background rounded-lg border border-dashed">
+        <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
         <p className="text-lg">No shifts found matching your criteria</p>
       </div>
     )
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {sortedShifts.map((shift) => {
         const isSelected = selectedShiftIds?.has(shift.id) ?? false
         return (
           <div
             key={shift.id}
-            className={`w-full rounded-lg border p-4 text-left transition-all hover:shadow-lg flex items-center gap-3 ${
-              isSelected ? 'bg-blue-50/50 border-blue-300' : ''
+            className={`w-full rounded-xl border p-4 text-left shadow-sm transition-all flex items-center gap-4 bg-background border-l-4 hover:shadow focus-within:ring-2 focus-within:ring-ring ${
+              isSelected ? 'bg-primary/5 border-primary/20' : ''
             }`}
             data-testid={`list-shift-${shift.id}`}
-            style={{ borderLeft: `4px solid ${getBrandColor(shift.brand_id)}` }}
+            style={{ borderLeftColor: getBrandColor(shift.brand_id) }}
           >
             {onToggleSelectShift && (
               <Checkbox
@@ -87,27 +87,27 @@ export function ListView({
             )}
             <button
               type="button"
-              className="flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+              className="flex-1 text-left focus-visible:outline-none rounded"
               onClick={() => onShiftClick?.(shift)}
             >
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-6 flex-1">
-                  <div className="text-sm font-semibold min-w-[110px]">
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 flex-1">
+                  <div className="text-sm font-semibold min-w-[110px] text-foreground">
                     {format(new Date(shift.date), 'MMM d, yyyy')}
                   </div>
-                  <div className="min-w-[150px] text-sm font-medium">{formatShiftTimeRange(shift)}</div>
-                  <div className="text-sm font-semibold text-gray-900">{getBrandName(shift.brand_id)}</div>
-                  <div className="text-sm text-gray-600">{getPlatformName(shift.platform_id)}</div>
-                  <div className="text-sm text-gray-500"><span className="font-medium">{t('studio')}:</span> {shift.studio || t('notUpdated')}</div>
-                  <div className="text-sm text-gray-500">
-                    <span className="font-medium">{t('importHostNames')}:</span> {getRoleStaffingNames(shift, 'host')}
+                  <div className="min-w-[150px] text-sm font-semibold tracking-tight">{formatShiftTimeRange(shift)}</div>
+                  <div className="text-sm font-semibold text-foreground">{getBrandName(shift.brand_id)}</div>
+                  <div className="text-sm text-muted-foreground">{getPlatformName(shift.platform_id)}</div>
+                  <div className="text-sm text-muted-foreground"><span className="font-medium mr-1">{t('studio')}:</span> {shift.studio || t('notUpdated')}</div>
+                  <div className="text-sm text-muted-foreground">
+                    <span className="font-medium mr-1">{t('importHostNames')}:</span> {getRoleStaffingNames(shift, 'host')}
                   </div>
-                  <div className="text-sm text-gray-500"><span className="font-medium">{t('importAssistantNames')}:</span> {getRoleStaffingNames(shift, 'support')}</div>
-                  <div className="text-sm text-gray-500"><span className="font-medium">{t('importTechnicalNames')}:</span> {getRoleStaffingNames(shift, 'technical')}</div>
+                  <div className="text-sm text-muted-foreground"><span className="font-medium mr-1">{t('importAssistantNames')}:</span> {getRoleStaffingNames(shift, 'support')}</div>
+                  <div className="text-sm text-muted-foreground"><span className="font-medium mr-1">{t('importTechnicalNames')}:</span> {getRoleStaffingNames(shift, 'technical')}</div>
                 </div>
-                <Badge variant={shift.status === 'live' ? 'destructive' : shift.status === 'completed' ? 'default' : 'secondary'}>
-                  {shift.status}
-                </Badge>
+                <div className="ml-4 shrink-0">
+                  <ShiftStatusBadge status={shift.status} />
+                </div>
               </div>
               {/* E5 Exception Strip */}
               {(() => {
@@ -145,14 +145,16 @@ export function ListView({
               })()}
             </button>
             {onRegister && (
-              <ShiftRegistrationActions
-                allShifts={allShifts}
-                compact
-                currentUser={currentUser}
-                onRegister={role => onRegister(shift.id, role)}
-                registrations={registrations}
-                shift={shift}
-              />
+              <div className="shrink-0 border-l pl-4">
+                <ShiftRegistrationActions
+                  allShifts={allShifts}
+                  compact
+                  currentUser={currentUser}
+                  onRegister={role => onRegister(shift.id, role)}
+                  registrations={registrations}
+                  shift={shift}
+                />
+              </div>
             )}
           </div>
         )

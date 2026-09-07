@@ -1084,6 +1084,7 @@ const en = {
   auditHistory: 'Audit History',
   moreMenu: 'More',
   navMain: 'Main navigation',
+  noShiftsScheduled: 'No shifts scheduled',
 } as const
 
 const vi: Record<keyof typeof en, string> = {
@@ -2162,6 +2163,7 @@ const vi: Record<keyof typeof en, string> = {
   auditHistory: 'Lịch sử kiểm toán',
   moreMenu: 'Thêm',
   navMain: 'Thanh điều hướng chính',
+  noShiftsScheduled: 'Không có ca nào trong ngày này',
 }
 
 const dictionary = { en, vi }

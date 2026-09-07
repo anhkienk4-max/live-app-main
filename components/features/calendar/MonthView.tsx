@@ -1,11 +1,11 @@
 'use client'
 
-import React from 'react'
-import { addDays, endOfMonth, endOfWeek, format, isSameMonth, isToday, startOfMonth, startOfWeek } from 'date-fns'
+import { format, startOfMonth, startOfWeek, addDays, endOfMonth, endOfWeek, isSameMonth, isToday } from 'date-fns'
 import { enUS, vi } from 'date-fns/locale'
 import { Brand, Platform, Shift } from '@/lib/types/database.types'
 import { resolveShiftDateTime } from '@/lib/utils/shiftUtils'
 import { useTranslation } from '@/lib/i18n'
+import { ShiftStatusBadge } from '@/components/domain/ShiftStatusBadge'
 
 interface MonthViewProps {
   currentDate: Date
@@ -98,11 +98,11 @@ export function MonthView({
                 {dayShifts.slice(0, MONTH_VISIBLE_EVENT_LIMITS.large).map((shift, index) => {
                   const crossesMidnight = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time)?.crossesMidnight
                   const title = shift.title || `${brandName(shift.brand_id)} live`
-                  const displayTitle = shift.studio ? `${title} · ${shift.studio}` : title
+                  const displayTitle = shift.studio ? `${title} • ${shift.studio}` : title
                   const visibility = index === 1 ? 'hidden md:flex' : index === 2 ? 'hidden lg:flex' : 'flex'
                   return (
                     <button
-                      className={`${visibility} h-7 w-full min-w-0 items-center gap-1 overflow-hidden rounded px-1.5 text-left text-[11px] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
+                      className={`${visibility} h-8 w-full min-w-0 items-center gap-1 overflow-hidden rounded-md px-1.5 text-left text-[11px] transition-all bg-background border-l-[3px] shadow-sm hover:shadow border-y border-r border-y-border border-r-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
                       data-testid={`calendar-event-${shift.id}`}
                       key={shift.id}
                       onClick={event => {
@@ -110,27 +110,14 @@ export function MonthView({
                         onShiftClick?.(shift)
                       }}
                       style={{
-                        backgroundColor: `${brandColor(shift.brand_id)}20`,
-                        borderLeft: `3px solid ${brandColor(shift.brand_id)}`,
+                        borderLeftColor: brandColor(shift.brand_id),
                       }}
-                      title={`${shift.start_time}${crossesMidnight ? ' → +1' : ''} · ${displayTitle} · ${shift.status}`}
+                      title={`${shift.start_time}${crossesMidnight ? ' +1' : ''} • ${displayTitle} • ${shift.status}`}
                       type="button"
                     >
                       <span className="shrink-0 font-semibold">{shift.start_time}{crossesMidnight ? ' +1' : ''}</span>
-                      <span className="min-w-0 flex-1 truncate whitespace-nowrap">{displayTitle}</span>
-                      <span
-                        aria-label={shift.status}
-                        className={`h-2 w-2 shrink-0 rounded-full ${
-                          shift.status === 'live'
-                            ? 'bg-red-500'
-                            : shift.status === 'completed'
-                              ? 'bg-green-500'
-                              : shift.status === 'cancelled'
-                                ? 'bg-gray-400'
-                                : 'bg-blue-500'
-                        }`}
-                        title={shift.status}
-                      />
+                      <span className="min-w-0 flex-1 truncate whitespace-nowrap text-foreground">{displayTitle}</span>
+                      <ShiftStatusBadge status={shift.status} className="shrink-0 text-[9px] h-4 px-1 py-0 border-none scale-90 origin-right" />
                     </button>
                   )
                 })}
