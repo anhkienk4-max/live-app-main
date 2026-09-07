@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Image from 'next/image'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { X, ChevronLeft, ChevronRight, Download, ZoomIn, ZoomOut } from 'lucide-react'
@@ -45,14 +46,23 @@ export function ImageGallery({ images }: ImageGalleryProps) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (selectedIndex === null) return
       
-      if (e.key === 'ArrowLeft') goToPrevious()
-      if (e.key === 'ArrowRight') goToNext()
-      if (e.key === 'Escape') closeLightbox()
+      if (e.key === 'ArrowLeft') {
+        setSelectedIndex(index => index !== null && index > 0 ? index - 1 : index)
+        setZoom(1)
+      }
+      if (e.key === 'ArrowRight') {
+        setSelectedIndex(index => index !== null && index < images.length - 1 ? index + 1 : index)
+        setZoom(1)
+      }
+      if (e.key === 'Escape') {
+        setSelectedIndex(null)
+        setZoom(1)
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedIndex])
+  }, [images.length, selectedIndex])
 
   if (images.length === 0) return null
 
@@ -66,9 +76,12 @@ export function ImageGallery({ images }: ImageGalleryProps) {
             className="relative aspect-square rounded-lg overflow-hidden cursor-pointer group"
             onClick={() => openLightbox(index)}
           >
-            <img
+            <Image
+              unoptimized
               src={image}
               alt={`Image ${index + 1}`}
+              width={720}
+              height={720}
               className="w-full h-full object-cover transition-transform group-hover:scale-110"
             />
             <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all flex items-center justify-center">
@@ -152,9 +165,12 @@ export function ImageGallery({ images }: ImageGalleryProps) {
               </div>
 
               {/* Image */}
-              <img
+              <Image
+                unoptimized
                 src={images[selectedIndex]}
                 alt={`Image ${selectedIndex + 1}`}
+                width={1920}
+                height={1080}
                 className="max-w-full max-h-full object-contain"
                 style={{ transform: `scale(${zoom})`, transition: 'transform 0.2s' }}
               />

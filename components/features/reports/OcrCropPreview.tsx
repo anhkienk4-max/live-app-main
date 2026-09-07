@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Image from 'next/image'
 import type {
   OcrCropBox,
   OcrReviewData,
@@ -95,7 +96,7 @@ export function OcrCropPreview({
       </div>
       <div className="overflow-hidden rounded border bg-black/5">
         <div ref={previewRef} className="relative mx-auto w-fit max-w-full touch-none">
-          <img src={imageUrl} alt={t('dashboardCropPreview')} className="block max-h-80 max-w-full object-contain" />
+          <Image unoptimized src={imageUrl} alt={t('dashboardCropPreview')} width={1280} height={720} className="block max-h-80 max-w-full object-contain" />
           <div
             className={`absolute z-20 border-2 border-emerald-500 bg-emerald-400/15 shadow-[0_0_0_9999px_rgba(0,0,0,.42)] ${platform === 'tiktok_shop' && !disabled ? 'cursor-move' : 'pointer-events-none'}`}
             style={{

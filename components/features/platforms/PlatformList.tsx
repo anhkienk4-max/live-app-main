@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Image from 'next/image'
 import { ExternalLink, Eye, Pencil, Plus, Power, PowerOff } from 'lucide-react'
 import { brandService, campaignService, currentUserService, platformService, userService } from '@/lib/services/dataService'
 import { Brand, Campaign, KnowledgeStatus, Platform, User } from '@/lib/types/database.types'
@@ -65,7 +66,10 @@ export function PlatformList() {
       setLoading(false)
     }
   }, [])
-  React.useEffect(() => { void loadData() }, [loadData])
+  React.useEffect(() => {
+    const frame = requestAnimationFrame(() => { void loadData() })
+    return () => cancelAnimationFrame(frame)
+  }, [loadData])
   const canManage = Boolean(currentUser && hasPermission(currentUser, 'platforms.manage'))
   const openForm = (platform?: Platform | null) => { setSelected(platform || null); setForm(formFor(platform)); setFormOpen(true) }
   const submit = async (event: React.FormEvent) => {
@@ -136,7 +140,7 @@ function PlatformDetail({ open, onOpenChange, platform, campaigns, brands, users
   const { t } = useTranslation()
   const relatedCampaigns = campaigns.filter(campaign => campaign.platform_ids?.includes(platform.id) || campaign.platform_source === platform.name)
   const brandIds = new Set(relatedCampaigns.map(campaign => campaign.brand_id))
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent size="xl" className="overflow-y-auto"><DialogHeader><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3">{platform.logo_url ? <img src={platform.logo_url} alt={platform.name} className="h-14 w-14 rounded-lg border object-contain" /> : platform.icon ? <div className="flex h-14 w-14 items-center justify-center rounded-lg border text-2xl">{platform.icon}</div> : null}<div><DialogTitle className="text-2xl">{platform.name}</DialogTitle><div className="mt-2 flex gap-2"><Badge>{t(platform.status || 'active')}</Badge><Badge variant="outline">{platform.platform_type || '—'}</Badge></div></div></div>{canManage && <Button onClick={onEdit}><Pencil className="mr-2 h-4 w-4" />{t('edit')}</Button>}</div></DialogHeader><div className="grid gap-4 md:grid-cols-2">
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent size="xl" className="overflow-y-auto"><DialogHeader><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3">{platform.logo_url ? <Image unoptimized src={platform.logo_url} alt={platform.name} width={56} height={56} className="h-14 w-14 rounded-lg border object-contain" /> : platform.icon ? <div className="flex h-14 w-14 items-center justify-center rounded-lg border text-2xl">{platform.icon}</div> : null}<div><DialogTitle className="text-2xl">{platform.name}</DialogTitle><div className="mt-2 flex gap-2"><Badge>{t(platform.status || 'active')}</Badge><Badge variant="outline">{platform.platform_type || '—'}</Badge></div></div></div>{canManage && <Button onClick={onEdit}><Pencil className="mr-2 h-4 w-4" />{t('edit')}</Button>}</div></DialogHeader><div className="grid gap-4 md:grid-cols-2">
     <Section title={t('platformUrl')}>{platform.platform_url ? <Button nativeButton={false} render={<a href={platform.platform_url} target="_blank" rel="noopener noreferrer" />} variant="link" className="h-auto p-0"><ExternalLink className="mr-1 h-3 w-3" />{platform.platform_url}</Button> : <p>—</p>}</Section>
     <Section title={t('accountInformation')}><p>{platform.account_information || '—'}</p><p className="mt-2 text-xs text-muted-foreground">{t('credentialsSafe')}</p></Section>
     <Section title={t('policyNotes')}><p>{platform.policy_notes || '—'}</p></Section>

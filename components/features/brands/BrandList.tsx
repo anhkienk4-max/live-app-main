@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Image from 'next/image'
 import { Eye, LayoutGrid, List, Pencil, Plus, Power, PowerOff } from 'lucide-react'
 import { brandService, campaignService, platformService, userService } from '@/lib/services/dataService'
 import { Brand, Campaign, Platform, User } from '@/lib/types/database.types'
@@ -47,7 +48,10 @@ export function BrandList() {
       setLoading(false)
     }
   }, [])
-  React.useEffect(() => { void loadData() }, [loadData])
+  React.useEffect(() => {
+    const frame = requestAnimationFrame(() => { void loadData() })
+    return () => cancelAnimationFrame(frame)
+  }, [loadData])
   const refreshBrands = React.useCallback(() => refreshCollection(brandService, setBrands), [])
   const canManage = Boolean(currentUser && hasPermission(currentUser, 'brands.manage'))
   const edit = (brand: Brand) => { setSelectedBrand(brand); setFormOpen(true) }
@@ -62,7 +66,7 @@ export function BrandList() {
   }
   const actions = (brand: Brand) => <div className="flex gap-1"><Button variant="ghost" size="icon" aria-label={t('viewDetails')} onClick={() => setDetailBrand(brand)}><Eye className="h-4 w-4" /></Button>{canManage && <><Button variant="ghost" size="icon" aria-label={t('edit')} onClick={() => edit(brand)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" aria-label={t(brand.status === 'inactive' ? 'activate' : 'deactivate')} onClick={() => setStatusTarget(brand)}>{brand.status === 'inactive' ? <Power className="h-4 w-4 text-green-600" /> : <PowerOff className="h-4 w-4 text-amber-600" />}</Button></>}</div>
   const columns: Column<Brand>[] = [
-    { header: t('brand'), accessor: row => <div className="flex items-center gap-3">{row.logo_url ? <img src={row.logo_url} alt={row.name} className="h-10 w-10 rounded border object-contain" /> : <div className="h-10 w-10 rounded" style={{ backgroundColor: row.color }} />}<div><p className="font-medium">{row.name}</p><p className="text-xs text-muted-foreground">{row.category || '—'}</p></div></div> },
+    { header: t('brand'), accessor: row => <div className="flex items-center gap-3">{row.logo_url ? <Image unoptimized width={40} height={40} src={row.logo_url} alt={row.name} className="h-10 w-10 rounded border object-contain" /> : <div className="h-10 w-10 rounded" style={{ backgroundColor: row.color }} />}<div><p className="font-medium">{row.name}</p><p className="text-xs text-muted-foreground">{row.category || '—'}</p></div></div> },
     { header: t('status'), accessor: row => t(row.status || 'active') },
     { header: t('lastUpdated'), accessor: row => new Date(row.updated_at).toLocaleDateString() },
     { header: t('actions'), accessor: actions },
@@ -72,7 +76,7 @@ export function BrandList() {
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
   return <>
     <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t('brandKnowledge')}</h2><p className="mt-1 text-muted-foreground">{t('description')}</p></div><div className="flex gap-2"><div className="flex rounded-lg border"><Button variant={viewMode === 'grid' ? 'default' : 'ghost'} size="icon" onClick={() => setViewMode('grid')}><LayoutGrid className="h-4 w-4" /></Button><Button variant={viewMode === 'table' ? 'default' : 'ghost'} size="icon" onClick={() => setViewMode('table')}><List className="h-4 w-4" /></Button></div>{canManage && <Button onClick={() => { setSelectedBrand(null); setFormOpen(true) }}><Plus className="mr-2 h-4 w-4" />{t('create')} {t('brand')}</Button>}</div></div>
-    {viewMode === 'table' ? <DataTable data={brands} columns={columns} searchPlaceholder={`${t('search')} ${t('brands')}`} /> : <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">{brands.map(brand => <Card key={brand.id}><CardContent className="space-y-4 pt-5"><div className="flex items-start justify-between">{brand.logo_url ? <img src={brand.logo_url} alt={brand.name} className="h-16 w-16 rounded-lg border object-contain" /> : <div className="h-16 w-16 rounded-lg" style={{ backgroundColor: brand.color }} />}{actions(brand)}</div><div><h3 className="text-lg font-semibold">{brand.name}</h3><p className="text-sm text-muted-foreground">{brand.category || '—'} · {t(brand.status || 'active')}</p></div><p className="line-clamp-3 text-sm">{brand.description || '—'}</p><Button className="w-full" variant="outline" onClick={() => setDetailBrand(brand)}>{t('viewDetails')}</Button></CardContent></Card>)}</div>}
+    {viewMode === 'table' ? <DataTable data={brands} columns={columns} searchPlaceholder={`${t('search')} ${t('brands')}`} /> : <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">{brands.map(brand => <Card key={brand.id}><CardContent className="space-y-4 pt-5"><div className="flex items-start justify-between">{brand.logo_url ? <Image unoptimized width={64} height={64} src={brand.logo_url} alt={brand.name} className="h-16 w-16 rounded-lg border object-contain" /> : <div className="h-16 w-16 rounded-lg" style={{ backgroundColor: brand.color }} />}{actions(brand)}</div><div><h3 className="text-lg font-semibold">{brand.name}</h3><p className="text-sm text-muted-foreground">{brand.category || '—'} · {t(brand.status || 'active')}</p></div><p className="line-clamp-3 text-sm">{brand.description || '—'}</p><Button className="w-full" variant="outline" onClick={() => setDetailBrand(brand)}>{t('viewDetails')}</Button></CardContent></Card>)}</div>}
     <BrandFormDialog open={formOpen} onOpenChange={setFormOpen} brand={selectedBrand} onSuccess={refreshBrands} />
     {detailBrand && <BrandDetailDialog open brand={detailBrand} campaigns={campaigns} platforms={platforms} users={users} onOpenChange={open => !open && setDetailBrand(null)} onEdit={() => { edit(detailBrand); setDetailBrand(null) }} />}
     <AlertDialog open={Boolean(statusTarget)} onOpenChange={open => !open && setStatusTarget(null)} title={`${t(statusTarget?.status === 'inactive' ? 'activate' : 'deactivate')} ${t('brand')}`} description={statusTarget?.name || ''} onConfirm={toggleStatus} confirmText={t(statusTarget?.status === 'inactive' ? 'activate' : 'deactivate')} variant={statusTarget?.status === 'inactive' ? 'default' : 'destructive'} />
