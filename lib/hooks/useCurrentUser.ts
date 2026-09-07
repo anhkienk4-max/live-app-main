@@ -43,11 +43,14 @@ export function useCurrentUser() {
   }, [auth?.businessUser, supabaseMode])
 
   React.useEffect(() => {
-    void reload()
     if (supabaseMode) return
+    const frame = requestAnimationFrame(() => { void reload() })
     const handleChange = () => void reload()
     window.addEventListener('livestream-ops-current-user-change', handleChange)
-    return () => window.removeEventListener('livestream-ops-current-user-change', handleChange)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('livestream-ops-current-user-change', handleChange)
+    }
   }, [reload, supabaseMode])
 
   const setCurrentUser = React.useCallback(async (id: string) => {
