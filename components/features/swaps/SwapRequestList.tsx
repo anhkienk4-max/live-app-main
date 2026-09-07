@@ -65,7 +65,10 @@ export function SwapRequestList() {
     ])
     setSwaps(loadedSwaps); setShifts(loadedShifts); setUsers(loadedUsers); setBrands(loadedBrands); setPlatforms(loadedPlatforms); setCampaigns(loadedCampaigns); setLoading(false)
   }, [])
-  React.useEffect(() => { void loadData() }, [loadData])
+  React.useEffect(() => {
+    const frame = requestAnimationFrame(() => { void loadData() })
+    return () => cancelAnimationFrame(frame)
+  }, [loadData])
   React.useEffect(() => {
     if (!currentUser) return
     void shiftRegistrationService.getForUser(currentUser.id).then(registrations => {
@@ -89,7 +92,10 @@ export function SwapRequestList() {
       matchesMultiSelect(roleFor(swap), filters.roles) &&
       matchesMultiSelect(swap.status, filters.statuses)
   })
-  React.useEffect(() => setPage(1), [filters])
+  const updateFilters = (next: React.SetStateAction<Filters>) => {
+    setFilters(next)
+    setPage(1)
+  }
   const visibleSwaps = filtered.slice((page - 1) * pageSize, page * pageSize)
   const exportMaps = {
     users: new Map(users.map(user => [user.id, user.full_name])),
@@ -143,17 +149,17 @@ export function SwapRequestList() {
 
     <Card><CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><CardTitle>{t('filters')}</CardTitle>{currentUser && hasPermission(currentUser, 'swaps.request') && <Button onClick={() => setShowForm(true)}><Plus className="mr-2 h-4 w-4" />{t('swapsTitle')}</Button>}</div></CardHeader><CardContent className="space-y-4">
       <div className="grid gap-3 md:grid-cols-4">
-        <label className="text-xs font-medium">{t('startDate')}<Input className="mt-1" type="date" value={filters.start} onChange={event => setFilters(current => ({ ...current, start: event.target.value }))} /></label>
-        <label className="text-xs font-medium">{t('endDate')}<Input className="mt-1" type="date" value={filters.end} onChange={event => setFilters(current => ({ ...current, end: event.target.value }))} /></label>
-        <EntityFilter label={t('requester')} value={filters.requesterIds} options={users.map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, requesterIds: value }))} />
-        <EntityFilter label={t('brand')} value={filters.brandIds} options={brands} onChange={value => setFilters(current => ({ ...current, brandIds: value }))} />
-        <EntityFilter label={t('campaign')} value={filters.campaignIds} options={campaigns} onChange={value => setFilters(current => ({ ...current, campaignIds: value }))} />
-        <MultiSelectFilter label={t('role')} value={filters.roles} options={(['host','support','technical'] as OperationalRole[]).map(role => ({ value: role, label: t(role) }))} onChange={value => setFilters(current => ({ ...current, roles: value as OperationalRole[] }))} />
-        <MultiSelectFilter label={t('status')} value={filters.statuses} options={(['pending','accepted','approved','rejected','cancelled','completed'] as const).map(status => ({ value: status, label: (t as unknown as (k:string)=>string)(status) }))} onChange={value => setFilters(current => ({ ...current, statuses: value }))} />
+        <label className="text-xs font-medium">{t('startDate')}<Input className="mt-1" type="date" value={filters.start} onChange={event => updateFilters(current => ({ ...current, start: event.target.value }))} /></label>
+        <label className="text-xs font-medium">{t('endDate')}<Input className="mt-1" type="date" value={filters.end} onChange={event => updateFilters(current => ({ ...current, end: event.target.value }))} /></label>
+        <EntityFilter label={t('requester')} value={filters.requesterIds} options={users.map(user => ({ id: user.id, name: user.full_name }))} onChange={value => updateFilters(current => ({ ...current, requesterIds: value }))} />
+        <EntityFilter label={t('brand')} value={filters.brandIds} options={brands} onChange={value => updateFilters(current => ({ ...current, brandIds: value }))} />
+        <EntityFilter label={t('campaign')} value={filters.campaignIds} options={campaigns} onChange={value => updateFilters(current => ({ ...current, campaignIds: value }))} />
+        <MultiSelectFilter label={t('role')} value={filters.roles} options={(['host','support','technical'] as OperationalRole[]).map(role => ({ value: role, label: t(role) }))} onChange={value => updateFilters(current => ({ ...current, roles: value as OperationalRole[] }))} />
+        <MultiSelectFilter label={t('status')} value={filters.statuses} options={(['pending','accepted','approved','rejected','cancelled','completed'] as const).map(status => ({ value: status, label: (t as unknown as (k:string)=>string)(status) }))} onChange={value => updateFilters(current => ({ ...current, statuses: value }))} />
       </div>
       <div className="flex gap-2">
         <div className="hidden lg:flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => setFilters(initialFilters)}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button>
+          <Button variant="outline" onClick={() => updateFilters(initialFilters)}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button>
           {currentUser && hasPermission(currentUser, 'swaps.export') && <>
             <Button variant="outline" disabled={!filtered.length} onClick={() => exportSwapsToExcel(filtered, shifts, exportMaps.users, exportMaps.brands, exportMaps.campaigns)}><FileSpreadsheet className="mr-2 h-4 w-4" />{t('exportFilteredSwaps')}</Button>
             <Button variant="outline" disabled={!swaps.some(swap => swap.status !== 'pending')} onClick={() => exportSwapsToExcel(swaps.filter(swap => swap.status !== 'pending'), shifts, exportMaps.users, exportMaps.brands, exportMaps.campaigns, 'swap_history.xlsx')}><Download className="mr-2 h-4 w-4" />{t('exportSwapHistory')}</Button>
@@ -161,7 +167,7 @@ export function SwapRequestList() {
           </>}
         </div>
         <div className="lg:hidden flex w-full gap-2">
-          <Button className="flex-1" variant="outline" onClick={() => setFilters(initialFilters)}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button>
+          <Button className="flex-1" variant="outline" onClick={() => updateFilters(initialFilters)}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button>
           {currentUser && hasPermission(currentUser, 'swaps.export') && (
             <MobileActionMenu
               breakpoint="lg"

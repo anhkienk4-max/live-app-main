@@ -90,7 +90,8 @@ export function SwapRequestFormModal({
 
   // A. Form initialization
   React.useEffect(() => {
-    if (open && currentUserId) {
+    if (!open || !currentUserId) return;
+    const frame = requestAnimationFrame(() => {
       setFormData({
         shift_id: "",
         requester_id: currentUserId,
@@ -99,7 +100,8 @@ export function SwapRequestFormModal({
         reason: "",
       });
       setErrors({});
-    }
+    });
+    return () => cancelAnimationFrame(frame);
   }, [open, currentUserId]);
 
   // B. Canonical registration loading
@@ -263,16 +265,6 @@ export function SwapRequestFormModal({
     return registeredRoles[selectedShift.id] || [];
   }, [currentUser, registeredRoles, selectedShift]);
 
-  React.useEffect(() => {
-    if (
-      formData.shift_id &&
-      availableRoles.length === 1 &&
-      formData.operational_role !== availableRoles[0]
-    ) {
-      setFormData((f) => ({ ...f, operational_role: availableRoles[0] }));
-    }
-  }, [formData.shift_id, availableRoles, formData.operational_role]);
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="lg" className="overflow-y-auto">
@@ -295,14 +287,15 @@ export function SwapRequestFormModal({
             </label>
             <Select
               value={formData.shift_id}
-              onValueChange={(value) =>
+              onValueChange={(value) => {
+                const roles = registeredRoles[value] || [];
                 setFormData({
                   ...formData,
                   shift_id: value,
-                  operational_role: "",
+                  operational_role: roles.length === 1 ? roles[0] : "",
                   replacement_staff_id: "",
-                })
-              }
+                });
+              }}
             >
               <SelectTrigger
                 className={errors.shift_id ? "border-red-500" : ""}
