@@ -32,8 +32,8 @@ export function AuthIdentityProvider({
   const [businessUser, setBusinessUser] = React.useState(initialBusinessUser)
 
   React.useEffect(() => {
-    setIdentity(initialIdentity)
-    setBusinessUser(initialBusinessUser)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronize verified server identity into provider state when the server session changes
+    setIdentity(initialIdentity); setBusinessUser(initialBusinessUser)
   }, [initialBusinessUser, initialIdentity])
 
   React.useEffect(() => {
