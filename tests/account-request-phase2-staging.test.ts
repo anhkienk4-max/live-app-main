@@ -235,10 +235,18 @@ test('Account Request Phase 2 staging runtime contract', { skip: skipReason }, a
     const approval = track(await createPendingRequest(anonymous, admin, prefix, 'approval'))
     const approvalAuthCount = await countAuthUsers(admin)
     const approvalStaffCount = await countStaff(admin)
-    const approved = await rpc(adminFixture, 'approve_account_request', {
-      p_request_id: approval.id,
-      p_expected_version: approval.version,
-    }) as AccountRequestRow
+    const approvalResults = await Promise.allSettled([
+      rpc(adminFixture, 'approve_account_request', {
+        p_request_id: approval.id,
+        p_expected_version: approval.version,
+      }),
+      rpc(adminFixture2, 'approve_account_request', {
+        p_request_id: approval.id,
+        p_expected_version: approval.version,
+      }),
+    ])
+    assert.equal(approvalResults.filter(result => result.status === 'fulfilled').length, 2)
+    const approved = (approvalResults.find(result => result.status === 'fulfilled') as PromiseFulfilledResult<AccountRequestRow>).value
     assert.equal(approved.status, 'approved')
     assert.equal(approved.version, approval.version + 1)
     assert.ok(approved.reviewed_at)
@@ -263,6 +271,9 @@ test('Account Request Phase 2 staging runtime contract', { skip: skipReason }, a
       p_rejection_reason: 'cross-terminal',
     }, 'ACCOUNT_REQUEST_NOT_PENDING')
 
+    const approvalAfter = await requestById(admin, approval.id)
+    assert.equal(approvalAfter.status, 'approved')
+    assert.equal(approvalAfter.version, approval.version + 1)
     const approvalAudit = await auditRows(admin, approval.id)
     const approvalEvent = approvalAudit.find(row => row.action === 'approve') as Record<string, unknown> | undefined
     assert.ok(approvalEvent)
@@ -271,6 +282,7 @@ test('Account Request Phase 2 staging runtime contract', { skip: skipReason }, a
     assert.equal((approvalEvent.after_data as Record<string, unknown>).status, 'approved')
     assert.equal(approvalEvent.module, 'staff')
     assert.equal(approvalEvent.entity_type, 'account_requests')
+    assert.equal(approvalAudit.filter(row => row.action === 'approve').length, 1)
 
     const rejection = track(await createPendingRequest(anonymous, admin, prefix, 'rejection'))
     const rejectionAuthCount = await countAuthUsers(admin)
@@ -308,23 +320,37 @@ test('Account Request Phase 2 staging runtime contract', { skip: skipReason }, a
     assert.equal((rejectionEvent.after_data as Record<string, unknown>).status, 'rejected')
     assert.equal(rejectionEvent.reason, 'duplicate request')
 
-    const authorization = track(await createPendingRequest(anonymous, admin, prefix, 'authorization'))
-    await expectRpcError(leaderFixture, 'approve_account_request', { p_request_id: authorization.id, p_expected_version: 0 }, 'STAFF_ADMIN_REQUIRED')
-    await expectRpcError(memberFixture, 'approve_account_request', { p_request_id: authorization.id, p_expected_version: 0 }, 'STAFF_ADMIN_REQUIRED')
-    await expectRpcError(anonymous, 'approve_account_request', { p_request_id: authorization.id, p_expected_version: 0 }, '42501|permission|function')
+    const lifecycle = track(await createPendingRequest(anonymous, admin, prefix, 'lifecycle'))
+    const firstNotifications = await notificationRows(admin, lifecycle.id)
+    const firstNotificationIds = new Set(firstNotifications.map(row => String(row.id)))
+    fixtureNotificationIds.push(...firstNotifications.map(row => String(row.id)))
+    assert.equal(firstNotifications.length, eligibleAdminIds.size)
+    assert.deepEqual(new Set(firstNotifications.map(row => String(row.recipient_id))), eligibleAdminIds)
+    assert.ok(firstNotifications.every(row => row.notification_type === 'account_request_submitted'))
+    assert.ok(firstNotifications.every(row => String(row.event_key).startsWith(`account_request_submitted:${lifecycle.id}:`)))
+    await rpc(anonymous, 'submit_account_request', {
+      p_email: lifecycle.email,
+      p_full_name: 'Duplicate notification attempt',
+      p_phone: null,
+      p_department: 'phase2-test',
+    })
+    const retryNotifications = await notificationRows(admin, lifecycle.id)
+    assert.deepEqual(new Set(retryNotifications.map(row => String(row.id))), firstNotificationIds)
+
+    await expectRpcError(leaderFixture, 'approve_account_request', { p_request_id: lifecycle.id, p_expected_version: 0 }, 'STAFF_ADMIN_REQUIRED')
+    await expectRpcError(memberFixture, 'approve_account_request', { p_request_id: lifecycle.id, p_expected_version: 0 }, 'STAFF_ADMIN_REQUIRED')
+    await expectRpcError(anonymous, 'approve_account_request', { p_request_id: lifecycle.id, p_expected_version: 0 }, '42501|permission|function')
     await expectRpcError(adminFixture, 'approve_account_request', { p_request_id: randomUUID(), p_expected_version: 0 }, 'ACCOUNT_REQUEST_NOT_FOUND')
 
-    const stale = track(await createPendingRequest(anonymous, admin, prefix, 'stale'))
-    await expectRpcError(adminFixture, 'approve_account_request', { p_request_id: stale.id, p_expected_version: stale.version + 1 }, 'ACCOUNT_REQUEST_REVIEW_STALE')
-    const staleAfter = await requestById(admin, stale.id)
+    await expectRpcError(adminFixture, 'approve_account_request', { p_request_id: lifecycle.id, p_expected_version: lifecycle.version + 1 }, 'ACCOUNT_REQUEST_REVIEW_STALE')
+    const staleAfter = await requestById(admin, lifecycle.id)
     assert.equal(staleAfter.status, 'pending')
-    assert.equal(staleAfter.version, stale.version)
+    assert.equal(staleAfter.version, lifecycle.version)
 
-    const cancelled = track(await createPendingRequest(anonymous, admin, prefix, 'cancelled'))
-    const cancelledUpdate = await admin.from('account_requests').update({ status: 'cancelled' }).eq('id', cancelled.id)
+    const cancelledUpdate = await admin.from('account_requests').update({ status: 'cancelled' }).eq('id', lifecycle.id)
     if (cancelledUpdate.error) throw new Error('Could not prepare disposable cancelled request fixture.')
-    await expectRpcError(adminFixture, 'approve_account_request', { p_request_id: cancelled.id, p_expected_version: cancelled.version }, 'ACCOUNT_REQUEST_NOT_PENDING')
-    await expectRpcError(adminFixture, 'reject_account_request', { p_request_id: cancelled.id, p_expected_version: cancelled.version, p_rejection_reason: 'cancelled' }, 'ACCOUNT_REQUEST_NOT_PENDING')
+    await expectRpcError(adminFixture, 'approve_account_request', { p_request_id: lifecycle.id, p_expected_version: lifecycle.version }, 'ACCOUNT_REQUEST_NOT_PENDING')
+    await expectRpcError(adminFixture, 'reject_account_request', { p_request_id: lifecycle.id, p_expected_version: lifecycle.version, p_rejection_reason: 'cancelled' }, 'ACCOUNT_REQUEST_NOT_PENDING')
 
     const race = track(await createPendingRequest(anonymous, admin, prefix, 'approve-reject-race'))
     const raceResults = await Promise.allSettled([
@@ -338,42 +364,10 @@ test('Account Request Phase 2 staging runtime contract', { skip: skipReason }, a
     assert.ok(['approved', 'rejected'].includes(raceAfter.status))
     assert.equal(raceAfter.version, race.version + 1)
 
-    const approvalRace = track(await createPendingRequest(anonymous, admin, prefix, 'approval-race'))
-    const approvalRaceResults = await Promise.allSettled([
-      rpc(adminFixture, 'approve_account_request', { p_request_id: approvalRace.id, p_expected_version: approvalRace.version }),
-      rpc(adminFixture2, 'approve_account_request', { p_request_id: approvalRace.id, p_expected_version: approvalRace.version }),
-    ])
-    assert.equal(approvalRaceResults.filter(result => result.status === 'fulfilled').length, 2)
-    const approvalRaceAfter = await requestById(admin, approvalRace.id)
-    assert.equal(approvalRaceAfter.status, 'approved')
-    assert.equal(approvalRaceAfter.version, approvalRace.version + 1)
-    const approvalRaceAudit = await auditRows(admin, approvalRace.id)
-    assert.equal(approvalRaceAudit.filter(row => row.action === 'approve').length, 1)
-
-    const notification = track(await createPendingRequest(anonymous, admin, prefix, 'notification'))
-    const firstNotifications = await notificationRows(admin, notification.id)
-    const firstNotificationIds = new Set(firstNotifications.map(row => String(row.id)))
-    fixtureNotificationIds.push(...firstNotifications.map(row => String(row.id)))
-    assert.equal(firstNotifications.length, eligibleAdminIds.size)
-    assert.deepEqual(new Set(firstNotifications.map(row => String(row.recipient_id))), eligibleAdminIds)
-    assert.ok(firstNotifications.every(row => row.notification_type === 'account_request_submitted'))
-    assert.ok(firstNotifications.every(row => String(row.event_key).startsWith(`account_request_submitted:${notification.id}:`)))
-    await rpc(anonymous, 'submit_account_request', {
-      p_email: notification.email,
-      p_full_name: 'Duplicate notification attempt',
-      p_phone: null,
-      p_department: 'phase2-test',
-    })
-    const retryNotifications = await notificationRows(admin, notification.id)
-    assert.deepEqual(new Set(retryNotifications.map(row => String(row.id))), firstNotificationIds)
-    fixtureAuditIds.push(...(await auditRows(admin, notification.id)).map(row => String(row.id)))
+    fixtureAuditIds.push(...(await auditRows(admin, lifecycle.id)).map(row => String(row.id)))
     fixtureAuditIds.push(...(await auditRows(admin, approval.id)).map(row => String(row.id)))
     fixtureAuditIds.push(...(await auditRows(admin, rejection.id)).map(row => String(row.id)))
-    fixtureAuditIds.push(...(await auditRows(admin, authorization.id)).map(row => String(row.id)))
-    fixtureAuditIds.push(...(await auditRows(admin, stale.id)).map(row => String(row.id)))
-    fixtureAuditIds.push(...(await auditRows(admin, cancelled.id)).map(row => String(row.id)))
     fixtureAuditIds.push(...(await auditRows(admin, race.id)).map(row => String(row.id)))
-    fixtureAuditIds.push(...(await auditRows(admin, approvalRace.id)).map(row => String(row.id)))
   } finally {
     const { data: prefixRows, error: prefixRowsError } = await admin
       .from('account_requests')
