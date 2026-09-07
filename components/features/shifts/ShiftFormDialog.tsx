@@ -5,6 +5,7 @@ import { settingsService, shiftService } from '@/lib/services/dataService'
 import { Shift, Brand, Platform, Campaign, User, ShiftStatus } from '@/lib/types/database.types'
 import {
   DEFAULT_SHIFT_STAFFING,
+  type ShiftConflict,
   ShiftTemplate,
   RecurrenceRule,
   detectConflicts,
@@ -96,8 +97,8 @@ export function ShiftFormDialog({
   const [loading, setLoading] = React.useState(false)
   const [operationalDefaultsReady, setOperationalDefaultsReady] = React.useState(() => getAuthMode() !== 'supabase')
   const [showRecurring, setShowRecurring] = React.useState(false)
-  const [conflicts, setConflicts] = React.useState<any[]>([])
-  const [previewShifts, setPreviewShifts] = React.useState<any[]>([])
+  const [conflicts, setConflicts] = React.useState<ShiftConflict[]>([])
+  const [previewShifts, setPreviewShifts] = React.useState<ShiftDraft[]>([])
   const countInputsTouched = React.useRef(false)
   
   const [formData, setFormData] = React.useState<ShiftFormState>({
@@ -313,7 +314,7 @@ export function ShiftFormDialog({
         await onSuccess(createdShift)
       }
       onOpenChange(false)
-    } catch (error) {
+    } catch {
       toast({ title: 'Error', description: 'Failed to save shift', variant: 'destructive' })
     } finally {
       setLoading(false)
@@ -574,7 +575,7 @@ export function ShiftFormDialog({
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium">Frequency</label>
-                      <Select value={recurrenceRule.frequency} onValueChange={(v: any) => setRecurrenceRule({ ...recurrenceRule, frequency: v })}>
+                      <Select value={recurrenceRule.frequency} onValueChange={value => setRecurrenceRule({ ...recurrenceRule, frequency: value as RecurrenceRule['frequency'] })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="daily">Daily</SelectItem>

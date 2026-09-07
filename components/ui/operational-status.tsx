@@ -161,7 +161,7 @@ export function AttentionBanner({ item, actionLabel, className }: AttentionBanne
     const newParams: Record<string, string | number> = {}
     for (const [key, value] of Object.entries(params)) {
       if (Array.isArray(value)) {
-        newParams[key] = value.map(v => t(v as any)).join(', ')
+        newParams[key] = value.map(v => t(v as TranslationKey)).join(', ')
       } else {
         newParams[key] = value
       }

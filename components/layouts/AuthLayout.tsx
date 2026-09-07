@@ -21,7 +21,7 @@ export function AuthLayout({ children, title, subtitle }: { children: React.Reac
         <div className="relative z-10 max-w-md">
           <blockquote className="space-y-2">
             <p className="text-lg text-zinc-300">
-              "The command center for live operational excellence. Streamlined, real-time, and resilient."
+              &quot;The command center for live operational excellence. Streamlined, real-time, and resilient.&quot;
             </p>
             <footer className="text-sm text-zinc-500">LiveStream Ops System V1.1</footer>
           </blockquote>

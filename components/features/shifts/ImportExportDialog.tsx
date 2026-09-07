@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { shiftService } from '@/lib/services/dataService'
 import { Shift, Brand, Platform, Campaign, User } from '@/lib/types/database.types'
-import { exportShiftsToExcel, downloadExcelTemplate, importShiftsFromExcel } from '@/lib/utils/excelUtils'
+import { exportShiftsToExcel, downloadExcelTemplate, importShiftsFromExcel, type ImportResult } from '@/lib/utils/excelUtils'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -23,7 +23,7 @@ interface ImportExportDialogProps {
 
 export function ImportExportDialog({ open, onOpenChange, shifts, brands, platforms, campaigns, users, onSuccess }: ImportExportDialogProps) {
   const [importing, setImporting] = React.useState(false)
-  const [importResult, setImportResult] = React.useState<any>(null)
+  const [importResult, setImportResult] = React.useState<ImportResult | null>(null)
   const { toast } = useToast()
 
   const handleExport = () => {
@@ -55,7 +55,7 @@ export function ImportExportDialog({ open, onOpenChange, shifts, brands, platfor
       } else {
         toast({ title: 'Validation Errors', description: `${result.invalidRows} rows have errors`, variant: 'destructive' })
       }
-    } catch (error) {
+    } catch {
       toast({ title: 'Error', description: 'Failed to parse file', variant: 'destructive' })
     } finally {
       setImporting(false)
@@ -74,7 +74,7 @@ export function ImportExportDialog({ open, onOpenChange, shifts, brands, platfor
       onSuccess()
       onOpenChange(false)
       setImportResult(null)
-    } catch (error) {
+    } catch {
       toast({ title: 'Error', description: 'Failed to import shifts', variant: 'destructive' })
     } finally {
       setImporting(false)
@@ -154,7 +154,7 @@ export function ImportExportDialog({ open, onOpenChange, shifts, brands, platfor
                   {importResult.errors.length > 0 && (
                     <div className="mt-3 max-h-48 overflow-y-auto">
                       <p className="text-sm font-medium text-red-900 mb-2">Errors Found:</p>
-                      {importResult.errors.slice(0, 10).map((err: any, i: number) => (
+                      {importResult.errors.slice(0, 10).map((err, i) => (
                         <div key={i} className="text-xs text-red-700">
                           Row {err.row}: {err.field} - {err.message}
                         </div>

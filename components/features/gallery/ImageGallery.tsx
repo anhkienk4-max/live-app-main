@@ -10,7 +10,7 @@ interface ImageGalleryProps {
   initialIndex?: number
 }
 
-export function ImageGallery({ images, initialIndex = 0 }: ImageGalleryProps) {
+export function ImageGallery({ images }: ImageGalleryProps) {
   const [selectedIndex, setSelectedIndex] = React.useState<number | null>(null)
   const [zoom, setZoom] = React.useState(1)
 

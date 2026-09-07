@@ -2,8 +2,6 @@
 
 import * as React from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Clock, User, Calendar, FileText, RefreshCw, CheckCircle, XCircle, Edit } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -15,7 +13,7 @@ interface TimelineEvent {
   user_name: string
   description: string
   timestamp: string
-  metadata?: Record<string, any>
+  metadata?: Record<string, string>
 }
 
 interface ActivityTimelineProps {
@@ -23,7 +21,7 @@ interface ActivityTimelineProps {
   entityId: string
 }
 
-export function ActivityTimeline({ entityType, entityId }: ActivityTimelineProps) {
+export function ActivityTimeline({ entityId }: ActivityTimelineProps) {
   const [events, setEvents] = React.useState<TimelineEvent[]>([])
   const [loading, setLoading] = React.useState(true)
 
@@ -152,7 +150,7 @@ export function ActivityTimeline({ entityType, entityId }: ActivityTimelineProps
             <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gray-200"></div>
             
             <div className="space-y-6">
-              {events.map((event, index) => (
+              {events.map(event => (
                 <div key={event.id} className="relative flex items-start gap-4">
                   {/* Icon */}
                   <div className={`relative z-10 flex items-center justify-center w-12 h-12 rounded-full ${getEventColor(event.type)}`}>

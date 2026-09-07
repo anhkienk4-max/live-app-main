@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { CheckCircle, Download, FileSpreadsheet, Plus, RotateCcw, XCircle } from 'lucide-react'
+import { Download, FileSpreadsheet, Plus, RotateCcw } from 'lucide-react'
 import { format } from 'date-fns'
 import {
   brandService,
@@ -286,4 +286,3 @@ export function SwapRequestList() {
 function EntityFilter({ label, value, options, onChange }: { label: string; value: string[]; options: Array<{ id: string; name: string }>; onChange: (value: string[]) => void }) {
   return <MultiSelectFilter label={label} value={value} options={options.map(option => ({ value: option.id, label: option.name }))} onChange={onChange} />
 }
-function Value({ label, value }: { label: string; value: string }) { return <div><p className="text-xs text-muted-foreground">{label}</p><p className="font-medium">{value}</p></div> }

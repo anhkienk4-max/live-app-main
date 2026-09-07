@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { addDays, endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
-import { BarChart3, Bell, Calendar, Clock, FileText, Filter, Package, Radio, RotateCcw, TrendingUp, Users, ArrowLeftRight, CheckCircle, ShieldAlert } from 'lucide-react'
+import { Bell, Calendar, Clock, FileText, Filter, Package, Radio, RotateCcw, TrendingUp, Users, ArrowLeftRight, CheckCircle, ShieldAlert } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { brandService, campaignService, isStaffedRegistration, platformService, reportService, shiftRegistrationService, shiftService, swapRequestService, userService } from '@/lib/services/dataService'
 import { Brand, Campaign, OperationalRole, Platform, Report, Shift, ShiftRegistration, SwapRequest, User } from '@/lib/types/database.types'

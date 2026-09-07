@@ -2,7 +2,6 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
   Bell,
@@ -11,7 +10,6 @@ import {
   AlertCircle,
   CheckCircle,
   RefreshCw,
-  Eye,
 } from "lucide-react";
 import { format } from "date-fns";
 import { notificationService } from "@/lib/services/notificationService";

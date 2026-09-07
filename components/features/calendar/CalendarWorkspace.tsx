@@ -35,7 +35,6 @@ export function CalendarWorkspace() {
     const action = searchParams.get("action");
     const currentTab = searchParams.get("tab");
     if (!action && !currentTab) return;
-    let handled = false;
     let nextTab = tab;
     if (
       action === "create" &&
@@ -43,13 +42,11 @@ export function CalendarWorkspace() {
     ) {
       nextTab = "calendar";
       setCreateRequest((v) => v + 1);
-      handled = true;
     } else if (
       action === "import" &&
       hasPermission(currentUser, "shifts.import")
     ) {
       nextTab = "import";
-      handled = true;
     }
 
     if (
@@ -57,7 +54,6 @@ export function CalendarWorkspace() {
       ["calendar", "open", "mine", "import", "history"].includes(currentTab)
     ) {
       nextTab = currentTab;
-      handled = true;
     }
 
     if (nextTab !== tab) {

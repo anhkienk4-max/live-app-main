@@ -5,7 +5,6 @@ import { SwapRequest, Shift, User, Brand, Platform } from '@/lib/types/database.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent } from '@/components/ui/card'
 import { format } from 'date-fns'
 import { CheckCircle, XCircle, Clock, User as UserIcon, Calendar, Briefcase } from 'lucide-react'
 
@@ -170,7 +169,7 @@ export function SwapDetailModal({
                 <Briefcase className="h-4 w-4 text-muted-foreground" />
                 <span>Reason</span>
               </div>
-              <p className="ml-6 text-muted-foreground italic text-sm">"{swap.reason}"</p>
+              <p className="ml-6 text-muted-foreground italic text-sm">&quot;{swap.reason}&quot;</p>
             </div>
           )}
 

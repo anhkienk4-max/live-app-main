@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { format } from 'date-fns'
-import { Check, Clock3, Download, LayoutGrid, List, Lock, LockOpen, RotateCcw, Table2, UserPlus, X } from 'lucide-react'
+import { Clock3, Download, LayoutGrid, List, Lock, LockOpen, RotateCcw, Table2, UserPlus } from 'lucide-react'
 import {
   brandService,
   campaignService,
@@ -27,7 +27,6 @@ import {
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
-import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { ActionBar } from '@/components/ui/action-bar'
 import { buildStaffingApprovalActions } from '@/lib/ui/action-priority'
 import { exportShiftStaffingToExcel } from '@/lib/utils/excelUtils'
@@ -543,7 +542,6 @@ function CompactShiftList({
   roleFilter,
   brands,
   platforms,
-  campaigns,
   onManage,
 }: {
   shifts: Shift[]

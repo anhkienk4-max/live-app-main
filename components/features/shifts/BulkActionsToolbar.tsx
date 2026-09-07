@@ -5,7 +5,7 @@ import { shiftService } from '@/lib/services/dataService'
 import { Shift } from '@/lib/types/database.types'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { X, Trash2, Users } from 'lucide-react'
+import { X, Trash2 } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
 
 interface BulkActionsToolbarProps {

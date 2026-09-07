@@ -42,8 +42,8 @@ export function ShiftLifecycleActions({ shift, onSuccess, className = '' }: Shif
       } else {
         toast({ title: 'Error', description: 'Failed to update shift status', variant: 'destructive' })
       }
-    } catch (e: any) {
-      toast({ title: 'Error', description: e.message || 'Failed to update shift status', variant: 'destructive' })
+    } catch (error: unknown) {
+      toast({ title: 'Error', description: error instanceof Error ? error.message : 'Failed to update shift status', variant: 'destructive' })
     } finally {
       setBusy(false)
       setConfirmAction(null)

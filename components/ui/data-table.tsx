@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 export interface Column<T> {
   header: React.ReactNode | (() => React.ReactNode)
   accessor: keyof T | ((row: T) => React.ReactNode)
-  cell?: (value: any, row: T) => React.ReactNode
+  cell?: (value: unknown, row: T) => React.ReactNode
 }
 
 interface DataTableProps<T> {

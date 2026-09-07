@@ -171,7 +171,9 @@ export function CampaignList() {
   const confirmImport = async () => {
     if (!canManage || importRows.some(row => row.errors.length)) return
     for (const row of importRows) {
-      const { errors: _errors, row: _row, ...data } = row
+      const data = { ...row }
+      delete data.errors
+      delete data.row
       await campaignService.create({ ...data, owner_id: data.owner_id || currentUserService.getId() })
     }
     setImportOpen(false)

@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { format } from 'date-fns'
-import { AlertCircle, Clock, DollarSign, FileText, Filter, Radio, RotateCcw, TrendingUp, Users } from 'lucide-react'
+import { AlertCircle, Clock, DollarSign, FileText, Filter, Radio, RotateCcw, TrendingUp } from 'lucide-react'
 import {
   brandService,
   campaignService,

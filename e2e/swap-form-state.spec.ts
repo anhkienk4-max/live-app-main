@@ -1,7 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
 
-const today = () => new Date().toISOString().slice(0, 10)
-
 async function useMockUser(page: Page, userId: string) {
   await page.addInitScript(id => {
     window.localStorage.setItem('livestream-ops-current-user', id)

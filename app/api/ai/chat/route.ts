@@ -83,12 +83,13 @@ export async function POST(req: NextRequest) {
         }
       )
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Internal server error'
     console.error('AI Chat API Error:', error)
     return new Response(
       JSON.stringify({ 
-        error: error.message || 'Internal server error',
-        details: error.toString()
+        error: message,
+        details: message
       }),
       { 
         status: 500, 

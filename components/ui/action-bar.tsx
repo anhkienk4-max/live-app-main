@@ -24,7 +24,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { MoreHorizontal } from 'lucide-react'
@@ -77,7 +76,7 @@ export function ActionBar({
   const collapseShow = collapseAt === 'lg' ? 'flex lg:hidden' : collapseAt === 'md' ? 'flex md:hidden' : 'flex sm:hidden'
 
   return (
-    <div className={`flex items-center ${gapClass} ${className}`} data-testid="action-bar">
+    <div className={`flex items-center ${dirClass} ${gapClass} ${className}`} data-testid="action-bar">
       {/* PRIMARY — always visible */}
       {primary.map(action => (
         <Button

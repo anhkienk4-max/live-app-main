@@ -17,7 +17,7 @@ interface WeekViewProps {
   onShiftClick?: (shift: Shift) => void
 }
 
-export function WeekView({ currentDate, shifts, brands, platforms, users, registrations, onShiftClick }: WeekViewProps) {
+export function WeekView({ currentDate, shifts, brands, users, registrations, onShiftClick }: WeekViewProps) {
   const { t } = useTranslation()
   const weekStart = startOfWeek(currentDate)
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))

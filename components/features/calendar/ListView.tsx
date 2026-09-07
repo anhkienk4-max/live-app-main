@@ -3,7 +3,7 @@
 import { Shift, Brand, Platform, User, ShiftRegistration, OperationalRole } from '@/lib/types/database.types'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
-import { format, parseISO } from 'date-fns'
+import { format } from 'date-fns'
 import { Calendar } from 'lucide-react'
 import { getCurrentBusinessDate, formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { useTranslation } from '@/lib/i18n'

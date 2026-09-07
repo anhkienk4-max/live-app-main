@@ -1,11 +1,11 @@
-import { Home, Calendar, Radio, FileText, User, Settings, Users, Package, Megaphone, BarChart3, RefreshCw, History, Bell } from 'lucide-react'
+import { Home, Calendar, Radio, FileText, User, Settings, Users, Package, Megaphone, BarChart3, RefreshCw, History, Bell, type LucideIcon } from 'lucide-react'
 import { SystemPermission, User as UserType } from '@/lib/types/database.types'
 import { hasAnyPermission, Permission } from '@/lib/permissions'
 
 export type NavItem = {
   name: string
   href: string
-  icon: any
+  icon: LucideIcon
   /** i18n key override; falls back to name.toLowerCase() */
   labelKey?: string
   /**

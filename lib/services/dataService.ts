@@ -35,7 +35,7 @@ import {
 } from '@/lib/types/database.types'
 import { buildDashboardOcrReviewFromRecognition, parseDashboardOcrText } from '@/lib/utils/ocrMetrics'
 import { recognizeDashboardImage } from '@/lib/services/imageOcrService'
-import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE, DEFAULT_REQUIRED_STAFF_COUNT, detectConflicts, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
+import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE, DEFAULT_REQUIRED_STAFF_COUNT, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
 import {
   normalizeStaffingDisplayNames,
   toCanonicalScheduleImportPreviewRow,
@@ -75,21 +75,21 @@ import {
 } from './mockData'
 
 // In-memory data store
-let users = [...mockUsers]
-let brands = [...mockBrands]
-let platforms = [...mockPlatforms]
-let campaigns = [...mockCampaigns]
+const users = [...mockUsers]
+const brands = [...mockBrands]
+const platforms = [...mockPlatforms]
+const campaigns = [...mockCampaigns]
 let shifts: Shift[] = mockShifts.map(shift => ({
   ...shift,
   ...shiftDateTimeFields(shift.date, shift.start_time, shift.end_time),
 }))
-let reports = [...mockReports]
+const reports = [...mockReports]
 let reportImages: ReportImage[] = []
 let liveReportImages: LiveReportImage[] = []
-let dashboardUpdates = [...mockDashboardUpdates]
+const dashboardUpdates = [...mockDashboardUpdates]
 let swapRequests = [...mockSwapRequests]
-let scheduleImports: ScheduleImportBatch[] = []
-let scheduleChangeLogs: ScheduleChangeLog[] = []
+const scheduleImports: ScheduleImportBatch[] = []
+const scheduleChangeLogs: ScheduleChangeLog[] = []
 let authenticatedBusinessUser: User | null = null
 
 const currentBusinessUserFor = (actorId: string): User | null => {
@@ -368,7 +368,7 @@ let operationalSettings: OperationalSettings = {
   show_unassigned_shifts: true,
 }
 
-let personalSettings = new Map<string, PersonalSettings>()
+const personalSettings = new Map<string, PersonalSettings>()
 let systemSettings: Record<string, string | number | boolean> = {
   export_include_metadata: true,
   export_file_format: 'xlsx',
@@ -1321,10 +1321,12 @@ export const shiftService = {
             : 'edit'
       recordScheduleChange(action, id, undefined, { ...persisted }, {
         actor_id: currentUserService.getId(),
+        reason: options.reason,
       })
       const auditAction: AuditAction = action === 'lock' ? 'lock' : action === 'reopen' ? 'reopen' : 'update'
       audit('calendar', auditAction, 'shift', id, persisted.title || `${persisted.date} ${persisted.start_time}`, {
         after: { ...persisted },
+        reason: options.reason,
       })
       return persisted
     }
@@ -1360,11 +1362,12 @@ export const shiftService = {
         : data.status === 'cancelled'
           ? 'cancel'
           : 'edit'
-    recordScheduleChange(action, id, before, { ...shifts[index] })
+    recordScheduleChange(action, id, before, { ...shifts[index] }, { reason: options.reason })
     const auditAction: AuditAction = action === 'lock' ? 'lock' : action === 'reopen' ? 'reopen' : 'update'
     audit('calendar', auditAction, 'shift', id, shifts[index].title || `${shifts[index].date} ${shifts[index].start_time}`, {
       before,
       after: { ...shifts[index] },
+      reason: options.reason,
     })
     return Promise.resolve(shifts[index])
   },

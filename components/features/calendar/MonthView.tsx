@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useMemo } from 'react'
+import React from 'react'
 import { addDays, endOfMonth, endOfWeek, format, isSameMonth, isToday, startOfMonth, startOfWeek } from 'date-fns'
 import { enUS, vi } from 'date-fns/locale'
 import { Brand, Platform, Shift } from '@/lib/types/database.types'
@@ -36,7 +36,6 @@ export function MonthView({
   currentDate,
   shifts,
   brands,
-  platforms: _platforms,
   onShiftClick,
   onDayClick,
 }: MonthViewProps) {

@@ -100,8 +100,8 @@ export function useAIChat(options: UseAIChatOptions = {}): UseAIChatReturn {
         }
 
         setMessages([...newMessages, assistantMessage])
-      } catch (err: any) {
-        const error = err instanceof Error ? err : new Error(err.toString())
+      } catch (caught: unknown) {
+        const error = caught instanceof Error ? caught : new Error(String(caught))
         setError(error)
         onError?.(error)
       } finally {
@@ -179,14 +179,14 @@ export function useAIChat(options: UseAIChatOptions = {}): UseAIChatReturn {
                   ...newMessages,
                   { role: 'assistant', content: assistantContent },
                 ])
-              } catch (e) {
+              } catch {
                 // Ignore parse errors for malformed chunks
               }
             }
           }
         }
-      } catch (err: any) {
-        const error = err instanceof Error ? err : new Error(err.toString())
+      } catch (caught: unknown) {
+        const error = caught instanceof Error ? caught : new Error(String(caught))
         setError(error)
         onError?.(error)
       } finally {

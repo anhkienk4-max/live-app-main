@@ -196,7 +196,7 @@ async function assertRenderedMetrics(page: Page, expected: ExpectedMetrics) {
   )
 
   const actual: Record<string, string> = {}
-  for (const [key, expectedValue] of Object.entries(expected)) {
+  for (const key of Object.keys(expected)) {
     actual[key] = await page.getByTestId(`ocr-metric-input-${key}`).inputValue()
   }
   const mismatches = Object.entries(expected).flatMap(([key, expectedValue]) =>

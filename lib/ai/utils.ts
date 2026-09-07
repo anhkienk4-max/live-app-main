@@ -5,6 +5,7 @@
 
 import { ChatMessage } from './types'
 import { formatCurrency as formatApplicationCurrency } from '@/lib/utils/currency'
+import type { Report } from '@/lib/types/database.types'
 
 /**
  * Create a system message
@@ -92,7 +93,7 @@ export function calculateConversionRate(orders: number, viewers: number): number
 /**
  * Extract key metrics from report data
  */
-export function extractReportMetrics(report: any) {
+export function extractReportMetrics(report: Report) {
   return {
     revenue: report.revenue || 0,
     orders: report.orders || 0,

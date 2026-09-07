@@ -17,7 +17,6 @@ import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { useToast } from '@/components/ui/toast'
-import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { exportReportDetailToExcel } from '@/lib/utils/excelUtils'
 import { numericMetric } from '@/lib/utils/ocrMetrics'
@@ -371,7 +370,7 @@ export function ReportDetailModal({
       }, reviewData, currentUser.id)
       toast({ title: t('confirmed'), description: t('confirmedOnly'), variant: 'success' })
       onUpdated?.()
-    } catch (error) {
+    } catch {
       toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
     } finally {
       setBusy(false)

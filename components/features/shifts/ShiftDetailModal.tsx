@@ -57,7 +57,7 @@ import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
 import { exportShiftStaffingToExcel } from '@/lib/utils/excelUtils'
 import { useTranslation, type Language, type TranslationKey } from '@/lib/i18n'
-import { formatShiftTimeRange, formatShiftEndDate, calculateDuration, formatDuration, getCurrentBusinessDate, resolveShiftDateTime } from '@/lib/utils/shiftUtils'
+import { getCurrentBusinessDate, resolveShiftDateTime } from '@/lib/utils/shiftUtils'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 import { normalizeStaffingDisplayNames } from '@/lib/utils/scheduleImportPreview'
@@ -70,12 +70,6 @@ import { ShiftLifecycleActions } from './ShiftLifecycleActions'
 import { resolveStaffingLabelsForRole, StaffingLabel } from '@/lib/utils/staffingResolver'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
-
-const roleAssignmentField: Record<OperationalRole, 'host_id' | 'support_id' | 'technical_id'> = {
-  host: 'host_id',
-  support: 'support_id',
-  technical: 'technical_id',
-}
 
 const roleRequiredField: Record<OperationalRole, 'required_host_count' | 'required_support_count' | 'required_technical_count'> = {
   host: 'required_host_count',
