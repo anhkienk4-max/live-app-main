@@ -536,11 +536,16 @@ export function ShiftDetailModal({
   }, [shift.id])
 
   React.useEffect(() => {
-    if (open) void loadStaffing()
+    if (!open) return
+    const frame = requestAnimationFrame(() => { void loadStaffing() })
+    return () => cancelAnimationFrame(frame)
   }, [loadStaffing, open])
   React.useEffect(() => {
-    setRegistrationPage(1)
-    setIsLocked(Boolean(shift.registration_locked))
+    const frame = requestAnimationFrame(() => {
+      setRegistrationPage(1)
+      setIsLocked(Boolean(shift.registration_locked))
+    })
+    return () => cancelAnimationFrame(frame)
   }, [shift.id, shift.registration_locked])
 
 

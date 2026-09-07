@@ -79,8 +79,11 @@ export function DashboardOverview() {
   }, [])
 
   React.useEffect(() => {
-    setFilters(initialFilters())
-    void loadData()
+    const frame = requestAnimationFrame(() => {
+      setFilters(initialFilters())
+      void loadData()
+    })
+    return () => cancelAnimationFrame(frame)
   }, [loadData])
 
   if (loading || !filters || !currentUser) return <ContentSkeleton />
@@ -142,7 +145,7 @@ function AdminDashboard(props: CommonProps) {
   
   const scopedReports = reports.filter(report => shiftIds.has(report.shift_id))
   const scopedRegistrations = registrations.filter(reg => shiftIds.has(reg.shift_id))
-  const dqIssues = React.useMemo(() => getAllIssues({ shifts: filteredShifts, reports: scopedReports, registrations: scopedRegistrations }), [filteredShifts, scopedReports, scopedRegistrations])
+  const dqIssues = getAllIssues({ shifts: filteredShifts, reports: scopedReports, registrations: scopedRegistrations })
   const errorCount = dqIssues.filter(i => i.severity === 'error').length
   const warningCount = dqIssues.filter(i => i.severity === 'warning').length
   const infoCount = dqIssues.filter(i => i.severity === 'info').length
@@ -241,7 +244,7 @@ function LeaderDashboard(props: CommonProps) {
   // Retrieve data quality issues scoped to current timeframe
   const scopedReports = reports.filter(report => shiftIds.has(report.shift_id))
   const scopedRegistrations = registrations.filter(reg => shiftIds.has(reg.shift_id))
-  const dqIssues = React.useMemo(() => getAllIssues({ shifts: filteredShifts, reports: scopedReports, registrations: scopedRegistrations }), [filteredShifts, scopedReports, scopedRegistrations])
+  const dqIssues = getAllIssues({ shifts: filteredShifts, reports: scopedReports, registrations: scopedRegistrations })
   const dqErrorCount = dqIssues.filter(i => i.severity === 'error').length
 
   // E5: derive exception-first attention summary
