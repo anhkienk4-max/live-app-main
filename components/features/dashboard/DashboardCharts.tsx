@@ -1,7 +1,7 @@
 'use client'
 
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+
 import { formatCurrency } from '@/lib/utils/currency'
 
 interface DashboardChartsProps {
@@ -12,6 +12,7 @@ interface DashboardChartsProps {
   revenueTrendLabel: string
   shiftStatusSummaryLabel: string
   noDataLabel: string
+  notEnoughTrendDataLabel: string
 }
 
 /** Client-only recharts block, lazy-loaded so KPI cards render without the recharts chunk. */
@@ -23,43 +24,59 @@ export function DashboardCharts({
   revenueTrendLabel,
   shiftStatusSummaryLabel,
   noDataLabel,
+  notEnoughTrendDataLabel,
 }: DashboardChartsProps) {
   return (
-    <div className="grid gap-5 xl:grid-cols-2">
-      <Card>
-        <CardHeader><CardTitle>{revenueTrendLabel}</CardTitle></CardHeader>
-        <CardContent className="h-72">
-          {trend.length ? (
+    <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2 pt-4 border-t">
+      <div className="flex flex-col">
+        <h3 className="text-sm font-semibold mb-4">{revenueTrendLabel}</h3>
+        <div className={trend.length > 1 ? "h-[160px] sm:h-[180px] md:h-48" : ""}>
+          {trend.length > 1 ? (
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trend}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                <XAxis dataKey="date" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis fontSize={11} tickLine={false} axisLine={false} />
                 <Tooltip formatter={(value, _name, item) => [String(item.dataKey) === 'revenue' ? formatCurrency(Number(value)) : value, item.name]} />
-                <Legend />
-                <Line type="monotone" dataKey="revenue" stroke="#16a34a" name={revenueLabel} />
-                <Line type="monotone" dataKey="orders" stroke="#2563eb" name={ordersLabel} />
+                <Legend wrapperStyle={{ fontSize: "11px" }} />
+                <Line type="monotone" dataKey="revenue" stroke="var(--success)" name={revenueLabel} />
+                <Line type="monotone" dataKey="orders" stroke="var(--primary)" name={ordersLabel} />
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{noDataLabel}</div>
+            <div className="flex flex-col items-start justify-center text-sm text-muted-foreground p-4 bg-muted/20 border border-dashed rounded-md min-h-[96px] md:min-h-[104px]">
+              {trend.length === 1 ? (
+                <>
+                  <div className="text-xl font-medium text-foreground mb-1">{formatCurrency(trend[0].revenue)}</div>
+                  <div className="text-[13px]">{notEnoughTrendDataLabel}</div>
+                </>
+              ) : (
+                <div className="text-[13px] text-center w-full">{noDataLabel}</div>
+              )}
+            </div>
           )}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader><CardTitle>{shiftStatusSummaryLabel}</CardTitle></CardHeader>
-        <CardContent className="h-72">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={statusSummary}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="status" />
-              <YAxis allowDecimals={false} />
-              <Tooltip />
-              <Bar dataKey="shifts" fill="#2563eb" />
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
+      <div className="flex flex-col">
+        <h3 className="text-sm font-semibold mb-4">{shiftStatusSummaryLabel}</h3>
+        <div className="h-[160px] sm:h-[180px] md:h-48">
+          {statusSummary.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={statusSummary}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                <XAxis dataKey="status" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis allowDecimals={false} fontSize={11} tickLine={false} axisLine={false} />
+                <Tooltip />
+                <Bar dataKey="shifts" fill="var(--primary)" />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+             <div className="flex flex-col h-full items-center justify-center text-sm text-muted-foreground p-4 bg-muted/20 border border-dashed rounded-md">
+               <div className="text-[13px] text-center w-full">{noDataLabel}</div>
+             </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

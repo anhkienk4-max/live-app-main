@@ -96,7 +96,7 @@ export default async function DashboardLayout({
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <Header user={user || undefined} />
-          <main className="min-w-0 flex-1 overflow-y-auto pb-16 md:pb-4">
+          <main className="min-w-0 flex-1 overflow-y-auto pb-28 md:pb-4">
             <div className="w-full min-w-0 px-4 py-4 sm:px-6 lg:px-8">
               {children}
             </div>

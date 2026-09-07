@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { addDays, endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
-import { Bell, Calendar, Clock, FileText, Filter, Package, Radio, RotateCcw, TrendingUp, Users, ArrowLeftRight, CheckCircle, ShieldAlert } from 'lucide-react'
+import { Bell, Calendar, Clock, FileText, Filter, Radio, RotateCcw, Users, ArrowLeftRight, CheckCircle } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { brandService, campaignService, isStaffedRegistration, platformService, reportService, shiftRegistrationService, shiftService, swapRequestService, userService } from '@/lib/services/dataService'
 import { Brand, Campaign, OperationalRole, Platform, Report, Shift, ShiftRegistration, SwapRequest, User } from '@/lib/types/database.types'
@@ -169,11 +169,20 @@ function AdminDashboard(props: CommonProps) {
   const upcoming = filteredShifts.filter(shift => shift.date >= today && shift.status === 'scheduled').sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`)).slice(0, 5)
   const roleOptions = (role: 'host' | 'support' | 'technical') => users.filter(user => user.operational_roles?.includes(role)).map(user => ({ id: user.id, name: user.full_name }))
 
-  return <PageShell archetype="command" className="space-y-6">
-    <PageHeader>
+  // Derived metric values (no new data, reuse existing authoritative derivations)
+  const staffCount = new Set([
+    ...filteredShifts.flatMap(shift => [shift.host_id, shift.support_id, shift.technical_id]).filter((id): id is string => Boolean(id)),
+    ...registrations.filter(registration => isStaffedRegistration(registration) && shiftIds.has(registration.shift_id)).map(registration => registration.user_id),
+  ]).size
+  const campaignCount = new Set(filteredShifts.map(shift => shift.campaign_id).filter(Boolean)).size
+  const liveCount = filteredShifts.filter(shift => shift.status === 'live').length
+
+  return <PageShell archetype="command" className="space-y-6 md:p-6 p-4">
+    {/* A. Page Header */}
+    <PageHeader className="flex-col md:flex-row items-start md:items-center gap-4 md:gap-2">
       <PageHeaderContent>
-        <h1 className="text-3xl font-bold">{t('dashboardTitle')}</h1>
-        <p className="text-muted-foreground">{t('systemOperationsCommandCenter')}</p>
+        <h1 className="text-2xl font-semibold truncate">{t('dashboardTitle')}</h1>
+        <p className="text-[13px] text-muted-foreground">{t('systemOperationsCommandCenter')}</p>
       </PageHeaderContent>
       <DashboardFilterControls filters={filters} setPreset={setPreset} showFilters={showFilters} setShowFilters={setShowFilters} t={t} />
     </PageHeader>
@@ -181,39 +190,25 @@ function AdminDashboard(props: CommonProps) {
     <DashboardCustomDateRange filters={filters} setFilters={setFilters} t={t} />
     {showFilters && <DashboardFilterPanel filters={filters} setFilters={setFilters} brands={brands} platforms={platforms} campaigns={campaigns} roleOptions={roleOptions} t={t} />}
 
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <Metric title={t('todaysLiveSessions')} value={filteredShifts.filter(shift => shift.date === today).length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
-      <Metric title={t('liveInProgress')} value={filteredShifts.filter(shift => shift.status === 'live').length.toString()} icon={<Radio className="h-5 w-5 text-red-600 dark:text-red-400" />} />
-      <Metric title={t('reportsSubmitted')} value={filteredReports.length.toString()} icon={<FileText className="h-5 w-5 text-amber-600 dark:text-amber-400" />} />
-      <Metric title={t('confirmedRevenue')} value={formatCurrency(revenue)} note={`${delta} ${t('previousPeriod')}`} icon={<TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />} />
-    </div>
+    {/* B. Authoritative Attention — Data Quality only (omit when clear) */}
+    {dqAttention.length > 0 && (
+      <OperationalStatusStrip items={dqAttention} className="gap-2" compact />
+    )}
 
-    <div className="grid gap-4 md:grid-cols-2">
-      <Card><CardHeader><CardTitle>{t('operationsCenter')}</CardTitle><CardDescription>{t('quickActions')}</CardDescription></CardHeader><CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <QuickAction href="/calendar" label={t('calendar')} icon={<Calendar className="h-5 w-5" />} />
-        <QuickAction href="/live" label={t('liveMonitor')} icon={<Radio className="h-5 w-5" />} />
-        <QuickAction href="/staff" label={t('staff')} icon={<Users className="h-5 w-5" />} />
-        <QuickAction href="/data-quality" label={t('dataQuality')} icon={<ShieldAlert className="h-5 w-5 text-destructive" />} />
-      </CardContent></Card>
+    {/* C. Live / Upcoming Operations — primary operational content */}
+    <UpcomingShiftsList upcoming={upcoming} brands={brands} platforms={platforms} t={t} />
 
-      <div className="flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-4">
-          <Metric title={t('totalStaff')} value={new Set([
-            ...filteredShifts.flatMap(shift => [shift.host_id, shift.support_id, shift.technical_id]).filter((id): id is string => Boolean(id)),
-            ...registrations.filter(registration => isStaffedRegistration(registration) && shiftIds.has(registration.shift_id)).map(registration => registration.user_id),
-          ]).size.toString()} icon={<Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />} />
-          <Metric title={t('campaigns')} value={new Set(filteredShifts.map(shift => shift.campaign_id).filter(Boolean)).size.toString()} icon={<Package className="h-5 w-5 text-orange-600 dark:text-orange-400" />} />
-        </div>
-        {dqAttention.length > 0 ? (
-          <div className="flex-1">
-            <OperationalStatusStrip items={dqAttention} className="gap-2" compact />
-          </div>
-        ) : (
-          <Card className="flex-1 bg-muted/20 border-muted-foreground/20"><CardContent className="flex h-full items-center justify-between p-4"><div><p className="font-semibold text-sm text-foreground">{t('dataQuality')}</p><p className="text-xs text-muted-foreground mt-0.5">{t('dataQualityAlertsSubtitle')}</p></div><Button variant="outline" size="sm" render={<Link href="/data-quality" />} nativeButton={false}>{t('review')}</Button></CardContent></Card>
-        )}
-      </div>
-    </div>
+    {/* D. Operational Metric Strip — single compact row, text-first, 4 values max */}
+    <AdminMetricStrip
+      liveCount={liveCount}
+      staffCount={staffCount}
+      campaignCount={campaignCount}
+      confirmedRevenue={formatCurrency(revenue)}
+      revenueDelta={delta}
+      t={t}
+    />
 
+    {/* E. Charts / deeper analytics — secondary, below operational content */}
     <DashboardCharts
       trend={trend}
       statusSummary={statusSummary}
@@ -222,10 +217,43 @@ function AdminDashboard(props: CommonProps) {
       revenueTrendLabel={t('revenueTrend')}
       shiftStatusSummaryLabel={t('shiftStatusSummary')}
       noDataLabel={t('noData')}
+      notEnoughTrendDataLabel={t('notEnoughTrendData')}
     />
-
-    <UpcomingShiftsList upcoming={upcoming} brands={brands} platforms={platforms} t={t} />
   </PageShell>
+}
+
+function AdminMetricStrip({
+  liveCount,
+  staffCount,
+  campaignCount,
+  confirmedRevenue,
+  revenueDelta,
+  t,
+}: {
+  liveCount: number
+  staffCount: number
+  campaignCount: number
+  confirmedRevenue: string
+  revenueDelta: string
+  t: (key: string) => string
+}) {
+  const items = [
+    { label: t('liveInProgress'), value: liveCount.toString() },
+    { label: t('staffInScope'), value: staffCount.toString() },
+    { label: t('campaigns'), value: campaignCount.toString() },
+    { label: t('confirmedRevenue'), value: confirmedRevenue, note: revenueDelta !== '—' ? revenueDelta : undefined },
+  ]
+  return (
+    <div className="flex flex-wrap items-stretch divide-x divide-border border-y bg-transparent">
+      {items.map((item, i) => (
+        <div key={i} className="flex min-w-[120px] flex-1 flex-col justify-center px-4 py-2">
+          <span className="text-xs text-muted-foreground">{item.label}</span>
+          <span className="mt-0.5 text-lg font-semibold tabular-nums">{item.value}</span>
+          {item.note && <span className="text-xs text-muted-foreground">{item.note}</span>}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function LeaderDashboard(props: CommonProps) {
@@ -453,7 +481,7 @@ function DashboardFilterPanel({ filters, setFilters, brands, platforms, campaign
 
 function UpcomingShiftsList({ upcoming, brands, platforms, t, title }: { upcoming: Shift[]; brands: Brand[]; platforms: Platform[]; t: (key: string) => string; title?: string }) {
   return (
-    <Card><CardHeader className="flex-row items-center justify-between border-b px-4 py-3 space-y-0"><div><CardTitle className="text-base">{title || t('upcomingShifts')}</CardTitle></div><Button nativeButton={false} render={<Link href="/calendar" />} variant="outline" size="sm" className="h-8">{t('viewAll')}</Button></CardHeader><CardContent className="p-0">{upcoming.length ? <div className="divide-y">{upcoming.map(shift => <div className="flex items-center justify-between gap-4 p-4 hover:bg-muted/30 transition-colors" key={shift.id}><div className="min-w-0 flex-1"><p className="font-medium truncate">{shift.title || nameFor(brands, shift.brand_id)}</p><div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground"><span>{shift.date}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{formatShiftTimeRange(shift)}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{nameFor(platforms, shift.platform_id)}</span></div></div><Badge variant="secondary" className="shrink-0">{t('scheduled')}</Badge></div>)}</div> : <div className="p-8"><Empty text={t('noMatchingShifts')} /></div>}</CardContent></Card>
+    <div className="flex flex-col"><div className="flex items-center justify-between pb-3 border-b mb-3"><div><h2 className="text-[15px] font-semibold">{title || t('upcomingShifts')}</h2></div><Button nativeButton={false} render={<Link href="/calendar" />} variant="ghost" size="sm" className="h-8 text-[13px]">{t('viewAll')}</Button></div><div>{upcoming.length ? <div className="divide-y">{upcoming.map(shift => <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 py-3 sm:py-2 hover:bg-muted/30 transition-colors min-h-[48px]" key={shift.id}><div className="min-w-0 flex-1"><p className="text-sm font-semibold truncate">{shift.title || nameFor(brands, shift.brand_id)}</p><div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground"><span>{shift.date}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{formatShiftTimeRange(shift)}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{nameFor(platforms, shift.platform_id)}</span></div></div><div className="flex shrink-0 justify-end"><Badge variant="secondary" className="text-xs font-normal bg-muted/50 text-muted-foreground">{t('scheduled')}</Badge></div></div>)}</div> : <div className="py-8"><Empty text={t('noMatchingShifts')} /></div>}</div></div>
   )
 }
 
