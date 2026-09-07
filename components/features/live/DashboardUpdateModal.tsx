@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Image from 'next/image'
 import { dashboardUpdateService, ocrService } from '@/lib/services/dataService'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -143,8 +144,8 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
   React.useEffect(() => {
     if (dashboardPlatform !== 'tiktok_shop' || !formData.screenshot_url) {
       cropProposalKeyRef.current = ''
-      setProposingCrop(false)
-      return
+      const frame = requestAnimationFrame(() => setProposingCrop(false))
+      return () => cancelAnimationFrame(frame)
     }
     const proposalKey = `${dashboardPlatform}:${formData.screenshot_url}`
     if (cropProposalKeyRef.current === proposalKey) return
@@ -522,9 +523,12 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
             <label className="text-sm font-medium mb-2 block">{t('dashboardScreenshot')}</label>
             {formData.screenshot_url ? (
               <div className="relative">
-                <img 
+                <Image
+                  unoptimized
                   src={formData.screenshot_url} 
                   alt={t('dashboardScreenshot')}
+                  width={1280}
+                  height={720}
                   className="w-full h-40 object-cover rounded-lg border"
                 />
                 <Button

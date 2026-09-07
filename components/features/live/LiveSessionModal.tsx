@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Image from 'next/image'
 import { Shift, Brand, Platform, Campaign, User, DashboardUpdate, OperationalRole, ShiftRegistration, Report } from '@/lib/types/database.types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -63,23 +64,25 @@ export function LiveSessionModal({
   const [snapshotPage, setSnapshotPage] = React.useState(1)
   const [snapshotPageSize, setSnapshotPageSize] = React.useState(10)
 
-  const loadUpdates = async () => {
+  const loadUpdates = React.useCallback(async () => {
     setLoading(true)
     const data = await dashboardUpdateService.getByShift(shift.id)
     setUpdates(data)
     setLoading(false)
-  }
+  }, [shift.id])
 
-  const loadReport = async () => {
+  const loadReport = React.useCallback(async () => {
     setReport(await reportService.getByShift(shift.id))
-  }
+  }, [shift.id])
 
   React.useEffect(() => {
-    if (open && shift) {
+    if (!open) return
+    const frame = requestAnimationFrame(() => {
       void loadUpdates()
       void loadReport()
-    }
-  }, [open, shift])
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [loadReport, loadUpdates, open])
 
   const getBrandName = (id: string) => brands.find((b: Brand) => b.id === id)?.name || 'Unknown'
   const getBrandColor = (id: string) => brands.find((b: Brand) => b.id === id)?.color || '#2563EB'
@@ -287,7 +290,7 @@ export function LiveSessionModal({
                         <SnapshotMetric label="Shares" value={update.shares?.toLocaleString() || 'N/A'} />
                       </div>
                       {update.screenshot_url && (
-                        <img src={update.screenshot_url} alt="Dashboard Screenshot" className="w-full h-40 object-cover rounded-lg mb-4" />
+                        <Image unoptimized src={update.screenshot_url} alt="Dashboard Screenshot" width={1280} height={720} className="w-full h-40 object-cover rounded-lg mb-4" />
                       )}
                       {update.notes && (
                         <div className="text-sm bg-gray-50 p-3 rounded-lg">{update.notes}</div>
