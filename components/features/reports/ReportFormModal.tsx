@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Image from 'next/image'
 import { format } from 'date-fns'
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Loader2, Pencil, RotateCcw, ScanText, Upload, X } from 'lucide-react'
 import { liveReportImageService, ocrService, reportImageService, reportService } from '@/lib/services/dataService'
@@ -124,6 +125,8 @@ export function ReportFormModal({
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const liveImagesRef = React.useRef<LiveReportImage[]>([])
   const persistedLiveImageUrlsRef = React.useRef(new Set<string>())
+  const completedShiftsRef = React.useRef(completedShifts)
+  const platformsRef = React.useRef(platforms)
   const manualMetricKeysRef = React.useRef(new Set<CanonicalMetricKey>())
   const ocrDerivedMetricKeysRef = React.useRef(new Set<CanonicalMetricKey>())
   const cropProposalKeyRef = React.useRef('')
@@ -160,10 +163,15 @@ export function ReportFormModal({
   const dashboardImage = images.find(image => image.type === 'dashboard')
 
   React.useEffect(() => {
+    completedShiftsRef.current = completedShifts
+    platformsRef.current = platforms
+  }, [completedShifts, platforms])
+
+  React.useEffect(() => {
     if (dashboardPlatform !== 'tiktok_shop' || !dashboardImage?.url) {
       cropProposalKeyRef.current = ''
-      setProposingCrop(false)
-      return
+      const frame = requestAnimationFrame(() => setProposingCrop(false))
+      return () => cancelAnimationFrame(frame)
     }
     const proposalKey = `${dashboardPlatform}:${dashboardImage.url}`
     if (cropProposalKeyRef.current === proposalKey) return
@@ -189,46 +197,49 @@ export function ReportFormModal({
   }, [dashboardImage?.url, dashboardPlatform])
 
   React.useEffect(() => {
-    if (!open) {
+    const frame = requestAnimationFrame(() => {
+      if (!open) {
+        liveImagesRef.current
+          .filter(image => !persistedLiveImageUrlsRef.current.has(image.file_url))
+          .forEach(image => revokeLiveReportImageObjectUrl(image))
+        liveImagesRef.current = []
+        setLiveImages([])
+        return
+      }
+      const initialShift = completedShiftsRef.current[0]
+      const initialPlatform = inferDashboardPlatform(initialShift, platformsRef.current)
+      setShiftId(initialShift?.id || '')
+      setDashboardPlatform(initialPlatform)
+      setCropBox(defaultOcrCrop(initialPlatform))
+      setMetricValues({})
+      manualMetricKeysRef.current.clear()
+      ocrDerivedMetricKeysRef.current.clear()
+      setReview(emptyReview())
+      setOcrAcknowledged(false)
+      setEditingMetrics(false)
+      setImages([])
       liveImagesRef.current
         .filter(image => !persistedLiveImageUrlsRef.current.has(image.file_url))
         .forEach(image => revokeLiveReportImageObjectUrl(image))
-      liveImagesRef.current = []
+      persistedLiveImageUrlsRef.current.clear()
       setLiveImages([])
-      return
-    }
-    const initialShift = completedShifts[0]
-    const initialPlatform = inferDashboardPlatform(initialShift, platforms)
-    setShiftId(initialShift?.id || '')
-    setDashboardPlatform(initialPlatform)
-    setCropBox(defaultOcrCrop(initialPlatform))
-    setMetricValues({})
-    manualMetricKeysRef.current.clear()
-    ocrDerivedMetricKeysRef.current.clear()
-    setReview(emptyReview())
-    setOcrAcknowledged(false)
-    setEditingMetrics(false)
-    setImages([])
-    liveImagesRef.current
-      .filter(image => !persistedLiveImageUrlsRef.current.has(image.file_url))
-      .forEach(image => revokeLiveReportImageObjectUrl(image))
-    persistedLiveImageUrlsRef.current.clear()
-    setLiveImages([])
-    setReplayUrl('')
-    setDashboardUrl('')
-    setInsightsGood('')
-    setInsightsImprovement('')
-    setFinalRecap(emptyFinalReportRecap())
-    setRawOcrText('')
-    setOcrApplicationResult(null)
-    setMetricFilter(defaultFinalReportMetricFilter)
-    setShowReviewWarning(false)
-    setVisionMode(null)
-    setVisionResults([])
-    setVisionScanning(false)
-    setVisionRunStatus(null)
+      setReplayUrl('')
+      setDashboardUrl('')
+      setInsightsGood('')
+      setInsightsImprovement('')
+      setFinalRecap(emptyFinalReportRecap())
+      setRawOcrText('')
+      setOcrApplicationResult(null)
+      setMetricFilter(defaultFinalReportMetricFilter)
+      setShowReviewWarning(false)
+      setVisionMode(null)
+      setVisionResults([])
+      setVisionScanning(false)
+      setVisionRunStatus(null)
+    })
   // Opening the modal initializes a fresh draft. Prop-array identity changes
   // while it is open must not erase OCR candidates or autofilled metrics.
+    return () => cancelAnimationFrame(frame)
   }, [open])
 
   React.useEffect(() => {
@@ -683,7 +694,7 @@ export function ReportFormModal({
               <div><h3 className="font-semibold">{t('uploadDashboardEvidence')}</h3><p className="text-sm text-muted-foreground">{t('dashboardEvidenceHelp')}</p></div>
               <div className="flex flex-wrap gap-2"><Button type="button" onClick={() => fileInputRef.current?.click()}><Upload className="mr-2 h-4 w-4" />{t('uploadDashboard')}</Button><input ref={fileInputRef} className="sr-only" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple onChange={addImages} data-testid="report-dashboard-image-upload" /></div>
             </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">{images.map(image => <div className="relative min-w-0" key={image.url}><img src={image.url} alt={image.name} className="aspect-video w-full rounded border object-cover" /><p className="truncate pt-1 text-xs">{image.name}</p><Button aria-label={`${t('removeImage')} ${image.name}`} type="button" size="icon" variant="destructive" className="absolute -right-2 -top-2 h-6 w-6" onClick={() => removeImage(image)}><X className="h-3 w-3" /></Button></div>)}</div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">{images.map(image => <div className="relative min-w-0" key={image.url}><Image unoptimized src={image.url} alt={image.name} width={1280} height={720} className="aspect-video w-full rounded border object-cover" /><p className="truncate pt-1 text-xs">{image.name}</p><Button aria-label={`${t('removeImage')} ${image.name}`} type="button" size="icon" variant="destructive" className="absolute -right-2 -top-2 h-6 w-6" onClick={() => removeImage(image)}><X className="h-3 w-3" /></Button></div>)}</div>
           </section>
 
           <section className="space-y-4 rounded-lg border border-dashed p-4">
