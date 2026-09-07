@@ -34,7 +34,9 @@ export function LifecycleActionDialog({
   const canSubmit = Boolean(impact) && (!requireReason || reason.trim().length >= 3)
 
   React.useEffect(() => {
-    if (open) setReason('')
+    if (!open) return
+    const frame = requestAnimationFrame(() => setReason(''))
+    return () => cancelAnimationFrame(frame)
   }, [open])
 
   const confirm = async () => {

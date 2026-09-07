@@ -49,7 +49,11 @@ export function BrandFormDialog({ open, onOpenChange, brand, onSuccess }: BrandF
   const { currentUser } = useCurrentUser()
   const [form, setForm] = React.useState(initial(brand))
   const [saving, setSaving] = React.useState(false)
-  React.useEffect(() => { if (open) setForm(initial(brand)) }, [brand, open])
+  React.useEffect(() => {
+    if (!open) return
+    const frame = requestAnimationFrame(() => setForm(initial(brand)))
+    return () => cancelAnimationFrame(frame)
+  }, [brand, open])
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
