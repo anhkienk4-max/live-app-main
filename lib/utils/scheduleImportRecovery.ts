@@ -18,9 +18,6 @@ import type { ShiftStaffingLabels } from '@/lib/services/supabaseShiftService'
 
 type ShiftDraft = Omit<Shift, 'id' | 'created_at' | 'updated_at'>
 
-const normalizeDimension = (value: string | null | undefined) =>
-  (value ?? '').trim().replace(/\s+/g, ' ').normalize('NFKC').toLocaleLowerCase()
-
 const normalizeTime = (value: string) => value.length > 5 ? value.slice(0, 5) : value
 
 export function hasExactScheduleImportIdentity(shift: Shift, candidate: ShiftDraft): boolean {
@@ -70,18 +67,6 @@ function hasSameBatchSlotConflict(batchId: string, candidate: ShiftDraft, shifts
   )
 }
 
-function hasExternalSlotDuplicate(batchId: string, candidate: ShiftDraft, shifts: Shift[]) {
-  return shifts.some(shift =>
-    shift.import_batch_id !== batchId && hasScheduleImportSlotIdentity(shift, candidate),
-  )
-}
-
-function findExternalShift(batchId: string, candidate: ShiftDraft, shifts: Shift[]): Shift | undefined {
-  return shifts.find(shift =>
-    shift.import_batch_id !== batchId && hasScheduleImportSlotIdentity(shift, candidate),
-  )
-}
-
 type DuplicateCandidateResolution =
   | { kind: 'none' }
   | { kind: 'unique'; shift: Shift }
@@ -122,14 +107,6 @@ function resolveExternalShift(
   if (exactMatches.length > 1) return { kind: 'ambiguous', shiftIds: exactMatches.map(s => s.id).sort() }
   if (slotMatches.length === 1) return { kind: 'unique', shift: slotMatches[0] }
   return { kind: 'ambiguous', shiftIds: slotMatches.map(s => s.id).sort() }
-}
-
-function findDuplicateCandidateShift(
-  preview: ImportPreviewRow,
-  shifts: Shift[],
-): Shift | undefined {
-  const res = resolveDuplicateCandidateShift(preview, shifts)
-  return res.kind === 'unique' ? res.shift : undefined
 }
 
 export function mergeImportedStaffingLabels(

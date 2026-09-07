@@ -17,7 +17,6 @@
  */
 
 import type { ReportStatus, RegistrationStatus, SwapStatus, ScheduleImportRowOutcome } from '@/lib/types/database.types'
-import type { DataQualitySeverity } from '@/lib/types/dataQuality'
 
 // ---------------------------------------------------------------------------
 // Attention taxonomy
@@ -368,16 +367,6 @@ export function deriveImportRowAttention(
 // ---------------------------------------------------------------------------
 // Data quality attention derivation
 // ---------------------------------------------------------------------------
-
-/**
- * Maps DataQualitySeverity to AttentionSeverity.
- * error → critical, warning → warning, info → info
- */
-function dqSeverityToAttention(sev: DataQualitySeverity): AttentionSeverity {
-  if (sev === 'error') return 'critical'
-  if (sev === 'warning') return 'warning'
-  return 'info'
-}
 
 /**
  * Summarizes data quality issues into attention items.

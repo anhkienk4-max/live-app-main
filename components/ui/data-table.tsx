@@ -56,11 +56,8 @@ export function DataTable<T extends { id: string }>({
   const endIndex = startIndex + itemsPerPage
   const paginatedData = filteredData.slice(startIndex, endIndex)
 
-  React.useEffect(() => {
-    setCurrentPage(1)
-  }, [searchQuery])
-
   const handleSearch = (query: string) => {
+    setCurrentPage(1)
     setSearchQuery(query)
     onSearch?.(query)
   }

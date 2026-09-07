@@ -1,7 +1,7 @@
 import { ShiftTemplate } from '@/lib/utils/shiftUtils'
 
 // In-memory template storage
-let templates: ShiftTemplate[] = [
+const templates: ShiftTemplate[] = [
   {
     id: 't1',
     name: 'Morning TikTok',

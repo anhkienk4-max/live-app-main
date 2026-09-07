@@ -17,7 +17,6 @@ import {
 } from '@/lib/utils/ocrMetrics'
 import {
   normalizeMetricCellToRoi,
-  roiPointToImage,
 } from '@/lib/utils/ocrRegionGeometry'
 import { buildOcrLabelWindows } from '@/lib/utils/ocrLabelGeometry'
 export { roiCellBoundingBox, roiPointToImage } from '@/lib/utils/ocrRegionGeometry'

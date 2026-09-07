@@ -4,7 +4,6 @@ import type {
   Platform,
   Report,
   ScheduleImportBatch,
-  ScheduleImportRow,
   Shift,
   ShiftRegistration,
   SwapRequest,

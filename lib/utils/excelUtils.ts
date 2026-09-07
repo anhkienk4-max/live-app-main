@@ -373,7 +373,8 @@ export function parseScheduleRows(
   const candidates: Array<Omit<Shift, 'id' | 'created_at' | 'updated_at'>> = []
 
   sourceRows.forEach((source, index) => {
-    const { [SOURCE_ROW_NUMBER]: sourceRowNumber, ...sourceValues } = source
+    const sourceValues = { ...source }
+    delete sourceValues[SOURCE_ROW_NUMBER]
     const normalizedSource = normalizeScheduleImportSourceRow(sourceValues)
     const rowNumber = sourceRowNumberFor(source, index)
     const rowText = Object.values(normalizedSource).map(value => String(value ?? '')).join(' ').replace(/\s+/g, ' ').trim()

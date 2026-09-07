@@ -102,10 +102,15 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
     }
   }, [])
 
-  React.useEffect(() => { void loadData() }, [loadData])
+  React.useEffect(() => {
+    const frame = window.requestAnimationFrame(() => { void loadData() })
+    return () => window.cancelAnimationFrame(frame)
+  }, [loadData])
   React.useEffect(() => {
     const stored = window.localStorage.getItem('livestream-ops-open-shift-view')
-    if (stored === 'card' || stored === 'compact' || stored === 'table') setViewMode(stored)
+    if (stored !== 'card' && stored !== 'compact' && stored !== 'table') return
+    const frame = window.requestAnimationFrame(() => setViewMode(stored))
+    return () => window.cancelAnimationFrame(frame)
   }, [])
 
   const changeViewMode = (next: ViewMode) => {
@@ -160,6 +165,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
     }
   }
 
+  const [currentTime] = React.useState(() => Date.now())
   const visibleShifts = React.useMemo(() => {
     const userShiftIds = new Set(registrations
       .filter(registration =>
@@ -169,7 +175,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
       .map(registration => registration.shift_id))
     return shifts
       .filter(shift => mode === 'open'
-        ? shift.status === 'scheduled' && (resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)?.endAt.getTime() ?? 0) > Date.now()
+        ? shift.status === 'scheduled' && (resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)?.endAt.getTime() ?? 0) > currentTime
         : userShiftIds.has(shift.id))
       .filter(shift => !filters.date || shift.date === filters.date)
       .filter(shift => filters.brandIds.length === 0 || filters.brandIds.includes(shift.brand_id))
@@ -184,7 +190,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         ))
       ))
       .sort((left, right) => `${left.date}${left.start_time}`.localeCompare(`${right.date}${right.start_time}`))
-  }, [capacities, currentUser?.id, filters, mode, registrations, shifts])
+  }, [capacities, currentTime, currentUser?.id, filters, mode, registrations, shifts])
 
   const visibleMyEntries = React.useMemo(() => selectMyShiftEntries({
     shifts,
@@ -291,7 +297,6 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           roleFilter={filters.roles}
           brands={brands}
           platforms={platforms}
-          campaigns={campaigns}
           onManage={setDetailShift}
         />
       ) : viewMode === 'compact' ? (
@@ -542,6 +547,7 @@ function CompactShiftList({
   roleFilter,
   brands,
   platforms,
+  campaigns,
   onManage,
 }: {
   shifts: Shift[]
@@ -578,7 +584,6 @@ function ShiftSummaryTable({
   roleFilter,
   brands,
   platforms,
-  campaigns,
   onManage,
 }: {
   allShifts: Shift[]
@@ -589,7 +594,6 @@ function ShiftSummaryTable({
   roleFilter: RoleSelection
   brands: Brand[]
   platforms: Platform[]
-  campaigns: Campaign[]
   onManage: (shift: Shift) => void
 }) {
   const { t } = useTranslation()

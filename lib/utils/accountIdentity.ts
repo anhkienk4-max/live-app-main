@@ -35,11 +35,6 @@ export function isAccountIdentityDeterministic(user: Pick<User, 'id' | 'email' |
   return Boolean(user.id && normalizeAccountEmail(user.email))
 }
 
-export function staffProfileIsDistinctFromAuthAccount(businessUser: Pick<User, 'id' | 'operational_roles'>): boolean {
-  // Business User id is auth identity; operational_roles is staffing concern — distinct concepts
-  return true // placeholder to document distinction; operational_roles may be empty and user still exists
-}
-
 /**
  * Capability matrix helper — maps flow to current implementation status without inventing APIs.
  * Used only for documentation / contract tests.

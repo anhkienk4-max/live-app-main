@@ -71,7 +71,10 @@ export function ShiftList() {
     setLoading(false)
   }, [])
 
-  React.useEffect(() => { loadData() }, [loadData])
+  React.useEffect(() => {
+    const frame = window.requestAnimationFrame(() => { void loadData() })
+    return () => window.cancelAnimationFrame(frame)
+  }, [loadData])
 
   const requestDelete = async (ids: string[]) => {
     if (!canDelete) return
@@ -179,7 +182,7 @@ export function ShiftList() {
     {
       header: 'Date',
       accessor: 'date',
-      cell: (value) => format(new Date(value), 'MMM d, yyyy')
+      cell: (value) => format(new Date(String(value)), 'MMM d, yyyy')
     },
     {
       header: 'Time',
@@ -188,27 +191,27 @@ export function ShiftList() {
     {
       header: 'Brand',
       accessor: 'brand_id',
-      cell: (value) => getBrandName(value)
+      cell: (value) => getBrandName(typeof value === 'string' ? value : '')
     },
     {
       header: 'Platform',
       accessor: 'platform_id',
-      cell: (value) => getPlatformName(value)
+      cell: (value) => getPlatformName(typeof value === 'string' ? value : '')
     },
     {
       header: 'Host',
       accessor: 'host_id',
-      cell: (value) => getUserName(value)
+      cell: (value) => getUserName(typeof value === 'string' ? value : undefined)
     },
     {
       header: 'Support',
       accessor: 'support_id',
-      cell: (value) => getUserName(value)
+      cell: (value) => getUserName(typeof value === 'string' ? value : undefined)
     },
     {
       header: 'Technical',
       accessor: 'technical_id',
-      cell: (value) => getUserName(value)
+      cell: (value) => getUserName(typeof value === 'string' ? value : undefined)
     },
     {
       header: 'Status',
@@ -220,7 +223,8 @@ export function ShiftList() {
           completed: 'default',
           cancelled: 'secondary'
         }
-        return <Badge variant={variants[value] || 'secondary'} className="capitalize">{value}</Badge>
+        const status = String(value)
+        return <Badge variant={variants[status] || 'secondary'} className="capitalize">{status}</Badge>
       }
     },
     {

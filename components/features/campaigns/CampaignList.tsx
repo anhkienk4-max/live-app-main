@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Image from 'next/image'
 import * as XLSX from 'xlsx'
 import { Copy, ExternalLink, Eye, FileSpreadsheet, Maximize2, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { brandService, campaignService, currentUserService, platformService, reportService, shiftService, userService } from '@/lib/services/dataService'
@@ -67,7 +68,10 @@ export function CampaignList() {
       setLoading(false)
     }
   }, [])
-  React.useEffect(() => { void loadData() }, [loadData])
+  React.useEffect(() => {
+    const frame = window.requestAnimationFrame(() => { void loadData() })
+    return () => window.cancelAnimationFrame(frame)
+  }, [loadData])
   const refreshCampaigns = React.useCallback(() => refreshCollection(campaignService, setCampaigns), [])
   const canManage = Boolean(currentUser && hasPermission(currentUser, 'campaigns.manage'))
   const canEdit = Boolean(currentUser && (canManage || hasPermission(currentUser, 'campaigns.edit_operational')))
@@ -171,9 +175,9 @@ export function CampaignList() {
   const confirmImport = async () => {
     if (!canManage || importRows.some(row => row.errors.length)) return
     for (const row of importRows) {
-      const data = { ...row }
-      delete data.errors
-      delete data.row
+      const { errors, row: sourceRow, ...data } = row
+      void errors
+      void sourceRow
       await campaignService.create({ ...data, owner_id: data.owner_id || currentUserService.getId() })
     }
     setImportOpen(false)
@@ -188,7 +192,7 @@ export function CampaignList() {
     { header: 'Website Preview', accessor: row => {
       const url = row.website_url || row.campaign_url
       return url ? <a href={safeWebUrl(url) || '#'} target="_blank" rel="noopener noreferrer" className="flex max-w-56 items-center gap-2 rounded border p-2 hover:bg-muted">
-        {row.website_preview_image ? <img src={row.website_preview_image} alt="" className="h-10 w-16 rounded object-cover" /> : <ExternalLink className="h-4 w-4 shrink-0" />}
+        {row.website_preview_image ? <Image unoptimized width={64} height={40} src={row.website_preview_image} alt="" className="h-10 w-16 rounded object-cover" /> : <ExternalLink className="h-4 w-4 shrink-0" />}
         <span className="min-w-0"><span className="block truncate text-sm font-medium">{row.website_title || row.name}</span><span className="block truncate text-xs text-muted-foreground">{safeDomain(url)}</span></span>
       </a> : '—'
     } },
@@ -237,14 +241,15 @@ function CampaignUrlPreview({ url, title, previewImage, embedEnabled = false }: 
   const frameRef = React.useRef<HTMLDivElement>(null)
   const timeoutRef = React.useRef<number | null>(null)
   const [refreshKey, setRefreshKey] = React.useState(0)
-  const [failed, setFailed] = React.useState(false)
+  const [failedPreview, setFailedPreview] = React.useState<string | null>(null)
+  const previewKey = `${url}-${refreshKey}`
+  const failed = failedPreview === previewKey
   React.useEffect(() => {
-    setFailed(false)
-    timeoutRef.current = window.setTimeout(() => setFailed(true), 8000)
+    timeoutRef.current = window.setTimeout(() => setFailedPreview(previewKey), 8000)
     return () => {
       if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current)
     }
-  }, [refreshKey, url])
+  }, [previewKey])
   const clearPreviewTimeout = () => {
     if (timeoutRef.current !== null) {
       window.clearTimeout(timeoutRef.current)
@@ -275,8 +280,8 @@ function CampaignUrlPreview({ url, title, previewImage, embedEnabled = false }: 
     }
   }
   return <div ref={frameRef} className="space-y-3 rounded-lg border p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-medium">{title || t('embeddedPreview')}</p><p className="text-xs text-muted-foreground">{safeUrl ? safeDomain(safeUrl) : t('previewUnavailable')}</p></div><div className="flex flex-wrap gap-2">{embedEnabled && <Button type="button" variant="outline" size="sm" disabled={!safeUrl} onClick={() => setRefreshKey(key => key + 1)}><RefreshCw className="mr-1 h-4 w-4" />{t('refreshPreview')}</Button>}<Button type="button" variant="outline" size="sm" disabled={!safeUrl} onClick={copyUrl}><Copy className="mr-1 h-4 w-4" />{t('copyUrl')}</Button><Button type="button" variant="outline" size="sm" disabled={!safeUrl} onClick={openFullscreen}><Maximize2 className="mr-1 h-4 w-4" />{t('fullscreenPreview')}</Button>{safeUrl && <Button nativeButton={false} render={<a href={safeUrl} target="_blank" rel="noopener noreferrer" />} variant="outline" size="sm"><ExternalLink className="mr-1 h-4 w-4" />{t('openExternalPage')}</Button>}</div></div>
-    {previewImage && (!embedEnabled || failed) && <img src={previewImage} alt={title || 'Website preview'} className="max-h-[420px] w-full rounded border object-contain" />}
-    {safeUrl && embedEnabled && !failed ? <><iframe key={`${safeUrl}-${refreshKey}`} title={title || t('embeddedPreview')} src={safeUrl} className="h-80 w-full rounded border bg-white" sandbox="allow-scripts allow-popups allow-forms" referrerPolicy="no-referrer" onLoad={clearPreviewTimeout} onError={() => { clearPreviewTimeout(); setFailed(true) }} /><p className="text-xs text-muted-foreground">{t('iframeFallback')}</p></> : !previewImage && <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-amber-900"><p className="font-medium">{t('previewUnavailable')}</p><p className="mt-1 text-sm">{t('iframeFallback')}</p>{safeUrl && <Button nativeButton={false} render={<a href={safeUrl} target="_blank" rel="noopener noreferrer" />} className="mt-3" size="sm">{t('openExternalPage')}</Button>}</div>}
+    {previewImage && (!embedEnabled || failed) && <Image unoptimized width={1280} height={720} src={previewImage} alt={title || 'Website preview'} className="h-auto max-h-[420px] w-full rounded border object-contain" />}
+    {safeUrl && embedEnabled && !failed ? <><iframe key={`${safeUrl}-${refreshKey}`} title={title || t('embeddedPreview')} src={safeUrl} className="h-80 w-full rounded border bg-white" sandbox="allow-scripts allow-popups allow-forms" referrerPolicy="no-referrer" onLoad={clearPreviewTimeout} onError={() => { clearPreviewTimeout(); setFailedPreview(previewKey) }} /><p className="text-xs text-muted-foreground">{t('iframeFallback')}</p></> : !previewImage && <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-amber-900"><p className="font-medium">{t('previewUnavailable')}</p><p className="mt-1 text-sm">{t('iframeFallback')}</p>{safeUrl && <Button nativeButton={false} render={<a href={safeUrl} target="_blank" rel="noopener noreferrer" />} className="mt-3" size="sm">{t('openExternalPage')}</Button>}</div>}
   </div>
 }
 

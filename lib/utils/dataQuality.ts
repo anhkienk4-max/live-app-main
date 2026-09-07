@@ -1,4 +1,4 @@
-import type { DataQualityIssue, DataQualitySeverity } from '@/lib/types/dataQuality'
+import type { DataQualityIssue } from '@/lib/types/dataQuality'
 import type { ImportResult } from '@/lib/utils/excelUtils'
 import type { Report, Shift, ShiftRegistration } from '@/lib/types/database.types'
 import { isStaffedRegistration } from '@/lib/services/supabaseShiftRegistrationService'

@@ -189,7 +189,7 @@ export function StaffList() {
       header: t('operationalRoles'),
       accessor: row => <div className="flex min-w-44 flex-wrap gap-1">{row.operational_roles?.length ? row.operational_roles.map(role => <Badge variant="outline" key={role}>{t(role)}</Badge>) : <span className="text-muted-foreground">—</span>}</div>,
     },
-    { header: t('department'), accessor: 'department', cell: value => value || <span className="text-muted-foreground">—</span> },
+    { header: t('department'), accessor: 'department', cell: value => value ? String(value) : <span className="text-muted-foreground">—</span> },
     { header: t('status'), accessor: row => <Badge variant={row.status === 'active' ? 'default' : 'secondary'}>{t(row.status)}</Badge> },
     { header: t('accountStatus'), accessor: row => <Badge variant="outline">{t(row.account_status === 'active' ? 'active' : row.account_status === 'rejected' ? 'rejected' : 'pending')}</Badge> },
     {

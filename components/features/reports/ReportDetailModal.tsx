@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Image from 'next/image'
 import { Report, Shift, Brand, Platform, User, Campaign, FinalReportRecap, OcrReviewData, ShiftRegistration, NormalizedReportMetrics, ReportMetricKey, LiveReportImage, ReportRevision } from '@/lib/types/database.types'
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
@@ -316,12 +317,12 @@ export function ReportDetailModal({
   React.useEffect(() => { if (open) void reportImageService.getByReport(report.id).then(setImages) }, [open, report.id])
   React.useEffect(() => { if (open) void liveReportImageService.getByReport(report.id).then(setLiveImages) }, [open, report.id])
   React.useEffect(() => {
-    if (open) {
-      setFinalRecap({
-        ...emptyFinalReportRecap(),
-        ...report.final_recap,
-      })
-    }
+    if (!open) return
+    const frame = window.requestAnimationFrame(() => setFinalRecap({
+      ...emptyFinalReportRecap(),
+      ...report.final_recap,
+    }))
+    return () => window.cancelAnimationFrame(frame)
   }, [open, report])
   const getBrandName = (id: string) => brands.find(b => b.id === id)?.name || t('noData')
   const getBrandColor = (id: string) => brands.find(b => b.id === id)?.color || '#2563EB'
@@ -370,7 +371,7 @@ export function ReportDetailModal({
       }, reviewData, currentUser.id)
       toast({ title: t('confirmed'), description: t('confirmedOnly'), variant: 'success' })
       onUpdated?.()
-    } catch {
+    } catch (error) {
       toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
     } finally {
       setBusy(false)
@@ -447,7 +448,7 @@ export function ReportDetailModal({
       setReviewData(next)
       setMetricValues(current => ({ ...current, ...reviewInputValues(next) }))
       setEditingMetrics(false)
-    } catch (error) {
+    } catch {
       setReviewData({ status: 'failed', source_platform: platform, metrics: {}, error_message: t('ocrFailedHelp') })
       toast({ title: t('ocrFailed'), description: t('ocrFailedHelp'), variant: 'destructive' })
     }
@@ -1013,7 +1014,10 @@ export function ReportDetailModal({
                   : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                       {images.filter(image => image.image_type === 'dashboard').map(image => (
                         <div className="space-y-2 rounded-lg border p-2" key={image.id}>
-                          <img
+                          <Image
+                            unoptimized
+                            width={1280}
+                            height={720}
                             src={image.image_url}
                             alt={image.original_name || image.image_type}
                             className="aspect-video w-full rounded-md object-cover"

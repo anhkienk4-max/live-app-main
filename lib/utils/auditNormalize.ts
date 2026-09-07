@@ -100,11 +100,11 @@ export function normalizeTimestamp(timestamp: unknown): { iso: string; display: 
 
 export function getAuditSummary(entry: AuditLog): string {
   const actor = normalizeAuditActor(entry)
-  const module = normalizeAuditModule(entry.module)
+  const auditModule = normalizeAuditModule(entry.module)
   const action = normalizeAuditAction(entry.action)
   const status = classifyOperationStatus(entry)
   const time = normalizeTimestamp(entry.timestamp).display
-  return `${actor.name} ${action.replaceAll('_', ' ')} ${entry.entity_type} "${entry.entity_name}" in ${module} at ${time} [${status}]`
+  return `${actor.name} ${action.replaceAll('_', ' ')} ${entry.entity_type} "${entry.entity_name}" in ${auditModule} at ${time} [${status}]`
 }
 
 function isSensitiveKey(key: string): boolean {
