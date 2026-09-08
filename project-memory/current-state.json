@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "integration/production-hardening-final",
-    "head": "259fa58263b06c62ae9eb87559483a7513aa2022",
+    "head": "ef64f41da1ece0719024eaff45932aee959daefe",
     "origin_main": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-production-integration"
   },
@@ -69,9 +69,9 @@
         "lib": 152,
         "scripts": 14,
         "supabase": 59,
-        "tests": 112
+        "tests": 113
       },
-      "total": 456
+      "total": 457
     },
     "tests": {
       "files": [
@@ -122,6 +122,7 @@
         "tests/google-drive-file-provider.test.ts",
         "tests/live-dashboard-persistence.test.ts",
         "tests/live-report-images.test.tsx",
+        "tests/memory-validator-contract.test.ts",
         "tests/mock-auth-and-staffing.test.ts",
         "tests/multi-platform-ocr-pipeline.test.ts",
         "tests/multi-select-filter.test.ts",
@@ -183,7 +184,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 107
+      "count": 108
     },
     "migrations": {
       "files": [
@@ -246,5 +247,5 @@
     "lint": "FAIL_BASELINE",
     "build": "PASS"
   },
-  "synced_at": "2026-09-08T00:30:42+07:00"
+  "synced_at": "2026-09-08T10:38:11+07:00"
 }
