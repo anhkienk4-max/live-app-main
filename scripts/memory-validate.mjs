@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { MEMORY_DIR, ROOT, readJson, deriveRepository, generatedMarkdown, projectStatePointer } from './project-memory-lib.mjs'
+import { MEMORY_DIR, ROOT, readJson, deriveRepository, generatedMarkdown, projectStatePointer, git } from './project-memory-lib.mjs'
 
 const required = ['current-state.json', 'modules.json', 'business-rules.json', 'flows.json', 'ui-contracts.json', 'data-contracts.json', 'permissions.json', 'defects.json', 'release-gates.json']
 const errors = []
@@ -34,6 +34,34 @@ const state = records['current-state.json']
 const modules = records['modules.json']
 const rules = records['business-rules.json']
 const defects = records['defects.json']
+const memoryOnlyPaths = new Set([
+  'project-memory/current-state.json',
+  'project-memory/generated/project-memory.md',
+  'PROJECT_STATE.md',
+])
+
+const commitExists = (sha) => {
+  try {
+    git(['cat-file', '-e', sha + '^{commit}'])
+    return true
+  } catch {
+    return false
+  }
+}
+
+const isAncestor = (ancestor, descendant) => {
+  try {
+    git(['merge-base', '--is-ancestor', ancestor, descendant])
+    return true
+  } catch {
+    return false
+  }
+}
+
+const changedPathsBetween = (from, to) => {
+  const output = git(['diff', '--name-only', '--diff-filter=ACDMRTUXB', from, to])
+  return output ? output.split(/\r?\n/).filter(Boolean) : []
+}
 
 if (state) {
   if (state.base?.sha !== '73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5') fail('current-state base SHA is not the GL-03 expected base')
@@ -47,7 +75,14 @@ if (state) {
   if (!Array.isArray(state.inventory?.migrations?.files)) fail('current-state migrations inventory is missing')
   try {
     const live = deriveRepository()
-    for (const field of ['branch', 'head', 'origin_main']) {
+    const storedHead = state.repository.head
+    if (!commitExists(storedHead)) fail('current-state repository.head is not a valid commit')
+    else if (!isAncestor(storedHead, live.head)) fail('current-state repository.head is not an ancestor of live Git')
+    else {
+      const relevantChanges = changedPathsBetween(storedHead, live.head).filter((changedPath) => !memoryOnlyPaths.has(changedPath))
+      if (relevantChanges.length) fail('current-state repository.head is stale; relevant changes since snapshot: ' + relevantChanges.join(', '))
+    }
+    for (const field of ['branch', 'origin_main']) {
       if (state.repository[field] !== live[field]) fail(`current-state repository.${field} does not match live Git`)
     }
   } catch (error) {
