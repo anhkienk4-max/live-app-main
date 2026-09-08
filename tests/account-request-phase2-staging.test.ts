@@ -151,19 +151,22 @@ async function createPendingRequest(
   return data as AccountRequestRow
 }
 
-async function countStaff(admin: ReviewClient): Promise<number> {
-  const { count, error } = await admin.from('business_users').select('id', { count: 'exact', head: true })
+async function countStaff(admin: ReviewClient, email: string): Promise<number> {
+  const { count, error } = await admin
+    .from('business_users')
+    .select('id', { count: 'exact', head: true })
+    .eq('email', email)
   if (error || count === null) throw new Error('Could not count staging business users.')
   return count
 }
 
-async function countAuthUsers(admin: ReviewClient): Promise<number> {
+async function countAuthUsers(admin: ReviewClient, email: string): Promise<number> {
   let page = 1
   let total = 0
   while (true) {
     const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 })
     if (error) throw new Error('Could not count staging Auth users.')
-    total += data.users.length
+    total += data.users.filter(user => user.email?.toLowerCase() === email.toLowerCase()).length
     if (data.users.length < 1000) return total
     page += 1
   }
@@ -233,8 +236,8 @@ test('Account Request Phase 2 staging runtime contract', { skip: skipReason }, a
 
   try {
     const approval = track(await createPendingRequest(anonymous, admin, prefix, 'approval'))
-    const approvalAuthCount = await countAuthUsers(admin)
-    const approvalStaffCount = await countStaff(admin)
+    const approvalAuthCount = await countAuthUsers(admin, approval.email)
+    const approvalStaffCount = await countStaff(admin, approval.email)
     const approvalResults = await Promise.allSettled([
       rpc(adminFixture, 'approve_account_request', {
         p_request_id: approval.id,
@@ -254,8 +257,8 @@ test('Account Request Phase 2 staging runtime contract', { skip: skipReason }, a
     assert.equal(approved.provisioning_status, 'not_started')
     assert.equal(approved.staff_id, approval.staff_id)
     assert.equal(approved.auth_user_id, approval.auth_user_id)
-    assert.equal(await countAuthUsers(admin), approvalAuthCount)
-    assert.equal(await countStaff(admin), approvalStaffCount)
+    assert.equal(await countAuthUsers(admin, approval.email), approvalAuthCount)
+    assert.equal(await countStaff(admin, approval.email), approvalStaffCount)
 
     const approvedAgain = await rpc(adminFixture2, 'approve_account_request', {
       p_request_id: approval.id,
@@ -285,8 +288,8 @@ test('Account Request Phase 2 staging runtime contract', { skip: skipReason }, a
     assert.equal(approvalAudit.filter(row => row.action === 'approve').length, 1)
 
     const rejection = track(await createPendingRequest(anonymous, admin, prefix, 'rejection'))
-    const rejectionAuthCount = await countAuthUsers(admin)
-    const rejectionStaffCount = await countStaff(admin)
+    const rejectionAuthCount = await countAuthUsers(admin, rejection.email)
+    const rejectionStaffCount = await countStaff(admin, rejection.email)
     const rejected = await rpc(adminFixture, 'reject_account_request', {
       p_request_id: rejection.id,
       p_expected_version: rejection.version,
@@ -298,8 +301,8 @@ test('Account Request Phase 2 staging runtime contract', { skip: skipReason }, a
     assert.ok(rejected.reviewed_at)
     assert.equal(rejected.reviewed_by, canonicalAdmin.id)
     assert.equal(rejected.provisioning_status, 'not_started')
-    assert.equal(await countAuthUsers(admin), rejectionAuthCount)
-    assert.equal(await countStaff(admin), rejectionStaffCount)
+    assert.equal(await countAuthUsers(admin, rejection.email), rejectionAuthCount)
+    assert.equal(await countStaff(admin, rejection.email), rejectionStaffCount)
     const rejectedAgain = await rpc(adminFixture2, 'reject_account_request', {
       p_request_id: rejection.id,
       p_expected_version: rejection.version,
