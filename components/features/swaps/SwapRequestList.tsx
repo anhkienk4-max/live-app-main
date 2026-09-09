@@ -13,7 +13,7 @@ import {
   swapRequestService,
   userService,
 } from '@/lib/services/dataService'
-import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Shift, SwapRequest, User } from '@/lib/types/database.types'
+import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Shift, SwapRequest, SwapStatus, User } from '@/lib/types/database.types'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
@@ -39,6 +39,7 @@ import { HistoryPagination } from '@/components/ui/history-pagination'
 
 type Filters = { start: string; end: string; requesterIds: string[]; brandIds: string[]; campaignIds: string[]; roles: OperationalRole[]; statuses: string[] }
 const initialFilters: Filters = { start: '', end: '', requesterIds: [], brandIds: [], campaignIds: [], roles: [], statuses: [] }
+export const SWAP_REQUEST_STATUSES = ['pending', 'accepted', 'approved', 'rejected', 'cancelled', 'completed'] as const satisfies readonly SwapStatus[]
 
 export function SwapRequestList() {
   const { currentUser, loading: userLoading } = useCurrentUser()
@@ -109,7 +110,7 @@ export function SwapRequestList() {
       else if (action === 'counterpart_reject') await swapRequestService.respond(swap.id, currentUser.id, 'reject', swap.version)
       else if (action === 'approve') await swapRequestService.approve(swap.id, currentUser.id, swap.version)
       else await swapRequestService.reject(swap.id, currentUser.id, swap.version)
-      toast({ title: t('success'), description: (t as unknown as (k:string)=>string)(action === 'approve' ? 'approved' : action === 'accept' ? 'accepted' : 'rejected'), variant: 'success' })
+      toast({ title: t('success'), description: t(action === 'approve' ? 'approved' : action === 'accept' ? 'accepted' : 'rejected'), variant: 'success' })
       await loadData()
     } catch (error) {
       toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
@@ -143,7 +144,7 @@ export function SwapRequestList() {
 
   return <div className="space-y-6">
     <div className="grid gap-4 sm:grid-cols-4">
-      {(['pending','accepted','approved','rejected','cancelled','completed'] as const).map(status => <Card key={status}><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">{(t as unknown as (k:string)=>string)(status)}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{filtered.filter(swap => swap.status === status).length}</p></CardContent></Card>)}
+      {SWAP_REQUEST_STATUSES.map(status => <Card key={status}><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">{t(status)}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{filtered.filter(swap => swap.status === status).length}</p></CardContent></Card>)}
       <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">{t('all')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{filtered.length}</p></CardContent></Card>
     </div>
 
@@ -155,7 +156,7 @@ export function SwapRequestList() {
         <EntityFilter label={t('brand')} value={filters.brandIds} options={brands} onChange={value => updateFilters(current => ({ ...current, brandIds: value }))} />
         <EntityFilter label={t('campaign')} value={filters.campaignIds} options={campaigns} onChange={value => updateFilters(current => ({ ...current, campaignIds: value }))} />
         <MultiSelectFilter label={t('role')} value={filters.roles} options={(['host','support','technical'] as OperationalRole[]).map(role => ({ value: role, label: t(role) }))} onChange={value => updateFilters(current => ({ ...current, roles: value as OperationalRole[] }))} />
-        <MultiSelectFilter label={t('status')} value={filters.statuses} options={(['pending','accepted','approved','rejected','cancelled','completed'] as const).map(status => ({ value: status, label: (t as unknown as (k:string)=>string)(status) }))} onChange={value => updateFilters(current => ({ ...current, statuses: value }))} />
+        <MultiSelectFilter label={t('status')} value={filters.statuses} options={SWAP_REQUEST_STATUSES.map(status => ({ value: status, label: t(status) }))} onChange={value => updateFilters(current => ({ ...current, statuses: value }))} />
       </div>
       <div className="flex gap-2">
         <div className="hidden lg:flex flex-wrap gap-2">
@@ -207,7 +208,7 @@ export function SwapRequestList() {
             <div className="flex flex-col md:flex-row">
               <div className="flex-1 p-4 md:border-r space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge className={statusTone[statusPresentation.tone] || statusTone.neutral}>{(t as unknown as (k:string)=>string)(statusPresentation.label)}</Badge>
+                  <Badge className={statusTone[statusPresentation.tone] || statusTone.neutral}>{t(statusPresentation.label)}</Badge>
                   <Badge variant="outline" className="font-bold tracking-wider text-xs">{(swap.mode || 'replacement').toUpperCase()}</Badge>
                   <span className="text-xs text-muted-foreground">{format(new Date(swap.created_at), 'dd/MM/yyyy HH:mm')}</span>
                 </div>

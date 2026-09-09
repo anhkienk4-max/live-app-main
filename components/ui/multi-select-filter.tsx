@@ -22,6 +22,10 @@ export interface MultiSelectFilterOption {
   label: string
 }
 
+export function getMultiSelectOptionLabel(option: MultiSelectFilterOption) {
+  return typeof option.label === 'string' && option.label.trim() ? option.label : option.value
+}
+
 export interface MultiSelectFilterProps {
   label: string
   options: MultiSelectFilterOption[]
@@ -44,9 +48,11 @@ export function MultiSelectFilter({
   const [query, setQuery] = React.useState('')
   const selected = normalizeMultiSelect(value)
   const selectedSet = new Set(selected)
-  const normalizedOptions = options.filter((option, index, all) =>
-    option.value !== 'all' && all.findIndex(candidate => candidate.value === option.value) === index,
-  )
+  const normalizedOptions = options
+    .filter((option, index, all) =>
+      option.value !== 'all' && all.findIndex(candidate => candidate.value === option.value) === index,
+    )
+    .map(option => ({ ...option, label: getMultiSelectOptionLabel(option) }))
   const visibleOptions = normalizedOptions.filter(option => option.label.toLowerCase().includes(query.trim().toLowerCase()))
   const selectedOptions = normalizedOptions.filter(option => selectedSet.has(option.value))
   const allSelected = selected.length === 0 || (normalizedOptions.length > 0 && normalizedOptions.every(option => selectedSet.has(option.value)))

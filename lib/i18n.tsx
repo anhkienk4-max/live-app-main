@@ -96,6 +96,7 @@ const en = {
   completed: 'Completed',
   cancelled: 'Cancelled',
   pending: 'Pending',
+  accepted: 'Accepted',
   approved: 'Approved',
   rejected: 'Rejected',
   // Operational Attention
@@ -1227,6 +1228,7 @@ const vi: Record<keyof typeof en, string> = {
   completed: 'Hoàn thành',
   cancelled: 'Đã hủy',
   pending: 'Chờ duyệt',
+  accepted: 'Đã chấp nhận',
   approved: 'Đã duyệt',
   rejected: 'Từ chối',
   pendingRegistrations: 'Đăng ký đang chờ',
