@@ -10,8 +10,8 @@
   },
   "repository": {
     "branch": "feat/registration-board-ux-v2",
-    "head": "70f62f1e43cf0d0cb91ca2befdf84aeed7a716f7",
-    "origin_main": "88149412e418604c9776723d22d378c86ac16633",
+    "head": "6e3d542f300714904a21e5e9107543880d322af0",
+    "origin_main": "7be47803690550d1ba891b6d7e1e4585f8f307e7",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-registration-ux"
   },
   "hardening": {
@@ -66,12 +66,12 @@
       "roots": {
         "app": 34,
         "components": 85,
-        "lib": 152,
+        "lib": 153,
         "scripts": 14,
         "supabase": 58,
-        "tests": 115
+        "tests": 117
       },
-      "total": 458
+      "total": 461
     },
     "tests": {
       "files": [
@@ -88,8 +88,10 @@
         "tests/auth-identity-bridge.test.tsx",
         "tests/auth-session-foundation.test.ts",
         "tests/bulk-staffing-approval.test.ts",
+        "tests/calendar-all-time-completeness.test.ts",
         "tests/calendar-bulk-delete.test.ts",
         "tests/calendar-filters.test.ts",
+        "tests/calendar-range-fetching.test.ts",
         "tests/calendar-role-filter.test.ts",
         "tests/cloud-file-ingestion.test.ts",
         "tests/cloud-source-integration.test.ts",
@@ -186,7 +188,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 110
+      "count": 112
     },
     "migrations": {
       "files": [
@@ -249,5 +251,5 @@
     "lint": "FAIL_BASELINE",
     "build": "PASS"
   },
-  "synced_at": "2026-09-11T00:24:34+07:00"
+  "synced_at": "2026-09-11T02:15:44+07:00"
 }
