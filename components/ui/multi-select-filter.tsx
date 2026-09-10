@@ -6,6 +6,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -83,53 +84,55 @@ export function MultiSelectFilter({
           <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-[min(22rem,calc(100vw-2rem))]">
-          <DropdownMenuLabel className="flex items-center justify-between gap-2">
-            <span>{label}</span>
-            {selected.length > 0 && <span className="text-xs font-normal">{selected.length} selected</span>}
-          </DropdownMenuLabel>
-          <div className="px-1.5 pb-1.5">
-            <Input
-              value={query}
-              onChange={event => setQuery(event.target.value)}
-              onKeyDown={event => event.stopPropagation()}
-              placeholder={`Search ${label.toLowerCase()}`}
-              aria-label={`Search ${label}`}
-              className="h-8"
-            />
-          </div>
-          <div className="flex gap-1 px-1.5 pb-1.5">
-            <DropdownMenuItem
-              closeOnClick={false}
-              disabled={normalizedOptions.length === 0 || allSelected}
-              onClick={() => update([])}
-              className="flex-1 justify-center"
-            >
-              <Check className="h-3.5 w-3.5" /> Select all
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              closeOnClick={false}
-              disabled={selected.length === 0}
-              onClick={() => update([])}
-              className="flex-1 justify-center"
-            >
-              <X className="h-3.5 w-3.5" /> Clear all
-            </DropdownMenuItem>
-          </div>
-          <DropdownMenuSeparator />
-          <div className="max-h-64 overflow-y-auto">
-            {visibleOptions.length === 0 ? (
-              <p className="px-2 py-4 text-center text-xs text-muted-foreground">No matching options</p>
-            ) : visibleOptions.map(option => (
-              <DropdownMenuCheckboxItem
-                key={option.value}
-                checked={allSelected || selectedSet.has(option.value)}
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className="flex items-center justify-between gap-2">
+              <span>{label}</span>
+              {selected.length > 0 && <span className="text-xs font-normal">{selected.length} selected</span>}
+            </DropdownMenuLabel>
+            <div className="px-1.5 pb-1.5">
+              <Input
+                value={query}
+                onChange={event => setQuery(event.target.value)}
+                onKeyDown={event => event.stopPropagation()}
+                placeholder={`Search ${label.toLowerCase()}`}
+                aria-label={`Search ${label}`}
+                className="h-8"
+              />
+            </div>
+            <div className="flex gap-1 px-1.5 pb-1.5">
+              <DropdownMenuItem
                 closeOnClick={false}
-                onCheckedChange={() => update(toggleMultiSelect(selected, option.value, optionValues))}
+                disabled={normalizedOptions.length === 0 || allSelected}
+                onClick={() => update([])}
+                className="flex-1 justify-center"
               >
-                <span className="min-w-0 truncate">{option.label}</span>
-              </DropdownMenuCheckboxItem>
-            ))}
-          </div>
+                <Check className="h-3.5 w-3.5" /> Select all
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                closeOnClick={false}
+                disabled={selected.length === 0}
+                onClick={() => update([])}
+                className="flex-1 justify-center"
+              >
+                <X className="h-3.5 w-3.5" /> Clear all
+              </DropdownMenuItem>
+            </div>
+            <DropdownMenuSeparator />
+            <div className="max-h-64 overflow-y-auto">
+              {visibleOptions.length === 0 ? (
+                <p className="px-2 py-4 text-center text-xs text-muted-foreground">No matching options</p>
+              ) : visibleOptions.map(option => (
+                <DropdownMenuCheckboxItem
+                  key={option.value}
+                  checked={allSelected || selectedSet.has(option.value)}
+                  closeOnClick={false}
+                  onCheckedChange={() => update(toggleMultiSelect(selected, option.value, optionValues))}
+                >
+                  <span className="min-w-0 truncate">{option.label}</span>
+                </DropdownMenuCheckboxItem>
+              ))}
+            </div>
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
       {selectedOptions.length > 0 && (
