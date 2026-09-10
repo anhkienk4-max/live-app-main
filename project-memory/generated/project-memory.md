@@ -2,13 +2,13 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-09-10T22:54:55+07:00
+Generated at: 2026-09-11T00:24:34+07:00
 
 ## Repository
 
 - Branch: `feat/registration-board-ux-v2`
-- HEAD: `137bd595ba9b5a3461fb8321d6b2a1910b8676ce`
-- origin/main: `c06056ee82f03b45472c0702a9f7cd09a9d2a293`
+- HEAD: `70f62f1e43cf0d0cb91ca2befdf84aeed7a716f7`
+- origin/main: `88149412e418604c9776723d22d378c86ac16633`
 - Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-registration-ux`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
@@ -22,8 +22,8 @@ Generated at: 2026-09-10T22:54:55+07:00
 ## Inventory
 
 - Routes: 31
-- Source files in tracked inventory roots: 457
-- Tests: 109
+- Source files in tracked inventory roots: 458
+- Tests: 110
 - Migrations: 48
 
 ## Modules

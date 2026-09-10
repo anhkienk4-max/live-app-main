@@ -10,8 +10,8 @@
   },
   "repository": {
     "branch": "feat/registration-board-ux-v2",
-    "head": "137bd595ba9b5a3461fb8321d6b2a1910b8676ce",
-    "origin_main": "c06056ee82f03b45472c0702a9f7cd09a9d2a293",
+    "head": "70f62f1e43cf0d0cb91ca2befdf84aeed7a716f7",
+    "origin_main": "88149412e418604c9776723d22d378c86ac16633",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-registration-ux"
   },
   "hardening": {
@@ -69,9 +69,9 @@
         "lib": 152,
         "scripts": 14,
         "supabase": 58,
-        "tests": 114
+        "tests": 115
       },
-      "total": 457
+      "total": 458
     },
     "tests": {
       "files": [
@@ -145,6 +145,7 @@
         "tests/preview-loading-performance.test.tsx",
         "tests/profile-avatar-storage.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
+        "tests/registration-board-performance.test.ts",
         "tests/rw003-staffing-resolver.test.ts",
         "tests/rw004-admin-self-update.test.ts",
         "tests/s2-shift-staffing.test.ts",
@@ -185,7 +186,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 109
+      "count": 110
     },
     "migrations": {
       "files": [
@@ -248,5 +249,5 @@
     "lint": "FAIL_BASELINE",
     "build": "PASS"
   },
-  "synced_at": "2026-09-10T22:54:55+07:00"
+  "synced_at": "2026-09-11T00:24:34+07:00"
 }
