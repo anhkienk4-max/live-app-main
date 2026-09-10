@@ -13,19 +13,33 @@ test('empty selection means all and values within one dimension are ORed', () =>
   assert.equal(matchesMultiSelect('brand-c', ['brand-a', 'brand-b']), false)
 })
 
-test('toggle, clear, select all, and reset produce canonical empty-or-values state', () => {
+test('individual toggles enter explicit mode, accumulate, remove, and return to All', () => {
   assert.deepEqual(toggleMultiSelect([], 'brand-a'), ['brand-a'])
-  assert.deepEqual(toggleMultiSelect([], 'brand-a', ['brand-a', 'brand-b']), ['brand-b'])
+  assert.deepEqual(toggleMultiSelect(['brand-a'], 'brand-b'), ['brand-a', 'brand-b'])
+  assert.deepEqual(toggleMultiSelect(['brand-a', 'brand-b'], 'brand-a'), ['brand-b'])
   assert.deepEqual(toggleMultiSelect(['brand-a'], 'brand-a'), [])
-  assert.deepEqual(clearMultiSelect(), [])
-  assert.deepEqual(selectAllMultiSelect(), [])
 })
 
-test('multi-select filter component exposes search, checkbox selection, count/chips, and persistent menu controls', () => {
+test('All, clear, reset, and legacy values always produce canonical state', () => {
+  assert.deepEqual(clearMultiSelect(), [])
+  assert.deepEqual(selectAllMultiSelect(), [])
+  assert.deepEqual(toggleMultiSelect(['all'], 'brand-a'), ['brand-a'])
+  assert.deepEqual(toggleMultiSelect(['brand-a'], 'all'), ['brand-a'])
+  assert.deepEqual(normalizeMultiSelect(['all', ...toggleMultiSelect([], 'brand-a')]), ['brand-a'])
+})
+
+test('multi-select renders All as the only checked row for an empty value', () => {
+  const source = readFileSync(new URL('../components/ui/multi-select-filter.tsx', import.meta.url), 'utf8')
+  assert.match(source, /checked=\{selected\.length === 0\}/)
+  assert.match(source, /checked=\{selectedSet\.has\(option\.value\)\}/)
+  assert.doesNotMatch(source, /allSelected \|\| selectedSet\.has/)
+})
+
+test('multi-select filter exposes search, count/chips, All, clear, and persistent menu controls', () => {
   const source = readFileSync(new URL('../components/ui/multi-select-filter.tsx', import.meta.url), 'utf8')
   assert.match(source, /DropdownMenuCheckboxItem/)
   assert.match(source, /Search \$\{label\.toLowerCase\(\)\}/)
-  assert.match(source, /Select all/)
+  assert.match(source, /onCheckedChange=\{\(\) => update\(\[\]\)\}/)
   assert.match(source, /Clear all/)
   assert.match(source, /closeOnClick=\{false\}/)
   assert.match(source, /selectedOptions\.slice\(0, 3\)/)

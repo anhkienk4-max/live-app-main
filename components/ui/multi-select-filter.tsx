@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Check, ChevronDown, X } from 'lucide-react'
+import { ChevronDown, X } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -56,8 +56,6 @@ export function MultiSelectFilter({
     .map(option => ({ ...option, label: getMultiSelectOptionLabel(option) }))
   const visibleOptions = normalizedOptions.filter(option => option.label.toLowerCase().includes(query.trim().toLowerCase()))
   const selectedOptions = normalizedOptions.filter(option => selectedSet.has(option.value))
-  const allSelected = selected.length === 0 || (normalizedOptions.length > 0 && normalizedOptions.every(option => selectedSet.has(option.value)))
-  const optionValues = normalizedOptions.map(option => option.value)
 
   const update = (next: string[]) => onChange(normalizeMultiSelect(next))
 
@@ -100,14 +98,14 @@ export function MultiSelectFilter({
               />
             </div>
             <div className="flex gap-1 px-1.5 pb-1.5">
-              <DropdownMenuItem
+              <DropdownMenuCheckboxItem
+                checked={selected.length === 0}
                 closeOnClick={false}
-                disabled={normalizedOptions.length === 0 || allSelected}
-                onClick={() => update([])}
+                onCheckedChange={() => update([])}
                 className="flex-1 justify-center"
               >
-                <Check className="h-3.5 w-3.5" /> Select all
-              </DropdownMenuItem>
+                <span className="min-w-0 truncate">{placeholder}</span>
+              </DropdownMenuCheckboxItem>
               <DropdownMenuItem
                 closeOnClick={false}
                 disabled={selected.length === 0}
@@ -124,9 +122,9 @@ export function MultiSelectFilter({
               ) : visibleOptions.map(option => (
                 <DropdownMenuCheckboxItem
                   key={option.value}
-                  checked={allSelected || selectedSet.has(option.value)}
+                  checked={selectedSet.has(option.value)}
                   closeOnClick={false}
-                  onCheckedChange={() => update(toggleMultiSelect(selected, option.value, optionValues))}
+                  onCheckedChange={() => update(toggleMultiSelect(selected, option.value))}
                 >
                   <span className="min-w-0 truncate">{option.label}</span>
                 </DropdownMenuCheckboxItem>

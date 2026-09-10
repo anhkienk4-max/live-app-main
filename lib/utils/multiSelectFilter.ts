@@ -14,14 +14,11 @@ export function matchesMultiSelect(candidate: string | null | undefined, values:
   return normalized.length === 0 || (candidate !== null && candidate !== undefined && normalized.includes(candidate))
 }
 
-export function toggleMultiSelect(values: readonly string[] | null | undefined, value: string, universe?: readonly string[]): string[] {
+export function toggleMultiSelect(values: readonly string[] | null | undefined, value: string): string[] {
   const normalized = normalizeMultiSelect(values)
-  if (normalized.length === 0 && universe) {
-    return normalizeMultiSelect(universe).filter(item => item !== value)
-  }
   return normalized.includes(value)
     ? normalized.filter(item => item !== value)
-    : [...normalized, value]
+    : normalizeMultiSelect([...normalized, value])
 }
 
 export function clearMultiSelect(): string[] {
