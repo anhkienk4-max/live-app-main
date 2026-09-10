@@ -2,14 +2,14 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-09-10T16:57:43+07:00
+Generated at: 2026-09-11T01:13:29+07:00
 
 ## Repository
 
-- Branch: `feat/calendar-bulk-selection`
-- HEAD: `a85d2e9e12afefab54a97cdfba085d33363d13fb`
-- origin/main: `da1b71a39c328dba5cd8265958b7e6fd695cb475`
-- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-production-integration`
+- Branch: `integration/ui-golden-screens`
+- HEAD: `ab5b8067c7908fe92b790c60cc54c08b1ea9e0b0`
+- origin/main: `7be47803690550d1ba891b6d7e1e4585f8f307e7`
+- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-ui-integration`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
 ## Hardening
@@ -22,8 +22,8 @@ Generated at: 2026-09-10T16:57:43+07:00
 ## Inventory
 
 - Routes: 31
-- Source files in tracked inventory roots: 458
-- Tests: 109
+- Source files in tracked inventory roots: 465
+- Tests: 110
 - Migrations: 48
 
 ## Modules
