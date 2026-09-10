@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/registration-board-ux-v2",
-    "head": "6e3d542f300714904a21e5e9107543880d322af0",
+    "head": "c227c6b02d2fbd7c2ff5701cf27a66ac2e1afcf8",
     "origin_main": "7be47803690550d1ba891b6d7e1e4585f8f307e7",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-registration-ux"
   },
@@ -251,5 +251,5 @@
     "lint": "FAIL_BASELINE",
     "build": "PASS"
   },
-  "synced_at": "2026-09-11T02:15:44+07:00"
+  "synced_at": "2026-09-11T02:17:31+07:00"
 }
