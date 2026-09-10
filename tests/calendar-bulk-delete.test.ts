@@ -102,7 +102,7 @@ test('delete selection contains only currently selected visible shifts', () => {
 
   assert.match(calendarSource, /data-testid="toggle-all-visible-shifts"/)
   assert.match(calendarSource, /aria-checked=\{visibleSelection\.allVisibleSelected \? true : visibleSelection\.partiallySelected \? 'mixed' : false\}/)
-  assert.match(calendarSource, /selectedShifts=\{filteredShifts\.filter\(shift => selectedVisibleShiftIdSet\.has\(shift\.id\)\)\}/)
+  assert.match(calendarSource, /selectedShifts=\{listShifts\.filter\(shift => selectedVisibleShiftIdSet\.has\(shift\.id\)\)\}/)
 })
 
 test('selected count follows the visible selected set', () => {
@@ -113,7 +113,7 @@ test('selected count follows the visible selected set', () => {
 test('selected export remains limited to visible filtered shifts', () => {
   const selection = getVisibleShiftSelection(visibleShifts, new Set(['shift-b', 'hidden-shift']))
   assert.deepEqual(selection.selectedVisibleShiftIds, ['shift-b'])
-  assert.match(calendarSource, /scope === 'selected'[\s\S]{0,120}filteredShifts\.filter\(s => selectedVisibleShiftIdSet\.has\(s\.id\)\)/)
+  assert.match(calendarSource, /scope === 'selected'[\s\S]{0,120}exportShifts\.filter\(s => selectedVisibleShiftIdSet\.has\(s\.id\)\)/)
 })
 
 test('selection state distinguishes none, partial, and all visible', () => {

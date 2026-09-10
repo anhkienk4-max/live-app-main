@@ -19,6 +19,9 @@ type ReportRow = Record<string, unknown>
 type ReportImageRow = Record<string, unknown>
 type LiveReportImageRow = Record<string, unknown>
 
+const SUPABASE_PAGE_SIZE = 1000
+const SHIFT_ID_BATCH_SIZE = 100
+
 interface SupabaseErrorShape {
   code?: string
   message?: string
@@ -61,6 +64,15 @@ function optionalRows<T>(
 ): T[] {
   if (result.error) throw requestError(operation, result.error)
   return result.data ?? []
+}
+
+function uniqueBatches(ids: string[]): string[][] {
+  const uniqueIds = [...new Set(ids)]
+  const batches: string[][] = []
+  for (let index = 0; index < uniqueIds.length; index += SHIFT_ID_BATCH_SIZE) {
+    batches.push(uniqueIds.slice(index, index + SHIFT_ID_BATCH_SIZE))
+  }
+  return batches
 }
 
 function lifecycle(row: {
@@ -238,6 +250,7 @@ export interface SupabaseReportRepository {
   getAllIncludingArchived(): Promise<Report[]>
   getById(id: string): Promise<Report | null>
   getByShift(shiftId: string): Promise<Report | null>
+  getForShifts?(shiftIds: string[]): Promise<Report[]>
   getConfirmed(): Promise<Report[]>
   getReportRevisions(reportId: string): Promise<ReportRevision[]>
 
@@ -308,6 +321,28 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
         .maybeSingle()
       if (result.error) throw requestError('report by shift lookup', result.error)
       return result.data ? reportFromRow(result.data as ReportRow) : null
+    },
+
+    async getForShifts(shiftIds) {
+      if (shiftIds.length === 0) return []
+      const rows = new Map<string, ReportRow>()
+      for (const batch of uniqueBatches(shiftIds)) {
+        for (let offset = 0; ; offset += SUPABASE_PAGE_SIZE) {
+          const result = await selectReports()
+            .in('shift_id', batch)
+            .is('deleted_at', null)
+            .is('archived_at', null)
+            .order('updated_at', { ascending: false })
+            .order('id', { ascending: true })
+            .range(offset, offset + SUPABASE_PAGE_SIZE - 1)
+          const page = optionalRows('reports by shifts read', result)
+          page.forEach(row => rows.set(String((row as ReportRow).id), row as ReportRow))
+          if (page.length < SUPABASE_PAGE_SIZE) break
+        }
+      }
+      return [...rows.values()]
+        .sort((left, right) => String(right.updated_at).localeCompare(String(left.updated_at)) || String(left.id).localeCompare(String(right.id)))
+        .map(row => reportFromRow(row))
     },
 
     async getConfirmed() {

@@ -52,7 +52,10 @@ const shiftColumns = [
   'deletion_reason',
 ].join(',')
 
+const SUPABASE_PAGE_SIZE = 1000
+
 type Nullable<T> = { [Key in keyof T]: T[Key] | null }
+type Row = Record<string, unknown>
 type ShiftRow = Nullable<Shift> &
   Pick<
     Shift,
@@ -258,6 +261,7 @@ function updatePayload(data: Partial<Shift>): Record<string, unknown> {
 
 export interface SupabaseShiftRepository {
   getAll(includeDeleted?: boolean): Promise<Shift[]>
+  getAllComplete(): Promise<Shift[]>
   getArchivedShifts(): Promise<Shift[]>
   getById(id: string): Promise<Shift | null>
   getByDate(date: string): Promise<Shift[]>
@@ -285,6 +289,23 @@ export function createSupabaseShiftRepository(
       if (!includeDeleted) query = query.is('deleted_at', null).is('archived_at', null)
       const result = await query
       return optionalRows('shift read', result).map(row => shiftFromRow(row as unknown as ShiftRow))
+    },
+
+    async getAllComplete() {
+      const rows = new Map<string, Row>()
+      for (let offset = 0; ; offset += SUPABASE_PAGE_SIZE) {
+        const query = selectShifts()
+          .is('deleted_at', null)
+          .is('archived_at', null)
+          .order('date', { ascending: true })
+          .order('start_time', { ascending: true })
+          .order('id', { ascending: true })
+          .range(offset, offset + SUPABASE_PAGE_SIZE - 1)
+        const page = optionalRows('complete shift read', await query)
+        page.forEach(row => rows.set(String((row as unknown as Row).id), row as unknown as Row))
+        if (page.length < SUPABASE_PAGE_SIZE) break
+      }
+      return [...rows.values()].map(row => shiftFromRow(row as unknown as ShiftRow))
     },
 
     async getArchivedShifts() {
@@ -319,6 +340,7 @@ export function createSupabaseShiftRepository(
         .is('archived_at', null)
         .order('date', { ascending: true })
         .order('start_time', { ascending: true })
+        .order('id', { ascending: true })
       return optionalRows('shift date-range read', result)
         .map(row => shiftFromRow(row as unknown as ShiftRow))
     },

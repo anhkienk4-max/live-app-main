@@ -5,6 +5,7 @@ import type { Shift } from '../lib/types/database.types.ts'
 import {
   buildStudioFilterOptions,
   calendarTimeScope,
+  effectiveListTimeFilter,
   filterCalendarShifts,
   normalizeStudio,
   UNASSIGNED_STUDIO_FILTER,
@@ -74,6 +75,22 @@ test('time filtering is inclusive, business-local today, and follows currentDate
   assert.deepEqual(filterCalendarShifts(shifts, { ...baseFilters, time: 'current_month' }, '', context(new Date('2026-10-10T12:00:00Z'))).map(s => s.id), ['october'])
 })
 
+test('List defaults to current month while explicit All Time and Custom Range remain available', () => {
+  const shifts = [
+    shift('august', { date: '2026-08-31' }),
+    shift('september', { date: '2026-09-15' }),
+    shift('october', { date: '2026-10-01' }),
+  ]
+  const listDefaultFilters = { ...baseFilters, time: effectiveListTimeFilter(baseFilters.time) }
+  assert.deepEqual(filterCalendarShifts(shifts, listDefaultFilters, '', context()).map(item => item.id), ['september'])
+  assert.equal(effectiveListTimeFilter('all', 'all'), 'all')
+  assert.equal(effectiveListTimeFilter('all', 'custom'), 'custom')
+  assert.deepEqual(
+    filterCalendarShifts(shifts, { ...baseFilters, time: effectiveListTimeFilter('all', 'custom'), customFrom: '2026-08-31', customTo: '2026-10-01' }, '', context()).map(item => item.id),
+    ['august', 'september', 'october'],
+  )
+})
+
 test('studio normalization and options deduplicate case/whitespace and include unassigned values', () => {
   assert.equal(normalizeStudio('  STUDIO   A  '), 'studio a')
   const options = buildStudioFilterOptions([
@@ -128,16 +145,31 @@ test('existing role and status filters remain supported and invalid custom range
   assert.deepEqual(filterCalendarShifts(shifts, { ...baseFilters, time: 'custom', customFrom: '2026-09-20', customTo: '2026-09-10' }, '', context()).map(s => s.id), [])
 })
 
-test('Calendar uses one filtered dataset for stats, views, export, selection and pending scope', () => {
+test('Calendar preserves global view filtering and scopes List-only work separately', () => {
   const source = readFileSync(new URL('../components/features/calendar/CalendarView.tsx', import.meta.url), 'utf8')
   assert.match(source, /const filteredShifts = React\.useMemo\(/)
+  assert.match(source, /const listShifts = React\.useMemo\(/)
+  assert.match(source, /effectiveListTimeFilter\(filters\.time, listTimeOverride\)/)
   assert.match(source, /total: filteredShifts\.length/)
-  assert.match(source, /targetShifts = scope === 'selected'\s+\? filteredShifts\.filter/)
+  assert.match(source, /const exportShifts = view === 'list' \? listShifts : filteredShifts/)
+  assert.match(source, /targetShifts = scope === 'selected'\s+\? exportShifts\.filter/)
   assert.match(source, /<MonthView currentDate=\{currentDate\} shifts=\{filteredShifts\}/)
-  assert.match(source, /<ListView\s+shifts=\{filteredShifts\}/)
+  assert.match(source, /<ListView\s+shifts=\{listShifts\}/)
+  assert.match(source, /if \(view === 'month' \|\| view === 'list'\)/)
+  assert.match(source, /if \(listTimeFilter === 'all'\) return t\('allShifts'\)/)
   assert.match(source, /pendingRegistrationsInScope\(registrations, calendarScopeShifts\)/)
   assert.match(source, /brandIds: \[\]/)
   assert.match(source, /studios: \[\]/)
+})
+
+test('List pre-indexes row lookups and keeps registration work bounded to each visible shift', () => {
+  const source = readFileSync(new URL('../components/features/calendar/ListView.tsx', import.meta.url), 'utf8')
+  assert.match(source, /const brandsById = React\.useMemo\(\(\) => new Map/)
+  assert.match(source, /const platformsById = React\.useMemo\(\(\) => new Map/)
+  assert.match(source, /const usersById = React\.useMemo\(\(\) => new Map/)
+  assert.match(source, /const registrationsByShiftId = React\.useMemo/)
+  assert.match(source, /resolveStaffingLabelsForRole\(shift, shiftRegistrations, users, 'host', t, usersById\)/)
+  assert.doesNotMatch(source, /registrations\.filter\(r => r\.shift_id === shift\.id\)/)
 })
 
 test('categorical filters use OR within a dimension, AND across dimensions, and empty means all', () => {
