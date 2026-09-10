@@ -9,9 +9,9 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "integration/production-hardening-final",
-    "head": "ef64f41da1ece0719024eaff45932aee959daefe",
-    "origin_main": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
+    "branch": "feat/calendar-bulk-selection",
+    "head": "a85d2e9e12afefab54a97cdfba085d33363d13fb",
+    "origin_main": "da1b71a39c328dba5cd8265958b7e6fd695cb475",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-production-integration"
   },
   "hardening": {
@@ -69,9 +69,9 @@
         "lib": 152,
         "scripts": 14,
         "supabase": 59,
-        "tests": 113
+        "tests": 114
       },
-      "total": 457
+      "total": 458
     },
     "tests": {
       "files": [
@@ -178,13 +178,14 @@
         "tests/supabase-shift-runtime.test.ts",
         "tests/swap-request-modes.test.ts",
         "tests/swap-ui.test.ts",
+        "tests/swaps-filter-regression.test.ts",
         "tests/tiktok-layout-independent-ocr.test.ts",
         "tests/timezone-contract.test.ts",
         "tests/vision-ocr-phase-a.test.ts",
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 108
+      "count": 109
     },
     "migrations": {
       "files": [
@@ -247,5 +248,5 @@
     "lint": "FAIL_BASELINE",
     "build": "PASS"
   },
-  "synced_at": "2026-09-08T10:38:11+07:00"
+  "synced_at": "2026-09-10T16:57:43+07:00"
 }
