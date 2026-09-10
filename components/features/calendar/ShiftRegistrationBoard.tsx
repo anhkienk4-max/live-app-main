@@ -47,6 +47,7 @@ import { ShiftDetailModal } from '@/components/features/shifts/ShiftDetailModal'
 import { ShiftRegistrationActions } from '@/components/features/calendar/ShiftRegistrationActions'
 import { deriveStaffingAttention } from '@/lib/ui/operational-attention'
 import { AttentionBanner } from '@/components/ui/operational-status'
+import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import {
   buildStudioFilterOptions,
   calendarTimeScope,
@@ -84,6 +85,33 @@ const initialFilters: Filters = {
   registrationStatuses: [],
 }
 
+type OperationalLoadResult = { shifts: Shift[]; registrations: ShiftRegistration[] }
+type OperationalLoadState = {
+  active: boolean
+  latest: Promise<OperationalLoadResult | null> | null
+  value: number
+}
+
+const nextLoadVersion = (version: OperationalLoadState) => ++version.value
+const isCurrentLoadVersion = (version: OperationalLoadState, expected: number) => version.active && version.value === expected
+
+function useOperationalLoadState() {
+  const state = React.useRef<OperationalLoadState>({ active: true, latest: null, value: 0 })
+  const isActive = React.useCallback(() => state.current.active, [])
+  const nextVersion = React.useCallback(() => nextLoadVersion(state.current), [])
+  const isCurrent = React.useCallback((expected: number) => isCurrentLoadVersion(state.current, expected), [])
+  const getLatest = React.useCallback(() => state.current.active ? state.current.latest : null, [])
+  const setLatest = React.useCallback((request: Promise<OperationalLoadResult | null>) => { state.current.latest = request }, [])
+
+  React.useEffect(() => {
+    const loadState = state.current
+    loadState.active = true
+    return () => { loadState.active = false }
+  }, [])
+
+  return { getLatest, isActive, isCurrent, nextVersion, setLatest }
+}
+
 export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const { currentUser, loading: userLoading } = useCurrentUser()
   const { t } = useTranslation()
@@ -104,34 +132,60 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const [viewMode, setViewMode] = React.useState<ViewMode>('card')
   const [detailShift, setDetailShift] = React.useState<Shift | null>(null)
   const [showFilters, setShowFilters] = React.useState(false)
+  const { getLatest, isActive, isCurrent, nextVersion, setLatest } = useOperationalLoadState()
 
-  const loadData = React.useCallback(async () => {
-    setLoadError(null)
+  const loadReferenceData = React.useCallback(async () => {
     try {
-      const [loadedShifts, loadedRegistrations, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers] = await Promise.all([
-        shiftService.getAll(),
-        shiftRegistrationService.getAll(),
+      const [loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers] = await Promise.all([
         brandService.getAll(),
         platformService.getAll(),
         campaignService.getAll(),
         userService.getAll(),
       ])
-      setShifts(loadedShifts)
-      setRegistrations(loadedRegistrations)
+      if (!isActive()) return
       setBrands(loadedBrands)
       setPlatforms(loadedPlatforms)
       setCampaigns(loadedCampaigns)
       setUsers(loadedUsers)
-      setCapacities(Object.fromEntries(loadedShifts.map(shift => [
-        shift.id,
-        getShiftRoleCapacities(shift, loadedRegistrations),
-      ])))
     } catch (error) {
-      setLoadError(error)
-    } finally {
-      setLoading(false)
+      if (isActive()) setLoadError(error)
     }
-  }, [])
+  }, [isActive])
+
+  const loadRegistrationOperationalData = React.useCallback(() => {
+    const loadVersion = nextVersion()
+    const request = (async () => {
+      try {
+        const [loadedShifts, loadedRegistrations] = await Promise.all([
+          shiftService.getAll(),
+          shiftRegistrationService.getAll(),
+        ])
+        if (!isCurrent(loadVersion)) {
+          return getLatest()
+        }
+        setShifts(loadedShifts)
+        setRegistrations(loadedRegistrations)
+        setCapacities(Object.fromEntries(loadedShifts.map(shift => [
+          shift.id,
+          getShiftRoleCapacities(shift, loadedRegistrations),
+        ])))
+        return { shifts: loadedShifts, registrations: loadedRegistrations }
+      } catch (error) {
+        if (isCurrent(loadVersion)) setLoadError(error)
+        return null
+      } finally {
+        if (isCurrent(loadVersion)) setLoading(false)
+      }
+    })()
+    setLatest(request)
+    return request
+  }, [getLatest, isCurrent, nextVersion, setLatest])
+
+  const loadData = React.useCallback(async () => {
+    setLoadError(null)
+    setLoading(true)
+    await Promise.all([loadReferenceData(), loadRegistrationOperationalData()])
+  }, [loadReferenceData, loadRegistrationOperationalData])
 
   React.useEffect(() => {
     const frame = window.requestAnimationFrame(() => { void loadData() })
@@ -154,9 +208,9 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
     try {
       await action()
       toast({ title: t('success'), description: success, variant: 'success' })
-      await loadData()
-      if (openShiftId) {
-        const refreshedShift = await shiftService.getById(openShiftId)
+      const refreshed = await loadRegistrationOperationalData()
+      if (openShiftId && refreshed) {
+        const refreshedShift = refreshed.shifts.find(shift => shift.id === openShiftId)
         if (refreshedShift) setDetailShift(refreshedShift)
       }
     } catch (error) {
@@ -184,15 +238,21 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
 
   const confirmRemoval = async (reason: string) => {
     if (!currentUser || !removalTarget) return
+    const actionId = removalTarget.kind === 'cancel'
+      ? removalTarget.registration.id
+      : `remove-${removalTarget.registration.id}`
+    setBusyId(actionId)
     try {
       if (removalTarget.kind === 'cancel') await shiftRegistrationService.cancel(removalTarget.registration.id, currentUser.id, reason, removalTarget.registration.version)
       else await shiftRegistrationService.removeAssignment(removalTarget.registration.id, currentUser.id, reason, removalTarget.registration.version)
       toast({ title: t('success'), description: removalTarget.kind === 'cancel' ? t('registrationCancelled') : t('removeAssignment'), variant: 'success' })
       setRemovalTarget(null)
-      await loadData()
+      await loadRegistrationOperationalData()
     } catch (error) {
       toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
       throw error
+    } finally {
+      setBusyId(null)
     }
   }
 
@@ -257,7 +317,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
     visibleShifts.some(shift => shift.id === registration.shift_id)
   )
 
-  if (loading || userLoading || !currentUser) return <div className="py-12 text-center">{t('loading')}</div>
+  if (loading || userLoading || !currentUser) return <ContentSkeleton />
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
 
   return (
@@ -356,8 +416,8 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           <CardContent className="space-y-2 px-4 pb-4">
             {pendingApprovals.map(registration => {
               const shift = shifts.find(candidate => candidate.id === registration.shift_id)
-              const staff = users.find(user => user.id === registration.user_id)
-              if (!shift || !staff) return null
+              const staff = users.find(user => user.id === registration.user_id) || { full_name: registration.user_id }
+              if (!shift) return null
               return (
                 <div key={registration.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200/50 bg-background/80 p-3 shadow-sm">
                   <div>
@@ -587,17 +647,17 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
             void (async () => {
               if (updatedShift) {
                 setDetailShift(updatedShift)
-                await loadData()
+                await loadRegistrationOperationalData()
               } else {
-                await loadData()
-                const refreshed = await shiftService.getById(detailShift.id)
-                if (refreshed) setDetailShift({ ...refreshed })
+                const refreshed = await loadRegistrationOperationalData()
+                const refreshedShift = refreshed?.shifts.find(shift => shift.id === detailShift.id)
+                if (refreshedShift) setDetailShift({ ...refreshedShift })
               }
             })()
           }}
           onDelete={() => {
             setDetailShift(null)
-            void loadData()
+            void loadRegistrationOperationalData()
           }}
         />
       )}

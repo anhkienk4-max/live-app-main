@@ -32,6 +32,7 @@ export function ShiftRegistrationActions({
 }: ShiftRegistrationActionsProps) {
   const { t } = useTranslation()
   const [busyRole, setBusyRole] = React.useState<OperationalRole | null>(null)
+  const capacities = React.useMemo(() => getShiftRoleCapacities(shift, registrations), [registrations, shift])
 
   if (!currentUser || !hasPermission(currentUser, 'shifts.register')) return null
 
@@ -44,7 +45,6 @@ export function ShiftRegistrationActions({
 
   const visibleStates = states.filter(state => !role || state.role === role)
   if (visibleStates.length === 0) return null
-  const capacities = getShiftRoleCapacities(shift, registrations)
 
   const runRegister = async (state: RegistrationCtaResult) => {
     if (busyRole || disabled) return
