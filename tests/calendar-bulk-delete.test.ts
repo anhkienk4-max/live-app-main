@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import { currentUserService, shiftService } from '../lib/services/dataService.ts'
 import type { Shift } from '../lib/types/database.types.ts'
+import { getVisibleShiftSelection, toggleAllVisibleShiftSelection } from '../lib/utils/calendarFilters.ts'
 
 const admin = {
   id: '1',
@@ -46,6 +48,83 @@ async function withMockEnvironment(run: () => Promise<void>) {
     process.env.NEXT_PUBLIC_USE_MOCK_DATA = previousMockFlag
   }
 }
+
+const visibleShifts = [{ id: 'shift-a' }, { id: 'shift-b' }]
+const calendarSource = readFileSync(new URL('../components/features/calendar/CalendarView.tsx', import.meta.url), 'utf8')
+const exportActionsSource = calendarSource.slice(
+  calendarSource.indexOf("{hasPermission(currentUser, 'shifts.export') && ("),
+  calendarSource.indexOf('{canSelectListShifts && ('),
+)
+const deleteActionsSource = calendarSource.slice(
+  calendarSource.indexOf("{view === 'list' && currentUser && hasPermission(currentUser, 'shifts.delete') && ("),
+  calendarSource.indexOf("{currentUser && hasPermission(currentUser, 'shifts.approve_registration') && ("),
+)
+
+test('export-only users can bulk select and export without exposing delete', () => {
+  assert.match(calendarSource, /const canSelectListShifts = view === 'list' && !!currentUser && \([\s\S]{0,120}'shifts\.export'\) \|\| hasPermission\(currentUser, 'shifts\.delete'\)/)
+  assert.match(calendarSource, /\{canSelectListShifts && \([\s\S]{0,500}data-testid="toggle-all-visible-shifts"/)
+  assert.match(exportActionsSource, /data-testid="export-selected-xlsx"/)
+  assert.doesNotMatch(exportActionsSource, /open-bulk-delete-shifts/)
+  assert.match(deleteActionsSource, /data-testid="open-bulk-delete-shifts"/)
+})
+
+test('delete-only users can bulk select and delete without exposing export', () => {
+  assert.match(calendarSource, /const canSelectListShifts = view === 'list' && !!currentUser && \([\s\S]{0,120}'shifts\.delete'\)/)
+  assert.match(calendarSource, /\{canSelectListShifts && \([\s\S]{0,500}data-testid="toggle-all-visible-shifts"/)
+  assert.match(deleteActionsSource, /data-testid="open-bulk-delete-shifts"/)
+  assert.doesNotMatch(deleteActionsSource, /export-selected-(?:xlsx|csv)/)
+  assert.match(exportActionsSource, /data-testid="export-selected-xlsx"/)
+})
+
+test('users without export or delete do not receive list selection controls', () => {
+  assert.match(calendarSource, /selectedShiftIds=\{canSelectListShifts \? selectedVisibleShiftIdSet : undefined\}/)
+  assert.match(calendarSource, /onToggleSelectShift=\{canSelectListShifts \? toggleSelectShift : undefined\}/)
+})
+
+test('select all selects only visible filtered shifts', () => {
+  const selected = toggleAllVisibleShiftSelection(visibleShifts, new Set(['hidden-shift']))
+  assert.deepEqual([...selected], ['shift-a', 'shift-b'])
+})
+
+test('select all toggles to deselect all when every visible shift is selected', () => {
+  const selected = toggleAllVisibleShiftSelection(visibleShifts, new Set(['shift-a', 'shift-b']))
+  assert.deepEqual([...selected], [])
+})
+
+test('filter changes drop selected shifts that are no longer visible', () => {
+  const selection = getVisibleShiftSelection([{ id: 'shift-b' }], new Set(['shift-a', 'shift-b']))
+  assert.deepEqual(selection.selectedVisibleShiftIds, ['shift-b'])
+})
+
+test('delete selection contains only currently selected visible shifts', () => {
+  const selection = getVisibleShiftSelection(visibleShifts, new Set(['shift-b', 'hidden-shift']))
+  assert.deepEqual(selection.selectedVisibleShiftIds, ['shift-b'])
+
+  assert.match(calendarSource, /data-testid="toggle-all-visible-shifts"/)
+  assert.match(calendarSource, /aria-checked=\{visibleSelection\.allVisibleSelected \? true : visibleSelection\.partiallySelected \? 'mixed' : false\}/)
+  assert.match(calendarSource, /selectedShifts=\{filteredShifts\.filter\(shift => selectedVisibleShiftIdSet\.has\(shift\.id\)\)\}/)
+})
+
+test('selected count follows the visible selected set', () => {
+  const selection = getVisibleShiftSelection(visibleShifts, new Set(['shift-a', 'hidden-shift']))
+  assert.equal(selection.selectedVisibleShiftIds.length, 1)
+})
+
+test('selected export remains limited to visible filtered shifts', () => {
+  const selection = getVisibleShiftSelection(visibleShifts, new Set(['shift-b', 'hidden-shift']))
+  assert.deepEqual(selection.selectedVisibleShiftIds, ['shift-b'])
+  assert.match(calendarSource, /scope === 'selected'[\s\S]{0,120}filteredShifts\.filter\(s => selectedVisibleShiftIdSet\.has\(s\.id\)\)/)
+})
+
+test('selection state distinguishes none, partial, and all visible', () => {
+  const none = getVisibleShiftSelection(visibleShifts, new Set())
+  const partial = getVisibleShiftSelection(visibleShifts, new Set(['shift-a']))
+  const all = getVisibleShiftSelection(visibleShifts, new Set(['shift-a', 'shift-b']))
+
+  assert.deepEqual([none.partiallySelected, none.allVisibleSelected], [false, false])
+  assert.deepEqual([partial.partiallySelected, partial.allVisibleSelected], [true, false])
+  assert.deepEqual([all.partiallySelected, all.allVisibleSelected], [false, true])
+})
 
 test('bulkRemove with no selection is a no-op', async () => {
   await withMockEnvironment(async () => {

@@ -41,6 +41,29 @@ export interface StudioFilterOption {
   label: string
 }
 
+export function getVisibleShiftSelection(
+  visibleShifts: readonly Pick<Shift, 'id'>[],
+  selectedShiftIds: ReadonlySet<string>,
+) {
+  const visibleShiftIds = visibleShifts.map(shift => shift.id)
+  const selectedVisibleShiftIds = visibleShiftIds.filter(id => selectedShiftIds.has(id))
+  const allVisibleSelected = visibleShiftIds.length > 0 && selectedVisibleShiftIds.length === visibleShiftIds.length
+  return {
+    visibleShiftIds,
+    selectedVisibleShiftIds,
+    allVisibleSelected,
+    partiallySelected: selectedVisibleShiftIds.length > 0 && !allVisibleSelected,
+  }
+}
+
+export function toggleAllVisibleShiftSelection(
+  visibleShifts: readonly Pick<Shift, 'id'>[],
+  selectedShiftIds: ReadonlySet<string>,
+): Set<string> {
+  const { visibleShiftIds, allVisibleSelected } = getVisibleShiftSelection(visibleShifts, selectedShiftIds)
+  return new Set(allVisibleSelected ? [] : visibleShiftIds)
+}
+
 export function normalizeStudio(value: unknown): string {
   return String(value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase()
 }

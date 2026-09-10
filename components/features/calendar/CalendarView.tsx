@@ -59,6 +59,8 @@ import {
   buildStudioFilterOptions,
   filterCalendarShifts,
   calendarTimeScope,
+  getVisibleShiftSelection,
+  toggleAllVisibleShiftSelection,
   UNASSIGNED_STUDIO_FILTER,
   type CalendarFilterState,
 } from '@/lib/utils/calendarFilters'
@@ -106,6 +108,9 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const [searchTerm, setSearchTerm] = React.useState('')
   const [selectedShiftIds, setSelectedShiftIds] = React.useState<Set<string>>(new Set())
   const [filters, setFilters] = React.useState<CalendarFilterState>(DEFAULT_CALENDAR_FILTERS)
+  const canSelectListShifts = view === 'list' && !!currentUser && (
+    hasPermission(currentUser, 'shifts.export') || hasPermission(currentUser, 'shifts.delete')
+  )
 
   const loadData = React.useCallback(async () => {
     setLoading(true)
@@ -173,6 +178,23 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     }),
     [shifts, filters, searchTerm, currentDate, brands, platforms, campaigns, registrations],
   )
+  const [selectionScope, setSelectionScope] = React.useState(filteredShifts)
+  if (selectionScope !== filteredShifts) {
+    setSelectionScope(filteredShifts)
+    setSelectedShiftIds(current => {
+      const next = new Set(getVisibleShiftSelection(filteredShifts, current).selectedVisibleShiftIds)
+      return next.size === current.size ? current : next
+    })
+  }
+  const visibleSelection = React.useMemo(
+    () => getVisibleShiftSelection(filteredShifts, selectedShiftIds),
+    [filteredShifts, selectedShiftIds],
+  )
+  const selectedVisibleShiftIdSet = React.useMemo(
+    () => new Set(visibleSelection.selectedVisibleShiftIds),
+    [visibleSelection.selectedVisibleShiftIds],
+  )
+
   const studioOptions = React.useMemo(() => buildStudioFilterOptions(shifts), [shifts])
   const timeScope = React.useMemo(
     () => calendarTimeScope(filters.time, currentDate, filters.customFrom, filters.customTo),
@@ -238,9 +260,13 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     })
   }
 
+  const toggleAllVisibleShifts = () => {
+    setSelectedShiftIds(current => toggleAllVisibleShiftSelection(filteredShifts, current))
+  }
+
   const handleExport = (formatType: 'xlsx' | 'csv', scope: 'filtered' | 'selected') => {
     const targetShifts = scope === 'selected'
-      ? filteredShifts.filter(s => selectedShiftIds.has(s.id))
+      ? filteredShifts.filter(s => selectedVisibleShiftIdSet.has(s.id))
       : filteredShifts
 
     if (targetShifts.length === 0) {
@@ -354,9 +380,9 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                     <Button variant="outline" size="sm" data-testid="export-schedule-dropdown-btn">
                       <Download className="h-4 w-4 mr-2" />
                       {t('exportExcel')}
-                      {selectedShiftIds.size > 0 && (
+                      {visibleSelection.selectedVisibleShiftIds.length > 0 && (
                         <span className="ml-2 bg-blue-600 text-white rounded-full px-1.5 py-0.5 text-xs">
-                          {selectedShiftIds.size}
+                          {visibleSelection.selectedVisibleShiftIds.length}
                         </span>
                       )}
                     </Button>
@@ -374,7 +400,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={() => handleExport('xlsx', 'selected')}
-                    disabled={selectedShiftIds.size === 0}
+                    disabled={visibleSelection.selectedVisibleShiftIds.length === 0}
                     data-testid="export-selected-xlsx"
                   >
                     <FileSpreadsheet className="h-4 w-4 mr-2" />
@@ -382,7 +408,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => handleExport('csv', 'selected')}
-                    disabled={selectedShiftIds.size === 0}
+                    disabled={visibleSelection.selectedVisibleShiftIds.length === 0}
                     data-testid="export-selected-csv"
                   >
                     <FileText className="h-4 w-4 mr-2" />
@@ -397,16 +423,29 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                 {t('newShift')}
               </Button>
             )}
+            {canSelectListShifts && (
+              <Button
+                variant="outline"
+                size="sm"
+                role="checkbox"
+                aria-checked={visibleSelection.allVisibleSelected ? true : visibleSelection.partiallySelected ? 'mixed' : false}
+                onClick={toggleAllVisibleShifts}
+                disabled={visibleSelection.visibleShiftIds.length === 0}
+                data-testid="toggle-all-visible-shifts"
+              >
+                {visibleSelection.allVisibleSelected ? t('deselectAll') : t('selectAll')}
+              </Button>
+            )}
             {view === 'list' && currentUser && hasPermission(currentUser, 'shifts.delete') && (
               <Button
                 variant="destructive"
                 size="sm"
                 onClick={() => setShowBulkDelete(true)}
-                disabled={selectedShiftIds.size === 0}
+                disabled={visibleSelection.selectedVisibleShiftIds.length === 0}
                 data-testid="open-bulk-delete-shifts"
               >
                 <Trash2 className="mr-2 h-4 w-4" />
-                {t('deleteSelectedCount', { count: selectedShiftIds.size })}
+                {t('deleteSelectedCount', { count: visibleSelection.selectedVisibleShiftIds.length })}
               </Button>
             )}
             {currentUser && hasPermission(currentUser, 'shifts.approve_registration') && (
@@ -526,8 +565,8 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
             currentUser={currentUser}
             onRegister={registerForShift}
             onShiftClick={setSelectedShift}
-            selectedShiftIds={selectedShiftIds}
-            onToggleSelectShift={toggleSelectShift}
+            selectedShiftIds={canSelectListShifts ? selectedVisibleShiftIdSet : undefined}
+            onToggleSelectShift={canSelectListShifts ? toggleSelectShift : undefined}
           />
         )}
       </Card>
@@ -595,7 +634,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         <BulkDeleteShiftsDialog
           open={showBulkDelete}
           onOpenChange={setShowBulkDelete}
-          selectedShifts={filteredShifts.filter(shift => selectedShiftIds.has(shift.id))}
+          selectedShifts={filteredShifts.filter(shift => selectedVisibleShiftIdSet.has(shift.id))}
           brands={brands}
           platforms={platforms}
           onSuccess={(deletedIds) => {
