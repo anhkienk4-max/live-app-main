@@ -52,10 +52,13 @@ test('brand plus role filtering keeps only matching shifts and reset restores ev
   assert.deepEqual(getVisibleOperationalRoles('all'), ['host', 'support', 'technical'])
 })
 
-test('table role filtering emits one row per selected role while preserving combined/reset behavior', () => {
+test('table role filtering keeps one row per shift with selected roles summarized', () => {
   const source = readFileSync(new URL('../components/features/calendar/ShiftRegistrationBoard.tsx', import.meta.url), 'utf8')
   assert.match(source, /roleFilter=\{filters\.roles\}/)
-  assert.match(source, /getVisibleOperationalRoles\(roleFilter\)\.map\(role => <tr/)
+  assert.match(source, /<tbody>\{shifts\.map\(shift => \{/)
+  assert.match(source, /data-testid=\{`open-shift-row-\$\{shift\.id\}`\} key=\{shift\.id\}/)
+  assert.match(source, /getVisibleRoleCapacities\(getShiftRoleCapacities\(shift, registrations\), roleFilter\)/)
+  assert.doesNotMatch(source, /shifts\.flatMap\(/)
   assert.match(source, /setFilters\(initialFilters\)/)
   assert.match(source, /getVisibleRoleCapacities\(capacities\[shift\.id\] \|\| \[\], filters\.roles\)/)
   assert.match(source, /matchesRoleFilter\(registration, filters\.roles\)/)

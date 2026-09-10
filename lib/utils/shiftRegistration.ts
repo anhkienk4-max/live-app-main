@@ -16,6 +16,15 @@ export interface RegistrationCtaResult {
   registration?: ShiftRegistration
 }
 
+export async function runEligibleRegistration(
+  result: RegistrationCtaResult,
+  onRegister: (role: OperationalRole) => Promise<void>,
+): Promise<boolean> {
+  if (result.state !== 'eligible') return false
+  await onRegister(result.role)
+  return true
+}
+
 const roles: OperationalRole[] = ['host', 'support', 'technical']
 const requiredField: Record<OperationalRole, 'required_host_count' | 'required_support_count' | 'required_technical_count'> = {
   host: 'required_host_count',
