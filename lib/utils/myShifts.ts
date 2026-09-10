@@ -7,17 +7,18 @@ export type MyShiftFilters = {
   platform: string | readonly string[]
   campaign: string | readonly string[]
   role: string | readonly string[]
+  registrationStatus?: string | readonly string[]
 }
 
 export type MyShiftEntry = {
   shift: Shift
-  registration: ShiftRegistration
+  registrations: ShiftRegistration[]
 }
 
 const activeStatuses = new Set(['pending', 'approved', 'manually_assigned'])
 
 /**
- * Return the canonical, one-row-per-registration projection for "My Shifts".
+ * Return the canonical, one-row-per-shift projection for "My Shifts".
  * Imported staffing labels and shift capacity slots are deliberately ignored.
  */
 export function selectMyShiftEntries({
@@ -32,10 +33,10 @@ export function selectMyShiftEntries({
   filters: MyShiftFilters
 }): MyShiftEntry[] {
   const shiftsById = new Map(shifts.map(shift => [shift.id, shift]))
-  return registrations
+  const entries = registrations
     .filter(registration => registration.user_id === userId && activeStatuses.has(registration.status))
     .map(registration => ({ shift: shiftsById.get(registration.shift_id), registration }))
-    .filter((entry): entry is MyShiftEntry => Boolean(entry.shift))
+    .filter((entry): entry is { shift: Shift; registration: ShiftRegistration } => Boolean(entry.shift))
     .filter(({ shift, registration }) => {
       if (filters.date && shift.date !== filters.date) return false
       const matches = (candidate: string, selected: string | readonly string[]) => Array.isArray(selected)
@@ -45,10 +46,18 @@ export function selectMyShiftEntries({
       if (!matches(shift.platform_id, filters.platform)) return false
       if (!matches(shift.campaign_id || '', filters.campaign)) return false
       if (!matches(registration.operational_role, filters.role)) return false
+      if (filters.registrationStatus && !matches(registration.status, filters.registrationStatus)) return false
       return true
     })
-    .sort((left, right) => {
-      const byTime = `${left.shift.date}${left.shift.start_time}`.localeCompare(`${right.shift.date}${right.shift.start_time}`)
-      return byTime || left.registration.operational_role.localeCompare(right.registration.operational_role) || left.registration.id.localeCompare(right.registration.id)
-    })
+
+  const byShift = new Map<string, MyShiftEntry>()
+  for (const { shift, registration } of entries) {
+    const entry = byShift.get(shift.id)
+    if (entry) entry.registrations.push(registration)
+    else byShift.set(shift.id, { shift, registrations: [registration] })
+  }
+
+  return [...byShift.values()].sort((left, right) =>
+    `${left.shift.date}${left.shift.start_time}`.localeCompare(`${right.shift.date}${right.shift.start_time}`)
+  )
 }

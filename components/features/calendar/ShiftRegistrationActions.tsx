@@ -4,9 +4,10 @@ import * as React from 'react'
 import type { OperationalRole, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import { hasPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
-import { resolveRegistrationCta, type RegistrationCtaResult } from '@/lib/utils/shiftRegistration'
-import { Badge } from '@/components/ui/badge'
+import { getShiftRoleCapacities } from '@/lib/services/dataService'
+import { resolveRegistrationCta, runEligibleRegistration, type RegistrationCtaResult } from '@/lib/utils/shiftRegistration'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 
 interface ShiftRegistrationActionsProps {
   allShifts?: Shift[]
@@ -31,6 +32,7 @@ export function ShiftRegistrationActions({
 }: ShiftRegistrationActionsProps) {
   const { t } = useTranslation()
   const [busyRole, setBusyRole] = React.useState<OperationalRole | null>(null)
+  const capacities = React.useMemo(() => getShiftRoleCapacities(shift, registrations), [registrations, shift])
 
   if (!currentUser || !hasPermission(currentUser, 'shifts.register')) return null
 
@@ -41,51 +43,71 @@ export function ShiftRegistrationActions({
     user: currentUser,
   })
 
-  const visibleStates = states.filter(state => state.state !== 'not_eligible' && (!role || state.role === role))
+  const visibleStates = states.filter(state => !role || state.role === role)
   if (visibleStates.length === 0) return null
 
   const runRegister = async (state: RegistrationCtaResult) => {
-    if (state.state !== 'eligible' || busyRole || disabled) return
+    if (busyRole || disabled) return
     setBusyRole(state.role)
     try {
-      await onRegister(state.role)
+      await runEligibleRegistration(state, onRegister)
     } finally {
       setBusyRole(null)
     }
   }
 
   return (
-    <div className={`flex flex-wrap items-center gap-2 ${compact ? '' : 'border-t pt-3'}`} data-testid={`shift-registration-actions-${shift.id}`}>
-      {visibleStates.map(state => {
-        const label = t(state.role)
-        if (state.state === 'eligible') {
-          return (
-            <Button
-              data-testid={`register-shift-${shift.id}-${state.role}`}
-              disabled={disabled || busyRole !== null}
-              key={state.role}
-              onClick={() => void runRegister(state)}
-              size="sm"
-              type="button"
-            >
-              {t('registerForRole', { role: label })}
-            </Button>
-          )
+    <Dialog>
+      <DialogTrigger
+        render={
+          <Button
+            className={compact ? 'h-8' : undefined}
+            data-testid={`open-registration-roles-${shift.id}`}
+            disabled={disabled}
+            size="sm"
+            type="button"
+          />
         }
-        if (state.state === 'pending') {
-          return <Badge key={state.role} variant="secondary">{label}: {t('registrationPending')}</Badge>
-        }
-        if (state.state === 'approved') {
-          return <Badge key={state.role} variant="secondary">{label}: {t('registrationApproved')}</Badge>
-        }
-        if (state.state === 'full') {
-          return <Badge key={state.role} variant="outline">{label}: {t('full')}</Badge>
-        }
-        if (state.state === 'conflict') {
-          return <Badge key={state.role} variant="outline">{label}: {t('scheduleConflict')}</Badge>
-        }
-        return <Badge key={state.role} variant="outline">{label}: {t('registrationClosed')}</Badge>
-      })}
-    </div>
+      >
+        {t('register')}
+      </DialogTrigger>
+      <DialogContent data-testid={`registration-role-dialog-${shift.id}`} size="sm">
+        <DialogHeader>
+          <DialogTitle>{t('register')}</DialogTitle>
+          <DialogDescription>{t('registrationStatus')}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2" data-testid={`registration-role-options-${shift.id}`}>
+          {visibleStates.map(state => {
+            const capacity = capacities.find(item => item.role === state.role)
+            const stateLabel = state.state === 'eligible' ? t('register')
+              : state.state === 'pending' ? t('pending')
+              : state.state === 'approved' ? t('approved')
+              : state.state === 'full' ? t('full')
+              : state.state === 'conflict' ? t('scheduleConflict')
+              : state.state === 'closed' ? t('registrationClosed')
+              : t('roleNotEligible')
+            return (
+              <div className="flex items-center justify-between gap-3 rounded-lg border p-3" data-testid={`registration-role-${shift.id}-${state.role}-${state.state}`} key={state.role}>
+                <div className="min-w-0">
+                  <p className="font-medium">{t(state.role)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t('confirmedCount')}: {capacity?.approved ?? 0}/{capacity?.required ?? 0} · {t('pending')}: {capacity?.pending ?? 0}
+                  </p>
+                </div>
+                <Button
+                  data-testid={`register-shift-${shift.id}-${state.role}`}
+                  disabled={disabled || busyRole !== null || state.state !== 'eligible'}
+                  onClick={() => void runRegister(state)}
+                  size="sm"
+                  type="button"
+                >
+                  {busyRole === state.role ? t('loading') : stateLabel}
+                </Button>
+              </div>
+            )
+          })}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }

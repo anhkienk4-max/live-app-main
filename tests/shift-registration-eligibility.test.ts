@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { Shift, ShiftRegistration, User } from '@/lib/types/database.types'
-import { resolveRegistrationCta } from '@/lib/utils/shiftRegistration'
+import { resolveRegistrationCta, runEligibleRegistration, type RegistrationCtaState } from '@/lib/utils/shiftRegistration'
 
 const user: User = {
   id: 'member-1',
@@ -83,6 +83,39 @@ test('shift registration eligibility', async (t) => {
     assert.equal(stateFor(shift({ registration_locked: true }), 'host'), 'closed')
     assert.equal(stateFor(shift({ registration_cutoff_at: '2026-08-26T23:59:00.000Z' }), 'host'), 'closed')
   })
+})
+
+test('only an eligible canonical role state can execute registration', async () => {
+  const calls: string[] = []
+  const register = async (role: 'host' | 'support' | 'technical') => { calls.push(role) }
+
+  assert.equal(await runEligibleRegistration({ role: 'host', state: 'eligible' }, register), true)
+  for (const state of ['full', 'conflict', 'closed', 'not_eligible', 'pending', 'approved'] satisfies RegistrationCtaState[]) {
+    assert.equal(await runEligibleRegistration({ role: 'support', state }, register), false)
+  }
+  assert.deepEqual(calls, ['host'])
+})
+
+test('registration surfaces expose one permission-gated role dialog backed by canonical state and capacity', () => {
+  const root = resolve(process.cwd())
+  const actions = readFileSync(resolve(root, 'components/features/calendar/ShiftRegistrationActions.tsx'), 'utf8')
+  const board = readFileSync(resolve(root, 'components/features/calendar/ShiftRegistrationBoard.tsx'), 'utf8')
+
+  assert.match(actions, /if \(!currentUser \|\| !hasPermission\(currentUser, 'shifts\.register'\)\) return null/)
+  assert.match(actions, /resolveRegistrationCta\(/)
+  assert.match(actions, /getShiftRoleCapacities\(shift, registrations\)/)
+  assert.match(actions, /data-testid=\{`registration-role-dialog-/)
+  assert.match(actions, /state\.state !== 'eligible'/)
+  for (const state of ['eligible', 'pending', 'approved', 'full', 'conflict', 'closed']) {
+    assert.match(actions, new RegExp(`state\\.state === '${state}'|state: '${state}'`))
+  }
+  assert.match(actions, /const visibleStates = states\.filter\(state => !role \|\| state\.role === role\)/)
+  assert.match(actions, /: t\('roleNotEligible'\)/)
+
+  assert.doesNotMatch(board, /shifts\.flatMap\(/)
+  assert.match(board, /shifts\.map\(shift => \{/)
+  assert.equal(board.match(/<ShiftRegistrationActions/g)?.length, 3)
+  assert.match(board, /data-testid=\{`open-shift-row-\$\{shift\.id\}`\} key=\{shift\.id\}/)
 })
 
 test('calendar day, list and detail surfaces use the shared registration actions', () => {

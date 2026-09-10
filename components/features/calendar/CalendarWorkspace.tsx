@@ -30,6 +30,7 @@ export function CalendarWorkspace() {
       : "calendar",
   );
   const [createRequest, setCreateRequest] = React.useState(0);
+  const [visitedTabs, setVisitedTabs] = React.useState(() => new Set([tab]));
 
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -60,6 +61,7 @@ export function CalendarWorkspace() {
       if (nextTab !== tab) {
         setTab(nextTab);
       }
+      setVisitedTabs((current) => current.has(nextTab) ? current : new Set(current).add(nextTab));
 
       if (action) {
         const next = new URLSearchParams(searchParams.toString());
@@ -73,6 +75,7 @@ export function CalendarWorkspace() {
 
   const handleTabChange = (value: string) => {
     setTab(value);
+    setVisitedTabs((current) => current.has(value) ? current : new Set(current).add(value));
     const next = new URLSearchParams(searchParams.toString());
     next.set("tab", value);
     const qs = next.toString();
@@ -126,11 +129,11 @@ export function CalendarWorkspace() {
       <TabsContent className="min-w-0 w-full" value="calendar">
         <CalendarView createRequest={createRequest} />
       </TabsContent>
-      <TabsContent className="min-w-0 w-full" value="open">
-        <ShiftRegistrationBoard mode="open" />
+      <TabsContent className="min-w-0 w-full" keepMounted value="open">
+        {visitedTabs.has("open") && <ShiftRegistrationBoard mode="open" />}
       </TabsContent>
-      <TabsContent className="min-w-0 w-full" value="mine">
-        <ShiftRegistrationBoard mode="mine" />
+      <TabsContent className="min-w-0 w-full" keepMounted value="mine">
+        {visitedTabs.has("mine") && <ShiftRegistrationBoard mode="mine" />}
       </TabsContent>
       <TabsContent className="min-w-0 w-full" value="import">
         <ScheduleImportPanel />
