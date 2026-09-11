@@ -6,6 +6,13 @@ import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
 export type CalendarTimeFilter = 'all' | 'today' | 'current_week' | 'current_month' | 'custom'
 export const UNASSIGNED_STUDIO_FILTER = '__unassigned__'
 
+export function effectiveListTimeFilter(
+  time: CalendarTimeFilter,
+  explicitTime?: CalendarTimeFilter | null,
+): CalendarTimeFilter {
+  return explicitTime ?? (time === 'all' ? 'current_month' : time)
+}
+
 export interface CalendarFilterState {
   brandIds: string[]
   platformIds: string[]

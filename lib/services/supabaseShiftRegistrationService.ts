@@ -28,6 +28,9 @@ const registrationColumns = [
   'version',
 ].join(',')
 
+const SUPABASE_PAGE_SIZE = 1000
+const SHIFT_ID_BATCH_SIZE = 100
+
 const shiftColumns = [
   'id',
   'date',
@@ -147,6 +150,15 @@ function optionalRows<T>(
   return result.data ?? []
 }
 
+function uniqueBatches(ids: string[]): string[][] {
+  const uniqueIds = [...new Set(ids)]
+  const batches: string[][] = []
+  for (let index = 0; index < uniqueIds.length; index += SHIFT_ID_BATCH_SIZE) {
+    batches.push(uniqueIds.slice(index, index + SHIFT_ID_BATCH_SIZE))
+  }
+  return batches
+}
+
 function registrationFromRow(row: RegistrationRow): ShiftRegistration {
   return {
     id: row.id,
@@ -242,6 +254,7 @@ export const isStaffedRegistration = (
 export interface SupabaseShiftRegistrationRepository {
   getAll(): Promise<ShiftRegistration[]>
   getForShift(shiftId: string): Promise<ShiftRegistration[]>
+  getForShifts?(shiftIds: string[]): Promise<ShiftRegistration[]>
   getForUser(userId: string): Promise<ShiftRegistration[]>
   getCapacity(shiftId: string): Promise<ShiftRoleCapacity[]>
   getMyApprovedShifts(userId: string): Promise<Shift[]>
@@ -310,6 +323,26 @@ export function createSupabaseShiftRegistrationRepository(
         .order('requested_at', { ascending: true })
       return optionalRows('registration shift read', result)
         .map(row => registrationFromRow(row as unknown as RegistrationRow))
+    },
+
+    async getForShifts(shiftIds) {
+      if (shiftIds.length === 0) return []
+      const rows = new Map<string, RegistrationRow>()
+      for (const batch of uniqueBatches(shiftIds)) {
+        for (let offset = 0; ; offset += SUPABASE_PAGE_SIZE) {
+          const result = await selectRegistrations()
+            .in('shift_id', batch)
+            .order('requested_at', { ascending: true })
+            .order('id', { ascending: true })
+            .range(offset, offset + SUPABASE_PAGE_SIZE - 1)
+          const page = optionalRows('registration shifts read', result)
+          page.forEach(row => rows.set(String((row as unknown as RegistrationRow).id), row as unknown as RegistrationRow))
+          if (page.length < SUPABASE_PAGE_SIZE) break
+        }
+      }
+      return [...rows.values()]
+        .sort((left, right) => String(left.requested_at).localeCompare(String(right.requested_at)) || String(left.id).localeCompare(String(right.id)))
+        .map(row => registrationFromRow(row))
     },
 
     async getForUser(userId) {

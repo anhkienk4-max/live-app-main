@@ -1,5 +1,6 @@
 'use client'
 
+import * as React from 'react'
 import { Shift, Brand, Platform, User, ShiftRegistration, OperationalRole } from '@/lib/types/database.types'
 import { ShiftStatusBadge } from '@/components/domain/ShiftStatusBadge'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -41,21 +42,65 @@ export function ListView({
   onToggleSelectShift,
 }: ListViewProps) {
   const { t } = useTranslation()
-  const getBrandName = (brandId: string) => brands.find(b => b.id === brandId)?.name || 'Unknown'
-  const getPlatformName = (platformId: string) => platforms.find(p => p.id === platformId)?.name || 'Unknown'
-  const getBrandColor = (brandId: string) => brands.find(b => b.id === brandId)?.color || '#2563EB'
-  const getRoleStaffingNames = (shift: Shift, role: OperationalRole) => {
-    return resolveStaffingLabelsForRole(shift, registrations, users, role, t)
-      .map(l => l.name)
-      .join(', ')
-  }
+  const brandsById = React.useMemo(() => new Map(brands.map(brand => [brand.id, brand])), [brands])
+  const platformsById = React.useMemo(() => new Map(platforms.map(platform => [platform.id, platform])), [platforms])
+  const usersById = React.useMemo(() => new Map(users.map(user => [user.id, user])), [users])
+  const registrationsByShiftId = React.useMemo(() => {
+    const byShiftId = new Map<string, ShiftRegistration[]>()
+    registrations.forEach(registration => {
+      const shiftRegistrations = byShiftId.get(registration.shift_id) ?? []
+      shiftRegistrations.push(registration)
+      byShiftId.set(registration.shift_id, shiftRegistrations)
+    })
+    return byShiftId
+  }, [registrations])
 
-  const sortedShifts = [...shifts].sort((a, b) => {
+  const sortedShifts = React.useMemo(() => [...shifts].sort((a, b) => {
     if (a.date !== b.date) return a.date.localeCompare(b.date)
     return a.start_time.localeCompare(b.start_time)
-  })
+  }), [shifts])
+  const todayDate = getCurrentBusinessDate()
 
-  if (sortedShifts.length === 0) {
+  const rows = React.useMemo(() => sortedShifts.map(shift => {
+    const shiftRegistrations = registrationsByShiftId.get(shift.id) ?? []
+    let pendingCount = 0
+    const staffed = { host: 0, support: 0, technical: 0 }
+    for (const registration of shiftRegistrations) {
+      if (registration.status === 'pending') pendingCount += 1
+      if (isStaffedRegistration(registration)) staffed[registration.operational_role] += 1
+    }
+
+    const staffingNames = {
+      host: resolveStaffingLabelsForRole(shift, shiftRegistrations, users, 'host', t, usersById).map(label => label.name).join(', '),
+      support: resolveStaffingLabelsForRole(shift, shiftRegistrations, users, 'support', t, usersById).map(label => label.name).join(', '),
+      technical: resolveStaffingLabelsForRole(shift, shiftRegistrations, users, 'technical', t, usersById).map(label => label.name).join(', '),
+    }
+    const required = {
+      host: shift.required_host_count ?? 1,
+      support: shift.required_support_count ?? 0,
+      technical: shift.required_technical_count ?? 0,
+    }
+    const attention = deriveShiftAttention({
+      shiftId: shift.id,
+      shiftDate: shift.date,
+      shiftStatus: shift.status,
+      pendingCount,
+      isUpcoming: shift.date >= todayDate,
+      required,
+      staffed,
+    })
+
+    return {
+      shift,
+      brandColor: brandsById.get(shift.brand_id)?.color || '#2563EB',
+      brandName: brandsById.get(shift.brand_id)?.name || 'Unknown',
+      platformName: platformsById.get(shift.platform_id)?.name || 'Unknown',
+      staffingNames,
+      attention,
+    }
+  }), [brandsById, platformsById, registrationsByShiftId, sortedShifts, t, todayDate, users, usersById])
+
+  if (rows.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground bg-background rounded-lg border border-dashed">
         <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
@@ -66,7 +111,7 @@ export function ListView({
 
   return (
     <div className="space-y-3">
-      {sortedShifts.map((shift) => {
+      {rows.map(({ attention, brandColor, brandName, platformName, shift, staffingNames }) => {
         const isSelected = selectedShiftIds?.has(shift.id) ?? false
         return (
           <div
@@ -75,7 +120,7 @@ export function ListView({
               isSelected ? 'bg-primary/5 border-primary/20' : ''
             }`}
             data-testid={`list-shift-${shift.id}`}
-            style={{ borderLeftColor: getBrandColor(shift.brand_id) }}
+            style={{ borderLeftColor: brandColor }}
           >
             {onToggleSelectShift && (
               <Checkbox
@@ -96,53 +141,25 @@ export function ListView({
                     {format(new Date(shift.date), 'MMM d, yyyy')}
                   </div>
                   <div className="min-w-[150px] text-sm font-semibold tracking-tight">{formatShiftTimeRange(shift)}</div>
-                  <div className="text-sm font-semibold text-foreground">{getBrandName(shift.brand_id)}</div>
-                  <div className="text-sm text-muted-foreground">{getPlatformName(shift.platform_id)}</div>
+                  <div className="text-sm font-semibold text-foreground">{brandName}</div>
+                  <div className="text-sm text-muted-foreground">{platformName}</div>
                   <div className="text-sm text-muted-foreground"><span className="font-medium mr-1">{t('studio')}:</span> {shift.studio || t('notUpdated')}</div>
                   <div className="text-sm text-muted-foreground">
-                    <span className="font-medium mr-1">{t('importHostNames')}:</span> {getRoleStaffingNames(shift, 'host')}
+                    <span className="font-medium mr-1">{t('importHostNames')}:</span> {staffingNames.host}
                   </div>
-                  <div className="text-sm text-muted-foreground"><span className="font-medium mr-1">{t('importAssistantNames')}:</span> {getRoleStaffingNames(shift, 'support')}</div>
-                  <div className="text-sm text-muted-foreground"><span className="font-medium mr-1">{t('importTechnicalNames')}:</span> {getRoleStaffingNames(shift, 'technical')}</div>
+                  <div className="text-sm text-muted-foreground"><span className="font-medium mr-1">{t('importAssistantNames')}:</span> {staffingNames.support}</div>
+                  <div className="text-sm text-muted-foreground"><span className="font-medium mr-1">{t('importTechnicalNames')}:</span> {staffingNames.technical}</div>
                 </div>
                 <div className="ml-4 shrink-0">
                   <ShiftStatusBadge status={shift.status} />
                 </div>
               </div>
               {/* E5 Exception Strip */}
-              {(() => {
-                const shiftRegistrations = registrations.filter(r => r.shift_id === shift.id)
-                const pendingCount = shiftRegistrations.filter(r => r.status === 'pending').length
-                const todayDate = getCurrentBusinessDate()
-                const isUpcoming = shift.date >= todayDate
-                
-                const required = {
-                  host: shift.required_host_count ?? 1,
-                  support: shift.required_support_count ?? 0,
-                  technical: shift.required_technical_count ?? 0,
-                }
-                const staffed = {
-                  host: shiftRegistrations.filter(r => r.operational_role === 'host' && isStaffedRegistration(r)).length,
-                  support: shiftRegistrations.filter(r => r.operational_role === 'support' && isStaffedRegistration(r)).length,
-                  technical: shiftRegistrations.filter(r => r.operational_role === 'technical' && isStaffedRegistration(r)).length,
-                }
-
-                const attention = deriveShiftAttention({
-                  shiftId: shift.id,
-                  shiftDate: shift.date,
-                  shiftStatus: shift.status,
-                  pendingCount,
-                  isUpcoming,
-                  required,
-                  staffed,
-                })
-                if (attention.length === 0) return null
-                return (
-                  <div className="mt-3 pr-4">
-                    <OperationalStatusStrip items={attention} compact />
-                  </div>
-                )
-              })()}
+              {attention.length > 0 && (
+                <div className="mt-3 pr-4">
+                  <OperationalStatusStrip items={attention} compact />
+                </div>
+              )}
             </button>
             {onRegister && (
               <div className="shrink-0 border-l pl-4">

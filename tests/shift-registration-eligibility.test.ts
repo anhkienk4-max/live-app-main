@@ -79,6 +79,13 @@ test('shift registration eligibility', async (t) => {
     assert.equal(stateFor(shift(), 'technical'), 'not_eligible')
   })
 
+  await t.test('preserves conflicts across business-date and month boundaries', () => {
+    const sep30 = shift({ id: 'sep-30', date: '2026-09-30', start_time: '23:00', end_time: '01:00' })
+    const oct1 = shift({ id: 'oct-1', date: '2026-10-01', start_time: '00:30', end_time: '02:00' })
+    assert.equal(stateFor(oct1, 'host', [registration({ shift_id: sep30.id, status: 'approved' })], [sep30, oct1]), 'conflict')
+    assert.equal(stateFor(sep30, 'host', [registration({ shift_id: oct1.id, status: 'approved' })], [sep30, oct1]), 'conflict')
+  })
+
   await t.test('closes locked and cutoff-passed shifts', () => {
     assert.equal(stateFor(shift({ registration_locked: true }), 'host'), 'closed')
     assert.equal(stateFor(shift({ registration_cutoff_at: '2026-08-26T23:59:00.000Z' }), 'host'), 'closed')

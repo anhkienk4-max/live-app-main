@@ -73,7 +73,8 @@ export function resolveStaffingLabelsForRole(
   registrations: ShiftRegistration[],
   users: User[],
   role: 'host' | 'support' | 'technical',
-  t: (key: string) => string
+  t: (key: string) => string,
+  usersById?: ReadonlyMap<string, User>,
 ): StaffingLabel[] {
   const roleRegistrations = registrations.filter(r => r.operational_role === role)
   const approved = roleRegistrations.filter(isStaffed)
@@ -86,7 +87,7 @@ export function resolveStaffingLabelsForRole(
     let name: string
     let isImportedOnly = false
     if (r.user_id) {
-      const u = users.find(u => u.id === r.user_id)
+      const u = usersById?.get(r.user_id) ?? users.find(u => u.id === r.user_id)
       name = u?.full_name || t('unknownUser')
     } else {
       name = r.imported_name || t('unassigned')
@@ -101,7 +102,7 @@ export function resolveStaffingLabelsForRole(
         isImportedOnly,
       }
       if (r.user_id) {
-        const u = users.find(u => u.id === r.user_id)
+        const u = usersById?.get(r.user_id) ?? users.find(u => u.id === r.user_id)
         if (u?.avatar_url) label.avatarUrl = u.avatar_url
       }
       labels.push(label)

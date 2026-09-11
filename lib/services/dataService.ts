@@ -1184,6 +1184,22 @@ export const shiftService = {
     return Promise.resolve(shifts.filter(shift => !shift.deleted_at))
   },
 
+  async getAllComplete(): Promise<Shift[]> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseShiftRepository().getAllComplete()
+    }
+    return Promise.resolve(shifts.filter(shift => !shift.deleted_at && !shift.archived_at))
+  },
+
+  async getInRange(startDate: string, endDate: string): Promise<Shift[]> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseShiftRepository().getByDateRange(startDate, endDate)
+    }
+    return Promise.resolve(shifts
+      .filter(shift => !shift.deleted_at && !shift.archived_at && shift.date >= startDate && shift.date <= endDate)
+      .sort((left, right) => left.date.localeCompare(right.date) || left.start_time.localeCompare(right.start_time) || left.id.localeCompare(right.id)))
+  },
+
   async getAllIncludingDeleted(actorId: string): Promise<Shift[]> {
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can view deleted shifts.')
     if (getAuthMode() === 'supabase') {
@@ -1757,6 +1773,17 @@ export const shiftRegistrationService = {
     return Promise.resolve([...shiftRegistrations])
   },
 
+  async getForShifts(shiftIds: string[]): Promise<ShiftRegistration[]> {
+    if (shiftIds.length === 0) return []
+    if (getAuthMode() === 'supabase') {
+      const repository = getSupabaseShiftRegistrationRepository()
+      if (repository.getForShifts) return repository.getForShifts(shiftIds)
+      return (await Promise.all(shiftIds.map(shiftId => repository.getForShift(shiftId)))).flat()
+    }
+    const ids = new Set(shiftIds)
+    return Promise.resolve(shiftRegistrations.filter(registration => ids.has(registration.shift_id)))
+  },
+
   async getForShift(shiftId: string): Promise<ShiftRegistration[]> {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRegistrationRepository().getForShift(shiftId)
@@ -2322,6 +2349,17 @@ export const reportService = {
   async getAll(): Promise<Report[]> {
     if (getAuthMode() === 'supabase') return getSupabaseReportRepository().getAll()
     return Promise.resolve(reports.filter(report => !report.deleted_at && !report.archived_at))
+  },
+
+  async getForShifts(shiftIds: string[]): Promise<Report[]> {
+    if (shiftIds.length === 0) return []
+    if (getAuthMode() === 'supabase') {
+      const repository = getSupabaseReportRepository()
+      if (repository.getForShifts) return repository.getForShifts(shiftIds)
+      return (await Promise.all(shiftIds.map(shiftId => repository.getByShift(shiftId)))).filter((report): report is Report => Boolean(report))
+    }
+    const ids = new Set(shiftIds)
+    return Promise.resolve(reports.filter(report => ids.has(report.shift_id) && !report.deleted_at && !report.archived_at))
   },
 
   async getAllIncludingArchived(actorId: string): Promise<Report[]> {
