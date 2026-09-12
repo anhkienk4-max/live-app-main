@@ -150,7 +150,7 @@ test('Calendar preserves global view filtering and scopes List-only work separat
   assert.match(source, /const filteredShifts = React\.useMemo\(/)
   assert.match(source, /const listShifts = React\.useMemo\(/)
   assert.match(source, /effectiveListTimeFilter\(filters\.time, listTimeOverride\)/)
-  assert.match(source, /total: filteredShifts\.length/)
+  assert.match(source, /const calendarScopeShifts = React\.useMemo\(\s+\(\) => shiftsInCalendarScope\(view === 'list' \? listShifts : filteredShifts/)
   assert.match(source, /const exportShifts = view === 'list' \? listShifts : filteredShifts/)
   assert.match(source, /targetShifts = scope === 'selected'\s+\? exportShifts\.filter/)
   assert.match(source, /<MonthView currentDate=\{currentDate\} shifts=\{filteredShifts\}/)
