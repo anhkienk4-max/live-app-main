@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "integration/ui-golden-screens",
-    "head": "b242b2999e1ea8d4d82ae5819f4b39cd062aecab",
+    "head": "bc1c0dbd13d2ef64374b2210409f5460698e278a",
     "origin_main": "7be47803690550d1ba891b6d7e1e4585f8f307e7",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-ui-integration"
   },
@@ -251,5 +251,5 @@
     "lint": "FAIL_BASELINE",
     "build": "PASS"
   },
-  "synced_at": "2026-09-11T15:16:56+07:00"
+  "synced_at": "2026-09-11T15:17:37+07:00"
 }
