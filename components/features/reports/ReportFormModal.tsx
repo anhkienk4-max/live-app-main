@@ -615,7 +615,6 @@ export function ReportFormModal({
         final_recap: normalizeFinalReportRecap(finalRecap),
         replay_url: replayUrl || undefined,
         dashboard_url: dashboardUrl || undefined,
-        metrics_confirmed: false,
         status: 'draft',
         submitted_by: currentUser.id,
       })

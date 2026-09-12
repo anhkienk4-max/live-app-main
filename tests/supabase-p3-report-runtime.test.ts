@@ -13,6 +13,7 @@ import {
   createSupabaseReportRepository,
   setSupabaseReportRepositoryForTests,
 } from '../lib/services/supabaseReportService.ts'
+import { serializeFinalReportMetricState } from '../lib/utils/ocrMetricSerialization.ts'
 import type { Report, User } from '../lib/types/database.types.ts'
 
 type Row = Record<string, unknown>
@@ -139,13 +140,13 @@ function fakeClient(database: FakeDatabase, options: { deniedRpc?: RpcName } = {
       const row: Row = {
         id: `report-${nextId++}`,
         shift_id: data.shift_id,
-        revenue: Number(data.revenue ?? 0),
-        orders: Number(data.orders ?? 0),
-        peak_viewer: Number(data.peak_viewer ?? 0),
-        average_viewer: Number(data.average_viewer ?? 0),
+        revenue: data.revenue == null ? null : Number(data.revenue),
+        orders: data.orders == null ? null : Number(data.orders),
+        peak_viewer: data.peak_viewer == null ? null : Number(data.peak_viewer),
+        average_viewer: data.average_viewer == null ? null : Number(data.average_viewer),
         likes: data.likes ?? null,
-        comments: Number(data.comments ?? 0),
-        shares: Number(data.shares ?? 0),
+        comments: data.comments == null ? null : Number(data.comments),
+        shares: data.shares == null ? null : Number(data.shares),
         top_products: data.top_products ?? null,
         insights_good: data.insights_good ?? null,
         insights_improvement: data.insights_improvement ?? null,
@@ -614,17 +615,34 @@ test('Supabase report reads return persisted rows through the repository', async
     assert.equal(await reportService.getById('missing'), null)
   })
 })
+test('Supabase report reads preserve null required metrics instead of mapping them to zero', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    db.reports[0] = reportRow({ revenue: null, orders: null, comments: null, shares: null })
+    setSupabaseReportRepositoryForTests(createSupabaseReportRepository(fakeClient(db)))
+    currentUserService.bindAuthenticatedUser(adminUser())
+
+    const report = await reportService.getById('report-1')
+    assert.equal(report?.revenue, null)
+    assert.equal(report?.orders, null)
+    assert.equal(report?.comments, null)
+    assert.equal(report?.shares, null)
+  })
+})
 test('Supabase getConfirmed returns only confirmed reports', async () => {
   await withEnvironment(async () => {
     setAuthMode('supabase')
     const db = database()
     db.reports[0] = { ...reportRow(), metrics_confirmed: true, status: 'confirmed' }
+    db.reports.push(reportRow({ id: 'draft-report', revenue: null, orders: null }))
     setSupabaseReportRepositoryForTests(createSupabaseReportRepository(fakeClient(db)))
     currentUserService.bindAuthenticatedUser(adminUser())
 
     const confirmed = await reportService.getConfirmed()
     assert.equal(confirmed.length, 1)
     assert.equal(confirmed[0].metrics_confirmed, true)
+    assert.equal(confirmed[0].status, 'confirmed')
   })
 })
 test('Supabase report create persists through create_report RPC with revision', async () => {
@@ -655,17 +673,90 @@ test('Supabase report create persists through create_report RPC with revision', 
     assert.ok(rpcCall)
   })
 })
-
-test('Supabase report update sends patch through update_report RPC', async () => {
+test('Supabase report create persists incomplete draft metrics as null and keeps canonical values', async () => {
   await withEnvironment(async () => {
     setAuthMode('supabase')
     const db = database()
     setSupabaseReportRepositoryForTests(createSupabaseReportRepository(fakeClient(db)))
     currentUserService.bindAuthenticatedUser(adminUser())
 
+    const rawOcrOutput = 'Sales: 0\nOrders: 5'
+    const created = await reportService.create({
+      shift_id: 'shift-2',
+      ...serializeFinalReportMetricState('shopee_live', { sales: 0, orders: 5 }),
+      dashboard_platform: 'shopee_live',
+      raw_ocr_output: rawOcrOutput,
+      ocr_review: {
+        status: 'review_required',
+        source_platform: 'shopee_live',
+        raw_output: rawOcrOutput,
+        metrics: {
+          sales: { value: 0, confidence: 'high', needs_review: false, source: 'manual', status: 'manual' },
+        },
+      },
+      submitted_by: '1',
+    })
+
+    assert.equal(created.status, 'draft')
+    assert.equal(created.revenue, 0)
+    assert.equal(created.orders, 5)
+    assert.equal(created.comments, null)
+    assert.equal(created.shares, null)
+    assert.deepEqual(created.normalized_metrics, { sales: 0, orders: 5 })
+    assert.deepEqual(created.platform_metrics, { sales: 0, orders: 5 })
+    assert.equal(created.raw_ocr_output, rawOcrOutput)
+    assert.equal(created.ocr_review?.metrics.sales?.status, 'manual')
+    assert.equal(created.ocr_review?.metrics.sales?.value, 0)
+
+    const image = await reportImageService.create({
+      report_id: created.id,
+      image_url: 'https://example.test/draft-dashboard.jpg',
+      storage_path: `reports/${created.id}/dashboard/dashboard.jpg`,
+      original_name: 'dashboard.jpg',
+      mime_type: 'image/jpeg',
+      size_bytes: 512,
+      image_type: 'dashboard',
+    })
+    assert.ok(db.report_images.some(row => row.id === image.id && row.report_id === created.id))
+  })
+})
+
+test('Supabase report update sends patch through update_report RPC', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    db.reports[0] = reportRow({
+      revenue: null,
+      orders: null,
+      comments: null,
+      shares: null,
+      dashboard_url: 'https://example.test/report-dashboard',
+      raw_ocr_output: 'Shares: 0',
+      ocr_review: { status: 'review_required', metrics: {} },
+    })
+    setSupabaseReportRepositoryForTests(createSupabaseReportRepository(fakeClient(db)))
+    currentUserService.bindAuthenticatedUser(adminUser())
+
     const updated = await reportService.update('report-1', { revenue: 2000 }, '1', 'Adjusted', 'save')
     assert.equal(updated?.revenue, 2000)
+    assert.equal(updated?.shares, null)
+    assert.equal(updated?.orders, null)
+    assert.equal(updated?.comments, null)
+    assert.equal(updated?.dashboard_url, 'https://example.test/report-dashboard')
+    assert.equal(updated?.raw_ocr_output, 'Shares: 0')
+    assert.deepEqual(updated?.ocr_review?.metrics, {})
+
+    const entered = await reportService.update('report-1', { shares: 0 }, '1', 'Entered Shares', 'save')
+    assert.equal(entered?.shares, 0)
+    assert.equal(entered?.comments, null)
+    assert.equal(entered?.raw_ocr_output, 'Shares: 0')
+
+    const edited = await reportService.update('report-1', { shares: 7 }, '1', 'Edited Shares', 'save')
+    assert.equal(edited?.shares, 7)
+    assert.equal(edited?.comments, null)
+    assert.equal(edited?.dashboard_url, 'https://example.test/report-dashboard')
     assert.equal(db.reports[0].revenue, 2000)
+    assert.equal(db.reports[0].shares, 7)
   })
 })
 
@@ -682,7 +773,44 @@ test('Supabase startReview routes through start_report_review RPC', async () => 
   })
 })
 
-test('Supabase confirmMetrics prevents confirmation with unresolved metrics', async () => {
+test('Supabase confirmMetrics prevents confirmation with unresolved OCR metric states', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    setSupabaseReportRepositoryForTests(createSupabaseReportRepository(fakeClient(db)))
+    currentUserService.bindAuthenticatedUser(adminUser())
+
+    for (const unresolvedMetric of [
+      { status: 'review_required' },
+      { status: 'low_confidence' },
+      { status: 'accepted', needs_review: true },
+    ]) {
+      await assert.rejects(
+        reportService.confirmMetrics('report-1', {
+          normalized_metrics: {
+            gmv: 100,
+            sku_orders: 5,
+            current_viewers: 10,
+            total_views: 20,
+            comments: 4,
+            shares: 1,
+            product_clicks: 3,
+            live_ctr: 2,
+            ctor: 4,
+            average_order_value: 20,
+          },
+        }, {
+          status: 'review_required',
+          metrics: { revenue: unresolvedMetric },
+          raw_output: '',
+        } as never),
+        /Confirm or manually edit all review-required metrics/,
+      )
+    }
+    assert.equal(created_rpc_call(db, 'update_report'), false)
+  })
+})
+test('Supabase confirmMetrics rejects missing required platform metrics before persistence', async () => {
   await withEnvironment(async () => {
     setAuthMode('supabase')
     const db = database()
@@ -690,13 +818,26 @@ test('Supabase confirmMetrics prevents confirmation with unresolved metrics', as
     currentUserService.bindAuthenticatedUser(adminUser())
 
     await assert.rejects(
-      reportService.confirmMetrics('report-1', {}, {
-        status: 'review_required',
-        metrics: { revenue: { status: 'review_required' } },
+      reportService.confirmMetrics('report-1', {
+        normalized_metrics: {
+          gmv: 100,
+          sku_orders: 5,
+          current_viewers: 10,
+          total_views: 20,
+          comments: 4,
+          product_clicks: 3,
+          live_ctr: 2,
+          ctor: 4,
+          average_order_value: 20,
+        },
+      }, {
+        status: 'confirmed',
+        metrics: {},
         raw_output: '',
       } as never),
-      /Confirm or manually edit all review-required metrics/,
+      /REPORT_REQUIRED_METRICS_MISSING/,
     )
+    assert.equal(created_rpc_call(db, 'update_report'), false)
   })
 })
 test('Supabase confirmMetrics routes through update_report with confirm event', async () => {
@@ -706,7 +847,20 @@ test('Supabase confirmMetrics routes through update_report with confirm event', 
     setSupabaseReportRepositoryForTests(createSupabaseReportRepository(fakeClient(db)))
     currentUserService.bindAuthenticatedUser(adminUser())
 
-    const result = await reportService.confirmMetrics('report-1', {}, {
+    const result = await reportService.confirmMetrics('report-1', {
+      normalized_metrics: {
+        gmv: 100,
+        sku_orders: 5,
+        current_viewers: 10,
+        total_views: 20,
+        comments: 4,
+        shares: 1,
+        product_clicks: 3,
+        live_ctr: 2,
+        ctor: 4,
+        average_order_value: 20,
+      },
+    }, {
       status: 'confirmed',
       metrics: {},
       raw_output: 'ocr text',

@@ -211,7 +211,7 @@ export function ReportsList() {
   }), [brands, campaigns, filters, matchesRole, platforms, reports, shiftById])
 
   const confirmed = filteredReports.filter(report => report.metrics_confirmed)
-  const totalRevenue = confirmed.reduce((sum, report) => sum + confirmedRevenue(report), 0)
+  const totalRevenue = confirmed.reduce((sum, report) => sum + (reportRevenue(report) ?? 0), 0)
   const exportContext = {
     shifts,
     campaigns,
@@ -245,7 +245,7 @@ export function ReportsList() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Metric title={t('reportCount')} value={filteredReports.length.toLocaleString()} icon={<FileText className="h-5 w-5 text-blue-600" />} />
         <Metric title={t('confirmedRevenue')} value={formatCurrency(totalRevenue)} icon={<DollarSign className="h-5 w-5 text-green-600" />} />
-        <Metric title={t('averageOrderValue')} value={formatCurrency(confirmed.reduce((sum, report) => sum + (typeof report.normalized_metrics?.average_order_value === 'number' ? report.normalized_metrics.average_order_value : report.average_order_value ?? (report.orders ? confirmedRevenue(report) / report.orders : 0)), 0))} icon={<TrendingUp className="h-5 w-5 text-purple-600" />} />
+        <Metric title={t('averageOrderValue')} value={formatCurrency(confirmed.reduce((sum, report) => sum + (typeof report.normalized_metrics?.average_order_value === 'number' ? report.normalized_metrics.average_order_value : report.average_order_value ?? (report.orders ? (reportRevenue(report) ?? 0) / report.orders : 0)), 0))} icon={<TrendingUp className="h-5 w-5 text-purple-600" />} />
         <Metric title={t('needsReview')} value={filteredReports.filter(report => !report.metrics_confirmed).length.toLocaleString()} icon={<FileText className="h-5 w-5 text-amber-600" />} />
       </div>
 
@@ -320,6 +320,7 @@ export function ReportsList() {
             const shift = shiftById.get(report.shift_id)
             if (!shift) return null
             const reportStatus = report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
+            const revenue = reportRevenue(report)
             const statusLabel = reportStatus === 'in_review' ? t('inReview') : t(reportStatus)
             const canRemove = Boolean(currentUser && (hasPermission(currentUser, 'reports.review') || report.submitted_by === currentUser.id))
             const canArchive = Boolean(currentUser && hasPermission(currentUser, 'audit.restore'))
@@ -342,8 +343,8 @@ export function ReportsList() {
                 </CardHeader>
                 <CardContent className="flex flex-1 flex-col p-4 pt-0">
                   <div className="grid grid-cols-2 gap-x-2 gap-y-3 mb-4 flex-1">
-                    <Value label={t('revenue')} value={formatCurrency(confirmedRevenue(report))} />
-                    <Value label={t('orders')} value={report.orders.toLocaleString()} />
+                    <Value label={t('revenue')} value={revenue == null ? t('noData') : formatCurrency(revenue)} />
+                    <Value label={t('orders')} value={report.orders == null ? t('noData') : report.orders.toLocaleString()} />
                     <Value label={t('host')} value={roleNames(shift, 'host')} />
                     <Value label={t('metricsStatus')} value={report.metrics_confirmed ? t('confirmed') : t('needsReview')} />
                   </div>
@@ -424,8 +425,9 @@ function Value({ label, value }: { label: string; value: string }) {
   return <div><p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p><p className="truncate text-sm font-semibold">{value}</p></div>
 }
 
-function confirmedRevenue(report: Report) {
+function reportRevenue(report: Report): number | undefined {
   if (typeof report.normalized_metrics?.revenue === 'number') return report.normalized_metrics.revenue
   if (typeof report.platform_metrics?.sales === 'number') return report.platform_metrics.sales
-  return report.revenue
+  if (report.revenue != null) return report.revenue
+  return report.gmv
 }

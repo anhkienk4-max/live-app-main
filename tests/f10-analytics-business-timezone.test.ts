@@ -18,6 +18,8 @@ const report = (overrides: Partial<Report> = {}): Report => ({
   average_viewer: 10,
   comments: 0,
   shares: 0,
+  status: 'confirmed',
+  metrics_confirmed: true,
   created_at: '2026-09-01T00:00:00.000Z',
   updated_at: '2026-09-01T00:00:00.000Z',
   ...overrides,
@@ -51,10 +53,11 @@ test('Analytics preserves current rolling and custom range semantics', () => {
 
 test('Analytics formulas aggregate canonical report metrics safely', () => {
   const metrics = calculateAnalyticsMetrics([
-    report({ revenue: 100, orders: 4, average_viewer: 10, product_clicks: 5, ctr: 2, cvr: 1, live_duration_minutes: 30 }),
-    report({ id: 'report-2', revenue: 50, orders: 6, average_viewer: 20, product_clicks: 7, ctr: 4, cvr: 3, live_duration_minutes: 60 }),
+    report({ revenue: 100, gmv: 110, orders: 4, average_viewer: 10, product_clicks: 5, ctr: 2, cvr: 1, live_duration_minutes: 30 }),
+    report({ id: 'report-2', revenue: 50, gmv: 55, orders: 6, average_viewer: 20, product_clicks: 7, ctr: 4, cvr: 3, live_duration_minutes: 60 }),
   ])
   assert.equal(metrics.revenue, 150)
+  assert.equal(metrics.gmv, 165)
   assert.equal(metrics.orders, 10)
   assert.equal(metrics.viewers, 30)
   assert.equal(metrics.productClicks, 12)

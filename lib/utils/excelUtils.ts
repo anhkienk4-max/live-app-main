@@ -992,7 +992,7 @@ export const buildReportExportRows = (reports: Report[], context: ReportExportCo
 
   const revenueVal = getMetric('revenue', 'sales') !== ''
     ? getMetric('revenue', 'sales')
-    : (typeof report.revenue === 'number' ? report.revenue : 0)
+    : (report.revenue ?? '')
 
   const gmvVal = getMetric('gmv') !== ''
     ? getMetric('gmv')
@@ -1000,14 +1000,14 @@ export const buildReportExportRows = (reports: Report[], context: ReportExportCo
 
   const ordersVal = getMetric('orders') !== ''
     ? getMetric('orders')
-    : (typeof report.orders === 'number' ? report.orders : 0)
+    : (report.orders ?? '')
 
   const aovVal = getMetric('average_order_value', 'average_basket_size') !== ''
     ? getMetric('average_order_value', 'average_basket_size')
     : (report.average_order_value ?? (typeof revenueVal === 'number' && typeof ordersVal === 'number' && ordersVal > 0 ? revenueVal / ordersVal : ''))
 
   const liveDurationMinutes = report.live_duration_minutes ?? (
-    getMetric('live_duration_seconds') !== '' ? Number(getMetric('live_duration_seconds')) / 60 : 0
+    getMetric('live_duration_seconds') !== '' ? Number(getMetric('live_duration_seconds')) / 60 : ''
   )
 
   const rawRow: Record<string, unknown> = {

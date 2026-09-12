@@ -327,13 +327,13 @@ export interface FinalReportRecap {
 export interface Report extends LifecycleMetadata {
   id: string
   shift_id: string
-  revenue: number
-  orders: number
-  peak_viewer: number
-  average_viewer: number
+  revenue: number | null
+  orders: number | null
+  peak_viewer: number | null
+  average_viewer: number | null
   likes?: number
-  comments: number
-  shares: number
+  comments: number | null
+  shares: number | null
   top_products?: string[]
   insights_good?: string
   insights_improvement?: string
@@ -377,10 +377,10 @@ export interface ReportRevision {
   metrics: {
     normalized?: NormalizedReportMetrics
     platform?: NormalizedReportMetrics
-    revenue: number
-    orders: number
-    peak_viewer: number
-    average_viewer: number
+    revenue: number | null
+    orders: number | null
+    peak_viewer: number | null
+    average_viewer: number | null
   }
   ocr_review?: OcrReviewData
   final_recap?: FinalReportRecap

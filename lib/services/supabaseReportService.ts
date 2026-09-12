@@ -9,6 +9,7 @@ import type {
   NormalizedReportMetrics,
   OcrReviewData,
   Report,
+  ReportDashboardPlatform,
   ReportImage,
   ReportImageCategory,
   ReportRevision,
@@ -101,13 +102,13 @@ function reportFromRow(row: ReportRow): Report {
   return {
     id: row.id as string,
     shift_id: row.shift_id as string,
-    revenue: Number(row.revenue ?? 0),
-    orders: Number(row.orders ?? 0),
-    peak_viewer: Number(row.peak_viewer ?? 0),
-    average_viewer: Number(row.average_viewer ?? 0),
+    revenue: row.revenue != null ? Number(row.revenue) : null,
+    orders: row.orders != null ? Number(row.orders) : null,
+    peak_viewer: row.peak_viewer != null ? Number(row.peak_viewer) : null,
+    average_viewer: row.average_viewer != null ? Number(row.average_viewer) : null,
     likes: row.likes != null ? Number(row.likes) : undefined,
-    comments: Number(row.comments ?? 0),
-    shares: Number(row.shares ?? 0),
+    comments: row.comments != null ? Number(row.comments) : null,
+    shares: row.shares != null ? Number(row.shares) : null,
     top_products: (row.top_products as string[] | null) ?? undefined,
     insights_good: (row.insights_good as string | null) ?? undefined,
     insights_improvement: (row.insights_improvement as string | null) ?? undefined,
@@ -188,13 +189,13 @@ function sortedLiveImages(rows: LiveReportImageRow[]): LiveReportImage[] {
 
 export interface CreateReportPayload {
   shift_id: string
-  revenue?: number
-  orders?: number
-  peak_viewer?: number
-  average_viewer?: number
+  revenue?: number | null
+  orders?: number | null
+  peak_viewer?: number | null
+  average_viewer?: number | null
   likes?: number
-  comments?: number
-  shares?: number
+  comments?: number | null
+  shares?: number | null
   top_products?: string[]
   insights_good?: string
   insights_improvement?: string
@@ -208,7 +209,7 @@ export interface CreateReportPayload {
   cvr?: number
   average_order_value?: number
   live_duration_minutes?: number
-  dashboard_platform?: string
+  dashboard_platform?: ReportDashboardPlatform
   normalized_metrics?: NormalizedReportMetrics
   platform_metrics?: NormalizedReportMetrics
   raw_ocr_output?: string

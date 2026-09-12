@@ -151,13 +151,13 @@ function AdminDashboard(props: CommonProps) {
   const infoCount = dqIssues.filter(i => i.severity === 'info').length
   const dqAttention = deriveDataQualityAttention(errorCount, warningCount, infoCount)
   
-  const revenue = filteredReports.reduce((sum, report) => sum + report.revenue, 0)
-  const previousRevenue = previousReports.reduce((sum, report) => sum + report.revenue, 0)
+  const revenue = filteredReports.reduce((sum, report) => sum + (report.revenue ?? 0), 0)
+  const previousRevenue = previousReports.reduce((sum, report) => sum + (report.revenue ?? 0), 0)
   const delta = previousRevenue ? `${(((revenue - previousRevenue) / previousRevenue) * 100).toFixed(1)}%` : '—'
   const today = getCurrentBusinessDate()
   const trend = Object.entries(filteredReports.reduce<Record<string, { revenue: number; orders: number }>>((result, report) => {
     const shift = shifts.find(candidate => candidate.id === report.shift_id)
-    if (shift) { (result[shift.date] ??= { revenue: 0, orders: 0 }).revenue += report.revenue; result[shift.date].orders += report.orders }
+    if (shift) { (result[shift.date] ??= { revenue: 0, orders: 0 }).revenue += report.revenue ?? 0; result[shift.date].orders += report.orders ?? 0 }
     return result
   }, {})).sort(([left], [right]) => left.localeCompare(right)).map(([date, values]) => ({ date, ...values }))
   

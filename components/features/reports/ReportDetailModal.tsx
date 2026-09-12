@@ -40,7 +40,7 @@ import {
   type CanonicalMetricKey,
   type MetricState,
 } from '@/lib/utils/ocrCanonical'
-import { serializeCanonicalMetrics } from '@/lib/utils/ocrMetricSerialization'
+import { getMissingFinalReportMetricKeys, serializeCanonicalMetrics } from '@/lib/utils/ocrMetricSerialization'
 import { metricTranslationKeys } from '@/lib/reportMetricLabels'
 import { defaultOcrCrop } from '@/lib/utils/ocrImage'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
@@ -303,6 +303,7 @@ export function ReportDetailModal({
   const [showReopen, setShowReopen] = React.useState(false)
   const [metricFilter, setMetricFilter] = React.useState<OcrMetricFilter>('data')
   const [metricsCollapsed, setMetricsCollapsed] = React.useState(false)
+  const [activeTab, setActiveTab] = React.useState('overview')
   const [showConfirmWarning, setShowConfirmWarning] = React.useState(false)
   const [revisionPage, setRevisionPage] = React.useState(1)
   const [revisionPageSize, setRevisionPageSize] = React.useState(10)
@@ -334,6 +335,24 @@ export function ReportDetailModal({
       toast({ title: t('error'), description: t('permissionDenied'), variant: 'destructive' })
       return
     }
+    const dashboardPlatform = report.dashboard_platform || 'other'
+    const normalized = serializeCanonicalMetrics(dashboardPlatform, metricValues)
+    if (dashboardPlatform !== 'other') {
+      const missing = getMissingFinalReportMetricKeys(dashboardPlatform, metricValues)
+      if (missing.length > 0) {
+        setMetricFilter('all')
+        setMetricsCollapsed(false)
+        setActiveTab('overview')
+        toast({
+          title: t('validationError'),
+          description: t('reportRequiredMetricsBeforeConfirm', {
+            metrics: missing.map(key => t(metricTranslationKeys[key])).join(', '),
+          }),
+          variant: 'destructive',
+        })
+        return
+      }
+    }
     const unresolved = reviewRequiredCount(reviewData)
     if (unresolved > 0) {
       setMetricFilter('review_required')
@@ -342,25 +361,27 @@ export function ReportDetailModal({
     }
     setBusy(true)
     try {
-      const normalized = serializeCanonicalMetrics(report.dashboard_platform || 'other', metricValues)
       const platformSpecific = normalized
       const revenue = numberValue(normalized.revenue) ?? numberValue(platformSpecific.sales) ?? numberValue(normalized.gmv) ?? report.revenue
-      const orders = numberValue(normalized.orders) ?? report.orders
-      const viewers = numberValue(normalized.engaged_viewers) ?? numberValue(platformSpecific.total_viewers) ?? numberValue(normalized.total_views) ?? report.viewers ?? report.average_viewer
+      const orders = numberValue(normalized.orders) ?? numberValue(normalized.sku_orders) ?? report.orders
+      const viewers = numberValue(normalized.engaged_viewers) ?? numberValue(platformSpecific.total_viewers) ?? numberValue(normalized.total_views) ?? report.viewers ?? report.average_viewer ?? undefined
+      const averageViewers = dashboardPlatform === 'shopee_live'
+        ? numberValue(normalized.total_viewers) ?? report.average_viewer ?? undefined
+        : numberValue(normalized.current_viewers) ?? report.average_viewer ?? undefined
       const duration = numberValue(normalized.live_duration_seconds)
       await reportService.confirmMetrics(report.id, {
         revenue,
-        gmv: numberValue(normalized.gmv) ?? revenue,
+        gmv: numberValue(normalized.gmv) ?? revenue ?? undefined,
         orders,
         viewers,
-        peak_viewer: numberValue(normalized.peak_concurrent_viewers) ?? numberValue(platformSpecific.pcu) ?? report.peak_viewer,
-        average_viewer: viewers,
+        peak_viewer: numberValue(normalized.peak_concurrent_viewers) ?? numberValue(platformSpecific.pcu) ?? numberValue(normalized.current_viewers) ?? report.peak_viewer ?? undefined,
+        average_viewer: averageViewers,
         likes: numberValue(normalized.likes) ?? report.likes,
         comments: numberValue(normalized.comments) ?? report.comments,
         shares: numberValue(normalized.shares) ?? report.shares,
         product_clicks: numberValue(normalized.product_clicks) ?? numberValue(platformSpecific.add_to_cart) ?? report.product_clicks,
-        ctr: numberValue(normalized.ctr) ?? report.ctr,
-        cvr: numberValue(normalized.conversion_rate) ?? numberValue(platformSpecific.click_to_order_rate) ?? report.cvr,
+        ctr: numberValue(normalized.ctr) ?? numberValue(normalized.live_ctr) ?? report.ctr,
+        cvr: numberValue(normalized.conversion_rate) ?? numberValue(platformSpecific.click_to_order_rate) ?? numberValue(normalized.ctor) ?? report.cvr,
         average_order_value: numberValue(normalized.average_order_value) ?? numberValue(platformSpecific.average_basket_size) ?? report.average_order_value,
         live_duration_minutes: duration == null ? report.live_duration_minutes : duration / 60,
         normalized_metrics: normalized,
@@ -372,7 +393,23 @@ export function ReportDetailModal({
       toast({ title: t('confirmed'), description: t('confirmedOnly'), variant: 'success' })
       onUpdated?.()
     } catch (error) {
-      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+      const missingMetricKeys = error instanceof Error && error.message.startsWith('REPORT_REQUIRED_METRICS_MISSING:')
+        ? error.message.slice('REPORT_REQUIRED_METRICS_MISSING:'.length).split(',').filter(key => key in metricTranslationKeys) as CanonicalMetricKey[]
+        : []
+      if (missingMetricKeys.length > 0) {
+        setMetricFilter('all')
+        setMetricsCollapsed(false)
+        setActiveTab('overview')
+        toast({
+          title: t('validationError'),
+          description: t('reportRequiredMetricsBeforeConfirm', {
+            metrics: missingMetricKeys.map(key => t(metricTranslationKeys[key])).join(', '),
+          }),
+          variant: 'destructive',
+        })
+      } else {
+        toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+      }
     } finally {
       setBusy(false)
     }
@@ -723,7 +760,7 @@ export function ReportDetailModal({
           </Card>
         )}
 
-        <Tabs defaultValue="overview" className="min-w-0">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="min-w-0">
           <div className="sticky top-0 z-20 bg-popover pb-3">
           <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5">
             <TabsTrigger value="overview">{t('reportOverview')}</TabsTrigger>
@@ -741,7 +778,7 @@ export function ReportDetailModal({
                 <CardContent className="flex items-center p-4">
                   <div className="flex-1 space-y-1">
                     <p className="text-xs font-medium text-muted-foreground">{t('totalRevenue')}</p>
-                    <p className="text-lg font-bold text-green-600">{formatCurrency(report.revenue)}</p>
+                    <p className="text-lg font-bold text-green-600">{report.revenue == null ? t('noData') : formatCurrency(report.revenue)}</p>
                   </div>
                   <DollarSign className="h-5 w-5 text-green-600/70" />
                 </CardContent>
@@ -751,7 +788,7 @@ export function ReportDetailModal({
                 <CardContent className="flex items-center p-4">
                   <div className="flex-1 space-y-1">
                     <p className="text-xs font-medium text-muted-foreground">{t('metricOrders')}</p>
-                    <p className="text-lg font-bold">{report.orders}</p>
+                    <p className="text-lg font-bold">{report.orders == null ? t('noData') : report.orders.toLocaleString()}</p>
                   </div>
                   <TrendingUp className="h-5 w-5 text-blue-600/70" />
                 </CardContent>
@@ -761,7 +798,7 @@ export function ReportDetailModal({
                 <CardContent className="flex items-center p-4">
                   <div className="flex-1 space-y-1">
                     <p className="text-xs font-medium text-muted-foreground">{t('peakViewers')}</p>
-                    <p className="text-lg font-bold">{report.peak_viewer}</p>
+                    <p className="text-lg font-bold">{report.peak_viewer == null ? t('noData') : report.peak_viewer.toLocaleString()}</p>
                   </div>
                   <Users className="h-5 w-5 text-purple-600/70" />
                 </CardContent>
@@ -771,7 +808,7 @@ export function ReportDetailModal({
                 <CardContent className="flex items-center p-4">
                   <div className="flex-1 space-y-1">
                     <p className="text-xs font-medium text-muted-foreground">{t('averageViewers')}</p>
-                    <p className="text-lg font-bold">{report.average_viewer}</p>
+                    <p className="text-lg font-bold">{report.average_viewer == null ? t('noData') : report.average_viewer.toLocaleString()}</p>
                   </div>
                   <Users className="h-5 w-5 text-orange-600/70" />
                 </CardContent>
@@ -797,14 +834,14 @@ export function ReportDetailModal({
                       <MessageCircle className="h-4 w-4" />
                       <span className="text-[10px] font-medium uppercase tracking-wider">{t('metricComments')}</span>
                     </div>
-                    <div className="text-lg font-bold">{report.comments}</div>
+                    <div className="text-lg font-bold">{report.comments == null ? t('noData') : report.comments.toLocaleString()}</div>
                   </div>
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Share2 className="h-4 w-4" />
                       <span className="text-[10px] font-medium uppercase tracking-wider">{t('metricShares')}</span>
                     </div>
-                    <div className="text-lg font-bold">{report.shares}</div>
+                    <div className="text-lg font-bold">{report.shares == null ? t('noData') : report.shares.toLocaleString()}</div>
                   </div>
                 </div>
               </CardContent>
@@ -1043,7 +1080,7 @@ export function ReportDetailModal({
             </Card>
           </TabsContent>
           <TabsContent value="versions" className="space-y-3">
-            <Card className="overflow-hidden"><CardContent className="p-0"><div className="max-h-[55vh] space-y-3 overflow-auto p-6"><h3 className="mb-4 flex items-center gap-2 font-semibold"><History className="h-4 w-4" />{t('reportVersionHistory')}</h3>{visibleRevisions.map(revision => <div className="rounded-lg border p-3" key={revision.version}><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-medium">{t('version')} {revision.version} · {revision.event.replaceAll('_', ' ')}</p><p className="text-xs text-muted-foreground">{format(new Date(revision.created_at), 'dd/MM/yyyy HH:mm')} · {getUserName(revision.created_by)}</p></div><Badge variant="outline">{revision.status}</Badge></div>{revision.reason && <p className="mt-2 text-sm">{revision.reason}</p>}<div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4"><div>{t('metricRevenue')}: {formatCurrency(revision.metrics.revenue)}</div><div>{t('metricOrders')}: {revision.metrics.orders}</div><div>{t('peak')}: {revision.metrics.peak_viewer}</div><div>{t('reportImages')}: {revision.image_references.length}</div></div></div>)}{!revisions.length && <p className="text-sm text-muted-foreground">{t('noRevisionSnapshots')}</p>}</div><HistoryPagination page={revisionPage} pageSize={revisionPageSize} total={revisions.length} onPageChange={setRevisionPage} onPageSizeChange={size => { setRevisionPageSize(size); setRevisionPage(1) }} /></CardContent></Card>
+            <Card className="overflow-hidden"><CardContent className="p-0"><div className="max-h-[55vh] space-y-3 overflow-auto p-6"><h3 className="mb-4 flex items-center gap-2 font-semibold"><History className="h-4 w-4" />{t('reportVersionHistory')}</h3>{visibleRevisions.map(revision => <div className="rounded-lg border p-3" key={revision.version}><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-medium">{t('version')} {revision.version} · {revision.event.replaceAll('_', ' ')}</p><p className="text-xs text-muted-foreground">{format(new Date(revision.created_at), 'dd/MM/yyyy HH:mm')} · {getUserName(revision.created_by)}</p></div><Badge variant="outline">{revision.status}</Badge></div>{revision.reason && <p className="mt-2 text-sm">{revision.reason}</p>}<div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4"><div>{t('metricRevenue')}: {revision.metrics.revenue == null ? t('noData') : formatCurrency(revision.metrics.revenue)}</div><div>{t('metricOrders')}: {revision.metrics.orders == null ? t('noData') : revision.metrics.orders.toLocaleString()}</div><div>{t('peak')}: {revision.metrics.peak_viewer == null ? t('noData') : revision.metrics.peak_viewer.toLocaleString()}</div><div>{t('reportImages')}: {revision.image_references.length}</div></div></div>)}{!revisions.length && <p className="text-sm text-muted-foreground">{t('noRevisionSnapshots')}</p>}</div><HistoryPagination page={revisionPage} pageSize={revisionPageSize} total={revisions.length} onPageChange={setRevisionPage} onPageSizeChange={size => { setRevisionPageSize(size); setRevisionPage(1) }} /></CardContent></Card>
           </TabsContent>
         </Tabs>
         </DialogBody>

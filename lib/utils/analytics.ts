@@ -81,10 +81,10 @@ export function reportMetric(report: Report, key: 'revenue' | 'gmv' | 'orders' |
   const normalized = report.normalized_metrics?.[key]
   if (typeof normalized === 'number') return normalized
   if (key === 'revenue' && typeof report.platform_metrics?.sales === 'number') return report.platform_metrics.sales
-  if (key === 'revenue') return report.revenue
-  if (key === 'gmv') return report.gmv ?? report.revenue
-  if (key === 'orders') return report.orders
-  if (key === 'engaged_viewers') return report.viewers ?? report.average_viewer
+  if (key === 'revenue') return report.revenue ?? 0
+  if (key === 'gmv') return report.gmv ?? report.revenue ?? 0
+  if (key === 'orders') return report.orders ?? 0
+  if (key === 'engaged_viewers') return report.viewers ?? report.average_viewer ?? 0
   if (key === 'product_clicks') return report.product_clicks ?? 0
   if (key === 'ctr') return report.ctr ?? 0
   if (key === 'conversion_rate') return report.cvr ?? 0

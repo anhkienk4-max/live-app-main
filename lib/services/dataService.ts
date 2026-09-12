@@ -50,10 +50,15 @@ import {
   type ShiftStaffingLabels,
 } from '@/lib/services/supabaseShiftService'
 import { getSupabaseShiftRegistrationRepository } from '@/lib/services/supabaseShiftRegistrationService'
-import { getSupabaseReportRepository } from '@/lib/services/supabaseReportService'
+import {
+  getSupabaseReportRepository,
+  type CreateReportPayload,
+} from '@/lib/services/supabaseReportService'
 import { getSupabaseSwapRequestRepository } from '@/lib/services/supabaseSwapRequestService'
 import { getSupabaseSettingsRepository } from '@/lib/services/supabaseSettingsService'
 import { getSupabaseDashboardUpdateRepository } from '@/lib/services/supabaseDashboardUpdateService'
+import { getMissingFinalReportMetricKeys } from '@/lib/utils/ocrMetricSerialization'
+import type { MetricState } from '@/lib/utils/ocrCanonical'
 import {
   liveReportImageCategories,
   maximumLiveReportImages,
@@ -2393,7 +2398,7 @@ export const reportService = {
     return Promise.resolve([...(reports.find(r => r.id === reportId)?.revisions || [])])
   },
 
-  async create(data: Omit<Report, 'id' | 'created_at' | 'updated_at'>): Promise<Report> {
+  async create(data: CreateReportPayload): Promise<Report> {
     if (getAuthMode() === 'supabase') {
       const created = await getSupabaseReportRepository().create({
         shift_id: data.shift_id,
@@ -2454,6 +2459,12 @@ export const reportService = {
     if (!submitter || (!elevated && !assigned)) throw new Error('Only assigned staff or an operational leader can submit this report.')
     const newReport: Report = {
       ...data,
+      revenue: data.revenue ?? null,
+      orders: data.orders ?? null,
+      peak_viewer: data.peak_viewer ?? null,
+      average_viewer: data.average_viewer ?? null,
+      comments: data.comments ?? null,
+      shares: data.shares ?? null,
       status: 'draft',
       metrics_confirmed: false,
       confirmed_at: undefined,
@@ -2507,8 +2518,26 @@ export const reportService = {
   },
 
   async confirmMetrics(id: string, data: Partial<Report>, review: OcrReviewData, confirmedBy = '1'): Promise<Report | null> {
+    const currentReport = await this.getById(id)
+    const dashboardPlatform = data.dashboard_platform ?? currentReport?.dashboard_platform
+    if (currentReport && dashboardPlatform && dashboardPlatform !== 'other') {
+      const metricValues = Object.fromEntries(
+        Object.entries({
+          ...currentReport.normalized_metrics,
+          ...currentReport.platform_metrics,
+          ...data.normalized_metrics,
+          ...data.platform_metrics,
+        }).filter(([, value]) => typeof value === 'number' && Number.isFinite(value)),
+      ) as MetricState
+      const missingMetrics = getMissingFinalReportMetricKeys(dashboardPlatform, metricValues)
+      if (missingMetrics.length > 0) {
+        throw new Error(`REPORT_REQUIRED_METRICS_MISSING:${missingMetrics.join(',')}`)
+      }
+    }
     const unresolvedMetrics = Object.values(review.metrics).filter(metric =>
-      metric?.status === 'review_required' || metric?.needs_review,
+      metric?.status === 'review_required'
+      || metric?.status === 'low_confidence'
+      || metric?.needs_review,
     )
     if (unresolvedMetrics.length > 0) {
       throw new Error(`Confirm or manually edit all review-required metrics before confirming this report (${unresolvedMetrics.length} remaining).`)
@@ -3824,7 +3853,7 @@ export const statsService = {
     ).length
     
     // Calculate total revenue from reports
-    const totalRevenue = reports.filter(report => report.metrics_confirmed && !report.deleted_at && !report.archived_at).reduce((sum, r) => sum + r.revenue, 0)
+    const totalRevenue = reports.filter(report => report.metrics_confirmed && !report.deleted_at && !report.archived_at).reduce((sum, r) => sum + (r.revenue ?? 0), 0)
     
     return Promise.resolve({
       todayLive: todayShifts.length,
