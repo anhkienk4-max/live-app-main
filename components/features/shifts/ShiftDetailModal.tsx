@@ -25,6 +25,7 @@ import {
   Dialog,
   DialogBody,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -742,6 +743,7 @@ export function ShiftDetailModal({
                 <OperationalStatusStrip items={attention} compact />
               </div>
             )}
+            <DialogDescription className="sr-only">{t('shiftDetailDescription')}</DialogDescription>
           </DialogHeader>
 
           <DialogBody className="pb-1 bg-muted/5 p-0 overflow-y-auto">

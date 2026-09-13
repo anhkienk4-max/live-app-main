@@ -4,6 +4,7 @@ export type OperationalRole = 'host' | 'support' | 'technical'
 export type AccountStatus = 'pending_email_verification' | 'pending_approval' | 'rejected' | 'active'
 
 export type ShiftStatus = 'scheduled' | 'preparing' | 'live' | 'paused' | 'completed' | 'cancelled'
+export type ShiftStatusMode = 'auto' | 'manual'
 export type RegistrationStatus =
   | 'available'
   | 'pending'
@@ -277,6 +278,7 @@ export interface Shift extends LifecycleMetadata {
   allow_multi_role?: boolean
   import_batch_id?: string
   status: ShiftStatus
+  status_mode?: ShiftStatusMode
   live_link?: string
   product_notes?: string
   updated_by?: string

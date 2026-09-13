@@ -2,9 +2,14 @@ import { test, describe, beforeEach } from 'node:test'
 import * as assert from 'node:assert'
 import { readFileSync } from 'node:fs'
 import { shiftService } from '../lib/services/dataService'
+import { deriveAutomaticShiftStatus, resolveShiftDateTime } from '../lib/utils/shiftUtils'
 
 const adminLifecycleMigration = readFileSync(
   'supabase/migrations/20260831120000_core_v1_shift_lifecycle_admin_guard.sql',
+  'utf8',
+)
+const statusModeMigration = readFileSync(
+  'supabase/migrations/20260913120000_shift_status_mode_and_auto_completion.sql',
   'utf8',
 )
 
@@ -119,6 +124,69 @@ describe('Shift Lifecycle UI State Flow', () => {
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00', title: 'Test', status: 'live'
     } as Parameters<typeof shiftService.create>[0])
     assert.strictEqual(created.status, 'scheduled')
+    assert.strictEqual(created.status_mode, 'auto')
+  })
+
+  test('automatic timeline uses preparation, start, and end boundaries', () => {
+    const shift = {
+      date: '2026-10-10', start_time: '10:00', end_time: '12:00', timezone: 'Asia/Ho_Chi_Minh',
+      registration_cutoff_at: '2026-10-10T02:00:00.000Z',
+    } as any
+    assert.strictEqual(deriveAutomaticShiftStatus(shift, new Date('2026-10-10T01:59:59.999Z')), 'scheduled')
+    assert.strictEqual(deriveAutomaticShiftStatus(shift, new Date('2026-10-10T02:00:00.000Z')), 'preparing')
+    assert.strictEqual(deriveAutomaticShiftStatus(shift, new Date('2026-10-10T03:00:00.000Z')), 'live')
+    assert.strictEqual(deriveAutomaticShiftStatus(shift, new Date('2026-10-10T05:00:00.000Z')), 'completed')
+  })
+
+  test('overnight automatic completion uses the canonical business-time end instant', () => {
+    const shift = {
+      date: '2026-10-10', start_time: '23:00', end_time: '01:00', timezone: 'Asia/Ho_Chi_Minh',
+    } as any
+    const resolved = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
+    assert.ok(resolved?.valid)
+    assert.strictEqual(resolved?.crossesMidnight, true)
+    assert.strictEqual(resolved?.endDate, '2026-10-11')
+    assert.strictEqual(deriveAutomaticShiftStatus(shift, new Date(resolved!.startAt.getTime() - 7 * 60 * 60 * 1000)), 'scheduled')
+    assert.strictEqual(deriveAutomaticShiftStatus(shift, resolved!.startAt), 'live')
+    assert.strictEqual(deriveAutomaticShiftStatus(shift, resolved!.endAt), 'completed')
+    assert.strictEqual(deriveAutomaticShiftStatus(shift, new Date(resolved!.endAt.getTime() + 1)), 'completed')
+  })
+
+  test('automatic completion can be manually corrected and returned to auto', async () => {
+    const shift = await shiftService.create({
+      brand_id: 'b1', platform_id: 'p1', date: '2026-01-10', start_time: '10:00', end_time: '12:00',
+    } as any)
+    const completed = await shiftService.getById(shift.id)
+    assert.strictEqual(completed?.status, 'completed')
+    assert.strictEqual(completed?.status_mode, 'auto')
+    const live = await shiftService.update(shift.id, { status: 'live', version: completed?.version })
+    assert.strictEqual(live?.status, 'live')
+    assert.strictEqual(live?.status_mode, 'manual')
+    const persistedManual = await shiftService.getById(shift.id)
+    assert.strictEqual(persistedManual?.status, 'live')
+    assert.strictEqual(persistedManual?.status_mode, 'manual')
+    const automatic = await shiftService.returnToAutomatic(shift.id, undefined, persistedManual?.version)
+    assert.strictEqual(automatic?.status, 'completed')
+    assert.strictEqual(automatic?.status_mode, 'auto')
+  })
+
+  test('cancelled and manual completed shifts are not time-overwritten', async () => {
+    const cancelled = await shiftService.create({
+      brand_id: 'b1', platform_id: 'p1', date: '2026-01-11', start_time: '10:00', end_time: '12:00',
+    } as any)
+    const removed = await shiftService.update(cancelled.id, { status: 'cancelled', version: cancelled.version })
+    const rereadCancelled = await shiftService.getById(cancelled.id)
+    assert.strictEqual(rereadCancelled?.status, removed?.status)
+    assert.strictEqual(rereadCancelled?.status_mode, 'manual')
+
+    const manualCompleted = await shiftService.create({
+      brand_id: 'b1', platform_id: 'p1', date: '2026-10-11', start_time: '10:00', end_time: '12:00',
+    } as any)
+    const prep = await shiftService.update(manualCompleted.id, { status: 'preparing', version: manualCompleted.version })
+    const live = await shiftService.update(manualCompleted.id, { status: 'live', version: prep!.version })
+    const done = await shiftService.update(manualCompleted.id, { status: 'completed', version: live!.version })
+    assert.strictEqual(done?.status_mode, 'manual')
+    assert.strictEqual((await shiftService.getById(manualCompleted.id))?.status, 'completed')
   })
 
   test('mock updates reject illegal lifecycle transitions', async () => {
@@ -155,5 +223,20 @@ describe('Shift Lifecycle UI State Flow', () => {
     assert.match(adminLifecycleMigration, /actor_permission in \('leader', 'admin'\)/i)
     assert.match(adminLifecycleMigration, /SHIFT_STATUS_TRANSITION_NOT_ALLOWED/i)
     assert.doesNotMatch(adminLifecycleMigration, /p_override|override_reason/i)
+  })
+
+  test('database status mode contract is guarded and auditable', () => {
+    assert.match(statusModeMigration, /status_mode text/i)
+    assert.match(statusModeMigration, /when status in \('paused', 'completed', 'cancelled'\) then 'manual'[\s\S]*else 'auto'/i)
+    assert.match(statusModeMigration, /status_mode set default 'auto'/i)
+    assert.match(statusModeMigration, /status_mode set not null/i)
+    assert.match(statusModeMigration, /check \(status_mode in \('auto', 'manual'\)\)/i)
+    assert.match(statusModeMigration, /refresh_automatic_shift_statuses/i)
+    assert.match(statusModeMigration, /return_shift_to_automatic/i)
+    assert.match(statusModeMigration, /p_expected_version is null or p_expected_version <> current_shift\.version/i)
+    assert.match(statusModeMigration, /source_value.*current_setting\('app\.audit_source'/i)
+    assert.match(statusModeMigration, /after_row \? 'status_mode'[\s\S]*jsonb_build_object\('status_mode'/i)
+    assert.match(statusModeMigration, /existing_shift\.status_mode = 'auto'/i)
+    assert.match(statusModeMigration, /and shift\.status_mode = 'auto'[\s\S]*and shift\.version = desired\.version/i)
   })
 })

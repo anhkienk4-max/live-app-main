@@ -1,4 +1,4 @@
-import type { Shift } from '@/lib/types/database.types'
+import type { Shift, ShiftStatus } from '@/lib/types/database.types'
 import { addDays, addMonths, format, parseISO, isAfter } from 'date-fns'
 
 export interface RecurrenceRule {
@@ -149,6 +149,24 @@ export function shiftDateTimeFields(date: string, startTime: string, endTime: st
     crosses_midnight: resolved.crossesMidnight,
     duration_minutes: resolved.durationMinutes,
   }
+}
+
+export function deriveAutomaticShiftStatus(
+  shift: Pick<Shift, 'date' | 'start_time' | 'end_time' | 'timezone' | 'start_at' | 'end_at' | 'registration_cutoff_at'>,
+  now = new Date(),
+): Exclude<ShiftStatus, 'paused' | 'cancelled'> | null {
+  const dateTime = shift.start_at && shift.end_at
+    ? { startAt: new Date(shift.start_at), endAt: new Date(shift.end_at) }
+    : resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
+  if (!dateTime || Number.isNaN(dateTime.startAt.getTime()) || Number.isNaN(dateTime.endAt.getTime())) return null
+  const cutoff = shift.registration_cutoff_at
+    ? new Date(shift.registration_cutoff_at)
+    : new Date(dateTime.startAt.getTime() - 6 * 60 * 60 * 1000)
+  if (Number.isNaN(cutoff.getTime())) return null
+  if (now >= dateTime.endAt) return 'completed'
+  if (now >= dateTime.startAt) return 'live'
+  if (now >= cutoff) return 'preparing'
+  return 'scheduled'
 }
 
 export function isValidIanaTimeZone(value: unknown): value is string {

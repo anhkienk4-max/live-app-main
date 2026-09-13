@@ -27,6 +27,8 @@ type RpcName =
   | 'set_shift_registration_lock'
   | 'soft_delete_shift'
   | 'restore_shift'
+  | 'refresh_automatic_shift_statuses'
+  | 'return_shift_to_automatic'
 
 interface FakeDatabase {
   shifts: Row[]
@@ -271,6 +273,26 @@ function fakeClient(database: FakeDatabase, options: FakeClientOptions = {}) {
       database.shifts[index] = updated
       return { ...updated }
     },
+    refresh_automatic_shift_statuses() {
+      return { updated_count: 0 }
+    },
+    return_shift_to_automatic(args) {
+      const id = String(args.p_shift_id ?? '')
+      const index = database.shifts.findIndex(row => row.id === id)
+      if (index === -1) throw { code: 'P0001', message: 'SHIFT_NOT_FOUND' }
+      const currentVersion = Number(database.shifts[index].version ?? 1)
+      if (args.p_expected_version == null || Number(args.p_expected_version) !== currentVersion) {
+        throw { code: 'P0001', message: 'STALE_WRITE' }
+      }
+      const updated = {
+        ...database.shifts[index],
+        status: 'scheduled',
+        status_mode: 'auto',
+        version: currentVersion + 1,
+      }
+      database.shifts[index] = updated
+      return { ...updated }
+    },
   }
 
   return {
@@ -335,6 +357,7 @@ function shiftRow(overrides: Partial<Row> = {}): Row {
     allow_multi_role: false,
     import_batch_id: null,
     status: 'scheduled',
+    status_mode: 'auto',
     live_link: null,
     product_notes: null,
     updated_by: null,
@@ -462,6 +485,34 @@ test('Supabase mode preserves overnight/timezone semantics', async () => {
     assert.equal(overnight?.start_time, '22:00')
     assert.equal(overnight?.end_time, '02:00')
     assert.equal(overnight?.duration_minutes, 240)
+  })
+})
+
+test('returning to automatic status checks version and only projects a successful result', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    db.shifts[0] = { ...db.shifts[0], status: 'live', status_mode: 'manual', version: 3 }
+    const client = fakeClient(db)
+    setSupabaseShiftRepositoryForTests(createSupabaseShiftRepository(client))
+    currentUserService.bindAuthenticatedUser(adminUser())
+
+    await assert.rejects(
+      () => shiftService.returnToAutomatic('shift-1', '1', 2),
+      /STALE_WRITE/,
+    )
+    assert.equal(db.shifts[0].status, 'live')
+    assert.equal(db.shifts[0].status_mode, 'manual')
+    assert.equal(db.shifts[0].version, 3)
+
+    const returned = await shiftService.returnToAutomatic('shift-1', '1', 3)
+    assert.equal(returned?.status, 'scheduled')
+    assert.equal(returned?.status_mode, 'auto')
+    assert.equal(returned?.version, 4)
+    assert.deepEqual(client.rpcCalls.filter(call => call.name === 'return_shift_to_automatic').map(call => call.args), [
+      { p_shift_id: 'shift-1', p_expected_version: 2 },
+      { p_shift_id: 'shift-1', p_expected_version: 3 },
+    ])
   })
 })
 

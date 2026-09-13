@@ -6,6 +6,7 @@ import type {
   LifecycleMetadata,
   Shift,
   ShiftStatus,
+  ShiftStatusMode,
 } from '@/lib/types/database.types'
 import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE } from '@/lib/utils/shiftUtils'
 
@@ -39,6 +40,7 @@ const shiftColumns = [
   'allow_multi_role',
   'import_batch_id',
   'status',
+  'status_mode',
   'live_link',
   'product_notes',
   'updated_by',
@@ -191,6 +193,7 @@ function shiftFromRow(row: ShiftRow): Shift {
     allow_multi_role: row.allow_multi_role,
     import_batch_id: row.import_batch_id ?? undefined,
     status: row.status as ShiftStatus,
+    status_mode: (row.status_mode as ShiftStatusMode | null) ?? 'auto',
     live_link: row.live_link ?? undefined,
     product_notes: row.product_notes ?? undefined,
     updated_by: row.updated_by ?? undefined,
@@ -276,15 +279,21 @@ export interface SupabaseShiftRepository {
   setRegistrationLock(id: string, locked: boolean, expectedVersion?: number): Promise<Shift | null>
   remove(id: string, reason: string, expectedVersion?: number): Promise<DeletionImpact | null>
   restore(id: string, expectedVersion?: number): Promise<Shift | null>
+  returnToAutomatic(id: string, expectedVersion?: number): Promise<Shift | null>
 }
 
 export function createSupabaseShiftRepository(
   client: SupabaseClient,
 ): SupabaseShiftRepository {
   const selectShifts = () => client.from('shifts').select(shiftColumns)
+  const refreshAutomaticStatuses = async () => {
+    const result = await client.rpc('refresh_automatic_shift_statuses', {}).single()
+    if (result.error) throw requestError('automatic shift status refresh', result.error)
+  }
 
   return {
     async getAll(includeDeleted = false) {
+      if (!includeDeleted) await refreshAutomaticStatuses()
       let query = selectShifts().order('date', { ascending: true }).order('start_time', { ascending: true })
       if (!includeDeleted) query = query.is('deleted_at', null).is('archived_at', null)
       const result = await query
@@ -317,12 +326,14 @@ export function createSupabaseShiftRepository(
     },
 
     async getById(id) {
+      await refreshAutomaticStatuses()
       const result = await selectShifts().eq('id', id).maybeSingle()
       if (result.error) throw requestError('shift lookup', result.error)
       return result.data ? shiftFromRow(result.data as unknown as ShiftRow) : null
     },
 
     async getByDate(date) {
+      await refreshAutomaticStatuses()
       const result = await selectShifts()
         .eq('date', date)
         .is('deleted_at', null)
@@ -333,6 +344,7 @@ export function createSupabaseShiftRepository(
     },
 
     async getByDateRange(startDate, endDate) {
+      await refreshAutomaticStatuses()
       const result = await selectShifts()
         .gte('date', startDate)
         .lte('date', endDate)
@@ -346,6 +358,7 @@ export function createSupabaseShiftRepository(
     },
 
     async getByStatus(status) {
+      await refreshAutomaticStatuses()
       const result = await selectShifts()
         .eq('status', status)
         .is('deleted_at', null)
@@ -356,6 +369,7 @@ export function createSupabaseShiftRepository(
     },
 
     async getOpen() {
+      await refreshAutomaticStatuses()
       const result = await selectShifts()
         .eq('status', 'scheduled')
         .eq('registration_locked', false)
@@ -460,6 +474,15 @@ export function createSupabaseShiftRepository(
         p_expected_version: expectedVersion ?? null,
       }).single()
       if (result.error) throw requestError('shift restore', result.error)
+      return result.data ? shiftFromRow(result.data as unknown as ShiftRow) : null
+    },
+
+    async returnToAutomatic(id, expectedVersion) {
+      const result = await client.rpc('return_shift_to_automatic', {
+        p_shift_id: id,
+        p_expected_version: expectedVersion ?? null,
+      }).single()
+      if (result.error) throw requestError('return shift to automatic', result.error)
       return result.data ? shiftFromRow(result.data as unknown as ShiftRow) : null
     },
   }

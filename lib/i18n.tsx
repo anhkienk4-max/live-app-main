@@ -7,6 +7,8 @@ export type TranslationKey = keyof typeof en
 type Variables = Record<string, string | number>
 
 const en = {
+  statusAutomatic: 'Automatic',
+  returnToAutomatic: 'Return to automatic',
   dashboard: 'Dashboard',
   calendar: 'Calendar',
   live: 'Live',
@@ -652,6 +654,10 @@ const en = {
   deleteImage: 'Delete image',
   allImageCategories: 'All image categories',
   previousImage: 'Previous image',
+    previousNavigation: 'Previous',
+    nextNavigation: 'Next',
+    removeScreenshot: 'Remove screenshot',
+    shiftDetailDescription: 'Details and operations for this livestream shift.',
   nextImage: 'Next image',
   liveImageMaximumCountError: 'A report can contain at most 30 images.',
   liveImageInvalidMimeError: 'Only JPEG, PNG, and WebP images are supported.',
@@ -1089,6 +1095,8 @@ const en = {
 } as const
 
 const vi: Record<keyof typeof en, string> = {
+  statusAutomatic: 'Tự động',
+  returnToAutomatic: 'Trở về tự động',
   forgotPasswordTitle: 'Đặt lại mật khẩu',
   forgotPasswordHelp: 'Nhập email để nhận liên kết khôi phục.',
   sendResetLink: 'Gửi liên kết đặt lại',
@@ -1946,6 +1954,10 @@ const vi: Record<keyof typeof en, string> = {
   deleteImage: 'Xóa hình ảnh',
   allImageCategories: 'Tất cả nhóm hình ảnh',
   previousImage: 'Ảnh trước',
+    previousNavigation: 'Trước',
+    nextNavigation: 'Tiếp',
+    removeScreenshot: 'Xóa ảnh chụp màn hình',
+    shiftDetailDescription: 'Thông tin chi tiết và thao tác cho ca livestream này.',
   nextImage: 'Ảnh tiếp theo',
   liveImageMaximumCountError: 'Mỗi báo cáo được chứa tối đa 30 hình ảnh.',
   liveImageInvalidMimeError: 'Chỉ hỗ trợ ảnh JPEG, PNG và WebP.',

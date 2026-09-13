@@ -35,7 +35,7 @@ import {
 } from '@/lib/types/database.types'
 import { buildDashboardOcrReviewFromRecognition, parseDashboardOcrText } from '@/lib/utils/ocrMetrics'
 import { recognizeDashboardImage } from '@/lib/services/imageOcrService'
-import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE, DEFAULT_REQUIRED_STAFF_COUNT, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
+import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE, DEFAULT_REQUIRED_STAFF_COUNT, deriveAutomaticShiftStatus, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
 import {
   normalizeStaffingDisplayNames,
   toCanonicalScheduleImportPreviewRow,
@@ -86,6 +86,7 @@ const platforms = [...mockPlatforms]
 const campaigns = [...mockCampaigns]
 let shifts: Shift[] = mockShifts.map(shift => ({
   ...shift,
+  status_mode: 'manual',
   ...shiftDateTimeFields(shift.date, shift.start_time, shift.end_time),
 }))
 const reports = [...mockReports]
@@ -1175,10 +1176,33 @@ const allowedShiftLifecycleTransitions: Record<Shift['status'], readonly Shift['
   cancelled: ['cancelled'],
 }
 
-const assertShiftLifecycleTransition = (from: Shift['status'], to: Shift['status']) => {
-  if (from !== to && !allowedShiftLifecycleTransitions[from].includes(to)) {
+const assertShiftLifecycleTransition = (
+  from: Shift['status'],
+  to: Shift['status'],
+  mode: Shift['status_mode'] = 'manual',
+) => {
+  const autoCompletedCorrection = from === 'completed' && mode === 'auto' && to !== 'cancelled'
+  if (from !== to && !autoCompletedCorrection && !allowedShiftLifecycleTransitions[from].includes(to)) {
     throw new Error('SHIFT_STATUS_TRANSITION_NOT_ALLOWED')
   }
+}
+
+const refreshMockAutomaticStatuses = () => {
+  const now = new Date()
+  shifts = shifts.map(shift => {
+    if ((shift.status_mode ?? 'auto') !== 'auto' || shift.status === 'cancelled') return shift
+    const status = deriveAutomaticShiftStatus(shift, now)
+    if (!status || status === shift.status) return shift
+    const before = { ...shift }
+    const updated = { ...shift, status, updated_at: now.toISOString(), version: nextVersion(shift.version) }
+    recordScheduleChange('update', shift.id, before, { ...updated }, { source: 'system' })
+    audit('calendar', 'update', 'shift', shift.id, shift.title || `${shift.date} ${shift.start_time}`, {
+      before,
+      after: { ...updated },
+      source: 'system',
+    })
+    return updated
+  })
 }
 
 export const shiftService = {
@@ -1186,6 +1210,7 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getAll()
     }
+    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts.filter(shift => !shift.deleted_at))
   },
 
@@ -1193,6 +1218,7 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getAllComplete()
     }
+    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts.filter(shift => !shift.deleted_at && !shift.archived_at))
   },
 
@@ -1200,6 +1226,7 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getByDateRange(startDate, endDate)
     }
+    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts
       .filter(shift => !shift.deleted_at && !shift.archived_at && shift.date >= startDate && shift.date <= endDate)
       .sort((left, right) => left.date.localeCompare(right.date) || left.start_time.localeCompare(right.start_time) || left.id.localeCompare(right.id)))
@@ -1217,6 +1244,7 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getById(id)
     }
+    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts.find(s => s.id === id) || null)
   },
 
@@ -1254,6 +1282,7 @@ export const shiftService = {
       registration_locked: false,
       allow_multi_role: operationalSettings.allow_multi_role_per_shift,
       ...createData,
+      status_mode: 'auto',
       timezone,
       host_names: createData.host_names ?? [],
       assistant_names: createData.assistant_names ?? [],
@@ -1356,7 +1385,7 @@ export const shiftService = {
     assertExpectedVersion('Shift', shifts[index].version, data.version)
     const before = { ...shifts[index] }
     const candidate = { ...shifts[index], ...data }
-    assertShiftLifecycleTransition(shifts[index].status, candidate.status)
+    assertShiftLifecycleTransition(shifts[index].status, candidate.status, shifts[index].status_mode)
     const timezone = candidate.timezone || DEFAULT_BUSINESS_TIMEZONE
     const dateTime = shiftDateTimeFields(candidate.date, candidate.start_time, candidate.end_time, timezone)
     if (!dateTime) throw new Error('Shift date or duration is invalid.')
@@ -1368,6 +1397,9 @@ export const shiftService = {
     }
     shifts[index] = {
       ...candidate,
+      status_mode: data.status !== undefined && data.status !== before.status
+        ? 'manual'
+        : (before.status_mode ?? 'auto'),
       timezone,
       required_host_count: requiredHostCount,
       required_support_count: requiredSupportCount,
@@ -1595,6 +1627,42 @@ export const shiftService = {
     }
   },
 
+  async returnToAutomatic(
+    id: string,
+    actorId = currentUserService.getId(),
+    expectedVersion?: number,
+  ): Promise<Shift | null> {
+    const actor = requiredActorFor(actorId)
+    if (!hasPermission(actor, 'shifts.edit')) throw new Error('Only Leader or Admin can edit shift status.')
+    if (getAuthMode() === 'supabase') {
+      const persisted = await getSupabaseShiftRepository().returnToAutomatic(id, expectedVersion)
+      if (persisted) upsertShiftProjection(persisted)
+      return persisted
+    }
+    const index = shifts.findIndex(shift => shift.id === id)
+    if (index === -1) return null
+    const before = { ...shifts[index] }
+    assertExpectedVersion('Shift', before.version, expectedVersion)
+    if (before.status === 'cancelled') throw new Error('SHIFT_CANCELLED_CANNOT_AUTO')
+    const status = deriveAutomaticShiftStatus(before)
+    if (!status) throw new Error('Shift date or duration is invalid.')
+    shifts[index] = {
+      ...before,
+      status,
+      status_mode: 'auto',
+      updated_at: nowIso(),
+      version: nextVersion(before.version),
+    }
+    recordScheduleChange('edit', id, before, { ...shifts[index] }, { actor_id: actor.id, source: 'manual' })
+    audit('calendar', 'update', 'shift', id, shifts[index].title || `${shifts[index].date} ${shifts[index].start_time}`, {
+      actorId: actor.id,
+      before,
+      after: { ...shifts[index] },
+      source: 'manual',
+    })
+    return shifts[index]
+  },
+
   async restore(id: string, actorId: string, reason: string, expectedVersion?: number): Promise<Shift | null> {
     if (getAuthMode() === 'supabase') {
       if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can restore shifts.')
@@ -1610,7 +1678,7 @@ export const shiftService = {
     if (index === -1) return null
     const before = { ...shifts[index] }
     assertExpectedVersion('Shift', shifts[index].version, expectedVersion)
-    shifts[index] = { ...shifts[index], status: 'scheduled', deleted_at: undefined, deleted_by: undefined, deletion_reason: undefined, registration_locked: false, updated_at: nowIso(), version: nextVersion(shifts[index].version) }
+    shifts[index] = { ...shifts[index], status: 'scheduled', status_mode: 'auto', deleted_at: undefined, deleted_by: undefined, deletion_reason: undefined, registration_locked: false, updated_at: nowIso(), version: nextVersion(shifts[index].version) }
     recordScheduleChange('restore', id, before, { ...shifts[index] }, { actor_id: actorId, reason })
     audit('calendar', 'restore', 'shift', id, shifts[index].title || `${shifts[index].date} ${shifts[index].start_time}`, { actorId, before, after: { ...shifts[index] }, reason })
     return shifts[index]
@@ -1624,6 +1692,7 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getByDate(date)
     }
+    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts.filter(s => s.date === date && !s.deleted_at))
   },
 
@@ -1631,6 +1700,7 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getByDateRange(startDate, endDate)
     }
+    refreshMockAutomaticStatuses()
     return Promise.resolve(
       shifts.filter(s => s.date >= startDate && s.date <= endDate && !s.deleted_at)
     )
@@ -1640,6 +1710,7 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getByStatus(status)
     }
+    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts.filter(s => s.status === status && !s.deleted_at))
   },
 
@@ -1652,6 +1723,7 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getOpen()
     }
+    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts.filter(shift =>
       !shift.deleted_at &&
       shift.status === 'scheduled' &&
