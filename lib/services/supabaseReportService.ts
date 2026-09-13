@@ -508,7 +508,7 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
     },
 
     async uploadReportImage(data) {
-      const { storagePath, publicUrl } = await this.uploadBlob(
+      const { storagePath } = await this.uploadBlob(
         data.image_url,
         data.storage_path,
         data.mime_type,
@@ -516,18 +516,22 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
       const result = await client.rpc('upload_report_image', {
         p_report_id: data.report_id,
         p_storage_path: storagePath,
-        p_image_url: publicUrl,
+        p_image_url: storagePath,
         p_original_name: data.original_name ?? null,
         p_mime_type: data.mime_type ?? null,
         p_size_bytes: data.size_bytes ?? 0,
         p_image_type: data.image_type,
       }).single()
-      if (result.error) throw requestError('report image upload', result.error)
+      if (result.error) {
+        // Compensate: remove orphaned object
+        await client.storage.from(bucket).remove([storagePath]).catch(() => {})
+        throw requestError('report image upload', result.error)
+      }
       return reportImageFromRow(
         (result.data ?? {
           id: '',
           report_id: data.report_id,
-          image_url: publicUrl,
+          image_url: storagePath,
           storage_path: storagePath,
           created_at: new Date().toISOString(),
         }) as ReportImageRow,
@@ -538,17 +542,21 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
       const image = await this.getReportImageById(id)
       if (!image) return false
 
-      if (image.storage_path) {
-        const { error } = await client.storage
-          .from(bucket)
-          .remove([image.storage_path])
-        if (error) throw requestError('report image storage delete', error)
-      }
-
       const result = await client.rpc('remove_report_image', {
         p_image_id: id,
       }).single()
       if (result.error) throw requestError('report image remove', result.error)
+
+      if (image.storage_path) {
+        const { error } = await client.storage
+          .from(bucket)
+          .remove([image.storage_path])
+        if (error) {
+          // Metadata is deleted, but object remains as orphan. Log it, but don't fail the operation.
+          console.error('Orphaned object on remove:', image.storage_path, error)
+        }
+      }
+
       return (result.data as unknown as boolean) === true
     },
 
@@ -566,7 +574,7 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
     },
 
     async upsertLiveReportImage(data) {
-      const { publicUrl } = await this.uploadBlob(
+      const { storagePath } = await this.uploadBlob(
         data.file_url,
         `live/${data.report_id}/${data.file_name}`,
         data.mime_type,
@@ -577,7 +585,7 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
         title: data.title,
         description: data.description,
         captured_at: data.captured_at,
-        file_url: publicUrl,
+        file_url: storagePath,
         thumbnail_url: data.thumbnail_url,
         file_name: data.file_name,
         mime_type: data.mime_type,

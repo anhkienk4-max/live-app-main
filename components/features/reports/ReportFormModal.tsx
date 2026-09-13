@@ -139,6 +139,7 @@ export function ReportFormModal({
   const [editingMetrics, setEditingMetrics] = React.useState(false)
   const [images, setImages] = React.useState<PendingImage[]>([])
   const [liveImages, setLiveImages] = React.useState<LiveReportImage[]>([])
+  const [signedUrls] = React.useState<Record<string, string>>({})
   const [replayUrl, setReplayUrl] = React.useState('')
   const [dashboardUrl, setDashboardUrl] = React.useState('')
   const [insightsGood, setInsightsGood] = React.useState('')
@@ -604,8 +605,10 @@ export function ReportFormModal({
     setSubmitting(true)
     try {
       const serializedMetrics = serializeFinalReportMetricState(dashboardPlatform, metricValues)
-      const report = await reportService.create({
-        shift_id: selectedShift.id,
+      let report
+      const existingReport = await reportService.getByShift(selectedShift.id)
+      
+      const payload = {
         ...serializedMetrics,
         dashboard_platform: dashboardPlatform,
         raw_ocr_output: review.raw_output,
@@ -615,9 +618,21 @@ export function ReportFormModal({
         final_recap: normalizeFinalReportRecap(finalRecap),
         replay_url: replayUrl || undefined,
         dashboard_url: dashboardUrl || undefined,
-        status: 'draft',
-        submitted_by: currentUser.id,
-      })
+      }
+      
+      if (existingReport && existingReport.status === 'draft') {
+        report = await reportService.update(existingReport.id, payload)
+        if (!report) throw new Error('Failed to update existing report draft.')
+      } else if (existingReport) {
+        throw new Error('An active report already exists for this shift that cannot be overwritten.')
+      } else {
+        report = await reportService.create({
+          shift_id: selectedShift.id,
+          ...payload,
+          status: 'draft',
+          submitted_by: currentUser.id,
+        })
+      }
       await Promise.all(images.map(image => reportImageService.create({
         report_id: report.id,
         image_url: image.url,
@@ -858,7 +873,8 @@ export function ReportFormModal({
           </section>
 
           <LiveReportImageEditor
-            images={liveImages}
+              signedUrls={signedUrls}
+              images={liveImages}
             uploadedBy={currentUser?.id}
             editable={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}
             canDelete={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}

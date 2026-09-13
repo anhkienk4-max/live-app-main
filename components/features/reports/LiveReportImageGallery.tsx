@@ -54,6 +54,7 @@ const validationTranslationKeys: Record<LiveReportImageValidationCode, Translati
 
 export function LiveReportImageEditor({
   images,
+  signedUrls,
   uploadedBy,
   editable,
   canReorderAndSetCover,
@@ -65,6 +66,7 @@ export function LiveReportImageEditor({
   onSetCover,
 }: {
   images: LiveReportImage[]
+  signedUrls?: Record<string, string>
   uploadedBy?: string
   editable: boolean
   canReorderAndSetCover: boolean
@@ -185,6 +187,7 @@ export function LiveReportImageEditor({
             <LiveReportImageEditorCard
               key={`${image.id}-${image.category}-${image.title ?? ''}-${image.description ?? ''}-${image.captured_at ?? ''}`}
               image={image}
+                signedUrls={signedUrls}
               index={index}
               total={images.length}
               editable={editable}
@@ -204,8 +207,9 @@ export function LiveReportImageEditor({
 
 function LiveReportImageEditorCard({
   image,
-  index,
-  total,
+    signedUrls,
+    index,
+    total,
   editable,
   canDelete,
   canReorderAndSetCover,
@@ -215,7 +219,8 @@ function LiveReportImageEditorCard({
   onSetCover,
 }: {
   image: LiveReportImage
-  index: number
+    signedUrls?: Record<string, string>
+    index: number
   total: number
   editable: boolean
   canDelete: boolean
@@ -241,7 +246,7 @@ function LiveReportImageEditorCard({
       <div className="relative">
         <Image
           unoptimized
-          src={image.thumbnail_url || image.file_url}
+          src={signedUrls?.[image.id] || ((image.thumbnail_url || image.file_url).startsWith('blob:') || (image.thumbnail_url || image.file_url).startsWith('data:') ? (image.thumbnail_url || image.file_url) : '')}
           alt={image.title || image.file_name}
           width={1280}
           height={720}
@@ -311,8 +316,10 @@ function LiveReportImageEditorCard({
 
 export function LiveReportImageGallery({
   images,
+  signedUrls,
 }: {
   images: LiveReportImage[]
+  signedUrls?: Record<string, string>
 }) {
   const { t } = useTranslation()
   const [filter, setFilter] = React.useState<'all' | LiveReportImageCategory>('all')
@@ -334,7 +341,7 @@ export function LiveReportImageGallery({
           onClick={() => setViewerId(cover.id)}
           data-testid="live-report-cover"
         >
-          <Image unoptimized src={cover.file_url} alt={cover.title || cover.file_name} width={1280} height={720} className="max-h-[420px] w-full object-cover transition-transform group-hover:scale-[1.01]" />
+          <Image unoptimized src={signedUrls?.[cover.id] || (cover.file_url.startsWith('blob:') || cover.file_url.startsWith('data:') ? cover.file_url : '')} alt={cover.title || cover.file_name} width={1280} height={720} className="max-h-[420px] w-full object-cover transition-transform group-hover:scale-[1.01]" />
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 pt-12 text-white">
             <Badge className="mb-2 bg-amber-500 text-white"><Star className="mr-1 h-3 w-3 fill-current" />{t('reportCover')}</Badge>
             <p className="font-semibold">{cover.title || cover.file_name}</p>
@@ -369,7 +376,7 @@ export function LiveReportImageGallery({
                 onClick={() => setViewerId(image.id)}
                 data-testid={`gallery-image-${image.id}`}
               >
-                <Image unoptimized src={image.thumbnail_url || image.file_url} alt={image.title || image.file_name} width={1280} height={720} className="aspect-video w-full object-cover" />
+                <Image unoptimized src={signedUrls?.[image.id] || ((image.thumbnail_url || image.file_url).startsWith('blob:') || (image.thumbnail_url || image.file_url).startsWith('data:') ? (image.thumbnail_url || image.file_url) : '')} alt={image.title || image.file_name} width={1280} height={720} className="aspect-video w-full object-cover" />
                 <div className="space-y-2 p-3">
                   <Badge variant="outline">{t(liveReportImageCategoryTranslationKeys[image.category])}</Badge>
                   <LiveReportImageMetadata image={image} />
@@ -383,7 +390,7 @@ export function LiveReportImageGallery({
           <DialogHeader><DialogTitle className="text-white">{viewerImage?.title || viewerImage?.file_name}</DialogTitle></DialogHeader>
           {viewerImage && (
             <div className="relative flex min-h-[70vh] items-center justify-center">
-              <Image unoptimized src={viewerImage.file_url} alt={viewerImage.title || viewerImage.file_name} width={1920} height={1080} className="max-h-[78vh] max-w-full object-contain" />
+              <Image unoptimized src={signedUrls?.[viewerImage.id] || (viewerImage.file_url.startsWith('blob:') || viewerImage.file_url.startsWith('data:') ? viewerImage.file_url : '')} alt={viewerImage.title || viewerImage.file_name} width={1920} height={1080} className="max-h-[78vh] max-w-full object-contain" />
               <Button className="absolute left-2" type="button" size="icon" variant="secondary" disabled={viewerIndex <= 0} aria-label={t('previousImage')} onClick={() => setViewerId(filtered[viewerIndex - 1]?.id || null)}><ChevronLeft className="h-5 w-5" /></Button>
               <Button className="absolute right-2" type="button" size="icon" variant="secondary" disabled={viewerIndex >= filtered.length - 1} aria-label={t('nextImage')} onClick={() => setViewerId(filtered[viewerIndex + 1]?.id || null)}><ChevronRight className="h-5 w-5" /></Button>
             </div>

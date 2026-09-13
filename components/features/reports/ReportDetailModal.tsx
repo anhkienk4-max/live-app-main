@@ -739,7 +739,7 @@ export function ReportDetailModal({
               {dashboardImage && (
                 <>
                   <OcrCropPreview
-                    imageUrl={signedUrls[dashboardImage.id] || dashboardImage.image_url}
+                    imageUrl={signedUrls[dashboardImage.id] || (dashboardImage.image_url.startsWith('blob:') || dashboardImage.image_url.startsWith('data:') ? dashboardImage.image_url : '')}
                     platform={report.dashboard_platform || 'other'}
                     value={reviewData.crop_box || defaultOcrCrop(report.dashboard_platform || 'other')}
                     onChange={() => undefined}
@@ -1040,7 +1040,7 @@ export function ReportDetailModal({
                 onSetCover={setLiveImageCover}
               />
             )}
-            <LiveReportImageGallery images={liveImages} />
+            <LiveReportImageGallery images={liveImages} signedUrls={signedUrls} />
 
             <Card>
               <CardContent className="space-y-4 pt-6">
@@ -1074,7 +1074,7 @@ export function ReportDetailModal({
                             unoptimized
                             width={1280}
                             height={720}
-                            src={signedUrls[image.id] || image.image_url}
+                            src={signedUrls[image.id] || (image.image_url.startsWith('blob:') || image.image_url.startsWith('data:') ? image.image_url : '')}
                             alt={image.original_name || image.image_type}
                             className="aspect-video w-full rounded-md object-cover"
                           />
