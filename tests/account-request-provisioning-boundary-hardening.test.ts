@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 const migration = await readFile(
-  new URL('../supabase/migrations/20260913125000_account_request_provisioning_boundary_hardening.sql', import.meta.url),
+  new URL('../supabase/migrations/20260913122832_20260913125000_account_request_provisioning_boundary_hardening.sql', import.meta.url),
   'utf8',
 )
 const boundary = await readFile(

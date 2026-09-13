@@ -13,8 +13,8 @@ test('dashboard performance aggregates consume confirmed reports only', () => {
 
   assert.match(dashboard, /const filteredReports = reports\.filter\(report => shiftIds\.has\(report\.shift_id\) && report\.status === 'confirmed'\)/)
   assert.match(dashboard, /const previousReports = reports\.filter\(report => previousIds\.has\(report\.shift_id\) && report\.status === 'confirmed'\)/)
-  assert.match(dashboard, /const revenue = filteredReports\.reduce\(/)
-  assert.match(dashboard, /const previousRevenue = previousReports\.reduce\(/)
+  assert.match(dashboard, /const revenue = calculateAggregate\(filteredReports, 'revenue'\)/)
+  assert.match(dashboard, /const previousRevenue = calculateAggregate\(previousReports, 'revenue'\)/)
   assert.match(dashboard, /const trend = Object\.entries\(filteredReports\.reduce/)
   assert.match(migration, /new\.status = 'confirmed' and not new\.metrics_confirmed/i)
 })

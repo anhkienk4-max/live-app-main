@@ -30,6 +30,10 @@ function resolve(specifier, context, nextResolve) {
     const imageShim = resolvePath(projectRoot, 'tests/next-image-test-shim.mjs')
     if (existsSync(imageShim)) return { url: pathToFileURL(imageShim).href, shortCircuit: true }
   }
+  if (specifier === 'next/dynamic') {
+    const dynamicShim = resolvePath(projectRoot, 'tests/next-dynamic-test-shim.mjs')
+    if (existsSync(dynamicShim)) return { url: pathToFileURL(dynamicShim).href, shortCircuit: true }
+  }
   let candidate
   if (specifier.startsWith('@/')) {
     candidate = resolvePath(projectRoot, specifier.slice(2))
