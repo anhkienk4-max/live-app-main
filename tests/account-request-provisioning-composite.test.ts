@@ -46,6 +46,15 @@ type AccountRequestRow = {
   provisioning_status: string
 }
 
+type BusinessUserRow = {
+  id: string
+  auth_user_id: string
+  system_permission: string
+  status: string
+  account_status: string
+  email_verified: boolean
+}
+
 async function rpc<T = unknown>(db: DbClient, name: string, args: Record<string, unknown>): Promise<T> {
   const { data, error } = await db.rpc(name, args)
   if (error) throw Object.assign(new Error(error.message), { code: error.code })
@@ -130,7 +139,7 @@ test('existing Auth identity provisions one linked member Staff row without FK f
 
     const { data: staffRows, error: staffError } = await service
       .from('business_users')
-      .select('id,auth_user_id,email,system_permission')
+      .select('id,auth_user_id,email,system_permission,status,account_status,email_verified')
       .eq('id', staffId)
     assert.ifError(staffError)
     assert.equal(staffRows?.length, 1)
@@ -144,6 +153,16 @@ test('existing Auth identity provisions one linked member Staff row without FK f
       p_actor_auth_user_id: adminAuthUserId,
     })
     assert.equal(completed.provisioning_status, 'linked')
+
+    const { data: activeStaff, error: activeStaffError } = await service
+      .from('business_users')
+      .select('id,auth_user_id,system_permission,status,account_status,email_verified')
+      .eq('id', staffId)
+      .single<BusinessUserRow>()
+    assert.ifError(activeStaffError)
+    assert.equal(activeStaff.status, 'active')
+    assert.equal(activeStaff.account_status, 'active')
+    assert.equal(activeStaff.email_verified, true)
 
     const users = await service.auth.admin.listUsers({ page: 1, perPage: 1000 })
     assert.ifError(users.error)

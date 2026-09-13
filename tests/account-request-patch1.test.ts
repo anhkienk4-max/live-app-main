@@ -160,7 +160,7 @@ test('Admin provisioning and explicit retry remain separate from review', () => 
   assert.match(panel, /\/provision/)
   assert.match(panel, /retry: request\.provisioning_status === 'failed'/)
   assert.match(panel, /retryProvisioning/)
-  assert.match(panel, /staffActivationSeparate/)
+  assert.doesNotMatch(panel, /staffActivationSeparate/)
 })
 
 test('Account Request controls are only mounted for the existing staff.manage boundary', () => {

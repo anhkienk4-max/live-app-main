@@ -174,7 +174,6 @@ export function AccountRequestPanel() {
               <Detail label={t('requestVersion')} value={String(selected.version)} />
               <Detail label={t('submittedAt')} value={new Date(selected.submitted_at).toLocaleString()} />
             </div>
-            {selected.provisioning_status === 'invited' || selected.provisioning_status === 'linked' ? <p className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">{t('staffActivationSeparate')}</p> : null}
             {selected.provisioning_error_code ? <p className="text-sm text-red-700">{t('provisioningError')}: {selected.provisioning_error_code}</p> : null}
             {selected.status === 'rejected' && selected.rejection_reason ? <Detail label={t('rejectionReason')} value={selected.rejection_reason} /> : null}
             {selected.status === 'pending' ? <div className="space-y-2"><label className="text-sm font-medium" htmlFor="account-request-rejection-reason">{t('rejectionReason')}</label><Textarea id="account-request-rejection-reason" value={rejectionReason} onChange={event => setRejectionReason(event.target.value)} maxLength={1000} placeholder={t('rejectionReasonPlaceholder')} /></div> : null}
