@@ -494,7 +494,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
               <Input className="min-w-0 bg-slate-50 focus-visible:ring-blue-500" value={googleUrl} onChange={event => setGoogleUrl(event.target.value)} aria-label={t('importFormatGoogle')} placeholder="https://docs.google.com/spreadsheets/d/..." />
-              <Button className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white shadow-sm" onClick={handleGoogle} disabled={busy || !masterGate.allowed || !googleUrl || googleUrl === 'mock://schedule'}>
+              <Button className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white shadow-sm" onClick={handleGoogle} disabled={busy || !masterGate.allowed || !googleUrl}>
                 {t('importGoogleSheets')}
               </Button>
             </div>
@@ -659,27 +659,174 @@ function ImportSummary({ counts, t, persistedCount }: { counts: ImportPresentati
 }
 
 function ImportCompletionCard({ completed, counts, t }: { completed: CompletedImport; counts: ImportPresentationCounts; t: ImportTranslate }) {
+  const [showAllValidation, setShowAllValidation] = React.useState(false)
+  const [showAllRetryable, setShowAllRetryable] = React.useState(false)
+  const [showAllWarnings, setShowAllWarnings] = React.useState(false)
+
   const warningRows = completed.rows.filter(row => row.status === 'warning')
   const notImportedRows = completed.rows.filter(isNotImportedResultRow)
-  const statusForRow = (row: ImportBatchRow): ImportResultPresentationStatus => {
-    if (row.status === 'imported') return 'imported'
-    if (row.status === 'warning') return 'warning'
-    if (row.status === 'duplicate_skipped') return 'duplicate'
-    if (row.status === 'retryable') return 'retryable'
-    if (row.status === 'validation_failed') return 'invalid'
-    return 'ready'
-  }
-  return <Card data-testid="schedule-import-result" role="status" aria-live="polite" className="border-emerald-200">
-    <CardHeader><CardTitle className="flex flex-wrap items-center justify-between gap-2"><span>{t('importCompleted')}</span><Badge variant="outline">{completed.source.name}</Badge></CardTitle></CardHeader>
-    <CardContent className="space-y-3">
-      <ImportSummary counts={counts} t={t} persistedCount={persistedImportCount(counts)} />
-      {persistedImportCount(counts) === 0 && <p className="text-sm text-muted-foreground">{t('importNothingPersisted')}</p>}
-      {counts.retryable > 0 && <p className="text-sm text-orange-700">{t('retryableRecovery')} {t('retryUnavailable')}</p>}
-      {warningRows.length > 0 && <details open className="rounded-md border border-amber-200 bg-amber-50/50 p-3" data-testid="schedule-import-warning-rows"><summary className="cursor-pointer text-sm font-medium">{t('importRowsImportedWithWarnings')}: {warningRows.length}</summary><p className="mt-1 text-xs text-muted-foreground">{t('importWarningPersistedHelp')}</p><div className="mt-2 space-y-2">{warningRows.map(row => <div key={row.id} className="rounded border bg-background p-2 text-sm"><div className="flex items-center justify-between gap-2"><span>{t('importSourceRow')} {row.source_row_number}</span><Badge variant="outline">{importStatusLabel(statusForRow(row), t)}</Badge></div>{row.normalized_values.warnings.map(issue => <p key={issue} className="mt-1 text-xs text-amber-800">{issue}</p>)}</div>)}</div></details>}
-      {notImportedRows.length > 0 && <details open className="rounded-md border border-amber-200 bg-amber-50/50 p-3" data-testid="schedule-import-not-imported-rows"><summary className="cursor-pointer text-sm font-medium">{t('importRowsNotCreated')}: {notImportedRows.length}</summary><div className="mt-2 space-y-2">{notImportedRows.map(row => <div key={row.id} className="rounded border bg-background p-2 text-sm"><div className="flex items-center justify-between gap-2"><span>{t('importSourceRow')} {row.source_row_number}</span><Badge variant="outline">{importStatusLabel(statusForRow(row), t)}</Badge></div>{row.failure_code && <p className="mt-1 text-xs text-muted-foreground">{statusForRow(row) === 'retryable' ? t('retryableRecovery') : statusForRow(row) === 'invalid' ? t('importValidationDetails') : t('notImported')}</p>}{row.validation_issues.map(issue => <p key={issue} className="mt-1 text-xs text-red-700">{issue}</p>)}</div>)}</div></details>}
-    </CardContent>
-  </Card>
+
+  const validationErrors = notImportedRows.filter(row => row.status === 'validation_failed')
+  const retryableErrors = notImportedRows.filter(row => row.status === 'retryable')
+
+  const persistedCount = persistedImportCount(counts)
+  const attention = counts.warning + counts.duplicate + counts.invalid + counts.retryable
+
+  let state: 'SUCCESS' | 'PARTIAL' | 'ACTION_REQUIRED' = 'SUCCESS'
+  if (persistedCount === 0 && (counts.duplicate + counts.invalid + counts.retryable) > 0) state = 'ACTION_REQUIRED'
+  else if (persistedCount > 0 && attention > 0) state = 'PARTIAL'
+
+  const borderClass = state === 'SUCCESS' ? 'border-emerald-200' : state === 'PARTIAL' ? 'border-amber-200' : 'border-red-200'
+  const headerClass = state === 'SUCCESS' ? 'bg-emerald-50/60 text-emerald-950' : state === 'PARTIAL' ? 'bg-amber-50/60 text-amber-950' : 'bg-red-50/60 text-red-950'
+
+  const titleText = state === 'SUCCESS'
+    ? t('importCompleted')
+    : state === 'PARTIAL'
+      ? t('importPartialSuccess', { imported: persistedCount, attention: attention })
+      : t('importNotCompleted', { defaultValue: 'Import Not Completed' })
+
+  const visibleValidation = showAllValidation ? validationErrors : validationErrors.slice(0, 10)
+  const visibleRetryable = showAllRetryable ? retryableErrors : retryableErrors.slice(0, 10)
+  const visibleWarnings = showAllWarnings ? warningRows : warningRows.slice(0, 10)
+
+  return (
+    <Card data-testid="schedule-import-result" role="status" aria-live="polite" className={`overflow-hidden ${borderClass}`}>
+      <CardHeader className={`border-b ${headerClass} px-5 py-4`}>
+        <CardTitle className="flex flex-wrap items-center justify-between gap-2">
+          <span>{titleText}</span>
+          <Badge variant="outline" className="bg-background/80 shadow-sm border-slate-200 text-slate-800">{completed.source.name}</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6 p-5">
+        <ImportSummary counts={counts} t={t} persistedCount={persistedCount} />
+
+        {persistedCount === 0 && <p className="text-sm text-muted-foreground">{t('importNothingPersisted')}</p>}
+
+        {(validationErrors.length > 0 || retryableErrors.length > 0 || warningRows.length > 0) && (
+          <div className="space-y-4">
+            {validationErrors.length > 0 && (
+              <details open className="group rounded-lg border border-red-200 bg-background shadow-sm overflow-hidden" data-testid="schedule-import-validation-errors">
+                <summary className="bg-red-50/80 px-4 py-3 border-b border-red-100 flex items-center justify-between cursor-pointer hover:bg-red-50 transition-colors">
+                  <h4 className="font-semibold text-red-900">{t('importValidationFailed')} ({validationErrors.length})</h4>
+                  <span className="text-xs text-red-700 font-medium">{t('correctRows')}</span>
+                </summary>
+                <div className="max-h-[300px] overflow-y-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-slate-50 sticky top-0"><tr className="border-b"><th className="px-4 py-2 font-medium text-slate-500 w-24">{t('importSourceRow')}</th><th className="px-4 py-2 font-medium text-slate-500">{t('error')}</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {visibleValidation.map(row => (
+                        <tr key={row.id}>
+                          <td className="px-4 py-2 font-medium text-slate-700 align-top">{row.source_row_number}</td>
+                          <td className="px-4 py-2">
+                            {row.failure_code && <p className="font-mono text-xs text-red-800 mb-1">{t('importErrorCode')} {row.failure_code}</p>}
+                            {row.validation_issues.map(issue => <p key={issue} className="text-red-700">{issue}</p>)}
+                            {(!row.validation_issues || row.validation_issues.length === 0) && <p className="text-red-700">{t('importValidationDetails')}</p>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {!showAllValidation && validationErrors.length > 10 && (
+                    <div className="p-2 border-t border-slate-100 bg-slate-50 flex justify-center">
+                      <Button variant="ghost" size="sm" onClick={() => setShowAllValidation(true)} className="text-slate-600 h-8">
+                        {t('importShowMoreRows', { n: validationErrors.length - 10 })}
+                      </Button>
+                    </div>
+                  )}
+                  {showAllValidation && validationErrors.length > 10 && (
+                    <div className="p-2 border-t border-slate-100 bg-slate-50 flex justify-center">
+                      <Button variant="ghost" size="sm" onClick={() => setShowAllValidation(false)} className="text-slate-600 h-8">
+                        {t('importCollapseRows')}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </details>
+            )}
+
+            {retryableErrors.length > 0 && (
+              <details open className="group rounded-lg border border-orange-200 bg-background shadow-sm overflow-hidden" data-testid="schedule-import-retryable-errors">
+                <summary className="bg-orange-50/80 px-4 py-3 border-b border-orange-100 flex items-center justify-between cursor-pointer hover:bg-orange-50 transition-colors">
+                  <h4 className="font-semibold text-orange-900">{t('importRetryable')} ({retryableErrors.length})</h4>
+                  <span className="text-xs text-orange-700 font-medium">{t('retryableRecovery')}</span>
+                </summary>
+                <div className="max-h-[300px] overflow-y-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-slate-50 sticky top-0"><tr className="border-b"><th className="px-4 py-2 font-medium text-slate-500 w-24">{t('importSourceRow')}</th><th className="px-4 py-2 font-medium text-slate-500">{t('error')}</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {visibleRetryable.map(row => (
+                        <tr key={row.id}>
+                          <td className="px-4 py-2 font-medium text-slate-700 align-top">{row.source_row_number}</td>
+                          <td className="px-4 py-2">
+                            {row.failure_code && <p className="font-mono text-xs text-orange-900 mb-1">{t('importErrorCode')} {row.failure_code}</p>}
+                            <p className="text-orange-800">{t('retryableRecovery')}</p>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {!showAllRetryable && retryableErrors.length > 10 && (
+                    <div className="p-2 border-t border-slate-100 bg-slate-50 flex justify-center">
+                      <Button variant="ghost" size="sm" onClick={() => setShowAllRetryable(true)} className="text-slate-600 h-8">
+                        {t('importShowMoreRows', { n: retryableErrors.length - 10 })}
+                      </Button>
+                    </div>
+                  )}
+                  {showAllRetryable && retryableErrors.length > 10 && (
+                    <div className="p-2 border-t border-slate-100 bg-slate-50 flex justify-center">
+                      <Button variant="ghost" size="sm" onClick={() => setShowAllRetryable(false)} className="text-slate-600 h-8">
+                        {t('importCollapseRows')}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </details>
+            )}
+
+            {warningRows.length > 0 && (
+              <details className="group rounded-lg border border-amber-200 bg-background shadow-sm overflow-hidden" data-testid="schedule-import-warning-rows">
+                <summary className="bg-amber-50/80 px-4 py-3 border-b border-amber-100 flex items-center justify-between cursor-pointer hover:bg-amber-50 transition-colors">
+                  <h4 className="font-semibold text-amber-900">{t('importRowsImportedWithWarnings')} ({warningRows.length})</h4>
+                  <span className="text-xs text-amber-700 font-medium">{t('importWarningPersistedHelp')}</span>
+                </summary>
+                <div className="max-h-[300px] overflow-y-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-slate-50 sticky top-0"><tr className="border-b"><th className="px-4 py-2 font-medium text-slate-500 w-24">{t('importSourceRow')}</th><th className="px-4 py-2 font-medium text-slate-500">{t('importWarning')}</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {visibleWarnings.map(row => (
+                        <tr key={row.id}>
+                          <td className="px-4 py-2 font-medium text-slate-700 align-top">{row.source_row_number}</td>
+                          <td className="px-4 py-2 text-amber-800">
+                            {row.normalized_values.warnings.map(issue => <p key={issue}>{issue}</p>)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {!showAllWarnings && warningRows.length > 10 && (
+                    <div className="p-2 border-t border-slate-100 bg-slate-50 flex justify-center">
+                      <Button variant="ghost" size="sm" onClick={() => setShowAllWarnings(true)} className="text-slate-600 h-8">
+                        {t('importShowMoreRows', { n: warningRows.length - 10 })}
+                      </Button>
+                    </div>
+                  )}
+                  {showAllWarnings && warningRows.length > 10 && (
+                    <div className="p-2 border-t border-slate-100 bg-slate-50 flex justify-center">
+                      <Button variant="ghost" size="sm" onClick={() => setShowAllWarnings(false)} className="text-slate-600 h-8">
+                        {t('importCollapseRows')}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </details>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
 }
+
 
 function batchStatusLabel(status: ScheduleImportBatch['status'], t: ImportTranslate) {
   const key: Record<ScheduleImportBatch['status'], TranslationKey> = {
