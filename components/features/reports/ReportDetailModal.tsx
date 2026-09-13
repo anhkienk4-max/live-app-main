@@ -316,6 +316,23 @@ export function ReportDetailModal({
   const uploadInputRef = React.useRef<HTMLInputElement>(null)
   const dashboardImage = images.find(image => image.image_type === 'dashboard')
   React.useEffect(() => { if (open) void reportImageService.getByReport(report.id).then(setImages) }, [open, report.id])
+  // Signed URL cache for private storage images
+  const [signedUrls, setSignedUrls] = React.useState<Record<string, string>>({})
+  React.useEffect(() => {
+    if (!images.length) return
+    const resolve = async () => {
+      const entries = await Promise.all(
+        images
+          .filter(img => img.storage_path)
+          .map(async (img) => {
+            const url = await reportImageService.getSignedUrl(img.storage_path!)
+            return [img.id, url || img.image_url] as const
+          })
+      )
+      setSignedUrls(Object.fromEntries(entries))
+    }
+    void resolve()
+  }, [images])
   React.useEffect(() => { if (open) void liveReportImageService.getByReport(report.id).then(setLiveImages) }, [open, report.id])
   React.useEffect(() => {
     if (!open) return
@@ -722,7 +739,7 @@ export function ReportDetailModal({
               {dashboardImage && (
                 <>
                   <OcrCropPreview
-                    imageUrl={dashboardImage.image_url}
+                    imageUrl={signedUrls[dashboardImage.id] || dashboardImage.image_url}
                     platform={report.dashboard_platform || 'other'}
                     value={reviewData.crop_box || defaultOcrCrop(report.dashboard_platform || 'other')}
                     onChange={() => undefined}
@@ -1057,7 +1074,7 @@ export function ReportDetailModal({
                             unoptimized
                             width={1280}
                             height={720}
-                            src={image.image_url}
+                            src={signedUrls[image.id] || image.image_url}
                             alt={image.original_name || image.image_type}
                             className="aspect-video w-full rounded-md object-cover"
                           />
