@@ -713,11 +713,13 @@ function MyShiftCompactList({ entries, brands, platforms, campaigns, onManage }:
 
 function MyShiftTable({ entries, brands, platforms, campaigns, onManage }: MyShiftViewProps) {
   const { t } = useTranslation()
-  return <Card><CardContent className="overflow-x-auto pt-5"><table className="w-full min-w-[850px] text-sm"><thead><tr className="border-b text-left">
+  return <Card><CardContent className="overflow-x-auto pt-5"><div className="w-full overflow-x-auto min-w-0">
+<table className="w-full min-w-[850px] text-sm"><thead><tr className="border-b text-left">
     <th className="p-2">{t('date')}</th><th className="p-2">{t('shiftTitle')}</th><th className="p-2">{t('brand')}</th><th className="p-2">{t('platform')}</th><th className="p-2">{t('campaign')}</th><th className="p-2">{t('role')}</th><th className="p-2">{t('status')}</th><th className="p-2">{t('actions')}</th>
   </tr></thead><tbody>{entries.map(({ shift, registrations }) => <tr className="border-b" key={shift.id} data-testid={`my-shift-row-${shift.id}`}>
     <td className="whitespace-nowrap p-2">{shift.date} Â· {formatShiftTimeRange(shift)}</td><td className="p-2 font-medium">{shift.title || 'â€”'}</td><td className="p-2">{brandName(brands, shift.brand_id)}</td><td className="p-2">{platformName(platforms, shift.platform_id)}</td><td className="p-2">{campaignName(campaigns, shift.campaign_id)}</td><td className="p-2">{registrations.map(registration => t(registration.operational_role)).join(', ')}</td><td className="p-2">{registrations.map(registration => <Badge className="mr-1" key={registration.id} variant="outline">{registrationLabel(registration, t)}</Badge>)}</td><td className="p-2"><Button data-testid={`open-my-shift-detail-table-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button></td>
-  </tr>)}</tbody></table></CardContent></Card>
+  </tr>)}</tbody></table>
+</div></CardContent></Card>
 }
 
 function CompactShiftList({
@@ -787,7 +789,8 @@ function ShiftSummaryTable({
   onManage: (shift: Shift) => void
 }) {
   const { t } = useTranslation()
-  return <Card><CardContent className="overflow-x-auto pt-5"><table className="w-full min-w-[900px] text-sm">
+  return <Card><CardContent className="overflow-x-auto pt-5"><div className="w-full overflow-x-auto min-w-0">
+<table className="w-full min-w-[900px] text-sm">
     <thead><tr className="border-b text-left"><th className="p-2">{t('date')}</th><th className="p-2">{t('time')}</th><th className="p-2">{t('brand')}</th><th className="p-2">{t('platform')}</th><th className="p-2">{t('role')}</th><th className="p-2">{t('status')}</th><th className="p-2">{t('actions')}</th></tr></thead>
     <tbody>{shifts.map(shift => {
       const visibleCapacities = getVisibleRoleCapacities(getShiftRoleCapacities(shift, registrations), roleFilter)
@@ -801,7 +804,8 @@ function ShiftSummaryTable({
         <td className="p-2"><div className="flex items-center gap-2"><ShiftRegistrationActions allShifts={allShifts} compact currentUser={currentUser} onRegister={role => onRegister(shift.id, role)} registrations={registrations} shift={shift} /><Button data-testid={`open-shift-detail-table-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button></div></td>
       </tr>
     })}</tbody>
-  </table></CardContent></Card>
+  </table>
+</div></CardContent></Card>
 }
 
 function registrationLabel(

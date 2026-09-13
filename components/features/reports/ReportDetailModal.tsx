@@ -853,7 +853,9 @@ export function ReportDetailModal({
                 <CardContent className="pt-6">
                   <h3 className="font-semibold mb-4">{t('topPerformingProducts')}</h3>
                   <div className="w-full overflow-x-auto rounded-lg border">
-                    <table className="w-full min-w-[420px] text-sm"><thead className="bg-muted/50"><tr><th className="w-16 p-3 text-left">#</th><th className="p-3 text-left">{t('product')}</th></tr></thead><tbody>{report.top_products.map((product, idx) => <tr className="border-t" key={idx}><td className="p-3"><span className="inline-flex items-center gap-1 font-medium text-yellow-700"><Star className="h-4 w-4" />{idx + 1}</span></td><td className="p-3 font-medium">{product}</td></tr>)}</tbody></table>
+                    <div className="w-full overflow-x-auto min-w-0">
+<table className="w-full min-w-[420px] text-sm"><thead className="bg-muted/50"><tr><th className="w-16 p-3 text-left">#</th><th className="p-3 text-left">{t('product')}</th></tr></thead><tbody>{report.top_products.map((product, idx) => <tr className="border-t" key={idx}><td className="p-3"><span className="inline-flex items-center gap-1 font-medium text-yellow-700"><Star className="h-4 w-4" />{idx + 1}</span></td><td className="p-3 font-medium">{product}</td></tr>)}</tbody></table>
+</div>
                   </div>
                 </CardContent>
               </Card>

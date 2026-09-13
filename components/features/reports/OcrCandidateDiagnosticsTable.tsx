@@ -34,7 +34,8 @@ export function OcrCandidateDiagnosticsTable({
       {showTable && <details className="rounded-lg border border-dashed p-3 text-xs" data-testid="ocr-candidate-diagnostics">
       <summary className="cursor-pointer font-semibold">OCR candidate diagnostics</summary>
       <div className="mt-3 overflow-x-auto">
-        <table className="min-w-full border-collapse text-left">
+        <div className="w-full overflow-x-auto min-w-0">
+<table className="min-w-full border-collapse text-left">
           <thead>
             <tr>
               {['Canonical key', 'Selected source', 'Raw label', 'Raw value', 'Normalized value', 'Destination input', 'Status', 'Discarded conflict', 'Reason'].map(label => (
@@ -65,6 +66,7 @@ export function OcrCandidateDiagnosticsTable({
             })}
           </tbody>
         </table>
+</div>
       </div>
       </details>}
     </div>

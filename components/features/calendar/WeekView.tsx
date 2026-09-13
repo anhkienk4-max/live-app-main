@@ -171,23 +171,23 @@ export function WeekView({ currentDate, shifts, brands, users, registrations, on
                             </span>
                             <ShiftStatusBadge status={shift.status} className="text-[9px] h-4 px-1.5 rounded-sm border-border/50 shrink-0" />
                           </div>
-                          <div className="text-[12px] font-medium text-foreground truncate">
+                          <div className="text-[12px] font-medium text-foreground line-clamp-2" title={getBrandName(shift.brand_id)}>
                             {getBrandName(shift.brand_id)}
                           </div>
                           {shift.studio && (
-                            <div className="text-[11px] text-muted-foreground truncate">
+                            <div className="text-[11px] text-muted-foreground truncate" title={shift.studio}>
                               {shift.studio}
                             </div>
                           )}
                           {labels.length > 0 && (
                             <div className="flex flex-col gap-0.5 mt-1 border-t border-border/40 pt-1">
                               {confirmedLabels.map((lbl: StaffingLabel, idx: number) => (
-                                <span key={lbl.id + idx} className="text-[11px] font-medium leading-tight text-foreground truncate">
+                                <span key={lbl.id + idx} className="text-[11px] font-medium leading-tight text-foreground truncate" title={lbl.name}>
                                   {lbl.name}
                                 </span>
                               ))}
                               {unassignedLabels.map((lbl: StaffingLabel, idx: number) => (
-                                <span key={lbl.id + 'u' + idx} className="text-[11px] font-medium leading-tight text-destructive/90 italic truncate">
+                                <span key={lbl.id + 'u' + idx} className="text-[11px] font-medium leading-tight text-destructive/90 italic truncate" title={lbl.name}>
                                   {lbl.name}
                                 </span>
                               ))}

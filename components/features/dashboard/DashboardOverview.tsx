@@ -49,6 +49,21 @@ const rangeFor = (preset: Exclude<Preset, 'custom'>) => {
 }
 const initialFilters = (): Filters => ({ preset: '30d', ...rangeFor('30d'), brandIds: [], platformIds: [], campaignIds: [], hostIds: [], supportIds: [], technicalIds: [] })
 
+
+export function calculateAggregate(reports: Report[], key: keyof Pick<Report, 'revenue' | 'orders' | 'gmv'>): number | null {
+  if (reports.length === 0) return null;
+  let hasValidValue = false;
+  let sum = 0;
+  for (const report of reports) {
+    const val = report[key];
+    if (typeof val === 'number') {
+      sum += val;
+      hasValidValue = true;
+    }
+  }
+  return hasValidValue ? sum : null;
+}
+
 export function DashboardOverview() {
   const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
@@ -143,17 +158,17 @@ const nameFor = (items: Array<{ id: string; name: string }>, id: string) => item
 
 function AdminDashboard(props: CommonProps) {
   const { shifts, reports, brands, platforms, campaigns, users, registrations, filters, setFilters, showFilters, setShowFilters, t, setPreset } = props
-  
+
   const filteredShifts = shifts.filter(shift => shift.date >= filters.start && shift.date <= filters.end && matchesDimensions(shift, filters, registrations))
   const shiftIds = new Set(filteredShifts.map(shift => shift.id))
   const filteredReports = reports.filter(report => shiftIds.has(report.shift_id) && report.status === 'confirmed')
-  
+
   const days = Math.max(1, Math.round((new Date(`${filters.end}T00:00:00`).getTime() - new Date(`${filters.start}T00:00:00`).getTime()) / 86400000) + 1)
   const previousEnd = dateValue(addDays(new Date(`${filters.start}T00:00:00`), -1))
   const previousStart = dateValue(addDays(new Date(`${previousEnd}T00:00:00`), -(days - 1)))
   const previousIds = new Set(shifts.filter(shift => shift.date >= previousStart && shift.date <= previousEnd && matchesDimensions(shift, filters, registrations)).map(shift => shift.id))
   const previousReports = reports.filter(report => previousIds.has(report.shift_id) && report.status === 'confirmed')
-  
+
   const scopedReports = reports.filter(report => shiftIds.has(report.shift_id))
   const scopedRegistrations = registrations.filter(reg => shiftIds.has(reg.shift_id))
   const dqIssues = getAllIssues({ shifts: filteredShifts, reports: scopedReports, registrations: scopedRegistrations })
@@ -161,22 +176,32 @@ function AdminDashboard(props: CommonProps) {
   const warningCount = dqIssues.filter(i => i.severity === 'warning').length
   const infoCount = dqIssues.filter(i => i.severity === 'info').length
   const dqAttention = deriveDataQualityAttention(errorCount, warningCount, infoCount)
-  
-  const revenue = filteredReports.reduce((sum, report) => sum + (report.revenue ?? 0), 0)
-  const previousRevenue = previousReports.reduce((sum, report) => sum + (report.revenue ?? 0), 0)
-  const delta = previousRevenue ? `${(((revenue - previousRevenue) / previousRevenue) * 100).toFixed(1)}%` : '—'
+
+  const revenue = calculateAggregate(filteredReports, 'revenue')
+  const previousRevenue = calculateAggregate(previousReports, 'revenue')
+  const delta = (revenue !== null && previousRevenue !== null && previousRevenue !== 0)
+    ? `${(((revenue - previousRevenue) / previousRevenue) * 100).toFixed(1)}%`
+    : '—'
   const today = getCurrentBusinessDate()
-  const trend = Object.entries(filteredReports.reduce<Record<string, { revenue: number; orders: number }>>((result, report) => {
+  const trend = Object.entries(filteredReports.reduce<Record<string, { revenue: number | null; orders: number | null }>>((result, report) => {
     const shift = shifts.find(candidate => candidate.id === report.shift_id)
-    if (shift) { (result[shift.date] ??= { revenue: 0, orders: 0 }).revenue += report.revenue ?? 0; result[shift.date].orders += report.orders ?? 0 }
+    if (shift) {
+      if (!result[shift.date]) { result[shift.date] = { revenue: null, orders: null } }
+      if (typeof report.revenue === 'number') {
+        result[shift.date].revenue = (result[shift.date].revenue || 0) + report.revenue
+      }
+      if (typeof report.orders === 'number') {
+        result[shift.date].orders = (result[shift.date].orders || 0) + report.orders
+      }
+    }
     return result
-  }, {})).sort(([left], [right]) => left.localeCompare(right)).map(([date, values]) => ({ date, ...values }))
-  
+  }, {})).sort(([left], [right]) => left.localeCompare(right)).map(([date, values]) => ({ date, revenue: values.revenue ?? 0, orders: values.orders ?? 0 }))
+
   const statusSummary = ['scheduled', 'preparing', 'live', 'paused', 'completed', 'cancelled'].map(status => ({
     status: status === 'live' ? t('liveStatus') : t(status as 'scheduled' | 'preparing' | 'paused' | 'completed' | 'cancelled'),
     shifts: filteredShifts.filter(shift => shift.status === status).length,
   }))
-  
+
   const upcoming = filteredShifts.filter(shift => shift.date >= today && shift.status === 'scheduled').sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`)).slice(0, 5)
   const roleOptions = (role: 'host' | 'support' | 'technical') => users.filter(user => user.operational_roles?.includes(role)).map(user => ({ id: user.id, name: user.full_name }))
 
@@ -214,7 +239,7 @@ function AdminDashboard(props: CommonProps) {
       liveCount={liveCount}
       staffCount={staffCount}
       campaignCount={campaignCount}
-      confirmedRevenue={formatCurrency(revenue)}
+      confirmedRevenue={revenue !== null ? formatCurrency(revenue) : '—'}
       revenueDelta={delta}
       t={t}
     />
@@ -257,7 +282,7 @@ function AdminMetricStrip({
   return (
     <div className="flex flex-wrap items-stretch divide-x divide-border border-y bg-transparent">
       {items.map((item, i) => (
-        <div key={i} className="flex min-w-[120px] flex-1 flex-col justify-center px-4 py-2">
+        <div key={i} className="flex min-w-0 flex-1 flex-col justify-center px-4 py-2">
           <span className="text-xs text-muted-foreground">{item.label}</span>
           <span className="mt-0.5 text-lg font-semibold tabular-nums">{item.value}</span>
           {item.note && <span className="text-xs text-muted-foreground">{item.note}</span>}
@@ -269,13 +294,13 @@ function AdminMetricStrip({
 
 function LeaderDashboard(props: CommonProps) {
   const { shifts, reports, brands, platforms, campaigns, users, registrations, swapRequests, filters, setFilters, showFilters, setShowFilters, currentUser, t, setPreset } = props
-  
+
   const filteredShifts = shifts.filter(shift => shift.date >= filters.start && shift.date <= filters.end && matchesDimensions(shift, filters, registrations))
   const today = getCurrentBusinessDate()
   const todaysShifts = filteredShifts.filter(shift => shift.date === today)
-  
+
   const shiftIds = new Set(filteredShifts.map(shift => shift.id))
-  
+
   const pendingRegistrations = getLeaderPendingRegistrations(registrations, shiftIds)
   const pendingSwaps = getLeaderPendingSwaps(swapRequests, shiftIds)
   const pendingReports = getLeaderPendingReports(reports, shiftIds)
@@ -289,12 +314,12 @@ function LeaderDashboard(props: CommonProps) {
   // E5: derive exception-first attention summary
   let actionableSwapCount = 0
   let waitingSwapCount = 0
-  
-  const operationalSwaps = swapRequests.filter(s => 
-    (s.status === 'pending' || s.status === 'accepted') && 
+
+  const operationalSwaps = swapRequests.filter(s =>
+    (s.status === 'pending' || s.status === 'accepted') &&
     (shiftIds.has(s.shift_id) || (s.source_shift_id && shiftIds.has(s.source_shift_id)) || (s.target_shift_id && shiftIds.has(s.target_shift_id)))
   )
-  
+
   operationalSwaps.forEach(s => {
     const actions = getSwapUiActions(s, currentUser)
     if (actions.showAccept || actions.showCounterpartReject || actions.showApprove || actions.showReviewerReject || actions.showCancel) {
@@ -359,15 +384,15 @@ function LeaderDashboard(props: CommonProps) {
 
 function MemberDashboard(props: CommonProps) {
   const { shifts, reports, brands, platforms, currentUser, registrations, swapRequests, t, setSelectedShift } = props
-  
+
   const today = getCurrentBusinessDate()
-  
+
   // Find member's shifts using strictly canonical registration
   const myShifts = getMemberAssignedShifts(shifts, currentUser.id, registrations)
-  
+
   const upcoming = myShifts.filter(shift => shift.date >= today && (shift.status === 'scheduled' || shift.status === 'live' || shift.status === 'preparing')).sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`))
   const nextShift = upcoming[0]
-  
+
   const myPendingSwaps = getMemberPendingSwaps(swapRequests, currentUser.id)
   const myReports = reports.filter(r => r.submitted_by === currentUser.id)
   const myPendingRegistrations = getMemberPendingRegistrations(registrations, currentUser.id)
@@ -375,12 +400,12 @@ function MemberDashboard(props: CommonProps) {
   // E5: derive personal exception summary
   let actionableSwapCount = 0
   let waitingSwapCount = 0
-  
-  const personalOperationalSwaps = swapRequests.filter(s => 
-    (s.status === 'pending' || s.status === 'accepted') && 
+
+  const personalOperationalSwaps = swapRequests.filter(s =>
+    (s.status === 'pending' || s.status === 'accepted') &&
     (s.requester_id === currentUser.id || s.counterpart_id === currentUser.id)
   )
-  
+
   personalOperationalSwaps.forEach(s => {
     const actions = getSwapUiActions(s, currentUser)
     if (actions.showAccept || actions.showCounterpartReject || actions.showApprove || actions.showReviewerReject || actions.showCancel) {
@@ -499,6 +524,6 @@ function UpcomingShiftsList({ upcoming, brands, platforms, t, title, setSelected
 function FilterSelect({ label, value, options, onChange }: { label: string; value: string[]; options: Array<{ id: string; name: string }>; onChange: (value: string[]) => void }) {
   return <MultiSelectFilter label={label} value={value} onChange={onChange} options={options.map(option => ({ value: option.id, label: option.name }))} />
 }
-function Metric({ title, value, note, icon }: { title: string; value: string; note?: string; icon: React.ReactNode }) { return <Card className="shadow-none"><CardHeader className="flex-row items-center justify-between pb-2 pt-4 px-4 space-y-0"><CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>{icon}</CardHeader><CardContent className="px-4 pb-4"><p className="text-2xl font-bold">{value}</p>{note && <p className="mt-1 text-xs font-medium text-muted-foreground">{note}</p>}</CardContent></Card> }
+function Metric({ title, value, note, icon }: { title: string; value: string; note?: string; icon: React.ReactNode }) { return <Card className="shadow-none"><CardHeader className="flex-row items-center justify-between pb-2 pt-4 px-4 space-y-0"><CardTitle className="text-sm font-medium text-muted-foreground truncate" title={title}>{title}</CardTitle>{icon}</CardHeader><CardContent className="px-4 pb-4 min-w-0"><p className="text-2xl font-bold truncate" title={value}>{value}</p>{note && <p className="mt-1 text-xs font-medium text-muted-foreground truncate" title={note}>{note}</p>}</CardContent></Card> }
 function QuickAction({ href, label, icon }: { href: string; label: string; icon: React.ReactNode }) { return <Button nativeButton={false} render={<Link href={href} />} variant="outline" className="h-20 flex-col gap-1.5 bg-muted/20">{icon}<span className="text-xs">{label}</span></Button> }
 function Empty({ text }: { text: string }) { return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{text}</div> }

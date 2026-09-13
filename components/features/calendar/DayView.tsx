@@ -64,7 +64,7 @@ export function DayView({ currentDate, shifts, brands, platforms, users, registr
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm text-muted-foreground mb-1">
                   <div>
                     <span className="font-medium mr-2">{t('brand')}:</span>
-                    <span className="text-foreground">{getBrandName(shift.brand_id)}</span>
+                    <span className="text-foreground line-clamp-2" title={getBrandName(shift.brand_id)}>{getBrandName(shift.brand_id)}</span>
                   </div>
                   <div>
                     <span className="font-medium mr-2">{t('platform')}:</span>

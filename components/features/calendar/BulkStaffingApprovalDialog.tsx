@@ -321,7 +321,8 @@ export function BulkStaffingApprovalDialog({
               {t('noPendingStaffingRequests')}
             </div>
           ) : (
-            <Table data-testid="bulk-staffing-table">
+            <div className="w-full overflow-x-auto min-w-0">
+<Table data-testid="bulk-staffing-table">
               <TableHeader>
                 <TableRow className="bg-muted/30">
                   <TableHead className="w-10">
@@ -398,6 +399,7 @@ export function BulkStaffingApprovalDialog({
                 })}
               </TableBody>
             </Table>
+</div>
           )}
         </DialogBody>
 

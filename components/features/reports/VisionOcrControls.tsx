@@ -130,7 +130,8 @@ export function VisionOcrReviewPanel({
       <Badge variant={unresolved ? 'destructive' : 'outline'}>{t('visionOcrUnresolvedCount', { count: unresolved })}</Badge>
     </div>
     <div className="max-h-[55vh] overflow-auto">
-      <table className="w-full min-w-[880px] text-left text-xs">
+      <div className="w-full overflow-x-auto min-w-0">
+<table className="w-full min-w-[880px] text-left text-xs">
         <thead className="sticky top-0 z-10 bg-popover"><tr className="border-b">
           <th className="p-2">{t('metric')}</th><th className="p-2">{t('visionOcrQuickScan')}</th><th className="p-2">AI Vision</th><th className="p-2">{t('visionOcrSelectedResult')}</th><th className="p-2">{t('status')}</th><th className="p-2">{t('actions')}</th>
         </tr></thead>
@@ -148,6 +149,7 @@ export function VisionOcrReviewPanel({
           </div></td>
         </tr>)}</tbody>
       </table>
+</div>
     </div>
   </section>
 }
