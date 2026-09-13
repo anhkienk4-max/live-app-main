@@ -16,7 +16,17 @@ interface LifecycleActionDialogProps {
   confirmText: string
   onConfirm: (reason: string) => Promise<void> | void
   requireReason?: boolean
+  requireImpact?: boolean
   variant?: 'destructive' | 'default'
+}
+
+export function canSubmitLifecycleAction(
+  impact: DeletionImpact | null,
+  requireReason: boolean,
+  reason: string,
+  requireImpact = requireReason,
+) {
+  return (!requireImpact || Boolean(impact)) && (!requireReason || reason.trim().length >= 3)
 }
 
 export function LifecycleActionDialog({
@@ -27,11 +37,12 @@ export function LifecycleActionDialog({
   confirmText,
   onConfirm,
   requireReason = true,
+  requireImpact = requireReason,
   variant = 'destructive',
 }: LifecycleActionDialogProps) {
   const [reason, setReason] = React.useState('')
   const [busy, setBusy] = React.useState(false)
-  const canSubmit = Boolean(impact) && (!requireReason || reason.trim().length >= 3)
+  const canSubmit = canSubmitLifecycleAction(impact, requireReason, reason, requireImpact)
 
   React.useEffect(() => {
     if (!open) return
@@ -81,11 +92,13 @@ export function LifecycleActionDialog({
                 </ul>
               )}
             </div>
-            <label className="block text-sm font-medium">
-              Reason {requireReason && '*'}
-              <Textarea className="mt-1" value={reason} onChange={event => setReason(event.target.value)} placeholder="Explain why this action is required…" />
-            </label>
           </div>
+        )}
+        {(impact || requireReason) && (
+          <label className="block text-sm font-medium">
+            Reason {requireReason && '*'}
+            <Textarea className="mt-1" value={reason} onChange={event => setReason(event.target.value)} placeholder="Explain why this action is required…" />
+          </label>
         )}
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>

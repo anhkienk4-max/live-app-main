@@ -24,6 +24,7 @@ type RpcName =
   | 'manual_assign_shift_staff'
   | 'manual_assign_imported_shift_staff'
   | 'remove_shift_staffing'
+  | 'refresh_automatic_shift_statuses'
 
 interface FakeDatabase {
   shifts: Row[]
@@ -103,6 +104,9 @@ class FakeQuery {
 
 function fakeClient(database: FakeDatabase, options: FakeClientOptions = {}) {
   const rpcHandlers: Record<RpcName, (args: Record<string, unknown>) => Row> = {
+    refresh_automatic_shift_statuses() {
+      return { updated_count: 0 }
+    },
     register_for_shift(args) {
       const now = '2031-08-20T01:00:00.000Z'
       const row: Row = {
