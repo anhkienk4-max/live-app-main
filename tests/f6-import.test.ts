@@ -125,7 +125,7 @@ test('F6 completion summary distinguishes imported rows from exceptions', () => 
   assert.match(panel, /data-testid="schedule-import-result"/)
   assert.match(panel, /importPartialSuccess/)
   assert.match(panel, /importNothingPersisted/)
-  assert.match(panel, /importRowsNotCreated/)
+  assert.match(panel, /importNotCompleted/)
 })
 
 test('F6 prevents duplicate submit and keeps loading/error/empty states accessible', () => {

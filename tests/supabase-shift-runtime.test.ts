@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import test from 'node:test'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -17,6 +19,11 @@ import {
   type SupabaseReportRepository,
 } from '../lib/services/supabaseReportService.ts'
 import type { Report, User } from '../lib/types/database.types.ts'
+
+const IMPORT_CREATE_SHIFT_MIGRATION = readFileSync(resolve(
+  process.cwd(),
+  'supabase/migrations/20260913200045_restore_import_create_shift_staffing_contract.sql',
+), 'utf8')
 
 type Row = Record<string, unknown>
 type TableName = 'shifts' | 'shift_registrations' | 'schedule_imports'
@@ -934,6 +941,16 @@ test('schedule import confirm flows through shiftService.create for durability',
     const created = await shiftService.create(shiftData)
     const confirmed = await scheduleImportService.confirm(batch.id)
 
+    assert.match(
+      IMPORT_CREATE_SHIFT_MIGRATION,
+      /'host_names', 'assistant_names', 'technical_names'/,
+      'create_shift must allow the label keys sent by Schedule Import; the old production allowlist raised 22023',
+    )
+    assert.match(
+      IMPORT_CREATE_SHIFT_MIGRATION,
+      /host_names, assistant_names, technical_names/,
+      'create_shift must persist imported labels rather than dropping them',
+    )
     assert.equal(created.import_batch_id, batch.id)
     assert.deepEqual(created.host_names, ['Hương'])
     assert.deepEqual(created.assistant_names, ['An', 'Linh'])
