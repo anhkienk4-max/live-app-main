@@ -602,7 +602,12 @@ export function ShiftDetailModal({
       setDeleteImpact(null)
       onDelete()
     } catch (error) {
-      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+      const msg = error instanceof Error ? error.message : t('validationError')
+      if (msg.toLowerCase().includes('version') || msg.toLowerCase().includes('stale') || msg.toLowerCase().includes('conflict') || msg.toLowerCase().includes('modified')) {
+        toast({ title: t('error'), description: "This shift was modified by another user. Please refresh and try again.", variant: 'destructive' })
+      } else {
+        toast({ title: t('error'), description: msg, variant: 'destructive' })
+      }
       throw error
     }
   }

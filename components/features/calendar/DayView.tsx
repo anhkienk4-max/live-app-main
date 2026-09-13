@@ -52,7 +52,7 @@ export function DayView({ currentDate, shifts, brands, platforms, users, registr
               data-testid={`day-shift-${shift.id}`}
               style={{ borderLeftColor: getBrandColor(shift.brand_id) }}
             >
-              <button type="button" className="w-full text-left" onClick={() => onShiftClick?.(shift)}>
+              <button type="button" className="w-full text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm" onClick={() => onShiftClick?.(shift)}>
               <div className="flex flex-col gap-4">
                 <div className="flex items-start justify-between border-b pb-3">
                   <div className="flex items-center gap-3">

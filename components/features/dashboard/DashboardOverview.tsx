@@ -27,6 +27,7 @@ import { deriveLeaderAttention, deriveMemberAttention, deriveDataQualityAttentio
 import { getAllIssues } from '@/lib/utils/dataQuality'
 import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
+import { ShiftDetailModal } from '@/components/features/shifts/ShiftDetailModal'
 
 const DashboardCharts = dynamic(
   () => import('@/components/features/dashboard/DashboardCharts').then(mod => ({ default: mod.DashboardCharts })),
@@ -62,6 +63,7 @@ export function DashboardOverview() {
   const [filters, setFilters] = React.useState<Filters | null>(null)
   const [showFilters, setShowFilters] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
+  const [selectedShift, setSelectedShift] = React.useState<Shift | null>(null)
   const [loadError, setLoadError] = React.useState<unknown>(null)
 
   const loadData = React.useCallback(async () => {
@@ -86,16 +88,24 @@ export function DashboardOverview() {
     return () => cancelAnimationFrame(frame)
   }, [loadData])
 
-  if (loading || !filters || !currentUser) return <ContentSkeleton />
+  const initialLoad = !filters || !currentUser || (loading && shifts.length === 0)
+  if (initialLoad) return <ContentSkeleton />
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
 
   const role = resolveSystemPermission(currentUser)
   const setPreset = (preset: Preset) => setFilters(current => current ? { ...current, preset, ...(preset === 'custom' ? {} : rangeFor(preset)) } : current)
   const dataProps = { shifts, reports, brands, platforms, campaigns, users, registrations, swapRequests, filters, setFilters, showFilters, setShowFilters, currentUser, t, setPreset }
 
-  if (role === 'admin') return <AdminDashboard {...dataProps} />
-  if (role === 'leader') return <LeaderDashboard {...dataProps} />
-  return <MemberDashboard {...dataProps} />
+  return (
+    <div className={loading ? 'opacity-50 pointer-events-none transition-opacity duration-200' : 'transition-opacity duration-200'}>
+      {role === 'admin' && <AdminDashboard {...dataProps} setSelectedShift={setSelectedShift} />}
+      {role === 'leader' && <LeaderDashboard {...dataProps} setSelectedShift={setSelectedShift} />}
+      {role === 'member' && <MemberDashboard {...dataProps} setSelectedShift={setSelectedShift} />}
+      {selectedShift && (
+        <ShiftDetailModal open shift={selectedShift} brands={brands} platforms={platforms} campaigns={campaigns} users={users} allRegistrations={registrations} onOpenChange={(open) => !open && setSelectedShift(null)} onUpdate={loadData} onDelete={() => { setSelectedShift(null); void loadData() }} />
+      )}
+    </div>
+  )
 }
 
 type CommonProps = {
@@ -114,6 +124,7 @@ type CommonProps = {
   currentUser: User
   t: (key: string) => string
   setPreset: (preset: Preset) => void
+  setSelectedShift: (shift: Shift | null) => void
 }
 
 const matchesRoleFilter = (shift: Shift, role: OperationalRole, userId: string, registrations: ShiftRegistration[]) => {
@@ -196,7 +207,7 @@ function AdminDashboard(props: CommonProps) {
     )}
 
     {/* C. Live / Upcoming Operations — primary operational content */}
-    <UpcomingShiftsList upcoming={upcoming} brands={brands} platforms={platforms} t={t} />
+    <UpcomingShiftsList upcoming={upcoming} brands={brands} platforms={platforms} t={t} setSelectedShift={props.setSelectedShift} />
 
     {/* D. Operational Metric Strip — single compact row, text-first, 4 values max */}
     <AdminMetricStrip
@@ -342,12 +353,12 @@ function LeaderDashboard(props: CommonProps) {
       </CardContent></Card>
     </div>
 
-    <UpcomingShiftsList upcoming={upcoming} brands={brands} platforms={platforms} t={t} />
+    <UpcomingShiftsList upcoming={upcoming} brands={brands} platforms={platforms} t={t} setSelectedShift={props.setSelectedShift} />
   </PageShell>
 }
 
 function MemberDashboard(props: CommonProps) {
-  const { shifts, reports, brands, platforms, currentUser, registrations, swapRequests, t } = props
+  const { shifts, reports, brands, platforms, currentUser, registrations, swapRequests, t, setSelectedShift } = props
   
   const today = getCurrentBusinessDate()
   
@@ -417,7 +428,7 @@ function MemberDashboard(props: CommonProps) {
               <Clock className="w-4 h-4 ml-2" /> <span>{formatShiftTimeRange(nextShift)}</span>
             </div>
           </div>
-          <Button render={<Link href="/calendar" />} nativeButton={false}>{t('viewDetails')}</Button>
+          <Button onClick={() => setSelectedShift(nextShift)}>{t('viewDetails')}</Button>
         </CardContent>
       </Card>
     )}
@@ -438,7 +449,7 @@ function MemberDashboard(props: CommonProps) {
       </CardContent></Card>
     </div>
 
-    <UpcomingShiftsList upcoming={upcoming.slice(0, 5)} brands={brands} platforms={platforms} t={t} title={t('mySchedule')} />
+    <UpcomingShiftsList upcoming={upcoming.slice(0, 5)} brands={brands} platforms={platforms} t={t} title={t('mySchedule')} setSelectedShift={setSelectedShift} />
   </PageShell>
 }
 
@@ -479,9 +490,9 @@ function DashboardFilterPanel({ filters, setFilters, brands, platforms, campaign
   )
 }
 
-function UpcomingShiftsList({ upcoming, brands, platforms, t, title }: { upcoming: Shift[]; brands: Brand[]; platforms: Platform[]; t: (key: string) => string; title?: string }) {
+function UpcomingShiftsList({ upcoming, brands, platforms, t, title, setSelectedShift }: { upcoming: Shift[]; brands: Brand[]; platforms: Platform[]; t: (key: string) => string; title?: string; setSelectedShift: (shift: Shift | null) => void }) {
   return (
-    <div className="flex flex-col"><div className="flex items-center justify-between pb-3 border-b mb-3"><div><h2 className="text-[15px] font-semibold">{title || t('upcomingShifts')}</h2></div><Button nativeButton={false} render={<Link href="/calendar" />} variant="ghost" size="sm" className="h-8 text-[13px]">{t('viewAll')}</Button></div><div>{upcoming.length ? <div className="divide-y">{upcoming.map(shift => <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 py-3 sm:py-2 hover:bg-muted/30 transition-colors min-h-[48px]" key={shift.id}><div className="min-w-0 flex-1"><p className="text-sm font-semibold truncate">{shift.title || nameFor(brands, shift.brand_id)}</p><div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground"><span>{shift.date}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{formatShiftTimeRange(shift)}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{nameFor(platforms, shift.platform_id)}</span></div></div><div className="flex shrink-0 justify-end"><Badge variant="secondary" className="text-xs font-normal bg-muted/50 text-muted-foreground">{t('scheduled')}</Badge></div></div>)}</div> : <div className="py-8"><Empty text={t('noMatchingShifts')} /></div>}</div></div>
+    <div className="flex flex-col"><div className="flex items-center justify-between pb-3 border-b mb-3"><div><h2 className="text-[15px] font-semibold">{title || t('upcomingShifts')}</h2></div><Button nativeButton={false} render={<Link href="/calendar" />} variant="ghost" size="sm" className="h-8 text-[13px]">{t('viewAll')}</Button></div><div>{upcoming.length ? <div className="divide-y">{upcoming.map(shift => <button type="button" className="flex w-full flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 py-3 sm:py-2 text-left hover:bg-muted/30 transition-colors min-h-[48px]" key={shift.id} onClick={() => setSelectedShift(shift)}><div className="min-w-0 flex-1"><p className="text-sm font-semibold truncate">{shift.title || nameFor(brands, shift.brand_id)}</p><div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground"><span>{shift.date}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{formatShiftTimeRange(shift)}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{nameFor(platforms, shift.platform_id)}</span></div></div><div className="flex shrink-0 justify-end"><Badge variant="secondary" className="text-xs font-normal bg-muted/50 text-muted-foreground">{t('scheduled')}</Badge></div></button>)}</div> : <div className="py-8"><Empty text={t('noMatchingShifts')} /></div>}</div></div>
   )
 }
 
