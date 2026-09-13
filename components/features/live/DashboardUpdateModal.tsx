@@ -534,6 +534,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
                 <Button
                   type="button"
                   size="icon"
+                  aria-label={t('removeScreenshot')}
                   variant="destructive"
                   className="absolute top-2 right-2"
                   onClick={() => { setFormData({ ...formData, screenshot_url: '' }); setScreenshotFile(null); setOcrReview(null) }}

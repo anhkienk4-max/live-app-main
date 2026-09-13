@@ -415,13 +415,13 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           {/* Left: Date Navigation */}
           <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
             <>
-                <Button variant="outline" size="icon" onClick={() => navigate('prev')} className="h-9 w-9">
+                <Button variant="outline" size="icon" aria-label={t('previousNavigation')} onClick={() => navigate('prev')} className="h-9 w-9">
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <Button variant="outline" onClick={() => setCurrentDate(new Date())} className="h-9">
                   {t('today')}
                 </Button>
-                <Button variant="outline" size="icon" onClick={() => navigate('next')} className="h-9 w-9">
+                <Button variant="outline" size="icon" aria-label={t('nextNavigation')} onClick={() => navigate('next')} className="h-9 w-9">
                   <ChevronRight className="h-4 w-4" />
                 </Button>
             </>
