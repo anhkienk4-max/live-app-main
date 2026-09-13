@@ -508,6 +508,10 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
     },
 
     async uploadReportImage(data) {
+      const existingImages = await this.getReportImages(data.report_id)
+      const existing = existingImages.find(img => img.storage_path === data.storage_path)
+      if (existing) return existing
+
       const { storagePath } = await this.uploadBlob(
         data.image_url,
         data.storage_path,
@@ -574,9 +578,14 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
     },
 
     async upsertLiveReportImage(data) {
+      const storagePathTarget = `live/${data.report_id}/${data.file_name}`
+      const existingImages = await this.getLiveReportImages(data.report_id)
+      const existing = existingImages.find(img => img.file_url === storagePathTarget)
+      if (existing) return existing
+
       const { storagePath } = await this.uploadBlob(
         data.file_url,
-        `live/${data.report_id}/${data.file_name}`,
+        storagePathTarget,
         data.mime_type,
       )
       const payload: Record<string, unknown> = {
@@ -597,7 +606,10 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
       const result = await client.rpc('upsert_live_report_image', {
         p_data: filtered,
       }).single()
-      if (result.error) throw requestError('live report image upsert', result.error)
+      if (result.error) {
+        await client.storage.from('report-images').remove([storagePath]).catch(() => {})
+        throw requestError('live report image upsert', result.error)
+      }
       return liveReportImageFromRow(result.data as unknown as LiveReportImageRow)
     },
 
@@ -658,7 +670,13 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
           contentType: mimeType,
           upsert: false,
         })
-      if (error) throw requestError('report image storage upload', error)
+      if (error) {
+        if (error.message?.includes('already exists') || error.message?.includes('Duplicate') || (error as any).statusCode === '409') {
+           // Recoverable orphan state
+           return { storagePath }
+        }
+        throw requestError('report image storage upload', error)
+      }
       return { storagePath }
     },
 

@@ -319,20 +319,26 @@ export function ReportDetailModal({
   // Signed URL cache for private storage images
   const [signedUrls, setSignedUrls] = React.useState<Record<string, string>>({})
   React.useEffect(() => {
-    if (!images.length) return
-    const resolve = async () => {
-      const entries = await Promise.all(
-        images
-          .filter(img => img.storage_path)
-          .map(async (img) => {
-            const url = await reportImageService.getSignedUrl(img.storage_path!)
-            return [img.id, url || img.image_url] as const
-          })
-      )
-      setSignedUrls(Object.fromEntries(entries))
-    }
-    void resolve()
-  }, [images])
+      if (!images.length && !liveImages.length) return
+      const resolve = async () => {
+        const entries = await Promise.all([
+          ...images
+            .filter(img => img.storage_path)
+            .map(async (img) => {
+              const url = await reportImageService.getSignedUrl(img.storage_path!)
+              return [img.id, url || ''] as const
+            }),
+          ...liveImages
+            .filter(img => img.file_url && !img.file_url.startsWith('http') && !img.file_url.startsWith('blob:') && !img.file_url.startsWith('data:'))
+            .map(async (img) => {
+              const url = await reportImageService.getSignedUrl(img.file_url)
+              return [img.id, url || ''] as const
+            })
+        ])
+        setSignedUrls(Object.fromEntries(entries))
+      }
+      void resolve()
+    }, [images, liveImages])
   React.useEffect(() => { if (open) void liveReportImageService.getByReport(report.id).then(setLiveImages) }, [open, report.id])
   React.useEffect(() => {
     if (!open) return
