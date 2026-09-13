@@ -2885,6 +2885,14 @@ export const reportImageService = {
       return groups
     }, {})
   },
+
+  async getSignedUrl(storagePath: string): Promise<string | null> {
+    if (getAuthMode() === 'supabase') {
+      return getSupabaseReportRepository().getSignedImageUrl(storagePath)
+    }
+    // Mock mode: return the image_url directly (no signing needed)
+    return storagePath
+  },
 }
 
 // Live-session gallery service. Supabase mode persists Storage objects and metadata;

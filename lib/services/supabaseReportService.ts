@@ -282,7 +282,8 @@ export interface SupabaseReportRepository {
   reorderLiveReportImages(reportId: string, orderedIds: readonly string[]): Promise<void>
   removeLiveReportImage(id: string): Promise<boolean>
 
-  uploadBlob(fileUrl: string, storagePath: string, mimeType?: string): Promise<{ storagePath: string; publicUrl: string }>
+  uploadBlob(fileUrl: string, storagePath: string, mimeType?: string): Promise<{ storagePath: string }>
+  getSignedImageUrl(storagePath: string): Promise<string | null>
 }
 
 export function createSupabaseReportRepository(client: SupabaseClient): SupabaseReportRepository {
@@ -650,10 +651,15 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
           upsert: false,
         })
       if (error) throw requestError('report image storage upload', error)
+      return { storagePath }
+    },
 
-      const { data: publicUrlData } = client.storage.from(bucket).getPublicUrl(storagePath)
-      const publicUrl = publicUrlData?.publicUrl ?? fileUrl
-      return { storagePath, publicUrl }
+    async getSignedImageUrl(storagePath) {
+      const { data, error } = await client.storage
+        .from(bucket)
+        .createSignedUrl(storagePath, 3600)
+      if (error || !data?.signedUrl) return null
+      return data.signedUrl
     },
   }
 }
