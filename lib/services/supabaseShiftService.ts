@@ -301,6 +301,7 @@ export function createSupabaseShiftRepository(
     },
 
     async getAllComplete() {
+      await refreshAutomaticStatuses()
       const rows = new Map<string, Row>()
       for (let offset = 0; ; offset += SUPABASE_PAGE_SIZE) {
         const query = selectShifts()

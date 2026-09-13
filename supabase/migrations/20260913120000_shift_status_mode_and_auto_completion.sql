@@ -48,7 +48,8 @@ for each row execute function private.set_shift_status_mode();
 create or replace function public.update_shift(
   p_shift_id text,
   p_patch jsonb,
-  p_confirm_impact boolean default false
+  p_confirm_impact boolean,
+  p_expected_version integer
 )
 returns public.shifts
 language plpgsql
@@ -94,6 +95,7 @@ begin
   if existing_shift.id is null then
     raise exception using errcode = 'P0001', message = 'SHIFT_NOT_FOUND';
   end if;
+  perform private.assert_expected_version('Shift', p_expected_version, existing_shift.version);
   requested_status := coalesce(nullif(p_patch->>'status', ''), existing_shift.status);
   if actor_permission in ('leader', 'admin')
     and requested_status <> existing_shift.status and not (
@@ -225,8 +227,10 @@ end;
 $$;
 
 revoke all on function private.set_shift_status_mode() from public, anon, authenticated;
+revoke all on function public.update_shift(text, jsonb, boolean, integer) from public, anon, authenticated;
 revoke all on function public.refresh_automatic_shift_statuses() from public, anon;
 revoke all on function public.return_shift_to_automatic(text, integer) from public, anon;
+grant execute on function public.update_shift(text, jsonb, boolean, integer) to authenticated;
 grant execute on function public.refresh_automatic_shift_statuses() to authenticated;
 grant execute on function public.return_shift_to_automatic(text, integer) to authenticated;
 

@@ -131,7 +131,7 @@ describe('Shift Lifecycle UI State Flow', () => {
     const shift = {
       date: '2026-10-10', start_time: '10:00', end_time: '12:00', timezone: 'Asia/Ho_Chi_Minh',
       registration_cutoff_at: '2026-10-10T02:00:00.000Z',
-    } as any
+    } as Parameters<typeof deriveAutomaticShiftStatus>[0]
     assert.strictEqual(deriveAutomaticShiftStatus(shift, new Date('2026-10-10T01:59:59.999Z')), 'scheduled')
     assert.strictEqual(deriveAutomaticShiftStatus(shift, new Date('2026-10-10T02:00:00.000Z')), 'preparing')
     assert.strictEqual(deriveAutomaticShiftStatus(shift, new Date('2026-10-10T03:00:00.000Z')), 'live')
@@ -141,7 +141,7 @@ describe('Shift Lifecycle UI State Flow', () => {
   test('overnight automatic completion uses the canonical business-time end instant', () => {
     const shift = {
       date: '2026-10-10', start_time: '23:00', end_time: '01:00', timezone: 'Asia/Ho_Chi_Minh',
-    } as any
+    } as Parameters<typeof deriveAutomaticShiftStatus>[0]
     const resolved = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
     assert.ok(resolved?.valid)
     assert.strictEqual(resolved?.crossesMidnight, true)
@@ -155,7 +155,7 @@ describe('Shift Lifecycle UI State Flow', () => {
   test('automatic completion can be manually corrected and returned to auto', async () => {
     const shift = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-01-10', start_time: '10:00', end_time: '12:00',
-    } as any)
+    } as Parameters<typeof shiftService.create>[0])
     const completed = await shiftService.getById(shift.id)
     assert.strictEqual(completed?.status, 'completed')
     assert.strictEqual(completed?.status_mode, 'auto')
@@ -173,7 +173,7 @@ describe('Shift Lifecycle UI State Flow', () => {
   test('cancelled and manual completed shifts are not time-overwritten', async () => {
     const cancelled = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-01-11', start_time: '10:00', end_time: '12:00',
-    } as any)
+    } as Parameters<typeof shiftService.create>[0])
     const removed = await shiftService.update(cancelled.id, { status: 'cancelled', version: cancelled.version })
     const rereadCancelled = await shiftService.getById(cancelled.id)
     assert.strictEqual(rereadCancelled?.status, removed?.status)
@@ -181,7 +181,7 @@ describe('Shift Lifecycle UI State Flow', () => {
 
     const manualCompleted = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-11', start_time: '10:00', end_time: '12:00',
-    } as any)
+    } as Parameters<typeof shiftService.create>[0])
     const prep = await shiftService.update(manualCompleted.id, { status: 'preparing', version: manualCompleted.version })
     const live = await shiftService.update(manualCompleted.id, { status: 'live', version: prep!.version })
     const done = await shiftService.update(manualCompleted.id, { status: 'completed', version: live!.version })
@@ -233,6 +233,7 @@ describe('Shift Lifecycle UI State Flow', () => {
     assert.match(statusModeMigration, /check \(status_mode in \('auto', 'manual'\)\)/i)
     assert.match(statusModeMigration, /refresh_automatic_shift_statuses/i)
     assert.match(statusModeMigration, /return_shift_to_automatic/i)
+    assert.match(statusModeMigration, /create or replace function public\.update_shift\([\s\S]*p_confirm_impact boolean,[\s\S]*p_expected_version integer/i)
     assert.match(statusModeMigration, /p_expected_version is null or p_expected_version <> current_shift\.version/i)
     assert.match(statusModeMigration, /source_value.*current_setting\('app\.audit_source'/i)
     assert.match(statusModeMigration, /after_row \? 'status_mode'[\s\S]*jsonb_build_object\('status_mode'/i)
