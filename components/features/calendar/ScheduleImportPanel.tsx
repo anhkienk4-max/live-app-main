@@ -153,7 +153,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
   const [existingShifts, setExistingShifts] = React.useState<Shift[]>([])
-  const [googleUrl, setGoogleUrl] = React.useState('mock://schedule')
+  const [googleUrl, setGoogleUrl] = React.useState('')
   const [result, setResult] = React.useState<ImportResult | null>(null)
   const [source, setSource] = React.useState<Source | null>(null)
   const [batch, setBatch] = React.useState<ScheduleImportBatch | null>(null)
@@ -456,24 +456,48 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   return (
     <div className="space-y-5">
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><FileSpreadsheet className="h-5 w-5" />{t('importInput')}: {t('importExcel')}</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">{t('importFormatExcel')}</p>
-            <p className="text-xs text-muted-foreground">{t('importDateTimeHelp')}</p>
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={() => fileInputRef.current?.click()} disabled={busy || !masterGate.allowed}><Upload className="mr-2 h-4 w-4" />{t('importExcel')}</Button>
+        <Card className="border-2 border-dashed border-slate-200 hover:border-slate-300 transition-colors bg-slate-50/40 shadow-none">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base text-slate-800">
+              <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
+              {t('importInput')}: {t('importExcel')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1">
+              <p className="text-sm text-slate-600">{t('importFormatExcel')}</p>
+              <p className="text-xs text-slate-500">{t('importDateTimeHelp')}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button onClick={() => fileInputRef.current?.click()} disabled={busy || !masterGate.allowed} className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+                <Upload className="mr-2 h-4 w-4" />{t('importExcel')}
+              </Button>
               <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="sr-only" aria-label={t('importFormatExcel')} onChange={handleFile} />
-              <Button variant="outline" onClick={downloadExcelTemplate}><Download className="mr-2 h-4 w-4" />{t('downloadTemplate')}</Button>
+              <Button variant="outline" onClick={downloadExcelTemplate} className="text-slate-600 bg-white">
+                <Download className="mr-2 h-4 w-4" />{t('downloadTemplate')}
+              </Button>
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Link2 className="h-5 w-5" />{t('importInput')}: {t('importGoogleSheets')}</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">{t('importFormatGoogle')}. {t('googleSheetsHelp')}</p>
-            <p className="text-xs text-muted-foreground">{t('importDateTimeHelp')}</p>
-            <div className="flex flex-col gap-2 sm:flex-row"><Input className="min-w-0" value={googleUrl} onChange={event => setGoogleUrl(event.target.value)} aria-label={t('importFormatGoogle')} placeholder="https://docs.google.com/spreadsheets/... or mock://schedule" /><Button className="shrink-0" onClick={handleGoogle} disabled={busy || !masterGate.allowed || !googleUrl}>{t('importGoogleSheets')}</Button></div>
+
+        <Card className="border shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base text-slate-800">
+              <Link2 className="h-5 w-5 text-blue-600" />
+              {t('importInput')}: {t('importGoogleSheets')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1">
+              <p className="text-sm text-slate-600">{t('importFormatGoogle')}. {t('googleSheetsHelp')}</p>
+              <p className="text-xs text-slate-500">{t('importDateTimeHelp')}</p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input className="min-w-0 bg-slate-50 focus-visible:ring-blue-500" value={googleUrl} onChange={event => setGoogleUrl(event.target.value)} aria-label={t('importFormatGoogle')} placeholder="https://docs.google.com/spreadsheets/d/..." />
+              <Button className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white shadow-sm" onClick={handleGoogle} disabled={busy || !masterGate.allowed || !googleUrl || googleUrl === 'mock://schedule'}>
+                {t('importGoogleSheets')}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -743,7 +767,59 @@ export function ImportHistoryPanel() {
       <TabsContent value="imports">
         {history.length === 0
           ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noImportHistory')}</CardContent></Card>
-          : <Card className="overflow-hidden"><CardContent className="p-0"><div className="max-h-[520px] overflow-auto p-5"><table className="w-full text-sm"><thead className="sticky top-0 bg-card"><tr className="border-b text-left"><th className="p-2">{t('date')}</th><th className="p-2">{t('source')}</th><th className="p-2">{t('status')}</th><th className="p-2 text-right">{t('totalRows')}</th><th className="p-2 text-right">{t('validRows')}</th><th className="p-2 text-right">{t('invalidRows')}</th><th className="p-2 text-right">{t('warningRows')}</th><th className="p-2 text-right">{t('importedResult')}</th><th className="p-2 text-right">{t('importRetryable')}</th></tr></thead><tbody>{pagedImports.map(batch => <tr className="border-b" key={batch.id}><td className="p-2">{new Date(batch.created_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}</td><td className="p-2"><p className="font-medium">{batch.source === 'google_sheets' ? t('importGoogleSheets') : t('importExcel')}</p><p className="max-w-72 truncate text-xs text-muted-foreground">{batch.source_name}</p></td><td className="p-2"><Badge variant="outline">{batchStatusLabel(batch.status, t)}</Badge></td><td className="p-2 text-right">{batch.total_rows}</td><td className="p-2 text-right">{batch.valid_rows}</td><td className="p-2 text-right">{batch.invalid_rows}</td><td className="p-2 text-right">{batch.warning_rows}</td><td className="p-2 text-right">{batch.imported_rows ?? '—'}</td><td className="p-2 text-right">{batch.retryable_rows ?? '—'}</td></tr>)}</tbody></table></div><HistoryPagination page={importPage} pageSize={importPageSize} total={history.length} onPageChange={setImportPage} onPageSizeChange={size => { setImportPageSize(size); setImportPage(1) }} /></CardContent></Card>}
+          : <Card className="border-0 shadow-sm"><CardContent className="p-0">
+              <div className="max-h-[600px] overflow-auto border rounded-t-xl">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-slate-50/95 backdrop-blur-sm shadow-sm z-10">
+                    <tr className="border-b text-left text-slate-500 font-medium">
+                      <th className="p-3 pl-4 whitespace-nowrap">{t('date')}</th>
+                      <th className="p-3 min-w-48">{t('source')}</th>
+                      <th className="p-3">{t('status')}</th>
+                      <th className="p-3 text-right">{t('totalRows')}</th>
+                      <th className="p-3 text-right">{t('validRows')}</th>
+                      <th className="p-3 text-right">{t('invalidRows')}</th>
+                      <th className="p-3 text-right">{t('warningRows')}</th>
+                      <th className="p-3 text-right">{t('importedResult')}</th>
+                      <th className="p-3 text-right pr-4">{t('importRetryable')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {pagedImports.map(batch => (
+                      <tr className="hover:bg-slate-50/50 transition-colors" key={batch.id}>
+                        <td className="p-3 pl-4 whitespace-nowrap text-slate-600">
+                          {new Date(batch.created_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', dateStyle: 'medium', timeStyle: 'short' })}
+                        </td>
+                        <td className="p-3">
+                          <p className="font-medium text-slate-900">{batch.source === 'google_sheets' ? t('importGoogleSheets') : t('importExcel')}</p>
+                          <p className="max-w-72 truncate text-xs text-muted-foreground" title={batch.source_name}>{batch.source_name}</p>
+                        </td>
+                        <td className="p-3">
+                          <Badge
+                            variant="outline"
+                            className={
+                              batch.status === 'confirmed' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' :
+                              batch.status === 'failed' ? 'border-red-200 bg-red-50 text-red-700' :
+                              'border-slate-200 bg-slate-50 text-slate-700'
+                            }
+                          >
+                            {batchStatusLabel(batch.status, t)}
+                          </Badge>
+                        </td>
+                        <td className="p-3 text-right tabular-nums text-slate-600">{batch.total_rows}</td>
+                        <td className="p-3 text-right tabular-nums text-emerald-600 font-medium">{batch.valid_rows}</td>
+                        <td className="p-3 text-right tabular-nums text-red-600 font-medium">{batch.invalid_rows}</td>
+                        <td className="p-3 text-right tabular-nums text-amber-600 font-medium">{batch.warning_rows}</td>
+                        <td className="p-3 text-right tabular-nums text-slate-900 font-medium">{batch.imported_rows ?? '—'}</td>
+                        <td className="p-3 text-right pr-4 tabular-nums text-orange-600 font-medium">{batch.retryable_rows ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="border border-t-0 p-3 bg-slate-50/50 rounded-b-xl flex justify-between items-center">
+                <HistoryPagination page={importPage} pageSize={importPageSize} total={history.length} onPageChange={setImportPage} onPageSizeChange={size => { setImportPageSize(size); setImportPage(1) }} />
+              </div>
+            </CardContent></Card>}
       </TabsContent>
       <TabsContent value="changes">
         <Card>
