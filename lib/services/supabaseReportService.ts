@@ -28,6 +28,8 @@ interface SupabaseErrorShape {
   message?: string
   details?: string
   hint?: string
+  status?: string | number
+  statusCode?: string | number
 }
 
 export class ReportRequestError extends Error {
@@ -43,6 +45,14 @@ export class ReportRequestError extends Error {
 function requestError(operation: string, error: SupabaseErrorShape): ReportRequestError {
   const message = error.message?.trim() || `Supabase ${operation} failed.`
   return new ReportRequestError(message, error.code || 'REPORT_REQUEST_FAILED')
+}
+
+function isStorageConflict(error: SupabaseErrorShape): boolean {
+  return error.status === 409
+    || error.status === '409'
+    || error.statusCode === 409
+    || error.statusCode === '409'
+    || /already exists|duplicate/i.test(`${error.code ?? ''} ${error.message ?? ''}`)
 }
 
 function requiredRow<T>(
@@ -282,7 +292,10 @@ export interface SupabaseReportRepository {
   reorderLiveReportImages(reportId: string, orderedIds: readonly string[]): Promise<void>
   removeLiveReportImage(id: string): Promise<boolean>
 
-  uploadBlob(fileUrl: string, storagePath: string, mimeType?: string): Promise<{ storagePath: string }>
+  uploadBlob(fileUrl: string, storagePath: string, mimeType?: string): Promise<{
+    storagePath: string
+    uploadedThisAttempt: boolean
+  }>
   getSignedImageUrl(storagePath: string): Promise<string | null>
 }
 
@@ -292,6 +305,15 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
   const selectReports = () => client.from('reports').select('*')
   const selectReportImages = () => client.from('report_images').select('*')
   const selectLiveReportImages = () => client.from('live_report_images').select('*')
+  const cleanupUploadedObject = async (storagePath: string, uploadedThisAttempt: boolean) => {
+    if (!uploadedThisAttempt) return
+    try {
+      const { error } = await client.storage.from(bucket).remove([storagePath])
+      if (error) console.error('Orphaned report image object after metadata failure:', storagePath, error)
+    } catch (error) {
+      console.error('Orphaned report image object after metadata failure:', storagePath, error)
+    }
+  }
 
   return {
     async getAll() {
@@ -512,11 +534,20 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
       const existing = existingImages.find(img => img.storage_path === data.storage_path)
       if (existing) return existing
 
-      const { storagePath } = await this.uploadBlob(
+      const { storagePath, uploadedThisAttempt } = await this.uploadBlob(
         data.image_url,
         data.storage_path,
         data.mime_type,
       )
+      if (!uploadedThisAttempt) {
+        const concurrentImages = await this.getReportImages(data.report_id)
+        const concurrentImage = concurrentImages.find(img => img.storage_path === storagePath)
+        if (concurrentImage) return concurrentImage
+        throw new ReportRequestError(
+          'The report image object exists without matching metadata. Retry after the concurrent upload settles.',
+          'REPORT_IMAGE_STORAGE_CONFLICT',
+        )
+      }
       const result = await client.rpc('upload_report_image', {
         p_report_id: data.report_id,
         p_storage_path: storagePath,
@@ -527,8 +558,7 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
         p_image_type: data.image_type,
       }).single()
       if (result.error) {
-        // Compensate: remove orphaned object
-        await client.storage.from(bucket).remove([storagePath]).catch(() => {})
+        await cleanupUploadedObject(storagePath, uploadedThisAttempt)
         throw requestError('report image upload', result.error)
       }
       return reportImageFromRow(
@@ -583,11 +613,20 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
       const existing = existingImages.find(img => img.file_url === storagePathTarget)
       if (existing) return existing
 
-      const { storagePath } = await this.uploadBlob(
+      const { storagePath, uploadedThisAttempt } = await this.uploadBlob(
         data.file_url,
         storagePathTarget,
         data.mime_type,
       )
+      if (!uploadedThisAttempt) {
+        const concurrentImages = await this.getLiveReportImages(data.report_id)
+        const concurrentImage = concurrentImages.find(img => img.file_url === storagePath)
+        if (concurrentImage) return concurrentImage
+        throw new ReportRequestError(
+          'The live report image object exists without matching metadata. Retry after the concurrent upload settles.',
+          'REPORT_IMAGE_STORAGE_CONFLICT',
+        )
+      }
       const payload: Record<string, unknown> = {
         report_id: data.report_id,
         category: data.category,
@@ -607,7 +646,7 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
         p_data: filtered,
       }).single()
       if (result.error) {
-        await client.storage.from('report-images').remove([storagePath]).catch(() => {})
+        await cleanupUploadedObject(storagePath, uploadedThisAttempt)
         throw requestError('live report image upsert', result.error)
       }
       return liveReportImageFromRow(result.data as unknown as LiveReportImageRow)
@@ -649,17 +688,23 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
       const image = result.data as LiveReportImageRow | null
       if (!image) return false
 
-      const storagePath = `live/${image.report_id}/${image.file_name}`
-      const { error: storageError } = await client.storage
-        .from(bucket)
-        .remove([storagePath])
-      if (storageError) throw requestError('live report image storage delete', storageError)
-
       const deleteResult = await client.rpc('remove_live_report_image', {
         p_image_id: id,
       }).single()
       if (deleteResult.error) throw requestError('live report image remove', deleteResult.error)
-      return (deleteResult.data as unknown as boolean) === true
+      const deleted = (deleteResult.data as unknown as boolean) === true
+      if (!deleted) return false
+
+      const storagePath = image.file_url as string
+      try {
+        const { error: storageError } = await client.storage
+          .from(bucket)
+          .remove([storagePath])
+        if (storageError) console.error('Orphaned live report image object after metadata delete:', storagePath, storageError)
+      } catch (error) {
+        console.error('Orphaned live report image object after metadata delete:', storagePath, error)
+      }
+      return true
     },
 
     async uploadBlob(fileUrl, storagePath, mimeType) {
@@ -671,13 +716,10 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
           upsert: false,
         })
       if (error) {
-        if (error.message?.includes('already exists') || error.message?.includes('Duplicate') || (error as any).statusCode === '409') {
-           // Recoverable orphan state
-           return { storagePath }
-        }
+        if (isStorageConflict(error)) return { storagePath, uploadedThisAttempt: false }
         throw requestError('report image storage upload', error)
       }
-      return { storagePath }
+      return { storagePath, uploadedThisAttempt: true }
     },
 
     async getSignedImageUrl(storagePath) {

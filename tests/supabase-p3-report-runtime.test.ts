@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -279,6 +280,7 @@ function fakeClient(database: FakeDatabase, options: { deniedRpc?: RpcName } = {
       const id = String(args.p_report_id)
       const index = database.reports.findIndex(r => r.id === id && !r.deleted_at && !r.archived_at)
       if (index === -1) throw { code: 'P0001', message: 'REPORT_NOT_FOUND' }
+      if (database.reports[index].metrics_confirmed) throw { code: 'P0001', message: 'REPORT_CONFIRMED' }
       const updated = {
         ...database.reports[index],
         raw_ocr_output: null,
@@ -295,6 +297,7 @@ function fakeClient(database: FakeDatabase, options: { deniedRpc?: RpcName } = {
       const id = String(args.p_report_id)
       const index = database.reports.findIndex(r => r.id === id && !r.deleted_at && !r.archived_at)
       if (index === -1) throw { code: 'P0001', message: 'REPORT_NOT_FOUND' }
+      if (database.reports[index].metrics_confirmed) throw { code: 'P0001', message: 'REPORT_CONFIRMED' }
       const review = (args.p_review ?? {}) as Record<string, unknown>
       const updated = {
         ...database.reports[index],
@@ -901,6 +904,50 @@ test('Supabase resetOcr clears OCR fields through reset_report_ocr RPC', async (
     const result = await reportService.resetOcr('report-1', '1', 'Re-extract')
     assert.equal(result?.raw_ocr_output, undefined)
     assert.equal(result?.normalized_metrics, undefined)
+  })
+})
+
+test('confirmed Report rejects OCR reset and rerun without changing confirmed metrics', async () => {
+  const persistenceMigration = readFileSync(
+    new URL('../supabase/migrations/20260823000000_p3_report_persistence.sql', import.meta.url),
+    'utf8',
+  )
+  for (const functionName of ['reset_report_ocr', 'record_report_ocr_run']) {
+    const functionStart = persistenceMigration.indexOf(`create or replace function public.${functionName}`)
+    const functionEnd = persistenceMigration.indexOf('$$;', functionStart)
+    const functionSql = persistenceMigration.slice(functionStart, functionEnd)
+    assert.match(functionSql, /if target_report\.metrics_confirmed then[\s\S]*?REPORT_CONFIRMED/)
+  }
+
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    db.reports[0] = {
+      ...reportRow(),
+      status: 'confirmed',
+      metrics_confirmed: true,
+      revenue: 125000,
+      raw_ocr_output: 'confirmed OCR source',
+      ocr_review: { status: 'confirmed', raw_output: 'confirmed OCR source', metrics: {} },
+      normalized_metrics: { revenue: 125000 },
+      platform_metrics: { revenue: 125000 },
+    }
+    setSupabaseReportRepositoryForTests(createSupabaseReportRepository(fakeClient(db)))
+    currentUserService.bindAuthenticatedUser(adminUser())
+
+    await assert.rejects(reportService.resetOcr('report-1', '1', 'Re-extract'), /REPORT_CONFIRMED/)
+    await assert.rejects(reportService.recordOcrRun('report-1', '1', {
+      status: 'failed',
+      raw_output: 'failed rerun output',
+      metrics: {},
+    } as never, true), /REPORT_CONFIRMED/)
+
+    assert.equal(db.reports[0].status, 'confirmed')
+    assert.equal(db.reports[0].metrics_confirmed, true)
+    assert.equal(db.reports[0].revenue, 125000)
+    assert.deepEqual(db.reports[0].normalized_metrics, { revenue: 125000 })
+    assert.deepEqual(db.reports[0].platform_metrics, { revenue: 125000 })
+    assert.equal(db.reports[0].raw_ocr_output, 'confirmed OCR source')
   })
 })
 
