@@ -84,12 +84,18 @@ function fakeClient(
   options: FakeClientOptions = {},
 ) {
   const rangeCalls: number[] = []
+  const rpcCalls: string[] = []
   return {
     rangeCalls,
+    rpcCalls,
+    rpc(functionName: string) {
+      rpcCalls.push(functionName)
+      return { single: async () => ({ data: null, error: null }) }
+    },
     from(table: TableName) {
       return new FakeQuery(database, table, { ...options, rangeCalls })
     },
-  } as unknown as SupabaseClient & { rangeCalls: number[] }
+  } as unknown as SupabaseClient & { rangeCalls: number[]; rpcCalls: string[] }
 }
 
 function shiftRow(index: number): Row {
@@ -196,6 +202,7 @@ for (const [count, expectedPages] of [[999, 1], [1000, 2], [1001, 2], [2001, 3]]
     assert.equal(shifts.length, count)
     assert.equal(new Set(shifts.map(shift => shift.id)).size, count)
     assert.equal(client.rangeCalls.length, expectedPages)
+    assert.deepEqual(client.rpcCalls, ['refresh_automatic_shift_statuses'])
   })
 }
 
@@ -205,6 +212,7 @@ test('complete All Time shift read fails instead of returning partial pages', as
     createSupabaseShiftRepository(client).getAllComplete!(),
     /page failed/,
   )
+  assert.deepEqual(client.rpcCalls, ['refresh_automatic_shift_statuses'])
 })
 
 test('All Time registration reads complete bounded shift-ID batches without duplicates', async () => {

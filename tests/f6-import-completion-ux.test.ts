@@ -74,11 +74,12 @@ test('non-persisted outcomes remain in the not-imported collection', () => {
   assert.equal(rows.filter(isPersistedImportRow).length, 0)
 })
 
-test('completion card renders separate persisted-warning and not-imported sections', () => {
+test('completion card separates persisted warnings from non-persisted outcomes', () => {
   assert.match(panel, /importRowsImportedWithWarnings/)
   assert.match(panel, /importWarningPersistedHelp/)
   assert.match(panel, /schedule-import-warning-rows/)
-  assert.match(panel, /schedule-import-not-imported-rows/)
+  assert.match(panel, /schedule-import-validation-errors/)
+  assert.match(panel, /schedule-import-retryable-errors/)
   assert.match(panel, /isNotImportedResultRow/)
   assert.doesNotMatch(panel, /attentionRows/)
 })
