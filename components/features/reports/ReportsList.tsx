@@ -14,7 +14,7 @@ import {
   userService,
   isStaffedRegistration,
 } from '@/lib/services/dataService'
-import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Report, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
+import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Report, ReportStatus, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
@@ -41,6 +41,8 @@ import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
+import { HistoryPagination } from '@/components/ui/history-pagination'
+import { reportQueueState, reportableShiftStatuses, sortReportableShifts } from '@/lib/utils/reportQueue'
 
 type Filters = {
   start: string
@@ -76,15 +78,23 @@ export function ReportsList() {
   const { toast } = useToast()
   const [reports, setReports] = React.useState<Report[]>([])
   const [shifts, setShifts] = React.useState<Shift[]>([])
+  const [reportTotal, setReportTotal] = React.useState(0)
+  const [reportPage, setReportPage] = React.useState(1)
+  const [reportPageSize, setReportPageSize] = React.useState(20)
+  const [queuePage, setQueuePage] = React.useState(1)
+  const [queuePageSize, setQueuePageSize] = React.useState(20)
   const [brands, setBrands] = React.useState<Brand[]>([])
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
   const [users, setUsers] = React.useState<User[]>([])
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
+  const [candidateShifts, setCandidateShifts] = React.useState<Shift[]>([])
+  const [candidateReports, setCandidateReports] = React.useState<Report[]>([])
   const [filters, setFilters] = React.useState<Filters>(emptyFilters)
   const [showFilters, setShowFilters] = React.useState(false)
   const [selectedReport, setSelectedReport] = React.useState<Report | null>(null)
   const [showForm, setShowForm] = React.useState(false)
+  const [initialShiftId, setInitialShiftId] = React.useState<string | undefined>(undefined)
   const [removeTarget, setRemoveTarget] = React.useState<Report | null>(null)
   const [removeImpact, setRemoveImpact] = React.useState<DeletionImpact | null>(null)
   const [loading, setLoading] = React.useState(true)
@@ -93,17 +103,24 @@ export function ReportsList() {
   const loadData = React.useCallback(async () => {
     setLoadError(null)
     try {
-      const [loadedReports, loadedShifts, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers, loadedRegistrations] = await Promise.all([
-        reportService.getAll(),
-        shiftService.getAll(),
+      const [reportPageResult, loadedCandidates, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers, loadedRegistrations] = await Promise.all([
+        reportService.getPage({ page: reportPage, pageSize: reportPageSize, statuses: filters.reportStatuses as ReportStatus[] }),
+        shiftService.getReportCandidates(30),
         brandService.getAll(),
         platformService.getAll(),
         campaignService.getAll(),
         userService.getAll(),
         shiftRegistrationService.getAll(),
       ])
-      setReports(loadedReports)
-      setShifts(loadedShifts)
+      const candidateIds = loadedCandidates.map(shift => shift.id)
+      const loadedCandidateReports = await reportService.getForShifts(candidateIds)
+      const loadedReportShifts = await shiftService.getByIds(reportPageResult.items.map(report => report.shift_id))
+      const allLoadedShifts = [...loadedCandidates, ...loadedReportShifts.filter(shift => !candidateIds.includes(shift.id))]
+      setReports(reportPageResult.items)
+      setReportTotal(reportPageResult.total)
+      setCandidateShifts(loadedCandidates)
+      setCandidateReports(loadedCandidateReports)
+      setShifts(allLoadedShifts)
       setBrands(loadedBrands)
       setPlatforms(loadedPlatforms)
       setCampaigns(loadedCampaigns)
@@ -114,12 +131,13 @@ export function ReportsList() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [filters.reportStatuses, reportPage, reportPageSize])
 
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => { void loadData() })
     return () => cancelAnimationFrame(frame)
   }, [loadData])
+
   const myShiftIds = React.useMemo(() => new Set(registrations
     .filter(registration => registration.user_id === currentUser?.id && isStaffedRegistration(registration))
     .map(registration => registration.shift_id)), [currentUser?.id, registrations])
@@ -178,14 +196,30 @@ export function ReportsList() {
     return [...ids].map(userName).join(', ') || '—'
   }
 
-  const completedShifts = React.useMemo(() => {
-    const reported = new Set(reports.map(report => report.shift_id))
-    return shifts.filter(shift =>
-      ['preparing', 'live', 'paused', 'completed'].includes(shift.status) &&
-      !reported.has(shift.id) &&
-      (currentUser && hasPermission(currentUser, 'reports.review') || myShiftIds.has(shift.id))
-    )
-  }, [currentUser, myShiftIds, reports, shifts])
+  const reportByShift = React.useMemo(() => new Map([...reports, ...candidateReports].map(report => [report.shift_id, report])), [candidateReports, reports])
+  const completedShifts = React.useMemo(() => sortReportableShifts(candidateShifts.filter(shift => {
+    const report = reportByShift.get(shift.id)
+    return Boolean(currentUser && hasPermission(currentUser, 'reports.submit')) &&
+      reportQueueState(report) !== 'finalized' &&
+      (Boolean(currentUser && hasPermission(currentUser, 'reports.review')) || myShiftIds.has(shift.id))
+  })), [candidateShifts, currentUser, myShiftIds, reportByShift])
+
+  const filteredQueue = React.useMemo(() => completedShifts.filter(shift => {
+    if (!reportableShiftStatuses.includes(shift.status as typeof reportableShiftStatuses[number])) return false
+    if (filters.start && shift.date < filters.start) return false
+    if (filters.end && shift.date > filters.end) return false
+    if (!matchesMultiSelect(shift.brand_id, filters.brandIds)) return false
+    if (!matchesMultiSelect(shift.platform_id, filters.platformIds)) return false
+    if (!matchesMultiSelect(shift.campaign_id, filters.campaignIds)) return false
+    const report = reportByShift.get(shift.id)
+    const reportStatus = report?.status || (report?.metrics_confirmed ? 'confirmed' : 'draft')
+    if (filters.reportStatuses.length > 0 && !filters.reportStatuses.includes(reportStatus)) return false
+    if (!filters.search) return true
+    const query = filters.search.toLowerCase()
+    return [shift.id, shift.title, nameById(brands, shift.brand_id), nameById(platforms, shift.platform_id), nameById(campaigns, shift.campaign_id)]
+      .filter(Boolean).join(' ').toLowerCase().includes(query)
+  }), [brands, campaigns, completedShifts, filters, platforms, reportByShift])
+  const pagedQueue = filteredQueue.slice((queuePage - 1) * queuePageSize, queuePage * queuePageSize)
 
   const filteredReports = React.useMemo(() => reports.filter(report => {
     const shift = shiftById.get(report.shift_id)
@@ -314,6 +348,49 @@ export function ReportsList() {
         )}
       </div>
 
+      <section aria-labelledby="needs-report-heading" className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 id="needs-report-heading" className="text-lg font-semibold">{t('needsReport')}</h2>
+            <p className="text-sm text-muted-foreground">{t('reportDraftPolicy')}</p>
+          </div>
+          <Badge variant="secondary">{filteredQueue.length}</Badge>
+        </div>
+        <Card className="overflow-hidden shadow-none">
+          {pagedQueue.length === 0 ? (
+            <CardContent className="space-y-3 py-8 text-center text-muted-foreground">
+              <p>{filteredQueue.length === 0 && (filters.search || filters.start || filters.end || filters.brandIds.length || filters.platformIds.length || filters.campaignIds.length || filters.reportStatuses.length) ? t('noReportsMatchFilters') : t('noReportsNeeded')}</p>
+              {(filters.search || filters.start || filters.end || filters.brandIds.length || filters.platformIds.length || filters.campaignIds.length || filters.reportStatuses.length) && <Button type="button" variant="outline" onClick={() => setFilters(emptyFilters)}>{t('clearFilters')}</Button>}
+            </CardContent>
+          ) : (
+            <>
+              <div className="hidden grid-cols-7 gap-3 border-b bg-muted/30 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid">
+                <span>{t('date')}</span><span>{t('brand')}</span><span>{t('campaign')}</span><span>{t('platform')}</span><span>{t('status')}</span><span>{t('reportStatus')}</span><span>{t('actions')}</span>
+              </div>
+              {pagedQueue.map(shift => {
+                const report = reportByShift.get(shift.id)
+                const state = reportQueueState(report)
+                return <div key={shift.id} className="grid gap-3 border-b px-4 py-3 last:border-b-0 md:grid-cols-7 md:items-center">
+                  <div><p className="font-medium">{shift.date}</p><p className="text-xs text-muted-foreground">{shift.start_time}–{shift.end_time}</p></div>
+                  <span className="truncate">{nameById(brands, shift.brand_id)}</span>
+                  <span className="truncate">{nameById(campaigns, shift.campaign_id)}</span>
+                  <span className="truncate">{nameById(platforms, shift.platform_id)}</span>
+                  <Badge variant="outline" className="w-fit">{t(shift.status)}</Badge>
+                  <Badge variant="secondary" className="w-fit">{state === 'draft' ? t('draft') : t('notStarted')}</Badge>
+                  <Button type="button" size="sm" variant={state === 'draft' ? 'secondary' : 'default'} onClick={() => {
+                    if (report) setSelectedReport(report)
+                    else { setInitialShiftId(shift.id); setShowForm(true) }
+                  }}>{state === 'draft' ? t('continueReport') : t('createFinalReport')}</Button>
+                </div>
+              })}
+              <HistoryPagination page={queuePage} pageSize={queuePageSize} total={filteredQueue.length} onPageChange={setQueuePage} onPageSizeChange={size => { setQueuePageSize(size); setQueuePage(1) }} />
+            </>
+          )}
+        </Card>
+      </section>
+
+      <section aria-labelledby="created-reports-heading" className="space-y-3">
+        <h2 id="created-reports-heading" className="text-lg font-semibold">{t('createdReports')}</h2>
       {filteredReports.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noReports')}</CardContent></Card> : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredReports.map(report => {
@@ -388,8 +465,10 @@ export function ReportsList() {
           })}
         </div>
       )}
+      <HistoryPagination page={reportPage} pageSize={reportPageSize} total={reportTotal} onPageChange={setReportPage} onPageSizeChange={size => { setReportPageSize(size); setReportPage(1) }} />
+      </section>
 
-      {showForm && <ReportFormModal open={showForm} onOpenChange={setShowForm} completedShifts={completedShifts} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onSuccess={() => { void loadData(); setShowForm(false) }} />}
+      {showForm && <ReportFormModal open={showForm} onOpenChange={open => { setShowForm(open); if (!open) setInitialShiftId(undefined) }} initialShiftId={initialShiftId} completedShifts={completedShifts} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onSuccess={() => { void loadData(); setShowForm(false); setInitialShiftId(undefined) }} />}
       {selectedReport && <ReportDetailModal open report={selectedReport} shift={shiftById.get(selectedReport.shift_id)!} brands={brands} platforms={platforms} users={users} registrations={registrations} onOpenChange={open => !open && setSelectedReport(null)} onUpdated={() => { void loadData(); setSelectedReport(null) }} campaigns={campaigns} />}
       <LifecycleActionDialog open={Boolean(removeTarget)} onOpenChange={open => { if (!open) { setRemoveTarget(null); setRemoveImpact(null) } }} title={removeTarget?.metrics_confirmed ? t('archiveConfirmedReport') : t('deleteUnconfirmedReport')} impact={removeImpact} confirmText={removeTarget?.metrics_confirmed ? t('archive') : t('delete')} onConfirm={removeReport} />
     </div>

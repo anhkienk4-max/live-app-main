@@ -265,6 +265,8 @@ function updatePayload(data: Partial<Shift>): Record<string, unknown> {
 export interface SupabaseShiftRepository {
   getAll(includeDeleted?: boolean): Promise<Shift[]>
   getAllComplete(): Promise<Shift[]>
+  getReportCandidates?(limit: number): Promise<Shift[]>
+  getByIds?(ids: string[]): Promise<Shift[]>
   getArchivedShifts(): Promise<Shift[]>
   getById(id: string): Promise<Shift | null>
   getByDate(date: string): Promise<Shift[]>
@@ -316,6 +318,32 @@ export function createSupabaseShiftRepository(
         if (page.length < SUPABASE_PAGE_SIZE) break
       }
       return [...rows.values()].map(row => shiftFromRow(row as unknown as ShiftRow))
+    },
+
+    async getReportCandidates(limit) {
+      await refreshAutomaticStatuses()
+      const result = await selectShifts()
+        .in('status', ['preparing', 'live', 'paused', 'completed'])
+        .is('deleted_at', null)
+        .is('archived_at', null)
+        .order('start_at', { ascending: false, nullsFirst: false })
+        .order('date', { ascending: false })
+        .order('start_time', { ascending: false })
+        .order('id', { ascending: true })
+        .limit(Math.min(30, Math.max(1, limit)))
+      return optionalRows('report candidate read', result)
+        .map(row => shiftFromRow(row as unknown as ShiftRow))
+    },
+
+    async getByIds(ids) {
+      if (ids.length === 0) return []
+      await refreshAutomaticStatuses()
+      const result = await selectShifts()
+        .in('id', [...new Set(ids)])
+        .is('deleted_at', null)
+        .is('archived_at', null)
+      return optionalRows('shift ids read', result)
+        .map(row => shiftFromRow(row as unknown as ShiftRow))
     },
 
     async getArchivedShifts() {
