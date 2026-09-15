@@ -3,7 +3,7 @@ import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import type { Report, Shift } from '../lib/types/database.types.ts'
 import { isFinalizedReport, limitReportCandidates, reportQueueState, sortReportableShifts } from '../lib/utils/reportQueue.ts'
-import { serializeFinalReportMetricState } from '../lib/utils/ocrMetricSerialization.ts'
+import { reportMetricState, serializeFinalReportMetricState } from '../lib/utils/ocrMetricSerialization.ts'
 
 const shift = (id: string, startAt: string, status: Shift['status'] = 'completed'): Shift => ({
   id,
@@ -58,6 +58,26 @@ test('draft serialization preserves missing metrics as undefined and explicit ze
   assert.equal(zero.shares, 0)
 })
 
+test('draft continuation hydration preserves NULL versus explicit zero', () => {
+  const values = reportMetricState({
+    id: 'report-1',
+    shift_id: 'shift-1',
+    revenue: null,
+    orders: 0,
+    peak_viewer: null,
+    average_viewer: null,
+    comments: null,
+    shares: 0,
+    dashboard_platform: 'shopee_live',
+    created_at: '2026-09-01T00:00:00.000Z',
+    updated_at: '2026-09-01T00:00:00.000Z',
+  })
+  assert.equal(values.sales, undefined)
+  assert.equal(values.orders, 0)
+  assert.equal(values.comments, undefined)
+  assert.equal(values.shares, 0)
+})
+
 test('Reports UI uses bounded queue/page services and exposes draft/final actions', () => {
   const listSource = readFileSync(new URL('../components/features/reports/ReportsList.tsx', import.meta.url), 'utf8')
   const formSource = readFileSync(new URL('../components/features/reports/ReportFormModal.tsx', import.meta.url), 'utf8')
@@ -68,4 +88,15 @@ test('Reports UI uses bounded queue/page services and exposes draft/final action
   assert.match(listSource, /needs-report-heading/)
   assert.match(formSource, /t\('saveDraft'\)/)
   assert.match(formSource, /reportService\.confirmMetrics\(/)
+})
+
+test('draft continuation opens the editable form and hydrates the existing report', () => {
+  const listSource = readFileSync(new URL('../components/features/reports/ReportsList.tsx', import.meta.url), 'utf8')
+  const formSource = readFileSync(new URL('../components/features/reports/ReportFormModal.tsx', import.meta.url), 'utf8')
+  assert.match(listSource, /setEditingReport\(report\); setShowForm\(true\)/)
+  assert.match(listSource, /initialReport=\{editingReport\}/)
+  assert.match(formSource, /initialReport\?: Report/)
+  assert.match(formSource, /setMetricValues\(initialReport \? reportMetricState\(initialReport\) : \{\}\)/)
+  assert.match(formSource, /reportService\.update\(existingReport\.id, payload\)/)
+  assert.match(formSource, /serializeFinalReportMetricState\(dashboardPlatform, metricValues\)/)
 })

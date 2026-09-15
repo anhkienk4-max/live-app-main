@@ -205,7 +205,7 @@ describe('Report Storage Security & Idempotency', () => {
 
   it('5. signed URLs are not persisted', () => {
     assert.match(detailModalFile, /const \[signedUrls,\s*setSignedUrls\]\s*=\s*React\.useState/)
-    assert.match(formModalFile, /const \[signedUrls\]\s*=\s*React\.useState/)
+    assert.match(formModalFile, /const \[signedUrls,\s*setSignedUrls\]\s*=\s*React\.useState/)
   })
 
   it('6. upload success -> metadata success', () => {
@@ -276,7 +276,7 @@ describe('Report Storage Security & Idempotency', () => {
   })
 
   it('10. retry does not create second active report', () => {
-    assert.match(formModalFile, /if \(existingReport && existingReport\.status === 'draft'\) \{/)
+    assert.match(formModalFile, /if \(existingReport && \(existingReport\.status === 'draft' \|\| existingReport\.status === 'reopened'\)\) \{/)
     assert.match(formModalFile, /report = await reportService\.update\(existingReport\.id, payload\)/)
   })
 
