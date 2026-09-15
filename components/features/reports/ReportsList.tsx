@@ -94,6 +94,7 @@ export function ReportsList() {
   const [showFilters, setShowFilters] = React.useState(false)
   const [selectedReport, setSelectedReport] = React.useState<Report | null>(null)
   const [showForm, setShowForm] = React.useState(false)
+  const [editingReport, setEditingReport] = React.useState<Report | undefined>(undefined)
   const [initialShiftId, setInitialShiftId] = React.useState<string | undefined>(undefined)
   const [removeTarget, setRemoveTarget] = React.useState<Report | null>(null)
   const [removeImpact, setRemoveImpact] = React.useState<DeletionImpact | null>(null)
@@ -378,7 +379,7 @@ export function ReportsList() {
                   <Badge variant="outline" className="w-fit">{t(shift.status)}</Badge>
                   <Badge variant="secondary" className="w-fit">{state === 'draft' ? t('draft') : t('notStarted')}</Badge>
                   <Button type="button" size="sm" variant={state === 'draft' ? 'secondary' : 'default'} onClick={() => {
-                    if (report) setSelectedReport(report)
+                    if (report) { setEditingReport(report); setShowForm(true) }
                     else { setInitialShiftId(shift.id); setShowForm(true) }
                   }}>{state === 'draft' ? t('continueReport') : t('createFinalReport')}</Button>
                 </div>
@@ -399,6 +400,7 @@ export function ReportsList() {
             const reportStatus = report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
             const revenue = reportRevenue(report)
             const statusLabel = reportStatus === 'in_review' ? t('inReview') : t(reportStatus)
+            const isEditableDraft = reportStatus === 'draft' || reportStatus === 'reopened'
             const canRemove = Boolean(currentUser && (hasPermission(currentUser, 'reports.review') || report.submitted_by === currentUser.id))
             const canArchive = Boolean(currentUser && hasPermission(currentUser, 'audit.restore'))
             
@@ -442,12 +444,15 @@ export function ReportsList() {
                         canExport: currentUser ? hasPermission(currentUser, 'reports.export') : false,
                       },
                       {
-                        onView: () => setSelectedReport(report),
+                        onView: () => {
+                          if (isEditableDraft) { setEditingReport(report); setShowForm(true) }
+                          else setSelectedReport(report)
+                        },
                         onExport: () => exportReportDetailToExcel(report, exportContext),
                         onDelete: () => void requestRemove(report),
                       },
                       {
-                        view: t('viewDetails'),
+                        view: isEditableDraft ? t('continueReport') : t('viewDetails'),
                         export: t('exportExcel'),
                         archive: t('archiveReport'),
                         delete: t('deleteDraftReport'),
@@ -468,7 +473,7 @@ export function ReportsList() {
       <HistoryPagination page={reportPage} pageSize={reportPageSize} total={reportTotal} onPageChange={setReportPage} onPageSizeChange={size => { setReportPageSize(size); setReportPage(1) }} />
       </section>
 
-      {showForm && <ReportFormModal open={showForm} onOpenChange={open => { setShowForm(open); if (!open) setInitialShiftId(undefined) }} initialShiftId={initialShiftId} completedShifts={completedShifts} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onSuccess={() => { void loadData(); setShowForm(false); setInitialShiftId(undefined) }} />}
+      {showForm && <ReportFormModal open={showForm} onOpenChange={open => { setShowForm(open); if (!open) { setInitialShiftId(undefined); setEditingReport(undefined) } }} initialReport={editingReport} initialShiftId={initialShiftId} completedShifts={completedShifts} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onSuccess={() => { void loadData(); setShowForm(false); setInitialShiftId(undefined); setEditingReport(undefined) }} />}
       {selectedReport && <ReportDetailModal open report={selectedReport} shift={shiftById.get(selectedReport.shift_id)!} brands={brands} platforms={platforms} users={users} registrations={registrations} onOpenChange={open => !open && setSelectedReport(null)} onUpdated={() => { void loadData(); setSelectedReport(null) }} campaigns={campaigns} />}
       <LifecycleActionDialog open={Boolean(removeTarget)} onOpenChange={open => { if (!open) { setRemoveTarget(null); setRemoveImpact(null) } }} title={removeTarget?.metrics_confirmed ? t('archiveConfirmedReport') : t('deleteUnconfirmedReport')} impact={removeImpact} confirmText={removeTarget?.metrics_confirmed ? t('archive') : t('delete')} onConfirm={removeReport} />
     </div>

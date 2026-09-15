@@ -12,6 +12,8 @@ import {
   OcrCropBox,
   OcrReviewData,
   Platform,
+  Report,
+  ReportImage,
   ReportDashboardPlatform,
   LiveReportImage,
   ReportImageCategory,
@@ -46,7 +48,7 @@ import {
   defaultFinalReportMetricFilter,
   finalReportMetricKeysForFilter,
 } from '@/lib/utils/finalReportMetricFilter'
-import { getMissingFinalReportMetricKeys, serializeFinalReportMetricState } from '@/lib/utils/ocrMetricSerialization'
+import { getMissingFinalReportMetricKeys, reportMetricState, serializeFinalReportMetricState } from '@/lib/utils/ocrMetricSerialization'
 import { metricTranslationKeys } from '@/lib/reportMetricLabels'
 import { defaultOcrCrop } from '@/lib/utils/ocrImage'
 import { proposeTikTokKpiCrop } from '@/lib/services/imageOcrService'
@@ -101,6 +103,7 @@ type PendingImage = { url: string; name: string; type: ReportImageCategory; mime
 export function ReportFormModal({
   open,
   onOpenChange,
+  initialReport,
   initialShiftId,
   completedShifts,
   brands,
@@ -112,6 +115,7 @@ export function ReportFormModal({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
+  initialReport?: Report
   initialShiftId?: string
   completedShifts: Shift[]
   brands: Brand[]
@@ -126,6 +130,7 @@ export function ReportFormModal({
   const { toast } = useToast()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const liveImagesRef = React.useRef<LiveReportImage[]>([])
+  const persistedLiveImageIdsRef = React.useRef(new Set<string>())
   const persistedLiveImageUrlsRef = React.useRef(new Set<string>())
   const completedShiftsRef = React.useRef(completedShifts)
   const platformsRef = React.useRef(platforms)
@@ -140,8 +145,9 @@ export function ReportFormModal({
   const [ocrAcknowledged, setOcrAcknowledged] = React.useState(false)
   const [editingMetrics, setEditingMetrics] = React.useState(false)
   const [images, setImages] = React.useState<PendingImage[]>([])
+  const [persistedImages, setPersistedImages] = React.useState<ReportImage[]>([])
   const [liveImages, setLiveImages] = React.useState<LiveReportImage[]>([])
-  const [signedUrls] = React.useState<Record<string, string>>({})
+  const [signedUrls, setSignedUrls] = React.useState<Record<string, string>>({})
   const [replayUrl, setReplayUrl] = React.useState('')
   const [dashboardUrl, setDashboardUrl] = React.useState('')
   const [insightsGood, setInsightsGood] = React.useState('')
@@ -164,6 +170,8 @@ export function ReportFormModal({
 
   const selectedShift = completedShifts.find(shift => shift.id === shiftId)
   const dashboardImage = images.find(image => image.type === 'dashboard')
+  const persistedDashboardImage = persistedImages.find(image => image.image_type === 'dashboard')
+  const dashboardImageUrl = dashboardImage?.url || (persistedDashboardImage ? signedUrls[persistedDashboardImage.id] || '' : '')
 
   React.useEffect(() => {
     completedShiftsRef.current = completedShifts
@@ -171,18 +179,18 @@ export function ReportFormModal({
   }, [completedShifts, platforms])
 
   React.useEffect(() => {
-    if (dashboardPlatform !== 'tiktok_shop' || !dashboardImage?.url) {
+    if (dashboardPlatform !== 'tiktok_shop' || !dashboardImageUrl) {
       cropProposalKeyRef.current = ''
       const frame = requestAnimationFrame(() => setProposingCrop(false))
       return () => cancelAnimationFrame(frame)
     }
-    const proposalKey = `${dashboardPlatform}:${dashboardImage.url}`
+    const proposalKey = `${dashboardPlatform}:${dashboardImageUrl}`
     if (cropProposalKeyRef.current === proposalKey) return
     cropProposalKeyRef.current = proposalKey
     setProposingCrop(true)
     setCropBox(defaultOcrCrop('tiktok_shop'))
     let active = true
-    void proposeTikTokKpiCrop(dashboardImage.url)
+    void proposeTikTokKpiCrop(dashboardImageUrl)
       .then(proposal => {
         if (active && cropProposalKeyRef.current === proposalKey) {
           setCropBox(proposal.crop_box)
@@ -197,7 +205,7 @@ export function ReportFormModal({
     return () => {
       active = false
     }
-  }, [dashboardImage?.url, dashboardPlatform])
+  }, [dashboardImageUrl, dashboardPlatform])
 
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -209,29 +217,34 @@ export function ReportFormModal({
         setLiveImages([])
         return
       }
-      const initialShift = completedShiftsRef.current.find(shift => shift.id === initialShiftId) || completedShiftsRef.current[0]
-      const initialPlatform = inferDashboardPlatform(initialShift, platformsRef.current)
+      const initialShift = completedShiftsRef.current.find(shift => shift.id === initialReport?.shift_id)
+        || completedShiftsRef.current.find(shift => shift.id === initialShiftId)
+        || completedShiftsRef.current[0]
+      const initialPlatform = initialReport?.dashboard_platform || inferDashboardPlatform(initialShift, platformsRef.current)
       setShiftId(initialShift?.id || '')
       setDashboardPlatform(initialPlatform)
       setCropBox(defaultOcrCrop(initialPlatform))
-      setMetricValues({})
+      setMetricValues(initialReport ? reportMetricState(initialReport) : {})
       manualMetricKeysRef.current.clear()
       ocrDerivedMetricKeysRef.current.clear()
-      setReview(emptyReview())
-      setOcrAcknowledged(false)
+      setReview(initialReport?.ocr_review || emptyReview())
+      setOcrAcknowledged(Boolean(initialReport?.ocr_review && initialReport.ocr_review.status !== 'waiting'))
       setEditingMetrics(false)
       setImages([])
+      setPersistedImages([])
+      setSignedUrls({})
+      persistedLiveImageIdsRef.current.clear()
       liveImagesRef.current
         .filter(image => !persistedLiveImageUrlsRef.current.has(image.file_url))
         .forEach(image => revokeLiveReportImageObjectUrl(image))
       persistedLiveImageUrlsRef.current.clear()
       setLiveImages([])
-      setReplayUrl('')
-      setDashboardUrl('')
-      setInsightsGood('')
-      setInsightsImprovement('')
-      setFinalRecap(emptyFinalReportRecap())
-      setRawOcrText('')
+      setReplayUrl(initialReport?.replay_url || '')
+      setDashboardUrl(initialReport?.dashboard_url || '')
+      setInsightsGood(initialReport?.insights_good || '')
+      setInsightsImprovement(initialReport?.insights_improvement || '')
+      setFinalRecap({ ...emptyFinalReportRecap(), ...initialReport?.final_recap })
+      setRawOcrText(initialReport?.raw_ocr_output || '')
       setOcrApplicationResult(null)
       setMetricFilter(defaultFinalReportMetricFilter)
       setShowReviewWarning(false)
@@ -243,7 +256,32 @@ export function ReportFormModal({
   // Opening the modal initializes a fresh draft. Prop-array identity changes
   // while it is open must not erase OCR candidates or autofilled metrics.
     return () => cancelAnimationFrame(frame)
-  }, [initialShiftId, open])
+  }, [initialReport, initialShiftId, open])
+
+  React.useEffect(() => {
+    if (!open || !initialReport) return
+    let active = true
+    void Promise.all([
+      reportImageService.getByReport(initialReport.id),
+      liveReportImageService.getByReport(initialReport.id),
+    ]).then(async ([loadedImages, loadedLiveImages]) => {
+      if (!active) return
+      setPersistedImages(loadedImages)
+      persistedLiveImageIdsRef.current = new Set(loadedLiveImages.map(image => image.id))
+      setLiveImages(loadedLiveImages)
+      const paths = [
+        ...loadedImages.filter(image => image.storage_path).map(image => [image.id, image.storage_path!] as const),
+        ...loadedLiveImages
+          .filter(image => image.file_url && !image.file_url.startsWith('http') && !image.file_url.startsWith('blob:') && !image.file_url.startsWith('data:'))
+          .map(image => [image.id, image.file_url] as const),
+      ]
+      const entries = await Promise.all(paths.map(async ([id, path]) => [id, await reportImageService.getSignedUrl(path) || ''] as const))
+      if (active) setSignedUrls(Object.fromEntries(entries))
+    }).catch(() => {
+      // Existing private images fail closed if their signed URL cannot be resolved.
+    })
+    return () => { active = false }
+  }, [initialReport, open])
 
   React.useEffect(() => {
     liveImagesRef.current = liveImages
@@ -334,7 +372,7 @@ export function ReportFormModal({
       toast({ title: t('dashboardPlatformRequired'), description: t('dashboardPlatformRequiredHelp'), variant: 'destructive' })
       return null
     }
-    if (!images.some(image => image.type === 'dashboard')) {
+    if (!dashboardImageUrl) {
       toast({ title: t('dashboardImageRequired'), description: t('dashboardImageRequiredHelp'), variant: 'destructive' })
       return null
     }
@@ -343,11 +381,11 @@ export function ReportFormModal({
     setEditingMetrics(false)
     setReview({ status: 'processing', source_platform: dashboardPlatform, metrics: {} })
     try {
-      const dashboardImage = images.find(image => image.type === 'dashboard')
+      const dashboardImage = dashboardImageUrl
       const candidate = canonicalizeOcrReview(await ocrService.extractDashboardMetrics(
         dashboardPlatform,
         rawOcrText || undefined,
-        dashboardImage?.url,
+        dashboardImage,
         cropBox,
       ))
       const incomingMetricKeys = ocrCandidateMetricKeys(candidate)
@@ -437,9 +475,8 @@ export function ReportFormModal({
       setVisionMode(null)
       return
     }
-    const image = images.find(candidate => candidate.type === 'dashboard')
     const visionPlatform = toVisionPlatform(dashboardPlatform)
-    if (!image || !visionPlatform) {
+    if (!dashboardImageUrl || !visionPlatform) {
       toast({ title: t('ocrResults'), description: t('visionOcrInvalidCrop'), variant: 'destructive' })
       setVisionMode(null)
       return
@@ -453,7 +490,7 @@ export function ReportFormModal({
           ? 'completed'
           : 'unavailable'
       }
-      const response = await requestVisionOcr({ platform: dashboardPlatform, imageUrl: image.url, cropBox })
+      const response = await requestVisionOcr({ platform: dashboardPlatform, imageUrl: dashboardImageUrl, cropBox })
       const results = compareVisionMetrics({
         platform: visionPlatform,
         localReview,
@@ -579,7 +616,7 @@ export function ReportFormModal({
       return false
     }
     if (mode === 'draft') return true
-    if (!images.some(image => image.type === 'dashboard')) {
+    if (!dashboardImageUrl) {
       toast({ title: t('validationError'), description: t('dashboardImageRequiredHelp'), variant: 'destructive' })
       return false
     }
@@ -657,7 +694,8 @@ export function ReportFormModal({
         mime_type: image.mime,
         size_bytes: image.size,
       })))
-      await Promise.all([...liveImages]
+      const pendingLiveImages = liveImages.filter(image => !persistedLiveImageIdsRef.current.has(image.id))
+      const createdLiveImages = await Promise.all([...pendingLiveImages]
         .sort((left, right) => left.sort_order - right.sort_order)
         .map(image => liveReportImageService.create({
           report_id: report.id,
@@ -674,7 +712,10 @@ export function ReportFormModal({
           is_cover: image.is_cover,
           uploaded_by: currentUser.id,
         }, currentUser.id)))
-      liveImages.forEach(image => persistedLiveImageUrlsRef.current.add(image.file_url))
+      createdLiveImages.forEach(image => {
+        persistedLiveImageIdsRef.current.add(image.id)
+        persistedLiveImageUrlsRef.current.add(image.file_url)
+      })
       if (mode === 'final') {
         const confirmed = await reportService.confirmMetrics(report.id, payload, review, currentUser.id)
         if (!confirmed) throw new Error('Final Report confirmation was not persisted.')
@@ -705,7 +746,7 @@ export function ReportFormModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="full" className="h-[calc(100vh-1rem)] overflow-y-auto sm:h-[92vh]">
         <DialogHeader>
-          <DialogTitle>{t('createFinalReport')}</DialogTitle>
+          <DialogTitle>{initialReport ? t('continueReport') : t('createFinalReport')}</DialogTitle>
           <DialogDescription>{t('createFinalReportDescription')}</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-6">
@@ -728,7 +769,13 @@ export function ReportFormModal({
               <div><h3 className="font-semibold">{t('uploadDashboardEvidence')}</h3><p className="text-sm text-muted-foreground">{t('dashboardEvidenceHelp')}</p></div>
               <div className="flex flex-wrap gap-2"><Button type="button" onClick={() => fileInputRef.current?.click()}><Upload className="mr-2 h-4 w-4" />{t('uploadDashboard')}</Button><input ref={fileInputRef} className="sr-only" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple onChange={addImages} data-testid="report-dashboard-image-upload" /></div>
             </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">{images.map(image => <div className="relative min-w-0" key={image.url}><Image unoptimized src={image.url} alt={image.name} width={1280} height={720} className="aspect-video w-full rounded border object-cover" /><p className="truncate pt-1 text-xs">{image.name}</p><Button aria-label={`${t('removeImage')} ${image.name}`} type="button" size="icon" variant="destructive" className="absolute -right-2 -top-2 h-6 w-6" onClick={() => removeImage(image)}><X className="h-3 w-3" /></Button></div>)}</div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              {persistedImages.map(image => {
+                const url = signedUrls[image.id] || (image.image_url.startsWith('blob:') || image.image_url.startsWith('data:') ? image.image_url : '')
+                return <div className="relative min-w-0" key={image.id} data-testid={`persisted-report-image-${image.id}`}><Image unoptimized src={url} alt={image.original_name || image.image_type} width={1280} height={720} className="aspect-video w-full rounded border object-cover" /><p className="truncate pt-1 text-xs">{image.original_name || image.image_type}</p></div>
+              })}
+              {images.map(image => <div className="relative min-w-0" key={image.url}><Image unoptimized src={image.url} alt={image.name} width={1280} height={720} className="aspect-video w-full rounded border object-cover" /><p className="truncate pt-1 text-xs">{image.name}</p><Button aria-label={`${t('removeImage')} ${image.name}`} type="button" size="icon" variant="destructive" className="absolute -right-2 -top-2 h-6 w-6" onClick={() => removeImage(image)}><X className="h-3 w-3" /></Button></div>)}
+            </div>
           </section>
 
           <section className="space-y-4 rounded-lg border border-dashed p-4">
@@ -742,12 +789,12 @@ export function ReportFormModal({
             <VisionOcrActionGroup
               activeMode={visionMode}
               busy={reviewing || visionScanning || proposingCrop}
-              disabled={!dashboardImage || dashboardPlatform === 'other'}
+              disabled={!dashboardImageUrl || dashboardPlatform === 'other'}
               localButtonTestId="report-run-ocr-button"
               onRun={runVisionMode}
             />
             <VisionOcrRunStatusNotice status={visionRunStatus} />
-            {dashboardImage && <OcrCropPreview imageUrl={dashboardImage.url} platform={dashboardPlatform} value={cropBox} onChange={setCropBox} onRetry={runOcrReview} review={review} disabled={reviewing || visionScanning || proposingCrop} />}
+            {dashboardImageUrl && <OcrCropPreview imageUrl={dashboardImageUrl} platform={dashboardPlatform} value={cropBox} onChange={setCropBox} onRetry={runOcrReview} review={review} disabled={reviewing || visionScanning || proposingCrop} />}
             <VisionOcrReviewPanel results={visionResults} onResolve={resolveVisionResult} />
             <label className="block text-sm font-medium">{t('trustedOcrText')} ({t('optional')})
               <Textarea className="mt-1 min-h-32 font-mono text-xs" value={rawOcrText} onChange={event => setRawOcrText(event.target.value)} placeholder={'Sales: 21.281.718,00\nEngaged Viewer: 521\nOrders: 109'} data-testid="report-ocr-corrected-text" />

@@ -33,14 +33,13 @@ import {
   type OcrMetricFilter,
 } from '@/lib/utils/ocrReview'
 import {
-  isCanonicalMetricKey,
   metricValueToInput,
   parseMetricInputValue,
   platformCanonicalMetricKeys,
   type CanonicalMetricKey,
   type MetricState,
 } from '@/lib/utils/ocrCanonical'
-import { getMissingFinalReportMetricKeys, serializeCanonicalMetrics } from '@/lib/utils/ocrMetricSerialization'
+import { getMissingFinalReportMetricKeys, reportMetricState, serializeCanonicalMetrics } from '@/lib/utils/ocrMetricSerialization'
 import { metricTranslationKeys } from '@/lib/reportMetricLabels'
 import { defaultOcrCrop } from '@/lib/utils/ocrImage'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
@@ -295,7 +294,7 @@ export function ReportDetailModal({
     ...report.final_recap,
   })
   const [busy, setBusy] = React.useState(false)
-  const reportMetricValues = React.useMemo(() => initialMetricValues(report), [report])
+  const reportMetricValues = React.useMemo(() => reportMetricState(report), [report])
   const [metricValues, setMetricValues] = React.useState<MetricState>(reportMetricValues)
   const [reviewData, setReviewData] = React.useState<OcrReviewData>(report.ocr_review || { status: 'review_required', metrics: {} })
   const [editingMetrics, setEditingMetrics] = React.useState(false)
@@ -1123,50 +1122,6 @@ export function ReportDetailModal({
       onConfirm={() => setMetricFilter('review_required')}
     />
   </>)
-}
-
-function initialMetricValues(report: Report): MetricState {
-  const extractedValues = report.ocr_review ? reviewInputValues(report.ocr_review) : {}
-  const legacy = report.dashboard_platform === 'shopee_live'
-    ? {
-        sales: report.revenue,
-        orders: report.orders,
-        total_viewers: report.viewers ?? report.average_viewer,
-        pcu: report.peak_viewer,
-        add_to_cart: report.product_clicks,
-        ctr: report.ctr,
-        click_to_order_rate: report.cvr,
-        average_basket_size: report.average_order_value,
-        live_duration_seconds: report.live_duration_minutes == null ? null : report.live_duration_minutes * 60,
-        likes: report.likes,
-        comments: report.comments,
-        shares: report.shares,
-      }
-    : {
-        gmv: report.gmv ?? report.revenue,
-        sku_orders: report.orders,
-        current_viewers: report.peak_viewer,
-        total_views: report.viewers ?? report.average_viewer,
-        product_clicks: report.product_clicks,
-        live_ctr: report.ctr,
-        ctor: report.cvr,
-        average_order_value: report.average_order_value,
-        comments: report.comments,
-        shares: report.shares,
-      }
-  const normalized = {
-    ...legacy,
-    ...report.normalized_metrics,
-    ...report.platform_metrics,
-    ...extractedValues,
-  }
-  return Object.fromEntries(
-    Object.entries(normalized).flatMap(([key, value]) =>
-      isCanonicalMetricKey(key) && typeof value === 'number' && Number.isFinite(value)
-        ? [[key, value]]
-        : [],
-    ),
-  )
 }
 
 const numberValue = (value: NormalizedReportMetrics[ReportMetricKey]) => numericMetric(value)

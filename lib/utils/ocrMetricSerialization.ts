@@ -5,10 +5,12 @@ import type {
   ReportDashboardPlatform,
 } from '@/lib/types/database.types'
 import {
+  isCanonicalMetricKey,
   platformCanonicalMetricKeys,
   type CanonicalMetricKey,
   type MetricState,
 } from '@/lib/utils/ocrCanonical'
+import { reviewInputValues } from '@/lib/utils/ocrReview'
 
 const finiteMetric = (state: MetricState, key: CanonicalMetricKey) => {
   const value = state[key]
@@ -37,6 +39,50 @@ const requiredFinalReportMetricKeys = {
     'shares', 'product_clicks', 'live_ctr', 'ctor', 'average_order_value',
   ],
 } as const satisfies Record<Exclude<ReportDashboardPlatform, 'other'>, readonly CanonicalMetricKey[]>
+
+export function reportMetricState(report: Report): MetricState {
+  const extractedValues = report.ocr_review ? reviewInputValues(report.ocr_review) : {}
+  const legacy = report.dashboard_platform === 'shopee_live'
+    ? {
+        sales: report.revenue,
+        orders: report.orders,
+        total_viewers: report.viewers ?? report.average_viewer,
+        pcu: report.peak_viewer,
+        add_to_cart: report.product_clicks,
+        ctr: report.ctr,
+        click_to_order_rate: report.cvr,
+        average_basket_size: report.average_order_value,
+        live_duration_seconds: report.live_duration_minutes == null ? null : report.live_duration_minutes * 60,
+        likes: report.likes,
+        comments: report.comments,
+        shares: report.shares,
+      }
+    : {
+        gmv: report.gmv ?? report.revenue,
+        sku_orders: report.orders,
+        current_viewers: report.peak_viewer,
+        total_views: report.viewers ?? report.average_viewer,
+        product_clicks: report.product_clicks,
+        live_ctr: report.ctr,
+        ctor: report.cvr,
+        average_order_value: report.average_order_value,
+        comments: report.comments,
+        shares: report.shares,
+      }
+  const normalized = {
+    ...legacy,
+    ...report.normalized_metrics,
+    ...report.platform_metrics,
+    ...extractedValues,
+  }
+  return Object.fromEntries(
+    Object.entries(normalized).flatMap(([key, value]) =>
+      isCanonicalMetricKey(key) && typeof value === 'number' && Number.isFinite(value)
+        ? [[key, value]]
+        : [],
+    ),
+  )
+}
 
 export function getMissingFinalReportMetricKeys(
   platform: Exclude<ReportDashboardPlatform, 'other'>,
