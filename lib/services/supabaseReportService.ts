@@ -256,8 +256,20 @@ export interface LiveReportImagePayload {
   is_cover: boolean
 }
 
+export interface ReportPageQuery {
+  page: number
+  pageSize: number
+  statuses?: ReportStatus[]
+}
+
+export interface ReportPage {
+  items: Report[]
+  total: number
+}
+
 export interface SupabaseReportRepository {
   getAll(): Promise<Report[]>
+  getPage?(query: ReportPageQuery): Promise<ReportPage>
   getAllIncludingArchived(): Promise<Report[]>
   getById(id: string): Promise<Report | null>
   getByShift(shiftId: string): Promise<Report | null>
@@ -323,6 +335,24 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
         .order('updated_at', { ascending: false })
       return optionalRows('report read', result)
         .map(row => reportFromRow(row as ReportRow))
+    },
+
+    async getPage({ page, pageSize, statuses }) {
+      const safePage = Math.max(1, page)
+      const safePageSize = Math.min(100, Math.max(1, pageSize))
+      let query = client.from('reports')
+        .select('*', { count: 'exact' })
+        .is('deleted_at', null)
+        .is('archived_at', null)
+      if (statuses?.length) query = query.in('status', statuses)
+      const result = await query
+        .order('updated_at', { ascending: false })
+        .order('id', { ascending: true })
+        .range((safePage - 1) * safePageSize, safePage * safePageSize - 1)
+      return {
+        items: optionalRows('report page read', result).map(row => reportFromRow(row as ReportRow)),
+        total: result.count ?? 0,
+      }
     },
 
     async getAllIncludingArchived() {

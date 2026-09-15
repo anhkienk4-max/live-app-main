@@ -41,6 +41,7 @@ import {
   toCanonicalScheduleImportPreviewRow,
 } from '@/lib/utils/scheduleImportPreview'
 import { deriveShiftStaffIdentityMatch } from '@/lib/utils/staffIdentityMatching'
+import { limitReportCandidates } from '@/lib/utils/reportQueue'
 import { recordAuditEvent } from '@/lib/services/auditService'
 import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { getAuthMode } from '@/lib/auth/authMode'
@@ -53,6 +54,7 @@ import { getSupabaseShiftRegistrationRepository } from '@/lib/services/supabaseS
 import {
   getSupabaseReportRepository,
   type CreateReportPayload,
+  type ReportPageQuery,
 } from '@/lib/services/supabaseReportService'
 import { getSupabaseSwapRequestRepository } from '@/lib/services/supabaseSwapRequestService'
 import { getSupabaseSettingsRepository } from '@/lib/services/supabaseSettingsService'
@@ -1220,6 +1222,31 @@ export const shiftService = {
     }
     refreshMockAutomaticStatuses()
     return Promise.resolve(shifts.filter(shift => !shift.deleted_at && !shift.archived_at))
+  },
+
+  async getReportCandidates(limit = 30): Promise<Shift[]> {
+    if (getAuthMode() === 'supabase') {
+      const repository = getSupabaseShiftRepository()
+      if (repository.getReportCandidates) return repository.getReportCandidates(limit)
+      return (await repository.getAllComplete()).filter(shift => ['preparing', 'live', 'paused', 'completed'].includes(shift.status)).slice(0, limit)
+    }
+    refreshMockAutomaticStatuses()
+    const reportable = shifts.filter(shift =>
+      !shift.deleted_at && !shift.archived_at &&
+      ['preparing', 'live', 'paused', 'completed'].includes(shift.status),
+    )
+    return Promise.resolve(limitReportCandidates(reportable, limit))
+  },
+
+  async getByIds(ids: string[]): Promise<Shift[]> {
+    if (getAuthMode() === 'supabase') {
+      const repository = getSupabaseShiftRepository()
+      if (repository.getByIds) return repository.getByIds(ids)
+      return (await Promise.all(ids.map(id => repository.getById(id)))).filter((shift): shift is Shift => Boolean(shift))
+    }
+    refreshMockAutomaticStatuses()
+    const wanted = new Set(ids)
+    return Promise.resolve(shifts.filter(shift => wanted.has(shift.id) && !shift.deleted_at && !shift.archived_at))
   },
 
   async getInRange(startDate: string, endDate: string): Promise<Shift[]> {
@@ -2426,6 +2453,24 @@ export const reportService = {
   async getAll(): Promise<Report[]> {
     if (getAuthMode() === 'supabase') return getSupabaseReportRepository().getAll()
     return Promise.resolve(reports.filter(report => !report.deleted_at && !report.archived_at))
+  },
+
+  async getPage(query: ReportPageQuery): Promise<{ items: Report[]; total: number }> {
+    if (getAuthMode() === 'supabase') {
+      const repository = getSupabaseReportRepository()
+      if (repository.getPage) return repository.getPage(query)
+      const all = await repository.getAll()
+      const page = Math.max(1, query.page)
+      const pageSize = Math.min(100, Math.max(1, query.pageSize))
+      return { items: all.slice((page - 1) * pageSize, page * pageSize), total: all.length }
+    }
+    const statuses = query.statuses?.length ? new Set(query.statuses) : null
+    const items = reports
+      .filter(report => !report.deleted_at && !report.archived_at && (!statuses || statuses.has(report.status || (report.metrics_confirmed ? 'confirmed' : 'draft'))))
+      .sort((left, right) => String(right.updated_at).localeCompare(String(left.updated_at)) || left.id.localeCompare(right.id))
+    const page = Math.max(1, query.page)
+    const pageSize = Math.min(100, Math.max(1, query.pageSize))
+    return Promise.resolve({ items: items.slice((page - 1) * pageSize, page * pageSize), total: items.length })
   },
 
   async getForShifts(shiftIds: string[]): Promise<Report[]> {

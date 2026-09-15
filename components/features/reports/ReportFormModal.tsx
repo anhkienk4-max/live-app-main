@@ -46,7 +46,7 @@ import {
   defaultFinalReportMetricFilter,
   finalReportMetricKeysForFilter,
 } from '@/lib/utils/finalReportMetricFilter'
-import { serializeFinalReportMetricState } from '@/lib/utils/ocrMetricSerialization'
+import { getMissingFinalReportMetricKeys, serializeFinalReportMetricState } from '@/lib/utils/ocrMetricSerialization'
 import { metricTranslationKeys } from '@/lib/reportMetricLabels'
 import { defaultOcrCrop } from '@/lib/utils/ocrImage'
 import { proposeTikTokKpiCrop } from '@/lib/services/imageOcrService'
@@ -101,6 +101,7 @@ type PendingImage = { url: string; name: string; type: ReportImageCategory; mime
 export function ReportFormModal({
   open,
   onOpenChange,
+  initialShiftId,
   completedShifts,
   brands,
   platforms,
@@ -111,6 +112,7 @@ export function ReportFormModal({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
+  initialShiftId?: string
   completedShifts: Shift[]
   brands: Brand[]
   platforms: Platform[]
@@ -207,7 +209,7 @@ export function ReportFormModal({
         setLiveImages([])
         return
       }
-      const initialShift = completedShiftsRef.current[0]
+      const initialShift = completedShiftsRef.current.find(shift => shift.id === initialShiftId) || completedShiftsRef.current[0]
       const initialPlatform = inferDashboardPlatform(initialShift, platformsRef.current)
       setShiftId(initialShift?.id || '')
       setDashboardPlatform(initialPlatform)
@@ -241,7 +243,7 @@ export function ReportFormModal({
   // Opening the modal initializes a fresh draft. Prop-array identity changes
   // while it is open must not erase OCR candidates or autofilled metrics.
     return () => cancelAnimationFrame(frame)
-  }, [open])
+  }, [initialShiftId, open])
 
   React.useEffect(() => {
     liveImagesRef.current = liveImages
@@ -567,7 +569,7 @@ export function ReportFormModal({
     setImages(current => current.filter(candidate => candidate !== image))
   }
 
-  const validateSubmission = () => {
+  const validateSubmission = (mode: 'draft' | 'final') => {
     if (!currentUser || !hasPermission(currentUser, 'reports.submit')) {
       toast({ title: t('error'), description: t('permissionDenied'), variant: 'destructive' })
       return false
@@ -576,6 +578,7 @@ export function ReportFormModal({
       toast({ title: t('validationError'), description: t('chooseLiveOrCompletedShift'), variant: 'destructive' })
       return false
     }
+    if (mode === 'draft') return true
     if (!images.some(image => image.type === 'dashboard')) {
       toast({ title: t('validationError'), description: t('dashboardImageRequiredHelp'), variant: 'destructive' })
       return false
@@ -584,27 +587,40 @@ export function ReportFormModal({
       toast({ title: t('metricReviewRequired'), description: t('metricReviewRequiredHelp'), variant: 'destructive' })
       return false
     }
+    if (dashboardPlatform !== 'other') {
+      const missing = getMissingFinalReportMetricKeys(dashboardPlatform, metricValues)
+      if (missing.length > 0) {
+        toast({ title: t('validationError'), description: t('reportRequiredMetricsBeforeConfirm', { metrics: missing.map(key => t(metricTranslationKeys[key])).join(', ') }), variant: 'destructive' })
+        return false
+      }
+    }
     return true
   }
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault()
     if (reviewing || visionScanning || submitting) return
-    if (!validateSubmission()) return
+    if (!validateSubmission('final')) return
     if (reviewRequiredCount(review) > 0) {
       setShowReviewWarning(true)
       return
     }
-    void persistDraft()
+    void persistReport('final')
   }
 
-  const persistDraft = async () => {
+  const saveDraft = () => {
+    if (reviewing || visionScanning || submitting || !validateSubmission('draft')) return
+    void persistReport('draft')
+  }
+
+  const persistReport = async (mode: 'draft' | 'final') => {
     if (!currentUser || !selectedShift) return
-    if (dashboardPlatform === 'other') return
 
     setSubmitting(true)
     try {
-      const serializedMetrics = serializeFinalReportMetricState(dashboardPlatform, metricValues)
+      const serializedMetrics = dashboardPlatform === 'other'
+        ? {}
+        : serializeFinalReportMetricState(dashboardPlatform, metricValues)
       let report
       const existingReport = await reportService.getByShift(selectedShift.id)
       
@@ -620,7 +636,7 @@ export function ReportFormModal({
         dashboard_url: dashboardUrl || undefined,
       }
       
-      if (existingReport && existingReport.status === 'draft') {
+      if (existingReport && (existingReport.status === 'draft' || existingReport.status === 'reopened')) {
         report = await reportService.update(existingReport.id, payload)
         if (!report) throw new Error('Failed to update existing report draft.')
       } else if (existingReport) {
@@ -659,7 +675,11 @@ export function ReportFormModal({
           uploaded_by: currentUser.id,
         }, currentUser.id)))
       liveImages.forEach(image => persistedLiveImageUrlsRef.current.add(image.file_url))
-      toast({ title: t('submitted'), description: t('finalReportSavedHelp'), variant: 'success' })
+      if (mode === 'final') {
+        const confirmed = await reportService.confirmMetrics(report.id, payload, review, currentUser.id)
+        if (!confirmed) throw new Error('Final Report confirmation was not persisted.')
+      }
+      toast({ title: mode === 'draft' ? t('saveDraft') : t('submitted'), description: mode === 'draft' ? t('draftSaved') : t('finalReportSavedHelp'), variant: 'success' })
       onSuccess()
     } catch (error) {
       toast({ title: t('saveFailed'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
@@ -690,7 +710,7 @@ export function ReportFormModal({
         </DialogHeader>
         <form onSubmit={submit} className="space-y-6">
           <div className="grid gap-4 lg:grid-cols-2">
-            <label className="text-sm font-medium">{t('liveOrCompletedShift')} *<Select value={shiftId} onValueChange={changeShift}><SelectTrigger className="mt-1 w-full"><SelectValue placeholder={t('chooseLiveOrCompletedShift')} /></SelectTrigger><SelectContent>{completedShifts.map(shift => <SelectItem key={shift.id} value={shift.id}>{entityName(brands, shift.brand_id)} Â· {entityName(platforms, shift.platform_id)} Â· {format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} {shift.start_time} Â· {t(shift.status)}</SelectItem>)}</SelectContent></Select></label>
+            <label className="text-sm font-medium">{t('liveOrCompletedShift')} *<Select value={shiftId} onValueChange={changeShift}><SelectTrigger className="mt-1 w-full"><SelectValue placeholder={t('chooseLiveOrCompletedShift')} /></SelectTrigger><SelectContent>{completedShifts.map(shift => <SelectItem key={shift.id} value={shift.id}>{entityName(brands, shift.brand_id)} · {entityName(platforms, shift.platform_id)} · {format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} {shift.start_time} · {t(shift.status)}</SelectItem>)}</SelectContent></Select></label>
             <label className="text-sm font-medium">{t('platformDashboardType')} *<Select value={dashboardPlatform} disabled={inferredPlatform !== 'other'} onValueChange={value => { const next = value as ReportDashboardPlatform; setDashboardPlatform(next); setCropBox(defaultOcrCrop(next)); resetExtracted() }}><SelectTrigger className="mt-1 w-full" data-testid="report-platform-selector"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="tiktok_shop">TikTok Shop</SelectItem><SelectItem value="shopee_live">Shopee Live</SelectItem>{inferredPlatform === 'other' && <SelectItem value="other">{t('selectDashboardPlatform')}</SelectItem>}</SelectContent></Select></label>
           </div>
 
@@ -713,7 +733,7 @@ export function ReportFormModal({
 
           <section className="space-y-4 rounded-lg border border-dashed p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{t('ocrReview')}</h3><span data-testid="report-ocr-completion-status" data-ocr-status={review.status}><OcrStatus status={review.status} /></span></div><p className="mt-1 text-sm text-muted-foreground">{t('ocrReviewHelp')}</p>{review.engine && <p className="mt-1 text-xs text-muted-foreground">{t('engine')}: {review.engine} Â· {t('recognitionLanguage')}: {review.recognition_language} Â· {t('overallConfidence')}: {review.overall_confidence?.toFixed(1) ?? 'â€”'}%</p>}</div>
+              <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{t('ocrReview')}</h3><span data-testid="report-ocr-completion-status" data-ocr-status={review.status}><OcrStatus status={review.status} /></span></div><p className="mt-1 text-sm text-muted-foreground">{t('ocrReviewHelp')}</p>{review.engine && <p className="mt-1 text-xs text-muted-foreground">{t('engine')}: {review.engine} · {t('recognitionLanguage')}: {review.recognition_language} · {t('overallConfidence')}: {review.overall_confidence?.toFixed(1) ?? '—'}%</p>}</div>
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="outline" onClick={resetExtracted} disabled={reviewing || visionScanning}><RotateCcw className="mr-2 h-4 w-4" />{t('resetResults')}</Button>
                 {review.status === 'review_required' && <Button type="button" variant="outline" onClick={() => setEditingMetrics(value => !value)}><Pencil className="mr-2 h-4 w-4" />{editingMetrics ? t('finishEditing') : t('editOcrMetrics')}</Button>}
@@ -927,7 +947,7 @@ export function ReportFormModal({
               </div>
             </section>
           )}
-          <DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>{t('cancel')}</Button><Button type="submit" disabled={submitting || reviewing || visionScanning}>{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t('saveFinalReport')}</Button></DialogFooter>
+          <DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>{t('cancel')}</Button><Button type="button" variant="secondary" onClick={saveDraft} disabled={submitting || reviewing || visionScanning}>{t('saveDraft')}</Button><Button type="submit" disabled={submitting || reviewing || visionScanning || !currentUser || !hasPermission(currentUser, 'reports.review')}>{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t('saveFinalReport')}</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
@@ -938,7 +958,7 @@ export function ReportFormModal({
       description={t('draftCanKeepReview')}
       cancelText={t('backToReview')}
       confirmText={t('saveAnyway')}
-      onConfirm={() => void persistDraft()}
+      onConfirm={() => void persistReport('final')}
     />
   </>)
 }
@@ -950,7 +970,7 @@ function inferDashboardPlatform(shift: Shift | undefined, platforms: Platform[])
   return 'other'
 }
 
-const entityName = (items: Array<{ id: string; name: string }>, id?: string) => items.find(item => item.id === id)?.name || 'â€”'
+const entityName = (items: Array<{ id: string; name: string }>, id?: string) => items.find(item => item.id === id)?.name || '—'
 
 function Entity({ label, value }: { label: string; value: string }) {
   return <div><p className="text-xs text-muted-foreground">{label}</p><p className="font-medium">{value}</p></div>
@@ -967,9 +987,9 @@ function roleSummary(
       ...(assigned ? [assigned] : []),
       ...registrations.filter(item => item.shift_id === shift.id && item.operational_role === role && item.status === 'approved').map(item => item.user_id),
     ])
-    return [...ids].map(id => users.find(user => user.id === id)?.full_name).filter(Boolean).join(', ') || 'â€”'
+    return [...ids].map(id => users.find(user => user.id === id)?.full_name).filter(Boolean).join(', ') || '—'
   }
-  return `${labels.host}: ${names('host', shift.host_id)} Â· ${labels.support}: ${names('support', shift.support_id)} Â· ${labels.technical}: ${names('technical', shift.technical_id)}`
+  return `${labels.host}: ${names('host', shift.host_id)} · ${labels.support}: ${names('support', shift.support_id)} · ${labels.technical}: ${names('technical', shift.technical_id)}`
 }
 
 function OcrStatus({ status }: { status: OcrReviewData['status'] }) {
