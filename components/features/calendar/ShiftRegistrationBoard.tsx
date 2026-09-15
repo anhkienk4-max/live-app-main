@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import { Download, Filter, LayoutGrid, List, Lock, LockOpen, RotateCcw, Search, Table2 } from 'lucide-react'
 import {
@@ -43,7 +44,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/components/ui/toast'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { PageLoadError } from '@/components/ui/page-load-error'
-import { ShiftDetailModal } from '@/components/features/shifts/ShiftDetailModal'
+
 import { ShiftRegistrationActions } from '@/components/features/calendar/ShiftRegistrationActions'
 import { deriveStaffingAttention } from '@/lib/ui/operational-attention'
 import { AttentionBanner } from '@/components/ui/operational-status'
@@ -114,6 +115,7 @@ function useOperationalLoadState() {
 
 export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const { currentUser, loading: userLoading } = useCurrentUser()
+  const router = useRouter()
   const { t } = useTranslation()
   const { toast } = useToast()
   const [shifts, setShifts] = React.useState<Shift[]>([])
@@ -130,7 +132,6 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const [busyId, setBusyId] = React.useState<string | null>(null)
   const [removalTarget, setRemovalTarget] = React.useState<{ registration: ShiftRegistration; kind: 'cancel' | 'unassign' } | null>(null)
   const [viewMode, setViewMode] = React.useState<ViewMode>('card')
-  const [detailShift, setDetailShift] = React.useState<Shift | null>(null)
   const [showFilters, setShowFilters] = React.useState(false)
   const { getLatest, isActive, isCurrent, nextVersion, setLatest } = useOperationalLoadState()
 
@@ -211,7 +212,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
       const refreshed = await loadRegistrationOperationalData()
       if (openShiftId && refreshed) {
         const refreshedShift = refreshed.shifts.find(shift => shift.id === openShiftId)
-        if (refreshedShift) setDetailShift(refreshedShift)
+        
       }
     } catch (error) {
       toast({
@@ -449,11 +450,11 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         <Card><CardContent className="py-12 text-center text-muted-foreground">{mode === 'open' ? t('noOpenShifts') : t('noMyShifts')}</CardContent></Card>
       ) : mode === 'mine' ? (
         viewMode === 'table' ? (
-          <MyShiftTable entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+          <MyShiftTable entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={(shift) => router.push(`/shifts/${shift.id}`)} />
         ) : viewMode === 'compact' ? (
-          <MyShiftCompactList entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+          <MyShiftCompactList entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={(shift) => router.push(`/shifts/${shift.id}`)} />
         ) : (
-          <MyShiftCards entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+          <MyShiftCards entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={(shift) => router.push(`/shifts/${shift.id}`)} />
         )
       ) : viewMode === 'table' ? (
         <ShiftSummaryTable
@@ -465,7 +466,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           roleFilter={filters.roles}
           brands={brands}
           platforms={platforms}
-          onManage={setDetailShift}
+          onManage={(shift) => router.push(`/shifts/${shift.id}`)}
         />
       ) : viewMode === 'compact' ? (
         <CompactShiftList
@@ -474,7 +475,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           campaigns={campaigns}
           capacities={capacities}
           currentUser={currentUser}
-          onManage={setDetailShift}
+          onManage={(shift) => router.push(`/shifts/${shift.id}`)}
           onRegister={(shiftId, role) => runAction(`${shiftId}-${role}`, () => shiftRegistrationService.register(shiftId, currentUser.id, role), t('registrationPending'), shiftId)}
           platforms={platforms}
           registrations={registrations}
@@ -507,7 +508,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <Button
                       data-testid={`open-shift-detail-card-${shift.id}`}
-                      onClick={() => setDetailShift(shift)}
+                      onClick={() => router.push(`/shifts/${shift.id}`)}
                       size="sm"
                       variant="secondary"
                       className="h-8 text-xs font-medium"
@@ -632,35 +633,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           })}
         </div>
       )}
-      {detailShift && (
-        <ShiftDetailModal
-          open
-          onOpenChange={open => { if (!open) setDetailShift(null) }}
-          shift={detailShift}
-          brands={brands}
-          platforms={platforms}
-          campaigns={campaigns}
-          users={users}
-          allShifts={shifts}
-          allRegistrations={registrations}
-          onUpdate={(updatedShift?: Shift) => {
-            void (async () => {
-              if (updatedShift) {
-                setDetailShift(updatedShift)
-                await loadRegistrationOperationalData()
-              } else {
-                const refreshed = await loadRegistrationOperationalData()
-                const refreshedShift = refreshed?.shifts.find(shift => shift.id === detailShift.id)
-                if (refreshedShift) setDetailShift({ ...refreshedShift })
-              }
-            })()
-          }}
-          onDelete={() => {
-            setDetailShift(null)
-            void loadRegistrationOperationalData()
-          }}
-        />
-      )}
+      
       <LifecycleActionDialog open={Boolean(removalTarget)} onOpenChange={open => !open && setRemovalTarget(null)} title={removalTarget?.kind === 'cancel' ? 'Cancel registration' : 'Remove assignment'} impact={removalImpact} confirmText={removalTarget?.kind === 'cancel' ? 'Cancel registration' : 'Remove assignment'} onConfirm={confirmRemoval} />
     </div>
   )
@@ -687,6 +660,7 @@ type MyShiftViewProps = {
 }
 
 function MyShiftCards({ entries, brands, platforms, campaigns, onManage }: MyShiftViewProps) {
+  const router = useRouter()
   const { t } = useTranslation()
   return <div className="grid grid-cols-1 gap-5 2xl:grid-cols-2 min-[1900px]:grid-cols-3">
     {entries.map(({ shift, registrations }) => <Card key={shift.id} data-testid={`my-shift-card-${shift.id}`}>
@@ -703,6 +677,7 @@ function MyShiftCards({ entries, brands, platforms, campaigns, onManage }: MyShi
 }
 
 function MyShiftCompactList({ entries, brands, platforms, campaigns, onManage }: MyShiftViewProps) {
+  const router = useRouter()
   const { t } = useTranslation()
   return <div className="space-y-3">{entries.map(({ shift, registrations }) => <Card key={shift.id} data-testid={`my-shift-compact-${shift.id}`}><CardContent className="grid gap-3 pt-5 md:grid-cols-[minmax(220px,1.5fr)_minmax(100px,.7fr)_minmax(120px,.8fr)_auto] md:items-center">
     <div className="min-w-0"><p className="truncate font-semibold">{shift.title || `${brandName(brands, shift.brand_id)} live`}</p><p className="text-sm text-muted-foreground">{shift.date} Â· {formatShiftTimeRange(shift)} Â· {platformName(platforms, shift.platform_id)}</p><p className="truncate text-xs text-muted-foreground">{campaignName(campaigns, shift.campaign_id)}</p></div>
@@ -712,6 +687,7 @@ function MyShiftCompactList({ entries, brands, platforms, campaigns, onManage }:
 }
 
 function MyShiftTable({ entries, brands, platforms, campaigns, onManage }: MyShiftViewProps) {
+  const router = useRouter()
   const { t } = useTranslation()
   return <Card><CardContent className="overflow-x-auto pt-5"><div className="w-full overflow-x-auto min-w-0">
 <table className="w-full min-w-[850px] text-sm"><thead><tr className="border-b text-left">
@@ -747,6 +723,7 @@ function CompactShiftList({
   onRegister: (shiftId: string, role: OperationalRole) => Promise<void>
   onManage: (shift: Shift) => void
 }) {
+  const router = useRouter()
   const { t } = useTranslation()
   return <div className="space-y-3">{shifts.map(shift => {
     const roleValue = (role: OperationalRole) => {
@@ -788,6 +765,7 @@ function ShiftSummaryTable({
   platforms: Platform[]
   onManage: (shift: Shift) => void
 }) {
+  const router = useRouter()
   const { t } = useTranslation()
   return <Card><CardContent className="overflow-x-auto pt-5"><div className="w-full overflow-x-auto min-w-0">
 <table className="w-full min-w-[900px] text-sm">

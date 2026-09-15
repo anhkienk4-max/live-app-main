@@ -86,6 +86,7 @@ function fakeClient(
   const rangeCalls: number[] = []
   const rpcCalls: string[] = []
   return {
+    rpc: (_name: string, _args: unknown) => ({ single: async () => ({ data: null, error: null }) }),
     rangeCalls,
     rpcCalls,
     rpc(functionName: string) {

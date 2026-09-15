@@ -10,6 +10,7 @@ import { ShiftStatusBadge } from '@/components/domain/ShiftStatusBadge'
 interface MonthViewProps {
   currentDate: Date
   shifts: Shift[]
+  registrations?: import('@/lib/types/database.types').ShiftRegistration[]
   brands: Brand[]
   platforms: Platform[]
   onShiftClick?: (shift: Shift) => void

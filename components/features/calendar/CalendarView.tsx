@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import { shiftRegistrationService, shiftService, brandService, platformService, campaignService, userService, reportService } from '@/lib/services/dataService'
 import { Shift, Brand, Platform, Campaign, User, OperationalRole, ShiftRegistration, Report } from '@/lib/types/database.types'
 import { Button } from '@/components/ui/button'
@@ -31,9 +32,9 @@ import { MonthView } from './MonthView'
 import { WeekView } from './WeekView'
 import { DayView } from './DayView'
 import { ListView } from './ListView'
-import { ShiftFormModal } from '../shifts/ShiftFormModal'
-import { ShiftFormDialog } from '../shifts/ShiftFormDialog'
-import { ShiftDetailModal } from '../shifts/ShiftDetailModal'
+
+
+
 import { DaySessionsDialog } from './DaySessionsDialog'
 import { BulkStaffingApprovalDialog } from './BulkStaffingApprovalDialog'
 import { BulkDeleteShiftsDialog } from './BulkDeleteShiftsDialog'
@@ -83,6 +84,7 @@ const EMPTY_SHIFTS: Shift[] = []
 
 export function CalendarView({ createRequest = 0 }: { createRequest?: number }) {
   const { currentUser } = useCurrentUser()
+  const router = useRouter()
   const { language, t } = useTranslation()
   const { toast } = useToast()
   const dateLocale = language === 'vi' ? vi : enUS
@@ -100,10 +102,8 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const [reports, setReports] = React.useState<Report[]>([])
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
-  const [showForm, setShowForm] = React.useState(false)
   const [selectedShift, setSelectedShift] = React.useState<Shift | null>(null)
   const [selectedDay, setSelectedDay] = React.useState<Date | null>(null)
-  const [editingShift, setEditingShift] = React.useState<Shift | null>(null)
   const [showFilters, setShowFilters] = React.useState(false)
   const [showBulkStaffingApproval, setShowBulkStaffingApproval] = React.useState(false)
   const [showBulkDelete, setShowBulkDelete] = React.useState(false)
@@ -184,7 +184,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
 
   React.useEffect(() => {
     if (createRequest > 0) {
-      const timer = setTimeout(() => setShowForm(true), 0)
+      const timer = setTimeout(() => router.push('/shifts/new'), 0)
       return () => {
         clearTimeout(timer)
       }
@@ -522,7 +522,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
               )}
 
               {hasPermission(currentUser, 'shifts.assign_staff') && (
-                <Button size="sm" className="h-9" onClick={() => setShowForm(true)}>
+                <Button size="sm" className="h-9" onClick={() => router.push('/shifts/new')}>
                   <Plus className="h-4 w-4 mr-2" />
                   {t('newShift')}
                 </Button>
@@ -618,18 +618,16 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       {/* Calendar Views */}
       <Card className="min-w-0 overflow-hidden pt-4">
         {view === 'month' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} onShiftClick={setSelectedShift} onDayClick={setSelectedDay} /></div></div>}
-        {view === 'week' && <div className="w-full"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} users={users} registrations={registrations} onShiftClick={setSelectedShift} /></div>}
-        {view === 'day' && <DayView currentDate={currentDate} shifts={filteredShifts} allShifts={shifts} registrations={registrations} currentUser={currentUser} brands={brands} platforms={platforms} users={users} onRegister={registerForShift} onShiftClick={setSelectedShift} />}
+        {view === 'week' && <div className="w-full"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onShiftClick={setSelectedShift} /></div>}
+        {view === 'day' && <DayView currentDate={currentDate} shifts={filteredShifts} registrations={registrations}  brands={brands} platforms={platforms}  onShiftClick={setSelectedShift} />}
         {view === 'list' && (
           <ListView
-            shifts={listShifts}
+            shifts={listShifts} users={users}
             brands={brands}
             platforms={platforms}
-            users={users}
-            allShifts={shifts}
             registrations={registrations}
-            currentUser={currentUser}
-            onRegister={registerForShift}
+            
+            
             onShiftClick={setSelectedShift}
             selectedShiftIds={canSelectListShifts ? selectedVisibleShiftIdSet : undefined}
             onToggleSelectShift={canSelectListShifts ? toggleSelectShift : undefined}
@@ -638,52 +636,20 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       </Card>
 
       {/* Modals */}
-      {showForm && (
-        <ShiftFormModal
-          open={showForm}
-          onOpenChange={setShowForm}
-          brands={brands}
-          platforms={platforms}
-          campaigns={campaigns}
-          users={users}
-          onSuccess={() => {
-            loadData()
-            setShowForm(false)
-          }}
-        />
-      )}
+      
 
-      {editingShift && (
-        <ShiftFormDialog
-          open={!!editingShift}
-          onOpenChange={(open) => !open && setEditingShift(null)}
-          shift={editingShift}
-          duplicateFrom={null}
-          brands={brands}
-          platforms={platforms}
-          campaigns={campaigns}
-          users={users}
-          templates={[]}
-          onSuccess={async (updatedShift) => {
-            await loadData()
-            setEditingShift(null)
-            if (updatedShift) setSelectedShift({ ...updatedShift })
-          }}
-        />
-      )}
+      
 
       <DaySessionsDialog
-        open={!!selectedDay}
+        open={!!selectedDay} currentUser={currentUser} users={users}
         date={selectedDay}
         shifts={filteredShifts}
-        allShifts={shifts}
         brands={brands}
         platforms={platforms}
         campaigns={campaigns}
-        users={users}
         registrations={registrations}
         reports={reports}
-        currentUser={currentUser}
+        
         onOpenChange={(open) => !open && setSelectedDay(null)}
         onViewShift={(shift) => {
           setSelectedDay(null)
@@ -691,7 +657,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         }}
         onEditShift={(shift) => {
           setSelectedDay(null)
-          setEditingShift(shift)
+          router.push(`/shifts/${shift.id}/edit`)
         }}
         onChanged={loadData}
       />
@@ -716,11 +682,10 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
 
       {currentUser && hasPermission(currentUser, 'shifts.approve_registration') && (
         <BulkStaffingApprovalDialog
-          open={showBulkStaffingApproval}
+          open={showBulkStaffingApproval} currentUser={currentUser} users={users}
           registrations={pendingStaffingRegistrations}
           shifts={calendarScopeShifts}
-          users={users}
-          currentUser={currentUser}
+          
           onOpenChange={setShowBulkStaffingApproval}
           onChanged={loadData}
           onOpenShift={(shift) => {
@@ -730,39 +695,8 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         />
       )}
 
-      {selectedShift && (
-        <ShiftDetailModal
-          open={!!selectedShift}
-          onOpenChange={(open) => !open && setSelectedShift(null)}
-          shift={selectedShift}
-          brands={brands}
-          platforms={platforms}
-          campaigns={campaigns}
-          users={users}
-          allShifts={shifts}
-          allRegistrations={registrations}
-          onUpdate={(updatedShift?: Shift) => {
-            void (async () => {
-              if (updatedShift) {
-                setSelectedShift(updatedShift)
-                await loadData()
-              } else {
-                await loadData()
-                const refreshedShift = await shiftService.getById(selectedShift.id)
-                if (refreshedShift) setSelectedShift({ ...refreshedShift })
-              }
-            })()
-          }}
-          onEdit={() => {
-            setEditingShift(selectedShift)
-            setSelectedShift(null)
-          }}
-          onDelete={() => {
-            loadData()
-            setSelectedShift(null)
-          }}
-        />
-      )}
+      
     </div>
   )
 }
+

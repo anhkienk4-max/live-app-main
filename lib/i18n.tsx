@@ -7,6 +7,25 @@ export type TranslationKey = keyof typeof en
 type Variables = Record<string, string | number>
 
 const en = {
+  unknownBrand: 'Unknown Brand',
+  staffingIncomplete: 'Staffing Incomplete',
+  noStudioAssigned: 'No Studio Assigned',
+  manageStaffing: 'Manage Staffing',
+  shiftsScheduled: 'shifts scheduled',
+  noShifts: 'No shifts',
+  sun: 'Sun',
+  mon: 'Mon',
+  tue: 'Tue',
+  wed: 'Wed',
+  thu: 'Thu',
+  fri: 'Fri',
+  sat: 'Sat',
+  more: 'more',
+  summary: 'Summary',
+  assigned: 'assigned',
+  needsAttention: 'Needs Attention',
+  viewFullDetail: 'View Full Detail',
+
   statusAutomatic: 'Automatic',
   returnToAutomatic: 'Return to automatic',
   dashboard: 'Dashboard',
@@ -1100,6 +1119,25 @@ const en = {
 } as const
 
 const vi: Record<keyof typeof en, string> = {
+  unknownBrand: 'Thương hiệu không xác định',
+  staffingIncomplete: 'Nhân sự chưa đầy đủ',
+  noStudioAssigned: 'Chưa xếp Studio',
+  manageStaffing: 'Quản lý Nhân sự',
+  shiftsScheduled: 'ca đã xếp',
+  noShifts: 'Không có ca',
+  sun: 'CN',
+  mon: 'T2',
+  tue: 'T3',
+  wed: 'T4',
+  thu: 'T5',
+  fri: 'T6',
+  sat: 'T7',
+  more: 'nữa',
+  summary: 'Tóm tắt',
+  assigned: 'đã xếp',
+  needsAttention: 'Cần chú ý',
+  viewFullDetail: 'Xem Chi tiết',
+
   statusAutomatic: 'Tự động',
   returnToAutomatic: 'Trở về tự động',
   forgotPasswordTitle: 'Đặt lại mật khẩu',

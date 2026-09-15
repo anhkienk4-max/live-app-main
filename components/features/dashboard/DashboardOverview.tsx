@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { addDays, endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
 import { Bell, Calendar, Clock, FileText, Filter, Radio, RotateCcw, Users, ArrowLeftRight, CheckCircle } from 'lucide-react'
@@ -27,7 +28,7 @@ import { deriveLeaderAttention, deriveMemberAttention, deriveDataQualityAttentio
 import { getAllIssues } from '@/lib/utils/dataQuality'
 import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
-import { ShiftDetailModal } from '@/components/features/shifts/ShiftDetailModal'
+
 
 const DashboardCharts = dynamic(
   () => import('@/components/features/dashboard/DashboardCharts').then(mod => ({ default: mod.DashboardCharts })),
@@ -65,6 +66,7 @@ export function calculateAggregate(reports: Report[], key: keyof Pick<Report, 'r
 }
 
 export function DashboardOverview() {
+  const router = useRouter()
   const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
   const [shifts, setShifts] = React.useState<Shift[]>([])
@@ -116,9 +118,7 @@ export function DashboardOverview() {
       {role === 'admin' && <AdminDashboard {...dataProps} setSelectedShift={setSelectedShift} />}
       {role === 'leader' && <LeaderDashboard {...dataProps} setSelectedShift={setSelectedShift} />}
       {role === 'member' && <MemberDashboard {...dataProps} setSelectedShift={setSelectedShift} />}
-      {selectedShift && (
-        <ShiftDetailModal open shift={selectedShift} brands={brands} platforms={platforms} campaigns={campaigns} users={users} allRegistrations={registrations} onOpenChange={(open) => !open && setSelectedShift(null)} onUpdate={loadData} onDelete={() => { setSelectedShift(null); void loadData() }} />
-      )}
+      
     </div>
   )
 }
@@ -383,6 +383,7 @@ function LeaderDashboard(props: CommonProps) {
 }
 
 function MemberDashboard(props: CommonProps) {
+  const router = useRouter()
   const { shifts, reports, brands, platforms, currentUser, registrations, swapRequests, t, setSelectedShift } = props
 
   const today = getCurrentBusinessDate()
@@ -453,7 +454,7 @@ function MemberDashboard(props: CommonProps) {
               <Clock className="w-4 h-4 ml-2" /> <span>{formatShiftTimeRange(nextShift)}</span>
             </div>
           </div>
-          <Button onClick={() => setSelectedShift(nextShift)}>{t('viewDetails')}</Button>
+          <Button onClick={() => router.push('/shifts')}>{t('viewDetails')}</Button>
         </CardContent>
       </Card>
     )}
@@ -516,8 +517,9 @@ function DashboardFilterPanel({ filters, setFilters, brands, platforms, campaign
 }
 
 function UpcomingShiftsList({ upcoming, brands, platforms, t, title, setSelectedShift }: { upcoming: Shift[]; brands: Brand[]; platforms: Platform[]; t: (key: string) => string; title?: string; setSelectedShift: (shift: Shift | null) => void }) {
+  const router = useRouter()
   return (
-    <div className="flex flex-col"><div className="flex items-center justify-between pb-3 border-b mb-3"><div><h2 className="text-[15px] font-semibold">{title || t('upcomingShifts')}</h2></div><Button nativeButton={false} render={<Link href="/calendar" />} variant="ghost" size="sm" className="h-8 text-[13px]">{t('viewAll')}</Button></div><div>{upcoming.length ? <div className="divide-y">{upcoming.map(shift => <button type="button" className="flex w-full flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 py-3 sm:py-2 text-left hover:bg-muted/30 transition-colors min-h-[48px]" key={shift.id} onClick={() => setSelectedShift(shift)}><div className="min-w-0 flex-1"><p className="text-sm font-semibold truncate">{shift.title || nameFor(brands, shift.brand_id)}</p><div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground"><span>{shift.date}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{formatShiftTimeRange(shift)}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{nameFor(platforms, shift.platform_id)}</span></div></div><div className="flex shrink-0 justify-end"><Badge variant="secondary" className="text-xs font-normal bg-muted/50 text-muted-foreground">{t('scheduled')}</Badge></div></button>)}</div> : <div className="py-8"><Empty text={t('noMatchingShifts')} /></div>}</div></div>
+    <div className="flex flex-col"><div className="flex items-center justify-between pb-3 border-b mb-3"><div><h2 className="text-[15px] font-semibold">{title || t('upcomingShifts')}</h2></div><Button nativeButton={false} render={<Link href="/calendar" />} variant="ghost" size="sm" className="h-8 text-[13px]">{t('viewAll')}</Button></div><div>{upcoming.length ? <div className="divide-y">{upcoming.map(shift => <button type="button" className="flex w-full flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 py-3 sm:py-2 text-left hover:bg-muted/30 transition-colors min-h-[48px]" key={shift.id} onClick={() => router.push('/shifts')}><div className="min-w-0 flex-1"><p className="text-sm font-semibold truncate">{shift.title || nameFor(brands, shift.brand_id)}</p><div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground"><span>{shift.date}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{formatShiftTimeRange(shift)}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{nameFor(platforms, shift.platform_id)}</span></div></div><div className="flex shrink-0 justify-end"><Badge variant="secondary" className="text-xs font-normal bg-muted/50 text-muted-foreground">{t('scheduled')}</Badge></div></button>)}</div> : <div className="py-8"><Empty text={t('noMatchingShifts')} /></div>}</div></div>
   )
 }
 

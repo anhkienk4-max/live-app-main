@@ -20,11 +20,11 @@ export function PageShell({ archetype, className, children, ...props }: PageShel
       case 'queue':
       case 'analytics':
       case 'directory':
-        return 'max-w-[1440px]' // wider workspace
       case 'command':
+        return 'w-full max-w-none' // full available workspace
       case 'workflow':
       case 'configuration':
-        return 'max-w-[1280px]' // focused workspace
+        return 'max-w-5xl' // ~1024px constrained readable width
       case 'auth':
         return 'max-w-md'
       default:
