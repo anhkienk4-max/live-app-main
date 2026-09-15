@@ -336,7 +336,7 @@ export function ShiftFormWorkspace({
         <header className="sticky top-0 z-10 border-b bg-background px-6 py-4 shadow-sm flex-shrink-0">
           {onBack && (
             <Button variant="ghost" size="sm" onClick={onBack} className="mb-4 -ml-2 text-muted-foreground" type="button">
-              <ChevronLeft className="mr-1 h-4 w-4" /> {t('back' as any)}
+              <ChevronLeft className="mr-1 h-4 w-4" /> {t('back')}
             </Button>
           )}
           <h1 className="text-xl sm:text-2xl font-bold leading-none">

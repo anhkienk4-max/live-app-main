@@ -49,7 +49,8 @@ export default function EditShiftPage() {
   }, [id])
 
   React.useEffect(() => {
-    void loadData()
+    const frame = window.requestAnimationFrame(() => { void loadData() })
+    return () => window.cancelAnimationFrame(frame)
   }, [loadData])
 
   if (loading) {

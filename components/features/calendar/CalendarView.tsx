@@ -1,4 +1,5 @@
-'use client'
+﻿'use client'
+import { ShiftPreviewDrawer } from './ShiftPreviewDrawer'
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
@@ -89,7 +90,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const { toast } = useToast()
   const dateLocale = language === 'vi' ? vi : enUS
   const timeFilterLabels = language === 'vi'
-    ? { all: 'Tất cả thời gian', week: 'Tuần đang xem', month: 'Tháng đang xem', studios: 'Tất cả Studio', unassigned: 'Chưa gán Studio' }
+    ? { all: 'Táº¥t cáº£ thá»i gian', week: 'Tuáº§n Ä‘ang xem', month: 'ThÃ¡ng Ä‘ang xem', studios: 'Táº¥t cáº£ Studio', unassigned: 'ChÆ°a gÃ¡n Studio' }
     : { all: 'All time', week: 'Current week', month: 'Current month', studios: 'All studios', unassigned: 'Unassigned' }
   const [currentDate, setCurrentDate] = React.useState(new Date())
   const [view, setView] = React.useState<'month' | 'week' | 'day' | 'list'>('month')
@@ -636,6 +637,19 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       </Card>
 
       {/* Modals */}
+        <ShiftPreviewDrawer
+          shift={selectedShift}
+          brand={brands.find(b => b.id === selectedShift?.brand_id)}
+          platform={platforms.find(p => p.id === selectedShift?.platform_id)}
+          campaign={campaigns.find(c => c.id === selectedShift?.campaign_id)}
+          registrations={registrations.filter(r => r.shift_id === selectedShift?.id)}
+          users={users}
+          open={!!selectedShift}
+          onOpenChange={(open: boolean) => !open && setSelectedShift(null)}
+          onViewFullDetail={(id: string) => router.push(`/shifts/${id}`)}
+          onManageStaffing={(id: string) => router.push(`/shifts/${id}?tab=registration`)}
+        />
+
       
 
       
@@ -650,10 +664,10 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         registrations={registrations}
         reports={reports}
         
-        onOpenChange={(open) => !open && setSelectedDay(null)}
+        onOpenChange={(open: boolean) => !open && setSelectedDay(null)}
         onViewShift={(shift) => {
           setSelectedDay(null)
-          setSelectedShift(shift)
+          router.push(`/shifts/${shift.id}`)
         }}
         onEditShift={(shift) => {
           setSelectedDay(null)
@@ -690,7 +704,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           onChanged={loadData}
           onOpenShift={(shift) => {
             setShowBulkStaffingApproval(false)
-            setSelectedShift(shift)
+            router.push(`/shifts/${shift.id}`)
           }}
         />
       )}

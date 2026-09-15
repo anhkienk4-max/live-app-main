@@ -8,6 +8,18 @@ type Variables = Record<string, string | number>
 
 const en = {
   unknownBrand: 'Unknown Brand',
+  registration: 'Registration',
+  activity: 'Activity',
+  audit: 'Audit',
+  noRegistrationData: 'No registration data available.',
+  notLive: 'Shift is not currently live.',
+  noReports: 'No reports generated.',
+  noActivity: 'No recent activity.',
+  auditLogsUnavailable: 'Audit logs unavailable.',
+  back: 'Back',
+  openLiveStudio: 'Open Live Studio',
+
+
   staffingIncomplete: 'Staffing Incomplete',
   noStudioAssigned: 'No Studio Assigned',
   manageStaffing: 'Manage Staffing',
@@ -462,7 +474,6 @@ const en = {
   exportReportDetail: 'Export report detail',
   exportImageMetadata: 'Export image metadata',
   downloadReportTemplate: 'Download report template',
-  noReports: 'No reports match the active filters.',
   createFinalReportDescription: 'Create a Final Report draft for an active or completed livestream. Live snapshots never enter Analytics.',
   liveOrCompletedShift: 'Live or completed shift',
   chooseLiveOrCompletedShift: 'Choose a live or completed shift',
@@ -1034,7 +1045,6 @@ const en = {
   teamSettings: 'Team',
   systemSettings: 'System',
   integrations: 'Integrations',
-  audit: 'Audit',
   reset: 'Reset',
   permissions: 'permissions',
   developerTools: 'Developer tools',
@@ -1120,6 +1130,18 @@ const en = {
 
 const vi: Record<keyof typeof en, string> = {
   unknownBrand: 'Thương hiệu không xác định',
+  registration: 'Đăng ký',
+  activity: 'Hoạt động',
+  audit: 'Kiểm toán',
+  noRegistrationData: 'Không có dữ liệu đăng ký.',
+  notLive: 'Ca trực hiện không trực tiếp.',
+  noReports: 'Không có báo cáo nào được tạo.',
+  noActivity: 'Không có hoạt động gần đây.',
+  auditLogsUnavailable: 'Nhật ký kiểm toán không khả dụng.',
+  back: 'Quay lại',
+  openLiveStudio: 'Mở Studio Trực tiếp',
+
+
   staffingIncomplete: 'Nhân sự chưa đầy đủ',
   noStudioAssigned: 'Chưa xếp Studio',
   manageStaffing: 'Quản lý Nhân sự',
@@ -1584,7 +1606,6 @@ const vi: Record<keyof typeof en, string> = {
   exportReportDetail: 'Xuất chi tiết báo cáo',
   exportImageMetadata: 'Xuất metadata ảnh',
   downloadReportTemplate: 'Tải mẫu báo cáo',
-  noReports: 'Không có báo cáo phù hợp với bộ lọc.',
   revenue: 'Doanh thu',
   gmv: 'GMV',
   orders: 'Đơn hàng',
@@ -1773,7 +1794,6 @@ const vi: Record<keyof typeof en, string> = {
   teamSettings: 'Đội nhóm',
   systemSettings: 'Hệ thống',
   integrations: 'Tích hợp',
-  audit: 'Kiểm toán',
   reset: 'Đặt lại',
   permissions: 'quyền',
   developerTools: 'Công cụ phát triển',

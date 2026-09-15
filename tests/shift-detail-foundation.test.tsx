@@ -9,7 +9,7 @@ import {
   getShiftStatusClass,
   safeFormatShiftDate,
   ShiftDetailActions,
-} from '../components/features/shifts/ShiftDetailModal.tsx'
+} from '../components/features/shifts/ShiftDetailWorkspace.tsx'
 import { resolveShiftDateTime } from '../lib/utils/shiftUtils.ts'
 import { resolveStaffingLabelsForRole } from '../lib/utils/staffingResolver.ts'
 import type { Shift, ShiftRegistration, ShiftStatus, User } from '../lib/types/database.types.ts'
@@ -148,19 +148,29 @@ test('Shift Detail actions remain permission-aware and never expose a fake edit 
   assert.doesNotMatch(unsupportedEditMarkup, /edit-shift-detail/)
 })
 
-test('Calendar, Day Sessions, Shift List, compact and table surfaces share the canonical modal', () => {
+test('Calendar, Day Sessions, Shift List, compact and table surfaces share the canonical workspace routing', () => {
   const read = (relativePath: string) => readFileSync(join(process.cwd(), relativePath), 'utf8')
   const calendar = read('components/features/calendar/CalendarView.tsx')
   const daySessions = read('components/features/calendar/DaySessionsDialog.tsx')
   const shiftList = read('components/features/shifts/ShiftList.tsx')
   const registrationBoard = read('components/features/calendar/ShiftRegistrationBoard.tsx')
+  const shiftPreviewDrawer = read('components/features/calendar/ShiftPreviewDrawer.tsx')
+  const shiftDetailWorkspace = read('components/features/shifts/ShiftDetailWorkspace.tsx')
+  const shiftFormWorkspace = read('components/features/shifts/ShiftFormWorkspace.tsx')
 
-  assert.match(calendar, /<ShiftDetailModal/)
-  assert.match(calendar, /onShiftClick=\{setSelectedShift\}/)
+  assert.ok(calendar.includes('<ShiftPreviewDrawer'))
+  assert.ok(calendar.includes('onShiftClick={setSelectedShift}'))
+
+  // ShiftPreviewDrawer full-detail action routes to: /shifts/{id}
+  // The test just checks that it is routed correctly from the drawer
+  assert.ok(calendar.includes('onViewFullDetail={(id) => router.push(`/shifts/${id}`)}'))
+
   assert.match(daySessions, /day-session-view-shift-/)
-  assert.match(shiftList, /<ShiftDetailModal/)
-  assert.match(shiftList, /onView: \(\) => setDetailShift\(row\)/)
-  assert.match(registrationBoard, /open-shift-detail-compact-/)
-  assert.match(registrationBoard, /open-shift-detail-table-/)
+  assert.ok(shiftList.includes('router.push(`/shifts/${row.id}`)'))
+  assert.ok(registrationBoard.includes('router.push(`/shifts/${shift.id}`)'))
   assert.doesNotMatch(registrationBoard, /onManage=\{\(\) => changeViewMode\('card'\)\}/)
+
+  // Create routes: /shifts/new
+  // Edit routes: /shifts/{id}/edit
+  assert.ok(calendar.includes('router.push(\'/shifts/new\')'))
 })

@@ -26,10 +26,8 @@ export function Sidebar() {
 
   React.useEffect(() => {
     const stored = localStorage.getItem('sidebar:collapsed')
-    if (stored === 'true') {
-
-      setIsCollapsed(true)
-    }
+    if (stored === 'true') { const frame = window.requestAnimationFrame(() => setIsCollapsed(true)); return () => window.cancelAnimationFrame(frame); }
+    return undefined
   }, [])
 
   const toggleCollapse = () => {

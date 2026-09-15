@@ -43,6 +43,7 @@ import {
   Trash2,
   UserPlus,
   X,
+  FileText,
 } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
@@ -672,7 +673,7 @@ export function ShiftDetailWorkspace({
           <header className="sticky top-0 z-10 border-b bg-background px-6 py-4 shadow-sm flex-shrink-0">
             {onBack && (
               <Button variant="ghost" size="sm" onClick={onBack} className="mb-4 -ml-2 text-muted-foreground">
-                <ChevronLeft className="mr-1 h-4 w-4" /> {t('back' as any)}
+                <ChevronLeft className="mr-1 h-4 w-4" /> {t('back')}
               </Button>
             )}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -743,10 +744,17 @@ export function ShiftDetailWorkspace({
                 {/* LEFT 8 COLUMNS */}
                 <div className="lg:col-span-8 space-y-6">
             <Tabs defaultValue="overview" className="min-w-0">
-              <TabsList className="mx-4 mt-4 grid w-auto grid-cols-3 sm:mx-6">
-                <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="overview">{t('shiftOverview')}</TabsTrigger>
-                <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="staffing">{t('staffing')}</TabsTrigger>
-                <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="details">{t('additionalInfo')}</TabsTrigger>
+              <TabsList className="mx-4 mt-4 flex w-auto overflow-x-auto sm:mx-6">
+                <TabsTrigger className="min-w-0 px-3 text-xs sm:text-sm whitespace-nowrap" value="overview">{t('shiftOverview')}</TabsTrigger>
+                <TabsTrigger className="min-w-0 px-3 text-xs sm:text-sm whitespace-nowrap" value="staffing">{t('staffing')}</TabsTrigger>
+                <TabsTrigger className="min-w-0 px-3 text-xs sm:text-sm whitespace-nowrap" value="registration">{t('registration') || 'Registration'}</TabsTrigger>
+                <TabsTrigger className="min-w-0 px-3 text-xs sm:text-sm whitespace-nowrap" value="live">{t('live') || 'Live'}</TabsTrigger>
+                <TabsTrigger className="min-w-0 px-3 text-xs sm:text-sm whitespace-nowrap" value="details">{t('additionalInfo')}</TabsTrigger>
+                <TabsTrigger className="min-w-0 px-3 text-xs sm:text-sm whitespace-nowrap" value="reports">{t('reports') || 'Reports'}</TabsTrigger>
+                <TabsTrigger className="min-w-0 px-3 text-xs sm:text-sm whitespace-nowrap" value="activity">{t('activity') || 'Activity'}</TabsTrigger>
+                {currentUser?.system_permission === 'admin' && (
+                  <TabsTrigger className="min-w-0 px-3 text-xs sm:text-sm whitespace-nowrap" value="audit">{t('audit') || 'Audit'}</TabsTrigger>
+                )}
               </TabsList>
 
               <TabsContent value="overview" className="space-y-6 p-4 sm:p-6">
@@ -890,6 +898,10 @@ export function ShiftDetailWorkspace({
                     </div>
                  </section>
 
+                </div>
+                </TabsContent>
+                <TabsContent value="registration" className="space-y-6 p-4 sm:p-6">
+                  <div className="space-y-6">
                  {/* D. REGISTRATION / WORKFLOW STATE */}
                  <section className="space-y-4">
                     <ShiftRegistrationActions
@@ -1016,7 +1028,7 @@ export function ShiftDetailWorkspace({
                     )}
                  </section>
 
-                </div>
+                  </div>
                 </TabsContent>
               </Tabs>
                           </div>
@@ -1036,7 +1048,7 @@ export function ShiftDetailWorkspace({
                           rel="noreferrer"
                           target="_blank"
                         >
-                          {t('openLiveStudio' as any)} <ExternalLink className="ml-2 h-4 w-4" />
+                          {t('openLiveStudio')} <ExternalLink className="ml-2 h-4 w-4" />
                         </a>
                       </div>
                     ) : (
