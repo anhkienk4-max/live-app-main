@@ -16,11 +16,17 @@ import {
   platformRoiMetricLayouts,
   roiCellBoundingBox,
 } from '@/lib/utils/dashboardRegionDetection'
+import {
+  OCR_RUNTIME_CONFIG,
+  isSupportedOcrMimeType,
+} from '@/lib/services/ocrRuntimeConfig'
+import { OperationTimeoutError, withTimeout } from '@/lib/server/apiSecurity'
 
-const maxImageBytes = 10 * 1024 * 1024
 const supportedPlatforms = new Set<ReportDashboardPlatform>(['shopee_live', 'tiktok_shop'])
 const preprocessScale = 2
 const serverFailureMessage = 'Server OCR unavailable; local browser OCR fallback was used.'
+const noTextMessage = 'No readable dashboard text was detected in the image.'
+let activeOcrJobs = 0
 
 type LanguageData = {
   langPath: string
@@ -78,9 +84,11 @@ export async function loadOcrServerDependencies(): Promise<OcrServerDependencies
 export function createOcrPostHandler(options?: {
   loadDependencies?: OcrDependencyLoader
   serverOcrEnabled?: () => boolean
+  timeoutMs?: number
 }) {
   const loadDependencies = options?.loadDependencies || loadOcrServerDependencies
   const serverOcrEnabled = options?.serverOcrEnabled || isServerOcrEnabled
+  const timeoutMs = options?.timeoutMs || OCR_RUNTIME_CONFIG.serverTimeoutMs
 
   return async function POST(request: Request) {
     try {
@@ -95,10 +103,13 @@ export function createOcrPostHandler(options?: {
       if (!(image instanceof File)) {
         return ocrErrorResponse('IMAGE_REQUIRED', 'An image file is required.', 400)
       }
-      if (!image.type.startsWith('image/')) {
+      if (image.size === 0) {
+        return ocrErrorResponse('INVALID_IMAGE', 'The dashboard image is empty.', 422)
+      }
+      if (!isSupportedOcrMimeType(image.type)) {
         return ocrErrorResponse('UNSUPPORTED_FILE', 'Only image files can be processed.', 415)
       }
-      if (image.size > maxImageBytes) {
+      if (image.size > OCR_RUNTIME_CONFIG.maxImageBytes) {
         return ocrErrorResponse('IMAGE_TOO_LARGE', 'The dashboard image must be 10 MB or smaller.', 413)
       }
       if (!supportedPlatforms.has(platform)) {
@@ -106,11 +117,30 @@ export function createOcrPostHandler(options?: {
       }
 
       const imageBytes = Buffer.from(await image.arrayBuffer())
+      if (imageSignature(imageBytes) !== image.type) {
+        return ocrErrorResponse('INVALID_IMAGE', 'The dashboard image format could not be verified.', 422)
+      }
       const dependencies = await loadDependencies()
-      const metadata = await dependencies.sharp(imageBytes).metadata()
-      if (!metadata.width || !metadata.height) {
+      let metadata: Awaited<ReturnType<ReturnType<OcrServerDependencies['sharp']>['metadata']>>
+      try {
+        metadata = await dependencies.sharp(imageBytes).metadata()
+      } catch {
         return ocrErrorResponse('INVALID_IMAGE', 'The dashboard image dimensions could not be read.', 422)
       }
+      if (
+        !metadata.width
+        || !metadata.height
+        || metadata.width > OCR_RUNTIME_CONFIG.maxImageDimension
+        || metadata.height > OCR_RUNTIME_CONFIG.maxImageDimension
+        || metadata.width * metadata.height > OCR_RUNTIME_CONFIG.maxImagePixels
+      ) {
+        return ocrErrorResponse('INVALID_IMAGE', 'The dashboard image dimensions are not supported.', 422)
+      }
+      if (activeOcrJobs >= OCR_RUNTIME_CONFIG.maxConcurrentServerJobs) {
+        return ocrErrorResponse('OCR_BUSY', 'OCR is busy processing other images. Please try again shortly.', 429)
+      }
+      activeOcrJobs += 1
+      try {
 
       const requestedCrop = parseCropBox(formData.get('crop'))
       const cropBox = clampOcrCrop(requestedCrop || defaultOcrCrop(platform))
@@ -141,33 +171,33 @@ export function createOcrPostHandler(options?: {
       const modelPath = await prepareCombinedLanguageModels(dependencies)
       let worker: OcrWorker | undefined
       try {
-        worker = await dependencies.createWorker('eng+vie', dependencies.OEM.LSTM_ONLY, {
+        worker = await withTimeout(dependencies.createWorker('eng+vie', dependencies.OEM.LSTM_ONLY, {
           langPath: modelPath,
           gzip: true,
           cachePath: dependencies.join(dependencies.tmpdir(), 'livestream-ops-tesseract-cache'),
-        })
+        }), timeoutMs)
 
-        await worker.setParameters({
+        await withTimeout(worker.setParameters({
           tessedit_pageseg_mode: dependencies.PSM.SPARSE_TEXT,
           preserve_interword_spaces: '1',
           user_defined_dpi: '300',
-        })
-        const labelResult = await worker.recognize(
+        }), timeoutMs)
+        const labelResult = await withTimeout(worker.recognize(
           labelImage,
           { rotateAuto: false },
           { text: true, blocks: true },
-        )
+        ), timeoutMs)
 
         await worker.setParameters({
           tessedit_pageseg_mode: dependencies.PSM.SPARSE_TEXT,
           tessedit_char_whitelist: '0123456789.,:%KMkm₫đ$-/',
           preserve_interword_spaces: '1',
         })
-        const numericResult = await worker.recognize(
+        const numericResult = await withTimeout(worker.recognize(
           numericImage,
           { rotateAuto: false },
           { text: true, blocks: true },
-        )
+        ), timeoutMs)
         const passWords = mergePassWords([
           ...flattenWords(labelResult.data.blocks, 'label', platform, pixelCrop),
           ...flattenWords(numericResult.data.blocks, 'numeric', platform, pixelCrop),
@@ -188,9 +218,13 @@ export function createOcrPostHandler(options?: {
             metadata.width,
             metadata.height,
             regionResult.selected,
+            timeoutMs,
           )
           : { output: {}, cardDiagnostics: {}, words: [] }
         const words = passWords.concat(cardRecognition.words)
+        if (!labelResult.data.text.trim() && !numericResult.data.text.trim() && words.length === 0) {
+          return ocrErrorResponse('OCR_NO_TEXT', noTextMessage, 422)
+        }
         const response: OcrImageRecognition = {
           engine: 'tesseract.js',
           language: 'eng+vie',
@@ -212,14 +246,37 @@ export function createOcrPostHandler(options?: {
       } finally {
         await worker?.terminate()
       }
+      } finally {
+        activeOcrJobs -= 1
+      }
     } catch (error) {
       console.error(
         'Dashboard server OCR failed:',
         error instanceof Error ? `${error.name}: ${error.message}` : 'Unknown OCR server error',
       )
+      if (error instanceof OperationTimeoutError) {
+        return ocrErrorResponse('OCR_TIMEOUT', 'Dashboard OCR timed out. Please try again.', 504)
+      }
       return serverOcrFailureResponse()
     }
   }
+}
+
+function imageSignature(bytes: Uint8Array) {
+  if (bytes.length >= 8 && [137, 80, 78, 71, 13, 10, 26, 10].every((value, index) => bytes[index] === value)) {
+    return 'image/png'
+  }
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return 'image/jpeg'
+  }
+  if (
+    bytes.length >= 12
+    && new TextDecoder().decode(bytes.slice(0, 4)) === 'RIFF'
+    && new TextDecoder().decode(bytes.slice(8, 12)) === 'WEBP'
+  ) {
+    return 'image/webp'
+  }
+  return null
 }
 
 function isServerOcrEnabled() {
@@ -240,6 +297,7 @@ async function recognizeMetricCards(
   imageWidth: number,
   imageHeight: number,
   region: OcrDashboardCandidate,
+  timeoutMs: number,
 ) {
   const output: Record<string, string[]> = {}
   const words: OcrRecognizedWord[] = []
@@ -272,7 +330,7 @@ async function recognizeMetricCards(
       .sharpen({ sigma: 1.1 })
       .negate()
     const primaryImage = await basePipeline().png().toBuffer()
-    const primaryResult = await worker.recognize(primaryImage, { rotateAuto: false }, { text: true })
+    const primaryResult = await withTimeout(worker.recognize(primaryImage, { rotateAuto: false }, { text: true }), timeoutMs)
     const primaryText = normalizeCardText(primaryResult.data.text)
     const variants = [{
       text: primaryText,
@@ -283,7 +341,7 @@ async function recognizeMetricCards(
 
     if (!/\d/.test(primaryText) || primaryResult.data.confidence < 60) {
       const thresholdImage = await basePipeline().threshold(175).png().toBuffer()
-      const thresholdResult = await worker.recognize(thresholdImage, { rotateAuto: false }, { text: true })
+      const thresholdResult = await withTimeout(worker.recognize(thresholdImage, { rotateAuto: false }, { text: true }), timeoutMs)
       variants.push({
         text: normalizeCardText(thresholdResult.data.text),
         confidence: thresholdResult.data.confidence,
@@ -321,11 +379,11 @@ async function recognizeMetricCards(
         .threshold(230)
         .png()
         .toBuffer()
-      const recoveryResult = await worker.recognize(
+      const recoveryResult = await withTimeout(worker.recognize(
         recoveryImage,
         { rotateAuto: false },
         { text: true },
-      )
+      ), timeoutMs)
       const recoveryDigits = normalizeCardText(recoveryResult.data.text).replace(/\D/g, '')
       const decimalPlaces = platformMetricLayouts[platform]
         .find(layout => layout.key === cell.key)?.displayFormat?.decimalPlaces || 2

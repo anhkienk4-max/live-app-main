@@ -9,6 +9,12 @@ export const OCR_RUNTIME_CONFIG = {
   langPath: '/ocr/tessdata',
   cacheMethod: 'none',
   gzip: true,
+  maxImageBytes: 10 * 1024 * 1024,
+  maxImageDimension: 5_000,
+  maxImagePixels: 25_000_000,
+  maxConcurrentServerJobs: 2,
+  serverTimeoutMs: 45_000,
+  browserTimeoutMs: 45_000,
   assetSha256: {
     worker: '576B7DF7E3393E137E51849357C9ADB53FE7AC1BB69BFA06CF3D61520F182C6D',
     coreJavascript: 'EEF5F8B2F8E20E150680B20ADAEC4A60BABAFEE3ADBE8A94583C81FEE46E8680',
@@ -37,6 +43,13 @@ export const OCR_RUNTIME_CONFIG = {
     'segmented_glyph',
   ],
 } as const
+
+export const OCR_SUPPORTED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const
+export type OcrSupportedMimeType = typeof OCR_SUPPORTED_MIME_TYPES[number]
+
+export function isSupportedOcrMimeType(value: string): value is OcrSupportedMimeType {
+  return (OCR_SUPPORTED_MIME_TYPES as readonly string[]).includes(value)
+}
 
 export function pinnedBrowserWorkerOptions() {
   return {
