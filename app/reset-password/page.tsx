@@ -3,6 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { useTranslation } from '@/lib/i18n'
+import { classifyPasswordSecurityError } from '@/lib/auth/passwordRecovery'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -26,8 +27,9 @@ export default function ResetPasswordPage() {
       const { error: updateError } = await createClient().auth.updateUser({ password })
       if (updateError) throw updateError
       setSuccess(true)
-    } catch {
-      setError(t('passwordResetFailed'))
+    } catch (error) {
+      const securityError = classifyPasswordSecurityError(error)
+      setError(securityError === 'leaked' ? t('passwordLeaked') : securityError === 'weak' ? t('passwordSecurityFailed') : t('passwordResetFailed'))
     } finally {
       setLoading(false)
     }
