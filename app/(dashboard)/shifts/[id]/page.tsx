@@ -54,15 +54,15 @@ export default function ShiftDetailPage() {
   }, [loadData])
 
   if (loading) {
-    return <PageShell archetype="schedule" className="p-8">Loading...</PageShell>
+    return <div className="flex flex-col w-full h-[calc(100vh-theme(spacing.16))] overflow-hidden">Loading...</div>
   }
 
   if (error || !shift) {
-    return <PageShell archetype="schedule" className="p-8 text-destructive">Shift not found or an error occurred.</PageShell>
+    return <div className="flex flex-col w-full h-[calc(100vh-theme(spacing.16))] overflow-hidden">Shift not found or an error occurred.</div>
   }
 
   return (
-    <PageShell archetype="schedule" className="p-0 max-w-none h-[calc(100vh-theme(spacing.16))] w-full">
+    <div className="flex flex-col w-full h-[calc(100vh-theme(spacing.16))] overflow-hidden">
       <ShiftDetailWorkspace
         shift={shift}
         brands={brands}
@@ -74,6 +74,6 @@ export default function ShiftDetailPage() {
         onEdit={() => router.push(`/shifts/${params.id}/edit`)}
         onDelete={() => router.push('/calendar')}
       />
-    </PageShell>
+    </div>
   )
 }

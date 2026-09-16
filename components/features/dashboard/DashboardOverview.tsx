@@ -213,7 +213,7 @@ function AdminDashboard(props: CommonProps) {
   const campaignCount = new Set(filteredShifts.map(shift => shift.campaign_id).filter(Boolean)).size
   const liveCount = filteredShifts.filter(shift => shift.status === 'live').length
 
-  return <PageShell archetype="command" className="space-y-6 md:p-6 p-4">
+  return <PageShell archetype="command" className="space-y-6">
     {/* A. Page Header */}
     <PageHeader className="flex-col md:flex-row items-start md:items-center gap-4 md:gap-2">
       <PageHeaderContent>

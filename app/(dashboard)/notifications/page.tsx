@@ -70,8 +70,8 @@ export default function NotificationsPage() {
           <Button variant="outline" size="sm" onClick={()=> void handleMarkAllRead()}>Mark all read</Button>
         </PageActions>
       </PageHeader>
-      <Card><CardContent className="divide-y p-0">
-        {items.length===0 ? <div className="p-12 text-center text-muted-foreground">No notifications</div> : items.map(n=> (
+      <Card><CardContent className="divide-y">
+        {items.length===0 ? <div className="text-center text-muted-foreground">No notifications</div> : items.map(n=> (
           <div key={n.id} className={`flex justify-between p-4 ${n.read_at ? 'opacity-60' : ''}`}>
             <button type="button" className="text-left" onClick={() => { void (async () => { if (!n.read_at) await handleMarkRead(n.id); router.push(resolveNotificationDestination(n)) })() }}>
               <p className="text-sm font-medium">{n.title}</p><p className="text-xs text-muted-foreground">{n.message}</p><p className="text-xs text-muted-foreground">{format(new Date(n.created_at), 'PP p')}</p>

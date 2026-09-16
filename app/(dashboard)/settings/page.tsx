@@ -178,7 +178,7 @@ export default function SettingsPage() {
   }
 
   if (loading || settingsLoading || !currentUser) {
-    return <div className="py-12 text-center">{t('loading')}</div>
+    return <div className="text-center">{t('loading')}</div>
   }
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { void loadSettings() }} />
   if (!personal || !operational || !system || !savedPersonal || !savedOperational || !savedSystem) {
@@ -206,13 +206,13 @@ export default function SettingsPage() {
     )}
 
     <Tabs value={activeTab} onValueChange={value => changeTab(value as SettingsTab)} className="min-w-0">
-      <div className="max-w-full overflow-x-auto pb-1">
+      <div className="max-w-full overflow-x-auto">
         <TabsList className="h-auto w-max flex-nowrap">
-          <TabsTrigger className="flex-none px-4 py-1.5" value="personal">{t('personalSettings')}{personalDirty ? ' •' : ''}</TabsTrigger>
-          {isLeader && <TabsTrigger className="flex-none px-4 py-1.5" value="team">{t('teamSettings')}{operationalDirty ? ' •' : ''}</TabsTrigger>}
-          {isAdmin && <TabsTrigger className="flex-none px-4 py-1.5" value="system">{t('systemSettings')}{systemDirty ? ' •' : ''}</TabsTrigger>}
-          {isAdmin && <TabsTrigger className="flex-none px-4 py-1.5" value="integrations">{t('integrations')}</TabsTrigger>}
-          {isAdmin && <TabsTrigger className="flex-none px-4 py-1.5" value="audit">{t('audit')}</TabsTrigger>}
+          <TabsTrigger className="flex-none" value="personal">{t('personalSettings')}{personalDirty ? ' •' : ''}</TabsTrigger>
+          {isLeader && <TabsTrigger className="flex-none" value="team">{t('teamSettings')}{operationalDirty ? ' •' : ''}</TabsTrigger>}
+          {isAdmin && <TabsTrigger className="flex-none" value="system">{t('systemSettings')}{systemDirty ? ' •' : ''}</TabsTrigger>}
+          {isAdmin && <TabsTrigger className="flex-none" value="integrations">{t('integrations')}</TabsTrigger>}
+          {isAdmin && <TabsTrigger className="flex-none" value="audit">{t('audit')}</TabsTrigger>}
         </TabsList>
       </div>
 
@@ -263,8 +263,8 @@ export default function SettingsPage() {
             <SettingSelect label={t('localizationSettings')} value={String(system.localization_default)} options={[{ id: 'en', name: t('english') }, { id: 'vi', name: t('vietnamese') }]} onChange={value => setSystem(current => current && ({ ...current, localization_default: value }))} />
             <ReadOnlySetting label={t('ocrConfiguration')} value={String(system.ocr_provider)} />
           </div>
-          <div><h3 className="mb-3 font-semibold">{t('systemPermissions')}</h3><div className="grid gap-3 md:grid-cols-3">{(['member','leader','admin'] as const).map(level => <div key={level} className="rounded-lg border p-3"><p className="font-medium">{t(level)}</p><p className="mt-1 text-xs text-muted-foreground">{permissionMatrix[level].size} {t('permissions')}</p></div>)}</div></div>
-          <div><h3 className="mb-3 font-semibold">{t('operationalRoles')}</h3><div className="grid gap-3 md:grid-cols-3">{roles.map(role => <div className="rounded-lg border p-3" key={role}><p className="text-sm font-medium">{t(role)}</p><Badge className="mt-2 bg-green-100 text-green-800">{t('active')}</Badge></div>)}</div></div>
+          <div><h3 className="mb-3 font-semibold">{t('systemPermissions')}</h3><div className="grid gap-3 md:grid-cols-3">{(['member','leader','admin'] as const).map(level => <div key={level} className="rounded-lg border"><p className="font-medium">{t(level)}</p><p className="mt-1 text-xs text-muted-foreground">{permissionMatrix[level].size} {t('permissions')}</p></div>)}</div></div>
+          <div><h3 className="mb-3 font-semibold">{t('operationalRoles')}</h3><div className="grid gap-3 md:grid-cols-3">{roles.map(role => <div className="rounded-lg border" key={role}><p className="text-sm font-medium">{t(role)}</p><Badge className="mt-2 bg-green-100 text-green-800">{t('active')}</Badge></div>)}</div></div>
           <Actions dirty={systemDirty} saving={savingTab === 'system'} onReset={() => setSystem(savedSystem)} />
         </CardContent></Card>
       </form></TabsContent>}
@@ -272,7 +272,7 @@ export default function SettingsPage() {
       {isAdmin && <TabsContent value="integrations"><form onSubmit={event => void saveSystem(event, 'integrations')}>
         <Card><CardHeader><CardTitle className="flex items-center gap-2"><Plug className="h-5 w-5" />{t('integrations')}</CardTitle><CardDescription>{t('credentialsSafe')}</CardDescription></CardHeader><CardContent className="space-y-6">
           <div className="grid gap-4 md:grid-cols-3"><ReadOnlySetting label={t('integrationSettings')} value={String(system.integration_mode)} /><ReadOnlySetting label={t('supabaseStatus')} value={String(system.supabase_connection_status)} /><ReadOnlySetting label={t('ocrConfiguration')} value={String(system.ocr_provider)} /></div>
-          <section className="space-y-4 rounded-lg border p-4" data-testid="vision-ocr-admin-settings">
+          <section className="space-y-4 rounded-lg border" data-testid="vision-ocr-admin-settings">
             <div><h3 className="flex items-center gap-2 font-semibold"><Bot className="h-5 w-5" />{t('visionOcrSettings')}</h3><p className="mt-1 text-sm text-muted-foreground">{t('visionOcrSettingsHelp')}</p></div>
             <div className="grid gap-4 md:grid-cols-3">
               <ToggleSetting label={t('visionOcrEnabled')} checked={Boolean(system.vision_ocr_enabled)} onChange={checked => setSystem(current => current && ({ ...current, vision_ocr_enabled: checked }))} />
@@ -301,7 +301,7 @@ export default function SettingsPage() {
       </form></TabsContent>}
 
       {isAdmin && <TabsContent value="audit"><form onSubmit={event => void saveSystem(event, 'audit')}>
-        <Card><CardHeader><CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5" />{t('audit')}</CardTitle><CardDescription>{t('auditSettings')}</CardDescription></CardHeader><CardContent className="space-y-5"><div className="grid gap-4 md:grid-cols-2"><ToggleSetting label={t('auditEnabled')} checked={Boolean(system.audit_enabled)} onChange={checked => setSystem(current => current && ({ ...current, audit_enabled: checked }))} /><NumberSetting label={t('auditRetentionDays')} min={1} value={finiteNumber(system.audit_retention_days, 90)} onChange={value => setSystem(current => current && ({ ...current, audit_retention_days: value }))} /></div><div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">{t('auditMockNotice')}</div><Actions dirty={systemDirty} saving={savingTab === 'audit'} onReset={() => setSystem(savedSystem)} /></CardContent></Card>
+        <Card><CardHeader><CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5" />{t('audit')}</CardTitle><CardDescription>{t('auditSettings')}</CardDescription></CardHeader><CardContent className="space-y-5"><div className="grid gap-4 md:grid-cols-2"><ToggleSetting label={t('auditEnabled')} checked={Boolean(system.audit_enabled)} onChange={checked => setSystem(current => current && ({ ...current, audit_enabled: checked }))} /><NumberSetting label={t('auditRetentionDays')} min={1} value={finiteNumber(system.audit_retention_days, 90)} onChange={value => setSystem(current => current && ({ ...current, audit_retention_days: value }))} /></div><div className="rounded-lg border border-dashed text-sm text-muted-foreground">{t('auditMockNotice')}</div><Actions dirty={systemDirty} saving={savingTab === 'audit'} onReset={() => setSystem(savedSystem)} /></CardContent></Card>
       </form></TabsContent>}
     </Tabs>
   </PageShell>
@@ -312,8 +312,8 @@ function Actions({ dirty, saving, onReset }: { dirty: boolean; saving: boolean; 
   return <div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="outline" disabled={!dirty || saving} onClick={onReset}><RotateCcw className="mr-2 h-4 w-4" />{t('reset')}</Button><Button type="submit" disabled={!dirty || saving}>{saving ? t('loading') : t('saveSettings')}</Button></div>
 }
 function SettingSelect({ label, value, options, onChange }: { label: string; value: string; options: Array<{ id: string; name: string }>; onChange: (value: string) => void }) { return <label className="text-sm font-medium">{label}<Select value={value} onValueChange={onChange}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent>{options.map(option => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}</SelectContent></Select></label> }
-function ToggleSetting({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) { return <div className="flex items-center justify-between gap-3 rounded-lg border p-3"><span className="text-sm font-medium">{label}</span><Switch checked={checked} onCheckedChange={onChange} /></div> }
+function ToggleSetting({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) { return <div className="flex items-center justify-between gap-3 rounded-lg border"><span className="text-sm font-medium">{label}</span><Switch checked={checked} onCheckedChange={onChange} /></div> }
 function NumberSetting({ label, value, onChange, min = 0 }: { label: string; value: number; onChange: (value: number) => void; min?: number }) { return <label className="text-sm font-medium">{label}<Input className="mt-1" type="number" min={min} step="1" value={value} onChange={event => onChange(Number(event.target.value))} /></label> }
 function CountInput({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) { return <NumberSetting label={label} value={value} onChange={onChange} /> }
-function ReadOnlySetting({ label, value }: { label: string; value: string }) { return <div className="rounded-lg border p-3"><p className="text-sm font-medium">{label}</p><Badge variant="outline" className="mt-2">{value}</Badge></div> }
+function ReadOnlySetting({ label, value }: { label: string; value: string }) { return <div className="rounded-lg border"><p className="text-sm font-medium">{label}</p><Badge variant="outline" className="mt-2">{value}</Badge></div> }
 function finiteNumber(value: unknown, fallback: number) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : fallback }

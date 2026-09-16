@@ -333,7 +333,7 @@ export function ShiftFormWorkspace({
   return (
     <div className="flex h-full flex-col bg-muted/5 w-full overflow-hidden" data-testid="shift-form-workspace">
       <div className="flex h-full flex-col w-full">
-        <header className="sticky top-0 z-10 border-b bg-background px-6 py-4 shadow-sm flex-shrink-0">
+        <header className="sticky top-0 z-10 border-b bg-background px-4 sm:px-6 py-4 shadow-sm flex-shrink-0">
           {onBack && (
             <Button variant="ghost" size="sm" onClick={onBack} className="mb-4 -ml-2 text-muted-foreground" type="button">
               <ChevronLeft className="mr-1 h-4 w-4" /> {t('back')}
@@ -347,8 +347,8 @@ export function ShiftFormWorkspace({
           </p>
         </header>
         <form onSubmit={handleSubmit} className="flex h-full flex-col overflow-hidden min-h-0">
-        <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-[800px] p-4 sm:p-6 lg:p-8 space-y-6">
+        <main className="flex-1 overflow-y-auto min-h-0">
+          <div className="mx-auto max-w-[800px] p-4 sm:p-6 lg:p-8 space-y-8">
           {/* Template Selector */}
           {!shift && templates.length > 0 && (
             <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">

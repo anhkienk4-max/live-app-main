@@ -670,19 +670,19 @@ export function ShiftDetailWorkspace({
       <div className="flex h-full flex-col bg-muted/5 w-full overflow-hidden" data-testid="shift-detail-workspace">
         <div className="flex h-full flex-col w-full">
           {/* A. COMMAND HEADER */}
-          <header className="sticky top-0 z-10 border-b bg-background px-6 py-4 shadow-sm flex-shrink-0">
+          <header className="sticky top-0 z-10 border-b bg-background px-4 sm:px-6 py-4 shadow-sm flex-shrink-0">
             {onBack && (
               <Button variant="ghost" size="sm" onClick={onBack} className="mb-4 -ml-2 text-muted-foreground">
                 <ChevronLeft className="mr-1 h-4 w-4" /> {t('back')}
               </Button>
             )}
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-3">
                   <Badge className={`${getShiftStatusClass(shift.status)} shrink-0`} variant="outline" data-testid="shift-detail-status">
                     {t(statusKey)}
                   </Badge>
-                  <h1 className="break-words text-xl sm:text-2xl font-bold leading-none" data-testid="shift-detail-title">
+                  <h1 className="break-words text-xl sm:text-2xl font-bold leading-none tracking-tight" data-testid="shift-detail-title">
                     {shift.title?.trim() || t('shiftDetail')}
                   </h1>
                 </div>

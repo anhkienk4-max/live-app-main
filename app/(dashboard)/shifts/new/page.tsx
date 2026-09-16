@@ -38,11 +38,11 @@ export default function NewShiftPage() {
   }, [loadData])
 
   if (loading) {
-    return <PageShell archetype="schedule" className="p-8">Loading...</PageShell>
+    return <div className="flex flex-col w-full h-[calc(100vh-theme(spacing.16))] overflow-hidden">Loading...</div>
   }
 
   return (
-    <PageShell archetype="schedule" className="p-0 max-w-none h-[calc(100vh-theme(spacing.16))] w-full">
+    <div className="flex flex-col w-full h-[calc(100vh-theme(spacing.16))] overflow-hidden">
       <ShiftFormWorkspace
         shift={null}
         duplicateFrom={null}
@@ -54,6 +54,6 @@ export default function NewShiftPage() {
         onSuccess={(savedShift) => router.push('/calendar')}
         onBack={() => router.push('/calendar')}
       />
-    </PageShell>
+    </div>
   )
 }

@@ -34,7 +34,7 @@ export function PageShell({ archetype, className, children, ...props }: PageShel
 
   return (
     <div className={cn('w-full mx-auto', maxWidthClass, className)} {...props}>
-      <div className={cn('flex flex-col w-full', archetype === 'auth' ? '' : 'py-6')}>
+      <div className={cn('flex flex-col w-full', archetype === 'auth' ? '' : 'py-6 px-4 sm:px-6 lg:px-8')}>
         {children}
       </div>
     </div>
