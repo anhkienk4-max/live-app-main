@@ -12,6 +12,7 @@ import {
 } from '../lib/services/dataService.ts'
 import {
   createSupabaseReportRepository,
+  ReportRequestError,
   setSupabaseReportRepositoryForTests,
 } from '../lib/services/supabaseReportService.ts'
 import { serializeFinalReportMetricState } from '../lib/utils/ocrMetricSerialization.ts'
@@ -132,9 +133,6 @@ function fakeClient(database: FakeDatabase, options: { deniedRpc?: RpcName } = {
   const { storage } = fakeStorage()
   const now = '2026-08-23T12:00:00.000Z'
   let nextId = 1
-  const nextVersion = (reportId: string) =>
-    Math.max(0, ...database.report_revisions.filter(r => r.report_id === reportId).map(r => Number(r.version)), 0) + 1
-
   const rpcHandlers: Record<RpcName, (args: Record<string, unknown>) => Row> = {
     create_report(args) {
       const data = (args.p_data ?? {}) as Record<string, unknown>
@@ -206,9 +204,12 @@ function fakeClient(database: FakeDatabase, options: { deniedRpc?: RpcName } = {
       const patch = (args.p_patch ?? {}) as Record<string, unknown>
       const index = database.reports.findIndex(r => r.id === id && !r.deleted_at && !r.archived_at)
       if (index === -1) throw { code: 'P0001', message: 'REPORT_NOT_FOUND' }
+      if (database.reports[index].version_number !== args.p_expected_version) {
+        throw { code: 'P0001', message: 'REPORT_VERSION_CONFLICT' }
+      }
       const updated = { ...database.reports[index], ...patch, updated_by: '1', updated_at: now }
       database.reports[index] = updated
-      const version = nextVersion(id)
+      const version = Number(database.reports[index].version_number ?? 0) + 1
       database.report_revisions.push({
         id: `rev-${Date.now()}-${version}`,
         report_id: id,
@@ -740,7 +741,7 @@ test('Supabase report update sends patch through update_report RPC', async () =>
     setSupabaseReportRepositoryForTests(createSupabaseReportRepository(fakeClient(db)))
     currentUserService.bindAuthenticatedUser(adminUser())
 
-    const updated = await reportService.update('report-1', { revenue: 2000 }, '1', 'Adjusted', 'save')
+    const updated = await reportService.update('report-1', { revenue: 2000 }, 1, '1', 'Adjusted', 'save')
     assert.equal(updated?.revenue, 2000)
     assert.equal(updated?.shares, null)
     assert.equal(updated?.orders, null)
@@ -749,12 +750,12 @@ test('Supabase report update sends patch through update_report RPC', async () =>
     assert.equal(updated?.raw_ocr_output, 'Shares: 0')
     assert.deepEqual(updated?.ocr_review?.metrics, {})
 
-    const entered = await reportService.update('report-1', { shares: 0 }, '1', 'Entered Shares', 'save')
+    const entered = await reportService.update('report-1', { shares: 0 }, updated!.version_number!, '1', 'Entered Shares', 'save')
     assert.equal(entered?.shares, 0)
     assert.equal(entered?.comments, null)
     assert.equal(entered?.raw_ocr_output, 'Shares: 0')
 
-    const edited = await reportService.update('report-1', { shares: 7 }, '1', 'Edited Shares', 'save')
+    const edited = await reportService.update('report-1', { shares: 7 }, entered!.version_number!, '1', 'Edited Shares', 'save')
     assert.equal(edited?.shares, 7)
     assert.equal(edited?.comments, null)
     assert.equal(edited?.dashboard_url, 'https://example.test/report-dashboard')
@@ -773,6 +774,38 @@ test('Supabase startReview routes through start_report_review RPC', async () => 
     const result = await reportService.startReview('report-1', '1')
     assert.equal(result?.status, 'in_review')
     assert.ok(result?.reviewed_at)
+  })
+})
+
+test('Supabase report updates reject stale editors without overwriting newer data', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    setSupabaseReportRepositoryForTests(createSupabaseReportRepository(fakeClient(db)))
+    currentUserService.bindAuthenticatedUser(adminUser())
+
+    const editorA = await reportService.getById('report-1')
+    const editorB = await reportService.getById('report-1')
+    assert.equal(editorA?.version_number, 1)
+    assert.equal(editorB?.version_number, 1)
+
+    const savedA = await reportService.update('report-1', { revenue: 2500 }, editorA!.version_number!, '1', 'Editor A', 'save')
+    assert.equal(savedA?.version_number, 2)
+    assert.equal(savedA?.revenue, 2500)
+
+    await assert.rejects(
+      reportService.update('report-1', { revenue: 3000 }, editorB!.version_number!, '1', 'Editor B', 'save'),
+      (error: unknown) => error instanceof ReportRequestError
+        && error.code === 'REPORT_VERSION_CONFLICT'
+        && error.message.includes('changed since you opened it'),
+    )
+    assert.equal(db.reports[0].revenue, 2500)
+    assert.equal(db.reports[0].version_number, 2)
+
+    const reloaded = await reportService.getById('report-1')
+    const savedB = await reportService.update('report-1', { revenue: 3000 }, reloaded!.version_number!, '1', 'Editor B retry', 'save')
+    assert.equal(savedB?.version_number, 3)
+    assert.equal(db.reports[0].revenue, 3000)
   })
 })
 
@@ -806,7 +839,7 @@ test('Supabase confirmMetrics prevents confirmation with unresolved OCR metric s
           status: 'review_required',
           metrics: { revenue: unresolvedMetric },
           raw_output: '',
-        } as never),
+        } as never, 1),
         /Confirm or manually edit all review-required metrics/,
       )
     }
@@ -837,7 +870,7 @@ test('Supabase confirmMetrics rejects missing required platform metrics before p
         status: 'confirmed',
         metrics: {},
         raw_output: '',
-      } as never),
+      } as never, 1),
       /REPORT_REQUIRED_METRICS_MISSING/,
     )
     assert.equal(created_rpc_call(db, 'update_report'), false)
@@ -867,7 +900,7 @@ test('Supabase confirmMetrics routes through update_report with confirm event', 
       status: 'confirmed',
       metrics: {},
       raw_output: 'ocr text',
-    } as never, '1')
+    } as never, 1, '1')
 
     assert.equal(result?.metrics_confirmed, true)
     assert.equal(result?.status, 'confirmed')

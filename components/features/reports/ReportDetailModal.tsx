@@ -383,6 +383,9 @@ export function ReportDetailModal({
     }
     setBusy(true)
     try {
+      if (report.version_number == null) {
+        throw new Error('Report version is unavailable. Reload the report before confirming.')
+      }
       const platformSpecific = normalized
       const revenue = numberValue(normalized.revenue) ?? numberValue(platformSpecific.sales) ?? numberValue(normalized.gmv) ?? report.revenue
       const orders = numberValue(normalized.orders) ?? numberValue(normalized.sku_orders) ?? report.orders
@@ -411,7 +414,7 @@ export function ReportDetailModal({
         review_notes: reviewNotes || undefined,
         ocr_review: reviewData,
         final_recap: normalizeFinalReportRecap(finalRecap),
-      }, reviewData, currentUser.id)
+      }, reviewData, report.version_number, currentUser.id)
       toast({ title: t('confirmed'), description: t('confirmedOnly'), variant: 'success' })
       onUpdated?.()
     } catch (error) {
@@ -443,6 +446,9 @@ export function ReportDetailModal({
     const platformSpecific = normalized
     setBusy(true)
     try {
+      if (report.version_number == null) {
+        throw new Error('Report version is unavailable. Reload the report before saving.')
+      }
       await reportService.update(report.id, {
         revenue: numberValue(normalized.revenue) ?? numberValue(platformSpecific.sales) ?? report.revenue,
         orders: numberValue(normalized.orders) ?? report.orders,
@@ -455,7 +461,7 @@ export function ReportDetailModal({
         review_notes: reviewNotes || undefined,
         ocr_review: reviewData,
         final_recap: normalizeFinalReportRecap(finalRecap),
-      }, currentUser.id, reviewNotes || 'Saved report draft revision')
+      }, report.version_number, currentUser.id, reviewNotes || 'Saved report draft revision')
       toast({ title: t('saveDraftRevision'), variant: 'success' })
       onUpdated?.()
     } finally {

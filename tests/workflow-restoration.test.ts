@@ -163,7 +163,7 @@ test('all nine final recap fields persist, reopen, display, and export while leg
       ...recap,
       live_issues: 'Intermittent studio audio',
     },
-  }, '3', 'Regression persistence check')
+  }, report.version_number!, '3', 'Regression persistence check')
   assert.equal(updated?.final_recap?.live_issues, 'Intermittent studio audio')
   assert.equal((await reportService.getById(report.id))?.final_recap?.traffic_summary, 'Recap 1')
 

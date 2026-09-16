@@ -674,7 +674,10 @@ export function ReportFormModal({
       }
       
       if (existingReport && (existingReport.status === 'draft' || existingReport.status === 'reopened')) {
-        report = await reportService.update(existingReport.id, payload)
+        if (existingReport.version_number == null) {
+          throw new Error('Report version is unavailable. Reload the report before saving.')
+        }
+        report = await reportService.update(existingReport.id, payload, existingReport.version_number)
         if (!report) throw new Error('Failed to update existing report draft.')
       } else if (existingReport) {
         throw new Error('An active report already exists for this shift that cannot be overwritten.')
@@ -717,7 +720,10 @@ export function ReportFormModal({
         persistedLiveImageUrlsRef.current.add(image.file_url)
       })
       if (mode === 'final') {
-        const confirmed = await reportService.confirmMetrics(report.id, payload, review, currentUser.id)
+        if (report.version_number == null) {
+          throw new Error('Report version is unavailable. Reload the report before confirming.')
+        }
+        const confirmed = await reportService.confirmMetrics(report.id, payload, review, report.version_number, currentUser.id)
         if (!confirmed) throw new Error('Final Report confirmation was not persisted.')
       }
       toast({ title: mode === 'draft' ? t('saveDraft') : t('submitted'), description: mode === 'draft' ? t('draftSaved') : t('finalReportSavedHelp'), variant: 'success' })
