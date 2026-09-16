@@ -20,7 +20,7 @@ export function DayView({ currentDate, shifts, brands, platforms, registrations,
   const dayShifts = shifts.filter(s => s.date === dateStr).sort((a,b) => a.start_time.localeCompare(b.start_time))
 
   return (
-    <div className="h-full max-w-3xl mx-auto py-6 px-4">
+    <div className="h-full w-full py-6 px-4">
       <div className="mb-6 pb-4 border-b">
         <h2 className="text-2xl font-bold">{format(currentDate, 'EEEE, MMMM d, yyyy')}</h2>
         <p className="text-muted-foreground text-sm mt-1">{dayShifts.length} {t('shiftsScheduled')}</p>

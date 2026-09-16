@@ -4,7 +4,7 @@ import { PageShell } from '@/components/ui/archetypes'
 
 export default function CalendarPage() {
   return (
-    <PageShell archetype="schedule" className="space-y-6 w-full max-w-none" data-testid="calendar-page">
+    <PageShell archetype="schedule" className="space-y-6 w-full" data-testid="calendar-page">
       <CalendarWorkspace />
     </PageShell>
   )
