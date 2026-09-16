@@ -14,7 +14,8 @@ objects and folders. Names are sanitized and uploads are centrally validated.
 Google Drive and OneDrive adapter boundaries were defined in FILE-0/1. The
 FILE-2 Google Drive adapter supports an explicit system OAuth refresh-token
 mode (preferred for personal My Drive) and a service-account mode for Shared
-Drives, while OneDrive remains unimplemented. A configured but unavailable provider fails
+Drives. The FILE-4 OneDrive adapter uses delegated Microsoft OAuth and the
+Microsoft Graph `/me/drive` surface. A configured but unavailable provider fails
 with `FILE_PROVIDER_NOT_IMPLEMENTED`; no fake upload succeeds. Development/test
 may use the deterministic mock provider. Production fails closed for missing,
 unsupported, or mock configuration. Credentials are server-only and must never
@@ -88,6 +89,32 @@ permission and never changes ACLs or creates public sharing.
 `SavedFileDestination` is a provider-neutral persistence contract for later
 UI/storage work; FILE-2.2 adds no database tables or migrations.
 
+## OneDrive adapter (FILE-4)
+
+OneDrive V1 uses server-side delegated Microsoft OAuth with the
+`Files.ReadWrite User.Read offline_access` scope. Configure these server-only
+variables:
+
+- `ONEDRIVE_CLIENT_ID`
+- `ONEDRIVE_CLIENT_SECRET`
+- `ONEDRIVE_TENANT_ID` (defaults to `common`)
+- `ONEDRIVE_REDIRECT_URI`
+- `ONEDRIVE_REFRESH_TOKEN`
+
+The adapter uses immutable Microsoft Graph DriveItem IDs for file identity and
+keeps file metadata provider-neutral. Graph item URLs are accepted as explicit
+references; short/shared links require a separate remote-resolution workflow
+and never grant application write permission. Files are read or written through
+the authenticated Graph boundary, and pre-authenticated download URLs are
+returned only as transient access results, never retained as metadata.
+
+Logical folder creation is handled by the provider-neutral cloud storage
+manager and OneDrive's idempotent `ensureFolder` adapter. Uploads reject
+filename conflicts and content-size mismatches. Graph 401/403/404/409/429/5xx
+and network failures map to stable application errors without exposing Graph
+responses. Delete remains explicitly unsupported by the current OneDrive V1
+contract.
+
 ## Current legacy storage inventory
 
 `CURRENT_SUPABASE_STORAGE_USAGE`:
@@ -101,5 +128,4 @@ This task does not migrate or change that behavior. Future work should migrate
 those call sites deliberately:
 
 1. FILE-3: migrate report images
-2. FILE-4: implement the OneDrive adapter
-3. FILE-5: scheduled database backup to a configured provider
+2. FILE-5: scheduled database backup to a configured provider

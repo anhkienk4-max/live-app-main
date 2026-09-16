@@ -4,7 +4,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 
 import { FileProviderError } from '@/lib/server/fileProviderResolver'
 
-const GRAPH_SCOPE = 'Files.Read.All User.Read offline_access'
+export const ONEDRIVE_GRAPH_SCOPE = 'Files.ReadWrite User.Read offline_access'
 const DEFAULT_TENANT = 'common'
 const DEFAULT_LOCAL_REDIRECT_URI = 'http://127.0.0.1:53683/oauth2callback'
 
@@ -130,7 +130,7 @@ export function createOneDriveAuthorizationUrl(options: { env?: OneDriveEnvironm
     response_type: 'code',
     redirect_uri: redirectUri(uri, env),
     response_mode: 'query',
-    scope: GRAPH_SCOPE,
+    scope: ONEDRIVE_GRAPH_SCOPE,
     state: options.state,
   })
   return `https://login.microsoftonline.com/${encodeURIComponent(tenant(env))}/oauth2/v2.0/authorize?${params.toString()}`
@@ -155,7 +155,7 @@ export async function exchangeOneDriveAuthorizationCode(options: {
     const response = await fetchImpl(`https://login.microsoftonline.com/${encodeURIComponent(tenant(env))}/oauth2/v2.0/token`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, grant_type: 'authorization_code', code: options.code.trim(), redirect_uri: uri, scope: GRAPH_SCOPE }).toString(),
+      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, grant_type: 'authorization_code', code: options.code.trim(), redirect_uri: uri, scope: ONEDRIVE_GRAPH_SCOPE }).toString(),
     })
     const body = await response.json() as { access_token?: unknown; refresh_token?: unknown; expires_in?: unknown; error?: unknown }
     if (response.status < 200 || response.status >= 300) {
@@ -189,7 +189,7 @@ export function createOneDriveAuthClient(options: OneDriveAuthClientOptions = {}
         const response = await fetchImpl(`https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/token`, {
           method: 'POST',
           headers: { 'content-type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, grant_type: 'refresh_token', refresh_token: tokens.refresh_token, scope: GRAPH_SCOPE }).toString(),
+          body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, grant_type: 'refresh_token', refresh_token: tokens.refresh_token, scope: ONEDRIVE_GRAPH_SCOPE }).toString(),
         })
         const body = await response.json() as { access_token?: unknown; refresh_token?: unknown; expires_in?: unknown; error?: unknown }
         if (response.status < 200 || response.status >= 300) {
