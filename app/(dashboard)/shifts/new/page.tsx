@@ -23,7 +23,7 @@ export default function NewShiftPage() {
         campaignService.getAll(),
         userService.getAll(),
       ])
-      
+
       setBrands(loadedBrands)
       setPlatforms(loadedPlatforms)
       setCampaigns(loadedCampaigns)

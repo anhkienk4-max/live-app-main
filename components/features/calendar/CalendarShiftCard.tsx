@@ -35,7 +35,7 @@ export function CalendarShiftCard({
 }: CalendarShiftCardProps) {
   const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
-  
+
   const timeRange = formatShiftTimeRange(shift)
   const brandName = brand?.name || t('unknownBrand')
   const platformName = platform?.name

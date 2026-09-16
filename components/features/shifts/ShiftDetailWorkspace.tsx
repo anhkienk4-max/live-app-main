@@ -735,7 +735,7 @@ export function ShiftDetailWorkspace({
                 <OperationalStatusStrip items={attention} compact />
               </div>
             )}
-            
+
           </header>
 
           <main className="flex-1 overflow-y-auto">
@@ -1032,7 +1032,7 @@ export function ShiftDetailWorkspace({
                 </TabsContent>
               </Tabs>
                           </div>
-                
+
                 {/* RIGHT 4 COLUMNS: Operational Sidebar */}
                 <div className="lg:col-span-4 space-y-6">
                   <section className="rounded-lg border bg-card p-4 shadow-sm">

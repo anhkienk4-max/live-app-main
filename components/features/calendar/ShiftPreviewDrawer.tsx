@@ -45,12 +45,12 @@ export function ShiftPreviewDrawer({
 }: ShiftPreviewDrawerProps) {
   const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
-  
+
   if (!shift) return null
 
   const timeRange = formatShiftTimeRange(shift)
   const brandName = brand?.name || t('unknownBrand')
-  
+
   const hostLabels = resolveStaffingLabelsForRole(shift, registrations, users, 'host', t)
   const supportLabels = resolveStaffingLabelsForRole(shift, registrations, users, 'support', t)
   const technicalLabels = resolveStaffingLabelsForRole(shift, registrations, users, 'technical', t)
@@ -65,7 +65,7 @@ export function ShiftPreviewDrawer({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-full overflow-y-auto flex flex-col p-0 !top-0 !right-0 !left-auto !translate-x-0 !translate-y-0 !h-screen !rounded-none !max-h-screen !w-full sm:!max-w-[520px] data-closed:!slide-out-to-right data-open:!slide-in-from-right data-open:!zoom-in-100 data-closed:!zoom-out-100">
-        
+
         {/* Header */}
         <div className="px-6 py-4 border-b bg-muted/20 mt-6">
           <div className="flex items-start justify-between gap-4 mb-2">
@@ -84,14 +84,14 @@ export function ShiftPreviewDrawer({
 
         {/* Content */}
         <div className="flex-1 p-6 space-y-6">
-          
+
           {/* Summary */}
           <section className="space-y-3">
             <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('summary')}</h3>
             <div className="grid grid-cols-2 gap-y-3 text-sm">
               <div className="text-muted-foreground">{t('campaign')}</div>
               <div className="font-medium">{campaign?.name || '—'}</div>
-              
+
               <div className="text-muted-foreground">{t('studio')}</div>
               <div className="font-medium flex items-center gap-1">
                 <MapPin className="h-3 w-3" />
@@ -156,17 +156,17 @@ export function ShiftPreviewDrawer({
         {/* Footer Actions */}
         <div className="p-4 border-t bg-background flex flex-col gap-2 shrink-0">
           {hasMissingStaff && currentUser && hasPermission(currentUser, 'shifts.assign_staff') && (
-            <Button 
-              variant="default" 
+            <Button
+              variant="default"
               className="w-full"
               onClick={() => onManageStaffing?.(shift.id)}
             >
               {t('manageStaffing')}
             </Button>
           )}
-          
-          <Button 
-            variant="outline" 
+
+          <Button
+            variant="outline"
             className="w-full"
             onClick={() => onViewFullDetail(shift.id)}
           >

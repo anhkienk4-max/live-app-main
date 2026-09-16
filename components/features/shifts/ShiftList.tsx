@@ -37,10 +37,10 @@ export function ShiftList() {
   const [deleteIds, setDeleteIds] = React.useState<string[]>([])
   const [deleteImpact, setDeleteImpact] = React.useState<DeletionImpact | null>(null)
   const [isImportExportOpen, setIsImportExportOpen] = React.useState(false)
-  
+
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
   const [showBulkActions, setShowBulkActions] = React.useState(false)
-  
+
   const { toast } = useToast()
   const router = useRouter()
   const { t } = useTranslation()
@@ -274,9 +274,9 @@ export function ShiftList() {
         emptyMessage="No shifts found. Create your first shift!"
       />
 
-      
 
-      
+
+
 
       <ImportExportDialog
         open={isImportExportOpen}

@@ -212,7 +212,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
       const refreshed = await loadRegistrationOperationalData()
       if (openShiftId && refreshed) {
         const refreshedShift = refreshed.shifts.find(shift => shift.id === openShiftId)
-        
+
       }
     } catch (error) {
       toast({
@@ -633,7 +633,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           })}
         </div>
       )}
-      
+
       <LifecycleActionDialog open={Boolean(removalTarget)} onOpenChange={open => !open && setRemovalTarget(null)} title={removalTarget?.kind === 'cancel' ? 'Cancel registration' : 'Remove assignment'} impact={removalImpact} confirmText={removalTarget?.kind === 'cancel' ? 'Cancel registration' : 'Remove assignment'} onConfirm={confirmRemoval} />
     </div>
   )

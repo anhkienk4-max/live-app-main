@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 import { ShiftPreviewDrawer } from './ShiftPreviewDrawer'
 
 import * as React from 'react'
@@ -90,7 +90,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const { toast } = useToast()
   const dateLocale = language === 'vi' ? vi : enUS
   const timeFilterLabels = language === 'vi'
-    ? { all: 'Táº¥t cáº£ thá»i gian', week: 'Tuáº§n Ä‘ang xem', month: 'ThÃ¡ng Ä‘ang xem', studios: 'Táº¥t cáº£ Studio', unassigned: 'ChÆ°a gÃ¡n Studio' }
+    ? { all: 'Tất cả thời gian', week: 'Tuần đang xem', month: 'Tháng đang xem', studios: 'Tất cả Studio', unassigned: 'Chưa gán Studio' }
     : { all: 'All time', week: 'Current week', month: 'Current month', studios: 'All studios', unassigned: 'Unassigned' }
   const [currentDate, setCurrentDate] = React.useState(new Date())
   const [view, setView] = React.useState<'month' | 'week' | 'day' | 'list'>('month')
@@ -627,8 +627,8 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
             brands={brands}
             platforms={platforms}
             registrations={registrations}
-            
-            
+
+
             onShiftClick={setSelectedShift}
             selectedShiftIds={canSelectListShifts ? selectedVisibleShiftIdSet : undefined}
             onToggleSelectShift={canSelectListShifts ? toggleSelectShift : undefined}
@@ -650,9 +650,9 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           onManageStaffing={(id: string) => router.push(`/shifts/${id}?tab=registration`)}
         />
 
-      
 
-      
+
+
 
       <DaySessionsDialog
         open={!!selectedDay} currentUser={currentUser} users={users}
@@ -663,7 +663,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         campaigns={campaigns}
         registrations={registrations}
         reports={reports}
-        
+
         onOpenChange={(open: boolean) => !open && setSelectedDay(null)}
         onViewShift={(shift) => {
           setSelectedDay(null)
@@ -699,7 +699,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           open={showBulkStaffingApproval} currentUser={currentUser} users={users}
           registrations={pendingStaffingRegistrations}
           shifts={calendarScopeShifts}
-          
+
           onOpenChange={setShowBulkStaffingApproval}
           onChanged={loadData}
           onOpenShift={(shift) => {
@@ -709,8 +709,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         />
       )}
 
-      
+
     </div>
   )
 }
-

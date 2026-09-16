@@ -29,7 +29,7 @@ export default function EditShiftPage() {
         campaignService.getAll(),
         userService.getAll(),
       ])
-      
+
       if (!loadedShift) {
         setError(true)
         setLoading(false)

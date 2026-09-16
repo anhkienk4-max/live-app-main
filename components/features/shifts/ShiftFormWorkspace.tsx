@@ -98,7 +98,7 @@ export function ShiftFormWorkspace({
   const [conflicts, setConflicts] = React.useState<ShiftConflict[]>([])
   const [previewShifts, setPreviewShifts] = React.useState<ShiftDraft[]>([])
   const countInputsTouched = React.useRef(false)
-  
+
   const [formData, setFormData] = React.useState<ShiftFormState>({
     title: '',
     date: '',
@@ -285,7 +285,7 @@ export function ShiftFormWorkspace({
       toast({ title: 'Invalid shift time', description: resolvedDateTime?.error || 'Enter a valid date and time.', variant: 'destructive' })
       return
     }
-    
+
     if (conflicts.length > 0 && !confirm('Conflicts detected. Continue anyway?')) {
       return
     }

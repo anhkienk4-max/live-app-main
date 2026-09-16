@@ -29,7 +29,7 @@ export default function ShiftDetailPage() {
         campaignService.getAll(),
         userService.getAll(),
       ])
-      
+
       if (!loadedShift) {
         setError(true)
         setLoading(false)
