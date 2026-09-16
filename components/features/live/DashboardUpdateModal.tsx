@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Image from 'next/image'
 import { dashboardUpdateService, ocrService } from '@/lib/services/dataService'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -510,14 +510,14 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
 
   return (<>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="xl" className="overflow-y-auto">
-        <DialogHeader>
+      <DialogContent size="xl" >
+<DialogHeader>
           <DialogTitle>{t('liveSnapshotTitle')}</DialogTitle>
           <DialogDescription>{t('liveSnapshotDescription')}</DialogDescription>
         </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Screenshot Upload */}
+<form onSubmit={handleSubmit} className="contents">
+<DialogBody className="space-y-6">
+{/* Screenshot Upload */}
           <div className="grid gap-4 lg:grid-cols-2">
             <div>
             <label className="text-sm font-medium mb-2 block">{t('dashboardScreenshot')}</label>
@@ -758,7 +758,8 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
           </div>
 
           {/* Actions */}
-          <DialogFooter>
+</DialogBody>
+<DialogFooter>
             <Button 
               type="button" 
               variant="outline" 
@@ -772,8 +773,8 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
               {t('addUpdate')}
             </Button>
           </DialogFooter>
-        </form>
-      </DialogContent>
+</form>
+</DialogContent>
     </Dialog>
     <AlertDialog
       open={showReviewWarning}

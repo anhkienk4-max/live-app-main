@@ -138,7 +138,7 @@ export default function ProfilePage() {
     }
   }
 
-  return <PageShell archetype="settings" className="space-y-6">
+  return <PageShell archetype="configuration" className="space-y-6">
     <div><h1 className="text-3xl font-bold">{t('profile')}</h1><p className="mt-1 text-muted-foreground">{t('accountDetails')}</p></div>
     <form onSubmit={save}>
       <div className="grid gap-6 lg:grid-cols-3">
@@ -165,7 +165,7 @@ export default function ProfilePage() {
         </CardContent></Card>
       </div>
     </form>
-  </div>
+  </PageShell>
 }
 
 function Field({ icon, label, value, onChange, disabled = false, required = false }: { icon: React.ReactNode; label: string; value: string; onChange?: (value: string) => void; disabled?: boolean; required?: boolean }) {

@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Column, DataTable } from '@/components/ui/data-table'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogBody, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/components/ui/toast'
 import { StaffFormDialog } from './StaffFormDialog'
@@ -317,12 +317,15 @@ function Filter({ value, onChange, label, options }: { value: string[]; onChange
 
 function StaffDetail({ user, shifts, workload, onClose, onEdit }: { user: User; shifts: Shift[]; workload: (role: OperationalRole) => number; onClose: () => void; onEdit?: () => void }) {
   const { t } = useTranslation()
-  return <Dialog open onOpenChange={open => !open && onClose()}><DialogContent size="xl" className="overflow-y-auto"><DialogHeader className="border-b pb-4 mb-2"><div className="flex items-start justify-between gap-3"><div><DialogTitle>{user.full_name}</DialogTitle><p className="mt-1 text-sm text-muted-foreground">{user.email}</p></div>{onEdit && <Button onClick={onEdit} size="sm"><Pencil className="mr-2 h-4 w-4" />{t('edit')}</Button>}</div></DialogHeader>
-    <div className="grid gap-3 sm:grid-cols-5 mb-4">
+  return <Dialog open onOpenChange={open => !open && onClose()}><DialogContent size="xl" >
+<DialogHeader className="border-b pb-4 mb-2"><div className="flex items-start justify-between gap-3"><div><DialogTitle>{user.full_name}</DialogTitle><p className="mt-1 text-sm text-muted-foreground">{user.email}</p></div>{onEdit && <Button onClick={onEdit} size="sm"><Pencil className="mr-2 h-4 w-4" />{t('edit')}</Button>}</div></DialogHeader>
+<DialogBody>
+<div className="grid gap-3 sm:grid-cols-5 mb-4">
       <Card className="shadow-none sm:col-span-2"><CardContent className="p-4"><p className="text-xs font-medium text-muted-foreground">{t('systemPermissions')}</p><Badge className="mt-1.5">{t(resolveSystemPermission(user))}</Badge></CardContent></Card>
       <Card className="shadow-none sm:col-span-3"><CardContent className="p-4"><p className="text-xs font-medium text-muted-foreground">{t('operationalRoles')}</p><div className="mt-1.5 flex flex-wrap gap-1.5">{user.operational_roles?.length ? user.operational_roles.map(role => <Badge variant="outline" key={role}>{t(role)}</Badge>) : '—'}</div></CardContent></Card>
       {operationalRoles.map(role => <Card key={role} className="shadow-none sm:col-span-1"><CardContent className="p-4"><p className="text-xs font-medium text-muted-foreground truncate">{t(role)}</p><p className="mt-1 text-xl font-bold">{workload(role)}</p></CardContent></Card>)}
     </div>
     <div className="rounded-md border"><div className="bg-muted/30 px-4 py-2 border-b"><h3 className="font-semibold text-sm">{t('assignedShifts')} ({shifts.length})</h3></div><div className="p-0">{shifts.length ? <div className="divide-y max-h-[300px] overflow-y-auto">{shifts.sort((left, right) => `${left.date}${left.start_time}`.localeCompare(`${right.date}${right.start_time}`)).map(shift => <div className="flex items-center justify-between gap-4 p-3 hover:bg-muted/10 transition-colors" key={shift.id}><div className="min-w-0 flex-1"><p className="font-medium truncate">{shift.title || shift.id}</p><div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground"><span>{shift.date}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{formatShiftTimeRange(shift)}</span></div></div><Badge variant="secondary" className="shrink-0">{t(shift.status)}</Badge></div>)}</div> : <div className="p-4"><p className="text-sm text-muted-foreground">{t('noData')}</p></div>}</div></div>
-  </DialogContent></Dialog>
+</DialogBody>
+</DialogContent></Dialog>
 }

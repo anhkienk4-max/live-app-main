@@ -15,7 +15,7 @@ import {
 } from "@/lib/types/database.types";
 import {
   Dialog,
-  DialogContent,
+  DialogContent, DialogBody,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -267,8 +267,8 @@ export function SwapRequestFormModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="lg" className="overflow-y-auto">
-        <DialogHeader>
+      <DialogContent size="lg" >
+<DialogHeader>
           <DialogTitle>
             {tr("requestShiftSwap") || "Request Shift Swap"}
           </DialogTitle>
@@ -277,9 +277,9 @@ export function SwapRequestFormModal({
               "Request to swap your assigned shift with another host. Requires approval from team leader or admin."}
           </DialogDescription>
         </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Shift Selection */}
+<form onSubmit={handleSubmit} className="contents">
+<DialogBody className="space-y-6">
+{/* Shift Selection */}
           <div>
             <label className="text-sm font-medium mb-2 block">
               {tr("selectYourShift") || "Select Your Shift"}{" "}
@@ -499,7 +499,8 @@ export function SwapRequestFormModal({
           </div>
 
           {/* Actions */}
-          <DialogFooter>
+</DialogBody>
+<DialogFooter>
             <Button
               type="button"
               variant="outline"
@@ -513,8 +514,8 @@ export function SwapRequestFormModal({
               {tr("submitRequest") || "Submit Request"}
             </Button>
           </DialogFooter>
-        </form>
-      </DialogContent>
+</form>
+</DialogContent>
     </Dialog>
   );
 }

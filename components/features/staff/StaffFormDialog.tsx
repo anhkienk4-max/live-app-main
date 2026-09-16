@@ -4,7 +4,7 @@ import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { userService } from '@/lib/services/dataService'
 import { User, UserRole, OperationalRole, SystemPermission } from '@/lib/types/database.types'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -141,16 +141,16 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="lg" className="overflow-y-auto">
-        <DialogHeader>
+      <DialogContent size="lg" >
+<DialogHeader>
           <DialogTitle>{staff ? t('editStaff') : t('addNewStaff')}</DialogTitle>
           <DialogDescription>
             {staff ? t('updateStaffInfo') : t('addStaffInfo')}
           </DialogDescription>
         </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+<form onSubmit={handleSubmit} className="contents">
+<DialogBody className="space-y-4">
+<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">{t('fullName')} *</label>
               <Input
@@ -230,8 +230,8 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
               ))}
             </div>
           </div>
-
-          <DialogFooter>
+</DialogBody>
+<DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
               {t('cancel')}
             </Button>
@@ -239,8 +239,8 @@ export function StaffFormDialog({ open, onOpenChange, staff, onSuccess }: StaffF
               {loading ? t('loading') : staff ? t('update') : t('create')}
             </Button>
           </DialogFooter>
-        </form>
-      </DialogContent>
+</form>
+</DialogContent>
     </Dialog>
   )
 }

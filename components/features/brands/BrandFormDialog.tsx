@@ -4,7 +4,7 @@ import * as React from 'react'
 import { brandService, currentUserService } from '@/lib/services/dataService'
 import { Brand, KnowledgeStatus } from '@/lib/types/database.types'
 import { useTranslation } from '@/lib/i18n'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -91,8 +91,11 @@ export function BrandFormDialog({ open, onOpenChange, brand, onSuccess }: BrandF
     }
   }
 
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent size="lg" className="overflow-y-auto"><DialogHeader><DialogTitle>{brand ? t('edit') : t('create')} {t('brand')}</DialogTitle><DialogDescription>{t('brandKnowledge')}</DialogDescription></DialogHeader><form onSubmit={submit} className="space-y-5">
-    <div className="grid gap-4 md:grid-cols-3">
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent size="lg" >
+<DialogHeader><DialogTitle>{brand ? t('edit') : t('create')} {t('brand')}</DialogTitle><DialogDescription>{t('brandKnowledge')}</DialogDescription></DialogHeader>
+<form onSubmit={submit} className="contents">
+<DialogBody className="space-y-5">
+<div className="grid gap-4 md:grid-cols-3">
       <Field label={`${t('brand')} *`} value={form.name} onChange={value => setForm(current => ({ ...current, name: value }))} required />
       <Field label="Logo URL" value={form.logo_url} onChange={value => setForm(current => ({ ...current, logo_url: value }))} />
       <Field label="Color" value={form.color} onChange={value => setForm(current => ({ ...current, color: value }))} type="color" />
@@ -114,8 +117,10 @@ export function BrandFormDialog({ open, onOpenChange, brand, onSuccess }: BrandF
       <Area label={`${t('assetsDocuments')} · one URL per line`} value={form.asset_links} onChange={value => setForm(current => ({ ...current, asset_links: value }))} />
       <Area label={t('notes')} value={form.notes} onChange={value => setForm(current => ({ ...current, notes: value }))} />
     </div>
-    <DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('cancel')}</Button><Button type="submit" disabled={saving}>{saving ? t('loading') : t('save')}</Button></DialogFooter>
-  </form></DialogContent></Dialog>
+</DialogBody>
+<DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('cancel')}</Button><Button type="submit" disabled={saving}>{saving ? t('loading') : t('save')}</Button></DialogFooter>
+</form>
+</DialogContent></Dialog>
 }
 
 function Field({ label, value, onChange, type = 'text', required = false }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean }) { return <label className="text-sm font-medium">{label}<Input className="mt-1" type={type} value={value} required={required} onChange={event => onChange(event.target.value)} /></label> }

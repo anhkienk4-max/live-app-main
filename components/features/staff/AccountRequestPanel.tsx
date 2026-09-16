@@ -8,7 +8,7 @@ import { useTranslation, type TranslationKey } from '@/lib/i18n'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogBody, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 
@@ -165,8 +165,9 @@ export function AccountRequestPanel() {
       {selected && (
         <Dialog open onOpenChange={open => !open && setSelected(null)}>
           <DialogContent size="md">
-            <DialogHeader><DialogTitle>{selected.full_name}</DialogTitle><p className="text-sm text-muted-foreground">{selected.email}</p></DialogHeader>
-            <div className="grid gap-3 text-sm sm:grid-cols-2">
+<DialogHeader><DialogTitle>{selected.full_name}</DialogTitle><p className="text-sm text-muted-foreground">{selected.email}</p></DialogHeader>
+<DialogBody>
+<div className="grid gap-3 text-sm sm:grid-cols-2">
               <Detail label={t('phone')} value={selected.phone} />
               <Detail label={t('department')} value={selected.department} />
               <Detail label={t('status')} value={t(selected.status)} />
@@ -177,14 +178,15 @@ export function AccountRequestPanel() {
             {selected.provisioning_error_code ? <p className="text-sm text-red-700">{t('provisioningError')}: {selected.provisioning_error_code}</p> : null}
             {selected.status === 'rejected' && selected.rejection_reason ? <Detail label={t('rejectionReason')} value={selected.rejection_reason} /> : null}
             {selected.status === 'pending' ? <div className="space-y-2"><label className="text-sm font-medium" htmlFor="account-request-rejection-reason">{t('rejectionReason')}</label><Textarea id="account-request-rejection-reason" value={rejectionReason} onChange={event => setRejectionReason(event.target.value)} maxLength={1000} placeholder={t('rejectionReasonPlaceholder')} /></div> : null}
-            <DialogFooter>
+</DialogBody>
+<DialogFooter>
               {selected.status === 'pending' ? <>
                 <Button onClick={() => void approve(selected)} disabled={busyId === selected.id}>{t('approve')}</Button>
                 <Button variant="destructive" onClick={() => reject(selected)} disabled={busyId === selected.id}>{t('reject')}</Button>
               </> : null}
               {selected.status === 'approved' && (selected.provisioning_status === 'not_started' || selected.provisioning_status === 'failed') ? <Button onClick={() => void provision(selected)} disabled={busyId === selected.id}>{t(selected.provisioning_status === 'failed' ? 'retryProvisioning' : 'provisionAccount')}</Button> : null}
             </DialogFooter>
-          </DialogContent>
+</DialogContent>
         </Dialog>
       )}
     </Card>

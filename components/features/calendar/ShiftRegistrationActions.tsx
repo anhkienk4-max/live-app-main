@@ -7,7 +7,7 @@ import { useTranslation } from '@/lib/i18n'
 import { getShiftRoleCapacities } from '@/lib/services/dataService'
 import { resolveRegistrationCta, runEligibleRegistration, type RegistrationCtaResult } from '@/lib/utils/shiftRegistration'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogBody, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 
 interface ShiftRegistrationActionsProps {
   allShifts?: Shift[]
@@ -72,11 +72,12 @@ export function ShiftRegistrationActions({
         {t('register')}
       </DialogTrigger>
       <DialogContent data-testid={`registration-role-dialog-${shift.id}`} size="sm">
-        <DialogHeader>
+<DialogHeader>
           <DialogTitle>{t('register')}</DialogTitle>
           <DialogDescription>{t('registrationStatus')}</DialogDescription>
         </DialogHeader>
-        <div className="space-y-2" data-testid={`registration-role-options-${shift.id}`}>
+<DialogBody>
+<div className="space-y-2" data-testid={`registration-role-options-${shift.id}`}>
           {visibleStates.map(state => {
             const capacity = capacities.find(item => item.role === state.role)
             const stateLabel = state.state === 'eligible' ? t('register')
@@ -107,7 +108,8 @@ export function ShiftRegistrationActions({
             )
           })}
         </div>
-      </DialogContent>
+</DialogBody>
+</DialogContent>
     </Dialog>
   )
 }

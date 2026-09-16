@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Image from 'next/image'
 import { Shift, Brand, Platform, Campaign, User, DashboardUpdate, OperationalRole, ShiftRegistration, Report } from '@/lib/types/database.types'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogBody, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -131,7 +131,7 @@ export function LiveSessionModal({
   return (<>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="full" className="h-auto overflow-y-auto sm:h-[92vh]">
-        <DialogHeader>
+<DialogHeader>
           <div className="flex flex-wrap items-start justify-between gap-3 pr-8">
             <div>
               <DialogTitle className="text-2xl">{getBrandName(shift.brand_id)} - Live Session</DialogTitle>
@@ -167,8 +167,8 @@ export function LiveSessionModal({
             </div>
           </div>
         </DialogHeader>
-
-        <Tabs defaultValue="overview" className="mt-4">
+<DialogBody>
+<Tabs defaultValue="overview" className="mt-4">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="updates">Updates ({updates.length})</TabsTrigger>
@@ -374,7 +374,8 @@ export function LiveSessionModal({
             </CardContent></Card>
           </TabsContent>
         </Tabs>
-      </DialogContent>
+</DialogBody>
+</DialogContent>
     </Dialog>
     {showUpdate && <DashboardUpdateModal open shift={shift} platformName={platforms.find(platform => platform.id === shift.platform_id)?.name} onOpenChange={setShowUpdate} onSuccess={() => { void loadUpdates(); onUpdate() }} />}
     {showReportForm && <ReportFormModal open onOpenChange={setShowReportForm} completedShifts={[shift]} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onSuccess={() => { setShowReportForm(false); void loadReport(); onUpdate() }} />}

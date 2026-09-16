@@ -31,7 +31,7 @@ import {
 import { useTranslation, type TranslationKey } from '@/lib/i18n'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogBody, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -387,15 +387,17 @@ export function LiveReportImageGallery({
 
       <Dialog open={Boolean(viewerImage)} onOpenChange={open => !open && setViewerId(null)}>
         <DialogContent size="full" className="h-[calc(100vh-1rem)] overflow-y-auto bg-black/95 text-white">
-          <DialogHeader><DialogTitle className="text-white">{viewerImage?.title || viewerImage?.file_name}</DialogTitle></DialogHeader>
-          {viewerImage && (
+<DialogHeader><DialogTitle className="text-white">{viewerImage?.title || viewerImage?.file_name}</DialogTitle></DialogHeader>
+<DialogBody>
+{viewerImage && (
             <div className="relative flex min-h-[70vh] items-center justify-center">
               <Image unoptimized src={signedUrls?.[viewerImage.id] || (viewerImage.file_url.startsWith('blob:') || viewerImage.file_url.startsWith('data:') ? viewerImage.file_url : '')} alt={viewerImage.title || viewerImage.file_name} width={1920} height={1080} className="max-h-[78vh] max-w-full object-contain" />
               <Button className="absolute left-2" type="button" size="icon" variant="secondary" disabled={viewerIndex <= 0} aria-label={t('previousImage')} onClick={() => setViewerId(filtered[viewerIndex - 1]?.id || null)}><ChevronLeft className="h-5 w-5" /></Button>
               <Button className="absolute right-2" type="button" size="icon" variant="secondary" disabled={viewerIndex >= filtered.length - 1} aria-label={t('nextImage')} onClick={() => setViewerId(filtered[viewerIndex + 1]?.id || null)}><ChevronRight className="h-5 w-5" /></Button>
             </div>
           )}
-        </DialogContent>
+</DialogBody>
+</DialogContent>
       </Dialog>
     </section>
   )

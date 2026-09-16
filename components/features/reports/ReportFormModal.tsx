@@ -63,7 +63,7 @@ import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -684,12 +684,13 @@ export function ReportFormModal({
   return (<>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="full" className="h-[calc(100vh-1rem)] overflow-y-auto sm:h-[92vh]">
-        <DialogHeader>
+<DialogHeader>
           <DialogTitle>{t('createFinalReport')}</DialogTitle>
           <DialogDescription>{t('createFinalReportDescription')}</DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="space-y-6">
-          <div className="grid gap-4 lg:grid-cols-2">
+<form onSubmit={submit} className="contents">
+<DialogBody className="space-y-6">
+<div className="grid gap-4 lg:grid-cols-2">
             <label className="text-sm font-medium">{t('liveOrCompletedShift')} *<Select value={shiftId} onValueChange={changeShift}><SelectTrigger className="mt-1 w-full"><SelectValue placeholder={t('chooseLiveOrCompletedShift')} /></SelectTrigger><SelectContent>{completedShifts.map(shift => <SelectItem key={shift.id} value={shift.id}>{entityName(brands, shift.brand_id)} Â· {entityName(platforms, shift.platform_id)} Â· {format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} {shift.start_time} Â· {t(shift.status)}</SelectItem>)}</SelectContent></Select></label>
             <label className="text-sm font-medium">{t('platformDashboardType')} *<Select value={dashboardPlatform} disabled={inferredPlatform !== 'other'} onValueChange={value => { const next = value as ReportDashboardPlatform; setDashboardPlatform(next); setCropBox(defaultOcrCrop(next)); resetExtracted() }}><SelectTrigger className="mt-1 w-full" data-testid="report-platform-selector"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="tiktok_shop">TikTok Shop</SelectItem><SelectItem value="shopee_live">Shopee Live</SelectItem>{inferredPlatform === 'other' && <SelectItem value="other">{t('selectDashboardPlatform')}</SelectItem>}</SelectContent></Select></label>
           </div>
@@ -927,9 +928,10 @@ export function ReportFormModal({
               </div>
             </section>
           )}
-          <DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>{t('cancel')}</Button><Button type="submit" disabled={submitting || reviewing || visionScanning}>{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t('saveFinalReport')}</Button></DialogFooter>
-        </form>
-      </DialogContent>
+</DialogBody>
+<DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>{t('cancel')}</Button><Button type="submit" disabled={submitting || reviewing || visionScanning}>{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t('saveFinalReport')}</Button></DialogFooter>
+</form>
+</DialogContent>
     </Dialog>
     <AlertDialog
       open={showReviewWarning}

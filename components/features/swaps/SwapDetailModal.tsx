@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { SwapRequest, Shift, User, Brand, Platform } from '@/lib/types/database.types'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
@@ -89,8 +89,8 @@ export function SwapDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="lg" className="overflow-y-auto max-w-2xl">
-        <DialogHeader>
+      <DialogContent size="lg" className="max-w-2xl">
+<DialogHeader>
           <div className="flex items-center justify-between">
             <DialogTitle className="text-xl">Swap Request Details</DialogTitle>
             <div className="flex items-center gap-2">
@@ -106,8 +106,8 @@ export function SwapDetailModal({
             </div>
           </div>
         </DialogHeader>
-
-        <div className="space-y-4 text-sm">
+<DialogBody>
+<div className="space-y-4 text-sm">
           {/* Shift Information */}
           <div className="rounded-md border p-4 space-y-3 relative overflow-hidden shadow-sm">
             <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: getBrandColor(shift.brand_id) }} />
@@ -201,7 +201,8 @@ export function SwapDetailModal({
         </div>
 
         {/* Actions */}
-        <DialogFooter className="mt-2 border-t pt-4 flex-row sm:justify-between items-center w-full">
+</DialogBody>
+<DialogFooter className="mt-2 border-t pt-4 flex-row sm:justify-between items-center w-full">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>
@@ -228,7 +229,7 @@ export function SwapDetailModal({
             )}
           </div>
         </DialogFooter>
-      </DialogContent>
+</DialogContent>
     </Dialog>
   )
 }

@@ -14,7 +14,7 @@ import {
   normalizeCapacity,
   resolveShiftDateTime,
 } from '@/lib/utils/shiftUtils'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogBody } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -334,8 +334,8 @@ export function ShiftFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="xl" className="overflow-y-auto">
-        <DialogHeader>
+      <DialogContent size="xl" className="max-h-[90vh] grid-rows-[auto_minmax(0,1fr)_auto] p-0 gap-0 overflow-hidden">
+        <DialogHeader className="p-6 pb-4 border-b">
           <DialogTitle>
             {shift ? 'Edit Shift' : duplicateFrom ? 'Duplicate Shift' : 'Create New Shift'}
           </DialogTitle>
@@ -344,7 +344,8 @@ export function ShiftFormDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="contents">
+        <DialogBody className="p-6 space-y-6 overflow-y-auto">
           {/* Template Selector */}
           {!shift && templates.length > 0 && (
             <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
@@ -612,7 +613,7 @@ export function ShiftFormDialog({
             </div>
           )}
 
-          <DialogFooter>
+          </DialogBody>`n          <DialogFooter className="p-4 sm:p-6 border-t">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Cancel</Button>
             <Button type="submit" disabled={loading}>
               {loading ? 'Saving...' : showRecurring ? `Create ${previewShifts.length} Shifts` : shift ? 'Update' : 'Create'}

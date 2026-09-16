@@ -4,7 +4,7 @@ import * as React from 'react'
 import { shiftService } from '@/lib/services/dataService'
 import { Shift, Brand, Platform, Campaign, User } from '@/lib/types/database.types'
 import { exportShiftsToExcel, downloadExcelTemplate, importShiftsFromExcel, type ImportResult } from '@/lib/utils/excelUtils'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogBody } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Download, Upload, AlertCircle, CheckCircle } from 'lucide-react'
@@ -83,19 +83,20 @@ export function ImportExportDialog({ open, onOpenChange, shifts, brands, platfor
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="xl" className="overflow-y-auto">
-        <DialogHeader>
+      <DialogContent size="xl" className="max-h-[90vh] grid-rows-[auto_minmax(0,1fr)_auto] p-0 gap-0 overflow-hidden">
+        <DialogHeader className="p-6 pb-4 border-b">
           <DialogTitle>Import / Export Shifts</DialogTitle>
           <DialogDescription>Upload or download shift schedules in Excel format</DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="export">
-          <TabsList className="grid w-full grid-cols-2">
+        <DialogBody className="p-0 sm:p-0 overflow-y-auto">
+        <Tabs defaultValue="export" className="flex flex-col h-full">
+          <div className="px-4 sm:px-6 pt-4"><TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="export">Export</TabsTrigger>
             <TabsTrigger value="import">Import</TabsTrigger>
-          </TabsList>
+          </TabsList></div>
 
-          <TabsContent value="export" className="space-y-4 py-4">
+          <TabsContent value="export" className="space-y-4">
             <p className="text-sm text-gray-600">Export all shifts to Excel for external editing or backup.</p>
             <div className="flex gap-2">
               <Button onClick={handleExport}>
@@ -105,7 +106,7 @@ export function ImportExportDialog({ open, onOpenChange, shifts, brands, platfor
             </div>
           </TabsContent>
 
-          <TabsContent value="import" className="space-y-4 py-4">
+          <TabsContent value="import" className="space-y-4">
             <div>
               <p className="text-sm text-gray-600 mb-4">Upload an Excel file to import multiple shifts at once.</p>
               <div className="flex gap-2 mb-4">
@@ -174,9 +175,9 @@ export function ImportExportDialog({ open, onOpenChange, shifts, brands, platfor
               )}
             </div>
           </TabsContent>
-        </Tabs>
+        </Tabs>`n        </DialogBody>
 
-        <DialogFooter>
+        <DialogFooter className="p-4 sm:p-6 border-t">
           <Button variant="outline" onClick={() => { onOpenChange(false); setImportResult(null) }}>
             Close
           </Button>

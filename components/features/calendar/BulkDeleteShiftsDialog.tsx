@@ -4,7 +4,7 @@ import * as React from 'react'
 import { Shift, Brand, Platform, User, BulkShiftDeletionResult } from '@/lib/types/database.types'
 import {
   Dialog,
-  DialogContent,
+  DialogContent, DialogBody,
   DialogHeader,
   DialogTitle,
   DialogDescription,
@@ -97,7 +97,7 @@ export function BulkDeleteShiftsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col" data-testid="bulk-delete-shifts-dialog">
-        <DialogHeader>
+<DialogHeader>
           <div className="flex items-center gap-2 text-red-600">
             <Trash2 className="h-5 w-5" />
             <DialogTitle>{t('bulkDeleteShiftsTitle')}</DialogTitle>
@@ -106,8 +106,8 @@ export function BulkDeleteShiftsDialog({
             {t('bulkDeleteShiftsConfirm', { count: selectedShifts.length })}
           </DialogDescription>
         </DialogHeader>
-
-        {result && result.failed > 0 && (
+<DialogBody>
+{result && result.failed > 0 && (
           <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 mb-3 space-y-1">
             <div className="font-semibold flex items-center gap-1.5">
               <AlertTriangle className="h-4 w-4 text-amber-600" />
@@ -163,8 +163,8 @@ export function BulkDeleteShiftsDialog({
             />
           </div>
         </div>
-
-        <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t">
+</DialogBody>
+<DialogFooter className="gap-2 sm:gap-0 pt-2 border-t">
           <Button
             type="button"
             variant="outline"
@@ -184,7 +184,7 @@ export function BulkDeleteShiftsDialog({
             {busy ? t('loading') : t('deleteSelectedCount', { count: selectedShifts.length })}
           </Button>
         </DialogFooter>
-      </DialogContent>
+</DialogContent>
     </Dialog>
   )
 }
