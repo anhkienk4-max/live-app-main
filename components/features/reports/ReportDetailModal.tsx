@@ -461,9 +461,11 @@ export function ReportDetailModal({
         review_notes: reviewNotes || undefined,
         ocr_review: reviewData,
         final_recap: normalizeFinalReportRecap(finalRecap),
-      }, report.version_number, currentUser.id, reviewNotes || 'Saved report draft revision')
+      }, report.version_number, currentUser.id, reviewNotes || 'Saved report draft revision', 'save')
       toast({ title: t('saveDraftRevision'), variant: 'success' })
       onUpdated?.()
+    } catch (error) {
+      toast({ title: t('saveFailed'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
     } finally {
       setBusy(false)
     }

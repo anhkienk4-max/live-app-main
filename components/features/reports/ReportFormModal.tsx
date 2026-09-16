@@ -677,7 +677,14 @@ export function ReportFormModal({
         if (existingReport.version_number == null) {
           throw new Error('Report version is unavailable. Reload the report before saving.')
         }
-        report = await reportService.update(existingReport.id, payload, existingReport.version_number)
+        report = await reportService.update(
+          existingReport.id,
+          payload,
+          existingReport.version_number,
+          currentUser.id,
+          'Saved report draft',
+          'save',
+        )
         if (!report) throw new Error('Failed to update existing report draft.')
       } else if (existingReport) {
         throw new Error('An active report already exists for this shift that cannot be overwritten.')
