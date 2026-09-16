@@ -6,6 +6,7 @@ import { userService } from '@/lib/services/dataService'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
+import { PageShell } from '@/components/ui/archetypes'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -137,7 +138,7 @@ export default function ProfilePage() {
     }
   }
 
-  return <div className="space-y-6">
+  return <PageShell archetype="settings" className="space-y-6">
     <div><h1 className="text-3xl font-bold">{t('profile')}</h1><p className="mt-1 text-muted-foreground">{t('accountDetails')}</p></div>
     <form onSubmit={save}>
       <div className="grid gap-6 lg:grid-cols-3">
