@@ -54,6 +54,8 @@ export interface FileAsset {
   provider_metadata?: Record<string, unknown>
 }
 
+export type FileAssetReference = Pick<FileAsset, 'provider' | 'external_file_id'>
+
 export interface FileUploadInput {
   name: string
   mime_type: string

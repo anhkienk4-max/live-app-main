@@ -1,9 +1,11 @@
 # Provider-neutral file storage foundation
 
 Core V1 keeps Supabase as the system of record for structured operational data
-and file metadata/reference. Binary files are delegated to one system-level
-provider selected by the server (`FILE_PROVIDER=google_drive` or
-`FILE_PROVIDER=onedrive`); users never choose a provider in the UI.
+and file metadata/reference. Google Drive and OneDrive adapters may be
+configured simultaneously. `FILE_PROVIDER` selects the default upload
+provider only; an explicit `FileDestination.provider` selects an alternate
+provider for a write, while reads and deletes dispatch from persisted
+`FileAsset.provider`.
 
 Business modules call the neutral `fileStorageService` gateway and use
 `FileAsset` metadata. Logical placement is provider-independent (for example,
@@ -15,8 +17,8 @@ Google Drive and OneDrive adapter boundaries were defined in FILE-0/1. The
 FILE-2 Google Drive adapter supports an explicit system OAuth refresh-token
 mode (preferred for personal My Drive) and a service-account mode for Shared
 Drives. The FILE-4 OneDrive adapter uses delegated Microsoft OAuth and the
-Microsoft Graph `/me/drive` surface. A configured but unavailable provider fails
-with `FILE_PROVIDER_NOT_IMPLEMENTED`; no fake upload succeeds. Development/test
+Microsoft Graph `/me/drive` surface. A requested but unavailable provider fails
+with `PROVIDER_NOT_CONFIGURED`; no silent fallback or fake upload succeeds. Development/test
 may use the deterministic mock provider. Production fails closed for missing,
 unsupported, or mock configuration. Credentials are server-only and must never
 use `NEXT_PUBLIC_*` variables.
