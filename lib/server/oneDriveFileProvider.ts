@@ -14,9 +14,11 @@ type GraphItem = {
   name?: unknown
   size?: unknown
   webUrl?: unknown
+  createdDateTime?: unknown
+  lastModifiedDateTime?: unknown
   file?: { mimeType?: unknown } | null
   folder?: Record<string, unknown> | null
-  parentReference?: { id?: unknown } | null
+  parentReference?: { id?: unknown; driveId?: unknown; siteId?: unknown } | null
   '@microsoft.graph.downloadUrl'?: unknown
 }
 
@@ -51,6 +53,7 @@ function responseError(response: { status: number; headers?: { get(name: string)
   if (status === 401) return new OneDriveError('ONEDRIVE_REAUTH_REQUIRED')
   if (status === 403) return new OneDriveError('ONEDRIVE_PERMISSION_DENIED')
   if (status === 404) return new OneDriveError(kind === 'folder' ? 'ONEDRIVE_FOLDER_NOT_FOUND' : 'ONEDRIVE_ITEM_NOT_FOUND')
+  if (status === 409) return new OneDriveError(kind === 'folder' ? 'ONEDRIVE_FOLDER_CREATE_FAILED' : 'ONEDRIVE_FILE_CONFLICT')
   if (status === 429) return new OneDriveError('ONEDRIVE_RATE_LIMITED', 'ONEDRIVE_RATE_LIMITED', retryAfter(response))
   if (status >= 500 && status <= 599) return new OneDriveError('ONEDRIVE_PROVIDER_UNAVAILABLE')
   return new OneDriveError('ONEDRIVE_RESPONSE_INVALID')
@@ -83,7 +86,10 @@ function metadata(item: GraphItem): FileProviderMetadata {
     provider_metadata: {
       graph_item_id: id,
       web_url: typeof item.webUrl === 'string' ? item.webUrl : undefined,
-      download_url: typeof item['@microsoft.graph.downloadUrl'] === 'string' ? item['@microsoft.graph.downloadUrl'] : undefined,
+      created_time: typeof item.createdDateTime === 'string' ? item.createdDateTime : undefined,
+      modified_time: typeof item.lastModifiedDateTime === 'string' ? item.lastModifiedDateTime : undefined,
+      drive_id: typeof item.parentReference?.driveId === 'string' ? item.parentReference.driveId : undefined,
+      site_id: typeof item.parentReference?.siteId === 'string' ? item.parentReference.siteId : undefined,
     },
   }
 }
@@ -102,6 +108,7 @@ function nativeGraph(fetchImpl: OneDriveFetch): OneDriveGraphClient {
 export function createOneDriveFileProvider(options: OneDriveOptions = {}): FolderCapableFileProvider {
   const auth = options.auth ?? createOneDriveAuthClient({ env: options.env, fetchImpl: options.fetchImpl })
   const graph = options.graph ?? nativeGraph(options.fetchImpl ?? (fetch as unknown as OneDriveFetch))
+  const fetchImpl = options.fetchImpl ?? (fetch as unknown as OneDriveFetch)
 
   async function request(path: string, kind: 'item' | 'folder' = 'item'): Promise<import('@/lib/server/oneDriveAuth').OneDriveHttpResponse> {
     try {
@@ -126,70 +133,50 @@ export function createOneDriveFileProvider(options: OneDriveOptions = {}): Folde
     }
   }
 
-  async function graphFetch(path: string, options: { method?: string; body?: Record<string, unknown>; headers?: Record<string, string> } = {}): Promise<Response> {
-    const token = await auth.getAccessToken();
-    const response = await fetch(`${GRAPH_BASE_URL}${path}`, {
+  async function graphFetch(path: string, options: { method?: string; body?: RequestInit['body']; headers?: Record<string, string> } = {}, kind: 'item' | 'folder' = 'item'): Promise<import('@/lib/server/oneDriveAuth').OneDriveHttpResponse> {
+    const send = (token: string) => fetchImpl(`${GRAPH_BASE_URL}${path}`, {
       method: options.method || 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         ...options.headers,
       },
-      body: options.body ? JSON.stringify(options.body) : undefined,
-    });
-    if (response.status === 401) {
-      await auth.refreshAccessToken();
-      const newToken = await auth.getAccessToken();
-      const retry = await fetch(`${GRAPH_BASE_URL}${path}`, {
-        method: options.method || 'GET',
-        headers: {
-          'Authorization': `Bearer ${newToken}`,
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
-        body: options.body ? JSON.stringify(options.body) : undefined,
-      });
-      if (!retry.ok) throw responseError(retry, 'item');
-      return retry;
+      body: options.body,
+    })
+    try {
+      let response = await send(await auth.getAccessToken())
+      if (response.status === 401) {
+        await auth.refreshAccessToken()
+        response = await send(await auth.getAccessToken())
+      }
+      if (response.status < 200 || response.status >= 300) throw responseError(response, kind)
+      return response
+    } catch (error) {
+      throw transportError(error)
     }
-    if (!response.ok) throw responseError(response, 'item');
-    return response;
   }
 
   async function createFolder(parentId: string, name: string): Promise<string> {
     const id = parentId ? normalizeOneDriveItemId(parentId) : 'root';
     const path = id === 'root' ? '/drive/root/children' : `/drive/items/${encodeURIComponent(id)}/children`;
-    const response = await graphFetch(path, { method: 'POST', body: { name, folder: {} } });
-    const data = await response.json() as GraphItem;
-    return idFromItem(data);
+    const response = await graphFetch(path, { method: 'POST', body: JSON.stringify({ name, folder: {} }) }, 'folder')
+    try {
+      return idFromItem(await response.json() as GraphItem)
+    } catch (error) {
+      if (error instanceof OneDriveError) throw error
+      throw new OneDriveError('ONEDRIVE_RESPONSE_INVALID')
+    }
   }
 
   async function uploadFile(parentId: string, filename: string, content: Uint8Array, mimeType: string): Promise<GraphItem> {
     const id = parentId ? normalizeOneDriveItemId(parentId) : 'root';
     const path = id === 'root' ? `/drive/root:/${encodeURIComponent(filename)}:/content` : `/drive/items/${encodeURIComponent(id)}:/${encodeURIComponent(filename)}:/content`;
-    const response = await fetch(`${GRAPH_BASE_URL}${path}`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${await auth.getAccessToken()}`,
-        'Content-Type': mimeType,
-      },
-      body: Buffer.from(content),
-    });
-    if (response.status === 401) {
-      await auth.refreshAccessToken();
-      const retry = await fetch(`${GRAPH_BASE_URL}${path}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${await auth.getAccessToken()}`,
-          'Content-Type': mimeType,
-        },
-        body: Buffer.from(content),
-      });
-      if (!retry.ok) throw responseError(retry, 'item');
-      return await retry.json() as GraphItem;
+    const response = await graphFetch(path, { method: 'PUT', headers: { 'Content-Type': mimeType }, body: Buffer.from(content) })
+    try {
+      return await response.json() as GraphItem
+    } catch {
+      throw new OneDriveError('ONEDRIVE_RESPONSE_INVALID')
     }
-    if (!response.ok) throw responseError(response, 'item');
-    return await response.json() as GraphItem;
   }
 
   const provider: FolderCapableFileProvider = {
@@ -214,6 +201,7 @@ export function createOneDriveFileProvider(options: OneDriveOptions = {}): Folde
       } else {
         throw new OneDriveError('ONEDRIVE_UPLOAD_FAILED', 'Unsupported content type');
       }
+      if (content.byteLength !== input.size_bytes) throw new OneDriveError('ONEDRIVE_UPLOAD_FAILED', 'File content size does not match metadata.')
       const item = await uploadFile(id, safeName, content, input.mime_type);
       const meta = metadata(item);
       return {
@@ -224,7 +212,7 @@ export function createOneDriveFileProvider(options: OneDriveOptions = {}): Folde
           external_parent_id: parentId,
           name: meta.name,
           mime_type: meta.mime_type || input.mime_type,
-          size_bytes: meta.size_bytes || input.size_bytes,
+          size_bytes: meta.size_bytes ?? input.size_bytes,
           checksum_sha256: input.checksum_sha256,
           entity_type: input.entity_type,
           entity_id: input.entity_id,
@@ -262,9 +250,10 @@ export function createOneDriveFileProvider(options: OneDriveOptions = {}): Folde
       return url
     },
     async getDownloadUrl(externalFileId) {
-      const item = await this.getMetadata(externalFileId)
-      const url = item.provider_metadata?.download_url
-      return typeof url === 'string' && url ? url : `${GRAPH_BASE_URL}/drive/items/${encodeURIComponent(item.id)}/content`
+      const id = normalizeOneDriveItemId(externalFileId)
+      const item = await json<GraphItem>(`/drive/items/${encodeURIComponent(id)}`)
+      const url = item['@microsoft.graph.downloadUrl']
+      return typeof url === 'string' && url ? url : `${GRAPH_BASE_URL}/drive/items/${encodeURIComponent(id)}/content`
     },
     normalizeId(value) {
       return normalizeOneDriveItemId(value)

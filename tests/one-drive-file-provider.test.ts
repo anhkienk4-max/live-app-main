@@ -4,7 +4,7 @@ import test from 'node:test'
 
 import type { FileProvider } from '@/lib/files/fileProvider'
 import { createGoogleDriveFileProvider } from '@/lib/server/googleDriveFileProvider'
-import { createOneDriveAuthorizationUrl, createOneDriveAuthClient, createOneDriveOAuthState, exchangeOneDriveAuthorizationCode, OneDriveError, type OneDriveAuthClient, type OneDriveEnvironment, type OneDriveFetch, type OneDriveHttpResponse } from '@/lib/server/oneDriveAuth'
+import { createOneDriveAuthorizationUrl, createOneDriveAuthClient, createOneDriveOAuthState, exchangeOneDriveAuthorizationCode, ONEDRIVE_GRAPH_SCOPE, OneDriveError, type OneDriveAuthClient, type OneDriveEnvironment, type OneDriveFetch, type OneDriveHttpResponse } from '@/lib/server/oneDriveAuth'
 import { normalizeOneDriveItemId, classifyOneDriveLink } from '@/lib/server/oneDriveDestination'
 import { createOneDriveFileProvider } from '@/lib/server/oneDriveFileProvider'
 
@@ -48,7 +48,7 @@ function graphClient(responses: OneDriveHttpResponse[]): OneDriveGraphClient & {
   }
 }
 
-const item = (id = 'item-1') => ({ id, name: 'Report.pdf', size: 4, webUrl: 'https://onedrive.example/report', '@microsoft.graph.downloadUrl': 'https://download.example/report', file: { mimeType: 'application/pdf' }, parentReference: { id: 'root' } })
+const item = (id = 'item-1') => ({ id, name: 'Report.pdf', size: 4, webUrl: 'https://onedrive.example/report', createdDateTime: '2026-09-17T00:00:00.000Z', lastModifiedDateTime: '2026-09-17T01:00:00.000Z', '@microsoft.graph.downloadUrl': 'https://download.example/report', file: { mimeType: 'application/pdf' }, parentReference: { id: 'root', driveId: 'drive-1', siteId: 'site-1' } })
 
 test('OneDrive IDs, Graph URLs and share links have explicit normalization boundaries', () => {
   assert.equal(normalizeOneDriveItemId('item-1!A'), 'item-1!A')
@@ -74,7 +74,10 @@ test('OneDrive list, metadata, read and URL operations use provider-neutral shap
   const provider = createOneDriveFileProvider({ auth, graph })
   const entries = await provider.list()
   assert.deepEqual(entries.map(entry => entry.kind), ['file', 'folder'])
-  assert.equal((await provider.getMetadata('item-1')).mime_type, 'application/pdf')
+  const metadata = await provider.getMetadata('item-1')
+  assert.equal(metadata.mime_type, 'application/pdf')
+  assert.equal(metadata.provider_metadata?.download_url, undefined)
+  assert.equal(metadata.provider_metadata?.modified_time, '2026-09-17T01:00:00.000Z')
   assert.deepEqual([...await provider.read('item-1')], [1, 2, 3, 4])
   assert.equal(await provider.getViewUrl('item-1'), 'https://onedrive.example/report')
   assert.equal(await provider.getDownloadUrl('item-1'), 'https://download.example/report')
@@ -95,6 +98,7 @@ test('Graph errors and malformed responses normalize without exposing Graph erro
     [401, 'ONEDRIVE_REAUTH_REQUIRED'],
     [403, 'ONEDRIVE_PERMISSION_DENIED'],
     [404, 'ONEDRIVE_ITEM_NOT_FOUND'],
+    [409, 'ONEDRIVE_FILE_CONFLICT'],
     [429, 'ONEDRIVE_RATE_LIMITED'],
     [503, 'ONEDRIVE_PROVIDER_UNAVAILABLE'],
   ] as const
@@ -155,6 +159,24 @@ test('upload is supported with sanitized names while delete remains explicit uns
   } finally {
     globalThis.fetch = originalFetch
   }
+})
+
+test('upload rejects content-size mismatches before calling Graph', async () => {
+  const graph = graphClient([response(200, { value: [] })])
+  let calls = 0
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async () => { calls += 1; return { ok: true, status: 200, async json() { return item('uploaded-1') } } }) as typeof fetch
+  try {
+    const provider = createOneDriveFileProvider({ auth: authClient(), graph })
+    await assert.rejects(() => provider.upload({ name: 'report.pdf', mime_type: 'application/pdf', size_bytes: 5, content: new Uint8Array([1, 2, 3, 4]), entity_type: 'report', entity_id: 'report-1', created_by: 'user-1', logical_path: 'reports', external_parent_id: 'root' }), (error: unknown) => error instanceof OneDriveError && error.code === 'ONEDRIVE_UPLOAD_FAILED')
+    assert.equal(calls, 0)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('delegated scope includes the least privilege needed by upload', () => {
+  assert.equal(ONEDRIVE_GRAPH_SCOPE, 'Files.ReadWrite User.Read offline_access')
 })
 
 test('Microsoft OAuth state, redirect, exchange and refresh failure are deterministic', async () => {
