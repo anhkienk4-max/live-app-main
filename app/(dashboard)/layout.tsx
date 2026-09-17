@@ -3,6 +3,8 @@ import { connection } from 'next/server'
 import { Header } from '@/components/layout/Header'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { BottomNav } from '@/components/layout/BottomNav'
+import { RoleLensProvider } from '@/components/providers/RoleLensProvider'
+
 import { getAuthMode, getSupabasePublicConfig } from '@/lib/auth/authMode'
 import { AuthIdentityProvider } from '@/lib/auth/AuthIdentityProvider'
 import {
@@ -97,8 +99,10 @@ export default async function DashboardLayout({
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <Header user={user || undefined} />
           <main className="min-w-0 flex-1 overflow-y-auto pb-28 md:pb-4">
-            <div className="w-full min-w-0 px-4 py-4 sm:px-6 lg:px-8">
-              {children}
+            <div className="w-full min-w-0">
+              <RoleLensProvider>
+                {children}
+              </RoleLensProvider>
             </div>
           </main>
           <BottomNav />

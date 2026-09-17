@@ -7,6 +7,15 @@ export type TranslationKey = keyof typeof en
 type Variables = Record<string, string | number>
 
 const en = {
+
+  // Role Lens
+  roleAdmin: 'Admin',
+  roleLeader: 'Leader',
+  roleMember: 'Member',
+  scopeGlobal: 'Global',
+  scopeTeam: 'Team',
+  scopePersonal: 'Personal',
+
   statusAutomatic: 'Automatic',
   returnToAutomatic: 'Return to automatic',
   dashboard: 'Dashboard',
@@ -1100,6 +1109,15 @@ const en = {
 } as const
 
 const vi: Record<keyof typeof en, string> = {
+
+  // Role Lens
+  roleAdmin: 'Quản trị viên',
+  roleLeader: 'Trưởng nhóm',
+  roleMember: 'Thành viên',
+  scopeGlobal: 'Toàn cục',
+  scopeTeam: 'Đội nhóm',
+  scopePersonal: 'Cá nhân',
+
   statusAutomatic: 'Tự động',
   returnToAutomatic: 'Trở về tự động',
   forgotPasswordTitle: 'Đặt lại mật khẩu',

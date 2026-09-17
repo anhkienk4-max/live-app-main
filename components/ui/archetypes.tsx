@@ -34,7 +34,7 @@ export function PageShell({ archetype, className, children, ...props }: PageShel
 
   return (
     <div className={cn('w-full mx-auto', maxWidthClass, className)} {...props}>
-      <div className={cn('flex flex-col w-full', archetype === 'auth' ? '' : 'py-6')}>
+      <div className={cn('flex flex-col w-full', archetype === 'auth' ? '' : 'pt-2 pb-6')}>
         {children}
       </div>
     </div>
@@ -47,7 +47,7 @@ export function PageShell({ archetype, className, children, ...props }: PageShel
 export function PageHeader({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn('mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between', className)}
+      className={cn('mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between', className)}
       {...props}
     >
       {children}
@@ -76,7 +76,7 @@ export function PageActions({ className, children, ...props }: React.HTMLAttribu
  */
 export function PageSection({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <section className={cn('mb-8 flex flex-col gap-4', className)} {...props}>
+    <section className={cn('mb-6 flex flex-col gap-3', className)} {...props}>
       {children}
     </section>
   )
@@ -140,6 +140,22 @@ export function MetricRegion({ className, children, ...props }: React.HTMLAttrib
   return (
     <div className={cn('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6', className)} {...props}>
       {children}
+    </div>
+  )
+}
+
+import { useRoleLens } from '@/components/providers/RoleLensProvider'
+import { Badge } from '@/components/ui/badge'
+import { useTranslation } from '@/lib/i18n'
+
+export function PageHeaderScope({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  const { scopeLabelKey } = useRoleLens()
+  const { t } = useTranslation()
+  return (
+    <div className={cn('flex items-center', className)} {...props}>
+      <Badge variant="outline" className="text-xs font-normal">
+        {t(scopeLabelKey)}
+      </Badge>
     </div>
   )
 }
