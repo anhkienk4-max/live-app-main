@@ -28,6 +28,7 @@ import {
 } from '@/lib/utils/dashboardRegionDetection'
 import {
   OCR_RUNTIME_CONFIG,
+  isSupportedOcrMimeType,
   pinnedBrowserWorkerOptions,
 } from '@/lib/services/ocrRuntimeConfig'
 
@@ -41,6 +42,41 @@ export class OcrApiResponseError extends Error {
     super(message)
     this.name = 'OcrApiResponseError'
   }
+}
+
+class BrowserOcrTimeoutError extends Error {
+  constructor() {
+    super('Dashboard OCR timed out.')
+    this.name = 'BrowserOcrTimeoutError'
+  }
+}
+
+async function withBrowserTimeout<T>(operation: Promise<T>) {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new BrowserOcrTimeoutError()), OCR_RUNTIME_CONFIG.browserTimeoutMs)
+  })
+  try {
+    return await Promise.race([operation, timeout])
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId)
+  }
+}
+
+let browserOcrActive = false
+
+function timedBrowserOcrWorker(worker: BrowserOcrWorker): BrowserOcrWorker {
+  return new Proxy(worker, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver)
+      if ((property === 'setParameters' || property === 'recognize') && typeof value === 'function') {
+        return (...args: unknown[]) => withBrowserTimeout(
+          Promise.resolve(Reflect.apply(value, target, args)),
+        )
+      }
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  }) as BrowserOcrWorker
 }
 
 export async function parseOcrApiResponse(response: Response): Promise<OcrImageRecognition> {
@@ -90,11 +126,24 @@ export async function recognizeDashboardImage(
     throw new Error('The selected dashboard image could not be read.')
   }
   const imageBlob = await imageResponse.blob()
+  if (imageBlob.size === 0) throw new Error('The selected dashboard image is empty.')
+  if (imageBlob.size > OCR_RUNTIME_CONFIG.maxImageBytes) {
+    throw new Error('The selected dashboard image must be 10 MB or smaller.')
+  }
+  if (imageBlob.type && !isSupportedOcrMimeType(imageBlob.type)) {
+    throw new Error('Only PNG, JPEG, and WebP dashboard images can be processed.')
+  }
 
   let browserFailure: unknown
   if (typeof window !== 'undefined') {
     try {
-      return await recognizeDashboardImageInBrowser(imageBlob, platform, cropBox)
+      if (browserOcrActive) throw new Error('OCR is already processing another image.')
+      browserOcrActive = true
+      try {
+        return await recognizeDashboardImageInBrowser(imageBlob, platform, cropBox)
+      } finally {
+        browserOcrActive = false
+      }
     } catch (error) {
       browserFailure = error
     }
@@ -104,10 +153,7 @@ export async function recognizeDashboardImage(
     return await recognizeDashboardImageOnServer(imageBlob, platform, cropBox)
   } catch (serverFailure) {
     if (browserFailure instanceof Error) {
-      throw new Error(
-        `${serverFailure instanceof Error ? serverFailure.message : 'Server OCR unavailable.'} `
-        + `Browser OCR also failed: ${browserFailure.message}`,
-      )
+      throw new Error('OCR could not process the dashboard image. Check the image and try again.')
     }
     throw serverFailure
   }
@@ -160,6 +206,16 @@ async function recognizeDashboardImageInBrowser(
   const { createWorker, OEM, PSM } = tesseract
   const originalWidth = bitmap.width
   const originalHeight = bitmap.height
+  if (
+    originalWidth < 1
+    || originalHeight < 1
+    || originalWidth > OCR_RUNTIME_CONFIG.maxImageDimension
+    || originalHeight > OCR_RUNTIME_CONFIG.maxImageDimension
+    || originalWidth * originalHeight > OCR_RUNTIME_CONFIG.maxImagePixels
+  ) {
+    bitmap.close()
+    throw new Error('The dashboard image dimensions are not supported.')
+  }
   const requested = clampOcrCrop(requestedCrop || defaultOcrCrop(platform))
   if (platform === 'tiktok_shop') {
     return recognizeTikTokKpiCropInBrowser({
@@ -184,11 +240,11 @@ async function recognizeDashboardImageInBrowser(
   }
   context.drawImage(bitmap, 0, 0, originalWidth, originalHeight, 0, 0, canvas.width, canvas.height)
 
-  const worker = await createWorker(
+  const worker = timedBrowserOcrWorker(await withBrowserTimeout(createWorker(
     OCR_RUNTIME_CONFIG.language,
     OEM.LSTM_ONLY,
     pinnedBrowserWorkerOptions(),
-  )
+  )))
   try {
     await worker.setParameters({
       tessedit_pageseg_mode: PSM.SPARSE_TEXT,
@@ -298,6 +354,10 @@ async function recognizeDashboardImageInBrowser(
       )
     }
 
+    const outputWords = [...selectedWords, ...cardRecognition.words]
+    if (!selectedText && outputWords.length === 0) {
+      throw new Error('No readable dashboard text was detected in the image.')
+    }
     return {
       engine: 'tesseract.js',
       language: 'eng+vie',
@@ -314,7 +374,7 @@ async function recognizeDashboardImageInBrowser(
         },
       },
       confidence: result.data.confidence,
-      words: [...selectedWords, ...cardRecognition.words],
+      words: outputWords,
       crop_box: selected?.crop_box || requested,
       original_dimensions: { width: originalWidth, height: originalHeight },
       processed_dimensions: { width: canvas.width, height: canvas.height },
@@ -350,6 +410,16 @@ async function recognizeTikTokKpiCropInBrowser({
 }): Promise<OcrImageRecognition> {
   const originalWidth = bitmap.width
   const originalHeight = bitmap.height
+  if (
+    originalWidth < 1
+    || originalHeight < 1
+    || originalWidth > OCR_RUNTIME_CONFIG.maxImageDimension
+    || originalHeight > OCR_RUNTIME_CONFIG.maxImageDimension
+    || originalWidth * originalHeight > OCR_RUNTIME_CONFIG.maxImagePixels
+  ) {
+    bitmap.close()
+    throw new Error('The dashboard image dimensions are not supported.')
+  }
   const pixelCrop = {
     left: requested.left * originalWidth,
     top: requested.top * originalHeight,
@@ -358,11 +428,11 @@ async function recognizeTikTokKpiCropInBrowser({
   }
   const cropScale = Math.max(1, Math.min(3, 1800 / Math.max(1, pixelCrop.width)))
   const cropCanvas = createBrowserOriginalMetricCanvas(bitmap, pixelCrop, cropScale)
-  const worker = await createWorker(
+  const worker = timedBrowserOcrWorker(await withBrowserTimeout(createWorker(
     OCR_RUNTIME_CONFIG.language,
     OEM.LSTM_ONLY,
     pinnedBrowserWorkerOptions(),
-  )
+  )))
   try {
     await worker.setParameters({
       tessedit_pageseg_mode: PSM.SPARSE_TEXT,
@@ -424,6 +494,10 @@ async function recognizeTikTokKpiCropInBrowser({
       'anchor_aligned_card_crop',
     ]
 
+    const outputWords = [...selectedWords, ...cardRecognition.words]
+    if (!selectedText && outputWords.length === 0) {
+      throw new Error('No readable dashboard text was detected in the image.')
+    }
     return {
       engine: 'tesseract.js',
       language: 'eng+vie',
@@ -439,7 +513,7 @@ async function recognizeTikTokKpiCropInBrowser({
         },
       },
       confidence: primary.data.confidence,
-      words: [...selectedWords, ...cardRecognition.words],
+      words: outputWords,
       crop_box: requested,
       original_dimensions: { width: originalWidth, height: originalHeight },
       processed_dimensions: { width: cropCanvas.width, height: cropCanvas.height },

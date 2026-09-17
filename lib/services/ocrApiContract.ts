@@ -9,6 +9,8 @@ export type OcrApiErrorCode =
   | 'OCR_SERVER_FAILED'
   | 'OCR_PROCESSING_FAILED'
   | 'OCR_TIMEOUT'
+  | 'OCR_BUSY'
+  | 'OCR_NO_TEXT'
 
 export type OcrApiSuccess = {
   ok: true
