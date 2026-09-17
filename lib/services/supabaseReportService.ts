@@ -43,6 +43,12 @@ export class ReportRequestError extends Error {
 }
 
 function requestError(operation: string, error: SupabaseErrorShape): ReportRequestError {
+  if (/REPORT_VERSION_CONFLICT/i.test(`${error.code ?? ''} ${error.message ?? ''}`)) {
+    return new ReportRequestError(
+      'This report changed since you opened it. Reload the latest report before saving.',
+      'REPORT_VERSION_CONFLICT',
+    )
+  }
   const message = error.message?.trim() || `Supabase ${operation} failed.`
   return new ReportRequestError(message, error.code || 'REPORT_REQUEST_FAILED')
 }
@@ -278,7 +284,7 @@ export interface SupabaseReportRepository {
   getReportRevisions(reportId: string): Promise<ReportRevision[]>
 
   create(data: CreateReportPayload): Promise<Report>
-  update(id: string, patch: ReportPatch, reason: string | null, event: string): Promise<Report | null>
+  update(id: string, patch: ReportPatch, expectedVersion: number, reason: string | null, event: string): Promise<Report | null>
   startReview(id: string): Promise<Report | null>
   rejectReview(id: string, notes: string): Promise<Report | null>
   reopen(id: string, reason: string): Promise<Report | null>
@@ -461,10 +467,11 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
       return reportFromRow(requiredRow('report create', result) as unknown as ReportRow)
     },
 
-    async update(id, patch, reason, event) {
+    async update(id, patch, expectedVersion, reason, event) {
       const result = await client.rpc('update_report', {
         p_report_id: id,
         p_patch: patch as unknown as Record<string, unknown>,
+        p_expected_version: expectedVersion,
         p_reason: reason ?? null,
         p_event: event,
       }).single()

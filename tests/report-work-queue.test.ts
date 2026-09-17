@@ -97,6 +97,6 @@ test('draft continuation opens the editable form and hydrates the existing repor
   assert.match(listSource, /initialReport=\{editingReport\}/)
   assert.match(formSource, /initialReport\?: Report/)
   assert.match(formSource, /setMetricValues\(initialReport \? reportMetricState\(initialReport\) : \{\}\)/)
-  assert.match(formSource, /reportService\.update\(existingReport\.id, payload\)/)
+  assert.match(formSource, /reportService\.update\(\s*existingReport\.id,\s*payload,\s*existingReport\.version_number,\s*currentUser\.id,\s*'Saved report draft',\s*'save',\s*\)/)
   assert.match(formSource, /serializeFinalReportMetricState\(dashboardPlatform, metricValues\)/)
 })

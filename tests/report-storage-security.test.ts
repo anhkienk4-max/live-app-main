@@ -277,7 +277,7 @@ describe('Report Storage Security & Idempotency', () => {
 
   it('10. retry does not create second active report', () => {
     assert.match(formModalFile, /if \(existingReport && \(existingReport\.status === 'draft' \|\| existingReport\.status === 'reopened'\)\) \{/)
-    assert.match(formModalFile, /report = await reportService\.update\(existingReport\.id, payload\)/)
+    assert.match(formModalFile, /report = await reportService\.update\(\s*existingReport\.id,\s*payload,\s*existingReport\.version_number,\s*currentUser\.id,\s*'Saved report draft',\s*'save',\s*\)/)
   })
 
   it('11. unique(report_id, storage_path) or equivalent DB protection exists', () => {
