@@ -6,6 +6,7 @@ import { Input } from './input'
 import { Button } from './button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select'
+import { cn } from '@/lib/utils'
 
 export interface Column<T> {
   header: React.ReactNode | (() => React.ReactNode)
@@ -162,6 +163,47 @@ export function DataTable<T extends { id: string }>({
               </Button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export type DataTableToolbarProps = React.HTMLAttributes<HTMLDivElement>
+
+export function DataTableToolbar({ className, children, ...props }: DataTableToolbarProps) {
+  return (
+    <div className={cn("flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4", className)} {...props}>
+      {children}
+    </div>
+  )
+}
+
+export interface DataTableSelectionStateProps extends React.HTMLAttributes<HTMLDivElement> {
+  selectedCount: number
+  totalCount?: number
+  onClearSelection?: () => void
+  actions?: React.ReactNode
+}
+
+export function DataTableSelectionState({ selectedCount, totalCount, onClearSelection, actions, className, ...props }: DataTableSelectionStateProps) {
+  if (selectedCount === 0) return null
+
+  return (
+    <div className={cn("flex items-center justify-between gap-4 p-2 mb-4 bg-primary/5 border border-primary/20 rounded-md text-sm", className)} {...props}>
+      <div className="flex items-center gap-4">
+        <span className="font-medium text-primary">
+          {selectedCount} {totalCount ? `of ${totalCount}` : ''} selected
+        </span>
+        {onClearSelection && (
+          <Button variant="ghost" size="sm" onClick={onClearSelection} className="h-7 px-2 text-primary hover:text-primary hover:bg-primary/10">
+            Clear
+          </Button>
+        )}
+      </div>
+      {actions && (
+        <div className="flex items-center gap-2">
+          {actions}
         </div>
       )}
     </div>

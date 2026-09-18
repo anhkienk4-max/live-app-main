@@ -1,191 +1,381 @@
 @import "tailwindcss" source(none);
+
 @import "tw-animate-css";
 
+
+
 @source "../app";
+
 @source "../components";
+
 @source "../lib";
+
+
 
 @custom-variant dark (&:is(.dark *));
 
+
+
 @theme inline {
+
   --color-background: var(--background);
+
   --color-foreground: var(--foreground);
+
   /* Font: resolved from :root --app-font-sans (non-circular) */
+
   --font-sans: var(--app-font-sans);
+
   --font-mono: var(--font-geist-mono);
+
   --font-heading: var(--app-font-sans);
+
   --color-sidebar-ring: var(--sidebar-ring);
+
   --color-sidebar-border: var(--sidebar-border);
+
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+
   --color-sidebar-accent: var(--sidebar-accent);
+
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+
   --color-sidebar-primary: var(--sidebar-primary);
+
   --color-sidebar-foreground: var(--sidebar-foreground);
+
   --color-sidebar: var(--sidebar);
+
   --color-chart-5: var(--chart-5);
+
   --color-chart-4: var(--chart-4);
+
   --color-chart-3: var(--chart-3);
+
   --color-chart-2: var(--chart-2);
+
   --color-chart-1: var(--chart-1);
+
   --color-ring: var(--ring);
+
   --color-input: var(--input);
+
   --color-border: var(--border);
+
   --color-destructive: var(--destructive);
+
   --color-accent-foreground: var(--accent-foreground);
+
   --color-accent: var(--accent);
+
   --color-muted-foreground: var(--muted-foreground);
+
   --color-muted: var(--muted);
+
   --color-secondary-foreground: var(--secondary-foreground);
+
   --color-secondary: var(--secondary);
+
   --color-primary-foreground: var(--primary-foreground);
+
   --color-primary: var(--primary);
+
   --color-popover-foreground: var(--popover-foreground);
+
   --color-popover: var(--popover);
+
   --color-card-foreground: var(--card-foreground);
+
   --color-card: var(--card);
+
   /* Semantic operational token aliases */
+
   --color-success: var(--success);
+
   --color-success-foreground: var(--success-foreground);
+
   --color-success-surface: var(--success-surface);
+
   --color-warning: var(--warning);
+
   --color-warning-foreground: var(--warning-foreground);
+
   --color-warning-surface: var(--warning-surface);
+
   --color-danger: var(--danger);
+
   --color-danger-foreground: var(--danger-foreground);
+
   --color-danger-surface: var(--danger-surface);
+
   --color-info: var(--info);
+
   --color-info-foreground: var(--info-foreground);
+
   --color-info-surface: var(--info-surface);
+
   --color-live: var(--live);
+
   --color-live-foreground: var(--live-foreground);
+
   --color-live-surface: var(--live-surface);
-  /* Canonical radius scale — absolute pixel values, no fractional calc */
+
+  /* Canonical radius scale ï¿½ absolute pixel values, no fractional calc */
+
   --radius-sm: 2px;
+
   --radius-md: 4px;
+
   --radius-lg: 6px;
+
   --radius-xl: 8px;
+
   /* Keep legacy alias for existing shadcn component compatibility */
+
   --radius: 0.25rem;
+
 }
+
+
 
 :root {
-  /* Font stack — Inter via system fallback (no next/font loader present) */
+
+  /* Font stack ï¿½ Inter via system fallback (no next/font loader present) */
+
   --app-font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
+
   /* Surface hierarchy: S0 background (very light neutral) vs S1 card (white) */
+
   --background: oklch(0.984 0.003 250);
+
   --foreground: oklch(0.13 0.02 250);
+
   --card: oklch(1 0 0);
+
   --card-foreground: oklch(0.13 0.02 250);
+
   --popover: oklch(1 0 0);
+
   --popover-foreground: oklch(0.13 0.02 250);
+
   --primary: oklch(0.45 0.12 255);
+
   --primary-foreground: oklch(0.98 0 0);
+
   --secondary: oklch(0.96 0.01 250);
+
   --secondary-foreground: oklch(0.25 0.03 250);
+
   --muted: oklch(0.96 0.01 250);
+
   --muted-foreground: oklch(0.55 0.02 250);
+
   --accent: oklch(0.96 0.01 250);
+
   --accent-foreground: oklch(0.25 0.03 250);
+
   --destructive: oklch(0.55 0.18 20);
+
   --destructive-foreground: oklch(0.98 0 0);
+
   --border: oklch(0.90 0.01 250);
+
   --input: oklch(0.90 0.01 250);
+
   --ring: oklch(0.45 0.12 255);
+
   --chart-1: oklch(0.60 0.15 250);
+
   --chart-2: oklch(0.55 0.15 180);
+
   --chart-3: oklch(0.40 0.15 30);
+
   --chart-4: oklch(0.70 0.15 80);
+
   --chart-5: oklch(0.50 0.15 320);
+
   --sidebar: oklch(0.98 0.005 250);
+
   --sidebar-foreground: oklch(0.25 0.03 250);
+
   --sidebar-primary: oklch(0.45 0.12 255);
+
   --sidebar-primary-foreground: oklch(0.98 0 0);
+
   --sidebar-accent: oklch(0.95 0.01 250);
+
   --sidebar-accent-foreground: oklch(0.15 0.02 250);
+
   --sidebar-border: oklch(0.90 0.01 250);
+
   --sidebar-ring: oklch(0.45 0.12 255);
-  /* Semantic operational colors — light */
+
+  /* Semantic operational colors ï¿½ light */
+
   --success: oklch(0.50 0.14 145);
+
   --success-foreground: oklch(0.22 0.06 145);
+
   --success-surface: oklch(0.97 0.025 145);
+
   --warning: oklch(0.60 0.15 72);
+
   --warning-foreground: oklch(0.28 0.07 72);
+
   --warning-surface: oklch(0.97 0.028 78);
+
   --danger: oklch(0.55 0.18 20);
+
   --danger-foreground: oklch(0.22 0.06 20);
+
   --danger-surface: oklch(0.97 0.025 20);
+
   --info: oklch(0.50 0.13 255);
+
   --info-foreground: oklch(0.22 0.06 255);
+
   --info-surface: oklch(0.97 0.02 255);
+
   --live: oklch(0.55 0.22 20);
+
   --live-foreground: oklch(0.98 0 0);
+
   --live-surface: oklch(0.97 0.03 18);
+
 }
+
+
 
 .dark {
+
   --background: oklch(0.13 0.02 250);
+
   --foreground: oklch(0.98 0 0);
+
   --card: oklch(0.16 0.02 250);
+
   --card-foreground: oklch(0.98 0 0);
+
   --popover: oklch(0.16 0.02 250);
+
   --popover-foreground: oklch(0.98 0 0);
+
   --primary: oklch(0.65 0.12 255);
+
   --primary-foreground: oklch(0.13 0.02 250);
+
   --secondary: oklch(0.20 0.03 250);
+
   --secondary-foreground: oklch(0.98 0 0);
+
   --muted: oklch(0.20 0.03 250);
+
   --muted-foreground: oklch(0.65 0.02 250);
+
   --accent: oklch(0.20 0.03 250);
+
   --accent-foreground: oklch(0.98 0 0);
+
   --destructive: oklch(0.60 0.18 20);
+
   --destructive-foreground: oklch(0.98 0 0);
+
   --border: oklch(0.25 0.03 250);
+
   --input: oklch(0.25 0.03 250);
+
   --ring: oklch(0.65 0.12 255);
+
   --chart-1: oklch(0.60 0.15 250);
+
   --chart-2: oklch(0.55 0.15 180);
+
   --chart-3: oklch(0.40 0.15 30);
+
   --chart-4: oklch(0.70 0.15 80);
+
   --chart-5: oklch(0.50 0.15 320);
+
   --sidebar: oklch(0.16 0.02 250);
+
   --sidebar-foreground: oklch(0.98 0 0);
+
   --sidebar-primary: oklch(0.65 0.12 255);
+
   --sidebar-primary-foreground: oklch(0.13 0.02 250);
+
   --sidebar-accent: oklch(0.20 0.03 250);
+
   --sidebar-accent-foreground: oklch(0.98 0 0);
+
   --sidebar-border: oklch(0.25 0.03 250);
+
   --sidebar-ring: oklch(0.65 0.12 255);
-  /* Semantic operational colors — dark (preserve existing compatibility) */
+
+  /* Semantic operational colors ï¿½ dark (preserve existing compatibility) */
+
   --success: oklch(0.65 0.14 145);
+
   --success-foreground: oklch(0.97 0.01 145);
+
   --success-surface: oklch(0.20 0.04 145);
+
   --warning: oklch(0.74 0.15 72);
+
   --warning-foreground: oklch(0.97 0.01 78);
+
   --warning-surface: oklch(0.20 0.04 75);
+
   --danger: oklch(0.65 0.18 20);
+
   --danger-foreground: oklch(0.97 0 0);
+
   --danger-surface: oklch(0.20 0.04 20);
+
   --info: oklch(0.65 0.13 255);
+
   --info-foreground: oklch(0.97 0 0);
+
   --info-surface: oklch(0.20 0.04 255);
+
   --live: oklch(0.68 0.22 20);
+
   --live-foreground: oklch(0.97 0 0);
+
   --live-surface: oklch(0.20 0.05 18);
+
 }
 
+
+
 @layer base {
+
   * {
+
     @apply border-border outline-ring/50;
+
   }
+
   body {
+
     @apply bg-background text-foreground;
+
     /* Ligatures and contextual alternates. Tabular numerals intentionally
-       omitted here — apply tnum via utility classes at data/metric sites. */
+
+       omitted here ï¿½ apply tnum via utility classes at data/metric sites. */
+
     font-feature-settings: "rlig" 1, "calt" 1;
+
   }
+
   html {
+
     @apply font-sans;
+
     -webkit-font-smoothing: antialiased;
+
     -moz-osx-font-smoothing: grayscale;
+
   }
+
 }

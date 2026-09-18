@@ -17,7 +17,9 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import { PageLoadError } from '@/components/ui/page-load-error'
-import { PageShell, PageHeader, PageHeaderContent } from '@/components/ui/archetypes'
+import { PageShell } from '@/components/ui/archetypes'
+import { PageHeader, PageHeaderContent, } from '@/components/ui/headers'
+import { MetricCard } from '@/components/ui/operational-widgets'
 import { OperationalStatusStrip, HealthyState } from '@/components/ui/operational-status'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { resolveSystemPermission } from '@/lib/permissions'
@@ -338,10 +340,10 @@ function LeaderDashboard(props: CommonProps) {
     )}
 
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <Metric title={t('shiftsToday')} value={todaysShifts.length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
-      <Metric title={t('liveNow')} value={filteredShifts.filter(shift => shift.status === 'live').length.toString()} icon={<Radio className="h-5 w-5 text-red-600 dark:text-red-400" />} />
-      <Metric title={t('pendingRegistrations')} value={pendingRegistrations.length.toString()} icon={<Users className="h-5 w-5 text-amber-600 dark:text-amber-400" />} />
-      <Metric title={t('pendingSwaps')} value={pendingSwaps.length.toString()} icon={<ArrowLeftRight className="h-5 w-5 text-purple-600 dark:text-purple-400" />} />
+      <MetricCard label={t('shiftsToday')} value={todaysShifts.length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
+      <MetricCard label={t('liveNow')} value={filteredShifts.filter(shift => shift.status === 'live').length.toString()} icon={<Radio className="h-5 w-5 text-red-600 dark:text-red-400" />} />
+      <MetricCard label={t('pendingRegistrations')} value={pendingRegistrations.length.toString()} icon={<Users className="h-5 w-5 text-amber-600 dark:text-amber-400" />} />
+      <MetricCard label={t('pendingSwaps')} value={pendingSwaps.length.toString()} icon={<ArrowLeftRight className="h-5 w-5 text-purple-600 dark:text-purple-400" />} />
     </div>
 
     <div className="grid gap-4 md:grid-cols-2">
@@ -434,10 +436,10 @@ function MemberDashboard(props: CommonProps) {
     )}
 
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <Metric title={t('myUpcomingShifts')} value={upcoming.length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
-      <Metric title={t('pendingRegistrations')} value={myPendingRegistrations.length.toString()} icon={<Users className="h-5 w-5 text-amber-600 dark:text-amber-400" />} />
-      <Metric title={t('pendingSwaps')} value={myPendingSwaps.length.toString()} icon={<ArrowLeftRight className="h-5 w-5 text-purple-600 dark:text-purple-400" />} />
-      <Metric title={t('mySubmittedReports')} value={myReports.length.toString()} icon={<CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />} />
+      <MetricCard label={t('myUpcomingShifts')} value={upcoming.length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
+      <MetricCard label={t('pendingRegistrations')} value={myPendingRegistrations.length.toString()} icon={<Users className="h-5 w-5 text-amber-600 dark:text-amber-400" />} />
+      <MetricCard label={t('pendingSwaps')} value={myPendingSwaps.length.toString()} icon={<ArrowLeftRight className="h-5 w-5 text-purple-600 dark:text-purple-400" />} />
+      <MetricCard label={t('mySubmittedReports')} value={myReports.length.toString()} icon={<CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />} />
     </div>
 
     <div className="grid gap-4 md:grid-cols-2">
@@ -499,6 +501,6 @@ function UpcomingShiftsList({ upcoming, brands, platforms, t, title, setSelected
 function FilterSelect({ label, value, options, onChange }: { label: string; value: string[]; options: Array<{ id: string; name: string }>; onChange: (value: string[]) => void }) {
   return <MultiSelectFilter label={label} value={value} onChange={onChange} options={options.map(option => ({ value: option.id, label: option.name }))} />
 }
-function Metric({ title, value, note, icon }: { title: string; value: string; note?: string; icon: React.ReactNode }) { return <Card className="shadow-none"><CardHeader className="flex-row items-center justify-between pb-2 pt-4 px-4 space-y-0"><CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>{icon}</CardHeader><CardContent className="px-4 pb-4"><p className="text-2xl font-bold">{value}</p>{note && <p className="mt-1 text-xs font-medium text-muted-foreground">{note}</p>}</CardContent></Card> }
+
 function QuickAction({ href, label, icon }: { href: string; label: string; icon: React.ReactNode }) { return <Button nativeButton={false} render={<Link href={href} />} variant="outline" className="h-20 flex-col gap-1.5 bg-muted/20">{icon}<span className="text-xs">{label}</span></Button> }
 function Empty({ text }: { text: string }) { return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{text}</div> }

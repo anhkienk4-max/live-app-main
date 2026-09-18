@@ -1,7 +1,7 @@
 ﻿"use client"
 
 import * as React from "react"
-import { AlertCircle, Clock, ShieldAlert, FileX2, XCircle } from "lucide-react"
+import { AlertCircle, Clock, ShieldAlert, FileX2, XCircle, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface StateProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -33,7 +33,7 @@ export function EmptyState({ icon, className, ...props }: StateProps) {
   )
 }
 
-export function NoResultState(props: StateProps) {
+export function FilterEmptyState(props: StateProps) {
   return (
     <EmptyState
       {...props}
@@ -135,4 +135,34 @@ export function DataFreshness({ timestamp, label, className }: { timestamp: Reac
       <span>{label && <>{label}: </>}{timestamp}</span>
     </div>
   )
+}
+
+
+export function LoadingState({ title, description, className, ...props }: StateProps) {
+  return (
+    <BaseState
+      icon={<Loader2 className="size-10 animate-spin text-muted-foreground/50" />}
+      title={title || 'Loading...'}
+      description={description}
+      className={className}
+      {...props}
+    />
+  )
+}
+
+export function ErrorState({ title, description, action, className, ...props }: StateProps) {
+  return (
+    <BaseState
+      icon={<XCircle className="size-12 text-danger" strokeWidth={1.5} />}
+      title={title || 'An error occurred'}
+      description={description}
+      action={action}
+      className={className}
+      {...props}
+    />
+  )
+}
+
+export function PartialState(props: StateProps) {
+  return <PartialResult {...props} />
 }
