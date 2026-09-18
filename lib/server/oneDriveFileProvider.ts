@@ -258,9 +258,9 @@ export function createOneDriveFileProvider(options: OneDriveOptions = {}): Folde
     normalizeId(value) {
       return normalizeOneDriveItemId(value)
     },
-    async delete(_externalFileId) {
-      void _externalFileId
-      throw new OneDriveError('ONEDRIVE_OPERATION_UNSUPPORTED', 'OneDrive delete is not enabled by the current contract.')
+    async delete(externalFileId) {
+      const id = normalizeOneDriveItemId(externalFileId)
+      await graphFetch(`/drive/items/${encodeURIComponent(id)}`, { method: 'DELETE' })
     },
     async healthCheck() {
       await json<GraphItem>('/drive/root')

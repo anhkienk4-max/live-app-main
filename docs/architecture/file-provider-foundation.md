@@ -114,8 +114,8 @@ Logical folder creation is handled by the provider-neutral cloud storage
 manager and OneDrive's idempotent `ensureFolder` adapter. Uploads reject
 filename conflicts and content-size mismatches. Graph 401/403/404/409/429/5xx
 and network failures map to stable application errors without exposing Graph
-responses. Delete remains explicitly unsupported by the current OneDrive V1
-contract.
+responses. Deletes use the persisted provider asset ID and issue a server-side
+Graph delete; provider failures propagate as stable application errors.
 
 ## Current legacy storage inventory
 

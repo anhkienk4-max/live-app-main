@@ -120,7 +120,7 @@ test('Graph transport failures normalize at the provider boundary', async () => 
   await assert.rejects(() => provider.getMetadata('item-1'), (error: unknown) => error instanceof OneDriveError && error.code === 'ONEDRIVE_NETWORK_ERROR')
 })
 
-test('upload is supported with sanitized names while delete remains explicit unsupported', async () => {
+test('upload is supported with sanitized names', async () => {
   const graph = graphClient([response(200, { value: [] })])
   const originalFetch = globalThis.fetch
   const requests: Array<{ url: string; method: string; body: Uint8Array }> = []
@@ -155,7 +155,62 @@ test('upload is supported with sanitized names while delete remains explicit uns
     assert.match(requests[0].url, /drive\/root:\/report-\.pdf:\/content$/)
     assert.equal(requests[0].method, 'PUT')
     assert.deepEqual([...requests[0].body], [1, 2, 3, 4])
-    await assert.rejects(() => provider.delete('item-1'), (error: unknown) => error instanceof OneDriveError && error.code === 'ONEDRIVE_OPERATION_UNSUPPORTED')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('delete uses the immutable DriveItem ID and succeeds on Graph 204', async () => {
+  const originalFetch = globalThis.fetch
+  const requests: Array<{ url: string; method: string; authorization: string }> = []
+  globalThis.fetch = (async (input, init) => {
+    requests.push({
+      url: String(input),
+      method: String(init?.method ?? 'GET'),
+      authorization: String((init?.headers as Record<string, string> | undefined)?.Authorization ?? ''),
+    })
+    return response(204)
+  }) as typeof fetch
+  try {
+    const provider = createOneDriveFileProvider({ auth: authClient() })
+    await provider.delete('item-1!A')
+    assert.deepEqual(requests, [{
+      url: 'https://graph.microsoft.com/v1.0/drive/items/item-1!A',
+      method: 'DELETE',
+      authorization: 'Bearer access-token',
+    }])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('delete maps Graph failures safely and never reports remote failure as success', async () => {
+  const cases = [
+    [401, 'ONEDRIVE_REAUTH_REQUIRED', undefined, [response(401), response(401)]],
+    [403, 'ONEDRIVE_PERMISSION_DENIED', undefined, [response(403)]],
+    [404, 'ONEDRIVE_ITEM_NOT_FOUND', undefined, [response(404)]],
+    [409, 'ONEDRIVE_FILE_CONFLICT', undefined, [response(409)]],
+    [429, 'ONEDRIVE_RATE_LIMITED', 7, [response(429, {}, new Uint8Array(), '7')]],
+    [503, 'ONEDRIVE_PROVIDER_UNAVAILABLE', undefined, [response(503)]],
+  ] as const
+  for (const [, code, retryAfter, responses] of cases) {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async () => responses.shift() ?? response(500)) as typeof fetch
+    try {
+      const provider = createOneDriveFileProvider({ auth: authClient() })
+      await assert.rejects(() => provider.delete('item-1'), (error: unknown) => {
+        return error instanceof OneDriveError && error.code === code && error.retryAfterSeconds === retryAfter
+      })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  }
+
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async () => { throw Object.assign(new Error('socket closed'), { code: 'ECONNRESET' }) }) as typeof fetch
+  try {
+    const provider = createOneDriveFileProvider({ auth: authClient() })
+    await assert.rejects(() => provider.delete('item-1'), (error: unknown) => error instanceof OneDriveError && error.code === 'ONEDRIVE_NETWORK_ERROR')
   } finally {
     globalThis.fetch = originalFetch
   }
