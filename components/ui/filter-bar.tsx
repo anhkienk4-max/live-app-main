@@ -82,3 +82,43 @@ export function ActiveFilterChip({ label, value, onRemove, className, ...props }
     </div>
   )
 }
+
+interface ActiveFilterChipsProps extends React.HTMLAttributes<HTMLDivElement> {
+  filters: Array<{ id: string; label: string; value: string }>
+  onRemove: (id: string) => void
+  onClearAll?: () => void
+  clearAllLabel?: string
+}
+
+export function ActiveFilterChips({
+  filters,
+  onRemove,
+  onClearAll,
+  clearAllLabel = "Clear all",
+  className,
+  ...props
+}: ActiveFilterChipsProps) {
+  if (!filters?.length) return null
+
+  return (
+    <div className={cn("flex flex-wrap items-center gap-2", className)} {...props}>
+      {filters.map((filter) => (
+        <ActiveFilterChip
+          key={filter.id}
+          label={filter.label}
+          value={filter.value}
+          onRemove={() => onRemove(filter.id)}
+        />
+      ))}
+      {onClearAll && filters.length > 1 && (
+        <button
+          type="button"
+          onClick={onClearAll}
+          className="text-xs text-muted-foreground hover:text-foreground hover:underline focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-sm ring-offset-background"
+        >
+          {clearAllLabel}
+        </button>
+      )}
+    </div>
+  )
+}

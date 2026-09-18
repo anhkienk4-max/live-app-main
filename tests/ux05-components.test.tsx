@@ -48,3 +48,78 @@ describe('UX-05 Shared Components', () => {
     assert.ok(html.includes('Pending'))
   })
 })
+
+import { ActiveFilterChips } from '@/components/ui/filter-bar'
+import {
+  LoadingState,
+  EmptyState,
+  FilterEmptyState,
+  ErrorState,
+  PartialState,
+  PermissionState,
+  StaleState,
+  ConflictState,
+} from '@/components/ui/states'
+
+describe('UX-05 ActiveFilter System', () => {
+  it('ActiveFilterChips renders multiple filters and clear all', () => {
+    const filters = [
+      { id: '1', label: 'Role', value: 'Host' },
+      { id: '2', label: 'Status', value: 'Live' }
+    ]
+    const html = renderToStaticMarkup(
+      <ActiveFilterChips filters={filters} onRemove={() => {}} onClearAll={() => {}} clearAllLabel="Clear Filters" />
+    )
+    assert.ok(html.includes('Role:'))
+    assert.ok(html.includes('Host'))
+    assert.ok(html.includes('Status:'))
+    assert.ok(html.includes('Live'))
+    assert.ok(html.includes('Clear Filters'))
+  })
+})
+
+describe('UX-05 Semantic States', () => {
+  it('LoadingState renders properly', () => {
+    const html = renderToStaticMarkup(<LoadingState text="Loading data..." />)
+    assert.ok(html.includes('Loading data...'))
+    assert.ok(html.includes('animate-spin'))
+  })
+
+  it('EmptyState renders properly', () => {
+    const html = renderToStaticMarkup(<EmptyState title="No items" description="Try again" />)
+    assert.ok(html.includes('No items'))
+    assert.ok(html.includes('Try again'))
+  })
+
+  it('FilterEmptyState renders properly', () => {
+    const html = renderToStaticMarkup(<FilterEmptyState title="No results found for your filters" onClearFilters={() => {}} />)
+    assert.ok(html.includes('No results found for your filters'))
+  })
+
+  it('ErrorState renders properly', () => {
+    const html = renderToStaticMarkup(<ErrorState title="Error occurred" onRetry={() => {}} />)
+    assert.ok(html.includes('Error occurred'))
+    assert.ok(html.includes('text-danger'))
+  })
+
+  it('PartialState renders properly', () => {
+    const html = renderToStaticMarkup(<PartialState title="Partial Data" />)
+    assert.ok(html.includes('Partial Data'))
+    assert.ok(html.includes('text-warning'))
+  })
+
+  it('PermissionState renders properly', () => {
+    const html = renderToStaticMarkup(<PermissionState title="Access Denied" />)
+    assert.ok(html.includes('Access Denied'))
+  })
+
+  it('StaleState renders properly', () => {
+    const html = renderToStaticMarkup(<StaleState lastSync="5 mins ago" />)
+    assert.ok(html.includes('5 mins ago'))
+  })
+
+  it('ConflictState renders properly', () => {
+    const html = renderToStaticMarkup(<ConflictState title="Version conflict" onResolve={() => {}} />)
+    assert.ok(html.includes('Version conflict'))
+  })
+})
