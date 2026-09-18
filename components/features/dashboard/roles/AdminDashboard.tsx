@@ -24,7 +24,7 @@ import { deriveDataQualityAttention } from '@/lib/ui/operational-attention'
 
 import { getAllIssues } from '@/lib/utils/dataQuality'
 
-import { CommonProps, Filters, matchesDimensions, DashboardFilterControls, DashboardCustomDateRange, DashboardFilterPanel, UpcomingShiftsList } from '../shared/DashboardShared'
+import { CommonProps, matchesDimensions, DashboardFilterControls, DashboardCustomDateRange, DashboardFilterPanel, UpcomingShiftsList } from '../shared/DashboardShared'
 
 
 
@@ -44,7 +44,7 @@ const dateValue = (date: Date) => format(date, 'yyyy-MM-dd')
 
 export function AdminDashboard(props: CommonProps) {
 
-  const { shifts, reports, brands, platforms, campaigns, users, registrations, filters, setFilters, showFilters, setShowFilters, t, setPreset } = props
+  const { shifts, reports, brands, platforms, campaigns, users, registrations, swapRequests, filters, setFilters, showFilters, setShowFilters, currentUser, t, setPreset, onResetFilters } = props
 
   
 
@@ -146,7 +146,7 @@ export function AdminDashboard(props: CommonProps) {
 
         <h1 className="text-2xl font-semibold truncate">{t('dashboardTitle')}</h1>
 
-        <p className="text-[13px] text-muted-foreground">{t('systemOperationsCommandCenter')}</p>
+        <p className="text-[13px] text-muted-foreground">{t('allOperations')}</p>
 
       </PageHeaderContent>
 
@@ -158,7 +158,7 @@ export function AdminDashboard(props: CommonProps) {
 
     <DashboardCustomDateRange filters={filters} setFilters={setFilters} t={t} />
 
-    {showFilters && <DashboardFilterPanel filters={filters} setFilters={setFilters} brands={brands} platforms={platforms} campaigns={campaigns} roleOptions={roleOptions} t={t} initialFilters={() => ({} as Filters)} />}
+    {showFilters && <DashboardFilterPanel filters={filters} setFilters={setFilters} brands={brands} platforms={platforms} campaigns={campaigns} roleOptions={roleOptions} t={t} onResetFilters={onResetFilters} />}
 
 
 
@@ -180,7 +180,8 @@ export function AdminDashboard(props: CommonProps) {
 
     {/* D. Operational Metric Strip — single compact row, text-first, 4 values max */}
 
-    <AdminMetricStrip
+          {/* 2. Current Operations */}
+      <AdminMetricStrip
 
       liveCount={liveCount}
 
@@ -188,7 +189,7 @@ export function AdminDashboard(props: CommonProps) {
 
       campaignCount={campaignCount}
 
-      confirmedRevenue={formatCurrency(revenue)}
+      confirmedRevenue={revenue === null ? '—' : formatCurrency(revenue)}
 
       revenueDelta={delta}
 
@@ -248,7 +249,7 @@ function AdminMetricStrip({
 
   campaignCount: number
 
-  confirmedRevenue: string
+  confirmedRevenue: React.ReactNode
 
   revenueDelta: string
 

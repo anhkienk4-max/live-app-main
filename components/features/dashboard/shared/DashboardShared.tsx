@@ -32,6 +32,7 @@ export type CommonProps = {
   t: (key: string) => string
   setPreset: (preset: Preset) => void
   setSelectedShift: (shift: Shift | null) => void
+  onResetFilters: () => void
 }
 
 export const matchesRoleFilter = (shift: Shift, role: OperationalRole, userId: string, registrations: ShiftRegistration[]) => {
@@ -81,7 +82,7 @@ export function DashboardCustomDateRange({ filters, setFilters, t }: { filters: 
   )
 }
 
-export function DashboardFilterPanel({ filters, setFilters, brands, platforms, campaigns, roleOptions, t, initialFilters }: { filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters | null>>; brands: Brand[]; platforms: Platform[]; campaigns: Campaign[]; roleOptions: (role: 'host' | 'support' | 'technical') => {id: string, name: string}[]; t: (key: string) => string; initialFilters: () => Filters }) {
+export function DashboardFilterPanel({ filters, setFilters, brands, platforms, campaigns, roleOptions, t, onResetFilters }: { filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters | null>>; brands: Brand[]; platforms: Platform[]; campaigns: Campaign[]; roleOptions: (role: 'host' | 'support' | 'technical') => {id: string, name: string}[]; t: (key: string) => string; onResetFilters: () => void }) {
   return (
     <Card id="dashboard-filter-panel">
       <CardContent className="space-y-4 pt-4">
@@ -93,7 +94,7 @@ export function DashboardFilterPanel({ filters, setFilters, brands, platforms, c
           <FilterSelect label={t('support')} value={filters.supportIds} options={roleOptions('support')} onChange={value => setFilters(current => current ? { ...current, supportIds: value } : current)} />
           <FilterSelect label={t('technical')} value={filters.technicalIds} options={roleOptions('technical')} onChange={value => setFilters(current => current ? { ...current, technicalIds: value } : current)} />
         </div>
-        <Button variant="ghost" onClick={() => setFilters(initialFilters())} size="sm" className="h-8">
+        <Button variant="ghost" onClick={() => onResetFilters()} size="sm" className="h-8">
           <RotateCcw className="mr-2 h-3 w-3" />{t('resetFilters')}
         </Button>
       </CardContent>
@@ -125,7 +126,8 @@ export function UpcomingShiftsList({ upcoming, brands, platforms, t, title, setS
                 </div>
                 <div className="flex shrink-0 justify-end">
                   <Badge variant="secondary" className="text-xs font-normal bg-muted/50 text-muted-foreground">
-                    {t(shift.status === 'live' ? 'liveStatus' : shift.status as unknown as Filters)}
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    {t(shift.status === 'live' ? 'liveStatus' : shift.status as any)}
                   </Badge>
                 </div>
               </button>
@@ -153,4 +155,4 @@ export function QuickAction({ href, label, icon }: { href: string; label: string
 
 export function Empty({ text }: { text: string }) {
   return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{text}</div>
-}
+}

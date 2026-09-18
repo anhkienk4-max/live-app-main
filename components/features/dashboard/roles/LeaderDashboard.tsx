@@ -22,13 +22,14 @@ import { MetricCard } from '@/components/ui/operational-widgets'
 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 
-import { CommonProps, Filters, matchesDimensions, DashboardFilterControls, DashboardCustomDateRange, DashboardFilterPanel, UpcomingShiftsList, QuickAction } from '../shared/DashboardShared'
+import { CommonProps, matchesDimensions, DashboardFilterControls, DashboardCustomDateRange, DashboardFilterPanel, UpcomingShiftsList, QuickAction } from '../shared/DashboardShared'
 
 
 
+{/* LEADER_DATA_SCOPE = TEAM_BY_SOURCE (AUTHORITY_DEPENDENT via backend RLS/DataService) */}
 export function LeaderDashboard(props: CommonProps) {
 
-  const { shifts, reports, brands, platforms, campaigns, users, registrations, swapRequests, filters, setFilters, showFilters, setShowFilters, currentUser, t, setPreset } = props
+  const { shifts, reports, brands, platforms, campaigns, users, registrations, swapRequests, filters, setFilters, showFilters, setShowFilters, currentUser, t, setPreset, onResetFilters } = props
 
   
 
@@ -130,7 +131,7 @@ export function LeaderDashboard(props: CommonProps) {
 
         <h1 className="text-3xl font-bold">{t('leaderDashboard')}</h1>
 
-        <p className="text-muted-foreground">{t('todaysOperationsDecisionQueue')}</p>
+        <p className="text-[13px] text-muted-foreground">{t('livestreamTeam')}</p>
 
       </PageHeaderContent>
 
@@ -142,7 +143,7 @@ export function LeaderDashboard(props: CommonProps) {
 
     <DashboardCustomDateRange filters={filters} setFilters={setFilters} t={t} />
 
-    {showFilters && <DashboardFilterPanel filters={filters} setFilters={setFilters} brands={brands} platforms={platforms} campaigns={campaigns} roleOptions={roleOptions} t={t} initialFilters={() => ({} as Filters)} />}
+    {showFilters && <DashboardFilterPanel filters={filters} setFilters={setFilters} brands={brands} platforms={platforms} campaigns={campaigns} roleOptions={roleOptions} t={t} onResetFilters={onResetFilters} />}
 
 
 

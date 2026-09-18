@@ -26,6 +26,10 @@ function resolve(specifier, context, nextResolve) {
     const linkShim = resolvePath(projectRoot, 'tests/next-link-test-shim.mjs')
     if (existsSync(linkShim)) return { url: pathToFileURL(linkShim).href, shortCircuit: true }
   }
+  if (specifier === 'next/dynamic') {
+    const dynamicShim = resolvePath(projectRoot, 'tests/next-dynamic-test-shim.mjs')
+    if (existsSync(dynamicShim)) return { url: pathToFileURL(dynamicShim).href, shortCircuit: true }
+  }
   if (specifier === 'next/image') {
     const imageShim = resolvePath(projectRoot, 'tests/next-image-test-shim.mjs')
     if (existsSync(imageShim)) return { url: pathToFileURL(imageShim).href, shortCircuit: true }
