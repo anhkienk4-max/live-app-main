@@ -270,12 +270,10 @@ export function ReportFormModal({
       persistedLiveImageIdsRef.current = new Set(loadedLiveImages.map(image => image.id))
       setLiveImages(loadedLiveImages)
       const paths = [
-        ...loadedImages.filter(image => image.storage_path).map(image => [image.id, image.storage_path!] as const),
-        ...loadedLiveImages
-          .filter(image => image.file_url && !image.file_url.startsWith('http') && !image.file_url.startsWith('blob:') && !image.file_url.startsWith('data:'))
-          .map(image => [image.id, image.file_url] as const),
+        ...loadedImages.map(image => [image.id, reportImageService.getAccessUrl(image.id, image.storage_path || image.image_url)] as const),
+        ...loadedLiveImages.map(image => [image.id, liveReportImageService.getAccessUrl(image.id, image.file_url)] as const),
       ]
-      const entries = await Promise.all(paths.map(async ([id, path]) => [id, await reportImageService.getSignedUrl(path) || ''] as const))
+      const entries = await Promise.all(paths.map(async ([id, path]) => [id, path || await reportImageService.getSignedUrl(path) || ''] as const))
       if (active) setSignedUrls(Object.fromEntries(entries))
     }).catch(() => {
       // Existing private images fail closed if their signed URL cannot be resolved.

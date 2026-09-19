@@ -322,17 +322,9 @@ export function ReportDetailModal({
       const resolve = async () => {
         const entries = await Promise.all([
           ...images
-            .filter(img => img.storage_path)
-            .map(async (img) => {
-              const url = await reportImageService.getSignedUrl(img.storage_path!)
-              return [img.id, url || ''] as const
-            }),
+            .map(async img => [img.id, reportImageService.getAccessUrl(img.id, img.storage_path || img.image_url) || await reportImageService.getSignedUrl(img.storage_path || img.image_url) || ''] as const),
           ...liveImages
-            .filter(img => img.file_url && !img.file_url.startsWith('http') && !img.file_url.startsWith('blob:') && !img.file_url.startsWith('data:'))
-            .map(async (img) => {
-              const url = await reportImageService.getSignedUrl(img.file_url)
-              return [img.id, url || ''] as const
-            })
+            .map(async img => [img.id, liveReportImageService.getAccessUrl(img.id, img.file_url) || await reportImageService.getSignedUrl(img.file_url) || ''] as const),
         ])
         setSignedUrls(Object.fromEntries(entries))
       }
@@ -508,7 +500,7 @@ export function ReportDetailModal({
       const next = await ocrService.extractDashboardMetrics(
         platform,
         report.raw_ocr_output,
-        dashboardImage?.image_url,
+        dashboardImage ? signedUrls[dashboardImage.id] || dashboardImage.image_url : undefined,
         reviewData.crop_box || defaultOcrCrop(platform),
       )
       if (currentUser) await reportService.recordOcrRun(report.id, currentUser.id, next, true)

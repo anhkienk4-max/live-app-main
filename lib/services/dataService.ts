@@ -2860,6 +2860,44 @@ export const reportService = {
 
 // Report evidence service. Supabase mode persists bytes in Storage and metadata through RPCs;
 // mock mode retains the existing in-memory parity path.
+type ReportImageRouteKind = 'report' | 'live'
+
+async function reportImageRouteUpload(
+  kind: ReportImageRouteKind,
+  fields: Record<string, string | number | boolean | undefined>,
+  fileUrl: string,
+  fileName: string,
+) {
+  const response = await fetch(fileUrl)
+  if (!response.ok) throw new Error('The selected report image could not be read.')
+  const blob = await response.blob()
+  const form = new FormData()
+  form.set('kind', kind)
+  Object.entries(fields).forEach(([key, value]) => {
+    if (value !== undefined) form.set(key, String(value))
+  })
+  form.set('file', blob, fileName)
+  const result = await fetch('/api/report-images', { method: 'POST', body: form })
+  const payload = await result.json().catch(() => null) as { image?: unknown; error?: { message?: string } } | null
+  if (!result.ok || !payload?.image) throw new Error(payload?.error?.message || 'The report image could not be stored.')
+  return payload.image
+}
+
+async function reportImageRouteDelete(kind: ReportImageRouteKind, imageId: string) {
+  const response = await fetch('/api/report-images', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind, image_id: imageId }),
+  })
+  const payload = await response.json().catch(() => null) as { ok?: boolean; error?: { message?: string } } | null
+  if (!response.ok || !payload?.ok) throw new Error(payload?.error?.message || 'The report image could not be deleted.')
+}
+
+function reportImageAccessUrl(kind: ReportImageRouteKind, imageId: string, legacyPath?: string) {
+  if (getAuthMode() !== 'supabase' || typeof window === 'undefined') return legacyPath || ''
+  return `/api/report-images?kind=${kind}&image_id=${encodeURIComponent(imageId)}`
+}
+
 export const reportImageService = {
   async getByReport(reportId: string): Promise<ReportImage[]> {
     if (getAuthMode() === 'supabase') return getSupabaseReportRepository().getReportImages(reportId)
@@ -2868,6 +2906,15 @@ export const reportImageService = {
 
   async create(data: Omit<ReportImage, 'id' | 'created_at'>): Promise<ReportImage> {
     if (getAuthMode() === 'supabase') {
+      if (typeof window !== 'undefined') {
+        const image = await reportImageRouteUpload('report', {
+          report_id: data.report_id,
+          image_type: data.image_type,
+        }, data.image_url, data.original_name || data.image_type)
+        const persisted = image as ReportImage
+        audit('reports', 'upload', 'report_image', persisted.id, persisted.original_name || persisted.image_type, { actorId: data.uploaded_by || currentUserService.getId(), after: { ...persisted }, source: 'upload', relatedRecords: [{ entity_type: 'report', entity_id: persisted.report_id, entity_name: `Report ${persisted.report_id}` }] })
+        return persisted
+      }
       const repo = getSupabaseReportRepository()
       const parentReport = await repo.getById(data.report_id)
       if (!parentReport) throw new Error('Report was not found.')
@@ -2918,6 +2965,11 @@ export const reportImageService = {
         throw new Error('You can only remove images that you uploaded.')
       }
       if (report.metrics_confirmed) throw new Error('Undo report confirmation before removing evidence.')
+      if (typeof window !== 'undefined') {
+        await reportImageRouteDelete('report', id)
+        audit('reports', 'remove_upload', 'report_image', id, image.original_name || image.image_type, { actorId, before: { ...image }, reason, source: 'upload', entityExists: false })
+        return true
+      }
       const success = await repo.removeReportImage(id)
       if (success) audit('reports', 'remove_upload', 'report_image', id, image.original_name || image.image_type, { actorId, before: { ...image }, reason, source: 'upload', entityExists: false })
       return success
@@ -2951,6 +3003,10 @@ export const reportImageService = {
     }
     // Mock mode: return the image_url directly (no signing needed)
     return storagePath
+  },
+
+  getAccessUrl(imageId: string, legacyPath?: string): string {
+    return reportImageAccessUrl('report', imageId, legacyPath)
   },
 }
 
@@ -2991,6 +3047,19 @@ export const liveReportImageService = {
       if (fileError) throw new Error(`Invalid live-session image: ${fileError.code}.`)
       const metadataError = validateLiveReportImageMetadata(data)
       if (metadataError) throw new Error(`Invalid image metadata: ${metadataError.code}.`)
+      if (typeof window !== 'undefined') {
+        const image = await reportImageRouteUpload('live', {
+          report_id: data.report_id,
+          category: data.category,
+          title: data.title,
+          description: data.description,
+          captured_at: data.captured_at,
+          sort_order: existing.length,
+          is_cover: data.is_cover || existing.length === 0,
+        }, data.file_url, fileName) as LiveReportImage
+        audit('reports', 'upload', 'live_report_image', image.id, image.file_name, { actorId, after: { ...image }, source: 'upload', relatedRecords: [{ entity_type: 'report', entity_id: image.report_id || data.report_id, entity_name: `Report ${image.report_id || data.report_id}` }] })
+        return image
+      }
       const image = await repo.upsertLiveReportImage({
         report_id: data.report_id,
         category: data.category,
@@ -3211,6 +3280,11 @@ export const liveReportImageService = {
       if (report.metrics_confirmed || report.status === 'confirmed') {
         throw new Error('Reopen the confirmed report before changing report images.')
       }
+      if (typeof window !== 'undefined') {
+        await reportImageRouteDelete('live', id)
+        audit('reports', 'remove_upload', 'live_report_image', id, image.file_name, { actorId, before: { ...image }, source: 'upload', entityExists: false })
+        return repo.getLiveReportImages(image.report_id)
+      }
       const success = await repo.removeLiveReportImage(id)
       if (success) {
         audit('reports', 'remove_upload', 'live_report_image', id, image.file_name, {
@@ -3244,6 +3318,10 @@ export const liveReportImageService = {
       entityExists: false,
     })
     return this.getByReport(image.report_id)
+  },
+
+  getAccessUrl(imageId: string, legacyPath?: string): string {
+    return reportImageAccessUrl('live', imageId, legacyPath)
   },
 }
 
