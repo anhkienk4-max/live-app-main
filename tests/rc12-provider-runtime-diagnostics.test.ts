@@ -20,7 +20,7 @@ const configuredEnv = {
 }
 
 const admin = { id: 'admin-auth', systemPermission: 'admin' as const }
-const leader = { id: 'leader-auth', systemPermission: 'leader' as const }
+const leader = { id: 'leader-auth', systemPermission: 'leader' as const, businessUserId: 'business-2' }
 
 function request() {
   return new Request('https://preview.example.test/api/internal/file-provider-diagnostics')
@@ -34,8 +34,25 @@ function handlerFor(
 }
 
 test('diagnostics require authentication and admin permission', async () => {
-  assert.equal((await handlerFor(configuredEnv, async () => null)(request())).status, 401)
-  assert.equal((await handlerFor(configuredEnv, async () => leader)(request())).status, 403)
+  const unauthenticated = await handlerFor(configuredEnv, async () => null)(request())
+  assert.equal(unauthenticated.status, 401)
+  assert.deepEqual(await unauthenticated.json(), {
+    supabase_url_present: false,
+    supabase_anon_key_present: false,
+    auth_cookie_present: false,
+    authenticated_user_resolved: false,
+    business_user_mapped: false,
+  })
+
+  const unauthorized = await handlerFor(configuredEnv, async () => leader)(request())
+  assert.equal(unauthorized.status, 403)
+  assert.deepEqual(await unauthorized.json(), {
+    supabase_url_present: false,
+    supabase_anon_key_present: false,
+    auth_cookie_present: false,
+    authenticated_user_resolved: true,
+    business_user_mapped: true,
+  })
   assert.equal((await handlerFor()(request())).status, 200)
 })
 
@@ -74,6 +91,33 @@ test('diagnostics expose only safe provider presence booleans and no-store respo
     tenant_id_present: true,
     configured: true,
   })
+})
+
+test('auth diagnostics expose only booleans and never cookie or Supabase values', async () => {
+  const env = {
+    ...configuredEnv,
+    NEXT_PUBLIC_SUPABASE_URL: 'https://staging-secret.supabase.co',
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: 'anon-key-secret',
+  }
+  const cookie = 'sb-secret-auth-token=refresh-token-secret'
+  const response = await handlerFor(env, async () => null)(new Request(request(), {
+    headers: { cookie },
+  }))
+  const body = await response.json() as Record<string, unknown>
+  const serialized = JSON.stringify(body)
+
+  assert.equal(response.status, 401)
+  assert.deepEqual(body, {
+    supabase_url_present: true,
+    supabase_anon_key_present: true,
+    auth_cookie_present: true,
+    authenticated_user_resolved: false,
+    business_user_mapped: false,
+  })
+  assert.equal(serialized.includes(env.NEXT_PUBLIC_SUPABASE_URL), false)
+  assert.equal(serialized.includes(env.NEXT_PUBLIC_SUPABASE_ANON_KEY), false)
+  assert.equal(serialized.includes(cookie), false)
+  assert.equal(serialized.includes('refresh-token-secret'), false)
 })
 
 test('missing Google input reports its boolean as false and configured as false', async () => {

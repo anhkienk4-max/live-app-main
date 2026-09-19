@@ -1,9 +1,10 @@
 import 'server-only'
 
 import {
-  authorizationErrorResponse,
   isAuthorizationError,
   requireRole,
+  resolveServerUser,
+  type ServerUserResolutionDiagnostics,
   type ServerUserResolver,
 } from '@/lib/server/authGuards'
 import {
@@ -25,6 +26,20 @@ function present(env: Environment, name: string) {
 function safeErrorCode(error: unknown, fallback: string) {
   const code = error instanceof FileProviderError ? error.code : fallback
   return /^[A-Z][A-Z0-9_]*$/.test(code) ? code : fallback
+}
+
+function authDiagnostics(
+  request: Request,
+  env: Environment,
+  resolution: ServerUserResolutionDiagnostics,
+) {
+  return {
+    supabase_url_present: present(env, 'NEXT_PUBLIC_SUPABASE_URL'),
+    supabase_anon_key_present: present(env, 'NEXT_PUBLIC_SUPABASE_ANON_KEY'),
+    auth_cookie_present: Boolean(request.headers.get('cookie')?.trim()),
+    authenticated_user_resolved: resolution.authenticatedUserResolved,
+    business_user_mapped: resolution.businessUserMapped,
+  }
 }
 
 function providerDiagnostics(env: Environment) {
@@ -93,13 +108,31 @@ export function createFileProviderDiagnosticsGetHandler(options: {
   resolveUser?: ServerUserResolver
 } = {}) {
   return async function GET(request: Request) {
+    const env = options.env ?? process.env
+    const resolution: ServerUserResolutionDiagnostics = {
+      authenticatedUserResolved: false,
+      businessUserMapped: false,
+    }
+    const resolveUser: ServerUserResolver = options.resolveUser
+      ? async resolverRequest => {
+          const user = await options.resolveUser!(resolverRequest)
+          resolution.authenticatedUserResolved = Boolean(user)
+          resolution.businessUserMapped = Boolean(user?.businessUserId)
+          return user
+        }
+      : resolverRequest => resolveServerUser(resolverRequest, resolution)
     try {
-      await requireRole(request, 'admin', options.resolveUser)
-      return Response.json(providerDiagnostics(options.env ?? process.env), {
+      await requireRole(request, 'admin', resolveUser)
+      return Response.json(providerDiagnostics(env), {
         headers: { 'Cache-Control': 'no-store' },
       })
     } catch (error) {
-      if (isAuthorizationError(error)) return authorizationErrorResponse(error)
+      if (isAuthorizationError(error)) {
+        return Response.json(authDiagnostics(request, env, resolution), {
+          status: error.status,
+          headers: { 'Cache-Control': 'no-store' },
+        })
+      }
       return Response.json({
         ok: false,
         error: { code: 'FILE_PROVIDER_DIAGNOSTICS_UNAVAILABLE' },

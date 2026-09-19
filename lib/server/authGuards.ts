@@ -17,6 +17,11 @@ export type ServerUserResolver = (
   request: Request,
 ) => Promise<AuthenticatedServerUser | null>
 
+export interface ServerUserResolutionDiagnostics {
+  authenticatedUserResolved: boolean
+  businessUserMapped: boolean
+}
+
 export class AuthorizationError extends Error {
   constructor(
     public readonly status: 401 | 403,
@@ -30,8 +35,13 @@ export class AuthorizationError extends Error {
 
 export async function resolveServerUser(
   request: Request,
+  diagnostics?: ServerUserResolutionDiagnostics,
 ): Promise<AuthenticatedServerUser | null> {
   void request
+  if (diagnostics) {
+    diagnostics.authenticatedUserResolved = false
+    diagnostics.businessUserMapped = false
+  }
   if (
     !process.env.NEXT_PUBLIC_SUPABASE_URL
     || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -48,6 +58,7 @@ export async function resolveServerUser(
     } = await supabase.auth.getUser()
 
     if (error || !user) return null
+    if (diagnostics) diagnostics.authenticatedUserResolved = true
 
     const identity = createAuthIdentity(user)
     if (!identity) return null
@@ -57,6 +68,7 @@ export async function resolveServerUser(
       !persistedBusinessUser
       || !mapAuthIdentityToBusinessUser(identity, [persistedBusinessUser])
     ) return null
+    if (diagnostics) diagnostics.businessUserMapped = true
 
     return {
       id: identity.auth_user_id,
