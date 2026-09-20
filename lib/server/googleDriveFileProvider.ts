@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { Readable } from 'node:stream'
 import { google } from 'googleapis'
 
 import type { FileProviderMetadata, FileUploadInput, FileUploadResult } from '@/lib/files/fileProvider'
@@ -33,7 +34,7 @@ type DriveFile = {
 
 type DriveFilesResource = {
   list(params: { q: string; spaces: string; fields: string; pageSize?: number; orderBy?: string; includeItemsFromAllDrives?: boolean; supportsAllDrives?: boolean }): Promise<{ data: { files?: DriveFile[] | null } }>
-  create(params: { requestBody: Record<string, unknown>; fields: string; media?: { mimeType: string; body: Buffer }; supportsAllDrives?: boolean }): Promise<{ data: DriveFile }>
+  create(params: { requestBody: Record<string, unknown>; fields: string; media?: { mimeType: string; body: Readable }; supportsAllDrives?: boolean }): Promise<{ data: DriveFile }>
   get(params: { fileId: string; fields?: string; alt?: 'media'; responseType?: 'arraybuffer'; supportsAllDrives?: boolean }): Promise<{ data: DriveFile }>
   update(params: { fileId: string; requestBody: Record<string, unknown>; fields: string; supportsAllDrives?: boolean }): Promise<{ data: DriveFile }>
 }
@@ -76,13 +77,6 @@ function isReauthenticationFailure(error: unknown): boolean {
   return Number(value.response?.status) === 400 && String(value.response?.data?.error ?? '').toLowerCase() === 'invalid_grant'
 }
 
-function errorMessage(error: unknown): string | undefined {
-  if (!error || typeof error !== 'object') return undefined
-  const value = error as { message?: unknown; response?: { data?: { error?: { message?: unknown } } } }
-  const nested = value.response?.data?.error?.message
-  return typeof nested === 'string' ? nested : typeof value.message === 'string' ? value.message : undefined
-}
-
 function toDriveError(error: unknown, fallback: GoogleDriveErrorCode): GoogleDriveError {
   if (error instanceof GoogleDriveError) return error
   const status = statusOf(error)
@@ -94,7 +88,7 @@ function toDriveError(error: unknown, fallback: GoogleDriveErrorCode): GoogleDri
   if (status !== undefined && status >= 500 && status <= 599) return new GoogleDriveError('GOOGLE_DRIVE_PROVIDER_UNAVAILABLE')
   if (isNetworkFailure(error)) return new GoogleDriveError('GOOGLE_DRIVE_NETWORK_ERROR')
   if (isAuthFailure(error)) return new GoogleDriveError('GOOGLE_DRIVE_AUTH_FAILED')
-  return new GoogleDriveError(fallback, errorMessage(error) ?? fallback)
+  return new GoogleDriveError(fallback)
 }
 
 async function wait(ms: number): Promise<void> {
@@ -256,7 +250,7 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
       const response = await request(
         () => drive.files.create({
           requestBody: { name: sanitizeFileName(input.name), parents: [parentId] },
-          media: { mimeType: input.mime_type, body: content },
+          media: { mimeType: input.mime_type, body: Readable.from([content]) },
           fields: 'id,name,mimeType,size,md5Checksum,parents,createdTime,modifiedTime,webViewLink,webContentLink',
           supportsAllDrives: true,
         }),

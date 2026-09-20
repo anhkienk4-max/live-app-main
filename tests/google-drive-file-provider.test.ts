@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { Readable } from 'node:stream'
 
 import { createFileStorageService } from '@/lib/services/fileStorageService'
 import type { FileUploadInput } from '@/lib/files/fileProvider'
@@ -50,6 +51,7 @@ type FakeState = {
   folderIds: Map<string, string>
   folderCreates: number
   uploaded?: Record<string, unknown>
+  uploadBodies: Array<{ body: Readable; hasPipe: boolean; content: Buffer }>
   trashed?: boolean
   listCalls: number
   uploadCalls: number
@@ -73,16 +75,19 @@ function fakeDrive(state: FakeState) {
         if (!params.q.includes("name = '")) return { data: { files: [{ id: 'drive-file-1', name: 'report.png', mimeType: 'image/png', size: '4', parents: [parent] }, { id: 'folder-3', name: 'Folder', mimeType: 'application/vnd.google-apps.folder', parents: [parent] }] } }
         return { data: { files: id ? [{ id, name, mimeType: 'application/vnd.google-apps.folder', parents: [parent] }] : [] } }
       },
-      async create(params: { requestBody: Record<string, unknown>; media?: { mimeType: string; body: Buffer }; supportsAllDrives?: boolean }) {
+      async create(params: { requestBody: Record<string, unknown>; media?: { mimeType: string; body: Readable }; supportsAllDrives?: boolean }) {
         state.allDriveFlags.create = params.supportsAllDrives === true
         if (params.media) {
           state.uploadCalls += 1
+          const chunks: Buffer[] = []
+          for await (const chunk of params.media.body) chunks.push(Buffer.from(chunk))
+          state.uploadBodies.push({ body: params.media.body, hasPipe: typeof params.media.body.pipe === 'function', content: Buffer.concat(chunks) })
           if (state.failUpload429 > 0) {
             state.failUpload429 -= 1
             const error = Object.assign(new Error('rate limited'), { response: { status: 429 } })
             throw error
           }
-          state.uploaded = { ...params.requestBody, mimeType: params.media.mimeType, content: params.media.body }
+          state.uploaded = { ...params.requestBody, mimeType: params.media.mimeType, content: state.uploadBodies.at(-1)?.content }
           return { data: { id: 'drive-file-1', name: params.requestBody.name as string, mimeType: params.media.mimeType, size: '4', md5Checksum: 'md5', parents: params.requestBody.parents as string[], createdTime: '2026-08-30T00:00:00.000Z' } }
         }
         state.folderCreates += 1
@@ -116,6 +121,7 @@ function state(): FakeState {
   return {
     folderIds: new Map(),
     folderCreates: 0,
+    uploadBodies: [],
     listCalls: 0,
     uploadCalls: 0,
     failUpload429: 0,
@@ -321,6 +327,9 @@ test('upload maps sanitized metadata, MIME and binary content without sharing ca
   assert.equal(result.asset.size_bytes, 4)
   assert.equal(result.asset.provider_metadata?.md5_checksum, 'md5')
   assert.deepEqual(driveState.uploaded?.content, Buffer.from([1, 2, 3, 4]))
+  assert.equal(driveState.uploadBodies.length, 1)
+  assert.equal(driveState.uploadBodies[0]?.hasPipe, true)
+  assert.deepEqual(driveState.uploadBodies[0]?.content, Buffer.from([1, 2, 3, 4]))
   assert.equal('permissions' in driveState, false)
 })
 
@@ -353,7 +362,30 @@ test('404 maps to FILE_NOT_FOUND and transient 429 retries are bounded', async (
   const result = await provider.upload(input)
   assert.equal(result.asset.external_file_id, 'drive-file-1')
   assert.equal(driveState.uploadCalls, 2)
+  assert.equal(driveState.uploadBodies.length, 2)
+  assert.notEqual(driveState.uploadBodies[0]?.body, driveState.uploadBodies[1]?.body)
+  assert.deepEqual(driveState.uploadBodies.map(upload => upload.hasPipe), [true, true])
+  assert.deepEqual(driveState.uploadBodies.map(upload => upload.content), [Buffer.from([1, 2, 3, 4]), Buffer.from([1, 2, 3, 4])])
   await assert.rejects(() => provider.getMetadata('missing'), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_FILE_NOT_FOUND')
+})
+
+test('unknown Drive upload errors normalize without exposing third-party messages', async () => {
+  const drive = fakeDrive(state())
+  const failingDrive = {
+    ...drive,
+    files: {
+      ...drive.files,
+      async create(params: { requestBody: Record<string, unknown>; media?: { mimeType: string; body: Readable }; supportsAllDrives?: boolean }) {
+        if (params.media) throw new Error('t.body.pipe is not a function')
+        return drive.files.create(params)
+      },
+    },
+  }
+  const provider = createGoogleDriveFileProvider({ env, drive: failingDrive, retryDelayMs: 0 })
+  await assert.rejects(
+    () => provider.upload(input),
+    (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_UPLOAD_FAILED' && error.message === 'GOOGLE_DRIVE_UPLOAD_FAILED' && !error.message.includes('t.body.pipe'),
+  )
 })
 
 test('authentication failures are deterministic and do not retry blindly', async () => {
