@@ -27,8 +27,8 @@ export function DashboardCharts({
   notEnoughTrendDataLabel,
 }: DashboardChartsProps) {
   return (
-    <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2 pt-4 border-t">
-      <div className="flex flex-col">
+    <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12 pt-4 border-t">
+      <div className="lg:col-span-7 flex flex-col">
         <h3 className="text-sm font-semibold mb-4">{revenueTrendLabel}</h3>
         <div className={trend.length > 1 ? "h-[160px] sm:h-[180px] md:h-48" : ""}>
           {trend.length > 1 ? (
@@ -57,7 +57,7 @@ export function DashboardCharts({
           )}
         </div>
       </div>
-      <div className="flex flex-col">
+      <div className="lg:col-span-5 flex flex-col">
         <h3 className="text-sm font-semibold mb-4">{shiftStatusSummaryLabel}</h3>
         <div className="h-[160px] sm:h-[180px] md:h-48">
           {statusSummary.length > 0 ? (

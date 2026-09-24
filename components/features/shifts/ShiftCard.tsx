@@ -13,7 +13,7 @@ import { CalendarFilterContext } from '@/lib/utils/calendarFilters'
 
 export interface ShiftCardProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   shift: Shift
-  variant?: 'compact' | 'standard' | 'expanded'
+  variant?: 'compact' | 'standard' | 'expanded' | 'embedded'
   context?: CalendarFilterContext
   isToday?: boolean
   showDate?: boolean
@@ -130,6 +130,38 @@ export const ShiftCard = React.forwardRef<HTMLButtonElement, ShiftCardProps>(
           {attention.length > 0 && (
             <div className='mt-3 pr-4'>
               <OperationalStatusStrip items={attention} compact />
+            </div>
+          )}
+        </button>
+      )
+    }
+
+    if (variant === 'embedded') {
+      return (
+        <button
+          ref={ref}
+          className={cn(
+            'w-full h-full text-left flex flex-col p-1.5 border-l-2 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring overflow-hidden',
+            selected ? 'border-l-primary bg-primary/[0.08]' : 'border-l-primary/60 bg-card/80 backdrop-blur-sm',
+            'rounded-r-md rounded-l-sm border-t border-r border-b shadow-sm text-xs',
+            className
+          )}
+          {...props}
+        >
+          <div className='flex items-start justify-between w-full gap-1 mb-0.5'>
+            <span className='font-semibold text-mini leading-none text-foreground tracking-tight whitespace-nowrap overflow-hidden text-ellipsis'>
+              {formatShiftTimeRange(shift)}
+            </span>
+            <span className='shrink-0 leading-none'>
+              <ShiftStatusBadge status={shift.status} className='text-micro h-3.5 px-1 py-0 rounded-sm border-border/50 scale-90 origin-top-right' />
+            </span>
+          </div>
+          <div className='font-semibold text-foreground truncate leading-tight mt-0.5'>
+            {brandName} {platformName ? `· ${platformName}` : ''}
+          </div>
+          {attention.length > 0 && (
+            <div className='mt-1 overflow-hidden shrink-0'>
+               <OperationalStatusStrip items={attention} compact />
             </div>
           )}
         </button>

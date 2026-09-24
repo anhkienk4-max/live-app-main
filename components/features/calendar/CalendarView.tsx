@@ -35,6 +35,7 @@ import { ListView } from './ListView'
 import { ShiftFormModal } from '../shifts/ShiftFormModal'
 import { ShiftFormDialog } from '../shifts/ShiftFormDialog'
 import { ShiftDetailModal } from '../shifts/ShiftDetailModal'
+import { ShiftPreviewDrawer } from '../shifts/ShiftPreviewDrawer'
 import { DaySessionsDialog } from './DaySessionsDialog'
 import { BulkStaffingApprovalDialog } from './BulkStaffingApprovalDialog'
 import { BulkDeleteShiftsDialog } from './BulkDeleteShiftsDialog'
@@ -195,6 +196,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const [loadError, setLoadError] = React.useState<unknown>(null)
   const [showForm, setShowForm] = React.useState(false)
   const [selectedShift, setSelectedShift] = React.useState<Shift | null>(null)
+  const [previewShift, setPreviewShift] = React.useState<Shift | null>(null)
   const [selectedDay, setSelectedDay] = React.useState<Date | null>(null)
   const [editingShift, setEditingShift] = React.useState<Shift | null>(null)
   const [showFilters, setShowFilters] = React.useState(false)
@@ -222,10 +224,10 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const loadReferenceData = React.useCallback(() => {
     if (referenceLoad.current) return referenceLoad.current
     const request = Promise.all([
-      brandService.getAll(),
-      platformService.getAll(),
-      campaignService.getAll(),
-      userService.getAll(),
+      brandService.getAll().catch(() => [] as Brand[]),
+      platformService.getAll().catch(() => [] as Platform[]),
+      campaignService.getAll().catch(() => [] as Campaign[]),
+      userService.getAll().catch(() => [] as User[]),
     ]).then(([brandsData, platformsData, campaignsData, usersData]) => {
       setBrands(brandsData)
       setPlatforms(platformsData)
@@ -255,8 +257,8 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       ])
       const shiftIds = shiftsData.map(shift => shift.id)
       const [registrationsData, reportsData] = await Promise.all([
-        shiftRegistrationService.getForShifts(shiftIds),
-        reportService.getForShifts(shiftIds),
+        shiftRegistrationService.getForShifts(shiftIds).catch(() => [] as ShiftRegistration[]),
+        reportService.getForShifts(shiftIds).catch(() => [] as Report[]),
       ])
       if (version !== requestVersion.current) return
       setShifts(shiftsData)
@@ -724,9 +726,9 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
 
       {/* Calendar Views */}
       <Card className="min-w-0 overflow-hidden pt-4">
-        {view === 'month' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} onShiftClick={setSelectedShift} onDayClick={setSelectedDay} /></div></div>}
-        {view === 'week' && <div className="w-full"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms}  registrations={registrations} onShiftClick={setSelectedShift} /></div>}
-        {view === 'day' && <DayView currentDate={currentDate} shifts={filteredShifts} allShifts={shifts} registrations={registrations} currentUser={currentUser} brands={brands} platforms={platforms} users={users} onRegister={registerForShift} onShiftClick={setSelectedShift} />}
+        {view === 'month' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} onShiftClick={setPreviewShift} onDayClick={setSelectedDay} /></div></div>}
+        {view === 'week' && <div className="w-full"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms}  registrations={registrations} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} currentUser={currentUser} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} /></div>}
+        {view === 'day' && <DayView currentDate={currentDate} shifts={filteredShifts} registrations={registrations} currentUser={currentUser} brands={brands} platforms={platforms} users={users} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} />}
         {view === 'list' && (
           <ListView
             shifts={listShifts}
@@ -737,7 +739,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
             registrations={registrations}
             currentUser={currentUser}
             onRegister={registerForShift}
-            onShiftClick={setSelectedShift}
+            onShiftClick={setPreviewShift}
             selectedShiftIds={canSelectListShifts ? selectedVisibleShiftIdSet : undefined}
             onToggleSelectShift={canSelectListShifts ? toggleSelectShift : undefined}
           />
@@ -794,7 +796,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         onOpenChange={(open) => !open && setSelectedDay(null)}
         onViewShift={(shift) => {
           setSelectedDay(null)
-          setSelectedShift(shift)
+          setPreviewShift(shift)
         }}
         onEditShift={(shift) => {
           setSelectedDay(null)
@@ -832,8 +834,25 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           onChanged={loadData}
           onOpenShift={(shift) => {
             setShowBulkStaffingApproval(false)
+            setPreviewShift(shift)
+          }}
+        />
+      )}
+
+      {previewShift && (
+        <ShiftPreviewDrawer
+          open={!!previewShift}
+          onOpenChange={(open) => !open && setPreviewShift(null)}
+          shift={previewShift}
+          brands={brands}
+          platforms={platforms}
+          registrations={registrations}
+          users={users}
+          onViewFullShift={(shift) => {
+            setPreviewShift(null)
             setSelectedShift(shift)
           }}
+          onPrimaryAction={undefined}
         />
       )}
 

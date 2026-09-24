@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { addDays, endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
-import { Bell, Calendar, Clock, FileText, Filter, Radio, RotateCcw, Users, ArrowLeftRight, CheckCircle } from 'lucide-react'
+import { Calendar, Clock, FileText, Filter, Radio, RotateCcw, Users, ArrowLeftRight, Megaphone, BarChart3 } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { brandService, campaignService, isStaffedRegistration, platformService, reportService, shiftRegistrationService, shiftService, swapRequestService, userService } from '@/lib/services/dataService'
 import { Brand, Campaign, OperationalRole, Platform, Report, Shift, ShiftRegistration, SwapRequest, User } from '@/lib/types/database.types'
@@ -12,7 +12,7 @@ import { formatCurrency } from '@/lib/utils/currency'
 import { formatShiftTimeRange, getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
@@ -22,7 +22,7 @@ import { OperationalStatusStrip, HealthyState } from '@/components/ui/operationa
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { resolveSystemPermission } from '@/lib/permissions'
 import { getSwapUiActions } from '@/lib/utils/swapUi'
-import { isCanonicalAssignedShift, getMemberAssignedShifts, getMemberPendingRegistrations, getMemberPendingSwaps, getLeaderPendingRegistrations, getLeaderPendingReports, getLeaderPendingSwaps } from '@/lib/ui/dashboard-role-data'
+import { isCanonicalAssignedShift, getMemberAssignedShifts, getMemberPendingRegistrations, getLeaderPendingRegistrations, getLeaderPendingReports, getLeaderPendingSwaps } from '@/lib/ui/dashboard-role-data'
 import { deriveLeaderAttention, deriveMemberAttention, deriveDataQualityAttention } from '@/lib/ui/operational-attention'
 import { getAllIssues } from '@/lib/utils/dataQuality'
 import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
@@ -201,71 +201,49 @@ function AdminDashboard(props: CommonProps) {
     <DashboardCustomDateRange filters={filters} setFilters={setFilters} t={t} />
     {showFilters && <DashboardFilterPanel filters={filters} setFilters={setFilters} brands={brands} platforms={platforms} campaigns={campaigns} roleOptions={roleOptions} t={t} />}
 
-    {/* B. Authoritative Attention — Data Quality only (omit when clear) */}
-    {dqAttention.length > 0 && (
-      <OperationalStatusStrip items={dqAttention} className="gap-2" compact />
-    )}
+    {/* Row 1: 4 KPI cards, equal width */}
+    <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+      <Metric title={t('liveInProgress')} value={liveCount.toString()} icon={<Radio className="h-5 w-5 text-red-600 dark:text-red-400" />} />
+      <Metric title={t('staffInScope')} value={staffCount.toString()} icon={<Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
+      <Metric title={t('campaigns')} value={campaignCount.toString()} icon={<Megaphone className="h-5 w-5 text-amber-600 dark:text-amber-400" />} />
+      <Metric title={t('confirmedRevenue')} value={formatCurrency(revenue)} note={delta !== '—' ? delta : undefined} icon={<BarChart3 className="h-5 w-5 text-green-600 dark:text-green-400" />} />
+    </div>
 
-    {/* C. Live / Upcoming Operations — primary operational content */}
-    <UpcomingShiftsList upcoming={upcoming} brands={brands} platforms={platforms} t={t} setSelectedShift={props.setSelectedShift} />
+    {/* Row 2: Needs Attention 8/12, Live Now 4/12 */}
+    <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
+      <div className="lg:col-span-8 flex flex-col">
+        <h3 className="text-sm font-semibold mb-4">{t('needsAttention')}</h3>
+        {dqAttention.length > 0 ? (
+          <OperationalStatusStrip items={dqAttention} className="gap-2 flex-grow" />
+        ) : (
+          <HealthyState message={t('noPendingDecisions')} description={t('allClear')} />
+        )}
+      </div>
+      <div className="lg:col-span-4 flex flex-col">
+        <UpcomingShiftsList upcoming={filteredShifts.filter(s => s.status === 'live')} brands={brands} platforms={platforms} t={t} title={t('liveNow')} setSelectedShift={props.setSelectedShift} />
+      </div>
+    </div>
 
-    {/* D. Operational Metric Strip — single compact row, text-first, 4 values max */}
-    <AdminMetricStrip
-      liveCount={liveCount}
-      staffCount={staffCount}
-      campaignCount={campaignCount}
-      confirmedRevenue={formatCurrency(revenue)}
-      revenueDelta={delta}
-      t={t}
-    />
+    {/* Row 3: Today's Operations / Schedule = 12/12 */}
+    <div className="grid grid-cols-1">
+      <UpcomingShiftsList upcoming={upcoming} brands={brands} platforms={platforms} t={t} title={t('todaysOperations')} setSelectedShift={props.setSelectedShift} />
+    </div>
 
-    {/* E. Charts / deeper analytics — secondary, below operational content */}
+    {/* Row 4: Performance 7/12, Activity 5/12 */}
     <DashboardCharts
       trend={trend}
       statusSummary={statusSummary}
       revenueLabel={t('revenue')}
       ordersLabel={t('orders')}
-      revenueTrendLabel={t('revenueTrend')}
-      shiftStatusSummaryLabel={t('shiftStatusSummary')}
+      revenueTrendLabel={t('performance')}
+      shiftStatusSummaryLabel={t('activity')}
       noDataLabel={t('noData')}
       notEnoughTrendDataLabel={t('notEnoughTrendData')}
     />
   </PageShell>
 }
 
-function AdminMetricStrip({
-  liveCount,
-  staffCount,
-  campaignCount,
-  confirmedRevenue,
-  revenueDelta,
-  t,
-}: {
-  liveCount: number
-  staffCount: number
-  campaignCount: number
-  confirmedRevenue: string
-  revenueDelta: string
-  t: (key: string) => string
-}) {
-  const items = [
-    { label: t('liveInProgress'), value: liveCount.toString() },
-    { label: t('staffInScope'), value: staffCount.toString() },
-    { label: t('campaigns'), value: campaignCount.toString() },
-    { label: t('confirmedRevenue'), value: confirmedRevenue, note: revenueDelta !== '—' ? revenueDelta : undefined },
-  ]
-  return (
-    <div className="flex flex-wrap items-stretch divide-x divide-border border-y bg-transparent">
-      {items.map((item, i) => (
-        <div key={i} className="flex min-w-[120px] flex-1 flex-col justify-center px-4 py-2">
-          <span className="text-xs text-muted-foreground">{item.label}</span>
-          <span className="mt-0.5 text-lg font-semibold tabular-nums">{item.value}</span>
-          {item.note && <span className="text-xs text-muted-foreground">{item.note}</span>}
-        </div>
-      ))}
-    </div>
-  )
-}
+// AdminMetricStrip replaced by inline Metric grid.
 
 function LeaderDashboard(props: CommonProps) {
   const { shifts, reports, brands, platforms, campaigns, users, registrations, swapRequests, filters, setFilters, showFilters, setShowFilters, currentUser, t, setPreset } = props
@@ -315,7 +293,7 @@ function LeaderDashboard(props: CommonProps) {
   const upcoming = filteredShifts.filter(shift => shift.date >= today && shift.status === 'scheduled').sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`)).slice(0, 5)
   const roleOptions = (role: 'host' | 'support' | 'technical') => users.filter(user => user.operational_roles?.includes(role)).map(user => ({ id: user.id, name: user.full_name }))
 
-  return <PageShell archetype="command" className="space-y-6">
+  return <PageShell archetype="command" className="space-y-6 md:p-6 p-4">
     <PageHeader>
       <PageHeaderContent>
         <h1 className="text-3xl font-bold">{t('leaderDashboard')}</h1>
@@ -327,25 +305,32 @@ function LeaderDashboard(props: CommonProps) {
     <DashboardCustomDateRange filters={filters} setFilters={setFilters} t={t} />
     {showFilters && <DashboardFilterPanel filters={filters} setFilters={setFilters} brands={brands} platforms={platforms} campaigns={campaigns} roleOptions={roleOptions} t={t} />}
 
-    {/* E5: Exception-first — show action queue before passive metrics */}
-    {attention.items.length > 0 ? (
-      <OperationalStatusStrip items={attention.items} className="gap-2" />
-    ) : (
-      <HealthyState
-        message={t('noPendingDecisions')}
-        description={t('allUpToDate')}
-      />
-    )}
-
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    {/* Row 1: 4 KPI cards */}
+    <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
       <Metric title={t('shiftsToday')} value={todaysShifts.length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
       <Metric title={t('liveNow')} value={filteredShifts.filter(shift => shift.status === 'live').length.toString()} icon={<Radio className="h-5 w-5 text-red-600 dark:text-red-400" />} />
       <Metric title={t('pendingRegistrations')} value={pendingRegistrations.length.toString()} icon={<Users className="h-5 w-5 text-amber-600 dark:text-amber-400" />} />
       <Metric title={t('pendingSwaps')} value={pendingSwaps.length.toString()} icon={<ArrowLeftRight className="h-5 w-5 text-purple-600 dark:text-purple-400" />} />
     </div>
 
-    <div className="grid gap-4 md:grid-cols-2">
-      <Card><CardHeader><CardTitle>{t('actionQueue')}</CardTitle><CardDescription>{t('attentionRequired')}</CardDescription></CardHeader><CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    {/* Row 2: Team Schedule = 7/12, Needs Your Decision = 5/12 */}
+    <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
+      <div className="lg:col-span-7 flex flex-col">
+        <UpcomingShiftsList upcoming={upcoming} brands={brands} platforms={platforms} t={t} title={t('teamSchedule')} setSelectedShift={props.setSelectedShift} />
+      </div>
+      <div className="lg:col-span-5 flex flex-col">
+        <h3 className="text-sm font-semibold mb-4">{t('needsYourDecision')}</h3>
+        {attention.items.length > 0 ? (
+          <OperationalStatusStrip items={attention.items} className="gap-2 flex-grow" />
+        ) : (
+          <HealthyState message={t('noPendingDecisions')} description={t('allUpToDate')} />
+        )}
+      </div>
+    </div>
+
+    {/* Row 3: Staffing = 12/12 */}
+    <div className="grid grid-cols-1">
+      <Card><CardHeader><CardTitle>{t('staffing')}</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <QuickAction href="/calendar" label={t('calendar')} icon={<Calendar className="h-5 w-5" />} />
         <QuickAction href="/live" label={t('liveMonitor')} icon={<Radio className="h-5 w-5" />} />
         <QuickAction href="/reports" label={t('reports')} icon={<FileText className="h-5 w-5" />} />
@@ -353,12 +338,21 @@ function LeaderDashboard(props: CommonProps) {
       </CardContent></Card>
     </div>
 
-    <UpcomingShiftsList upcoming={upcoming} brands={brands} platforms={platforms} t={t} setSelectedShift={props.setSelectedShift} />
+    {/* Row 4: Upcoming Live = 7/12, Team Activity = 5/12 */}
+    <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
+       <div className="lg:col-span-7 flex flex-col">
+         <UpcomingShiftsList upcoming={upcoming} brands={brands} platforms={platforms} t={t} title={t('upcomingLive')} setSelectedShift={props.setSelectedShift} />
+       </div>
+       <div className="lg:col-span-5 flex flex-col">
+         <h3 className="text-sm font-semibold mb-4">{t('teamActivity')}</h3>
+         <Card className="flex-grow shadow-none border bg-muted/10"><CardContent className="flex items-center justify-center h-full"><Empty text={t('noActivity')} /></CardContent></Card>
+       </div>
+    </div>
   </PageShell>
 }
 
 function MemberDashboard(props: CommonProps) {
-  const { shifts, reports, brands, platforms, currentUser, registrations, swapRequests, t, setSelectedShift } = props
+  const { shifts, brands, platforms, currentUser, registrations, swapRequests, t, setSelectedShift } = props
   
   const today = getCurrentBusinessDate()
   
@@ -368,8 +362,6 @@ function MemberDashboard(props: CommonProps) {
   const upcoming = myShifts.filter(shift => shift.date >= today && (shift.status === 'scheduled' || shift.status === 'live' || shift.status === 'preparing')).sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`))
   const nextShift = upcoming[0]
   
-  const myPendingSwaps = getMemberPendingSwaps(swapRequests, currentUser.id)
-  const myReports = reports.filter(r => r.submitted_by === currentUser.id)
   const myPendingRegistrations = getMemberPendingRegistrations(registrations, currentUser.id)
 
   // E5: derive personal exception summary
@@ -397,7 +389,7 @@ function MemberDashboard(props: CommonProps) {
     hasUpcomingShift: upcoming.length > 0,
   })
 
-  return <PageShell archetype="command" className="space-y-6">
+  return <PageShell archetype="command" className="space-y-6 md:p-6 p-4">
     <PageHeader>
       <PageHeaderContent>
         <h1 className="text-3xl font-bold">{t('welcome')}, {currentUser.full_name.split(' ')[0]}</h1>
@@ -405,51 +397,60 @@ function MemberDashboard(props: CommonProps) {
       </PageHeaderContent>
     </PageHeader>
 
-    {/* E5: personal exception-first strip */}
-    {memberAttention.items.length > 0 ? (
-      <OperationalStatusStrip items={memberAttention.items} className="gap-2" />
-    ) : (
-      <HealthyState
-        message={t('allClear')}
-        description={t('noPendingRequests')}
-      />
-    )}
-
-    {nextShift && (
-      <Card className="bg-primary/5 border-primary/20">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base text-primary">{t('nextAssignedShift')}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex items-center justify-between gap-4">
-          <div>
-            <p className="font-semibold text-lg">{nextShift.title || nameFor(brands, nextShift.brand_id)}</p>
-            <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-              <Calendar className="w-4 h-4" /> <span>{nextShift.date}</span>
-              <Clock className="w-4 h-4 ml-2" /> <span>{formatShiftTimeRange(nextShift)}</span>
+    {/* Row 1: Next Shift = 12/12 */}
+    <div className="grid grid-cols-1">
+      {nextShift ? (
+        <Card className="bg-primary/5 border-primary/20">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base text-primary">{t('nextAssignedShift')}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between gap-4">
+            <div>
+              <p className="font-semibold text-lg">{nextShift.title || nameFor(brands, nextShift.brand_id)}</p>
+              <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
+                <Calendar className="w-4 h-4" /> <span>{nextShift.date}</span>
+                <Clock className="w-4 h-4 ml-2" /> <span>{formatShiftTimeRange(nextShift)}</span>
+              </div>
             </div>
-          </div>
-          <Button onClick={() => setSelectedShift(nextShift)}>{t('viewDetails')}</Button>
-        </CardContent>
-      </Card>
-    )}
-
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <Metric title={t('myUpcomingShifts')} value={upcoming.length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
-      <Metric title={t('pendingRegistrations')} value={myPendingRegistrations.length.toString()} icon={<Users className="h-5 w-5 text-amber-600 dark:text-amber-400" />} />
-      <Metric title={t('pendingSwaps')} value={myPendingSwaps.length.toString()} icon={<ArrowLeftRight className="h-5 w-5 text-purple-600 dark:text-purple-400" />} />
-      <Metric title={t('mySubmittedReports')} value={myReports.length.toString()} icon={<CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />} />
+            <Button onClick={() => setSelectedShift(nextShift)}>{t('viewDetails')}</Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <HealthyState message={t('noUpcomingShifts')} description={t('youAreAllClear')} />
+      )}
     </div>
 
-    <div className="grid gap-4 md:grid-cols-2">
-      <Card><CardHeader><CardTitle>{t('quickActions')}</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <QuickAction href="/calendar?tab=mine" label={t('myCalendar')} icon={<Calendar className="h-5 w-5" />} />
-        <QuickAction href="/calendar?tab=open" label={t('openShifts')} icon={<Users className="h-5 w-5" />} />
-        <QuickAction href="/reports" label={t('submitReport')} icon={<FileText className="h-5 w-5" />} />
-        <QuickAction href="/notifications" label={t('notifications')} icon={<Bell className="h-5 w-5" />} />
+    {/* Row 2: My Schedule = 7/12, My Actions = 5/12 */}
+    <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
+      <div className="lg:col-span-7 flex flex-col">
+        <UpcomingShiftsList upcoming={upcoming.slice(0, 5)} brands={brands} platforms={platforms} t={t} title={t('mySchedule')} setSelectedShift={setSelectedShift} />
+      </div>
+      <div className="lg:col-span-5 flex flex-col">
+        <h3 className="text-sm font-semibold mb-4">{t('myActions')}</h3>
+        {memberAttention.items.length > 0 ? (
+          <OperationalStatusStrip items={memberAttention.items} className="gap-2 flex-grow" />
+        ) : (
+          <HealthyState message={t('allClear')} description={t('noPendingRequests')} />
+        )}
+      </div>
+    </div>
+
+    {/* Row 3: Open Eligible Shifts = 12/12 */}
+    <div className="grid grid-cols-1">
+      <Card><CardHeader><CardTitle>{t('openEligibleShifts')}</CardTitle></CardHeader><CardContent>
+        <Empty text={t('noOpenShifts')} />
       </CardContent></Card>
     </div>
 
-    <UpcomingShiftsList upcoming={upcoming.slice(0, 5)} brands={brands} platforms={platforms} t={t} title={t('mySchedule')} setSelectedShift={setSelectedShift} />
+    {/* Row 4: My Requests = 6/12, Notifications = 6/12 */}
+    <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
+      <div className="lg:col-span-6 flex flex-col">
+        <Card className="h-full"><CardHeader><CardTitle>{t('myRequests')}</CardTitle></CardHeader><CardContent><Empty text={t('noPendingRequests')} /></CardContent></Card>
+      </div>
+      <div className="lg:col-span-6 flex flex-col">
+        <Card className="h-full"><CardHeader><CardTitle>{t('notifications')}</CardTitle></CardHeader><CardContent><Empty text={t('noNotifications')} /></CardContent></Card>
+      </div>
+    </div>
   </PageShell>
 }
 

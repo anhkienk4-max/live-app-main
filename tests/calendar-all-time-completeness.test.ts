@@ -89,6 +89,9 @@ function fakeClient(
     from(table: TableName) {
       return new FakeQuery(database, table, { ...options, rangeCalls })
     },
+    rpc() {
+      return { single: async () => ({ data: { success: true }, error: null }) }
+    }
   } as unknown as SupabaseClient & { rangeCalls: number[] }
 }
 

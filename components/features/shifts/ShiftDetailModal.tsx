@@ -51,6 +51,7 @@ import {
   Trash2,
   UserPlus,
   X,
+  Info,
 } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
@@ -740,6 +741,12 @@ export function ShiftDetailModal({
             {attention.length > 0 && (
               <div className="mt-4">
                 <OperationalStatusStrip items={attention} compact />
+              </div>
+            )}
+            {currentUser && !hasPermission(currentUser, 'shifts.edit') && (
+              <div className="mt-4 p-3 flex items-start gap-2 rounded-md bg-muted/50 border text-sm text-muted-foreground">
+                <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                <p>{(t('readOnlyShiftExplanation' as TranslationKey)) || 'You have view-only access to this shift. Editing requires additional permissions.'}</p>
               </div>
             )}
             <DialogDescription className="sr-only">{t('shiftDetailDescription')}</DialogDescription>

@@ -53,38 +53,50 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
 
         {/* Navigation */}
         <nav className="flex-1 px-2 space-y-0.5" aria-label={t('navMain')}>
-          {navigation.map((item) => {
+          {navigation.map((item, index) => {
             const isActive = pathname === item.href
+            const isFirstInGroup = index === 0 || navigation[index - 1].group !== item.group
+
             const Icon = item.icon
             const label = item.labelKey
               ? t(item.labelKey as Parameters<typeof t>[0])
-              : t(item.name.toLowerCase() as Parameters<typeof t>[0])
+              : (t(item.name.toLowerCase() as Parameters<typeof t>[0]) || item.name)
+
             return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={cn(
-                  'group flex items-center px-2.5 py-1.5 text-sm font-medium rounded-md transition-colors',
-                  isActive
-                    ? 'bg-primary/8 text-primary'
-                    : 'text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-                  isCollapsed && "justify-center px-0"
-                )}
-                data-testid={`sidebar-${item.name.toLowerCase()}`}
-                aria-current={isActive ? 'page' : undefined}
-                title={isCollapsed ? label : undefined}
-              >
-                <Icon
-                  className={cn(
-                    'flex-shrink-0 h-4 w-4',
-                    isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-sidebar-accent-foreground',
-                    !isCollapsed && "mr-2.5"
+                <div key={item.name}>
+                  {isFirstInGroup && item.group && !isCollapsed && (
+                    <div className="px-3 pt-4 pb-1 text-xs font-semibold text-muted-foreground tracking-wider uppercase">
+                      {item.group}
+                    </div>
                   )}
-                  aria-hidden="true"
-                />
-                {!isCollapsed && <span className="truncate">{label}</span>}
-              </Link>
-            )
+                  {isFirstInGroup && item.group && isCollapsed && (
+                    <div className="pt-4" />
+                  )}
+                  <Link
+                    href={item.href}
+                    className={cn(
+                      'group flex items-center px-2.5 py-1.5 text-sm font-medium rounded-md transition-colors',
+                      isActive
+                        ? 'bg-primary/8 text-primary'
+                        : 'text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                      isCollapsed && "justify-center px-0"
+                    )}
+                    data-testid={`sidebar-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
+                    aria-current={isActive ? 'page' : undefined}
+                    title={isCollapsed ? label : undefined}
+                  >
+                    <Icon
+                      className={cn(
+                        'flex-shrink-0 h-4 w-4',
+                        isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-sidebar-accent-foreground',
+                        !isCollapsed && "mr-2.5"
+                      )}
+                      aria-hidden="true"
+                    />
+                    {!isCollapsed && <span className="truncate">{label}</span>}
+                  </Link>
+                </div>
+              )
           })}
         </nav>
       </div>
