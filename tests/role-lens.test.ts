@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert'
-import { getRoleLens, ROLE_LENS_CONFIG } from '../lib/ui/role-lens'
+import { getRoleLens } from '../lib/ui/role-lens'
 
 test('RoleLens configuration testing', async (t) => {
   await t.test('Admin lens', () => {
@@ -31,7 +31,7 @@ test('RoleLens configuration testing', async (t) => {
     const lensUndefined = getRoleLens(undefined)
     assert.strictEqual(lensUndefined, null)
 
-    const lensNull = getRoleLens(null as any)
+    const lensNull = getRoleLens(null as unknown as Shift)
     assert.strictEqual(lensNull, null)
   })
 })

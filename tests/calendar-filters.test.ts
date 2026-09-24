@@ -21,6 +21,10 @@ const baseFilters: CalendarFilterState = {
   hostIds: [],
   supportIds: [],
   technicalIds: [],
+  operationalRoles: [],
+  staffingStates: [],
+  registrationStates: [],
+  hasImportedStaffing: false,
   time: 'all',
   customFrom: '',
   customTo: '',
@@ -162,14 +166,55 @@ test('Calendar preserves global view filtering and scopes List-only work separat
   assert.match(source, /studios: \[\]/)
 })
 
-test('List pre-indexes row lookups and keeps registration work bounded to each visible shift', () => {
+test('List uses the shared ShiftCard contract and keeps selection and registration props wired', () => {
   const source = readFileSync(new URL('../components/features/calendar/ListView.tsx', import.meta.url), 'utf8')
   assert.match(source, /const brandsById = React\.useMemo\(\(\) => new Map/)
-  assert.match(source, /const platformsById = React\.useMemo\(\(\) => new Map/)
-  assert.match(source, /const usersById = React\.useMemo\(\(\) => new Map/)
-  assert.match(source, /const registrationsByShiftId = React\.useMemo/)
-  assert.match(source, /resolveStaffingLabelsForRole\(shift, shiftRegistrations, users, 'host', t, usersById\)/)
+  assert.match(source, /const context: CalendarFilterContext =/)
+  assert.match(source, /<ShiftCard shift=\{\(shift\)\} variant="expanded"/)
+  assert.match(source, /onToggleSelectShift\(shift\.id\)/)
+  assert.match(source, /onRegister=\{role => onRegister\(shift\.id, role\)\}/)
   assert.doesNotMatch(source, /registrations\.filter\(r => r\.shift_id === shift\.id\)/)
+})
+
+test('secondary filters use canonical role, staffing, registration, and imported metadata semantics', () => {
+  const shifts = [
+    shift('host-required', { required_host_count: 1, required_support_count: 0, required_technical_count: 0 }),
+    shift('support-required', { required_host_count: 0, required_support_count: 1, required_technical_count: 0 }),
+    shift('fully-staffed', { required_host_count: 1, required_support_count: 0, required_technical_count: 0 }),
+    shift('pending-registration', { required_host_count: 1, required_support_count: 0, required_technical_count: 0 }),
+    shift('imported-name', { required_host_count: 1, required_support_count: 0, required_technical_count: 0 }),
+    shift('legacy-import', { required_host_count: 1, required_support_count: 0, required_technical_count: 0 }),
+  ]
+  const registrations = [
+    { id: 'approved-host', shift_id: 'fully-staffed', user_id: 'user-1', operational_role: 'host', status: 'approved', source: 'self_registration' },
+    { id: 'pending-host', shift_id: 'pending-registration', user_id: 'user-2', operational_role: 'host', status: 'pending', source: 'self_registration' },
+    { id: 'imported-name', shift_id: 'imported-name', user_id: 'user-3', operational_role: 'host', status: 'approved', source: 'self_registration', imported_name: 'Imported Host' },
+    { id: 'legacy-import', shift_id: 'legacy-import', user_id: 'user-4', operational_role: 'host', status: 'approved', source: 'legacy_assignment' },
+  ] as never
+  const filter = (overrides: Partial<CalendarFilterState>) => filterCalendarShifts(
+    shifts,
+    { ...baseFilters, ...overrides },
+    '',
+    { ...context(), registrations },
+  ).map(item => item.id)
+
+  assert.deepEqual(filter({ operationalRoles: [] }), shifts.map(item => item.id))
+  assert.deepEqual(filter({ operationalRoles: ['support'] }), ['support-required'])
+  assert.deepEqual(filter({ staffingStates: ['fully_staffed'] }), ['fully-staffed', 'imported-name', 'legacy-import'])
+  assert.deepEqual(filter({ staffingStates: ['missing_staff'] }), ['host-required', 'support-required', 'pending-registration'])
+  assert.deepEqual(filter({ registrationStates: ['pending'] }), ['pending-registration'])
+  assert.deepEqual(filter({ hasImportedStaffing: true }), ['imported-name', 'legacy-import'])
+  assert.deepEqual(filter({ operationalRoles: ['host'], staffingStates: ['fully_staffed'], registrationStates: ['approved'], hasImportedStaffing: true }), ['imported-name', 'legacy-import'])
+})
+
+test('filter chips isolate each dimension while Clear All remains global', () => {
+  const source = readFileSync(new URL('../components/features/calendar/CalendarView.tsx', import.meta.url), 'utf8')
+  assert.match(source, /time: 'all', customFrom: '', customTo: ''/)
+  assert.match(source, /operationalRoles: \[\]/)
+  assert.match(source, /staffingStates: \[\]/)
+  assert.match(source, /registrationStates: \[\]/)
+  assert.match(source, /hasImportedStaffing: false/)
+  assert.match(source, /onClearAll=\{clearFilters\}/)
 })
 
 test('categorical filters use OR within a dimension, AND across dimensions, and empty means all', () => {

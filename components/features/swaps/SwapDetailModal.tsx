@@ -94,7 +94,7 @@ export function SwapDetailModal({
           <div className="flex items-center justify-between">
             <DialogTitle className="text-xl">Swap Request Details</DialogTitle>
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="font-bold tracking-wider text-[10px] uppercase">
+              <Badge variant="outline" className="font-bold tracking-wider text-micro uppercase">
                 {swap.mode || 'replacement'}
               </Badge>
               <Badge className={getStatusColor()}>

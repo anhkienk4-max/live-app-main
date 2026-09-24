@@ -296,7 +296,7 @@ function RoleValue({ label, value }: { label: string; value: string }) {
   const isUnassigned = value === '—'
   return (
     <div className="flex flex-col space-y-1">
-      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-micro font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
       <span className={`truncate text-xs ${isUnassigned ? 'text-muted-foreground/50 italic' : 'font-medium'}`}>{value}</span>
     </div>
   )
@@ -305,7 +305,7 @@ function RoleValue({ label, value }: { label: string; value: string }) {
 function PerformanceValue({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col space-y-1">
-      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-micro font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
       <span className="truncate text-base font-semibold tracking-tight">{value}</span>
     </div>
   )

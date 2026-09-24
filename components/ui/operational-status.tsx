@@ -114,7 +114,7 @@ export function AttentionItem({ item, className }: AttentionItemProps) {
         <p className={cn('text-sm font-medium leading-tight whitespace-normal break-words', config.labelClass)}>
           {t(item.label as TranslationKey, item.labelParams as Record<string, string | number>)}
           {item.count !== undefined && (
-            <Badge className={cn('ml-2 text-[10px] py-0 px-1.5', config.badgeClass)} variant={config.badgeVariant}>
+            <Badge className={cn('ml-2 text-micro py-0 px-1.5', config.badgeClass)} variant={config.badgeVariant}>
               {item.count}
             </Badge>
           )}
@@ -184,7 +184,7 @@ export function AttentionBanner({ item, actionLabel, className }: AttentionBanne
           <p className={cn('text-sm font-semibold leading-tight whitespace-normal break-words', config.labelClass)}>
             {t(item.label as TranslationKey, labelParams)}
             {item.count !== undefined && (
-              <Badge className={cn('ml-2 text-[10px] py-0 px-1.5', config.badgeClass)} variant={config.badgeVariant}>
+              <Badge className={cn('ml-2 text-micro py-0 px-1.5', config.badgeClass)} variant={config.badgeVariant}>
                 {item.count}
               </Badge>
             )}

@@ -331,7 +331,7 @@ export function ReportsList() {
               <Card key={report.id} className="flex flex-col shadow-none transition-shadow hover:shadow-sm">
                 <CardHeader className="p-4 pb-3">
                   <div className="flex items-center justify-between gap-2">
-                    <Badge variant="secondary" className="font-mono text-[10px]">{shift.date}</Badge>
+                    <Badge variant="secondary" className="font-mono text-micro">{shift.date}</Badge>
                     <Badge variant={report.metrics_confirmed ? 'default' : 'secondary'} className={report.metrics_confirmed ? 'bg-green-600/10 text-green-700 hover:bg-green-600/20 dark:text-green-400' : 'bg-amber-600/10 text-amber-700 hover:bg-amber-600/20 dark:text-amber-400'}>
                       {statusLabel}
                     </Badge>
@@ -422,7 +422,7 @@ function StatusFilter({ label, value, values, onChange }: { label: string; value
 }
 
 function Value({ label, value }: { label: string; value: string }) {
-  return <div><p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p><p className="truncate text-sm font-semibold">{value}</p></div>
+  return <div><p className="text-micro font-medium uppercase tracking-wider text-muted-foreground">{label}</p><p className="truncate text-sm font-semibold">{value}</p></div>
 }
 
 function reportRevenue(report: Report): number | undefined {

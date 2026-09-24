@@ -238,20 +238,20 @@ export function NotificationCenter() {
             {n.message}
           </p>
           <div className="mt-2 flex items-center justify-between">
-            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+            <span className="text-micro font-medium text-muted-foreground uppercase tracking-wider">
               {format(new Date(n.created_at), "MMM d, h:mm a")}
             </span>
             {isUnread ? (
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-6 px-2 text-[10px] uppercase font-bold text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                className="h-6 px-2 text-micro uppercase font-bold text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
                 onClick={(e) => void markAsRead(n.id, e)}
               >
                 {t("markRead")}
               </Button>
             ) : (
-              <span className="text-[10px] font-bold text-primary opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-wider">
+              <span className="text-micro font-bold text-primary opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-wider">
                 {t("view")} &rarr;
               </span>
             )}
@@ -273,7 +273,7 @@ export function NotificationCenter() {
       >
         <Bell className="h-5 w-5" />
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white ring-2 ring-background">
+          <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-danger text-micro font-bold text-white ring-2 ring-background">
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
@@ -332,7 +332,7 @@ export function NotificationCenter() {
                 {groupedNotifications.new.length > 0 && (
                   <div className="bg-muted/20">
                     <div className="sticky top-0 z-10 bg-muted/95 px-4 py-2 backdrop-blur-sm">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      <span className="text-micro font-bold uppercase tracking-wider text-muted-foreground">
                         {t("new")}
                       </span>
                     </div>
@@ -347,7 +347,7 @@ export function NotificationCenter() {
                 {groupedNotifications.earlier.length > 0 && (
                   <div>
                     <div className="sticky top-0 z-10 bg-background/95 px-4 py-2 backdrop-blur-sm border-y divide-border/50">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      <span className="text-micro font-bold uppercase tracking-wider text-muted-foreground">
                         {t("earlier")}
                       </span>
                     </div>

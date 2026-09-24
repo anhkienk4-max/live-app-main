@@ -48,10 +48,10 @@ export function DashboardCharts({
               {trend.length === 1 ? (
                 <>
                   <div className="text-xl font-medium text-foreground mb-1">{formatCurrency(trend[0].revenue)}</div>
-                  <div className="text-[13px]">{notEnoughTrendDataLabel}</div>
+                  <div className="text-small">{notEnoughTrendDataLabel}</div>
                 </>
               ) : (
-                <div className="text-[13px] text-center w-full">{noDataLabel}</div>
+                <div className="text-small text-center w-full">{noDataLabel}</div>
               )}
             </div>
           )}
@@ -72,7 +72,7 @@ export function DashboardCharts({
             </ResponsiveContainer>
           ) : (
              <div className="flex flex-col h-full items-center justify-center text-sm text-muted-foreground p-4 bg-muted/20 border border-dashed rounded-md">
-               <div className="text-[13px] text-center w-full">{noDataLabel}</div>
+               <div className="text-small text-center w-full">{noDataLabel}</div>
              </div>
           )}
         </div>

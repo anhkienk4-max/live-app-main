@@ -23,11 +23,12 @@ export function CalendarWorkspace() {
   const searchParams = useSearchParams();
 
   const initialTab = searchParams.get("tab");
+  const defaultTab = currentUser?.role === 'staff' ? 'mine' : 'calendar';
   const [tab, setTab] = React.useState(
     initialTab &&
       ["calendar", "open", "mine", "import", "history"].includes(initialTab)
       ? initialTab
-      : "calendar",
+      : defaultTab,
   );
   const [createRequest, setCreateRequest] = React.useState(0);
   const [visitedTabs, setVisitedTabs] = React.useState(() => new Set([tab]));

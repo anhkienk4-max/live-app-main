@@ -237,7 +237,7 @@ export function SwapRequestList() {
 
                 <div className="flex w-full flex-col justify-between bg-muted/10 p-4 md:w-64 shrink-0">
                   <div className="space-y-1 mb-4">
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">{t('actionsAndStatus')}</p>
+                    <p className="text-micro font-bold text-muted-foreground uppercase tracking-wider mb-2">{t('actionsAndStatus')}</p>
                     {attentionItems.length > 0 ? (
                       <div className="space-y-2 mb-2">
                         {attentionItems.map(item => <AttentionItem key={item.key} item={item} />)}

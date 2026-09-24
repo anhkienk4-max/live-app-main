@@ -217,7 +217,7 @@ export function ReportDetailPlatformMetrics({
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold">{t('platformLivestreamMetrics')}</h3>
-            <Badge variant="secondary" className="font-mono text-[10px]">
+            <Badge variant="secondary" className="font-mono text-micro">
               {report.dashboard_platform === 'tiktok_shop' ? 'TikTok Shop' : report.dashboard_platform === 'shopee_live' ? 'Shopee Live' : t('otherPlatform')}
             </Badge>
           </div>
@@ -240,7 +240,7 @@ export function ReportDetailPlatformMetrics({
               if (value == null || value === '') return null
               return (
                 <div key={key}>
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{t(metricTranslationKeys[key])}</p>
+                  <p className="text-micro font-medium uppercase tracking-wider text-muted-foreground">{t(metricTranslationKeys[key])}</p>
                   <p className="mt-0.5 break-words font-semibold">{formatMetricValue(key, value)}</p>
                 </div>
               )
@@ -825,21 +825,21 @@ export function ReportDetailModal({
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <ThumbsUp className="h-4 w-4" />
-                      <span className="text-[10px] font-medium uppercase tracking-wider">{t('metricLikes')}</span>
+                      <span className="text-micro font-medium uppercase tracking-wider">{t('metricLikes')}</span>
                     </div>
                     <div className="text-lg font-bold">{report.likes?.toLocaleString() ?? '—'}</div>
                   </div>
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <MessageCircle className="h-4 w-4" />
-                      <span className="text-[10px] font-medium uppercase tracking-wider">{t('metricComments')}</span>
+                      <span className="text-micro font-medium uppercase tracking-wider">{t('metricComments')}</span>
                     </div>
                     <div className="text-lg font-bold">{report.comments == null ? t('noData') : report.comments.toLocaleString()}</div>
                   </div>
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Share2 className="h-4 w-4" />
-                      <span className="text-[10px] font-medium uppercase tracking-wider">{t('metricShares')}</span>
+                      <span className="text-micro font-medium uppercase tracking-wider">{t('metricShares')}</span>
                     </div>
                     <div className="text-lg font-bold">{report.shares == null ? t('noData') : report.shares.toLocaleString()}</div>
                   </div>

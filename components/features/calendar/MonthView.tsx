@@ -5,7 +5,8 @@ import { enUS, vi } from 'date-fns/locale'
 import { Brand, Platform, Shift } from '@/lib/types/database.types'
 import { resolveShiftDateTime } from '@/lib/utils/shiftUtils'
 import { useTranslation } from '@/lib/i18n'
-import { ShiftStatusBadge } from '@/components/domain/ShiftStatusBadge'
+import { ShiftCard } from '@/components/features/shifts/ShiftCard'
+import { CalendarFilterContext } from '@/lib/utils/calendarFilters'
 
 interface MonthViewProps {
   currentDate: Date
@@ -36,9 +37,11 @@ export function MonthView({
   currentDate,
   shifts,
   brands,
+  platforms,
   onShiftClick,
   onDayClick,
 }: MonthViewProps) {
+  const context: CalendarFilterContext = { currentDate: new Date(), brands, platforms }
   const { language, t } = useTranslation()
   const locale = language === 'vi' ? vi : enUS
   const monthStart = startOfMonth(currentDate)
@@ -101,30 +104,26 @@ export function MonthView({
                   const displayTitle = shift.studio ? `${title} • ${shift.studio}` : title
                   const visibility = index === 1 ? 'hidden md:flex' : index === 2 ? 'hidden lg:flex' : 'flex'
                   return (
-                    <button
-                      className={`${visibility} h-8 w-full min-w-0 items-center gap-1 overflow-hidden rounded-md px-1.5 text-left text-[11px] transition-all bg-background border-l-[3px] shadow-sm hover:shadow border-y border-r border-y-border border-r-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
-                      data-testid={`calendar-event-${shift.id}`}
-                      key={shift.id}
-                      onClick={event => {
-                        event.stopPropagation()
-                        onShiftClick?.(shift)
-                      }}
-                      style={{
-                        borderLeftColor: brandColor(shift.brand_id),
-                      }}
-                      title={`${shift.start_time}${crossesMidnight ? ' +1' : ''} • ${displayTitle} • ${shift.status}`}
-                      type="button"
-                    >
-                      <span className="shrink-0 font-semibold">{shift.start_time}{crossesMidnight ? ' +1' : ''}</span>
-                      <span className="min-w-0 flex-1 truncate whitespace-nowrap text-foreground">{displayTitle}</span>
-                      <ShiftStatusBadge status={shift.status} className="shrink-0 text-[9px] h-4 px-1 py-0 border-none scale-90 origin-right" />
-                    </button>
-                  )
+                      <ShiftCard
+                        key={shift.id}
+                        shift={shift}
+                        variant="compact"
+                        className={visibility + ' bg-background border-l-[3px] shadow-sm hover:shadow border-y border-r border-y-border border-r-border'}
+                        style={{ borderLeftColor: brandColor(shift.brand_id) }}
+                        onClick={event => {
+                          event.stopPropagation()
+                          onShiftClick?.(shift)
+                        }}
+                        context={context}
+                        title={shift.start_time + (crossesMidnight ? ' +1' : '') + ' - ' + displayTitle + ' - ' + shift.status}
+                        data-testid={'calendar-event-' + shift.id}
+                      />
+                    )
                 })}
 
                 {dayShifts.length > MONTH_VISIBLE_EVENT_LIMITS.narrow && (
                   <button
-                    className="block w-full truncate rounded px-1 text-center text-[11px] text-muted-foreground hover:bg-muted md:hidden"
+                    className="block w-full truncate rounded px-1 text-center text-mini text-muted-foreground hover:bg-muted md:hidden"
                     data-testid={`calendar-more-narrow-${format(day, 'yyyy-MM-dd')}`}
                     onClick={event => {
                       event.stopPropagation()
@@ -137,7 +136,7 @@ export function MonthView({
                 )}
                 {dayShifts.length > MONTH_VISIBLE_EVENT_LIMITS.medium && (
                   <button
-                    className="hidden w-full truncate rounded px-1 text-center text-[11px] text-muted-foreground hover:bg-muted md:block lg:hidden"
+                    className="hidden w-full truncate rounded px-1 text-center text-mini text-muted-foreground hover:bg-muted md:block lg:hidden"
                     data-testid={`calendar-more-medium-${format(day, 'yyyy-MM-dd')}`}
                     onClick={event => {
                       event.stopPropagation()
@@ -150,7 +149,7 @@ export function MonthView({
                 )}
                 {dayShifts.length > MONTH_VISIBLE_EVENT_LIMITS.large && (
                   <button
-                    className="hidden w-full truncate rounded px-1 text-center text-[11px] text-muted-foreground hover:bg-muted lg:block"
+                    className="hidden w-full truncate rounded px-1 text-center text-mini text-muted-foreground hover:bg-muted lg:block"
                     data-testid={`calendar-more-large-${format(day, 'yyyy-MM-dd')}`}
                     onClick={event => {
                       event.stopPropagation()

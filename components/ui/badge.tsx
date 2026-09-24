@@ -25,6 +25,8 @@ const badgeVariants = cva(
         danger:  "bg-danger-surface text-danger-foreground border-danger/20",
         info:    "bg-info-surface text-info-foreground border-info/20",
         live:    "bg-live text-live-foreground border-transparent",
+        stale:   "bg-stale-surface text-stale-foreground border-stale/20",
+        conflict: "bg-conflict-surface text-conflict-foreground border-conflict/20",
       },
     },
     defaultVariants: {

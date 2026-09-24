@@ -2,6 +2,7 @@ import { endOfMonth, endOfWeek, format, startOfMonth, startOfWeek } from 'date-f
 import type { Brand, Campaign, Platform, Shift, ShiftRegistration } from '@/lib/types/database.types'
 import { businessLocalDate } from '@/lib/utils/shiftUtils'
 import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
+import { getShiftRoleCapacities } from '@/lib/services/dataService'
 
 export type CalendarTimeFilter = 'all' | 'today' | 'current_week' | 'current_month' | 'custom'
 export const UNASSIGNED_STUDIO_FILTER = '__unassigned__'
@@ -22,6 +23,10 @@ export interface CalendarFilterState {
   hostIds: string[]
   supportIds: string[]
   technicalIds: string[]
+  operationalRoles: string[]
+  staffingStates: string[]
+  registrationStates: string[]
+  hasImportedStaffing: boolean
   time: CalendarTimeFilter
   customFrom: string
   customTo: string
@@ -171,6 +176,37 @@ export function filterCalendarShifts(
     if (filters.hostIds.length > 0 && !filters.hostIds.some(userId => roleMatches(shift, 'host', userId, registrations))) return false
     if (filters.supportIds.length > 0 && !filters.supportIds.some(userId => roleMatches(shift, 'support', userId, registrations))) return false
     if (filters.technicalIds.length > 0 && !filters.technicalIds.some(userId => roleMatches(shift, 'technical', userId, registrations))) return false
+
+    if (filters.operationalRoles.length > 0) {
+      const capacities = getShiftRoleCapacities(shift, registrations)
+      const hasMatchingRole = filters.operationalRoles.some(role => {
+        const capacity = capacities.find(c => c.role === role)
+        return capacity && capacity.required > 0
+      })
+      if (!hasMatchingRole) return false
+    }
+
+    if (filters.staffingStates.length > 0) {
+      const capacities = getShiftRoleCapacities(shift, registrations)
+      const isFullyStaffed = capacities.every(c => c.approved >= c.required)
+
+      const matchesStaffing = filters.staffingStates.some(state => {
+        if (state === 'fully_staffed') return isFullyStaffed
+        if (state === 'missing_staff') return !isFullyStaffed
+        return false
+      })
+      if (!matchesStaffing) return false
+    }
+
+    if (filters.registrationStates.length > 0) {
+      const hasMatchingReg = registrations.some(r => r.shift_id === shift.id && filters.registrationStates.includes(r.status))
+      if (!hasMatchingReg) return false
+    }
+
+    if (filters.hasImportedStaffing) {
+      const hasImported = registrations.some(r => r.shift_id === shift.id && (r.imported_name != null || r.source === 'legacy_assignment'))
+      if (!hasImported) return false
+    }
     if (search) {
       const brand = brands.find(item => item.id === shift.brand_id)?.name ?? ''
       const platform = platforms.find(item => item.id === shift.platform_id)?.name ?? ''

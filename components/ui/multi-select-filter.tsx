@@ -136,7 +136,7 @@ export function MultiSelectFilter({
       {selectedOptions.length > 0 && (
         <div className="flex max-w-full flex-wrap gap-1" aria-label={`${label} selections`}>
           {selectedOptions.slice(0, 3).map(option => (
-            <Badge key={option.value} variant="secondary" className="max-w-full gap-1 text-[10px]">
+            <Badge key={option.value} variant="secondary" className="max-w-full gap-1 text-micro">
               <span className="max-w-28 truncate">{option.label}</span>
               <button
                 type="button"
@@ -148,7 +148,7 @@ export function MultiSelectFilter({
               </button>
             </Badge>
           ))}
-          {selectedOptions.length > 3 && <span className="self-center text-[10px] text-muted-foreground">+{selectedOptions.length - 3} more</span>}
+          {selectedOptions.length > 3 && <span className="self-center text-micro text-muted-foreground">+{selectedOptions.length - 3} more</span>}
         </div>
       )}
     </div>

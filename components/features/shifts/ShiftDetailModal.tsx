@@ -558,26 +558,25 @@ export function ShiftDetailModal({
   const statusKey: TranslationKey = shift.status === 'live' ? 'liveStatus' : shift.status
 
   // E5: Exception-first attention derivation
-  const pendingCount = registrations.filter(r => r.status === 'pending').length
-  const todayDate = getCurrentBusinessDate()
+    const todayDate = getCurrentBusinessDate()
   const isUpcoming = shift.date >= todayDate
 
-  const required = {
-    host: shift.required_host_count ?? 1,
-    support: shift.required_support_count ?? 0,
-    technical: shift.required_technical_count ?? 0,
-  }
-  const staffed = {
-    host: registrations.filter(r => r.operational_role === 'host' && isStaffedRegistration(r)).length,
-    support: registrations.filter(r => r.operational_role === 'support' && isStaffedRegistration(r)).length,
-    technical: registrations.filter(r => r.operational_role === 'technical' && isStaffedRegistration(r)).length,
-  }
+  const required = { host: 0, support: 0, technical: 0 }
+  const staffed = { host: 0, support: 0, technical: 0 }
+  let totalPendingCount = 0
+  capacities.forEach(c => {
+    totalPendingCount += c.pending
+    if (c.role === 'host' || c.role === 'support' || c.role === 'technical') {
+      staffed[c.role] = c.approved
+      required[c.role] = c.required
+    }
+  })
 
   const attention = deriveShiftAttention({
     shiftId: shift.id,
     shiftDate: shift.date,
     shiftStatus: shift.status,
-    pendingCount,
+    pendingCount: totalPendingCount,
     isUpcoming,
     required,
     staffed,
@@ -780,7 +779,7 @@ export function ShiftDetailModal({
                           <dd className="font-medium text-foreground text-right">
                             {shift.start_time || fallback} – {shift.end_time || fallback}
                             {dateTime?.valid && dateTime.crossesMidnight && (
-                              <span className="block text-[11px] font-bold text-indigo-600 mt-0.5" data-testid="shift-detail-overnight">
+                              <span className="block text-mini font-bold text-indigo-600 mt-0.5" data-testid="shift-detail-overnight">
                                 {t('endsNextDay')}: {safeFormatShiftDate(dateTime.endDate, 'MMM d', language, fallback)}
                               </span>
                             )}
@@ -788,7 +787,7 @@ export function ShiftDetailModal({
                         </div>
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 gap-2">
                           <dt className="text-muted-foreground">{t('shiftIdentifier')}</dt>
-                          <dd className="font-mono text-[11px] text-muted-foreground text-right break-all">{shift.id || fallback}</dd>
+                          <dd className="font-mono text-mini text-muted-foreground text-right break-all">{shift.id || fallback}</dd>
                         </div>
                       </dl>
                    </div>
@@ -828,15 +827,15 @@ export function ShiftDetailModal({
 
                       <div className="p-4 grid grid-cols-2 gap-5 text-sm">
                         <div>
-                           <div className="text-muted-foreground text-[10px] uppercase font-semibold mb-1">{t('createdAt')}</div>
+                           <div className="text-muted-foreground text-micro uppercase font-semibold mb-1">{t('createdAt')}</div>
                            <div className="font-medium text-xs">{safeFormatShiftDate(shift.created_at, 'Pp', language, fallback)}</div>
                         </div>
                         <div>
-                           <div className="text-muted-foreground text-[10px] uppercase font-semibold mb-1">{t('updatedAt')}</div>
+                           <div className="text-muted-foreground text-micro uppercase font-semibold mb-1">{t('updatedAt')}</div>
                            <div className="font-medium text-xs">{safeFormatShiftDate(shift.updated_at, 'Pp', language, fallback)}</div>
                         </div>
                         <div className="col-span-2">
-                           <div className="text-muted-foreground text-[10px] uppercase font-semibold mb-1">{t('updatedBy')}</div>
+                           <div className="text-muted-foreground text-micro uppercase font-semibold mb-1">{t('updatedBy')}</div>
                            <div className="font-medium text-xs">{shift.updated_by ? userName(shift.updated_by) : fallback}</div>
                         </div>
                       </div>
@@ -868,9 +867,9 @@ export function ShiftDetailModal({
                           <div key={capacity.role} className="rounded-lg border bg-card p-3 shadow-sm">
                             <div className="flex items-center justify-between gap-2 mb-1.5">
                                 <span className="font-bold text-sm text-foreground">{t(capacity.role)}</span>
-                                <Badge variant={capacity.remaining > 0 ? 'outline' : 'secondary'} className="h-5 px-1.5 text-[10px]">{capacity.remaining}/{capacity.required}</Badge>
+                                <Badge variant={capacity.remaining > 0 ? 'outline' : 'secondary'} className="h-5 px-1.5 text-micro">{capacity.remaining}/{capacity.required}</Badge>
                             </div>
-                            <div className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground">
+                            <div className="flex items-center gap-2 text-mini font-medium text-muted-foreground">
                                 <span className="text-green-700 bg-green-50 px-1 rounded-sm">{capacity.approved} {t('approved')}</span>
                                 {capacity.pending > 0 && <span className="text-amber-700 bg-amber-50 px-1 rounded-sm">{capacity.pending} {t('pending')}</span>}
                             </div>
@@ -981,7 +980,7 @@ export function ShiftDetailModal({
                                     <span className="text-muted-foreground/40 font-normal mx-1.5">•</span>
                                     {t(registration.operational_role)}
                                   </p>
-                                  <p className="text-[11px] font-medium text-muted-foreground mt-0.5">
+                                  <p className="text-mini font-medium text-muted-foreground mt-0.5">
                                     <span className="uppercase tracking-wider">{registration.source}</span>
                                     <span className="mx-1.5 text-muted-foreground/40">•</span>
                                     {safeFormatShiftDate(registration.requested_at, 'Pp', language, fallback)}
