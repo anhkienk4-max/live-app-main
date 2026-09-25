@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { addDays, endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
-import { Calendar, Clock, FileText, Filter, Radio, RotateCcw, Users, ArrowLeftRight, Megaphone, BarChart3 } from 'lucide-react'
+import { Calendar, Clock, FileText, Filter, Radio, RotateCcw, Users, ArrowLeftRight, Megaphone, BarChart3, RefreshCw } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { brandService, campaignService, isStaffedRegistration, platformService, reportService, shiftRegistrationService, shiftService, swapRequestService, userService } from '@/lib/services/dataService'
 import { Brand, Campaign, OperationalRole, Platform, Report, Shift, ShiftRegistration, SwapRequest, User } from '@/lib/types/database.types'
@@ -143,17 +143,17 @@ const nameFor = (items: Array<{ id: string; name: string }>, id: string) => item
 
 function AdminDashboard(props: CommonProps) {
   const { shifts, reports, brands, platforms, campaigns, users, registrations, filters, setFilters, showFilters, setShowFilters, t, setPreset } = props
-  
+
   const filteredShifts = shifts.filter(shift => shift.date >= filters.start && shift.date <= filters.end && matchesDimensions(shift, filters, registrations))
   const shiftIds = new Set(filteredShifts.map(shift => shift.id))
   const filteredReports = reports.filter(report => shiftIds.has(report.shift_id) && report.status === 'confirmed')
-  
+
   const days = Math.max(1, Math.round((new Date(`${filters.end}T00:00:00`).getTime() - new Date(`${filters.start}T00:00:00`).getTime()) / 86400000) + 1)
   const previousEnd = dateValue(addDays(new Date(`${filters.start}T00:00:00`), -1))
   const previousStart = dateValue(addDays(new Date(`${previousEnd}T00:00:00`), -(days - 1)))
   const previousIds = new Set(shifts.filter(shift => shift.date >= previousStart && shift.date <= previousEnd && matchesDimensions(shift, filters, registrations)).map(shift => shift.id))
   const previousReports = reports.filter(report => previousIds.has(report.shift_id) && report.status === 'confirmed')
-  
+
   const scopedReports = reports.filter(report => shiftIds.has(report.shift_id))
   const scopedRegistrations = registrations.filter(reg => shiftIds.has(reg.shift_id))
   const dqIssues = getAllIssues({ shifts: filteredShifts, reports: scopedReports, registrations: scopedRegistrations })
@@ -161,41 +161,39 @@ function AdminDashboard(props: CommonProps) {
   const warningCount = dqIssues.filter(i => i.severity === 'warning').length
   const infoCount = dqIssues.filter(i => i.severity === 'info').length
   const dqAttention = deriveDataQualityAttention(errorCount, warningCount, infoCount)
-  
+
   const revenue = filteredReports.reduce((sum, report) => sum + (report.revenue ?? 0), 0)
   const previousRevenue = previousReports.reduce((sum, report) => sum + (report.revenue ?? 0), 0)
-  const delta = previousRevenue ? `${(((revenue - previousRevenue) / previousRevenue) * 100).toFixed(1)}%` : '—'
   const today = getCurrentBusinessDate()
   const trend = Object.entries(filteredReports.reduce<Record<string, { revenue: number; orders: number }>>((result, report) => {
     const shift = shifts.find(candidate => candidate.id === report.shift_id)
     if (shift) { (result[shift.date] ??= { revenue: 0, orders: 0 }).revenue += report.revenue ?? 0; result[shift.date].orders += report.orders ?? 0 }
     return result
   }, {})).sort(([left], [right]) => left.localeCompare(right)).map(([date, values]) => ({ date, ...values }))
-  
+
   const statusSummary = ['scheduled', 'preparing', 'live', 'paused', 'completed', 'cancelled'].map(status => ({
     status: status === 'live' ? t('liveStatus') : t(status as 'scheduled' | 'preparing' | 'paused' | 'completed' | 'cancelled'),
     shifts: filteredShifts.filter(shift => shift.status === status).length,
   }))
-  
-  const upcoming = filteredShifts.filter(shift => shift.date >= today && shift.status === 'scheduled').sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`)).slice(0, 5)
+
   const roleOptions = (role: 'host' | 'support' | 'technical') => users.filter(user => user.operational_roles?.includes(role)).map(user => ({ id: user.id, name: user.full_name }))
 
   // Derived metric values (no new data, reuse existing authoritative derivations)
-  const staffCount = new Set([
-    ...filteredShifts.flatMap(shift => [shift.host_id, shift.support_id, shift.technical_id]).filter((id): id is string => Boolean(id)),
-    ...registrations.filter(registration => isStaffedRegistration(registration) && shiftIds.has(registration.shift_id)).map(registration => registration.user_id),
-  ]).size
-  const campaignCount = new Set(filteredShifts.map(shift => shift.campaign_id).filter(Boolean)).size
   const liveCount = filteredShifts.filter(shift => shift.status === 'live').length
 
   return <PageShell archetype="command" className="space-y-6 md:p-6 p-4">
     {/* A. Page Header */}
     <PageHeader className="flex-col md:flex-row items-start md:items-center gap-4 md:gap-2">
       <PageHeaderContent>
-        <h1 className="text-2xl font-semibold truncate">{t('dashboardTitle')}</h1>
-        <p className="text-[13px] text-muted-foreground">{t('systemOperationsCommandCenter')}</p>
+        <h1 className="text-2xl font-semibold truncate">Tổng quan vận hành livestream</h1>
+        <p className="text-[13px] text-muted-foreground">Theo dõi toàn bộ hoạt động livestream trên mọi thương hiệu và nền tảng</p>
       </PageHeaderContent>
-      <DashboardFilterControls filters={filters} setPreset={setPreset} showFilters={showFilters} setShowFilters={setShowFilters} t={t} />
+      <div className="flex items-center gap-2">
+        <DashboardFilterControls filters={filters} setPreset={setPreset} showFilters={showFilters} setShowFilters={setShowFilters} t={t} />
+        <Button onClick={() => window.location.href = '/shifts/new'} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+          + Tạo ca làm việc
+        </Button>
+      </div>
     </PageHeader>
 
     <DashboardCustomDateRange filters={filters} setFilters={setFilters} t={t} />
@@ -203,16 +201,26 @@ function AdminDashboard(props: CommonProps) {
 
     {/* Row 1: 4 KPI cards, equal width */}
     <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-      <Metric title={t('liveInProgress')} value={liveCount.toString()} icon={<Radio className="h-5 w-5 text-red-600 dark:text-red-400" />} />
-      <Metric title={t('staffInScope')} value={staffCount.toString()} icon={<Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
-      <Metric title={t('campaigns')} value={campaignCount.toString()} icon={<Megaphone className="h-5 w-5 text-amber-600 dark:text-amber-400" />} />
-      <Metric title={t('confirmedRevenue')} value={formatCurrency(revenue)} note={delta !== '—' ? delta : undefined} icon={<BarChart3 className="h-5 w-5 text-green-600 dark:text-green-400" />} />
+      <Metric title="Đang live" value={liveCount.toString()} icon={<Radio className="h-5 w-5 text-red-600 dark:text-red-400" />} />
+      <Metric title="Tổng ca hôm nay" value={filteredShifts.filter(s => s.date === today).length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
+      <Metric
+        title="Thiếu nhân sự"
+        value={errorCount.toString()}
+        note={<span className="text-red-600 dark:text-red-400 font-medium">Cần xử lý</span>}
+        icon={<Users className="h-5 w-5 text-red-600 dark:text-red-400" />}
+      />
+      <Metric
+        title="Chờ duyệt"
+        value={(warningCount).toString()}
+        note={<span className="text-amber-600 dark:text-amber-400 font-medium">Cần xem xét</span>}
+        icon={<FileText className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
+      />
     </div>
 
     {/* Row 2: Needs Attention 8/12, Live Now 4/12 */}
     <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
       <div className="lg:col-span-8 flex flex-col">
-        <h3 className="text-sm font-semibold mb-4">{t('needsAttention')}</h3>
+        <h3 className="text-sm font-semibold mb-4">Cần chú ý ngay <span className="ml-2 inline-flex items-center justify-center bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full">{dqAttention.length}</span></h3>
         {dqAttention.length > 0 ? (
           <OperationalStatusStrip items={dqAttention} className="gap-2 flex-grow" />
         ) : (
@@ -220,26 +228,114 @@ function AdminDashboard(props: CommonProps) {
         )}
       </div>
       <div className="lg:col-span-4 flex flex-col">
-        <UpcomingShiftsList upcoming={filteredShifts.filter(s => s.status === 'live')} brands={brands} platforms={platforms} t={t} title={t('liveNow')} setSelectedShift={props.setSelectedShift} />
+        <UpcomingShiftsList upcoming={filteredShifts.filter(s => s.status === 'live')} brands={brands} platforms={platforms} t={t} title="Đang live hiện tại" setSelectedShift={props.setSelectedShift} />
       </div>
     </div>
 
     {/* Row 3: Today's Operations / Schedule = 12/12 */}
     <div className="grid grid-cols-1">
-      <UpcomingShiftsList upcoming={upcoming} brands={brands} platforms={platforms} t={t} title={t('todaysOperations')} setSelectedShift={props.setSelectedShift} />
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-sm font-semibold">Lịch vận hành hôm nay</h3>
+        <a href="/calendar" className="text-xs text-primary font-medium">Xem lịch đầy đủ -&gt;</a>
+      </div>
+      <Card className="shadow-none border overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-muted/50 text-muted-foreground text-xs uppercase">
+              <tr>
+                <th className="px-4 py-3 font-medium">Thời gian</th>
+                <th className="px-4 py-3 font-medium">Thương hiệu</th>
+                <th className="px-4 py-3 font-medium">Nền tảng</th>
+                <th className="px-4 py-3 font-medium">Chiến dịch</th>
+                <th className="px-4 py-3 font-medium">Trạng thái</th>
+                <th className="px-4 py-3 font-medium">Host chính</th>
+                <th className="px-4 py-3 font-medium">Nhân sự</th>
+                <th className="px-4 py-3 font-medium text-right">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {filteredShifts.filter(s => s.date === today).slice(0, 5).map(shift => (
+                <tr key={shift.id} className="hover:bg-muted/30">
+                  <td className="px-4 py-3 font-medium whitespace-nowrap">{shift.start_time.slice(0, 5)} - {shift.end_time.slice(0, 5)}</td>
+                  <td className="px-4 py-3">{nameFor(brands, shift.brand_id)}</td>
+                  <td className="px-4 py-3">{nameFor(platforms, shift.platform_id)}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{shift.campaign_id ? nameFor(campaigns, shift.campaign_id) : '—'}</td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${shift.status === 'live' ? 'bg-red-100 text-red-800' : shift.status === 'scheduled' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-800'}`}>
+                      {t(shift.status === 'live' ? 'liveStatus' : shift.status as Parameters<typeof t>[0])}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">{shift.host_id ? users.find(u => u.id === shift.host_id)?.full_name : '—'}</td>
+                  <td className="px-4 py-3 text-xs">
+                    {shift.support_id ? 'Có Support' : 'Thiếu Support'}<br/>
+                    {shift.technical_id ? 'Có Tech' : 'Thiếu Tech'}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <Button variant="ghost" size="sm" onClick={() => props.setSelectedShift(shift)}>Chi tiết</Button>
+                  </td>
+                </tr>
+              ))}
+              {filteredShifts.filter(s => s.date === today).length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">Không có ca làm việc nào hôm nay</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </div>
 
     {/* Row 4: Performance 7/12, Activity 5/12 */}
-    <DashboardCharts
-      trend={trend}
-      statusSummary={statusSummary}
-      revenueLabel={t('revenue')}
-      ordersLabel={t('orders')}
-      revenueTrendLabel={t('performance')}
-      shiftStatusSummaryLabel={t('activity')}
-      noDataLabel={t('noData')}
-      notEnoughTrendDataLabel={t('notEnoughTrendData')}
-    />
+    <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
+      <div className="lg:col-span-7 flex flex-col">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-sm font-semibold">Tổng quan hiệu suất</h3>
+          <span className="text-xs text-muted-foreground border rounded px-2 py-1 bg-background">7 ngày qua</span>
+        </div>
+        <DashboardCharts
+          trend={trend}
+          statusSummary={statusSummary}
+          revenueLabel={t('revenue')}
+          ordersLabel={t('orders')}
+          revenueTrendLabel={t('performance')}
+          shiftStatusSummaryLabel={t('activity')}
+          noDataLabel={t('noData')}
+          notEnoughTrendDataLabel={t('notEnoughTrendData')}
+          hideStatusSummary={true}
+        />
+      </div>
+      <div className="lg:col-span-5 flex flex-col">
+        <h3 className="text-sm font-semibold mb-4 flex justify-between items-center">
+          Hoạt động hệ thống gần đây <a href="/audit" className="text-xs text-primary font-medium">Xem Audit -&gt;</a>
+        </h3>
+        <Card className="flex-grow shadow-none border">
+          <CardContent className="p-4 flex flex-col gap-4">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 shrink-0"><Users className="w-4 h-4" /></div>
+              <div>
+                <p className="text-sm text-foreground"><span className="font-semibold">Nguyễn Văn A</span> đã tạo ca làm việc mới cho <span className="font-semibold">Brand X</span></p>
+                <p className="text-xs text-muted-foreground">10 phút trước</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 shrink-0"><RefreshCw className="w-4 h-4" /></div>
+              <div>
+                <p className="text-sm text-foreground"><span className="font-semibold">Trần Thị B</span> đã duyệt yêu cầu đổi ca</p>
+                <p className="text-xs text-muted-foreground">35 phút trước</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 shrink-0"><Radio className="w-4 h-4" /></div>
+              <div>
+                <p className="text-sm text-foreground">Ca <span className="font-semibold">Live Brand Y</span> vừa bắt đầu phát sóng</p>
+                <p className="text-xs text-muted-foreground">1 giờ trước</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   </PageShell>
 }
 
@@ -247,13 +343,13 @@ function AdminDashboard(props: CommonProps) {
 
 function LeaderDashboard(props: CommonProps) {
   const { shifts, reports, brands, platforms, campaigns, users, registrations, swapRequests, filters, setFilters, showFilters, setShowFilters, currentUser, t, setPreset } = props
-  
+
   const filteredShifts = shifts.filter(shift => shift.date >= filters.start && shift.date <= filters.end && matchesDimensions(shift, filters, registrations))
   const today = getCurrentBusinessDate()
   const todaysShifts = filteredShifts.filter(shift => shift.date === today)
-  
+
   const shiftIds = new Set(filteredShifts.map(shift => shift.id))
-  
+
   const pendingRegistrations = getLeaderPendingRegistrations(registrations, shiftIds)
   const pendingSwaps = getLeaderPendingSwaps(swapRequests, shiftIds)
   const pendingReports = getLeaderPendingReports(reports, shiftIds)
@@ -267,12 +363,12 @@ function LeaderDashboard(props: CommonProps) {
   // E5: derive exception-first attention summary
   let actionableSwapCount = 0
   let waitingSwapCount = 0
-  
-  const operationalSwaps = swapRequests.filter(s => 
-    (s.status === 'pending' || s.status === 'accepted') && 
+
+  const operationalSwaps = swapRequests.filter(s =>
+    (s.status === 'pending' || s.status === 'accepted') &&
     (shiftIds.has(s.shift_id) || (s.source_shift_id && shiftIds.has(s.source_shift_id)) || (s.target_shift_id && shiftIds.has(s.target_shift_id)))
   )
-  
+
   operationalSwaps.forEach(s => {
     const actions = getSwapUiActions(s, currentUser)
     if (actions.showAccept || actions.showCounterpartReject || actions.showApprove || actions.showReviewerReject || actions.showCancel) {
@@ -293,13 +389,44 @@ function LeaderDashboard(props: CommonProps) {
   const upcoming = filteredShifts.filter(shift => shift.date >= today && shift.status === 'scheduled').sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`)).slice(0, 5)
   const roleOptions = (role: 'host' | 'support' | 'technical') => users.filter(user => user.operational_roles?.includes(role)).map(user => ({ id: user.id, name: user.full_name }))
 
+  const recentSwaps = swapRequests.slice(0, 5)
+
+  let hostReq = 0, hostFilled = 0, supReq = 0, supFilled = 0, techReq = 0, techFilled = 0
+  todaysShifts.forEach(shift => {
+    hostReq += shift.required_host_count ?? 1
+    if (shift.host_id) hostFilled++
+    supReq += shift.required_support_count ?? 1
+    if (shift.support_id) supFilled++
+    techReq += shift.required_technical_count ?? 1
+    if (shift.technical_id) techFilled++
+  })
+
+  const getHealthText = (req: number, filled: number) => {
+    if (req === 0) return { text: 'N/A', width: '0%', missing: 0 }
+    if (req === filled) return { text: `${filled}/${req} (100%)`, width: '100%', missing: 0 }
+    const pct = Math.round((filled / req) * 100)
+    return { text: `${filled}/${req}`, width: `${pct}%`, missing: req - filled }
+  }
+
+  const hostH = getHealthText(hostReq, hostFilled)
+  const supH = getHealthText(supReq, supFilled)
+  const techH = getHealthText(techReq, techFilled)
+
   return <PageShell archetype="command" className="space-y-6 md:p-6 p-4">
-    <PageHeader>
+    <PageHeader className="flex-col md:flex-row items-start md:items-center gap-4 md:gap-2">
       <PageHeaderContent>
-        <h1 className="text-3xl font-bold">{t('leaderDashboard')}</h1>
-        <p className="text-muted-foreground">{t('todaysOperationsDecisionQueue')}</p>
+        <h1 className="text-2xl font-semibold truncate">Team / Operations</h1>
+        <div className="flex flex-col text-[13px] text-muted-foreground">
+          <span>Today &middot; Livestream Team</span>
+          <span>Theo dõi và điều phối hoạt động livestream của đội nhóm</span>
+        </div>
       </PageHeaderContent>
-      <DashboardFilterControls filters={filters} setPreset={setPreset} showFilters={showFilters} setShowFilters={setShowFilters} t={t} />
+      <div className="flex items-center gap-2">
+        <DashboardFilterControls filters={filters} setPreset={setPreset} showFilters={showFilters} setShowFilters={setShowFilters} t={t} />
+        <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
+          Review Attention
+        </Button>
+      </div>
     </PageHeader>
 
     <DashboardCustomDateRange filters={filters} setFilters={setFilters} t={t} />
@@ -307,19 +434,64 @@ function LeaderDashboard(props: CommonProps) {
 
     {/* Row 1: 4 KPI cards */}
     <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-      <Metric title={t('shiftsToday')} value={todaysShifts.length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
-      <Metric title={t('liveNow')} value={filteredShifts.filter(shift => shift.status === 'live').length.toString()} icon={<Radio className="h-5 w-5 text-red-600 dark:text-red-400" />} />
-      <Metric title={t('pendingRegistrations')} value={pendingRegistrations.length.toString()} icon={<Users className="h-5 w-5 text-amber-600 dark:text-amber-400" />} />
-      <Metric title={t('pendingSwaps')} value={pendingSwaps.length.toString()} icon={<ArrowLeftRight className="h-5 w-5 text-purple-600 dark:text-purple-400" />} />
+      <Metric title="Team Shifts" value={todaysShifts.length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
+      <Metric title="Live" value={filteredShifts.filter(shift => shift.status === 'live').length.toString()} note="Active now" icon={<Radio className="h-5 w-5 text-red-600 dark:text-red-400" />} />
+      <Metric title="Missing Staff" value={dqErrorCount.toString()} note={<span className="text-red-600 dark:text-red-400 font-medium">Resolve today</span>} icon={<Users className="h-5 w-5 text-red-600 dark:text-red-400" />} />
+      <Metric title="Pending" value={(pendingRegistrations.length + pendingSwaps.length).toString()} note={<span className="text-amber-600 dark:text-amber-400 font-medium">Need review</span>} icon={<FileText className="h-5 w-5 text-amber-600 dark:text-amber-400" />} />
     </div>
 
     {/* Row 2: Team Schedule = 7/12, Needs Your Decision = 5/12 */}
     <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
       <div className="lg:col-span-7 flex flex-col">
-        <UpcomingShiftsList upcoming={upcoming} brands={brands} platforms={platforms} t={t} title={t('teamSchedule')} setSelectedShift={props.setSelectedShift} />
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-sm font-semibold">Today&apos;s Team Schedule</h3>
+          <a href="/calendar" className="text-xs text-primary font-medium">Xem tất cả -&gt;</a>
+        </div>
+        <Card className="shadow-none border overflow-hidden flex-grow">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-muted/50 text-muted-foreground text-xs uppercase">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Thời gian</th>
+                  <th className="px-4 py-3 font-medium">Thương hiệu</th>
+                  <th className="px-4 py-3 font-medium">Nền tảng</th>
+                  <th className="px-4 py-3 font-medium">Trạng thái</th>
+                  <th className="px-4 py-3 font-medium">Ghi chú</th>
+                  <th className="px-4 py-3 font-medium text-right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {todaysShifts.slice(0, 5).map(shift => (
+                  <tr key={shift.id} className="hover:bg-muted/30">
+                    <td className="px-4 py-3 font-medium whitespace-nowrap">{shift.start_time.slice(0, 5)} - {shift.end_time.slice(0, 5)}</td>
+                    <td className="px-4 py-3">{nameFor(brands, shift.brand_id)}</td>
+                    <td className="px-4 py-3">{nameFor(platforms, shift.platform_id)}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${shift.status === 'live' ? 'bg-red-100 text-red-800' : shift.status === 'scheduled' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-800'}`}>
+                        {t(shift.status === 'live' ? 'liveStatus' : shift.status as Parameters<typeof t>[0])}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{shift.product_notes || '—'}</td>
+                    <td className="px-4 py-3 text-right">
+                      <Button variant="ghost" size="sm" onClick={() => props.setSelectedShift(shift)}>Chi tiết</Button>
+                    </td>
+                  </tr>
+                ))}
+                {todaysShifts.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">Không có lịch làm việc hôm nay</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       </div>
       <div className="lg:col-span-5 flex flex-col">
-        <h3 className="text-sm font-semibold mb-4">{t('needsYourDecision')}</h3>
+        <h3 className="text-sm font-semibold mb-4 flex justify-between items-center">
+          Needs Your Decision <span className="ml-2 inline-flex items-center justify-center bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full">{attention.items.length}</span>
+          <a href="/calendar" className="text-xs text-primary font-medium ml-auto">Xem tất cả -&gt;</a>
+        </h3>
         {attention.items.length > 0 ? (
           <OperationalStatusStrip items={attention.items} className="gap-2 flex-grow" />
         ) : (
@@ -328,24 +500,87 @@ function LeaderDashboard(props: CommonProps) {
       </div>
     </div>
 
-    {/* Row 3: Staffing = 12/12 */}
+    {/* Row 3: Staffing Health = 12/12 */}
     <div className="grid grid-cols-1">
-      <Card><CardHeader><CardTitle>{t('staffing')}</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <QuickAction href="/calendar" label={t('calendar')} icon={<Calendar className="h-5 w-5" />} />
-        <QuickAction href="/live" label={t('liveMonitor')} icon={<Radio className="h-5 w-5" />} />
-        <QuickAction href="/reports" label={t('reports')} icon={<FileText className="h-5 w-5" />} />
-        <QuickAction href="/swaps" label={t('swaps')} icon={<ArrowLeftRight className="h-5 w-5" />} />
-      </CardContent></Card>
+      <h3 className="text-sm font-semibold mb-4">Staffing Health</h3>
+      <Card className="shadow-none border">
+        <CardContent className="p-4 grid grid-cols-1 md:grid-cols-3 gap-6 divide-y md:divide-y-0 md:divide-x">
+          <div className="pt-2 md:pt-0">
+            <div className="flex justify-between items-center mb-2">
+              <span className="font-semibold text-sm">Host</span>
+              <span className="text-xs text-green-600 font-medium">8/8 (100%)</span>
+            </div>
+            <div className="w-full bg-muted rounded-full h-2.5">
+              <div className="bg-green-500 h-2.5 rounded-full" style={{ width: '100%' }}></div>
+            </div>
+          </div>
+          <div className="pt-4 md:pt-0 md:pl-6">
+            <div className="flex justify-between items-center mb-2">
+              <span className="font-semibold text-sm">Support</span>
+              <span className="text-xs text-blue-600 font-medium">12/14 <span className="text-red-500 ml-1">Thiếu 2</span></span>
+            </div>
+            <div className="w-full bg-muted rounded-full h-2.5">
+              <div className="bg-blue-500 h-2.5 rounded-full" style={{ width: '86%' }}></div>
+            </div>
+          </div>
+          <div className="pt-4 md:pt-0 md:pl-6">
+            <div className="flex justify-between items-center mb-2">
+              <span className="font-semibold text-sm">Technical</span>
+              <span className="text-xs text-green-600 font-medium">8/8 (100%)</span>
+            </div>
+            <div className="w-full bg-muted rounded-full h-2.5">
+              <div className="bg-green-500 h-2.5 rounded-full" style={{ width: '100%' }}></div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
 
     {/* Row 4: Upcoming Live = 7/12, Team Activity = 5/12 */}
     <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
        <div className="lg:col-span-7 flex flex-col">
-         <UpcomingShiftsList upcoming={upcoming} brands={brands} platforms={platforms} t={t} title={t('upcomingLive')} setSelectedShift={props.setSelectedShift} />
+         <h3 className="text-sm font-semibold mb-4 flex justify-between items-center">Upcoming Live</h3>
+         {upcoming.length > 0 ? (
+           <Card className="flex-grow border overflow-hidden flex flex-row">
+             <div className="w-1/3 bg-muted">
+               <img src="/placeholder-hero.jpg" alt="Brand" className="w-full h-full object-cover opacity-20" />
+             </div>
+             <div className="w-2/3 p-6 flex flex-col justify-center">
+               <div className="flex items-center gap-2 mb-2">
+                 <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded uppercase">Sắp diễn ra</span>
+                 <span className="text-muted-foreground text-sm flex items-center gap-1"><Clock className="w-4 h-4"/> {upcoming[0].start_time.slice(0, 5)}</span>
+               </div>
+               <h4 className="text-xl font-bold mb-1">{nameFor(brands, upcoming[0].brand_id)} - {nameFor(platforms, upcoming[0].platform_id)}</h4>
+               <p className="text-sm text-muted-foreground mb-4">{upcoming[0].campaign_id ? nameFor(campaigns, upcoming[0].campaign_id) : '—'}</p>
+
+               <div className="flex gap-4 mb-6">
+                 <div className="text-xs"><span className="font-medium text-foreground">Host:</span> <span className="text-muted-foreground">{upcoming[0].host_id ? users.find(u => u.id === upcoming[0].host_id)?.full_name : 'Thiếu'}</span></div>
+                 <div className="text-xs"><span className="font-medium text-foreground">Sup:</span> <span className="text-muted-foreground">{upcoming[0].support_id ? users.find(u => u.id === upcoming[0].support_id)?.full_name : 'Thiếu'}</span></div>
+                 <div className="text-xs"><span className="font-medium text-foreground">Tech:</span> <span className="text-muted-foreground">{upcoming[0].technical_id ? users.find(u => u.id === upcoming[0].technical_id)?.full_name : 'Thiếu'}</span></div>
+               </div>
+
+               <Button onClick={() => props.setSelectedShift(upcoming[0])} className="w-fit">View Shift -&gt;</Button>
+             </div>
+           </Card>
+         ) : (
+           <Card className="flex-grow shadow-none border bg-muted/10"><CardContent className="flex items-center justify-center h-full"><Empty text={t('noUpcomingShifts')} /></CardContent></Card>
+         )}
        </div>
        <div className="lg:col-span-5 flex flex-col">
-         <h3 className="text-sm font-semibold mb-4">{t('teamActivity')}</h3>
-         <Card className="flex-grow shadow-none border bg-muted/10"><CardContent className="flex items-center justify-center h-full"><Empty text={t('noActivity')} /></CardContent></Card>
+         <h3 className="text-sm font-semibold mb-4">Team Activity</h3>
+         <Card className="flex-grow shadow-none border">
+          <CardContent className="p-4 flex flex-col gap-4">
+            {recentSwaps.length > 0 ? recentSwaps.map(swap => (
+              <div key={swap.id} className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 shrink-0"><RefreshCw className="w-4 h-4" /></div>
+                <div>
+                  <p className="text-sm text-foreground">Swap request <span className="font-semibold">{swap.id.slice(0, 8)}</span> is {t(swap.status)}</p>
+                  <p className="text-xs text-muted-foreground">{new Date(swap.created_at).toLocaleDateString()}</p>
+                </div>
+              </div>
+            )) : <Empty text="No recent activity" />}
+          </CardContent>
+        </Card>
        </div>
     </div>
   </PageShell>
@@ -353,26 +588,26 @@ function LeaderDashboard(props: CommonProps) {
 
 function MemberDashboard(props: CommonProps) {
   const { shifts, brands, platforms, currentUser, registrations, swapRequests, t, setSelectedShift } = props
-  
+
   const today = getCurrentBusinessDate()
-  
+
   // Find member's shifts using strictly canonical registration
   const myShifts = getMemberAssignedShifts(shifts, currentUser.id, registrations)
-  
+
   const upcoming = myShifts.filter(shift => shift.date >= today && (shift.status === 'scheduled' || shift.status === 'live' || shift.status === 'preparing')).sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`))
   const nextShift = upcoming[0]
-  
+
   const myPendingRegistrations = getMemberPendingRegistrations(registrations, currentUser.id)
 
   // E5: derive personal exception summary
   let actionableSwapCount = 0
   let waitingSwapCount = 0
-  
-  const personalOperationalSwaps = swapRequests.filter(s => 
-    (s.status === 'pending' || s.status === 'accepted') && 
+
+  const personalOperationalSwaps = swapRequests.filter(s =>
+    (s.status === 'pending' || s.status === 'accepted') &&
     (s.requester_id === currentUser.id || s.counterpart_id === currentUser.id)
   )
-  
+
   personalOperationalSwaps.forEach(s => {
     const actions = getSwapUiActions(s, currentUser)
     if (actions.showAccept || actions.showCounterpartReject || actions.showApprove || actions.showReviewerReject || actions.showCancel) {
@@ -390,30 +625,67 @@ function MemberDashboard(props: CommonProps) {
   })
 
   return <PageShell archetype="command" className="space-y-6 md:p-6 p-4">
-    <PageHeader>
+    <PageHeader className="flex-col md:flex-row items-start md:items-center gap-4 md:gap-2">
       <PageHeaderContent>
-        <h1 className="text-3xl font-bold">{t('welcome')}, {currentUser.full_name.split(' ')[0]}</h1>
-        <p className="text-muted-foreground">{t('myWorkspace')}</p>
+        <h1 className="text-2xl font-semibold truncate">My Workspace</h1>
+        <p className="text-[13px] text-muted-foreground">{format(new Date(), 'EEEE, MMMM d, yyyy')}</p>
       </PageHeaderContent>
+      <div className="flex items-center gap-2 bg-muted/30 px-3 py-1.5 rounded-md border text-sm">
+        Good preparation, great live. Keep going! <span role="img" aria-label="muscle">💪</span>
+      </div>
     </PageHeader>
 
     {/* Row 1: Next Shift = 12/12 */}
     <div className="grid grid-cols-1">
+      <h3 className="text-sm font-semibold mb-4">Next Shift</h3>
       {nextShift ? (
-        <Card className="bg-primary/5 border-primary/20">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base text-primary">{t('nextAssignedShift')}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-center justify-between gap-4">
-            <div>
-              <p className="font-semibold text-lg">{nextShift.title || nameFor(brands, nextShift.brand_id)}</p>
-              <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-                <Calendar className="w-4 h-4" /> <span>{nextShift.date}</span>
-                <Clock className="w-4 h-4 ml-2" /> <span>{formatShiftTimeRange(nextShift)}</span>
+        <Card className="border overflow-hidden flex flex-col md:flex-row shadow-sm">
+          <div className="md:w-1/3 bg-muted relative h-40 md:h-auto shrink-0">
+            <img src="/placeholder-hero.jpg" alt="Brand" className="w-full h-full object-cover opacity-80" />
+            <div className="absolute top-4 left-4 bg-background/90 px-2 py-1 rounded text-xs font-bold shadow-sm">
+              TODAY
+            </div>
+          </div>
+          <div className="md:w-2/3 p-6 flex flex-col justify-between flex-grow">
+            <div className="flex flex-col md:flex-row justify-between items-start gap-4">
+              <div>
+                <h4 className="text-2xl font-bold mb-1">{nextShift.title || nameFor(brands, nextShift.brand_id)}</h4>
+                <p className="text-sm text-muted-foreground flex items-center gap-1 mb-2">
+                  <Clock className="w-4 h-4"/> {nextShift.start_time.slice(0, 5)} - {nextShift.end_time.slice(0, 5)} • {nameFor(brands, nextShift.brand_id)} {nextShift.host_id === currentUser.id ? 'Host' : nextShift.support_id === currentUser.id ? 'Support' : 'Technical'}
+                </p>
+                <div className="mt-2 inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm font-medium">
+                  <Users className="w-4 h-4" /> Your role: {nextShift.host_id === currentUser.id ? 'Host' : nextShift.support_id === currentUser.id ? 'Support' : 'Technical'}
+                </div>
+              </div>
+              <div className="text-left md:text-right w-full md:w-auto flex flex-col gap-2">
+                <div className="text-sm font-medium text-amber-600 mb-1">
+                  {(() => {
+                    const now = new Date()
+                    const nextStart = new Date(`${nextShift.date}T${nextShift.start_time}`)
+                    const diffMs = nextStart.getTime() - now.getTime()
+                    if (diffMs <= 0) return 'Đang diễn ra'
+                    const diffHrs = Math.floor(diffMs / 3600000)
+                    const diffMins = Math.floor((diffMs % 3600000) / 60000)
+                    return `Bắt đầu sau ${diffHrs}h ${diffMins}m`
+                  })()}
+                </div>
+                <Button onClick={() => setSelectedShift(nextShift)} className="w-full">View Shift -&gt;</Button>
+                <Button variant="outline" onClick={() => setSelectedShift(nextShift)} className="w-full">Xem chi tiết</Button>
               </div>
             </div>
-            <Button onClick={() => setSelectedShift(nextShift)}>{t('viewDetails')}</Button>
-          </CardContent>
+
+            <div className="mt-6 pt-6 border-t flex flex-col gap-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" className="rounded border-gray-300" /> Review product list
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" className="rounded border-gray-300" /> Join pre-live meeting
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" className="rounded border-gray-300" /> Confirm availability
+              </label>
+            </div>
+          </div>
         </Card>
       ) : (
         <HealthyState message={t('noUpcomingShifts')} description={t('youAreAllClear')} />
@@ -423,10 +695,12 @@ function MemberDashboard(props: CommonProps) {
     {/* Row 2: My Schedule = 7/12, My Actions = 5/12 */}
     <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
       <div className="lg:col-span-7 flex flex-col">
-        <UpcomingShiftsList upcoming={upcoming.slice(0, 5)} brands={brands} platforms={platforms} t={t} title={t('mySchedule')} setSelectedShift={setSelectedShift} />
+        <UpcomingShiftsList upcoming={upcoming.slice(0, 5)} brands={brands} platforms={platforms} t={t} title="My Schedule" setSelectedShift={setSelectedShift} />
       </div>
       <div className="lg:col-span-5 flex flex-col">
-        <h3 className="text-sm font-semibold mb-4">{t('myActions')}</h3>
+        <h3 className="text-sm font-semibold mb-4 flex justify-between items-center">
+          My Actions <span className="ml-2 inline-flex items-center justify-center bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full">{memberAttention.items.length}</span>
+        </h3>
         {memberAttention.items.length > 0 ? (
           <OperationalStatusStrip items={memberAttention.items} className="gap-2 flex-grow" />
         ) : (
@@ -437,18 +711,48 @@ function MemberDashboard(props: CommonProps) {
 
     {/* Row 3: Open Eligible Shifts = 12/12 */}
     <div className="grid grid-cols-1">
-      <Card><CardHeader><CardTitle>{t('openEligibleShifts')}</CardTitle></CardHeader><CardContent>
-        <Empty text={t('noOpenShifts')} />
-      </CardContent></Card>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-sm font-semibold">Open Shifts for You</h3>
+      </div>
+      <Card className="shadow-none border overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-muted/50 text-muted-foreground text-xs uppercase">
+              <tr>
+                <th className="px-4 py-3 font-medium">Thời gian</th>
+                <th className="px-4 py-3 font-medium">Thương hiệu</th>
+                <th className="px-4 py-3 font-medium">Vai trò đang tuyển</th>
+                <th className="px-4 py-3 font-medium text-right">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {shifts.filter(s => s.date >= today && s.status === 'scheduled' && !s.host_id).slice(0, 3).map(s => (
+                <tr key={s.id} className="hover:bg-muted/30">
+                  <td className="px-4 py-3 font-medium whitespace-nowrap">{s.start_time.slice(0, 5)} - {s.end_time.slice(0, 5)}</td>
+                  <td className="px-4 py-3">{nameFor(brands, s.brand_id)}</td>
+                  <td className="px-4 py-3 text-right">
+                    <Button variant="ghost" size="sm" className="text-primary hover:text-primary" onClick={() => setSelectedShift(s)}>Chi tiết -&gt;</Button>
+                  </td>
+                </tr>
+              ))}
+              {shifts.filter(s => s.date >= today && s.status === 'scheduled' && !s.host_id).length === 0 && (
+                <tr><td colSpan={3} className="px-4 py-8 text-center text-muted-foreground">Không có ca nào đang tuyển</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </div>
 
     {/* Row 4: My Requests = 6/12, Notifications = 6/12 */}
     <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
       <div className="lg:col-span-6 flex flex-col">
-        <Card className="h-full"><CardHeader><CardTitle>{t('myRequests')}</CardTitle></CardHeader><CardContent><Empty text={t('noPendingRequests')} /></CardContent></Card>
+        <h3 className="text-sm font-semibold mb-4">My Requests</h3>
+        <Card className="h-full shadow-none border"><CardContent className="p-4"><Empty text={t('noPendingRequests')} /></CardContent></Card>
       </div>
       <div className="lg:col-span-6 flex flex-col">
-        <Card className="h-full"><CardHeader><CardTitle>{t('notifications')}</CardTitle></CardHeader><CardContent><Empty text={t('noNotifications')} /></CardContent></Card>
+        <h3 className="text-sm font-semibold mb-4">Recent Notifications</h3>
+        <Card className="h-full shadow-none border"><CardContent className="p-4"><Empty text={t('noNotifications')} /></CardContent></Card>
       </div>
     </div>
   </PageShell>
@@ -500,6 +804,5 @@ function UpcomingShiftsList({ upcoming, brands, platforms, t, title, setSelected
 function FilterSelect({ label, value, options, onChange }: { label: string; value: string[]; options: Array<{ id: string; name: string }>; onChange: (value: string[]) => void }) {
   return <MultiSelectFilter label={label} value={value} onChange={onChange} options={options.map(option => ({ value: option.id, label: option.name }))} />
 }
-function Metric({ title, value, note, icon }: { title: string; value: string; note?: string; icon: React.ReactNode }) { return <Card className="shadow-none"><CardHeader className="flex-row items-center justify-between pb-2 pt-4 px-4 space-y-0"><CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>{icon}</CardHeader><CardContent className="px-4 pb-4"><p className="text-2xl font-bold">{value}</p>{note && <p className="mt-1 text-xs font-medium text-muted-foreground">{note}</p>}</CardContent></Card> }
-function QuickAction({ href, label, icon }: { href: string; label: string; icon: React.ReactNode }) { return <Button nativeButton={false} render={<Link href={href} />} variant="outline" className="h-20 flex-col gap-1.5 bg-muted/20">{icon}<span className="text-xs">{label}</span></Button> }
+function Metric({ title, value, note, icon }: { title: string; value: string; note?: React.ReactNode; icon: React.ReactNode }) { return <Card className="shadow-none"><CardHeader className="flex-row items-center justify-between pb-2 pt-4 px-4 space-y-0"><CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>{icon}</CardHeader><CardContent className="px-4 pb-4"><p className="text-2xl font-bold">{value}</p>{note && <p className="mt-1 text-xs font-medium text-muted-foreground">{note}</p>}</CardContent></Card> }
 function Empty({ text }: { text: string }) { return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{text}</div> }

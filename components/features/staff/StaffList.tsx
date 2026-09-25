@@ -174,7 +174,7 @@ export function StaffList() {
           <Avatar>
             <AvatarImage src={row.avatar_url} />
             <AvatarFallback className="bg-blue-100 text-blue-700">
-              {row.full_name?.split(' ').map(name => name[0]).join('').toUpperCase() || 'U'}
+              {row.full_name ? row.full_name.split(' ').map(name => name[0]).join('').toUpperCase() : 'U'}
             </AvatarFallback>
           </Avatar>
           <div><p className="font-medium">{row.full_name}</p><p className="text-sm text-muted-foreground">{row.email}</p></div>

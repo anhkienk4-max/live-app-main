@@ -52,7 +52,7 @@ const navCatalogue: Record<string, NavItem> = {
 
 // ADMIN priority
 const adminNav: NavItem[] = [
-  navCatalogue.dashboard,
+  { ...navCatalogue.dashboard, group: 'APP OPS' },
   { ...navCatalogue.calendar, group: 'OPERATIONS' },
   { ...navCatalogue.live, group: 'OPERATIONS' },
   { ...navCatalogue.shifts, group: 'OPERATIONS' },
@@ -70,7 +70,7 @@ const adminNav: NavItem[] = [
 
 // LEADER priority
 const leaderNav: NavItem[] = [
-  { ...navCatalogue.dashboard, name: 'Team Operations' },
+  { ...navCatalogue.dashboard, name: 'Team Operations', group: 'APP OPS' },
   { ...navCatalogue.calendar, group: 'OPERATIONS' },
   { ...navCatalogue.live, group: 'OPERATIONS' },
   { ...navCatalogue.shifts, group: 'OPERATIONS' },
@@ -78,19 +78,19 @@ const leaderNav: NavItem[] = [
   { ...navCatalogue.swaps, group: 'OPERATIONS' },
   { ...navCatalogue.reports, group: 'PERFORMANCE' },
   { ...navCatalogue.staffDirectory, group: 'TEAM' },
-  navCatalogue.notifications,
+  { ...navCatalogue.notifications, group: 'TEAM' },
 ]
 
 // MEMBER priority
 const memberNav: NavItem[] = [
-  navCatalogue.myWorkspace,
-  navCatalogue.mySchedule,
-  navCatalogue.openShifts,
-  navCatalogue.mySwaps,
-  navCatalogue.live,
-  navCatalogue.reports,
-  navCatalogue.notifications,
-  navCatalogue.profile,
+  { ...navCatalogue.myWorkspace, group: 'APP OPS' },
+  { ...navCatalogue.mySchedule, group: 'APP OPS' },
+  { ...navCatalogue.openShifts, group: 'APP OPS' },
+  { ...navCatalogue.mySwaps, group: 'APP OPS' },
+  { ...navCatalogue.live, group: 'APP OPS' },
+  { ...navCatalogue.reports, group: 'APP OPS' },
+  { ...navCatalogue.notifications, group: 'APP OPS' },
+  { ...navCatalogue.profile, group: 'APP OPS' },
 ]
 
 /**
