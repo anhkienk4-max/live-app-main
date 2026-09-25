@@ -8,6 +8,7 @@ import {
 } from '@/lib/utils/scheduleImportPreview'
 
 export type DraftField =
+  | 'execution_source'
   | 'date'
   | 'start_time'
   | 'end_time'
@@ -20,6 +21,7 @@ export type DraftField =
   | PreviewStaffingField
 
 export const draftFields: readonly DraftField[] = [
+  'execution_source',
   'date',
   'start_time',
   'end_time',
@@ -93,7 +95,7 @@ export function commitRowDraftToSource<T extends Record<string, unknown>>(
   for (const [field, value] of Object.entries(draft)) {
     if (value === undefined) continue
     next[getScheduleImportSourceField(field)] = value
-    if (['campaign_name', 'studio', 'title', 'notes', ...previewStaffingFields, ...previewStaffingNameFields].includes(field as DraftField)) {
+    if (['execution_source', 'campaign_name', 'studio', 'title', 'notes', ...previewStaffingFields, ...previewStaffingNameFields].includes(field as DraftField)) {
       sourcePresence[field] = value.trim().length > 0
     }
   }

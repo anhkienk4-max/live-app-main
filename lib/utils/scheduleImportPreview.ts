@@ -8,6 +8,7 @@ export type ValidatedStaffingValues = Record<PreviewStaffingField, number | null
 export type PreviewStaffingNameField = 'host_names' | 'assistant_names' | 'technical_names'
 export type PreviewStaffingNameValues = Record<PreviewStaffingNameField, string[]>
 export type ScheduleImportSourcePresence = Partial<Record<
+  | 'execution_source'
   | 'campaign_name'
   | 'studio'
   | 'title'
@@ -17,6 +18,7 @@ export type ScheduleImportSourcePresence = Partial<Record<
   boolean>>
 
 type ScheduleImportEnrichmentShape = Pick<Shift,
+  | 'execution_source'
   | 'campaign_id'
   | 'studio'
   | 'title'
@@ -50,6 +52,7 @@ export function buildScheduleImportEnrichmentPatch(
   imported: ScheduleImportEnrichmentShape,
   sourcePresence: ScheduleImportSourcePresence = {},
 ): Partial<Pick<Shift,
+  | 'execution_source'
   | 'campaign_id'
   | 'studio'
   | 'title'
@@ -59,6 +62,7 @@ export function buildScheduleImportEnrichmentPatch(
   | 'required_technical_count'
 >> {
   const patch: Partial<Pick<Shift,
+    | 'execution_source'
     | 'campaign_id'
     | 'studio'
     | 'title'
@@ -67,6 +71,9 @@ export function buildScheduleImportEnrichmentPatch(
     | 'required_support_count'
     | 'required_technical_count'
   >> = {}
+  if (sourcePresence.execution_source && imported.execution_source && existing.execution_source !== imported.execution_source) {
+    patch.execution_source = imported.execution_source
+  }
   if (sourceValueProvided(sourcePresence.campaign_name, Boolean(imported.campaign_id)) && imported.campaign_id && existing.campaign_id !== imported.campaign_id) {
     patch.campaign_id = imported.campaign_id
   }
@@ -120,6 +127,7 @@ export const previewStaffingNameFields = [
 ] as const
 
 const previewFieldToSourceField: Record<string, string> = {
+  execution_source: 'Execution Source',
   date: 'Date',
   start_time: 'Start time',
   end_time: 'End time',
@@ -345,6 +353,7 @@ export function normalizeScheduleImportSourceRow(
 
 export function buildScheduleImportPreviewSourceRow(row: ScheduleImportRow) {
   return normalizeScheduleImportSourceRow({
+    'Execution Source': row.execution_source || '',
     Date: row.date,
     'Start time': row.start_time,
     'End time': row.end_time,

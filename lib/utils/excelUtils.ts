@@ -73,6 +73,7 @@ type ScheduleSheetRow = Record<string, unknown>
 type SlashDateOrder = 'day-first' | 'month-first'
 
 const scheduleHeaders = {
+  executionSource: ['execution source', 'execution_source'],
   date: ['date', 'ngày', 'ngay', 'ngày live', 'ngay live'],
   timeRange: ['time', 'giờ', 'gio', 'shift time', 'time range', 'khung giờ', 'khung gio', 'thời gian', 'thoi gian'],
   startTime: ['start', 'start time', 'giờ bắt đầu', 'gio bat dau', 'từ giờ', 'tu gio'],
@@ -88,6 +89,7 @@ const scheduleHeaders = {
 type ScheduleHeaderField = keyof typeof scheduleHeaders | PreviewStaffingField | PreviewStaffingNameField
 
 const canonicalScheduleHeaders: Record<ScheduleHeaderField, string> = {
+  executionSource: 'Execution Source',
   date: 'Date',
   timeRange: 'Time',
   startTime: 'Start time',
@@ -397,8 +399,13 @@ export function parseScheduleRows(
     const title = suppliedTitle || (brandName && platformName ? `${brandName} – ${platformName}` : brandName)
     const rawStudio = String(valueFor(normalizedSource, scheduleHeaders.studio) ?? '')
     const studio = rawStudio.trim()
+    const rawExecutionSource = textValue(valueFor(normalizedSource, scheduleHeaders.executionSource)).trim()
+    const executionSource = /^(internal|agency)$/i.test(rawExecutionSource)
+      ? rawExecutionSource.toLowerCase() as 'internal' | 'agency'
+      : null
     const notes = String(valueFor(normalizedSource, scheduleHeaders.notes) ?? '').trim()
     const sourcePresence = (sourceValues.source_presence as ScheduleImportSourcePresence | undefined) ?? {
+      execution_source: sourceFieldProvided(sourceValues, scheduleHeaders.executionSource),
       campaign_name: sourceFieldProvided(sourceValues, scheduleHeaders.campaign),
       studio: sourceFieldProvided(sourceValues, scheduleHeaders.studio),
       title: sourceFieldProvided(sourceValues, scheduleHeaders.title),
@@ -423,6 +430,8 @@ export function parseScheduleRows(
     const validatedStaffing = validateStaffingValues(staffingValues)
     const rowErrors: string[] = []
     const rowWarnings: string[] = []
+    if (rawExecutionSource && !executionSource) rowErrors.push('Execution Source must be Internal or Agency.')
+    if (!rawExecutionSource) rowWarnings.push('Execution Source is missing; this shift will remain unclassified.')
 
     if (!date) rowErrors.push('Date is required.')
     else if (!validIsoDate(date)) {
@@ -473,6 +482,7 @@ export function parseScheduleRows(
     let duplicateReference: Omit<Shift, 'id' | 'created_at' | 'updated_at'> | undefined
     if (brandId && platformId && rowErrors.length === 0) {
       shift = {
+        execution_source: executionSource,
         date,
         start_time: startTime,
         end_time: endTime,
@@ -509,6 +519,7 @@ export function parseScheduleRows(
     rowWarnings.forEach(message => warnings.push({ row: rowNumber, field: 'duplicate', message }))
     previews.push({
       row: toCanonicalScheduleImportPreviewRow({
+        execution_source: executionSource,
         row_number: rowNumber,
         date,
         start_time: startTime,
@@ -763,6 +774,7 @@ export function downloadScheduleImportErrors(result: ImportResult): void {
         Campaign: preview.row.campaign_name || '',
         Title: preview.row.title,
         Studio: preview.row.studio || '',
+        'Execution Source': preview.row.execution_source || '',
         Errors: preview.row.errors.join('\n'),
         Warnings: preview.row.warnings.join('\n'),
       })),
@@ -792,6 +804,7 @@ export function exportShiftsToExcel(
       Platform: platforms.get(shift.platform_id) || shift.platform_id,
       Campaign: shift.campaign_id ? campaigns.get(shift.campaign_id) || shift.campaign_id : '',
       Studio: shift.studio || '',
+      'Execution Source': shift.execution_source || '',
       Host: shift.host_id ? users.get(shift.host_id) || shift.host_id : '',
       Support: shift.support_id ? users.get(shift.support_id) || shift.support_id : '',
       Technical: shift.technical_id ? users.get(shift.technical_id) || shift.technical_id : '',
@@ -843,6 +856,7 @@ export function buildScheduleImportTemplateSheets() {
         'End time': '13:00',
         Brand: 'TechGear Pro',
         Platform: 'TikTok Shop',
+        'Execution Source': 'Internal',
         Campaign: 'Flash Sale Week',
         'Shift title': 'Morning product live',
         Studio: 'Studio A',
@@ -858,6 +872,7 @@ export function buildScheduleImportTemplateSheets() {
         { Field: 'Date', Format: 'YYYY-MM-DD or DD/MM/YYYY', Required: 'Yes' },
         { Field: 'Start time / End time', Format: 'HH:MM (24 hour)', Required: 'Yes' },
         { Field: 'Brand / Platform', Format: 'Existing name', Required: 'Yes' },
+        { Field: 'Execution Source', Format: 'Internal or Agency; blank legacy imports remain unclassified', Required: 'For new files' },
         { Field: 'Campaign', Format: 'Existing name', Required: 'No' },
         { Field: 'Shift title', Format: 'Text', Required: 'Yes' },
         { Field: 'Studio', Format: 'Text', Required: 'No' },

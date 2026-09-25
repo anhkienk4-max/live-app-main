@@ -21,6 +21,7 @@ const maps = {
 }
 
 const baseShift = {
+  execution_source: 'internal' as const,
   date: '2026-09-05',
   start_time: '10:00',
   end_time: '13:00',
@@ -54,6 +55,7 @@ function shift(id: string, overrides: Partial<Shift> = {}): Shift {
 
 function row(overrides: Partial<ScheduleImportRow> = {}): ScheduleImportRow {
   return {
+    execution_source: 'internal',
     row_number: 2,
     date: baseShift.date,
     start_time: baseShift.start_time,
@@ -244,7 +246,7 @@ test('preview keeps an unchanged existing slot as duplicate', () => {
   const existing = shift('existing')
   const result = parseScheduleRows([{
     Date: baseShift.date, Start: baseShift.start_time, End: baseShift.end_time,
-    Brand: 'Brand A', Platform: 'Platform A', Campaign: 'Campaign A', 'Shift title': 'Original title', Studio: 'Studio A',
+    Brand: 'Brand A', Platform: 'Platform A', 'Execution Source': 'Internal', Campaign: 'Campaign A', 'Shift title': 'Original title', Studio: 'Studio A',
     'Host count': 1, 'Support count': 1, 'Technical count': 1,
   }], maps, [existing])
   assert.equal(previewPresentationStatus(result.rows[0]!), 'duplicate')
@@ -267,7 +269,7 @@ test('preview classifies explicit metadata and staffing changes as ready', () =>
   for (const [label, values, sourcePresence] of changes) {
     const result = parseScheduleRows([{
       Date: baseShift.date, Start: baseShift.start_time, End: baseShift.end_time,
-      Brand: 'Brand A', Platform: 'Platform A', Campaign: values.campaign_name ?? 'Campaign A',
+      Brand: 'Brand A', Platform: 'Platform A', 'Execution Source': 'Internal', Campaign: values.campaign_name ?? 'Campaign A',
       'Shift title': values.title ?? 'Original title', Studio: values.studio ?? 'Studio A',
       Notes: values.notes ?? '',
       'Host count': values.required_host_count ?? 1, 'Support count': values.required_support_count ?? 1,
@@ -285,7 +287,7 @@ test('explicit zero count is previewed as enrichment when it differs', () => {
   const existing = shift('existing', { required_support_count: 1 })
   const result = parseScheduleRows([{
     Date: baseShift.date, Start: baseShift.start_time, End: baseShift.end_time,
-    Brand: 'Brand A', Platform: 'Platform A', Campaign: 'Campaign A', 'Shift title': 'Original title', Studio: 'Studio A',
+    Brand: 'Brand A', Platform: 'Platform A', 'Execution Source': 'Internal', Campaign: 'Campaign A', 'Shift title': 'Original title', Studio: 'Studio A',
     'Host count': 1, 'Support count': 0, 'Technical count': 1,
   }], maps, [existing])
   assert.equal(result.rows[0]?.row.source_presence?.required_support_count, true)
@@ -296,7 +298,7 @@ test('draft support edit survives the preview pipeline and becomes ready', () =>
   const existing = shift('existing')
   const initial = normalizeScheduleImportResult(parseScheduleRows([{
     Date: baseShift.date, Start: baseShift.start_time, End: baseShift.end_time,
-    Brand: 'Brand A', Platform: 'Platform A', Campaign: 'Campaign A', 'Shift title': 'Original title', Studio: 'Studio A',
+    Brand: 'Brand A', Platform: 'Platform A', 'Execution Source': 'Internal', Campaign: 'Campaign A', 'Shift title': 'Original title', Studio: 'Studio A',
     'Host count': 1, 'Support count': 1, 'Technical count': 1,
   }], maps, [existing]))
   assert.equal(previewPresentationStatus(initial.rows[0]!), 'duplicate')
@@ -313,7 +315,7 @@ test('draft assistant edit survives the preview pipeline and becomes ready', () 
   const existing = shift('existing')
   const initial = normalizeScheduleImportResult(parseScheduleRows([{
     Date: baseShift.date, Start: baseShift.start_time, End: baseShift.end_time,
-    Brand: 'Brand A', Platform: 'Platform A', Campaign: 'Campaign A', 'Shift title': 'Original title', Studio: 'Studio A',
+    Brand: 'Brand A', Platform: 'Platform A', 'Execution Source': 'Internal', Campaign: 'Campaign A', 'Shift title': 'Original title', Studio: 'Studio A',
     'Host count': 1, 'Support count': 1, 'Technical count': 1,
   }], maps, [existing]))
   const row = initial.rows[0]!.row

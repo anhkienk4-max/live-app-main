@@ -313,6 +313,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
         Brand: '',
         Platform: '',
         Campaign: '',
+        'Execution Source': '',
         'Shift title': '',
         Studio: '',
         required_host_count: DEFAULT_SHIFT_STAFFING.required_host_count,
@@ -441,6 +442,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       preview.row.brand_name,
       preview.row.platform_name,
       preview.row.campaign_name,
+      preview.row.execution_source,
       preview.row.studio,
       preview.row.host_names?.join(' ') ?? '',
       preview.row.assistant_names?.join(' ') ?? '',
@@ -536,7 +538,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
             {visiblePreviews.length === 0 && <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground" role="status">{result.rows.length === 0 ? t('importNoRows') : t('importNoMatchingRows')}</p>}
             <div className="hidden max-h-[560px] overflow-auto rounded-lg border md:block">
               <table className="min-w-[1780px] w-full text-sm">
-                <thead className="sticky top-0 z-10 bg-background"><tr className="border-b text-left"><th className="p-2">{t('importSourceRow')}</th><th className="p-2">{t('date')}</th><th className="p-2">{t('time')}</th><th className="p-2">{t('brand')}</th><th className="p-2">{t('platform')}</th><th className="p-2">{t('campaign')}</th><th className="p-2">{t('shiftTitle')}</th><th className="p-2">{t('studio')}</th><th className="p-2">{t('importHostNames')}</th><th className="p-2">{t('importAssistantNames')}</th><th className="p-2">{t('importTechnicalNames')}</th><th className="p-2">{t('requiredHostCount')}</th><th className="p-2">{t('requiredSupportCount')}</th><th className="p-2">{t('requiredTechnicalCount')}</th><th className="min-w-64 p-2">{t('status')}</th></tr></thead>
+                <thead className="sticky top-0 z-10 bg-background"><tr className="border-b text-left"><th className="p-2">{t('importSourceRow')}</th><th className="p-2">{t('date')}</th><th className="p-2">{t('time')}</th><th className="p-2">{t('brand')}</th><th className="p-2">{t('platform')}</th><th className="p-2">Execution Source</th><th className="p-2">{t('campaign')}</th><th className="p-2">{t('shiftTitle')}</th><th className="p-2">{t('studio')}</th><th className="p-2">{t('importHostNames')}</th><th className="p-2">{t('importAssistantNames')}</th><th className="p-2">{t('importTechnicalNames')}</th><th className="p-2">{t('requiredHostCount')}</th><th className="p-2">{t('requiredSupportCount')}</th><th className="p-2">{t('requiredTechnicalCount')}</th><th className="min-w-64 p-2">{t('status')}</th></tr></thead>
                 <tbody>
                   {visiblePreviews.map(preview => {
                     const rowNumber = preview.row.row_number
@@ -567,6 +569,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                         <td className="p-2"><div className="flex gap-1"><Input aria-label={`Row ${rowNumber} start time`} className="w-24" value={cellValue('start_time')} onChange={changeField('start_time')} onKeyDown={handleCellKeyDown} /><Input aria-label={`Row ${rowNumber} end time`} className="w-24" value={cellValue('end_time')} onChange={changeField('end_time')} onKeyDown={handleCellKeyDown} /></div>{preview.row.crosses_midnight && <p className="mt-1 flex items-center gap-1 whitespace-nowrap text-xs text-indigo-700"><Moon className="h-3 w-3" />{t('endsNextDay')}: {displayDate(preview.row.end_date)}</p>}</td>
                         <td className="p-2"><PreviewEntitySelect ariaLabel={`Row ${rowNumber} brand`} value={entityValue('brand_name', preview.row.brand_name)} onChange={value => draftChange(rowNumber, 'brand_name', value)} options={brands} /></td>
                         <td className="p-2"><PreviewEntitySelect ariaLabel={`Row ${rowNumber} platform`} value={entityValue('platform_name', preview.row.platform_name)} onChange={value => draftChange(rowNumber, 'platform_name', value)} options={platforms} /></td>
+                        <td className="p-2"><select aria-label={`Row ${rowNumber} execution source`} className="h-9 rounded-md border bg-background px-2" value={cellValue('execution_source')} onChange={event => draftChange(rowNumber, 'execution_source', event.target.value)}><option value="">Unclassified</option><option value="internal">Internal</option><option value="agency">Agency</option></select></td>
                         <td className="p-2"><PreviewEntitySelect ariaLabel={`Row ${rowNumber} campaign`} optional value={entityValue('campaign_name', preview.row.campaign_name || '')} onChange={value => draftChange(rowNumber, 'campaign_name', value)} options={campaigns} /></td>
                         <td className="p-2"><Input aria-label={`Row ${rowNumber} shift title`} className="w-48" value={cellValue('title')} onChange={changeField('title')} onKeyDown={handleCellKeyDown} /></td>
                         <td className="p-2"><Input aria-label={`Row ${rowNumber} studio`} className="w-36" value={cellValue('studio')} onChange={changeField('studio')} onKeyDown={handleCellKeyDown} /></td>
@@ -620,6 +623,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                 return <div key={preview.row.row_number} className={`rounded-md border p-3 ${rowStatusClass(status)}`}>
                   <div className="flex items-start justify-between gap-2"><div><p className="text-xs text-muted-foreground">{t('importSourceRow')} {preview.row.row_number}</p><p className="font-medium">{identity || t('importNoRows')}</p></div><Badge variant="outline">{importStatusLabel(status, t)}</Badge></div>
                   <p className="mt-1 text-xs text-muted-foreground">{preview.row.brand_name} · {preview.row.platform_name}{preview.row.campaign_name ? ` · ${preview.row.campaign_name}` : ''}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Execution Source: {preview.row.execution_source || 'Unclassified'}</p>
                   {preview.row.errors.map(message => <p key={message} className="mt-1 text-xs text-red-700">{message}</p>)}
                   {preview.row.warnings.map(message => <p key={message} className="mt-1 text-xs text-amber-700">{message}</p>)}
                 </div>

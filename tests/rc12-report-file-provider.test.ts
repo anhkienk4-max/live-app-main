@@ -244,7 +244,7 @@ test('RC1.2 legacy rows continue through Supabase Storage for read and delete', 
 
 test('RC1.2 migration is one non-destructive provider-pair contract', () => {
   const files = readdirSync(resolve(process.cwd(), 'supabase/migrations')).filter(name => name.includes('rc12_report_file_provider'))
-  assert.deepEqual(files, ['20260919000000_rc12_report_file_provider.sql'])
+  assert.deepEqual(files, ['20260919074349_rc12_report_file_provider.sql'])
   const sql = readFileSync(resolve(process.cwd(), 'supabase/migrations', files[0]), 'utf8')
   assert.match(sql, /alter table public\.report_images[\s\S]*add column if not exists provider/i)
   assert.match(sql, /alter table public\.live_report_images[\s\S]*add column if not exists provider/i)

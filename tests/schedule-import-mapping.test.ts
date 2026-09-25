@@ -25,6 +25,7 @@ const englishHeader = [
   'Required Host count',
   'Required Support count',
   'Required Technical count',
+  'Execution Source',
 ]
 
 const scheduleRow = [
@@ -39,6 +40,7 @@ const scheduleRow = [
   1,
   1,
   1,
+  'Internal',
 ]
 
 const csvRow = (values: unknown[]) => values.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')

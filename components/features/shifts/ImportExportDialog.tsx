@@ -150,6 +150,9 @@ export function ImportExportDialog({ open, onOpenChange, shifts, brands, platfor
                       <p className="text-xl font-bold text-red-600">{importResult.invalidRows}</p>
                     </div>
                   </div>
+                  {importResult.warningRows > 0 && (
+                    <p className="text-sm text-amber-700">{importResult.warningRows} row(s) have warnings. Missing Execution Source remains unclassified; no value is inferred.</p>
+                  )}
 
                   {importResult.errors.length > 0 && (
                     <div className="mt-3 max-h-48 overflow-y-auto">

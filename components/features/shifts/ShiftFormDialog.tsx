@@ -41,6 +41,7 @@ interface ShiftFormDialogProps {
 }
 
 interface ShiftFormState {
+  execution_source: '' | 'internal' | 'agency'
   title: string
   date: string
   start_time: string
@@ -102,6 +103,7 @@ export function ShiftFormDialog({
   const countInputsTouched = React.useRef(false)
   
   const [formData, setFormData] = React.useState<ShiftFormState>({
+    execution_source: '',
     title: '',
     date: '',
     start_time: '',
@@ -140,6 +142,7 @@ export function ShiftFormDialog({
       const usesAuthoritativeDefaults = open && !shift && !duplicateFrom && getAuthMode() === 'supabase'
       if (shift) {
         setFormData({
+        execution_source: shift.execution_source ?? '',
         title: shift.title || '',
         date: shift.date,
         start_time: shift.start_time,
@@ -162,6 +165,7 @@ export function ShiftFormDialog({
         })
       } else if (duplicateFrom) {
         setFormData({
+        execution_source: '',
         title: duplicateFrom.title || '',
         date: '',
         start_time: duplicateFrom.start_time,
@@ -185,6 +189,7 @@ export function ShiftFormDialog({
       } else {
         countInputsTouched.current = false
         setFormData({
+        execution_source: '',
         title: '',
         date: '',
         start_time: '09:00',
@@ -234,7 +239,7 @@ export function ShiftFormDialog({
   const checkConflicts = React.useCallback(async () => {
     if (!formData.date || !formData.start_time || !formData.end_time) return
     const allShifts = await shiftService.getAll()
-    const detected = detectConflicts(formData, allShifts, shift?.id)
+    const detected = detectConflicts({ ...formData, execution_source: formData.execution_source || undefined }, allShifts, shift?.id)
     setConflicts(detected)
   }, [formData, shift])
 
@@ -265,7 +270,7 @@ export function ShiftFormDialog({
 
   const generatePreview = React.useCallback(() => {
     if (recurrenceRule.frequency === 'none') return
-    const baseShift = { ...formData }
+    const baseShift = { ...formData, execution_source: formData.execution_source || undefined }
     const generated = generateRecurringShifts(baseShift, recurrenceRule)
     setPreviewShifts(generated.slice(0, 10))
   }, [formData, recurrenceRule])
@@ -278,6 +283,10 @@ export function ShiftFormDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!shift && !formData.execution_source) {
+      toast({ title: 'Execution source required', description: 'Select Internal or Agency before creating this shift.', variant: 'destructive' })
+      return
+    }
     if (!shift && !duplicateFrom && !operationalDefaultsReady) {
       toast({ title: 'Error', description: 'Operational settings are not ready.', variant: 'destructive' })
       return
@@ -296,7 +305,7 @@ export function ShiftFormDialog({
 
     try {
       if (showRecurring && recurrenceRule.frequency !== 'none') {
-        const baseShift = { ...formData }
+        const baseShift = { ...formData, execution_source: formData.execution_source || undefined }
         const generated = generateRecurringShifts(baseShift, recurrenceRule)
         const { successCount, errors } = await createRecurringShiftBatch(generated)
         if (successCount === generated.length) {
@@ -312,12 +321,12 @@ export function ShiftFormDialog({
         }
         await onSuccess()
       } else if (shift) {
-        const updatedShift = await shiftService.update(shift.id, { ...formData, version: shift.version })
+        const updatedShift = await shiftService.update(shift.id, { ...formData, execution_source: formData.execution_source || undefined, version: shift.version })
         if (!updatedShift) throw new Error('Shift was not found.')
         toast({ title: 'Success', description: 'Shift updated', variant: 'success' })
         await onSuccess(updatedShift)
       } else {
-        const createdShift = await shiftService.create(formData)
+        const createdShift = await shiftService.create({ ...formData, execution_source: formData.execution_source || undefined })
         toast({ title: 'Success', description: 'Shift created', variant: 'success' })
         await onSuccess(createdShift)
       }
@@ -366,6 +375,17 @@ export function ShiftFormDialog({
           )}
 
           {/* Basic Fields */}
+          <div>
+            <label htmlFor="shift-execution-source" className="text-sm font-medium">Execution source{!shift ? ' *' : ''}</label>
+            <Select value={formData.execution_source} onValueChange={(value) => setFormData({ ...formData, execution_source: value as 'internal' | 'agency' })}>
+              <SelectTrigger id="shift-execution-source"><SelectValue placeholder="Select Internal or Agency" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="internal">Internal</SelectItem>
+                <SelectItem value="agency">Agency</SelectItem>
+              </SelectContent>
+            </Select>
+            {shift && !shift.execution_source && !formData.execution_source && <p className="mt-1 text-xs text-muted-foreground">Historical shift is unclassified; other edits will preserve that state.</p>}
+          </div>
           <div>
             <label className="text-sm font-medium">Shift title *</label>
             <Input

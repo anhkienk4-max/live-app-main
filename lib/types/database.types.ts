@@ -4,6 +4,7 @@ export type OperationalRole = 'host' | 'support' | 'technical'
 export type AccountStatus = 'pending_email_verification' | 'pending_approval' | 'rejected' | 'active'
 
 export type ShiftStatus = 'scheduled' | 'preparing' | 'live' | 'paused' | 'completed' | 'cancelled'
+export type ExecutionSource = 'internal' | 'agency'
 export type ShiftStatusMode = 'auto' | 'manual'
 export type RegistrationStatus =
   | 'available'
@@ -249,6 +250,7 @@ export interface Campaign extends LifecycleMetadata {
 
 export interface Shift extends LifecycleMetadata {
   id: string
+  execution_source?: ExecutionSource | null
   date: string
   start_time: string
   end_time: string
@@ -852,6 +854,7 @@ export type ScheduleImportRowOutcome =
 
 export interface ScheduleImportRow {
   row_number: number
+  execution_source?: ExecutionSource | null
   date: string
   start_time: string
   end_time: string

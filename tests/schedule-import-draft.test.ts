@@ -23,6 +23,7 @@ const maps: EntityMaps = {
 }
 
 const sourceRow = (overrides: Record<string, unknown> = {}) => ({
+  'Execution Source': 'Internal',
   Date: '2026-09-01',
   'Start time': '09:00',
   'End time': '13:00',
