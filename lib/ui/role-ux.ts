@@ -90,7 +90,6 @@ const memberNav: NavItem[] = [
   { ...navCatalogue.live, group: 'APP OPS' },
   { ...navCatalogue.reports, group: 'APP OPS' },
   { ...navCatalogue.notifications, group: 'APP OPS' },
-  { ...navCatalogue.profile, group: 'APP OPS' },
 ]
 
 /**

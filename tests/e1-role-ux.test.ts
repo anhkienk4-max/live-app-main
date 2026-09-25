@@ -48,8 +48,8 @@ test('E1: Member Navigation includes reference data but excludes Analytics and A
   assert.ok(paths.includes('/live'))
   assert.ok(paths.includes('/reports'))
   assert.ok(paths.includes('/notifications'))
-  assert.ok(paths.includes('/profile'))
   
+  assert.ok(!paths.includes('/profile'), 'Member should not see profile in main nav')
   assert.ok(!paths.includes('/analytics'), 'Member should not see analytics')
   assert.ok(!paths.includes('/audit'), 'Member should not see audit')
 })

@@ -33,8 +33,8 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
 
   return (
     <aside className={cn(
-      "hidden md:flex flex-col border-r border-border bg-sidebar transition-all duration-300",
-      isCollapsed ? "w-[68px]" : "w-[248px]"
+      "hidden lg:flex flex-col border-r border-border bg-sidebar transition-all duration-300",
+      isCollapsed ? "w-[72px]" : "w-[72px] xl:w-[248px]"
     )}>
       <div className="flex flex-col flex-grow pt-3 pb-3 overflow-y-auto">
         {/* Wordmark */}
@@ -45,7 +45,7 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
             </svg>
           </div>
           {!isCollapsed && (
-            <span className="ml-2.5 text-sm font-semibold text-foreground tracking-tight leading-none overflow-hidden whitespace-nowrap">
+            <span className="ml-2.5 text-sm font-semibold text-foreground tracking-tight leading-none overflow-hidden whitespace-nowrap hidden xl:block">
               LiveStream Ops
             </span>
           )}
@@ -65,12 +65,12 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
             return (
                 <div key={item.name}>
                   {isFirstInGroup && item.group && !isCollapsed && (
-                    <div className="px-3 pt-4 pb-1 text-xs font-semibold text-muted-foreground tracking-wider uppercase">
+                    <div className="px-3 pt-4 pb-1 text-xs font-semibold text-muted-foreground tracking-wider uppercase hidden xl:block">
                       {item.group}
                     </div>
                   )}
-                  {isFirstInGroup && item.group && isCollapsed && (
-                    <div className="pt-4" />
+                  {isFirstInGroup && item.group && (!isCollapsed || isCollapsed) && (
+                    <div className="pt-4 xl:hidden" />
                   )}
                   <Link
                     href={item.href}
@@ -79,7 +79,7 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
                       isActive
                         ? 'bg-primary/8 text-primary'
                         : 'text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-                      isCollapsed && "justify-center px-0"
+                      isCollapsed ? "justify-center px-0" : "xl:justify-start justify-center xl:px-2.5 px-0"
                     )}
                     data-testid={`sidebar-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
                     aria-current={isActive ? 'page' : undefined}
@@ -89,11 +89,11 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
                       className={cn(
                         'flex-shrink-0 h-4 w-4',
                         isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-sidebar-accent-foreground',
-                        !isCollapsed && "mr-2.5"
+                        !isCollapsed && "xl:mr-2.5 mr-0"
                       )}
                       aria-hidden="true"
                     />
-                    {!isCollapsed && <span className="truncate">{label}</span>}
+                    {!isCollapsed && <span className="truncate hidden xl:block">{label}</span>}
                   </Link>
                 </div>
               )
@@ -103,7 +103,7 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
 
       {/* Profile Footer & Role Context */}
       <div className="flex-shrink-0 border-t border-border p-4">
-        <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3")}>
+        <div className={cn("flex items-center", isCollapsed ? "justify-center" : "xl:gap-3 justify-center xl:justify-start")}>
           <Avatar className="h-9 w-9">
             <AvatarImage src={currentUser?.avatar_url || ''} alt={currentUser?.full_name || currentUser?.email || 'User'} />
             <AvatarFallback className="bg-primary/10 text-primary text-small font-semibold">
@@ -111,7 +111,7 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
             </AvatarFallback>
           </Avatar>
           {!isCollapsed && (
-            <div className="flex flex-col overflow-hidden">
+            <div className="flex-col overflow-hidden hidden xl:flex">
               <span className="text-sm font-medium text-foreground truncate">
                 {currentUser?.full_name || 'User'}
               </span>

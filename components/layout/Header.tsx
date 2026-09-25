@@ -21,6 +21,52 @@ import { useToast } from '@/components/ui/toast'
 import { getAuthMode, getSupabasePublicConfig } from '@/lib/auth/authMode'
 import { clearLocalSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/client'
+import { resolveSystemPermission } from '@/lib/permissions'
+import { getNavigationForRole, filterNav } from '@/lib/ui/role-ux'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { Menu } from 'lucide-react'
+
+function MobileNavMenu() {
+  const pathname = usePathname()
+  const { t } = useTranslation()
+  const { currentUser } = useCurrentUser()
+  const rawNav = getNavigationForRole(resolveSystemPermission(currentUser))
+  const roleNav = filterNav(rawNav, currentUser)
+
+  return (
+    <div className="hidden md:flex lg:hidden mr-2">
+      <DropdownMenu>
+        <DropdownMenuTrigger render={
+          <Button variant="ghost" size="icon" className="h-8 w-8 px-0">
+            <Menu className="h-5 w-5" />
+            <span className="sr-only">Toggle menu</span>
+          </Button>
+        }>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-56">
+          <DropdownMenuLabel className="font-normal text-xs text-muted-foreground uppercase tracking-wider">{t('navMain')}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            {roleNav.map(item => {
+              const isActive = pathname === item.href
+              const Icon = item.icon
+              const label = item.labelKey ? t(item.labelKey as Parameters<typeof t>[0]) : t(item.name.toLowerCase() as Parameters<typeof t>[0]) || item.name
+              return (
+                <DropdownMenuItem key={item.name} render={
+                  <Link href={item.href} className={`flex items-center gap-2 ${isActive ? 'bg-primary/10 text-primary font-medium' : ''}`}>
+                    <Icon className={`h-4 w-4 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} />
+                    <span>{label}</span>
+                  </Link>
+                } />
+              )
+            })}
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
+}
 
 interface HeaderProps {
   user?: {
@@ -93,7 +139,8 @@ export function Header({ user }: HeaderProps) {
         <div className="flex h-14 items-center justify-between gap-3">
 
           {/* Left: wordmark (mobile only — desktop shows sidebar wordmark) */}
-          <div className="flex items-center md:hidden">
+          <div className="flex items-center lg:hidden">
+            <MobileNavMenu />
             <div className="w-6 h-6 bg-primary rounded-md flex items-center justify-center flex-shrink-0">
               <svg className="w-3.5 h-3.5 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />

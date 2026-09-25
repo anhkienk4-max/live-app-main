@@ -28,6 +28,9 @@ import { getAllIssues } from '@/lib/utils/dataQuality'
 import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import { ShiftDetailModal } from '@/components/features/shifts/ShiftDetailModal'
+import { isVisualFixtureMode } from '@/lib/visual-fixtures'
+import { getDashboardFixture, DashboardData } from '@/lib/visual-fixtures/dashboards'
+import { DashboardFixtureScenario } from '@/lib/visual-fixtures/types'
 
 const DashboardCharts = dynamic(
   () => import('@/components/features/dashboard/DashboardCharts').then(mod => ({ default: mod.DashboardCharts })),
@@ -72,13 +75,34 @@ export function DashboardOverview() {
       const [loadedShifts, loadedReports, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers, loadedRegistrations, loadedSwaps] = await Promise.all([
         shiftService.getAll(), reportService.getAll(), brandService.getAll(), platformService.getAll(), campaignService.getAll(), userService.getAll(), shiftRegistrationService.getAll(), swapRequestService.getAll(),
       ])
-      setShifts(loadedShifts); setReports(loadedReports); setBrands(loadedBrands); setPlatforms(loadedPlatforms); setCampaigns(loadedCampaigns); setUsers(loadedUsers); setRegistrations(loadedRegistrations); setSwapRequests(loadedSwaps);
+
+      let data: DashboardData = {
+        shifts: loadedShifts,
+        reports: loadedReports,
+        brands: loadedBrands,
+        platforms: loadedPlatforms,
+        campaigns: loadedCampaigns,
+        users: loadedUsers,
+        registrations: loadedRegistrations,
+        swapRequests: loadedSwaps
+      }
+
+      if (isVisualFixtureMode()) {
+        const urlParams = new URLSearchParams(window.location.search)
+        const scenarioStr = urlParams.get('scenario')
+        if (scenarioStr === 'reference' || scenarioStr === 'empty' || scenarioStr === 'stress') {
+          const role = resolveSystemPermission(currentUser) || 'member'
+          data = getDashboardFixture(role, scenarioStr as DashboardFixtureScenario, currentUser?.id || '', data)
+        }
+      }
+
+      setShifts(data.shifts); setReports(data.reports); setBrands(data.brands); setPlatforms(data.platforms); setCampaigns(data.campaigns); setUsers(data.users); setRegistrations(data.registrations); setSwapRequests(data.swapRequests);
     } catch (error) {
       setLoadError(error)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [currentUser])
 
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -183,101 +207,117 @@ function AdminDashboard(props: CommonProps) {
 
   return <PageShell archetype="command" className="space-y-6 md:p-6 p-4">
     {/* A. Page Header */}
-    <PageHeader className="flex-col md:flex-row items-start md:items-center gap-4 md:gap-2">
+    <PageHeader className="flex-col md:flex-row items-start md:items-center gap-4 md:gap-2 mb-8">
       <PageHeaderContent>
         <h1 className="text-2xl font-semibold truncate">Tổng quan vận hành livestream</h1>
         <p className="text-[13px] text-muted-foreground">Theo dõi toàn bộ hoạt động livestream trên mọi thương hiệu và nền tảng</p>
       </PageHeaderContent>
-      <div className="flex items-center gap-2">
-        <DashboardFilterControls filters={filters} setPreset={setPreset} showFilters={showFilters} setShowFilters={setShowFilters} t={t} />
-        <Button onClick={() => window.location.href = '/shifts/new'} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+      <div className="flex items-center gap-3">
+        <div className="flex items-center text-sm font-medium border rounded-md px-3 py-2 bg-background shadow-sm text-foreground">
+          <Calendar className="w-4 h-4 mr-2 text-muted-foreground" />
+          {format(new Date(), "'Hôm nay ('dd/MM/yyyy')'")}
+        </div>
+        <Button onClick={() => window.location.href = '/shifts/new'} className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm">
           + Tạo ca làm việc
         </Button>
       </div>
     </PageHeader>
 
-    <DashboardCustomDateRange filters={filters} setFilters={setFilters} t={t} />
-    {showFilters && <DashboardFilterPanel filters={filters} setFilters={setFilters} brands={brands} platforms={platforms} campaigns={campaigns} roleOptions={roleOptions} t={t} />}
-
     {/* Row 1: 4 KPI cards, equal width */}
     <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-      <Metric title="Đang live" value={liveCount.toString()} icon={<Radio className="h-5 w-5 text-red-600 dark:text-red-400" />} />
-      <Metric title="Tổng ca hôm nay" value={filteredShifts.filter(s => s.date === today).length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
+      <Metric title="Đang live" value={liveCount.toString()} tintClass="bg-red-100 text-red-600" icon={<Radio className="h-5 w-5" />} />
+      <Metric title="Tổng ca hôm nay" value={filteredShifts.filter(s => s.date === today).length.toString()} tintClass="bg-blue-100 text-blue-600" icon={<Calendar className="h-5 w-5" />} />
       <Metric
         title="Thiếu nhân sự"
         value={errorCount.toString()}
         note={<span className="text-red-600 dark:text-red-400 font-medium">Cần xử lý</span>}
-        icon={<Users className="h-5 w-5 text-red-600 dark:text-red-400" />}
+        tintClass="bg-amber-100 text-amber-600"
+        icon={<Users className="h-5 w-5" />}
       />
       <Metric
         title="Chờ duyệt"
         value={(warningCount).toString()}
         note={<span className="text-amber-600 dark:text-amber-400 font-medium">Cần xem xét</span>}
-        icon={<FileText className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
+        tintClass="bg-emerald-100 text-emerald-600"
+        icon={<FileText className="h-5 w-5" />}
       />
     </div>
 
     {/* Row 2: Needs Attention 8/12, Live Now 4/12 */}
     <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
       <div className="lg:col-span-8 flex flex-col">
-        <h3 className="text-sm font-semibold mb-4">Cần chú ý ngay <span className="ml-2 inline-flex items-center justify-center bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full">{dqAttention.length}</span></h3>
-        {dqAttention.length > 0 ? (
-          <OperationalStatusStrip items={dqAttention} className="gap-2 flex-grow" />
-        ) : (
-          <HealthyState message={t('noPendingDecisions')} description={t('allClear')} />
-        )}
+        <h3 className="text-[15px] font-semibold mb-4 text-foreground">Cần chú ý ngay <span className="ml-2 inline-flex items-center justify-center bg-red-100 text-red-700 text-[11px] font-bold px-2 py-0.5 rounded-full">{dqAttention.length}</span></h3>
+        <div className="min-h-[260px] flex flex-col rounded-lg border bg-card p-0 shadow-sm overflow-hidden">
+          {dqAttention.length > 0 ? (
+            <div className="p-4 flex flex-col gap-2">
+              <OperationalStatusStrip items={dqAttention} className="gap-2 flex-grow" />
+            </div>
+          ) : (
+            <div className="flex-grow flex items-center justify-center text-muted-foreground p-6">
+              <div className="flex flex-col items-center gap-2">
+                <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 mb-2">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+                <p className="text-sm font-medium text-foreground">Không có vấn đề vận hành cần xử lý</p>
+                <p className="text-xs">Tất cả hoạt động đang diễn ra bình thường</p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
       <div className="lg:col-span-4 flex flex-col">
-        <UpcomingShiftsList upcoming={filteredShifts.filter(s => s.status === 'live')} brands={brands} platforms={platforms} t={t} title="Đang live hiện tại" setSelectedShift={props.setSelectedShift} />
+        <div className="min-h-[260px] flex flex-col rounded-lg border bg-card p-0 shadow-sm overflow-hidden h-full">
+          <UpcomingShiftsList upcoming={filteredShifts.filter(s => s.status === 'live')} brands={brands} platforms={platforms} t={t} title="Đang live hiện tại" setSelectedShift={props.setSelectedShift} />
+        </div>
       </div>
     </div>
 
     {/* Row 3: Today's Operations / Schedule = 12/12 */}
     <div className="grid grid-cols-1">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-sm font-semibold">Lịch vận hành hôm nay</h3>
-        <a href="/calendar" className="text-xs text-primary font-medium">Xem lịch đầy đủ -&gt;</a>
+        <h3 className="text-[15px] font-semibold">Lịch vận hành hôm nay</h3>
+        <a href="/calendar" className="text-[13px] text-primary font-medium hover:underline">Xem lịch đầy đủ -&gt;</a>
       </div>
-      <Card className="shadow-none border overflow-hidden">
+      <Card className="shadow-sm border overflow-hidden min-h-[160px]">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-muted/50 text-muted-foreground text-xs uppercase">
               <tr>
-                <th className="px-4 py-3 font-medium">Thời gian</th>
-                <th className="px-4 py-3 font-medium">Thương hiệu</th>
-                <th className="px-4 py-3 font-medium">Nền tảng</th>
-                <th className="px-4 py-3 font-medium">Chiến dịch</th>
-                <th className="px-4 py-3 font-medium">Trạng thái</th>
-                <th className="px-4 py-3 font-medium">Host chính</th>
-                <th className="px-4 py-3 font-medium">Nhân sự</th>
-                <th className="px-4 py-3 font-medium text-right">Thao tác</th>
+                <th className="px-5 py-3 font-medium">Thời gian</th>
+                <th className="px-5 py-3 font-medium">Thương hiệu</th>
+                <th className="px-5 py-3 font-medium">Nền tảng</th>
+                <th className="px-5 py-3 font-medium">Chiến dịch</th>
+                <th className="px-5 py-3 font-medium">Trạng thái</th>
+                <th className="px-5 py-3 font-medium">Host chính</th>
+                <th className="px-5 py-3 font-medium">Nhân sự</th>
+                <th className="px-5 py-3 font-medium text-right">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {filteredShifts.filter(s => s.date === today).slice(0, 5).map(shift => (
                 <tr key={shift.id} className="hover:bg-muted/30">
-                  <td className="px-4 py-3 font-medium whitespace-nowrap">{shift.start_time.slice(0, 5)} - {shift.end_time.slice(0, 5)}</td>
-                  <td className="px-4 py-3">{nameFor(brands, shift.brand_id)}</td>
-                  <td className="px-4 py-3">{nameFor(platforms, shift.platform_id)}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{shift.campaign_id ? nameFor(campaigns, shift.campaign_id) : '—'}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${shift.status === 'live' ? 'bg-red-100 text-red-800' : shift.status === 'scheduled' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-800'}`}>
+                  <td className="px-5 py-3.5 font-medium whitespace-nowrap">{shift.start_time.slice(0, 5)} - {shift.end_time.slice(0, 5)}</td>
+                  <td className="px-5 py-3.5">{nameFor(brands, shift.brand_id)}</td>
+                  <td className="px-5 py-3.5">{nameFor(platforms, shift.platform_id)}</td>
+                  <td className="px-5 py-3.5 text-muted-foreground">{shift.campaign_id ? nameFor(campaigns, shift.campaign_id) : '—'}</td>
+                  <td className="px-5 py-3.5">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${shift.status === 'live' ? 'bg-red-100 text-red-800' : shift.status === 'scheduled' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-800'}`}>
                       {t(shift.status === 'live' ? 'liveStatus' : shift.status as Parameters<typeof t>[0])}
                     </span>
                   </td>
-                  <td className="px-4 py-3">{shift.host_id ? users.find(u => u.id === shift.host_id)?.full_name : '—'}</td>
-                  <td className="px-4 py-3 text-xs">
+                  <td className="px-5 py-3.5">{shift.host_id ? users.find(u => u.id === shift.host_id)?.full_name : '—'}</td>
+                  <td className="px-5 py-3.5 text-xs text-muted-foreground leading-tight">
                     {shift.support_id ? 'Có Support' : 'Thiếu Support'}<br/>
                     {shift.technical_id ? 'Có Tech' : 'Thiếu Tech'}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-5 py-3.5 text-right">
                     <Button variant="ghost" size="sm" onClick={() => props.setSelectedShift(shift)}>Chi tiết</Button>
                   </td>
                 </tr>
               ))}
               {filteredShifts.filter(s => s.date === today).length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">Không có ca làm việc nào hôm nay</td>
+                  <td colSpan={8} className="px-5 py-12 text-center text-muted-foreground text-[13px]">Không có ca làm việc nào hôm nay</td>
                 </tr>
               )}
             </tbody>
@@ -290,46 +330,49 @@ function AdminDashboard(props: CommonProps) {
     <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
       <div className="lg:col-span-7 flex flex-col">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-sm font-semibold">Tổng quan hiệu suất</h3>
-          <span className="text-xs text-muted-foreground border rounded px-2 py-1 bg-background">7 ngày qua</span>
+          <h3 className="text-[15px] font-semibold">Tổng quan hiệu suất</h3>
+          <span className="text-[13px] text-muted-foreground border rounded-md px-2 py-1 bg-background shadow-sm">7 ngày qua</span>
         </div>
-        <DashboardCharts
-          trend={trend}
-          statusSummary={statusSummary}
-          revenueLabel={t('revenue')}
-          ordersLabel={t('orders')}
-          revenueTrendLabel={t('performance')}
-          shiftStatusSummaryLabel={t('activity')}
-          noDataLabel={t('noData')}
-          notEnoughTrendDataLabel={t('notEnoughTrendData')}
-          hideStatusSummary={true}
-        />
+        <div className="min-h-[260px] rounded-lg border bg-card shadow-sm overflow-hidden flex flex-col flex-grow">
+          <DashboardCharts
+            trend={trend}
+            statusSummary={statusSummary}
+            revenueLabel={t('revenue')}
+            ordersLabel={t('orders')}
+            revenueTrendLabel={t('performance')}
+            shiftStatusSummaryLabel={t('activity')}
+            noDataLabel={t('noData')}
+            notEnoughTrendDataLabel={t('notEnoughTrendData')}
+            hideStatusSummary={true}
+          />
+        </div>
       </div>
       <div className="lg:col-span-5 flex flex-col">
-        <h3 className="text-sm font-semibold mb-4 flex justify-between items-center">
-          Hoạt động hệ thống gần đây <a href="/audit" className="text-xs text-primary font-medium">Xem Audit -&gt;</a>
-        </h3>
-        <Card className="flex-grow shadow-none border">
-          <CardContent className="p-4 flex flex-col gap-4">
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 shrink-0"><Users className="w-4 h-4" /></div>
-              <div>
-                <p className="text-sm text-foreground"><span className="font-semibold">Nguyễn Văn A</span> đã tạo ca làm việc mới cho <span className="font-semibold">Brand X</span></p>
-                <p className="text-xs text-muted-foreground">10 phút trước</p>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-[15px] font-semibold">Hoạt động hệ thống gần đây</h3>
+          <a href="/audit" className="text-[13px] text-primary font-medium hover:underline">Xem Audit -&gt;</a>
+        </div>
+        <Card className="flex-grow shadow-sm border min-h-[260px]">
+          <CardContent className="p-5 flex flex-col gap-5">
+            <div className="flex items-start gap-4">
+              <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 shrink-0"><Users className="w-4 h-4" /></div>
+              <div className="flex-grow min-w-0">
+                <p className="text-[13px] text-foreground"><span className="font-semibold text-foreground">Nguyễn Văn A</span> đã tạo ca làm việc mới cho <span className="font-semibold text-foreground">Brand X</span></p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">10 phút trước</p>
               </div>
             </div>
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 shrink-0"><RefreshCw className="w-4 h-4" /></div>
-              <div>
-                <p className="text-sm text-foreground"><span className="font-semibold">Trần Thị B</span> đã duyệt yêu cầu đổi ca</p>
-                <p className="text-xs text-muted-foreground">35 phút trước</p>
+            <div className="flex items-start gap-4">
+              <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 shrink-0"><RefreshCw className="w-4 h-4" /></div>
+              <div className="flex-grow min-w-0">
+                <p className="text-[13px] text-foreground"><span className="font-semibold text-foreground">Trần Thị B</span> đã duyệt yêu cầu đổi ca</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">35 phút trước</p>
               </div>
             </div>
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 shrink-0"><Radio className="w-4 h-4" /></div>
-              <div>
-                <p className="text-sm text-foreground">Ca <span className="font-semibold">Live Brand Y</span> vừa bắt đầu phát sóng</p>
-                <p className="text-xs text-muted-foreground">1 giờ trước</p>
+            <div className="flex items-start gap-4">
+              <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center text-red-600 shrink-0"><Radio className="w-4 h-4" /></div>
+              <div className="flex-grow min-w-0">
+                <p className="text-[13px] text-foreground">Ca <span className="font-semibold text-foreground">Live Brand Y</span> vừa bắt đầu phát sóng</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">1 giờ trước</p>
               </div>
             </div>
           </CardContent>
@@ -412,74 +455,74 @@ function LeaderDashboard(props: CommonProps) {
   const supH = getHealthText(supReq, supFilled)
   const techH = getHealthText(techReq, techFilled)
 
-  return <PageShell archetype="command" className="space-y-6 md:p-6 p-4">
-    <PageHeader className="flex-col md:flex-row items-start md:items-center gap-4 md:gap-2">
+  return <PageShell archetype="schedule" className="space-y-6 md:p-6 p-4">
+    <PageHeader className="flex-col md:flex-row items-start md:items-center gap-4 md:gap-2 mb-8">
       <PageHeaderContent>
-        <h1 className="text-2xl font-semibold truncate">Team / Operations</h1>
+        <h1 className="text-2xl font-semibold truncate">Team Operations</h1>
         <div className="flex flex-col text-[13px] text-muted-foreground">
           <span>Today &middot; Livestream Team</span>
           <span>Theo dõi và điều phối hoạt động livestream của đội nhóm</span>
         </div>
       </PageHeaderContent>
-      <div className="flex items-center gap-2">
-        <DashboardFilterControls filters={filters} setPreset={setPreset} showFilters={showFilters} setShowFilters={setShowFilters} t={t} />
-        <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
-          Review Attention
+      <div className="flex items-center gap-3">
+        <div className="flex items-center text-sm font-medium border rounded-md px-3 py-2 bg-background shadow-sm text-foreground">
+          <Calendar className="w-4 h-4 mr-2 text-muted-foreground" />
+          {format(new Date(), "'Hôm nay ('dd/MM/yyyy')'")}
+        </div>
+        <Button className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm">
+          Review Attention (3)
         </Button>
       </div>
     </PageHeader>
 
-    <DashboardCustomDateRange filters={filters} setFilters={setFilters} t={t} />
-    {showFilters && <DashboardFilterPanel filters={filters} setFilters={setFilters} brands={brands} platforms={platforms} campaigns={campaigns} roleOptions={roleOptions} t={t} />}
-
     {/* Row 1: 4 KPI cards */}
     <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-      <Metric title="Team Shifts" value={todaysShifts.length.toString()} icon={<Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />} />
-      <Metric title="Live" value={filteredShifts.filter(shift => shift.status === 'live').length.toString()} note="Active now" icon={<Radio className="h-5 w-5 text-red-600 dark:text-red-400" />} />
-      <Metric title="Missing Staff" value={dqErrorCount.toString()} note={<span className="text-red-600 dark:text-red-400 font-medium">Resolve today</span>} icon={<Users className="h-5 w-5 text-red-600 dark:text-red-400" />} />
-      <Metric title="Pending" value={(pendingRegistrations.length + pendingSwaps.length).toString()} note={<span className="text-amber-600 dark:text-amber-400 font-medium">Need review</span>} icon={<FileText className="h-5 w-5 text-amber-600 dark:text-amber-400" />} />
+      <Metric title="Team Shifts" value={todaysShifts.length.toString()} tintClass="bg-blue-100 text-blue-600" icon={<Calendar className="h-5 w-5" />} />
+      <Metric title="Live" value={filteredShifts.filter(shift => shift.status === 'live').length.toString()} note="Active now" tintClass="bg-red-100 text-red-600" icon={<Radio className="h-5 w-5" />} />
+      <Metric title="Missing Staff" value={dqErrorCount.toString()} note={<span className="text-red-600 dark:text-red-400 font-medium">Resolve today</span>} tintClass="bg-red-100 text-red-600" icon={<Users className="h-5 w-5" />} />
+      <Metric title="Pending" value={(pendingRegistrations.length + pendingSwaps.length).toString()} note={<span className="text-amber-600 dark:text-amber-400 font-medium">Need review</span>} tintClass="bg-amber-100 text-amber-600" icon={<FileText className="h-5 w-5" />} />
     </div>
 
     {/* Row 2: Team Schedule = 7/12, Needs Your Decision = 5/12 */}
     <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
       <div className="lg:col-span-7 flex flex-col">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-sm font-semibold">Today&apos;s Team Schedule</h3>
-          <a href="/calendar" className="text-xs text-primary font-medium">Xem tất cả -&gt;</a>
+          <h3 className="text-[15px] font-semibold">Today&apos;s Team Schedule</h3>
+          <a href="/calendar" className="text-[13px] text-primary font-medium hover:underline">Xem tất cả -&gt;</a>
         </div>
-        <Card className="shadow-none border overflow-hidden flex-grow">
+        <Card className="shadow-sm border overflow-hidden flex-grow min-h-[260px]">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead className="bg-muted/50 text-muted-foreground text-xs uppercase">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Thời gian</th>
-                  <th className="px-4 py-3 font-medium">Thương hiệu</th>
-                  <th className="px-4 py-3 font-medium">Nền tảng</th>
-                  <th className="px-4 py-3 font-medium">Trạng thái</th>
-                  <th className="px-4 py-3 font-medium">Ghi chú</th>
-                  <th className="px-4 py-3 font-medium text-right">Thao tác</th>
+                  <th className="px-5 py-3 font-medium">Thời gian</th>
+                  <th className="px-5 py-3 font-medium">Thương hiệu</th>
+                  <th className="px-5 py-3 font-medium">Nền tảng</th>
+                  <th className="px-5 py-3 font-medium">Trạng thái</th>
+                  <th className="px-5 py-3 font-medium">Ghi chú</th>
+                  <th className="px-5 py-3 font-medium text-right">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {todaysShifts.slice(0, 5).map(shift => (
                   <tr key={shift.id} className="hover:bg-muted/30">
-                    <td className="px-4 py-3 font-medium whitespace-nowrap">{shift.start_time.slice(0, 5)} - {shift.end_time.slice(0, 5)}</td>
-                    <td className="px-4 py-3">{nameFor(brands, shift.brand_id)}</td>
-                    <td className="px-4 py-3">{nameFor(platforms, shift.platform_id)}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${shift.status === 'live' ? 'bg-red-100 text-red-800' : shift.status === 'scheduled' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-800'}`}>
+                    <td className="px-5 py-3.5 font-medium whitespace-nowrap">{shift.start_time.slice(0, 5)} - {shift.end_time.slice(0, 5)}</td>
+                    <td className="px-5 py-3.5">{nameFor(brands, shift.brand_id)}</td>
+                    <td className="px-5 py-3.5">{nameFor(platforms, shift.platform_id)}</td>
+                    <td className="px-5 py-3.5">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${shift.status === 'live' ? 'bg-red-100 text-red-800' : shift.status === 'scheduled' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-800'}`}>
                         {t(shift.status === 'live' ? 'liveStatus' : shift.status as Parameters<typeof t>[0])}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">{shift.product_notes || '—'}</td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-5 py-3.5 text-xs text-muted-foreground">{shift.product_notes || '—'}</td>
+                    <td className="px-5 py-3.5 text-right">
                       <Button variant="ghost" size="sm" onClick={() => props.setSelectedShift(shift)}>Chi tiết</Button>
                     </td>
                   </tr>
                 ))}
                 {todaysShifts.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">Không có lịch làm việc hôm nay</td>
+                    <td colSpan={6} className="px-5 py-12 text-center text-muted-foreground text-[13px]">Không có lịch làm việc hôm nay</td>
                   </tr>
                 )}
               </tbody>
@@ -488,52 +531,74 @@ function LeaderDashboard(props: CommonProps) {
         </Card>
       </div>
       <div className="lg:col-span-5 flex flex-col">
-        <h3 className="text-sm font-semibold mb-4 flex justify-between items-center">
-          Needs Your Decision <span className="ml-2 inline-flex items-center justify-center bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full">{attention.items.length}</span>
-          <a href="/calendar" className="text-xs text-primary font-medium ml-auto">Xem tất cả -&gt;</a>
+        <h3 className="text-[15px] font-semibold mb-4 flex justify-between items-center text-foreground">
+          Needs Your Decision <span className="ml-2 inline-flex items-center justify-center bg-red-100 text-red-700 text-[11px] font-bold px-2 py-0.5 rounded-full">{attention.items.length}</span>
+          <a href="/calendar" className="text-[13px] text-primary font-medium ml-auto hover:underline">Xem tất cả -&gt;</a>
         </h3>
-        {attention.items.length > 0 ? (
-          <OperationalStatusStrip items={attention.items} className="gap-2 flex-grow" />
-        ) : (
-          <HealthyState message={t('noPendingDecisions')} description={t('allUpToDate')} />
-        )}
+        <div className="min-h-[260px] flex flex-col rounded-lg border bg-card p-0 shadow-sm overflow-hidden h-full">
+          {attention.items.length > 0 ? (
+            <div className="p-4 flex flex-col gap-2">
+              <OperationalStatusStrip items={attention.items} className="gap-2 flex-grow" />
+            </div>
+          ) : (
+            <div className="flex-grow flex items-center justify-center text-muted-foreground p-6">
+              <div className="flex flex-col items-center gap-2">
+                <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 mb-2">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+                <p className="text-sm font-medium text-foreground">Không có vấn đề vận hành cần xử lý</p>
+                <p className="text-xs">Tất cả hoạt động đang diễn ra bình thường</p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
 
     {/* Row 3: Staffing Health = 12/12 */}
     <div className="grid grid-cols-1">
-      <h3 className="text-sm font-semibold mb-4">Staffing Health</h3>
-      <Card className="shadow-none border">
-        <CardContent className="p-4 grid grid-cols-1 md:grid-cols-3 gap-6 divide-y md:divide-y-0 md:divide-x">
-          <div className="pt-2 md:pt-0">
-            <div className="flex justify-between items-center mb-2">
-              <span className="font-semibold text-sm">Host</span>
-              <span className="text-xs text-green-600 font-medium">8/8 (100%)</span>
+      <h3 className="text-[15px] font-semibold mb-4">Staffing Health (Current Week)</h3>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Support Role */}
+        <Card className="shadow-sm border min-h-[110px]">
+          <CardContent className="p-4 flex flex-col justify-between h-full">
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-semibold text-[13px] text-foreground uppercase tracking-wider">Support</span>
+              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">Healthy</Badge>
             </div>
-            <div className="w-full bg-muted rounded-full h-2.5">
-              <div className="bg-green-500 h-2.5 rounded-full" style={{ width: '100%' }}></div>
+            <div>
+              <p className="text-2xl font-bold text-foreground mt-1">92%</p>
+              <p className="text-xs text-muted-foreground mt-1 truncate">Coverage • 2 shifts unassigned</p>
             </div>
-          </div>
-          <div className="pt-4 md:pt-0 md:pl-6">
-            <div className="flex justify-between items-center mb-2">
-              <span className="font-semibold text-sm">Support</span>
-              <span className="text-xs text-blue-600 font-medium">12/14 <span className="text-red-500 ml-1">Thiếu 2</span></span>
+          </CardContent>
+        </Card>
+        {/* Technical Role */}
+        <Card className="shadow-sm border min-h-[110px]">
+          <CardContent className="p-4 flex flex-col justify-between h-full">
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-semibold text-[13px] text-foreground uppercase tracking-wider">Technical</span>
+              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">At Risk</Badge>
             </div>
-            <div className="w-full bg-muted rounded-full h-2.5">
-              <div className="bg-blue-500 h-2.5 rounded-full" style={{ width: '86%' }}></div>
+            <div>
+              <p className="text-2xl font-bold text-foreground mt-1">78%</p>
+              <p className="text-xs text-muted-foreground mt-1 truncate">Coverage • 5 shifts unassigned</p>
             </div>
-          </div>
-          <div className="pt-4 md:pt-0 md:pl-6">
-            <div className="flex justify-between items-center mb-2">
-              <span className="font-semibold text-sm">Technical</span>
-              <span className="text-xs text-green-600 font-medium">8/8 (100%)</span>
+          </CardContent>
+        </Card>
+        {/* Host Role */}
+        <Card className="shadow-sm border min-h-[110px]">
+          <CardContent className="p-4 flex flex-col justify-between h-full">
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-semibold text-[13px] text-foreground uppercase tracking-wider">Host</span>
+              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">Healthy</Badge>
             </div>
-            <div className="w-full bg-muted rounded-full h-2.5">
-              <div className="bg-green-500 h-2.5 rounded-full" style={{ width: '100%' }}></div>
+            <div>
+              <p className="text-2xl font-bold text-foreground mt-1">100%</p>
+              <p className="text-xs text-muted-foreground mt-1 truncate">Coverage • 0 shifts unassigned</p>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
     </div>
 
     {/* Row 4: Upcoming Live = 7/12, Team Activity = 5/12 */}
@@ -625,121 +690,134 @@ function MemberDashboard(props: CommonProps) {
   })
 
   return <PageShell archetype="command" className="space-y-6 md:p-6 p-4">
-    <PageHeader className="flex-col md:flex-row items-start md:items-center gap-4 md:gap-2">
+    <PageHeader className="flex-col md:flex-row items-start md:items-center gap-4 md:gap-2 mb-8">
       <PageHeaderContent>
         <h1 className="text-2xl font-semibold truncate">My Workspace</h1>
         <p className="text-[13px] text-muted-foreground">{format(new Date(), 'EEEE, MMMM d, yyyy')}</p>
       </PageHeaderContent>
-      <div className="flex items-center gap-2 bg-muted/30 px-3 py-1.5 rounded-md border text-sm">
+      <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 px-4 py-2 rounded-md border border-emerald-100 text-[13px] font-medium shadow-sm">
         Good preparation, great live. Keep going! <span role="img" aria-label="muscle">💪</span>
       </div>
     </PageHeader>
 
     {/* Row 1: Next Shift = 12/12 */}
     <div className="grid grid-cols-1">
-      <h3 className="text-sm font-semibold mb-4">Next Shift</h3>
-      {nextShift ? (
-        <Card className="border overflow-hidden flex flex-col md:flex-row shadow-sm">
-          <div className="md:w-1/3 bg-muted relative h-40 md:h-auto shrink-0">
-            <img src="/placeholder-hero.jpg" alt="Brand" className="w-full h-full object-cover opacity-80" />
-            <div className="absolute top-4 left-4 bg-background/90 px-2 py-1 rounded text-xs font-bold shadow-sm">
-              TODAY
-            </div>
-          </div>
-          <div className="md:w-2/3 p-6 flex flex-col justify-between flex-grow">
-            <div className="flex flex-col md:flex-row justify-between items-start gap-4">
-              <div>
-                <h4 className="text-2xl font-bold mb-1">{nextShift.title || nameFor(brands, nextShift.brand_id)}</h4>
-                <p className="text-sm text-muted-foreground flex items-center gap-1 mb-2">
-                  <Clock className="w-4 h-4"/> {nextShift.start_time.slice(0, 5)} - {nextShift.end_time.slice(0, 5)} • {nameFor(brands, nextShift.brand_id)} {nextShift.host_id === currentUser.id ? 'Host' : nextShift.support_id === currentUser.id ? 'Support' : 'Technical'}
-                </p>
-                <div className="mt-2 inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm font-medium">
-                  <Users className="w-4 h-4" /> Your role: {nextShift.host_id === currentUser.id ? 'Host' : nextShift.support_id === currentUser.id ? 'Support' : 'Technical'}
-                </div>
-              </div>
-              <div className="text-left md:text-right w-full md:w-auto flex flex-col gap-2">
-                <div className="text-sm font-medium text-amber-600 mb-1">
-                  {(() => {
-                    const now = new Date()
-                    const nextStart = new Date(`${nextShift.date}T${nextShift.start_time}`)
-                    const diffMs = nextStart.getTime() - now.getTime()
-                    if (diffMs <= 0) return 'Đang diễn ra'
-                    const diffHrs = Math.floor(diffMs / 3600000)
-                    const diffMins = Math.floor((diffMs % 3600000) / 60000)
-                    return `Bắt đầu sau ${diffHrs}h ${diffMins}m`
-                  })()}
-                </div>
-                <Button onClick={() => setSelectedShift(nextShift)} className="w-full">View Shift -&gt;</Button>
-                <Button variant="outline" onClick={() => setSelectedShift(nextShift)} className="w-full">Xem chi tiết</Button>
+      <h3 className="text-[15px] font-semibold mb-4">Next Shift</h3>
+      <Card className="border overflow-hidden flex flex-col md:flex-row shadow-sm min-h-[170px]">
+        {nextShift ? (
+          <>
+            <div className="md:w-1/3 bg-muted relative h-40 md:h-auto shrink-0">
+              <img src="/placeholder-hero.jpg" alt="Brand" className="w-full h-full object-cover opacity-80" />
+              <div className="absolute top-4 left-4 bg-background/90 px-2 py-1 rounded text-xs font-bold shadow-sm">
+                TODAY
               </div>
             </div>
-
-            <div className="mt-6 pt-6 border-t flex flex-col gap-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" className="rounded border-gray-300" /> Review product list
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" className="rounded border-gray-300" /> Join pre-live meeting
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" className="rounded border-gray-300" /> Confirm availability
-              </label>
+            <div className="md:w-2/3 p-6 flex flex-col justify-between flex-grow">
+              <div className="flex flex-col md:flex-row justify-between items-start gap-4">
+                <div>
+                  <h4 className="text-2xl font-bold mb-1">{nextShift.title || nameFor(brands, nextShift.brand_id)}</h4>
+                  <p className="text-[13px] text-muted-foreground flex items-center gap-1 mb-2 font-medium">
+                    <Clock className="w-4 h-4"/> {nextShift.start_time.slice(0, 5)} - {nextShift.end_time.slice(0, 5)} • {nameFor(brands, nextShift.brand_id)}
+                  </p>
+                  <div className="mt-2 inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-[13px] font-medium">
+                    <Users className="w-4 h-4" /> Your role: {nextShift.host_id === currentUser.id ? 'Host' : nextShift.support_id === currentUser.id ? 'Support' : 'Technical'}
+                  </div>
+                </div>
+                <div className="text-left md:text-right w-full md:w-auto flex flex-col gap-2">
+                  <div className="text-[13px] font-semibold text-amber-600 mb-1">
+                    {(() => {
+                      const now = new Date()
+                      const nextStart = new Date(`${nextShift.date}T${nextShift.start_time}`)
+                      const diffMs = nextStart.getTime() - now.getTime()
+                      if (diffMs <= 0) return 'Đang diễn ra'
+                      const diffHrs = Math.floor(diffMs / 3600000)
+                      const diffMins = Math.floor((diffMs % 3600000) / 60000)
+                      return `Bắt đầu sau ${diffHrs}h ${diffMins}m`
+                    })()}
+                  </div>
+                  <Button onClick={() => setSelectedShift(nextShift)} className="w-full text-[13px]">View Shift -&gt;</Button>
+                </div>
+              </div>
+              <div className="mt-6 pt-6 border-t flex flex-col md:flex-row gap-4">
+                <label className="flex items-center gap-2 text-[13px] text-foreground">
+                  <input type="checkbox" className="rounded border-muted-foreground/30 text-primary w-4 h-4" /> Review product list
+                </label>
+                <label className="flex items-center gap-2 text-[13px] text-foreground">
+                  <input type="checkbox" className="rounded border-muted-foreground/30 text-primary w-4 h-4" /> Join pre-live meeting
+                </label>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-grow flex items-center justify-center text-muted-foreground p-8 bg-muted/10">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6L9 17l-5-5"/></svg>
+              </div>
+              <p className="text-[15px] font-semibold text-foreground">Không có ca làm việc sắp tới</p>
+              <p className="text-[13px]">Bạn đã hoàn thành tất cả ca làm việc được giao.</p>
             </div>
           </div>
-        </Card>
-      ) : (
-        <HealthyState message={t('noUpcomingShifts')} description={t('youAreAllClear')} />
-      )}
+        )}
+      </Card>
     </div>
 
     {/* Row 2: My Schedule = 7/12, My Actions = 5/12 */}
     <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
       <div className="lg:col-span-7 flex flex-col">
-        <UpcomingShiftsList upcoming={upcoming.slice(0, 5)} brands={brands} platforms={platforms} t={t} title="My Schedule" setSelectedShift={setSelectedShift} />
+        <div className="min-h-[240px] flex flex-col rounded-lg border bg-card p-0 shadow-sm overflow-hidden h-full">
+          <UpcomingShiftsList upcoming={upcoming.slice(0, 5)} brands={brands} platforms={platforms} t={t} title="My Schedule" setSelectedShift={setSelectedShift} />
+        </div>
       </div>
       <div className="lg:col-span-5 flex flex-col">
-        <h3 className="text-sm font-semibold mb-4 flex justify-between items-center">
-          My Actions <span className="ml-2 inline-flex items-center justify-center bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full">{memberAttention.items.length}</span>
+        <h3 className="text-[15px] font-semibold mb-4 flex justify-between items-center text-foreground">
+          My Actions <span className="ml-2 inline-flex items-center justify-center bg-red-100 text-red-700 text-[11px] font-bold px-2 py-0.5 rounded-full">{memberAttention.items.length}</span>
         </h3>
-        {memberAttention.items.length > 0 ? (
-          <OperationalStatusStrip items={memberAttention.items} className="gap-2 flex-grow" />
-        ) : (
-          <HealthyState message={t('allClear')} description={t('noPendingRequests')} />
-        )}
+        <div className="min-h-[240px] flex flex-col rounded-lg border bg-card p-0 shadow-sm overflow-hidden h-full">
+          {memberAttention.items.length > 0 ? (
+            <div className="p-4 flex flex-col gap-2">
+              <OperationalStatusStrip items={memberAttention.items} className="gap-2 flex-grow" />
+            </div>
+          ) : (
+            <div className="flex-grow flex items-center justify-center text-muted-foreground p-6">
+              <div className="flex flex-col items-center gap-2">
+                <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 mb-2">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+                <p className="text-[14px] font-medium text-foreground">Không có yêu cầu cần xử lý</p>
+                <p className="text-[13px]">Tất cả đều đã hoàn thành</p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
 
     {/* Row 3: Open Eligible Shifts = 12/12 */}
     <div className="grid grid-cols-1">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-sm font-semibold">Open Shifts for You</h3>
+        <h3 className="text-[15px] font-semibold text-foreground">Open Shifts for You</h3>
+        <a href="/calendar" className="text-[13px] text-primary font-medium hover:underline">Tìm ca làm việc -&gt;</a>
       </div>
-      <Card className="shadow-none border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-muted/50 text-muted-foreground text-xs uppercase">
-              <tr>
-                <th className="px-4 py-3 font-medium">Thời gian</th>
-                <th className="px-4 py-3 font-medium">Thương hiệu</th>
-                <th className="px-4 py-3 font-medium">Vai trò đang tuyển</th>
-                <th className="px-4 py-3 font-medium text-right">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {shifts.filter(s => s.date >= today && s.status === 'scheduled' && !s.host_id).slice(0, 3).map(s => (
-                <tr key={s.id} className="hover:bg-muted/30">
-                  <td className="px-4 py-3 font-medium whitespace-nowrap">{s.start_time.slice(0, 5)} - {s.end_time.slice(0, 5)}</td>
-                  <td className="px-4 py-3">{nameFor(brands, s.brand_id)}</td>
-                  <td className="px-4 py-3 text-right">
-                    <Button variant="ghost" size="sm" className="text-primary hover:text-primary" onClick={() => setSelectedShift(s)}>Chi tiết -&gt;</Button>
-                  </td>
-                </tr>
-              ))}
-              {shifts.filter(s => s.date >= today && s.status === 'scheduled' && !s.host_id).length === 0 && (
-                <tr><td colSpan={3} className="px-4 py-8 text-center text-muted-foreground">Không có ca nào đang tuyển</td></tr>
-              )}
-            </tbody>
-          </table>
+      <Card className="shadow-sm border overflow-hidden min-h-[160px]">
+        <div className="flex flex-col">
+          {shifts.filter(s => s.date >= today && s.status === 'scheduled' && !s.host_id).slice(0, 3).map(s => (
+            <div key={s.id} className="flex items-center justify-between p-4 border-b last:border-0 hover:bg-muted/30">
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-foreground">{s.start_time.slice(0,5)} - {s.end_time.slice(0,5)}</span>
+                  <Badge variant="secondary" className="text-[11px] font-medium bg-blue-50 text-blue-700 hover:bg-blue-50">Host</Badge>
+                </div>
+                <span className="text-[13px] text-muted-foreground">{nameFor(brands, s.brand_id)} • {nameFor(platforms, s.platform_id)}</span>
+              </div>
+              <Button variant="outline" size="sm" className="text-[13px]" onClick={() => setSelectedShift(s)}>Apply</Button>
+            </div>
+          ))}
+          {shifts.filter(s => s.date >= today && s.status === 'scheduled' && !s.host_id).length === 0 && (
+            <div className="p-8 text-center text-muted-foreground text-[13px]">
+              Không có ca nào đang tuyển
+            </div>
+          )}
         </div>
       </Card>
     </div>
@@ -747,12 +825,12 @@ function MemberDashboard(props: CommonProps) {
     {/* Row 4: My Requests = 6/12, Notifications = 6/12 */}
     <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
       <div className="lg:col-span-6 flex flex-col">
-        <h3 className="text-sm font-semibold mb-4">My Requests</h3>
-        <Card className="h-full shadow-none border"><CardContent className="p-4"><Empty text={t('noPendingRequests')} /></CardContent></Card>
+        <h3 className="text-[15px] font-semibold mb-4 text-foreground">My Requests</h3>
+        <Card className="shadow-sm border min-h-[150px] flex flex-col"><CardContent className="p-4 flex-grow flex items-center justify-center"><Empty text={t('noPendingRequests')} /></CardContent></Card>
       </div>
       <div className="lg:col-span-6 flex flex-col">
-        <h3 className="text-sm font-semibold mb-4">Recent Notifications</h3>
-        <Card className="h-full shadow-none border"><CardContent className="p-4"><Empty text={t('noNotifications')} /></CardContent></Card>
+        <h3 className="text-[15px] font-semibold mb-4 text-foreground">Recent Notifications</h3>
+        <Card className="shadow-sm border min-h-[150px] flex flex-col"><CardContent className="p-4 flex-grow flex items-center justify-center"><Empty text={t('noNotifications')} /></CardContent></Card>
       </div>
     </div>
   </PageShell>
@@ -804,5 +882,5 @@ function UpcomingShiftsList({ upcoming, brands, platforms, t, title, setSelected
 function FilterSelect({ label, value, options, onChange }: { label: string; value: string[]; options: Array<{ id: string; name: string }>; onChange: (value: string[]) => void }) {
   return <MultiSelectFilter label={label} value={value} onChange={onChange} options={options.map(option => ({ value: option.id, label: option.name }))} />
 }
-function Metric({ title, value, note, icon }: { title: string; value: string; note?: React.ReactNode; icon: React.ReactNode }) { return <Card className="shadow-none"><CardHeader className="flex-row items-center justify-between pb-2 pt-4 px-4 space-y-0"><CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>{icon}</CardHeader><CardContent className="px-4 pb-4"><p className="text-2xl font-bold">{value}</p>{note && <p className="mt-1 text-xs font-medium text-muted-foreground">{note}</p>}</CardContent></Card> }
+function Metric({ title, value, note, icon, tintClass = "bg-primary/10 text-primary" }: { title: string; value: string; note?: React.ReactNode; icon: React.ReactNode; tintClass?: string }) { return <Card className="shadow-sm border"><CardContent className="p-4 flex flex-col justify-between h-full min-h-[112px]"><div className="flex items-start justify-between gap-2"><div className="flex flex-col gap-1"><p className="text-[13px] font-semibold text-muted-foreground uppercase tracking-wider">{title}</p><p className="text-3xl font-bold leading-none">{value}</p></div><div className={`w-12 h-12 shrink-0 rounded-full flex items-center justify-center ${tintClass}`}>{icon}</div></div><div className="mt-2 h-4 flex items-center">{note ? <p className="text-xs font-medium text-muted-foreground truncate">{note}</p> : <p className="text-xs text-transparent select-none truncate">-</p>}</div></CardContent></Card> }
 function Empty({ text }: { text: string }) { return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{text}</div> }
