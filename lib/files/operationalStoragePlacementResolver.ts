@@ -71,6 +71,7 @@ export type OperationalStoragePlacementErrorCode =
   | 'STORAGE_ROUTE_CONFIG_INVALID'
   | 'STORAGE_ROUTE_LOOKUP_FAILED'
   | 'STORAGE_CATEGORY_UNSUPPORTED'
+  | 'STORAGE_CATEGORY_NOT_CONFIGURED'
   | 'STORAGE_DATE_INVALID'
   | 'STORAGE_FILE_NAME_INVALID'
 
@@ -115,10 +116,9 @@ function requiredFolderId(value: string): string {
   return value
 }
 
-function safeSegments(value: unknown, defaults: string[]): string[] {
-  const values = value === undefined ? defaults : value
-  if (!Array.isArray(values) || values.length === 0) fail('STORAGE_ROUTE_CONFIG_INVALID')
-  return values.map(safeSegment)
+function safeSegments(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length === 0) fail('STORAGE_ROUTE_CONFIG_INVALID')
+  return value.map(safeSegment)
 }
 
 function dateParts(shiftDate: string): { year: string; month: number } {
@@ -152,18 +152,35 @@ function configuredCategorySegments(
   route: OperationalStorageRoute,
   category: OperationalLogicalCategory,
   source: OperationalExecutionSource,
+  profile: OperationalStorageProfile,
 ): string[] {
   if (!categories.has(category)) fail('STORAGE_CATEGORY_UNSUPPORTED')
+
+  if (profile === 'CANONICAL_V1') {
+    if (category === 'dashboard') return ['DASHBOARD']
+    if (category === 'live_visual') return [source === 'internal' ? 'VISIBILITY' : 'VISUAL HOST']
+    if (category === 'data_report') return ['DATA', 'REPORT']
+    return ['DATA', 'SOURCE']
+  }
+
   const labels = route.folder_labels
   if (!labels || typeof labels !== 'object' || Array.isArray(labels)) fail('STORAGE_ROUTE_CONFIG_INVALID')
 
-  if (category === 'dashboard') return [safeSegment(labels.dashboard ?? 'DASHBOARD')]
-  if (category === 'live_visual') {
-    const key = source === 'internal' ? 'live_visual_internal' : 'live_visual_agency'
-    return [safeSegment(labels[key] ?? (source === 'internal' ? 'VISIBILITY' : 'VISUAL HOST'))]
+  const key = category === 'dashboard'
+    ? 'dashboard'
+    : category === 'live_visual'
+      ? source === 'internal' ? 'live_visual_internal' : 'live_visual_agency'
+      : category
+  const configured = labels[key]
+  if (configured === undefined || configured === null
+    || (typeof configured === 'string' && configured.trim().length === 0)
+    || (Array.isArray(configured) && configured.length === 0)) {
+    fail('STORAGE_CATEGORY_NOT_CONFIGURED')
   }
-  if (category === 'data_report') return safeSegments(labels.data_report, ['DATA', 'REPORT'])
-  return safeSegments(labels.data_source, ['DATA', 'SOURCE'])
+
+  return category === 'data_report' || category === 'data_source'
+    ? safeSegments(configured)
+    : [safeSegment(configured)]
 }
 
 function exactRouteKey(route: OperationalStorageRoute, input: OperationalStorageRouteKey): boolean {
@@ -203,7 +220,7 @@ export function resolveOperationalStoragePlacement(
     : requiredFolderId(route.base_folder_id)
 
   const period = periodLabel(route.period_naming_style, input.shiftDate, profile)
-  const category = configuredCategorySegments(route, input.logicalCategory, input.executionSource)
+  const category = configuredCategorySegments(route, input.logicalCategory, input.executionSource, profile)
   let folderSegments: string[]
 
   switch (profile) {

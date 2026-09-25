@@ -22,7 +22,13 @@ const baseRoute: OperationalStorageRoute = {
   storage_profile: 'LEGACY_CATEGORY_PERIOD',
   root_folder_id: 'root-id',
   base_folder_id: 'base-id',
-  folder_labels: {},
+  folder_labels: {
+    dashboard: 'DASHBOARD',
+    live_visual_internal: 'VISIBILITY',
+    live_visual_agency: 'VISUAL HOST',
+    data_report: ['DATA', 'REPORT'],
+    data_source: ['DATA', 'SOURCE'],
+  },
   period_naming_style: 'THANG_M_DASH_YEAR',
   active: true,
 }
@@ -127,7 +133,7 @@ test('legacy route preserves the configured dotted period spacing', () => {
 
 test('LEGACY_SUBBRAND_PERIOD_CATEGORY uses the configured subbrand label', () => {
   const result = resolve('LEGACY_SUBBRAND_PERIOD_CATEGORY', {}, {
-    subbrand_key: 'kao-ls', folder_labels: { subbrand: 'KAO - LS' }, period_naming_style: 'T_M_DOT_YEAR',
+    subbrand_key: 'kao-ls', folder_labels: { subbrand: 'KAO - LS', dashboard: 'DASHBOARD' }, period_naming_style: 'T_M_DOT_YEAR',
   })
   assert.deepEqual(result.folderSegments, ['KAO - LS', 'T10.2026', 'DASHBOARD'])
 })
@@ -139,7 +145,7 @@ test('subbrand key is never guessed as a folder label', () => {
 test('LEGACY_SUBBRAND_CATEGORY_PERIOD places category before period', () => {
   const result = resolve('LEGACY_SUBBRAND_CATEGORY_PERIOD', {}, {
     root_folder_id: 'R', base_folder_id: 'marico-ls-report-id',
-    subbrand_key: 'xmen', folder_labels: { subbrand: 'XMEN - LS Report' }, period_naming_style: 'THANG_M_DOT_YEAR',
+    subbrand_key: 'xmen', folder_labels: { subbrand: 'XMEN - LS Report', dashboard: 'DASHBOARD' }, period_naming_style: 'THANG_M_DOT_YEAR',
   })
   assert.equal(result.rootFolderId, 'R')
   assert.equal(result.baseFolderId, 'marico-ls-report-id')
@@ -162,7 +168,7 @@ test('CANONICAL_V1 uses ROOT-relative brand/platform/period/category and fixed p
 test('legacy base anchor is the existing KAO or agency base, with only child segments returned', () => {
   const kao = resolve('LEGACY_SUBBRAND_PERIOD_CATEGORY', {}, {
     root_folder_id: 'R', base_folder_id: 'kao-group-ls-report-id',
-    subbrand_key: 'kao-ls', folder_labels: { subbrand: 'KAO - LS' }, period_naming_style: 'T_M_DOT_YEAR',
+    subbrand_key: 'kao-ls', folder_labels: { subbrand: 'KAO - LS', dashboard: 'DASHBOARD' }, period_naming_style: 'T_M_DOT_YEAR',
   })
   assert.equal(kao.rootFolderId, 'R')
   assert.equal(kao.baseFolderId, 'kao-group-ls-report-id')
@@ -176,12 +182,77 @@ test('legacy base anchor is the existing KAO or agency base, with only child seg
   assert.deepEqual(agency.folderSegments, ['THÁNG 10.2026', 'DASHBOARD'])
 })
 
-test('logical categories map to controlled exact folder labels and DATA subfolders', () => {
+test('legacy logical categories use explicitly configured folder labels and DATA subfolders', () => {
   assert.deepEqual(resolve('LEGACY_CATEGORY_PERIOD', { logicalCategory: 'dashboard' }).folderSegments, ['DASHBOARD', 'Tháng 10 - 2026'])
   assert.deepEqual(resolve('LEGACY_CATEGORY_PERIOD', { logicalCategory: 'live_visual' }).folderSegments, ['VISIBILITY', 'Tháng 10 - 2026'])
   assert.deepEqual(resolve('LEGACY_CATEGORY_PERIOD', { logicalCategory: 'live_visual', executionSource: 'agency' }).folderSegments, ['VISUAL HOST', 'Tháng 10 - 2026'])
   assert.deepEqual(resolve('LEGACY_CATEGORY_PERIOD', { logicalCategory: 'data_report' }).folderSegments, ['DATA', 'REPORT', 'Tháng 10 - 2026'])
   assert.deepEqual(resolve('LEGACY_CATEGORY_PERIOD', { logicalCategory: 'data_source' }).folderSegments, ['DATA', 'SOURCE', 'Tháng 10 - 2026'])
+})
+
+test('CANONICAL_V1 uses fixed canonical category conventions without route labels', () => {
+  const cases = [
+    { category: 'dashboard', source: 'internal', expected: ['DASHBOARD'] },
+    { category: 'live_visual', source: 'internal', expected: ['VISIBILITY'] },
+    { category: 'live_visual', source: 'agency', expected: ['VISUAL HOST'] },
+    { category: 'data_report', source: 'internal', expected: ['DATA', 'REPORT'] },
+    { category: 'data_source', source: 'internal', expected: ['DATA', 'SOURCE'] },
+  ] as const
+
+  for (const { category, source, expected } of cases) {
+    const result = resolve('CANONICAL_V1', {
+      logicalCategory: category,
+      executionSource: source,
+      brandLabel: 'ABC',
+      platformLabel: 'TikTok Shop',
+    }, { folder_labels: {} })
+    assert.deepEqual(result.folderSegments.slice(3), expected)
+  }
+})
+
+test('legacy dashboard and live_visual categories require their exact configured labels', () => {
+  assert.deepEqual(resolve('LEGACY_CATEGORY_PERIOD', {}, {
+    folder_labels: { dashboard: 'DASHBOARD' },
+  }).folderSegments, ['DASHBOARD', 'Tháng 10 - 2026'])
+  assertCode('STORAGE_CATEGORY_NOT_CONFIGURED', () => resolve('LEGACY_CATEGORY_PERIOD', {}, { folder_labels: {} }))
+
+  assert.deepEqual(resolve('LEGACY_CATEGORY_PERIOD', { logicalCategory: 'live_visual' }, {
+    folder_labels: { live_visual_internal: 'VISIBILITY' },
+  }).folderSegments, ['VISIBILITY', 'Tháng 10 - 2026'])
+  assertCode('STORAGE_CATEGORY_NOT_CONFIGURED', () => resolve('LEGACY_CATEGORY_PERIOD', {
+    logicalCategory: 'live_visual',
+  }, { folder_labels: {} }))
+
+  assert.deepEqual(resolve('LEGACY_CATEGORY_PERIOD', {
+    logicalCategory: 'live_visual', executionSource: 'agency',
+  }, { folder_labels: { live_visual_agency: 'VISUAL HOST' } }).folderSegments,
+  ['VISUAL HOST', 'Tháng 10 - 2026'])
+  assertCode('STORAGE_CATEGORY_NOT_CONFIGURED', () => resolve('LEGACY_CATEGORY_PERIOD', {
+    logicalCategory: 'live_visual', executionSource: 'agency',
+  }, { folder_labels: { live_visual_internal: 'VISIBILITY' } }))
+})
+
+test('legacy data categories fail closed without explicit route mappings', () => {
+  assertCode('STORAGE_CATEGORY_NOT_CONFIGURED', () => resolve('LEGACY_CATEGORY_PERIOD', {
+    logicalCategory: 'data_report',
+  }, { folder_labels: { dashboard: 'DASHBOARD', live_visual_internal: 'VISIBILITY' } }))
+  assertCode('STORAGE_CATEGORY_NOT_CONFIGURED', () => resolve('LEGACY_CATEGORY_PERIOD', {
+    logicalCategory: 'data_source',
+  }, { folder_labels: { dashboard: 'DASHBOARD', live_visual_internal: 'VISIBILITY' } }))
+})
+
+test('legacy category labels that are absent, null, or empty fail with a controlled error', () => {
+  for (const folder_labels of [
+    {},
+    { dashboard: null },
+    { dashboard: '' },
+    { dashboard: '   ' },
+  ]) {
+    assertCode('STORAGE_CATEGORY_NOT_CONFIGURED', () => resolve('LEGACY_CATEGORY_PERIOD', {}, { folder_labels }))
+  }
+  assertCode('STORAGE_CATEGORY_NOT_CONFIGURED', () => resolve('LEGACY_CATEGORY_PERIOD', {
+    logicalCategory: 'data_report',
+  }, { folder_labels: { data_report: [] } }))
 })
 
 test('configured category labels are used verbatim as controlled safe segments', () => {
@@ -221,7 +292,7 @@ test('folder labels with traversal are rejected', () => {
   assertCode('STORAGE_ROUTE_CONFIG_INVALID', () => resolve('LEGACY_CATEGORY_PERIOD', {}, { folder_labels: { dashboard: '../DASHBOARD' } }))
   assertCode('STORAGE_ROUTE_CONFIG_INVALID', () => resolve('LEGACY_CATEGORY_PERIOD', {}, { folder_labels: { dashboard: 'folder..name' } }))
   assertCode('STORAGE_ROUTE_CONFIG_INVALID', () => resolve('LEGACY_CATEGORY_PERIOD', {}, { folder_labels: { dashboard: 'A\\B' } }))
-  assertCode('STORAGE_ROUTE_CONFIG_INVALID', () => resolve('LEGACY_CATEGORY_PERIOD', {}, { folder_labels: { dashboard: '   ' } }))
+  assertCode('STORAGE_CATEGORY_NOT_CONFIGURED', () => resolve('LEGACY_CATEGORY_PERIOD', {}, { folder_labels: { dashboard: '   ' } }))
 })
 
 test('slash-containing DATA category labels are rejected instead of becoming one path segment', () => {
