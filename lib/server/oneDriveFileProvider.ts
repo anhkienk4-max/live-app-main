@@ -182,7 +182,8 @@ export function createOneDriveFileProvider(options: OneDriveOptions = {}): Folde
   const provider: FolderCapableFileProvider = {
     name: 'onedrive',
     async upload(input: FileUploadInput): Promise<FileUploadResult> {
-      const parentId = input.external_parent_id || 'root';
+      const parentId = input.external_parent_id === undefined ? 'root' : input.external_parent_id.trim();
+      if (!parentId) throw new OneDriveError('ONEDRIVE_FOLDER_NOT_FOUND');
       const id = parentId ? normalizeOneDriveItemId(parentId) : 'root';
       const safeName = sanitizeFileName(input.name)
       // Check for existing file with same name

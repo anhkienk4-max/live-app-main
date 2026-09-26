@@ -241,7 +241,16 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
       if (content.byteLength !== input.size_bytes) throw new GoogleDriveError('GOOGLE_DRIVE_UPLOAD_FAILED', 'File content size does not match metadata.')
       const destination = resolveGoogleDriveDestination(input.destination, rootFolderId)
       let parentId: string
-      if (destination.custom) {
+      if (input.external_parent_id !== undefined) {
+        const exactParentId = input.external_parent_id.trim()
+        if (!exactParentId) throw new GoogleDriveError('GOOGLE_DRIVE_FOLDER_NOT_FOUND')
+        const normalizedParentId = normalizeGoogleDriveFileId(exactParentId)
+        if (destination.custom && destination.folderId !== normalizedParentId) {
+          throw new GoogleDriveError('GOOGLE_DRIVE_FOLDER_URL_INVALID')
+        }
+        await request(() => validateGoogleDriveFolder(drive, normalizedParentId), 'GOOGLE_DRIVE_FOLDER_NOT_FOUND')
+        parentId = normalizedParentId
+      } else if (destination.custom) {
         await request(() => validateGoogleDriveFolder(drive, destination.folderId), 'GOOGLE_DRIVE_FOLDER_NOT_FOUND')
         parentId = destination.folderId
       } else {

@@ -2,10 +2,18 @@ import { z } from 'zod'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { FileProviderName } from '@/lib/files/fileProvider'
-import { logicalFilePlacement } from '@/lib/files/filePlacement'
+import {
+  OperationalStoragePlacementError,
+  type OperationalLogicalCategory,
+  type OperationalStoragePlacementInput,
+  type OperationalStorageProvider,
+} from '@/lib/files/operationalStoragePlacementResolver'
 import { sanitizeFileName, validateFileUploadInput } from '@/lib/files/fileValidation'
 import { createFileStorageService, fileStorageService } from '@/lib/services/fileStorageService'
 import { createClient } from '@/lib/supabase/server'
+import { createOperationalStorageFolderMaterializer } from '@/lib/server/operationalStorageFolderMaterializer'
+import { createOperationalStorageRouteRepository, type OperationalStorageRouteRepository } from '@/lib/server/operationalStorageRouteRepository'
+import type { OperationalStoragePlacement } from '@/lib/files/operationalStoragePlacementResolver'
 import {
   authorizationErrorResponse,
   AuthorizationError,
@@ -19,7 +27,20 @@ import { readFormDataBody, readJsonBody, RequestBodyError } from '@/lib/server/a
 
 type ReportImageKind = 'report' | 'live'
 type CloudProvider = Extract<FileProviderName, 'google_drive' | 'onedrive'>
-type StorageGateway = Pick<ReturnType<typeof createFileStorageService>, 'upload' | 'read' | 'delete'>
+type StorageGateway = Pick<ReturnType<typeof createFileStorageService>, 'upload' | 'read' | 'delete' | 'ensureFolder'>
+type ReportShiftContext = {
+  date: string
+  brand_id: string
+  platform_id: string | null
+  execution_source: 'internal' | 'agency'
+}
+
+class ReportImageRouteError extends Error {
+  constructor(readonly code: string, readonly status: number) {
+    super(code)
+    this.name = 'ReportImageRouteError'
+  }
+}
 
 const reportType = z.enum(['dashboard', 'livestream', 'host', 'support', 'technical', 'voucher', 'product', 'other'])
 const liveCategory = z.enum(['key_visual', 'live_session', 'other'])
@@ -57,8 +78,8 @@ function errorResponse(code: string, message: string, status: number) {
   })
 }
 
-function safeError(error: unknown, fallback: string, code = 'REPORT_IMAGE_PROVIDER_ERROR') {
-  return errorResponse(code, error instanceof Error && error.message ? error.message : fallback, 502)
+function safeError(_error: unknown, fallback: string, code = 'REPORT_IMAGE_PROVIDER_ERROR') {
+  return errorResponse(code, fallback, 502)
 }
 
 function permissionError() {
@@ -90,18 +111,105 @@ async function reportRow(client: SupabaseClient, kind: ReportImageKind, imageId:
   return result.data as Record<string, unknown> | null
 }
 
-async function reportForUpload(client: SupabaseClient, reportId: string, user: AuthenticatedServerUser) {
+async function reportForUpload(client: SupabaseClient, reportId: string, user: AuthenticatedServerUser): Promise<{ report: Record<string, unknown>; shift: ReportShiftContext }> {
   const result = await client
     .from('reports')
-    .select('id,created_at,submitted_by,metrics_confirmed,status')
+    .select('id,shift_id,submitted_by,metrics_confirmed,status')
     .eq('id', reportId)
     .maybeSingle()
   if (result.error) throw result.error
   const report = result.data as Record<string, unknown> | null
-  if (!report) throw new Error('REPORT_NOT_FOUND')
-  if (report.metrics_confirmed === true || report.status === 'confirmed') throw new Error('REPORT_CONFIRMED')
+  if (!report) throw new ReportImageRouteError('REPORT_NOT_FOUND', 404)
+  if (report.metrics_confirmed === true || report.status === 'confirmed') throw new ReportImageRouteError('REPORT_CONFIRMED', 409)
   if (user.systemPermission === 'member' && report.submitted_by !== user.businessUserId) throw permissionError()
-  return report
+  if (typeof report.shift_id !== 'string' || !report.shift_id) throw new ReportImageRouteError('REPORT_SHIFT_CONTEXT_NOT_CONFIGURED', 409)
+  const shiftResult = await client
+    .from('shifts')
+    .select('date,brand_id,platform_id,execution_source')
+    .eq('id', report.shift_id)
+    .maybeSingle()
+  if (shiftResult.error) throw shiftResult.error
+  const shift = shiftResult.data as Record<string, unknown> | null
+  if (!shift) throw new ReportImageRouteError('REPORT_SHIFT_CONTEXT_NOT_FOUND', 404)
+  if (shift.execution_source !== 'internal' && shift.execution_source !== 'agency') {
+    throw new OperationalStoragePlacementError('STORAGE_EXECUTION_SOURCE_NOT_CONFIGURED')
+  }
+  if (typeof shift.date !== 'string' || typeof shift.brand_id !== 'string' || !shift.brand_id) {
+    throw new OperationalStoragePlacementError('STORAGE_ROUTE_CONFIG_INVALID')
+  }
+  return {
+    report,
+    shift: {
+      date: shift.date,
+      brand_id: shift.brand_id,
+      platform_id: typeof shift.platform_id === 'string' ? shift.platform_id : null,
+      execution_source: shift.execution_source,
+    },
+  }
+}
+
+export function reportImageLogicalCategory(kind: ReportImageKind, category: string): OperationalLogicalCategory {
+  if (kind === 'report' && category === 'dashboard') return 'dashboard'
+  if (kind === 'live' && (category === 'key_visual' || category === 'live_session')) return 'live_visual'
+  throw new OperationalStoragePlacementError('STORAGE_CATEGORY_NOT_CONFIGURED')
+}
+
+function routedPlacementInput(
+  provider: OperationalStorageProvider,
+  shift: ReportShiftContext,
+  logicalCategory: OperationalLogicalCategory,
+  fileName: string,
+): OperationalStoragePlacementInput {
+  return {
+    provider,
+    executionSource: shift.execution_source,
+    brandId: shift.brand_id,
+    platformId: shift.platform_id,
+    subbrandKey: null,
+    shiftDate: shift.date,
+    logicalCategory,
+    fileName,
+  }
+}
+
+function logicalMetadataPath(placement: OperationalStoragePlacement): string {
+  return [...placement.folderSegments, placement.fileName].join('/')
+}
+
+function existingRoutedImage(
+  row: Record<string, unknown>,
+  categoryField: 'image_type' | 'category',
+  requestedCategory: string,
+  requestedProvider: CloudProvider,
+) {
+  if (row[categoryField] !== requestedCategory || row.provider !== requestedProvider) {
+    throw new ReportImageRouteError('REPORT_IMAGE_FILE_NAME_CONFLICT', 409)
+  }
+  return publicRow(row)
+}
+
+function placementErrorResponse(error: unknown) {
+  if (error instanceof OperationalStoragePlacementError) {
+    return errorResponse(error.code, 'The report image could not be stored with the configured operational placement.', 409)
+  }
+  if (error instanceof ReportImageRouteError) {
+    const message = error.code === 'REPORT_NOT_FOUND' ? 'The report was not found.' : 'The report image request could not be completed.'
+    return errorResponse(error.code, message, error.status)
+  }
+  const requestStatuses = new Map([
+    ['REPORT_IMAGE_REQUEST_INVALID', 400],
+    ['REPORT_IMAGE_FILE_REQUIRED', 400],
+    ['LIVE_REPORT_IMAGE_TOO_LARGE', 413],
+  ])
+  const message = error instanceof Error ? error.message : ''
+  const status = requestStatuses.get(message)
+  if (status !== undefined) return errorResponse(message, 'The report image request is invalid.', status)
+  return errorResponse('REPORT_IMAGE_STORAGE_FAILED', 'The report image could not be stored.', 502)
+}
+
+type UploadPlacementDependencies = {
+  routeResolver: Pick<OperationalStorageRouteRepository, 'resolvePlacement'>
+  materializeFolders: (placement: OperationalStoragePlacement) => Promise<string>
 }
 
 async function uploadReportImage(
@@ -109,6 +217,7 @@ async function uploadReportImage(
   storage: StorageGateway,
   user: AuthenticatedServerUser,
   form: FormData,
+  dependencies: UploadPlacementDependencies,
 ) {
   const fileValue = form.get('file')
   if (!(fileValue instanceof Blob)) throw new Error('REPORT_IMAGE_FILE_REQUIRED')
@@ -119,14 +228,16 @@ async function uploadReportImage(
     provider: formString(form, 'provider'),
   })
   if (!parsed.success) throw new Error('REPORT_IMAGE_REQUEST_INVALID')
-  const report = await reportForUpload(client, parsed.data.report_id, user)
+  const { shift } = await reportForUpload(client, parsed.data.report_id, user)
   const name = sanitizeFileName(typeof File !== 'undefined' && fileValue instanceof File ? fileValue.name : formString(form, 'file_name'))
   const bytes = new Uint8Array(await fileValue.arrayBuffer())
-  const logical = logicalFilePlacement('report', parsed.data.report_id, String(report.created_at)).logical_path
-  const logicalPath = `${logical}/${parsed.data.image_type}/${name}`
+  const category = reportImageLogicalCategory('report', parsed.data.image_type)
+  const provider: CloudProvider = parsed.data.provider ?? 'google_drive'
+  const placement = await dependencies.routeResolver.resolvePlacement(routedPlacementInput(provider, shift, category, name))
+  const logicalPath = logicalMetadataPath(placement)
   const existing = await client.from('report_images').select('*').eq('report_id', parsed.data.report_id).eq('storage_path', logicalPath).maybeSingle()
   if (existing.error) throw existing.error
-  if (existing.data) return publicRow(existing.data as Record<string, unknown>)
+  if (existing.data) return existingRoutedImage(existing.data as Record<string, unknown>, 'image_type', parsed.data.image_type, provider)
   validateFileUploadInput({
     name,
     mime_type: fileValue.type,
@@ -137,6 +248,7 @@ async function uploadReportImage(
     created_by: user.businessUserId || user.id,
     logical_path: logicalPath,
   })
+  const exactParentId = await dependencies.materializeFolders(placement)
   const result = await storage.upload({
     name,
     mime_type: fileValue.type,
@@ -146,7 +258,8 @@ async function uploadReportImage(
     entity_id: parsed.data.report_id,
     created_by: user.businessUserId || user.id,
     logical_path: logicalPath,
-    destination: parsed.data.provider ? { provider: parsed.data.provider } : undefined,
+    external_parent_id: exactParentId,
+    destination: { provider },
   })
   try {
     const persisted = await client.rpc('upload_report_image_with_provider', {
@@ -165,8 +278,8 @@ async function uploadReportImage(
   } catch (error) {
     try {
       await storage.delete({ provider: result.asset.provider as CloudProvider, external_file_id: result.asset.external_file_id })
-    } catch (cleanupError) {
-      console.error('Report image provider cleanup failed after metadata failure:', cleanupError)
+    } catch {
+      console.error('REPORT_IMAGE_UPLOAD_CLEANUP_FAILED')
     }
     throw error
   }
@@ -177,6 +290,7 @@ async function uploadLiveReportImage(
   storage: StorageGateway,
   user: AuthenticatedServerUser,
   form: FormData,
+  dependencies: UploadPlacementDependencies,
 ) {
   const fileValue = form.get('file')
   if (!(fileValue instanceof Blob)) throw new Error('REPORT_IMAGE_FILE_REQUIRED')
@@ -192,16 +306,18 @@ async function uploadLiveReportImage(
     provider: formString(form, 'provider'),
   })
   if (!parsed.success) throw new Error('REPORT_IMAGE_REQUEST_INVALID')
-  const report = await reportForUpload(client, parsed.data.report_id, user)
+  const { shift } = await reportForUpload(client, parsed.data.report_id, user)
   const sourceName = typeof File !== 'undefined' && fileValue instanceof File ? fileValue.name : formString(form, 'file_name')
   const name = sanitizeFileName(sourceName)
   const bytes = new Uint8Array(await fileValue.arrayBuffer())
   if (bytes.byteLength > 10 * 1024 * 1024) throw new Error('LIVE_REPORT_IMAGE_TOO_LARGE')
-  const logical = logicalFilePlacement('report', parsed.data.report_id, String(report.created_at)).logical_path
-  const logicalPath = `${logical}/live/${name}`
+  const category = reportImageLogicalCategory('live', parsed.data.category)
+  const provider: CloudProvider = parsed.data.provider ?? 'google_drive'
+  const placement = await dependencies.routeResolver.resolvePlacement(routedPlacementInput(provider, shift, category, name))
+  const logicalPath = logicalMetadataPath(placement)
   const existing = await client.from('live_report_images').select('*').eq('report_id', parsed.data.report_id).eq('file_url', logicalPath).maybeSingle()
   if (existing.error) throw existing.error
-  if (existing.data) return publicRow(existing.data as Record<string, unknown>)
+  if (existing.data) return existingRoutedImage(existing.data as Record<string, unknown>, 'category', parsed.data.category, provider)
   validateFileUploadInput({
     name,
     mime_type: fileValue.type,
@@ -212,6 +328,7 @@ async function uploadLiveReportImage(
     created_by: user.businessUserId || user.id,
     logical_path: logicalPath,
   })
+  const exactParentId = await dependencies.materializeFolders(placement)
   const result = await storage.upload({
     name,
     mime_type: fileValue.type,
@@ -221,7 +338,8 @@ async function uploadLiveReportImage(
     entity_id: parsed.data.report_id,
     created_by: user.businessUserId || user.id,
     logical_path: logicalPath,
-    destination: parsed.data.provider ? { provider: parsed.data.provider } : undefined,
+    external_parent_id: exactParentId,
+    destination: { provider },
   })
   try {
     const persisted = await client.rpc('upsert_live_report_image_with_provider', {
@@ -246,8 +364,8 @@ async function uploadLiveReportImage(
   } catch (error) {
     try {
       await storage.delete({ provider: result.asset.provider as CloudProvider, external_file_id: result.asset.external_file_id })
-    } catch (cleanupError) {
-      console.error('Live report image provider cleanup failed after metadata failure:', cleanupError)
+    } catch {
+      console.error('LIVE_REPORT_IMAGE_UPLOAD_CLEANUP_FAILED')
     }
     throw error
   }
@@ -257,9 +375,22 @@ export function createReportImageRouteHandler(dependencies: {
   resolveUser?: ServerUserResolver
   createClient?: () => Promise<SupabaseClient>
   storage?: StorageGateway
+  routeResolver?: Pick<OperationalStorageRouteRepository, 'resolvePlacement'>
+  materializeFolders?: (placement: OperationalStoragePlacement) => Promise<string>
 } = {}) {
   const clientFactory = dependencies.createClient || createClient
   const storage = dependencies.storage || fileStorageService
+  let defaultRouteResolver: OperationalStorageRouteRepository | undefined
+  const routeResolver = dependencies.routeResolver || {
+    resolvePlacement: (input: OperationalStoragePlacementInput) => {
+      defaultRouteResolver ??= createOperationalStorageRouteRepository()
+      return defaultRouteResolver.resolvePlacement(input)
+    },
+  }
+  const materializeFolders = dependencies.materializeFolders || createOperationalStorageFolderMaterializer(
+    (parentId, name, provider) => storage.ensureFolder(parentId, name, provider),
+  )
+  const uploadPlacementDependencies = { routeResolver, materializeFolders }
 
   return {
     async POST(request: Request) {
@@ -269,15 +400,13 @@ export function createReportImageRouteHandler(dependencies: {
         const kind = formString(form, 'kind')
         if (kind !== 'report' && kind !== 'live') return errorResponse('REPORT_IMAGE_REQUEST_INVALID', 'The report image request is invalid.', 400)
         const image = kind === 'report'
-          ? await uploadReportImage(await clientFactory(), storage, user, form)
-          : await uploadLiveReportImage(await clientFactory(), storage, user, form)
+          ? await uploadReportImage(await clientFactory(), storage, user, form, uploadPlacementDependencies)
+          : await uploadLiveReportImage(await clientFactory(), storage, user, form, uploadPlacementDependencies)
         return Response.json({ ok: true, image }, { headers: { 'Cache-Control': 'no-store' } })
       } catch (error) {
         if (isAuthorizationError(error)) return authorizationErrorResponse(error)
         if (error instanceof RequestBodyError) return errorResponse(error.code, error.message, error.status)
-        const code = error instanceof Error ? error.message : 'REPORT_IMAGE_PROVIDER_ERROR'
-        const status = code === 'REPORT_NOT_FOUND' ? 404 : code === 'REPORT_CONFIRMED' ? 409 : code === 'REPORT_IMAGE_REQUEST_INVALID' || code === 'REPORT_IMAGE_FILE_REQUIRED' ? 400 : 502
-        return errorResponse(code, status === 502 ? 'The report image could not be stored.' : 'The report image request is invalid.', status)
+        return placementErrorResponse(error)
       }
     },
 
@@ -353,7 +482,7 @@ export function createReportImageRouteHandler(dependencies: {
           const path = parsed.data.kind === 'report' ? row.storage_path || row.image_url : row.file_url
           if (typeof path === 'string' && path) {
             const cleanup = await client.storage.from('report-images').remove([path])
-            if (cleanup.error) console.error('Orphaned legacy report image object after metadata delete:', path, cleanup.error)
+            if (cleanup.error) console.error('LEGACY_REPORT_IMAGE_STORAGE_CLEANUP_FAILED')
           }
         }
         return Response.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } })

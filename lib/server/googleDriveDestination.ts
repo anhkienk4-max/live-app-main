@@ -110,6 +110,7 @@ export function resolveGoogleDriveDestination(destination: FileDestination | und
   if (destination.provider !== 'google_drive') return invalidUrl()
   const hasId = destination.external_folder_id !== undefined
   const hasUrl = destination.folder_url !== undefined
+  if (!hasId && !hasUrl) return { folderId: rootFolderId, custom: false }
   if (hasId === hasUrl) return invalidUrl()
   return {
     folderId: hasId ? externalFolderId(destination.external_folder_id ?? '') : parseGoogleDriveFolderUrl(destination.folder_url ?? ''),

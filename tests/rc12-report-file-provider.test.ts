@@ -4,6 +4,11 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import type { FileProviderName, FileUploadInput, FileUploadResult } from '@/lib/files/fileProvider'
+import {
+  resolveOperationalStoragePlacement,
+  type OperationalStoragePlacementInput,
+  type OperationalStorageRoute,
+} from '@/lib/files/operationalStoragePlacementResolver'
 import { createReportImageRouteHandler } from '@/lib/server/reportImageRouteHandler'
 
 const user = {
@@ -18,11 +23,13 @@ function fakeStorage(options: {
   deleteError?: Error
   readBytes?: Uint8Array
   calls?: string[]
+  uploadInputs?: FileUploadInput[]
 } = {}) {
   const calls = options.calls || []
   return {
     calls,
     async upload(input: FileUploadInput): Promise<FileUploadResult> {
+      options.uploadInputs?.push(input)
       if (options.uploadError) throw options.uploadError
       const provider = input.destination?.provider || options.uploadProvider || 'google_drive'
       calls.push(`${provider}:upload`)
@@ -42,6 +49,10 @@ function fakeStorage(options: {
         },
       }
     },
+    async ensureFolder(parentId: string, name: string, provider: 'google_drive' | 'onedrive') {
+      calls.push(`ensure:${provider}:${parentId}:${name}`)
+      return { provider, id: `${provider}-${name}`, name, parentId }
+    },
     async read(reference: { provider: FileProviderName; external_file_id: string }) {
       calls.push(`${reference.provider}:read:${reference.external_file_id}`)
       return options.readBytes || new Uint8Array([1, 2, 3])
@@ -55,6 +66,8 @@ function fakeStorage(options: {
 
 function fakeClient(options: {
   imageRow?: Record<string, unknown> | null
+  shift?: Record<string, unknown> | null
+  report?: Record<string, unknown> | null
   rpcData?: Record<string, unknown> | boolean
   rpcError?: { message: string }
   rpcErrors?: Record<string, { message: string }>
@@ -72,8 +85,14 @@ function fakeClient(options: {
         eq() { return query },
         maybeSingle: async () => ({
           data: table === 'reports'
-            ? { id: 'report-1', created_at: '2026-09-19T00:00:00.000Z', submitted_by: 'business-1', metrics_confirmed: false, status: 'draft' }
-            : row,
+            ? options.report === undefined
+              ? { id: 'report-1', shift_id: 'shift-1', created_at: '2026-09-19T00:00:00.000Z', submitted_by: 'business-1', metrics_confirmed: false, status: 'draft' }
+              : options.report
+            : table === 'shifts'
+              ? options.shift === undefined
+                ? { date: '2026-10-01', brand_id: 'stg-b1', platform_id: 'stg-p1', execution_source: 'internal' }
+                : options.shift
+              : row,
           error: null,
         }),
       }
@@ -101,11 +120,41 @@ function fakeClient(options: {
   }
 }
 
-function handlerFor(client: ReturnType<typeof fakeClient>, storage = fakeStorage()) {
+const routeForTest: OperationalStorageRoute = {
+  id: 'test-route', provider: 'google_drive', execution_source: 'internal', brand_id: 'stg-b1',
+  platform_id: null, subbrand_key: null, storage_profile: 'LEGACY_CATEGORY_PERIOD', root_folder_id: 'root-a',
+  base_folder_id: 'mars-internal-base',
+  folder_labels: { dashboard: 'DASHBOARD', live_visual_internal: 'VISIBILITY', live_visual_agency: 'VISUAL HOST' },
+  period_naming_style: 'THANG_M_DASH_YEAR', active: true,
+}
+
+function testRouteResolver() {
+  return {
+    async resolvePlacement(input: OperationalStoragePlacementInput) {
+      const route: OperationalStorageRoute = {
+        ...routeForTest,
+        provider: input.provider,
+        execution_source: input.executionSource,
+        storage_profile: input.executionSource === 'internal' ? 'LEGACY_CATEGORY_PERIOD' : 'LEGACY_PERIOD_CATEGORY',
+        root_folder_id: input.executionSource === 'internal' ? 'root-a' : 'root-b',
+        base_folder_id: input.executionSource === 'internal' ? 'mars-internal-base' : 'mars-agency-base',
+        period_naming_style: input.executionSource === 'internal' ? 'THANG_M_DASH_YEAR' : 'THANG_M_DOT_YEAR',
+      }
+      return resolveOperationalStoragePlacement(route, input)
+    },
+  }
+}
+
+function handlerFor(
+  client: ReturnType<typeof fakeClient>,
+  storage = fakeStorage(),
+  routeResolver = testRouteResolver(),
+) {
   return createReportImageRouteHandler({
     resolveUser: async () => user,
     createClient: async () => client as never,
     storage,
+    routeResolver,
   })
 }
 

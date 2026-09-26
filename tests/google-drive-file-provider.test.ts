@@ -297,6 +297,24 @@ test('invalid custom destination never falls back to the managed root', async ()
   assert.equal(driveState.uploadCalls, 0)
 })
 
+test('exact external parent uploads directly and never materializes logical_path', async () => {
+  const driveState = state()
+  driveState.customFolder = {
+    mimeType: 'application/vnd.google-apps.folder',
+    capabilities: { canAddChildren: true, canEdit: true },
+  }
+  const provider = createGoogleDriveFileProvider({ env, drive: fakeDrive(driveState), retryDelayMs: 0 })
+  await provider.upload({
+    ...input,
+    logical_path: 'LiveStreamOps/reports/2026/10/report-1/dashboard',
+    external_parent_id: 'custom-folder',
+    destination: { provider: 'google_drive' },
+  })
+  assert.equal(driveState.folderCreates, 0)
+  assert.equal(driveState.listCalls, 0)
+  assert.deepEqual(driveState.uploaded?.parents, ['custom-folder'])
+})
+
 test('health check validates the configured root folder', async () => {
   const valid = createGoogleDriveFileProvider({ env, drive: fakeDrive(state()) })
   assert.deepEqual(await valid.healthCheck(), { ok: true, provider: 'google_drive' })

@@ -71,7 +71,24 @@ export function createOperationalStorageRouteRepository(
         throw noRouteErrorForBrand((brand as { storage_profile?: unknown } | null)?.storage_profile)
       }
 
-      return resolveOperationalStoragePlacement(route, input)
+      let placementInput = input
+      if (route.storage_profile === 'CANONICAL_V1' && (!input.brandLabel || !input.platformLabel)) {
+        if (!input.platformId) throw new OperationalStoragePlacementError('STORAGE_ROUTE_CONFIG_INVALID')
+        const [brandResult, platformResult] = await Promise.all([
+          input.brandLabel ? Promise.resolve({ data: { name: input.brandLabel }, error: null }) : client
+            .from('brands').select('name').eq('id', input.brandId).maybeSingle(),
+          input.platformLabel ? Promise.resolve({ data: { name: input.platformLabel }, error: null }) : client
+            .from('platforms').select('name').eq('id', input.platformId).maybeSingle(),
+        ])
+        if (brandResult.error || platformResult.error) throw new OperationalStoragePlacementError('STORAGE_ROUTE_LOOKUP_FAILED')
+        const brandLabel = (brandResult.data as { name?: unknown } | null)?.name
+        const platformLabel = (platformResult.data as { name?: unknown } | null)?.name
+        if (typeof brandLabel !== 'string' || typeof platformLabel !== 'string') {
+          throw new OperationalStoragePlacementError('STORAGE_ROUTE_CONFIG_INVALID')
+        }
+        placementInput = { ...input, brandLabel, platformLabel }
+      }
+      return resolveOperationalStoragePlacement(route, placementInput)
     },
   }
 }

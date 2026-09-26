@@ -65,7 +65,9 @@ export interface FileUploadInput {
   entity_type: FileEntityType
   entity_id: string
   created_by: string
+  /** Logical metadata path; providers use it for folder traversal only when no exact parent is supplied. */
   logical_path: string
+  /** Exact existing parent folder. When present, uploads must not materialize logical_path. */
   external_parent_id?: string
   destination?: FileDestination
 }

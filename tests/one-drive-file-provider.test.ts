@@ -160,6 +160,27 @@ test('upload is supported with sanitized names', async () => {
   }
 })
 
+test('exact external parent takes precedence over logical_path during upload', async () => {
+  const graph = graphClient([response(200, { value: [] })])
+  const originalFetch = globalThis.fetch
+  const requests: string[] = []
+  globalThis.fetch = (async input => {
+    requests.push(String(input))
+    return { ok: true, status: 200, async json() { return { ...item('uploaded-parent'), name: 'report.png' } } } as Response
+  }) as typeof fetch
+  try {
+    const provider = createOneDriveFileProvider({ auth: authClient(), graph })
+    await provider.upload({
+      name: 'report.png', mime_type: 'image/png', size_bytes: 4, content: new Uint8Array([1, 2, 3, 4]),
+      entity_type: 'report', entity_id: 'report-1', created_by: 'user-1',
+      logical_path: 'LiveStreamOps/reports/2026/10/report-1/dashboard', external_parent_id: 'exact-parent-1',
+    })
+    assert.deepEqual(requests, ['https://graph.microsoft.com/v1.0/drive/items/exact-parent-1:/report.png:/content'])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('delete uses the immutable DriveItem ID and succeeds on Graph 204', async () => {
   const originalFetch = globalThis.fetch
   const requests: Array<{ url: string; method: string; authorization: string }> = []

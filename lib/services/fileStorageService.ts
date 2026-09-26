@@ -4,6 +4,8 @@ import type { FileAssetReference, FileProvider, FileProviderName, FileUploadInpu
 import { assertMetadataContainsNoBinary, validateFileUploadInput } from '@/lib/files/fileValidation'
 import { FileProviderError } from '@/lib/server/fileProviderResolver'
 import { createFileProviderRegistry, type FileProviderAvailability, type FileProviderRegistry } from '@/lib/server/fileProviderRegistry'
+import type { FolderCapableFileProvider } from '@/lib/storage/folderCapable'
+import type { CloudFolderRef } from '@/lib/storage/types'
 
 type Environment = Record<string, string | undefined>
 type ProviderKey = FileProviderName | 'mock'
@@ -17,6 +19,10 @@ export interface FileStorageServiceOptions {
 
 function isAssetReference(value: FileAssetReference | string): value is FileAssetReference {
   return typeof value === 'object' && value !== null
+}
+
+function isFolderCapable(provider: FileProvider): provider is FolderCapableFileProvider {
+  return 'ensureFolder' in provider && typeof provider.ensureFolder === 'function'
 }
 
 function providerAndId(
@@ -57,6 +63,11 @@ export function createFileStorageService(options: FileStorageServiceOptions = {}
       if (result.asset.provider_metadata) assertMetadataContainsNoBinary(result.asset.provider_metadata)
       return result
     },
+    async ensureFolder(parentId: string, name: string, providerName: ProviderKey = registry.defaultProviderName): Promise<CloudFolderRef> {
+      const provider = registry.getProvider(providerName)
+      if (!isFolderCapable(provider)) throw new FileProviderError('FILE_PROVIDER_FOLDER_UNSUPPORTED')
+      return provider.ensureFolder(parentId, name)
+    },
     list: (parentId?: string, providerName?: ProviderKey) => registry.getProvider(providerName ?? registry.defaultProviderName).list(parentId),
     getMetadata: (assetOrId: FileAssetReference | string, providerName?: ProviderKey) => {
       const resolved = providerAndId(assetOrId, registry, providerName)
@@ -89,6 +100,7 @@ export const fileStorageService = {
   get providerAvailability(): FileProviderAvailability { return createFileStorageService().providerAvailability },
   getProvider(name: ProviderKey) { return createFileStorageService().getProvider(name) },
   upload(input: FileUploadInput) { return createFileStorageService().upload(input) },
+  ensureFolder(parentId: string, name: string, providerName?: ProviderKey) { return createFileStorageService().ensureFolder(parentId, name, providerName) },
   list(parentId?: string, providerName?: ProviderKey) { return createFileStorageService().list(parentId, providerName) },
   getMetadata(assetOrId: FileAssetReference | string, providerName?: ProviderKey) { return createFileStorageService().getMetadata(assetOrId, providerName) },
   read(assetOrId: FileAssetReference | string, providerName?: ProviderKey) { return createFileStorageService().read(assetOrId, providerName) },
