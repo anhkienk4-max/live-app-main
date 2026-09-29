@@ -14,6 +14,7 @@ import { getVerifiedUser } from '@/lib/auth/session'
 import { createSupabaseMasterDataRepository } from '@/lib/services/supabaseMasterDataService'
 import { createClient } from '@/lib/supabase/server'
 import type { User } from '@/lib/types/database.types'
+import { resolveOperationalStorageRoutingMode } from '@/lib/server/operationalStorageRoutingMode'
 
 type DashboardHeaderUser = {
   email?: string
@@ -29,6 +30,7 @@ export default async function DashboardLayout({
   children: React.ReactNode
 }) {
   const mockMode = getAuthMode() === 'mock'
+  const operationalStorageRoutingMode = resolveOperationalStorageRoutingMode()
   let identity: AuthIdentity | null = null
   let businessUser: User | null = null
   let user: DashboardHeaderUser | null = mockMode ? {
@@ -92,7 +94,10 @@ export default async function DashboardLayout({
       identity={identity}
       businessUser={businessUser}
     >
-      <div className="flex h-screen overflow-hidden bg-background">
+      <div
+        className="flex h-screen overflow-hidden bg-background"
+        data-operational-storage-routing-mode={operationalStorageRoutingMode}
+      >
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <Header user={user || undefined} />

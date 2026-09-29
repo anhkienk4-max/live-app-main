@@ -37,11 +37,11 @@ test('Internal and Agency are the only controlled import execution sources', () 
   assert.match(invalid.rows[0].row.errors.join(' '), /Execution Source must be Internal or Agency/)
 })
 
-test('old import rows remain unclassified and preview round-trip preserves explicit values', () => {
+test('old import rows derive Internal from Studio semantics and preview round-trip preserves explicit values', () => {
   const old = parseScheduleRows([sourceRow], maps)
   assert.equal(old.validRows, 1)
-  assert.equal(old.validShifts[0].execution_source, null)
-  assert.match(old.rows[0].row.warnings.join(' '), /remain unclassified/)
+  assert.equal(old.validShifts[0].execution_source, 'internal')
+  assert.doesNotMatch(old.rows[0].row.warnings.join(' '), /remain unclassified/)
   for (const value of ['Internal', 'Agency']) {
     const first = parseScheduleRows([{ ...sourceRow, 'Execution Source': value }], maps)
     const reparsed = parseScheduleRows([buildScheduleImportPreviewSourceRow(first.rows[0].row)], maps)

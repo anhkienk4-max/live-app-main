@@ -18,6 +18,7 @@ import {
   resolveShiftDateTime,
   shiftDateTimeFields,
 } from '@/lib/utils/shiftUtils'
+import { resolveExecutionSource } from '@/lib/utils/executionSource'
 import {
   getCanonicalStaffingField,
   getCanonicalStaffingNameField,
@@ -400,9 +401,9 @@ export function parseScheduleRows(
     const rawStudio = String(valueFor(normalizedSource, scheduleHeaders.studio) ?? '')
     const studio = rawStudio.trim()
     const rawExecutionSource = textValue(valueFor(normalizedSource, scheduleHeaders.executionSource)).trim()
-    const executionSource = /^(internal|agency)$/i.test(rawExecutionSource)
-      ? rawExecutionSource.toLowerCase() as 'internal' | 'agency'
-      : null
+    const executionSource = rawExecutionSource && !/^(internal|agency)$/i.test(rawExecutionSource)
+      ? null
+      : resolveExecutionSource({ explicit: rawExecutionSource || undefined, studio })
     const notes = String(valueFor(normalizedSource, scheduleHeaders.notes) ?? '').trim()
     const sourcePresence = (sourceValues.source_presence as ScheduleImportSourcePresence | undefined) ?? {
       execution_source: sourceFieldProvided(sourceValues, scheduleHeaders.executionSource),
@@ -431,7 +432,6 @@ export function parseScheduleRows(
     const rowErrors: string[] = []
     const rowWarnings: string[] = []
     if (rawExecutionSource && !executionSource) rowErrors.push('Execution Source must be Internal or Agency.')
-    if (!rawExecutionSource) rowWarnings.push('Execution Source is missing; this shift will remain unclassified.')
 
     if (!date) rowErrors.push('Date is required.')
     else if (!validIsoDate(date)) {

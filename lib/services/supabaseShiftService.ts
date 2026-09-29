@@ -9,6 +9,7 @@ import type {
   ShiftStatusMode,
 } from '@/lib/types/database.types'
 import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE } from '@/lib/utils/shiftUtils'
+import { resolveExecutionSource } from '@/lib/utils/executionSource'
 
 const shiftColumns = [
   'id',
@@ -53,7 +54,13 @@ const shiftColumns = [
   'archived_at',
   'archived_by',
   'deletion_reason',
-].join(',')
+]
+
+type ShiftSchemaMode = 'database' | 'compat'
+
+function selectedShiftColumns(mode: ShiftSchemaMode): string {
+  return shiftColumns.filter(column => mode === 'database' || column !== 'execution_source').join(',')
+}
 
 const SUPABASE_PAGE_SIZE = 1000
 
@@ -163,7 +170,7 @@ function normalizeTime(value: string | null | undefined): string {
   return value.length > 5 ? value.slice(0, 5) : value
 }
 
-function shiftFromRow(row: ShiftRow): Shift {
+function shiftFromRow(row: ShiftRow, mode: ShiftSchemaMode, explicitExecutionSource?: unknown): Shift {
   return {
     id: row.id,
     date: row.date,
@@ -176,7 +183,9 @@ function shiftFromRow(row: ShiftRow): Shift {
     crosses_midnight: row.crosses_midnight,
     duration_minutes: row.duration_minutes,
     brand_id: row.brand_id,
-    execution_source: row.execution_source ?? null,
+    execution_source: mode === 'compat'
+      ? resolveExecutionSource({ explicit: explicitExecutionSource, studio: row.studio })
+      : row.execution_source ?? null,
     platform_id: row.platform_id,
     campaign_id: row.campaign_id ?? undefined,
     title: row.title ?? undefined,
@@ -207,14 +216,14 @@ function shiftFromRow(row: ShiftRow): Shift {
 }
 
 /** RPC payload for create_shift. Only fields the RPC accepts. */
-function createPayload(data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>): Record<string, unknown> {
+function createPayload(data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>, mode: ShiftSchemaMode): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     date: data.date,
     start_time: data.start_time,
     end_time: data.end_time,
     timezone: data.timezone || DEFAULT_BUSINESS_TIMEZONE,
     brand_id: data.brand_id,
-    execution_source: data.execution_source,
+    ...(mode === 'database' ? { execution_source: data.execution_source } : {}),
     platform_id: data.platform_id,
     campaign_id: data.campaign_id,
     title: data.title,
@@ -241,13 +250,13 @@ function createPayload(data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>): R
 }
 
 /** RPC payload for update_shift. Only fields the RPC accepts. */
-function updatePayload(data: Partial<Shift>): Record<string, unknown> {
+function updatePayload(data: Partial<Shift>, mode: ShiftSchemaMode): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     date: data.date,
     start_time: data.start_time,
     end_time: data.end_time,
     brand_id: data.brand_id,
-    execution_source: data.execution_source,
+    ...(mode === 'database' ? { execution_source: data.execution_source } : {}),
     platform_id: data.platform_id,
     campaign_id: data.campaign_id,
     title: data.title,
@@ -290,8 +299,10 @@ export interface SupabaseShiftRepository {
 
 export function createSupabaseShiftRepository(
   client: SupabaseClient,
+  options: { routingMode?: ShiftSchemaMode } = {},
 ): SupabaseShiftRepository {
-  const selectShifts = () => client.from('shifts').select(shiftColumns)
+  const routingMode = options.routingMode ?? 'database'
+  const selectShifts = () => client.from('shifts').select(selectedShiftColumns(routingMode))
   const refreshAutomaticStatuses = async () => {
     const result = await client.rpc('refresh_automatic_shift_statuses', {}).single()
     if (result.error) throw requestError('automatic shift status refresh', result.error)
@@ -303,7 +314,7 @@ export function createSupabaseShiftRepository(
       let query = selectShifts().order('date', { ascending: true }).order('start_time', { ascending: true })
       if (!includeDeleted) query = query.is('deleted_at', null).is('archived_at', null)
       const result = await query
-      return optionalRows('shift read', result).map(row => shiftFromRow(row as unknown as ShiftRow))
+      return optionalRows('shift read', result).map(row => shiftFromRow(row as unknown as ShiftRow, routingMode))
     },
 
     async getAllComplete() {
@@ -321,7 +332,7 @@ export function createSupabaseShiftRepository(
         page.forEach(row => rows.set(String((row as unknown as Row).id), row as unknown as Row))
         if (page.length < SUPABASE_PAGE_SIZE) break
       }
-      return [...rows.values()].map(row => shiftFromRow(row as unknown as ShiftRow))
+      return [...rows.values()].map(row => shiftFromRow(row as unknown as ShiftRow, routingMode))
     },
 
     async getReportCandidates(limit) {
@@ -336,7 +347,7 @@ export function createSupabaseShiftRepository(
         .order('id', { ascending: true })
         .limit(Math.min(30, Math.max(1, limit)))
       return optionalRows('report candidate read', result)
-        .map(row => shiftFromRow(row as unknown as ShiftRow))
+        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode))
     },
 
     async getByIds(ids) {
@@ -347,7 +358,7 @@ export function createSupabaseShiftRepository(
         .is('deleted_at', null)
         .is('archived_at', null)
       return optionalRows('shift ids read', result)
-        .map(row => shiftFromRow(row as unknown as ShiftRow))
+        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode))
     },
 
     async getArchivedShifts() {
@@ -355,14 +366,14 @@ export function createSupabaseShiftRepository(
         .not('deleted_at', 'is', null)
         .order('deleted_at', { ascending: false })
       return optionalRows('shift archived read', result)
-        .map(row => shiftFromRow(row as unknown as ShiftRow))
+        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode))
     },
 
     async getById(id) {
       await refreshAutomaticStatuses()
       const result = await selectShifts().eq('id', id).maybeSingle()
       if (result.error) throw requestError('shift lookup', result.error)
-      return result.data ? shiftFromRow(result.data as unknown as ShiftRow) : null
+      return result.data ? shiftFromRow(result.data as unknown as ShiftRow, routingMode) : null
     },
 
     async getByDate(date) {
@@ -373,7 +384,7 @@ export function createSupabaseShiftRepository(
         .is('archived_at', null)
         .order('start_time', { ascending: true })
       return optionalRows('shift date read', result)
-        .map(row => shiftFromRow(row as unknown as ShiftRow))
+        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode))
     },
 
     async getByDateRange(startDate, endDate) {
@@ -387,7 +398,7 @@ export function createSupabaseShiftRepository(
         .order('start_time', { ascending: true })
         .order('id', { ascending: true })
       return optionalRows('shift date-range read', result)
-        .map(row => shiftFromRow(row as unknown as ShiftRow))
+        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode))
     },
 
     async getByStatus(status) {
@@ -398,7 +409,7 @@ export function createSupabaseShiftRepository(
         .is('archived_at', null)
         .order('date', { ascending: true })
       return optionalRows('shift status read', result)
-        .map(row => shiftFromRow(row as unknown as ShiftRow))
+        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode))
     },
 
     async getOpen() {
@@ -411,7 +422,7 @@ export function createSupabaseShiftRepository(
         .gt('end_at', new Date().toISOString())
         .order('date', { ascending: true })
       return optionalRows('shift open read', result)
-        .map(row => shiftFromRow(row as unknown as ShiftRow))
+        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode))
     },
 
     async getToday() {
@@ -445,19 +456,23 @@ export function createSupabaseShiftRepository(
     },
 
     async create(data) {
-      const result = await client.rpc('create_shift', { p_data: createPayload(data) }).single()
-      return shiftFromRow(requiredRow('shift create', result) as unknown as ShiftRow)
+      const result = await client.rpc('create_shift', { p_data: createPayload(data, routingMode) }).single()
+      return shiftFromRow(
+        requiredRow('shift create', result) as unknown as ShiftRow,
+        routingMode,
+        data.execution_source,
+      )
     },
 
     async update(id, data, confirmImpact = false, expectedVersion) {
       const result = await client.rpc('update_shift', {
         p_shift_id: id,
-        p_patch: updatePayload(data),
+        p_patch: updatePayload(data, routingMode),
         p_confirm_impact: confirmImpact,
         p_expected_version: expectedVersion ?? null,
       }).single()
       if (result.error) throw requestError('shift update', result.error)
-      return result.data ? shiftFromRow(result.data as unknown as ShiftRow) : null
+      return result.data ? shiftFromRow(result.data as unknown as ShiftRow, routingMode, data.execution_source) : null
     },
 
     async updateStaffingLabels(id, labels, expectedVersion) {
@@ -469,7 +484,7 @@ export function createSupabaseShiftRepository(
         p_expected_version: expectedVersion ?? null,
       }).single()
       if (result.error) throw requestError('shift staffing label update', result.error)
-      return result.data ? shiftFromRow(result.data as unknown as ShiftRow) : null
+      return result.data ? shiftFromRow(result.data as unknown as ShiftRow, routingMode) : null
     },
 
     async setRegistrationLock(id, locked, expectedVersion) {
@@ -479,7 +494,7 @@ export function createSupabaseShiftRepository(
         p_expected_version: expectedVersion ?? null,
       }).single()
       if (result.error) throw requestError('shift lock update', result.error)
-      return result.data ? shiftFromRow(result.data as unknown as ShiftRow) : null
+      return result.data ? shiftFromRow(result.data as unknown as ShiftRow, routingMode) : null
     },
 
     async remove(id, reason, expectedVersion) {
@@ -489,7 +504,7 @@ export function createSupabaseShiftRepository(
         p_expected_version: expectedVersion ?? null,
       }).single()
       if (result.error) throw requestError('shift soft delete', result.error)
-      const shift = shiftFromRow(requiredRow('shift soft delete', result) as unknown as ShiftRow)
+      const shift = shiftFromRow(requiredRow('shift soft delete', result) as unknown as ShiftRow, routingMode)
       return {
         entity_type: 'shift',
         entity_id: shift.id,
@@ -507,7 +522,7 @@ export function createSupabaseShiftRepository(
         p_expected_version: expectedVersion ?? null,
       }).single()
       if (result.error) throw requestError('shift restore', result.error)
-      return result.data ? shiftFromRow(result.data as unknown as ShiftRow) : null
+      return result.data ? shiftFromRow(result.data as unknown as ShiftRow, routingMode) : null
     },
 
     async returnToAutomatic(id, expectedVersion) {
@@ -516,17 +531,25 @@ export function createSupabaseShiftRepository(
         p_expected_version: expectedVersion ?? null,
       }).single()
       if (result.error) throw requestError('return shift to automatic', result.error)
-      return result.data ? shiftFromRow(result.data as unknown as ShiftRow) : null
+      return result.data ? shiftFromRow(result.data as unknown as ShiftRow, routingMode) : null
     },
   }
 }
 
 let browserRepository: SupabaseShiftRepository | null = null
+let browserRepositoryMode: ShiftSchemaMode | null = null
 let testRepository: SupabaseShiftRepository | undefined
 
 export function getSupabaseShiftRepository(): SupabaseShiftRepository {
   if (testRepository) return testRepository
-  if (!browserRepository) browserRepository = createSupabaseShiftRepository(createClient())
+  const routingMode = typeof document !== 'undefined'
+    && document.querySelector('[data-operational-storage-routing-mode]')?.getAttribute('data-operational-storage-routing-mode') === 'compat'
+    ? 'compat'
+    : 'database'
+  if (!browserRepository || browserRepositoryMode !== routingMode) {
+    browserRepository = createSupabaseShiftRepository(createClient(), { routingMode })
+    browserRepositoryMode = routingMode
+  }
   return browserRepository
 }
 

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { projectPublicReportImageRow } from '@/lib/files/cloudAssetReference'
 import { createClient } from '@/lib/supabase/client'
 import type {
   FinalReportRecap,
@@ -159,38 +160,40 @@ function reportFromRow(row: ReportRow): Report {
 }
 
 function reportImageFromRow(row: ReportImageRow): ReportImage {
+  const projected = projectPublicReportImageRow(row, 'report')
   return {
-    id: row.id as string,
-    report_id: row.report_id as string,
-    image_url: row.image_url as string,
-    storage_path: (row.storage_path as string | null) ?? undefined,
-    original_name: (row.original_name as string | null) ?? undefined,
-    mime_type: (row.mime_type as string | null) ?? undefined,
-    size_bytes: row.size_bytes != null ? Number(row.size_bytes) : undefined,
-    image_type: row.image_type as ReportImageCategory,
-    uploaded_by: (row.uploaded_by as string | null) ?? undefined,
-    created_at: row.created_at as string,
-    ...lifecycle(row),
+    id: projected.id as string,
+    report_id: projected.report_id as string,
+    image_url: projected.image_url as string,
+    storage_path: (projected.storage_path as string | null) ?? undefined,
+    original_name: (projected.original_name as string | null) ?? undefined,
+    mime_type: (projected.mime_type as string | null) ?? undefined,
+    size_bytes: projected.size_bytes != null ? Number(projected.size_bytes) : undefined,
+    image_type: projected.image_type as ReportImageCategory,
+    uploaded_by: (projected.uploaded_by as string | null) ?? undefined,
+    created_at: projected.created_at as string,
+    ...lifecycle(projected),
   }
 }
 
 function liveReportImageFromRow(row: LiveReportImageRow): LiveReportImage {
+  const projected = projectPublicReportImageRow(row, 'live')
   return {
-    id: row.id as string,
-    report_id: (row.report_id as string | null) ?? undefined,
-    category: (row.category ? (row.category as string) : 'other') as LiveReportImageCategory,
-    title: (row.title as string | null) ?? undefined,
-    description: (row.description as string | null) ?? undefined,
-    captured_at: (row.captured_at as string | null) ?? undefined,
-    file_url: row.file_url as string,
-    thumbnail_url: (row.thumbnail_url as string | null) ?? undefined,
-    file_name: row.file_name as string,
-    mime_type: row.mime_type as string,
-    size_bytes: Number(row.size_bytes ?? 0),
-    sort_order: Number(row.sort_order ?? 0),
-    is_cover: row.is_cover === true,
-    uploaded_by: (row.uploaded_by as string | null) ?? undefined,
-    created_at: row.created_at as string,
+    id: projected.id as string,
+    report_id: (projected.report_id as string | null) ?? undefined,
+    category: (projected.category ? (projected.category as string) : 'other') as LiveReportImageCategory,
+    title: (projected.title as string | null) ?? undefined,
+    description: (projected.description as string | null) ?? undefined,
+    captured_at: (projected.captured_at as string | null) ?? undefined,
+    file_url: projected.file_url as string,
+    thumbnail_url: (projected.thumbnail_url as string | null) ?? undefined,
+    file_name: projected.file_name as string,
+    mime_type: projected.mime_type as string,
+    size_bytes: Number(projected.size_bytes ?? 0),
+    sort_order: Number(projected.sort_order ?? 0),
+    is_cover: projected.is_cover === true,
+    uploaded_by: (projected.uploaded_by as string | null) ?? undefined,
+    created_at: projected.created_at as string,
   }
 }
 
