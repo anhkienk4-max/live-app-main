@@ -35,7 +35,8 @@ type DriveFile = {
 type DriveFilesResource = {
   list(params: { q: string; spaces: string; fields: string; pageSize?: number; orderBy?: string; includeItemsFromAllDrives?: boolean; supportsAllDrives?: boolean }): Promise<{ data: { files?: DriveFile[] | null } }>
   create(params: { requestBody: Record<string, unknown>; fields: string; media?: { mimeType: string; body: Readable }; supportsAllDrives?: boolean }): Promise<{ data: DriveFile }>
-  get(params: { fileId: string; fields?: string; alt?: 'media'; responseType?: 'arraybuffer'; supportsAllDrives?: boolean }): Promise<{ data: DriveFile }>
+  get(params: { fileId: string; fields: string; supportsAllDrives?: boolean }): Promise<{ data: DriveFile }>
+  get(params: { fileId: string; alt: 'media'; supportsAllDrives?: boolean }, options: { responseType: 'arraybuffer' }): Promise<{ data: ArrayBuffer }>
   update(params: { fileId: string; requestBody: Record<string, unknown>; fields: string; supportsAllDrives?: boolean }): Promise<{ data: DriveFile }>
 }
 
@@ -314,7 +315,10 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
     async read(externalFileId) {
       const id = normalizeGoogleDriveFileId(externalFileId)
       const response = await request(
-        () => drive.files.get({ fileId: id, alt: 'media', responseType: 'arraybuffer', supportsAllDrives: true }),
+        () => drive.files.get(
+          { fileId: id, alt: 'media', supportsAllDrives: true },
+          { responseType: 'arraybuffer' },
+        ),
         'GOOGLE_DRIVE_FILE_NOT_FOUND',
       )
       const value = (response as unknown as { data: unknown }).data

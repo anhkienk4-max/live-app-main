@@ -60,10 +60,50 @@ type FakeState = {
   rootDriveId?: string
   customFolder?: { mimeType: string; trashed?: boolean; driveId?: string; capabilities?: { canAddChildren?: boolean; canEdit?: boolean } }
   allDriveFlags: { list: boolean; create: boolean; get: boolean; update: boolean }
-  readData: Uint8Array
+  readData: unknown
+  mediaGetCalls: Array<{
+    params: { fileId: string; alt: 'media'; supportsAllDrives?: boolean }
+    options: { responseType: 'arraybuffer' }
+  }>
 }
 
 function fakeDrive(state: FakeState) {
+  type FakeDriveFile = {
+    id?: string
+    name?: string
+    mimeType?: string
+    size?: string
+    md5Checksum?: string
+    parents?: string[]
+    webViewLink?: string
+    trashed?: boolean
+    driveId?: string
+    capabilities?: { canAddChildren?: boolean; canEdit?: boolean }
+  }
+
+  function get(params: { fileId: string; fields: string; supportsAllDrives?: boolean }): Promise<{ data: FakeDriveFile }>
+  function get(params: { fileId: string; alt: 'media'; supportsAllDrives?: boolean }, options: { responseType: 'arraybuffer' }): Promise<{ data: ArrayBuffer }>
+  async function get(
+    params: { fileId: string; fields?: string; alt?: 'media'; supportsAllDrives?: boolean },
+    options?: { responseType: 'arraybuffer' },
+  ): Promise<{ data: FakeDriveFile | ArrayBuffer }> {
+    state.allDriveFlags.get = params.supportsAllDrives === true
+    if ('responseType' in params) throw new Error('responseType must be passed as request options')
+    if (params.fileId === 'missing') {
+      throw Object.assign(new Error('not found'), { response: { status: 404 } })
+    }
+    if (params.fileId === 'root-folder') return { data: { id: 'root-folder', name: 'Root', mimeType: state.rootMimeType, trashed: false, driveId: state.rootDriveId } }
+    if (params.fileId === 'custom-folder' && state.customFolder) {
+      return { data: { id: 'custom-folder', name: 'Custom', ...state.customFolder } }
+    }
+    if (params.alt === 'media') {
+      if (!options) throw new Error('media requests require transport options')
+      state.mediaGetCalls.push({ params, options })
+      return { data: state.readData as ArrayBuffer }
+    }
+    return { data: { id: params.fileId, name: 'báo cáo.png', mimeType: 'image/png', size: '4', md5Checksum: 'md5', parents: ['folder-3'], webViewLink: 'https://drive.google.com/file/d/drive-file-1/view' } }
+  }
+
   return {
     files: {
       async list(params: { q: string; supportsAllDrives?: boolean; includeItemsFromAllDrives?: boolean }) {
@@ -96,18 +136,7 @@ function fakeDrive(state: FakeState) {
         state.folderIds.set(`${parent}/${params.requestBody.name as string}`, id)
         return { data: { id, name: params.requestBody.name as string, mimeType: 'application/vnd.google-apps.folder', parents: [parent] } }
       },
-      async get(params: { fileId: string; fields?: string; alt?: 'media'; responseType?: 'arraybuffer'; supportsAllDrives?: boolean }) {
-        state.allDriveFlags.get = params.supportsAllDrives === true
-        if (params.fileId === 'missing') {
-          throw Object.assign(new Error('not found'), { response: { status: 404 } })
-        }
-        if (params.fileId === 'root-folder') return { data: { id: 'root-folder', name: 'Root', mimeType: state.rootMimeType, trashed: false, driveId: state.rootDriveId } }
-        if (params.fileId === 'custom-folder' && state.customFolder) {
-          return { data: { id: 'custom-folder', name: 'Custom', ...state.customFolder } }
-        }
-        if (params.alt === 'media') return { data: state.readData }
-        return { data: { id: params.fileId, name: 'báo cáo.png', mimeType: 'image/png', size: '4', md5Checksum: 'md5', parents: ['folder-3'], webViewLink: 'https://drive.google.com/file/d/drive-file-1/view' } }
-      },
+      get,
       async update(params: { fileId: string; requestBody: Record<string, unknown>; supportsAllDrives?: boolean }) {
         state.allDriveFlags.update = params.supportsAllDrives === true
         state.trashed = params.requestBody.trashed === true
@@ -128,6 +157,7 @@ function state(): FakeState {
     rootMimeType: 'application/vnd.google-apps.folder',
     allDriveFlags: { list: false, create: false, get: false, update: false },
     readData: new Uint8Array([1, 2, 3, 4]),
+    mediaGetCalls: [],
   }
 }
 
@@ -358,6 +388,43 @@ test('list and read stay provider-neutral and use normalized IDs', async () => {
   assert.deepEqual(entries.map(entry => entry.kind), ['file', 'folder'])
   assert.deepEqual([...await provider.read('https://drive.google.com/file/d/drive-file-1/view')], [1, 2, 3, 4])
   assert.equal(provider.normalizeId('https://docs.google.com/document/d/doc-1/edit'), 'doc-1')
+})
+
+test('Google Drive binary reads pass arraybuffer responseType as transport options, not API query params', async () => {
+  const driveState = state()
+  driveState.readData = new Uint8Array([1, 2, 3, 4]).buffer
+  const provider = createGoogleDriveFileProvider({ env, drive: fakeDrive(driveState), retryDelayMs: 0 })
+
+  assert.deepEqual([...await provider.read('drive-file-1')], [1, 2, 3, 4])
+  assert.equal(driveState.mediaGetCalls.length, 1)
+  assert.equal(driveState.mediaGetCalls[0]?.params.alt, 'media')
+  assert.equal(driveState.mediaGetCalls[0]?.params.supportsAllDrives, true)
+  assert.equal(driveState.mediaGetCalls[0]?.options.responseType, 'arraybuffer')
+  assert.equal('responseType' in (driveState.mediaGetCalls[0]?.params ?? {}), false)
+})
+
+test('Google Drive binary reads preserve supported runtime body types', async () => {
+  const bodies = [
+    new Uint8Array([5, 6, 7, 8]).buffer,
+    new Uint8Array([5, 6, 7, 8]),
+    Buffer.from([5, 6, 7, 8]),
+  ]
+  for (const body of bodies) {
+    const driveState = state()
+    driveState.readData = body
+    const provider = createGoogleDriveFileProvider({ env, drive: fakeDrive(driveState), retryDelayMs: 0 })
+    assert.deepEqual([...await provider.read('drive-file-1')], [5, 6, 7, 8])
+  }
+})
+
+test('Google Drive binary reads fail closed for unexpected response bodies', async () => {
+  const driveState = state()
+  driveState.readData = 'not binary data'
+  const provider = createGoogleDriveFileProvider({ env, drive: fakeDrive(driveState), retryDelayMs: 0 })
+  await assert.rejects(
+    () => provider.read('drive-file-1'),
+    (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_RESPONSE_INVALID',
+  )
 })
 
 test('view and download URLs remain private provider-authenticated links', async () => {
