@@ -22,6 +22,8 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
   const rawNav = getNavigationForRole(systemPermission)
   const navigation = filterNav(rawNav, currentUser)
 
+  const avatarUrl = currentUser?.avatar_url?.trim() || undefined
+
   const initials = currentUser?.full_name
     ?.split(' ')
     .map((n) => n[0])
@@ -105,7 +107,7 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
       <div className="flex-shrink-0 border-t border-border p-4">
         <div className={cn("flex items-center", isCollapsed ? "justify-center" : "xl:gap-3 justify-center xl:justify-start")}>
           <Avatar className="h-9 w-9">
-            <AvatarImage src={currentUser?.avatar_url || ''} alt={currentUser?.full_name || currentUser?.email || 'User'} />
+            {avatarUrl && <AvatarImage src={avatarUrl} alt={currentUser?.full_name || currentUser?.email || 'User'} />}
             <AvatarFallback className="bg-primary/10 text-primary text-small font-semibold">
               {initials}
             </AvatarFallback>

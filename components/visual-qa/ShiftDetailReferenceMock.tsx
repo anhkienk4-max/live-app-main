@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
+import { ShiftOperationalDisclosure, SHIFT_DETAIL_FIXTURE } from './ShiftOperationalReference'
 import {
   Activity,
   AlertCircle,
@@ -370,6 +371,7 @@ export function ShiftDetailReferenceMock() {
                 </SectionCard>
               </aside>
             </div>
+            <div className="mt-3"><ShiftOperationalDisclosure shift={SHIFT_DETAIL_FIXTURE} title="Dữ liệu ca & nguồn vận hành" /></div>
           </div>
         </div>
       </main>

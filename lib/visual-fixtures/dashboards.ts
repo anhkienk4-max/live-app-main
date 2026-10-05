@@ -81,22 +81,23 @@ export function getDashboardFixture(
 
     if (role === 'leader') {
       const shifts: Shift[] = []
-      // 2 live shifts
       for (let i = 0; i < 2; i++) {
         shifts.push(createMockShift(`leader-live-${i}`, today, 'live', brands[i % brands.length].id, platforms[i % platforms.length].id, '10:00:00', '12:00:00', users[1].id, users[2].id))
       }
-      // 6 other shifts (total 8)
       for (let i = 0; i < 6; i++) {
-        shifts.push(createMockShift(`leader-sch-${i}`, today, 'scheduled', brands[i % brands.length].id, platforms[i % platforms.length].id, '14:00:00', '16:00:00', i < 4 ? users[1].id : undefined, users[2].id))
+        shifts.push(createMockShift(`leader-sch-${i}`, today, 'scheduled', brands[i % brands.length].id, platforms[i % platforms.length].id, '14:00:00', '16:00:00', i === 5 ? undefined : users[1].id, users[2].id))
       }
 
-      // 4 pending (swaps/registrations/reports)
       const registrations: ShiftRegistration[] = []
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 2; i++) {
         registrations.push({ id: `reg-${i}`, shift_id: `leader-sch-${i}`, user_id: users[1].id, operational_role: 'host', status: 'pending', source: 'self_registration', requested_at: today, created_at: today, updated_at: today })
       }
+
+      const swapRequests: SwapRequest[] = [
+        { id: 'swap-0', shift_id: 'leader-sch-2', requester_id: users[1].id, operational_role: 'host', status: 'pending', created_at: today, updated_at: today, reason: 'Sick leave' }
+      ]
       
-      return { shifts, reports: [], brands, platforms, campaigns: baseData.campaigns, users, registrations, swapRequests: [] }
+      return { shifts, reports: [], brands, platforms, campaigns: baseData.campaigns, users, registrations, swapRequests }
     }
 
     if (role === 'member') {

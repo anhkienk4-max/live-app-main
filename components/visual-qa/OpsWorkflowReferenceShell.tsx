@@ -24,7 +24,18 @@ const NAV_ITEMS: { label: string; icon: LucideIcon }[] = [
   { label: 'Notifications', icon: Bell },
 ]
 
-export function OpsWorkflowReferenceShell({ active, searchPlaceholder, children }: { active: 'Swaps' | 'Notifications'; searchPlaceholder: string; children: ReactNode }) {
+export function OpsWorkflowReferenceShell({
+  active,
+  searchPlaceholder,
+  unreadCount,
+  children,
+}: {
+  active: 'Swaps' | 'Notifications'
+  searchPlaceholder: string
+  unreadCount?: number
+  children: ReactNode
+}) {
+  const displayUnread = unreadCount !== undefined ? unreadCount : 3
   return (
     <div lang="vi" translate="no" className="notranslate relative flex h-screen min-w-[1180px] overflow-hidden bg-slate-50 font-sans text-slate-900">
       <aside className="flex w-[248px] shrink-0 flex-col bg-[#082743] text-white">
@@ -37,7 +48,7 @@ export function OpsWorkflowReferenceShell({ active, searchPlaceholder, children 
             <button key={label} type="button" className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[13px] font-medium ${active === label ? 'bg-blue-600 text-white' : 'text-slate-200'}`}>
               <Icon className="h-4 w-4" />
               <span className="flex-1">{label}</span>
-              {label === 'Notifications' && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white">3</span>}
+              {label === 'Notifications' && displayUnread > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white">{displayUnread}</span>}
             </button>
           ))}
         </nav>
@@ -53,7 +64,7 @@ export function OpsWorkflowReferenceShell({ active, searchPlaceholder, children 
           <div className="flex h-9 w-[430px] items-center gap-2 rounded-md border border-slate-200 px-3 text-[12px] text-slate-400"><Search className="h-3.5 w-3.5" /><span>{searchPlaceholder}</span></div>
           <div className="flex items-center gap-2 text-slate-500">
             <button type="button" aria-label="Tìm kiếm" className="flex h-8 w-8 items-center justify-center rounded-full"><Search className="h-4 w-4" /></button>
-            <button type="button" aria-label="Thông báo" className="relative flex h-8 w-8 items-center justify-center rounded-full"><Bell className="h-4 w-4" /><span className="absolute right-0 top-0 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-500 px-0.5 text-[10px] font-bold text-white">3</span></button>
+            <button type="button" aria-label="Thông báo" className="relative flex h-8 w-8 items-center justify-center rounded-full"><Bell className="h-4 w-4" />{displayUnread > 0 && <span className="absolute right-0 top-0 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-500 px-0.5 text-[10px] font-bold text-white">{displayUnread}</span>}</button>
             <button type="button" aria-label="Nhóm" className="flex h-8 w-8 items-center justify-center rounded-full"><Users className="h-4 w-4" /></button>
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-[12px] font-bold text-blue-700">NK</span>
           </div>

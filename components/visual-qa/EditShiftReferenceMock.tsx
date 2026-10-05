@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
+import { ShiftEditSupplement } from './ShiftOperationalReference'
 import {
   ArrowLeft,
   BarChart3,
@@ -281,6 +282,7 @@ export function EditShiftReferenceMock() {
               </SectionCard>
             </div>
           </div>
+          <div className="mt-4"><ShiftEditSupplement /></div>
         </div>
       </main>
     </div>

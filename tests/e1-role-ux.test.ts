@@ -37,19 +37,19 @@ test('E1: Leader Navigation includes all requested routes', () => {
   assert.ok(paths.includes('/notifications'))
 })
 
-test('E1: Member Navigation includes reference data but excludes Analytics and Audit', () => {
+test('E1: Member Navigation exactly matches G03 visual reference', () => {
   const memberNav = getNavigationForRole('member')
   const paths = memberNav.map(n => n.href)
   
-  assert.ok(paths.includes('/')) // My Workspace
-  assert.ok(paths.includes('/calendar?tab=mine')) // My Schedule
-  assert.ok(paths.includes('/calendar?tab=open')) // Open Shifts
-  assert.ok(paths.includes('/swaps')) // My Swaps
-  assert.ok(paths.includes('/live'))
-  assert.ok(paths.includes('/reports'))
-  assert.ok(paths.includes('/notifications'))
+  assert.deepStrictEqual(paths, [
+    '/',
+    '/calendar?tab=mine',
+    '/calendar?tab=open',
+    '/swaps',
+    '/live',
+    '/reports',
+    '/notifications'
+  ])
   
   assert.ok(!paths.includes('/profile'), 'Member should not see profile in main nav')
-  assert.ok(!paths.includes('/analytics'), 'Member should not see analytics')
-  assert.ok(!paths.includes('/audit'), 'Member should not see audit')
 })

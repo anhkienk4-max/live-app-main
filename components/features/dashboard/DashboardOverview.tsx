@@ -1,41 +1,28 @@
 'use client'
 
 import * as React from 'react'
-import Link from 'next/link'
 import { addDays, endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
-import { Calendar, Clock, FileText, Filter, Radio, RotateCcw, Users, ArrowLeftRight, Megaphone, BarChart3, RefreshCw } from 'lucide-react'
 import dynamic from 'next/dynamic'
-import { brandService, campaignService, isStaffedRegistration, platformService, reportService, shiftRegistrationService, shiftService, swapRequestService, userService } from '@/lib/services/dataService'
-import { Brand, Campaign, OperationalRole, Platform, Report, Shift, ShiftRegistration, SwapRequest, User } from '@/lib/types/database.types'
+import { brandService, campaignService, platformService, reportService, shiftRegistrationService, shiftService, swapRequestService, userService } from '@/lib/services/dataService'
+import { Brand, Campaign, Platform, Report, Shift, ShiftRegistration, SwapRequest, User } from '@/lib/types/database.types'
 import { useTranslation } from '@/lib/i18n'
-import { formatCurrency } from '@/lib/utils/currency'
-import { formatShiftTimeRange, getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
+import { Card, CardContent } from '@/components/ui/card'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import { PageLoadError } from '@/components/ui/page-load-error'
-import { PageShell, PageHeader, PageHeaderContent } from '@/components/ui/archetypes'
-import { OperationalStatusStrip, HealthyState } from '@/components/ui/operational-status'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { resolveSystemPermission } from '@/lib/permissions'
 import { getSwapUiActions } from '@/lib/utils/swapUi'
-import { isCanonicalAssignedShift, getMemberAssignedShifts, getMemberPendingRegistrations, getLeaderPendingRegistrations, getLeaderPendingReports, getLeaderPendingSwaps } from '@/lib/ui/dashboard-role-data'
-import { deriveLeaderAttention, deriveMemberAttention, deriveDataQualityAttention } from '@/lib/ui/operational-attention'
+import { getMemberAssignedShifts, getLeaderPendingRegistrations, getLeaderPendingReports, getLeaderPendingSwaps } from '@/lib/ui/dashboard-role-data'
+import { deriveLeaderAttention, deriveDataQualityAttention } from '@/lib/ui/operational-attention'
 import { getAllIssues } from '@/lib/utils/dataQuality'
-import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
-import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import { ShiftDetailModal } from '@/components/features/shifts/ShiftDetailModal'
 import { isVisualFixtureMode } from '@/lib/visual-fixtures'
-import { getDashboardFixture, DashboardData } from '@/lib/visual-fixtures/dashboards'
+import { DashboardData, getDashboardFixture } from '@/lib/visual-fixtures/dashboards'
 import { DashboardFixtureScenario } from '@/lib/visual-fixtures/types'
-
-const DashboardCharts = dynamic(
-  () => import('@/components/features/dashboard/DashboardCharts').then(mod => ({ default: mod.DashboardCharts })),
-  { ssr: false, loading: () => <div className="grid gap-5 xl:grid-cols-2">{[0, 1].map(i => <Card key={i}><CardContent className="h-72"><div className="space-y-3 pt-5"><ContentSkeleton /></div></CardContent></Card>)}</div> },
-)
+import { AdminDashboardView } from './presentation/admin/AdminDashboardView'
+import { LeaderDashboardView } from './presentation/leader/LeaderDashboardView'
+import { MemberDashboardView } from './presentation/member/MemberDashboardView'
 
 type Preset = 'today' | 'yesterday' | '7d' | '30d' | 'thisMonth' | 'lastMonth' | 'custom'
 type Filters = { preset: Preset; start: string; end: string; brandIds: string[]; platformIds: string[]; campaignIds: string[]; hostIds: string[]; supportIds: string[]; technicalIds: string[] }
@@ -52,7 +39,15 @@ const rangeFor = (preset: Exclude<Preset, 'custom'>) => {
 }
 const initialFilters = (): Filters => ({ preset: '30d', ...rangeFor('30d'), brandIds: [], platformIds: [], campaignIds: [], hostIds: [], supportIds: [], technicalIds: [] })
 
-export function DashboardOverview() {
+export function DashboardOverview({
+  visualRole,
+  fixtureData,
+  forceFixture
+}: {
+  visualRole?: 'admin' | 'leader' | 'member'
+  fixtureData?: DashboardData
+  forceFixture?: boolean
+} = {}) {
   const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
   const [shifts, setShifts] = React.useState<Shift[]>([])
@@ -87,11 +82,13 @@ export function DashboardOverview() {
         swapRequests: loadedSwaps
       }
 
-      if (isVisualFixtureMode()) {
+      if (forceFixture && fixtureData) {
+        data = fixtureData
+      } else if (isVisualFixtureMode()) {
         const urlParams = new URLSearchParams(window.location.search)
         const scenarioStr = urlParams.get('scenario')
         if (scenarioStr === 'reference' || scenarioStr === 'empty' || scenarioStr === 'stress') {
-          const role = resolveSystemPermission(currentUser) || 'member'
+          const role = visualRole || resolveSystemPermission(currentUser) || 'member'
           data = getDashboardFixture(role, scenarioStr as DashboardFixtureScenario, currentUser?.id || '', data)
         }
       }
@@ -116,7 +113,7 @@ export function DashboardOverview() {
   if (initialLoad) return <ContentSkeleton />
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
 
-  const role = resolveSystemPermission(currentUser)
+  const role = visualRole || resolveSystemPermission(currentUser)
   const setPreset = (preset: Preset) => setFilters(current => current ? { ...current, preset, ...(preset === 'custom' ? {} : rangeFor(preset)) } : current)
   const dataProps = { shifts, reports, brands, platforms, campaigns, users, registrations, swapRequests, filters, setFilters, showFilters, setShowFilters, currentUser, t, setPreset }
 
@@ -151,275 +148,116 @@ type CommonProps = {
   setSelectedShift: (shift: Shift | null) => void
 }
 
-const matchesRoleFilter = (shift: Shift, role: OperationalRole, userId: string, registrations: ShiftRegistration[]) => {
-  const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
-  return assignment === userId || isCanonicalAssignedShift(shift, role, userId, registrations)
-}
-const matchesDimensions = (shift: Shift, filters: Filters, registrations: ShiftRegistration[]) =>
-  matchesMultiSelect(shift.brand_id, filters.brandIds) &&
-  matchesMultiSelect(shift.platform_id, filters.platformIds) &&
-  matchesMultiSelect(shift.campaign_id, filters.campaignIds) &&
-  (filters.hostIds.length === 0 || filters.hostIds.some(userId => matchesRoleFilter(shift, 'host', userId, registrations))) &&
-  (filters.supportIds.length === 0 || filters.supportIds.some(userId => matchesRoleFilter(shift, 'support', userId, registrations))) &&
-  (filters.technicalIds.length === 0 || filters.technicalIds.some(userId => matchesRoleFilter(shift, 'technical', userId, registrations)))
+const nameFor = (items: { id: string; name?: string; full_name?: string }[], id: string): string =>
+  items.find(item => item.id === id)?.name ||
+  items.find(item => item.id === id)?.full_name ||
+  '?'
 
-const nameFor = (items: Array<{ id: string; name: string }>, id: string) => items.find(item => item.id === id)?.name || '—'
+const shiftStatusLabel = (status: string): string => {
+  switch (status) {
+    case 'live':      return 'Đang Live'
+    case 'completed': return 'Hoàn thành'
+    case 'scheduled': return 'Chưa bắt đầu'
+    case 'preparing': return 'Đang chuẩn bị'
+    case 'paused':    return 'Tạm dừng'
+    case 'cancelled': return 'Đã hủy'
+    default:          return status
+  }
+}
 
 function AdminDashboard(props: CommonProps) {
-  const { shifts, reports, brands, platforms, campaigns, users, registrations, filters, setFilters, showFilters, setShowFilters, t, setPreset } = props
-
-  const filteredShifts = shifts.filter(shift => shift.date >= filters.start && shift.date <= filters.end && matchesDimensions(shift, filters, registrations))
+  const { shifts, reports, brands, platforms, users, registrations, filters } = props
+  const filteredShifts = shifts.filter(shift => shift.date >= filters.start && shift.date <= filters.end)
   const shiftIds = new Set(filteredShifts.map(shift => shift.id))
-  const filteredReports = reports.filter(report => shiftIds.has(report.shift_id) && report.status === 'confirmed')
 
-  const days = Math.max(1, Math.round((new Date(`${filters.end}T00:00:00`).getTime() - new Date(`${filters.start}T00:00:00`).getTime()) / 86400000) + 1)
-  const previousEnd = dateValue(addDays(new Date(`${filters.start}T00:00:00`), -1))
-  const previousStart = dateValue(addDays(new Date(`${previousEnd}T00:00:00`), -(days - 1)))
-  const previousIds = new Set(shifts.filter(shift => shift.date >= previousStart && shift.date <= previousEnd && matchesDimensions(shift, filters, registrations)).map(shift => shift.id))
-  const previousReports = reports.filter(report => previousIds.has(report.shift_id) && report.status === 'confirmed')
+  const today = getCurrentBusinessDate()
+  const todaysShifts = filteredShifts.filter(s => s.date === today)
+  const liveCount = filteredShifts.filter(shift => shift.status === 'live').length
 
   const scopedReports = reports.filter(report => shiftIds.has(report.shift_id))
   const scopedRegistrations = registrations.filter(reg => shiftIds.has(reg.shift_id))
+  const pendingCount = scopedRegistrations.filter(r => r.status === 'pending').length
+
+  // Derive attention using existing domain helpers
   const dqIssues = getAllIssues({ shifts: filteredShifts, reports: scopedReports, registrations: scopedRegistrations })
   const errorCount = dqIssues.filter(i => i.severity === 'error').length
   const warningCount = dqIssues.filter(i => i.severity === 'warning').length
   const infoCount = dqIssues.filter(i => i.severity === 'info').length
-  const dqAttention = deriveDataQualityAttention(errorCount, warningCount, infoCount)
+  const rawAttention = deriveDataQualityAttention(errorCount, warningCount, infoCount)
 
-  const revenue = filteredReports.reduce((sum, report) => sum + (report.revenue ?? 0), 0)
-  const previousRevenue = previousReports.reduce((sum, report) => sum + (report.revenue ?? 0), 0)
-  const today = getCurrentBusinessDate()
-  const trend = Object.entries(filteredReports.reduce<Record<string, { revenue: number; orders: number }>>((result, report) => {
-    const shift = shifts.find(candidate => candidate.id === report.shift_id)
-    if (shift) { (result[shift.date] ??= { revenue: 0, orders: 0 }).revenue += report.revenue ?? 0; result[shift.date].orders += report.orders ?? 0 }
-    return result
-  }, {})).sort(([left], [right]) => left.localeCompare(right)).map(([date, values]) => ({ date, ...values }))
-
-  const statusSummary = ['scheduled', 'preparing', 'live', 'paused', 'completed', 'cancelled'].map(status => ({
-    status: status === 'live' ? t('liveStatus') : t(status as 'scheduled' | 'preparing' | 'paused' | 'completed' | 'cancelled'),
-    shifts: filteredShifts.filter(shift => shift.status === status).length,
+  const dqAttentionForView = rawAttention.map(a => ({
+    key: a.key,
+    severity: (a.severity === 'critical' ? 'critical' : a.severity === 'warning' ? 'high' : a.severity === 'attention' ? 'medium' : 'low') as 'critical' | 'high' | 'medium' | 'low',
+    title: a.label,
+    context: a.description ?? a.label,
+    time: a.count != null ? `${a.count} mục` : '',
+    action: 'Xem chi tiết',
   }))
 
-  const roleOptions = (role: 'host' | 'support' | 'technical') => users.filter(user => user.operational_roles?.includes(role)).map(user => ({ id: user.id, name: user.full_name }))
+  const todaysOperations = todaysShifts.map(s => ({
+    brand: nameFor(brands, s.brand_id),
+    shiftTime: `${s.start_time} - ${s.end_time}`,
+    platform: nameFor(platforms, s.platform_id),
+    status: shiftStatusLabel(s.status),
+    statusColor: (s.status === 'live' ? 'red' : s.status === 'completed' ? 'green' : 'slate') as 'red' | 'green' | 'slate' | 'orange',
+    metrics: '—',
+    manager: nameFor(users, s.host_id || ''),
+  }))
 
-  // Derived metric values (no new data, reuse existing authoritative derivations)
-  const liveCount = filteredShifts.filter(shift => shift.status === 'live').length
+  const liveShifts = todaysShifts.filter(s => s.status === 'live').map(s => ({
+    brand: nameFor(brands, s.brand_id),
+    platform: nameFor(platforms, s.platform_id),
+    duration: null,
+    viewers: null,
+    health: 'unknown' as const,
+  }))
 
-  return <PageShell archetype="command" className="space-y-6 md:p-6 p-4">
-    {/* A. Page Header */}
-    <PageHeader className="flex-col md:flex-row items-start md:items-center gap-4 md:gap-2 mb-8">
-      <PageHeaderContent>
-        <h1 className="text-2xl font-semibold truncate">Tổng quan vận hành livestream</h1>
-        <p className="text-[13px] text-muted-foreground">Theo dõi toàn bộ hoạt động livestream trên mọi thương hiệu và nền tảng</p>
-      </PageHeaderContent>
-      <div className="flex items-center gap-3">
-        <div className="flex items-center text-sm font-medium border rounded-md px-3 py-2 bg-background shadow-sm text-foreground">
-          <Calendar className="w-4 h-4 mr-2 text-muted-foreground" />
-          {format(new Date(), "'Hôm nay ('dd/MM/yyyy')'")}
-        </div>
-        <Button onClick={() => window.location.href = '/shifts/new'} className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm">
-          + Tạo ca làm việc
-        </Button>
-      </div>
-    </PageHeader>
-
-    {/* Row 1: 4 KPI cards, equal width */}
-    <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-      <Metric title="Đang live" value={liveCount.toString()} tintClass="bg-red-100 text-red-600" icon={<Radio className="h-5 w-5" />} />
-      <Metric title="Tổng ca hôm nay" value={filteredShifts.filter(s => s.date === today).length.toString()} tintClass="bg-blue-100 text-blue-600" icon={<Calendar className="h-5 w-5" />} />
-      <Metric
-        title="Thiếu nhân sự"
-        value={errorCount.toString()}
-        note={<span className="text-red-600 dark:text-red-400 font-medium">Cần xử lý</span>}
-        tintClass="bg-amber-100 text-amber-600"
-        icon={<Users className="h-5 w-5" />}
-      />
-      <Metric
-        title="Chờ duyệt"
-        value={(warningCount).toString()}
-        note={<span className="text-amber-600 dark:text-amber-400 font-medium">Cần xem xét</span>}
-        tintClass="bg-emerald-100 text-emerald-600"
-        icon={<FileText className="h-5 w-5" />}
-      />
-    </div>
-
-    {/* Row 2: Needs Attention 8/12, Live Now 4/12 */}
-    <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
-      <div className="lg:col-span-8 flex flex-col">
-        <h3 className="text-[15px] font-semibold mb-4 text-foreground">Cần chú ý ngay <span className="ml-2 inline-flex items-center justify-center bg-red-100 text-red-700 text-[11px] font-bold px-2 py-0.5 rounded-full">{dqAttention.length}</span></h3>
-        <div className="min-h-[260px] flex flex-col rounded-lg border bg-card p-0 shadow-sm overflow-hidden">
-          {dqAttention.length > 0 ? (
-            <div className="p-4 flex flex-col gap-2">
-              <OperationalStatusStrip items={dqAttention} className="gap-2 flex-grow" />
-            </div>
-          ) : (
-            <div className="flex-grow flex items-center justify-center text-muted-foreground p-6">
-              <div className="flex flex-col items-center gap-2">
-                <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 mb-2">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6L9 17l-5-5"/></svg>
-                </div>
-                <p className="text-sm font-medium text-foreground">Không có vấn đề vận hành cần xử lý</p>
-                <p className="text-xs">Tất cả hoạt động đang diễn ra bình thường</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="lg:col-span-4 flex flex-col">
-        <div className="min-h-[260px] flex flex-col rounded-lg border bg-card p-0 shadow-sm overflow-hidden h-full">
-          <UpcomingShiftsList upcoming={filteredShifts.filter(s => s.status === 'live')} brands={brands} platforms={platforms} t={t} title="Đang live hiện tại" setSelectedShift={props.setSelectedShift} />
-        </div>
-      </div>
-    </div>
-
-    {/* Row 3: Today's Operations / Schedule = 12/12 */}
-    <div className="grid grid-cols-1">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-[15px] font-semibold">Lịch vận hành hôm nay</h3>
-        <a href="/calendar" className="text-[13px] text-primary font-medium hover:underline">Xem lịch đầy đủ -&gt;</a>
-      </div>
-      <Card className="shadow-sm border overflow-hidden min-h-[160px]">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-muted/50 text-muted-foreground text-xs uppercase">
-              <tr>
-                <th className="px-5 py-3 font-medium">Thời gian</th>
-                <th className="px-5 py-3 font-medium">Thương hiệu</th>
-                <th className="px-5 py-3 font-medium">Nền tảng</th>
-                <th className="px-5 py-3 font-medium">Chiến dịch</th>
-                <th className="px-5 py-3 font-medium">Trạng thái</th>
-                <th className="px-5 py-3 font-medium">Host chính</th>
-                <th className="px-5 py-3 font-medium">Nhân sự</th>
-                <th className="px-5 py-3 font-medium text-right">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {filteredShifts.filter(s => s.date === today).slice(0, 5).map(shift => (
-                <tr key={shift.id} className="hover:bg-muted/30">
-                  <td className="px-5 py-3.5 font-medium whitespace-nowrap">{shift.start_time.slice(0, 5)} - {shift.end_time.slice(0, 5)}</td>
-                  <td className="px-5 py-3.5">{nameFor(brands, shift.brand_id)}</td>
-                  <td className="px-5 py-3.5">{nameFor(platforms, shift.platform_id)}</td>
-                  <td className="px-5 py-3.5 text-muted-foreground">{shift.campaign_id ? nameFor(campaigns, shift.campaign_id) : '—'}</td>
-                  <td className="px-5 py-3.5">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${shift.status === 'live' ? 'bg-red-100 text-red-800' : shift.status === 'scheduled' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-800'}`}>
-                      {t(shift.status === 'live' ? 'liveStatus' : shift.status as Parameters<typeof t>[0])}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5">{shift.host_id ? users.find(u => u.id === shift.host_id)?.full_name : '—'}</td>
-                  <td className="px-5 py-3.5 text-xs text-muted-foreground leading-tight">
-                    {shift.support_id ? 'Có Support' : 'Thiếu Support'}<br/>
-                    {shift.technical_id ? 'Có Tech' : 'Thiếu Tech'}
-                  </td>
-                  <td className="px-5 py-3.5 text-right">
-                    <Button variant="ghost" size="sm" onClick={() => props.setSelectedShift(shift)}>Chi tiết</Button>
-                  </td>
-                </tr>
-              ))}
-              {filteredShifts.filter(s => s.date === today).length === 0 && (
-                <tr>
-                  <td colSpan={8} className="px-5 py-12 text-center text-muted-foreground text-[13px]">Không có ca làm việc nào hôm nay</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </div>
-
-    {/* Row 4: Performance 7/12, Activity 5/12 */}
-    <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
-      <div className="lg:col-span-7 flex flex-col">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-[15px] font-semibold">Tổng quan hiệu suất</h3>
-          <span className="text-[13px] text-muted-foreground border rounded-md px-2 py-1 bg-background shadow-sm">7 ngày qua</span>
-        </div>
-        <div className="min-h-[260px] rounded-lg border bg-card shadow-sm overflow-hidden flex flex-col flex-grow">
-          <DashboardCharts
-            trend={trend}
-            statusSummary={statusSummary}
-            revenueLabel={t('revenue')}
-            ordersLabel={t('orders')}
-            revenueTrendLabel={t('performance')}
-            shiftStatusSummaryLabel={t('activity')}
-            noDataLabel={t('noData')}
-            notEnoughTrendDataLabel={t('notEnoughTrendData')}
-            hideStatusSummary={true}
-          />
-        </div>
-      </div>
-      <div className="lg:col-span-5 flex flex-col">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-[15px] font-semibold">Hoạt động hệ thống gần đây</h3>
-          <a href="/audit" className="text-[13px] text-primary font-medium hover:underline">Xem Audit -&gt;</a>
-        </div>
-        <Card className="flex-grow shadow-sm border min-h-[260px]">
-          <CardContent className="p-5 flex flex-col gap-5">
-            <div className="flex items-start gap-4">
-              <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 shrink-0"><Users className="w-4 h-4" /></div>
-              <div className="flex-grow min-w-0">
-                <p className="text-[13px] text-foreground"><span className="font-semibold text-foreground">Nguyễn Văn A</span> đã tạo ca làm việc mới cho <span className="font-semibold text-foreground">Brand X</span></p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">10 phút trước</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-4">
-              <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 shrink-0"><RefreshCw className="w-4 h-4" /></div>
-              <div className="flex-grow min-w-0">
-                <p className="text-[13px] text-foreground"><span className="font-semibold text-foreground">Trần Thị B</span> đã duyệt yêu cầu đổi ca</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">35 phút trước</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-4">
-              <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center text-red-600 shrink-0"><Radio className="w-4 h-4" /></div>
-              <div className="flex-grow min-w-0">
-                <p className="text-[13px] text-foreground">Ca <span className="font-semibold text-foreground">Live Brand Y</span> vừa bắt đầu phát sóng</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">1 giờ trước</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  </PageShell>
+  return (
+    <AdminDashboardView
+      liveCount={liveCount}
+      todaysShiftsCount={todaysShifts.length}
+      missingStaffCount={null}
+      pendingCount={pendingCount}
+      dqAttention={dqAttentionForView}
+      liveShifts={liveShifts}
+      todaysOperations={todaysOperations}
+      performance={null}
+      activityLog={null}
+    />
+  )
 }
 
-// AdminMetricStrip replaced by inline Metric grid.
-
 function LeaderDashboard(props: CommonProps) {
-  const { shifts, reports, brands, platforms, campaigns, users, registrations, swapRequests, filters, setFilters, showFilters, setShowFilters, currentUser, t, setPreset } = props
-
-  const filteredShifts = shifts.filter(shift => shift.date >= filters.start && shift.date <= filters.end && matchesDimensions(shift, filters, registrations))
-  const today = getCurrentBusinessDate()
-  const todaysShifts = filteredShifts.filter(shift => shift.date === today)
-
+  const { shifts, reports, brands, platforms, campaigns, users, registrations, filters, swapRequests } = props
+  const filteredShifts = shifts.filter(shift => shift.date >= filters.start && shift.date <= filters.end)
   const shiftIds = new Set(filteredShifts.map(shift => shift.id))
 
+  const today = getCurrentBusinessDate()
+  const todaysShifts = filteredShifts.filter(shift => shift.date === today)
+  const liveCount = filteredShifts.filter(s => s.status === 'live').length
+
   const pendingRegistrations = getLeaderPendingRegistrations(registrations, shiftIds)
-  const pendingSwaps = getLeaderPendingSwaps(swapRequests, shiftIds)
   const pendingReports = getLeaderPendingReports(reports, shiftIds)
+  const pendingSwaps = getLeaderPendingSwaps(swapRequests, shiftIds)
 
-  // Retrieve data quality issues scoped to current timeframe
-  const scopedReports = reports.filter(report => shiftIds.has(report.shift_id))
-  const scopedRegistrations = registrations.filter(reg => shiftIds.has(reg.shift_id))
-  const dqIssues = getAllIssues({ shifts: filteredShifts, reports: scopedReports, registrations: scopedRegistrations })
-  const dqErrorCount = dqIssues.filter(i => i.severity === 'error').length
-
-  // E5: derive exception-first attention summary
+  // Derive action counts via existing swap UI helpers
   let actionableSwapCount = 0
   let waitingSwapCount = 0
-
-  const operationalSwaps = swapRequests.filter(s =>
-    (s.status === 'pending' || s.status === 'accepted') &&
-    (shiftIds.has(s.shift_id) || (s.source_shift_id && shiftIds.has(s.source_shift_id)) || (s.target_shift_id && shiftIds.has(s.target_shift_id)))
-  )
-
-  operationalSwaps.forEach(s => {
-    const actions = getSwapUiActions(s, currentUser)
-    if (actions.showAccept || actions.showCounterpartReject || actions.showApprove || actions.showReviewerReject || actions.showCancel) {
+  pendingSwaps.forEach(s => {
+    const actions = getSwapUiActions(s, props.currentUser)
+    if (actions.showAccept || actions.showCounterpartReject || actions.showApprove || actions.showReviewerReject) {
       actionableSwapCount++
     } else {
       waitingSwapCount++
     }
   })
+
+  const dqIssues = getAllIssues({
+    shifts: filteredShifts,
+    reports: reports.filter(r => shiftIds.has(r.shift_id)),
+    registrations: registrations.filter(r => shiftIds.has(r.shift_id)),
+  })
+  const dqErrorCount = dqIssues.filter(i => i.severity === 'error').length
 
   const attention = deriveLeaderAttention({
     pendingRegistrationCount: pendingRegistrations.length,
@@ -429,458 +267,166 @@ function LeaderDashboard(props: CommonProps) {
     dqErrorCount,
   })
 
-  const upcoming = filteredShifts.filter(shift => shift.date >= today && shift.status === 'scheduled').sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`)).slice(0, 5)
-  const roleOptions = (role: 'host' | 'support' | 'technical') => users.filter(user => user.operational_roles?.includes(role)).map(user => ({ id: user.id, name: user.full_name }))
+  const totalPending = pendingRegistrations.length + actionableSwapCount
 
-  const recentSwaps = swapRequests.slice(0, 5)
-
-  let hostReq = 0, hostFilled = 0, supReq = 0, supFilled = 0, techReq = 0, techFilled = 0
-  todaysShifts.forEach(shift => {
-    hostReq += shift.required_host_count ?? 1
-    if (shift.host_id) hostFilled++
-    supReq += shift.required_support_count ?? 1
-    if (shift.support_id) supFilled++
-    techReq += shift.required_technical_count ?? 1
-    if (shift.technical_id) techFilled++
-  })
-
-  const getHealthText = (req: number, filled: number) => {
-    if (req === 0) return { text: 'N/A', width: '0%', missing: 0 }
-    if (req === filled) return { text: `${filled}/${req} (100%)`, width: '100%', missing: 0 }
-    const pct = Math.round((filled / req) * 100)
-    return { text: `${filled}/${req}`, width: `${pct}%`, missing: req - filled }
+  // Build decision queue from real actionable items
+  const decisions: import('./presentation/leader/LeaderDashboardView').DecisionItem[] = []
+  if (pendingRegistrations.length > 0) {
+    decisions.push({
+      key: 'reg',
+      type: 'registration',
+      title: `${pendingRegistrations.length} đăng ký chờ duyệt`,
+      subtitle: 'Nhân sự chờ xếp ca',
+      time: 'Cần xử lý',
+      action: 'Xem',
+      iconBg: 'bg-emerald-50',
+    })
+  }
+  if (actionableSwapCount > 0) {
+    decisions.push({
+      key: 'swap',
+      type: 'swap',
+      title: `${actionableSwapCount} yêu cầu đổi ca cần phê duyệt`,
+      subtitle: 'Chờ phản hồi của bạn',
+      time: 'Cần xử lý',
+      action: 'Xem',
+      iconBg: 'bg-amber-50',
+    })
+  }
+  if (pendingReports.length > 0) {
+    decisions.push({
+      key: 'report',
+      type: 'report',
+      title: `${pendingReports.length} báo cáo chưa hoàn thành`,
+      subtitle: 'Báo cáo nháp / đang xem xét',
+      time: 'Cần xử lý',
+      action: 'Xem',
+      iconBg: 'bg-blue-50',
+    })
+  }
+  if (dqErrorCount > 0) {
+    decisions.push({
+      key: 'dq',
+      type: 'dq',
+      title: `${dqErrorCount} lỗi chất lượng dữ liệu`,
+      subtitle: 'Cần kiểm tra và sửa',
+      time: 'Cần xử lý',
+      action: 'Xem',
+      iconBg: 'bg-red-50',
+    })
   }
 
-  const hostH = getHealthText(hostReq, hostFilled)
-  const supH = getHealthText(supReq, supFilled)
-  const techH = getHealthText(techReq, techFilled)
+  const todaysSchedule = todaysShifts.map(s => ({
+    time: `${s.start_time} - ${s.end_time}`,
+    brand: nameFor(brands, s.brand_id),
+    platform: nameFor(platforms, s.platform_id),
+    status: shiftStatusLabel(s.status),
+    statusColor: (s.status === 'live' ? 'red' : s.status === 'completed' ? 'green' : 'slate') as 'blue' | 'green' | 'orange' | 'red' | 'slate',
+    // staffing truth cannot be safely derived without staffed-slot counting — set null
+    staffing: null,
+  }))
 
-  return <PageShell archetype="schedule" className="space-y-6 md:p-6 p-4">
-    <PageHeader className="flex-col md:flex-row items-start md:items-center gap-4 md:gap-2 mb-8">
-      <PageHeaderContent>
-        <h1 className="text-2xl font-semibold truncate">Team Operations</h1>
-        <div className="flex flex-col text-[13px] text-muted-foreground">
-          <span>Today &middot; Livestream Team</span>
-          <span>Theo dõi và điều phối hoạt động livestream của đội nhóm</span>
-        </div>
-      </PageHeaderContent>
-      <div className="flex items-center gap-3">
-        <div className="flex items-center text-sm font-medium border rounded-md px-3 py-2 bg-background shadow-sm text-foreground">
-          <Calendar className="w-4 h-4 mr-2 text-muted-foreground" />
-          {format(new Date(), "'Hôm nay ('dd/MM/yyyy')'")}
-        </div>
-        <Button className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm">
-          Review Attention (3)
-        </Button>
-      </div>
-    </PageHeader>
+  // Upcoming live: first scheduled shift today
+  const upcomingShifts = todaysShifts.filter(s => s.status === 'scheduled').sort((a, b) => a.start_time.localeCompare(b.start_time))
+  const nextUp = upcomingShifts[0]
+  let upcomingLive: import('./presentation/leader/LeaderDashboardView').UpcomingLiveItem | null = null
+  if (nextUp) {
+    const campaignName = nextUp.campaign_id ? nameFor(campaigns, nextUp.campaign_id) : null
+    upcomingLive = {
+      brand: nameFor(brands, nextUp.brand_id),
+      campaign: campaignName !== '?' ? campaignName : null,
+      title: `${nameFor(brands, nextUp.brand_id)} | ${nameFor(platforms, nextUp.platform_id)}`,
+      timing: `Bắt đầu lúc ${nextUp.start_time}`,
+      host: nameFor(users, nextUp.host_id || ''),
+      support: nameFor(users, nextUp.support_id || ''),
+      technical: nameFor(users, nextUp.technical_id || ''),
+    }
+  }
 
-    {/* Row 1: 4 KPI cards */}
-    <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-      <Metric title="Team Shifts" value={todaysShifts.length.toString()} tintClass="bg-blue-100 text-blue-600" icon={<Calendar className="h-5 w-5" />} />
-      <Metric title="Live" value={filteredShifts.filter(shift => shift.status === 'live').length.toString()} note="Active now" tintClass="bg-red-100 text-red-600" icon={<Radio className="h-5 w-5" />} />
-      <Metric title="Missing Staff" value={dqErrorCount.toString()} note={<span className="text-red-600 dark:text-red-400 font-medium">Resolve today</span>} tintClass="bg-red-100 text-red-600" icon={<Users className="h-5 w-5" />} />
-      <Metric title="Pending" value={(pendingRegistrations.length + pendingSwaps.length).toString()} note={<span className="text-amber-600 dark:text-amber-400 font-medium">Need review</span>} tintClass="bg-amber-100 text-amber-600" icon={<FileText className="h-5 w-5" />} />
-    </div>
+  void attention // attention derived but dashboard view doesn't yet consume AttentionSummary type directly
 
-    {/* Row 2: Team Schedule = 7/12, Needs Your Decision = 5/12 */}
-    <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
-      <div className="lg:col-span-7 flex flex-col">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-[15px] font-semibold">Today&apos;s Team Schedule</h3>
-          <a href="/calendar" className="text-[13px] text-primary font-medium hover:underline">Xem tất cả -&gt;</a>
-        </div>
-        <Card className="shadow-sm border overflow-hidden flex-grow min-h-[260px]">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-muted/50 text-muted-foreground text-xs uppercase">
-                <tr>
-                  <th className="px-5 py-3 font-medium">Thời gian</th>
-                  <th className="px-5 py-3 font-medium">Thương hiệu</th>
-                  <th className="px-5 py-3 font-medium">Nền tảng</th>
-                  <th className="px-5 py-3 font-medium">Trạng thái</th>
-                  <th className="px-5 py-3 font-medium">Ghi chú</th>
-                  <th className="px-5 py-3 font-medium text-right">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {todaysShifts.slice(0, 5).map(shift => (
-                  <tr key={shift.id} className="hover:bg-muted/30">
-                    <td className="px-5 py-3.5 font-medium whitespace-nowrap">{shift.start_time.slice(0, 5)} - {shift.end_time.slice(0, 5)}</td>
-                    <td className="px-5 py-3.5">{nameFor(brands, shift.brand_id)}</td>
-                    <td className="px-5 py-3.5">{nameFor(platforms, shift.platform_id)}</td>
-                    <td className="px-5 py-3.5">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${shift.status === 'live' ? 'bg-red-100 text-red-800' : shift.status === 'scheduled' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-800'}`}>
-                        {t(shift.status === 'live' ? 'liveStatus' : shift.status as Parameters<typeof t>[0])}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3.5 text-xs text-muted-foreground">{shift.product_notes || '—'}</td>
-                    <td className="px-5 py-3.5 text-right">
-                      <Button variant="ghost" size="sm" onClick={() => props.setSelectedShift(shift)}>Chi tiết</Button>
-                    </td>
-                  </tr>
-                ))}
-                {todaysShifts.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-5 py-12 text-center text-muted-foreground text-[13px]">Không có lịch làm việc hôm nay</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      </div>
-      <div className="lg:col-span-5 flex flex-col">
-        <h3 className="text-[15px] font-semibold mb-4 flex justify-between items-center text-foreground">
-          Needs Your Decision <span className="ml-2 inline-flex items-center justify-center bg-red-100 text-red-700 text-[11px] font-bold px-2 py-0.5 rounded-full">{attention.items.length}</span>
-          <a href="/calendar" className="text-[13px] text-primary font-medium ml-auto hover:underline">Xem tất cả -&gt;</a>
-        </h3>
-        <div className="min-h-[260px] flex flex-col rounded-lg border bg-card p-0 shadow-sm overflow-hidden h-full">
-          {attention.items.length > 0 ? (
-            <div className="p-4 flex flex-col gap-2">
-              <OperationalStatusStrip items={attention.items} className="gap-2 flex-grow" />
-            </div>
-          ) : (
-            <div className="flex-grow flex items-center justify-center text-muted-foreground p-6">
-              <div className="flex flex-col items-center gap-2">
-                <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 mb-2">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6L9 17l-5-5"/></svg>
-                </div>
-                <p className="text-sm font-medium text-foreground">Không có vấn đề vận hành cần xử lý</p>
-                <p className="text-xs">Tất cả hoạt động đang diễn ra bình thường</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-
-    {/* Row 3: Staffing Health = 12/12 */}
-    <div className="grid grid-cols-1">
-      <h3 className="text-[15px] font-semibold mb-4">Staffing Health (Current Week)</h3>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Support Role */}
-        <Card className="shadow-sm border min-h-[110px]">
-          <CardContent className="p-4 flex flex-col justify-between h-full">
-            <div className="flex items-center justify-between mb-1">
-              <span className="font-semibold text-[13px] text-foreground uppercase tracking-wider">Support</span>
-              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">Healthy</Badge>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground mt-1">92%</p>
-              <p className="text-xs text-muted-foreground mt-1 truncate">Coverage • 2 shifts unassigned</p>
-            </div>
-          </CardContent>
-        </Card>
-        {/* Technical Role */}
-        <Card className="shadow-sm border min-h-[110px]">
-          <CardContent className="p-4 flex flex-col justify-between h-full">
-            <div className="flex items-center justify-between mb-1">
-              <span className="font-semibold text-[13px] text-foreground uppercase tracking-wider">Technical</span>
-              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">At Risk</Badge>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground mt-1">78%</p>
-              <p className="text-xs text-muted-foreground mt-1 truncate">Coverage • 5 shifts unassigned</p>
-            </div>
-          </CardContent>
-        </Card>
-        {/* Host Role */}
-        <Card className="shadow-sm border min-h-[110px]">
-          <CardContent className="p-4 flex flex-col justify-between h-full">
-            <div className="flex items-center justify-between mb-1">
-              <span className="font-semibold text-[13px] text-foreground uppercase tracking-wider">Host</span>
-              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">Healthy</Badge>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground mt-1">100%</p>
-              <p className="text-xs text-muted-foreground mt-1 truncate">Coverage • 0 shifts unassigned</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-
-    {/* Row 4: Upcoming Live = 7/12, Team Activity = 5/12 */}
-    <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
-       <div className="lg:col-span-7 flex flex-col">
-         <h3 className="text-sm font-semibold mb-4 flex justify-between items-center">Upcoming Live</h3>
-         {upcoming.length > 0 ? (
-           <Card className="flex-grow border overflow-hidden flex flex-row">
-             <div className="w-1/3 bg-muted">
-               <img src="/placeholder-hero.jpg" alt="Brand" className="w-full h-full object-cover opacity-20" />
-             </div>
-             <div className="w-2/3 p-6 flex flex-col justify-center">
-               <div className="flex items-center gap-2 mb-2">
-                 <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded uppercase">Sắp diễn ra</span>
-                 <span className="text-muted-foreground text-sm flex items-center gap-1"><Clock className="w-4 h-4"/> {upcoming[0].start_time.slice(0, 5)}</span>
-               </div>
-               <h4 className="text-xl font-bold mb-1">{nameFor(brands, upcoming[0].brand_id)} - {nameFor(platforms, upcoming[0].platform_id)}</h4>
-               <p className="text-sm text-muted-foreground mb-4">{upcoming[0].campaign_id ? nameFor(campaigns, upcoming[0].campaign_id) : '—'}</p>
-
-               <div className="flex gap-4 mb-6">
-                 <div className="text-xs"><span className="font-medium text-foreground">Host:</span> <span className="text-muted-foreground">{upcoming[0].host_id ? users.find(u => u.id === upcoming[0].host_id)?.full_name : 'Thiếu'}</span></div>
-                 <div className="text-xs"><span className="font-medium text-foreground">Sup:</span> <span className="text-muted-foreground">{upcoming[0].support_id ? users.find(u => u.id === upcoming[0].support_id)?.full_name : 'Thiếu'}</span></div>
-                 <div className="text-xs"><span className="font-medium text-foreground">Tech:</span> <span className="text-muted-foreground">{upcoming[0].technical_id ? users.find(u => u.id === upcoming[0].technical_id)?.full_name : 'Thiếu'}</span></div>
-               </div>
-
-               <Button onClick={() => props.setSelectedShift(upcoming[0])} className="w-fit">View Shift -&gt;</Button>
-             </div>
-           </Card>
-         ) : (
-           <Card className="flex-grow shadow-none border bg-muted/10"><CardContent className="flex items-center justify-center h-full"><Empty text={t('noUpcomingShifts')} /></CardContent></Card>
-         )}
-       </div>
-       <div className="lg:col-span-5 flex flex-col">
-         <h3 className="text-sm font-semibold mb-4">Team Activity</h3>
-         <Card className="flex-grow shadow-none border">
-          <CardContent className="p-4 flex flex-col gap-4">
-            {recentSwaps.length > 0 ? recentSwaps.map(swap => (
-              <div key={swap.id} className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 shrink-0"><RefreshCw className="w-4 h-4" /></div>
-                <div>
-                  <p className="text-sm text-foreground">Swap request <span className="font-semibold">{swap.id.slice(0, 8)}</span> is {t(swap.status)}</p>
-                  <p className="text-xs text-muted-foreground">{new Date(swap.created_at).toLocaleDateString()}</p>
-                </div>
-              </div>
-            )) : <Empty text="No recent activity" />}
-          </CardContent>
-        </Card>
-       </div>
-    </div>
-  </PageShell>
+  return (
+    <LeaderDashboardView
+      liveCount={liveCount}
+      todaysShiftsCount={todaysShifts.length}
+      missingStaffCount={null}
+      pendingCount={totalPending}
+      decisions={decisions.length > 0 ? decisions : []}
+      todaysSchedule={todaysSchedule}
+      staffingHealth={null}
+      upcomingLive={upcomingLive}
+      activityLog={null}
+    />
+  )
 }
 
 function MemberDashboard(props: CommonProps) {
-  const { shifts, brands, platforms, currentUser, registrations, swapRequests, t, setSelectedShift } = props
-
+  const { shifts, brands, platforms, currentUser, swapRequests, registrations } = props
   const today = getCurrentBusinessDate()
+  const myAssignedShifts = getMemberAssignedShifts(shifts, currentUser.id, registrations)
+    .sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`))
 
-  // Find member's shifts using strictly canonical registration
-  const myShifts = getMemberAssignedShifts(shifts, currentUser.id, registrations)
+  const upcomingShifts = myAssignedShifts.filter(s => s.date >= today)
+  const nextUp = upcomingShifts[0]
 
-  const upcoming = myShifts.filter(shift => shift.date >= today && (shift.status === 'scheduled' || shift.status === 'live' || shift.status === 'preparing')).sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`))
-  const nextShift = upcoming[0]
-
-  const myPendingRegistrations = getMemberPendingRegistrations(registrations, currentUser.id)
-
-  // E5: derive personal exception summary
-  let actionableSwapCount = 0
-  let waitingSwapCount = 0
-
-  const personalOperationalSwaps = swapRequests.filter(s =>
-    (s.status === 'pending' || s.status === 'accepted') &&
-    (s.requester_id === currentUser.id || s.counterpart_id === currentUser.id)
-  )
-
-  personalOperationalSwaps.forEach(s => {
-    const actions = getSwapUiActions(s, currentUser)
-    if (actions.showAccept || actions.showCounterpartReject || actions.showApprove || actions.showReviewerReject || actions.showCancel) {
-      actionableSwapCount++
-    } else {
-      waitingSwapCount++
+  let nextShift: import('./presentation/member/MemberDashboardView').NextShiftData | null = null
+  if (nextUp) {
+    const memberRole = nextUp.host_id === currentUser.id ? 'Host' : nextUp.support_id === currentUser.id ? 'Support' : 'Technical'
+    nextShift = {
+      // startsIn: cannot compute countdown without current clock + timezone — set null
+      startsIn: null,
+      brand: nameFor(brands, nextUp.brand_id),
+      platform: nameFor(platforms, nextUp.platform_id),
+      time: `${nextUp.date} ${nextUp.start_time} – ${nextUp.end_time}`,
+      role: memberRole,
+      // studio field available on shift
+      location: nextUp.studio ?? null,
     }
+  }
+
+  const mySchedule = myAssignedShifts.map(s => ({
+    date: s.date,
+    time: `${s.start_time} – ${s.end_time}`,
+    brand: nameFor(brands, s.brand_id),
+    platform: nameFor(platforms, s.platform_id),
+    role: s.host_id === currentUser.id ? 'Host' : s.support_id === currentUser.id ? 'Support' : 'Technical',
+  }))
+
+  // myActions: use existing actionable swap data for member
+  const myActionableSwaps = swapRequests.filter(s => {
+    if (s.status !== 'pending' && s.status !== 'accepted') return false
+    const actions = getSwapUiActions(s, currentUser)
+    return actions.showAccept || actions.showCounterpartReject
   })
 
-  const memberAttention = deriveMemberAttention({
-    pendingRegistrationCount: myPendingRegistrations.length,
-    actionableSwapCount,
-    waitingSwapCount,
-    hasUpcomingShift: upcoming.length > 0,
-  })
+  const myActions: import('./presentation/member/MemberDashboardView').ActionEntry[] = myActionableSwaps.map(s => ({
+    type: 'swap' as const,
+    title: 'Yêu cầu đổi ca',
+    time: s.created_at ? new Date(s.created_at).toLocaleDateString('vi-VN') : '—',
+    description: 'Bạn có yêu cầu đổi ca cần phản hồi.',
+  }))
 
-  return <PageShell archetype="command" className="space-y-6 md:p-6 p-4">
-    <PageHeader className="flex-col md:flex-row items-start md:items-center gap-4 md:gap-2 mb-8">
-      <PageHeaderContent>
-        <h1 className="text-2xl font-semibold truncate">My Workspace</h1>
-        <p className="text-[13px] text-muted-foreground">{format(new Date(), 'EEEE, MMMM d, yyyy')}</p>
-      </PageHeaderContent>
-      <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 px-4 py-2 rounded-md border border-emerald-100 text-[13px] font-medium shadow-sm">
-        Good preparation, great live. Keep going! <span role="img" aria-label="muscle">💪</span>
-      </div>
-    </PageHeader>
+  // myRequests: pending member registrations + member swap requests
+  const myPendingRegs = registrations.filter(r => r.user_id === currentUser.id && r.status === 'pending')
+  const mySwapRequests = swapRequests.filter(s => s.requester_id === currentUser.id || s.counterpart_id === currentUser.id)
 
-    {/* Row 1: Next Shift = 12/12 */}
-    <div className="grid grid-cols-1">
-      <h3 className="text-[15px] font-semibold mb-4">Next Shift</h3>
-      <Card className="border overflow-hidden flex flex-col md:flex-row shadow-sm min-h-[170px]">
-        {nextShift ? (
-          <>
-            <div className="md:w-1/3 bg-muted relative h-40 md:h-auto shrink-0">
-              <img src="/placeholder-hero.jpg" alt="Brand" className="w-full h-full object-cover opacity-80" />
-              <div className="absolute top-4 left-4 bg-background/90 px-2 py-1 rounded text-xs font-bold shadow-sm">
-                TODAY
-              </div>
-            </div>
-            <div className="md:w-2/3 p-6 flex flex-col justify-between flex-grow">
-              <div className="flex flex-col md:flex-row justify-between items-start gap-4">
-                <div>
-                  <h4 className="text-2xl font-bold mb-1">{nextShift.title || nameFor(brands, nextShift.brand_id)}</h4>
-                  <p className="text-[13px] text-muted-foreground flex items-center gap-1 mb-2 font-medium">
-                    <Clock className="w-4 h-4"/> {nextShift.start_time.slice(0, 5)} - {nextShift.end_time.slice(0, 5)} • {nameFor(brands, nextShift.brand_id)}
-                  </p>
-                  <div className="mt-2 inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-[13px] font-medium">
-                    <Users className="w-4 h-4" /> Your role: {nextShift.host_id === currentUser.id ? 'Host' : nextShift.support_id === currentUser.id ? 'Support' : 'Technical'}
-                  </div>
-                </div>
-                <div className="text-left md:text-right w-full md:w-auto flex flex-col gap-2">
-                  <div className="text-[13px] font-semibold text-amber-600 mb-1">
-                    {(() => {
-                      const now = new Date()
-                      const nextStart = new Date(`${nextShift.date}T${nextShift.start_time}`)
-                      const diffMs = nextStart.getTime() - now.getTime()
-                      if (diffMs <= 0) return 'Đang diễn ra'
-                      const diffHrs = Math.floor(diffMs / 3600000)
-                      const diffMins = Math.floor((diffMs % 3600000) / 60000)
-                      return `Bắt đầu sau ${diffHrs}h ${diffMins}m`
-                    })()}
-                  </div>
-                  <Button onClick={() => setSelectedShift(nextShift)} className="w-full text-[13px]">View Shift -&gt;</Button>
-                </div>
-              </div>
-              <div className="mt-6 pt-6 border-t flex flex-col md:flex-row gap-4">
-                <label className="flex items-center gap-2 text-[13px] text-foreground">
-                  <input type="checkbox" className="rounded border-muted-foreground/30 text-primary w-4 h-4" /> Review product list
-                </label>
-                <label className="flex items-center gap-2 text-[13px] text-foreground">
-                  <input type="checkbox" className="rounded border-muted-foreground/30 text-primary w-4 h-4" /> Join pre-live meeting
-                </label>
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="flex-grow flex items-center justify-center text-muted-foreground p-8 bg-muted/10">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6L9 17l-5-5"/></svg>
-              </div>
-              <p className="text-[15px] font-semibold text-foreground">Không có ca làm việc sắp tới</p>
-              <p className="text-[13px]">Bạn đã hoàn thành tất cả ca làm việc được giao.</p>
-            </div>
-          </div>
-        )}
-      </Card>
-    </div>
+  const myRequests: import('./presentation/member/MemberDashboardView').RequestEntry[] = [
+    ...myPendingRegs.map(() => ({ type: 'registration' as const, title: 'Đăng ký ca', status: 'pending' as const })),
+    ...mySwapRequests.filter(s => s.status === 'pending' || s.status === 'accepted').map(() => ({
+      type: 'swap' as const,
+      title: 'Yêu cầu đổi ca',
+      status: 'pending' as const,
+    })),
+  ]
 
-    {/* Row 2: My Schedule = 7/12, My Actions = 5/12 */}
-    <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
-      <div className="lg:col-span-7 flex flex-col">
-        <div className="min-h-[240px] flex flex-col rounded-lg border bg-card p-0 shadow-sm overflow-hidden h-full">
-          <UpcomingShiftsList upcoming={upcoming.slice(0, 5)} brands={brands} platforms={platforms} t={t} title="My Schedule" setSelectedShift={setSelectedShift} />
-        </div>
-      </div>
-      <div className="lg:col-span-5 flex flex-col">
-        <h3 className="text-[15px] font-semibold mb-4 flex justify-between items-center text-foreground">
-          My Actions <span className="ml-2 inline-flex items-center justify-center bg-red-100 text-red-700 text-[11px] font-bold px-2 py-0.5 rounded-full">{memberAttention.items.length}</span>
-        </h3>
-        <div className="min-h-[240px] flex flex-col rounded-lg border bg-card p-0 shadow-sm overflow-hidden h-full">
-          {memberAttention.items.length > 0 ? (
-            <div className="p-4 flex flex-col gap-2">
-              <OperationalStatusStrip items={memberAttention.items} className="gap-2 flex-grow" />
-            </div>
-          ) : (
-            <div className="flex-grow flex items-center justify-center text-muted-foreground p-6">
-              <div className="flex flex-col items-center gap-2">
-                <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 mb-2">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6L9 17l-5-5"/></svg>
-                </div>
-                <p className="text-[14px] font-medium text-foreground">Không có yêu cầu cần xử lý</p>
-                <p className="text-[13px]">Tất cả đều đã hoàn thành</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-
-    {/* Row 3: Open Eligible Shifts = 12/12 */}
-    <div className="grid grid-cols-1">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-[15px] font-semibold text-foreground">Open Shifts for You</h3>
-        <a href="/calendar" className="text-[13px] text-primary font-medium hover:underline">Tìm ca làm việc -&gt;</a>
-      </div>
-      <Card className="shadow-sm border overflow-hidden min-h-[160px]">
-        <div className="flex flex-col">
-          {shifts.filter(s => s.date >= today && s.status === 'scheduled' && !s.host_id).slice(0, 3).map(s => (
-            <div key={s.id} className="flex items-center justify-between p-4 border-b last:border-0 hover:bg-muted/30">
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-foreground">{s.start_time.slice(0,5)} - {s.end_time.slice(0,5)}</span>
-                  <Badge variant="secondary" className="text-[11px] font-medium bg-blue-50 text-blue-700 hover:bg-blue-50">Host</Badge>
-                </div>
-                <span className="text-[13px] text-muted-foreground">{nameFor(brands, s.brand_id)} • {nameFor(platforms, s.platform_id)}</span>
-              </div>
-              <Button variant="outline" size="sm" className="text-[13px]" onClick={() => setSelectedShift(s)}>Apply</Button>
-            </div>
-          ))}
-          {shifts.filter(s => s.date >= today && s.status === 'scheduled' && !s.host_id).length === 0 && (
-            <div className="p-8 text-center text-muted-foreground text-[13px]">
-              Không có ca nào đang tuyển
-            </div>
-          )}
-        </div>
-      </Card>
-    </div>
-
-    {/* Row 4: My Requests = 6/12, Notifications = 6/12 */}
-    <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-12">
-      <div className="lg:col-span-6 flex flex-col">
-        <h3 className="text-[15px] font-semibold mb-4 text-foreground">My Requests</h3>
-        <Card className="shadow-sm border min-h-[150px] flex flex-col"><CardContent className="p-4 flex-grow flex items-center justify-center"><Empty text={t('noPendingRequests')} /></CardContent></Card>
-      </div>
-      <div className="lg:col-span-6 flex flex-col">
-        <h3 className="text-[15px] font-semibold mb-4 text-foreground">Recent Notifications</h3>
-        <Card className="shadow-sm border min-h-[150px] flex flex-col"><CardContent className="p-4 flex-grow flex items-center justify-center"><Empty text={t('noNotifications')} /></CardContent></Card>
-      </div>
-    </div>
-  </PageShell>
-}
-
-// Shared components
-
-function DashboardFilterControls({ filters, setPreset, showFilters, setShowFilters, t }: { filters: Filters; setPreset: (preset: Preset) => void; showFilters: boolean; setShowFilters: (v: boolean) => void; t: (key: string) => string }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Select value={filters.preset} onValueChange={value => setPreset(value as Preset)}><SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="today">{t('today')}</SelectItem><SelectItem value="yesterday">{t('yesterday')}</SelectItem><SelectItem value="7d">{t('last7Days')}</SelectItem><SelectItem value="30d">{t('last30Days')}</SelectItem><SelectItem value="thisMonth">{t('thisMonth')}</SelectItem><SelectItem value="lastMonth">{t('lastMonth')}</SelectItem><SelectItem value="custom">{t('customRange')}</SelectItem></SelectContent></Select>
-      <Button variant={showFilters ? 'secondary' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="dashboard-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button>
-    </div>
+    <MemberDashboardView
+      nextShift={nextShift}
+      mySchedule={mySchedule}
+      myActions={myActions}
+      openShifts={null}
+      myRequests={myRequests}
+      notifications={null}
+    />
   )
 }
-
-function DashboardCustomDateRange({ filters, setFilters, t }: { filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters | null>>; t: (key: string) => string }) {
-  if (filters.preset !== 'custom') return null
-  return (
-    <div className="flex flex-wrap items-center gap-4 rounded-md border bg-muted/30 px-4 py-3">
-      <label className="flex items-center gap-2 text-sm font-medium">{t('startDate')}<Input className="w-auto h-8" type="date" value={filters.start} onChange={event => setFilters(current => current ? { ...current, start: event.target.value } : current)} /></label>
-      <label className="flex items-center gap-2 text-sm font-medium">{t('endDate')}<Input className="w-auto h-8" type="date" value={filters.end} onChange={event => setFilters(current => current ? { ...current, end: event.target.value } : current)} /></label>
-    </div>
-  )
-}
-
-function DashboardFilterPanel({ filters, setFilters, brands, platforms, campaigns, roleOptions, t }: { filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters | null>>; brands: Brand[]; platforms: Platform[]; campaigns: Campaign[]; roleOptions: (role: 'host' | 'support' | 'technical') => {id: string, name: string}[]; t: (key: string) => string }) {
-  return (
-    <Card id="dashboard-filter-panel"><CardContent className="space-y-4 pt-4">
-      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
-        <FilterSelect label={t('brand')} value={filters.brandIds} options={brands} onChange={value => setFilters(current => current ? { ...current, brandIds: value } : current)} />
-        <FilterSelect label={t('platform')} value={filters.platformIds} options={platforms} onChange={value => setFilters(current => current ? { ...current, platformIds: value } : current)} />
-        <FilterSelect label={t('campaign')} value={filters.campaignIds} options={campaigns} onChange={value => setFilters(current => current ? { ...current, campaignIds: value } : current)} />
-        <FilterSelect label={t('host')} value={filters.hostIds} options={roleOptions('host')} onChange={value => setFilters(current => current ? { ...current, hostIds: value } : current)} />
-        <FilterSelect label={t('support')} value={filters.supportIds} options={roleOptions('support')} onChange={value => setFilters(current => current ? { ...current, supportIds: value } : current)} />
-        <FilterSelect label={t('technical')} value={filters.technicalIds} options={roleOptions('technical')} onChange={value => setFilters(current => current ? { ...current, technicalIds: value } : current)} />
-      </div>
-      <Button variant="ghost" onClick={() => setFilters(initialFilters())} size="sm" className="h-8"><RotateCcw className="mr-2 h-3 w-3" />{t('resetFilters')}</Button>
-    </CardContent></Card>
-  )
-}
-
-function UpcomingShiftsList({ upcoming, brands, platforms, t, title, setSelectedShift }: { upcoming: Shift[]; brands: Brand[]; platforms: Platform[]; t: (key: string) => string; title?: string; setSelectedShift: (shift: Shift | null) => void }) {
-  return (
-    <div className="flex flex-col"><div className="flex items-center justify-between pb-3 border-b mb-3"><div><h2 className="text-[15px] font-semibold">{title || t('upcomingShifts')}</h2></div><Button nativeButton={false} render={<Link href="/calendar" />} variant="ghost" size="sm" className="h-8 text-[13px]">{t('viewAll')}</Button></div><div>{upcoming.length ? <div className="divide-y">{upcoming.map(shift => <button type="button" className="flex w-full flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 py-3 sm:py-2 text-left hover:bg-muted/30 transition-colors min-h-[48px]" key={shift.id} onClick={() => setSelectedShift(shift)}><div className="min-w-0 flex-1"><p className="text-sm font-semibold truncate">{shift.title || nameFor(brands, shift.brand_id)}</p><div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground"><span>{shift.date}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{formatShiftTimeRange(shift)}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{nameFor(platforms, shift.platform_id)}</span></div></div><div className="flex shrink-0 justify-end"><Badge variant="secondary" className="text-xs font-normal bg-muted/50 text-muted-foreground">{t('scheduled')}</Badge></div></button>)}</div> : <div className="py-8"><Empty text={t('noMatchingShifts')} /></div>}</div></div>
-  )
-}
-
-function FilterSelect({ label, value, options, onChange }: { label: string; value: string[]; options: Array<{ id: string; name: string }>; onChange: (value: string[]) => void }) {
-  return <MultiSelectFilter label={label} value={value} onChange={onChange} options={options.map(option => ({ value: option.id, label: option.name }))} />
-}
-function Metric({ title, value, note, icon, tintClass = "bg-primary/10 text-primary" }: { title: string; value: string; note?: React.ReactNode; icon: React.ReactNode; tintClass?: string }) { return <Card className="shadow-sm border"><CardContent className="p-4 flex flex-col justify-between h-full min-h-[112px]"><div className="flex items-start justify-between gap-2"><div className="flex flex-col gap-1"><p className="text-[13px] font-semibold text-muted-foreground uppercase tracking-wider">{title}</p><p className="text-3xl font-bold leading-none">{value}</p></div><div className={`w-12 h-12 shrink-0 rounded-full flex items-center justify-center ${tintClass}`}>{icon}</div></div><div className="mt-2 h-4 flex items-center">{note ? <p className="text-xs font-medium text-muted-foreground truncate">{note}</p> : <p className="text-xs text-transparent select-none truncate">-</p>}</div></CardContent></Card> }
-function Empty({ text }: { text: string }) { return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{text}</div> }

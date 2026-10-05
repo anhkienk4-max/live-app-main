@@ -155,7 +155,7 @@ export function EditShiftActionsReferenceMock({ initialState = 'none' }: { initi
 
             <div className="px-5 py-4">
               <p className="text-[13px] font-medium text-slate-700"><FrozenText>Bạn có muốn tạo ca mới từ ca này không?</FrozenText></p>
-              <p className="mt-1 text-[12px] leading-4 text-slate-500"><FrozenText>Thông tin ca, nhân sự và công việc sẽ được sao chép.</FrozenText></p>
+              <p className="mt-1 text-[12px] leading-4 text-slate-500">Thông tin ca và người được gán sẽ điền sẵn. Đăng ký, tác vụ và cập nhật live không được sao chép.</p>
 
               <div className="mt-4 grid grid-cols-2 gap-3">
                 <label className="block">
@@ -172,6 +172,8 @@ export function EditShiftActionsReferenceMock({ initialState = 'none' }: { initi
                 </label>
               </div>
 
+              <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-[11px] leading-4 text-slate-600">Ngày mới phải chọn · trạng thái đặt lại Đã lên lịch · khóa đăng ký tắt · link live trống.</p>
+
               <div className="mt-5 grid grid-cols-2 gap-3">
                 <button type="button" onClick={closePreview} className="h-9 rounded-md border border-slate-200 bg-white text-[12px] font-semibold text-slate-600"><FrozenText>Hủy</FrozenText></button>
                 <button type="button" className="h-9 rounded-md bg-blue-600 text-[12px] font-semibold text-white"><FrozenText>Tạo ca mới</FrozenText></button>
@@ -187,11 +189,12 @@ export function EditShiftActionsReferenceMock({ initialState = 'none' }: { initi
             <button type="button" onClick={closePreview} aria-label="Đóng" className="absolute right-3.5 top-3.5 flex h-7 w-7 items-center justify-center rounded-md text-slate-400"><X className="h-4 w-4" /></button>
             <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-rose-100 text-rose-600"><Trash2 className="h-5 w-5" /></span>
             <h2 id="delete-shift-title" className="mt-3 text-[15px] font-bold text-slate-950"><FrozenText>Xóa ca này?</FrozenText></h2>
-            <p className="mt-1 text-[12px] text-slate-500"><FrozenText>Hành động này không thể hoàn tác.</FrozenText></p>
+            <p className="mt-1 text-[12px] text-slate-500">Chính sách xóa phụ thuộc vào lịch sử của ca.</p>
             <div className="mt-3 border-t border-slate-100 pt-3 text-[12px] text-slate-600">
               <div className="flex items-center justify-center gap-2"><span className="font-semibold text-slate-800">Pharmaton</span><span>•</span><span>10/09/2026</span><span>•</span><span>14:00 – 17:00</span></div>
               <div className="mt-1">Studio A <span className="px-1.5">•</span> Livestream</div>
             </div>
+            <p className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-left text-[11px] leading-4 text-rose-700">Ca có đăng ký, cập nhật live hoặc báo cáo sẽ được hủy và xóa mềm để giữ lịch sử. Ca tương lai chưa có lịch sử có thể xóa. Chỉ Admin được xóa; cần lý do và phiên bản hiện tại.</p>
             <div className="-mx-5 mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 px-5 pt-4">
               <button type="button" onClick={closePreview} className="h-9 rounded-md border border-slate-200 bg-white text-[12px] font-semibold text-slate-600"><FrozenText>Hủy</FrozenText></button>
               <button type="button" className="flex h-9 items-center justify-center gap-2 rounded-md bg-red-600 text-[12px] font-semibold text-white"><Trash2 className="h-3.5 w-3.5" /><span><FrozenText>Xóa</FrozenText></span></button>

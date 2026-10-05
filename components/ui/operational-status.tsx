@@ -239,7 +239,7 @@ export function OperationalStatusStrip({
     <div className={cn('flex flex-col gap-2', className)} aria-label={t('operationalStatusAriaLabel')}>
       {visible.map(item =>
         compact ? (
-          <AttentionBanner key={item.key} item={item} />
+          <AttentionBanner key={item.key} item={item} actionLabel={item.actionLabel} />
         ) : (
           <AttentionItem key={item.key} item={item} />
         )

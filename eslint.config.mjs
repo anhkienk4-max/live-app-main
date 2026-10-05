@@ -1,4 +1,4 @@
-import { defineConfig, globalIgnores } from "eslint/config";
+﻿import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
@@ -19,6 +19,10 @@ const eslintConfig = defineConfig([
     ".migration-backup/**",
     "public/ocr/tesseract/**",
     "supabase/.temp/**",
+    // Static visual-clone files — pixel-faithful reference mocks, not
+    // production source. They are typed loosely by design and must not
+    // be reformatted by linting automation.
+    "components/visual-qa/**",
   ]),
 ]);
 

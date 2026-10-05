@@ -206,12 +206,14 @@ export function ShiftLifecycleReferenceMock({ initialState = 'none' }: { initial
                 <div className="mt-4 rounded-md border border-slate-100 bg-slate-50 px-4 py-3">
                   <h3 className="text-[12px] font-bold text-slate-700"><FrozenText>Quy tắc chuyển trạng thái</FrozenText></h3>
                   <ul className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1.5 text-[12px] leading-4 text-slate-600">
-                    <li>• Scheduled → Preparing: <FrozenText>Tự động theo thời gian hoặc manual bởi Leader</FrozenText></li>
-                    <li>• Preparing → Live: <FrozenText>Leader bắt đầu ca</FrozenText></li>
-                    <li>• Live → Paused: <FrozenText>Leader tạm dừng ca</FrozenText></li>
-                    <li>• Live / Paused → Completed: <FrozenText>Leader kết thúc ca</FrozenText></li>
-                    <li>• Scheduled → Cancelled: <FrozenText>Leader hủy ca</FrozenText></li>
+                    <li>• Scheduled → Preparing / Cancelled: theo thời gian hoặc Leader/Admin.</li>
+                    <li>• Preparing → Scheduled / Live / Paused / Cancelled: Leader/Admin.</li>
+                    <li>• Live → Paused / Completed: Leader/Admin.</li>
+                    <li>• Paused → Live / Completed: Leader/Admin.</li>
+                    <li>• Completed / Cancelled: không có chuyển thủ công tiếp theo.</li>
+                    <li>• Tự động: Scheduled → Preparing → Live → Completed theo mốc thời gian; trạng thái thủ công có thể trở lại tự động nếu chưa hủy.</li>
                   </ul>
+                  <p className="mt-2 text-[11px] text-slate-500">Lưu thay đổi dùng phiên bản hiện tại; hành động hoàn thành/hủy cần xác nhận và lý do được ghi vào lịch sử.</p>
                 </div>
               </section>
             </div>

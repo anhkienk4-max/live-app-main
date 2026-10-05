@@ -127,6 +127,8 @@ export function Header({ user }: HeaderProps) {
     window.location.replace('/login?reason=signed_out')
   }
 
+  const avatarUrl = displayUser?.user_metadata?.avatar_url?.trim() || undefined
+
   const initials = displayUser?.user_metadata?.full_name
     ?.split(' ')
     .map((n) => n[0])
@@ -177,7 +179,7 @@ export function Header({ user }: HeaderProps) {
                 render={<Button variant="ghost" className="relative h-8 w-8 rounded-full p-0" data-testid="user-menu-btn" />}
               >
                 <Avatar className="h-7 w-7">
-                  <AvatarImage src={displayUser?.user_metadata?.avatar_url} alt={displayUser?.user_metadata?.full_name || displayUser?.email} />
+                  {avatarUrl && <AvatarImage src={avatarUrl} alt={displayUser?.user_metadata?.full_name || displayUser?.email || 'User'} />}
                   <AvatarFallback className="bg-primary text-primary-foreground text-micro font-semibold">
                     {initials}
                   </AvatarFallback>

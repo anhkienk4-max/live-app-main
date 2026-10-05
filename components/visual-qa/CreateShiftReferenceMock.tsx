@@ -3,6 +3,7 @@ import {
   Check, ChevronRight, ChevronLeft, ChevronDown, Search, MoreHorizontal, 
   X, Plus, UploadCloud, Calendar as CalendarIcon, Clock3, LayoutGrid, Users, ArrowLeftRight, MonitorPlay, BarChart2, Bell, Briefcase
 } from 'lucide-react'
+import { ShiftCreateSupplement } from './ShiftOperationalReference'
 
 type CreateShiftStep = 1 | 2 | 3 | 4
 
@@ -239,7 +240,7 @@ function StepOne({ onNext }: { onNext: () => void }) {
             Livestream bán hàng Pharmaton T9 trên TikTok Shop. Chuẩn bị set up, test thiết bị, hỗ trợ vận hành livestream.
           </div>
         </div>
-
+        <ShiftCreateSupplement step={1} />
       </div>
 
       <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/50 px-7 py-4 rounded-b-xl">
@@ -294,6 +295,7 @@ function StepTwo({ onBack, onNext }: { onBack: () => void; onNext: () => void })
           ))}
         </div>
         
+        <ShiftCreateSupplement step={2} />
         <div className="text-[13px] font-medium text-blue-600 flex items-center gap-1">
           <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span> Đã chọn 2 nhân sự
         </div>
@@ -344,6 +346,7 @@ function StepThree({ onBack, onNext }: { onBack: () => void; onNext: () => void 
           </div>
         </div>
 
+        <ShiftCreateSupplement step={3} />
         {/* Notes */}
         <div>
           <h3 className="text-[14px] font-bold text-slate-900 mb-2.5">Ghi chú thêm</h3>
@@ -352,7 +355,6 @@ function StepThree({ onBack, onNext }: { onBack: () => void; onNext: () => void 
             className="w-full h-[64px] border border-slate-200 rounded-md px-3 py-2 text-[14px] text-slate-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
           ></textarea>
         </div>
-
       </div>
 
       <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/50 px-7 py-4 rounded-b-xl mt-auto">
@@ -444,7 +446,7 @@ function StepFour({ onBack }: { onBack: () => void }) {
           </div>
 
         </div>
-
+        <div className="mt-3"><ShiftCreateSupplement step={4} /></div>
       </div>
 
       <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/50 px-7 py-4 rounded-b-xl mt-auto">
