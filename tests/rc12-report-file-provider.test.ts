@@ -4,6 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import type { FileProviderName, FileUploadInput, FileUploadResult } from '@/lib/files/fileProvider'
+import { GoogleDriveError } from '@/lib/server/googleDriveAuth'
 import {
   resolveOperationalStoragePlacement,
   type OperationalStoragePlacementInput,
@@ -21,6 +22,7 @@ function fakeStorage(options: {
   uploadProvider?: FileProviderName
   uploadError?: Error
   deleteError?: Error
+  ensureFolderError?: Error
   readBytes?: Uint8Array
   calls?: string[]
   uploadInputs?: FileUploadInput[]
@@ -51,6 +53,7 @@ function fakeStorage(options: {
     },
     async ensureFolder(parentId: string, name: string, provider: 'google_drive' | 'onedrive') {
       calls.push(`ensure:${provider}:${parentId}:${name}`)
+      if (options.ensureFolderError) throw options.ensureFolderError
       return { provider, id: `${provider}-${name}`, name, parentId }
     },
     async read(reference: { provider: FileProviderName; external_file_id: string }) {
@@ -107,6 +110,10 @@ function fakeClient(options: {
     storage: {
       from() {
         return {
+          async upload(path: string) {
+            calls.push(`supabase:upload:${path}`)
+            return { data: { path }, error: null }
+          },
           async download() {
             return { data: new Blob([new Uint8Array([9])], { type: 'image/png' }), error: null }
           },
@@ -194,6 +201,32 @@ test('RC1.2 metadata failure attempts cleanup through the same provider', async 
   const response = await handlerFor(client, storage).POST(uploadRequest({ kind: 'report', report_id: 'report-1', image_type: 'dashboard' }))
   assert.equal(response.status, 502)
   assert.deepEqual(calls.filter(call => call.includes(':delete:')), ['google_drive:delete:google_drive-file'])
+})
+
+test('Google Drive folder ambiguity stops report upload before provider or metadata writes', async () => {
+  const calls: string[] = []
+  const client = fakeClient({ calls })
+  const storage = fakeStorage({
+    calls,
+    ensureFolderError: new GoogleDriveError('GOOGLE_DRIVE_FOLDER_AMBIGUOUS'),
+  })
+
+  const response = await handlerFor(client, storage).POST(uploadRequest({
+    kind: 'report', report_id: 'report-1', image_type: 'dashboard',
+  }))
+  const payload = await response.json() as { ok?: boolean; error?: { code?: string; message?: string } }
+
+  assert.equal(response.status, 502)
+  assert.equal(payload.ok, false)
+  assert.equal(payload.error?.code, 'REPORT_IMAGE_STORAGE_FAILED')
+  assert.equal(payload.error?.message, 'The report image could not be stored.')
+  assert.equal(JSON.stringify(payload).includes('duplicate-a'), false)
+  assert.deepEqual(calls.filter(call => call.startsWith('ensure:')), [
+    'ensure:google_drive:mars-internal-base:DASHBOARD',
+  ])
+  assert.equal(calls.some(call => call.endsWith(':upload')), false)
+  assert.equal(calls.some(call => call.startsWith('upload_report_image')), false)
+  assert.equal(calls.some(call => call.startsWith('supabase:upload:')), false)
 })
 
 test('RC1.2 persisted provider reads and deletes ignore the current default', async () => {

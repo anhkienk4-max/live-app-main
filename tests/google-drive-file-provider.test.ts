@@ -47,9 +47,26 @@ const input: FileUploadInput = {
   logical_path: 'LiveStreamOps/reports/2026/08/report-1',
 }
 
+type FakeDriveFile = {
+  id?: string
+  name?: string
+  mimeType?: string
+  size?: string
+  md5Checksum?: string
+  parents?: string[]
+  webViewLink?: string
+  trashed?: boolean
+  driveId?: string
+  capabilities?: { canAddChildren?: boolean; canEdit?: boolean }
+}
+
 type FakeState = {
   folderIds: Map<string, string>
+  folderRows: Map<string, FakeDriveFile[]>
+  folderLookupSequences: Map<string, FakeDriveFile[][]>
   folderCreates: number
+  folderCreateAttempts: number
+  failFolderCreates: number
   uploaded?: Record<string, unknown>
   uploadBodies: Array<{ body: Readable; hasPipe: boolean; content: Buffer }>
   trashed?: boolean
@@ -68,19 +85,6 @@ type FakeState = {
 }
 
 function fakeDrive(state: FakeState) {
-  type FakeDriveFile = {
-    id?: string
-    name?: string
-    mimeType?: string
-    size?: string
-    md5Checksum?: string
-    parents?: string[]
-    webViewLink?: string
-    trashed?: boolean
-    driveId?: string
-    capabilities?: { canAddChildren?: boolean; canEdit?: boolean }
-  }
-
   function get(params: { fileId: string; fields: string; supportsAllDrives?: boolean }): Promise<{ data: FakeDriveFile }>
   function get(params: { fileId: string; alt: 'media'; supportsAllDrives?: boolean }, options: { responseType: 'arraybuffer' }): Promise<{ data: ArrayBuffer }>
   async function get(
@@ -109,11 +113,19 @@ function fakeDrive(state: FakeState) {
       async list(params: { q: string; supportsAllDrives?: boolean; includeItemsFromAllDrives?: boolean }) {
         state.listCalls += 1
         state.allDriveFlags.list = params.supportsAllDrives === true && params.includeItemsFromAllDrives === true
-        const name = params.q.match(/name = '((?:\\\\|\\')*)'/)?.[1]?.replace(/\\'/g, "'") ?? ''
+        const name = params.q.includes(" and name = '")
+          ? params.q.split(" and name = '")[1]?.split("' and mimeType")[0] ?? ''
+          : ''
         const parent = params.q.match(/'([^']+)' in parents/)?.[1] ?? ''
-        const id = state.folderIds.get(`${parent}/${name}`)
         if (!params.q.includes("name = '")) return { data: { files: [{ id: 'drive-file-1', name: 'report.png', mimeType: 'image/png', size: '4', parents: [parent] }, { id: 'folder-3', name: 'Folder', mimeType: 'application/vnd.google-apps.folder', parents: [parent] }] } }
-        return { data: { files: id ? [{ id, name, mimeType: 'application/vnd.google-apps.folder', parents: [parent] }] : [] } }
+        const key = `${parent}/${name}`
+        const sequence = state.folderLookupSequences.get(key)
+        const sequencedRows = sequence?.shift()
+        if (sequencedRows) return { data: { files: sequencedRows } }
+        const configuredRows = state.folderRows.get(key)
+        if (configuredRows) return { data: { files: configuredRows } }
+        const id = state.folderIds.get(key)
+        return { data: { files: id ? [{ id, name, mimeType: 'application/vnd.google-apps.folder', parents: [parent], trashed: false }] : [] } }
       },
       async create(params: { requestBody: Record<string, unknown>; media?: { mimeType: string; body: Readable }; supportsAllDrives?: boolean }) {
         state.allDriveFlags.create = params.supportsAllDrives === true
@@ -129,6 +141,11 @@ function fakeDrive(state: FakeState) {
           }
           state.uploaded = { ...params.requestBody, mimeType: params.media.mimeType, content: state.uploadBodies.at(-1)?.content }
           return { data: { id: 'drive-file-1', name: params.requestBody.name as string, mimeType: params.media.mimeType, size: '4', md5Checksum: 'md5', parents: params.requestBody.parents as string[], createdTime: '2026-08-30T00:00:00.000Z' } }
+        }
+        state.folderCreateAttempts += 1
+        if (state.failFolderCreates > 0) {
+          state.failFolderCreates -= 1
+          throw Object.assign(new Error('folder already exists'), { response: { status: 409 } })
         }
         state.folderCreates += 1
         const id = `folder-${state.folderCreates}`
@@ -149,7 +166,11 @@ function fakeDrive(state: FakeState) {
 function state(): FakeState {
   return {
     folderIds: new Map(),
+    folderRows: new Map(),
+    folderLookupSequences: new Map(),
     folderCreates: 0,
+    folderCreateAttempts: 0,
+    failFolderCreates: 0,
     uploadBodies: [],
     listCalls: 0,
     uploadCalls: 0,
@@ -359,10 +380,126 @@ test('folder resolution is deterministic and idempotent under the configured roo
   const provider = createGoogleDriveFileProvider({ env, drive: fakeDrive(driveState), retryDelayMs: 0 })
   await provider.upload(input)
   const createsAfterFirstUpload = driveState.folderCreates
+  const lookupsAfterFirstUpload = driveState.listCalls
   await provider.upload(input)
   assert.equal(createsAfterFirstUpload, 5)
   assert.equal(driveState.folderCreates, createsAfterFirstUpload)
+  assert.equal(driveState.listCalls, lookupsAfterFirstUpload, 'verified folder cache hits do not repeat Drive lookups')
   assert.equal(driveState.uploadCalls, 2)
+})
+
+test('ensureFolder fails closed when multiple active exact-name child folders exist', async () => {
+  const driveState = state()
+  driveState.folderRows.set('parent/Reports', [
+    { id: 'duplicate-a', name: 'Reports', mimeType: 'application/vnd.google-apps.folder', parents: ['parent'], trashed: false },
+    { id: 'duplicate-b', name: 'Reports', mimeType: 'application/vnd.google-apps.folder', parents: ['parent'], trashed: false },
+    { id: 'trashed-duplicate', name: 'Reports', mimeType: 'application/vnd.google-apps.folder', parents: ['parent'], trashed: true },
+  ])
+  const provider = createGoogleDriveFileProvider({ env, drive: fakeDrive(driveState), retryDelayMs: 0 })
+
+  await assert.rejects(
+    () => provider.ensureFolder('parent', 'Reports'),
+    (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_FOLDER_AMBIGUOUS',
+  )
+  assert.equal(driveState.folderCreates, 0)
+  assert.equal(driveState.folderCreateAttempts, 0)
+  assert.equal(driveState.uploadCalls, 0)
+})
+
+test('ensureFolder reuses one active exact-name child folder', async () => {
+  const driveState = state()
+  driveState.folderRows.set('parent/Reports', [
+    { id: 'existing-folder', name: 'Reports', mimeType: 'application/vnd.google-apps.folder', parents: ['parent'], trashed: false },
+    { id: 'trashed-duplicate', name: 'Reports', mimeType: 'application/vnd.google-apps.folder', parents: ['parent'], trashed: true },
+  ])
+  const provider = createGoogleDriveFileProvider({ env, drive: fakeDrive(driveState), retryDelayMs: 0 })
+
+  assert.deepEqual(await provider.ensureFolder('parent', 'Reports'), {
+    provider: 'google_drive', id: 'existing-folder', name: 'Reports', parentId: 'parent',
+  })
+  assert.equal(driveState.folderCreates, 0)
+})
+
+test('a fresh ambiguity lookup evicts an earlier unique folder cache entry', async () => {
+  const driveState = state()
+  const provider = createGoogleDriveFileProvider({ env, drive: fakeDrive(driveState), retryDelayMs: 0 })
+  await provider.upload(input)
+  const firstUploadLookups = driveState.listCalls
+  driveState.folderRows.set('root-folder/LiveStreamOps', [
+    { id: 'new-duplicate-a', name: 'LiveStreamOps', mimeType: 'application/vnd.google-apps.folder', parents: ['root-folder'], trashed: false },
+    { id: 'new-duplicate-b', name: 'LiveStreamOps', mimeType: 'application/vnd.google-apps.folder', parents: ['root-folder'], trashed: false },
+  ])
+
+  await assert.rejects(
+    () => provider.ensureFolder('root-folder', 'LiveStreamOps'),
+    (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_FOLDER_AMBIGUOUS',
+  )
+  await assert.rejects(
+    () => provider.upload(input),
+    (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_FOLDER_AMBIGUOUS',
+  )
+  assert.equal(driveState.listCalls, firstUploadLookups + 2)
+  assert.equal(driveState.uploadCalls, 1)
+})
+
+test('ensureFolder race recovery preserves duplicate-folder ambiguity', async () => {
+  const driveState = state()
+  driveState.failFolderCreates = 1
+  driveState.folderLookupSequences.set('parent/Reports', [
+    [],
+    [
+      { id: 'race-a', name: 'Reports', mimeType: 'application/vnd.google-apps.folder', parents: ['parent'], trashed: false },
+      { id: 'race-b', name: 'Reports', mimeType: 'application/vnd.google-apps.folder', parents: ['parent'], trashed: false },
+    ],
+  ])
+  const provider = createGoogleDriveFileProvider({ env, drive: fakeDrive(driveState), retryDelayMs: 0 })
+
+  await assert.rejects(
+    () => provider.ensureFolder('parent', 'Reports'),
+    (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_FOLDER_AMBIGUOUS',
+  )
+  assert.equal(driveState.folderCreateAttempts, 1)
+  assert.equal(driveState.folderCreates, 0)
+  assert.equal(driveState.uploadCalls, 0)
+})
+
+test('logical-path upload fails closed before file upload when a required folder is ambiguous', async () => {
+  const driveState = state()
+  driveState.folderRows.set('root-folder/LiveStreamOps', [
+    { id: 'path-a', name: 'LiveStreamOps', mimeType: 'application/vnd.google-apps.folder', parents: ['root-folder'], trashed: false },
+    { id: 'path-b', name: 'LiveStreamOps', mimeType: 'application/vnd.google-apps.folder', parents: ['root-folder'], trashed: false },
+  ])
+  const provider = createGoogleDriveFileProvider({ env, drive: fakeDrive(driveState), retryDelayMs: 0 })
+
+  await assert.rejects(
+    () => provider.upload(input),
+    (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_FOLDER_AMBIGUOUS',
+  )
+  assert.equal(driveState.folderCreates, 0)
+  assert.equal(driveState.uploadCalls, 0)
+  assert.equal(driveState.uploaded, undefined)
+})
+
+test('logical-path upload race recovery preserves duplicate-folder ambiguity', async () => {
+  const driveState = state()
+  driveState.failFolderCreates = 1
+  driveState.folderLookupSequences.set('root-folder/LiveStreamOps', [
+    [],
+    [
+      { id: 'race-path-a', name: 'LiveStreamOps', mimeType: 'application/vnd.google-apps.folder', parents: ['root-folder'], trashed: false },
+      { id: 'race-path-b', name: 'LiveStreamOps', mimeType: 'application/vnd.google-apps.folder', parents: ['root-folder'], trashed: false },
+    ],
+  ])
+  const provider = createGoogleDriveFileProvider({ env, drive: fakeDrive(driveState), retryDelayMs: 0 })
+
+  await assert.rejects(
+    () => provider.upload(input),
+    (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_FOLDER_AMBIGUOUS',
+  )
+  assert.equal(driveState.folderCreateAttempts, 1)
+  assert.equal(driveState.folderCreates, 0)
+  assert.equal(driveState.uploadCalls, 0)
+  assert.equal(driveState.uploaded, undefined)
 })
 
 test('upload maps sanitized metadata, MIME and binary content without sharing calls', async () => {

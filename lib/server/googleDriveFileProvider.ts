@@ -166,7 +166,7 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
       () => drive.files.list({
         q: `'${queryName(parentId)}' in parents and name = '${queryName(name)}' and mimeType = '${DRIVE_FOLDER_MIME}' and trashed = false`,
         spaces: 'drive',
-        fields: 'files(id,name,mimeType,parents)',
+        fields: 'files(id,name,mimeType,parents,trashed)',
         pageSize: 100,
         orderBy: 'name,createdTime',
         includeItemsFromAllDrives: true,
@@ -175,8 +175,11 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
       'GOOGLE_DRIVE_UPLOAD_FAILED',
     )
     const matches = (response.data.files ?? [])
-      .filter(file => file.id && file.mimeType === DRIVE_FOLDER_MIME)
-      .sort((a, b) => String(a.id).localeCompare(String(b.id)))
+      .filter(file => file.id && file.name === name && file.mimeType === DRIVE_FOLDER_MIME && file.trashed !== true)
+    if (matches.length > 1) {
+      folderCache.delete(`${parentId}\u0000${name}`)
+      throw new GoogleDriveError('GOOGLE_DRIVE_FOLDER_AMBIGUOUS')
+    }
     return matches[0]?.id ?? undefined
   }
 
@@ -186,6 +189,8 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
     let parentId = rootFolderId
     for (const segment of segments) {
       const cacheKey = `${parentId}\u0000${segment}`
+      // Cache only folders already proved unique by lookup or created by this provider.
+      // A lookup that later finds duplicates evicts the cached choice before failing.
       const cached = folderCache.get(cacheKey)
       if (cached) {
         parentId = cached
