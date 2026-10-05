@@ -1,4 +1,4 @@
-import { Home, Calendar, Radio, FileText, User, Settings, Users, Package, Megaphone, BarChart3, RefreshCw, History, Bell, type LucideIcon } from 'lucide-react'
+import { Home, Calendar, Radio, FileText, User, Settings, Users, Package, Megaphone, BarChart3, RefreshCw, History, Bell, UserCheck, type LucideIcon } from 'lucide-react'
 import { SystemPermission, User as UserType } from '@/lib/types/database.types'
 import { hasAnyPermission, Permission } from '@/lib/permissions'
 
@@ -43,6 +43,7 @@ const navCatalogue: Record<string, NavItem> = {
   // Additional parity placeholders
   shifts:        { name: 'Shifts',        href: '/shifts',        icon: Calendar },
   staffing:      { name: 'Staffing',      href: '/staffing',      icon: Users },
+  registration:  { name: 'Registration',  href: '/staffing?tab=registration', icon: UserCheck, labelKey: 'registration', requiredPermissions: ['shifts.approve_registration'] },
   staffDirectory:{ name: 'Staff Directory',href: '/staff',        icon: Users },
   myWorkspace:   { name: 'My Workspace',  href: '/',              icon: Home },
   mySchedule:    { name: 'My Schedule',   href: '/calendar?tab=mine', icon: Calendar },
@@ -57,6 +58,7 @@ const adminNav: NavItem[] = [
   { ...navCatalogue.live, group: 'OPERATIONS' },
   { ...navCatalogue.shifts, group: 'OPERATIONS' },
   { ...navCatalogue.staffing, group: 'OPERATIONS' },
+  { ...navCatalogue.registration, group: 'OPERATIONS' },
   { ...navCatalogue.swaps, group: 'OPERATIONS' },
   { ...navCatalogue.reports, group: 'PERFORMANCE' },
   { ...navCatalogue.analytics, group: 'PERFORMANCE' },
@@ -75,6 +77,7 @@ const leaderNav: NavItem[] = [
   { ...navCatalogue.live, group: 'OPERATIONS' },
   { ...navCatalogue.shifts, group: 'OPERATIONS' },
   { ...navCatalogue.staffing, group: 'OPERATIONS' },
+  { ...navCatalogue.registration, group: 'OPERATIONS' },
   { ...navCatalogue.swaps, group: 'OPERATIONS' },
   { ...navCatalogue.reports, group: 'PERFORMANCE' },
   { ...navCatalogue.staffDirectory, group: 'TEAM' },
