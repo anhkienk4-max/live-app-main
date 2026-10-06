@@ -2,12 +2,10 @@
 
 import * as React from 'react'
 import { addDays, endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
-import dynamic from 'next/dynamic'
 import { brandService, campaignService, platformService, reportService, shiftRegistrationService, shiftService, swapRequestService, userService } from '@/lib/services/dataService'
 import { Brand, Campaign, Platform, Report, Shift, ShiftRegistration, SwapRequest, User } from '@/lib/types/database.types'
 import { useTranslation } from '@/lib/i18n'
 import { getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
-import { Card, CardContent } from '@/components/ui/card'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
@@ -99,7 +97,7 @@ export function DashboardOverview({
     } finally {
       setLoading(false)
     }
-  }, [currentUser])
+  }, [currentUser, fixtureData, forceFixture, visualRole])
 
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => {

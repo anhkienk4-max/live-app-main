@@ -3,7 +3,6 @@
 import * as React from 'react'
 import {
   CheckCircle2, AlertTriangle, XCircle, Clock, Calendar, MapPin,
-  Layers, ChevronDown, ChevronUp,
   Clock3
 } from 'lucide-react'
 import type { Brand, Platform, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
@@ -41,16 +40,40 @@ export function RegistrationRequestDetailPanel({
   onOpenReject,
   onCloseMobile,
 }: RegistrationRequestDetailPanelProps) {
-  const [showDbInspector, setShowDbInspector] = React.useState(false)
-
   const applicantName = applicant?.full_name || registration.imported_name || registration.user_id
   const applicantEmail = applicant?.email || 'Chưa liên kết email'
 
 
-  // Weekly workload derivation
-  const userShifts = allUserRegistrations.filter(r => r.user_id === registration.user_id && isStaffedRegistration(r))
+  // Weekly workload derivation (Scope: Same Week, Actual Duration)
+  const userShifts = allUserRegistrations.filter(r => {
+    if (r.user_id !== registration.user_id || !isStaffedRegistration(r)) return false
+
+    if (!shift || !shift.date) return false
+    const thisShift = allShifts.find(s => s.id === r.shift_id)
+    if (!thisShift || !thisShift.date) return false
+
+    const targetDate = new Date(shift.date)
+    const otherDate = new Date(thisShift.date)
+
+    const getMonday = (d: Date) => {
+      const dCopy = new Date(d)
+      const day = dCopy.getDay()
+      const diff = dCopy.getDate() - day + (day === 0 ? -6 : 1)
+      return new Date(dCopy.setDate(diff)).toDateString()
+    }
+
+    return getMonday(targetDate) === getMonday(otherDate)
+  })
   const weeklyShiftsCount = userShifts.length
-  const weeklyHours = userShifts.length * 3.5
+  const weeklyHours = userShifts.reduce((total, r) => {
+    const thisShift = allShifts.find(s => s.id === r.shift_id)
+    if (!thisShift) return total
+    const time = resolveShiftDateTime(thisShift.date, thisShift.start_time, thisShift.end_time, thisShift.timezone)
+    if (time?.valid) {
+      return total + (time.endAt.getTime() - time.startAt.getTime()) / (1000 * 60 * 60)
+    }
+    return total
+  }, 0)
 
   // Shift overlap check
   const overlapConflict = (() => {
@@ -96,7 +119,7 @@ export function RegistrationRequestDetailPanel({
   // Overall eligibility synthesis
   const eligibilityStatus: 'pass' | 'warning' | 'conflict_blocking' = (() => {
     if (overlapConflict || !hasRoleQualification || !isAccountActive) return 'conflict_blocking'
-    if (isCapacityFull || isCutoffPassed || weeklyShiftsCount >= 4) return 'warning'
+    if (isCapacityFull || isCutoffPassed) return 'warning'
     return 'pass'
   })()
 
@@ -171,8 +194,8 @@ export function RegistrationRequestDetailPanel({
 
         <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 text-[11px]">
           <div>
-            <span className="text-slate-400 block text-[10px]">Tải ca tuần này</span>
-            <span className="font-semibold text-slate-800">{weeklyShiftsCount} ca · ~{weeklyHours}h</span>
+            <span className="text-slate-400 block text-[10px]">Tải ca cùng tuần</span>
+            <span className="font-semibold text-slate-800">{weeklyShiftsCount} ca · ~{weeklyHours.toFixed(1)}h</span>
           </div>
           <div>
             <span className="text-slate-400 block text-[10px]">Thời điểm gửi</span>
@@ -296,48 +319,7 @@ export function RegistrationRequestDetailPanel({
         </div>
       )}
 
-      {/* 6. REGISTRATION ↔ OPERATIONAL STAFFING PROVENANCE */}
-      <div className="rounded-lg border border-blue-200 bg-blue-50/70 p-3 text-[11px] text-blue-900 space-y-1.5">
-        <div className="font-bold flex items-center gap-1.5">
-          <Layers className="h-3.5 w-3.5 text-blue-600" />
-          <span>Registration ↔ Operational Staffing</span>
-        </div>
-        <p className="text-[10px] leading-relaxed text-blue-800">
-          ShiftRegistration là sổ cái phân bổ quyền lực duy nhất (authoritative shift-user-role ledger). Không tạo thực thể phân bổ riêng (StaffingAssignment). Góc nhìn vận hành trực tiếp chiếu từ đơn đã duyệt.
-        </p>
-      </div>
 
-      {/* 7. CANONICAL 15 DB FIELDS INSPECTOR */}
-      <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
-        <button
-          type="button"
-          onClick={() => setShowDbInspector(!showDbInspector)}
-          className="flex items-center justify-between w-full text-[11px] font-bold text-slate-700 hover:text-slate-900"
-        >
-          <span>15 TRƯỜNG DỮ LIỆU CƠ SỞ (REG-001 ~ REG-015)</span>
-          {showDbInspector ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-        </button>
-
-        {showDbInspector && (
-          <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px] pt-1 border-t border-slate-100">
-            <div className="bg-slate-50 p-1.5 rounded"><span className="text-slate-400 block">REG-001 id</span>{registration.id}</div>
-            <div className="bg-slate-50 p-1.5 rounded"><span className="text-slate-400 block">REG-002 shift_id</span>{registration.shift_id}</div>
-            <div className="bg-slate-50 p-1.5 rounded"><span className="text-slate-400 block">REG-003 user_id</span>{registration.user_id}</div>
-            <div className="bg-slate-50 p-1.5 rounded"><span className="text-slate-400 block">REG-004 operational_role</span>{registration.operational_role}</div>
-            <div className="bg-slate-50 p-1.5 rounded"><span className="text-slate-400 block">REG-005 status</span>{registration.status}</div>
-            <div className="bg-slate-50 p-1.5 rounded"><span className="text-slate-400 block">REG-006 source</span>{registration.source}</div>
-            <div className="bg-slate-50 p-1.5 rounded"><span className="text-slate-400 block">REG-007 requested_at</span>{registration.requested_at || 'null'}</div>
-            <div className="bg-slate-50 p-1.5 rounded"><span className="text-slate-400 block">REG-008 reviewed_by</span>{registration.reviewed_by || 'null'}</div>
-            <div className="bg-slate-50 p-1.5 rounded"><span className="text-slate-400 block">REG-009 reviewed_at</span>{registration.reviewed_at || 'null'}</div>
-            <div className="bg-slate-50 p-1.5 rounded"><span className="text-slate-400 block">REG-010 review_notes</span>{registration.review_notes || 'null'}</div>
-            <div className="bg-slate-50 p-1.5 rounded"><span className="text-slate-400 block">REG-011 cancelled_at</span>{registration.cancelled_at || 'null'}</div>
-            <div className="bg-slate-50 p-1.5 rounded"><span className="text-slate-400 block">REG-012 imported_name</span>{registration.imported_name || 'null'}</div>
-            <div className="bg-slate-50 p-1.5 rounded"><span className="text-slate-400 block">REG-013 created_at</span>{registration.created_at || 'null'}</div>
-            <div className="bg-slate-50 p-1.5 rounded"><span className="text-slate-400 block">REG-014 updated_at</span>{registration.updated_at || 'null'}</div>
-            <div className="bg-slate-50 p-1.5 rounded col-span-2 text-blue-700 font-bold"><span className="text-slate-400 block font-normal">REG-015 version (CAS)</span>v{registration.version}</div>
-          </div>
-        )}
-      </div>
 
       {/* 8. DECISION CTAS */}
       <div className="pt-2 sticky bottom-0 bg-slate-50/90 backdrop-blur-xs pb-1">

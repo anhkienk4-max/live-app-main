@@ -207,22 +207,19 @@ export function RegistrationReviewWorkspace() {
           <div className="flex items-center gap-2">
             <ShieldAlert className="h-4 w-4 text-amber-600 flex-shrink-0" />
             <span>
-              <strong>Chế độ chỉ xem (Permission Read-Only):</strong> Tài khoản của bạn không có quyền phê duyệt/từ chối đơn đăng ký ca. Các thao tác quyết định bị vô hiệu hóa.
+              <strong>Chế độ chỉ xem:</strong> Tài khoản của bạn không có quyền phê duyệt/từ chối đơn đăng ký ca. Các thao tác quyết định bị vô hiệu hóa.
             </span>
           </div>
-          <Badge variant="outline" className="border-amber-300 bg-amber-100 text-amber-800 text-[10px]">
-            shifts.approve_registration = DENIED
-          </Badge>
         </div>
       )}
 
-      {/* 2. CAS CONCURRENCY BANNER */}
+      {/* 2. CONCURRENCY BANNER */}
       {concurrencyError && (
         <div className="flex items-center justify-between bg-rose-50 border-b border-rose-200 px-4 py-2 text-xs text-rose-900">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-rose-600 flex-shrink-0" />
             <span>
-              <strong>Xung đột cập nhật đồng thời (Optimistic Concurrency Conflict):</strong> {concurrencyError}
+              <strong>Dữ liệu đã thay đổi:</strong> {concurrencyError}
             </span>
           </div>
           <Button
@@ -244,9 +241,6 @@ export function RegistrationReviewWorkspace() {
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-bold text-slate-900 tracking-tight">Hàng đợi xét duyệt đăng ký ca</h2>
-              <Badge variant="outline" className="border-blue-200 bg-blue-50 text-[11px] font-semibold text-blue-700">
-                Review Workspace
-              </Badge>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
               Thẩm định năng lực, kiểm tra xung đột và phê duyệt đăng ký ca trực vận hành livestream.
