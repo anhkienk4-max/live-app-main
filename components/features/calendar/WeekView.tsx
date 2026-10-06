@@ -8,9 +8,10 @@ import {
   ShiftRegistration,
 } from "@/lib/types/database.types";
 import { format, startOfWeek, addDays, isSameDay } from "date-fns";
+import { vi, enUS } from "date-fns/locale";
 import { useTranslation } from "@/lib/i18n";
 import { CurrentTimeIndicator } from "@/components/ui/current-time-indicator";
-import { TIME_COLUMN_WIDTH, MINUTE_HEIGHT, calculateShiftPosition, calculateOverlaps, getCurrentTimePosition } from "@/lib/utils/timeGrid";
+import { TIME_COLUMN_WIDTH, calculateShiftPosition, calculateOverlaps, getCurrentTimePosition } from "@/lib/utils/timeGrid";
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -50,7 +51,7 @@ export function WeekView({
     platforms,
     registrations,
   };
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const weekStart = startOfWeek(currentDate);
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const today = new Date();
@@ -60,7 +61,9 @@ export function WeekView({
     return shifts.filter((s) => s.date === dateStr);
   };
 
-  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const firstHour = Math.min(8, ...shifts.map(shift => Number(shift.start_time.slice(0, 2))));
+  const hourHeight = 36;
+  const hours = Array.from({ length: 24 - firstHour }, (_, i) => i + firstHour);
 
   return (
     <>
@@ -95,8 +98,8 @@ export function WeekView({
           </div>
         )}
         <div
-          className="grid min-w-[980px]"
-          style={{ gridTemplateColumns: `${TIME_COLUMN_WIDTH}px repeat(7, minmax(140px, 1fr))` }}
+          className="grid min-w-[700px]"
+          style={{ gridTemplateColumns: `${TIME_COLUMN_WIDTH}px repeat(7, minmax(90px, 1fr))` }}
         >
           {/* Header Row */}
           <div className="sticky top-0 z-30 bg-background border-b border-border border-r"></div>
@@ -106,20 +109,20 @@ export function WeekView({
             return (
               <div
                 key={`header-${day.toString()}`}
-                className={`sticky top-0 z-30 bg-background flex items-center gap-1.5 py-2 px-2 border-b border-r last:border-r-0 ${isToday ? "border-primary/40 bg-primary/[0.02]" : "border-border"}`}
+                className={`sticky top-0 z-30 bg-background flex flex-col items-center gap-1 py-2 px-1 border-b border-r last:border-r-0 ${isToday ? "border-primary/40 bg-primary/[0.02]" : "border-border"}`}
               >
                 <span
                   className={`text-[10px] uppercase tracking-wider font-semibold ${isToday ? "text-primary" : "text-muted-foreground"}`}
                 >
-                  {format(day, "EEE")}
+                  {format(day, "EEEE", { locale: language === "vi" ? vi : enUS })}
                 </span>
                 <span
                   className={`text-sm font-bold shrink-0 ${isToday ? "text-primary" : "text-foreground"}`}
                 >
-                  {format(day, "d")}
+                  {format(day, "dd/MM")}
                 </span>
                 {dayShifts.length > 0 && (
-                  <span className="ml-auto text-[10px] text-muted-foreground font-medium">
+                  <span className="text-[10px] text-muted-foreground font-medium">
                     {dayShifts.length}
                   </span>
                 )}
@@ -138,9 +141,9 @@ export function WeekView({
                 <div
                   key={`time-${hour}`}
                   className="relative text-right pr-2"
-                  style={{ height: 60 * MINUTE_HEIGHT }}
+                  style={{ height: hourHeight }}
                 >
-                  <span className="text-[10px] text-muted-foreground font-medium absolute top-[-7px] right-2 bg-background px-1">
+                  <span className="text-[10px] text-muted-foreground font-medium absolute top-0 right-2 bg-background px-1">
                     {hour.toString().padStart(2, '0')}:00
                   </span>
                 </div>
@@ -153,7 +156,7 @@ export function WeekView({
                 <div
                   key={`line-${hour}`}
                   className="w-full border-t border-border/40"
-                  style={{ height: 60 * MINUTE_HEIGHT }}
+                  style={{ height: hourHeight }}
                 />
               ))}
             </div>
@@ -170,11 +173,11 @@ export function WeekView({
                     key={`col-${day.toString()}`}
                     className={`flex-1 relative border-r last:border-r-0 border-border/40 ${isToday ? "bg-primary/[0.02]" : ""}`}
                   >
-                    {isToday && (
+                    {isToday && today.getHours() >= firstHour && (
                       <div
                         className="absolute w-full z-20 pointer-events-none border-t-[1.5px] border-primary"
                         style={{
-                          top: getCurrentTimePosition(today),
+                          top: getCurrentTimePosition(today) / 2 - firstHour * hourHeight,
                         }}
                       >
                         <div className="absolute -top-1.5 -left-1 w-3 h-3 rounded-full bg-primary ring-2 ring-background"></div>
@@ -192,8 +195,8 @@ export function WeekView({
                           key={shift.id}
                           className="absolute"
                           style={{
-                            top: pos.top,
-                            height: pos.height,
+                            top: pos.top / 2 - firstHour * hourHeight,
+                            height: pos.height / 2,
                             left: 'left' in pos ? pos.left : '0%',
                             width: 'width' in pos ? pos.width : '100%',
                             paddingLeft: '2px',
@@ -233,12 +236,12 @@ export function WeekView({
                 className={`flex items-baseline gap-2 px-2 py-1.5 ${isToday ? "text-primary bg-primary/[0.03]" : "text-muted-foreground bg-muted/10"}`}
               >
                 <span className="text-[11px] uppercase tracking-wider font-bold">
-                  {format(day, "EEE")}
+                  {format(day, "EEEE", { locale: language === "vi" ? vi : enUS })}
                 </span>
                 <span
                   className={`text-base font-bold shrink-0 ${isToday ? "text-primary" : "text-foreground"}`}
                 >
-                  {format(day, "d")}
+                  {format(day, "dd/MM")}
                 </span>
                 <span className="text-[11px] text-muted-foreground font-medium">
                   {format(day, "MMM")}

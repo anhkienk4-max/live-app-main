@@ -1,7 +1,7 @@
 'use client'
 
 import { format } from 'date-fns'
-import { Shift, Brand, Platform, User, ShiftRegistration } from '@/lib/types/database.types'
+import { Shift, Brand, Platform, User, ShiftRegistration, OperationalRole } from '@/lib/types/database.types'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { useTranslation } from '@/lib/i18n'
 import { resolveStaffingLabelsForRole } from '@/lib/utils/staffingResolver'
@@ -11,15 +11,18 @@ import { isStaffedRegistration } from '@/lib/services/dataService'
 import { deriveShiftAttention } from '@/lib/ui/operational-attention'
 import { OperationalStatusStrip } from '@/components/ui/operational-status'
 import { ShiftStatusBadge } from '@/components/domain/ShiftStatusBadge'
-import { TIME_COLUMN_WIDTH, MINUTE_HEIGHT, calculateShiftPosition, calculateOverlaps, getCurrentTimePosition } from '@/lib/utils/timeGrid'
+import { TIME_COLUMN_WIDTH, calculateShiftPosition, calculateOverlaps, getCurrentTimePosition } from '@/lib/utils/timeGrid'
 import React from 'react'
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
+import { ShiftRegistrationActions } from './ShiftRegistrationActions'
 import { hasPermission } from "@/lib/permissions"
 
 interface DayViewProps {
   currentDate: Date
   shifts: Shift[]
+  allShifts?: Shift[]
+  onRegister?: (shiftId: string, role: OperationalRole) => Promise<void>
   brands: Brand[]
   platforms: Platform[]
   users: User[]
@@ -34,6 +37,8 @@ interface DayViewProps {
 export function DayView({
   currentDate,
   shifts,
+  allShifts = shifts,
+  onRegister,
   brands,
   platforms,
   users,
@@ -52,7 +57,8 @@ export function DayView({
   const getBrandName = (brandId: string) => brands.find(b => b.id === brandId)?.name || 'Unknown'
   const getPlatformName = (platformId: string) => platforms.find(p => p.id === platformId)?.name || 'Unknown'
 
-  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const firstHour = Math.min(8, ...dayShifts.map(shift => Number(shift.start_time.slice(0,2))));
+  const hours = Array.from({ length: 24 - firstHour }, (_, i) => i + firstHour);
   const today = new Date();
   const isToday = format(today, 'yyyy-MM-dd') === dateStr;
   const layouts = calculateOverlaps(dayShifts);
@@ -73,9 +79,9 @@ export function DayView({
               <div
                 key={`time-${hour}`}
                 className="relative text-right pr-2"
-                style={{ height: 60 * MINUTE_HEIGHT }}
+                style={{ height: 36 }}
               >
-                <span className="text-[10px] text-muted-foreground font-medium absolute top-[-7px] right-2 bg-background px-1">
+                <span className="text-[10px] text-muted-foreground font-medium absolute top-0 right-2 bg-background px-1">
                   {hour.toString().padStart(2, '0')}:00
                 </span>
               </div>
@@ -88,18 +94,18 @@ export function DayView({
               <div
                 key={`line-${hour}`}
                 className="w-full border-t border-border/40"
-                style={{ height: 60 * MINUTE_HEIGHT }}
+                style={{ height: 36 }}
               />
             ))}
           </div>
 
           {/* Day Column */}
           <div className="flex-1 relative bg-background z-10">
-            {isToday && (
+            {isToday && today.getHours() >= firstHour && (
               <div
                 className="absolute w-full z-20 pointer-events-none border-t-[1.5px] border-primary"
                 style={{
-                  top: getCurrentTimePosition(today),
+                  top: getCurrentTimePosition(today) / 2 - firstHour * 36,
                 }}
               >
                 <div className="absolute -top-1.5 -left-1 w-3 h-3 rounded-full bg-primary ring-2 ring-background"></div>
@@ -143,8 +149,8 @@ export function DayView({
                   key={shift.id}
                   className="absolute z-10"
                   style={{
-                    top: pos.top,
-                    height: pos.height,
+                    top: pos.top / 2 - firstHour * 36,
+                    height: pos.height / 2,
                     left: 'left' in pos ? pos.left : '0%',
                     width: 'width' in pos ? pos.width : '100%',
                     paddingLeft: '4px',
@@ -223,6 +229,7 @@ export function DayView({
                           </div>
                         )
                       })()}
+                      {onRegister && <div className="pointer-events-auto relative z-30 mt-auto"><ShiftRegistrationActions compact shift={shift} allShifts={allShifts} currentUser={currentUser} registrations={registrations} onRegister={role => onRegister(shift.id, role)} /></div>}
                     </div>
                   </div>
                 </div>
@@ -272,7 +279,7 @@ export function DayView({
                     <UserIcon className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
                     <span className="text-muted-foreground w-16 shrink-0 font-medium">{t('host')}:</span>
                     <div className="flex flex-wrap gap-1">
-                      {resolveStaffingLabelsForRole(shift, registrations, users, 'host', t).map(lbl => (
+                      {resolveStaffingLabelsForRole(shift, registrations.filter(row => row.shift_id === shift.id), users, 'host', t).map(lbl => (
                         <span key={lbl.id} className={`font-medium ${lbl.isUnassigned ? 'text-muted-foreground italic' : 'text-foreground'}`}>
                           {lbl.name}
                         </span>
@@ -316,6 +323,7 @@ export function DayView({
                 })()}
               </div>
               </button>
+              {onRegister && <div className="mt-3"><ShiftRegistrationActions shift={shift} allShifts={allShifts} currentUser={currentUser} registrations={registrations} onRegister={role => onRegister(shift.id, role)} /></div>}
             </div>
           ))
         )}
