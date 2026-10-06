@@ -285,7 +285,7 @@ export function RegistrationRequestDetailPanel({
               <div>Ghi chú / Lý do: <span>{registration.review_notes}</span></div>
             )}
             <div className="text-slate-500 pt-1 border-t border-slate-300">
-              Quy tắc toàn vẹn: Đơn hủy không chiếm định mức nhân sự đã chốt (isStaffedRegistration = false).
+              Quy tắc toàn vẹn: Đơn hủy không chiếm định mức nhân sự đã chốt.
             </div>
           </div>
         </div>

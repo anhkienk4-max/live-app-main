@@ -116,7 +116,7 @@ export function RegistrationRejectDialog({
               </Badge>
             </div>
             <p className="text-[11px] leading-relaxed text-rose-800">
-              Đơn đăng ký sẽ chuyển sang trạng thái <code>rejected</code> và ghi nhận lý do vào sổ kiểm toán (AuditTrail & review_notes). Vị trí {registration.operational_role.toUpperCase()} trong ca trực sẽ tiếp tục mở cho ứng viên khác.
+              Đơn đăng ký sẽ bị từ chối và ghi nhận lý do. Vị trí {registration.operational_role.toUpperCase()} trong ca trực sẽ tiếp tục mở cho ứng viên khác.
             </p>
           </div>
 

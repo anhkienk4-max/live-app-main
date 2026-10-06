@@ -120,7 +120,7 @@ export function RegistrationApproveDialog({
               <span className="font-mono text-emerald-700">{afterConfirmed} / {required} nhân sự</span>
             </div>
             <p className="text-[11px] text-emerald-800/90 leading-relaxed pt-1">
-              Phê duyệt đơn này sẽ chuyển trạng thái đăng ký thành <code>approved</code>. Bản ghi ShiftRegistration đóng vai trò là căn cứ phân bổ nhân sự chính thức trực tiếp trên ca trực.
+              Phê duyệt đơn này sẽ xếp nhân sự vào ca trực chính thức.
             </p>
           </div>
 
