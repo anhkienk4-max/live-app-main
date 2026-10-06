@@ -454,9 +454,11 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     : 0
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
+      <header><h2 className="text-xl font-semibold">{t('importInput')}</h2><p className="mt-1 text-sm text-muted-foreground">{t('reviewBeforeImport')}</p></header>
+      <ol className="grid grid-cols-2 gap-2 rounded-lg border bg-card p-3 sm:grid-cols-4" aria-label={t('importInput')}>{['Nguồn dữ liệu','Kiểm tra dữ liệu','Xác nhận nhập','Kết quả'].map((label,index)=>{const current=completedImport ? 3 : batch && busy ? 2 : result ? 1 : 0;return <li key={label} aria-current={index===current?'step':undefined} className={`flex items-center gap-2 text-xs ${index===current?'font-semibold text-primary':'text-muted-foreground'}`}><span className={`flex h-6 w-6 items-center justify-center rounded-full border ${index===current?'border-primary bg-primary/5':''}`}>{index+1}</span>{label}</li>})}</ol>
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="border-2 border-dashed border-slate-200 hover:border-slate-300 transition-colors bg-slate-50/40 shadow-none">
+        <Card className="border border-dashed border-slate-200 bg-white shadow-none">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base text-slate-800">
               <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
@@ -666,6 +668,7 @@ function ImportCompletionCard({ completed, counts, t }: { completed: CompletedIm
   const warningRows = completed.rows.filter(row => row.status === 'warning')
   const notImportedRows = completed.rows.filter(isNotImportedResultRow)
 
+  const duplicateRows = notImportedRows.filter(row => row.status === 'duplicate_skipped')
   const validationErrors = notImportedRows.filter(row => row.status === 'validation_failed')
   const retryableErrors = notImportedRows.filter(row => row.status === 'retryable')
 
@@ -679,7 +682,7 @@ function ImportCompletionCard({ completed, counts, t }: { completed: CompletedIm
   const borderClass = state === 'SUCCESS' ? 'border-emerald-200' : state === 'PARTIAL' ? 'border-amber-200' : 'border-red-200'
   const headerClass = state === 'SUCCESS' ? 'bg-emerald-50/60 text-emerald-950' : state === 'PARTIAL' ? 'bg-amber-50/60 text-amber-950' : 'bg-red-50/60 text-red-950'
 
-  const titleText = state === 'SUCCESS'
+  const titleText = completed.batch.status === 'failed' ? t('importNotCompleted') : completed.batch.status === 'cancelled' ? t('cancelled') : state === 'SUCCESS'
     ? t('importCompleted')
     : state === 'PARTIAL'
       ? t('importPartialSuccess', { imported: persistedCount, attention: attention })
@@ -701,6 +704,8 @@ function ImportCompletionCard({ completed, counts, t }: { completed: CompletedIm
         <ImportSummary counts={counts} t={t} persistedCount={persistedCount} />
 
         {persistedCount === 0 && <p className="text-sm text-muted-foreground">{t('importNothingPersisted')}</p>}
+        {notImportedRows.length > 0 && <section data-testid="schedule-import-not-imported-rows" className="space-y-3"><h3 className="text-sm font-semibold">{t('notImported')} ({notImportedRows.length})</h3>{duplicateRows.length > 0 && <details className="overflow-hidden rounded-lg border"><summary className="cursor-pointer bg-muted/30 px-3 py-2 text-sm font-medium">{t('importDuplicateSkipped')} ({duplicateRows.length})</summary><div className="max-h-[300px] overflow-auto"><table className="w-full text-left text-xs"><thead><tr><th className="p-2">{t('importSourceRow')}</th><th className="p-2">{t('shiftDetail')}</th><th className="p-2">{t('reason')}</th></tr></thead><tbody>{duplicateRows.map(row=><tr key={row.id} className="border-t"><td className="p-2">{row.source_row_number}</td><td className="p-2">{row.normalized_values.title || row.normalized_values.brand_name}<p className="text-muted-foreground">{row.normalized_values.date} · {row.normalized_values.start_time} – {row.normalized_values.end_time}</p>{row.duplicate_of_shift_id && <p>{row.duplicate_of_shift_id}</p>}</td><td className="p-2">{row.normalized_values.warnings.join('; ') || t('importDuplicate')}</td></tr>)}</tbody></table></div></details>}</section>}
+
 
         {(validationErrors.length > 0 || retryableErrors.length > 0 || warningRows.length > 0) && (
           <div className="space-y-4">
