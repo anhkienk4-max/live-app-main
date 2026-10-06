@@ -3,14 +3,15 @@
 import * as React from 'react'
 import Image from 'next/image'
 import { Shift, Brand, Platform, Campaign, User, DashboardUpdate, OperationalRole, ShiftRegistration, Report } from '@/lib/types/database.types'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { LiveOperationsConsole } from './LiveOperationsConsole'
+import { PageLoadError } from '@/components/ui/page-load-error'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { dashboardUpdateService, isStaffedRegistration, reportService } from '@/lib/services/dataService'
 import { format, parseISO } from 'date-fns'
-import { Clock, DollarSign, TrendingUp, Users, ExternalLink, Camera, Plus, Upload, Trash2 } from 'lucide-react'
+import { Clock, Camera, Plus, Upload, Trash2 } from 'lucide-react'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
 import { DashboardUpdateModal } from './DashboardUpdateModal'
@@ -29,6 +30,8 @@ import { ShiftLifecycleActions } from '@/components/features/shifts/ShiftLifecyc
 
 interface LiveSessionModalProps {
   open: boolean
+  inline?: boolean
+  refreshVersion?: number
   onOpenChange: (open: boolean) => void
   shift: Shift
   brands: Brand[]
@@ -39,22 +42,25 @@ interface LiveSessionModalProps {
   onUpdate: () => void
 }
 
-export function LiveSessionModal({ 
-  open, 
-  onOpenChange, 
-  shift, 
-  brands, 
-  platforms, 
-  campaigns, 
-  users, 
+export function LiveSessionModal({
+  open,
+  inline = false,
+  refreshVersion = 0,
+  onOpenChange,
+  shift,
+  brands,
+  platforms,
+  campaigns,
+  users,
   registrations,
-  onUpdate 
+  onUpdate
 }: LiveSessionModalProps) {
   const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
   const { toast } = useToast()
   const [updates, setUpdates] = React.useState<DashboardUpdate[]>([])
   const [loading, setLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<unknown>(null)
   const [showUpdate, setShowUpdate] = React.useState(false)
   const [removeTarget, setRemoveTarget] = React.useState<DashboardUpdate | null>(null)
   const [report, setReport] = React.useState<Report | null>(null)
@@ -66,23 +72,22 @@ export function LiveSessionModal({
 
   const loadUpdates = React.useCallback(async () => {
     setLoading(true)
-    const data = await dashboardUpdateService.getByShift(shift.id)
-    setUpdates(data)
-    setLoading(false)
+    setLoadError(null)
+    try {
+      const [data, loadedReport] = await Promise.all([dashboardUpdateService.getByShift(shift.id), reportService.getByShift(shift.id)])
+      setUpdates(data)
+      setReport(loadedReport)
+    } catch (error) { setLoadError(error) } finally { setLoading(false) }
   }, [shift.id])
-
-  const loadReport = React.useCallback(async () => {
-    setReport(await reportService.getByShift(shift.id))
-  }, [shift.id])
+  const loadReport = loadUpdates
 
   React.useEffect(() => {
     if (!open) return
     const frame = requestAnimationFrame(() => {
       void loadUpdates()
-      void loadReport()
     })
     return () => cancelAnimationFrame(frame)
-  }, [loadReport, loadUpdates, open])
+  }, [loadReport, loadUpdates, open, refreshVersion])
 
   const getBrandName = (id: string) => brands.find((b: Brand) => b.id === id)?.name || 'Unknown'
   const getBrandColor = (id: string) => brands.find((b: Brand) => b.id === id)?.color || '#2563EB'
@@ -99,12 +104,8 @@ export function LiveSessionModal({
   }
   const statusLabel = shift.status === 'live' ? t('liveStatus') : t(shift.status)
 
-  const orderedUpdates = [...updates].sort((left, right) => left.time.localeCompare(right.time))
-  const visibleUpdates = updates.slice((snapshotPage - 1) * snapshotPageSize, snapshotPage * snapshotPageSize)
-  const latestUpdate = orderedUpdates.length > 0 ? orderedUpdates[orderedUpdates.length - 1] : null
-  const totalRevenue = latestUpdate?.revenue || 0
-  const totalOrders = latestUpdate?.orders || 0
-  const peakViewers = Math.max(...updates.map(u => u.peak_viewers), 0)
+  const safePage = Math.min(snapshotPage, Math.max(1, Math.ceil(updates.length / snapshotPageSize)))
+  const visibleUpdates = [...updates].sort((a,b) => b.time.localeCompare(a.time)).slice((safePage - 1) * snapshotPageSize, safePage * snapshotPageSize)
   const removeImpact: DeletionImpact | null = removeTarget ? {
     entity_type: 'live_snapshot',
     entity_id: removeTarget.id,
@@ -128,134 +129,17 @@ export function LiveSessionModal({
     }
   }
 
-  return (<>
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="full" className="h-auto overflow-y-auto sm:h-[92vh]">
-        <DialogHeader>
-          <div className="flex flex-wrap items-start justify-between gap-3 pr-8">
-            <div>
-              <DialogTitle className="text-2xl">{getBrandName(shift.brand_id)} - Live Session</DialogTitle>
-              <div className="text-sm text-gray-600 mt-1">{format(new Date(`${shift.date}T00:00:00`), 'MMMM d, yyyy')} • {formatShiftTimeRange(shift)}</div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={shift.status === 'live' ? 'destructive' : 'secondary'} className={shift.status === 'live' ? 'animate-pulse' : ''}>
-                  {shift.status === 'live' && <span className="inline-block w-2 h-2 bg-white rounded-full mr-2 animate-ping"></span>}
-                  {statusLabel}
-                </Badge>
-                <ShiftLifecycleActions shift={shift} onSuccess={onUpdate} />
-                {['preparing', 'live', 'paused'].includes(shift.status) && currentUser && hasPermission(currentUser, 'shifts.edit') && (
-                  <>
-                    <Button size="sm" onClick={() => setShowUpdate(true)} data-testid={`open-live-dashboard-update-${shift.id}`}>
-                      <Plus className="mr-2 h-4 w-4" />Add Update
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => setShowUpdate(true)}>
-                      <Upload className="mr-2 h-4 w-4" />Upload Snapshot
-                    </Button>
-                  </>
-                )}
-                {currentUser && hasPermission(currentUser, 'reports.submit') && (
-                  report ? (
-                    <Button size="sm" variant="outline" onClick={() => setShowReportDetail(true)}>
-                      {report.status === 'confirmed' ? 'Xem báo cáo' : report.status === 'reopened' ? 'Tiếp tục chỉnh sửa' : 'Tiếp tục báo cáo'}
-                    </Button>
-                  ) : (
-                    <Button size="sm" variant="outline" onClick={() => setShowReportForm(true)} data-testid="open-final-report-modal">
-                      Tạo báo cáo
-                    </Button>
-                  )
-                )}
-            </div>
-          </div>
-        </DialogHeader>
-
-        <Tabs defaultValue="overview" className="mt-4">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="updates">Updates ({updates.length})</TabsTrigger>
-            <TabsTrigger value="info">Details</TabsTrigger>
-            <TabsTrigger value="timeline">Timeline</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="overview" className="space-y-6">
-            {/* Live Stats */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm text-gray-600">Revenue</div>
-                      <div className="text-2xl font-bold text-green-600">{formatCurrency(totalRevenue)}</div>
-                    </div>
-                    <DollarSign className="h-8 w-8 text-green-600" />
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm text-gray-600">Orders</div>
-                      <div className="text-2xl font-bold">{totalOrders}</div>
-                    </div>
-                    <TrendingUp className="h-8 w-8 text-blue-600" />
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm text-gray-600">Peak Viewers</div>
-                      <div className="text-2xl font-bold">{peakViewers}</div>
-                    </div>
-                    <Users className="h-8 w-8 text-purple-600" />
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm text-gray-600">Current Viewers</div>
-                      <div className="text-2xl font-bold">{latestUpdate?.current_viewers || 0}</div>
-                    </div>
-                    <Users className="h-8 w-8 text-orange-600" />
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Live Link */}
-            {shift.live_link && (
-              <Card className="border-2" style={{ borderColor: getBrandColor(shift.brand_id) }}>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm text-gray-600 mb-1">Live Stream Link</div>
-                      <div className="font-mono text-sm text-blue-600">{shift.live_link}</div>
-                    </div>
-                    <Button size="sm" onClick={() => window.open(shift.live_link, '_blank')}>
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      Open Live
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Product Notes */}
-            {shift.product_notes && (
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="text-sm text-gray-600 mb-2">Product Notes</div>
-                  <div className="text-sm">{shift.product_notes}</div>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
-
-          <TabsContent value="updates" className="space-y-4">
-            <div className="flex justify-end"><div className="inline-flex rounded-lg border p-1"><Button size="sm" variant={!showAllSnapshotMetrics ? 'secondary' : 'ghost'} onClick={() => setShowAllSnapshotMetrics(false)}>Chỉ số có dữ liệu</Button><Button size="sm" variant={showAllSnapshotMetrics ? 'secondary' : 'ghost'} onClick={() => setShowAllSnapshotMetrics(true)}>Tất cả chỉ số</Button></div></div>
+  const consoleContent = (loadError ? <PageLoadError error={loadError} onRetry={() => void loadUpdates()} /> : <LiveOperationsConsole shift={shift} updates={updates} report={report} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations}
+          loading={loading} onRefresh={() => void loadUpdates()}
+          actions={<>
+            <ShiftLifecycleActions shift={shift} onSuccess={onUpdate} />
+            {['preparing', 'live', 'paused'].includes(shift.status) && currentUser && hasPermission(currentUser, 'shifts.edit') && <>
+              <Button size="sm" onClick={() => setShowUpdate(true)} data-testid={`open-live-dashboard-update-${shift.id}`}><Plus className="mr-2 h-4 w-4" />{t('submitDashboardUpdate')}</Button>
+              <Button size="sm" variant="outline" onClick={() => setShowUpdate(true)}><Upload className="mr-2 h-4 w-4" />{t('uploadScreenshot')}</Button>
+            </>}
+            {currentUser && hasPermission(currentUser, 'reports.submit') && <Button size="sm" variant="outline" data-testid="open-final-report-modal" onClick={() => report ? setShowReportDetail(true) : setShowReportForm(true)}>{report ? t('viewDetails') : t('createFinalReport')}</Button>}
+          </>}
+          snapshots={<div className="space-y-3">            <div className="flex justify-end"><div className="inline-flex rounded-lg border p-1"><Button size="sm" variant={!showAllSnapshotMetrics ? 'secondary' : 'ghost'} onClick={() => setShowAllSnapshotMetrics(false)}>Chỉ số có dữ liệu</Button><Button size="sm" variant={showAllSnapshotMetrics ? 'secondary' : 'ghost'} onClick={() => setShowAllSnapshotMetrics(true)}>Tất cả chỉ số</Button></div></div>
             {loading ? (
               <div className="text-center py-12 text-gray-600">Loading updates...</div>
             ) : updates.length === 0 ? (
@@ -263,28 +147,28 @@ export function LiveSessionModal({
                 <div className="text-center">
                   <Camera className="h-16 w-16 mx-auto mb-4 text-gray-400" />
                   <div className="text-lg font-medium text-gray-600">No Dashboard Updates Yet</div>
-                  <div className="text-sm text-gray-500 mt-2">Updates will appear here as staff submits them every 30 minutes</div>
+                  <div className="text-sm text-gray-500 mt-2">Các cập nhật sẽ xuất hiện sau khi nhân sự gửi dữ liệu.</div>
                 </div>
               </Card>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {visibleUpdates.map((update, index) => (
                   <Card key={update.id}>
-                    <CardContent className="pt-6">
+                    <CardContent className="p-3">
                       <div className="flex items-start justify-between mb-4">
                         <div>
                           <div className="font-semibold">Cập nhật trong phiên live #{(snapshotPage - 1) * snapshotPageSize + index + 1}</div>
                           <div className="text-sm text-gray-600">{format(parseISO(update.time), 'h:mm a')}</div>
                         </div>
-                        <div className="flex flex-wrap gap-2"><Badge variant="outline">Not confirmed</Badge><Badge variant="secondary">{format(parseISO(update.time), 'MMM d')}</Badge>{currentUser && (currentUser.id === update.created_by || currentUser.role === 'admin') && <Button size="icon-sm" variant="ghost" aria-label="Delete live snapshot" title="Delete live snapshot" onClick={() => setRemoveTarget(update)}><Trash2 className="h-4 w-4 text-red-600" /></Button>}</div>
+                        <div className="flex flex-wrap gap-2"><Badge variant="outline">Bản chụp</Badge><Badge variant="secondary">{format(parseISO(update.time), 'MMM d')}</Badge>{currentUser && (currentUser.id === update.created_by || currentUser.role === 'admin') && <Button size="icon-sm" variant="ghost" aria-label="Delete live snapshot" title="Delete live snapshot" onClick={() => setRemoveTarget(update)}><Trash2 className="h-4 w-4 text-red-600" /></Button>}</div>
                       </div>
                       <SnapshotPlatformMetrics update={update} showAll={showAllSnapshotMetrics} />
                       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                        <SnapshotMetric label="Revenue" value={formatCurrency(update.revenue)} />
-                        <SnapshotMetric label="GMV" value={formatCurrency(update.gmv ?? update.revenue)} />
-                        <SnapshotMetric label="Orders" value={update.orders.toLocaleString()} />
-                        <SnapshotMetric label="Current viewers" value={update.current_viewers.toLocaleString()} />
-                        <SnapshotMetric label="Peak viewers" value={update.peak_viewers.toLocaleString()} />
+                        <SnapshotMetric label="Revenue" value={update.revenue == null ? '—' : formatCurrency(update.revenue)} />
+                        <SnapshotMetric label="GMV" value={update.gmv == null ? '—' : formatCurrency(update.gmv)} />
+                        <SnapshotMetric label="Orders" value={update.orders?.toLocaleString() ?? '—'} />
+                        <SnapshotMetric label="Current viewers" value={update.current_viewers?.toLocaleString() ?? '—'} />
+                        <SnapshotMetric label="Peak viewers" value={update.peak_viewers?.toLocaleString() ?? '—'} />
                         <SnapshotMetric label="Total views" value={update.total_views?.toLocaleString() || 'N/A'} />
                         <SnapshotMetric label="Likes / Comments" value={`${update.likes?.toLocaleString() || 'N/A'} / ${update.comments?.toLocaleString() || 'N/A'}`} />
                         <SnapshotMetric label="Shares" value={update.shares?.toLocaleString() || 'N/A'} />
@@ -298,14 +182,12 @@ export function LiveSessionModal({
                     </CardContent>
                   </Card>
                 ))}
-                <HistoryPagination page={snapshotPage} pageSize={snapshotPageSize} total={updates.length} onPageChange={setSnapshotPage} onPageSizeChange={size => { setSnapshotPageSize(size); setSnapshotPage(1) }} />
+                <HistoryPagination page={safePage} pageSize={snapshotPageSize} total={updates.length} onPageChange={setSnapshotPage} onPageSizeChange={size => { setSnapshotPageSize(size); setSnapshotPage(1) }} />
               </div>
             )}
-          </TabsContent>
-
-          <TabsContent value="info" className="space-y-4">
-            <Card>
-              <CardContent className="pt-6">
+</div>}
+          details={<div className="space-y-3">            <Card>
+              <CardContent className="p-3">
                 <div className="grid grid-cols-2 gap-6">
                   <div>
                     <div className="text-sm text-gray-600 mb-1">Brand</div>
@@ -339,7 +221,7 @@ export function LiveSessionModal({
             </Card>
 
             <Card>
-              <CardContent className="pt-6">
+              <CardContent className="p-3">
                 <div className="text-sm font-semibold mb-4">Team</div>
                 <div className="grid grid-cols-2 gap-6">
                   <div>
@@ -357,10 +239,8 @@ export function LiveSessionModal({
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="timeline">
-            <Card><CardContent className="space-y-3 pt-6">
+</div>}
+          timeline={<Card><CardContent className="space-y-3 pt-6">
               {[
                 { id: `created-${shift.id}`, time: shift.created_at, label: t('shiftCreated') },
                 ...updates.map(update => ({ id: update.id, time: update.time, label: t('dashboardUpdateSubmitted') })),
@@ -371,11 +251,10 @@ export function LiveSessionModal({
                   <span className="text-xs text-muted-foreground">{format(new Date(item.time), 'dd/MM/yyyy HH:mm')}</span>
                 </div>
               ))}
-            </CardContent></Card>
-          </TabsContent>
-        </Tabs>
-      </DialogContent>
-    </Dialog>
+            </CardContent></Card>}
+        />)
+  return (<>
+    {inline ? consoleContent : <Dialog open={open} onOpenChange={onOpenChange}><DialogContent size="full" className="overflow-y-auto gap-0 p-0 bg-slate-50"><DialogTitle className="sr-only">{shift.title || getBrandName(shift.brand_id)} · {t('liveMonitor')}</DialogTitle>{consoleContent}</DialogContent></Dialog>}
     {showUpdate && <DashboardUpdateModal open shift={shift} platformName={platforms.find(platform => platform.id === shift.platform_id)?.name} onOpenChange={setShowUpdate} onSuccess={() => { void loadUpdates(); onUpdate() }} />}
     {showReportForm && <ReportFormModal open onOpenChange={setShowReportForm} completedShifts={[shift]} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onSuccess={() => { setShowReportForm(false); void loadReport(); onUpdate() }} />}
     {showReportDetail && report && <ReportDetailModal open report={report} shift={shift} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onOpenChange={setShowReportDetail} onUpdated={() => { setShowReportDetail(false); void loadReport(); onUpdate() }} />}
