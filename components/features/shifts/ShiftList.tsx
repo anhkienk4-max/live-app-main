@@ -1,9 +1,9 @@
 'use client'
 
 import * as React from 'react'
-import { shiftService, brandService, platformService, campaignService, userService } from '@/lib/services/dataService'
+import { shiftService, brandService, platformService, campaignService, userService, shiftRegistrationService, getShiftRoleCapacities } from '@/lib/services/dataService'
 import { templateService } from '@/lib/services/templateService'
-import { Shift, Brand, Platform, Campaign, User, DeletionImpact } from '@/lib/types/database.types'
+import { Shift, Brand, Platform, Campaign, User, DeletionImpact, ShiftRegistration } from '@/lib/types/database.types'
 import { formatShiftTimeRange, ShiftTemplate } from '@/lib/utils/shiftUtils'
 import { ActionBar } from '@/components/ui/action-bar'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
@@ -23,6 +23,7 @@ import { format } from 'date-fns'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
+import { PageLoadError } from '@/components/ui/page-load-error'
 
 export function ShiftList() {
   const [shifts, setShifts] = React.useState<Shift[]>([])
@@ -32,6 +33,8 @@ export function ShiftList() {
   const [users, setUsers] = React.useState<User[]>([])
   const [templates, setTemplates] = React.useState<ShiftTemplate[]>([])
   const [loading, setLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<unknown>(null)
+  const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   
   const [editingShift, setEditingShift] = React.useState<Shift | null>(null)
   const [detailShift, setDetailShift] = React.useState<Shift | null>(null)
@@ -47,20 +50,23 @@ export function ShiftList() {
   const [showBulkActions, setShowBulkActions] = React.useState(false)
   
   const { toast } = useToast()
-  const { t } = useTranslation()
+  const { t, translate } = useTranslation()
   const { currentUser } = useCurrentUser()
   const canEdit = Boolean(currentUser && hasPermission(currentUser, 'shifts.edit'))
   const canDelete = Boolean(currentUser && hasPermission(currentUser, 'shifts.delete'))
 
   const loadData = React.useCallback(async () => {
     setLoading(true)
-    const [shiftsData, brandsData, platformsData, campaignsData, usersData, templatesData] = await Promise.all([
+    setLoadError(null)
+    try {
+    const [shiftsData, brandsData, platformsData, campaignsData, usersData, templatesData, registrationData] = await Promise.all([
       shiftService.getAll(),
       brandService.getAll(),
       platformService.getAll(),
       campaignService.getAll(),
       userService.getAll(),
       templateService.getAll(),
+      shiftRegistrationService.getAll(),
     ])
     setShifts(shiftsData)
     setBrands(brandsData)
@@ -68,7 +74,8 @@ export function ShiftList() {
     setCampaigns(campaignsData)
     setUsers(usersData)
     setTemplates(templatesData)
-    setLoading(false)
+    setRegistrations(registrationData)
+    } catch (error) { setLoadError(error) } finally { setLoading(false) }
   }, [])
 
   React.useEffect(() => {
@@ -110,6 +117,7 @@ export function ShiftList() {
   }
 
   const handleEdit = (shift: Shift) => {
+    if (!canEdit) return
     setEditingShift(shift)
     setDuplicateShift(null)
     setReopenDetailAfterEdit(false)
@@ -117,6 +125,7 @@ export function ShiftList() {
   }
 
   const handleDuplicate = (shift: Shift) => {
+    if (!canEdit) return
     setDuplicateShift(shift)
     setEditingShift(null)
     setReopenDetailAfterEdit(false)
@@ -124,6 +133,7 @@ export function ShiftList() {
   }
 
   const handleCreate = () => {
+    if (!canEdit) return
     setEditingShift(null)
     setDuplicateShift(null)
     setReopenDetailAfterEdit(false)
@@ -180,41 +190,54 @@ export function ShiftList() {
       )
     },
     {
-      header: 'Date',
+      header: t('shiftDetail'),
+      accessor: row => <button className="text-left" onClick={() => setDetailShift(row)}><span className="block font-semibold text-blue-700">{row.title || row.id}</span><span className="block text-xs text-muted-foreground">{row.id}</span></button>,
+    },
+    {
+      header: t('date'),
       accessor: 'date',
       cell: (value) => format(new Date(String(value)), 'MMM d, yyyy')
     },
     {
-      header: 'Time',
+      header: t('time'),
       accessor: (row) => formatShiftTimeRange(row)
     },
     {
-      header: 'Brand',
+      header: t('brand'),
       accessor: 'brand_id',
       cell: (value) => getBrandName(typeof value === 'string' ? value : '')
     },
     {
-      header: 'Platform',
+      header: t('platform'),
       accessor: 'platform_id',
       cell: (value) => getPlatformName(typeof value === 'string' ? value : '')
     },
     {
-      header: 'Host',
+      header: t('studio'), accessor: row => row.studio || '—'
+    },
+    {
+      header: t('campaign'), accessor: row => campaigns.find(item => item.id === row.campaign_id)?.name || '—'
+    },
+    {
+      header: t('staffing'), accessor: row => <div className="space-y-1 text-xs">{getShiftRoleCapacities(row, registrations).map(capacity => <div key={capacity.role} className={capacity.remaining ? 'text-amber-700' : 'text-emerald-700'}>{t(capacity.role)}: {capacity.approved}/{capacity.required}</div>)}</div>
+    },
+    {
+      header: t('host'),
       accessor: 'host_id',
       cell: (value) => getUserName(typeof value === 'string' ? value : undefined)
     },
     {
-      header: 'Support',
+      header: t('support'),
       accessor: 'support_id',
       cell: (value) => getUserName(typeof value === 'string' ? value : undefined)
     },
     {
-      header: 'Technical',
+      header: t('technical'),
       accessor: 'technical_id',
       cell: (value) => getUserName(typeof value === 'string' ? value : undefined)
     },
     {
-      header: 'Status',
+      header: t('status'),
       accessor: 'status',
       cell: (value) => {
         const variants: Record<string, 'default' | 'secondary' | 'destructive'> = {
@@ -224,11 +247,11 @@ export function ShiftList() {
           cancelled: 'secondary'
         }
         const status = String(value)
-        return <Badge variant={variants[status] || 'secondary'} className="capitalize">{status}</Badge>
+        return <Badge variant={variants[status] || 'secondary'} className="capitalize">{translate(status === 'live' ? 'liveStatus' : status)}</Badge>
       }
     },
     {
-      header: 'Actions',
+      header: t('actions'),
       accessor: (row) => (
         <ActionBar
           iconOnly
@@ -259,14 +282,15 @@ export function ShiftList() {
     }
   ]
 
-  if (loading) return <div className="text-center py-12">Loading shifts...</div>
+  if (loading) return <div className="text-center py-12">{t('loading')}</div>
+  if (loadError) return <PageLoadError error={loadError} onRetry={() => void loadData()} />
 
   return (
     <>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white p-4 mb-4">
         <div>
-          <h2 className="text-2xl font-bold">Shift Management</h2>
-          <p className="text-gray-600 mt-1">Manage livestream schedules and assignments</p>
+          <h2 className="text-lg font-semibold">{t('totalShifts')}</h2>
+          <p className="text-xs text-muted-foreground mt-1">{shifts.length} {t('totalShifts')}</p>
         </div>
         <div className="flex gap-2">
           <Button className="hidden sm:flex" variant="outline" onClick={() => setIsImportExportOpen(true)}>
@@ -277,7 +301,7 @@ export function ShiftList() {
             breakpoint="sm"
             actions={[{ key: 'import', label: 'Import/Export', icon: <Upload className="h-4 w-4" />, onClick: () => setIsImportExportOpen(true) }]}
           />
-          <Button onClick={handleCreate} data-testid="add-shift-btn">
+          <Button disabled={!canEdit} onClick={handleCreate} data-testid="add-shift-btn">
             <Plus className="h-4 w-4 mr-2" />
             <span className="hidden sm:inline">Add Shift</span>
             <span className="sm:hidden">Add</span>
@@ -298,8 +322,9 @@ export function ShiftList() {
       <DataTable
         data={shifts}
         columns={columns}
-        searchPlaceholder="Search shifts..."
-        emptyMessage="No shifts found. Create your first shift!"
+        searchPlaceholder={t('search')}
+        searchableText={row => [row.title, row.id, row.date, row.studio, getBrandName(row.brand_id), getPlatformName(row.platform_id), campaigns.find(item => item.id === row.campaign_id)?.name].filter(Boolean).join(' ')}
+        emptyMessage={t('noData')}
       />
 
       <ShiftFormDialog

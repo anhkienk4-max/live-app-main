@@ -550,7 +550,7 @@ export function ShiftDetailModal({
   const myRegistration = React.useMemo(() => registrations.find(r => r.user_id === currentUser?.id && r.shift_id === shift.id && isStaffedRegistration(r)), [registrations, currentUser?.id, shift.id])
   const registrationContext = allRegistrations ?? registrations
   const canRequestSwap = Boolean(myRegistration && shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at)
-  const dateTime = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time)
+  const dateTime = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
   const fallback = t('notProvided')
   const brand = brands.find(item => item.id === shift.brand_id)
   const platform = platforms.find(item => item.id === shift.platform_id)
@@ -804,7 +804,13 @@ export function ShiftDetailModal({
                 </div>
               </TabsContent>
 
-              <TabsContent value="details" className="space-y-6 p-4 sm:p-6">
+              <TabsContent value="details" className="space-y-4 p-4 sm:p-6">
+                <dl className="grid gap-3 rounded-lg border bg-white p-4 text-xs sm:grid-cols-3" data-testid="shift-production-provenance">{[
+                  ['Mã ca', shift.id], ['Múi giờ', shift.timezone], ['Ngày kết thúc', shift.end_date],
+                  ['Thời lượng', dateTime?.valid ? dateTime.durationMinutes + ' phút' : undefined],
+                  ['Chế độ trạng thái', shift.status_mode], ['Lô nhập', shift.import_batch_id],
+                  ['Phiên bản', shift.version], ['Bắt đầu (UTC)', shift.start_at], ['Kết thúc (UTC)', shift.end_at],
+                ].map(([label,value]) => <div key={label}><dt className="text-slate-500">{label}</dt><dd className="mt-1 break-words font-medium">{value ?? '—'}</dd></div>)}</dl>
                  <section>
                    <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">{t('additionalInfo')}</h3>
                    <div className="rounded-lg border bg-card shadow-sm divide-y text-sm">
