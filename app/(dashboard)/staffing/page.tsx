@@ -4,6 +4,7 @@ import * as React from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Users, UserCheck } from 'lucide-react'
 import { PageShell, PageHeader, PageHeaderContent } from '@/components/ui/archetypes'
+import { StaffingWorkspace } from '@/components/features/calendar/StaffingWorkspace'
 import { ShiftRegistrationBoard } from '@/components/features/calendar/ShiftRegistrationBoard'
 import { RegistrationReviewWorkspace } from '@/components/features/registration'
 import { hasPermission } from '@/lib/permissions'
@@ -72,7 +73,7 @@ function StaffingContent() {
       {activeTab === 'registration' ? (
         <RegistrationReviewWorkspace />
       ) : (
-        <ShiftRegistrationBoard mode="open" />
+        canReview ? <StaffingWorkspace /> : <ShiftRegistrationBoard mode="open" />
       )}
     </PageShell>
   )
