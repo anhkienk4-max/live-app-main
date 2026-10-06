@@ -193,11 +193,11 @@ export default function SettingsPage() {
     ? mockVisionAvailable
     : false
 
-  return <PageShell archetype="configuration" className="min-w-0 space-y-6" data-testid="settings-page">
+  return <PageShell archetype="configuration" className="min-w-0 space-y-4" data-testid="settings-page">
     <PageHeader>
       <PageHeaderContent>
-        <h1 className="text-3xl font-bold">{t('settings')}</h1>
-        <p className="text-muted-foreground">{t('settingsSubtitle')}</p>
+        <h1 className="text-xl font-semibold">{t('settings')}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{t('settingsSubtitle')}</p>
       </PageHeaderContent>
     </PageHeader>
 
@@ -207,18 +207,18 @@ export default function SettingsPage() {
 
     <Tabs value={activeTab} onValueChange={value => changeTab(value as SettingsTab)} className="min-w-0">
       <div className="max-w-full overflow-x-auto pb-1">
-        <TabsList className="h-auto w-max flex-nowrap">
+        <TabsList className="h-auto w-max flex-nowrap rounded-lg border bg-muted/40 p-1">
           <TabsTrigger className="flex-none px-4 py-1.5" value="personal">{t('personalSettings')}{personalDirty ? ' •' : ''}</TabsTrigger>
           {isLeader && <TabsTrigger className="flex-none px-4 py-1.5" value="team">{t('teamSettings')}{operationalDirty ? ' •' : ''}</TabsTrigger>}
-          {isAdmin && <TabsTrigger className="flex-none px-4 py-1.5" value="system">{t('systemSettings')}{systemDirty ? ' •' : ''}</TabsTrigger>}
-          {isAdmin && <TabsTrigger className="flex-none px-4 py-1.5" value="integrations">{t('integrations')}</TabsTrigger>}
+          {isLeader && <TabsTrigger disabled={!isAdmin} title={!isAdmin?t('permissionDenied'):undefined} className="flex-none px-4 py-1.5" value="system">{t('systemSettings')}{systemDirty ? ' •' : ''}</TabsTrigger>}
+          {isLeader && <TabsTrigger disabled={!isAdmin} title={!isAdmin?t('permissionDenied'):undefined} className="flex-none px-4 py-1.5" value="integrations">{t('integrations')}</TabsTrigger>}
           {isAdmin && <TabsTrigger className="flex-none px-4 py-1.5" value="audit">{t('audit')}</TabsTrigger>}
         </TabsList>
       </div>
 
       <TabsContent value="personal">
         <form onSubmit={savePersonal}>
-          <Card><CardHeader><CardTitle className="flex items-center gap-2"><UserCog className="h-5 w-5" />{t('personalSettings')}</CardTitle><CardDescription>{currentUser.email}</CardDescription></CardHeader><CardContent className="space-y-5">
+          <Card><CardHeader><CardTitle className="flex items-center gap-2"><UserCog className="h-5 w-5" />{t('personalSettings')}</CardTitle><CardDescription>{currentUser.email}</CardDescription></CardHeader><CardContent className="space-y-4">
             <div className="grid gap-4 md:grid-cols-3">
               <SettingSelect label={t('language')} value={personal.language} options={[{ id: 'en', name: t('english') }, { id: 'vi', name: t('vietnamese') }]} onChange={value => setPersonal(current => current && ({ ...current, language: value as 'en' | 'vi' }))} />
               <SettingSelect label={t('timezone')} value={personal.timezone} options={[{ id: 'Asia/Ho_Chi_Minh', name: 'Asia/Ho_Chi_Minh' }, { id: 'UTC', name: 'UTC' }, { id: 'Asia/Singapore', name: 'Asia/Singapore' }]} onChange={value => setPersonal(current => current && ({ ...current, timezone: value }))} />
@@ -233,7 +233,7 @@ export default function SettingsPage() {
       </TabsContent>
 
       {isLeader && <TabsContent value="team"><form onSubmit={saveOperational}>
-        <Card><CardHeader><CardTitle className="flex items-center gap-2"><SlidersHorizontal className="h-5 w-5" />{t('teamSettings')}</CardTitle><CardDescription>{t('approvalPreferences')}</CardDescription></CardHeader><CardContent className="space-y-5">
+        <Card><CardHeader><CardTitle className="flex items-center gap-2"><SlidersHorizontal className="h-5 w-5" />{t('teamSettings')}</CardTitle><CardDescription>{t('approvalPreferences')}</CardDescription></CardHeader><CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-3">
             <NumberSetting label={`${t('registrationCutoff')} (hours)`} value={operational.registration_cutoff_hours} onChange={value => setOperational(current => current && ({ ...current, registration_cutoff_hours: value }))} />
             <NumberSetting label={`${t('reportReminders')} (hours)`} value={operational.report_reminder_hours} onChange={value => setOperational(current => current && ({ ...current, report_reminder_hours: value }))} />
@@ -250,7 +250,7 @@ export default function SettingsPage() {
       </form></TabsContent>}
 
       {isAdmin && <TabsContent value="system"><form onSubmit={saveSystem}>
-        <Card><CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5" />{t('systemSettings')}</CardTitle><CardDescription>{t('credentialsSafe')}</CardDescription></CardHeader><CardContent className="space-y-6">
+        <Card><CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5" />{t('systemSettings')}</CardTitle><CardDescription>{t('credentialsSafe')}</CardDescription></CardHeader><CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-3">
             <ToggleSetting label={t('exportSettings')} checked={Boolean(system.export_include_metadata)} onChange={checked => setSystem(current => current && ({ ...current, export_include_metadata: checked }))} />
             <ToggleSetting label={t('importSettings')} checked={Boolean(system.import_duplicate_warning)} onChange={checked => setSystem(current => current && ({ ...current, import_duplicate_warning: checked }))} />
@@ -270,7 +270,7 @@ export default function SettingsPage() {
       </form></TabsContent>}
 
       {isAdmin && <TabsContent value="integrations"><form onSubmit={event => void saveSystem(event, 'integrations')}>
-        <Card><CardHeader><CardTitle className="flex items-center gap-2"><Plug className="h-5 w-5" />{t('integrations')}</CardTitle><CardDescription>{t('credentialsSafe')}</CardDescription></CardHeader><CardContent className="space-y-6">
+        <Card><CardHeader><CardTitle className="flex items-center gap-2"><Plug className="h-5 w-5" />{t('integrations')}</CardTitle><CardDescription>{t('credentialsSafe')}</CardDescription></CardHeader><CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-3"><ReadOnlySetting label={t('integrationSettings')} value={String(system.integration_mode)} /><ReadOnlySetting label={t('supabaseStatus')} value={String(system.supabase_connection_status)} /><ReadOnlySetting label={t('ocrConfiguration')} value={String(system.ocr_provider)} /></div>
           <section className="space-y-4 rounded-lg border p-4" data-testid="vision-ocr-admin-settings">
             <div><h3 className="flex items-center gap-2 font-semibold"><Bot className="h-5 w-5" />{t('visionOcrSettings')}</h3><p className="mt-1 text-sm text-muted-foreground">{t('visionOcrSettingsHelp')}</p></div>
@@ -301,7 +301,7 @@ export default function SettingsPage() {
       </form></TabsContent>}
 
       {isAdmin && <TabsContent value="audit"><form onSubmit={event => void saveSystem(event, 'audit')}>
-        <Card><CardHeader><CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5" />{t('audit')}</CardTitle><CardDescription>{t('auditSettings')}</CardDescription></CardHeader><CardContent className="space-y-5"><div className="grid gap-4 md:grid-cols-2"><ToggleSetting label={t('auditEnabled')} checked={Boolean(system.audit_enabled)} onChange={checked => setSystem(current => current && ({ ...current, audit_enabled: checked }))} /><NumberSetting label={t('auditRetentionDays')} min={1} value={finiteNumber(system.audit_retention_days, 90)} onChange={value => setSystem(current => current && ({ ...current, audit_retention_days: value }))} /></div><div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">{t('auditMockNotice')}</div><Actions dirty={systemDirty} saving={savingTab === 'audit'} onReset={() => setSystem(savedSystem)} /></CardContent></Card>
+        <Card><CardHeader><CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5" />{t('audit')}</CardTitle><CardDescription>{t('auditSettings')}</CardDescription></CardHeader><CardContent className="space-y-4"><div className="grid gap-4 md:grid-cols-2"><ToggleSetting label={t('auditEnabled')} checked={Boolean(system.audit_enabled)} onChange={checked => setSystem(current => current && ({ ...current, audit_enabled: checked }))} /><NumberSetting label={t('auditRetentionDays')} min={1} value={finiteNumber(system.audit_retention_days, 90)} onChange={value => setSystem(current => current && ({ ...current, audit_retention_days: value }))} /></div><div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">{t('auditMockNotice')}</div><Actions dirty={systemDirty} saving={savingTab === 'audit'} onReset={() => setSystem(savedSystem)} /></CardContent></Card>
       </form></TabsContent>}
     </Tabs>
   </PageShell>
