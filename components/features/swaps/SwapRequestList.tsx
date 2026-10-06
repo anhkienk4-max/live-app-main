@@ -35,6 +35,7 @@ import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
 import { SwapDetailModal } from './SwapDetailModal'
 import { SwapRequestFormModal } from './SwapRequestFormModal'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
+import { PageLoadError } from '@/components/ui/page-load-error'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 
 type Filters = { start: string; end: string; requesterIds: string[]; brandIds: string[]; campaignIds: string[]; roles: OperationalRole[]; statuses: string[] }
@@ -56,15 +57,19 @@ export function SwapRequestList() {
   const [selectedSwap, setSelectedSwap] = React.useState<SwapRequest | null>(null)
   const [myShiftIds, setMyShiftIds] = React.useState<Set<string>>(new Set())
   const [loading, setLoading] = React.useState(true)
+  const [loadError,setLoadError] = React.useState<string | null>(null)
   const [cancelTarget, setCancelTarget] = React.useState<SwapRequest | null>(null)
   const [page, setPage] = React.useState(1)
   const [pageSize, setPageSize] = React.useState(10)
 
   const loadData = React.useCallback(async () => {
+    setLoadError(null)
+    try {
     const [loadedSwaps, loadedShifts, loadedUsers, loadedBrands, loadedPlatforms, loadedCampaigns] = await Promise.all([
       swapRequestService.getAll(), shiftService.getAll(), userService.getAll(), brandService.getAll(), platformService.getAll(), campaignService.getAll(),
     ])
-    setSwaps(loadedSwaps); setShifts(loadedShifts); setUsers(loadedUsers); setBrands(loadedBrands); setPlatforms(loadedPlatforms); setCampaigns(loadedCampaigns); setLoading(false)
+    setSwaps(loadedSwaps); setShifts(loadedShifts); setUsers(loadedUsers); setBrands(loadedBrands); setPlatforms(loadedPlatforms); setCampaigns(loadedCampaigns)
+    } catch(error) {setLoadError(error instanceof Error ? error.message : 'Không thể tải yêu cầu đổi ca')} finally {setLoading(false)}
   }, [])
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => { void loadData() })
@@ -97,7 +102,8 @@ export function SwapRequestList() {
     setFilters(next)
     setPage(1)
   }
-  const visibleSwaps = filtered.slice((page - 1) * pageSize, page * pageSize)
+  const safePage = Math.min(page, Math.max(1, Math.ceil(filtered.length / pageSize)))
+  const visibleSwaps = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
   const exportMaps = {
     users: new Map(users.map(user => [user.id, user.full_name])),
     brands: new Map(brands.map(brand => [brand.id, brand.name])),
@@ -142,11 +148,9 @@ export function SwapRequestList() {
 
   if (loading || userLoading) return <div className="py-12 text-center">{t('loading')}</div>
 
-  return <div className="space-y-6">
-    <div className="grid gap-4 sm:grid-cols-4">
-      {SWAP_REQUEST_STATUSES.map(status => <Card key={status}><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">{t(status)}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{filtered.filter(swap => swap.status === status).length}</p></CardContent></Card>)}
-      <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">{t('all')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{filtered.length}</p></CardContent></Card>
-    </div>
+  if (loadError) return <PageLoadError error={new Error(loadError)} onRetry={() => void loadData()} />
+  return <div className="space-y-4">
+    <header className="rounded-lg border bg-card p-4"><div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm"><span>{t('all')}: <strong>{filtered.length}</strong></span>{SWAP_REQUEST_STATUSES.map(status => <span key={status}>{t(status)}: <strong>{filtered.filter(swap => swap.status === status).length}</strong></span>)}</div></header>
 
     <Card><CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><CardTitle>{t('filters')}</CardTitle>{currentUser && hasPermission(currentUser, 'swaps.request') && <Button onClick={() => setShowForm(true)}><Plus className="mr-2 h-4 w-4" />{t('swapsTitle')}</Button>}</div></CardHeader><CardContent className="space-y-4">
       <div className="grid gap-3 md:grid-cols-4">
@@ -183,78 +187,21 @@ export function SwapRequestList() {
       </div>
     </CardContent></Card>
 
-    {filtered.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noSwaps')}</CardContent></Card> : <Card className="overflow-hidden"><CardContent className="p-0"><div className="max-h-[60vh] space-y-3 overflow-auto p-4">{visibleSwaps.map(swap => {
+    {filtered.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noSwaps')}</CardContent></Card> : <Card className="overflow-hidden"><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-muted/40 text-left text-xs text-muted-foreground"><tr>{[t('shiftDetail'),t('requester'),t('replacementStaff'),t('role'),t('status'),t('createdAt'),t('actions')].map(label=><th key={label} className="p-3 font-medium">{label}</th>)}</tr></thead><tbody>{visibleSwaps.map(swap => {
       const shift = shiftById.get(swap.shift_id)
       if (!shift) return null
       const actions = getSwapUiActions(swap, currentUser)
       const statusPresentation = getSwapStatusPresentation(swap.status)
-      const statusTone: Record<string, string> = {
-        warning: 'bg-amber-100 text-amber-800 border-amber-200',
-        info: 'bg-blue-100 text-blue-800 border-blue-200',
-        success: 'bg-green-100 text-green-800 border-green-200',
-        danger: 'bg-red-100 text-red-800 border-red-200',
-        neutral: 'bg-gray-100 text-gray-800 border-gray-200',
-      }
-      
-      const attentionItems = deriveSwapAttention({
-        swapId: swap.id,
-        status: swap.status,
-        actorHasValidAction: actions.showAccept || actions.showCounterpartReject || actions.showApprove || actions.showReviewerReject || actions.showCancel
-      })
-
-      return (
-        <Card key={swap.id} className="overflow-hidden shadow-sm">
-          <CardContent className="p-0">
-            <div className="flex flex-col md:flex-row">
-              <div className="flex-1 p-4 md:border-r space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge className={statusTone[statusPresentation.tone] || statusTone.neutral}>{t(statusPresentation.label)}</Badge>
-                  <Badge variant="outline" className="font-bold tracking-wider text-xs">{(swap.mode || 'replacement').toUpperCase()}</Badge>
-                  <span className="text-xs text-muted-foreground">{format(new Date(swap.created_at), 'dd/MM/yyyy HH:mm')}</span>
-                </div>
-                <div>
-                  <p className="font-semibold text-sm">{nameFor(brands, shift.brand_id)} · {nameFor(platforms, shift.platform_id)}</p>
-                  <p className="text-xs text-muted-foreground">{shift.date} · {formatShiftTimeRange(shift)} · {nameFor(campaigns, shift.campaign_id)}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-3 pt-2 text-sm">
-                  <div>
-                    <span className="text-xs text-muted-foreground block">{t('originalStaff')}</span>
-                    <span className="font-medium">{userName(swap.original_staff_id || swap.requester_id)}</span>
-                    <span className="text-xs text-muted-foreground block">{t(roleFor(swap))}</span>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted-foreground block">{swap.mode === 'exchange' ? t('exchangeWith') : t('replacementStaff')}</span>
-                    <span className="font-medium">{userName(replacementFor(swap) || swap.counterpart_id || '') || '—'}</span>
-                    {swap.mode === 'exchange' && <span className="text-xs text-muted-foreground block">{swap.target_shift_id ? t('targetShift') : '—'}</span>}
-                  </div>
-                </div>
-                {swap.reason && (
-                  <div className="rounded-md bg-muted/50 p-2.5 text-xs text-muted-foreground border mt-2">
-                    {swap.reason}
-                  </div>
-                )}
-              </div>
-
-                <div className="flex w-full flex-col justify-between bg-muted/10 p-4 md:w-64 shrink-0">
-                  <div className="space-y-1 mb-4">
-                    <p className="text-micro font-bold text-muted-foreground uppercase tracking-wider mb-2">{t('actionsAndStatus')}</p>
-                    {attentionItems.length > 0 ? (
-                      <div className="space-y-2 mb-2">
-                        {attentionItems.map(item => <AttentionItem key={item.key} item={item} />)}
-                      </div>
-                    ) : (
-                      <>
-                        {swap.status === 'pending' && <p className="text-xs text-amber-700 font-medium">{t('waitingForParticipant')}</p>}
-                        {swap.status === 'accepted' && <p className="text-xs text-blue-700 font-medium">{t('waitingForReviewer')}</p>}
-                        {swap.status === 'completed' && <p className="text-xs text-green-700 font-medium">{t('completedSuccessfully')}</p>}
-                        {swap.status === 'approved' && <p className="text-xs text-green-700 font-medium">{t('approved')}</p>}
-                        {swap.status === 'rejected' && <p className="text-xs text-red-700 font-medium">{t('rejected')}</p>}
-                        {swap.status === 'cancelled' && <p className="text-xs text-red-700 font-medium">{t('cancelled')}</p>}
-                      </>
-                    )}
-                  </div>
-                  <ActionBar
-                    direction="col"
+      const attentionItems = deriveSwapAttention({swapId:swap.id,status:swap.status,actorHasValidAction:actions.showAccept || actions.showCounterpartReject || actions.showApprove || actions.showReviewerReject || actions.showCancel})
+      return <tr key={swap.id} className="border-t align-top hover:bg-muted/20">
+        <td className="p-3"><button type="button" onClick={()=>setSelectedSwap(swap)} className="text-left font-medium text-primary">{shift.title}</button><p className="text-xs text-muted-foreground">{swap.id}</p><p className="mt-1 text-xs">{shift.date} · {formatShiftTimeRange(shift)}</p><p className="text-xs text-muted-foreground">{shift.studio || '—'} · {nameFor(brands,shift.brand_id)} · {nameFor(platforms,shift.platform_id)}</p><p className="text-xs text-muted-foreground">{nameFor(campaigns,shift.campaign_id)}</p>{swap.reason && <p className="mt-2 max-w-xs text-xs">{swap.reason}</p>}</td>
+        <td className="p-3">{userName(swap.requester_id)}{swap.original_staff_id && swap.original_staff_id !== swap.requester_id && <p className="text-xs text-muted-foreground">{t('originalStaff')}: {userName(swap.original_staff_id)}</p>}</td>
+        <td className="p-3">{userName(replacementFor(swap) || swap.counterpart_id || '')}{swap.mode==='exchange' && <p className="text-xs text-muted-foreground">{t('targetShift')}: {shiftById.get(swap.target_shift_id || '')?.title || swap.target_shift_id || '—'}</p>}</td>
+        <td className="p-3">{t(roleFor(swap))}<p className="text-xs text-muted-foreground">{swap.mode || 'replacement'}</p></td>
+        <td className="p-3"><Badge variant="outline">{t(statusPresentation.label)}</Badge><div className="mt-2 space-y-1">{attentionItems.map(item=><AttentionItem key={item.key} item={item} />)}</div></td>
+        <td className="p-3 whitespace-nowrap text-xs text-muted-foreground">{format(new Date(swap.created_at),'dd/MM/yyyy HH:mm')}</td>
+        <td className="p-3">                  <ActionBar
+                    direction="row"
                     compact
                     collapseAt="md"
                     actions={buildSwapActions(
@@ -276,13 +223,10 @@ export function SwapRequestList() {
                         cancel: t('cancelRegistration'),
                       }
                     )}
-                  />
-                </div>
-            </div>
-          </CardContent>
-        </Card>
-      )
-    })}</div><HistoryPagination page={page} pageSize={pageSize} total={filtered.length} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1) }} /></CardContent></Card>}
+                  /></td>
+      </tr>
+    })}</tbody></table></div><HistoryPagination page={safePage} pageSize={pageSize} total={filtered.length} onPageChange={setPage} onPageSizeChange={size => {setPageSize(size);setPage(1)}} /></CardContent></Card>}
+
 
     {showForm && currentUser && <SwapRequestFormModal open={showForm} onOpenChange={setShowForm} shifts={shifts.filter(shift => shift.status === 'scheduled' && (myShiftIds.has(shift.id) || shift.host_id === currentUser.id || shift.support_id === currentUser.id || shift.technical_id === currentUser.id))} users={users} brands={brands} platforms={platforms} onSuccess={() => { void loadData(); setShowForm(false) }} />}
     {selectedSwap && <SwapDetailModal open swap={selectedSwap} shift={shiftById.get(selectedSwap.shift_id)!} requester={users.find(user => user.id === selectedSwap.requester_id)!} newHost={users.find(user => user.id === replacementFor(selectedSwap))} brands={brands} platforms={platforms} showParticipantActions={getSwapUiActions(selectedSwap, currentUser).showAccept} showReviewerActions={getSwapUiActions(selectedSwap, currentUser).showReviewerReject} onAccept={() => runReview(selectedSwap, 'accept')} onParticipantReject={() => runReview(selectedSwap, 'counterpart_reject')} onOpenChange={open => !open && setSelectedSwap(null)} onApprove={() => runReview(selectedSwap, 'approve')} onReject={() => runReview(selectedSwap, 'reject')} />}
