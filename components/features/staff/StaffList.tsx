@@ -44,6 +44,7 @@ export function StaffList() {
   const [restoreTarget, setRestoreTarget] = React.useState<User | null>(null)
   const [showArchived, setShowArchived] = React.useState(false)
   const [isFormOpen, setIsFormOpen] = React.useState(false)
+  const [tab, setTab] = React.useState<'staff' | 'requests'>('staff')
   const [filters, setFilters] = React.useState<StaffFilters>(initialFilters)
   const { toast } = useToast()
   const { currentUser } = useCurrentUser()
@@ -191,7 +192,7 @@ export function StaffList() {
     },
     { header: t('department'), accessor: 'department', cell: value => value ? String(value) : <span className="text-muted-foreground">—</span> },
     { header: t('status'), accessor: row => <Badge variant={row.status === 'active' ? 'default' : 'secondary'}>{t(row.status)}</Badge> },
-    { header: t('accountStatus'), accessor: row => <Badge variant="outline">{t(row.account_status === 'active' ? 'active' : row.account_status === 'rejected' ? 'rejected' : 'pending')}</Badge> },
+    { header: t('accountStatus'), accessor: row => <Badge variant="outline">{row.account_status ? t(row.account_status === 'active' ? 'active' : row.account_status === 'rejected' ? 'rejected' : 'pending') : '—'}</Badge> },
     {
       header: t('workload'),
       accessor: row => operationalRoles.map(role => `${t(role)}: ${workload(row.id, role)}`).join(' · '),
@@ -241,15 +242,16 @@ export function StaffList() {
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { void loadStaff() }} />
 
   return <>
-    <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-      <div><h2 className="text-2xl font-bold">{t('staffManagement')}</h2><p className="mt-1 text-muted-foreground">{t('staffManagementSubtitle')}</p></div>
+    <div className="mb-4 flex flex-col gap-3 rounded-lg border bg-white p-4 md:flex-row md:items-center md:justify-between">
+      <div><h2 className="text-lg font-semibold">{t('staffManagement')}</h2><p className="mt-1 text-muted-foreground">{t('staffManagementSubtitle')}</p></div>
       {canManage && <div className="flex flex-col sm:flex-row w-full md:w-auto gap-2">
         <Button className="w-full sm:w-auto" variant="outline" onClick={() => setShowArchived(value => !value)} data-testid="toggle-archived-staff"><Archive className="mr-2 h-4 w-4" />{t(showArchived ? 'active' : 'archivedRecords')}</Button>
         {!showArchived && <Button className="w-full sm:w-auto" onClick={() => { setSelectedStaff(null); setIsFormOpen(true) }} data-testid="add-staff-btn"><UserPlus className="mr-2 h-4 w-4" />{t('addStaff')}</Button>}
       </div>}
     </div>
 
-    {canManage && <AccountRequestPanel />}
+    <nav className="mb-4 flex flex-wrap gap-2 border-b pb-2" aria-label={t('staff')}><Button size="sm" variant={tab === 'staff' && !showArchived ? 'default' : 'ghost'} onClick={() => {setTab('staff');setShowArchived(false)}}>{t('staff')} ({visibleStaff.length})</Button>{canManage && <><Button size="sm" variant={tab === 'requests' ? 'default' : 'ghost'} onClick={() => setTab('requests')}>{t('pending')}</Button><Button size="sm" variant={showArchived ? 'default' : 'ghost'} onClick={() => {setTab('staff');setShowArchived(true)}}>{t('archivedRecords')}</Button></>}</nav>
+    {tab === 'requests' && canManage ? <AccountRequestPanel /> : <div className={`grid items-start gap-4 ${detailStaff ? 'xl:grid-cols-[minmax(0,1fr)_340px]' : 'grid-cols-1'}`}><div className="min-w-0 rounded-lg border bg-white p-3 [&_table]:text-xs [&_th]:text-[11px] [&_th]:bg-slate-50">
 
     <DataTable
       data={visibleStaff}
@@ -258,11 +260,11 @@ export function StaffList() {
       searchableText={user => [user.full_name, user.email, user.phone, user.department, resolveSystemPermission(user), ...(user.operational_roles || [])].filter(Boolean).join(' ')}
       filterComponent={<StaffFilterControls filters={filters} onChange={setFilters} />}
       emptyMessage={t('noStaff')}
-    />
+    /></div>{detailStaff && <StaffDetail inline user={detailStaff} shifts={assignedShifts(detailStaff.id)} workload={role => workload(detailStaff.id,role)} onClose={() => setDetailStaff(null)} onEdit={canManage ? () => {setSelectedStaff(detailStaff);setIsFormOpen(true)} : undefined} />}</div>}
 
     <StaffFormDialog open={isFormOpen} onOpenChange={setIsFormOpen} staff={selectedStaff} onSuccess={loadStaff} />
 
-    {detailStaff && (
+    {detailStaff && tab !== 'staff' && (
       <StaffDetail
         user={detailStaff}
         shifts={assignedShifts(detailStaff.id)}
@@ -315,14 +317,15 @@ function Filter({ value, onChange, label, options }: { value: string[]; onChange
   return <MultiSelectFilter label={label} value={value} onChange={onChange} options={options.map(option => ({ value: option, label: translate(option) }))} className="w-40" />
 }
 
-function StaffDetail({ user, shifts, workload, onClose, onEdit }: { user: User; shifts: Shift[]; workload: (role: OperationalRole) => number; onClose: () => void; onEdit?: () => void }) {
+function StaffDetail({ user, shifts, workload, onClose, onEdit, inline = false }: { inline?: boolean; user: User; shifts: Shift[]; workload: (role: OperationalRole) => number; onClose: () => void; onEdit?: () => void }) {
   const { t } = useTranslation()
-  return <Dialog open onOpenChange={open => !open && onClose()}><DialogContent size="xl" className="overflow-y-auto"><DialogHeader className="border-b pb-4 mb-2"><div className="flex items-start justify-between gap-3"><div><DialogTitle>{user.full_name}</DialogTitle><p className="mt-1 text-sm text-muted-foreground">{user.email}</p></div>{onEdit && <Button onClick={onEdit} size="sm"><Pencil className="mr-2 h-4 w-4" />{t('edit')}</Button>}</div></DialogHeader>
+  const content = <><DialogHeader className="border-b pb-4 mb-2"><div className="flex items-start justify-between gap-3"><div><DialogTitle>{user.full_name}</DialogTitle><p className="mt-1 text-sm text-muted-foreground">{user.email}</p></div>{onEdit && <Button onClick={onEdit} size="sm"><Pencil className="mr-2 h-4 w-4" />{t('edit')}</Button>}</div></DialogHeader>
     <div className="grid gap-3 sm:grid-cols-5 mb-4">
       <Card className="shadow-none sm:col-span-2"><CardContent className="p-4"><p className="text-xs font-medium text-muted-foreground">{t('systemPermissions')}</p><Badge className="mt-1.5">{t(resolveSystemPermission(user))}</Badge></CardContent></Card>
       <Card className="shadow-none sm:col-span-3"><CardContent className="p-4"><p className="text-xs font-medium text-muted-foreground">{t('operationalRoles')}</p><div className="mt-1.5 flex flex-wrap gap-1.5">{user.operational_roles?.length ? user.operational_roles.map(role => <Badge variant="outline" key={role}>{t(role)}</Badge>) : '—'}</div></CardContent></Card>
       {operationalRoles.map(role => <Card key={role} className="shadow-none sm:col-span-1"><CardContent className="p-4"><p className="text-xs font-medium text-muted-foreground truncate">{t(role)}</p><p className="mt-1 text-xl font-bold">{workload(role)}</p></CardContent></Card>)}
     </div>
     <div className="rounded-md border"><div className="bg-muted/30 px-4 py-2 border-b"><h3 className="font-semibold text-sm">{t('assignedShifts')} ({shifts.length})</h3></div><div className="p-0">{shifts.length ? <div className="divide-y max-h-[300px] overflow-y-auto">{shifts.sort((left, right) => `${left.date}${left.start_time}`.localeCompare(`${right.date}${right.start_time}`)).map(shift => <div className="flex items-center justify-between gap-4 p-3 hover:bg-muted/10 transition-colors" key={shift.id}><div className="min-w-0 flex-1"><p className="font-medium truncate">{shift.title || shift.id}</p><div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground"><span>{shift.date}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{formatShiftTimeRange(shift)}</span></div></div><Badge variant="secondary" className="shrink-0">{t(shift.status)}</Badge></div>)}</div> : <div className="p-4"><p className="text-sm text-muted-foreground">{t('noData')}</p></div>}</div></div>
-  </DialogContent></Dialog>
+  </>
+  return inline ? <section className="min-w-0 rounded-lg border bg-white p-4 [&_h2]:text-base" role="region" aria-label={user.full_name}><Button variant="ghost" size="sm" onClick={onClose}>{t('close')}</Button><div className="mb-3 font-semibold">{user.full_name}</div><p className="mb-3 text-xs text-slate-500">{user.email}</p><dl className="mb-4 space-y-2 text-xs">{[['Quyền',resolveSystemPermission(user)],['Vai trò',user.operational_roles?.map(role=>t(role)).join(', ')],['Trạng thái',t(user.status)],['Tài khoản',user.account_status],['Ngày tham gia',user.join_date],['Cập nhật',user.updated_at]].map(([label,value])=><div key={label} className="grid grid-cols-[100px_1fr] gap-2"><dt className="text-slate-500">{label}</dt><dd className="break-words">{value || '—'}</dd></div>)}</dl>{onEdit && <Button size="sm" variant="outline" onClick={onEdit}>{t('edit')}</Button>}<div className="mt-4 divide-y text-xs">{shifts.map(shift=><div key={shift.id} className="py-2"><p className="font-medium">{shift.title || shift.id}</p><p className="mt-1 text-slate-500">{shift.date} · {formatShiftTimeRange(shift)}</p></div>)}</div></section> : <Dialog open onOpenChange={open => !open && onClose()}><DialogContent size="xl" className="overflow-y-auto">{content}</DialogContent></Dialog>
 }
