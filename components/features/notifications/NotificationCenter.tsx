@@ -71,6 +71,8 @@ export function NotificationCenter() {
     }
 
     setNotifications(items);
+    // This header owns the service's single realtime subscription.
+    window.dispatchEvent(new CustomEvent('livestream-ops-notifications-changed',{detail:currentUser.id}));
   }, [currentUser, router, t, toast]);
 
   React.useEffect(() => {
@@ -92,10 +94,15 @@ export function NotificationCenter() {
     const unsubscribeMock = notificationService._subscribe(
       () => void refresh(),
     );
+    const onReadChanged = (event: Event) => {
+      if (event instanceof CustomEvent && event.detail === currentUser?.id) void refresh();
+    };
+    window.addEventListener('livestream-ops-notification-read-changed',onReadChanged);
     return () => {
       active = false;
       unsubscribeRealtime();
       unsubscribeMock();
+      window.removeEventListener('livestream-ops-notification-read-changed',onReadChanged);
     };
   }, [currentUser, load]);
 
