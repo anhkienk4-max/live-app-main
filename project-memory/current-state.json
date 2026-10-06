@@ -9,10 +9,10 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "feat/frontend-ux19",
-    "head": "3252051d550ebafaef0cce2a14b0088e0426b707",
+    "branch": "feat/frontend-14wave-production",
+    "head": "305ecf08cbfbcabecfa1a154689a9108d8687c3d",
     "origin_main": "1933532b749a52cdbc659686a14bd37e457c3ff1",
-    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-frontend"
+    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-14wave"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -69,13 +69,13 @@
     "source_files": {
       "roots": {
         "app": 38,
-        "components": 133,
+        "components": 138,
         "lib": 158,
         "scripts": 14,
         "supabase": 62,
-        "tests": 125
+        "tests": 126
       },
-      "total": 530
+      "total": 536
     },
     "tests": {
       "files": [
@@ -124,6 +124,7 @@
         "tests/false-success-release.test.ts",
         "tests/file-provider-foundation.test.ts",
         "tests/final-report-kpi-filter.test.tsx",
+        "tests/frontend-convergence-metrics.test.ts",
         "tests/gl11-notifications-hardening.test.ts",
         "tests/gl19c-authoritative-operational-settings.test.ts",
         "tests/gl19d-bulk-shift-behavior.test.ts",
@@ -200,7 +201,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 120
+      "count": 121
     },
     "migrations": {
       "files": [
@@ -264,8 +265,12 @@
     "memory_validate": "PASS",
     "memory_sync": "PASS",
     "typecheck": "PASS",
-    "lint": "FAIL_BASELINE",
-    "build": "PASS"
+    "lint": "PASS",
+    "build": "PASS",
+    "frontend_convergence_focused_tests": "197/197 PASS",
+    "frontend_convergence_auth_verification": "PENDING_CREDENTIAL_CONFIGURATION",
+    "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
+    "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-05T22:22:07+07:00"
+  "synced_at": "2026-10-06T22:10:31+07:00"
 }

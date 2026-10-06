@@ -2,14 +2,14 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-05T22:22:07+07:00
+Generated at: 2026-10-06T22:10:31+07:00
 
 ## Repository
 
-- Branch: `feat/frontend-ux19`
-- HEAD: `3252051d550ebafaef0cce2a14b0088e0426b707`
+- Branch: `feat/frontend-14wave-production`
+- HEAD: `305ecf08cbfbcabecfa1a154689a9108d8687c3d`
 - origin/main: `1933532b749a52cdbc659686a14bd37e457c3ff1`
-- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-frontend`
+- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-14wave`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
 ## Hardening
@@ -22,8 +22,8 @@ Generated at: 2026-10-05T22:22:07+07:00
 ## Inventory
 
 - Routes: 35
-- Source files in tracked inventory roots: 530
-- Tests: 120
+- Source files in tracked inventory roots: 536
+- Tests: 121
 - Migrations: 52
 
 ## Modules
