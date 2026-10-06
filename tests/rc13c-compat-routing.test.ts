@@ -127,6 +127,47 @@ test('static route configuration validates strictly and resolves exact normalize
   }), (error: unknown) => error instanceof OperationalStoragePlacementError && error.code === 'STORAGE_ROUTE_NOT_CONFIGURED')
 })
 
+test('Female AI canonical route uses brand/platform/month/category while Mars legacy routes stay unchanged', async () => {
+  const adaRoot = '1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm'
+  const repository = createStaticOperationalStorageRouteRepository(jsonRoutes(
+    {
+      provider: 'google_drive', execution_source: 'internal', brand: 'Female AI livestream',
+      platform: null, subbrand_key: null, storage_profile: 'CANONICAL_V1',
+      root_folder_id: adaRoot, base_folder_id: adaRoot, folder_labels: {},
+      period_naming_style: 'THANG_M_DOT_YEAR', active: true,
+    },
+    {
+      ...staticRoute, root_folder_id: adaRoot, base_folder_id: '1SuQhXZsNr7eArHVwf9NMTqR1TEHYqOC5',
+      storage_profile: 'LEGACY_CATEGORY_PERIOD',
+    },
+    {
+      ...staticRoute, execution_source: 'agency', root_folder_id: adaRoot,
+      base_folder_id: '19cuLMvhVB8yfJslZUbLUdrsDLQ_vincE',
+      storage_profile: 'LEGACY_PERIOD_CATEGORY',
+      folder_labels: { dashboard: 'DASHBOARD', live_visual_agency: 'VISUAL HOST' },
+      period_naming_style: 'THANG_M_DOT_YEAR',
+    },
+  ))
+  const resolve = (brandLabel: string, executionSource: 'internal' | 'agency', logicalCategory: 'dashboard' | 'live_visual') =>
+    repository.resolvePlacement({
+      provider: 'google_drive', executionSource, brandId: 'brand-id', platformId: 'shopee-id',
+      subbrandKey: null, shiftDate: '2026-09-14', logicalCategory, fileName: 'image.png',
+      brandLabel, platformLabel: 'Shopee Live',
+    })
+
+  for (const category of ['dashboard', 'live_visual'] as const) {
+    const placement = await resolve('Female AI livestream', 'internal', category)
+    assert.equal(placement.baseFolderId, adaRoot)
+    assert.deepEqual(placement.folderSegments, [
+      'Female AI livestream', 'Shopee Live', 'THÁNG 09.2026', category === 'dashboard' ? 'DASHBOARD' : 'VISIBILITY',
+    ])
+  }
+  assert.deepEqual((await resolve('Mars Snacking', 'internal', 'dashboard')).folderSegments, ['DASHBOARD', 'Tháng 9 - 2026'])
+  assert.deepEqual((await resolve('Mars Snacking', 'agency', 'dashboard')).folderSegments, ['THÁNG 9.2026', 'DASHBOARD'])
+  assert.deepEqual((await resolve('Mars Snacking', 'internal', 'live_visual')).folderSegments, ['VISIBILITY', 'Tháng 9 - 2026'])
+  assert.deepEqual((await resolve('Mars Snacking', 'agency', 'live_visual')).folderSegments, ['THÁNG 9.2026', 'VISUAL HOST'])
+})
+
 test('static route configuration rejects malformed, duplicate, and ambiguous routes', async () => {
   const invalidRoutes = [
     { ...staticRoute, provider: 'dropbox' },
@@ -216,10 +257,10 @@ test('compat shift reads and writes omit execution_source while retaining in-mem
   assert.equal(Object.hasOwn(writes[1].args.p_patch as object, 'execution_source'), false)
 })
 
-function formRequest(fields: Record<string, string>, name = 'compat.png') {
+function formRequest(fields: Record<string, string>, name = 'compat.png', bytes = [1, 2, 3]) {
   const form = new FormData()
   Object.entries(fields).forEach(([key, value]) => form.set(key, value))
-  form.set('file', new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }), name)
+  form.set('file', new Blob([new Uint8Array(bytes)], { type: 'image/png' }), name)
   return new Request('https://example.test/api/report-images', { method: 'POST', body: form })
 }
 
@@ -228,6 +269,7 @@ function compatHarness(options: {
   providerDeleteFails?: boolean
   metadataRemoveFails?: boolean
   externalFileId?: string
+  routeError?: string
 } = {}) {
   const selects: Array<{ table: string; columns: string }> = []
   const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = []
@@ -336,6 +378,7 @@ function compatHarness(options: {
     routeResolver: {
       async resolvePlacement(input) {
         routeInputs.push(input)
+        if (options.routeError) throw new OperationalStoragePlacementError(options.routeError as never)
         return resolveOperationalStoragePlacement(routeFor(input), input)
       },
     },
@@ -356,8 +399,11 @@ test('compat report upload uses existing schema, Studio routing, and exact-paren
   assert.equal(h.selects.some(call => /provider|external_file_id/u.test(call.columns)), false)
   assert.deepEqual(h.rpcCalls.map(call => call.name), ['upload_report_image'])
   assert.equal(decodeCloudAssetReference(h.rows.report_images[0].image_url)?.provider, 'google_drive')
-  assert.equal(h.rows.report_images[0].storage_path, 'THÁNG 10.2026/DASHBOARD/compat.png')
-  assert.ok(h.storageCalls.includes('upload:google_drive:agency-base/THÁNG 10.2026/DASHBOARD:compat.png'))
+  const storedName = h.rows.report_images[0].storage_path.split('/').at(-1)
+  assert.match(storedName, /^20261001_dashboard_[A-F0-9]{8}_compat\.png$/u)
+  assert.equal(h.rpcCalls[0].args.p_original_name, 'compat.png')
+  assert.equal(h.rows.report_images[0].storage_path, `THÁNG 10.2026/DASHBOARD/${storedName}`)
+  assert.ok(h.storageCalls.includes(`upload:google_drive:agency-base/THÁNG 10.2026/DASHBOARD:${storedName}`))
 })
 
 test('compat live upload uses the legacy RPC and supports Google/OneDrive exact-parent parity', async () => {
@@ -501,11 +547,41 @@ test('compat idempotency is provider-aware and rejects live physical aliases bef
   assert.equal((await live.handler.POST(formRequest(first))).status, 200)
   assert.equal((await live.handler.POST(formRequest(first))).status, 200)
   const categoryConflict = await live.handler.POST(formRequest({ ...first, category: 'live_session' }))
-  assert.equal(categoryConflict.status, 409)
-  assert.equal((await categoryConflict.json()).error.code, 'REPORT_IMAGE_FILE_NAME_CONFLICT')
+  assert.equal(categoryConflict.status, 200)
+  assert.equal(live.rows.live_report_images.length, 2)
+  assert.notEqual(live.rows.live_report_images[0].file_name, live.rows.live_report_images[1].file_name)
   const providerConflict = await live.handler.POST(formRequest({ ...first, provider: 'onedrive' }))
   assert.equal(providerConflict.status, 409)
-  assert.equal(live.storageCalls.filter(call => call.startsWith('upload:')).length, 1)
+  assert.equal(live.storageCalls.filter(call => call.startsWith('upload:')).length, 2)
+})
+
+test('compat uploads support live category other and unique names for repeated original names with different bytes', async () => {
+  const h = compatHarness()
+  const first = await h.handler.POST(formRequest({ kind: 'live', report_id: 'report-1', category: 'other' }, 'same.jpg', [1, 2, 3]))
+  const second = await h.handler.POST(formRequest({ kind: 'live', report_id: 'report-1', category: 'other' }, 'same.jpg', [3, 2, 1]))
+
+  assert.equal(first.status, 200)
+  assert.equal(second.status, 200)
+  assert.equal(h.rows.live_report_images.length, 2)
+  const rows = h.rows.live_report_images
+  assert.ok(rows.every(row => row.category === 'other'))
+  assert.ok(rows.every(row => row.file_name.startsWith('20261001_other_')))
+  assert.notEqual(rows[0].file_name, rows[1].file_name)
+  assert.ok(h.storageCalls.some(call => call.includes('/THÁNG 10.2026/VISUAL HOST:')))
+})
+
+test('compat route-not-configured has a safe Vietnamese message and identity context', async () => {
+  const h = compatHarness({ routeError: 'STORAGE_ROUTE_NOT_CONFIGURED' })
+  const response = await h.handler.POST(formRequest({ kind: 'report', report_id: 'report-1', image_type: 'dashboard' }))
+  const payload = await response.json()
+
+  assert.equal(response.status, 409)
+  assert.equal(payload.error.code, 'STORAGE_ROUTE_NOT_CONFIGURED')
+  assert.equal(payload.error.message, 'Chưa cấu hình thư mục lưu ảnh cho thương hiệu này.')
+  assert.deepEqual(payload.error.context, {
+    brand: 'Mars Snacking', platform: 'TikTok Shop', execution_source: 'agency',
+  })
+  assert.equal(h.storageCalls.some(call => call.startsWith('upload:')), false)
 })
 
 test('cloud references round trip, GET provider bytes, and DELETE provider object before legacy metadata', async () => {

@@ -36,10 +36,10 @@ function routeFor(input: OperationalStoragePlacementInput): OperationalStorageRo
   }
 }
 
-function formRequest(fields: Record<string, string>, name = 'filename.png') {
+function formRequest(fields: Record<string, string>, name = 'filename.png', bytes = [1, 2, 3]) {
   const form = new FormData()
   Object.entries(fields).forEach(([key, value]) => form.set(key, value))
-  form.set('file', new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }), name)
+  form.set('file', new Blob([new Uint8Array(bytes)], { type: 'image/png' }), name)
   return new Request('https://example.test/api/report-images', { method: 'POST', body: form })
 }
 
@@ -145,10 +145,10 @@ test('report dashboard cutover uses shift.date, materializes folders, and upload
   assert.deepEqual(h.folderNames, ['DASHBOARD', 'Tháng 10 - 2026'])
   assert.equal(h.routeInputs[0].shiftDate, '2026-10-01')
   assert.equal(h.routeInputs[0].shiftDate.includes('2026-09'), false)
-  assert.deepEqual(h.uploads.map(upload => upload.name), ['filename.png'])
+  assert.match(h.uploads[0].name, /^20261001_dashboard_[A-F0-9]{8}_filename\.png$/u)
   assert.equal(h.uploads[0].external_parent_id, 'folder-2')
-  assert.equal(h.uploads[0].logical_path, 'DASHBOARD/Tháng 10 - 2026/filename.png')
-  assert.equal(h.folderNames.includes('filename.png'), false)
+  assert.equal(h.uploads[0].logical_path, `DASHBOARD/Tháng 10 - 2026/${h.uploads[0].name}`)
+  assert.equal(h.folderNames.includes(h.uploads[0].name), false)
   assert.equal(h.calls.filter(call => call.startsWith('upload:')).length, 1)
 })
 
@@ -189,12 +189,13 @@ test('agency dashboard placement is period then dashboard with the agency naming
   const response = await h.handler.POST(formRequest({ kind: 'report', report_id: 'report-1', image_type: 'dashboard' }))
   assert.equal(response.status, 200)
   assert.deepEqual(h.folderNames, ['THÁNG 10.2026', 'DASHBOARD'])
-  assert.equal(h.uploads[0].logical_path, 'THÁNG 10.2026/DASHBOARD/filename.png')
+  assert.equal(h.uploads[0].logical_path, `THÁNG 10.2026/DASHBOARD/${h.uploads[0].name}`)
 })
 
 test('proven live visual categories map to source-specific configured folders', async () => {
   assert.equal(reportImageLogicalCategory('live', 'key_visual'), 'live_visual')
   assert.equal(reportImageLogicalCategory('live', 'live_session'), 'live_visual')
+  assert.equal(reportImageLogicalCategory('live', 'other'), 'live_visual')
   const internal = harness()
   await internal.handler.POST(formRequest({ kind: 'live', report_id: 'report-1', category: 'live_session' }))
   assert.deepEqual(internal.folderNames, ['VISIBILITY', 'Tháng 10 - 2026'])
@@ -202,6 +203,11 @@ test('proven live visual categories map to source-specific configured folders', 
   const agency = harness({ shift: { date: '2026-10-01', brand_id: 'stg-b1', platform_id: 'stg-p2', execution_source: 'agency' } })
   await agency.handler.POST(formRequest({ kind: 'live', report_id: 'report-1', category: 'key_visual' }))
   assert.deepEqual(agency.folderNames, ['THÁNG 10.2026', 'VISUAL HOST'])
+
+  const other = harness()
+  const otherResponse = await other.handler.POST(formRequest({ kind: 'live', report_id: 'report-1', category: 'other' }))
+  assert.equal(otherResponse.status, 200)
+  assert.deepEqual(other.folderNames, ['VISIBILITY', 'Tháng 10 - 2026'])
 })
 
 test('NULL execution_source fails closed before route lookup or storage operations', async () => {
@@ -239,7 +245,6 @@ test('unsupported image categories fail closed before folder materialization', a
   for (const fields of [
     { kind: 'report', image_type: 'livestream' },
     { kind: 'report', image_type: 'other' },
-    { kind: 'live', category: 'other' },
   ]) {
     const h = harness()
     const response = await h.handler.POST(formRequest({ ...fields, report_id: 'report-1' }))
@@ -250,7 +255,7 @@ test('unsupported image categories fail closed before folder materialization', a
   }
 })
 
-test('live-image same-category replay is idempotent, while the other physical alias conflicts before side effects', async () => {
+test('live-image same-category replay is idempotent and different categories receive distinct names', async () => {
   const first = harness()
   const firstResponse = await first.handler.POST(formRequest({ kind: 'live', report_id: 'report-1', category: 'key_visual' }))
   assert.equal(firstResponse.status, 200)
@@ -263,10 +268,11 @@ test('live-image same-category replay is idempotent, while the other physical al
   assert.equal(first.uploads.length, 1)
 
   const crossCategory = await first.handler.POST(formRequest({ kind: 'live', report_id: 'report-1', category: 'live_session' }))
-  assert.equal(crossCategory.status, 409)
-  assert.equal((await crossCategory.json()).error.code, 'REPORT_IMAGE_FILE_NAME_CONFLICT')
-  assert.equal(first.uploads.length, 1)
-  assert.equal(first.folderNames.length, folderCount)
+  assert.equal(crossCategory.status, 200)
+  assert.equal(first.uploads.length, 2, JSON.stringify(first.uploads.map(upload => upload.name)))
+  assert.equal(new Set(first.uploads.map(upload => upload.name)).size, 2)
+  assert.equal(first.folderNames.length, folderCount * 2)
+  assert.deepEqual(first.folderNames.slice(0, folderCount), first.folderNames.slice(folderCount))
   assert.equal(first.calls.some(call => call.startsWith('delete:')), false)
 })
 
@@ -277,10 +283,34 @@ test('live-image category collision is symmetric when live_session exists first'
   const folderCount = h.folderNames.length
 
   const conflict = await h.handler.POST(formRequest({ kind: 'live', report_id: 'report-1', category: 'key_visual' }))
-  assert.equal(conflict.status, 409)
-  assert.equal((await conflict.json()).error.code, 'REPORT_IMAGE_FILE_NAME_CONFLICT')
-  assert.equal(h.uploads.length, 1)
-  assert.equal(h.folderNames.length, folderCount)
+  assert.equal(conflict.status, 200)
+  assert.equal(h.uploads.length, 2)
+  assert.notEqual(h.uploads[0].name, h.uploads[1].name)
+  assert.equal(h.folderNames.length, folderCount * 2)
+  assert.deepEqual(h.folderNames.slice(0, folderCount), h.folderNames.slice(folderCount))
+})
+
+test('same original filename with different bytes receives stable distinct provider names and keeps original metadata', async () => {
+  const h = harness()
+  const fields = { kind: 'report', report_id: 'report-1', image_type: 'dashboard' }
+  const first = await h.handler.POST(formRequest(fields, 'same: name.jpg', [1, 2, 3]))
+  const second = await h.handler.POST(formRequest(fields, 'same: name.jpg', [3, 2, 1]))
+
+  assert.equal(first.status, 200)
+  assert.equal(second.status, 200)
+  assert.equal(h.uploads.length, 2)
+  assert.notEqual(h.uploads[0].name, h.uploads[1].name)
+  assert.match(h.uploads[0].name, /^20261001_dashboard_[A-F0-9]{8}_same- name\.jpg$/u)
+  assert.equal(h.uploads[0].name.length <= 180, true)
+  assert.doesNotMatch(h.uploads[0].name, /:/u)
+  assert.equal(h.uploads[0].logical_path === h.uploads[1].logical_path, false)
+  assert.match(h.calls.find(call => call.startsWith('upload_report_image')) ?? '', /p_original_name":"same- name\.jpg"/u)
+
+  const longNameHarness = harness()
+  await longNameHarness.handler.POST(formRequest(fields, `${'a'.repeat(240)}.png`))
+  const longStoredName = longNameHarness.uploads[0].name
+  assert.equal(longStoredName.length, 180)
+  assert.equal(longStoredName.endsWith('.png'), true, `${longStoredName.length}:${longStoredName}`)
 })
 
 test('live-image provider mismatch conflicts without cross-provider fallback', async () => {
@@ -311,7 +341,8 @@ test('live-image provider mismatch conflicts without cross-provider fallback', a
 test('legacy provider-less live metadata cannot satisfy a routed provider replay', async () => {
   const input: OperationalStoragePlacementInput = {
     provider: 'google_drive', executionSource: 'internal', brandId: 'stg-b1', platformId: 'stg-p1',
-    subbrandKey: null, shiftDate: '2026-10-01', logicalCategory: 'live_visual', fileName: 'filename.png',
+    subbrandKey: null, shiftDate: '2026-10-01', logicalCategory: 'live_visual',
+    fileName: '20261001_key-visual_039058C6_filename.png',
   }
   const placement = resolveOperationalStoragePlacement(routeFor(input), input)
   const h = harness({ existingLiveImage: {
@@ -338,7 +369,9 @@ test('dashboard same-provider replay is idempotent and provider mismatch conflic
     kind: 'report', report_id: 'report-1', image_type: 'dashboard', provider: 'onedrive',
   }))
   assert.equal(mismatch.status, 409)
-  assert.equal((await mismatch.json()).error.code, 'REPORT_IMAGE_FILE_NAME_CONFLICT')
+  const mismatchBody = await mismatch.json()
+  assert.equal(mismatchBody.error.code, 'REPORT_IMAGE_FILE_NAME_CONFLICT')
+  assert.equal(mismatchBody.error.message, 'Ảnh này đã tồn tại trong báo cáo với nội dung hoặc loại khác.')
   assert.deepEqual(h.uploads.map(upload => upload.destination?.provider), ['google_drive'])
   assert.equal(h.folderNames.length, folderCount)
 })

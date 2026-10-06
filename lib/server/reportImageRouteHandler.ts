@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { z } from 'zod'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -15,7 +16,12 @@ import {
   type OperationalStoragePlacementInput,
   type OperationalStorageProvider,
 } from '@/lib/files/operationalStoragePlacementResolver'
-import { sanitizeFileName, validateFileUploadInput } from '@/lib/files/fileValidation'
+import {
+  MAX_FILE_NAME_LENGTH,
+  sanitizeFileName,
+  sanitizeFileNameWithoutLengthLimit,
+  validateFileUploadInput,
+} from '@/lib/files/fileValidation'
 import { createFileStorageService, fileStorageService } from '@/lib/services/fileStorageService'
 import { createClient } from '@/lib/supabase/server'
 import { createOperationalStorageFolderMaterializer } from '@/lib/server/operationalStorageFolderMaterializer'
@@ -51,7 +57,11 @@ type ReportShiftContext = {
 }
 
 class ReportImageRouteError extends Error {
-  constructor(readonly code: string, readonly status: number) {
+  constructor(
+    readonly code: string,
+    readonly status: number,
+    readonly context?: { brand?: string; platform?: string; execution_source?: string },
+  ) {
     super(code)
     this.name = 'ReportImageRouteError'
   }
@@ -207,8 +217,45 @@ async function reportForUpload(
 
 export function reportImageLogicalCategory(kind: ReportImageKind, category: string): OperationalLogicalCategory {
   if (kind === 'report' && category === 'dashboard') return 'dashboard'
-  if (kind === 'live' && (category === 'key_visual' || category === 'live_session')) return 'live_visual'
+  if (kind === 'live' && (category === 'key_visual' || category === 'live_session' || category === 'other')) return 'live_visual'
   throw new OperationalStoragePlacementError('STORAGE_CATEGORY_NOT_CONFIGURED')
+}
+
+function providerStorageFileName(shiftDate: string, category: string, originalName: string, bytes: Uint8Array): string {
+  const date = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(shiftDate)
+  if (!date) throw new OperationalStoragePlacementError('STORAGE_DATE_INVALID')
+
+  const hash = createHash('sha256').update(bytes).digest('hex').slice(0, 8).toUpperCase()
+  const prefix = `${date[1]}${date[2]}${date[3]}_${category.replaceAll('_', '-')}_${hash}`
+  const maxOriginalLength = MAX_FILE_NAME_LENGTH - prefix.length - 1
+  if (maxOriginalLength < 1) throw new OperationalStoragePlacementError('STORAGE_FILE_NAME_INVALID')
+
+  const safeOriginal = sanitizeFileNameWithoutLengthLimit(originalName)
+  const extensionIndex = safeOriginal.lastIndexOf('.')
+  const extension = extensionIndex > 0 && extensionIndex < safeOriginal.length - 1 ? safeOriginal.slice(extensionIndex) : ''
+  const stem = extension ? safeOriginal.slice(0, extensionIndex) : safeOriginal
+  const boundedExtension = extension.slice(0, Math.max(0, maxOriginalLength - 1))
+  const boundedStem = stem.slice(0, maxOriginalLength - boundedExtension.length).replace(/[. ]+$/u, '')
+  return sanitizeFileName(`${prefix}_${boundedStem}${boundedExtension}`)
+}
+
+async function resolvePlacementWithContext(
+  resolver: UploadPlacementDependencies['routeResolver'],
+  input: OperationalStoragePlacementInput,
+) {
+  try {
+    return await resolver.resolvePlacement(input)
+  } catch (error) {
+    if (error instanceof OperationalStoragePlacementError
+      && (error.code === 'STORAGE_ROUTE_NOT_CONFIGURED' || error.code === 'CANONICAL_STORAGE_ROUTE_NOT_INITIALIZED')) {
+      throw new ReportImageRouteError(error.code, 409, {
+        brand: input.brandLabel,
+        platform: input.platformLabel,
+        execution_source: input.executionSource,
+      })
+    }
+    throw error
+  }
 }
 
 function routedPlacementInput(
@@ -260,8 +307,17 @@ function placementErrorResponse(error: unknown) {
     return errorResponse(error.code, 'The stored cloud file reference is invalid.', 409)
   }
   if (error instanceof ReportImageRouteError) {
-    const message = error.code === 'REPORT_NOT_FOUND' ? 'The report was not found.' : 'The report image request could not be completed.'
-    return errorResponse(error.code, message, error.status)
+    const message = error.code === 'REPORT_NOT_FOUND'
+      ? 'The report was not found.'
+      : error.code === 'REPORT_IMAGE_FILE_NAME_CONFLICT'
+        ? 'Ảnh này đã tồn tại trong báo cáo với nội dung hoặc loại khác.'
+        : error.code === 'STORAGE_ROUTE_NOT_CONFIGURED' || error.code === 'CANONICAL_STORAGE_ROUTE_NOT_INITIALIZED'
+          ? 'Chưa cấu hình thư mục lưu ảnh cho thương hiệu này.'
+          : 'The report image request could not be completed.'
+    return Response.json({
+      ok: false,
+      error: { code: error.code, message, ...(error.context ? { context: error.context } : {}) },
+    }, { status: error.status, headers: { 'Cache-Control': 'no-store' } })
   }
   const requestStatuses = new Map([
     ['REPORT_IMAGE_REQUEST_INVALID', 400],
@@ -297,11 +353,13 @@ async function uploadReportImage(
   })
   if (!parsed.success) throw new Error('REPORT_IMAGE_REQUEST_INVALID')
   const { shift } = await reportForUpload(client, parsed.data.report_id, user, dependencies.routingMode)
-  const name = sanitizeFileName(typeof File !== 'undefined' && fileValue instanceof File ? fileValue.name : formString(form, 'file_name'))
+  const sourceName = (typeof File !== 'undefined' && fileValue instanceof File ? fileValue.name : formString(form, 'file_name')) ?? ''
+  const originalName = sanitizeFileName(sourceName)
   const bytes = new Uint8Array(await fileValue.arrayBuffer())
   const category = reportImageLogicalCategory('report', parsed.data.image_type)
+  const name = providerStorageFileName(shift.date, parsed.data.image_type, sourceName, bytes)
   const provider: CloudProvider = parsed.data.provider ?? 'google_drive'
-  const placement = await dependencies.routeResolver.resolvePlacement(routedPlacementInput(provider, shift, category, name))
+  const placement = await resolvePlacementWithContext(dependencies.routeResolver, routedPlacementInput(provider, shift, category, name))
   const logicalPath = logicalMetadataPath(placement)
   const existing = await client.from('report_images')
     .select(dependencies.routingMode === 'compat' ? legacyReportImageColumns : '*')
@@ -345,7 +403,7 @@ async function uploadReportImage(
             provider: result.asset.provider as CloudProvider,
             external_file_id: result.asset.external_file_id,
           }),
-          p_original_name: name,
+          p_original_name: originalName,
           p_mime_type: fileValue.type,
           p_size_bytes: bytes.byteLength,
           p_image_type: parsed.data.image_type,
@@ -354,7 +412,7 @@ async function uploadReportImage(
           p_report_id: parsed.data.report_id,
           p_storage_path: logicalPath,
           p_image_url: logicalPath,
-          p_original_name: name,
+          p_original_name: originalName,
           p_mime_type: fileValue.type,
           p_size_bytes: bytes.byteLength,
           p_image_type: parsed.data.image_type,
@@ -395,13 +453,14 @@ async function uploadLiveReportImage(
   })
   if (!parsed.success) throw new Error('REPORT_IMAGE_REQUEST_INVALID')
   const { shift } = await reportForUpload(client, parsed.data.report_id, user, dependencies.routingMode)
-  const sourceName = typeof File !== 'undefined' && fileValue instanceof File ? fileValue.name : formString(form, 'file_name')
-  const name = sanitizeFileName(sourceName)
+  const sourceName = (typeof File !== 'undefined' && fileValue instanceof File ? fileValue.name : formString(form, 'file_name')) ?? ''
+  const originalName = sanitizeFileName(sourceName)
   const bytes = new Uint8Array(await fileValue.arrayBuffer())
   if (bytes.byteLength > 10 * 1024 * 1024) throw new Error('LIVE_REPORT_IMAGE_TOO_LARGE')
   const category = reportImageLogicalCategory('live', parsed.data.category)
+  const name = providerStorageFileName(shift.date, parsed.data.category, sourceName, bytes)
   const provider: CloudProvider = parsed.data.provider ?? 'google_drive'
-  const placement = await dependencies.routeResolver.resolvePlacement(routedPlacementInput(provider, shift, category, name))
+  const placement = await resolvePlacementWithContext(dependencies.routeResolver, routedPlacementInput(provider, shift, category, name))
   const logicalPath = logicalMetadataPath(placement)
   if (dependencies.routingMode === 'compat') {
     const existing = await client.from('live_report_images')

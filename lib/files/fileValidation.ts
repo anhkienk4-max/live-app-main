@@ -1,6 +1,7 @@
 import type { FileUploadInput } from './fileProvider'
 
 export const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024
+export const MAX_FILE_NAME_LENGTH = 180
 
 export const ALLOWED_FILE_MIME_TYPES = new Set([
   'image/jpeg',
@@ -14,7 +15,7 @@ export const ALLOWED_FILE_MIME_TYPES = new Set([
 
 const EXECUTABLE_EXTENSIONS = /\.(?:exe|dll|bat|cmd|com|msi|sh|ps1|js|mjs|cjs|jar|php|py|rb|scr|vbs)$/i
 
-export function sanitizeFileName(value: unknown): string {
+function safeFileName(value: unknown): string {
   const normalized = String(value ?? '')
     .normalize('NFKC')
     .replace(/[\u0000-\u001f\u007f\u200b-\u200d\ufeff]/gi, '')
@@ -24,7 +25,15 @@ export function sanitizeFileName(value: unknown): string {
     .replace(/\s+/g, ' ')
     .replace(/\s+\./g, '.')
   const safe = normalized.replace(/[^\p{L}\p{N}._ ()-]/gu, '-').replace(/-+/g, '-')
-  return safe.replace(/^[-.]+/, '').slice(0, 180) || 'unnamed-file'
+  return safe.replace(/^[-.]+/, '') || 'unnamed-file'
+}
+
+export function sanitizeFileName(value: unknown): string {
+  return safeFileName(value).slice(0, MAX_FILE_NAME_LENGTH) || 'unnamed-file'
+}
+
+export function sanitizeFileNameWithoutLengthLimit(value: unknown): string {
+  return safeFileName(value)
 }
 
 export function validateFileUploadInput(input: FileUploadInput): void {
