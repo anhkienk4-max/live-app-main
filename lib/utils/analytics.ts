@@ -94,3 +94,32 @@ export function reportMetric(report: Report, key: 'revenue' | 'gmv' | 'orders' |
 function average(values: number[]) {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0
 }
+
+/** Preserves absent metrics for production displays; a recorded zero remains zero. */
+export function reportMetricValue(report: Report, key: Parameters<typeof reportMetric>[1]): number | null {
+  const normalized = report.normalized_metrics?.[key]
+  if (typeof normalized === 'number' && Number.isFinite(normalized)) return normalized
+  const platformValue = report.platform_metrics?.[key]
+  if (typeof platformValue === 'number' && Number.isFinite(platformValue)) return platformValue
+  const value = key === 'revenue' ? report.platform_metrics?.sales ?? report.revenue
+    : key === 'gmv' ? report.gmv
+    : key === 'orders' ? report.orders
+    : key === 'engaged_viewers' ? report.viewers ?? report.average_viewer
+    : key === 'product_clicks' ? report.product_clicks
+    : key === 'ctr' ? report.ctr
+    : key === 'conversion_rate' ? report.cvr
+    : report.live_duration_minutes == null ? null : report.live_duration_minutes * 60
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+/** Production presentation excludes missing observations instead of manufacturing zeroes. */
+export function calculateNullableAnalyticsMetrics(items: Report[]): Record<AnalyticsMetricKey, number | null> {
+  const values = (key: Parameters<typeof reportMetricValue>[1]) => items.map(report => reportMetricValue(report,key)).filter((value): value is number => value !== null)
+  const sum = (key: Parameters<typeof reportMetricValue>[1]) => { const list = values(key); return list.length ? list.reduce((total,value)=>total+value,0) : null }
+  const mean = (key: Parameters<typeof reportMetricValue>[1]) => { const list = values(key); return list.length ? list.reduce((total,value)=>total+value,0)/list.length : null }
+  const paired = items.filter(report => reportMetricValue(report,'revenue') !== null && reportMetricValue(report,'orders') !== null)
+  const pairedRevenue = paired.reduce((total,report)=>total+(reportMetricValue(report,'revenue') as number),0)
+  const pairedOrders = paired.reduce((total,report)=>total+(reportMetricValue(report,'orders') as number),0)
+  const duration = sum('live_duration_seconds')
+  return { revenue:sum('revenue'), gmv:sum('gmv'), orders:sum('orders'), viewers:sum('engaged_viewers'), productClicks:sum('product_clicks'), ctr:mean('ctr'), cvr:mean('conversion_rate'), averageOrderValue:paired.length && pairedOrders > 0 ? pairedRevenue/pairedOrders : null, liveDuration:duration === null ? null : duration/60, reportCount:items.length }
+}

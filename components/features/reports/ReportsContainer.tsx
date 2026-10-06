@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { DollarSign, Download, FileImage, FileSpreadsheet, FileText, Filter, Plus, RotateCcw, Search, TrendingUp, Trash2 } from 'lucide-react'
+import { DollarSign, Download, FileImage, FileSpreadsheet, FileText, Filter, Plus, RotateCcw, Search, TrendingUp } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import {
   brandService,
@@ -19,6 +19,7 @@ import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
+import { reportMetricValue, calculateNullableAnalyticsMetrics } from '@/lib/utils/analytics'
 import {
   downloadReportTemplate,
   exportReportImageMetadataToExcel,
@@ -26,16 +27,11 @@ import {
   exportReportDetailToExcel,
 } from '@/lib/utils/excelUtils'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
-import { ActionBar } from '@/components/ui/action-bar'
-import { deriveReportAttention } from '@/lib/ui/operational-attention'
-import { AttentionItem } from '@/components/ui/operational-status'
-import { buildReportActions } from '@/lib/ui/action-priority'
-import { Badge } from '@/components/ui/badge'
+import { ReportsView } from './ReportsView'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
-import { ReportsView, MappedReport, MappedMetric } from './ReportsView'
 import { ReportDetailModal } from './ReportDetailModal'
 import { ReportFormModal } from './ReportFormModal'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
@@ -160,7 +156,6 @@ export function ReportsContainer() {
 
   const shiftById = React.useMemo(() => new Map(shifts.map(shift => [shift.id, shift])), [shifts])
   const nameById = (items: Array<{ id: string; name: string }>, id?: string) => id ? items.find(item => item.id === id)?.name || '—' : '—'
-  const userName = (id?: string) => id ? users.find(user => user.id === id)?.full_name || '—' : '—'
   const matchesRole = React.useCallback((shift: Shift, role: OperationalRole, userId: string) => {
     const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
     return assignment === userId || registrations.some(registration =>
@@ -170,15 +165,6 @@ export function ReportsContainer() {
       isStaffedRegistration(registration)
     )
   }, [registrations])
-  const roleNames = (shift: Shift, role: OperationalRole) => {
-    const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
-    const ids = new Set([
-      ...(assignment ? [assignment] : []),
-      ...registrations.filter(registration => registration.shift_id === shift.id && registration.operational_role === role && isStaffedRegistration(registration)).map(registration => registration.user_id),
-    ])
-    return [...ids].map(userName).join(', ') || '—'
-  }
-
   const completedShifts = React.useMemo(() => {
     const reported = new Set(reports.map(report => report.shift_id))
     return shifts.filter(shift =>
@@ -211,8 +197,10 @@ export function ReportsContainer() {
     return true
   }), [brands, campaigns, filters, matchesRole, platforms, reports, shiftById])
 
-  const confirmed = filteredReports.filter(report => report.metrics_confirmed)
-  const totalRevenue = confirmed.reduce((sum, report) => sum + (reportRevenue(report) ?? 0), 0)
+  const confirmed = filteredReports.filter(report => report.status === 'confirmed' && report.metrics_confirmed === true)
+  const revenueValues = confirmed.map(report => reportMetricValue(report, 'revenue')).filter((value): value is number => value !== null)
+  const totalRevenue = revenueValues.length ? revenueValues.reduce((sum, value) => sum + value, 0) : null
+  const aov = calculateNullableAnalyticsMetrics(confirmed).averageOrderValue
   const exportContext = {
     shifts,
     campaigns,
@@ -235,74 +223,94 @@ export function ReportsContainer() {
   if (loading || userLoading) return <div className="py-12 text-center">{t('loading')}</div>
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
 
-
-  const mappedReports: MappedReport[] = React.useMemo(() => {
-    return filteredReports.map(r => {
-      const shift = shiftById.get(r.shift_id)
-      const isConfirmed = r.metrics_confirmed
-      const rev = typeof r.normalized_metrics?.revenue === 'number' ? r.normalized_metrics.revenue : (typeof r.platform_metrics?.sales === 'number' ? r.platform_metrics.sales : (r.revenue ?? r.gmv ?? 0))
-      return {
-        id: r.id,
-        shift_id: r.shift_id,
-        date: shift?.date || '',
-        shift: `${nameById(brands, shift?.brand_id)}`,
-        campaign: nameById(campaigns, shift?.campaign_id),
-        brand: nameById(brands, shift?.brand_id),
-        platform: nameById(platforms, shift?.platform_id),
-        studio: 'N/A',
-        time: shift?.date || '',
-        duration_minutes: 180,
-        revenue: formatCurrency(rev),
-        orders: r.orders != null ? r.orders.toString() : '0',
-        ctr: 'N/A',
-        aov: r.orders ? formatCurrency(rev / r.orders) : 'N/A',
-        quality: isConfirmed ? 'Tốt' : 'Partial',
-        qualityClass: isConfirmed ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800',
-        status: isConfirmed ? 'Đã xác nhận' : (r.status === 'in_review' ? 'Chờ duyệt' : 'Bản nháp'),
-        statusClass: isConfirmed ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800',
-        updated: r.updated_at || '',
-        metrics_confirmed: !!r.metrics_confirmed,
-        analytics_eligible: !!r.metrics_confirmed
-      }
-    })
-  }, [filteredReports, shiftById, brands, campaigns, platforms])
-
-  const canonicalMetrics: MappedMetric[] = React.useMemo(() => [
-      { key: 'rev', label: 'Doanh thu (GMV)', value: '0', unit: '₫', source: 'KOC Platform', confidence: 'High', freshness: 'Real-time', review: 'Khớp', required: true, status: 'confirmed' }
-  ], [])
-
-  const filterNode = (
-    <>
-      <div className="flex h-8 min-w-[200px] flex-1 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-[12px] text-slate-400">
-        <Search className="h-3.5 w-3.5 text-slate-400" />
-        <Input className="border-0 p-0 h-full w-full text-xs bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0" value={filters.search} onChange={event => setFilters(current => ({ ...current, search: event.target.value }))} placeholder="Tìm báo cáo, ca live, brand..." />
+  return (
+    <div className="space-y-6">
+      {currentUser && hasPermission(currentUser, 'reports.submit') && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
+          <div><p className="font-semibold">{t('finalReportWorkflow')}</p><p className="text-sm text-muted-foreground">{completedShifts.length ? t('reportDraftReady', { count: completedShifts.length }) : t('noReportDraftReady')}</p></div>
+          <Button onClick={() => setShowForm(true)} disabled={!completedShifts.length} data-testid="open-final-report-modal"><Plus className="mr-2 h-4 w-4" />{t('createFinalReport')}</Button>
+        </div>
+      )}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Metric title={t('reportCount')} value={filteredReports.length.toLocaleString()} icon={<FileText className="h-5 w-5 text-blue-600" />} />
+        <Metric title={t('confirmedRevenue')} value={totalRevenue === null ? '—' : formatCurrency(totalRevenue)} icon={<DollarSign className="h-5 w-5 text-green-600" />} />
+        <Metric title={t('averageOrderValue')} value={aov === null ? '—' : formatCurrency(aov)} icon={<TrendingUp className="h-5 w-5 text-purple-600" />} />
+        <Metric title={t('needsReview')} value={filteredReports.filter(report => !report.metrics_confirmed).length.toLocaleString()} icon={<FileText className="h-5 w-5 text-amber-600" />} />
       </div>
-      <Button variant={showFilters ? 'secondary' : 'outline'} size="sm" className="h-8 text-xs" onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters}>
-        <Filter className="mr-2 h-3.5 w-3.5" />Bộ lọc
-      </Button>
-      {showFilters && (
-        <div className="fixed inset-x-0 bottom-0 z-50 rounded-t-xl bg-white p-4 shadow-xl md:absolute md:inset-auto md:right-0 md:top-full md:mt-2 md:w-80 md:rounded-lg md:border md:border-slate-200 md:shadow-lg">
-          <div className="space-y-4">
+
+      {completedShifts.length > 0 && <Card className="border-orange-200 bg-orange-50"><CardContent className="pt-5"><p className="font-semibold text-orange-900">{t('reportDraftCandidates', { count: completedShifts.length })}</p><p className="text-sm text-orange-700">{t('reportDraftPolicy')}</p></CardContent></Card>}
+
+      <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 shadow-none">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-1 items-center gap-2">
+            <div className="relative max-w-sm flex-1">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input className="pl-9 bg-background" value={filters.search} onChange={event => setFilters(current => ({ ...current, search: event.target.value }))} placeholder={t('reportSearchPlaceholder')} />
+            </div>
+            <Button variant={showFilters ? 'secondary' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="reports-filter-panel" className="shrink-0"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" onClick={() => setFilters(emptyFilters)} title={t('resetFilters')}><RotateCcw className="h-4 w-4" /></Button>
+            {currentUser && hasPermission(currentUser, 'reports.export') && (
+              <>
+                <div className="hidden md:block">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2">
+                      <Download className="mr-2 h-4 w-4" />{t('exportFilteredReports')}
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => exportReportsToExcel(filteredReports, exportContext)} disabled={!filteredReports.length}>
+                        <FileSpreadsheet className="mr-2 h-4 w-4" />{t('exportFilteredReports')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => void exportImages()} disabled={!filteredReports.length}>
+                        <FileImage className="mr-2 h-4 w-4" />{t('exportImageMetadata')}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={downloadReportTemplate}>
+                        <Download className="mr-2 h-4 w-4" />{t('downloadReportTemplate')}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <div className="md:hidden">
+                  <MobileActionMenu
+                    breakpoint="md"
+                    actions={[
+                      { key: 'export-reports', label: t('exportFilteredReports'), icon: <FileSpreadsheet className="h-4 w-4" />, onClick: () => exportReportsToExcel(filteredReports, exportContext), disabled: !filteredReports.length },
+                      { key: 'export-images', label: t('exportImageMetadata'), icon: <FileImage className="h-4 w-4" />, onClick: () => void exportImages(), disabled: !filteredReports.length },
+                      { key: 'download-template', label: t('downloadReportTemplate'), icon: <Download className="h-4 w-4" />, onClick: downloadReportTemplate }
+                    ]}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {showFilters && (
+          <div id="reports-filter-panel" className="grid gap-4 rounded-md bg-muted/40 p-4 md:grid-cols-4 lg:grid-cols-5">
+            <label className="text-xs font-medium text-foreground">{t('startDate')}<Input className="mt-1.5 bg-background" type="date" value={filters.start} onChange={event => setFilters(current => ({ ...current, start: event.target.value }))} /></label>
+            <label className="text-xs font-medium text-foreground">{t('endDate')}<Input className="mt-1.5 bg-background" type="date" value={filters.end} onChange={event => setFilters(current => ({ ...current, end: event.target.value }))} /></label>
             <EntityFilter label={t('brand')} value={filters.brandIds} options={brands} onChange={value => setFilters(current => ({ ...current, brandIds: value }))} />
             <EntityFilter label={t('platform')} value={filters.platformIds} options={platforms} onChange={value => setFilters(current => ({ ...current, platformIds: value }))} />
             <EntityFilter label={t('campaign')} value={filters.campaignIds} options={campaigns} onChange={value => setFilters(current => ({ ...current, campaignIds: value }))} />
+            <EntityFilter label={t('host')} value={filters.hostIds} options={users.filter(user => user.operational_roles?.includes('host')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, hostIds: value }))} />
+            <EntityFilter label={t('support')} value={filters.supportIds} options={users.filter(user => user.operational_roles?.includes('support')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, supportIds: value }))} />
+            <EntityFilter label={t('technical')} value={filters.technicalIds} options={users.filter(user => user.operational_roles?.includes('technical')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, technicalIds: value }))} />
+            <StatusFilter label={t('reportStatus')} value={filters.reportStatuses} values={['draft', 'in_review', 'confirmed', 'reopened', 'archived']} onChange={value => setFilters(current => ({ ...current, reportStatuses: value }))} />
+            <StatusFilter label={t('metricsStatus')} value={filters.metricsStatuses} values={['confirmed', 'unconfirmed']} onChange={value => setFilters(current => ({ ...current, metricsStatuses: value }))} />
           </div>
-        </div>
-      )}
-    </>
-  )
+        )}
+      </div>
 
-  return (
-    <>
-      <ReportsView 
-        reports={mappedReports} 
-        canonicalMetrics={canonicalMetrics} 
-        onCreateReport={() => setShowForm(true)} 
-        onExport={() => exportReportsToExcel(filteredReports, exportContext)}
-        filterNode={filterNode}
-      />
+      <ReportsView reports={filteredReports} shifts={shifts} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations}
+        onView={setSelectedReport} onExport={currentUser && hasPermission(currentUser, 'reports.export') ? report => exportReportDetailToExcel(report, exportContext) : undefined}
+        onRemove={report => { void requestRemove(report) }} currentUser={currentUser} />
+
       {showForm && <ReportFormModal open={showForm} onOpenChange={setShowForm} completedShifts={completedShifts} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onSuccess={() => { void loadData(); setShowForm(false) }} />}
-    </>
+      {selectedReport && <ReportDetailModal open report={selectedReport} shift={shiftById.get(selectedReport.shift_id)!} brands={brands} platforms={platforms} users={users} registrations={registrations} onOpenChange={open => !open && setSelectedReport(null)} onUpdated={() => { void loadData(); setSelectedReport(null) }} campaigns={campaigns} />}
+      <LifecycleActionDialog open={Boolean(removeTarget)} onOpenChange={open => { if (!open) { setRemoveTarget(null); setRemoveImpact(null) } }} title={removeTarget?.metrics_confirmed ? t('archiveConfirmedReport') : t('deleteUnconfirmedReport')} impact={removeImpact} confirmText={removeTarget?.metrics_confirmed ? t('archive') : t('delete')} onConfirm={removeReport} />
+    </div>
   )
 }
 
@@ -329,15 +337,4 @@ function EntityFilter({ label, value, options, onChange }: { label: string; valu
 function StatusFilter({ label, value, values, onChange }: { label: string; value: string[]; values: string[]; onChange: (value: string[]) => void }) {
   const { t, translate } = useTranslation()
   return <MultiSelectFilter label={label} value={value} onChange={onChange} options={values.map(status => ({ value: status, label: status === 'in_review' ? t('inReview') : status === 'draft' ? t('draft') : status === 'confirmed' ? t('confirmed') : status === 'reopened' ? t('reopened') : status === 'archived' ? t('archived') : translate(status) }))} />
-}
-
-function Value({ label, value }: { label: string; value: string }) {
-  return <div><p className="text-micro font-medium uppercase tracking-wider text-muted-foreground">{label}</p><p className="truncate text-sm font-semibold">{value}</p></div>
-}
-
-function reportRevenue(report: Report): number | undefined {
-  if (typeof report.normalized_metrics?.revenue === 'number') return report.normalized_metrics.revenue
-  if (typeof report.platform_metrics?.sales === 'number') return report.platform_metrics.sales
-  if (report.revenue != null) return report.revenue
-  return report.gmv
 }
