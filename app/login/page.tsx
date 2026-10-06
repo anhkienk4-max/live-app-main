@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { AuthLayout } from '@/components/layouts/AuthLayout'
 import { Separator } from '@/components/ui/separator'
 import { Eye, EyeOff, Globe, Loader2 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -119,31 +119,9 @@ function LoginPageContent() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-50 p-4">
-      <Card className="w-full max-w-md shadow-xl border-0">
-        <CardHeader className="space-y-4 text-center pb-8">
-          <div className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl flex items-center justify-center">
-            <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <div>
-            <CardTitle className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">
-              LiveStream Ops
-            </CardTitle>
-            <CardDescription className="text-base mt-2">
-              {t('loginSubtitle')}
-            </CardDescription>
-            {mockMode && (
-              <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-xs text-blue-700 font-medium">
-                  🔧 {t('demoModeHelp')}
-                </p>
-              </div>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-6">
+    <AuthLayout title={t('signIn')} subtitle={t('loginSubtitle')}>
+      <div className="space-y-5">
+        {mockMode && <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700">{t('demoModeHelp')}</p>}
           {mockMode && (
             <>
               <Button
@@ -220,7 +198,7 @@ function LoginPageContent() {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full h-11 text-base font-medium bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 transition-all"
+              className="w-full h-11 text-sm font-semibold bg-blue-600 hover:bg-blue-700"
               data-testid="email-login-btn"
             >
               {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t('signingIn')}</> : t('signIn')}
@@ -228,11 +206,7 @@ function LoginPageContent() {
           </form>
           <div className="space-y-3 text-center text-sm">
             <Link className="text-blue-700 hover:underline" href="/forgot-password">{t('forgotPassword')}</Link>
-            {mockMode && (
-              <>
-                <p className="text-gray-600">{t('noAccount')} <Link className="font-semibold text-blue-700 hover:underline" href="/register">{t('signUp')}</Link></p>
-              </>
-            )}
+            <p className="text-muted-foreground">{t('noAccount')} <Link className="font-semibold text-blue-700 hover:underline" href="/register">{t(mockMode ? 'signUp' : 'accountRequestTitle')}</Link></p>
           </div>
           <Button
             type="button"
@@ -243,9 +217,8 @@ function LoginPageContent() {
             <Globe className="mr-2 h-4 w-4" />
             {language === 'en' ? t('vietnamese') : t('english')}
           </Button>
-        </CardContent>
-      </Card>
-    </div>
+      </div>
+    </AuthLayout>
   )
 }
 
