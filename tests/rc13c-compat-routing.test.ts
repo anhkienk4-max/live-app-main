@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { createHash } from 'node:crypto'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
@@ -270,11 +271,16 @@ function compatHarness(options: {
   metadataRemoveFails?: boolean
   externalFileId?: string
   routeError?: string
+  concurrentUploads?: boolean
+  metadataUploadFails?: boolean
 } = {}) {
   const selects: Array<{ table: string; columns: string }> = []
   const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = []
   const storageCalls: string[] = []
   const routeInputs: OperationalStoragePlacementInput[] = []
+  let uploadCount = 0
+  let releaseUploads!: () => void
+  const uploadBarrier = new Promise<void>(resolve => { releaseUploads = resolve })
   const rows: Record<string, Record<string, unknown>[]> = {
     reports: [{
       id: 'report-1', shift_id: 'shift-1', submitted_by: 'business-1', metrics_confirmed: false,
@@ -323,7 +329,12 @@ function compatHarness(options: {
           return { data: row, error: null }
         }
         if (name === 'upsert_live_report_image') {
-          const row = { id: 'live-image-1', uploaded_by: 'business-1', ...(args.p_data as object) }
+          if (options.metadataUploadFails) return { data: null, error: { message: 'metadata insert failed' } }
+          const data = args.p_data as Record<string, unknown>
+          const existing = rows.live_report_images.find(row => row.report_id === data.report_id
+            && row.storage_idempotency_key === data.storage_idempotency_key)
+          if (existing) return { data: existing, error: null }
+          const row = { id: `live-image-${rows.live_report_images.length + 1}`, uploaded_by: 'business-1', ...data }
           rows.live_report_images.push(row)
           return { data: row, error: null }
         }
@@ -354,9 +365,14 @@ function compatHarness(options: {
     },
     async upload(input: { destination?: { provider?: string }; external_parent_id?: string; name: string }) {
       storageCalls.push(`upload:${input.destination?.provider}:${input.external_parent_id}:${input.name}`)
+      const uploadNumber = ++uploadCount
+      if (options.concurrentUploads) {
+        if (uploadCount === 2) releaseUploads()
+        await uploadBarrier
+      }
       return { asset: {
         id: 'asset', provider: input.destination?.provider,
-        external_file_id: options.externalFileId ?? `file-${input.destination?.provider}`,
+        external_file_id: options.externalFileId ?? (options.concurrentUploads ? `race-file-${uploadNumber}` : `file-${input.destination?.provider}`),
         name: input.name, mime_type: 'image/png', size_bytes: 3, entity_type: 'report', entity_id: 'report-1',
         status: 'active', created_by: 'business-1', created_at: '2026-10-01T00:00:00Z',
       } }
@@ -400,7 +416,7 @@ test('compat report upload uses existing schema, Studio routing, and exact-paren
   assert.deepEqual(h.rpcCalls.map(call => call.name), ['upload_report_image'])
   assert.equal(decodeCloudAssetReference(h.rows.report_images[0].image_url)?.provider, 'google_drive')
   const storedName = h.rows.report_images[0].storage_path.split('/').at(-1)
-  assert.match(storedName, /^20261001_dashboard_[A-F0-9]{8}_compat\.png$/u)
+  assert.match(storedName, /^20261001_dashboard_[A-F0-9]{64}_compat\.png$/u)
   assert.equal(h.rpcCalls[0].args.p_original_name, 'compat.png')
   assert.equal(h.rows.report_images[0].storage_path, `THÁNG 10.2026/DASHBOARD/${storedName}`)
   assert.ok(h.storageCalls.includes(`upload:google_drive:agency-base/THÁNG 10.2026/DASHBOARD:${storedName}`))
@@ -549,7 +565,8 @@ test('compat idempotency is provider-aware and rejects live physical aliases bef
   const categoryConflict = await live.handler.POST(formRequest({ ...first, category: 'live_session' }))
   assert.equal(categoryConflict.status, 200)
   assert.equal(live.rows.live_report_images.length, 2)
-  assert.notEqual(live.rows.live_report_images[0].file_name, live.rows.live_report_images[1].file_name)
+  assert.equal(live.rows.live_report_images[0].file_name, live.rows.live_report_images[1].file_name)
+  assert.notEqual(live.rows.live_report_images[0].storage_file_name, live.rows.live_report_images[1].storage_file_name)
   const providerConflict = await live.handler.POST(formRequest({ ...first, provider: 'onedrive' }))
   assert.equal(providerConflict.status, 409)
   assert.equal(live.storageCalls.filter(call => call.startsWith('upload:')).length, 2)
@@ -565,8 +582,8 @@ test('compat uploads support live category other and unique names for repeated o
   assert.equal(h.rows.live_report_images.length, 2)
   const rows = h.rows.live_report_images
   assert.ok(rows.every(row => row.category === 'other'))
-  assert.ok(rows.every(row => row.file_name.startsWith('20261001_other_')))
-  assert.notEqual(rows[0].file_name, rows[1].file_name)
+  assert.ok(rows.every(row => row.file_name === 'same.jpg'))
+  assert.notEqual(rows[0].storage_file_name, rows[1].storage_file_name)
   assert.ok(h.storageCalls.some(call => call.includes('/THÁNG 10.2026/VISUAL HOST:')))
 })
 
@@ -683,4 +700,59 @@ test('malformed cloud references fail closed while ordinary Supabase Storage ima
   const reportResponse = await reportLegacy.handler.GET(new Request('https://example.test/api/report-images?kind=report&image_id=report-legacy'))
   assert.deepEqual([...new Uint8Array(await reportResponse.arrayBuffer())], [9, 8])
   assert.deepEqual(reportLegacy.storageCalls, ['legacy-read:reports/r1/dashboard/file.png'])
+})
+
+
+test('live retry uses category and full content digest independent of the original display filename', async () => {
+  const h = compatHarness()
+  const fields = { kind: 'live', report_id: 'report-1', category: 'other' }
+  const first = await h.handler.POST(formRequest(fields, 'same: file.png'))
+  const retry = await h.handler.POST(formRequest(fields, 'renamed.png'))
+  assert.equal(first.status, 200)
+  assert.equal(retry.status, 200)
+  assert.equal((await retry.json()).image.file_name, 'same- file.png')
+  assert.equal(h.rows.live_report_images.length, 1)
+  assert.equal(h.storageCalls.filter(call => call.startsWith('upload:')).length, 1)
+  const row = h.rows.live_report_images[0]
+  const digest = createHash('sha256').update(new Uint8Array([1, 2, 3])).digest('hex')
+  assert.equal(row.storage_idempotency_key, `other:${digest}`)
+  assert.equal(row.storage_file_name, `20261001_other_${digest.toUpperCase()}_same- file.png`)
+  assert.equal(row.file_name, 'same- file.png')
+})
+
+test('concurrent live retry returns the winner and deletes only the redundant provider object', async () => {
+  const h = compatHarness({ concurrentUploads: true })
+  const fields = { kind: 'live', report_id: 'report-1', category: 'live_session' }
+  const responses = await Promise.all([
+    h.handler.POST(formRequest(fields, 'first.png')),
+    h.handler.POST(formRequest(fields, 'second.png')),
+  ])
+  assert.deepEqual(responses.map(response => response.status), [200, 200])
+  const bodies = await Promise.all(responses.map(response => response.json()))
+  assert.equal(bodies[0].image.id, bodies[1].image.id)
+  assert.equal(h.rows.live_report_images.length, 1)
+  const winnerId = decodeCloudAssetReference(h.rows.live_report_images[0].file_url)?.external_file_id
+  const deletes = h.storageCalls.filter(call => call.startsWith('delete:'))
+  assert.equal(deletes.length, 1)
+  assert.notEqual(deletes[0], `delete:google_drive:${winnerId}`)
+  assert.equal(h.storageCalls.filter(call => call.startsWith('upload:')).length, 2)
+})
+
+test('live metadata rejection deletes the uploaded provider object', async () => {
+  const h = compatHarness({ metadataUploadFails: true })
+  const response = await h.handler.POST(formRequest({ kind: 'live', report_id: 'report-1', category: 'other' }))
+  assert.equal(response.status, 502)
+  assert.equal(h.rows.live_report_images.length, 0)
+  assert.ok(h.storageCalls.includes('delete:google_drive:file-google_drive'))
+})
+
+test('redundant provider cleanup failure is reported rather than accepted as a successful retry', async () => {
+  const h = compatHarness({ concurrentUploads: true, providerDeleteFails: true })
+  const fields = { kind: 'live', report_id: 'report-1', category: 'other' }
+  const responses = await Promise.all([h.handler.POST(formRequest(fields)), h.handler.POST(formRequest(fields))])
+  assert.deepEqual(responses.map(response => response.status).sort(), [200, 502])
+  const failure = responses.find(response => response.status === 502)!
+  assert.equal((await failure.json()).error.code, 'REPORT_IMAGE_UPLOAD_CLEANUP_FAILED')
+  assert.equal(h.rows.live_report_images.length, 1)
+  assert.equal(h.storageCalls.filter(call => call.startsWith('delete:')).length, 1)
 })

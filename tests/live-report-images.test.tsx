@@ -289,3 +289,16 @@ test('blob object URLs are revoked while remote storage URLs are preserved', () 
   )
   assert.deepEqual(revoked, ['blob:test/local-image'])
 })
+
+
+test('live gallery renders the original filename and never the provider storage filename', () => {
+  const providerName = `20260914_live-session_${'A'.repeat(64)}_original.png`
+  const image = makeImage('display', 0, {
+    file_name: 'original.png', storage_file_name: providerName,
+    storage_idempotency_key: `live_session:${'a'.repeat(64)}`,
+  })
+  const markup = renderToStaticMarkup(createElement(LanguageProvider, null,
+    createElement(LiveReportImageGallery, { images: [image] })))
+  assert.match(markup, /original\.png/u)
+  assert.doesNotMatch(markup, /20260914_live-session/u)
+})

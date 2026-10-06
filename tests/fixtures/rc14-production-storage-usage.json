@@ -1,0 +1,226 @@
+[
+  {
+    "brand": "ASM AI Livestream",
+    "source": "internal",
+    "platform": "Shopee Live",
+    "shifts": 15,
+    "earliest": "2026-09-01",
+    "latest": "2026-09-30"
+  },
+  {
+    "brand": "ASTROMAN",
+    "source": "agency",
+    "platform": "Shopee Live",
+    "shifts": 14,
+    "earliest": "2026-09-08",
+    "latest": "2026-09-25"
+  },
+  {
+    "brand": "ASTROMAN",
+    "source": "internal",
+    "platform": "Shopee Live",
+    "shifts": 1,
+    "earliest": "2026-08-20",
+    "latest": "2026-08-20"
+  },
+  {
+    "brand": "CUREL",
+    "source": "agency",
+    "platform": "Shopee Live",
+    "shifts": 7,
+    "earliest": "2026-09-08",
+    "latest": "2026-09-25"
+  },
+  {
+    "brand": "CUREL",
+    "source": "agency",
+    "platform": "TikTok Shop",
+    "shifts": 9,
+    "earliest": "2026-09-03",
+    "latest": "2026-09-24"
+  },
+  {
+    "brand": "CUREL",
+    "source": "internal",
+    "platform": "TikTok Shop",
+    "shifts": 2,
+    "earliest": "2026-08-24",
+    "latest": "2026-08-24"
+  },
+  {
+    "brand": "Female",
+    "source": "agency",
+    "platform": "Shopee Live",
+    "shifts": 15,
+    "earliest": "2026-09-03",
+    "latest": "2026-09-25"
+  },
+  {
+    "brand": "Female",
+    "source": "internal",
+    "platform": "Shopee Live",
+    "shifts": 26,
+    "earliest": "2026-08-04",
+    "latest": "2026-09-30"
+  },
+  {
+    "brand": "Female AI livestream",
+    "source": "internal",
+    "platform": "Shopee Live",
+    "shifts": 76,
+    "earliest": "2026-09-01",
+    "latest": "2026-09-30"
+  },
+  {
+    "brand": "KAO",
+    "source": "internal",
+    "platform": "Shopee Live",
+    "shifts": 72,
+    "earliest": "2026-08-01",
+    "latest": "2026-09-25"
+  },
+  {
+    "brand": "KAO",
+    "source": "internal",
+    "platform": "TikTok Shop",
+    "shifts": 98,
+    "earliest": "2026-08-01",
+    "latest": "2026-09-30"
+  },
+  {
+    "brand": "KATE",
+    "source": "agency",
+    "platform": "Shopee Live",
+    "shifts": 15,
+    "earliest": "2026-09-03",
+    "latest": "2026-09-25"
+  },
+  {
+    "brand": "KATE",
+    "source": "agency",
+    "platform": "TikTok Shop",
+    "shifts": 12,
+    "earliest": "2026-09-03",
+    "latest": "2026-09-24"
+  },
+  {
+    "brand": "KATE",
+    "source": "internal",
+    "platform": "Shopee Live",
+    "shifts": 1,
+    "earliest": "2026-09-16",
+    "latest": "2026-09-16"
+  },
+  {
+    "brand": "KATE",
+    "source": "internal",
+    "platform": "TikTok Shop",
+    "shifts": 1,
+    "earliest": "2026-08-21",
+    "latest": "2026-08-21"
+  },
+  {
+    "brand": "Male AI livestream",
+    "source": "internal",
+    "platform": "Shopee Live",
+    "shifts": 76,
+    "earliest": "2026-09-01",
+    "latest": "2026-09-30"
+  },
+  {
+    "brand": "Mars Snacking",
+    "source": "agency",
+    "platform": "Shopee Live",
+    "shifts": 7,
+    "earliest": "2026-09-09",
+    "latest": "2026-09-25"
+  },
+  {
+    "brand": "Mars Snacking",
+    "source": "agency",
+    "platform": "TikTok Shop",
+    "shifts": 2,
+    "earliest": "2026-09-08",
+    "latest": "2026-09-09"
+  },
+  {
+    "brand": "Mars Snacking",
+    "source": "internal",
+    "platform": "Shopee Live",
+    "shifts": 14,
+    "earliest": "2026-08-01",
+    "latest": "2026-09-24"
+  },
+  {
+    "brand": "Mars Snacking",
+    "source": "internal",
+    "platform": "TikTok Shop",
+    "shifts": 92,
+    "earliest": "2026-08-03",
+    "latest": "2026-09-30"
+  },
+  {
+    "brand": "OPELLA",
+    "source": "agency",
+    "platform": "Shopee Live",
+    "shifts": 3,
+    "earliest": "2026-09-15",
+    "latest": "2026-09-25"
+  },
+  {
+    "brand": "OPELLA",
+    "source": "agency",
+    "platform": "TikTok Shop",
+    "shifts": 5,
+    "earliest": "2026-09-08",
+    "latest": "2026-09-25"
+  },
+  {
+    "brand": "OPELLA",
+    "source": "internal",
+    "platform": "Shopee Live",
+    "shifts": 14,
+    "earliest": "2026-08-01",
+    "latest": "2026-09-25"
+  },
+  {
+    "brand": "OPELLA",
+    "source": "internal",
+    "platform": "TikTok Shop",
+    "shifts": 12,
+    "earliest": "2026-08-05",
+    "latest": "2026-09-09"
+  },
+  {
+    "brand": "Pepsico",
+    "source": "agency",
+    "platform": "Shopee Live",
+    "shifts": 11,
+    "earliest": "2026-09-07",
+    "latest": "2026-09-25"
+  },
+  {
+    "brand": "Pepsico",
+    "source": "internal",
+    "platform": "Shopee Live",
+    "shifts": 6,
+    "earliest": "2026-09-11",
+    "latest": "2026-09-25"
+  },
+  {
+    "brand": "X-men",
+    "source": "agency",
+    "platform": "Shopee Live",
+    "shifts": 15,
+    "earliest": "2026-09-07",
+    "latest": "2026-09-25"
+  },
+  {
+    "brand": "X-men",
+    "source": "internal",
+    "platform": "Shopee Live",
+    "shifts": 50,
+    "earliest": "2026-08-03",
+    "latest": "2026-09-30"
+  }
+]

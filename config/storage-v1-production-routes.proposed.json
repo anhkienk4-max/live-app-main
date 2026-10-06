@@ -1,0 +1,665 @@
+[
+  {
+    "provider": "google_drive",
+    "execution_source": "internal",
+    "brand": "ASM AI Livestream",
+    "platform": null,
+    "subbrand_key": null,
+    "storage_profile": "CANONICAL_V1",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "folder_labels": {},
+    "period_naming_style": "THANG_M_DOT_YEAR",
+    "active": true
+  },
+  {
+    "provider": "google_drive",
+    "execution_source": "internal",
+    "brand": "Female AI livestream",
+    "platform": null,
+    "subbrand_key": null,
+    "storage_profile": "CANONICAL_V1",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "folder_labels": {},
+    "period_naming_style": "THANG_M_DOT_YEAR",
+    "active": true
+  },
+  {
+    "provider": "google_drive",
+    "execution_source": "internal",
+    "brand": "Male AI livestream",
+    "platform": null,
+    "subbrand_key": null,
+    "storage_profile": "CANONICAL_V1",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "folder_labels": {},
+    "period_naming_style": "THANG_M_DOT_YEAR",
+    "active": true
+  },
+  {
+    "provider": "google_drive",
+    "execution_source": "agency",
+    "brand": "ASTROMAN",
+    "platform": null,
+    "subbrand_key": null,
+    "storage_profile": "TEMP_AGENCY_BRAND_PERIOD_CATEGORY",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "1MXerAY2WdViTsVCO8G92vOepS-6BxYBC",
+    "folder_labels": {
+      "dashboard": "DASHBOARD",
+      "live_visual_agency": "VISUAL HOST",
+      "data_report": [
+        "DATA",
+        "REPORT"
+      ],
+      "data_source": [
+        "DATA",
+        "SOURCE"
+      ]
+    },
+    "period_naming_style": "THANG_M_DOT_YEAR",
+    "active": true
+  },
+  {
+    "provider": "google_drive",
+    "execution_source": "agency",
+    "brand": "CUREL",
+    "platform": null,
+    "subbrand_key": null,
+    "storage_profile": "TEMP_AGENCY_BRAND_PERIOD_CATEGORY",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "1MXerAY2WdViTsVCO8G92vOepS-6BxYBC",
+    "folder_labels": {
+      "dashboard": "DASHBOARD",
+      "live_visual_agency": "VISUAL HOST",
+      "data_report": [
+        "DATA",
+        "REPORT"
+      ],
+      "data_source": [
+        "DATA",
+        "SOURCE"
+      ]
+    },
+    "period_naming_style": "THANG_M_DOT_YEAR",
+    "active": true
+  },
+  {
+    "provider": "google_drive",
+    "execution_source": "agency",
+    "brand": "Female",
+    "platform": null,
+    "subbrand_key": null,
+    "storage_profile": "TEMP_AGENCY_BRAND_PERIOD_CATEGORY",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "1MXerAY2WdViTsVCO8G92vOepS-6BxYBC",
+    "folder_labels": {
+      "dashboard": "DASHBOARD",
+      "live_visual_agency": "VISUAL HOST",
+      "data_report": [
+        "DATA",
+        "REPORT"
+      ],
+      "data_source": [
+        "DATA",
+        "SOURCE"
+      ]
+    },
+    "period_naming_style": "THANG_M_DOT_YEAR",
+    "active": true
+  },
+  {
+    "provider": "google_drive",
+    "execution_source": "agency",
+    "brand": "KATE",
+    "platform": null,
+    "subbrand_key": null,
+    "storage_profile": "TEMP_AGENCY_BRAND_PERIOD_CATEGORY",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "1MXerAY2WdViTsVCO8G92vOepS-6BxYBC",
+    "folder_labels": {
+      "dashboard": "DASHBOARD",
+      "live_visual_agency": "VISUAL HOST",
+      "data_report": [
+        "DATA",
+        "REPORT"
+      ],
+      "data_source": [
+        "DATA",
+        "SOURCE"
+      ]
+    },
+    "period_naming_style": "THANG_M_DOT_YEAR",
+    "active": true
+  },
+  {
+    "provider": "google_drive",
+    "execution_source": "agency",
+    "brand": "OPELLA",
+    "platform": null,
+    "subbrand_key": null,
+    "storage_profile": "TEMP_AGENCY_BRAND_PERIOD_CATEGORY",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "1MXerAY2WdViTsVCO8G92vOepS-6BxYBC",
+    "folder_labels": {
+      "dashboard": "DASHBOARD",
+      "live_visual_agency": "VISUAL HOST",
+      "data_report": [
+        "DATA",
+        "REPORT"
+      ],
+      "data_source": [
+        "DATA",
+        "SOURCE"
+      ]
+    },
+    "period_naming_style": "THANG_M_DOT_YEAR",
+    "active": true
+  },
+  {
+    "provider": "google_drive",
+    "execution_source": "agency",
+    "brand": "Pepsico",
+    "platform": null,
+    "subbrand_key": null,
+    "storage_profile": "TEMP_AGENCY_BRAND_PERIOD_CATEGORY",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "1MXerAY2WdViTsVCO8G92vOepS-6BxYBC",
+    "folder_labels": {
+      "dashboard": "DASHBOARD",
+      "live_visual_agency": "VISUAL HOST",
+      "data_report": [
+        "DATA",
+        "REPORT"
+      ],
+      "data_source": [
+        "DATA",
+        "SOURCE"
+      ]
+    },
+    "period_naming_style": "THANG_M_DOT_YEAR",
+    "active": true
+  },
+  {
+    "provider": "google_drive",
+    "execution_source": "agency",
+    "brand": "X-men",
+    "platform": null,
+    "subbrand_key": null,
+    "storage_profile": "TEMP_AGENCY_BRAND_PERIOD_CATEGORY",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "1MXerAY2WdViTsVCO8G92vOepS-6BxYBC",
+    "folder_labels": {
+      "dashboard": "DASHBOARD",
+      "live_visual_agency": "VISUAL HOST",
+      "data_report": [
+        "DATA",
+        "REPORT"
+      ],
+      "data_source": [
+        "DATA",
+        "SOURCE"
+      ]
+    },
+    "period_naming_style": "THANG_M_DOT_YEAR",
+    "active": true
+  },
+  {
+    "provider": "google_drive",
+    "execution_source": "internal",
+    "brand": "Mars Snacking",
+    "platform": null,
+    "subbrand_key": null,
+    "storage_profile": "LEGACY_CATEGORY_PERIOD",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "1SuQhXZsNr7eArHVwf9NMTqR1TEHYqOC5",
+    "folder_labels": {
+      "dashboard": "DASHBOARD",
+      "live_visual_internal": "VISIBILITY",
+      "data_report": [
+        "DATA",
+        "REPORT"
+      ],
+      "data_source": [
+        "DATA",
+        "SOURCE"
+      ]
+    },
+    "period_naming_style": "THANG_UPPER_M_DASH_YEAR",
+    "active": true,
+    "period_label_overrides": {
+      "2026-01": {
+        "dashboard": "tháng 1 - 2026",
+        "live_visual": "Tháng 1 - 2026"
+      },
+      "2026-02": {
+        "dashboard": "THÁNG 02-2026",
+        "live_visual": "THÁNG 02-2026"
+      },
+      "2026-03": {
+        "dashboard": "THÁNG 03 - 2026",
+        "live_visual": "THÁNG 03 - 2026"
+      },
+      "2026-04": {
+        "dashboard": "THÁNG 04 - 2026",
+        "live_visual": "Tháng 04-2026"
+      },
+      "2026-05": {
+        "dashboard": "THÁNG 05-2026",
+        "live_visual": "THÁNG 5.2026"
+      },
+      "2026-06": {
+        "dashboard": "Tháng 6 - 2026",
+        "live_visual": "THÁNG 6-2026"
+      },
+      "2026-07": {
+        "dashboard": "Tháng 7-2026",
+        "live_visual": "Tháng 7-2026"
+      },
+      "2026-08": {
+        "dashboard": "Tháng 8 - 2026",
+        "live_visual": "Tháng 8 - 2026"
+      },
+      "2026-09": {
+        "dashboard": "Tháng 9 - 2026",
+        "live_visual": "Tháng 9 - 2026"
+      },
+      "2026-10": {
+        "dashboard": "Tháng 10 - 2026",
+        "live_visual": "THÁNG 10 -2026"
+      }
+    }
+  },
+  {
+    "provider": "google_drive",
+    "execution_source": "agency",
+    "brand": "Mars Snacking",
+    "platform": null,
+    "subbrand_key": null,
+    "storage_profile": "LEGACY_PERIOD_CATEGORY",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "19cuLMvhVB8yfJslZUbLUdrsDLQ_vincE",
+    "folder_labels": {
+      "dashboard": "DASHBOARD",
+      "live_visual_agency": "VISUAL HOST",
+      "data_report": [
+        "DATA",
+        "REPORT"
+      ],
+      "data_source": [
+        "DATA",
+        "SOURCE"
+      ]
+    },
+    "period_naming_style": "THANG_M_DOT_YEAR",
+    "active": true
+  },
+  {
+    "provider": "google_drive",
+    "execution_source": "internal",
+    "brand": "ASTROMAN",
+    "platform": null,
+    "subbrand_key": null,
+    "storage_profile": "LEGACY_CATEGORY_PERIOD",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "1J5rnrodawxZjngKCu-thqb9peoaaMGXE",
+    "folder_labels": {
+      "dashboard": "DASHBOARD",
+      "live_visual_internal": "VISIBILITY",
+      "data_report": [
+        "DATA",
+        "REPORT"
+      ],
+      "data_source": [
+        "DATA",
+        "SOURCE"
+      ]
+    },
+    "period_naming_style": "THANG_UPPER_M_DASH_YEAR",
+    "active": true,
+    "period_label_overrides": {
+      "2026-09": {
+        "dashboard": "THÁNG 9. 2026",
+        "live_visual": "THÁNG 9. 2026"
+      }
+    }
+  },
+  {
+    "provider": "google_drive",
+    "execution_source": "internal",
+    "brand": "Female",
+    "platform": null,
+    "subbrand_key": null,
+    "storage_profile": "LEGACY_CATEGORY_PERIOD",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "1QcV_-vU35f3g262h8CXgugCkSLfgBHsZ",
+    "folder_labels": {
+      "dashboard": "DASHBOARD",
+      "live_visual_internal": "VISIBILITY",
+      "data_report": [
+        "DATA",
+        "REPORT"
+      ],
+      "data_source": [
+        "DATA",
+        "SOURCE"
+      ]
+    },
+    "period_naming_style": "THANG_UPPER_M_DASH_YEAR",
+    "active": true,
+    "period_label_overrides": {
+      "2026-06": {
+        "dashboard": "THÁNG 6. 2026",
+        "live_visual": "THÁNG 6. 2026"
+      },
+      "2026-07": {
+        "dashboard": "THÁNG 7. 2026",
+        "live_visual": "THÁNG 7. 2026"
+      },
+      "2026-08": {
+        "dashboard": "THÁNG 8.2026",
+        "live_visual": "THÁNG 8.2026"
+      },
+      "2026-09": {
+        "dashboard": "Tháng 9 - 2026",
+        "live_visual": "THÁNG 9. 2026"
+      }
+    }
+  },
+  {
+    "provider": "google_drive",
+    "execution_source": "internal",
+    "brand": "X-men",
+    "platform": null,
+    "subbrand_key": null,
+    "storage_profile": "LEGACY_CATEGORY_PERIOD",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "16X2rvIuTGj_Raw2wA3bBtEAAJY53Sv_i",
+    "folder_labels": {
+      "dashboard": "DASHBOARD",
+      "live_visual_internal": "VISIBILITY",
+      "data_report": [
+        "DATA",
+        "REPORT"
+      ],
+      "data_source": [
+        "DATA",
+        "SOURCE"
+      ]
+    },
+    "period_naming_style": "THANG_UPPER_M_DASH_YEAR",
+    "active": true,
+    "period_label_overrides": {
+      "2026-06": {
+        "dashboard": "THÁNG 6. 2026",
+        "live_visual": "THÁNG 6. 2026"
+      },
+      "2026-07": {
+        "dashboard": "THÁNG 7. 2026",
+        "live_visual": "THÁNG 7. 2026"
+      },
+      "2026-08": {
+        "dashboard": "THÁNG 8.2026",
+        "live_visual": "THÁNG 8.2026"
+      },
+      "2026-09": {
+        "dashboard": "Tháng 9 - 2026",
+        "live_visual": "THÁNG 9. 2026"
+      }
+    }
+  },
+  {
+    "provider": "google_drive",
+    "execution_source": "internal",
+    "brand": "CUREL",
+    "platform": null,
+    "subbrand_key": null,
+    "storage_profile": "LEGACY_CATEGORY_PERIOD",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "1v0qrSIT6f1pUQ8hJfbZDvJBV3s9P972-",
+    "folder_labels": {
+      "dashboard": "Dashboard",
+      "live_visual_internal": "Visibility",
+      "data_report": [
+        "DATA",
+        "REPORT"
+      ],
+      "data_source": [
+        "DATA",
+        "SOURCE"
+      ]
+    },
+    "period_naming_style": "THANG_UPPER_M_DASH_YEAR",
+    "active": true,
+    "period_label_overrides": {
+      "2026-08": {
+        "dashboard": "Tháng 8 - 2026",
+        "live_visual": "Tháng 8 - 2026"
+      }
+    }
+  },
+  {
+    "provider": "google_drive",
+    "execution_source": "internal",
+    "brand": "KATE",
+    "platform": null,
+    "subbrand_key": null,
+    "storage_profile": "LEGACY_PERIOD_CATEGORY",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "15I5HIGnOcKiV60aKTrk0aTRfy8pmX6uX",
+    "folder_labels": {
+      "dashboard": "DASHBOARD",
+      "live_visual_internal": "VISIBILITY",
+      "data_report": [
+        "DATA",
+        "REPORT"
+      ],
+      "data_source": [
+        "DATA",
+        "SOURCE"
+      ]
+    },
+    "period_naming_style": "THANG_UPPER_M_DASH_YEAR",
+    "active": true,
+    "period_label_overrides": {
+      "2026-06": {
+        "dashboard": "KATE T6.2026",
+        "live_visual": "KATE T6.2026"
+      },
+      "2026-07": {
+        "dashboard": "KATE T7.2026",
+        "live_visual": "KATE T7.2026"
+      }
+    },
+    "folder_label_overrides": {
+      "2026-07": {
+        "dashboard": "Dashboard",
+        "live_visual": "Visibility"
+      }
+    }
+  },
+  {
+    "provider": "google_drive",
+    "execution_source": "internal",
+    "brand": "KAO",
+    "platform": null,
+    "subbrand_key": null,
+    "storage_profile": "LEGACY_PERIOD_CATEGORY",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "1oq5p4_f69TuPmVP1oRfmHpErwwovKmB8",
+    "folder_labels": {
+      "dashboard": "DASHBOARD",
+      "live_visual_internal": "VISIBILITY",
+      "data_report": [
+        "DATA",
+        "REPORT"
+      ],
+      "data_source": [
+        "DATA",
+        "SOURCE"
+      ]
+    },
+    "period_naming_style": "THANG_UPPER_M_DASH_YEAR",
+    "active": true,
+    "period_label_overrides": {
+      "2026-01": {
+        "dashboard": "T1.2026",
+        "live_visual": "T1.2026"
+      },
+      "2026-03": {
+        "dashboard": "T3.2026",
+        "live_visual": "T3.2026"
+      },
+      "2026-04": {
+        "dashboard": "T4.2026",
+        "live_visual": "T4.2026"
+      },
+      "2026-05": {
+        "dashboard": "T5.2026",
+        "live_visual": "T5.2026"
+      },
+      "2026-06": {
+        "dashboard": "T6.2026 - KAO SIS",
+        "live_visual": "T6.2026 - KAO SIS"
+      },
+      "2026-07": {
+        "dashboard": "THÁNG 7. 2026",
+        "live_visual": "THÁNG 7. 2026"
+      },
+      "2026-08": {
+        "dashboard": "T8.2026 ",
+        "live_visual": "T8.2026 "
+      },
+      "2026-09": {
+        "dashboard": "T9.2026",
+        "live_visual": "T9.2026"
+      }
+    },
+    "folder_label_overrides": {
+      "2026-01": {
+        "dashboard": "Dashboard",
+        "live_visual": "Visibility"
+      }
+    }
+  },
+  {
+    "provider": "google_drive",
+    "execution_source": "internal",
+    "brand": "OPELLA",
+    "platform": "Shopee Live",
+    "subbrand_key": null,
+    "storage_profile": "LEGACY_CATEGORY_PERIOD",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "1ZxI1VB0x5K8eADDig9suD-4qPTMCK8f-",
+    "folder_labels": {
+      "dashboard": "DASHBOARD",
+      "live_visual_internal": "VISIBILITY",
+      "data_report": [
+        "DATA",
+        "REPORT"
+      ],
+      "data_source": [
+        "DATA",
+        "SOURCE"
+      ]
+    },
+    "period_naming_style": "THANG_UPPER_M_DASH_YEAR",
+    "active": true,
+    "period_label_overrides": {
+      "2026-06": {
+        "dashboard": "THÁNG 6. 2026",
+        "live_visual": "THÁNG 06. 2026"
+      },
+      "2026-07": {
+        "dashboard": "THÁNG 7. 2026",
+        "live_visual": "THÁNG 7. 2026"
+      },
+      "2026-08": {
+        "dashboard": "Tháng 8 - 2026",
+        "live_visual": "Tháng 8 - 2026"
+      },
+      "2026-09": {
+        "dashboard": "THÁNG 9. 2026",
+        "live_visual": "THÁNG 9. 2026"
+      }
+    }
+  },
+  {
+    "provider": "google_drive",
+    "execution_source": "internal",
+    "brand": "OPELLA",
+    "platform": "TikTok Shop",
+    "subbrand_key": null,
+    "storage_profile": "LEGACY_CATEGORY_PERIOD",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "1Ww8oPGDLiadsXvY9yP0UUIdqkMI-s0jp",
+    "folder_labels": {
+      "dashboard": "DASHBOARD",
+      "live_visual_internal": "VISIBILITY",
+      "data_report": [
+        "DATA",
+        "REPORT"
+      ],
+      "data_source": [
+        "DATA",
+        "SOURCE"
+      ]
+    },
+    "period_naming_style": "THANG_UPPER_M_DASH_YEAR",
+    "active": true,
+    "period_label_overrides": {
+      "2026-07": {
+        "dashboard": "THÁNG 7. 2026",
+        "live_visual": "THÁNG 7. 2026"
+      },
+      "2026-08": {
+        "dashboard": "THANG 8 2026",
+        "live_visual": "THANGS 8 2026"
+      },
+      "2026-09": {
+        "dashboard": "THÁNG 9. 2026",
+        "live_visual": "THÁNG 9. 2026"
+      }
+    }
+  },
+  {
+    "provider": "google_drive",
+    "execution_source": "internal",
+    "brand": "Pepsico",
+    "platform": null,
+    "subbrand_key": null,
+    "storage_profile": "LEGACY_CATEGORY_PERIOD",
+    "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+    "base_folder_id": "1h4j2Khtde6ugA6BUBN1Y5mqn27buJACa",
+    "folder_labels": {
+      "dashboard": "DASHBOARD",
+      "live_visual_internal": "VISIBILITY",
+      "data_report": [
+        "DATA",
+        "REPORT"
+      ],
+      "data_source": [
+        "DATA",
+        "SOURCE"
+      ]
+    },
+    "period_naming_style": "THANG_UPPER_M_DASH_YEAR",
+    "active": true,
+    "period_label_overrides": {
+      "2026-07": {
+        "dashboard": "THÁNG 7_2026",
+        "live_visual": "THÁNG 7_2026"
+      },
+      "2026-09": {
+        "dashboard": "Tháng 9 - 2026",
+        "live_visual": "Tháng 9 - 2026"
+      },
+      "2026-10": {
+        "dashboard": "Tháng 10 - 2026",
+        "live_visual": "Tháng 10 - 2026"
+      }
+    }
+  }
+]

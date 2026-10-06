@@ -421,6 +421,8 @@ export interface LiveReportImage {
   file_url: string
   thumbnail_url?: string
   file_name: string
+  storage_file_name?: string | null
+  storage_idempotency_key?: string | null
   mime_type: string
   size_bytes: number
   sort_order: number

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { createHash } from 'node:crypto'
 
 import type { FileUploadInput, FileUploadResult } from '@/lib/files/fileProvider'
 import { createFileStorageService } from '@/lib/services/fileStorageService'
@@ -145,7 +146,7 @@ test('report dashboard cutover uses shift.date, materializes folders, and upload
   assert.deepEqual(h.folderNames, ['DASHBOARD', 'Tháng 10 - 2026'])
   assert.equal(h.routeInputs[0].shiftDate, '2026-10-01')
   assert.equal(h.routeInputs[0].shiftDate.includes('2026-09'), false)
-  assert.match(h.uploads[0].name, /^20261001_dashboard_[A-F0-9]{8}_filename\.png$/u)
+  assert.match(h.uploads[0].name, /^20261001_dashboard_[A-F0-9]{64}_filename\.png$/u)
   assert.equal(h.uploads[0].external_parent_id, 'folder-2')
   assert.equal(h.uploads[0].logical_path, `DASHBOARD/Tháng 10 - 2026/${h.uploads[0].name}`)
   assert.equal(h.folderNames.includes(h.uploads[0].name), false)
@@ -300,7 +301,7 @@ test('same original filename with different bytes receives stable distinct provi
   assert.equal(second.status, 200)
   assert.equal(h.uploads.length, 2)
   assert.notEqual(h.uploads[0].name, h.uploads[1].name)
-  assert.match(h.uploads[0].name, /^20261001_dashboard_[A-F0-9]{8}_same- name\.jpg$/u)
+  assert.match(h.uploads[0].name, /^20261001_dashboard_[A-F0-9]{64}_same- name\.jpg$/u)
   assert.equal(h.uploads[0].name.length <= 180, true)
   assert.doesNotMatch(h.uploads[0].name, /:/u)
   assert.equal(h.uploads[0].logical_path === h.uploads[1].logical_path, false)
@@ -338,15 +339,17 @@ test('live-image provider mismatch conflicts without cross-provider fallback', a
   assert.deepEqual(onedriveFirst.uploads.map(upload => upload.destination?.provider), ['onedrive'])
 })
 
-test('legacy provider-less live metadata cannot satisfy a routed provider replay', async () => {
+test('provider-less live metadata cannot satisfy a keyed routed provider replay', async () => {
+  const digest = createHash('sha256').update(new Uint8Array([1, 2, 3])).digest('hex')
   const input: OperationalStoragePlacementInput = {
     provider: 'google_drive', executionSource: 'internal', brandId: 'stg-b1', platformId: 'stg-p1',
     subbrandKey: null, shiftDate: '2026-10-01', logicalCategory: 'live_visual',
-    fileName: '20261001_key-visual_039058C6_filename.png',
+    fileName: `20261001_key-visual_${digest.toUpperCase()}_filename.png`,
   }
   const placement = resolveOperationalStoragePlacement(routeFor(input), input)
   const h = harness({ existingLiveImage: {
     id: 'legacy-live-image', report_id: 'report-1', category: 'key_visual',
+    storage_idempotency_key: `key_visual:${digest}`,
     file_url: [...placement.folderSegments, placement.fileName].join('/'), provider: null, external_file_id: null,
   } })
   const response = await h.handler.POST(formRequest({ kind: 'live', report_id: 'report-1', category: 'key_visual' }))

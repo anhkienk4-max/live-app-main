@@ -225,7 +225,7 @@ function providerStorageFileName(shiftDate: string, category: string, originalNa
   const date = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(shiftDate)
   if (!date) throw new OperationalStoragePlacementError('STORAGE_DATE_INVALID')
 
-  const hash = createHash('sha256').update(bytes).digest('hex').slice(0, 8).toUpperCase()
+  const hash = createHash('sha256').update(bytes).digest('hex').toUpperCase()
   const prefix = `${date[1]}${date[2]}${date[3]}_${category.replaceAll('_', '-')}_${hash}`
   const maxOriginalLength = MAX_FILE_NAME_LENGTH - prefix.length - 1
   if (maxOriginalLength < 1) throw new OperationalStoragePlacementError('STORAGE_FILE_NAME_INVALID')
@@ -234,9 +234,9 @@ function providerStorageFileName(shiftDate: string, category: string, originalNa
   const extensionIndex = safeOriginal.lastIndexOf('.')
   const extension = extensionIndex > 0 && extensionIndex < safeOriginal.length - 1 ? safeOriginal.slice(extensionIndex) : ''
   const stem = extension ? safeOriginal.slice(0, extensionIndex) : safeOriginal
-  const boundedExtension = extension.slice(0, Math.max(0, maxOriginalLength - 1))
-  const boundedStem = stem.slice(0, maxOriginalLength - boundedExtension.length).replace(/[. ]+$/u, '')
-  return sanitizeFileName(`${prefix}_${boundedStem}${boundedExtension}`)
+  if (extension.length >= maxOriginalLength) throw new OperationalStoragePlacementError('STORAGE_FILE_NAME_INVALID')
+  const boundedStem = stem.slice(0, maxOriginalLength - extension.length).replace(/[. ]+$/u, '')
+  return sanitizeFileName(`${prefix}_${boundedStem}${extension}`)
 }
 
 async function resolvePlacementWithContext(
@@ -459,6 +459,7 @@ async function uploadLiveReportImage(
   if (bytes.byteLength > 10 * 1024 * 1024) throw new Error('LIVE_REPORT_IMAGE_TOO_LARGE')
   const category = reportImageLogicalCategory('live', parsed.data.category)
   const name = providerStorageFileName(shift.date, parsed.data.category, sourceName, bytes)
+  const idempotencyKey = `${parsed.data.category}:${createHash('sha256').update(bytes).digest('hex')}`
   const provider: CloudProvider = parsed.data.provider ?? 'google_drive'
   const placement = await resolvePlacementWithContext(dependencies.routeResolver, routedPlacementInput(provider, shift, category, name))
   const logicalPath = logicalMetadataPath(placement)
@@ -466,7 +467,7 @@ async function uploadLiveReportImage(
     const existing = await client.from('live_report_images')
       .select(legacyLiveImageColumns)
       .eq('report_id', parsed.data.report_id)
-      .eq('file_name', name)
+      .eq('storage_idempotency_key', idempotencyKey)
       .limit(2)
     if (existing.error) throw existing.error
     const matching = (existing.data ?? []) as unknown as Record<string, unknown>[]
@@ -476,7 +477,7 @@ async function uploadLiveReportImage(
     )
   } else {
     const existing = await client.from('live_report_images').select('*')
-      .eq('report_id', parsed.data.report_id).eq('file_url', logicalPath).maybeSingle()
+      .eq('report_id', parsed.data.report_id).eq('storage_idempotency_key', idempotencyKey).maybeSingle()
     if (existing.error) throw existing.error
     if (existing.data) return existingRoutedImage(
       existing.data as Record<string, unknown>, 'category', parsed.data.category, provider, 'database', 'file_url',
@@ -505,6 +506,7 @@ async function uploadLiveReportImage(
     external_parent_id: exactParentId,
     destination: { provider },
   })
+  let persistedRow: Record<string, unknown>
   try {
     const persisted = await client.rpc(
       dependencies.routingMode === 'compat' ? 'upsert_live_report_image' : 'upsert_live_report_image_with_provider', {
@@ -520,7 +522,9 @@ async function uploadLiveReportImage(
             external_file_id: result.asset.external_file_id,
           })
           : logicalPath,
-        file_name: name,
+        file_name: originalName,
+        storage_file_name: name,
+        storage_idempotency_key: idempotencyKey,
         mime_type: fileValue.type,
         size_bytes: bytes.byteLength,
         sort_order: parsed.data.sort_order,
@@ -532,7 +536,7 @@ async function uploadLiveReportImage(
       },
     }).single()
     if (persisted.error) throw persisted.error
-    return publicRow((persisted.data || {}) as Record<string, unknown>, 'live')
+    persistedRow = (persisted.data || {}) as Record<string, unknown>
   } catch (error) {
     try {
       await storage.delete({ provider: result.asset.provider as CloudProvider, external_file_id: result.asset.external_file_id })
@@ -541,6 +545,21 @@ async function uploadLiveReportImage(
     }
     throw error
   }
+  const persistedReference = dependencies.routingMode === 'compat'
+    ? decodeCloudAssetReference(persistedRow.file_url)
+    : { provider: persistedRow.provider, external_file_id: persistedRow.external_file_id }
+  if (!persistedReference) throw new CloudAssetReferenceError()
+  if (persistedReference.provider !== result.asset.provider
+    || persistedReference.external_file_id !== result.asset.external_file_id) {
+    // A concurrent upload won the database key. Delete only this request's redundant object.
+    try {
+      await storage.delete({ provider: result.asset.provider as CloudProvider, external_file_id: result.asset.external_file_id })
+    } catch {
+      console.error('LIVE_REPORT_IMAGE_UPLOAD_CLEANUP_FAILED')
+      throw new ReportImageRouteError('REPORT_IMAGE_UPLOAD_CLEANUP_FAILED', 502)
+    }
+  }
+  return existingRoutedImage(persistedRow, 'category', parsed.data.category, provider, dependencies.routingMode, 'file_url')
 }
 
 function cloudReferenceForRow(kind: ReportImageKind, row: Record<string, unknown>) {

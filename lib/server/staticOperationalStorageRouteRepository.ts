@@ -3,6 +3,7 @@ import 'server-only'
 import { z } from 'zod'
 import {
   OperationalStoragePlacementError,
+  isSafeHistoricalPeriodLabel,
   resolveOperationalStoragePlacement,
   selectOperationalStorageRoute,
   type OperationalStoragePlacementInput,
@@ -11,6 +12,26 @@ import {
 import type { OperationalStorageRouteRepository } from '@/lib/server/operationalStorageRouteRepository'
 
 const label = z.string().trim().min(1).max(200)
+const periodOverrides = z.record(
+  z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/u),
+  z.object({
+    default: z.string().max(200).refine(isSafeHistoricalPeriodLabel).optional(),
+    dashboard: z.string().max(200).refine(isSafeHistoricalPeriodLabel).optional(),
+    live_visual: z.string().max(200).refine(isSafeHistoricalPeriodLabel).optional(),
+    data_report: z.string().max(200).refine(isSafeHistoricalPeriodLabel).optional(),
+    data_source: z.string().max(200).refine(isSafeHistoricalPeriodLabel).optional(),
+  }).strict(),
+)
+const safeFolderLabel = label.refine(value => isSafeHistoricalPeriodLabel(value))
+const folderLabelOverrides = z.record(
+  z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/u),
+  z.object({
+    dashboard: safeFolderLabel.optional(),
+    live_visual: safeFolderLabel.optional(),
+    data_report: z.array(safeFolderLabel).min(1).optional(),
+    data_source: z.array(safeFolderLabel).min(1).optional(),
+  }).strict(),
+)
 const folderLabels = z.object({
   dashboard: label.optional(),
   live_visual_internal: label.optional(),
@@ -32,6 +53,7 @@ const staticRoute = z.object({
     'LEGACY_SUBBRAND_PERIOD_CATEGORY',
     'LEGACY_SUBBRAND_CATEGORY_PERIOD',
     'CANONICAL_V1',
+    'TEMP_AGENCY_BRAND_PERIOD_CATEGORY',
   ]),
   root_folder_id: label,
   base_folder_id: label,
@@ -41,8 +63,11 @@ const staticRoute = z.object({
     'THANG_M_DOT_YEAR',
     'THANG_M_DOT_SPACE_YEAR',
     'T_M_DOT_YEAR',
+    'THANG_UPPER_M_DASH_YEAR',
   ]),
   active: z.boolean(),
+  period_label_overrides: periodOverrides.optional(),
+  folder_label_overrides: folderLabelOverrides.optional(),
 }).strict()
 
 export function normalizeOperationalStorageRouteLabel(value: string): string {
@@ -66,6 +91,8 @@ export function parseStaticOperationalStorageRoutes(value: string | undefined): 
       folder_labels: route.folder_labels,
       period_naming_style: route.period_naming_style,
       active: route.active,
+      period_label_overrides: route.period_label_overrides,
+      folder_label_overrides: route.folder_label_overrides,
     }))
     const keys = new Set<string>()
     for (const route of routes) {

@@ -9,12 +9,16 @@ export type OperationalStorageProfile =
   | 'LEGACY_SUBBRAND_PERIOD_CATEGORY'
   | 'LEGACY_SUBBRAND_CATEGORY_PERIOD'
   | 'CANONICAL_V1'
+  | 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY'
 export type OperationalLogicalCategory = 'dashboard' | 'live_visual' | 'data_report' | 'data_source'
 export type OperationalPeriodNamingStyle =
   | 'THANG_M_DASH_YEAR'
   | 'THANG_M_DOT_YEAR'
   | 'THANG_M_DOT_SPACE_YEAR'
   | 'T_M_DOT_YEAR'
+  | 'THANG_UPPER_M_DASH_YEAR'
+
+export type OperationalPeriodLabelOverrides = Record<string, Partial<Record<OperationalLogicalCategory | 'default', string>>>
 
 export interface OperationalStorageRoute {
   id: string
@@ -28,6 +32,8 @@ export interface OperationalStorageRoute {
   base_folder_id: string
   folder_labels: Record<string, unknown>
   period_naming_style: string
+  period_label_overrides?: OperationalPeriodLabelOverrides
+  folder_label_overrides?: Record<string, Partial<Record<OperationalLogicalCategory, string | string[]>>>
   active: boolean
 }
 
@@ -90,6 +96,7 @@ const profiles = new Set<OperationalStorageProfile>([
   'LEGACY_SUBBRAND_PERIOD_CATEGORY',
   'LEGACY_SUBBRAND_CATEGORY_PERIOD',
   'CANONICAL_V1',
+  'TEMP_AGENCY_BRAND_PERIOD_CATEGORY',
 ])
 
 const categories = new Set<OperationalLogicalCategory>(['dashboard', 'live_visual', 'data_report', 'data_source'])
@@ -110,6 +117,11 @@ function isSafeFolderSegment(value: string): boolean {
 function safeSegment(value: unknown): string {
   if (typeof value !== 'string' || !isSafeFolderSegment(value)) fail('STORAGE_ROUTE_CONFIG_INVALID')
   return value
+}
+
+/** Historical labels are exact Drive names, including significant surrounding spaces. */
+export function isSafeHistoricalPeriodLabel(value: string): boolean {
+  return value.trim().length > 0 && value.length <= 200 && !value.includes('..') && !/[\\/\u0000-\u001f\u007f]/u.test(value)
 }
 
 function requiredFolderId(value: string): string {
@@ -145,6 +157,7 @@ function periodLabel(style: string, shiftDate: string, profile: OperationalStora
     case 'THANG_M_DOT_YEAR': return `THÁNG ${monthText}.${year}`
     case 'THANG_M_DOT_SPACE_YEAR': return `THÁNG ${monthText}. ${year}`
     case 'T_M_DOT_YEAR': return `T${monthText}.${year}`
+    case 'THANG_UPPER_M_DASH_YEAR': return `THÁNG ${monthText} - ${year}`
     default: return fail('STORAGE_ROUTE_CONFIG_INVALID')
   }
 }
@@ -157,7 +170,7 @@ function configuredCategorySegments(
 ): string[] {
   if (!categories.has(category)) fail('STORAGE_CATEGORY_UNSUPPORTED')
 
-  if (profile === 'CANONICAL_V1') {
+  if (profile === 'CANONICAL_V1' || profile === 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY') {
     if (category === 'dashboard') return ['DASHBOARD']
     if (category === 'live_visual') return [source === 'internal' ? 'VISIBILITY' : 'VISUAL HOST']
     if (category === 'data_report') return ['DATA', 'REPORT']
@@ -215,13 +228,22 @@ export function resolveOperationalStoragePlacement(
 ): OperationalStoragePlacement {
   if (!profiles.has(route.storage_profile as OperationalStorageProfile)) fail('STORAGE_ROUTE_PROFILE_UNSUPPORTED')
   const profile = route.storage_profile as OperationalStorageProfile
+  if (!categories.has(input.logicalCategory)) fail('STORAGE_CATEGORY_UNSUPPORTED')
+  if (profile === 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY' && input.executionSource !== 'agency') fail('STORAGE_ROUTE_CONFIG_INVALID')
   const rootFolderId = requiredFolderId(route.root_folder_id)
   const baseFolderId = profile === 'CANONICAL_V1'
     ? rootFolderId
     : requiredFolderId(route.base_folder_id)
 
-  const period = periodLabel(route.period_naming_style, input.shiftDate, profile)
-  const category = configuredCategorySegments(route, input.logicalCategory, input.executionSource, profile)
+  const fallbackPeriod = periodLabel(route.period_naming_style, input.shiftDate, profile)
+  const overrides = route.period_label_overrides?.[input.shiftDate.slice(0, 7)]
+  const period = overrides?.[input.logicalCategory] ?? overrides?.default ?? fallbackPeriod
+  if (!isSafeHistoricalPeriodLabel(period)) fail('STORAGE_ROUTE_CONFIG_INVALID')
+  const categoryOverride = route.folder_label_overrides?.[input.shiftDate.slice(0, 7)]?.[input.logicalCategory]
+  const category = categoryOverride === undefined
+    ? configuredCategorySegments(route, input.logicalCategory, input.executionSource, profile)
+    : input.logicalCategory === 'data_report' || input.logicalCategory === 'data_source'
+      ? safeSegments(categoryOverride) : [safeSegment(categoryOverride)]
   let folderSegments: string[]
 
   switch (profile) {
@@ -247,6 +269,10 @@ export function resolveOperationalStoragePlacement(
     case 'CANONICAL_V1':
       if (!input.brandLabel || !input.platformLabel) fail('STORAGE_ROUTE_CONFIG_INVALID')
       folderSegments = [safeSegment(input.brandLabel), safeSegment(input.platformLabel), period, ...category]
+      break
+    case 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY':
+      if (!input.brandLabel) fail('STORAGE_ROUTE_CONFIG_INVALID')
+      folderSegments = [safeSegment(input.brandLabel), period, ...category]
       break
   }
 

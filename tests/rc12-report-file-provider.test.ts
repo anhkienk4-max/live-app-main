@@ -181,7 +181,7 @@ test('RC1.2 report and live uploads use the selected provider once and persist i
     const storage = fakeStorage({ calls })
     const client = fakeClient({
       calls,
-      rpcData: { id: `${kind}-1`, report_id: 'report-1', image_url: 'logical/path', file_url: 'logical/path', provider, external_file_id: `${provider}-file` },
+      rpcData: { id: `${kind}-1`, report_id: 'report-1', category: 'live_session', file_name: 'dashboard.png', image_url: 'logical/path', file_url: 'logical/path', provider, external_file_id: `${provider}-file` },
     })
     const response = await handlerFor(client, storage).POST(uploadRequest({ ...fields, ...(provider === 'onedrive' ? { provider } : {}) }))
     const payload = await response.json() as { ok?: boolean; image?: Record<string, unknown> }
