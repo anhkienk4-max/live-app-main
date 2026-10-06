@@ -2,12 +2,10 @@
 
 import * as React from 'react'
 import { addDays, endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
-import dynamic from 'next/dynamic'
 import { brandService, campaignService, platformService, reportService, shiftRegistrationService, shiftService, swapRequestService, userService } from '@/lib/services/dataService'
 import { Brand, Campaign, Platform, Report, Shift, ShiftRegistration, SwapRequest, User } from '@/lib/types/database.types'
 import { useTranslation } from '@/lib/i18n'
 import { getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
-import { Card, CardContent } from '@/components/ui/card'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
@@ -17,9 +15,6 @@ import { getMemberAssignedShifts, getLeaderPendingRegistrations, getLeaderPendin
 import { deriveLeaderAttention, deriveDataQualityAttention } from '@/lib/ui/operational-attention'
 import { getAllIssues } from '@/lib/utils/dataQuality'
 import { ShiftDetailModal } from '@/components/features/shifts/ShiftDetailModal'
-import { isVisualFixtureMode } from '@/lib/visual-fixtures'
-import { DashboardData, getDashboardFixture } from '@/lib/visual-fixtures/dashboards'
-import { DashboardFixtureScenario } from '@/lib/visual-fixtures/types'
 import { AdminDashboardView } from './presentation/admin/AdminDashboardView'
 import { LeaderDashboardView } from './presentation/leader/LeaderDashboardView'
 import { MemberDashboardView } from './presentation/member/MemberDashboardView'
@@ -39,94 +34,44 @@ const rangeFor = (preset: Exclude<Preset, 'custom'>) => {
 }
 const initialFilters = (): Filters => ({ preset: '30d', ...rangeFor('30d'), brandIds: [], platformIds: [], campaignIds: [], hostIds: [], supportIds: [], technicalIds: [] })
 
-export function DashboardOverview({
-  visualRole,
-  fixtureData,
-  forceFixture
-}: {
-  visualRole?: 'admin' | 'leader' | 'member'
-  fixtureData?: DashboardData
-  forceFixture?: boolean
-} = {}) {
-  const { t } = useTranslation()
-  const { currentUser } = useCurrentUser()
-  const [shifts, setShifts] = React.useState<Shift[]>([])
-  const [reports, setReports] = React.useState<Report[]>([])
-  const [brands, setBrands] = React.useState<Brand[]>([])
-  const [platforms, setPlatforms] = React.useState<Platform[]>([])
-  const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
-  const [users, setUsers] = React.useState<User[]>([])
-  const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
-  const [swapRequests, setSwapRequests] = React.useState<SwapRequest[]>([])
-  const [filters, setFilters] = React.useState<Filters | null>(null)
-  const [showFilters, setShowFilters] = React.useState(false)
-  const [loading, setLoading] = React.useState(true)
-  const [selectedShift, setSelectedShift] = React.useState<Shift | null>(null)
-  const [loadError, setLoadError] = React.useState<unknown>(null)
+type DashboardDataset = Pick<CommonProps, 'shifts' | 'reports' | 'brands' | 'platforms' | 'campaigns' | 'users' | 'registrations' | 'swapRequests'>
 
+export function DashboardOverview() {
+  const {currentUser} = useCurrentUser()
+  const [data,setData] = React.useState<DashboardDataset | null>(null)
+  const [loadError,setLoadError] = React.useState<unknown>(null)
   const loadData = React.useCallback(async () => {
     setLoadError(null)
     try {
-      const [loadedShifts, loadedReports, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers, loadedRegistrations, loadedSwaps] = await Promise.all([
-        shiftService.getAll(), reportService.getAll(), brandService.getAll(), platformService.getAll(), campaignService.getAll(), userService.getAll(), shiftRegistrationService.getAll(), swapRequestService.getAll(),
+      const [shifts,reports,brands,platforms,campaigns,users,registrations,swapRequests] = await Promise.all([
+        shiftService.getAll(),reportService.getAll(),brandService.getAll(),platformService.getAll(),campaignService.getAll(),userService.getAll(),shiftRegistrationService.getAll(),swapRequestService.getAll(),
       ])
+      setData({shifts,reports,brands,platforms,campaigns,users,registrations,swapRequests})
+    } catch(error) {setLoadError(error)}
+  },[])
+  React.useEffect(()=>{const frame=requestAnimationFrame(()=>{if(currentUser) void loadData()});return ()=>cancelAnimationFrame(frame)},[currentUser,loadData])
+  if (loadError) return <PageLoadError error={loadError} onRetry={()=>void loadData()} />
+  if (!data || !currentUser) return <ContentSkeleton />
+  return <DashboardWorkspace data={data} currentUser={currentUser} onUpdate={loadData} />
+}
 
-      let data: DashboardData = {
-        shifts: loadedShifts,
-        reports: loadedReports,
-        brands: loadedBrands,
-        platforms: loadedPlatforms,
-        campaigns: loadedCampaigns,
-        users: loadedUsers,
-        registrations: loadedRegistrations,
-        swapRequests: loadedSwaps
-      }
-
-      if (forceFixture && fixtureData) {
-        data = fixtureData
-      } else if (isVisualFixtureMode()) {
-        const urlParams = new URLSearchParams(window.location.search)
-        const scenarioStr = urlParams.get('scenario')
-        if (scenarioStr === 'reference' || scenarioStr === 'empty' || scenarioStr === 'stress') {
-          const role = visualRole || resolveSystemPermission(currentUser) || 'member'
-          data = getDashboardFixture(role, scenarioStr as DashboardFixtureScenario, currentUser?.id || '', data)
-        }
-      }
-
-      setShifts(data.shifts); setReports(data.reports); setBrands(data.brands); setPlatforms(data.platforms); setCampaigns(data.campaigns); setUsers(data.users); setRegistrations(data.registrations); setSwapRequests(data.swapRequests);
-    } catch (error) {
-      setLoadError(error)
-    } finally {
-      setLoading(false)
-    }
-  }, [currentUser])
-
-  React.useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      setFilters(initialFilters())
-      void loadData()
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [loadData])
-
-  const initialLoad = !filters || !currentUser || (loading && shifts.length === 0)
-  if (initialLoad) return <ContentSkeleton />
-  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
-
-  const role = visualRole || resolveSystemPermission(currentUser)
-  const setPreset = (preset: Preset) => setFilters(current => current ? { ...current, preset, ...(preset === 'custom' ? {} : rangeFor(preset)) } : current)
-  const dataProps = { shifts, reports, brands, platforms, campaigns, users, registrations, swapRequests, filters, setFilters, showFilters, setShowFilters, currentUser, t, setPreset }
-
-  return (
-    <div className={loading ? 'opacity-50 pointer-events-none transition-opacity duration-200' : 'transition-opacity duration-200'}>
-      {role === 'admin' && <AdminDashboard {...dataProps} setSelectedShift={setSelectedShift} />}
-      {role === 'leader' && <LeaderDashboard {...dataProps} setSelectedShift={setSelectedShift} />}
-      {role === 'member' && <MemberDashboard {...dataProps} setSelectedShift={setSelectedShift} />}
-      {selectedShift && (
-        <ShiftDetailModal open shift={selectedShift} brands={brands} platforms={platforms} campaigns={campaigns} users={users} allRegistrations={registrations} onOpenChange={(open) => !open && setSelectedShift(null)} onUpdate={loadData} onDelete={() => { setSelectedShift(null); void loadData() }} />
-      )}
-    </div>
-  )
+// Presentation accepts typed data; only the visual-QA route supplies fixture data.
+export function DashboardWorkspace({data,currentUser,onUpdate}: {data:DashboardDataset;currentUser:User;onUpdate:()=>void | Promise<void>}) {
+  const {t} = useTranslation()
+  const [filters,setFilters] = React.useState<Filters | null>(null)
+  const [showFilters,setShowFilters] = React.useState(false)
+  const [selectedShift,setSelectedShift] = React.useState<Shift | null>(null)
+  React.useEffect(()=>{const frame=requestAnimationFrame(()=>setFilters(initialFilters()));return ()=>cancelAnimationFrame(frame)},[])
+  if (!filters) return <ContentSkeleton />
+  const role = resolveSystemPermission(currentUser)
+  const setPreset = (preset:Preset)=>setFilters(current=>current ? {...current,preset,...(preset==='custom'?{}:rangeFor(preset))} : current)
+  const props = {...data,filters,setFilters,showFilters,setShowFilters,currentUser,t,setPreset,setSelectedShift}
+  return <div>
+    {role==='admin' && <AdminDashboard {...props} />}
+    {role==='leader' && <LeaderDashboard {...props} />}
+    {role==='member' && <MemberDashboard {...props} />}
+    {selectedShift && <ShiftDetailModal open shift={selectedShift} brands={data.brands} platforms={data.platforms} campaigns={data.campaigns} users={data.users} allRegistrations={data.registrations} onOpenChange={open=>!open&&setSelectedShift(null)} onUpdate={onUpdate} onDelete={()=>{setSelectedShift(null);void onUpdate()}} />}
+  </div>
 }
 
 type CommonProps = {

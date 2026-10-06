@@ -7,15 +7,18 @@ import type { Report } from '../lib/types/database.types.ts'
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
 
-test('dashboard performance aggregates consume confirmed reports only', () => {
+test('dashboard does not manufacture unavailable performance aggregates; analytics is confirmed-only', () => {
   const dashboard = read('../components/features/dashboard/DashboardOverview.tsx')
+  const analytics = read('../components/features/analytics/DashboardAnalytics.tsx')
   const migration = read('../supabase/migrations/20260912083056_report_draft_nullable_metrics.sql')
 
-  assert.match(dashboard, /const filteredReports = reports\.filter\(report => shiftIds\.has\(report\.shift_id\) && report\.status === 'confirmed'\)/)
-  assert.match(dashboard, /const previousReports = reports\.filter\(report => previousIds\.has\(report\.shift_id\) && report\.status === 'confirmed'\)/)
-  assert.match(dashboard, /const revenue = filteredReports\.reduce\(/)
-  assert.match(dashboard, /const previousRevenue = previousReports\.reduce\(/)
-  assert.match(dashboard, /const trend = Object\.entries\(filteredReports\.reduce/)
+  // The current production dashboard leaves this surface unavailable; its
+  // presentation workspace receives real records instead of loading QA fixtures.
+  assert.match(dashboard, /performance=\{null\}/)
+  assert.doesNotMatch(dashboard, /visual-fixtures|const revenue = .*reduce|const previousRevenue = .*reduce/)
+  assert.match(analytics, /loadedReports\.filter\(report => report\.status === 'confirmed' && report\.metrics_confirmed === true\)/)
+  assert.match(analytics, /calculateNullableAnalyticsMetrics\(currentReports\)/)
+  assert.match(analytics, /calculateNullableAnalyticsMetrics\(previousReports\)/)
   assert.match(migration, /new\.status = 'confirmed' and not new\.metrics_confirmed/i)
 })
 

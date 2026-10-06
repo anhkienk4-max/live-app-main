@@ -2,7 +2,7 @@
 
 import { Suspense } from 'react'
 import { useSearchParams, notFound } from 'next/navigation'
-import { DashboardOverview } from '@/components/features/dashboard/DashboardOverview'
+import { DashboardWorkspace } from '@/components/features/dashboard/DashboardOverview'
 import { isVisualFixtureMode } from '@/lib/visual-fixtures'
 import { getDashboardFixture } from '@/lib/visual-fixtures/dashboards'
 import { DashboardFixtureScenario } from '@/lib/visual-fixtures/types'
@@ -161,10 +161,10 @@ function VisualQaContent() {
             VISUAL QA / FIXTURE DATA - SCENARIO: {scenario} - ROLE: {role.toUpperCase()}
           </div>
           <div className="flex-1 overflow-auto relative">
-            <DashboardOverview
-              visualRole={role}
-              fixtureData={getDashboardFixture(role, scenario as DashboardFixtureScenario, 'qa-user', { shifts: [], reports: [], brands: [], platforms: [], campaigns: [], users: [], registrations: [], swapRequests: [] })}
-              forceFixture={true}
+            <DashboardWorkspace
+              currentUser={{...mockBusinessUser,system_permission:role} as import('@/lib/types/database.types').User}
+              data={getDashboardFixture(role, scenario as DashboardFixtureScenario, 'qa-user', { shifts: [], reports: [], brands: [], platforms: [], campaigns: [], users: [], registrations: [], swapRequests: [] })}
+              onUpdate={() => undefined}
             />
           </div>
         </div>
