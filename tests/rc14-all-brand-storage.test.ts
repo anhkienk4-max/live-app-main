@@ -98,11 +98,39 @@ test('unsafe override labels, unsupported months/categories, unknown and duplica
     (error: unknown) => error instanceof OperationalStoragePlacementError && error.code === 'STORAGE_ROUTE_NOT_CONFIGURED')
 })
 
-test('approved Mars bases/order/dashboard and Agency route remain unchanged; exact live labels are retained', async () => {
+test('Mars preserves its route identity, category order, historical labels and Agency placement', async () => {
+  const internal = proposed.find((route: { brand: string; execution_source: string }) =>
+    route.brand === 'Mars Snacking' && route.execution_source === 'internal')
+  assert.equal(internal.provider, 'google_drive')
+  assert.equal(internal.platform, null)
+  assert.equal(internal.subbrand_key, null)
+  assert.equal(internal.storage_profile, 'LEGACY_CATEGORY_PERIOD')
+  assert.equal(internal.root_folder_id, '1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm')
+  assert.equal(internal.base_folder_id, '1SuQhXZsNr7eArHVwf9NMTqR1TEHYqOC5')
+  assert.deepEqual(internal.folder_labels, {
+    dashboard: 'DASHBOARD', live_visual_internal: 'VISIBILITY',
+    data_report: ['DATA', 'REPORT'], data_source: ['DATA', 'SOURCE'],
+  })
   assert.deepEqual((await resolve('Mars Snacking', 'internal', 'Shopee Live', '2026-10-03')).folderSegments, ['DASHBOARD', 'Tháng 10 - 2026'])
   assert.deepEqual((await resolve('Mars Snacking', 'internal', 'Shopee Live', '2026-10-03', 'live_visual')).folderSegments, ['VISIBILITY', 'THÁNG 10 -2026'])
-  assert.deepEqual((await resolve('Mars Snacking', 'internal', 'Shopee Live', '2027-01-03')).folderSegments, ['DASHBOARD', 'THÁNG 1 - 2027'])
   const agency = await resolve('Mars Snacking', 'agency', 'Shopee Live', '2026-10-03')
   assert.equal(agency.baseFolderId, '19cuLMvhVB8yfJslZUbLUdrsDLQ_vincE')
   assert.deepEqual(agency.folderSegments, ['THÁNG 10.2026', 'DASHBOARD'])
+})
+
+test('Mars unconfigured periods retain the Production title-case dash fallback for every category', async () => {
+  const internal = proposed.find((route: { brand: string; execution_source: string }) =>
+    route.brand === 'Mars Snacking' && route.execution_source === 'internal')
+  assert.equal(internal.period_naming_style, 'THANG_M_DASH_YEAR')
+  for (const [date, period] of [['2026-11-03', 'Tháng 11 - 2026'], ['2027-01-03', 'Tháng 1 - 2027']]) {
+    for (const [category, segments] of [
+      ['dashboard', ['DASHBOARD']], ['live_visual', ['VISIBILITY']],
+      ['data_report', ['DATA', 'REPORT']], ['data_source', ['DATA', 'SOURCE']],
+    ] as const) {
+      const placement = await resolve('Mars Snacking', 'internal', 'Shopee Live', date, category)
+      assert.equal(placement.baseFolderId, internal.base_folder_id)
+      assert.equal(placement.periodLabel, period)
+      assert.deepEqual(placement.folderSegments, [...segments, period])
+    }
+  }
 })

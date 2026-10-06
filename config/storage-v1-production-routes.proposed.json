@@ -227,7 +227,7 @@
         "SOURCE"
       ]
     },
-    "period_naming_style": "THANG_UPPER_M_DASH_YEAR",
+    "period_naming_style": "THANG_M_DASH_YEAR",
     "active": true,
     "period_label_overrides": {
       "2026-01": {
