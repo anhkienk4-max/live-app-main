@@ -900,7 +900,12 @@ export function ImportHistoryPanel() {
   const [changePage, setChangePage] = React.useState(1)
   const [changePageSize, setChangePageSize] = React.useState(10)
   const loadHistory = React.useCallback(() => Promise.all([
-    scheduleImportBatchPort.listBatches(),
+    scheduleImportBatchPort.listBatches().then(batches => Promise.all(batches.map(async batch => {
+      const rows = await scheduleImportBatchPort.listBatchRows(batch.id)
+      if (rows.length === 0) return batch
+      const counts = batchPresentationCounts(rows)
+      return { ...batch, imported_rows: persistedImportCount(counts), retryable_rows: counts.retryable }
+    }))),
     scheduleChangeService.getAll(),
     shiftService.getAll(),
     userService.getAll(),
