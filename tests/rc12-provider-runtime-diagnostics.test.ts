@@ -29,8 +29,9 @@ function request() {
 function handlerFor(
   env: Record<string, string | undefined> = configuredEnv,
   resolveUser: Parameters<typeof createFileProviderDiagnosticsGetHandler>[0]['resolveUser'] = async () => admin,
+  googleDriveHealthCheck: Parameters<typeof createFileProviderDiagnosticsGetHandler>[0]['googleDriveHealthCheck'] = async () => ({ root_readable: true, root_can_add_children: true }),
 ) {
-  return createFileProviderDiagnosticsGetHandler({ env, resolveUser })
+  return createFileProviderDiagnosticsGetHandler({ env, resolveUser, googleDriveHealthCheck })
 }
 
 test('diagnostics require authentication and admin permission', async () => {
@@ -83,6 +84,8 @@ test('diagnostics expose only safe provider presence booleans and no-store respo
     service_account_email_present: false,
     private_key_present: false,
     configured: true,
+    root_readable: true,
+    root_can_add_children: true,
   })
   assert.deepEqual(body.onedrive, {
     client_id_present: true,
@@ -125,6 +128,28 @@ test('missing Google input reports its boolean as false and configured as false'
   const body = await (await handlerFor(env)(request())).json() as { google_drive: Record<string, unknown> }
   assert.equal(body.google_drive.refresh_token_present, false)
   assert.equal(body.google_drive.configured, false)
+  assert.equal(body.google_drive.root_readable, null)
+  assert.equal(body.google_drive.root_can_add_children, null)
+})
+
+test('diagnostics report root readability and child capability without exposing health-check errors', async () => {
+  const denied = await handlerFor(configuredEnv, async () => admin, async () => ({
+    root_readable: true,
+    root_can_add_children: false,
+  }))(request())
+  const deniedBody = await denied.json() as { google_drive: Record<string, unknown> }
+  assert.equal(deniedBody.google_drive.root_readable, true)
+  assert.equal(deniedBody.google_drive.root_can_add_children, false)
+
+  const failed = await handlerFor(configuredEnv, async () => admin, async () => {
+    throw new Error('refresh_token=private-value')
+  })(request())
+  const failedBody = await failed.json() as { google_drive: Record<string, unknown> }
+  const serialized = JSON.stringify(failedBody)
+  assert.equal(failedBody.google_drive.root_readable, null)
+  assert.equal(failedBody.google_drive.root_can_add_children, null)
+  assert.equal(failedBody.google_drive.root_capability_error, 'GOOGLE_DRIVE_ROOT_CHECK_FAILED')
+  assert.equal(serialized.includes('private-value'), false)
 })
 
 test('registry diagnostics match the existing provider registry availability', async () => {

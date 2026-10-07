@@ -362,7 +362,7 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
     async healthCheck() {
       let file: DriveFile
       try {
-        file = await driveFile(rootFolderId, 'id,name,mimeType,trashed,driveId')
+        file = await driveFile(rootFolderId, 'id,name,mimeType,trashed,driveId,capabilities(canAddChildren)')
       } catch (error) {
         if (error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_FILE_NOT_FOUND') {
           throw new GoogleDriveError('GOOGLE_DRIVE_ROOT_FOLDER_INVALID')
@@ -373,7 +373,12 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
       if (authMode === 'service_account' && !file.driveId) {
         throw new GoogleDriveError('GOOGLE_DRIVE_ROOT_FOLDER_INVALID', 'Service-account mode requires a Shared Drive root folder.')
       }
-      return { ok: true, provider: 'google_drive' }
+      return {
+        ok: true,
+        provider: 'google_drive',
+        root_readable: true,
+        root_can_add_children: file.capabilities?.canAddChildren ?? null,
+      }
     },
     async ensureFolder(parentId: string, name: string): Promise<CloudFolderRef> {
       const id = normalizeGoogleDriveFileId(parentId)

@@ -74,6 +74,7 @@ type FakeState = {
   uploadCalls: number
   failUpload429: number
   rootMimeType: string
+  rootCanAddChildren?: boolean
   rootDriveId?: string
   customFolder?: { mimeType: string; trashed?: boolean; driveId?: string; capabilities?: { canAddChildren?: boolean; canEdit?: boolean } }
   allDriveFlags: { list: boolean; create: boolean; get: boolean; update: boolean }
@@ -96,7 +97,7 @@ function fakeDrive(state: FakeState) {
     if (params.fileId === 'missing') {
       throw Object.assign(new Error('not found'), { response: { status: 404 } })
     }
-    if (params.fileId === 'root-folder') return { data: { id: 'root-folder', name: 'Root', mimeType: state.rootMimeType, trashed: false, driveId: state.rootDriveId } }
+    if (params.fileId === 'root-folder') return { data: { id: 'root-folder', name: 'Root', mimeType: state.rootMimeType, trashed: false, driveId: state.rootDriveId, capabilities: { canAddChildren: state.rootCanAddChildren ?? true } } }
     if (params.fileId === 'custom-folder' && state.customFolder) {
       return { data: { id: 'custom-folder', name: 'Custom', ...state.customFolder } }
     }
@@ -176,6 +177,7 @@ function state(): FakeState {
     uploadCalls: 0,
     failUpload429: 0,
     rootMimeType: 'application/vnd.google-apps.folder',
+    rootCanAddChildren: true,
     allDriveFlags: { list: false, create: false, get: false, update: false },
     readData: new Uint8Array([1, 2, 3, 4]),
     mediaGetCalls: [],
@@ -368,11 +370,32 @@ test('exact external parent uploads directly and never materializes logical_path
 
 test('health check validates the configured root folder', async () => {
   const valid = createGoogleDriveFileProvider({ env, drive: fakeDrive(state()) })
-  assert.deepEqual(await valid.healthCheck(), { ok: true, provider: 'google_drive' })
+  assert.deepEqual(await valid.healthCheck(), {
+    ok: true,
+    provider: 'google_drive',
+    root_readable: true,
+    root_can_add_children: true,
+  })
   const invalidState = state()
   invalidState.rootMimeType = 'text/plain'
   const invalid = createGoogleDriveFileProvider({ env, drive: fakeDrive(invalidState) })
   await assert.rejects(() => invalid.healthCheck(), (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_ROOT_FOLDER_INVALID')
+})
+
+test('health check reads root child capability without creating folders', async () => {
+  const driveState = state()
+  driveState.rootCanAddChildren = false
+  const provider = createGoogleDriveFileProvider({ env, drive: fakeDrive(driveState) })
+
+  assert.deepEqual(await provider.healthCheck(), {
+    ok: true,
+    provider: 'google_drive',
+    root_readable: true,
+    root_can_add_children: false,
+  })
+  assert.equal(driveState.allDriveFlags.get, true)
+  assert.equal(driveState.folderCreateAttempts, 0)
+  assert.equal(driveState.folderCreates, 0)
 })
 
 test('folder resolution is deterministic and idempotent under the configured root', async () => {

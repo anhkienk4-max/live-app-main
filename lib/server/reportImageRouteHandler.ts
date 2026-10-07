@@ -27,6 +27,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createOperationalStorageFolderMaterializer } from '@/lib/server/operationalStorageFolderMaterializer'
 import { createOperationalStorageRouteRepository, type OperationalStorageRouteRepository } from '@/lib/server/operationalStorageRouteRepository'
 import { createStaticOperationalStorageRouteRepository } from '@/lib/server/staticOperationalStorageRouteRepository'
+import { FileProviderError } from '@/lib/server/fileProviderResolver'
 import {
   resolveOperationalStorageRoutingMode,
   type OperationalStorageRoutingMode,
@@ -64,6 +65,23 @@ class ReportImageRouteError extends Error {
   ) {
     super(code)
     this.name = 'ReportImageRouteError'
+  }
+}
+
+type ReportImageUploadPhase = 'validation' | 'folder_materialization' | 'provider_upload' | 'metadata_persist'
+
+class ReportImageUploadPhaseError extends Error {
+  constructor(readonly phase: ReportImageUploadPhase, readonly cause: unknown) {
+    super('REPORT_IMAGE_UPLOAD_PHASE_FAILED')
+    this.name = 'ReportImageUploadPhaseError'
+  }
+}
+
+async function inUploadPhase<T>(phase: ReportImageUploadPhase, operation: () => T | Promise<T>): Promise<T> {
+  try {
+    return await operation()
+  } catch (error) {
+    throw new ReportImageUploadPhaseError(phase, error)
   }
 }
 
@@ -300,6 +318,50 @@ function existingRoutedImage(
 }
 
 function placementErrorResponse(error: unknown) {
+  if (error instanceof ReportImageUploadPhaseError) {
+    const cause = error.cause
+    if (cause instanceof FileProviderError && /^[A-Z][A-Z0-9_]{1,79}$/u.test(cause.code)) {
+      return Response.json({
+        ok: false,
+        error: { code: cause.code, phase: error.phase, message: safeProviderErrorMessage(cause.code) },
+      }, { status: 502, headers: { 'Cache-Control': 'no-store' } })
+    }
+    if (cause instanceof OperationalStoragePlacementError) {
+      return Response.json({
+        ok: false,
+        error: { code: cause.code, phase: error.phase, message: 'The report image could not be stored with the configured operational placement.' },
+      }, { status: 409, headers: { 'Cache-Control': 'no-store' } })
+    }
+    const validationCode = cause instanceof Error ? cause.message : ''
+    const validationCodes = new Set([
+      'FILE_INPUT_INVALID', 'FILE_NAME_INVALID', 'FILE_MIME_NOT_ALLOWED', 'FILE_SIZE_INVALID',
+      'FILE_EXECUTABLE_NOT_ALLOWED', 'FILE_METADATA_INVALID', 'FILE_CHECKSUM_INVALID', 'FILE_METADATA_BINARY_FORBIDDEN',
+    ])
+    if (error.phase === 'validation' && validationCodes.has(validationCode)) {
+      return Response.json({
+        ok: false,
+        error: { code: validationCode, phase: error.phase, message: 'The report image file is invalid.' },
+      }, { status: 400, headers: { 'Cache-Control': 'no-store' } })
+    }
+    const code = error.phase === 'validation'
+      ? 'REPORT_IMAGE_VALIDATION_FAILED'
+      : error.phase === 'folder_materialization'
+        ? 'REPORT_IMAGE_FOLDER_MATERIALIZATION_FAILED'
+        : error.phase === 'provider_upload'
+          ? 'REPORT_IMAGE_PROVIDER_UPLOAD_FAILED'
+          : 'REPORT_IMAGE_METADATA_PERSIST_FAILED'
+    const message = error.phase === 'validation'
+      ? 'The report image file is invalid.'
+      : error.phase === 'folder_materialization'
+        ? 'The report image folder could not be prepared.'
+        : error.phase === 'provider_upload'
+          ? 'The file provider could not upload the report image.'
+          : 'The report image metadata could not be saved.'
+    return Response.json({ ok: false, error: { code, phase: error.phase, message } }, {
+      status: error.phase === 'validation' ? 400 : 502,
+      headers: { 'Cache-Control': 'no-store' },
+    })
+  }
   if (error instanceof OperationalStoragePlacementError) {
     return errorResponse(error.code, 'The report image could not be stored with the configured operational placement.', 409)
   }
@@ -328,6 +390,22 @@ function placementErrorResponse(error: unknown) {
   const status = requestStatuses.get(message)
   if (status !== undefined) return errorResponse(message, 'The report image request is invalid.', status)
   return errorResponse('REPORT_IMAGE_STORAGE_FAILED', 'The report image could not be stored.', 502)
+}
+
+function safeProviderErrorMessage(code: string) {
+  const messages: Record<string, string> = {
+    GOOGLE_DRIVE_FOLDER_NOT_WRITABLE: 'Google Drive destination is not writable.',
+    GOOGLE_DRIVE_PERMISSION_DENIED: 'Google Drive denied access to the destination.',
+    GOOGLE_DRIVE_REAUTH_REQUIRED: 'Google Drive authorization needs attention.',
+    GOOGLE_DRIVE_AUTH_FAILED: 'Google Drive authentication failed.',
+    GOOGLE_DRIVE_FOLDER_NOT_FOUND: 'Google Drive destination folder was not found.',
+    GOOGLE_DRIVE_FOLDER_AMBIGUOUS: 'Google Drive has multiple matching destination folders.',
+    GOOGLE_DRIVE_UPLOAD_FAILED: 'Google Drive could not upload the report image.',
+    GOOGLE_DRIVE_NETWORK_ERROR: 'Google Drive could not be reached.',
+    GOOGLE_DRIVE_RATE_LIMITED: 'Google Drive is temporarily rate limiting uploads.',
+    GOOGLE_DRIVE_PROVIDER_UNAVAILABLE: 'Google Drive is temporarily unavailable.',
+  }
+  return messages[code] || 'The configured file provider could not store the report image.'
 }
 
 type UploadPlacementDependencies = {
@@ -371,7 +449,7 @@ async function uploadReportImage(
     existing.data as unknown as Record<string, unknown>, 'image_type', parsed.data.image_type, provider,
     dependencies.routingMode, 'image_url',
   )
-  validateFileUploadInput({
+  await inUploadPhase('validation', () => validateFileUploadInput({
     name,
     mime_type: fileValue.type,
     size_bytes: bytes.byteLength,
@@ -380,9 +458,9 @@ async function uploadReportImage(
     entity_id: parsed.data.report_id,
     created_by: user.businessUserId || user.id,
     logical_path: logicalPath,
-  })
-  const exactParentId = await dependencies.materializeFolders(placement)
-  const result = await storage.upload({
+  }))
+  const exactParentId = await inUploadPhase('folder_materialization', () => dependencies.materializeFolders(placement))
+  const result = await inUploadPhase('provider_upload', () => storage.upload({
     name,
     mime_type: fileValue.type,
     size_bytes: bytes.byteLength,
@@ -393,10 +471,11 @@ async function uploadReportImage(
     logical_path: logicalPath,
     external_parent_id: exactParentId,
     destination: { provider },
-  })
+  }))
   try {
-    const persisted = dependencies.routingMode === 'compat'
-      ? await client.rpc('upload_report_image', {
+    const persisted = await inUploadPhase('metadata_persist', async () => {
+      const persistedResult = await (dependencies.routingMode === 'compat'
+      ? client.rpc('upload_report_image', {
           p_report_id: parsed.data.report_id,
           p_storage_path: logicalPath,
           p_image_url: encodeCloudAssetReference({
@@ -408,7 +487,7 @@ async function uploadReportImage(
           p_size_bytes: bytes.byteLength,
           p_image_type: parsed.data.image_type,
         }).single()
-      : await client.rpc('upload_report_image_with_provider', {
+      : client.rpc('upload_report_image_with_provider', {
           p_report_id: parsed.data.report_id,
           p_storage_path: logicalPath,
           p_image_url: logicalPath,
@@ -418,9 +497,11 @@ async function uploadReportImage(
           p_image_type: parsed.data.image_type,
           p_provider: result.asset.provider,
           p_external_file_id: result.asset.external_file_id,
-        }).single()
-    if (persisted.error) throw persisted.error
-    return publicRow((persisted.data || {}) as Record<string, unknown>, 'report')
+        }).single())
+      if (persistedResult.error) throw persistedResult.error
+      return publicRow((persistedResult.data || {}) as Record<string, unknown>, 'report')
+    })
+    return persisted
   } catch (error) {
     try {
       await storage.delete({ provider: result.asset.provider as CloudProvider, external_file_id: result.asset.external_file_id })
@@ -483,7 +564,7 @@ async function uploadLiveReportImage(
       existing.data as Record<string, unknown>, 'category', parsed.data.category, provider, 'database', 'file_url',
     )
   }
-  validateFileUploadInput({
+  await inUploadPhase('validation', () => validateFileUploadInput({
     name,
     mime_type: fileValue.type,
     size_bytes: bytes.byteLength,
@@ -492,9 +573,9 @@ async function uploadLiveReportImage(
     entity_id: parsed.data.report_id,
     created_by: user.businessUserId || user.id,
     logical_path: logicalPath,
-  })
-  const exactParentId = await dependencies.materializeFolders(placement)
-  const result = await storage.upload({
+  }))
+  const exactParentId = await inUploadPhase('folder_materialization', () => dependencies.materializeFolders(placement))
+  const result = await inUploadPhase('provider_upload', () => storage.upload({
     name,
     mime_type: fileValue.type,
     size_bytes: bytes.byteLength,
@@ -505,10 +586,11 @@ async function uploadLiveReportImage(
     logical_path: logicalPath,
     external_parent_id: exactParentId,
     destination: { provider },
-  })
+  }))
   let persistedRow: Record<string, unknown>
   try {
-    const persisted = await client.rpc(
+    const persistedRowResult = await inUploadPhase('metadata_persist', async () => {
+      const persisted = await client.rpc(
       dependencies.routingMode === 'compat' ? 'upsert_live_report_image' : 'upsert_live_report_image_with_provider', {
       p_data: {
         report_id: parsed.data.report_id,
@@ -534,9 +616,11 @@ async function uploadLiveReportImage(
           external_file_id: result.asset.external_file_id,
         } : {}),
       },
-    }).single()
-    if (persisted.error) throw persisted.error
-    persistedRow = (persisted.data || {}) as Record<string, unknown>
+      }).single()
+      if (persisted.error) throw persisted.error
+      return (persisted.data || {}) as Record<string, unknown>
+    })
+    persistedRow = persistedRowResult
   } catch (error) {
     try {
       await storage.delete({ provider: result.asset.provider as CloudProvider, external_file_id: result.asset.external_file_id })

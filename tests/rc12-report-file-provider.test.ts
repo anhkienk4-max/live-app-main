@@ -165,10 +165,10 @@ function handlerFor(
   })
 }
 
-function uploadRequest(fields: Record<string, string>, name = 'dashboard.png') {
+function uploadRequest(fields: Record<string, string>, name = 'dashboard.png', mimeType = 'image/png') {
   const form = new FormData()
   Object.entries(fields).forEach(([key, value]) => form.set(key, value))
-  form.set('file', new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }), name)
+  form.set('file', new Blob([new Uint8Array([1, 2, 3])], { type: mimeType }), name)
   return new Request('https://example.test/api/report-images', { method: 'POST', body: form })
 }
 
@@ -185,7 +185,7 @@ test('RC1.2 report and live uploads use the selected provider once and persist i
     })
     const response = await handlerFor(client, storage).POST(uploadRequest({ ...fields, ...(provider === 'onedrive' ? { provider } : {}) }))
     const payload = await response.json() as { ok?: boolean; image?: Record<string, unknown> }
-    assert.equal(response.status, 200)
+    assert.equal(response.status, 200, JSON.stringify({ payload, calls }))
     assert.equal(payload.ok, true)
     assert.equal(payload.image?.external_file_id, undefined, 'provider IDs stay server-side')
     assert.deepEqual(calls.filter(call => call.endsWith(':upload')), [`${provider}:upload`])
@@ -199,7 +199,11 @@ test('RC1.2 metadata failure attempts cleanup through the same provider', async 
   const storage = fakeStorage({ calls })
   const client = fakeClient({ calls, rpcError: { message: 'metadata failed' } })
   const response = await handlerFor(client, storage).POST(uploadRequest({ kind: 'report', report_id: 'report-1', image_type: 'dashboard' }))
+  const payload = await response.json() as { error?: { code?: string; phase?: string; message?: string } }
   assert.equal(response.status, 502)
+  assert.equal(payload.error?.code, 'REPORT_IMAGE_METADATA_PERSIST_FAILED')
+  assert.equal(payload.error?.phase, 'metadata_persist')
+  assert.equal(payload.error?.message, 'The report image metadata could not be saved.')
   assert.deepEqual(calls.filter(call => call.includes(':delete:')), ['google_drive:delete:google_drive-file'])
 })
 
@@ -214,12 +218,13 @@ test('Google Drive folder ambiguity stops report upload before provider or metad
   const response = await handlerFor(client, storage).POST(uploadRequest({
     kind: 'report', report_id: 'report-1', image_type: 'dashboard',
   }))
-  const payload = await response.json() as { ok?: boolean; error?: { code?: string; message?: string } }
+  const payload = await response.json() as { ok?: boolean; error?: { code?: string; phase?: string; message?: string } }
 
   assert.equal(response.status, 502)
   assert.equal(payload.ok, false)
-  assert.equal(payload.error?.code, 'REPORT_IMAGE_STORAGE_FAILED')
-  assert.equal(payload.error?.message, 'The report image could not be stored.')
+  assert.equal(payload.error?.code, 'GOOGLE_DRIVE_FOLDER_AMBIGUOUS')
+  assert.equal(payload.error?.phase, 'folder_materialization')
+  assert.equal(payload.error?.message, 'Google Drive has multiple matching destination folders.')
   assert.equal(JSON.stringify(payload).includes('duplicate-a'), false)
   assert.deepEqual(calls.filter(call => call.startsWith('ensure:')), [
     'ensure:google_drive:mars-internal-base:DASHBOARD',
@@ -227,6 +232,63 @@ test('Google Drive folder ambiguity stops report upload before provider or metad
   assert.equal(calls.some(call => call.endsWith(':upload')), false)
   assert.equal(calls.some(call => call.startsWith('upload_report_image')), false)
   assert.equal(calls.some(call => call.startsWith('supabase:upload:')), false)
+})
+
+test('report image validation failures identify the validation phase', async () => {
+  const calls: string[] = []
+  const client = fakeClient({ calls })
+  const response = await handlerFor(client, fakeStorage({ calls })).POST(uploadRequest(
+    { kind: 'report', report_id: 'report-1', image_type: 'dashboard' },
+    'dashboard.png',
+    'text/plain',
+  ))
+  const payload = await response.json() as { error?: { code?: string; phase?: string } }
+
+  assert.equal(response.status, 400)
+  assert.equal(payload.error?.code, 'FILE_MIME_NOT_ALLOWED')
+  assert.equal(payload.error?.phase, 'validation')
+  assert.equal(calls.some(call => call.startsWith('ensure:')), false)
+  assert.equal(calls.some(call => call.endsWith(':upload')), false)
+})
+
+test('provider upload errors preserve safe codes and never return provider messages', async () => {
+  const calls: string[] = []
+  const client = fakeClient({ calls })
+  const storage = fakeStorage({
+    calls,
+    uploadError: new GoogleDriveError('GOOGLE_DRIVE_PERMISSION_DENIED', 'refresh_token=private-value raw Google response'),
+  })
+  const response = await handlerFor(client, storage).POST(uploadRequest({
+    kind: 'report', report_id: 'report-1', image_type: 'dashboard',
+  }))
+  const payload = await response.json() as { error?: { code?: string; phase?: string; message?: string } }
+  const serialized = JSON.stringify(payload)
+
+  assert.equal(response.status, 502)
+  assert.equal(payload.error?.code, 'GOOGLE_DRIVE_PERMISSION_DENIED')
+  assert.equal(payload.error?.phase, 'provider_upload')
+  assert.equal(payload.error?.message, 'Google Drive denied access to the destination.')
+  assert.equal(serialized.includes('private-value'), false)
+  assert.equal(serialized.includes('raw Google response'), false)
+  assert.equal(calls.some(call => call.startsWith('upload_report_image')), false)
+})
+
+test('unknown folder materialization errors stay generic and do not leak messages', async () => {
+  const calls: string[] = []
+  const client = fakeClient({ calls })
+  const storage = fakeStorage({ calls, ensureFolderError: new Error('filesystem C:\\private\\token=raw-value') })
+  const response = await handlerFor(client, storage).POST(uploadRequest({
+    kind: 'report', report_id: 'report-1', image_type: 'dashboard',
+  }))
+  const payload = await response.json() as { error?: { code?: string; phase?: string; message?: string } }
+  const serialized = JSON.stringify(payload)
+
+  assert.equal(payload.error?.code, 'REPORT_IMAGE_FOLDER_MATERIALIZATION_FAILED')
+  assert.equal(payload.error?.phase, 'folder_materialization')
+  assert.equal(serialized.includes('raw-value'), false)
+  assert.equal(serialized.includes('C:\\private'), false)
+  assert.equal(calls.some(call => call.endsWith(':upload')), false)
+  assert.equal(calls.some(call => call.startsWith('upload_report_image')), false)
 })
 
 test('RC1.2 persisted provider reads and deletes ignore the current default', async () => {

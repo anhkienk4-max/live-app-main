@@ -99,5 +99,5 @@ export interface FileProvider {
   getDownloadUrl(externalFileId: string): Promise<string>
   normalizeId(value: string): string
   delete(externalFileId: string): Promise<void>
-  healthCheck(): Promise<{ ok: boolean; provider: string }>
+  healthCheck(): Promise<{ ok: boolean; provider: string; root_readable?: boolean | null; root_can_add_children?: boolean | null }>
 }

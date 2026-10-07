@@ -42,7 +42,10 @@ function authDiagnostics(
   }
 }
 
-function providerDiagnostics(env: Environment) {
+async function providerDiagnostics(
+  env: Environment,
+  googleDriveHealthCheck?: (env: Environment) => Promise<{ root_readable?: boolean | null; root_can_add_children?: boolean | null }>,
+) {
   const googleDriveAuth = (() => {
     try {
       return { auth_mode: resolveGoogleDriveAuthMode(env) }
@@ -63,6 +66,8 @@ function providerDiagnostics(env: Environment) {
     service_account_email_present: present(env, 'GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL'),
     private_key_present: present(env, 'GOOGLE_DRIVE_PRIVATE_KEY'),
     configured: isFileProviderConfigured('google_drive', env),
+    root_readable: null as boolean | null,
+    root_can_add_children: null as boolean | null,
   }
   const onedrive = {
     client_id_present: present(env, 'ONEDRIVE_CLIENT_ID'),
@@ -75,6 +80,17 @@ function providerDiagnostics(env: Environment) {
   try {
     const registry = createFileProviderRegistry({ env })
     const availability = registry.getAvailability()
+    if (googleDrive.configured) {
+      try {
+        const root = googleDriveHealthCheck
+          ? await googleDriveHealthCheck(env)
+          : await registry.getProvider('google_drive').healthCheck()
+        googleDrive.root_readable = root.root_readable ?? null
+        googleDrive.root_can_add_children = root.root_can_add_children ?? null
+      } catch (error) {
+        Object.assign(googleDrive, { root_capability_error: safeErrorCode(error, 'GOOGLE_DRIVE_ROOT_CHECK_FAILED') })
+      }
+    }
     return {
       file_storage_enabled: isFileStorageEnabled(env),
       file_provider: registry.defaultProviderName,
@@ -106,6 +122,7 @@ function providerDiagnostics(env: Environment) {
 export function createFileProviderDiagnosticsGetHandler(options: {
   env?: Environment
   resolveUser?: ServerUserResolver
+  googleDriveHealthCheck?: (env: Environment) => Promise<{ root_readable?: boolean | null; root_can_add_children?: boolean | null }>
 } = {}) {
   return async function GET(request: Request) {
     const env = options.env ?? process.env
@@ -123,7 +140,7 @@ export function createFileProviderDiagnosticsGetHandler(options: {
       : resolverRequest => resolveServerUser(resolverRequest, resolution)
     try {
       await requireRole(request, 'admin', resolveUser)
-      return Response.json(providerDiagnostics(env), {
+      return Response.json(await providerDiagnostics(env, options.googleDriveHealthCheck), {
         headers: { 'Cache-Control': 'no-store' },
       })
     } catch (error) {

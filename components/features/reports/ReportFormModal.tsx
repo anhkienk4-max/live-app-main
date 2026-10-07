@@ -654,6 +654,7 @@ export function ReportFormModal({
     if (!currentUser || !selectedShift) return
 
     setSubmitting(true)
+    let imageUploadActive = false
     try {
       const serializedMetrics = dashboardPlatform === 'other'
         ? {}
@@ -696,6 +697,7 @@ export function ReportFormModal({
           submitted_by: currentUser.id,
         })
       }
+      imageUploadActive = images.length > 0
       await Promise.all(images.map(image => reportImageService.create({
         report_id: report.id,
         image_url: image.url,
@@ -704,7 +706,9 @@ export function ReportFormModal({
         mime_type: image.mime,
         size_bytes: image.size,
       })))
+      imageUploadActive = false
       const pendingLiveImages = liveImages.filter(image => !persistedLiveImageIdsRef.current.has(image.id))
+      imageUploadActive = pendingLiveImages.length > 0
       const createdLiveImages = await Promise.all([...pendingLiveImages]
         .sort((left, right) => left.sort_order - right.sort_order)
         .map(image => liveReportImageService.create({
@@ -722,6 +726,7 @@ export function ReportFormModal({
           is_cover: image.is_cover,
           uploaded_by: currentUser.id,
         }, currentUser.id)))
+      imageUploadActive = false
       createdLiveImages.forEach(image => {
         persistedLiveImageIdsRef.current.add(image.id)
         persistedLiveImageUrlsRef.current.add(image.file_url)
@@ -736,7 +741,10 @@ export function ReportFormModal({
       toast({ title: mode === 'draft' ? t('saveDraft') : t('submitted'), description: mode === 'draft' ? t('draftSaved') : t('finalReportSavedHelp'), variant: 'success' })
       onSuccess()
     } catch (error) {
-      toast({ title: t('saveFailed'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+      const title = imageUploadActive
+        ? mode === 'draft' ? t('draftUpdatedImageSaveFailed') : t('reportUpdatedImageSaveFailed')
+        : t('saveFailed')
+      toast({ title, description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
     } finally {
       setSubmitting(false)
     }
