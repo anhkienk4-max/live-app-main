@@ -24,15 +24,19 @@ import { createClient } from '@/lib/supabase/client'
 import { resolveSystemPermission } from '@/lib/permissions'
 import { getNavigationForRole, filterNav } from '@/lib/ui/role-ux'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
+import { cn } from '@/lib/utils'
+import { resolveActiveNavigation, type ProductionShellVariant } from './shellConfig'
 import { Menu } from 'lucide-react'
 
 function MobileNavMenu() {
   const pathname = usePathname()
+  const search = useSearchParams()
   const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
   const rawNav = getNavigationForRole(resolveSystemPermission(currentUser))
   const roleNav = filterNav(rawNav, currentUser)
+  const activeHref = resolveActiveNavigation(roleNav, pathname, search)
 
   return (
     <div className="hidden md:flex lg:hidden mr-2">
@@ -49,7 +53,7 @@ function MobileNavMenu() {
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
             {roleNav.map(item => {
-              const isActive = pathname === item.href
+              const isActive = activeHref === item.href
               const Icon = item.icon
               const label = item.labelKey ? t(item.labelKey as Parameters<typeof t>[0]) : t(item.name.toLowerCase() as Parameters<typeof t>[0]) || item.name
               return (
@@ -69,6 +73,7 @@ function MobileNavMenu() {
 }
 
 interface HeaderProps {
+  variant?: ProductionShellVariant
   user?: {
     email?: string
     user_metadata?: {
@@ -78,7 +83,7 @@ interface HeaderProps {
   }
 }
 
-export function Header({ user }: HeaderProps) {
+export function Header({ user, variant = 'ops' }: HeaderProps) {
   const { language, setLanguage, t } = useTranslation()
   const { toast } = useToast()
   const [signingOut, setSigningOut] = useState(false)
@@ -136,9 +141,9 @@ export function Header({ user }: HeaderProps) {
     .toUpperCase() || displayUser?.email?.[0].toUpperCase() || 'U'
 
   return (
-    <header className="bg-card border-b border-border sticky top-0 z-40">
-      <div className="px-4 sm:px-6">
-        <div className="flex h-14 items-center justify-between gap-3">
+    <header data-testid="production-topbar" className="sticky top-0 z-40 shrink-0 border-b border-slate-200 bg-white">
+      <div className="px-3 sm:px-6">
+        <div className={cn('flex h-14 items-center justify-between gap-2 sm:gap-3', variant === 'live' && 'lg:h-[44px]')}>
 
           {/* Left: wordmark (mobile only — desktop shows sidebar wordmark) */}
           <div className="flex items-center lg:hidden">
@@ -153,12 +158,11 @@ export function Header({ user }: HeaderProps) {
             </span>
           </div>
 
-          {/* Spacer on desktop (sidebar owns the wordmark) */}
-          <div className="hidden md:flex flex-1" />
+          {/* One responsive search instance preserves the shared keyboard shortcut. */}
+          <div className="min-w-0 flex-1"><GlobalSearch /></div>
 
           {/* Right: actions cluster */}
           <div className="flex items-center gap-1.5">
-            <GlobalSearch />
             <NotificationCenter />
 
             {/* Language toggle */}
@@ -176,7 +180,7 @@ export function Header({ user }: HeaderProps) {
             {/* User menu */}
             <DropdownMenu>
               <DropdownMenuTrigger
-                render={<Button variant="ghost" className="relative h-8 w-8 rounded-full p-0" data-testid="user-menu-btn" />}
+                render={<Button variant="ghost" className="h-9 max-w-48 gap-2 rounded-md px-1.5" data-testid="user-menu-btn" />}
               >
                 <Avatar className="h-7 w-7">
                   {avatarUrl && <AvatarImage src={avatarUrl} alt={displayUser?.user_metadata?.full_name || displayUser?.email || 'User'} />}
@@ -184,6 +188,7 @@ export function Header({ user }: HeaderProps) {
                     {initials}
                   </AvatarFallback>
                 </Avatar>
+                <span className="hidden min-w-0 text-left md:block"><span className="block truncate text-[12px] font-semibold">{displayUser?.user_metadata?.full_name || displayUser?.email || 'User'}</span><span className="block text-[11px] capitalize text-slate-500">{resolveSystemPermission(currentUser)}</span></span>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-52" align="end">
                 <DropdownMenuGroup>

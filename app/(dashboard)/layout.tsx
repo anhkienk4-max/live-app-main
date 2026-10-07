@@ -1,9 +1,7 @@
 ﻿import { redirect } from 'next/navigation'
 import { connection } from 'next/server'
 import { headers } from 'next/headers'
-import { Header } from '@/components/layout/Header'
-import { Sidebar } from '@/components/layout/Sidebar'
-import { BottomNav } from '@/components/layout/BottomNav'
+import { ProductionAppShell } from '@/components/layout/ProductionAppShell'
 import { RoleLensProvider } from '@/components/providers/RoleLensProvider'
 
 import { getAuthMode, getSupabasePublicConfig } from '@/lib/auth/authMode'
@@ -114,20 +112,9 @@ export default async function DashboardLayout({
       identity={identity}
       businessUser={businessUser}
     >
-      <div className="flex h-screen overflow-hidden bg-background">
-        <Sidebar />
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <Header user={user || undefined} />
-          <main className="min-w-0 flex-1 overflow-y-auto pb-28 md:pb-4">
-            <div className="w-full min-w-0">
-              <RoleLensProvider>
-                {children}
-              </RoleLensProvider>
-            </div>
-          </main>
-          <BottomNav />
-        </div>
-      </div>
+      <ProductionAppShell user={user || undefined}>
+        <RoleLensProvider>{children}</RoleLensProvider>
+      </ProductionAppShell>
     </AuthIdentityProvider>
   )
 }
