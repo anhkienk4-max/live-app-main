@@ -2860,8 +2860,8 @@ export const reportService = {
   },
 }
 
-// Report evidence service. Supabase mode persists bytes in Storage and metadata through RPCs;
-// mock mode retains the existing in-memory parity path.
+// Report evidence service. Production stores bytes in the configured external file provider;
+// Supabase keeps report/image metadata and provider references only. Mock mode stays in-memory.
 type ReportImageRouteKind = 'report' | 'live'
 
 async function reportImageRouteUpload(
@@ -3179,8 +3179,8 @@ export const reportArtifactService = {
   },
 }
 
-// Live-session gallery service. Supabase mode persists Storage objects and metadata;
-// mock mode retains the existing in-memory parity path.
+// Live-session gallery service. Production stores bytes in the configured external file provider;
+// Supabase keeps live-image metadata and provider references only. Mock mode stays in-memory.
 export const liveReportImageService = {
   async getByReport(reportId: string): Promise<LiveReportImage[]> {
     if (getAuthMode() === 'supabase') return getSupabaseReportRepository().getLiveReportImages(reportId)
