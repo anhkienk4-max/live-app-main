@@ -161,6 +161,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   const [masterState, setMasterState] = React.useState<MasterDataState>('loading')
   const [previewFilter, setPreviewFilter] = React.useState<PreviewFilter>('all')
   const [previewSearch, setPreviewSearch] = React.useState('')
+  const [selectedPreviewRow, setSelectedPreviewRow] = React.useState<number | null>(null)
   const [cancelOpen, setCancelOpen] = React.useState(false)
   const [draftRows, setDraftRows] = React.useState<DraftRows>({})
   const [completedImport, setCompletedImport] = React.useState<CompletedImport | null>(null)
@@ -199,6 +200,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     setCompletedImport(null)
     setPreviewFilter('all')
     setPreviewSearch('')
+    setSelectedPreviewRow(null)
     setResult(normalizedNext)
     setSource(nextSource)
     const createdBy = currentUser?.id || currentUserService.getId()
@@ -455,9 +457,11 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
 
   return (
     <div className="space-y-4">
-      <header><h2 className="text-xl font-semibold">{t('importInput')}</h2><p className="mt-1 text-sm text-muted-foreground">{t('reviewBeforeImport')}</p></header>
+      <header className="flex flex-wrap items-start justify-between gap-3 border-b pb-3"><div><h2 className="text-xl font-semibold">{t('importInput')}</h2><p className="mt-1 text-xs text-muted-foreground">{t('reviewBeforeImport')}</p></div><Button size="sm" variant="outline" onClick={downloadExcelTemplate}><Download className="mr-2 h-4 w-4" />{t('downloadTemplate')}</Button></header>
       <ol className="grid grid-cols-2 gap-2 rounded-lg border bg-card p-3 sm:grid-cols-4" aria-label={t('importInput')}>{['Nguồn dữ liệu','Kiểm tra dữ liệu','Xác nhận nhập','Kết quả'].map((label,index)=>{const current=completedImport ? 3 : batch && busy ? 2 : result ? 1 : 0;return <li key={label} aria-current={index===current?'step':undefined} className={`flex items-center gap-2 text-xs ${index===current?'font-semibold text-primary':'text-muted-foreground'}`}><span className={`flex h-6 w-6 items-center justify-center rounded-full border ${index===current?'border-primary bg-primary/5':''}`}>{index+1}</span>{label}</li>})}</ol>
-      <div className="grid gap-4 lg:grid-cols-2">
+      <details key={source?.name ?? 'entry'} open={!result && !completedImport} className="rounded-lg border bg-card p-3">
+        <summary className="cursor-pointer text-sm font-medium">{t('importSourceSelected')}{source ? `: ${source.name}` : ''}</summary>
+      <div className="mt-3 grid gap-3 lg:grid-cols-2">
         <Card className="border border-dashed border-slate-200 bg-white shadow-none">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base text-slate-800">
@@ -504,6 +508,8 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
         </Card>
       </div>
 
+      </details>
+
       {busy && <p className="text-sm font-medium text-blue-700" role="status" aria-live="polite" data-testid="schedule-import-processing">{t('importProcessing')}</p>}
 
       {masterGate.message && (
@@ -512,13 +518,13 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
 
       {result && source && (
         <Card>
-          <CardHeader>
+          <CardHeader className="px-3 py-2">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div><CardTitle>{t('reviewBeforeImport')}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{t('importSourceSelected')}: <span className="font-medium text-foreground">{source.name}</span></p><p className="mt-1 text-xs text-muted-foreground">{t('batchPreviewState')}</p></div>
-              {previewCounts && <ImportSummary counts={previewCounts} t={t} />}
+              <div><CardTitle>{t('reviewBeforeImport')}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{t('importSourceSelected')}: <span className="font-medium text-foreground">{source.name}</span></p><p className="mt-1 text-xs text-muted-foreground">{batch && <>{t('source')}: {batch.source} · {t('status')}: {batch.status} · {t('actor')}: {currentUser.full_name} · {new Date(batch.created_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}</>}</p><p className="mt-1 break-all text-xs text-muted-foreground">{batch?.id}</p></div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3 px-3">
+            {previewCounts && <ImportSummary counts={previewCounts} t={t} />}
             <div className="rounded-md border border-blue-200 bg-blue-50/60 px-3 py-2 text-sm text-blue-900" role="status" data-testid="schedule-import-preview-state">{t('batchPreviewState')}</div>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap gap-1" aria-label={t('importOutcomeRows')}>
@@ -536,11 +542,30 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
               </div>
             </div>
             {visiblePreviews.length === 0 && <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground" role="status">{result.rows.length === 0 ? t('importNoRows') : t('importNoMatchingRows')}</p>}
-            <div className="hidden max-h-[560px] overflow-auto rounded-lg border md:block">
+            <div className="hidden overflow-x-auto rounded-md border md:block">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 text-left text-slate-500"><tr>{[t('importSourceRow'), t('date'), t('time'), t('brand'), t('platform'), t('campaign'), t('shiftTitle'), t('status'), t('action')].map(label => <th key={label} className="px-2 py-2 font-medium">{label}</th>)}</tr></thead>
+                <tbody>{visiblePreviews.map(preview => {
+                  const status = previewStatusForRow(preview)
+                  return <tr key={preview.row.row_number} className="border-t align-top">
+                    <td className="px-2 py-3">#{preview.row.row_number}</td>
+                    <td className="whitespace-nowrap px-2 py-3">{preview.row.date}</td>
+                    <td className="whitespace-nowrap px-2 py-3">{preview.row.start_time}–{preview.row.end_time}{preview.row.crosses_midnight && <p className="mt-1 text-indigo-700">{t('endsNextDay')}: {displayDate(preview.row.end_date)}</p>}</td>
+                    <td className="px-2 py-3">{preview.row.brand_name}</td>
+                    <td className="px-2 py-3">{preview.row.platform_name}</td>
+                    <td className="px-2 py-3">{preview.row.campaign_name || '—'}</td>
+                    <td className="px-2 py-3">{preview.row.title}</td>
+                    <td className="max-w-64 px-2 py-3"><Badge variant="outline" className={rowStatusClass(status)}>{importStatusLabel(status, t)}</Badge>{preview.row.errors.map(message => <p key={message} className="mt-1 text-red-700">{message}</p>)}{preview.row.warnings.map(message => <p key={message} className="mt-1 text-amber-700">{message}</p>)}</td>
+                    <td className="px-2 py-3"><Button size="sm" variant="outline" aria-expanded={selectedPreviewRow === preview.row.row_number} onClick={() => setSelectedPreviewRow(selectedPreviewRow === preview.row.row_number ? null : preview.row.row_number)}>{t('edit')} #{preview.row.row_number}</Button></td>
+                  </tr>
+                })}</tbody>
+              </table>
+            </div>
+            {selectedPreviewRow !== null && <div className="max-h-[400px] overflow-auto rounded-lg border" aria-label={t('reviewBeforeImport')}>
               <table className="min-w-[1780px] w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-background"><tr className="border-b text-left"><th className="p-2">{t('importSourceRow')}</th><th className="p-2">{t('date')}</th><th className="p-2">{t('time')}</th><th className="p-2">{t('brand')}</th><th className="p-2">{t('platform')}</th><th className="p-2">{t('campaign')}</th><th className="p-2">{t('shiftTitle')}</th><th className="p-2">{t('studio')}</th><th className="p-2">{t('importHostNames')}</th><th className="p-2">{t('importAssistantNames')}</th><th className="p-2">{t('importTechnicalNames')}</th><th className="p-2">{t('requiredHostCount')}</th><th className="p-2">{t('requiredSupportCount')}</th><th className="p-2">{t('requiredTechnicalCount')}</th><th className="min-w-64 p-2">{t('status')}</th></tr></thead>
                 <tbody>
-                  {visiblePreviews.map(preview => {
+                  {visiblePreviews.filter(preview => preview.row.row_number === selectedPreviewRow).map(preview => {
                     const rowNumber = preview.row.row_number
                     const rowStatus = previewStatusForRow(preview)
                     const editing = draftRows[rowNumber]
@@ -614,7 +639,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                   })}
                 </tbody>
               </table>
-            </div>
+            </div>}
             <div className="space-y-2 md:hidden" data-testid="schedule-import-mobile-rows">
               {visiblePreviews.map(preview => {
                 const status = previewStatusForRow(preview)
@@ -622,6 +647,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                 return <div key={preview.row.row_number} className={`rounded-md border p-3 ${rowStatusClass(status)}`}>
                   <div className="flex items-start justify-between gap-2"><div><p className="text-xs text-muted-foreground">{t('importSourceRow')} {preview.row.row_number}</p><p className="font-medium">{identity || t('importNoRows')}</p></div><Badge variant="outline">{importStatusLabel(status, t)}</Badge></div>
                   <p className="mt-1 text-xs text-muted-foreground">{preview.row.brand_name} · {preview.row.platform_name}{preview.row.campaign_name ? ` · ${preview.row.campaign_name}` : ''}</p>
+                  <Button className="mt-2" size="sm" variant="outline" onClick={() => setSelectedPreviewRow(selectedPreviewRow === preview.row.row_number ? null : preview.row.row_number)} aria-expanded={selectedPreviewRow === preview.row.row_number}>{t('edit')} #{preview.row.row_number}</Button>
                   {preview.row.errors.map(message => <p key={message} className="mt-1 text-xs text-red-700">{message}</p>)}
                   {preview.row.warnings.map(message => <p key={message} className="mt-1 text-xs text-amber-700">{message}</p>)}
                 </div>
@@ -631,8 +657,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
             {previewCounts && <p className="text-sm text-muted-foreground" data-testid="schedule-import-confirm-summary">{t('confirmImportSummary', { ready: previewCounts.ready, attention: previewAttention })}</p>}
             <div className="flex flex-wrap justify-end gap-2">
               <Button variant="outline" onClick={() => setCancelOpen(true)}>{t('cancel')}</Button>
-              <Button variant="outline" onClick={confirmImport} disabled={busy || result.validRows === 0} aria-label={`${t('confirmImport')} (${result.validRows})`}>{busy ? t('loading') : `${t('confirmImport')} (${result.validRows})`}</Button>
-              <Button onClick={confirmImport} disabled={busy || result.validRows === 0} aria-label={t('confirmImport')}>{busy ? t('loading') : t('confirmImport')}</Button>
+              <Button onClick={confirmImport} disabled={busy || result.validRows === 0} aria-label={t('confirmImport')}>{busy ? t('loading') : `${t('confirmImport')} (${result.validRows})`}</Button>
             </div>
           </CardContent>
         </Card>
@@ -653,7 +678,7 @@ function ImportSummary({ counts, t, persistedCount }: { counts: ImportPresentati
     ['importDuplicateSkipped', counts.duplicate, 'text-slate-700'],
     ['importRetryable', counts.retryable, 'text-orange-700'],
   ]
-  return <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs" data-testid="schedule-import-summary" aria-label={t('importSummary')}>
+  return <div className="grid grid-cols-2 gap-2 text-xs md:grid-cols-3 xl:grid-cols-6 [&>span]:rounded-md [&>span]:border [&>span]:bg-white [&>span]:p-3" data-testid="schedule-import-summary" aria-label={t('importSummary')}>
     <span className="font-semibold text-foreground">{t('totalRows')}: {counts.total}</span>
     {persistedCount !== undefined && <span className="font-semibold text-emerald-700" data-testid="schedule-import-persisted-count">{t('importedResult')}: {persistedCount}</span>}
     {items.map(([label, count, color]) => <span key={label} className={color}>{t(label)}: {count}</span>)}
