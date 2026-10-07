@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Download, FileSpreadsheet, Plus, RotateCcw } from 'lucide-react'
+import { Download, FileSpreadsheet, Plus, RotateCcw, Search } from 'lucide-react'
 import { format } from 'date-fns'
 import {
   brandService,
@@ -41,6 +41,7 @@ import { HistoryPagination } from '@/components/ui/history-pagination'
 type Filters = { start: string; end: string; requesterIds: string[]; brandIds: string[]; campaignIds: string[]; roles: OperationalRole[]; statuses: string[] }
 const initialFilters: Filters = { start: '', end: '', requesterIds: [], brandIds: [], campaignIds: [], roles: [], statuses: [] }
 export const SWAP_REQUEST_STATUSES = ['pending', 'accepted', 'approved', 'rejected', 'cancelled', 'completed'] as const satisfies readonly SwapStatus[]
+type SwapScope = 'all' | 'mine' | 'forMe'
 
 export function SwapRequestList() {
   const { currentUser, loading: userLoading } = useCurrentUser()
@@ -59,6 +60,8 @@ export function SwapRequestList() {
   const [loading, setLoading] = React.useState(true)
   const [loadError,setLoadError] = React.useState<string | null>(null)
   const [cancelTarget, setCancelTarget] = React.useState<SwapRequest | null>(null)
+  const [scope, setScope] = React.useState<SwapScope>('all')
+  const [query, setQuery] = React.useState('')
   const [page, setPage] = React.useState(1)
   const [pageSize, setPageSize] = React.useState(10)
 
@@ -87,9 +90,16 @@ export function SwapRequestList() {
   const userName = (id?: string) => id ? users.find(user => user.id === id)?.full_name || '—' : '—'
   const roleFor = (swap: SwapRequest): OperationalRole => swap.operational_role || (swap.new_support_id ? 'support' : swap.new_technical_id ? 'technical' : 'host')
   const replacementFor = (swap: SwapRequest) => swap.replacement_staff_id || swap.new_host_id || swap.new_support_id || swap.new_technical_id
-  const filtered = swaps.filter(swap => {
+  const scopedSwaps = swaps.filter(swap => {
+    if (scope === 'mine') return swap.requester_id === currentUser?.id
+    if (scope === 'forMe') return swap.counterpart_id === currentUser?.id
+    return true
+  })
+  const filtered = scopedSwaps.filter(swap => {
     const shift = shiftById.get(swap.shift_id)
     if (!shift) return false
+    const haystack = [swap.id, shift.title, swap.reason, userName(swap.requester_id), userName(replacementFor(swap) || swap.counterpart_id || '')].join(' ').toLowerCase()
+    if (query.trim() && !haystack.includes(query.trim().toLowerCase())) return false
     return (!filters.start || shift.date >= filters.start) &&
       (!filters.end || shift.date <= filters.end) &&
       matchesMultiSelect(swap.requester_id, filters.requesterIds) &&
@@ -100,6 +110,11 @@ export function SwapRequestList() {
   })
   const updateFilters = (next: React.SetStateAction<Filters>) => {
     setFilters(next)
+    setPage(1)
+  }
+  const selectScope = (next: SwapScope) => {
+    setScope(next)
+    setFilters(initialFilters)
     setPage(1)
   }
   const safePage = Math.min(page, Math.max(1, Math.ceil(filtered.length / pageSize)))
@@ -150,9 +165,27 @@ export function SwapRequestList() {
 
   if (loadError) return <PageLoadError error={new Error(loadError)} onRetry={() => void loadData()} />
   return <div className="space-y-3">
-    <nav aria-label={t('status')} className="flex flex-wrap gap-1 border-b border-slate-200 bg-white px-2">{([{key:'all',count:swaps.length},...SWAP_REQUEST_STATUSES.map(status=>({key:status,count:swaps.filter(swap=>swap.status===status).length}))] as const).map(item=>{const active=item.key==='all'?!filters.statuses.length:filters.statuses.includes(item.key);return <button type="button" key={item.key} aria-pressed={active} onClick={()=>updateFilters(current=>({...current,statuses:item.key==='all'?[]:[item.key]}))} className={`border-b-2 px-3 py-2 text-xs ${active?'border-blue-600 font-semibold text-blue-700':'border-transparent text-slate-500'}`}>{t(item.key)} <strong>{item.count}</strong></button>})}</nav>
+    <div className="flex items-center justify-between gap-2 border-b border-slate-200">
+      <nav aria-label={t('status')} className="flex min-w-0 flex-1 overflow-x-auto">
+        {[
+          { key: 'all', label: 'All', count: swaps.length },
+          { key: 'pending', label: t('pending'), count: swaps.filter(swap => swap.status === 'pending').length },
+          { key: 'accepted', label: t('accepted'), count: swaps.filter(swap => swap.status === 'accepted' || swap.status === 'approved').length },
+          { key: 'completed', label: t('completed'), count: swaps.filter(swap => swap.status === 'completed').length },
+          { key: 'rejected', label: t('rejected'), count: swaps.filter(swap => swap.status === 'rejected').length },
+          { key: 'cancelled', label: t('cancelled'), count: swaps.filter(swap => swap.status === 'cancelled').length },
+        ].map(item => {
+          const active = scope === 'all' && (item.key === 'all' ? !filters.statuses.length : filters.statuses.includes(item.key))
+          return <button type="button" key={item.key} aria-pressed={active} onClick={() => { setScope('all'); updateFilters(current => ({ ...current, statuses: item.key === 'all' ? [] : item.key === 'accepted' ? ['accepted', 'approved'] : [item.key] })) }} className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-xs ${active ? 'border-blue-600 font-semibold text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{item.label} <strong>{item.count}</strong></button>
+        })}
+        <button type="button" aria-pressed={scope === 'mine'} onClick={() => selectScope('mine')} className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-xs ${scope === 'mine' ? 'border-violet-600 font-semibold text-violet-700' : 'border-transparent text-slate-500'}`}>My requests <strong>{swaps.filter(swap => swap.requester_id === currentUser?.id).length}</strong></button>
+        <button type="button" aria-pressed={scope === 'forMe'} onClick={() => selectScope('forMe')} className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-xs ${scope === 'forMe' ? 'border-emerald-600 font-semibold text-emerald-700' : 'border-transparent text-slate-500'}`}>For me <strong>{swaps.filter(swap => swap.counterpart_id === currentUser?.id).length}</strong></button>
+      </nav>
+      {currentUser && hasPermission(currentUser, 'swaps.request') && <Button size="sm" className="mr-1 shrink-0" onClick={() => setShowForm(true)}><Plus className="mr-1.5 h-4 w-4" />{t('swapsTitle')}</Button>}
+    </div>
 
-    <Card><CardHeader className="px-3 py-2"><div className="flex flex-wrap items-center justify-between gap-3"><CardTitle className="text-sm">{t('filters')}</CardTitle>{currentUser && hasPermission(currentUser, 'swaps.request') && <Button size="sm" onClick={() => setShowForm(true)}><Plus className="mr-2 h-4 w-4" />{t('swapsTitle')}</Button>}</div></CardHeader><CardContent className="space-y-3 px-3 pb-3">
+    <Card className="border-slate-200 shadow-none"><CardHeader className="px-3 py-2"><CardTitle className="text-xs uppercase tracking-wide text-slate-500">{t('filters')}</CardTitle></CardHeader><CardContent className="space-y-3 px-3 pb-3">
+      <div className="relative"><Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" /><Input aria-label="Search swaps" className="h-9 pl-8 text-xs" placeholder="Search request, shift, or staff" value={query} onChange={event => { setQuery(event.target.value); setPage(1) }} /></div>
       <div className="grid gap-3 md:grid-cols-4">
         <label className="text-xs font-medium">{t('startDate')}<Input className="mt-1" type="date" value={filters.start} onChange={event => updateFilters(current => ({ ...current, start: event.target.value }))} /></label>
         <label className="text-xs font-medium">{t('endDate')}<Input className="mt-1" type="date" value={filters.end} onChange={event => updateFilters(current => ({ ...current, end: event.target.value }))} /></label>
@@ -187,20 +220,20 @@ export function SwapRequestList() {
       </div>
     </CardContent></Card>
 
-    {filtered.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noSwaps')}</CardContent></Card> : <Card className="overflow-hidden"><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-muted/40 text-left text-xs text-muted-foreground"><tr>{[t('shiftDetail'),t('requester'),t('replacementStaff'),t('role'),t('status'),t('createdAt'),t('actions')].map(label=><th key={label} className="p-3 font-medium">{label}</th>)}</tr></thead><tbody>{visibleSwaps.map(swap => {
+    {filtered.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noSwaps')}</CardContent></Card> : <Card className="overflow-hidden border-slate-200 shadow-none"><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full min-w-[980px] text-xs"><thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500"><tr>{['Shift & request','Requester','Replacement','Role / mode','Status','Created','Actions'].map(label=><th key={label} className="px-3 py-2.5 font-semibold">{label}</th>)}</tr></thead><tbody>{visibleSwaps.map(swap => {
       const shift = shiftById.get(swap.shift_id)
       if (!shift) return null
       const actions = getSwapUiActions(swap, currentUser)
       const statusPresentation = getSwapStatusPresentation(swap.status)
       const attentionItems = deriveSwapAttention({swapId:swap.id,status:swap.status,actorHasValidAction:actions.showAccept || actions.showCounterpartReject || actions.showApprove || actions.showReviewerReject || actions.showCancel})
-      return <tr key={swap.id} className="border-t align-top hover:bg-muted/20">
+      return <tr key={swap.id} className="border-t border-slate-100 align-top hover:bg-slate-50/70">
         <td className="p-3"><button type="button" onClick={()=>setSelectedSwap(swap)} className="text-left font-medium text-primary">{shift.title}</button><p className="text-xs text-muted-foreground">{swap.id}</p><p className="mt-1 text-xs">{shift.date} · {formatShiftTimeRange(shift)}</p><p className="text-xs text-muted-foreground">{shift.studio || '—'} · {nameFor(brands,shift.brand_id)} · {nameFor(platforms,shift.platform_id)}</p><p className="text-xs text-muted-foreground">{nameFor(campaigns,shift.campaign_id)}</p>{swap.reason && <p className="mt-2 max-w-xs text-xs">{swap.reason}</p>}</td>
-        <td className="p-3">{userName(swap.requester_id)}{swap.original_staff_id && swap.original_staff_id !== swap.requester_id && <p className="text-xs text-muted-foreground">{t('originalStaff')}: {userName(swap.original_staff_id)}</p>}</td>
+        <td className="px-3 py-2.5"><span className="font-medium">{userName(swap.requester_id)}</span>{swap.original_staff_id && swap.original_staff_id !== swap.requester_id && <p className="text-[10px] text-muted-foreground">{t('originalStaff')}: {userName(swap.original_staff_id)}</p>}</td>
         <td className="p-3">{userName(replacementFor(swap) || swap.counterpart_id || '')}{swap.mode==='exchange' && <p className="text-xs text-muted-foreground">{t('targetShift')}: {shiftById.get(swap.target_shift_id || '')?.title || swap.target_shift_id || '—'}</p>}</td>
-        <td className="p-3">{t(roleFor(swap))}<p className="text-xs text-muted-foreground">{swap.mode || 'replacement'}</p></td>
-        <td className="p-3"><Badge variant="outline">{t(statusPresentation.label)}</Badge><div className="mt-2 space-y-1">{attentionItems.map(item=><AttentionItem key={item.key} item={item} />)}</div></td>
-        <td className="p-3 whitespace-nowrap text-xs text-muted-foreground">{format(new Date(swap.created_at),'dd/MM/yyyy HH:mm')}</td>
-        <td className="p-3">                  <ActionBar
+        <td className="px-3 py-2.5">{t(roleFor(swap))}<p className="text-[10px] text-muted-foreground">{swap.mode || 'replacement'}</p></td>
+        <td className="px-3 py-2.5"><Badge variant="outline" className="text-[10px]">{t(statusPresentation.label)}</Badge><div className="mt-1 space-y-1">{attentionItems.map(item=><AttentionItem key={item.key} item={item} />)}</div></td>
+        <td className="whitespace-nowrap px-3 py-2.5 text-[10px] text-muted-foreground">{format(new Date(swap.created_at),'dd/MM/yyyy HH:mm')}</td>
+        <td className="px-3 py-2.5">                  <ActionBar
                     direction="row"
                     compact
                     collapseAt="md"
