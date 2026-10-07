@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { DollarSign, Download, FileImage, FileSpreadsheet, FileText, Filter, Plus, RotateCcw, Search, TrendingUp } from 'lucide-react'
+import { Download, FileImage, FileSpreadsheet, Filter, Plus, RotateCcw, Search } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import {
   brandService,
@@ -224,17 +224,19 @@ export function ReportsContainer() {
 
   return (
     <div className="space-y-4">
-      {currentUser && hasPermission(currentUser, 'reports.submit') && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs">
-          <div><p className="font-medium">{t('finalReportWorkflow')}</p><p className="text-amber-800">{completedShifts.length ? t('reportDraftReady', { count: completedShifts.length }) : t('noReportDraftReady')}</p></div>
-          <Button onClick={() => setShowForm(true)} disabled={!completedShifts.length} data-testid="open-final-report-modal"><Plus className="mr-2 h-4 w-4" />{t('createFinalReport')}</Button>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs">
+          <SummaryMetric label={t('reportCount')} value={filteredReports.length.toLocaleString()} />
+          <SummaryMetric label={t('confirmedRevenue')} value={totalRevenue === null ? '—' : formatCurrency(totalRevenue)} />
+          <SummaryMetric label={t('averageOrderValue')} value={aov === null ? '—' : formatCurrency(aov)} />
+          <SummaryMetric label={t('needsReview')} value={filteredReports.filter(report => !report.metrics_confirmed).length.toLocaleString()} />
         </div>
-      )}
-      <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-slate-200 bg-white sm:grid-cols-4">
-        <Metric title={t('reportCount')} value={filteredReports.length.toLocaleString()} icon={<FileText className="h-5 w-5 text-blue-600" />} />
-        <Metric title={t('confirmedRevenue')} value={totalRevenue === null ? '—' : formatCurrency(totalRevenue)} icon={<DollarSign className="h-5 w-5 text-green-600" />} />
-        <Metric title={t('averageOrderValue')} value={aov === null ? '—' : formatCurrency(aov)} icon={<TrendingUp className="h-5 w-5 text-purple-600" />} />
-        <Metric title={t('needsReview')} value={filteredReports.filter(report => !report.metrics_confirmed).length.toLocaleString()} icon={<FileText className="h-5 w-5 text-amber-600" />} />
+        {currentUser && hasPermission(currentUser, 'reports.submit') && (
+          <div className="flex items-center gap-2">
+            <div className="text-right text-[11px] leading-tight"><p className="font-medium text-slate-700">{t('finalReportWorkflow')}</p><p className="hidden text-amber-800 sm:block">{completedShifts.length ? t('reportDraftReady', { count: completedShifts.length }) : t('noReportDraftReady')}</p></div>
+            <Button size="sm" onClick={() => setShowForm(true)} disabled={!completedShifts.length} data-testid="open-final-report-modal"><Plus className="mr-1.5 h-4 w-4" />{t('createFinalReport')}</Button>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-2">
@@ -311,13 +313,8 @@ export function ReportsContainer() {
   )
 }
 
-function Metric({ title, value, icon }: { title: string; value: string; icon: React.ReactNode }) {
-  return (
-    <div className="flex min-w-0 items-center gap-2 border-r border-slate-200 px-3 py-2 last:border-r-0">
-      <div className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 sm:flex">{icon}</div>
-      <div className="min-w-0"><p className="truncate text-[11px] font-medium text-slate-500">{title}</p><p className="truncate text-base font-semibold tracking-tight text-slate-900">{value}</p></div>
-    </div>
-  )
+function SummaryMetric({ label, value }: { label: string; value: string }) {
+  return <div className="whitespace-nowrap"><span className="text-slate-500">{label} </span><span className="font-semibold text-slate-900">{value}</span></div>
 }
 
 function EntityFilter({ label, value, options, onChange }: { label: string; value: string[]; options: Array<{ id: string; name: string }>; onChange: (value: string[]) => void }) {
