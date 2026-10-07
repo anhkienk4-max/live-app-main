@@ -7,6 +7,7 @@ export function resolveProductionShell(pathname: string, search: SearchContext):
   if (pathname === '/live' || pathname.startsWith('/live/')) return 'live'
   if (pathname === '/audit' || pathname.startsWith('/audit/') || pathname === '/settings' || pathname.startsWith('/settings/')) return 'admin'
   if (pathname === '/calendar' && (search.get('tab') === 'import' || search.get('action') === 'import')) return 'admin'
+  if (pathname.startsWith('/shifts/') && (pathname.endsWith('/edit') || pathname === '/shifts/edit')) return 'ops'
   if (/^\/shifts\/(?!create(?:\/|$)|new(?:\/|$))[^/]+/.test(pathname)) return 'shift-detail'
   return 'ops'
 }

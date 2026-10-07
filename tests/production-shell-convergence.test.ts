@@ -12,7 +12,7 @@ test('route variants follow approved frames without changing route access', () =
   assert.equal(resolveProductionShell('/calendar', new URLSearchParams('action=import')), 'admin')
   assert.equal(resolveProductionShell('/live', new URLSearchParams()), 'live')
   assert.equal(resolveProductionShell('/shifts/real-id', new URLSearchParams()), 'shift-detail')
-  assert.equal(resolveProductionShell('/shifts/real-id/edit', new URLSearchParams()), 'shift-detail')
+  assert.equal(resolveProductionShell('/shifts/real-id/edit', new URLSearchParams()), 'ops')
 })
 test('nested and query navigation highlight one canonical destination per role', () => {
   const admin = getNavigationForRole('admin')
