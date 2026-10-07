@@ -22,7 +22,7 @@ export function Sidebar() {
   const initials = currentUser?.full_name?.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase() || currentUser?.email?.[0].toUpperCase() || 'U'
   return (
     <aside data-testid="production-sidebar" className="hidden w-[248px] shrink-0 flex-col bg-[#082743] text-slate-200 lg:flex">
-      <div className="flex h-[56px] shrink-0 items-center gap-2.5 border-b border-white/10 px-5">
+      <div data-testid="production-sidebar-brand" className="flex h-[56px] shrink-0 items-center gap-2.5 border-b border-white/10 px-5">
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-blue-600 text-white"><BarChart3 className="h-4 w-4" /></span>
         <div><div className="text-[15px] font-semibold tracking-tight text-white">LiveStream Ops</div></div>
       </div>

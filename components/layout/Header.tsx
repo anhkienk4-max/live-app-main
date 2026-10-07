@@ -139,9 +139,9 @@ export function Header({ user }: HeaderProps) {
     .toUpperCase() || displayUser?.email?.[0].toUpperCase() || 'U'
 
   return (
-    <header data-testid="production-topbar" className="sticky top-0 z-40 shrink-0 border-b border-slate-200 bg-white">
+    <header data-testid="production-topbar" className="sticky top-0 z-40 h-[56px] shrink-0 border-b border-slate-200 bg-white">
       <div className="px-3 sm:px-6">
-        <div className="flex h-[56px] items-center justify-between gap-2 sm:gap-3">
+        <div className="flex h-[55px] items-center justify-between gap-2 sm:gap-3">
 
           {/* Left: wordmark (mobile only — desktop shows sidebar wordmark) */}
           <div className="flex items-center lg:hidden">
