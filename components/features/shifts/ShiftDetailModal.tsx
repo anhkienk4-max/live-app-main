@@ -493,7 +493,7 @@ export function ShiftDetailModal({
   onDelete,
 }: ShiftDetailModalProps) {
   const { toast } = useToast()
-  const { language, t } = useTranslation()
+  const { language, t, translate } = useTranslation()
   const { currentUser } = useCurrentUser()
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   const [capacities, setCapacities] = React.useState<ShiftRoleCapacity[]>([])
@@ -557,6 +557,15 @@ export function ShiftDetailModal({
   const campaign = shift.campaign_id ? campaigns.find(item => item.id === shift.campaign_id) : undefined
   const userName = (id?: string) => id ? users.find(user => user.id === id)?.full_name || fallback : fallback
   const statusKey: TranslationKey = shift.status === 'live' ? 'liveStatus' : shift.status
+  const overviewStaffing = operationalRoles.map(role => ({
+    role,
+    capacity: capacities.find(capacity => capacity.role === role),
+    labels: resolveStaffingLabelsForRole(shift, registrations, users, role, t)
+      .filter(label => {
+        const name = String(label.name ?? '').trim().toLowerCase()
+        return name !== '' && name !== 'undefined' && name !== 'null'
+      }),
+  }))
 
   // E5: Exception-first attention derivation
     const todayDate = getCurrentBusinessDate()
@@ -679,7 +688,7 @@ export function ShiftDetailModal({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           size="xl"
-          className="h-[calc(100vh-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:h-[92vh] max-w-5xl gap-0 p-0"
+          className="h-auto grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden max-w-5xl gap-0 p-0"
           data-testid="shift-detail-modal"
         >
           {/* A. COMMAND HEADER */}
@@ -762,45 +771,46 @@ export function ShiftDetailModal({
 
               <TabsContent value="overview" className="space-y-6 p-4 sm:p-6">
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-
-               {/* LEFT COLUMN: Summary & Details */}
-               <div className="lg:col-span-5 space-y-6">
-
-                 {/* B. OPERATIONAL SUMMARY */}
-                 <section>
-                   <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">{t('shiftOverview')}</h3>
-                   <div className="rounded-lg border bg-card p-0 shadow-sm divide-y">
-                      <dl className="grid grid-cols-1 text-sm">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 gap-2">
-                          <dt className="text-muted-foreground">{t('campaign')}</dt>
-                          <dd className="font-medium text-foreground text-right">{campaign?.name || '—'}</dd>
-                        </div>
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 gap-2">
-                          <dt className="text-muted-foreground">{t('date')}</dt>
-                          <dd className="font-medium text-foreground text-right">
-                             {safeFormatShiftDate(shift.date, 'EEEE, PP', language, fallback)}
-                          </dd>
-                        </div>
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 gap-2">
-                          <dt className="text-muted-foreground">{t('time')}</dt>
-                          <dd className="font-medium text-foreground text-right">
-                            {shift.start_time || fallback} – {shift.end_time || fallback}
-                            {dateTime?.valid && dateTime.crossesMidnight && (
-                              <span className="block text-mini font-bold text-indigo-600 mt-0.5" data-testid="shift-detail-overnight">
-                                {t('endsNextDay')}: {safeFormatShiftDate(dateTime.endDate, 'MMM d', language, fallback)}
-                              </span>
-                            )}
-                          </dd>
-                        </div>
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 gap-2">
-                          <dt className="text-muted-foreground">{t('shiftIdentifier')}</dt>
-                          <dd className="font-mono text-mini text-muted-foreground text-right break-all">{shift.id || fallback}</dd>
-                        </div>
+                  <div className="space-y-4 lg:col-span-7">
+                    <section className="rounded-lg border bg-white p-4 shadow-sm">
+                      <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">{t('shiftOverview')}</h3>
+                      <dl className="grid gap-x-5 gap-y-4 text-sm sm:grid-cols-2">
+                        <div><dt className="text-xs text-muted-foreground">{t('brand')}</dt><dd className="mt-1 font-medium">{brand?.name || fallback}</dd></div>
+                        <div><dt className="text-xs text-muted-foreground">{t('platform')}</dt><dd className="mt-1 font-medium">{platform?.name || fallback}</dd></div>
+                        <div><dt className="text-xs text-muted-foreground">{t('campaign')}</dt><dd className="mt-1 font-medium">{campaign?.name || fallback}</dd></div>
+                        <div><dt className="text-xs text-muted-foreground">{t('studio')}</dt><dd className="mt-1 font-medium">{shift.studio?.trim() || fallback}</dd></div>
+                        <div><dt className="text-xs text-muted-foreground">{t('date')}</dt><dd className="mt-1 font-medium">{safeFormatShiftDate(shift.date, 'EEEE, PP', language, fallback)}</dd></div>
+                        <div><dt className="text-xs text-muted-foreground">{t('time')}</dt><dd className="mt-1 font-medium">{shift.start_time || fallback} – {shift.end_time || fallback}{dateTime?.valid && dateTime.crossesMidnight && <span className="mt-1 block text-xs font-semibold text-indigo-700" data-testid="shift-detail-overnight">{t('endsNextDay')}: {safeFormatShiftDate(dateTime.endDate, 'MMM d', language, fallback)}</span>}</dd></div>
+                        <div><dt className="text-xs text-muted-foreground">{t('timezone')}</dt><dd className="mt-1 break-all font-medium">{shift.timezone || fallback}</dd></div>
+                        <div><dt className="text-xs text-muted-foreground">{translate('Duration')}</dt><dd className="mt-1 font-medium">{dateTime?.valid ? `${dateTime.durationMinutes} min` : fallback}</dd></div>
+                        <div><dt className="text-xs text-muted-foreground">{t('shiftIdentifier')}</dt><dd className="mt-1 break-all font-mono text-xs">{shift.id || fallback}</dd></div>
+                        <div><dt className="text-xs text-muted-foreground">{t('version')}</dt><dd className="mt-1 font-medium">{shift.version ?? fallback}</dd></div>
                       </dl>
-                   </div>
-                 </section>
+                    </section>
+                    <section className="rounded-lg border bg-white p-4 shadow-sm">
+                      <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">{t('productNotes')}</h3>
+                      <p className="whitespace-pre-wrap break-words text-sm">{shift.product_notes?.trim() || fallback}</p>
+                    </section>
+                  </div>
 
-                 </div>
+                  <aside className="space-y-4 lg:col-span-5">
+                    <section className="rounded-lg border bg-white p-4 shadow-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{t('status')}</h3>
+                        <Badge variant={shift.status === 'live' ? 'destructive' : 'secondary'}>{t(statusKey)}</Badge>
+                      </div>
+                      <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                        <div><dt className="text-muted-foreground">{translate('Status mode')}</dt><dd className="mt-1 font-medium">{shift.status_mode || fallback}</dd></div>
+                        <div><dt className="text-muted-foreground">{t('registration')}</dt><dd className="mt-1 font-medium">{isLocked ? t('registrationLocked') : translate('Open')}</dd></div>
+                      </dl>
+                      {shift.import_batch_id && <div className="mt-3 border-t pt-3 text-xs"><span className="text-muted-foreground">{translate('Import batch')}: </span><span className="break-all font-medium">{shift.import_batch_id}</span></div>}
+                    </section>
+
+                    <section className="rounded-lg border bg-white p-4 shadow-sm">
+                      <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">{t('staffing')}</h3>
+                      {staffingLoading ? <p className="text-xs text-muted-foreground">{t('loading')}</p> : staffingError ? <p className="text-xs text-muted-foreground">{t('notProvided')}</p> : <div className="space-y-3">{overviewStaffing.map(({ role, capacity, labels }) => <div key={role} className="border-b pb-2 last:border-0 last:pb-0"><div className="flex items-center justify-between gap-2"><span className="text-xs font-medium">{t(role)}</span><span className={capacity?.remaining ? 'text-xs font-semibold text-amber-700' : 'text-xs font-semibold text-emerald-700'}>{capacity ? `${capacity.approved}/${capacity.required}` : fallback}</span></div><div className="mt-1 truncate text-xs text-muted-foreground">{labels.length ? labels.slice(0, 2).map(label => `${label.name} (${label.isImportedOnly ? t('scheduleStaffingName') : label.isUnassigned ? translate('Unassigned') : t('approved')})`).join(', ') : translate('Unassigned')}{labels.length > 2 ? ` +${labels.length - 2}` : ''}</div></div>)}</div>}
+                    </section>
+                  </aside>
                 </div>
               </TabsContent>
 

@@ -12,7 +12,7 @@ import { DataTable, Column } from '@/components/ui/data-table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Plus, Pencil, Trash2, Copy, Upload, Eye } from 'lucide-react'
+import { Plus, Pencil, Trash2, Copy, Upload, Eye, ArrowDownUp } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { ShiftFormDialog } from './ShiftFormDialog'
@@ -24,6 +24,7 @@ import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
 import { PageLoadError } from '@/components/ui/page-load-error'
+import { resolveStaffingLabelsForRole } from '@/lib/utils/staffingResolver'
 
 export function ShiftList() {
   const [shifts, setShifts] = React.useState<Shift[]>([])
@@ -49,6 +50,7 @@ export function ShiftList() {
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
   const [showBulkActions, setShowBulkActions] = React.useState(false)
   const [statusFilter, setStatusFilter] = React.useState<Shift['status'] | 'all'>('all')
+  const [sortDescending, setSortDescending] = React.useState(false)
   
   const { toast } = useToast()
   const { t, translate } = useTranslation()
@@ -57,6 +59,10 @@ export function ShiftList() {
   const canDelete = Boolean(currentUser && hasPermission(currentUser, 'shifts.delete'))
   const statusValues = ['scheduled', 'preparing', 'live', 'paused', 'completed', 'cancelled'] as const
   const filteredShifts = statusFilter === 'all' ? shifts : shifts.filter(shift => shift.status === statusFilter)
+  const sortedShifts = [...filteredShifts].sort((a, b) => {
+    const dateOrder = String(a.date).localeCompare(String(b.date)) || a.start_time.localeCompare(b.start_time)
+    return sortDescending ? -dateOrder : dateOrder
+  })
 
   const loadData = React.useCallback(async () => {
     setLoading(true)
@@ -176,6 +182,16 @@ export function ShiftList() {
   const getBrandName = (id: string) => brands.find(b => b.id === id)?.name || 'Unknown'
   const getPlatformName = (id: string) => platforms.find(p => p.id === id)?.name || 'Unknown'
   const getUserName = (id?: string) => id ? users.find(u => u.id === id)?.full_name || 'Unassigned' : 'Unassigned'
+  const getCampaignName = (id?: string) => id ? campaigns.find(campaign => campaign.id === id)?.name || 'Unknown' : null
+  const getRolePeople = (shift: Shift, role: 'host' | 'support' | 'technical') => {
+    const shiftRegistrations = registrations.filter(registration => registration.shift_id === shift.id)
+    const resolved = resolveStaffingLabelsForRole(shift, shiftRegistrations, users, role, translate)
+      .filter(label => !label.isUnassigned)
+      .map(label => label.name)
+    if (resolved.length > 0) return resolved
+    const legacyId = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
+    return legacyId ? [getUserName(legacyId)] : []
+  }
 
   const columns: Column<Shift>[] = [
     {
@@ -194,50 +210,30 @@ export function ShiftList() {
     },
     {
       header: t('shiftDetail'),
-      accessor: row => <button className="text-left" onClick={() => setDetailShift(row)}><span className="block font-semibold text-blue-700">{row.title || row.id}</span><span className="block text-xs text-muted-foreground">{row.id}</span></button>,
+      accessor: row => {
+        const campaign = getCampaignName(row.campaign_id)
+        return <div className="min-w-0"><button className="block max-w-full truncate text-left font-semibold text-slate-900 hover:text-blue-700" title={row.title || row.id} onClick={() => setDetailShift(row)}>{row.title || row.id}</button><div className="mt-1 truncate text-[11px] text-muted-foreground" title={`${row.id}${campaign ? ` · ${campaign}` : ''}`}><span>{row.id.slice(0, 8)}</span>{campaign && <><span aria-hidden="true"> · </span><span>{campaign}</span></>}</div></div>
+      },
     },
     {
-      header: t('date'),
-      accessor: 'date',
-      cell: (value) => format(new Date(String(value)), 'MMM d, yyyy')
+      header: `${t('date')} / ${t('time')}`,
+      accessor: row => <div className="whitespace-nowrap"><div className="font-medium text-slate-800">{format(new Date(String(row.date)), 'MMM d, yyyy')}</div><div className="mt-1 text-[11px] text-muted-foreground">{formatShiftTimeRange(row)}</div></div>,
     },
     {
-      header: t('time'),
-      accessor: (row) => formatShiftTimeRange(row)
+      header: `${t('brand')} / ${t('platform')}`,
+      accessor: row => <div className="min-w-0"><div className="truncate font-medium text-slate-800" title={getBrandName(row.brand_id)}>{getBrandName(row.brand_id)}</div><div className="mt-1 truncate text-[11px] text-muted-foreground" title={`${getPlatformName(row.platform_id)} · ${row.studio || '—'}`}>{getPlatformName(row.platform_id)} · {row.studio || '—'}</div></div>,
     },
     {
-      header: t('brand'),
-      accessor: 'brand_id',
-      cell: (value) => getBrandName(typeof value === 'string' ? value : '')
-    },
-    {
-      header: t('platform'),
-      accessor: 'platform_id',
-      cell: (value) => getPlatformName(typeof value === 'string' ? value : '')
-    },
-    {
-      header: t('studio'), accessor: row => row.studio || '—'
-    },
-    {
-      header: t('campaign'), accessor: row => campaigns.find(item => item.id === row.campaign_id)?.name || '—'
-    },
-    {
-      header: t('staffing'), accessor: row => <div className="space-y-1 text-xs">{getShiftRoleCapacities(row, registrations).map(capacity => <div key={capacity.role} className={capacity.remaining ? 'text-amber-700' : 'text-emerald-700'}>{t(capacity.role)}: {capacity.approved}/{capacity.required}</div>)}</div>
-    },
-    {
-      header: t('host'),
-      accessor: 'host_id',
-      cell: (value) => getUserName(typeof value === 'string' ? value : undefined)
-    },
-    {
-      header: t('support'),
-      accessor: 'support_id',
-      cell: (value) => getUserName(typeof value === 'string' ? value : undefined)
-    },
-    {
-      header: t('technical'),
-      accessor: 'technical_id',
-      cell: (value) => getUserName(typeof value === 'string' ? value : undefined)
+      header: t('staffing'), accessor: row => {
+        const capacities = getShiftRoleCapacities(row, registrations)
+        const roles = ['host', 'support', 'technical'] as const
+        const assignments = roles.flatMap(role => {
+          const people = getRolePeople(row, role)
+          return people.length ? [`${t(role)}: ${people.join(', ')}`] : []
+        })
+        const capacityDescription = capacities.map(capacity => `${t(capacity.role)} ${capacity.approved}/${capacity.required}${capacity.pending ? `, ${capacity.pending} ${t('pending')}` : ''}`).join(' · ')
+        return <div className="min-w-0" title={[capacityDescription, ...assignments].join(' · ')} aria-label={[capacityDescription, ...assignments].join(' · ')}><div className="flex flex-wrap gap-1">{capacities.map(capacity => <span key={capacity.role} className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${capacity.remaining ? 'bg-amber-50 text-amber-800' : 'bg-emerald-50 text-emerald-800'}`} aria-label={`${t(capacity.role)} ${capacity.approved}/${capacity.required}`}>{capacity.role === 'host' ? 'H' : capacity.role === 'support' ? 'S' : 'T'} {capacity.approved}/{capacity.required}</span>)}</div></div>
+      }
     },
     {
       header: t('status'),
@@ -258,7 +254,9 @@ export function ShiftList() {
       accessor: (row) => (
         <ActionBar
           iconOnly
+          compact
           collapseAt="lg"
+          className="flex-nowrap"
           actions={buildShiftActions(
             { canEdit, canDelete },
             {
@@ -290,8 +288,8 @@ export function ShiftList() {
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white px-3 py-2 mb-3">
-        <p className="text-xs text-muted-foreground">{filteredShifts.length} / {shifts.length} {t('totalShifts')}</p>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div><h1 className="text-xl font-semibold tracking-tight">{translate('Shift Management')}</h1><p className="mt-1 text-xs text-muted-foreground">{filteredShifts.length} / {shifts.length} {t('totalShifts')}</p></div>
         <div className="flex gap-2">
           <Button className="hidden sm:flex" variant="outline" onClick={() => setIsImportExportOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
@@ -309,8 +307,6 @@ export function ShiftList() {
         </div>
       </div>
 
-      <nav aria-label={t('status')} className="mb-3 flex flex-wrap gap-1 border-b border-slate-200 bg-white px-2">{(['all', ...statusValues] as const).map(status => {const active=statusFilter===status;const count=status==='all'?shifts.length:shifts.filter(shift=>shift.status===status).length;return <button type="button" key={status} aria-pressed={active} onClick={()=>setStatusFilter(status)} className={'border-b-2 px-3 py-2 text-xs '+(active?'border-blue-600 font-semibold text-blue-700':'border-transparent text-slate-500')}>{status==='all'?t('all'):t(status==='live'?'liveStatus':status)} <strong>{count}</strong></button>})}</nav>
-
       {showBulkActions && (
         <BulkActionsToolbar
           selectedCount={selectedIds.size}
@@ -321,12 +317,13 @@ export function ShiftList() {
         />
       )}
 
-      <div className="[&_td]:px-2 [&_td]:py-2 [&_th]:px-2 [&_th]:py-2 [&_table]:text-xs">
+      <div className="[&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2 [&_table]:text-xs [&_tbody_tr]:h-[62px]">
       <DataTable
-        data={filteredShifts}
+        data={sortedShifts}
         columns={columns}
         searchPlaceholder={t('search')}
-        searchableText={row => [row.title, row.id, row.date, row.studio, getBrandName(row.brand_id), getPlatformName(row.platform_id), campaigns.find(item => item.id === row.campaign_id)?.name].filter(Boolean).join(' ')}
+        filterComponent={<div className="flex flex-wrap items-center gap-2"><label className="flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600"><span>{t('status')}</span><select aria-label={t('status')} value={statusFilter} onChange={event => setStatusFilter(event.target.value as Shift['status'] | 'all')} className="max-w-40 bg-transparent font-medium text-slate-800 outline-none"><option value="all">{t('all')} ({shifts.length})</option>{statusValues.map(status => <option key={status} value={status}>{translate(status === 'live' ? 'liveStatus' : status)} ({shifts.filter(shift => shift.status === status).length})</option>)}</select></label><Button variant="outline" size="sm" onClick={() => setSortDescending(value => !value)} aria-label={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`} title={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`}><ArrowDownUp className="mr-1.5 h-4 w-4" />{t('date')} {sortDescending ? '↓' : '↑'}</Button></div>}
+        searchableText={row => [row.title, row.id, row.date, row.start_time, row.studio, getBrandName(row.brand_id), getPlatformName(row.platform_id), getCampaignName(row.campaign_id), ...(['host', 'support', 'technical'] as const).flatMap(role => getRolePeople(row, role))].filter(Boolean).join(' ')}
         emptyMessage={t('noData')}
       />
       </div>
@@ -346,6 +343,7 @@ export function ShiftList() {
         platforms={platforms}
         campaigns={campaigns}
         users={users}
+        registrations={registrations}
         templates={templates}
         onSuccess={async (updatedShift) => {
           await loadData()

@@ -755,6 +755,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           platforms={platforms}
           campaigns={campaigns}
           users={users}
+          registrations={registrations}
           onSuccess={() => {
             loadData()
             setShowForm(false)
@@ -772,6 +773,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           platforms={platforms}
           campaigns={campaigns}
           users={users}
+          registrations={registrations}
           templates={[]}
           onSuccess={async (updatedShift) => {
             await loadData()

@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { settingsService, shiftService } from '@/lib/services/dataService'
-import { Shift, Brand, Platform, Campaign, User, ShiftStatus } from '@/lib/types/database.types'
+import { Shift, Brand, Platform, Campaign, User, ShiftStatus, ShiftRegistration } from '@/lib/types/database.types'
 import {
   DEFAULT_SHIFT_STAFFING,
   DEFAULT_BUSINESS_TIMEZONE,
@@ -27,6 +27,7 @@ import { AlertCircle, Sparkles } from 'lucide-react'
 import { format } from 'date-fns'
 import { useTranslation } from '@/lib/i18n'
 import { getAuthMode } from '@/lib/auth/authMode'
+import { resolveStaffingLabelsForRole } from '@/lib/utils/staffingResolver'
 
 interface ShiftFormDialogProps {
   open: boolean
@@ -37,6 +38,7 @@ interface ShiftFormDialogProps {
   platforms: Platform[]
   campaigns: Campaign[]
   users: User[]
+  registrations: ShiftRegistration[]
   templates: ShiftTemplate[]
   onSuccess: (savedShift?: Shift) => void | Promise<void>
 }
@@ -93,6 +95,7 @@ export function ShiftFormDialog({
   platforms,
   campaigns,
   users,
+  registrations,
   templates,
   onSuccess
 }: ShiftFormDialogProps) {
@@ -345,10 +348,11 @@ export function ShiftFormDialog({
 
   const updateFormData: typeof setFormData = next => {setDirty(true);setFormData(next)}
   const updateRecurrence: typeof setRecurrenceRule = next => {setDirty(true);setRecurrenceRule(next)}
+  const currentShiftRegistrations = shift ? registrations.filter(registration => registration.shift_id === shift.id) : []
 
   return (
     <Dialog open={open} onOpenChange={nextOpen => {if (!nextOpen && dirty && !confirm('Bạn có thay đổi chưa lưu. Hủy thay đổi?')) return; onOpenChange(nextOpen)}}>
-      <DialogContent size="xl" className="overflow-y-auto">
+      <DialogContent size={shift ? 'xl' : 'md'} className="overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {shift ? t('edit') : duplicateFrom ? t('duplicate') : t('createShift')}
@@ -358,9 +362,9 @@ export function ShiftFormDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4" onChangeCapture={() => setDirty(true)} onInvalidCapture={event => {event.preventDefault(); const field=event.target as HTMLInputElement; const section=field.closest<HTMLElement>('[data-step]'); if(section) setStep(Number(section.dataset.step)); requestAnimationFrame(()=>field.focus())}}>
-          {!shift && <nav className="grid grid-cols-4 gap-2 border-b pb-3" aria-label="Tạo ca">{['Thông tin chung','Lịch phát sóng','Nhân sự','Kiểm tra'].map((label,index)=><Button type="button" key={label} variant={step===index?'default':'ghost'} size="sm" onClick={()=>setStep(index)} aria-current={step===index?'step':undefined}>{index+1}. {label}</Button>)}</nav>}
-<section data-step="0" hidden={!shift && step !== 0} className="space-y-4">          {/* Template Selector */}
+        <form onSubmit={handleSubmit} className={shift ? 'grid grid-cols-1 items-start gap-4 lg:grid-cols-12' : 'space-y-4'} onChangeCapture={() => setDirty(true)} onInvalidCapture={event => {event.preventDefault(); const field=event.target as HTMLInputElement; const section=field.closest<HTMLElement>('[data-step]'); if(section) setStep(Number(section.dataset.step)); requestAnimationFrame(()=>field.focus())}}>
+          {!shift && <nav className="col-span-full grid grid-cols-4 gap-2 border-b pb-3" aria-label="Tạo ca">{['Thông tin chung','Lịch phát sóng','Nhân sự','Kiểm tra'].map((label,index)=><Button type="button" key={label} variant={step===index?'default':'ghost'} size="sm" onClick={()=>setStep(index)} aria-current={step===index?'step':undefined}>{index+1}. {label}</Button>)}</nav>}
+<section data-step="0" hidden={!shift && step !== 0} className={shift ? 'space-y-3 rounded-lg border bg-white p-4 lg:col-span-4' : 'space-y-4'}>          {/* Template Selector */}
           {!shift && templates.length > 0 && (
             <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
               <div className="flex items-center gap-2 mb-2">
@@ -391,29 +395,29 @@ export function ShiftFormDialog({
             />
           </div>
           {/* Brand, Platform, Campaign */}
-          <div className="grid grid-cols-3 gap-4">
-            <div>
+          <div className={shift ? 'grid min-w-0 grid-cols-2 gap-3' : 'grid min-w-0 grid-cols-3 gap-4'}>
+            <div className="min-w-0">
               <label className="text-sm font-medium">Brand *</label>
               <Select required value={formData.brand_id} onValueChange={(v) => updateFormData({ ...formData, brand_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
+                <SelectTrigger className="min-w-0"><SelectValue placeholder="Select..." /></SelectTrigger>
                 <SelectContent>
                   {brands.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="text-sm font-medium">Platform *</label>
               <Select required value={formData.platform_id} onValueChange={(v) => updateFormData({ ...formData, platform_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
+                <SelectTrigger className="min-w-0"><SelectValue placeholder="Select..." /></SelectTrigger>
                 <SelectContent>
                   {platforms.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            <div>
+            <div className={`min-w-0 ${shift ? 'col-span-2' : ''}`}>
               <label className="text-sm font-medium">Campaign</label>
               <Select value={formData.campaign_id} onValueChange={(v) => updateFormData({ ...formData, campaign_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
+                <SelectTrigger className="min-w-0"><SelectValue placeholder="Select..." /></SelectTrigger>
                 <SelectContent>
                   {campaigns.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                 </SelectContent>
@@ -431,7 +435,7 @@ export function ShiftFormDialog({
           </div>
 
 </section>
-<section data-step="1" hidden={!shift && step !== 1} className="space-y-4">          <div className="grid grid-cols-2 gap-4">
+<section data-step="1" hidden={!shift && step !== 1} className={shift ? 'space-y-3 rounded-lg border bg-white p-4 lg:col-span-4' : 'space-y-4'}>          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium">Date *</label>
               <Input required type="date" value={formData.date} onChange={(e) => updateFormData({ ...formData, date: e.target.value })} />
@@ -501,7 +505,7 @@ export function ShiftFormDialog({
           )}
 
 </section>
-<section data-step="2" hidden={!shift && step !== 2} className="space-y-4">          {/* Required role capacity */}
+<section data-step="2" hidden={!shift && step !== 2} className={shift ? 'space-y-3 rounded-lg border bg-white p-4 lg:col-span-4' : 'space-y-4'}>          {/* Required role capacity */}
           <div>
             <h3 className="mb-2 text-sm font-medium">Required staffing</h3>
             <div className="grid grid-cols-3 gap-4">
@@ -564,15 +568,15 @@ export function ShiftFormDialog({
               <div className="mt-3 grid grid-cols-3 gap-4 text-sm">
                 <div>
                   <p className="text-xs text-muted-foreground">Host</p>
-                  <p className="font-medium">{users.find(u => u.id === shift.host_id)?.full_name || '—'}</p>
+                  <p className="font-medium">{resolveStaffingLabelsForRole(shift, currentShiftRegistrations, users, 'host', t).map(label => label.name).join(', ') || '—'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Support Staff</p>
-                  <p className="font-medium">{users.find(u => u.id === shift.support_id)?.full_name || '—'}</p>
+                  <p className="font-medium">{resolveStaffingLabelsForRole(shift, currentShiftRegistrations, users, 'support', t).map(label => label.name).join(', ') || '—'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Technical Staff</p>
-                  <p className="font-medium">{users.find(u => u.id === shift.technical_id)?.full_name || '—'}</p>
+                  <p className="font-medium">{resolveStaffingLabelsForRole(shift, currentShiftRegistrations, users, 'technical', t).map(label => label.name).join(', ') || '—'}</p>
                 </div>
               </div>
             </div>
@@ -615,7 +619,7 @@ export function ShiftFormDialog({
           )}
 
 </section>
-<section data-step="3" hidden={!shift && step !== 3} className="space-y-4">          {/* Notes */}
+<section data-step="3" hidden={!shift && step !== 3} className={shift ? 'space-y-3 rounded-lg border bg-white p-4 lg:col-span-12' : 'space-y-4'}>          {/* Notes */}
           <div>
             <label className="text-sm font-medium">Product Notes</label>
             <Textarea rows={3} value={formData.product_notes} onChange={(e) => updateFormData({ ...formData, product_notes: e.target.value })} placeholder="Focus on trending products..." />
@@ -635,7 +639,7 @@ export function ShiftFormDialog({
           )}
 
 <dl className="grid gap-3 rounded-lg border bg-slate-50 p-4 text-xs sm:grid-cols-2">{[['Tên ca',formData.title],['Ngày',formData.date],['Thời gian',formData.start_time+' – '+formData.end_time],['Múi giờ',formData.timezone],['Thương hiệu',brands.find(item=>item.id===formData.brand_id)?.name],['Nền tảng',platforms.find(item=>item.id===formData.platform_id)?.name],['Studio',formData.studio],['Host / Support / Technical',formData.required_host_count+' / '+formData.required_support_count+' / '+formData.required_technical_count]].map(([label,value])=><div key={label}><dt className="text-slate-500">{label}</dt><dd className="mt-1 font-medium">{value||'—'}</dd></div>)}</dl></section>
-          <DialogFooter>
+          <DialogFooter className={shift ? 'col-span-full w-full' : undefined}>
             <Button type="button" variant="outline" onClick={() => {if (!dirty || confirm('Bạn có thay đổi chưa lưu. Hủy thay đổi?')) onOpenChange(false)}} disabled={loading}>{t('cancel')}</Button>
             {!shift && step > 0 && <Button type="button" variant="outline" onClick={()=>setStep(step-1)}>Quay lại</Button>}
             {!shift && step < 3 ? <Button type="button" onClick={()=>setStep(step+1)}>Tiếp tục</Button> : <Button type="submit" disabled={loading}>
