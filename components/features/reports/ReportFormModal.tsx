@@ -147,6 +147,7 @@ export function ReportFormModal({
   const [editingMetrics, setEditingMetrics] = React.useState(false)
   const [images, setImages] = React.useState<PendingImage[]>([])
   const [persistedImages, setPersistedImages] = React.useState<ReportImage[]>([])
+  const [removingPersistedImageId, setRemovingPersistedImageId] = React.useState<string | null>(null)
   const [liveImages, setLiveImages] = React.useState<LiveReportImage[]>([])
   const [signedUrls, setSignedUrls] = React.useState<Record<string, string>>({})
   const [replayUrl, setReplayUrl] = React.useState('')
@@ -606,6 +607,37 @@ export function ReportFormModal({
     setImages(current => current.filter(candidate => candidate !== image))
   }
 
+  const removePersistedImage = async (image: ReportImage) => {
+    if (!currentUser || removingPersistedImageId) return
+    setRemovingPersistedImageId(image.id)
+    try {
+      await reportImageService.remove(
+        image.id,
+        currentUser.id,
+        'Removed dashboard evidence from reopened report',
+      )
+      setPersistedImages(current => current.filter(candidate => candidate.id !== image.id))
+      setSignedUrls(current => {
+        const next = { ...current }
+        delete next[image.id]
+        return next
+      })
+      toast({
+        title: t('removeImage'),
+        description: image.original_name || image.image_type,
+        variant: 'success',
+      })
+    } catch (error) {
+      toast({
+        title: t('error'),
+        description: error instanceof Error ? error.message : t('error'),
+        variant: 'destructive',
+      })
+    } finally {
+      setRemovingPersistedImageId(null)
+    }
+  }
+
   const validateSubmission = (mode: 'draft' | 'final') => {
     if (!currentUser || !hasPermission(currentUser, 'reports.submit')) {
       toast({ title: t('error'), description: t('permissionDenied'), variant: 'destructive' })
@@ -794,7 +826,8 @@ export function ReportFormModal({
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
               {persistedImages.map(image => {
                 const url = signedUrls[image.id] || (image.image_url.startsWith('blob:') || image.image_url.startsWith('data:') ? image.image_url : '')
-                return <div className="relative min-w-0" key={image.id} data-testid={`persisted-report-image-${image.id}`}><Image unoptimized src={url} alt={image.original_name || image.image_type} width={1280} height={720} className="aspect-video w-full rounded border object-cover" /><p className="truncate pt-1 text-xs">{image.original_name || image.image_type}</p></div>
+                const removing = removingPersistedImageId === image.id
+                return <div className="relative min-w-0" key={image.id} data-testid={`persisted-report-image-${image.id}`}><Image unoptimized src={url} alt={image.original_name || image.image_type} width={1280} height={720} className="aspect-video w-full rounded border object-cover" /><p className="truncate pt-1 text-xs">{image.original_name || image.image_type}</p><Button aria-label={`${t('removeImage')} ${image.original_name || image.image_type}`} type="button" size="icon" variant="destructive" className="absolute -right-2 -top-2 h-6 w-6" disabled={Boolean(removingPersistedImageId)} onClick={() => void removePersistedImage(image)}>{removing ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}</Button></div>
               })}
               {images.map(image => <div className="relative min-w-0" key={image.url}><Image unoptimized src={image.url} alt={image.name} width={1280} height={720} className="aspect-video w-full rounded border object-cover" /><p className="truncate pt-1 text-xs">{image.name}</p><Button aria-label={`${t('removeImage')} ${image.name}`} type="button" size="icon" variant="destructive" className="absolute -right-2 -top-2 h-6 w-6" onClick={() => removeImage(image)}><X className="h-3 w-3" /></Button></div>)}
             </div>
