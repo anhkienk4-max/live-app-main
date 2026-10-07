@@ -5,7 +5,7 @@ import { initialReportShift } from '@/lib/utils/reportTarget'
 import Image from 'next/image'
 import { format } from 'date-fns'
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Loader2, Pencil, RotateCcw, ScanText, Upload, X } from 'lucide-react'
-import { liveReportImageService, ocrService, reportImageService, reportService } from '@/lib/services/dataService'
+import { liveReportImageService, ocrService, reportArtifactService, reportImageService, reportService } from '@/lib/services/dataService'
 import {
   Brand,
   Campaign,
@@ -20,6 +20,7 @@ import {
   ReportImageCategory,
   Shift,
   ShiftRegistration,
+  StoredFileArtifact,
   User,
 } from '@/lib/types/database.types'
 import { parseOcrValue } from '@/lib/utils/ocrMetrics'
@@ -130,6 +131,7 @@ export function ReportFormModal({
   const { t } = useTranslation()
   const { toast } = useToast()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const sourceFileInputRef = React.useRef<HTMLInputElement>(null)
   const liveImagesRef = React.useRef<LiveReportImage[]>([])
   const persistedLiveImageIdsRef = React.useRef(new Set<string>())
   const persistedLiveImageUrlsRef = React.useRef(new Set<string>())
@@ -148,6 +150,9 @@ export function ReportFormModal({
   const [images, setImages] = React.useState<PendingImage[]>([])
   const [persistedImages, setPersistedImages] = React.useState<ReportImage[]>([])
   const [removingPersistedImageId, setRemovingPersistedImageId] = React.useState<string | null>(null)
+  const [sourceFiles, setSourceFiles] = React.useState<File[]>([])
+  const [persistedArtifacts, setPersistedArtifacts] = React.useState<StoredFileArtifact[]>([])
+  const [removingArtifactId, setRemovingArtifactId] = React.useState<string | null>(null)
   const [liveImages, setLiveImages] = React.useState<LiveReportImage[]>([])
   const [signedUrls, setSignedUrls] = React.useState<Record<string, string>>({})
   const [replayUrl, setReplayUrl] = React.useState('')
@@ -234,6 +239,8 @@ export function ReportFormModal({
       setEditingMetrics(false)
       setImages([])
       setPersistedImages([])
+      setSourceFiles([])
+      setPersistedArtifacts([])
       setSignedUrls({})
       persistedLiveImageIdsRef.current.clear()
       liveImagesRef.current
@@ -266,9 +273,11 @@ export function ReportFormModal({
     void Promise.all([
       reportImageService.getByReport(initialReport.id),
       liveReportImageService.getByReport(initialReport.id),
-    ]).then(async ([loadedImages, loadedLiveImages]) => {
+      reportArtifactService.list(initialReport.id),
+    ]).then(async ([loadedImages, loadedLiveImages, loadedArtifacts]) => {
       if (!active) return
       setPersistedImages(loadedImages)
+      setPersistedArtifacts(loadedArtifacts)
       persistedLiveImageIdsRef.current = new Set(loadedLiveImages.map(image => image.id))
       setLiveImages(loadedLiveImages)
       const paths = [
@@ -638,6 +647,40 @@ export function ReportFormModal({
     }
   }
 
+  const addSourceFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? [])
+    if (files.length > 0) {
+      setSourceFiles(current => [...current, ...files])
+    }
+    event.target.value = ''
+  }
+
+  const removePendingSourceFile = (file: File) => {
+    setSourceFiles(current => current.filter(candidate => candidate !== file))
+  }
+
+  const removePersistedArtifact = async (artifact: StoredFileArtifact) => {
+    if (removingArtifactId) return
+    setRemovingArtifactId(artifact.id)
+    try {
+      await reportArtifactService.remove(artifact.id)
+      setPersistedArtifacts(current => current.filter(candidate => candidate.id !== artifact.id))
+      toast({
+        title: 'Đã xóa file dữ liệu',
+        description: artifact.file_name,
+        variant: 'success',
+      })
+    } catch (error) {
+      toast({
+        title: 'Xóa file dữ liệu thất bại',
+        description: error instanceof Error ? error.message : t('error'),
+        variant: 'destructive',
+      })
+    } finally {
+      setRemovingArtifactId(null)
+    }
+  }
+
   const validateSubmission = (mode: 'draft' | 'final') => {
     if (!currentUser || !hasPermission(currentUser, 'reports.submit')) {
       toast({ title: t('error'), description: t('permissionDenied'), variant: 'destructive' })
@@ -687,6 +730,8 @@ export function ReportFormModal({
 
     setSubmitting(true)
     let imageUploadActive = false
+    let artifactWriteActive = false
+    let reportConfirmed = false
     try {
       const serializedMetrics = dashboardPlatform === 'other'
         ? {}
@@ -763,20 +808,47 @@ export function ReportFormModal({
         persistedLiveImageIdsRef.current.add(image.id)
         persistedLiveImageUrlsRef.current.add(image.file_url)
       })
+
+      artifactWriteActive = sourceFiles.length > 0
+      const createdSourceFiles = await Promise.all(sourceFiles.map(file =>
+        reportArtifactService.uploadSource(report.id, file)
+      ))
+      artifactWriteActive = false
+      if (createdSourceFiles.length > 0) {
+        setPersistedArtifacts(current => {
+          const byId = new Map(current.map(file => [file.id, file]))
+          createdSourceFiles.forEach(file => byId.set(file.id, file))
+          return [...byId.values()]
+        })
+        setSourceFiles([])
+      }
+
       if (mode === 'final') {
         if (report.version_number == null) {
           throw new Error('Report version is unavailable. Reload the report before confirming.')
         }
         const confirmed = await reportService.confirmMetrics(report.id, payload, review, report.version_number, currentUser.id)
         if (!confirmed) throw new Error('Final Report confirmation was not persisted.')
+        reportConfirmed = true
+        artifactWriteActive = true
+        const generated = await reportArtifactService.generateReport(report.id)
+        artifactWriteActive = false
+        setPersistedArtifacts(current => {
+          const byId = new Map(current.map(file => [file.id, file]))
+          byId.set(generated.id, generated)
+          return [...byId.values()]
+        })
       }
       toast({ title: mode === 'draft' ? t('saveDraft') : t('submitted'), description: mode === 'draft' ? t('draftSaved') : t('finalReportSavedHelp'), variant: 'success' })
       onSuccess()
     } catch (error) {
       const title = imageUploadActive
         ? mode === 'draft' ? t('draftUpdatedImageSaveFailed') : t('reportUpdatedImageSaveFailed')
-        : t('saveFailed')
+        : artifactWriteActive
+          ? reportConfirmed ? 'Báo cáo đã xác nhận nhưng lưu DATA/REPORT thất bại' : 'Lưu file dữ liệu thất bại'
+          : t('saveFailed')
       toast({ title, description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+      if (reportConfirmed) onSuccess()
     } finally {
       setSubmitting(false)
     }
@@ -831,6 +903,69 @@ export function ReportFormModal({
               })}
               {images.map(image => <div className="relative min-w-0" key={image.url}><Image unoptimized src={image.url} alt={image.name} width={1280} height={720} className="aspect-video w-full rounded border object-cover" /><p className="truncate pt-1 text-xs">{image.name}</p><Button aria-label={`${t('removeImage')} ${image.name}`} type="button" size="icon" variant="destructive" className="absolute -right-2 -top-2 h-6 w-6" onClick={() => removeImage(image)}><X className="h-3 w-3" /></Button></div>)}
             </div>
+          </section>
+
+          <section className="space-y-4 rounded-lg border p-4" data-testid="report-data-artifacts">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="font-semibold">File dữ liệu report</h3>
+                <p className="text-sm text-muted-foreground">
+                  File nguồn được lưu vào DATA/SOURCE. Khi xác nhận báo cáo, hệ thống tự sinh Excel vào DATA/REPORT.
+                </p>
+              </div>
+              <div>
+                <Button type="button" variant="outline" onClick={() => sourceFileInputRef.current?.click()}>
+                  <Upload className="mr-2 h-4 w-4" />Tải file dữ liệu nguồn
+                </Button>
+                <input
+                  ref={sourceFileInputRef}
+                  className="sr-only"
+                  type="file"
+                  accept=".csv,.xls,.xlsx,.pdf,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf"
+                  multiple
+                  onChange={addSourceFiles}
+                  data-testid="report-data-source-upload"
+                />
+              </div>
+            </div>
+
+            {persistedArtifacts.length === 0 && sourceFiles.length === 0
+              ? <p className="text-sm text-muted-foreground">Chưa có file DATA/REPORT hoặc DATA/SOURCE.</p>
+              : <div className="space-y-3">
+                  {persistedArtifacts.map(artifact => (
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3" key={artifact.id}>
+                      <div className="min-w-0">
+                        <p className="font-medium">{artifact.logical_category === 'data_report' ? 'DATA/REPORT' : 'DATA/SOURCE'}</p>
+                        <p className="max-w-[720px] truncate text-xs text-muted-foreground">{artifact.file_name}</p>
+                        <p className="text-xs text-muted-foreground">{artifact.folder_path}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button type="button" size="sm" variant="outline" onClick={() => window.open(reportArtifactService.getAccessUrl(artifact.id), '_blank')}>
+                          Tải xuống
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="destructive"
+                          disabled={Boolean(removingArtifactId)}
+                          onClick={() => void removePersistedArtifact(artifact)}
+                        >
+                          {removingArtifactId === artifact.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                          Xóa
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {sourceFiles.map((file, index) => (
+                    <div className="flex items-center justify-between gap-3 rounded-md border border-dashed p-3" key={`${file.name}-${file.size}-${index}`}>
+                      <div className="min-w-0">
+                        <p className="font-medium">DATA/SOURCE · chờ lưu</p>
+                        <p className="truncate text-xs text-muted-foreground">{file.name}</p>
+                      </div>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => removePendingSourceFile(file)}>Bỏ</Button>
+                    </div>
+                  ))}
+                </div>}
           </section>
 
           <section className="space-y-4 rounded-lg border border-dashed p-4">
