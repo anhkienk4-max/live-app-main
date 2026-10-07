@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { initialReportShift } from '@/lib/utils/reportTarget'
 import Image from 'next/image'
 import { format } from 'date-fns'
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Loader2, Pencil, RotateCcw, ScanText, Upload, X } from 'lucide-react'
@@ -168,7 +169,9 @@ export function ReportFormModal({
   const [visionScanning, setVisionScanning] = React.useState(false)
   const [visionRunStatus, setVisionRunStatus] = React.useState<VisionOcrRunStatus | null>(null)
 
-  const selectedShift = completedShifts.find(shift => shift.id === shiftId)
+  const explicitShiftId = initialReport?.shift_id ?? initialShiftId
+  const selectedShift = completedShifts.find(shift => shift.id === shiftId && (explicitShiftId === undefined || shift.id === explicitShiftId))
+  const targetUnavailable = explicitShiftId !== undefined && !initialReportShift(completedShifts, initialReport, initialShiftId)
   const dashboardImage = images.find(image => image.type === 'dashboard')
   const persistedDashboardImage = persistedImages.find(image => image.image_type === 'dashboard')
   const dashboardImageUrl = dashboardImage?.url || (persistedDashboardImage ? signedUrls[persistedDashboardImage.id] || '' : '')
@@ -217,9 +220,7 @@ export function ReportFormModal({
         setLiveImages([])
         return
       }
-      const initialShift = completedShiftsRef.current.find(shift => shift.id === initialReport?.shift_id)
-        || completedShiftsRef.current.find(shift => shift.id === initialShiftId)
-        || completedShiftsRef.current[0]
+      const initialShift = initialReportShift(completedShiftsRef.current, initialReport, initialShiftId)
       const initialPlatform = initialReport?.dashboard_platform || inferDashboardPlatform(initialShift, platformsRef.current)
       setShiftId(initialShift?.id || '')
       setDashboardPlatform(initialPlatform)
@@ -292,6 +293,7 @@ export function ReportFormModal({
   }, [])
 
   const changeShift = (value: string) => {
+    if (explicitShiftId !== undefined) return
     const nextShift = completedShifts.find(shift => shift.id === value)
     const nextPlatform = inferDashboardPlatform(nextShift, platforms)
     setShiftId(value)
@@ -760,9 +762,10 @@ export function ReportFormModal({
           <DialogTitle>{initialReport ? t('continueReport') : t('createFinalReport')}</DialogTitle>
           <DialogDescription>{t('createFinalReportDescription')}</DialogDescription>
         </DialogHeader>
+        {targetUnavailable && <p role="alert" className="text-sm text-destructive">{t('reportTargetUnavailable')}</p>}
         <form onSubmit={submit} className="space-y-6">
           <div className="grid gap-4 lg:grid-cols-2">
-            <label className="text-sm font-medium">{t('liveOrCompletedShift')} *<Select value={shiftId} onValueChange={changeShift}><SelectTrigger className="mt-1 w-full"><SelectValue placeholder={t('chooseLiveOrCompletedShift')} /></SelectTrigger><SelectContent>{completedShifts.map(shift => <SelectItem key={shift.id} value={shift.id}>{entityName(brands, shift.brand_id)} · {entityName(platforms, shift.platform_id)} · {format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} {shift.start_time} · {t(shift.status)}</SelectItem>)}</SelectContent></Select></label>
+            <label className="text-sm font-medium">{t('liveOrCompletedShift')} *<Select value={shiftId} disabled={explicitShiftId !== undefined} onValueChange={changeShift}><SelectTrigger className="mt-1 w-full"><SelectValue placeholder={t('chooseLiveOrCompletedShift')} /></SelectTrigger><SelectContent>{completedShifts.map(shift => <SelectItem key={shift.id} value={shift.id}>{entityName(brands, shift.brand_id)} · {entityName(platforms, shift.platform_id)} · {format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} {shift.start_time} · {t(shift.status)}</SelectItem>)}</SelectContent></Select></label>
             <label className="text-sm font-medium">{t('platformDashboardType')} *<Select value={dashboardPlatform} disabled={inferredPlatform !== 'other'} onValueChange={value => { const next = value as ReportDashboardPlatform; setDashboardPlatform(next); setCropBox(defaultOcrCrop(next)); resetExtracted() }}><SelectTrigger className="mt-1 w-full" data-testid="report-platform-selector"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="tiktok_shop">TikTok Shop</SelectItem><SelectItem value="shopee_live">Shopee Live</SelectItem>{inferredPlatform === 'other' && <SelectItem value="other">{t('selectDashboardPlatform')}</SelectItem>}</SelectContent></Select></label>
           </div>
 
@@ -1005,7 +1008,7 @@ export function ReportFormModal({
               </div>
             </section>
           )}
-          <DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>{t('cancel')}</Button><Button type="button" variant="secondary" onClick={saveDraft} disabled={submitting || reviewing || visionScanning}>{t('saveDraft')}</Button><Button type="submit" disabled={submitting || reviewing || visionScanning || !currentUser || !hasPermission(currentUser, 'reports.review')}>{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t('saveFinalReport')}</Button></DialogFooter>
+          <DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>{t('cancel')}</Button><Button type="button" variant="secondary" onClick={saveDraft} disabled={targetUnavailable || submitting || reviewing || visionScanning}>{t('saveDraft')}</Button><Button type="submit" disabled={targetUnavailable || submitting || reviewing || visionScanning || !currentUser || !hasPermission(currentUser, 'reports.review')}>{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t('saveFinalReport')}</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

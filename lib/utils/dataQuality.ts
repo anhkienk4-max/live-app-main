@@ -2,6 +2,7 @@ import type { DataQualityIssue } from '@/lib/types/dataQuality'
 import type { ImportResult } from '@/lib/utils/excelUtils'
 import type { Report, Shift, ShiftRegistration } from '@/lib/types/database.types'
 import { isStaffedRegistration } from '@/lib/services/supabaseShiftRegistrationService'
+import { reportShiftHref } from './reportTarget'
 
 function issue(
   partial: Omit<DataQualityIssue, 'id' | 'created_at'> & { id?: string }
@@ -83,7 +84,7 @@ export function getReportIssues(reports: Report[], shifts: Shift[]): DataQuality
         related_entity_id: r.id,
         recoverable: true,
         suggested_action: 'Open report to complete',
-        action_url: '/reports',
+        action_url: r.shift_id ? reportShiftHref(r.shift_id) : '/reports',
       }))
     }
     if (r.status === 'draft' || r.metrics_confirmed===false) {
@@ -97,7 +98,7 @@ export function getReportIssues(reports: Report[], shifts: Shift[]): DataQuality
         related_entity_id: r.id,
         recoverable: true,
         suggested_action: 'Review report',
-        action_url: '/reports',
+        action_url: r.shift_id ? reportShiftHref(r.shift_id) : '/reports',
       }))
     }
     if (r.ocr_review?.status === 'review_required' || r.raw_ocr_output?.includes('warning')) {
@@ -111,7 +112,7 @@ export function getReportIssues(reports: Report[], shifts: Shift[]): DataQuality
         related_entity_id: r.id,
         recoverable: true,
         suggested_action: 'Open report OCR',
-        action_url: '/reports',
+        action_url: r.shift_id ? reportShiftHref(r.shift_id) : '/reports',
       }))
     }
     if (!shifts.find(s=> s.id===r.shift_id)) {
@@ -124,7 +125,7 @@ export function getReportIssues(reports: Report[], shifts: Shift[]): DataQuality
         related_entity_type: 'report',
         related_entity_id: r.id,
         recoverable: false,
-        action_url: '/reports',
+        action_url: r.shift_id ? reportShiftHref(r.shift_id) : '/reports',
       }))
     }
   }
@@ -191,7 +192,7 @@ export function recoveryActionFor(issue: DataQualityIssue): { label: string; url
     case 'duplicate_skipped': return { label: 'Open Shift', url: issue.action_url || '/calendar' }
     case 'missing_required_fields':
     case 'incomplete_report':
-    case 'ocr_warning': return { label: 'Open Report', url: '/reports' }
+    case 'ocr_warning': return { label: 'Open Report', url: issue.action_url || '/reports' }
     case 'missing_staffed_slot':
     case 'stale_display_metadata': return { label: 'Review Staffing', url: '/calendar' }
     default: return { label: 'Reopen Import History', url: '/calendar' }

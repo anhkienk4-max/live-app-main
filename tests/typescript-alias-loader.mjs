@@ -22,6 +22,10 @@ function resolve(specifier, context, nextResolve) {
     const headersJs = resolvePath(projectRoot, 'node_modules/next/headers.js')
     if (existsSync(headersJs)) return { url: pathToFileURL(headersJs).href, shortCircuit: true }
   }
+  if (specifier === 'next/navigation') {
+    const navigationShim = resolvePath(projectRoot, 'tests/next-navigation-test-shim.mjs')
+    if (existsSync(navigationShim)) return { url: pathToFileURL(navigationShim).href, shortCircuit: true }
+  }
   if (specifier === 'next/link') {
     const linkShim = resolvePath(projectRoot, 'tests/next-link-test-shim.mjs')
     if (existsSync(linkShim)) return { url: pathToFileURL(linkShim).href, shortCircuit: true }

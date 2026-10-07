@@ -17,6 +17,7 @@
  */
 
 import type { ReportStatus, RegistrationStatus, SwapStatus, ScheduleImportRowOutcome } from '@/lib/types/database.types'
+import { reportShiftHref } from '@/lib/utils/reportTarget'
 
 // ---------------------------------------------------------------------------
 // Attention taxonomy
@@ -263,6 +264,7 @@ export function deriveReportAttention(
   reportId: string,
   status: ReportStatus,
   shiftDate?: string,
+  shiftId?: string,
 ): OperationalAttention[] {
   switch (status) {
     case 'archived':
@@ -276,7 +278,7 @@ export function deriveReportAttention(
         label: 'reportPendingReview',
         description: shiftDate ? 'reportInReviewDescShift' : 'reportInReviewDesc',
         descriptionParams: shiftDate ? { shiftDate } : undefined,
-        href: '/reports',
+        href: shiftId ? reportShiftHref(shiftId) : '/reports',
       }]
     case 'reopened':
       return [{
@@ -285,7 +287,7 @@ export function deriveReportAttention(
         label: 'reportNeedsAttention',
         description: shiftDate ? 'reportReopenedDescShift' : 'reportReopenedDesc',
         descriptionParams: shiftDate ? { shiftDate } : undefined,
-        href: '/reports',
+        href: shiftId ? reportShiftHref(shiftId) : '/reports',
       }]
     case 'draft':
       return [{
@@ -294,7 +296,7 @@ export function deriveReportAttention(
         label: 'reportDraftNeedsCompletion',
         description: shiftDate ? 'reportDraftDescShift' : 'reportDraftDesc',
         descriptionParams: shiftDate ? { shiftDate } : undefined,
-        href: '/reports',
+        href: shiftId ? reportShiftHref(shiftId) : '/reports',
       }]
     default:
       return []

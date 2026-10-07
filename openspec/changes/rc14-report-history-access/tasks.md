@@ -1,0 +1,5 @@
+- [x] Audit known-shift links, direct service reads, authorization and modal initialization.
+- [x] Implement exact deep links, historical target resolution and explicit form selection.
+- [x] Verify historical draft/detail/new/error/permission and URL consumption regression cases.
+- [x] Run focused tests (279 pass), full regression (1328 pass, 0 fail, 4 skip), typecheck, build, lint and diff review.
+- [x] Commit only this hotfix; do not push or deploy.

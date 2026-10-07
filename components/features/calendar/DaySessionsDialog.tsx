@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import { enUS, vi } from 'date-fns/locale'
 import { ExternalLink, FileText, Lock, LockOpen, Pencil, Radio, UserPlus } from 'lucide-react'
@@ -31,6 +32,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ShiftRegistrationActions } from './ShiftRegistrationActions'
 import { resolveRegistrationCta } from '@/lib/utils/shiftRegistration'
+import { reportShiftHref } from '@/lib/utils/reportTarget'
 
 interface DaySessionsDialogProps {
   open: boolean
@@ -116,6 +118,7 @@ export function DaySessionsDialog({
   onEditShift,
   onChanged,
 }: DaySessionsDialogProps) {
+  const router = useRouter()
   const { language, t } = useTranslation()
   const { toast } = useToast()
   const [busyAction, setBusyAction] = React.useState('')
@@ -299,7 +302,7 @@ export function DaySessionsDialog({
                       </Button>
                     )}
                     {shift.status === 'completed' && (
-                      <Button onClick={() => window.location.assign('/reports')} size="sm" variant="outline">
+                      <Button onClick={() => router.push(reportShiftHref(shift.id))} size="sm" variant="outline">
                         <FileText className="mr-1 h-4 w-4" />{t('openFinalReport')}
                       </Button>
                     )}
@@ -387,7 +390,7 @@ export function DaySessionsDialog({
                       breakpoint="sm"
                       actions={[
                         ...( ['preparing', 'live', 'paused'].includes(shift.status) ? [{ key: 'live', label: t('openLiveMonitor'), icon: <Radio className="h-4 w-4" />, onClick: () => window.location.assign('/live') }] : [] ),
-                        ...( shift.status === 'completed' ? [{ key: 'report', label: t('openFinalReport'), icon: <FileText className="h-4 w-4" />, onClick: () => window.location.assign('/reports') }] : [] ),
+                        ...( shift.status === 'completed' ? [{ key: 'report', label: t('openFinalReport'), icon: <FileText className="h-4 w-4" />, onClick: () => router.push(reportShiftHref(shift.id)) }] : [] ),
                         ...( currentUser && hasPermission(currentUser, 'shifts.edit') ? [
                           { key: 'edit', label: t('editShift'), icon: <Pencil className="h-4 w-4" />, onClick: () => onEditShift(shift) },
                           { key: 'manage', label: t('manageStaff'), icon: <UserPlus className="h-4 w-4" />, onClick: () => onViewShift(shift) }
