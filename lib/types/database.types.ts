@@ -431,6 +431,29 @@ export interface LiveReportImage {
   created_at: string
 }
 
+export type StoredFileLogicalCategory = 'data_report' | 'data_source'
+
+export interface StoredFileArtifact {
+  id: string
+  provider: 'google_drive' | 'onedrive'
+  external_file_id?: string
+  external_parent_id?: string
+  logical_category: StoredFileLogicalCategory
+  folder_path: string
+  file_name: string
+  mime_type: string
+  size_bytes: number
+  checksum_sha256: string
+  artifact_key: string
+  report_id: string
+  shift_id: string
+  report_version?: number | null
+  uploaded_by?: string
+  created_at: string
+  updated_at: string
+  deleted_at?: string | null
+}
+
 export type OcrConfidence = 'high' | 'medium' | 'low'
 export type OcrMetricStatus = 'confirmed' | 'accepted' | 'review_required' | 'low_confidence' | 'rejected' | 'manual' | 'empty'
 export type OcrExtractionStrategy = 'anchor_card' | 'normalized_roi' | 'legacy_relative'
