@@ -320,3 +320,158 @@ test('confirmed reports reject DATA/SOURCE mutation before provider upload', asy
   assert.equal((await response.json()).error.code, 'REPORT_CONFIRMED')
   assert.equal(uploads, 0)
 })
+
+
+test('confirmed report generates XLSX into canonical DATA/REPORT and persists only provider metadata', async () => {
+  const confirmedReport = {
+    ...report,
+    status: 'confirmed',
+    metrics_confirmed: true,
+    version_number: 5,
+    confirmed_by: 'business-1',
+    confirmed_at: '2026-10-08T00:00:00.000Z',
+  }
+  const db = fakeClient({ report: confirmedReport })
+  const routeInputs: OperationalStoragePlacementInput[] = []
+  const placements: string[][] = []
+  const uploads: FileUploadInput[] = []
+  const handler = createReportArtifactRouteHandler({
+    resolveUser: async () => user,
+    createClient: () => db.client,
+    storage: {
+      async upload(input: FileUploadInput): Promise<FileUploadResult> {
+        uploads.push(input)
+        return {
+          asset: {
+            id: 'asset-report',
+            provider: 'google_drive',
+            external_file_id: 'drive-report-1',
+            external_parent_id: input.external_parent_id,
+            name: input.name,
+            mime_type: input.mime_type,
+            size_bytes: input.size_bytes,
+            checksum_sha256: input.checksum_sha256,
+            entity_type: input.entity_type,
+            entity_id: input.entity_id,
+            status: 'active',
+            created_by: input.created_by,
+            created_at: '2026-10-08T00:00:00.000Z',
+            provider_metadata: { drive_id: 'drive-123' },
+          },
+        }
+      },
+      async read() { return new Uint8Array() },
+      async delete() {},
+      async ensureFolder() { throw new Error('unused') },
+    } as never,
+    routeResolver: routeResolver(routeInputs),
+    materializeFolders: async placement => {
+      placements.push(placement.folderSegments)
+      return 'report-parent'
+    },
+    routingMode: 'database',
+  })
+
+  const response = await handler.POST(new Request('https://example.test/api/report-artifacts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'generate_data_report', report_id: 'report-1' }),
+  }))
+  const payload = await response.json() as { ok: boolean; file: StoredRow }
+  assert.equal(response.status, 200)
+  assert.equal(payload.ok, true)
+  assert.equal(routeInputs[0].logicalCategory, 'data_report')
+  assert.deepEqual(placements[0], [
+    'Female AI livestream',
+    'Shopee Live',
+    'THÁNG 09.2026',
+    'DATA',
+    'REPORT',
+  ])
+  assert.equal(uploads.length, 1)
+  assert.equal(uploads[0].mime_type, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  assert.ok(uploads[0].size_bytes > 0)
+  assert.match(uploads[0].name, /^20260914_data-report_[A-F0-9]{64}_report_report-1_v5\.xlsx$/u)
+  assert.equal(db.rows[0].artifact_key, 'report:v5')
+  assert.equal(db.rows[0].report_version, 5)
+  assert.equal(db.rows[0].external_file_id, 'drive-report-1')
+  assert.deepEqual(db.rows[0].provider_metadata, { drive_id: 'drive-123' })
+  assert.equal(Object.hasOwn(db.rows[0], 'content'), false)
+})
+
+test('unconfirmed report cannot generate DATA/REPORT', async () => {
+  const db = fakeClient()
+  let uploads = 0
+  const handler = createReportArtifactRouteHandler({
+    resolveUser: async () => user,
+    createClient: () => db.client,
+    storage: {
+      async upload() { uploads += 1; throw new Error('should not upload') },
+      async read() { return new Uint8Array() },
+      async delete() {},
+      async ensureFolder() { throw new Error('unused') },
+    } as never,
+    routeResolver: routeResolver([]),
+    materializeFolders: async () => 'report-parent',
+    routingMode: 'database',
+  })
+
+  const response = await handler.POST(new Request('https://example.test/api/report-artifacts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'generate_data_report', report_id: 'report-1' }),
+  }))
+  assert.equal(response.status, 409)
+  assert.equal((await response.json()).error.code, 'REPORT_NOT_CONFIRMED')
+  assert.equal(uploads, 0)
+})
+
+test('artifact delete removes provider object first and soft-deletes metadata', async () => {
+  const existing = {
+    id: 'stored-delete',
+    provider: 'google_drive',
+    external_file_id: 'drive-delete',
+    external_parent_id: 'source-parent',
+    provider_metadata: {},
+    logical_category: 'data_source',
+    folder_path: 'Female AI livestream/Shopee Live/THÁNG 09.2026/DATA/SOURCE',
+    file_name: 'source.xlsx',
+    mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    size_bytes: 3,
+    checksum_sha256: 'a'.repeat(64),
+    artifact_key: 'source:delete',
+    report_id: 'report-1',
+    shift_id: 'shift-1',
+    report_version: 4,
+    uploaded_by: 'business-1',
+    created_at: '2026-10-08T00:00:00.000Z',
+    updated_at: '2026-10-08T00:00:00.000Z',
+    deleted_at: null,
+  }
+  const db = fakeClient({ existing })
+  const deletes: string[] = []
+  const handler = createReportArtifactRouteHandler({
+    resolveUser: async () => user,
+    createClient: () => db.client,
+    storage: {
+      async upload() { throw new Error('unused') },
+      async read() { return new Uint8Array() },
+      async delete(reference: { provider: string; external_file_id: string }) {
+        deletes.push(`${reference.provider}:${reference.external_file_id}`)
+      },
+      async ensureFolder() { throw new Error('unused') },
+    } as never,
+    routeResolver: routeResolver([]),
+    materializeFolders: async () => 'unused',
+    routingMode: 'database',
+  })
+
+  const response = await handler.DELETE(new Request('https://example.test/api/report-artifacts', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file_id: 'stored-delete' }),
+  }))
+  assert.equal(response.status, 200)
+  assert.deepEqual(deletes, ['google_drive:drive-delete'])
+  assert.equal(typeof db.rows[0].deleted_at, 'string')
+})
