@@ -32,6 +32,7 @@ import {
   BulkShiftStatusResult,
   ReportRevision,
   LiveReportImage,
+  StoredFileArtifact,
 } from '@/lib/types/database.types'
 import { buildDashboardOcrReviewFromRecognition, parseDashboardOcrText } from '@/lib/utils/ocrMetrics'
 import { recognizeDashboardImage } from '@/lib/services/imageOcrService'
@@ -95,6 +96,7 @@ let shifts: Shift[] = mockShifts.map(shift => ({
 const reports = [...mockReports]
 let reportImages: ReportImage[] = []
 let liveReportImages: LiveReportImage[] = []
+let storedFileArtifacts: StoredFileArtifact[] = []
 const dashboardUpdates = [...mockDashboardUpdates]
 let swapRequests = [...mockSwapRequests]
 const scheduleImports: ScheduleImportBatch[] = []
@@ -3007,6 +3009,173 @@ export const reportImageService = {
 
   getAccessUrl(imageId: string, legacyPath?: string): string {
     return reportImageAccessUrl('report', imageId, legacyPath)
+  },
+}
+
+export const reportArtifactService = {
+  async list(reportId: string): Promise<StoredFileArtifact[]> {
+    if (getAuthMode() === 'supabase' && typeof window !== 'undefined') {
+      const response = await fetch(`/api/report-artifacts?report_id=${encodeURIComponent(reportId)}`, {
+        cache: 'no-store',
+      })
+      const payload = await response.json().catch(() => null) as {
+        files?: StoredFileArtifact[]
+        error?: { message?: string }
+      } | null
+      if (!response.ok || !payload?.files) {
+        throw new Error(payload?.error?.message || 'The report data files could not be loaded.')
+      }
+      return payload.files
+    }
+    return storedFileArtifacts.filter(file => file.report_id === reportId && !file.deleted_at)
+  },
+
+  async uploadSource(reportId: string, file: File): Promise<StoredFileArtifact> {
+    if (getAuthMode() === 'supabase' && typeof window !== 'undefined') {
+      const form = new FormData()
+      form.set('report_id', reportId)
+      form.set('file', file, file.name)
+      const response = await fetch('/api/report-artifacts', { method: 'POST', body: form })
+      const payload = await response.json().catch(() => null) as {
+        file?: StoredFileArtifact
+        error?: { message?: string }
+      } | null
+      if (!response.ok || !payload?.file) {
+        throw new Error(payload?.error?.message || 'The source data file could not be stored.')
+      }
+      audit('reports', 'upload', 'report_data_source', payload.file.id, payload.file.file_name, {
+        actorId: currentUserService.getId(),
+        after: { ...payload.file },
+        source: 'upload',
+        relatedRecords: [{ entity_type: 'report', entity_id: reportId, entity_name: `Report ${reportId}` }],
+      })
+      return payload.file
+    }
+
+    const report = reports.find(candidate => candidate.id === reportId)
+    if (!report) throw new Error('Report was not found.')
+    if (report.metrics_confirmed || report.status === 'confirmed') {
+      throw new Error('Reopen the confirmed report before changing source files.')
+    }
+    const existing = storedFileArtifacts.find(candidate =>
+      candidate.report_id === reportId
+      && candidate.logical_category === 'data_source'
+      && candidate.file_name === file.name
+      && !candidate.deleted_at
+    )
+    if (existing) return existing
+    const now = nowIso()
+    const artifact: StoredFileArtifact = {
+      id: generateId(),
+      provider: 'google_drive',
+      logical_category: 'data_source',
+      folder_path: `mock/${reportId}/DATA/SOURCE`,
+      file_name: file.name,
+      mime_type: file.type || 'application/octet-stream',
+      size_bytes: file.size,
+      checksum_sha256: '0'.repeat(64),
+      artifact_key: `mock-source:${file.name}`,
+      report_id: reportId,
+      shift_id: report.shift_id,
+      report_version: report.version_number,
+      uploaded_by: currentUserService.getId(),
+      created_at: now,
+      updated_at: now,
+    }
+    storedFileArtifacts.push(artifact)
+    return artifact
+  },
+
+  async generateReport(reportId: string): Promise<StoredFileArtifact> {
+    if (getAuthMode() === 'supabase' && typeof window !== 'undefined') {
+      const response = await fetch('/api/report-artifacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'generate_data_report', report_id: reportId }),
+      })
+      const payload = await response.json().catch(() => null) as {
+        file?: StoredFileArtifact
+        error?: { message?: string }
+      } | null
+      if (!response.ok || !payload?.file) {
+        throw new Error(payload?.error?.message || 'The generated DATA/REPORT file could not be stored.')
+      }
+      audit('reports', 'upload', 'report_data_report', payload.file.id, payload.file.file_name, {
+        actorId: currentUserService.getId(),
+        after: { ...payload.file },
+        source: 'system',
+        relatedRecords: [{ entity_type: 'report', entity_id: reportId, entity_name: `Report ${reportId}` }],
+      })
+      return payload.file
+    }
+
+    const report = reports.find(candidate => candidate.id === reportId)
+    if (!report) throw new Error('Report was not found.')
+    const version = report.version_number || 0
+    const existing = storedFileArtifacts.find(candidate =>
+      candidate.report_id === reportId
+      && candidate.logical_category === 'data_report'
+      && candidate.artifact_key === `report:v${version}`
+      && !candidate.deleted_at
+    )
+    if (existing) return existing
+    const now = nowIso()
+    const artifact: StoredFileArtifact = {
+      id: generateId(),
+      provider: 'google_drive',
+      logical_category: 'data_report',
+      folder_path: `mock/${reportId}/DATA/REPORT`,
+      file_name: `report_${reportId}_v${version}.xlsx`,
+      mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      size_bytes: 1,
+      checksum_sha256: '0'.repeat(64),
+      artifact_key: `report:v${version}`,
+      report_id: reportId,
+      shift_id: report.shift_id,
+      report_version: version,
+      uploaded_by: currentUserService.getId(),
+      created_at: now,
+      updated_at: now,
+    }
+    storedFileArtifacts.push(artifact)
+    return artifact
+  },
+
+  async remove(fileId: string): Promise<boolean> {
+    if (getAuthMode() === 'supabase' && typeof window !== 'undefined') {
+      const before = storedFileArtifacts.find(file => file.id === fileId)
+      const response = await fetch('/api/report-artifacts', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_id: fileId }),
+      })
+      const payload = await response.json().catch(() => null) as {
+        ok?: boolean
+        error?: { message?: string }
+      } | null
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error?.message || 'The report data file could not be deleted.')
+      }
+      if (before) {
+        audit('reports', 'remove_upload', 'report_data_file', fileId, before.file_name, {
+          actorId: currentUserService.getId(),
+          before: { ...before },
+          source: 'upload',
+          entityExists: false,
+        })
+      }
+      return true
+    }
+
+    const artifact = storedFileArtifacts.find(file => file.id === fileId && !file.deleted_at)
+    if (!artifact) return false
+    artifact.deleted_at = nowIso()
+    artifact.updated_at = artifact.deleted_at
+    return true
+  },
+
+  getAccessUrl(fileId: string): string {
+    return `/api/report-artifacts?file_id=${encodeURIComponent(fileId)}`
   },
 }
 
