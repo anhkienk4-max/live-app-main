@@ -738,7 +738,7 @@ type WorkbookSheet = {
   currencyColumns?: string[]
 }
 
-const writeWorkbook = (filename: string, sheets: WorkbookSheet[]) => {
+const createWorkbook = (sheets: WorkbookSheet[]) => {
   const workbook = XLSX.utils.book_new()
   sheets.forEach(sheet => {
     const worksheet = XLSX.utils.json_to_sheet(sheet.rows)
@@ -757,7 +757,16 @@ const writeWorkbook = (filename: string, sheets: WorkbookSheet[]) => {
     }))
     XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name.slice(0, 31))
   })
-  XLSX.writeFile(workbook, filename)
+  return workbook
+}
+
+const writeWorkbook = (filename: string, sheets: WorkbookSheet[]) => {
+  XLSX.writeFile(createWorkbook(sheets), filename)
+}
+
+export const buildWorkbookBytes = (sheets: WorkbookSheet[]): Uint8Array => {
+  const arrayBuffer = XLSX.write(createWorkbook(sheets), { bookType: 'xlsx', type: 'array' }) as ArrayBuffer
+  return new Uint8Array(arrayBuffer)
 }
 
 export function downloadScheduleImportErrors(result: ImportResult): void {
@@ -887,7 +896,7 @@ export function downloadExcelTemplate(): void {
   writeWorkbook('shift_import_template.xlsx', buildScheduleImportTemplateSheets())
 }
 
-type ReportExportContext = {
+export type ReportExportContext = {
   shifts: Shift[]
   campaigns: Campaign[]
   users: User[]
@@ -1113,6 +1122,14 @@ export function exportReportsToExcel(reports: Report[], context: ReportExportCon
 
 export function exportReportDetailToExcel(report: Report, context: ReportExportContext): void {
   writeWorkbook('report_' + report.id + '.xlsx', [{
+    name: 'Report',
+    rows: buildReportExportRows([report], context),
+    currencyColumns: REPORT_CURRENCY_COLUMNS,
+  }])
+}
+
+export function buildReportDetailWorkbookBytes(report: Report, context: ReportExportContext): Uint8Array {
+  return buildWorkbookBytes([{
     name: 'Report',
     rows: buildReportExportRows([report], context),
     currencyColumns: REPORT_CURRENCY_COLUMNS,
