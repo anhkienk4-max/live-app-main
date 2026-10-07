@@ -438,6 +438,7 @@ export interface StoredFileArtifact {
   provider: 'google_drive' | 'onedrive'
   external_file_id?: string
   external_parent_id?: string
+  provider_metadata?: Record<string, unknown>
   logical_category: StoredFileLogicalCategory
   folder_path: string
   file_name: string
