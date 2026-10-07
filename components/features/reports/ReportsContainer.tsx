@@ -29,7 +29,6 @@ import {
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { ReportsView } from './ReportsView'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { ReportDetailModal } from './ReportDetailModal'
@@ -224,25 +223,23 @@ export function ReportsContainer() {
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {currentUser && hasPermission(currentUser, 'reports.submit') && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
-          <div><p className="font-semibold">{t('finalReportWorkflow')}</p><p className="text-sm text-muted-foreground">{completedShifts.length ? t('reportDraftReady', { count: completedShifts.length }) : t('noReportDraftReady')}</p></div>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs">
+          <div><p className="font-medium">{t('finalReportWorkflow')}</p><p className="text-amber-800">{completedShifts.length ? t('reportDraftReady', { count: completedShifts.length }) : t('noReportDraftReady')}</p></div>
           <Button onClick={() => setShowForm(true)} disabled={!completedShifts.length} data-testid="open-final-report-modal"><Plus className="mr-2 h-4 w-4" />{t('createFinalReport')}</Button>
         </div>
       )}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-slate-200 bg-white sm:grid-cols-4">
         <Metric title={t('reportCount')} value={filteredReports.length.toLocaleString()} icon={<FileText className="h-5 w-5 text-blue-600" />} />
         <Metric title={t('confirmedRevenue')} value={totalRevenue === null ? '—' : formatCurrency(totalRevenue)} icon={<DollarSign className="h-5 w-5 text-green-600" />} />
         <Metric title={t('averageOrderValue')} value={aov === null ? '—' : formatCurrency(aov)} icon={<TrendingUp className="h-5 w-5 text-purple-600" />} />
         <Metric title={t('needsReview')} value={filteredReports.filter(report => !report.metrics_confirmed).length.toLocaleString()} icon={<FileText className="h-5 w-5 text-amber-600" />} />
       </div>
 
-      {completedShifts.length > 0 && <Card className="border-orange-200 bg-orange-50"><CardContent className="pt-5"><p className="font-semibold text-orange-900">{t('reportDraftCandidates', { count: completedShifts.length })}</p><p className="text-sm text-orange-700">{t('reportDraftPolicy')}</p></CardContent></Card>}
-
-      <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 shadow-none">
+      <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-2">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-1 items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             <div className="relative max-w-sm flex-1">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input className="pl-9 bg-background" value={filters.search} onChange={event => setFilters(current => ({ ...current, search: event.target.value }))} placeholder={t('reportSearchPlaceholder')} />
@@ -316,17 +313,10 @@ export function ReportsContainer() {
 
 function Metric({ title, value, icon }: { title: string; value: string; icon: React.ReactNode }) {
   return (
-    <Card className="shadow-none">
-      <CardContent className="flex items-center p-4">
-        <div className="flex-1 space-y-1">
-          <p className="text-sm font-medium text-muted-foreground">{title}</p>
-          <p className="text-2xl font-bold tracking-tight">{value}</p>
-        </div>
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted/50">
-          {icon}
-        </div>
-      </CardContent>
-    </Card>
+    <div className="flex min-w-0 items-center gap-2 border-r border-slate-200 px-3 py-2 last:border-r-0">
+      <div className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 sm:flex">{icon}</div>
+      <div className="min-w-0"><p className="truncate text-[11px] font-medium text-slate-500">{title}</p><p className="truncate text-base font-semibold tracking-tight text-slate-900">{value}</p></div>
+    </div>
   )
 }
 

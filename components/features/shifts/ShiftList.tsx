@@ -48,12 +48,15 @@ export function ShiftList() {
   
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
   const [showBulkActions, setShowBulkActions] = React.useState(false)
+  const [statusFilter, setStatusFilter] = React.useState<Shift['status'] | 'all'>('all')
   
   const { toast } = useToast()
   const { t, translate } = useTranslation()
   const { currentUser } = useCurrentUser()
   const canEdit = Boolean(currentUser && hasPermission(currentUser, 'shifts.edit'))
   const canDelete = Boolean(currentUser && hasPermission(currentUser, 'shifts.delete'))
+  const statusValues = ['scheduled', 'preparing', 'live', 'paused', 'completed', 'cancelled'] as const
+  const filteredShifts = statusFilter === 'all' ? shifts : shifts.filter(shift => shift.status === statusFilter)
 
   const loadData = React.useCallback(async () => {
     setLoading(true)
@@ -287,11 +290,8 @@ export function ShiftList() {
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white p-4 mb-4">
-        <div>
-          <h2 className="text-lg font-semibold">{t('totalShifts')}</h2>
-          <p className="text-xs text-muted-foreground mt-1">{shifts.length} {t('totalShifts')}</p>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white px-3 py-2 mb-3">
+        <p className="text-xs text-muted-foreground">{filteredShifts.length} / {shifts.length} {t('totalShifts')}</p>
         <div className="flex gap-2">
           <Button className="hidden sm:flex" variant="outline" onClick={() => setIsImportExportOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
@@ -309,6 +309,8 @@ export function ShiftList() {
         </div>
       </div>
 
+      <nav aria-label={t('status')} className="mb-3 flex flex-wrap gap-1 border-b border-slate-200 bg-white px-2">{(['all', ...statusValues] as const).map(status => {const active=statusFilter===status;const count=status==='all'?shifts.length:shifts.filter(shift=>shift.status===status).length;return <button type="button" key={status} aria-pressed={active} onClick={()=>setStatusFilter(status)} className={'border-b-2 px-3 py-2 text-xs '+(active?'border-blue-600 font-semibold text-blue-700':'border-transparent text-slate-500')}>{status==='all'?t('all'):t(status==='live'?'liveStatus':status)} <strong>{count}</strong></button>})}</nav>
+
       {showBulkActions && (
         <BulkActionsToolbar
           selectedCount={selectedIds.size}
@@ -319,13 +321,15 @@ export function ShiftList() {
         />
       )}
 
+      <div className="[&_td]:px-2 [&_td]:py-2 [&_th]:px-2 [&_th]:py-2 [&_table]:text-xs">
       <DataTable
-        data={shifts}
+        data={filteredShifts}
         columns={columns}
         searchPlaceholder={t('search')}
         searchableText={row => [row.title, row.id, row.date, row.studio, getBrandName(row.brand_id), getPlatformName(row.platform_id), campaigns.find(item => item.id === row.campaign_id)?.name].filter(Boolean).join(' ')}
         emptyMessage={t('noData')}
       />
+      </div>
 
       <ShiftFormDialog
         open={isFormOpen}

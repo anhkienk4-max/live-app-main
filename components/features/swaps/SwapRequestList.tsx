@@ -149,10 +149,10 @@ export function SwapRequestList() {
   if (loading || userLoading) return <div className="py-12 text-center">{t('loading')}</div>
 
   if (loadError) return <PageLoadError error={new Error(loadError)} onRetry={() => void loadData()} />
-  return <div className="space-y-4">
-    <header className="rounded-lg border bg-card p-4"><div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm"><span>{t('all')}: <strong>{filtered.length}</strong></span>{SWAP_REQUEST_STATUSES.map(status => <span key={status}>{t(status)}: <strong>{filtered.filter(swap => swap.status === status).length}</strong></span>)}</div></header>
+  return <div className="space-y-3">
+    <nav aria-label={t('status')} className="flex flex-wrap gap-1 border-b border-slate-200 bg-white px-2">{([{key:'all',count:swaps.length},...SWAP_REQUEST_STATUSES.map(status=>({key:status,count:swaps.filter(swap=>swap.status===status).length}))] as const).map(item=>{const active=item.key==='all'?!filters.statuses.length:filters.statuses.includes(item.key);return <button type="button" key={item.key} aria-pressed={active} onClick={()=>updateFilters(current=>({...current,statuses:item.key==='all'?[]:[item.key]}))} className={`border-b-2 px-3 py-2 text-xs ${active?'border-blue-600 font-semibold text-blue-700':'border-transparent text-slate-500'}`}>{t(item.key)} <strong>{item.count}</strong></button>})}</nav>
 
-    <Card><CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><CardTitle>{t('filters')}</CardTitle>{currentUser && hasPermission(currentUser, 'swaps.request') && <Button onClick={() => setShowForm(true)}><Plus className="mr-2 h-4 w-4" />{t('swapsTitle')}</Button>}</div></CardHeader><CardContent className="space-y-4">
+    <Card><CardHeader className="px-3 py-2"><div className="flex flex-wrap items-center justify-between gap-3"><CardTitle className="text-sm">{t('filters')}</CardTitle>{currentUser && hasPermission(currentUser, 'swaps.request') && <Button size="sm" onClick={() => setShowForm(true)}><Plus className="mr-2 h-4 w-4" />{t('swapsTitle')}</Button>}</div></CardHeader><CardContent className="space-y-3 px-3 pb-3">
       <div className="grid gap-3 md:grid-cols-4">
         <label className="text-xs font-medium">{t('startDate')}<Input className="mt-1" type="date" value={filters.start} onChange={event => updateFilters(current => ({ ...current, start: event.target.value }))} /></label>
         <label className="text-xs font-medium">{t('endDate')}<Input className="mt-1" type="date" value={filters.end} onChange={event => updateFilters(current => ({ ...current, end: event.target.value }))} /></label>

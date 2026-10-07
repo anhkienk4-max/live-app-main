@@ -89,7 +89,7 @@ export function CalendarWorkspace() {
       onValueChange={handleTabChange}
       className="min-w-0 w-full"
     >
-      <div className="flex flex-wrap justify-end gap-2">
+      {tab !== "import" && <header className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-lg font-semibold">{t("calendar")}</h1><p className="mt-1 text-xs text-muted-foreground">{t("calendarSubtitle")}</p></div><div className="flex flex-wrap gap-2">
         {hasPermission(currentUser, "shifts.assign_staff") && (
           <Button
             onClick={() => {
@@ -107,7 +107,7 @@ export function CalendarWorkspace() {
             {t("importSchedule")}
           </Button>
         )}
-      </div>
+      </div></header>}
       <div className="max-w-full overflow-x-auto pb-1">
         <TabsList className="h-auto w-max min-w-full flex-nowrap justify-start sm:min-w-0">
           <TabsTrigger className="!flex-none px-3 py-1.5" value="calendar">

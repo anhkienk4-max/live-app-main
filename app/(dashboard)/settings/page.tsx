@@ -193,11 +193,11 @@ export default function SettingsPage() {
     ? mockVisionAvailable
     : false
 
-  return <PageShell archetype="configuration" className="min-w-0 space-y-4" data-testid="settings-page">
+  return <PageShell archetype="configuration" className="min-w-0 space-y-3 p-4 md:p-6" data-testid="settings-page">
     <PageHeader>
       <PageHeaderContent>
-        <h1 className="text-xl font-semibold">{t('settings')}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{t('settingsSubtitle')}</p>
+        <h1 className="text-lg font-semibold">{t('settings')}</h1>
+        <p className="mt-1 text-xs text-muted-foreground">{t('settingsSubtitle')}</p>
       </PageHeaderContent>
     </PageHeader>
 
@@ -207,19 +207,19 @@ export default function SettingsPage() {
 
     <Tabs value={activeTab} onValueChange={value => changeTab(value as SettingsTab)} className="min-w-0">
       <div className="max-w-full overflow-x-auto pb-1">
-        <TabsList className="h-auto w-max flex-nowrap rounded-lg border bg-muted/40 p-1">
-          <TabsTrigger className="flex-none px-4 py-1.5" value="personal">{t('personalSettings')}{personalDirty ? ' •' : ''}</TabsTrigger>
-          {isLeader && <TabsTrigger className="flex-none px-4 py-1.5" value="team">{t('teamSettings')}{operationalDirty ? ' •' : ''}</TabsTrigger>}
-          {isLeader && <TabsTrigger disabled={!isAdmin} title={!isAdmin?t('permissionDenied'):undefined} className="flex-none px-4 py-1.5" value="system">{t('systemSettings')}{systemDirty ? ' •' : ''}</TabsTrigger>}
-          {isLeader && <TabsTrigger disabled={!isAdmin} title={!isAdmin?t('permissionDenied'):undefined} className="flex-none px-4 py-1.5" value="integrations">{t('integrations')}</TabsTrigger>}
-          {isAdmin && <TabsTrigger className="flex-none px-4 py-1.5" value="audit">{t('audit')}</TabsTrigger>}
+        <TabsList className="h-auto w-max flex-nowrap rounded-none border-b bg-transparent p-0">
+          <TabsTrigger className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none" value="personal">{t('personalSettings')}{personalDirty ? ' •' : ''}</TabsTrigger>
+          {isLeader && <TabsTrigger className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none" value="team">{t('teamSettings')}{operationalDirty ? ' •' : ''}</TabsTrigger>}
+          {isLeader && <TabsTrigger disabled={!isAdmin} title={!isAdmin?t('permissionDenied'):undefined} className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none" value="system">{t('systemSettings')}{systemDirty ? ' •' : ''}</TabsTrigger>}
+          {isLeader && <TabsTrigger disabled={!isAdmin} title={!isAdmin?t('permissionDenied'):undefined} className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none" value="integrations">{t('integrations')}</TabsTrigger>}
+          {isAdmin && <TabsTrigger className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none" value="audit">{t('audit')}</TabsTrigger>}
         </TabsList>
       </div>
 
       <TabsContent value="personal">
         <form onSubmit={savePersonal}>
           <Card><CardHeader><CardTitle className="flex items-center gap-2"><UserCog className="h-5 w-5" />{t('personalSettings')}</CardTitle><CardDescription>{currentUser.email}</CardDescription></CardHeader><CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-2">
               <SettingSelect label={t('language')} value={personal.language} options={[{ id: 'en', name: t('english') }, { id: 'vi', name: t('vietnamese') }]} onChange={value => setPersonal(current => current && ({ ...current, language: value as 'en' | 'vi' }))} />
               <SettingSelect label={t('timezone')} value={personal.timezone} options={[{ id: 'Asia/Ho_Chi_Minh', name: 'Asia/Ho_Chi_Minh' }, { id: 'UTC', name: 'UTC' }, { id: 'Asia/Singapore', name: 'Asia/Singapore' }]} onChange={value => setPersonal(current => current && ({ ...current, timezone: value }))} />
               <SettingSelect label={t('dateFormat')} value={personal.date_format} options={[{ id: 'dd/MM/yyyy', name: 'DD/MM/YYYY' }, { id: 'MM/dd/yyyy', name: 'MM/DD/YYYY' }, { id: 'yyyy-MM-dd', name: 'YYYY-MM-DD' }]} onChange={value => setPersonal(current => current && ({ ...current, date_format: value }))} />

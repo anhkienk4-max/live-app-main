@@ -39,6 +39,7 @@ export function StaffList() {
   const [loadError, setLoadError] = React.useState<unknown>(null)
   const [selectedStaff, setSelectedStaff] = React.useState<User | null>(null)
   const [detailStaff, setDetailStaff] = React.useState<User | null>(null)
+  const detailInitialized = React.useRef(false)
   const [statusTarget, setStatusTarget] = React.useState<User | null>(null)
   const [archiveTarget, setArchiveTarget] = React.useState<User | null>(null)
   const [restoreTarget, setRestoreTarget] = React.useState<User | null>(null)
@@ -101,6 +102,12 @@ export function StaffList() {
       .filter(user => filters.roleIds.length === 0 || filters.roleIds.some(role => user.operational_roles?.includes(role)))
       .filter(user => filters.statuses.length === 0 || filters.statuses.includes(user.status))
   }, [currentUser, filters, showArchived, staff])
+
+  React.useEffect(() => {
+    if (loading || detailInitialized.current || !visibleStaff.length) return
+    detailInitialized.current = true
+    setDetailStaff(visibleStaff[0])
+  }, [loading, visibleStaff])
 
   const assignedShifts = React.useCallback((userId: string) => {
     const registeredShiftIds = new Set(registrations
@@ -171,7 +178,7 @@ export function StaffList() {
     {
       header: t('staff'),
       accessor: row => (
-        <div className="flex min-w-56 items-center gap-3">
+        <div className="flex min-w-0 items-center gap-2">
           <Avatar>
             <AvatarImage src={row.avatar_url} />
             <AvatarFallback className="bg-blue-100 text-blue-700">
@@ -188,7 +195,7 @@ export function StaffList() {
     },
     {
       header: t('operationalRoles'),
-      accessor: row => <div className="flex min-w-44 flex-wrap gap-1">{row.operational_roles?.length ? row.operational_roles.map(role => <Badge variant="outline" key={role}>{t(role)}</Badge>) : <span className="text-muted-foreground">—</span>}</div>,
+      accessor: row => <div className="flex min-w-0 flex-wrap gap-1">{row.operational_roles?.length ? row.operational_roles.map(role => <Badge variant="outline" key={role}>{t(role)}</Badge>) : <span className="text-muted-foreground">—</span>}</div>,
     },
     { header: t('department'), accessor: 'department', cell: value => value ? String(value) : <span className="text-muted-foreground">—</span> },
     { header: t('status'), accessor: row => <Badge variant={row.status === 'active' ? 'default' : 'secondary'}>{t(row.status)}</Badge> },
@@ -242,16 +249,17 @@ export function StaffList() {
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { void loadStaff() }} />
 
   return <>
-    <div className="mb-4 flex flex-col gap-3 rounded-lg border bg-white p-4 md:flex-row md:items-center md:justify-between">
+    <div className="mb-3 flex flex-col gap-2 rounded-lg border bg-white px-3 py-2 md:flex-row md:items-center md:justify-between">
       <div><h2 className="text-lg font-semibold">{t('staffManagement')}</h2><p className="mt-1 text-muted-foreground">{t('staffManagementSubtitle')}</p></div>
       {canManage && <div className="flex flex-col sm:flex-row w-full md:w-auto gap-2">
         <Button className="w-full sm:w-auto" variant="outline" onClick={() => setShowArchived(value => !value)} data-testid="toggle-archived-staff"><Archive className="mr-2 h-4 w-4" />{t(showArchived ? 'active' : 'archivedRecords')}</Button>
         {!showArchived && <Button className="w-full sm:w-auto" onClick={() => { setSelectedStaff(null); setIsFormOpen(true) }} data-testid="add-staff-btn"><UserPlus className="mr-2 h-4 w-4" />{t('addStaff')}</Button>}
       </div>}
     </div>
+    <div className="mb-3 grid grid-cols-2 overflow-hidden rounded-lg border border-slate-200 bg-white sm:grid-cols-4">{[[t('staff'),visibleStaff.length],[t('active'),visibleStaff.filter(user=>user.status==='active').length],[t('inactive'),visibleStaff.filter(user=>user.status==='inactive').length],[t('pendingAccounts'),visibleStaff.filter(user=>user.account_status==='pending_approval').length]].map(([label,value])=><div key={String(label)} className="border-r border-slate-200 px-3 py-2 last:border-r-0"><p className="text-[11px] text-slate-500">{label}</p><p className="text-base font-semibold">{value}</p></div>)}</div>
 
     <nav className="mb-4 flex flex-wrap gap-2 border-b pb-2" aria-label={t('staff')}><Button size="sm" variant={tab === 'staff' && !showArchived ? 'default' : 'ghost'} onClick={() => {setTab('staff');setShowArchived(false)}}>{t('staff')} ({visibleStaff.length})</Button>{canManage && <><Button size="sm" variant={tab === 'requests' ? 'default' : 'ghost'} onClick={() => setTab('requests')}>{t('pending')}</Button><Button size="sm" variant={showArchived ? 'default' : 'ghost'} onClick={() => {setTab('staff');setShowArchived(true)}}>{t('archivedRecords')}</Button></>}</nav>
-    {tab === 'requests' && canManage ? <AccountRequestPanel /> : <div className={`grid items-start gap-4 ${detailStaff ? 'xl:grid-cols-[minmax(0,1fr)_340px]' : 'grid-cols-1'}`}><div className="min-w-0 rounded-lg border bg-white p-3 [&_table]:text-xs [&_th]:text-[11px] [&_th]:bg-slate-50">
+    {tab === 'requests' && canManage ? <AccountRequestPanel /> : <div className={`grid items-start gap-3 ${detailStaff ? 'xl:grid-cols-[minmax(0,1fr)_340px]' : 'grid-cols-1'}`}><div className="min-w-0 [&_table]:text-xs [&_th]:px-2 [&_th]:py-2 [&_th]:text-[11px] [&_th]:bg-slate-50 [&_td]:px-2 [&_td]:py-2">
 
     <DataTable
       data={visibleStaff}
