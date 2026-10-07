@@ -39,6 +39,9 @@ export function isPublicAuthPath(pathname: string) {
     || pathname === '/reset-password'
     || pathname === '/auth/confirm'
     || pathname === '/auth/auth-code-error'
+    || pathname === '/about'
+    || pathname === '/privacy'
+    || pathname === '/terms'
 }
 
 export function createLoginRedirect(
