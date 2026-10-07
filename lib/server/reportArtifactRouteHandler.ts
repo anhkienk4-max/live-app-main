@@ -361,6 +361,7 @@ async function persistUploadedArtifact(input: {
     provider: uploaded.asset.provider,
     external_file_id: uploaded.asset.external_file_id,
     external_parent_id: parentId,
+    provider_metadata: uploaded.asset.provider_metadata ?? {},
     logical_category: input.logicalCategory,
     folder_path: placement.folderPath,
     file_name: placement.fileName,
