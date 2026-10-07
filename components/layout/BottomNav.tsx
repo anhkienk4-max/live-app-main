@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { resolveActiveNavigation, type ProductionShellVariant } from './shellConfig'
+import { resolveActiveNavigation } from './shellConfig'
 import { Menu } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-export function BottomNav({ variant = 'ops' }: { variant?: ProductionShellVariant }) {
+export function BottomNav() {
   const pathname = usePathname()
   const search = useSearchParams()
   const { t } = useTranslation()
@@ -25,7 +25,6 @@ export function BottomNav({ variant = 'ops' }: { variant?: ProductionShellVarian
   const rawNav = getNavigationForRole(resolveSystemPermission(currentUser))
   const roleNav = filterNav(rawNav, currentUser)
   const activeHref = resolveActiveNavigation(roleNav, pathname, search)
-  const light = variant === 'admin' || variant === 'shift-detail'
 
   // At 390px: up to 4 primary slots + 1 overflow trigger (5th col)
   const hasOverflow = roleNav.length > 4
@@ -39,7 +38,8 @@ export function BottomNav({ variant = 'ops' }: { variant?: ProductionShellVarian
 
   return (
     <nav
-      className={cn('fixed bottom-0 left-0 right-0 z-50 border-t md:hidden pb-safe', light ? 'border-slate-200 bg-white text-slate-500' : 'border-white/10 bg-[#082743] text-slate-200')}
+      data-testid="production-bottom-nav"
+      className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-[#082743] pb-safe text-slate-200 md:hidden"
       aria-label={t('navMain')}
     >
       <div className="grid grid-cols-5 h-16">
@@ -52,9 +52,7 @@ export function BottomNav({ variant = 'ops' }: { variant?: ProductionShellVarian
               href={item.href}
               className={cn(
                 'flex flex-col items-center justify-center gap-1 transition-colors',
-                isActive
-                  ? light ? 'text-blue-600' : 'bg-blue-600 text-white'
-                  : light ? 'text-slate-500 hover:text-blue-600' : 'text-slate-200 hover:bg-white/10'
+                isActive ? 'bg-blue-600 text-white' : 'text-slate-200 hover:bg-white/10'
               )}
               data-testid={`nav-${item.name.toLowerCase()}`}
             >

@@ -25,8 +25,7 @@ import { resolveSystemPermission } from '@/lib/permissions'
 import { getNavigationForRole, filterNav } from '@/lib/ui/role-ux'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { cn } from '@/lib/utils'
-import { resolveActiveNavigation, type ProductionShellVariant } from './shellConfig'
+import { resolveActiveNavigation } from './shellConfig'
 import { Menu } from 'lucide-react'
 
 function MobileNavMenu() {
@@ -73,7 +72,6 @@ function MobileNavMenu() {
 }
 
 interface HeaderProps {
-  variant?: ProductionShellVariant
   user?: {
     email?: string
     user_metadata?: {
@@ -83,7 +81,7 @@ interface HeaderProps {
   }
 }
 
-export function Header({ user, variant = 'ops' }: HeaderProps) {
+export function Header({ user }: HeaderProps) {
   const { language, setLanguage, t } = useTranslation()
   const { toast } = useToast()
   const [signingOut, setSigningOut] = useState(false)
@@ -143,7 +141,7 @@ export function Header({ user, variant = 'ops' }: HeaderProps) {
   return (
     <header data-testid="production-topbar" className="sticky top-0 z-40 shrink-0 border-b border-slate-200 bg-white">
       <div className="px-3 sm:px-6">
-        <div className={cn('flex h-14 items-center justify-between gap-2 sm:gap-3', variant === 'live' && 'lg:h-[44px]')}>
+        <div className="flex h-[56px] items-center justify-between gap-2 sm:gap-3">
 
           {/* Left: wordmark (mobile only — desktop shows sidebar wordmark) */}
           <div className="flex items-center lg:hidden">

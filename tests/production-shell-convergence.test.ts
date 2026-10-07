@@ -1,18 +1,21 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
-import { resolveProductionShell, resolveActiveNavigation } from '../components/layout/shellConfig'
+import { resolveActiveNavigation } from '../components/layout/shellConfig'
 import { getNavigationForRole, filterNav } from '../lib/ui/role-ux'
 import { formatChartAxis, formatDimensionTick } from '../lib/utils/chartLabels'
 
-test('route variants follow approved frames without changing route access', () => {
-  for (const route of ['/calendar', '/reports', '/analytics', '/staff', '/staffing', '/swaps', '/notifications', '/shifts', '/shifts/create']) assert.equal(resolveProductionShell(route, new URLSearchParams()), 'ops')
-  for (const route of ['/audit', '/settings', '/settings/personal']) assert.equal(resolveProductionShell(route, new URLSearchParams()), 'admin')
-  assert.equal(resolveProductionShell('/calendar', new URLSearchParams('tab=import')), 'admin')
-  assert.equal(resolveProductionShell('/calendar', new URLSearchParams('action=import')), 'admin')
-  assert.equal(resolveProductionShell('/live', new URLSearchParams()), 'live')
-  assert.equal(resolveProductionShell('/shifts/real-id', new URLSearchParams()), 'shift-detail')
-  assert.equal(resolveProductionShell('/shifts/real-id/edit', new URLSearchParams()), 'ops')
+test('authenticated routes use one persistent production frame', () => {
+  const shell = readFileSync('components/layout/ProductionAppShell.tsx', 'utf8')
+  const sidebar = readFileSync('components/layout/Sidebar.tsx', 'utf8')
+  const header = readFileSync('components/layout/Header.tsx', 'utf8')
+  const bottomNav = readFileSync('components/layout/BottomNav.tsx', 'utf8')
+  assert.ok(shell.includes('data-shell="persistent"'))
+  assert.ok(shell.includes('<Sidebar />') && shell.includes('<Header user={user} />') && shell.includes('<BottomNav />'))
+  assert.ok(sidebar.includes('w-[248px]') && sidebar.includes('bg-[#082743]') && sidebar.includes('h-[56px]'))
+  assert.ok(header.includes('h-[56px]') && !header.includes('ProductionShellVariant'))
+  assert.ok(bottomNav.includes('bg-[#082743]') && !bottomNav.includes('variant'))
+  assert.ok(!/resolveProductionShell|ProductionShellVariant|w-\[230px\]|h-\[44px\]|bg-white text-slate-600/.test(`${shell}\n${sidebar}\n${header}\n${bottomNav}`))
 })
 test('nested and query navigation highlight one canonical destination per role', () => {
   const admin = getNavigationForRole('admin')

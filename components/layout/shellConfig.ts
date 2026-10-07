@@ -1,16 +1,4 @@
-export type ProductionShellVariant = 'ops' | 'admin' | 'live' | 'shift-detail'
-
 type SearchContext = Pick<URLSearchParams, 'get'>
-
-/** Presentation only: route access and navigation permissions remain canonical. */
-export function resolveProductionShell(pathname: string, search: SearchContext): ProductionShellVariant {
-  if (pathname === '/live' || pathname.startsWith('/live/')) return 'live'
-  if (pathname === '/audit' || pathname.startsWith('/audit/') || pathname === '/settings' || pathname.startsWith('/settings/')) return 'admin'
-  if (pathname === '/calendar' && (search.get('tab') === 'import' || search.get('action') === 'import')) return 'admin'
-  if (pathname.startsWith('/shifts/') && (pathname.endsWith('/edit') || pathname === '/shifts/edit')) return 'ops'
-  if (/^\/shifts\/(?!create(?:\/|$)|new(?:\/|$))[^/]+/.test(pathname)) return 'shift-detail'
-  return 'ops'
-}
 
 /** Prefer a matching query destination over its generic parent; match nested paths at boundaries. */
 export function resolveActiveNavigation(items: ReadonlyArray<{ href: string }>, pathname: string, search: SearchContext): string | undefined {

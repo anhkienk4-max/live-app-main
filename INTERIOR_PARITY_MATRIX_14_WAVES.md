@@ -3,7 +3,9 @@
 Base branch: `rc/frontend-14wave-shell-final`
 Base SHA: `5537a61ca571d5f645cdcd097c316519e96fa5ff`
 Current deployed capture: `UX_UI_COMPARE_CAPTURE/FINAL_14_WAVE_SHELL_FIX_QC/14_WAVE_SCREENSHOT_MANIFEST.json`
-Shell authority is locked at 14/14 pass. This matrix tracks page interior only.
+GLOBAL_FRAME_AUTHORITY = persistent dark 248px production shell with a 56px white topbar on every authenticated route.
+REFERENCE_SHELL_VARIATION = interior-only visual guidance; route-specific mock shell colors and dimensions do not change the production application frame.
+This matrix tracks page interior only.
 
 | WAVE | PRODUCTION_ROUTE | REFERENCE_FILE | PRODUCTION_COMPONENTS | CAPTURED_STATE | REFERENCE_STATE | SHELL_PARITY | INTERIOR_PARITY | EXACT_VISUAL_GAPS | DATA_GAPS | ACTION |
 |---|---|---|---|---|---|---|---|---|---|---|
