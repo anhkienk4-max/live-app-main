@@ -137,6 +137,14 @@ test.describe('Core V1 3-role UAT', () => {
         }
         if (systemVisible) {
           await expect(systemTab).toBeVisible({ timeout: 10_000 })
+          if (BROWSER_ROLE_EXPECTATIONS[role].settings_system.locked) {
+            await expect(systemTab).toBeDisabled()
+            await systemTab.click({ force: true })
+            await expect(systemTab).toHaveAttribute('aria-selected', 'false')
+            await expect(page.getByRole('tabpanel', { name: 'System', exact: true })).toBeHidden()
+          } else {
+            await expect(systemTab).toBeEnabled()
+          }
         } else {
           await expect(systemTab).toBeHidden()
         }
