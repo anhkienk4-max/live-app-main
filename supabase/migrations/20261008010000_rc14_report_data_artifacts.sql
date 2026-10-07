@@ -3,6 +3,7 @@ create table if not exists public.stored_files (
   provider text not null check (provider in ('google_drive', 'onedrive')),
   external_file_id text not null,
   external_parent_id text,
+  provider_metadata jsonb not null default '{}'::jsonb,
   logical_category text not null check (logical_category in ('data_report', 'data_source')),
   folder_path text not null,
   file_name text not null,
