@@ -18,6 +18,7 @@ import type {
 } from '@/lib/files/operationalStoragePlacementResolver'
 import { OperationalStoragePlacementError } from '@/lib/files/operationalStoragePlacementResolver'
 import {
+  ALLOWED_FILE_MIME_TYPES,
   MAX_FILE_NAME_LENGTH,
   sanitizeFileName,
   sanitizeFileNameWithoutLengthLimit,
@@ -224,7 +225,7 @@ function providerStorageFileName(
 
 function sourceMimeType(name: string, raw: string) {
   const mime = raw.trim().toLowerCase()
-  if (mime) return mime
+  if (mime && ALLOWED_FILE_MIME_TYPES.has(mime)) return mime
   const lower = name.toLowerCase()
   if (lower.endsWith('.csv')) return 'text/csv'
   if (lower.endsWith('.xls')) return 'application/vnd.ms-excel'
@@ -313,7 +314,10 @@ async function persistUploadedArtifact(input: {
     input.logicalCategory,
     input.artifactKey,
   )
-  if (existing) return publicArtifact(existing)
+  if (existing) {
+    if (existing.provider !== input.provider) throw new Error('REPORT_ARTIFACT_PROVIDER_CONFLICT')
+    return publicArtifact(existing)
+  }
 
   const checksum = createHash('sha256').update(input.bytes).digest('hex')
   const storageName = providerStorageFileName(
@@ -392,7 +396,10 @@ async function persistUploadedArtifact(input: {
   } catch {
     console.error('REPORT_ARTIFACT_UPLOAD_CLEANUP_FAILED')
   }
-  if (winner) return publicArtifact(winner)
+  if (winner) {
+    if (winner.provider !== input.provider) throw new Error('REPORT_ARTIFACT_PROVIDER_CONFLICT')
+    return publicArtifact(winner)
+  }
   throw inserted.error || new Error('REPORT_ARTIFACT_METADATA_PERSIST_FAILED')
 }
 
@@ -562,6 +569,9 @@ export function createReportArtifactRouteHandler(dependencies: {
         const code = error instanceof Error ? error.message : ''
         if (code === 'REPORT_PERMISSION_DENIED') return errorResponse('PERMISSION_DENIED', 'You do not have permission to modify this report.', 403)
         if (code === 'REPORT_NOT_FOUND') return errorResponse(code, 'The report was not found.', 404)
+        if (code === 'REPORT_ARTIFACT_PROVIDER_CONFLICT') {
+          return errorResponse(code, 'This report artifact already exists on a different provider.', 409)
+        }
         if (code === 'FILE_MIME_NOT_ALLOWED' || code === 'FILE_SIZE_INVALID' || code === 'FILE_NAME_INVALID') {
           return errorResponse(code, 'The source file is not supported.', 400)
         }
