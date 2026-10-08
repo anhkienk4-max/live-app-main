@@ -17,7 +17,7 @@ create table if not exists public.operational_files (
   folder_path text not null,
   file_name text not null,
   mime_type text not null,
-  size_bytes bigint not null check (size_bytes > 0),
+  size_bytes bigint not null check (size_bytes >= 0),
   checksum_sha256 text check (checksum_sha256 is null or checksum_sha256 ~ '^[a-f0-9]{64}
   artifact_key text not null,
   uploaded_by text references public.business_users(id) on delete set null,
@@ -46,7 +46,7 @@ comment on table public.operational_files is
   integrity_status text not null default 'sha256_verified'
     check (integrity_status in ('sha256_verified', 'provider_reference')),
   constraint operational_files_integrity_contract check (
-    (integrity_status = 'sha256_verified' and checksum_sha256 is not null)
+    (integrity_status = 'sha256_verified' and checksum_sha256 is not null and size_bytes > 0)
     or (integrity_status = 'provider_reference' and checksum_sha256 is null)
   ),
   artifact_key text not null,
