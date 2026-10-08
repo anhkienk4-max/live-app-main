@@ -1,8 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { readShiftStaffingSummary, withShiftStaffingSummary } from '@/lib/services/supabaseStaffingReadService'
 
 import { createClient } from '@/lib/supabase/client'
 import type {
   OperationalRole,
+  SwapExchangeCandidate,
   Shift,
   ShiftRegistration,
   ShiftRegistrationReviewAction,
@@ -237,21 +239,13 @@ export interface ShiftRoleCapacity {
   remaining: number
 }
 
-const roleRequiredField: Record<
-  OperationalRole,
-  'required_host_count' | 'required_support_count' | 'required_technical_count'
-> = {
-  host: 'required_host_count',
-  support: 'required_support_count',
-  technical: 'required_technical_count',
-}
-
 export const isStaffedRegistration = (
   registration: Pick<ShiftRegistration, 'status'>,
 ): boolean =>
   registration.status === 'approved' || registration.status === 'manually_assigned'
 
 export interface SupabaseShiftRegistrationRepository {
+  getExchangeCandidates(shiftId: string, role: OperationalRole): Promise<SwapExchangeCandidate[]>
   getAll(): Promise<ShiftRegistration[]>
   getForShift(shiftId: string): Promise<ShiftRegistration[]>
   getForShifts?(shiftIds: string[]): Promise<ShiftRegistration[]>
@@ -287,29 +281,13 @@ export function createSupabaseShiftRegistrationRepository(
   const selectRegistrations = () => client.from('shift_registrations').select(registrationColumns)
   const selectShifts = () => client.from('shifts').select(shiftColumns)
 
-  const capacityFor = (
-    registrations: ShiftRegistration[],
-    shift: Shift,
-    role: OperationalRole,
-  ): ShiftRoleCapacity => {
-    const roleRegistrations = registrations.filter(registration =>
-      registration.shift_id === shift.id &&
-      registration.operational_role === role &&
-      (isStaffedRegistration(registration) || registration.status === 'pending'),
-    )
-    const required = shift[roleRequiredField[role]] ?? 1
-    const approved = roleRegistrations.filter(isStaffedRegistration).length
-    const pending = roleRegistrations.filter(registration => registration.status === 'pending').length
-    return {
-      role,
-      required,
-      approved,
-      pending,
-      remaining: Math.max(0, required - approved),
-    }
-  }
-
   return {
+    async getExchangeCandidates(shiftId, role) {
+      const result = await client.rpc('get_swap_exchange_candidates', { p_shift_id: shiftId, p_role: role })
+      if (result.error) throw requestError('swap candidate read', result.error)
+      return result.data ?? []
+    },
+
     async getAll() {
       const result = await selectRegistrations()
         .order('requested_at', { ascending: true })
@@ -354,15 +332,7 @@ export function createSupabaseShiftRegistrationRepository(
     },
 
     async getCapacity(shiftId) {
-      const shiftResult = await selectShifts().eq('id', shiftId).maybeSingle()
-      if (shiftResult.error) throw requestError('shift capacity read', shiftResult.error)
-      if (!shiftResult.data) return []
-      const shift = shiftFromRow(shiftResult.data as unknown as ShiftRow)
-      const regResult = await selectRegistrations().eq('shift_id', shiftId)
-      const registrations = optionalRows('shift capacity registrations read', regResult)
-        .map(row => registrationFromRow(row as unknown as RegistrationRow))
-      return (['host', 'support', 'technical'] as OperationalRole[]).map(role =>
-        capacityFor(registrations, shift, role))
+      return (await readShiftStaffingSummary(client, [shiftId])).map(({ role, required, approved, pending, remaining }) => ({ role, required, approved, pending, remaining }))
     },
 
     async getMyApprovedShifts(userId) {
@@ -376,8 +346,8 @@ export function createSupabaseShiftRegistrationRepository(
       const shiftResult = await selectShifts()
         .in('id', shiftIds)
         .is('deleted_at', null)
-      return optionalRows('my approved shifts read', shiftResult)
-        .map(row => shiftFromRow(row as unknown as ShiftRow))
+      return withShiftStaffingSummary(client, optionalRows('my approved shifts read', shiftResult)
+        .map(row => shiftFromRow(row as unknown as ShiftRow)))
     },
 
     async register(shiftId, role) {

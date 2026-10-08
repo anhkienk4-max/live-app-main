@@ -1,5 +1,7 @@
 import {
   User,
+  UserDirectoryEntry,
+  SwapExchangeCandidate,
   Brand,
   Platform,
   Campaign,
@@ -447,6 +449,12 @@ async function inviteStaffAccount(
 
 // User Service
 export const userService = {
+  async getDirectory(): Promise<UserDirectoryEntry[]> {
+    if (getAuthMode() === 'supabase') return getSupabaseMasterDataRepository().businessUsers.getDirectory()
+    return users.filter(user => user.status === 'active' && !user.deleted_at && !user.archived_at)
+      .map(({ id, full_name, avatar_url, operational_roles }) => ({ id, full_name, avatar_url, operational_roles }))
+  },
+
   async getAll(): Promise<User[]> {
     if (getAuthMode() === 'supabase') {
       return getSupabaseMasterDataRepository().businessUsers.getAll()
@@ -1808,8 +1816,10 @@ export const getShiftRoleCapacities = (
   shift: Shift,
   registrations: ShiftRegistration[],
 ): ShiftRoleCapacity[] =>
-  (['host', 'support', 'technical'] as OperationalRole[])
-    .map(role => capacityForRegistrations(shift, registrations, role))
+  shift.staffing_summary
+    ? shift.staffing_summary.map(({ role, required, approved, pending, remaining }) => ({ role, required, approved, pending, remaining }))
+    : (['host', 'support', 'technical'] as OperationalRole[])
+      .map(role => capacityForRegistrations(shift, registrations, role))
 
 const capacityFor = (shift: Shift, role: OperationalRole): ShiftRoleCapacity =>
   capacityForRegistrations(shift, shiftRegistrations, role)
@@ -1843,6 +1853,15 @@ const findRegistrationConflict = (
   })
 
 export const shiftRegistrationService = {
+  async getExchangeCandidates(shiftId: string, role: OperationalRole): Promise<SwapExchangeCandidate[]> {
+    if (getAuthMode() === 'supabase') return getSupabaseShiftRegistrationRepository().getExchangeCandidates(shiftId, role)
+    return shiftRegistrations.filter(reg => reg.shift_id === shiftId && reg.operational_role === role && isStaffedRegistration(reg))
+      .flatMap(reg => {
+        const user = users.find(user => user.id === reg.user_id && user.status === 'active')
+        return user ? [{ registration_id: reg.id, user_id: user.id, full_name: user.full_name }] : []
+      })
+  },
+
   async getAll(): Promise<ShiftRegistration[]> {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRegistrationRepository().getAll()

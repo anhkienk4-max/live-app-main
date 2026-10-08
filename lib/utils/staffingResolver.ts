@@ -17,6 +17,8 @@ export function resolveStaffingLabels(
   users: User[],
   t: (key: string) => string
 ): StaffingLabel[] {
+  if (shift.staffing_summary) return (['host', 'support', 'technical'] as const)
+    .flatMap(role => resolveStaffingLabelsForRole(shift, registrations, users, role, t))
   const approved = registrations.filter(isStaffed)
 
   const labels: StaffingLabel[] = approved.map(r => {
@@ -82,8 +84,16 @@ export function resolveStaffingLabelsForRole(
   const labels: StaffingLabel[] = []
   const authoritativeNames = new Set<string>()
 
+  const safeStaff = shift.staffing_summary?.find(summary => summary.role === role)?.approved_staff
+  for (const [index, person] of (safeStaff ?? []).entries()) {
+    if (authoritativeNames.has(person.name)) continue
+    authoritativeNames.add(person.name)
+    labels.push({ id: `staff-display-${role}-${index}`, name: person.name,
+      isUnassigned: false, isImportedOnly: person.imported_only, avatarUrl: person.avatar_url ?? undefined })
+  }
+
   // 1. Add authoritative assignments (approved registrations)
-  for (const r of approved) {
+  for (const r of safeStaff ? [] : approved) {
     let name: string
     let isImportedOnly = false
     if (r.user_id) {
