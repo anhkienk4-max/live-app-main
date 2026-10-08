@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { staffingSummary } from './harness/staffingSummary.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import {
@@ -304,6 +305,7 @@ function fakeClient(database: FakeDatabase, options: FakeClientOptions = {}) {
       throw new Error(`Unexpected table ${table}`)
     },
     rpc(name: string, args: Record<string, unknown>) {
+      if (name === 'get_shift_staffing_summary') return Promise.resolve({ data: staffingSummary(database, args.p_shift_ids), error: null })
       this.rpcCalls.push({ name, args })
       const handler = rpcHandlers[name as RpcName]
       if (!handler) return { data: null, error: { code: 'P0001', message: `unknown rpc ${name}` } }
