@@ -64,6 +64,8 @@ test.describe('Core V1 3-role UAT', () => {
         await page.goto('/swaps')
         await expect(page.locator('body')).toBeVisible()
         await expect(page).not.toHaveURL(/\/login\?reason=/)
+        // Wait for the real loaded list before classifying data-dependent actions.
+        await expect(page.getByRole('textbox', { name: 'Search swaps', exact: true })).toBeVisible()
         const canApprove = BROWSER_ROLE_EXPECTATIONS[role].swaps.canApprove
         const approveLocator = page.locator('button:has-text("Approve")')
         const approveCount = await approveLocator.count()
