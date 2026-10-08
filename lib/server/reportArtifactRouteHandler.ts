@@ -21,7 +21,6 @@ import type {
 } from '@/lib/files/operationalStoragePlacementResolver'
 import { OperationalStoragePlacementError } from '@/lib/files/operationalStoragePlacementResolver'
 import {
-  ALLOWED_FILE_MIME_TYPES,
   MAX_FILE_NAME_LENGTH,
   sanitizeFileName,
   sanitizeFileNameWithoutLengthLimit,
@@ -226,9 +225,16 @@ function providerStorageFileName(
   return sanitizeFileName(`${prefix}_${boundedStem}${extension}`)
 }
 
+const REPORT_SOURCE_MIMES = new Set([
+  'text/csv',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/pdf',
+])
+
 function sourceMimeType(name: string, raw: string) {
   const mime = raw.trim().toLowerCase()
-  if (mime && ALLOWED_FILE_MIME_TYPES.has(mime)) return mime
+  if (mime && REPORT_SOURCE_MIMES.has(mime)) return mime
   const lower = name.toLowerCase()
   if (lower.endsWith('.csv')) return 'text/csv'
   if (lower.endsWith('.xls')) return 'application/vnd.ms-excel'
