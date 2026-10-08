@@ -9,6 +9,7 @@ import { format } from 'date-fns'
 import { CheckCircle, XCircle, Clock, User as UserIcon, Calendar, Briefcase } from 'lucide-react'
 
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { useTranslation } from '@/lib/i18n'
 import { getSwapStatusPresentation } from '@/lib/utils/swapUi'
 
 interface SwapDetailModalProps {
@@ -45,6 +46,7 @@ export function SwapDetailModal({
   onReject
 }: SwapDetailModalProps) {
 
+  const { t } = useTranslation()
   const statusPresentation = getSwapStatusPresentation(swap.status)
   const getBrandName = (id: string) => brands.find(b => b.id === id)?.name || 'Unknown'
   const getBrandColor = (id: string) => brands.find(b => b.id === id)?.color || '#2563EB'
@@ -92,7 +94,7 @@ export function SwapDetailModal({
       <DialogContent size="lg" className="overflow-y-auto max-w-2xl">
         <DialogHeader>
           <div className="flex items-center justify-between">
-            <DialogTitle className="text-xl">Swap Request Details</DialogTitle>
+            <DialogTitle className="text-base">Swap Request Details</DialogTitle>
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="font-bold tracking-wider text-micro uppercase">
                 {swap.mode || 'replacement'}
@@ -100,7 +102,7 @@ export function SwapDetailModal({
               <Badge className={getStatusColor()}>
                 <span className="flex items-center gap-1.5">
                   {getStatusIcon()}
-                  {statusPresentation.label}
+                  {t(statusPresentation.label)}
                 </span>
               </Badge>
             </div>
@@ -109,12 +111,12 @@ export function SwapDetailModal({
 
         <div className="space-y-4 text-sm">
           {/* Shift Information */}
-          <div className="rounded-md border p-4 space-y-3 relative overflow-hidden shadow-sm">
+          <div className="rounded-md border p-4 space-y-3 relative overflow-hidden shadow-none">
             <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: getBrandColor(shift.brand_id) }} />
 
             <div className="flex items-center gap-2 font-semibold">
               <Calendar className="h-4 w-4 text-muted-foreground" />
-              <span>{getBrandName(shift.brand_id)} · {getPlatformName(shift.platform_id)}</span>
+              <span>{shift.title || getBrandName(shift.brand_id)} · {getPlatformName(shift.platform_id)}</span>
             </div>
 
             <div className="grid grid-cols-2 gap-4 ml-6">
@@ -131,7 +133,7 @@ export function SwapDetailModal({
 
           {/* People Involved */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="rounded-md border p-4 shadow-sm bg-muted/10">
+            <div className="rounded-md border p-4 shadow-none bg-muted/10">
               <div className="flex items-center gap-2 font-semibold mb-3">
                 <UserIcon className="h-4 w-4 text-muted-foreground" />
                 <span>Requester</span>
@@ -143,7 +145,7 @@ export function SwapDetailModal({
               </div>
             </div>
 
-            <div className="rounded-md border p-4 shadow-sm bg-muted/10">
+            <div className="rounded-md border p-4 shadow-none bg-muted/10">
               <div className="flex items-center gap-2 font-semibold mb-3">
                 <UserIcon className="h-4 w-4 text-muted-foreground" />
                 <span>{swap.mode === 'exchange' ? 'Exchange With' : 'Replacement Staff'}</span>
@@ -164,7 +166,7 @@ export function SwapDetailModal({
 
           {/* Reason */}
           {swap.reason && (
-            <div className="rounded-md bg-muted/30 p-4 border shadow-sm">
+            <div className="rounded-md bg-muted/30 p-4 border shadow-none">
               <div className="flex items-center gap-2 font-semibold mb-2">
                 <Briefcase className="h-4 w-4 text-muted-foreground" />
                 <span>Reason</span>
@@ -173,31 +175,27 @@ export function SwapDetailModal({
             </div>
           )}
 
-          {/* Timeline */}
-          <div className="rounded-md border p-4 shadow-sm">
-            <div className="font-semibold mb-3 flex items-center gap-2">
-              <Clock className="h-4 w-4 text-muted-foreground" />
-              Timeline
-            </div>
-            <div className="space-y-4 ml-8 border-l-2 pl-4 pb-1">
-              <div className="relative">
-                <div className="absolute -left-[21px] top-1 h-2 w-2 rounded-full bg-muted-foreground ring-4 ring-background"></div>
-                <div className="font-medium text-sm">Request Submitted</div>
-                <div className="text-xs text-muted-foreground">{format(new Date(swap.created_at), 'MMMM d, yyyy h:mm a')}</div>
+          <section className="rounded-md border p-3">
+            <h3 className="mb-3 flex items-center gap-2 text-xs font-semibold"><Clock className="h-4 w-4" />Timeline</h3>
+            {swap.approval_history?.length ? swap.approval_history.map((event, index) => (
+              <div key={index} className="border-l pl-3 pb-3 text-xs">
+                <p className="font-medium">{event.action} / {event.from_status || '—'} / {event.to_status || '—'}</p>
+                <p className="mt-1 text-muted-foreground">{format(new Date(event.at), 'dd/MM/yyyy HH:mm')} / {event.actor_id === requester.id ? requester.full_name : event.actor_id === newHost?.id ? newHost.full_name : event.actor_id}</p>
+                {event.notes && <p className="mt-1 whitespace-pre-wrap">{event.notes}</p>}
               </div>
-              {swap.approved_at && (
-                <div className="relative">
-                  <div className={`absolute -left-[21px] top-1 h-2 w-2 rounded-full ring-4 ring-background ${
-                    swap.status === 'approved' || swap.status === 'completed' ? 'bg-green-500' : 'bg-red-500'
-                  }`}></div>
-                  <div className="font-medium text-sm">
-                    {swap.status === 'approved' || swap.status === 'completed' ? 'Request Approved' : 'Request Rejected'}
-                  </div>
-                  <div className="text-xs text-muted-foreground">{format(new Date(swap.approved_at), 'MMMM d, yyyy h:mm a')}</div>
-                </div>
-              )}
-            </div>
-          </div>
+            )) : <p className="text-xs text-muted-foreground">Request submitted / {format(new Date(swap.created_at), 'dd/MM/yyyy HH:mm')}</p>}
+          </section>
+          <details className="rounded-md border p-3 text-xs">
+            <summary className="cursor-pointer font-medium">Request metadata</summary>
+            <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+              {[
+                ['Request', swap.id], ['Version', swap.version], ['Source shift', swap.source_shift_id || swap.shift_id],
+                ['Target shift', swap.target_shift_id], ['Source registration', swap.source_registration_id],
+                ['Counterpart registration', swap.counterpart_registration_id], ['Responded', swap.responded_at], ['Completed', swap.completed_at],
+              ].map(([label, value]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="break-all">{value ?? '—'}</dd></div>)}
+            </dl>
+            {swap.notes && <p className="mt-3 whitespace-pre-wrap">{swap.notes}</p>}
+          </details>
         </div>
 
         {/* Actions */}

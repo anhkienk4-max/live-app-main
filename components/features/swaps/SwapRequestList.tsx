@@ -16,18 +16,17 @@ import {
 import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Shift, SwapRequest, SwapStatus, User } from '@/lib/types/database.types'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
-import { useTranslation } from '@/lib/i18n'
+import { useTranslation, type TranslationKey } from '@/lib/i18n'
 import { downloadSwapRequestTemplate, exportSwapsToExcel } from '@/lib/utils/excelUtils'
 import { getSwapUiActions, getSwapStatusPresentation } from '@/lib/utils/swapUi'
 import { deriveSwapAttention } from '@/lib/ui/operational-attention'
-import { AttentionItem } from '@/components/ui/operational-status'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { ActionBar } from '@/components/ui/action-bar'
 import { buildSwapActions } from '@/lib/ui/action-priority'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import { useToast } from '@/components/ui/toast'
@@ -184,16 +183,18 @@ export function SwapRequestList() {
       {currentUser && hasPermission(currentUser, 'swaps.request') && <Button size="sm" className="mr-1 shrink-0" onClick={() => setShowForm(true)}><Plus className="mr-1.5 h-4 w-4" />{t('swapsTitle')}</Button>}
     </div>
 
-    <Card className="border-slate-200 shadow-none"><CardHeader className="px-3 py-2"><CardTitle className="text-xs uppercase tracking-wide text-slate-500">{t('filters')}</CardTitle></CardHeader><CardContent className="space-y-3 px-3 pb-3">
-      <div className="relative"><Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" /><Input aria-label="Search swaps" className="h-9 pl-8 text-xs" placeholder="Search request, shift, or staff" value={query} onChange={event => { setQuery(event.target.value); setPage(1) }} /></div>
-      <div className="grid gap-3 md:grid-cols-4">
+    <section className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="grid items-end gap-2 sm:grid-cols-[minmax(0,1fr)_180px_180px] [&>div>span]:sr-only"><div className="relative"><Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" /><Input aria-label="Search swaps" className="h-9 pl-8 text-xs" placeholder="Search request, shift, or staff" value={query} onChange={event => { setQuery(event.target.value); setPage(1) }} /></div>
+        <MultiSelectFilter label={t('role')} value={filters.roles} options={(['host','support','technical'] as OperationalRole[]).map(role => ({ value: role, label: t(role) }))} onChange={value => updateFilters(current => ({ ...current, roles: value as OperationalRole[] }))} />
+        <MultiSelectFilter label={t('status')} value={filters.statuses} options={SWAP_REQUEST_STATUSES.map(status => ({ value: status, label: t(status) }))} onChange={value => updateFilters(current => ({ ...current, statuses: value }))} />
+      </div>
+      <details className="mt-2"><summary className="cursor-pointer text-xs font-medium text-slate-500">{t('filters')}</summary>
+      <div className="mt-3 grid gap-3 md:grid-cols-4">
         <label className="text-xs font-medium">{t('startDate')}<Input className="mt-1" type="date" value={filters.start} onChange={event => updateFilters(current => ({ ...current, start: event.target.value }))} /></label>
         <label className="text-xs font-medium">{t('endDate')}<Input className="mt-1" type="date" value={filters.end} onChange={event => updateFilters(current => ({ ...current, end: event.target.value }))} /></label>
         <EntityFilter label={t('requester')} value={filters.requesterIds} options={users.map(user => ({ id: user.id, name: user.full_name }))} onChange={value => updateFilters(current => ({ ...current, requesterIds: value }))} />
         <EntityFilter label={t('brand')} value={filters.brandIds} options={brands} onChange={value => updateFilters(current => ({ ...current, brandIds: value }))} />
         <EntityFilter label={t('campaign')} value={filters.campaignIds} options={campaigns} onChange={value => updateFilters(current => ({ ...current, campaignIds: value }))} />
-        <MultiSelectFilter label={t('role')} value={filters.roles} options={(['host','support','technical'] as OperationalRole[]).map(role => ({ value: role, label: t(role) }))} onChange={value => updateFilters(current => ({ ...current, roles: value as OperationalRole[] }))} />
-        <MultiSelectFilter label={t('status')} value={filters.statuses} options={SWAP_REQUEST_STATUSES.map(status => ({ value: status, label: t(status) }))} onChange={value => updateFilters(current => ({ ...current, statuses: value }))} />
       </div>
       <div className="flex gap-2">
         <div className="hidden lg:flex flex-wrap gap-2">
@@ -218,20 +219,22 @@ export function SwapRequestList() {
           )}
         </div>
       </div>
-    </CardContent></Card>
+      </details>
+    </section>
 
-    {filtered.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noSwaps')}</CardContent></Card> : <Card className="overflow-hidden border-slate-200 shadow-none"><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full min-w-[980px] text-xs"><thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500"><tr>{['Shift & request','Requester','Replacement','Role / mode','Status','Created','Actions'].map(label=><th key={label} className="px-3 py-2.5 font-semibold">{label}</th>)}</tr></thead><tbody>{visibleSwaps.map(swap => {
+    {filtered.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noSwaps')}</CardContent></Card> : <Card className="overflow-hidden border-slate-200 shadow-none"><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full min-w-[980px] text-xs"><thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500"><tr>{['Shift & request','Requester','Replacement','Role / mode','Reason','Status','Created','Actions'].map(label=><th key={label} className="px-3 py-2.5 font-semibold">{label}</th>)}</tr></thead><tbody>{visibleSwaps.map(swap => {
       const shift = shiftById.get(swap.shift_id)
       if (!shift) return null
       const actions = getSwapUiActions(swap, currentUser)
       const statusPresentation = getSwapStatusPresentation(swap.status)
-      const attentionItems = deriveSwapAttention({swapId:swap.id,status:swap.status,actorHasValidAction:actions.showAccept || actions.showCounterpartReject || actions.showApprove || actions.showReviewerReject || actions.showCancel})
+      const attentionItems = deriveSwapAttention({swapId:swap.id,status:swap.status,actorHasValidAction:actions.showAccept || actions.showCounterpartReject || actions.showApprove || actions.showReviewerReject})
       return <tr key={swap.id} className="border-t border-slate-100 align-top hover:bg-slate-50/70">
-        <td className="p-3"><button type="button" onClick={()=>setSelectedSwap(swap)} className="text-left font-medium text-primary">{shift.title}</button><p className="text-xs text-muted-foreground">{swap.id}</p><p className="mt-1 text-xs">{shift.date} · {formatShiftTimeRange(shift)}</p><p className="text-xs text-muted-foreground">{shift.studio || '—'} · {nameFor(brands,shift.brand_id)} · {nameFor(platforms,shift.platform_id)}</p><p className="text-xs text-muted-foreground">{nameFor(campaigns,shift.campaign_id)}</p>{swap.reason && <p className="mt-2 max-w-xs text-xs">{swap.reason}</p>}</td>
+        <td className="max-w-[280px] px-3 py-2.5"><button type="button" onClick={()=>setSelectedSwap(swap)} title={shift.title} className="block max-w-full truncate text-left font-semibold text-primary">{shift.title}</button><p title={swap.id} className="max-w-[220px] truncate text-[10px] text-muted-foreground">{swap.id}</p><p className="mt-1 text-[10px]">{shift.date} / {formatShiftTimeRange(shift)}</p><p className="max-w-[230px] truncate text-[10px] text-muted-foreground" title={`${shift.studio || ''} / ${nameFor(brands,shift.brand_id)} / ${nameFor(platforms,shift.platform_id)} / ${nameFor(campaigns,shift.campaign_id)}`}>{shift.studio || '—'} / {nameFor(platforms,shift.platform_id)}</p></td>
         <td className="px-3 py-2.5"><span className="font-medium">{userName(swap.requester_id)}</span>{swap.original_staff_id && swap.original_staff_id !== swap.requester_id && <p className="text-[10px] text-muted-foreground">{t('originalStaff')}: {userName(swap.original_staff_id)}</p>}</td>
         <td className="p-3">{userName(replacementFor(swap) || swap.counterpart_id || '')}{swap.mode==='exchange' && <p className="text-xs text-muted-foreground">{t('targetShift')}: {shiftById.get(swap.target_shift_id || '')?.title || swap.target_shift_id || '—'}</p>}</td>
         <td className="px-3 py-2.5">{t(roleFor(swap))}<p className="text-[10px] text-muted-foreground">{swap.mode || 'replacement'}</p></td>
-        <td className="px-3 py-2.5"><Badge variant="outline" className="text-[10px]">{t(statusPresentation.label)}</Badge><div className="mt-1 space-y-1">{attentionItems.map(item=><AttentionItem key={item.key} item={item} />)}</div></td>
+        <td className="max-w-[160px] px-3 py-2.5"><p title={swap.reason} className="max-w-[160px] truncate text-[11px] text-muted-foreground">{swap.reason}</p></td>
+        <td className="px-3 py-2.5"><Badge variant={statusPresentation.tone === 'success' ? 'success' : statusPresentation.tone === 'danger' ? 'danger' : statusPresentation.tone === 'warning' ? 'warning' : statusPresentation.tone === 'info' ? 'info' : 'outline'} className="text-[10px]">{t(statusPresentation.label)}</Badge>{attentionItems.map(item=><p key={item.key} className="mt-1 text-[10px] text-muted-foreground">{t(item.label as TranslationKey)}</p>)}</td>
         <td className="whitespace-nowrap px-3 py-2.5 text-[10px] text-muted-foreground">{format(new Date(swap.created_at),'dd/MM/yyyy HH:mm')}</td>
         <td className="px-3 py-2.5">                  <ActionBar
                     direction="row"
