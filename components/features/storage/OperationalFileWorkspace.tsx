@@ -110,7 +110,7 @@ export function OperationalFileWorkspace() {
     setNotice('')
     try {
       const externalId = provider === 'google_drive'
-        ? (externalInput.trim().match(/\\/d\\/([^/?#]+)/)?.[1] || externalInput.trim().match(/[?&]id=([^&#]+)/)?.[1] || externalInput.trim())
+        ? (externalInput.trim().split('/d/')[1]?.split(/[/?#]/u)[0] || externalInput.trim().match(/[?&]id=([^&#]+)/u)?.[1] || externalInput.trim())
         : externalInput.trim()
       if (action === 'attach_existing' && !externalId) {
         throw new Error('Cần nhập File ID hoặc đường dẫn Drive của file đã tải lên.')
