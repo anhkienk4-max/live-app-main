@@ -51,6 +51,8 @@ const scopeFields = z.object({
   provider: z.enum(['google_drive', 'onedrive']).optional(),
 }).strict()
 
+const restrictedCategories = new Set(['payment_document', 'system_export'])
+
 const removeFields = z.object({ file_id: z.string().min(1).max(120) }).strict()
 
 function errorResponse(code: string, status = 400) {
@@ -203,7 +205,7 @@ export function createOperationalFileRouteHandler(deps: {
   return {
     GET(request: Request) {
       return run(async () => {
-        await requireRole(request, ['leader', 'admin'], deps.resolveUser)
+        const actor = await requireRole(request, ['leader', 'admin'], deps.resolveUser)
         const params = new URL(request.url).searchParams
         const client = clientFactory()
         if (params.get('catalog') === '1') {
@@ -214,7 +216,7 @@ export function createOperationalFileRouteHandler(deps: {
           if (brands.error || platforms.error) throw new Error('OPERATIONAL_FILE_SCOPE_LOOKUP_FAILED')
           return Response.json({
             ok: true,
-            categories: OPERATIONAL_FILE_CATEGORIES.map(id => ({ id, label: OPERATIONAL_FILE_CATEGORY_LABELS[id] })),
+            categories: OPERATIONAL_FILE_CATEGORIES.filter(id => actor.systemPermission === 'admin' || !restrictedCategories.has(id)).map(id => ({ id, label: OPERATIONAL_FILE_CATEGORY_LABELS[id] })),
             brands: brands.data ?? [], platforms: platforms.data ?? [],
             max_single_upload_bytes: MAX_OPERATIONAL_FILE_BYTES,
           }, { headers: { 'Cache-Control': 'no-store' } })
@@ -224,6 +226,7 @@ export function createOperationalFileRouteHandler(deps: {
         if (fileId) {
           const row = await loadFile(client, fileId)
           if (!row) return errorResponse('OPERATIONAL_FILE_NOT_FOUND', 404)
+          if (restrictedCategories.has(String(row.category)) && actor.systemPermission !== 'admin') return errorResponse('PERMISSION_DENIED', 403)
           if ((row.provider !== 'google_drive' && row.provider !== 'onedrive') || typeof row.external_file_id !== 'string') {
             return errorResponse('OPERATIONAL_FILE_PROVIDER_INVALID', 409)
           }
@@ -246,7 +249,7 @@ export function createOperationalFileRouteHandler(deps: {
           .eq('scope_key', scope.scope_key).is('deleted_at', null)
           .order('created_at', { ascending: false })
         if (result.error) throw result.error
-        return Response.json({ ok: true, files: (result.data ?? []).map(row => publicFile(row as Record<string, unknown>)) },
+        return Response.json({ ok: true, files: (result.data ?? []).filter(row => actor.systemPermission === 'admin' || !restrictedCategories.has(row.category)).map(row => publicFile(row as Record<string, unknown>)) },
           { headers: { 'Cache-Control': 'no-store' } })
       })
     },
@@ -261,6 +264,7 @@ export function createOperationalFileRouteHandler(deps: {
           }))
         const parsed = scopeFields.parse(payload)
         const category = cleanCategory(form.get('category'))
+        if (restrictedCategories.has(category) && actor.systemPermission !== 'admin') return errorResponse('PERMISSION_DENIED', 403)
         const file = form.get('file')
         if (!(file instanceof File) || !file.name) return errorResponse('OPERATIONAL_FILE_REQUIRED')
         if (file.size < 1 || file.size > MAX_OPERATIONAL_FILE_BYTES) {
@@ -350,11 +354,12 @@ export function createOperationalFileRouteHandler(deps: {
     },
     DELETE(request: Request) {
       return run(async () => {
-        await requireRole(request, ['leader', 'admin'], deps.resolveUser)
+        const actor = await requireRole(request, ['leader', 'admin'], deps.resolveUser)
         const parsed = removeFields.parse(await readJsonBody(request, 4096))
         const client = clientFactory()
         const row = await loadFile(client, parsed.file_id)
         if (!row) return errorResponse('OPERATIONAL_FILE_NOT_FOUND', 404)
+        if (restrictedCategories.has(String(row.category)) && actor.systemPermission !== 'admin') return errorResponse('PERMISSION_DENIED', 403)
         if ((row.provider !== 'google_drive' && row.provider !== 'onedrive') || typeof row.external_file_id !== 'string') {
           return errorResponse('OPERATIONAL_FILE_PROVIDER_INVALID', 409)
         }
