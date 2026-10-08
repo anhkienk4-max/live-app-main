@@ -657,7 +657,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
             {previewCounts && <p className="text-sm text-muted-foreground" data-testid="schedule-import-confirm-summary">{t('confirmImportSummary', { ready: previewCounts.ready, attention: previewAttention })}</p>}
             <div className="flex flex-wrap justify-end gap-2">
               <Button variant="outline" onClick={() => setCancelOpen(true)}>{t('cancel')}</Button>
-              <Button onClick={confirmImport} disabled={busy || result.validRows === 0} aria-label={t('confirmImport')}>{busy ? t('loading') : `${t('confirmImport')} (${result.validRows})`}</Button>
+              <Button onClick={confirmImport} disabled={busy || result.validRows === 0} aria-label={t('confirmImport')}>{busy ? t('loading') : t('confirmImport')}</Button>
             </div>
           </CardContent>
         </Card>
