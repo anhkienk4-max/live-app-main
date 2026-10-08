@@ -54,6 +54,9 @@ export function OperationalFileWorkspace() {
   const [error, setError] = React.useState('')
   const [notice, setNotice] = React.useState('')
   const [filter, setFilter] = React.useState('all')
+  const [externalInput, setExternalInput] = React.useState('')
+  const [folderUrl, setFolderUrl] = React.useState('')
+  const [folderPath, setFolderPath] = React.useState('')
   const requestKey = shiftId.trim()
     ? 'shift_id=' + encodeURIComponent(shiftId.trim())
     : new URLSearchParams({
@@ -93,6 +96,49 @@ export function OperationalFileWorkspace() {
   React.useEffect(() => {
     if (catalog) void refresh()
   }, [catalog, refresh])
+
+  const providerPayload = (action: 'prepare_folder' | 'attach_existing') => ({
+    action, category, provider,
+    ...(shiftId.trim()
+      ? { shift_id: shiftId.trim() }
+      : { brand_id: brandId, platform_id: platformId, period_date: periodDate, execution_source: executionSource }),
+  })
+
+  const providerAction = async (action: 'prepare_folder' | 'attach_existing') => {
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      const externalId = provider === 'google_drive'
+        ? (externalInput.trim().match(/\\/d\\/([^/?#]+)/)?.[1] || externalInput.trim().match(/[?&]id=([^&#]+)/)?.[1] || externalInput.trim())
+        : externalInput.trim()
+      if (action === 'attach_existing' && !externalId) {
+        throw new Error('Cần nhập File ID hoặc đường dẫn Drive của file đã tải lên.')
+      }
+      const response = await fetch('/api/operational-files', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...providerPayload(action),
+          ...(action === 'attach_existing' ? { external_file_id: externalId } : {}),
+        }),
+      })
+      const data = await response.json() as {
+        ok: boolean; folder_url?: string; folder_path?: string;
+        reused?: boolean; error?: { code: string }
+      }
+      if (!response.ok || !data.ok) throw new Error(data.error?.code || 'Provider action failed')
+      if (action === 'prepare_folder') {
+        setFolderUrl(data.folder_url || '')
+        setFolderPath(data.folder_path || '')
+        setNotice('Đã chuẩn bị đúng folder. Có thể upload trực tiếp file lớn lên provider rồi gắn ID.')
+      } else {
+        setNotice(data.reused ? 'File đã được liên kết trước đó.' : 'Đã liên kết file provider vào metadata của app.')
+        setExternalInput('')
+        await refresh()
+      }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Provider action failed') }
+    finally { setBusy(false) }
+  }
 
   const upload = async () => {
     if (!file || !catalog) return
@@ -215,13 +261,37 @@ export function OperationalFileWorkspace() {
           onChange={event => setFile(event.target.files?.[0] || null)}
           aria-label="Chọn file vận hành" />
         <p className="text-xs text-muted-foreground">
-          File định dạng ảnh, Excel, PDF, Office, audio, video nhỏ. Giới hạn backend 25 MB;
-          video dung lượng lớn chưa có resumable uploader. Chỉ cho phép định dạng phù hợp từng loại.
+          File định dạng ảnh, Excel, PDF, Office, audio hoặc video nhỏ (tối đa 4 MB).
+          File lớn hãy dùng phần liên kết file provider bên dưới; không upload binary qua Supabase.
         </p>
         <button type="button" className={buttonClass} onClick={() => void upload()}
           disabled={!file || !catalog || busy}>
           <span className="flex items-center gap-2"><Upload className="h-4 w-4" />Lưu file</span>
         </button>
+      </section>
+
+      <section className="space-y-3 rounded-xl border p-4" aria-label="Đính kèm file dung lượng lớn">
+        <h2 className="font-semibold">Video lớn / file đã có trên provider</h2>
+        <p className="text-sm text-muted-foreground">
+          Tạo đúng thư mục, upload trực tiếp file lên Drive/OneDrive, sau đó dán ID để app xác thực
+          file thuộc chính thư mục này và lưu metadata. Không tải binary lớn qua Vercel hoặc Supabase.
+        </p>
+        <button className={buttonClass} type="button" disabled={busy || !catalog}
+          onClick={() => void providerAction('prepare_folder')}>Tạo / mở folder lưu trữ</button>
+        {folderUrl && <p className="text-sm break-all">
+          Folder: <a className="text-primary underline" href={folderUrl} target="_blank" rel="noopener noreferrer">{folderPath || folderUrl}</a>
+        </p>}
+        <label className="block text-sm">
+          <span className="mb-1 block">File ID hoặc link Google Drive của file trong folder trên</span>
+          <input className={fieldClass} value={externalInput} onChange={event => setExternalInput(event.target.value)}
+            placeholder="File ID / https://drive.google.com/file/d/..." />
+        </label>
+        <button className={buttonClass} type="button" disabled={busy || !catalog || !externalInput.trim()}
+          onClick={() => void providerAction('attach_existing')}>Liên kết file đã tải lên</button>
+        <p className="text-xs text-muted-foreground">
+          File gắn bằng ID được kiểm tra parent folder; checksum nội dung chưa được xác nhận
+          (integrity_status = provider_reference). Chỉ dùng file có nguồn đáng tin cậy.
+        </p>
       </section>
 
       {error && <p role="alert" className="rounded-md border border-red-300 px-3 py-2 text-sm text-red-700">{error}</p>}
