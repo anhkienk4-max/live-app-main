@@ -16,10 +16,9 @@ import {
 import { Brand, Campaign, DashboardUpdate, OperationalRole, Platform, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
-import { getCurrentBusinessDate, formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
@@ -117,12 +116,12 @@ export function LiveMonitoringDashboard() {
   const statusLabel = (status: Shift['status']) => status === 'live' ? t('liveStatus') : t(status)
 
   return <>
-    <div className="space-y-6">
+    <div className="space-y-3">
 
       {/* 1. Header / Control Strip */}
-      <div className="flex flex-col gap-4 border-b pb-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-2 border-b pb-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">{t('liveFilters')}</h2>
+          <h2 className="text-base font-semibold">{t('liveMonitor')}</h2>
           <p className="text-sm text-muted-foreground">{t('todaysDate')}: {format(new Date(), 'dd/MM/yyyy')}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -156,7 +155,7 @@ export function LiveMonitoringDashboard() {
       )}
 
       {/* 3. Metric / Status Strip */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-5">
         <Metric
           title={t('liveInProgress')}
           value={filtered.filter(shift => shift.status === 'live').length.toString()}
@@ -175,8 +174,8 @@ export function LiveMonitoringDashboard() {
       </div>
 
       {/* 4. Session Cards */}
-      <div className="grid gap-3 xl:grid-cols-[220px_minmax(0,1fr)]">
-        <section className="self-start overflow-hidden rounded-lg border border-slate-200 bg-white"><h2 className="border-b px-3 py-3 text-xs font-semibold">{t('liveMonitor')} ({filtered.length})</h2>{!filtered.length && <p className="p-6 text-center text-xs text-slate-500">{t('noLiveShifts')}</p>}{filtered.map(shift=><button key={shift.id} onClick={()=>setSelectedShift(shift)} data-testid={`open-live-session-${shift.id}`} className={`block w-full border-b p-3 text-left hover:bg-slate-50 ${activeShift?.id===shift.id ? 'bg-blue-50' : ''}`}><div className="flex items-center justify-between gap-2"><span className="text-xs font-semibold">{shift.title || nameFor(brands,shift.brand_id)}</span><Badge variant="secondary" className="text-[10px]">{statusLabel(shift.status)}</Badge></div><p className="mt-1 text-[11px] text-slate-500">{formatShiftTimeRange(shift)} · {nameFor(platforms,shift.platform_id)}</p><p className="mt-1 text-[11px] text-slate-400">{shift.studio ?? '—'}</p>{shift.status==='live' && !latestUpdate(shift.id) && <p className="mt-2 text-[11px] text-amber-600">{t('updatesMissing')}</p>}</button>)}</section>
+      <div className="space-y-3">
+        {filtered.length > 1 && <div className="flex flex-wrap gap-2">{filtered.map(shift => <Button key={shift.id} variant={activeShift?.id === shift.id ? 'secondary' : 'outline'} size="sm" onClick={() => setSelectedShift(shift)} data-testid={`open-live-session-${shift.id}`}>{shift.title || nameFor(brands, shift.brand_id)}<Badge variant="outline">{statusLabel(shift.status)}</Badge></Button>)}</div>}
         <div className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white">{activeShift ? <LiveSessionModal key={activeShift.id} refreshVersion={refreshVersion} inline open shift={activeShift} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onOpenChange={open=>!open&&setSelectedShift(null)} onUpdate={handleShiftUpdate} /> : <p className="p-10 text-center text-sm text-slate-500">{t('noLiveShifts')}</p>}</div>
       </div>
     </div>
@@ -193,15 +192,5 @@ function Metric({ title, value, icon, intent = 'default' }: { title: string; val
     danger: 'bg-red-50/50 border-red-200 dark:bg-red-950/20 dark:border-red-900',
     warning: 'bg-amber-50/50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900',
   }
-  return (
-    <Card className={`overflow-hidden ${intentStyles[intent]}`}>
-      <CardContent className="p-3">
-        <div className="flex items-center justify-between space-y-0 pb-2">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
-          {icon}
-        </div>
-        <div className="text-xl font-bold tracking-tight">{value}</div>
-      </CardContent>
-    </Card>
-  )
+  return <div className={`flex items-center justify-between gap-2 rounded-md border px-3 py-2 ${intentStyles[intent]}`}><p className="text-[10px] font-semibold uppercase text-muted-foreground">{title}</p><div className="flex items-center gap-2"><span className="text-sm font-bold">{value}</span>{icon}</div></div>
 }
