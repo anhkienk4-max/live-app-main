@@ -46,7 +46,7 @@ export default function SettingsPage() {
       setSettingsLoading(false)
       return
     }
-    setActiveTab('personal')
+    setActiveTab(hasPermission(currentUser, 'settings.admin') ? 'team' : 'personal')
     setSettingsLoading(true)
     setLoadError(null)
     try {
@@ -193,7 +193,7 @@ export default function SettingsPage() {
     ? mockVisionAvailable
     : false
 
-  return <PageShell archetype="configuration" className="min-w-0 space-y-3 p-4 md:p-6" data-testid="settings-page">
+  return <PageShell archetype="configuration" className="min-w-0 space-y-3 p-4" data-testid="settings-page">
     <PageHeader>
       <PageHeaderContent>
         <h1 className="text-lg font-semibold">{t('settings')}</h1>
@@ -208,14 +208,15 @@ export default function SettingsPage() {
     <Tabs value={activeTab} onValueChange={value => changeTab(value as SettingsTab)} className="min-w-0">
       <div className="max-w-full overflow-x-auto pb-1">
         <TabsList className="h-auto w-max flex-nowrap rounded-none border-b bg-transparent p-0">
-          <TabsTrigger className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none" value="personal">{t('personalSettings')}{personalDirty ? ' •' : ''}</TabsTrigger>
           {isLeader && <TabsTrigger className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none" value="team">{t('teamSettings')}{operationalDirty ? ' •' : ''}</TabsTrigger>}
           {isLeader && <TabsTrigger disabled={!isAdmin} title={!isAdmin?t('permissionDenied'):undefined} className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none" value="system">{t('systemSettings')}{systemDirty ? ' •' : ''}</TabsTrigger>}
           {isLeader && <TabsTrigger disabled={!isAdmin} title={!isAdmin?t('permissionDenied'):undefined} className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none" value="integrations">{t('integrations')}</TabsTrigger>}
+          <TabsTrigger className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none" value="personal">{t('personalSettings')}{personalDirty ? ' •' : ''}</TabsTrigger>
           {isAdmin && <TabsTrigger className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none" value="audit">{t('audit')}</TabsTrigger>}
         </TabsList>
       </div>
 
+      {activeTab !== 'team' && <p className="rounded-md border bg-slate-50 p-3 text-xs text-muted-foreground" role="note">These preferences are stored in this browser session. They do not change server configuration or report integration health.</p>}
       <TabsContent value="personal">
         <form onSubmit={savePersonal}>
           <Card><CardHeader><CardTitle className="flex items-center gap-2"><UserCog className="h-5 w-5" />{t('personalSettings')}</CardTitle><CardDescription>{currentUser.email}</CardDescription></CardHeader><CardContent className="space-y-4">
@@ -232,21 +233,31 @@ export default function SettingsPage() {
         </form>
       </TabsContent>
 
-      {isLeader && <TabsContent value="team"><form onSubmit={saveOperational}>
-        <Card><CardHeader><CardTitle className="flex items-center gap-2"><SlidersHorizontal className="h-5 w-5" />{t('teamSettings')}</CardTitle><CardDescription>{t('approvalPreferences')}</CardDescription></CardHeader><CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
+      {isLeader && <TabsContent value="team"><form onSubmit={saveOperational} className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-muted-foreground">{t('teamSettings')} / {t('approvalPreferences')}</p><Actions dirty={operationalDirty} saving={savingTab === 'team'} onReset={() => setOperational(savedOperational)} /></div>
+        <div className="grid items-start gap-4 lg:grid-cols-2">
+          <Card><CardHeader className="border-b p-4"><CardTitle className="flex items-center gap-2 text-sm"><SlidersHorizontal className="h-4 w-4 text-blue-600" />{t('approvalPreferences')}</CardTitle></CardHeader><CardContent className="space-y-4 p-4">
             <NumberSetting label={`${t('registrationCutoff')} (hours)`} value={operational.registration_cutoff_hours} onChange={value => setOperational(current => current && ({ ...current, registration_cutoff_hours: value }))} />
-            <NumberSetting label={`${t('reportReminders')} (hours)`} value={operational.report_reminder_hours} onChange={value => setOperational(current => current && ({ ...current, report_reminder_hours: value }))} />
             <ToggleSetting label={t('approvalPreferences')} checked={operational.require_registration_approval} onChange={checked => setOperational(current => current && ({ ...current, require_registration_approval: checked }))} />
-            <ToggleSetting label={t('teamNotifications')} checked={operational.team_notifications_enabled} onChange={checked => setOperational(current => current && ({ ...current, team_notifications_enabled: checked }))} />
-            <ToggleSetting label={t('swapRules')} checked={operational.swap_approval_required} onChange={checked => setOperational(current => current && ({ ...current, swap_approval_required: checked }))} />
             <ToggleSetting label={t('lockShift')} checked={operational.auto_lock_filled_shifts} onChange={checked => setOperational(current => current && ({ ...current, auto_lock_filled_shifts: checked }))} />
+          </CardContent></Card>
+          <Card><CardHeader className="border-b p-4"><CardTitle className="flex items-center gap-2 text-sm"><UserCog className="h-4 w-4 text-purple-600" />{t('staffingDefaults')}</CardTitle></CardHeader><CardContent className="space-y-4 p-4">
+            <div className="grid gap-3 sm:grid-cols-3"><CountInput label={t('host')} value={operational.default_host_count} onChange={value => setOperational(current => current && ({ ...current, default_host_count: value }))} /><CountInput label={t('support')} value={operational.default_support_count} onChange={value => setOperational(current => current && ({ ...current, default_support_count: value }))} /><CountInput label={t('technical')} value={operational.default_technical_count} onChange={value => setOperational(current => current && ({ ...current, default_technical_count: value }))} /></div>
             <ToggleSetting label={t('multiRoleBlocked')} checked={!operational.allow_multi_role_per_shift} onChange={checked => setOperational(current => current && ({ ...current, allow_multi_role_per_shift: !checked }))} />
-            <ToggleSetting label={t('reportOcrReview')} checked={operational.require_report_review} onChange={checked => setOperational(current => current && ({ ...current, require_report_review: checked }))} />
-          </div>
-          <div><p className="mb-2 text-sm font-medium">{t('staffingDefaults')}</p><div className="grid gap-3 sm:grid-cols-3"><CountInput label={t('host')} value={operational.default_host_count} onChange={value => setOperational(current => current && ({ ...current, default_host_count: value }))} /><CountInput label={t('support')} value={operational.default_support_count} onChange={value => setOperational(current => current && ({ ...current, default_support_count: value }))} /><CountInput label={t('technical')} value={operational.default_technical_count} onChange={value => setOperational(current => current && ({ ...current, default_technical_count: value }))} /></div></div>
-          <Actions dirty={operationalDirty} saving={savingTab === 'team'} onReset={() => setOperational(savedOperational)} />
-        </CardContent></Card>
+            <ReadOnlySetting label="Host role binding (read only)" value={operational.strict_host_role_binding === undefined ? t('visionOcrUnavailable') : String(operational.strict_host_role_binding)} />
+          </CardContent></Card>
+          <Card><CardHeader className="border-b p-4"><CardTitle className="flex items-center gap-2 text-sm"><ShieldCheck className="h-4 w-4 text-emerald-600" />{t('swapRules')}</CardTitle></CardHeader><CardContent className="space-y-3 p-4">
+            <ReadOnlySetting label={t('swapRules')} value={t('visionOcrUnavailable')} />
+            <ReadOnlySetting label="Capacity validation (read only)" value={operational.require_shift_capacity_validation === undefined ? t('visionOcrUnavailable') : String(operational.require_shift_capacity_validation)} />
+            <ReadOnlySetting label="Time overlap validation (read only)" value={operational.require_time_overlap_validation === undefined ? t('visionOcrUnavailable') : String(operational.require_time_overlap_validation)} />
+          </CardContent></Card>
+          <Card><CardHeader className="border-b p-4"><CardTitle className="flex items-center gap-2 text-sm"><Bell className="h-4 w-4 text-orange-600" />{t('reportReminders')}</CardTitle></CardHeader><CardContent className="space-y-3 p-4">
+            <ReadOnlySetting label={t('reportOcrReview')} value={t('visionOcrUnavailable')} />
+            <ReadOnlySetting label={t('reportReminders')} value={t('visionOcrUnavailable')} />
+            <ReadOnlySetting label="Leader schedule editing (read only)" value={operational.allow_leader_schedule_edit === undefined ? t('visionOcrUnavailable') : String(operational.allow_leader_schedule_edit)} />
+            <ReadOnlySetting label={t('teamNotifications')} value={t('visionOcrUnavailable')} />
+          </CardContent></Card>
+        </div>
       </form></TabsContent>}
 
       {isAdmin && <TabsContent value="system"><form onSubmit={saveSystem}>
@@ -271,7 +282,7 @@ export default function SettingsPage() {
 
       {isAdmin && <TabsContent value="integrations"><form onSubmit={event => void saveSystem(event, 'integrations')}>
         <Card><CardHeader><CardTitle className="flex items-center gap-2"><Plug className="h-5 w-5" />{t('integrations')}</CardTitle><CardDescription>{t('credentialsSafe')}</CardDescription></CardHeader><CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3"><ReadOnlySetting label={t('integrationSettings')} value={String(system.integration_mode)} /><ReadOnlySetting label={t('supabaseStatus')} value={String(system.supabase_connection_status)} /><ReadOnlySetting label={t('ocrConfiguration')} value={String(system.ocr_provider)} /></div>
+          <div className="grid gap-4 md:grid-cols-3"><ReadOnlySetting label={t('integrationSettings')} value={getAuthMode() === 'supabase' ? t('visionOcrUnavailable') : String(system.integration_mode)} /><ReadOnlySetting label={t('supabaseStatus')} value={getAuthMode() === 'supabase' ? t('visionOcrUnavailable') : String(system.supabase_connection_status)} /><ReadOnlySetting label={t('ocrConfiguration')} value={String(system.ocr_provider)} /></div>
           <section className="space-y-4 rounded-lg border p-4" data-testid="vision-ocr-admin-settings">
             <div><h3 className="flex items-center gap-2 font-semibold"><Bot className="h-5 w-5" />{t('visionOcrSettings')}</h3><p className="mt-1 text-sm text-muted-foreground">{t('visionOcrSettingsHelp')}</p></div>
             <div className="grid gap-4 md:grid-cols-3">
@@ -315,5 +326,5 @@ function SettingSelect({ label, value, options, onChange }: { label: string; val
 function ToggleSetting({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) { return <div className="flex items-center justify-between gap-3 rounded-lg border p-3"><span className="text-sm font-medium">{label}</span><Switch checked={checked} onCheckedChange={onChange} /></div> }
 function NumberSetting({ label, value, onChange, min = 0 }: { label: string; value: number; onChange: (value: number) => void; min?: number }) { return <label className="text-sm font-medium">{label}<Input className="mt-1" type="number" min={min} step="1" value={value} onChange={event => onChange(Number(event.target.value))} /></label> }
 function CountInput({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) { return <NumberSetting label={label} value={value} onChange={onChange} /> }
-function ReadOnlySetting({ label, value }: { label: string; value: string }) { return <div className="rounded-lg border p-3"><p className="text-sm font-medium">{label}</p><Badge variant="outline" className="mt-2">{value}</Badge></div> }
+function ReadOnlySetting({ label, value }: { label: string; value: string }) { return <div className="flex items-center justify-between gap-3 rounded-lg border p-3"><p className="text-sm font-medium">{label}</p><Badge variant="outline" className="shrink-0">{value}</Badge></div> }
 function finiteNumber(value: unknown, fallback: number) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : fallback }
