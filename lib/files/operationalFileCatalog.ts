@@ -78,7 +78,9 @@ const extensionMime: Readonly<Record<string, string>> = {
   ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 }
 
-export const MAX_OPERATIONAL_FILE_BYTES = 25 * 1024 * 1024
+// Bound single serverless requests below Vercel's ~4.5 MB request cap.
+// Large assets are attached by verified provider ID, never buffered in Supabase.
+export const MAX_OPERATIONAL_FILE_BYTES = 4 * 1024 * 1024
 
 /** Extension and declared MIME must agree. No executable, SVG, HTML or arbitrary zip. */
 export function resolveOperationalFileMime(category: OperationalFileCategory, fileName: string, declaredMime: string): string {
