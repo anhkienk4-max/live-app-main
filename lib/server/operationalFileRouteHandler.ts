@@ -22,7 +22,7 @@ import { requireRole, authorizationErrorResponse, isAuthorizationError, type Ser
 import { readFormDataBody, readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
 
 type Provider = 'google_drive' | 'onedrive'
-type StorageGateway = Pick<ReturnType<typeof createFileStorageService>, 'upload' | 'read' | 'delete' | 'ensureFolder'>
+type StorageGateway = Pick<ReturnType<typeof createFileStorageService>, 'upload' | 'read' | 'delete' | 'ensureFolder' | 'getMetadata' | 'getViewUrl'>
 type ScopeInput = {
   shift_id?: string
   brand_id?: string
@@ -54,6 +54,16 @@ const scopeFields = z.object({
 const restrictedCategories = new Set(['payment_document', 'system_export'])
 
 const removeFields = z.object({ file_id: z.string().min(1).max(120) }).strict()
+const folderFields = scopeFields.extend({
+  action: z.literal('prepare_folder'),
+  category: z.enum(OPERATIONAL_FILE_CATEGORIES as [OperationalFileCategory, ...OperationalFileCategory[]]),
+}).strict()
+const attachFields = scopeFields.extend({
+  action: z.literal('attach_existing'),
+  category: z.enum(OPERATIONAL_FILE_CATEGORIES as [OperationalFileCategory, ...OperationalFileCategory[]]),
+  external_file_id: z.string().trim().min(1).max(512),
+}).strict()
+
 
 function errorResponse(code: string, status = 400) {
   return Response.json({ ok: false, error: { code } }, { status, headers: { 'Cache-Control': 'no-store' } })
@@ -185,6 +195,17 @@ export function createOperationalFileRouteHandler(deps: {
     (parentId, name, provider) => storage.ensureFolder(parentId, name, provider),
   )
 
+  async function resolveFolder(scope: ResolvedScope, category: OperationalFileCategory, provider: Provider, fileName: string) {
+    const base = await routes.resolvePlacement(toOperationalFileRouteInput({
+      provider, executionSource: scope.execution_source, brandId: scope.brand_id,
+      platformId: scope.platform_id, subbrandKey: null, shiftDate: scope.period_date,
+      fileName, brandLabel: scope.brand_label, platformLabel: scope.platform_label,
+    }))
+    const placement = resolveOperationalFilePlacement(base, category)
+    const parentId = await materialize(placement)
+    return { placement, parentId }
+  }
+
   async function run<T extends Response>(operation: () => Promise<T>): Promise<Response> {
     try { return await operation() } catch (error) {
       if (isAuthorizationError(error)) return authorizationErrorResponse(error)
@@ -230,6 +251,14 @@ export function createOperationalFileRouteHandler(deps: {
           if ((row.provider !== 'google_drive' && row.provider !== 'onedrive') || typeof row.external_file_id !== 'string') {
             return errorResponse('OPERATIONAL_FILE_PROVIDER_INVALID', 409)
           }
+          // Never buffer large videos in a serverless response. The authenticated
+          // route delegates large downloads to the native provider viewer.
+          if (Number(row.size_bytes) > 4 * 1024 * 1024) {
+            const viewUrl = await storage.getViewUrl({
+              provider: row.provider as Provider, external_file_id: row.external_file_id,
+            })
+            return Response.redirect(viewUrl, 302)
+          }
           const bytes = await storage.read({
             provider: row.provider as Provider,
             external_file_id: row.external_file_id,
@@ -256,6 +285,63 @@ export function createOperationalFileRouteHandler(deps: {
     POST(request: Request) {
       return run(async () => {
         const actor = await requireRole(request, ['leader', 'admin'], deps.resolveUser)
+        if ((request.headers.get('content-type') || '').includes('application/json')) {
+          const raw = await readJsonBody(request, 16384)
+          const folder = folderFields.safeParse(raw)
+          const linked = folder.success ? null : attachFields.safeParse(raw)
+          if (!folder.success && !linked?.success) return errorResponse('OPERATIONAL_FILE_REQUEST_INVALID')
+          const input = folder.success ? folder.data : linked!.data!
+          const category = input.category
+          if (restrictedCategories.has(category) && actor.systemPermission !== 'admin') {
+            return errorResponse('PERMISSION_DENIED', 403)
+          }
+          const client = clientFactory()
+          const scope = await scopeFromInput(client, input)
+          const provider = input.provider ?? 'google_drive'
+          // Placement is derived server-side; arbitrary folder IDs are never accepted.
+          const { placement, parentId } = await resolveFolder(scope, category, provider, 'provider-existing-file')
+          if (folder.success) {
+            const url = await storage.getViewUrl({ provider, external_file_id: parentId })
+            return Response.json({ ok: true, folder_path: placement.folderPath, folder_url: url },
+              { headers: { 'Cache-Control': 'no-store' } })
+          }
+
+          const fileId = linked!.data!.external_file_id
+          const metadata = await storage.getMetadata({ provider, external_file_id: fileId })
+          if (metadata.kind !== 'file' || !metadata.parent_ids?.includes(parentId)
+            || typeof metadata.size_bytes !== 'number' || metadata.size_bytes <= 0) {
+            return errorResponse('OPERATIONAL_FILE_EXTERNAL_PARENT_MISMATCH', 409)
+          }
+          const mime = resolveOperationalFileMime(category, metadata.name, metadata.mime_type || '')
+          const key = 'provider:' + provider + ':' + metadata.id
+          const lookup = await client.from('operational_files').select('*')
+            .eq('scope_key', scope.scope_key).eq('category', category)
+            .eq('artifact_key', key).is('deleted_at', null).maybeSingle()
+          if (lookup.error) throw lookup.error
+          if (lookup.data) return Response.json({
+            ok: true, file: publicFile(lookup.data as Record<string, unknown>), reused: true,
+          }, { headers: { 'Cache-Control': 'no-store' } })
+
+          const inserted = await client.from('operational_files').insert({
+            scope_key: scope.scope_key, category,
+            brand_id: scope.brand_id, platform_id: scope.platform_id,
+            shift_id: scope.shift_id, period_date: scope.period_date,
+            execution_source: scope.execution_source, provider,
+            external_file_id: metadata.id, external_parent_id: parentId,
+            provider_metadata: metadata.provider_metadata ?? {},
+            folder_path: placement.folderPath, file_name: sanitizeFileName(metadata.name),
+            mime_type: mime, size_bytes: metadata.size_bytes, checksum_sha256: null,
+            integrity_status: 'provider_reference', artifact_key: key,
+            uploaded_by: actor.businessUserId ?? null,
+          }).select('*').single()
+          if (inserted.error || !inserted.data) {
+            // Never delete a manually managed provider object on metadata conflicts.
+            throw new Error('OPERATIONAL_FILE_METADATA_WRITE_FAILED')
+          }
+          return Response.json({ ok: true, file: publicFile(inserted.data as Record<string, unknown>), reused: false },
+            { headers: { 'Cache-Control': 'no-store' } })
+        }
+
         const form = await readFormDataBody(request, MAX_OPERATIONAL_FILE_BYTES + 4096)
         const payload = Object.fromEntries(['shift_id', 'brand_id', 'platform_id', 'period_date', 'execution_source', 'provider']
           .flatMap(key => {
@@ -290,19 +376,7 @@ export function createOperationalFileRouteHandler(deps: {
         }
 
         const storageName = safeName(file.name, category, scope.period_date, checksum)
-        const base = await routes.resolvePlacement(toOperationalFileRouteInput({
-          provider,
-          executionSource: scope.execution_source,
-          brandId: scope.brand_id,
-          platformId: scope.platform_id,
-          subbrandKey: null,
-          shiftDate: scope.period_date,
-          fileName: storageName,
-          brandLabel: scope.brand_label,
-          platformLabel: scope.platform_label,
-        }))
-        const placement = resolveOperationalFilePlacement(base, category)
-        const parentId = await materialize(placement)
+        const { placement, parentId } = await resolveFolder(scope, category, provider, storageName)
         const actorId = actor.businessUserId ?? actor.id
         const uploaded = await storage.upload({
           name: placement.fileName,
@@ -334,6 +408,7 @@ export function createOperationalFileRouteHandler(deps: {
           mime_type: mime,
           size_bytes: bytes.byteLength,
           checksum_sha256: checksum,
+          integrity_status: 'sha256_verified',
           artifact_key: artifactKey,
           uploaded_by: actor.businessUserId ?? null,
         }
