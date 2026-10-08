@@ -89,7 +89,9 @@ export function CalendarWorkspace() {
       onValueChange={handleTabChange}
       className="min-w-0 w-full"
     >
-      {tab !== "import" && <header className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-lg font-semibold">{t("calendar")}</h1><p className="mt-1 text-xs text-muted-foreground">{t("calendarSubtitle")}</p></div><div className="flex flex-wrap gap-2">
+      <div className={tab === "calendar" ? "flex flex-wrap items-center gap-3" : "contents"}>
+      {tab === "calendar" && <h1 className="text-lg font-semibold">{t("calendar")}</h1>}
+      {tab !== "import" && tab !== "calendar" && <header className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-lg font-semibold">{t("calendar")}</h1><p className="mt-1 text-xs text-muted-foreground">{t("calendarSubtitle")}</p></div><div className="flex flex-wrap gap-2">
         {hasPermission(currentUser, "shifts.assign_staff") && (
           <Button
             onClick={() => {
@@ -108,7 +110,7 @@ export function CalendarWorkspace() {
           </Button>
         )}
       </div></header>}
-      <div className="max-w-full overflow-x-auto pb-1">
+      <div className="min-w-0 max-w-full flex-1 overflow-x-auto pb-1">
         <TabsList className="h-auto w-max min-w-full flex-nowrap justify-start sm:min-w-0">
           <TabsTrigger className="!flex-none px-3 py-1.5" value="calendar">
             {t("shiftCalendar")}
@@ -126,6 +128,8 @@ export function CalendarWorkspace() {
             {t("importHistory")}
           </TabsTrigger>
         </TabsList>
+      </div>
+      {tab === "calendar" && hasPermission(currentUser, "shifts.assign_staff") && <Button onClick={() => setCreateRequest(value => value + 1)}><Plus className="mr-2 h-4 w-4" />{t("newShift")}</Button>}
       </div>
       <TabsContent className="min-w-0 w-full" value="calendar">
         <CalendarView createRequest={createRequest} />

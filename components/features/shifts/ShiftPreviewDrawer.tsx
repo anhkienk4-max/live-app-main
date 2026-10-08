@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { ShiftStatusBadge } from '@/components/domain/ShiftStatusBadge'
 import { OperationalStatusStrip } from '@/components/ui/operational-status'
 import { OperationalAttention, deriveShiftAttention } from '@/lib/ui/operational-attention'
-import { getShiftRoleCapacities } from '@/lib/services/dataService'
+import { getShiftRoleCapacities, isStaffedRegistration } from '@/lib/services/dataService'
 import { formatShiftTimeRange, getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
 import { useTranslation, type TranslationKey } from '@/lib/i18n'
 import { ExternalLink, Calendar as CalendarIcon, MapPin, Users } from 'lucide-react'
@@ -29,6 +29,7 @@ export function ShiftPreviewDrawer({
   brands,
   platforms,
   registrations,
+  users = [],
   onViewFullShift,
   onPrimaryAction
 }: ShiftPreviewDrawerProps) {
@@ -65,20 +66,20 @@ export function ShiftPreviewDrawer({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="fixed top-0 right-0 left-auto bottom-0 translate-x-0 translate-y-0 h-full max-h-screen sm:max-h-screen sm:h-full w-full sm:w-[420px] sm:max-w-[420px] rounded-none sm:rounded-none border-r-0 border-y-0 border-l shadow-xl overflow-y-auto duration-200 data-open:animate-in data-open:slide-in-from-right data-open:zoom-in-100 data-closed:animate-out data-closed:slide-out-to-right data-closed:zoom-out-100">
-        <DialogHeader className="text-left pb-2 mt-4 px-2">
+      <DialogContent className="flex flex-col gap-0 p-0 pt-4 fixed top-0 right-0 left-auto bottom-0 translate-x-0 translate-y-0 h-full max-h-screen sm:max-h-screen sm:h-full w-full sm:w-[420px] sm:max-w-[420px] rounded-none sm:rounded-none border-r-0 border-y-0 border-l shadow-xl overflow-y-auto duration-200 data-open:animate-in data-open:slide-in-from-right data-open:zoom-in-100 data-closed:animate-out data-closed:slide-out-to-right data-closed:zoom-out-100">
+        <DialogHeader className="min-w-0 shrink-0 text-left p-4 pr-10">
           <div className="flex items-start justify-between gap-4">
-            <div className="flex flex-col gap-1.5">
+            <div className="flex min-w-0 flex-col gap-1.5">
               <ShiftStatusBadge status={shift.status} className="w-fit" />
-              <DialogTitle className="text-xl font-bold tracking-tight">
+              <DialogTitle className="text-base font-bold tracking-tight [overflow-wrap:anywhere]">
                 {shift.title || `${brandName} · ${platformName}`}
               </DialogTitle>
             </div>
           </div>
         </DialogHeader>
 
-        <div className="p-4 space-y-6">
-          <div className="grid gap-3 text-sm">
+        <div className="min-w-0 p-4 space-y-4">
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 text-sm">
             <div className="flex items-center gap-2 text-foreground font-medium">
               <CalendarIcon className="h-4 w-4 text-muted-foreground shrink-0" />
               <span>{shift.date}, {formatShiftTimeRange(shift)}</span>
@@ -95,14 +96,10 @@ export function ShiftPreviewDrawer({
                 <span className="truncate">{shift.studio}</span>
               </div>
             )}
-            <div className="flex items-start gap-2 text-muted-foreground">
-              <Users className="h-4 w-4 shrink-0 mt-0.5" />
-              <div className="flex flex-col">
-                <span>{t('host' as TranslationKey)}: {staffed.host}/{required.host}</span>
-                <span>{t('support' as TranslationKey)}: {staffed.support}/{required.support}</span>
-                <span>{t('technical' as TranslationKey)}: {staffed.technical}/{required.technical}</span>
-              </div>
-            </div>
+            <section className="space-y-2"><h3 className="flex items-center gap-2 font-semibold"><Users className="h-4 w-4" />{t('staffing')}</h3>{capacities.map(capacity => {
+              const names = [...new Set(shiftRegistrations.filter(row => row.operational_role === capacity.role && isStaffedRegistration(row)).map(row => row.user_id))].map(id => users.find(user => user.id === id)?.full_name).filter(Boolean)
+              return <div key={capacity.role} className="rounded-md border bg-slate-50 p-2 text-xs"><div className="flex justify-between gap-2"><span className="font-medium">{t(capacity.role)}</span><span>{capacity.approved}/{capacity.required}</span></div><p className="mt-1 break-words text-muted-foreground">{names.join(', ') || t('notAssigned')}</p></div>
+            })}</section>
           </div>
 
           {shift.product_notes && (
@@ -119,7 +116,7 @@ export function ShiftPreviewDrawer({
           )}
         </div>
 
-        <DialogFooter className="pt-4 border-t flex-row gap-2 mt-4 sm:justify-between w-full">
+        <DialogFooter className="mx-0 mb-0 mt-auto shrink-0 border-t flex-row gap-2 sm:justify-between w-full">
           {onPrimaryAction && (
              <Button onClick={() => onPrimaryAction(shift)} className="flex-1">
                {t('takeAction' as TranslationKey) || 'Take Action'}

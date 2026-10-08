@@ -2,7 +2,7 @@
 
 import { format, startOfMonth, startOfWeek, addDays, endOfMonth, endOfWeek, isSameMonth, isToday } from 'date-fns'
 import { enUS, vi } from 'date-fns/locale'
-import { Brand, Platform, Shift } from '@/lib/types/database.types'
+import { Brand, Platform, Shift, ShiftRegistration } from '@/lib/types/database.types'
 import { resolveShiftDateTime } from '@/lib/utils/shiftUtils'
 import { useTranslation } from '@/lib/i18n'
 import { ShiftCard } from '@/components/features/shifts/ShiftCard'
@@ -13,6 +13,7 @@ interface MonthViewProps {
   shifts: Shift[]
   brands: Brand[]
   platforms: Platform[]
+  registrations?: ShiftRegistration[]
   onShiftClick?: (shift: Shift) => void
   onDayClick?: (date: Date) => void
 }
@@ -38,10 +39,11 @@ export function MonthView({
   shifts,
   brands,
   platforms,
+  registrations = [],
   onShiftClick,
   onDayClick,
 }: MonthViewProps) {
-  const context: CalendarFilterContext = { currentDate: new Date(), brands, platforms }
+  const context: CalendarFilterContext = { currentDate: new Date(), brands, platforms, registrations }
   const { language, t } = useTranslation()
   const locale = language === 'vi' ? vi : enUS
   const monthStart = startOfMonth(currentDate)
@@ -75,7 +77,7 @@ export function MonthView({
           const currentDay = isToday(day)
           return (
             <div
-              className={`h-36 min-w-0 overflow-hidden bg-background p-1.5 sm:h-40 sm:p-2 lg:h-44 ${
+              className={`min-h-36 min-w-0 overflow-hidden bg-background p-1.5 sm:min-h-40 sm:p-2 lg:min-h-44 ${
                 currentMonth ? '' : 'bg-muted/40 text-muted-foreground'
               } ${currentDay ? 'ring-2 ring-inset ring-primary' : ''}`}
               data-testid={`calendar-day-${format(day, 'yyyy-MM-dd')}`}
@@ -107,7 +109,7 @@ export function MonthView({
                       <ShiftCard
                         key={shift.id}
                         shift={shift}
-                        variant="compact"
+                        variant="standard"
                         className={visibility + ' bg-background border-l-[3px] shadow-sm hover:shadow border-y border-r border-y-border border-r-border'}
                         style={{ borderLeftColor: brandColor(shift.brand_id) }}
                         onClick={event => {
