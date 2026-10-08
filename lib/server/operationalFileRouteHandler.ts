@@ -338,7 +338,15 @@ export function createOperationalFileRouteHandler(deps: {
             uploaded_by: actor.businessUserId ?? null,
           }).select('*').single()
           if (inserted.error || !inserted.data) {
+            // If two operators link the same object concurrently, return the winner.
             // Never delete a manually managed provider object on metadata conflicts.
+            const winner = await client.from('operational_files').select('*')
+              .eq('scope_key', scope.scope_key).eq('category', category)
+              .eq('artifact_key', key).is('deleted_at', null).maybeSingle()
+            if (!winner.error && winner.data && winner.data.provider === provider) {
+              return Response.json({ ok: true, file: publicFile(winner.data as Record<string, unknown>), reused: true },
+                { headers: { 'Cache-Control': 'no-store' } })
+            }
             throw new Error('OPERATIONAL_FILE_METADATA_WRITE_FAILED')
           }
           return Response.json({ ok: true, file: publicFile(inserted.data as Record<string, unknown>), reused: false },
