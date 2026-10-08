@@ -699,7 +699,7 @@ export function ShiftDetailModal({
                   <Badge className={`${getShiftStatusClass(shift.status)} shrink-0`} variant="outline" data-testid="shift-detail-status">
                     {t(statusKey)}
                   </Badge>
-                  <DialogTitle className="break-words text-xl sm:text-2xl font-bold leading-none" data-testid="shift-detail-title">
+                  <DialogTitle className="min-w-0 flex-1 break-words text-xl sm:text-2xl font-bold leading-none" data-testid="shift-detail-title">
                     {shift.title?.trim() || t('shiftDetail')}
                   </DialogTitle>
                 </div>
@@ -730,8 +730,8 @@ export function ShiftDetailModal({
               </div>
 
               {/* Header Actions */}
-              <div className="flex flex-col items-end gap-3 shrink-0">
-                <div className="flex items-center gap-2">
+              <div className="flex min-w-0 max-w-full flex-col items-stretch gap-3 sm:shrink-0 sm:items-end">
+                <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
                    {currentUser && hasPermission(currentUser, 'shifts.export') ? (
                     <Button size="sm" variant="outline" onClick={() => exportShiftStaffingToExcel(shift, registrations, new Map(users.map(user => [user.id, user.full_name])))}>
                       <Download className="mr-2 h-4 w-4" />{t('exportStaffing')}
