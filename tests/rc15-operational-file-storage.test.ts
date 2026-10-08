@@ -185,3 +185,85 @@ test('operational file lifecycle uses external object, no duplicate, metadata-on
   const leaderCatalog = await leaderCat.json() as { categories: Array<{ id: string }> }
   assert.equal(leaderCatalog.categories.some(entry => entry.id === 'payment_document'), false)
 })
+
+
+test('linked provider object must be in exact planned folder; native Docs are metadata-only', async () => {
+  const state = client()
+  let wrongParent = true
+  const handler = createOperationalFileRouteHandler({
+    createClient: () => state.db,
+    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
+    storage: {
+      async upload() { throw new Error('Unexpected upload') },
+      async read() { throw new Error('Native Google files should open provider viewer') },
+      async delete() { throw new Error('Unexpected delete') },
+      async ensureFolder() { return { id: 'folder-id', name: 'folder', provider: 'google_drive' } },
+      async getViewUrl() { return 'https://drive.google.com/file/d/linked-doc/view' },
+      async getMetadata() {
+        return {
+          id: 'linked-doc', name: 'Meeting Notes', kind: 'file',
+          mime_type: 'application/vnd.google-apps.document',
+          parent_ids: [wrongParent ? 'another-folder' : 'parent-id'],
+          provider_metadata: { drive_file_id: 'linked-doc' },
+        }
+      },
+    } as never,
+    routes: { async resolvePlacement() { return base } },
+    materializeFolders: async () => 'parent-id',
+    routingMode: 'database',
+  })
+
+  const attach = () => new Request('https://example.test/api/operational-files', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'attach_existing', category: 'content_script',
+      provider: 'google_drive', external_file_id: 'linked-doc',
+      brand_id: 'brand-1', platform_id: 'platform-1',
+      period_date: '2026-09-14', execution_source: 'internal',
+    }),
+  })
+  const rejected = await handler.POST(attach())
+  assert.equal(rejected.status, 409)
+  assert.equal(state.rows.length, 0)
+
+  wrongParent = false
+  const accepted = await handler.POST(attach())
+  assert.equal(accepted.status, 200)
+  assert.equal(state.rows.length, 1)
+  assert.equal(state.rows[0].checksum_sha256, null)
+  assert.equal(state.rows[0].integrity_status, 'provider_reference')
+  assert.equal(state.rows[0].size_bytes, 0)
+  assert.equal(state.rows[0].external_parent_id, 'parent-id')
+
+  const retry = await handler.POST(attach())
+  assert.equal((await retry.json() as { reused: boolean }).reused, true)
+  assert.equal(state.rows.length, 1)
+
+  const view = await handler.GET(new Request('https://example.test/api/operational-files?file_id=operational-1'))
+  assert.equal(view.status, 302)
+  assert.match(view.headers.get('Location') ?? '', /drive\.google\.com/u)
+})
+
+test('leader cannot read existing finance artifact by guessing file ID', async () => {
+  const state = client()
+  state.rows.push({
+    id: 'finance-1', category: 'payment_document', deleted_at: null,
+    scope_key: 'period:brand-1:platform-1:internal:2026-09-14',
+    provider: 'google_drive', external_file_id: 'secret-drive-id',
+  })
+  const handler = createOperationalFileRouteHandler({
+    createClient: () => state.db,
+    resolveUser: async () => ({ id: 'leader', systemPermission: 'leader', businessUserId: 'leader' }),
+    storage: {
+      async read() { throw new Error('Forbidden provider read') },
+      async upload() { throw new Error('Unexpected upload') },
+      async delete() { throw new Error('Unexpected delete') },
+      async ensureFolder() { throw new Error('Unexpected folder creation') },
+    } as never,
+    routes: { async resolvePlacement() { return base } },
+    materializeFolders: async () => 'parent-id',
+    routingMode: 'database',
+  })
+  const response = await handler.GET(new Request('https://example.test/api/operational-files?file_id=finance-1'))
+  assert.equal(response.status, 403)
+})
