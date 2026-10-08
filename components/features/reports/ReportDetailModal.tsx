@@ -49,6 +49,7 @@ import { OcrCropPreview } from '@/components/features/reports/OcrCropPreview'
 import { OcrMetricFilterBar, OcrMetricReviewField } from '@/components/features/reports/OcrMetricReviewField'
 import { AlertDialog } from '@/components/ui/alert-dialog'
 import { HistoryPagination } from '@/components/ui/history-pagination'
+import { PageLoadError } from '@/components/ui/page-load-error'
 import {
   emptyFinalReportRecap,
   finalReportRecapFields,
@@ -308,11 +309,22 @@ export function ReportDetailModal({
   const [revisionPage, setRevisionPage] = React.useState(1)
   const [revisionPageSize, setRevisionPageSize] = React.useState(10)
   const [loadedRevisions, setLoadedRevisions] = React.useState<ReportRevision[]>(report.revisions || [])
+  const [revisionLoadError, setRevisionLoadError] = React.useState<Error | null>(null)
+  const [revisionReloadKey, setRevisionReloadKey] = React.useState(0)
   React.useEffect(() => {
+    let active = true
     if (open && !report.revisions) {
-      void reportService.getReportRevisions(report.id).then(setLoadedRevisions)
+      void reportService.getReportRevisions(report.id).then(revisions => {
+        if (active) {
+          setLoadedRevisions(revisions)
+          setRevisionLoadError(null)
+        }
+      }).catch(error => {
+        if (active) setRevisionLoadError(error instanceof Error ? error : new Error('Report history could not be loaded'))
+      })
     }
-  }, [open, report.id, report.revisions])
+    return () => { active = false }
+  }, [open, report.id, report.revisions, revisionReloadKey])
   const uploadInputRef = React.useRef<HTMLInputElement>(null)
   const dashboardImage = images.find(image => image.image_type === 'dashboard')
   React.useEffect(() => { if (open) void reportImageService.getByReport(report.id).then(setImages) }, [open, report.id])
@@ -1080,7 +1092,9 @@ export function ReportDetailModal({
             </Card>
           </TabsContent>
           <TabsContent value="versions" className="space-y-3">
+            {revisionLoadError ? <div role="alert"><PageLoadError error={revisionLoadError} onRetry={() => setRevisionReloadKey(key => key + 1)} /></div> : <>
             <Card className="overflow-hidden"><CardContent className="p-0"><div className="max-h-[55vh] space-y-3 overflow-auto p-6"><h3 className="mb-4 flex items-center gap-2 font-semibold"><History className="h-4 w-4" />{t('reportVersionHistory')}</h3>{visibleRevisions.map(revision => <div className="rounded-lg border p-3" key={revision.version}><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-medium">{t('version')} {revision.version} · {revision.event.replaceAll('_', ' ')}</p><p className="text-xs text-muted-foreground">{format(new Date(revision.created_at), 'dd/MM/yyyy HH:mm')} · {getUserName(revision.created_by)}</p></div><Badge variant="outline">{revision.status}</Badge></div>{revision.reason && <p className="mt-2 text-sm">{revision.reason}</p>}<div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4"><div>{t('metricRevenue')}: {revision.metrics.revenue == null ? t('noData') : formatCurrency(revision.metrics.revenue)}</div><div>{t('metricOrders')}: {revision.metrics.orders == null ? t('noData') : revision.metrics.orders.toLocaleString()}</div><div>{t('peak')}: {revision.metrics.peak_viewer == null ? t('noData') : revision.metrics.peak_viewer.toLocaleString()}</div><div>{t('reportImages')}: {revision.image_references.length}</div></div></div>)}{!revisions.length && <p className="text-sm text-muted-foreground">{t('noRevisionSnapshots')}</p>}</div><HistoryPagination page={revisionPage} pageSize={revisionPageSize} total={revisions.length} onPageChange={setRevisionPage} onPageSizeChange={size => { setRevisionPageSize(size); setRevisionPage(1) }} /></CardContent></Card>
+            </>}
           </TabsContent>
         </Tabs>
         </DialogBody>
