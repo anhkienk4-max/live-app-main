@@ -1,0 +1,187 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import {
+  OPERATIONAL_FILE_CATEGORIES,
+  OPERATIONAL_FILE_CATEGORY_FOLDERS,
+  resolveOperationalFileMime,
+  type OperationalFileCategory,
+} from '@/lib/files/operationalFileCatalog'
+import { resolveOperationalFilePlacement } from '@/lib/files/operationalFilePlacement'
+import { createOperationalFileRouteHandler } from '@/lib/server/operationalFileRouteHandler'
+import type { FileUploadInput } from '@/lib/files/fileProvider'
+import type { OperationalStoragePlacement } from '@/lib/files/operationalStoragePlacementResolver'
+
+const base = {
+  provider: 'google_drive',
+  storageProfile: 'CANONICAL_V1',
+  rootFolderId: 'root',
+  baseFolderId: 'root',
+  folderSegments: ['Female AI livestream', 'Shopee Live', 'THÁNG 09.2026', 'DATA', 'SOURCE'],
+  folderPath: 'Female AI livestream/Shopee Live/THÁNG 09.2026/DATA/SOURCE',
+  fileName: 'source.csv',
+  logicalCategory: 'data_source',
+  periodLabel: 'THÁNG 09.2026',
+} as OperationalStoragePlacement
+
+test('V2 categories have unique canonical folders under the same brand/platform/month', () => {
+  assert.equal(OPERATIONAL_FILE_CATEGORIES.length, 15)
+  const all = new Set<string>()
+  for (const category of OPERATIONAL_FILE_CATEGORIES) {
+    const placement = resolveOperationalFilePlacement(base, category)
+    assert.deepEqual(placement.folderSegments.slice(0, 3), base.folderSegments.slice(0, 3))
+    const suffix = placement.folderSegments.slice(3).join('/')
+    assert.equal(suffix, OPERATIONAL_FILE_CATEGORY_FOLDERS[category].join('/'))
+    assert.equal(all.has(suffix), false, category)
+    all.add(suffix)
+  }
+})
+
+test('V2 refuses to invent a folder tree for a legacy storage profile', () => {
+  assert.throws(() => resolveOperationalFilePlacement({
+    ...base,
+    storageProfile: 'LEGACY_PERIOD_CATEGORY',
+  }, 'video_recording'), { message: 'STORAGE_CATEGORY_NOT_CONFIGURED' })
+})
+
+test('MIME validation allows only category-compatible extensions', () => {
+  assert.equal(resolveOperationalFileMime('video_recording', 'clip.mp4', 'video/mp4'), 'video/mp4')
+  assert.equal(resolveOperationalFileMime('schedule_source', 'planning.xlsx', ''), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  assert.equal(resolveOperationalFileMime('ai_output', 'caption.txt', 'text/plain'), 'text/plain')
+  assert.throws(() => resolveOperationalFileMime('video_recording', 'payload.js', 'text/javascript'))
+  assert.throws(() => resolveOperationalFileMime('payment_document', 'script.mp4', 'video/mp4'))
+  assert.throws(() => resolveOperationalFileMime('content_script', 'script.pdf', 'image/png'))
+})
+
+type Row = Record<string, unknown>
+function client() {
+  const rows: Row[] = []
+  let counter = 0
+  const get = (table: string): Row[] => {
+    if (table === 'brands') return [{ id: 'brand-1', name: 'Female AI livestream', deleted_at: null }]
+    if (table === 'platforms') return [{ id: 'platform-1', name: 'Shopee Live', deleted_at: null }]
+    if (table === 'shifts') return [{ id: 'shift-1', brand_id: 'brand-1', platform_id: 'platform-1', date: '2026-09-14', execution_source: 'internal', deleted_at: null }]
+    if (table === 'operational_files') return rows
+    return []
+  }
+  const db = {
+    from(table: string) {
+      const filters: Array<(row: Row) => boolean> = []
+      let operation: 'select' | 'insert' | 'update' = 'select'
+      let payload: Row = {}
+      const evaluate = () => {
+        let chosen = get(table).filter(row => filters.every(fn => fn(row)))
+        if (operation === 'insert') {
+          const next = { id: 'operational-' + ++counter, deleted_at: null, created_at: '2026-10-09T00:00:00.000Z', ...payload }
+          rows.push(next)
+          chosen = [next]
+        }
+        if (operation === 'update') for (const row of chosen) Object.assign(row, payload)
+        return { data: chosen, error: null }
+      }
+      const q = {
+        select(_cols?: string) { return q },
+        eq(key: string, val: unknown) { filters.push(row => row[key] === val); return q },
+        is(key: string, val: unknown) { filters.push(row => (row[key] ?? null) === val); return q },
+        order(_name: string, _opts?: unknown) { return q },
+        insert(value: Row) { operation = 'insert' as const; payload = value; return q },
+        update(value: Row) { operation = 'update' as const; payload = value; return q },
+        async single() { const result = evaluate(); return { data: result.data[0] ?? null, error: result.error } },
+        async maybeSingle() { const result = evaluate(); return { data: result.data[0] ?? null, error: result.error } },
+        then(resolve: (v: unknown) => void, reject?: (e: unknown) => void) {
+          return Promise.resolve(evaluate()).then(resolve, reject)
+        },
+      }
+      return q
+    },
+  }
+  return { db: db as never, rows }
+}
+
+function form(category: OperationalFileCategory, filename: string, mime: string, bytes: Uint8Array) {
+  const data = new FormData()
+  data.set('brand_id', 'brand-1')
+  data.set('platform_id', 'platform-1')
+  data.set('period_date', '2026-09-14')
+  data.set('execution_source', 'internal')
+  data.set('category', category)
+  data.set('file', new File([bytes], filename, { type: mime }))
+  return new Request('https://example.test/api/operational-files', { method: 'POST', body: data })
+}
+
+test('operational file lifecycle uses external object, no duplicate, metadata-only, cleanup and admin guard', async () => {
+  const state = client()
+  const providerUploads: FileUploadInput[] = []
+  const providerDeletes: string[] = []
+  const auth = (role: 'leader' | 'admin') => async () => ({
+    id: role, systemPermission: role, businessUserId: role,
+  })
+  const dependencies = {
+    createClient: () => state.db,
+    storage: {
+      async upload(input: FileUploadInput) {
+        providerUploads.push(input)
+        return { asset: {
+          id: 'asset-1', provider: 'google_drive' as const,
+          external_file_id: 'drive-id-1', external_parent_id: input.external_parent_id,
+          name: input.name, mime_type: input.mime_type, size_bytes: input.size_bytes,
+          checksum_sha256: input.checksum_sha256, entity_type: input.entity_type,
+          entity_id: input.entity_id, status: 'active' as const,
+          created_by: input.created_by, created_at: '2026-10-09T00:00:00Z',
+        } }
+      },
+      async read() { return new Uint8Array([1, 2, 3]) },
+      async delete(ref: { external_file_id: string }) { providerDeletes.push(ref.external_file_id) },
+      async ensureFolder() { return { id: 'folder-id', name: 'folder', provider: 'google_drive' } },
+    } as never,
+    routes: { async resolvePlacement() { return base } },
+    materializeFolders: async () => 'parent-id',
+    routingMode: 'database' as const,
+  }
+
+  const leader = createOperationalFileRouteHandler({ ...dependencies, resolveUser: auth('leader') })
+  const invoice = await leader.POST(form('payment_document', 'invoice.pdf', 'application/pdf', new Uint8Array([1, 2, 3])))
+  assert.equal(invoice.status, 403)
+
+  const upload = () => form('schedule_source', 'source.csv', 'text/csv', new Uint8Array([1, 2, 3]))
+  const first = await leader.POST(upload())
+  assert.equal(first.status, 200)
+  assert.equal((await first.json() as { reused: boolean }).reused, false)
+  const second = await leader.POST(upload())
+  assert.equal(second.status, 200)
+  assert.equal((await second.json() as { reused: boolean }).reused, true)
+  assert.equal(providerUploads.length, 1)
+  assert.equal(state.rows.length, 1)
+  assert.equal('content' in state.rows[0], false)
+  assert.equal('bytes' in state.rows[0], false)
+  assert.equal(state.rows[0].external_file_id, 'drive-id-1')
+  assert.equal(state.rows[0].folder_path,
+    'Female AI livestream/Shopee Live/THÁNG 09.2026/OPS/SCHEDULE/SOURCE')
+
+  const listed = await leader.GET(new Request('https://example.test/api/operational-files?shift_id=shift-1'))
+  assert.equal(listed.status, 200)
+  // Scoped by shift, a period-level file must not be returned.
+  assert.deepEqual((await listed.json() as { files: unknown[] }).files, [])
+
+  const listedByPeriod = await leader.GET(new Request('https://example.test/api/operational-files?brand_id=brand-1&platform_id=platform-1&period_date=2026-09-14&execution_source=internal'))
+  assert.equal((await listedByPeriod.json() as { files: unknown[] }).files.length, 1)
+
+  const downloaded = await leader.GET(new Request('https://example.test/api/operational-files?file_id=operational-1'))
+  assert.equal(downloaded.status, 200)
+  assert.deepEqual(Array.from(new Uint8Array(await downloaded.arrayBuffer())), [1, 2, 3])
+
+  const deleted = await leader.DELETE(new Request('https://example.test/api/operational-files', {
+    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file_id: 'operational-1' }),
+  }))
+  assert.equal(deleted.status, 200)
+  assert.deepEqual(providerDeletes, ['drive-id-1'])
+  assert.equal(typeof state.rows[0].deleted_at, 'string')
+
+  const admin = createOperationalFileRouteHandler({ ...dependencies, resolveUser: auth('admin') })
+  const cat = await admin.GET(new Request('https://example.test/api/operational-files?catalog=1'))
+  const catalog = await cat.json() as { categories: Array<{ id: string }> }
+  assert.ok(catalog.categories.some(entry => entry.id === 'payment_document'))
+  const leaderCat = await leader.GET(new Request('https://example.test/api/operational-files?catalog=1'))
+  const leaderCatalog = await leaderCat.json() as { categories: Array<{ id: string }> }
+  assert.equal(leaderCatalog.categories.some(entry => entry.id === 'payment_document'), false)
+})
