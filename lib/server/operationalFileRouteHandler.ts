@@ -253,7 +253,7 @@ export function createOperationalFileRouteHandler(deps: {
           }
           // Never buffer large videos in a serverless response. The authenticated
           // route delegates large downloads to the native provider viewer.
-          if (Number(row.size_bytes) > 4 * 1024 * 1024) {
+          if (Number(row.size_bytes) > 4 * 1024 * 1024 || String(row.mime_type).startsWith('application/vnd.google-apps.')) {
             const viewUrl = await storage.getViewUrl({
               provider: row.provider as Provider, external_file_id: row.external_file_id,
             })
@@ -308,11 +308,14 @@ export function createOperationalFileRouteHandler(deps: {
 
           const fileId = linked!.data!.external_file_id
           const metadata = await storage.getMetadata({ provider, external_file_id: fileId })
-          if (metadata.kind !== 'file' || !metadata.parent_ids?.includes(parentId)
-            || typeof metadata.size_bytes !== 'number' || metadata.size_bytes <= 0) {
+          if (metadata.kind !== 'file' || !metadata.parent_ids?.includes(parentId)) {
             return errorResponse('OPERATIONAL_FILE_EXTERNAL_PARENT_MISMATCH', 409)
           }
           const mime = resolveOperationalFileMime(category, metadata.name, metadata.mime_type || '')
+          const isNative = mime.startsWith('application/vnd.google-apps.')
+          if (!isNative && (typeof metadata.size_bytes !== 'number' || metadata.size_bytes <= 0)) {
+            return errorResponse('OPERATIONAL_FILE_PROVIDER_SIZE_UNKNOWN', 409)
+          }
           const key = 'provider:' + provider + ':' + metadata.id
           const lookup = await client.from('operational_files').select('*')
             .eq('scope_key', scope.scope_key).eq('category', category)
@@ -330,7 +333,7 @@ export function createOperationalFileRouteHandler(deps: {
             external_file_id: metadata.id, external_parent_id: parentId,
             provider_metadata: metadata.provider_metadata ?? {},
             folder_path: placement.folderPath, file_name: sanitizeFileName(metadata.name),
-            mime_type: mime, size_bytes: metadata.size_bytes, checksum_sha256: null,
+            mime_type: mime, size_bytes: metadata.size_bytes ?? 0, checksum_sha256: null,
             integrity_status: 'provider_reference', artifact_key: key,
             uploaded_by: actor.businessUserId ?? null,
           }).select('*').single()
