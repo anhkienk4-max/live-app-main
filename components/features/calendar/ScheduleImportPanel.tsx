@@ -326,7 +326,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   }
 
   const confirmImport = async () => {
-    if (!result || !batch || !source || result.validRows === 0) return
+    if (!result || !batch || !source || importableCount === 0) return
     const completedSource = source
     setBusy(true)
     try {
@@ -451,8 +451,9 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     ].some(value => String(value ?? '').toLocaleLowerCase().includes(query))
   }) ?? []
   const completedCounts = completedImport ? batchPresentationCounts(completedImport.rows) : null
+  const importableCount = previewCounts ? previewCounts.ready + previewCounts.warning : 0
   const previewAttention = previewCounts
-    ? previewCounts.warning + previewCounts.invalid + previewCounts.duplicate + previewCounts.retryable
+    ? previewCounts.invalid + previewCounts.duplicate + previewCounts.retryable
     : 0
 
   return (
@@ -654,10 +655,10 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
               })}
             </div>
             {result.invalidRows > 0 && <p className="text-sm text-red-700">{t('correctRows')}</p>}
-            {previewCounts && <p className="text-sm text-muted-foreground" data-testid="schedule-import-confirm-summary">{t('confirmImportSummary', { ready: previewCounts.ready, attention: previewAttention })}</p>}
+            {previewCounts && <p className="text-sm text-muted-foreground" data-testid="schedule-import-confirm-summary">{t('confirmImportSummary', { ready: importableCount, attention: previewAttention })}</p>}
             <div className="flex flex-wrap justify-end gap-2">
               <Button variant="outline" onClick={() => setCancelOpen(true)}>{t('cancel')}</Button>
-              <Button onClick={confirmImport} disabled={busy || result.validRows === 0} aria-label={t('confirmImport')}>{busy ? t('loading') : t('confirmImport')}</Button>
+              <Button onClick={confirmImport} disabled={busy || importableCount === 0} aria-label={t('confirmImport')}>{busy ? t('loading') : t('confirmImport')}</Button>
             </div>
           </CardContent>
         </Card>

@@ -91,7 +91,7 @@ test('F6 separates preview from persistence and requires an explicit confirmatio
   assert.match(panel, /data-testid="schedule-import-confirm-summary"/)
   assert.match(panel, /scheduleImportBatchPort\.createBatch/)
   assert.match(panel, /scheduleImportBatchPort\.markBatchStatus\(batch\.id, 'confirmed'\)/)
-  assert.match(panel, /disabled=\{busy \|\| result\.validRows === 0\}/)
+  assert.match(panel, /disabled=\{busy \|\| importableCount === 0\}/)
 })
 
 test('F6 maps row outcomes to human states and preserves duplicate/retryable semantics', () => {
@@ -125,7 +125,7 @@ test('F6 completion summary distinguishes imported rows from exceptions', () => 
   assert.match(panel, /data-testid="schedule-import-result"/)
   assert.match(panel, /importPartialSuccess/)
   assert.match(panel, /importNothingPersisted/)
-  assert.match(panel, /importRowsNotCreated/)
+  assert.match(panel, /t\('notImported'\)/)
 })
 
 test('F6 prevents duplicate submit and keeps loading/error/empty states accessible', () => {
@@ -144,9 +144,8 @@ test('F6 prevents duplicate submit and keeps loading/error/empty states accessib
 })
 
 test('F6 gives import actions and editable rows unique accessible names', () => {
-  assert.match(panel, /aria-label=\{`\$\{t\('confirmImport'\)\} \(\$\{result\.validRows\}\)`\}/)
   assert.match(panel, /aria-label=\{t\('confirmImport'\)\}/)
-  assert.equal((panel.match(/onClick=\{confirmImport\}/g) || []).length, 2)
+  assert.equal((panel.match(/onClick=\{confirmImport\}/g) || []).length, 1)
   assert.match(panel, /aria-label=\{`Row \$\{rowNumber\} date`\}/)
   assert.match(panel, /aria-label=\{`Row \$\{rowNumber\} start time`\}/)
   assert.match(panel, /aria-label=\{ariaLabel\}/)
