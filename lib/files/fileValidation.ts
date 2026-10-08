@@ -7,6 +7,8 @@ export const ALLOWED_FILE_MIME_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
+  'image/gif',
+  'image/vnd.adobe.photoshop',
   'text/csv',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -25,6 +27,7 @@ export const ALLOWED_FILE_MIME_TYPES = new Set([
   'audio/mpeg',
   'audio/wav',
   'audio/mp4',
+  'application/zip',
 ])
 
 const EXECUTABLE_EXTENSIONS = /\.(?:exe|dll|bat|cmd|com|msi|sh|ps1|js|mjs|cjs|jar|php|py|rb|scr|vbs)$/i
