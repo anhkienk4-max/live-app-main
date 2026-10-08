@@ -688,7 +688,7 @@ export function ShiftDetailModal({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           size="xl"
-          className="h-auto grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden max-w-5xl gap-0 p-0"
+          className="h-auto grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden max-w-5xl gap-0 p-0"
           data-testid="shift-detail-modal"
         >
           {/* A. COMMAND HEADER */}
@@ -761,7 +761,7 @@ export function ShiftDetailModal({
             <DialogDescription className="sr-only">{t('shiftDetailDescription')}</DialogDescription>
           </DialogHeader>
 
-          <DialogBody className="pb-1 bg-muted/5 p-0 overflow-y-auto">
+          <DialogBody className="mx-0 pb-1 bg-muted/5 p-0 overflow-y-auto">
             <Tabs defaultValue="overview" className="min-w-0">
               <TabsList className="mx-4 mt-4 grid w-auto grid-cols-3 sm:mx-6">
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="overview">{t('shiftOverview')}</TabsTrigger>
