@@ -1,0 +1,370 @@
+import { createHash } from 'node:crypto'
+import { z } from 'zod'
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+import { MAX_FILE_NAME_LENGTH, sanitizeFileName, sanitizeFileNameWithoutLengthLimit } from '@/lib/files/fileValidation'
+import {
+  MAX_OPERATIONAL_FILE_BYTES,
+  OPERATIONAL_FILE_CATEGORIES,
+  OPERATIONAL_FILE_CATEGORY_LABELS,
+  resolveOperationalFileMime,
+  type OperationalFileCategory,
+} from '@/lib/files/operationalFileCatalog'
+import { resolveOperationalFilePlacement, toOperationalFileRouteInput } from '@/lib/files/operationalFilePlacement'
+import { OperationalStoragePlacementError, type OperationalStoragePlacement } from '@/lib/files/operationalStoragePlacementResolver'
+import { createOperationalStorageRouteRepository, type OperationalStorageRouteRepository } from '@/lib/server/operationalStorageRouteRepository'
+import { createStaticOperationalStorageRouteRepository } from '@/lib/server/staticOperationalStorageRouteRepository'
+import { resolveOperationalStorageRoutingMode, type OperationalStorageRoutingMode } from '@/lib/server/operationalStorageRoutingMode'
+import { createOperationalStorageFolderMaterializer } from '@/lib/server/operationalStorageFolderMaterializer'
+import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
+import { fileStorageService, createFileStorageService } from '@/lib/services/fileStorageService'
+import { requireRole, authorizationErrorResponse, isAuthorizationError, type ServerUserResolver } from '@/lib/server/authGuards'
+import { readFormDataBody, readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
+
+type Provider = 'google_drive' | 'onedrive'
+type StorageGateway = Pick<ReturnType<typeof createFileStorageService>, 'upload' | 'read' | 'delete' | 'ensureFolder'>
+type ScopeInput = {
+  shift_id?: string
+  brand_id?: string
+  platform_id?: string
+  period_date?: string
+  execution_source?: 'internal' | 'agency'
+  provider?: Provider
+}
+type ResolvedScope = {
+  scope_key: string
+  shift_id: string | null
+  brand_id: string
+  platform_id: string
+  period_date: string
+  execution_source: 'internal' | 'agency'
+  brand_label: string
+  platform_label: string
+}
+
+const scopeFields = z.object({
+  shift_id: z.string().min(1).max(120).optional(),
+  brand_id: z.string().min(1).max(120).optional(),
+  platform_id: z.string().min(1).max(120).optional(),
+  period_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional(),
+  execution_source: z.enum(['internal', 'agency']).optional(),
+  provider: z.enum(['google_drive', 'onedrive']).optional(),
+}).strict()
+
+const removeFields = z.object({ file_id: z.string().min(1).max(120) }).strict()
+
+function errorResponse(code: string, status = 400) {
+  return Response.json({ ok: false, error: { code } }, { status, headers: { 'Cache-Control': 'no-store' } })
+}
+
+function cleanCategory(value: unknown): OperationalFileCategory {
+  if (typeof value !== 'string' || !OPERATIONAL_FILE_CATEGORIES.includes(value as OperationalFileCategory)) {
+    throw new Error('OPERATIONAL_FILE_CATEGORY_INVALID')
+  }
+  return value as OperationalFileCategory
+}
+
+function safeName(name: string, category: string, date: string, checksum: string) {
+  const original = sanitizeFileNameWithoutLengthLimit(name)
+  const prefix = date.replaceAll('-', '') + '_' + category + '_' + checksum.slice(0, 16)
+  const budget = MAX_FILE_NAME_LENGTH - prefix.length - 1
+  if (budget < 12) throw new Error('OPERATIONAL_FILE_NAME_INVALID')
+  const dot = original.lastIndexOf('.')
+  const ext = dot > 0 ? original.slice(dot) : ''
+  if (ext.length >= budget) throw new Error('OPERATIONAL_FILE_NAME_INVALID')
+  const stem = dot > 0 ? original.slice(0, dot) : original
+  return sanitizeFileName(prefix + '_' + stem.slice(0, budget - ext.length).replace(/[. ]+$/u, '') + ext)
+}
+
+function publicFile(row: Record<string, unknown>) {
+  return {
+    id: row.id, category: row.category,
+    folder_path: row.folder_path, file_name: row.file_name,
+    size_bytes: row.size_bytes, mime_type: row.mime_type,
+    checksum_sha256: row.checksum_sha256, created_at: row.created_at,
+    scope_key: row.scope_key, provider: row.provider,
+    access_url: '/api/operational-files?file_id=' + encodeURIComponent(String(row.id)),
+  }
+}
+
+async function scopeFromInput(client: SupabaseClient, input: ScopeInput): Promise<ResolvedScope> {
+  let shift: Record<string, unknown> | null = null
+  if (input.shift_id) {
+    const result = await client.from('shifts').select('id,brand_id,platform_id,date,execution_source')
+      .eq('id', input.shift_id).is('deleted_at', null).maybeSingle()
+    if (result.error) throw new Error('OPERATIONAL_FILE_SCOPE_LOOKUP_FAILED')
+    if (!result.data) throw new Error('OPERATIONAL_FILE_SHIFT_NOT_FOUND')
+    shift = result.data as Record<string, unknown>
+    if ((input.brand_id && input.brand_id !== shift.brand_id)
+      || (input.platform_id && input.platform_id !== shift.platform_id)
+      || (input.period_date && input.period_date !== shift.date)
+      || (input.execution_source && input.execution_source !== shift.execution_source)) {
+      throw new Error('OPERATIONAL_FILE_SCOPE_MISMATCH')
+    }
+  }
+
+  const brandId = shift ? shift.brand_id : input.brand_id
+  const platformId = shift ? shift.platform_id : input.platform_id
+  const periodDate = shift ? shift.date : input.period_date
+  const executionSource = shift ? shift.execution_source : input.execution_source
+
+  if (typeof brandId !== 'string' || typeof platformId !== 'string'
+      || typeof periodDate !== 'string'
+      || (executionSource !== 'internal' && executionSource !== 'agency')) {
+    throw new Error('OPERATIONAL_FILE_SCOPE_INVALID')
+  }
+
+  const date = new Date(periodDate + 'T00:00:00Z')
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(periodDate)
+    || !Number.isFinite(date.getTime())
+    || date.toISOString().slice(0, 10) !== periodDate) {
+    throw new Error('OPERATIONAL_FILE_DATE_INVALID')
+  }
+
+  const [brand, platform] = await Promise.all([
+    client.from('brands').select('id,name').eq('id', brandId).is('deleted_at', null).maybeSingle(),
+    client.from('platforms').select('id,name').eq('id', platformId).is('deleted_at', null).maybeSingle(),
+  ])
+  if (brand.error || platform.error) throw new Error('OPERATIONAL_FILE_SCOPE_LOOKUP_FAILED')
+  if (!brand.data || !platform.data) throw new Error('OPERATIONAL_FILE_SCOPE_INVALID')
+
+  const key = shift
+    ? 'shift:' + String(shift.id)
+    : ['period', brandId, platformId, executionSource, periodDate].join(':')
+  return {
+    scope_key: key,
+    shift_id: shift ? String(shift.id) : null,
+    brand_id: brandId,
+    platform_id: platformId,
+    period_date: periodDate,
+    execution_source: executionSource,
+    brand_label: String(brand.data.name),
+    platform_label: String(platform.data.name),
+  }
+}
+
+function fromQuery(params: URLSearchParams): ScopeInput {
+  const raw: Record<string, string> = {}
+  for (const key of ['shift_id', 'brand_id', 'platform_id', 'period_date', 'execution_source', 'provider']) {
+    const value = params.get(key)
+    if (value) raw[key] = value
+  }
+  return scopeFields.parse(raw)
+}
+
+async function loadFile(client: SupabaseClient, id: string) {
+  const res = await client.from('operational_files').select('*')
+    .eq('id', id).is('deleted_at', null).maybeSingle()
+  if (res.error) throw res.error
+  return res.data as Record<string, unknown> | null
+}
+
+export function createOperationalFileRouteHandler(deps: {
+  resolveUser?: ServerUserResolver
+  createClient?: () => SupabaseClient
+  storage?: StorageGateway
+  routes?: Pick<OperationalStorageRouteRepository, 'resolvePlacement'>
+  materializeFolders?: (placement: OperationalStoragePlacement) => Promise<string>
+  routingMode?: OperationalStorageRoutingMode
+} = {}) {
+  const clientFactory = deps.createClient ?? createSupabaseAdminClient
+  const storage = deps.storage ?? fileStorageService
+  const routingMode = deps.routingMode ?? resolveOperationalStorageRoutingMode()
+  let routeRepository: OperationalStorageRouteRepository | undefined
+  const routes = deps.routes ?? {
+    resolvePlacement(input: Parameters<OperationalStorageRouteRepository['resolvePlacement']>[0]) {
+      routeRepository ??= routingMode === 'compat'
+        ? createStaticOperationalStorageRouteRepository()
+        : createOperationalStorageRouteRepository()
+      return routeRepository.resolvePlacement(input)
+    },
+  }
+  const materialize = deps.materializeFolders ?? createOperationalStorageFolderMaterializer(
+    (parentId, name, provider) => storage.ensureFolder(parentId, name, provider),
+  )
+
+  async function run<T extends Response>(operation: () => Promise<T>): Promise<Response> {
+    try { return await operation() } catch (error) {
+      if (isAuthorizationError(error)) return authorizationErrorResponse(error)
+      if (error instanceof RequestBodyError) return errorResponse(error.code, error.status)
+      if (error instanceof OperationalStoragePlacementError) return errorResponse(error.code, 409)
+      if (error instanceof z.ZodError) return errorResponse('OPERATIONAL_FILE_REQUEST_INVALID')
+      const code = error instanceof Error ? error.message : 'OPERATIONAL_FILE_FAILED'
+      const known = code.startsWith('OPERATIONAL_FILE_') || code.startsWith('FILE_')
+      const status = code.endsWith('NOT_FOUND') ? 404
+        : code.endsWith('CONFLICT') || code.endsWith('MISMATCH') ? 409
+        : code.endsWith('TOO_LARGE') ? 413
+        : known ? 400 : 502
+      if (!known) console.error('OPERATIONAL_FILE_GATEWAY_FAILED')
+      return errorResponse(known ? code : 'OPERATIONAL_FILE_GATEWAY_FAILED', status)
+    }
+  }
+
+  return {
+    GET(request: Request) {
+      return run(async () => {
+        await requireRole(request, ['leader', 'admin'], deps.resolveUser)
+        const params = new URL(request.url).searchParams
+        const client = clientFactory()
+        if (params.get('catalog') === '1') {
+          const [brands, platforms] = await Promise.all([
+            client.from('brands').select('id,name').is('deleted_at', null).order('name', { ascending: true }),
+            client.from('platforms').select('id,name').is('deleted_at', null).order('name', { ascending: true }),
+          ])
+          if (brands.error || platforms.error) throw new Error('OPERATIONAL_FILE_SCOPE_LOOKUP_FAILED')
+          return Response.json({
+            ok: true,
+            categories: OPERATIONAL_FILE_CATEGORIES.map(id => ({ id, label: OPERATIONAL_FILE_CATEGORY_LABELS[id] })),
+            brands: brands.data ?? [], platforms: platforms.data ?? [],
+            max_single_upload_bytes: MAX_OPERATIONAL_FILE_BYTES,
+          }, { headers: { 'Cache-Control': 'no-store' } })
+        }
+
+        const fileId = params.get('file_id')
+        if (fileId) {
+          const row = await loadFile(client, fileId)
+          if (!row) return errorResponse('OPERATIONAL_FILE_NOT_FOUND', 404)
+          if ((row.provider !== 'google_drive' && row.provider !== 'onedrive') || typeof row.external_file_id !== 'string') {
+            return errorResponse('OPERATIONAL_FILE_PROVIDER_INVALID', 409)
+          }
+          const bytes = await storage.read({
+            provider: row.provider as Provider,
+            external_file_id: row.external_file_id,
+          })
+          return new Response(bytes as BodyInit, {
+            headers: {
+              'Cache-Control': 'private, no-store',
+              'Content-Type': String(row.mime_type),
+              'Content-Disposition': 'attachment; filename="' + sanitizeFileName(row.file_name) + '"',
+              'X-Content-Type-Options': 'nosniff',
+            },
+          })
+        }
+
+        const scope = await scopeFromInput(client, fromQuery(params))
+        const result = await client.from('operational_files').select('*')
+          .eq('scope_key', scope.scope_key).is('deleted_at', null)
+          .order('created_at', { ascending: false })
+        if (result.error) throw result.error
+        return Response.json({ ok: true, files: (result.data ?? []).map(row => publicFile(row as Record<string, unknown>)) },
+          { headers: { 'Cache-Control': 'no-store' } })
+      })
+    },
+    POST(request: Request) {
+      return run(async () => {
+        const actor = await requireRole(request, ['leader', 'admin'], deps.resolveUser)
+        const form = await readFormDataBody(request, MAX_OPERATIONAL_FILE_BYTES + 4096)
+        const payload = Object.fromEntries(['shift_id', 'brand_id', 'platform_id', 'period_date', 'execution_source', 'provider']
+          .flatMap(key => {
+            const value = form.get(key)
+            return typeof value === 'string' && value ? [[key, value]] : []
+          }))
+        const parsed = scopeFields.parse(payload)
+        const category = cleanCategory(form.get('category'))
+        const file = form.get('file')
+        if (!(file instanceof File) || !file.name) return errorResponse('OPERATIONAL_FILE_REQUIRED')
+        if (file.size < 1 || file.size > MAX_OPERATIONAL_FILE_BYTES) {
+          return errorResponse('OPERATIONAL_FILE_TOO_LARGE', 413)
+        }
+        const mime = resolveOperationalFileMime(category, file.name, file.type)
+        const bytes = new Uint8Array(await file.arrayBuffer())
+        const checksum = createHash('sha256').update(bytes).digest('hex')
+        const client = clientFactory()
+        const scope = await scopeFromInput(client, parsed)
+        const provider = parsed.provider ?? 'google_drive'
+        const artifactKey = 'file:' + checksum
+
+        const lookup = () => client.from('operational_files').select('*')
+          .eq('scope_key', scope.scope_key).eq('category', category)
+          .eq('artifact_key', artifactKey).is('deleted_at', null).maybeSingle()
+        const previous = await lookup()
+        if (previous.error) throw previous.error
+        if (previous.data) {
+          if (previous.data.provider !== provider) return errorResponse('OPERATIONAL_FILE_PROVIDER_CONFLICT', 409)
+          return Response.json({ ok: true, file: publicFile(previous.data as Record<string, unknown>), reused: true },
+            { headers: { 'Cache-Control': 'no-store' } })
+        }
+
+        const storageName = safeName(file.name, category, scope.period_date, checksum)
+        const base = await routes.resolvePlacement(toOperationalFileRouteInput({
+          provider,
+          executionSource: scope.execution_source,
+          brandId: scope.brand_id,
+          platformId: scope.platform_id,
+          subbrandKey: null,
+          shiftDate: scope.period_date,
+          fileName: storageName,
+          brandLabel: scope.brand_label,
+          platformLabel: scope.platform_label,
+        }))
+        const placement = resolveOperationalFilePlacement(base, category)
+        const parentId = await materialize(placement)
+        const actorId = actor.businessUserId ?? actor.id
+        const uploaded = await storage.upload({
+          name: placement.fileName,
+          mime_type: mime,
+          size_bytes: bytes.byteLength,
+          checksum_sha256: checksum,
+          content: bytes,
+          entity_type: scope.shift_id ? 'shift' : 'brand',
+          entity_id: scope.shift_id ?? scope.brand_id,
+          created_by: actorId,
+          logical_path: [...placement.folderSegments, placement.fileName].join('/'),
+          external_parent_id: parentId,
+          destination: { provider },
+        })
+        const row = {
+          scope_key: scope.scope_key,
+          category,
+          brand_id: scope.brand_id,
+          platform_id: scope.platform_id,
+          shift_id: scope.shift_id,
+          period_date: scope.period_date,
+          execution_source: scope.execution_source,
+          provider,
+          external_file_id: uploaded.asset.external_file_id,
+          external_parent_id: parentId,
+          provider_metadata: uploaded.asset.provider_metadata ?? {},
+          folder_path: placement.folderPath,
+          file_name: placement.fileName,
+          mime_type: mime,
+          size_bytes: bytes.byteLength,
+          checksum_sha256: checksum,
+          artifact_key: artifactKey,
+          uploaded_by: actor.businessUserId ?? null,
+        }
+        const inserted = await client.from('operational_files').insert(row).select('*').single()
+        if (inserted.error || !inserted.data) {
+          const winner = await lookup()
+          try { await storage.delete({ provider, external_file_id: uploaded.asset.external_file_id }) }
+          catch { console.error('OPERATIONAL_FILE_ORPHAN_CLEANUP_FAILED') }
+          if (!winner.error && winner.data && winner.data.provider === provider) {
+            return Response.json({ ok: true, file: publicFile(winner.data as Record<string, unknown>), reused: true },
+              { headers: { 'Cache-Control': 'no-store' } })
+          }
+          throw new Error('OPERATIONAL_FILE_METADATA_WRITE_FAILED')
+        }
+        return Response.json({ ok: true, file: publicFile(inserted.data as Record<string, unknown>), reused: false },
+          { headers: { 'Cache-Control': 'no-store' } })
+      })
+    },
+    DELETE(request: Request) {
+      return run(async () => {
+        await requireRole(request, ['leader', 'admin'], deps.resolveUser)
+        const parsed = removeFields.parse(await readJsonBody(request, 4096))
+        const client = clientFactory()
+        const row = await loadFile(client, parsed.file_id)
+        if (!row) return errorResponse('OPERATIONAL_FILE_NOT_FOUND', 404)
+        if ((row.provider !== 'google_drive' && row.provider !== 'onedrive') || typeof row.external_file_id !== 'string') {
+          return errorResponse('OPERATIONAL_FILE_PROVIDER_INVALID', 409)
+        }
+        await storage.delete({ provider: row.provider as Provider, external_file_id: row.external_file_id })
+        const result = await client.from('operational_files')
+          .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq('id', parsed.file_id).is('deleted_at', null).select('id').maybeSingle()
+        if (result.error || !result.data) throw new Error('OPERATIONAL_FILE_METADATA_DELETE_FAILED')
+        return Response.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } })
+      })
+    },
+  }
+}
