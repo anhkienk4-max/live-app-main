@@ -50,6 +50,20 @@ test('Member real staffing/registration network carries no foreign raw applicant
   expect(network.some(row => row.path.endsWith('/shift_registrations') && row.rows > 0)).toBe(true)
   expect(network.every(row => row.status === 200 && row.foreign === 0)).toBe(true)
   await capture(page, 'member-network-privacy', { network, otherApplicantSensitiveFields: 0 })
+  await page.getByTestId('production-main-content').getByRole('button', { name: 'Swap Requests', exact: true }).click()
+  const swapDialog = page.getByRole('dialog')
+  await expect(swapDialog.getByRole('combobox').first()).toBeVisible()
+  await swapDialog.getByRole('combobox').first().click()
+  await expect(page.getByRole('option').first()).toBeVisible()
+  await page.getByRole('option').first().click()
+  await expect(swapDialog.getByRole('combobox')).toHaveCount(3)
+  await swapDialog.getByRole('combobox').last().click()
+  await expect(page.getByRole('option').first()).toBeVisible()
+  const replacementLabels = await page.getByRole('option').allTextContents()
+  expect(replacementLabels.length).toBeGreaterThan(1)
+  expect(replacementLabels.every(label => !label.includes('@'))).toBe(true)
+  await capture(page, 'member-safe-swap-directory', { eligibleReplacementOptions: replacementLabels.length - 1, contactFieldsVisible: false })
+
 })
 
 for (const role of ['admin', 'leader', 'member'] as const) {

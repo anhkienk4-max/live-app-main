@@ -13,7 +13,7 @@ import {
   swapRequestService,
   userService,
 } from '@/lib/services/dataService'
-import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Shift, SwapRequest, SwapStatus, User } from '@/lib/types/database.types'
+import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Shift, SwapRequest, SwapStatus, User, UserDirectoryEntry } from '@/lib/types/database.types'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation, type TranslationKey } from '@/lib/i18n'
@@ -49,6 +49,7 @@ export function SwapRequestList() {
   const [swaps, setSwaps] = React.useState<SwapRequest[]>([])
   const [shifts, setShifts] = React.useState<Shift[]>([])
   const [users, setUsers] = React.useState<User[]>([])
+  const [directory, setDirectory] = React.useState<UserDirectoryEntry[]>([])
   const [brands, setBrands] = React.useState<Brand[]>([])
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
@@ -67,10 +68,10 @@ export function SwapRequestList() {
   const loadData = React.useCallback(async () => {
     setLoadError(null)
     try {
-    const [loadedSwaps, loadedShifts, loadedUsers, loadedBrands, loadedPlatforms, loadedCampaigns] = await Promise.all([
-      swapRequestService.getAll(), shiftService.getAll(), userService.getAll(), brandService.getAll(), platformService.getAll(), campaignService.getAll(),
+    const [loadedSwaps, loadedShifts, loadedUsers, loadedBrands, loadedPlatforms, loadedCampaigns, loadedDirectory] = await Promise.all([
+      swapRequestService.getAll(), shiftService.getAll(), userService.getAll(), brandService.getAll(), platformService.getAll(), campaignService.getAll(), userService.getDirectory(),
     ])
-    setSwaps(loadedSwaps); setShifts(loadedShifts); setUsers(loadedUsers); setBrands(loadedBrands); setPlatforms(loadedPlatforms); setCampaigns(loadedCampaigns)
+    setSwaps(loadedSwaps); setShifts(loadedShifts); setUsers(loadedUsers); setBrands(loadedBrands); setPlatforms(loadedPlatforms); setCampaigns(loadedCampaigns); setDirectory(loadedDirectory)
     } catch(error) {setLoadError(error instanceof Error ? error.message : 'Không thể tải yêu cầu đổi ca')} finally {setLoading(false)}
   }, [])
   React.useEffect(() => {
@@ -84,9 +85,10 @@ export function SwapRequestList() {
     })
   }, [currentUser])
 
+  const displayUsers = [...new Map([...directory, ...users].map(user => [user.id, user])).values()]
   const shiftById = new Map(shifts.map(shift => [shift.id, shift]))
   const nameFor = (items: Array<{ id: string; name: string }>, id?: string) => id ? items.find(item => item.id === id)?.name || '—' : '—'
-  const userName = (id?: string) => id ? users.find(user => user.id === id)?.full_name || '—' : '—'
+  const userName = (id?: string) => id ? displayUsers.find(user => user.id === id)?.full_name || '—' : '—'
   const roleFor = (swap: SwapRequest): OperationalRole => swap.operational_role || (swap.new_support_id ? 'support' : swap.new_technical_id ? 'technical' : 'host')
   const replacementFor = (swap: SwapRequest) => swap.replacement_staff_id || swap.new_host_id || swap.new_support_id || swap.new_technical_id
   const scopedSwaps = swaps.filter(swap => {
@@ -119,7 +121,7 @@ export function SwapRequestList() {
   const safePage = Math.min(page, Math.max(1, Math.ceil(filtered.length / pageSize)))
   const visibleSwaps = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
   const exportMaps = {
-    users: new Map(users.map(user => [user.id, user.full_name])),
+    users: new Map(displayUsers.map(user => [user.id, user.full_name])),
     brands: new Map(brands.map(brand => [brand.id, brand.name])),
     campaigns: new Map(campaigns.map(campaign => [campaign.id, campaign.name])),
   }
@@ -192,7 +194,7 @@ export function SwapRequestList() {
       <div className="mt-3 grid gap-3 md:grid-cols-4">
         <label className="text-xs font-medium">{t('startDate')}<Input className="mt-1" type="date" value={filters.start} onChange={event => updateFilters(current => ({ ...current, start: event.target.value }))} /></label>
         <label className="text-xs font-medium">{t('endDate')}<Input className="mt-1" type="date" value={filters.end} onChange={event => updateFilters(current => ({ ...current, end: event.target.value }))} /></label>
-        <EntityFilter label={t('requester')} value={filters.requesterIds} options={users.map(user => ({ id: user.id, name: user.full_name }))} onChange={value => updateFilters(current => ({ ...current, requesterIds: value }))} />
+        <EntityFilter label={t('requester')} value={filters.requesterIds} options={displayUsers.map(user => ({ id: user.id, name: user.full_name }))} onChange={value => updateFilters(current => ({ ...current, requesterIds: value }))} />
         <EntityFilter label={t('brand')} value={filters.brandIds} options={brands} onChange={value => updateFilters(current => ({ ...current, brandIds: value }))} />
         <EntityFilter label={t('campaign')} value={filters.campaignIds} options={campaigns} onChange={value => updateFilters(current => ({ ...current, campaignIds: value }))} />
       </div>
@@ -264,8 +266,8 @@ export function SwapRequestList() {
     })}</tbody></table></div><HistoryPagination page={safePage} pageSize={pageSize} total={filtered.length} onPageChange={setPage} onPageSizeChange={size => {setPageSize(size);setPage(1)}} /></CardContent></Card>}
 
 
-    {showForm && currentUser && <SwapRequestFormModal open={showForm} onOpenChange={setShowForm} shifts={shifts.filter(shift => shift.status === 'scheduled' && (myShiftIds.has(shift.id) || shift.host_id === currentUser.id || shift.support_id === currentUser.id || shift.technical_id === currentUser.id))} users={users} brands={brands} platforms={platforms} onSuccess={() => { void loadData(); setShowForm(false) }} />}
-    {selectedSwap && <SwapDetailModal open swap={selectedSwap} shift={shiftById.get(selectedSwap.shift_id)!} requester={users.find(user => user.id === selectedSwap.requester_id)!} newHost={users.find(user => user.id === replacementFor(selectedSwap))} brands={brands} platforms={platforms} showParticipantActions={getSwapUiActions(selectedSwap, currentUser).showAccept} showReviewerActions={getSwapUiActions(selectedSwap, currentUser).showReviewerReject} onAccept={() => runReview(selectedSwap, 'accept')} onParticipantReject={() => runReview(selectedSwap, 'counterpart_reject')} onOpenChange={open => !open && setSelectedSwap(null)} onApprove={() => runReview(selectedSwap, 'approve')} onReject={() => runReview(selectedSwap, 'reject')} />}
+    {showForm && currentUser && <SwapRequestFormModal open={showForm} onOpenChange={setShowForm} shifts={shifts.filter(shift => shift.status === 'scheduled' && (myShiftIds.has(shift.id) || shift.host_id === currentUser.id || shift.support_id === currentUser.id || shift.technical_id === currentUser.id))} users={directory} brands={brands} platforms={platforms} onSuccess={() => { void loadData(); setShowForm(false) }} />}
+    {selectedSwap && <SwapDetailModal open swap={selectedSwap} shift={shiftById.get(selectedSwap.shift_id)!} requester={displayUsers.find(user => user.id === selectedSwap.requester_id)!} newHost={displayUsers.find(user => user.id === replacementFor(selectedSwap))} brands={brands} platforms={platforms} showParticipantActions={getSwapUiActions(selectedSwap, currentUser).showAccept} showReviewerActions={getSwapUiActions(selectedSwap, currentUser).showReviewerReject} onAccept={() => runReview(selectedSwap, 'accept')} onParticipantReject={() => runReview(selectedSwap, 'counterpart_reject')} onOpenChange={open => !open && setSelectedSwap(null)} onApprove={() => runReview(selectedSwap, 'approve')} onReject={() => runReview(selectedSwap, 'reject')} />}
     <LifecycleActionDialog open={Boolean(cancelTarget)} onOpenChange={open => !open && setCancelTarget(null)} title="Cancel swap request" impact={cancelImpact} confirmText="Cancel request" onConfirm={cancelSwap} />
   </div>
 }

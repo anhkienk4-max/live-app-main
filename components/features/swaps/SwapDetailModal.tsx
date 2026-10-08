@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { SwapRequest, Shift, User, Brand, Platform } from '@/lib/types/database.types'
+import { SwapRequest, Shift, User, UserDirectoryEntry, Brand, Platform } from '@/lib/types/database.types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -17,8 +17,8 @@ interface SwapDetailModalProps {
   onOpenChange: (open: boolean) => void
   swap: SwapRequest
   shift: Shift
-  requester: User
-  newHost?: User
+  requester: UserDirectoryEntry & Partial<Pick<User, 'email' | 'department'>>
+  newHost?: UserDirectoryEntry & Partial<Pick<User, 'email' | 'department'>>
   brands: Brand[]
   platforms: Platform[]
   showParticipantActions?: boolean
@@ -140,7 +140,7 @@ export function SwapDetailModal({
               </div>
               <div className="ml-6 space-y-1">
                 <div className="font-medium">{requester.full_name}</div>
-                <div className="text-muted-foreground text-xs">{requester.email}</div>
+                {requester.email && <div className="text-muted-foreground text-xs">{requester.email}</div>}
                 {requester.department && <div className="text-muted-foreground text-xs">{requester.department}</div>}
               </div>
             </div>
@@ -154,7 +154,7 @@ export function SwapDetailModal({
                 {newHost ? (
                   <>
                     <div className="font-medium">{newHost.full_name}</div>
-                    <div className="text-muted-foreground text-xs">{newHost.email}</div>
+                    {newHost.email && <div className="text-muted-foreground text-xs">{newHost.email}</div>}
                     {newHost.department && <div className="text-muted-foreground text-xs">{newHost.department}</div>}
                   </>
                 ) : (
