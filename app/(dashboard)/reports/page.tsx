@@ -3,8 +3,8 @@ import { LocalizedPageHeading } from '@/lib/i18n'
 import { PageShell } from '@/components/ui/archetypes'
 export default function ReportsPage() {
   return (
-    <PageShell archetype="analytics" className="space-y-4 p-4 md:p-6">
-      <LocalizedPageHeading title="reports" subtitle="reportsSubtitle" />
+    <PageShell archetype="analytics" className="space-y-3 p-4">
+      <header className="[&_h1]:mb-1 [&_h1]:text-lg [&_h1]:font-semibold [&_p]:text-xs"><LocalizedPageHeading title="reports" subtitle="reportsSubtitle" /></header>
       <LazyReportsList />
     </PageShell>
   )
