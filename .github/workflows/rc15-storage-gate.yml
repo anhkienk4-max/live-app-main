@@ -85,7 +85,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261009000000_rc15_operational_files.sql
           psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261009000000_rc15_operational_files.sql
           psql -v ON_ERROR_STOP=1 <<'SQL'
-          do $
+          do $rc15$
           begin
             if not exists (
               select 1 from information_schema.columns
@@ -97,7 +97,7 @@ jobs:
               raise exception 'RC15 row level security missing';
             end if;
           end
-          $;
+          $rc15$;
           SQL
 
       - name: Type check
