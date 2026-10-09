@@ -58,7 +58,10 @@ function client() {
   let counter = 0
   const get = (table: string): Row[] => {
     if (table === 'brands') return [{ id: 'brand-1', name: 'Female AI livestream', deleted_at: null }]
-    if (table === 'platforms') return [{ id: 'platform-1', name: 'Shopee Live', deleted_at: null }]
+    if (table === 'platforms') return [
+      { id: 'platform-1', name: 'Shopee Live', deleted_at: null },
+      { id: 'platform-2', name: 'TikTok Shop', deleted_at: null },
+    ]
     if (table === 'shifts') return [{ id: 'shift-1', brand_id: 'brand-1', platform_id: 'platform-1', date: '2026-09-14', execution_source: 'internal', deleted_at: null }]
     if (table === 'campaigns') return [
       { id: 'campaign-1', name: 'Fall Campaign', brand_id: 'brand-1',
@@ -313,7 +316,7 @@ test('Campaign Content/Production files enforce brand, platform, dates and isola
   assert.equal(wrongMonth.status, 409)
   assert.equal(uploadCount, 0)
   const wrongPlatform = await handler.POST(await campaignUpload('campaign-1', { platform_id: 'platform-2' }))
-  assert.notEqual(wrongPlatform.status, 200)
+  assert.equal(wrongPlatform.status, 409)
   assert.equal(uploadCount, 0)
 
   const first = await handler.POST(await campaignUpload('campaign-1'))
