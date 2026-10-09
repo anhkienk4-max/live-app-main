@@ -363,7 +363,7 @@ export function ShiftFormDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className={shift ? 'grid grid-cols-1 items-start gap-4 lg:grid-cols-12' : 'space-y-4'} onChangeCapture={() => setDirty(true)} onInvalidCapture={event => {event.preventDefault(); const field=event.target as HTMLInputElement; const section=field.closest<HTMLElement>('[data-step]'); if(section) setStep(Number(section.dataset.step)); requestAnimationFrame(()=>field.focus())}}>
-          {!shift && <nav className="col-span-full grid grid-cols-4 gap-2 border-b pb-3" aria-label="Tạo ca">{['Thông tin chung','Lịch phát sóng','Nhân sự','Kiểm tra'].map((label,index)=><Button type="button" key={label} variant={step===index?'default':'ghost'} size="sm" onClick={()=>setStep(index)} aria-current={step===index?'step':undefined}>{index+1}. {label}</Button>)}</nav>}
+          {!shift && <nav className="col-span-full grid grid-cols-2 gap-2 border-b pb-3 sm:grid-cols-4" aria-label="Tạo ca">{['Thông tin chung','Lịch phát sóng','Nhân sự','Kiểm tra'].map((label,index)=><Button type="button" key={label} variant={step===index?'default':'ghost'} size="sm" onClick={()=>setStep(index)} aria-current={step===index?'step':undefined}>{index+1}. {label}</Button>)}</nav>}
 <section data-step="0" hidden={!shift && step !== 0} className={shift ? 'space-y-3 rounded-lg border bg-white p-4 lg:col-span-4' : 'space-y-4'}>          {/* Template Selector */}
           {!shift && templates.length > 0 && (
             <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
@@ -581,11 +581,11 @@ export function ShiftFormDialog({
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-4">
-              <div>
+            <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="min-w-0">
                 <label className="text-sm font-medium">Host</label>
                 <Select value={formData.host_id} onValueChange={(v) => updateFormData({ ...formData, host_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Assign host..." /></SelectTrigger>
+                  <SelectTrigger className="w-full min-w-0"><SelectValue placeholder="Assign host..." /></SelectTrigger>
                   <SelectContent>
                     {users.filter(u => u.status === 'active' && u.operational_roles?.includes('host')).map(u => (
                       <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
@@ -593,10 +593,10 @@ export function ShiftFormDialog({
                   </SelectContent>
                 </Select>
               </div>
-              <div>
+              <div className="min-w-0">
                 <label className="text-sm font-medium">Support Staff</label>
                 <Select value={formData.support_id} onValueChange={(v) => updateFormData({ ...formData, support_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Assign support..." /></SelectTrigger>
+                  <SelectTrigger className="w-full min-w-0"><SelectValue placeholder="Assign support..." /></SelectTrigger>
                   <SelectContent>
                     {users.filter(u => u.status === 'active' && u.operational_roles?.includes('support')).map(u => (
                       <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
@@ -604,10 +604,10 @@ export function ShiftFormDialog({
                   </SelectContent>
                 </Select>
               </div>
-              <div>
+              <div className="min-w-0">
                 <label className="text-sm font-medium">Technical Staff</label>
                 <Select value={formData.technical_id} onValueChange={(v) => updateFormData({ ...formData, technical_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Assign technical..." /></SelectTrigger>
+                  <SelectTrigger className="w-full min-w-0"><SelectValue placeholder="Assign technical..." /></SelectTrigger>
                   <SelectContent>
                     {users.filter(u => u.status === 'active' && u.operational_roles?.includes('technical')).map(u => (
                       <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
