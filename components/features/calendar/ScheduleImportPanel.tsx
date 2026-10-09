@@ -70,6 +70,7 @@ import {
 } from '@/lib/utils/scheduleImportUx'
 import { processScheduleImportRows } from '@/lib/utils/scheduleImportRecovery'
 import { scheduleImportBatchPort } from '@/lib/services/scheduleImportBatchPort'
+import { planScheduleImportArchive, persistScheduleArchive, type ScheduleArchivePlan } from '@/lib/utils/scheduleImportArchive'
 import {
   type MasterDataState,
   importGate,
@@ -82,6 +83,8 @@ type CompletedImport = {
   source: Source
   batch: ScheduleImportBatch
   rows: ImportBatchRow[]
+  archiveStatus?: string
+  archiveIncomplete?: boolean
 }
 
 const importStatusLabelKey: Record<ImportResultPresentationStatus, TranslationKey> = {
@@ -148,6 +151,8 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   const { t } = useTranslation()
   const { toast } = useToast()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const originalImportFileRef = React.useRef<File | null>(null)
+  const incompleteArchiveRef = React.useRef<ScheduleArchivePlan | null>(null)
   const completedImportRef = React.useRef<HTMLDivElement>(null)
   const [brands, setBrands] = React.useState<Brand[]>([])
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
@@ -164,6 +169,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   const [cancelOpen, setCancelOpen] = React.useState(false)
   const [draftRows, setDraftRows] = React.useState<DraftRows>({})
   const [completedImport, setCompletedImport] = React.useState<CompletedImport | null>(null)
+  const [retryingArchive, setRetryingArchive] = React.useState(false)
 
   React.useEffect(() => {
     if (completedImport) completedImportRef.current?.focus()
@@ -197,6 +203,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   const recordPreview = async (next: ImportResult, nextSource: Source) => {
     const normalizedNext = normalizeScheduleImportResult(next)
     setCompletedImport(null)
+    incompleteArchiveRef.current = null
     setPreviewFilter('all')
     setPreviewSearch('')
     setResult(normalizedNext)
@@ -228,6 +235,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     try {
       const next = await importShiftsFromExcel(file, maps.brands, maps.platforms, maps.campaigns, undefined, existingShifts)
       await recordPreview(next, { type: 'excel', name: file.name })
+      originalImportFileRef.current = file
     } catch (error) {
       toast({ title: t('error'), description: safeImportError(error, t('importPreviewLoadError')), variant: 'destructive' })
     } finally {
@@ -247,6 +255,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     try {
       const next = await importShiftsFromGoogleSheetsUrl(googleUrl, maps.brands, maps.platforms, maps.campaigns, existingShifts)
       await recordPreview(next, { type: 'google_sheets', name: googleUrl })
+      originalImportFileRef.current = null
     } catch (error) {
       toast({ title: t('error'), description: safeImportError(error, t('importPreviewLoadError')), variant: 'destructive' })
     } finally {
@@ -324,6 +333,61 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     ])
   }
 
+  // This archive is deliberately isolated from import-batch state transitions.
+  // A storage outage must never mark already imported shifts as failed.
+  const archiveCompletedSchedule = async (sourceType: Source['type'], batchId: string, previews: ImportResult['rows']) => {
+    const plan = planScheduleImportArchive({
+      batchId, previews, brands, platforms, sourceType,
+      sourceFile: sourceType === 'excel' ? originalImportFileRef.current : null,
+      maxFileBytes: 4 * 1024 * 1024,
+    })
+    incompleteArchiveRef.current = plan
+    try {
+      const saved = await persistScheduleArchive(plan)
+      const partial = saved.unresolved > 0 || (!saved.originalSourceArchived && sourceType === 'excel')
+      if (!partial) incompleteArchiveRef.current = null
+      const status = saved.archived
+        ? `Đã lưu ${saved.archived} file lịch vào Google Drive (trong đó ${saved.reused} file đã tồn tại).`
+        : 'Không có dòng lịch nào có ngữ cảnh đủ an toàn để tự lưu.'
+      const note = saved.unresolved
+        ? ` ${saved.unresolved} dòng thiếu Brand/Platform/Ngày/Nguồn vận hành nên không tự lưu; cần kiểm tra thủ công.`
+        : ''
+      const originalNote = !saved.originalSourceArchived && sourceType === 'excel'
+        ? ' File Excel gốc chưa lưu vì chứa nhiều phạm vi hoặc vượt giới hạn 4 MB; các bản preview đã được phân vùng theo brand.'
+        : ''
+      return { archiveStatus: status + note + originalNote, archiveIncomplete: partial }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'SCHEDULE_ARCHIVE_FAILED'
+      return {
+        archiveStatus: `Import đã được xử lý, nhưng lưu Google Drive chưa hoàn chỉnh: ${reason}. Bấm thử lưu lại để đồng bộ, không cần import lại ca.`,
+        archiveIncomplete: true,
+      }
+    }
+  }
+
+  const retryCompletedArchive = async () => {
+    const plan = incompleteArchiveRef.current
+    if (!plan || !completedImport || retryingArchive) return
+    setRetryingArchive(true)
+    try {
+      const saved = await persistScheduleArchive(plan)
+      const partial = saved.unresolved > 0 || (!saved.originalSourceArchived && completedImport.source.type === 'excel')
+      if (!partial) incompleteArchiveRef.current = null
+      setCompletedImport(prev => prev ? {
+        ...prev,
+        archiveStatus: `Đồng bộ Drive: ${saved.archived} file (đã tồn tại: ${saved.reused}).`
+          + (saved.unresolved ? ` Vẫn còn ${saved.unresolved} dòng chưa phân vùng được.` : '')
+          + (!saved.originalSourceArchived && prev.source.type === 'excel' ? ' File Excel gốc không được sao chép vào folder brand.' : ''),
+        archiveIncomplete: partial,
+      } : prev)
+    } catch (error) {
+      setCompletedImport(prev => prev ? {
+        ...prev, archiveIncomplete: true,
+        archiveStatus: `Lưu lại chưa thành công: ${error instanceof Error ? error.message : 'PROVIDER_FAILED'}.`,
+      } : prev)
+    } finally { setRetryingArchive(false) }
+  }
+
   const confirmImport = async () => {
     if (!result || !batch || !source || result.validRows === 0) return
     const completedSource = source
@@ -363,7 +427,8 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       if (importResult.retryable > 0) {
         completedBatch = await scheduleImportBatchPort.markBatchStatus(batch.id, 'failed')
         const finalRows = await scheduleImportBatchPort.listBatchRows(batch.id)
-        setCompletedImport({ source: completedSource, batch: completedBatch ?? { ...batch, status: 'failed' }, rows: finalRows })
+        const archive = await archiveCompletedSchedule(completedSource.type, batch.id, result.rows)
+        setCompletedImport({ source: completedSource, batch: completedBatch ?? { ...batch, status: 'failed' }, rows: finalRows, ...archive })
         setResult(null)
         setBatch(null)
         setSource(null)
@@ -379,7 +444,8 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       }
       completedBatch = await scheduleImportBatchPort.markBatchStatus(batch.id, 'confirmed')
       const finalRows = await scheduleImportBatchPort.listBatchRows(batch.id)
-      setCompletedImport({ source: completedSource, batch: completedBatch ?? { ...batch, status: 'confirmed' }, rows: finalRows })
+      const archive = await archiveCompletedSchedule(completedSource.type, batch.id, result.rows)
+      setCompletedImport({ source: completedSource, batch: completedBatch ?? { ...batch, status: 'confirmed' }, rows: finalRows, ...archive })
       const finalCounts = batchPresentationCounts(finalRows)
       const attention = finalCounts.warning + finalCounts.invalid + finalCounts.duplicate + finalCounts.retryable
       toast({
@@ -418,6 +484,8 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       setResult(null)
       setBatch(null)
       setSource(null)
+      originalImportFileRef.current = null
+      incompleteArchiveRef.current = null
       setCompletedImport(null)
       toast({ title: 'Import preview removed', variant: 'success' })
     } catch (error) {
