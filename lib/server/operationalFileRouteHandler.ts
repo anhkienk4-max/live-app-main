@@ -25,6 +25,7 @@ type Provider = 'google_drive' | 'onedrive'
 type StorageGateway = Pick<ReturnType<typeof createFileStorageService>, 'upload' | 'read' | 'delete' | 'ensureFolder' | 'getMetadata' | 'getViewUrl'>
 type ScopeInput = {
   shift_id?: string
+  campaign_id?: string
   brand_id?: string
   platform_id?: string
   period_date?: string
@@ -34,6 +35,7 @@ type ScopeInput = {
 type ResolvedScope = {
   scope_key: string
   shift_id: string | null
+  campaign_id: string | null
   brand_id: string
   platform_id: string
   period_date: string
@@ -44,6 +46,7 @@ type ResolvedScope = {
 
 const scopeFields = z.object({
   shift_id: z.string().min(1).max(120).optional(),
+  campaign_id: z.string().min(1).max(120).optional(),
   brand_id: z.string().min(1).max(120).optional(),
   platform_id: z.string().min(1).max(120).optional(),
   period_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional(),
@@ -100,6 +103,28 @@ function publicFile(row: Record<string, unknown>) {
 }
 
 async function scopeFromInput(client: SupabaseClient, input: ScopeInput): Promise<ResolvedScope> {
+  if (input.shift_id && input.campaign_id) {
+    throw new Error('OPERATIONAL_FILE_SCOPE_MISMATCH')
+  }
+  let campaign: Record<string, unknown> | null = null
+  if (input.campaign_id) {
+    const result = await client.from('campaigns')
+      .select('id,brand_id,start_date,end_date,platform_source,platform_ids')
+      .eq('id', input.campaign_id).is('deleted_at', null).maybeSingle()
+    if (result.error) throw new Error('OPERATIONAL_FILE_SCOPE_LOOKUP_FAILED')
+    if (!result.data) throw new Error('OPERATIONAL_FILE_CAMPAIGN_NOT_FOUND')
+    campaign = result.data as Record<string, unknown>
+    if (input.brand_id && input.brand_id !== campaign.brand_id) {
+      throw new Error('OPERATIONAL_FILE_SCOPE_MISMATCH')
+    }
+    if (!input.platform_id || !input.period_date || !input.execution_source) {
+      throw new Error('OPERATIONAL_FILE_SCOPE_INVALID')
+    }
+    if (typeof campaign.start_date !== 'string' || typeof campaign.end_date !== 'string'
+      || input.period_date < campaign.start_date || input.period_date > campaign.end_date) {
+      throw new Error('OPERATIONAL_FILE_CAMPAIGN_DATE_MISMATCH')
+    }
+  }
   let shift: Record<string, unknown> | null = null
   if (input.shift_id) {
     const result = await client.from('shifts').select('id,brand_id,platform_id,date,execution_source')
@@ -115,7 +140,7 @@ async function scopeFromInput(client: SupabaseClient, input: ScopeInput): Promis
     }
   }
 
-  const brandId = shift ? shift.brand_id : input.brand_id
+  const brandId = shift ? shift.brand_id : (campaign ? campaign.brand_id : input.brand_id)
   const platformId = shift ? shift.platform_id : input.platform_id
   const periodDate = shift ? shift.date : input.period_date
   const executionSource = shift ? shift.execution_source : input.execution_source
@@ -139,13 +164,26 @@ async function scopeFromInput(client: SupabaseClient, input: ScopeInput): Promis
   ])
   if (brand.error || platform.error) throw new Error('OPERATIONAL_FILE_SCOPE_LOOKUP_FAILED')
   if (!brand.data || !platform.data) throw new Error('OPERATIONAL_FILE_SCOPE_INVALID')
+  if (campaign) {
+    const allowedIds = Array.isArray(campaign.platform_ids)
+      ? campaign.platform_ids.filter((id): id is string => typeof id === 'string') : []
+    const platformSource = typeof campaign.platform_source === 'string'
+      ? campaign.platform_source.trim().toLowerCase() : ''
+    if ((allowedIds.length > 0 && !allowedIds.includes(platformId))
+      || (allowedIds.length === 0 && platformSource && platformSource !== String(platform.data.name).trim().toLowerCase())) {
+      throw new Error('OPERATIONAL_FILE_CAMPAIGN_PLATFORM_MISMATCH')
+    }
+  }
 
   const key = shift
     ? 'shift:' + String(shift.id)
-    : ['period', brandId, platformId, executionSource, periodDate].join(':')
+    : campaign
+      ? ['campaign', String(campaign.id), platformId, executionSource, periodDate].join(':')
+      : ['period', brandId, platformId, executionSource, periodDate].join(':')
   return {
     scope_key: key,
     shift_id: shift ? String(shift.id) : null,
+    campaign_id: campaign ? String(campaign.id) : null,
     brand_id: brandId,
     platform_id: platformId,
     period_date: periodDate,
@@ -157,7 +195,7 @@ async function scopeFromInput(client: SupabaseClient, input: ScopeInput): Promis
 
 function fromQuery(params: URLSearchParams): ScopeInput {
   const raw: Record<string, string> = {}
-  for (const key of ['shift_id', 'brand_id', 'platform_id', 'period_date', 'execution_source', 'provider']) {
+  for (const key of ['shift_id', 'campaign_id', 'brand_id', 'platform_id', 'period_date', 'execution_source', 'provider']) {
     const value = params.get(key)
     if (value) raw[key] = value
   }
@@ -230,15 +268,17 @@ export function createOperationalFileRouteHandler(deps: {
         const params = new URL(request.url).searchParams
         const client = clientFactory()
         if (params.get('catalog') === '1') {
-          const [brands, platforms] = await Promise.all([
+          const [brands, platforms, campaigns] = await Promise.all([
             client.from('brands').select('id,name').is('deleted_at', null).order('name', { ascending: true }),
             client.from('platforms').select('id,name').is('deleted_at', null).order('name', { ascending: true }),
+            client.from('campaigns').select('id,name,brand_id,start_date,end_date,platform_ids,platform_source')
+              .is('deleted_at', null).order('name', { ascending: true }),
           ])
-          if (brands.error || platforms.error) throw new Error('OPERATIONAL_FILE_SCOPE_LOOKUP_FAILED')
+          if (brands.error || platforms.error || campaigns.error) throw new Error('OPERATIONAL_FILE_SCOPE_LOOKUP_FAILED')
           return Response.json({
             ok: true,
             categories: OPERATIONAL_FILE_CATEGORIES.filter(id => actor.systemPermission === 'admin' || !restrictedCategories.has(id)).map(id => ({ id, label: OPERATIONAL_FILE_CATEGORY_LABELS[id] })),
-            brands: brands.data ?? [], platforms: platforms.data ?? [],
+            brands: brands.data ?? [], platforms: platforms.data ?? [], campaigns: campaigns.data ?? [],
             max_single_upload_bytes: MAX_OPERATIONAL_FILE_BYTES,
           }, { headers: { 'Cache-Control': 'no-store' } })
         }
@@ -328,7 +368,7 @@ export function createOperationalFileRouteHandler(deps: {
           const inserted = await client.from('operational_files').insert({
             scope_key: scope.scope_key, category,
             brand_id: scope.brand_id, platform_id: scope.platform_id,
-            shift_id: scope.shift_id, period_date: scope.period_date,
+            shift_id: scope.shift_id, campaign_id: scope.campaign_id, period_date: scope.period_date,
             execution_source: scope.execution_source, provider,
             external_file_id: metadata.id, external_parent_id: parentId,
             provider_metadata: metadata.provider_metadata ?? {},
@@ -354,7 +394,7 @@ export function createOperationalFileRouteHandler(deps: {
         }
 
         const form = await readFormDataBody(request, MAX_OPERATIONAL_FILE_BYTES + 4096)
-        const payload = Object.fromEntries(['shift_id', 'brand_id', 'platform_id', 'period_date', 'execution_source', 'provider']
+        const payload = Object.fromEntries(['shift_id', 'campaign_id', 'brand_id', 'platform_id', 'period_date', 'execution_source', 'provider']
           .flatMap(key => {
             const value = form.get(key)
             return typeof value === 'string' && value ? [[key, value]] : []
@@ -408,6 +448,7 @@ export function createOperationalFileRouteHandler(deps: {
           brand_id: scope.brand_id,
           platform_id: scope.platform_id,
           shift_id: scope.shift_id,
+          campaign_id: scope.campaign_id,
           period_date: scope.period_date,
           execution_source: scope.execution_source,
           provider,
