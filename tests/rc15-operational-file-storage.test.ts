@@ -60,6 +60,14 @@ function client() {
     if (table === 'brands') return [{ id: 'brand-1', name: 'Female AI livestream', deleted_at: null }]
     if (table === 'platforms') return [{ id: 'platform-1', name: 'Shopee Live', deleted_at: null }]
     if (table === 'shifts') return [{ id: 'shift-1', brand_id: 'brand-1', platform_id: 'platform-1', date: '2026-09-14', execution_source: 'internal', deleted_at: null }]
+    if (table === 'campaigns') return [
+      { id: 'campaign-1', name: 'Fall Campaign', brand_id: 'brand-1',
+        start_date: '2026-09-01', end_date: '2026-09-30',
+        platform_ids: ['platform-1'], platform_source: '', deleted_at: null },
+      { id: 'campaign-2', name: 'Fall Campaign Variant', brand_id: 'brand-1',
+        start_date: '2026-09-01', end_date: '2026-09-30',
+        platform_ids: ['platform-1'], platform_source: '', deleted_at: null },
+    ]
     if (table === 'operational_files') return rows
     return []
   }
@@ -266,4 +274,63 @@ test('leader cannot read existing finance artifact by guessing file ID', async (
   })
   const response = await handler.GET(new Request('https://example.test/api/operational-files?file_id=finance-1'))
   assert.equal(response.status, 403)
+})
+
+
+test('Campaign Content/Production files enforce brand, platform, dates and isolated campaign keys', async () => {
+  const state = client()
+  let uploadCount = 0
+  const handler = createOperationalFileRouteHandler({
+    createClient: () => state.db,
+    resolveUser: async () => ({ id: 'leader', systemPermission: 'leader', businessUserId: 'leader' }),
+    storage: {
+      async upload(input: FileUploadInput) {
+        return { asset: {
+          provider: 'google_drive', external_file_id: 'campaign-file-' + ++uploadCount,
+          provider_metadata: {}, external_parent_id: input.external_parent_id,
+        } }
+      },
+      async read() { return new Uint8Array([1, 2, 3]) },
+      async delete() { throw new Error('Unexpected delete') },
+      async ensureFolder() { throw new Error('Folder injection not allowed') },
+    } as never,
+    routes: { async resolvePlacement() { return base } },
+    materializeFolders: async () => 'parent-id',
+    routingMode: 'database',
+  })
+  const campaignUpload = (campaignId: string, overrides: Record<string, string> = {}) => {
+    const req = form('content_script', 'livecut.txt', 'text/plain', new Uint8Array([1, 2, 3]))
+    return req.formData().then(body => {
+      body.set('campaign_id', campaignId)
+      for (const [key, value] of Object.entries(overrides)) body.set(key, value)
+      return new Request('https://example.test/api/operational-files', { method: 'POST', body })
+    })
+  }
+  const wrongBrand = await handler.POST(await campaignUpload('campaign-1', { brand_id: 'brand-2' }))
+  assert.equal(wrongBrand.status, 409)
+  assert.equal(uploadCount, 0)
+  const wrongMonth = await handler.POST(await campaignUpload('campaign-1', { period_date: '2026-10-09' }))
+  assert.equal(wrongMonth.status, 409)
+  assert.equal(uploadCount, 0)
+  const wrongPlatform = await handler.POST(await campaignUpload('campaign-1', { platform_id: 'platform-2' }))
+  assert.notEqual(wrongPlatform.status, 200)
+  assert.equal(uploadCount, 0)
+
+  const first = await handler.POST(await campaignUpload('campaign-1'))
+  assert.equal(first.status, 200)
+  const retry = await handler.POST(await campaignUpload('campaign-1'))
+  assert.equal((await retry.json() as { reused: boolean }).reused, true)
+  const otherCampaign = await handler.POST(await campaignUpload('campaign-2'))
+  assert.equal(otherCampaign.status, 200)
+  assert.equal(uploadCount, 2)
+  assert.equal(state.rows.length, 2)
+  assert.equal(state.rows[0].campaign_id, 'campaign-1')
+  assert.equal(state.rows[1].campaign_id, 'campaign-2')
+  assert.notEqual(state.rows[0].scope_key, state.rows[1].scope_key)
+  const list = await handler.GET(new Request('https://example.test/api/operational-files'
+    + '?campaign_id=campaign-1&brand_id=brand-1&platform_id=platform-1&period_date=2026-09-14&execution_source=internal'))
+  assert.equal(list.status, 200)
+  const result = await list.json() as { files: Array<{ id: string }> }
+  assert.equal(result.files.length, 1)
+  assert.equal(result.files[0].id, 'operational-1')
 })
