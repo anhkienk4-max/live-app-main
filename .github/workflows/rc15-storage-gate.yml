@@ -28,6 +28,18 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
     steps:
       - name: Checkout reviewed branch
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -50,6 +62,39 @@ jobs:
         # Resolve in the ephemeral runner; keep minimumReleaseAge active.
         # Follow-up: reconcile and commit the lockfile before protected release.
         run: pnpm install --no-frozen-lockfile
+
+      - name: Verify RC1.5 SQL on isolated PostgreSQL 16
+        env:
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGDATABASE: postgres
+        run: |
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          create table public.brands (id text primary key);
+          create table public.platforms (id text primary key);
+          create table public.shifts (id text primary key);
+          create table public.campaigns (id text primary key);
+          create table public.business_users (id text primary key);
+          SQL
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261009000000_rc15_operational_files.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261009000000_rc15_operational_files.sql
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          do $
+          begin
+            if not exists (
+              select 1 from information_schema.columns
+              where table_schema='public' and table_name='operational_files' and column_name='integrity_status'
+            ) then
+              raise exception 'RC15 integrity_status missing';
+            end if;
+            if not (select relrowsecurity from pg_class where oid='public.operational_files'::regclass) then
+              raise exception 'RC15 row level security missing';
+            end if;
+          end
+          $;
+          SQL
 
       - name: Type check
         run: pnpm exec tsc --noEmit --incremental false
