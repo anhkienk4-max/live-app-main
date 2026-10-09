@@ -62,7 +62,7 @@ const nativeAllowed = new Set<OperationalFileCategory>([
 ])
 
 const categoryMimes: Record<OperationalFileCategory, ReadonlySet<string>> = {
-  schedule_source: TABULAR,
+  schedule_source: new Set([...TABULAR, 'application/json']),
   schedule_export: TABULAR,
   live_snapshot: new Set([...IMAGE, ...TABULAR, 'application/json']),
   video_recording: VIDEO,
