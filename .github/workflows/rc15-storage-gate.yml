@@ -72,6 +72,10 @@ jobs:
           PGDATABASE: postgres
         run: |
           psql -v ON_ERROR_STOP=1 <<'SQL'
+          -- Supabase creates these loginless roles; a vanilla PostgreSQL CI
+          -- service does not. Create exact role names before REVOKE checks.
+          create role anon nologin;
+          create role authenticated nologin;
           create table public.brands (id text primary key);
           create table public.platforms (id text primary key);
           create table public.shifts (id text primary key);
