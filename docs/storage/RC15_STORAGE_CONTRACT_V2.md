@@ -39,6 +39,32 @@ V2 canonical relative folders under `Brand/Platform/THÁNG MM.YYYY/`:
 
 **Upload limit:** 4 MiB per app multipart request, constrained by serverless request limits. This must not be advertised as a bulk video uploader. Google Workspace native Docs/Sheets/Slides can be indexed as provider links without pretending to have downloadable binary or known byte size.
 
+## Campaign-Scoped Content and Production files (staged in PR #24)
+
+The Campaign Details page now opens `/storage?campaignId=<id>&category=<category>` for
+Campaign Brief, Script/Caption, Content Plan, Production Assets and Livecut.
+
+- The API always resolves `campaign_id` against canonical `campaigns.brand_id`.
+- The requested platform must match a declared campaign platform, if configured.
+- The requested period date must lie within the campaign start/end range.
+- The upload key and metadata include the campaign ID, so files for campaigns
+  within the same brand, platform, month and provider remain logically separate.
+- The UI is visible to Leader/Admin only; Finance and System Export stay Admin-only.
+- This integration is **contextual upload/linking**, not automatic capture of every
+  creative or content editor. The current application has no independent
+  Content/Production asset editing workflow connected to a file picker.
+- Campaign bulk Excel imports can contain multiple brands; no raw bulk source
+  is automatically written to a per-brand folder.
+
+## Database migration safety
+
+The staged RC1.5 migration was found malformed during review and was repaired.
+The CI code gate now runs this exact migration twice against an ephemeral PostgreSQL 16
+instance with Supabase-style `anon` and `authenticated` roles, verifying the
+`integrity_status` column and enabled RLS. This is not a Production migration
+execution, and passing SQL validation does not replace an environment-specific
+preflight for FK compatibility, configured routes and release safety.
+
 ## Consolidated gate (run once after coding is ready)
 - Gate 0: GitHub PR, typecheck, focused RC1.4/RC1.5 tests, build, migration SQL review, diff-check. No migration execution until tests PASS.
 - Gate 1: check production provider/OAuth, target domain/commit, root access and route configuration; record baseline metadata/provider objects.
