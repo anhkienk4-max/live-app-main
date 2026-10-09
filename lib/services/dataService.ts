@@ -54,6 +54,7 @@ import {
 import { getSupabaseShiftRegistrationRepository } from '@/lib/services/supabaseShiftRegistrationService'
 import {
   getSupabaseReportRepository,
+  ReportRequestError,
   type CreateReportPayload,
 } from '@/lib/services/supabaseReportService'
 import { getSupabaseSwapRequestRepository } from '@/lib/services/supabaseSwapRequestService'
@@ -2550,6 +2551,7 @@ export const reportService = {
     if (!submitter || (!elevated && !assigned)) throw new Error('Only assigned staff or an operational leader can submit this report.')
     const newReport: Report = {
       ...data,
+      version_number: 0,
       revenue: data.revenue ?? null,
       orders: data.orders ?? null,
       peak_viewer: data.peak_viewer ?? null,
@@ -2573,12 +2575,13 @@ export const reportService = {
   async update(
     id: string,
     data: Partial<Report>,
+    expectedVersion: number,
     actorId = currentUserService.getId(),
     reason?: string,
     event: ReportRevision['event'] = 'save',
   ): Promise<Report | null> {
     if (getAuthMode() === 'supabase') {
-      const updated = await getSupabaseReportRepository().update(id, data, reason ?? null, event)
+      const updated = await getSupabaseReportRepository().update(id, data, expectedVersion, reason ?? null, event)
       if (updated) {
         audit('reports', 'update', 'report', id, `Report · ${updated.shift_id}`, {
           actorId,
@@ -2601,6 +2604,13 @@ export const reportService = {
     if (reports[index].status === 'confirmed' && event === 'save') {
       throw new Error('Reopen the confirmed report before editing it.')
     }
+    const currentVersion = reports[index].version_number ?? reports[index].revisions?.length ?? 0
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 0 || currentVersion !== expectedVersion) {
+      throw new ReportRequestError(
+        'This report changed since you opened it. Reload the latest report before saving.',
+        'REPORT_VERSION_CONFLICT',
+      )
+    }
     const before = { ...reports[index] }
     reports[index] = { ...reports[index], ...data, updated_at: new Date().toISOString() }
     appendReportRevision(reports[index], event, actorId, reason)
@@ -2608,7 +2618,7 @@ export const reportService = {
     return Promise.resolve(reports[index])
   },
 
-  async confirmMetrics(id: string, data: Partial<Report>, review: OcrReviewData, confirmedBy = '1'): Promise<Report | null> {
+  async confirmMetrics(id: string, data: Partial<Report>, review: OcrReviewData, expectedVersion: number, confirmedBy = '1'): Promise<Report | null> {
     const currentReport = await this.getById(id)
     const dashboardPlatform = data.dashboard_platform ?? currentReport?.dashboard_platform
     if (currentReport && dashboardPlatform && dashboardPlatform !== 'other') {
@@ -2643,7 +2653,7 @@ export const reportService = {
         confirmed_by: confirmedBy,
         reviewed_by: confirmedBy,
         reviewed_at: new Date().toISOString(),
-      }, confirmedBy, data.review_notes, 'confirm')
+      }, expectedVersion, confirmedBy, data.review_notes, 'confirm')
       if (result) audit('reports', 'confirm', 'report', id, `Report · ${result.shift_id}`, { actorId: confirmedBy, after: { ...result } })
       return result
     }
@@ -2660,7 +2670,7 @@ export const reportService = {
       confirmed_by: confirmedBy,
       reviewed_by: confirmedBy,
       reviewed_at: new Date().toISOString(),
-    }, confirmedBy, data.review_notes, 'confirm')
+    }, expectedVersion, confirmedBy, data.review_notes, 'confirm')
     if (result) audit('reports', 'confirm', 'report', id, `Report · ${result.shift_id}`, { actorId: confirmedBy, after: { ...result } })
     return result
   },
@@ -2675,11 +2685,13 @@ export const reportService = {
     if (!reviewer || !['leader', 'admin'].includes(reviewer.system_permission || reviewer.role)) {
       throw new Error('Only a Leader or Admin can review reports.')
     }
+    const report = await this.getById(id)
+    if (!report || report.version_number == null) throw new Error('REPORT_VERSION_UNAVAILABLE')
     return this.update(id, {
       status: 'in_review',
       reviewed_by: reviewerId,
       reviewed_at: new Date().toISOString(),
-    }, reviewerId, 'Started report review')
+    }, report.version_number, reviewerId, 'Started report review')
   },
 
   async rejectReview(id: string, reviewerId: string, notes: string): Promise<Report | null> {
@@ -2692,13 +2704,15 @@ export const reportService = {
     if (!reviewer || !['leader', 'admin'].includes(reviewer.system_permission || reviewer.role)) {
       throw new Error('Only a Leader or Admin can reject reports.')
     }
+    const report = await this.getById(id)
+    if (!report || report.version_number == null) throw new Error('REPORT_VERSION_UNAVAILABLE')
     const result = await this.update(id, {
       status: 'reopened',
       metrics_confirmed: false,
       reviewed_by: reviewerId,
       reviewed_at: new Date().toISOString(),
       review_notes: notes,
-    }, reviewerId, notes, 'reopen')
+    }, report.version_number, reviewerId, notes, 'reopen')
     if (result) audit('reports', 'reject', 'report', id, `Report · ${result.shift_id}`, { actorId: reviewerId, after: { ...result }, reason: notes })
     return result
   },

@@ -197,7 +197,7 @@ test('reportService mutations route to Supabase repository in Supabase mode', as
       } as never)
       assert.ok(calls.includes('create'))
 
-      await reportService.update('r1', { revenue: 100 } as never, '1', 'adjust', 'save')
+      await reportService.update('r1', { revenue: 100 } as never, 1, '1', 'adjust', 'save')
       assert.ok(calls.includes('update'))
 
       await reportService.archive('r1', '1', 'test')
