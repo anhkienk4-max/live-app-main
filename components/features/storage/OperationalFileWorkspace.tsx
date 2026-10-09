@@ -6,6 +6,11 @@ import { FolderArchive, Upload, Download, Trash2, RefreshCw } from 'lucide-react
 
 type Option = { id: string; name: string }
 type Category = { id: string; label: string }
+type CampaignOption = {
+  id: string; name: string; brand_id: string;
+  start_date: string; end_date: string;
+  platform_ids?: string[] | null; platform_source?: string | null;
+}
 type Stored = {
   id: string
   category: string
@@ -23,6 +28,7 @@ type CatalogResponse = {
   ok: boolean
   brands: Option[]
   platforms: Option[]
+  campaigns: CampaignOption[]
   categories: Category[]
   max_single_upload_bytes: number
 }
@@ -41,12 +47,13 @@ const buttonClass = 'rounded-md border border-border px-3 py-2 text-sm transitio
 export function OperationalFileWorkspace() {
   const search = useSearchParams()
   const [shiftId, setShiftId] = React.useState(search.get('shiftId') || '')
+  const [campaignId, setCampaignId] = React.useState(search.get('campaignId') || '')
   const [catalog, setCatalog] = React.useState<CatalogResponse | null>(null)
   const [brandId, setBrandId] = React.useState('')
   const [platformId, setPlatformId] = React.useState('')
   const [periodDate, setPeriodDate] = React.useState(today)
   const [executionSource, setExecutionSource] = React.useState<'internal' | 'agency'>('internal')
-  const [category, setCategory] = React.useState('schedule_source')
+  const [category, setCategory] = React.useState(search.get('category') || 'schedule_source')
   const [provider, setProvider] = React.useState<'google_drive' | 'onedrive'>('google_drive')
   const [file, setFile] = React.useState<File | null>(null)
   const [files, setFiles] = React.useState<Stored[]>([])
@@ -60,6 +67,7 @@ export function OperationalFileWorkspace() {
   const requestKey = shiftId.trim()
     ? 'shift_id=' + encodeURIComponent(shiftId.trim())
     : new URLSearchParams({
+      ...(campaignId ? { campaign_id: campaignId } : {}),
       brand_id: brandId, platform_id: platformId,
       period_date: periodDate, execution_source: executionSource,
     }).toString()
@@ -74,7 +82,19 @@ export function OperationalFileWorkspace() {
         setCatalog(data)
         setBrandId(current => current || data.brands[0]?.id || '')
         setPlatformId(current => current || data.platforms[0]?.id || '')
-        setCategory(data.categories[0]?.id || 'schedule_source')
+        const requestedCategory = search.get('category')
+        setCategory(data.categories.some(item => item.id === requestedCategory)
+          ? String(requestedCategory) : (data.categories[0]?.id || 'schedule_source'))
+        const chosen = data.campaigns?.find(item => item.id === search.get('campaignId'))
+        if (chosen && !search.get('shiftId')) {
+          setCampaignId(chosen.id)
+          setBrandId(chosen.brand_id)
+          setPeriodDate(chosen.start_date)
+          const valid = data.platforms.find(platform =>
+            (chosen.platform_ids?.length ? chosen.platform_ids.includes(platform.id)
+              : !chosen.platform_source || platform.name.trim().toLowerCase() === chosen.platform_source.trim().toLowerCase()))
+          setPlatformId(valid?.id || '')
+        }
       }).catch(err => { if (active) setError(String(err instanceof Error ? err.message : err)) })
     return () => { active = false }
   }, [])
@@ -101,7 +121,11 @@ export function OperationalFileWorkspace() {
     action, category, provider,
     ...(shiftId.trim()
       ? { shift_id: shiftId.trim() }
-      : { brand_id: brandId, platform_id: platformId, period_date: periodDate, execution_source: executionSource }),
+      : {
+        ...(campaignId ? { campaign_id: campaignId } : {}),
+        brand_id: brandId, platform_id: platformId,
+        period_date: periodDate, execution_source: executionSource,
+      }),
   })
 
   const providerAction = async (action: 'prepare_folder' | 'attach_existing') => {
@@ -153,6 +177,7 @@ export function OperationalFileWorkspace() {
       const form = new FormData()
       if (shiftId.trim()) form.set('shift_id', shiftId.trim())
       else {
+        if (campaignId) form.set('campaign_id', campaignId)
         form.set('brand_id', brandId)
         form.set('platform_id', platformId)
         form.set('period_date', periodDate)
@@ -204,14 +229,37 @@ export function OperationalFileWorkspace() {
       <section className="space-y-4 rounded-xl border p-4" aria-label="Ngữ cảnh lưu file">
         <h2 className="font-semibold">Ngữ cảnh lưu trữ</h2>
         <label className="block text-sm">
+          <span className="mb-1 block">Chiến dịch (tùy chọn, để gắn file Content / Production / Campaign)</span>
+          <select className={fieldClass} disabled={Boolean(shiftId.trim())} value={campaignId}
+            onChange={event => {
+              const next = event.target.value
+              setCampaignId(next)
+              const chosen = catalog?.campaigns.find(item => item.id === next)
+              if (chosen) {
+                setBrandId(chosen.brand_id)
+                setPeriodDate(chosen.start_date)
+                const valid = catalog?.platforms.find(platform =>
+                  (chosen.platform_ids?.length ? chosen.platform_ids.includes(platform.id)
+                    : !chosen.platform_source || platform.name.trim().toLowerCase() === chosen.platform_source.trim().toLowerCase()))
+                setPlatformId(valid?.id || '')
+              }
+            }}>
+            <option value="">Không gắn với chiến dịch</option>
+            {(catalog?.campaigns ?? []).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+        </label>
+        <label className="block text-sm">
           <span className="mb-1 block">Shift ID (nếu lưu cho một ca cụ thể)</span>
-          <input className={fieldClass} value={shiftId} onChange={event => setShiftId(event.target.value)}
+          <input className={fieldClass} value={shiftId} onChange={event => {
+            setShiftId(event.target.value)
+            if (event.target.value.trim()) setCampaignId('')
+          }}
             placeholder="Để trống để lưu theo Brand / Platform / Ngày" />
         </label>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block text-sm">
             <span className="mb-1 block">Brand</span>
-            <select className={fieldClass} value={brandId} disabled={Boolean(shiftId.trim())}
+            <select className={fieldClass} value={brandId} disabled={Boolean(shiftId.trim() || campaignId)}
               onChange={event => setBrandId(event.target.value)}>
               {(catalog?.brands || []).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
@@ -226,6 +274,8 @@ export function OperationalFileWorkspace() {
           <label className="block text-sm">
             <span className="mb-1 block">Ngày vận hành</span>
             <input className={fieldClass} type="date" value={periodDate} disabled={Boolean(shiftId.trim())}
+              min={campaignId ? catalog?.campaigns.find(item => item.id === campaignId)?.start_date : undefined}
+              max={campaignId ? catalog?.campaigns.find(item => item.id === campaignId)?.end_date : undefined}
               onChange={event => setPeriodDate(event.target.value)} />
           </label>
           <label className="block text-sm">
