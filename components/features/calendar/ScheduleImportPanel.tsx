@@ -336,16 +336,17 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   // This archive is deliberately isolated from import-batch state transitions.
   // A storage outage must never mark already imported shifts as failed.
   const archiveCompletedSchedule = async (sourceType: Source['type'], batchId: string, previews: ImportResult['rows']) => {
-    const plan = planScheduleImportArchive({
+    let plan: ScheduleArchivePlan | null = null
+    try {
+      plan = planScheduleImportArchive({
       batchId, previews, brands, platforms, sourceType,
       sourceFile: sourceType === 'excel' ? originalImportFileRef.current : null,
       maxFileBytes: 4 * 1024 * 1024,
     })
-    incompleteArchiveRef.current = plan
-    try {
+      incompleteArchiveRef.current = plan
       const saved = await persistScheduleArchive(plan)
       const partial = saved.unresolved > 0 || (!saved.originalSourceArchived && sourceType === 'excel')
-      if (!partial) incompleteArchiveRef.current = null
+      incompleteArchiveRef.current = null
       const status = saved.archived
         ? `Đã lưu ${saved.archived} file lịch vào Google Drive (trong đó ${saved.reused} file đã tồn tại).`
         : 'Không có dòng lịch nào có ngữ cảnh đủ an toàn để tự lưu.'
@@ -359,7 +360,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'SCHEDULE_ARCHIVE_FAILED'
       return {
-        archiveStatus: `Import đã được xử lý, nhưng lưu Google Drive chưa hoàn chỉnh: ${reason}. Bấm thử lưu lại để đồng bộ, không cần import lại ca.`,
+        archiveStatus: `Import đã được xử lý, nhưng lưu Google Drive chưa hoàn chỉnh: ${reason}. ${plan ? 'Có thể thử đồng bộ lại mà không cần import lại ca.' : 'Cần kiểm tra lại thông tin brand và platform.'}`,
         archiveIncomplete: true,
       }
     }
@@ -372,7 +373,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     try {
       const saved = await persistScheduleArchive(plan)
       const partial = saved.unresolved > 0 || (!saved.originalSourceArchived && completedImport.source.type === 'excel')
-      if (!partial) incompleteArchiveRef.current = null
+      incompleteArchiveRef.current = null
       setCompletedImport(prev => prev ? {
         ...prev,
         archiveStatus: `Đồng bộ Drive: ${saved.archived} file (đã tồn tại: ${saved.reused}).`
@@ -707,7 +708,19 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
           </CardContent>
         </Card>
       )}
-      {completedImport && completedCounts && <div ref={completedImportRef} tabIndex={-1}><ImportCompletionCard completed={completedImport} counts={completedCounts} t={t} /></div>}
+      {completedImport && completedCounts && <div ref={completedImportRef} tabIndex={-1} className="space-y-3">
+        <ImportCompletionCard completed={completedImport} counts={completedCounts} t={t} />
+        {completedImport.archiveStatus && (
+          <div className={`rounded-md border px-4 py-3 text-sm ${completedImport.archiveIncomplete ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-emerald-300 bg-emerald-50 text-emerald-900'}`}
+            role="status" data-testid="schedule-import-drive-archive-status">
+            <div>{completedImport.archiveStatus}</div>
+            {incompleteArchiveRef.current && <Button type="button" variant="outline" size="sm" className="mt-2"
+              onClick={() => void retryCompletedArchive()} disabled={retryingArchive}>
+              {retryingArchive ? 'Đang đồng bộ...' : 'Thử lưu lại trên Drive'}
+            </Button>}
+          </div>
+        )}
+      </div>}
       <LifecycleActionDialog open={cancelOpen} onOpenChange={setCancelOpen} title="Remove import preview" impact={cancelImpact} confirmText="Remove preview" onConfirm={removePreview} />
     </div>
   )
