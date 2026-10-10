@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { FolderArchive, Upload, Download, Trash2, RefreshCw } from 'lucide-react'
 
 type Option = { id: string; name: string }
@@ -253,6 +254,10 @@ export function OperationalFileWorkspace() {
           <p className="text-sm text-muted-foreground">File trên Google Drive/OneDrive · Supabase chỉ lưu metadata. Dành cho Leader/Admin.</p>
         </div>
       </div>
+      {catalog?.categories.some(item => item.id === 'system_export') &&
+        <Link href="/storage/setup" className="inline-flex items-center rounded-md border px-3 py-2 text-sm hover:bg-muted">
+          Admin: Kiểm tra và cấu hình Storage Routes
+        </Link>}
 
       <section className="space-y-4 rounded-xl border p-4" aria-label="Ngữ cảnh lưu file">
         <h2 className="font-semibold">Ngữ cảnh lưu trữ</h2>
