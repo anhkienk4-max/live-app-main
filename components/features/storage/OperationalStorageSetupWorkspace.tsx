@@ -30,6 +30,13 @@ export function OperationalStorageSetupWorkspace() {
   const [rootId, setRootId] = React.useState('')
   const [routeApproved, setRouteApproved] = React.useState(false)
   const [brandApproved, setBrandApproved] = React.useState(false)
+  const [profileChoice, setProfileChoice] = React.useState('CANONICAL_V1')
+  const [legacyBaseId, setLegacyBaseId] = React.useState('')
+  const [legacyPeriodStyle, setLegacyPeriodStyle] = React.useState('THANG_M_DASH_YEAR')
+  const [legacyLabels, setLegacyLabels] = React.useState({
+    dashboard: '', live_visual_internal: '', live_visual_agency: '',
+    data_report: '', data_source: '',
+  })
   const [shiftId, setShiftId] = React.useState('')
   const [shiftSource, setShiftSource] = React.useState<'' | 'internal' | 'agency'>('')
   const [shiftApproved, setShiftApproved] = React.useState(false)
@@ -71,6 +78,10 @@ export function OperationalStorageSetupWorkspace() {
     } finally { setBusy(false) }
   }
   const selectedBrand = data?.brands.find(brand => brand.id === brandId)
+  const legacySupported = [
+    'LEGACY_CATEGORY_PERIOD', 'LEGACY_PLATFORM_CATEGORY_PERIOD', 'LEGACY_PERIOD_CATEGORY',
+  ]
+  const needsLegacy = Boolean(selectedBrand && legacySupported.includes(selectedBrand.storage_profile || ''))
   const selectedShift = data?.unclassified_shifts_sample.find(shift => shift.id === shiftId)
   const routeExists = data?.routes.some(route => route.provider === 'google_drive'
     && route.brand_id === brandId && route.platform_id === platformId
@@ -108,28 +119,40 @@ export function OperationalStorageSetupWorkspace() {
     {data?.schema_ready && <>
       <section className="rounded-xl border p-4 space-y-3" aria-label="Brand profile confirmation">
         <h2 className="font-semibold">1. Xác nhận cấu trúc thư mục của brand</h2>
-        <p className="text-sm text-muted-foreground">Chỉ chọn CANONICAL_V1 nếu đã mở và đối chiếu cấu trúc Drive thật. Brand cũ thuộc legacy không được đổi sang canonical chỉ để upload thành công.</p>
+        <p className="text-sm text-muted-foreground">Chỉ chọn profile đã đối chiếu đúng trên Drive; không đổi brand legacy sang canonical chỉ để upload.</p>
         <select className={control} aria-label="Chọn Brand" value={brandId}
           onChange={event => { setBrandId(event.target.value); setBrandApproved(false) }}>
           <option value="">Chọn Brand</option>
           {data.brands.map(brand => <option key={brand.id} value={brand.id}>{brand.name} — {brand.storage_profile ?? 'CHƯA PHÂN LOẠI'}</option>)}
         </select>
         {selectedBrand && <p className="text-sm">Profile hiện tại: {selectedBrand.storage_profile ?? 'Chưa phân loại'}</p>}
+        {selectedBrand?.storage_profile === null && <label className="block text-sm space-y-1">
+          <span>Profile đã xác minh</span>
+          <select className={control} value={profileChoice}
+            onChange={e => { setProfileChoice(e.target.value); setBrandApproved(false) }}>
+            <option value="CANONICAL_V1">CANONICAL_V1 — Brand mới</option>
+            <option value="LEGACY_CATEGORY_PERIOD">Legacy Category → Period</option>
+            <option value="LEGACY_PLATFORM_CATEGORY_PERIOD">Legacy Platform → Category → Period</option>
+            <option value="LEGACY_PERIOD_CATEGORY">Legacy Period → Category</option>
+          </select>
+        </label>}
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" checked={brandApproved} onChange={e => setBrandApproved(e.target.checked)} />
-          Tôi đã xác minh chính xác cấu trúc folder này là CANONICAL_V1, không phải legacy.
+          Tôi đã kiểm tra thư mục Drive thực tế và chọn đúng profile; không chuyển đổi cấu trúc cũ.
         </label>
         <button type="button" className={action} disabled={busy || !brandApproved || !selectedBrand || selectedBrand.storage_profile !== null}
           onClick={() => void mutate({ action: 'classify_brand_profile', brand_id: brandId,
-            storage_profile: 'CANONICAL_V1',
-            confirmation: 'I_VERIFIED_THIS_BRAND_USES_CANONICAL_FOLDERS' })}>
+            storage_profile: profileChoice,
+            confirmation: profileChoice === 'CANONICAL_V1'
+              ? 'I_VERIFIED_THIS_BRAND_USES_CANONICAL_FOLDERS'
+              : 'I_VERIFIED_THIS_BRAND_FOLDER_PROFILE' })}>
           Xác nhận profile brand
         </button>
       </section>
 
       <section className="rounded-xl border p-4 space-y-3" aria-label="Exact route mapping">
         <h2 className="font-semibold">2. Đăng ký route Google Drive chính xác</h2>
-        <p className="text-sm text-muted-foreground">Không dùng wildcard, không dự đoán root từ brand name. Chỉ sử dụng brand đã xác nhận canonical. Route không tự tạo folder hoặc đổi quyền Drive.</p>
+        <p className="text-sm text-muted-foreground">Không dùng wildcard hoặc tự đoán root. Brand canonical và ba kiểu legacy không-subbrand phải có cấu hình đã kiểm tra.</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1 text-sm">
             <label htmlFor="route-platform">Platform</label>
@@ -152,6 +175,36 @@ export function OperationalStorageSetupWorkspace() {
           <span>Google Drive Root Folder ID (sao chép từ folder đã kiểm tra)</span>
           <input className={control} value={rootId} onChange={e => setRootId(e.target.value)} placeholder="Folder ID" />
         </label>
+        {needsLegacy && <>
+          <p className="text-sm">Legacy: giữ nguyên các folder Dashboard/Visibility/DATA cũ. Các nhóm V2 mới lưu dưới ADA_STORAGE_V2 theo Brand ID/Platform ID/Nguồn/Tháng.</p>
+          <label className="block text-sm space-y-1">
+            <span>Legacy Base Folder ID nằm trong Root đã kiểm tra</span>
+            <input className={control} value={legacyBaseId}
+              onChange={e => setLegacyBaseId(e.target.value)} placeholder="Folder ID" />
+          </label>
+          <label className="block text-sm space-y-1">
+            <span>Quy tắc đặt tên tháng legacy</span>
+            <select className={control} value={legacyPeriodStyle}
+              onChange={e => setLegacyPeriodStyle(e.target.value)}>
+              <option value="THANG_M_DASH_YEAR">Tháng 9 - 2026</option>
+              <option value="THANG_M_DOT_YEAR">THÁNG 9.2026</option>
+              <option value="THANG_M_DOT_SPACE_YEAR">THÁNG 9. 2026</option>
+              <option value="T_M_DOT_YEAR">T9.2026</option>
+              <option value="THANG_UPPER_M_DASH_YEAR">THÁNG 9 - 2026</option>
+            </select>
+          </label>
+          {([
+            ['dashboard', 'Folder Dashboard'],
+            ['live_visual_internal', 'Folder Visual Internal'],
+            ['live_visual_agency', 'Folder Visual Agency'],
+            ['data_report', 'DATA/REPORT — đường dẫn / phân cách'],
+            ['data_source', 'DATA/SOURCE — đường dẫn / phân cách'],
+          ] as const).map(([key, label]) => <label key={key} className="block text-sm space-y-1">
+            <span>{label}</span>
+            <input className={control} value={legacyLabels[key]}
+              onChange={e => setLegacyLabels(old => ({ ...old, [key]: e.target.value }))} />
+          </label>)}
+        </>}
         {routeExists && <p className="text-sm">Route này đã có và active, không tạo bản trùng.</p>}
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" checked={routeApproved} onChange={e => setRouteApproved(e.target.checked)} />
@@ -159,10 +212,27 @@ export function OperationalStorageSetupWorkspace() {
         </label>
         <button type="button" className={action}
           disabled={busy || !data.root_configured || !routeApproved || !brandId || !platformId || !executionSource
-            || !rootId.trim() || selectedBrand?.storage_profile !== 'CANONICAL_V1' || routeExists}
-          onClick={() => void mutate({ action: 'register_route', brand_id: brandId,
+            || !rootId.trim() || (!needsLegacy && selectedBrand?.storage_profile !== 'CANONICAL_V1')
+            || (needsLegacy && (!legacyBaseId.trim() || Object.values(legacyLabels).some(v => !v.trim())))
+            || routeExists}
+          onClick={() => void mutate(needsLegacy ? {
+            action: 'register_legacy_route', brand_id: brandId,
+            platform_id: platformId, execution_source: executionSource,
+            root_folder_id: rootId.trim(), base_folder_id: legacyBaseId.trim(),
+            storage_profile: selectedBrand?.storage_profile, period_naming_style: legacyPeriodStyle,
+            folder_labels: {
+              dashboard: legacyLabels.dashboard,
+              live_visual_internal: legacyLabels.live_visual_internal,
+              live_visual_agency: legacyLabels.live_visual_agency,
+              data_report: legacyLabels.data_report.split('/').map(v => v.trim()),
+              data_source: legacyLabels.data_source.split('/').map(v => v.trim()),
+            },
+            confirmation: 'I_VERIFIED_LEGACY_PROVIDER_BASE_AND_PATHS',
+          } : {
+            action: 'register_route', brand_id: brandId,
             platform_id: platformId, execution_source: executionSource, root_folder_id: rootId.trim(),
-            confirmation: 'I_VERIFIED_PROVIDER_ROOT_AND_BRAND' })}>
+            confirmation: 'I_VERIFIED_PROVIDER_ROOT_AND_BRAND',
+          })}>
           Xác nhận và lưu route
         </button>
       </section>
