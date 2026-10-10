@@ -56,6 +56,9 @@ const scopeFields = z.object({
 }).strict()
 
 const restrictedCategories = new Set(['payment_document', 'system_export'])
+// Operator must review the provider/root ACL and approve confidential writes
+// separately. Admin RBAC alone does not secure provider links.
+const confidentialWriteCategories = new Set(['payment_document', 'system_export'])
 
 const removeFields = z.object({ file_id: z.string().min(1).max(120) }).strict()
 const folderFields = scopeFields.extend({
@@ -224,10 +227,16 @@ export function createOperationalFileRouteHandler(deps: {
   routes?: Pick<OperationalStorageRouteRepository, 'resolvePlacement'>
   materializeFolders?: (placement: OperationalStoragePlacement) => Promise<string>
   routingMode?: OperationalStorageRoutingMode
+  /** Injected for testing; Production requires explicit operator approval after ACL review. */
+  allowConfidentialWrites?: () => boolean
 } = {}) {
   const clientFactory = deps.createClient ?? createSupabaseAdminClient
   const storage = deps.storage ?? fileStorageService
   const routingMode = deps.routingMode ?? resolveOperationalStorageRoutingMode()
+  const allowConfidentialWrites = deps.allowConfidentialWrites ??
+    (() => process.env.STORAGE_CONFIDENTIAL_UPLOAD_APPROVED === 'true')
+  const confidentialWriteBlocked = (category: string) =>
+    confidentialWriteCategories.has(category) && !allowConfidentialWrites()
   let routeRepository: OperationalStorageRouteRepository | undefined
   const routes = deps.routes ?? {
     resolvePlacement(input: Parameters<OperationalStorageRouteRepository['resolvePlacement']>[0]) {
@@ -291,6 +300,7 @@ export function createOperationalFileRouteHandler(deps: {
             categories: OPERATIONAL_FILE_CATEGORIES.filter(id => actor.systemPermission === 'admin' || !restrictedCategories.has(id)).map(id => ({ id, label: OPERATIONAL_FILE_CATEGORY_LABELS[id] })),
             brands: brands.data ?? [], platforms: platforms.data ?? [], campaigns: campaigns.data ?? [],
             max_single_upload_bytes: MAX_OPERATIONAL_FILE_BYTES,
+            confidential_write_ready: allowConfidentialWrites(),
           }, { headers: { 'Cache-Control': 'no-store' } })
         }
 
@@ -341,6 +351,9 @@ export function createOperationalFileRouteHandler(deps: {
           const generated = generateExportFields.safeParse(raw)
           if (generated.success) {
             if (actor.systemPermission !== 'admin') return errorResponse('PERMISSION_DENIED', 403)
+            if (confidentialWriteBlocked('system_export')) {
+              return errorResponse('OPERATIONAL_FILE_CONFIDENTIAL_STORAGE_NOT_APPROVED', 423)
+            }
             const input = generated.data
             if (input.shift_id || input.campaign_id) return errorResponse('OPERATIONAL_FILE_EXPORT_SCOPE_INVALID', 400)
             const client = clientFactory()
@@ -414,6 +427,9 @@ export function createOperationalFileRouteHandler(deps: {
           if (restrictedCategories.has(category) && actor.systemPermission !== 'admin') {
             return errorResponse('PERMISSION_DENIED', 403)
           }
+          if (!folder.success && confidentialWriteBlocked(category)) {
+            return errorResponse('OPERATIONAL_FILE_CONFIDENTIAL_STORAGE_NOT_APPROVED', 423)
+          }
           const client = clientFactory()
           const scope = await scopeFromInput(client, input)
           const provider = input.provider ?? 'google_drive'
@@ -481,6 +497,9 @@ export function createOperationalFileRouteHandler(deps: {
         const parsed = scopeFields.parse(payload)
         const category = cleanCategory(form.get('category'))
         if (restrictedCategories.has(category) && actor.systemPermission !== 'admin') return errorResponse('PERMISSION_DENIED', 403)
+        if (confidentialWriteBlocked(category)) {
+          return errorResponse('OPERATIONAL_FILE_CONFIDENTIAL_STORAGE_NOT_APPROVED', 423)
+        }
         const file = form.get('file')
         if (!(file instanceof File) || !file.name) return errorResponse('OPERATIONAL_FILE_REQUIRED')
         if (file.size < 1 || file.size > MAX_OPERATIONAL_FILE_BYTES) {
