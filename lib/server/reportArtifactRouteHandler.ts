@@ -4,7 +4,10 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 import type {
   Campaign,
+  DashboardUpdate,
+  LiveReportImage,
   Report,
+  ReportImage,
   Shift,
   ShiftRegistration,
   StoredFileArtifact,
@@ -18,7 +21,6 @@ import type {
 } from '@/lib/files/operationalStoragePlacementResolver'
 import { OperationalStoragePlacementError } from '@/lib/files/operationalStoragePlacementResolver'
 import {
-  ALLOWED_FILE_MIME_TYPES,
   MAX_FILE_NAME_LENGTH,
   sanitizeFileName,
   sanitizeFileNameWithoutLengthLimit,
@@ -223,9 +225,16 @@ function providerStorageFileName(
   return sanitizeFileName(`${prefix}_${boundedStem}${extension}`)
 }
 
+const REPORT_SOURCE_MIMES = new Set([
+  'text/csv',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/pdf',
+])
+
 function sourceMimeType(name: string, raw: string) {
   const mime = raw.trim().toLowerCase()
-  if (mime && ALLOWED_FILE_MIME_TYPES.has(mime)) return mime
+  if (mime && REPORT_SOURCE_MIMES.has(mime)) return mime
   const lower = name.toLowerCase()
   if (lower.endsWith('.csv')) return 'text/csv'
   if (lower.endsWith('.xls')) return 'application/vnd.ms-excel'
@@ -235,15 +244,19 @@ function sourceMimeType(name: string, raw: string) {
 }
 
 async function workbookContext(client: SupabaseClient, report: Report, shift: Shift) {
-  const [brandResult, platformResult, campaignResult, registrationsResult] = await Promise.all([
+  const [brandResult, platformResult, campaignResult, registrationsResult, snapshotsResult, imagesResult, liveImagesResult, storedFilesResult] = await Promise.all([
     client.from('brands').select('id,name').eq('id', shift.brand_id).maybeSingle(),
     client.from('platforms').select('id,name').eq('id', shift.platform_id).maybeSingle(),
     shift.campaign_id
       ? client.from('campaigns').select('id,name,brand_id,start_date,end_date,created_at,updated_at').eq('id', shift.campaign_id).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     client.from('shift_registrations').select('*').eq('shift_id', shift.id),
+    client.from('dashboard_updates').select('*').eq('shift_id', shift.id),
+    client.from('report_images').select('*').eq('report_id', report.id),
+    client.from('live_report_images').select('*').eq('report_id', report.id),
+    client.from('stored_files').select('*').eq('report_id', report.id).is('deleted_at', null),
   ])
-  if (brandResult.error || platformResult.error || campaignResult.error || registrationsResult.error) {
+  if (brandResult.error || platformResult.error || campaignResult.error || registrationsResult.error || snapshotsResult.error || imagesResult.error || liveImagesResult.error || storedFilesResult.error) {
     throw new Error('REPORT_EXPORT_CONTEXT_FAILED')
   }
 
@@ -272,6 +285,10 @@ async function workbookContext(client: SupabaseClient, report: Report, shift: Sh
     brands: new Map([[shift.brand_id, String((brandResult.data as { name?: unknown } | null)?.name ?? shift.brand_id)]]),
     platforms: new Map([[shift.platform_id, String((platformResult.data as { name?: unknown } | null)?.name ?? shift.platform_id)]]),
     registrations,
+    dashboardUpdates: (snapshotsResult.data ?? []) as unknown as DashboardUpdate[],
+    images: (imagesResult.data ?? []) as unknown as ReportImage[],
+    liveImages: (liveImagesResult.data ?? []) as unknown as LiveReportImage[],
+    storedFiles: (storedFilesResult.data ?? []) as unknown as StoredFileArtifact[],
   }
 }
 

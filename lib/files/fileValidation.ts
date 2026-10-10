@@ -7,10 +7,27 @@ export const ALLOWED_FILE_MIME_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
+  'image/gif',
+  'image/vnd.adobe.photoshop',
   'text/csv',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/pdf',
+  // Storage Contract V2 operational artifacts. Category-specific allowlists stay in
+  // operationalFileCatalog; reports continue to enforce their source-only list.
+  'text/plain',
+  'application/json',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'video/mp4',
+  'video/quicktime',
+  'video/webm',
+  'audio/mpeg',
+  'audio/wav',
+  'audio/mp4',
+  'application/zip',
 ])
 
 const EXECUTABLE_EXTENSIONS = /\.(?:exe|dll|bat|cmd|com|msi|sh|ps1|js|mjs|cjs|jar|php|py|rb|scr|vbs)$/i

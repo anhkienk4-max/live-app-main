@@ -2,8 +2,11 @@ import * as XLSX from 'xlsx'
 import { format } from 'date-fns'
 import {
   Campaign,
+  DashboardUpdate,
+  LiveReportImage,
   Report,
   ReportImage,
+  StoredFileArtifact,
   ReportMetricKey,
   ScheduleImportRow,
   Shift,
@@ -904,6 +907,9 @@ export type ReportExportContext = {
   platforms: Map<string, string>
   images?: ReportImage[]
   registrations?: ShiftRegistration[]
+  dashboardUpdates?: DashboardUpdate[]
+  liveImages?: LiveReportImage[]
+  storedFiles?: StoredFileArtifact[]
 }
 
 export const REPORT_EXPORT_COLUMN_ORDER = [
@@ -1026,9 +1032,13 @@ export const buildReportExportRows = (reports: Report[], context: ReportExportCo
     ? getMetric('orders')
     : (report.orders ?? '')
 
-  const aovVal = getMetric('average_order_value', 'average_basket_size') !== ''
-    ? getMetric('average_order_value', 'average_basket_size')
-    : (report.average_order_value ?? (typeof revenueVal === 'number' && typeof ordersVal === 'number' && ordersVal > 0 ? revenueVal / ordersVal : ''))
+  // On Shopee, average_basket_size is a distinct canonical metric. Legacy
+  // report.average_order_value is projected from that metric, not independent AOV.
+  const aovVal = getMetric('average_order_value') !== ''
+    ? getMetric('average_order_value')
+    : (report.dashboard_platform === 'shopee_live'
+      ? ''
+      : (report.average_order_value ?? (typeof revenueVal === 'number' && typeof ordersVal === 'number' && ordersVal > 0 ? revenueVal / ordersVal : '')))
 
   const liveDurationMinutes = report.live_duration_minutes ?? (
     getMetric('live_duration_seconds') !== '' ? Number(getMetric('live_duration_seconds')) / 60 : ''
@@ -1072,9 +1082,17 @@ export const buildReportExportRows = (reports: Report[], context: ReportExportCo
     'Current Viewers': getMetric('current_viewers'),
     'Peak Viewers': getMetric('pcu', 'peak_concurrent_viewers') !== '' ? getMetric('pcu', 'peak_concurrent_viewers') : (report.peak_viewer ?? ''),
     'Engaged Viewers': getMetric('engaged_viewers'),
-    'Average Viewers': typeof report.average_viewer === 'number' ? report.average_viewer : '',
+    // Shopee legacy average_viewer is actually total_viewers; TikTok uses
+    // current_viewers. Never export either under a misleading average label.
+    'Average Viewers': getMetric('average_viewers', 'average_concurrent_viewers') !== ''
+      ? getMetric('average_viewers', 'average_concurrent_viewers')
+      : (report.dashboard_platform === 'other' ? (report.average_viewer ?? '') : ''),
     'Average Watch Time (s)': getMetric('average_view_duration_seconds'),
-    'Product Clicks': getMetric('product_clicks') !== '' ? getMetric('product_clicks') : (report.product_clicks ?? ''),
+    // Shopee legacy product_clicks is projected from add_to_cart; it is not
+    // an independent product-click KPI.
+    'Product Clicks': getMetric('product_clicks') !== ''
+      ? getMetric('product_clicks')
+      : (report.dashboard_platform === 'shopee_live' ? '' : (report.product_clicks ?? '')),
     CTR: getMetric('ctr', 'live_ctr', 'click_rate') !== '' ? getMetric('ctr', 'live_ctr', 'click_rate') : (report.ctr ?? ''),
     CVR: getMetric('conversion_rate', 'click_to_order_rate') !== '' ? getMetric('conversion_rate', 'click_to_order_rate') : (report.cvr ?? ''),
     CTOR: getMetric('ctor'),
@@ -1128,12 +1146,163 @@ export function exportReportDetailToExcel(report: Report, context: ReportExportC
   }])
 }
 
+const workbookScalar = (value: unknown): string | number | boolean => {
+  if (value === null) return '(null)'
+  if (typeof value === 'number') return Number.isFinite(value) ? value : String(value)
+  if (typeof value === 'string' || typeof value === 'boolean') return value
+  return JSON.stringify(value) ?? ''
+}
+
+function buildAllMetricRows(report: Report): Record<string, unknown>[] {
+  const rows: Record<string, unknown>[] = []
+  const append = (source: string, entries: Record<string, unknown>) => {
+    for (const [key, value] of Object.entries(entries).sort(([a], [b]) => a.localeCompare(b))) {
+      if (value === undefined) continue
+      let meaning = ''
+      if (report.dashboard_platform === 'shopee_live' && key === 'average_viewer' && source === 'report_fields') {
+        meaning = 'Legacy projection of total_viewers; not average concurrent viewers'
+      }
+      if (report.dashboard_platform === 'shopee_live' && key === 'product_clicks' && source === 'report_fields') {
+        meaning = 'Legacy projection of add_to_cart; not independent product clicks'
+      }
+      rows.push({
+        'Report ID': report.id,
+        Source: source,
+        'Metric Key': key,
+        Value: workbookScalar(value),
+        'Semantic Note': meaning,
+      })
+    }
+  }
+
+  append('platform_metrics', report.platform_metrics || {})
+  append('normalized_metrics', report.normalized_metrics || {})
+  append('report_fields', {
+    revenue: report.revenue,
+    gmv: report.gmv,
+    orders: report.orders,
+    peak_viewer: report.peak_viewer,
+    average_viewer: report.average_viewer,
+    viewers: report.viewers,
+    product_clicks: report.product_clicks,
+    ctr: report.ctr,
+    cvr: report.cvr,
+    average_order_value: report.average_order_value,
+    live_duration_minutes: report.live_duration_minutes,
+    likes: report.likes,
+    comments: report.comments,
+    shares: report.shares,
+  })
+  return rows.length ? rows : [{ 'Report ID': report.id, Source: 'none', 'Metric Key': '', Value: '', 'Semantic Note': 'No metrics recorded' }]
+}
+
+function buildLiveTimelineRows(report: Report, context: ReportExportContext): Record<string, unknown>[] {
+  const rows: Record<string, unknown>[] = []
+  for (const snapshot of (context.dashboardUpdates ?? []).filter(item => item.shift_id === report.shift_id)) {
+    const append = (source: string, metrics: Record<string, unknown>) => {
+      for (const [key, value] of Object.entries(metrics).sort(([a], [b]) => a.localeCompare(b))) {
+        if (value === undefined) continue
+        rows.push({
+          'Shift ID': report.shift_id,
+          'Snapshot ID': snapshot.id,
+          'Captured Time': snapshot.time,
+          'Metric Source': source,
+          'Metric Key': key,
+          Value: workbookScalar(value),
+          Notes: snapshot.notes ?? '',
+          'Screenshot Reference': snapshot.screenshot_storage_path ?? snapshot.screenshot_url ?? '',
+          'Recorded At': snapshot.created_at,
+        })
+      }
+    }
+    append('snapshot_fields', {
+      revenue: snapshot.revenue,
+      gmv: snapshot.gmv,
+      orders: snapshot.orders,
+      peak_viewers: snapshot.peak_viewers,
+      current_viewers: snapshot.current_viewers,
+      total_views: snapshot.total_views,
+      total_viewers: snapshot.total_viewers,
+      likes: snapshot.likes,
+      comments: snapshot.comments,
+      shares: snapshot.shares,
+    })
+    append('normalized_metrics', snapshot.normalized_metrics ?? {})
+  }
+  return rows.length ? rows : [{
+    'Shift ID': report.shift_id,
+    'Snapshot ID': '',
+    'Captured Time': '',
+    'Metric Source': 'none',
+    'Metric Key': '',
+    Value: '',
+    Notes: 'No dashboard snapshots recorded for this shift',
+    'Screenshot Reference': '',
+    'Recorded At': '',
+  }]
+}
+
+function buildEvidenceRows(report: Report, context: ReportExportContext): Record<string, unknown>[] {
+  const rows: Record<string, unknown>[] = []
+  const append = (kind: string, id: string, field: string, value: unknown, time = '') => {
+    if (value === undefined || value === null) return
+    const raw = String(workbookScalar(value))
+    // Excel cells are limited to 32,767 characters; split OCR/evidence safely.
+    for (let offset = 0; offset < raw.length || offset === 0; offset += 30000) {
+      rows.push({
+        'Report ID': report.id,
+        Type: kind,
+        'Source ID': id,
+        Field: field,
+        'Chunk Index': Math.floor(offset / 30000) + 1,
+        Value: raw.slice(offset, offset + 30000),
+        'Recorded At': time,
+      })
+    }
+  }
+  for (const image of (context.images ?? []).filter(item => item.report_id === report.id)) {
+    append('dashboard_image', image.id, 'image_type', image.image_type, image.created_at)
+    append('dashboard_image', image.id, 'original_name', image.original_name, image.created_at)
+    append('dashboard_image', image.id, 'image_url', image.image_url, image.created_at)
+    append('dashboard_image', image.id, 'storage_path', image.storage_path, image.created_at)
+  }
+  for (const image of (context.liveImages ?? []).filter(item => item.report_id === report.id)) {
+    append('live_image', image.id, 'category', image.category, image.created_at)
+    append('live_image', image.id, 'file_url', image.file_url, image.created_at)
+    append('live_image', image.id, 'file_name', image.file_name, image.created_at)
+  }
+  for (const file of (context.storedFiles ?? []).filter(item => item.report_id === report.id && !item.deleted_at)) {
+    append('stored_file', file.id, 'logical_category', file.logical_category, file.created_at)
+    append('stored_file', file.id, 'provider', file.provider, file.created_at)
+    append('stored_file', file.id, 'external_file_id', file.external_file_id, file.created_at)
+    append('stored_file', file.id, 'folder_path', file.folder_path, file.created_at)
+    append('stored_file', file.id, 'file_name', file.file_name, file.created_at)
+    append('stored_file', file.id, 'checksum_sha256', file.checksum_sha256, file.created_at)
+  }
+  append('report_ocr', report.id, 'ocr_review', report.ocr_review)
+  append('report_ocr', report.id, 'raw_ocr_output', report.raw_ocr_output)
+  return rows.length ? rows : [{
+    'Report ID': report.id,
+    Type: 'none',
+    'Source ID': '',
+    Field: '',
+    'Chunk Index': 1,
+    Value: 'No evidence metadata recorded',
+    'Recorded At': '',
+  }]
+}
+
 export function buildReportDetailWorkbookBytes(report: Report, context: ReportExportContext): Uint8Array {
-  return buildWorkbookBytes([{
-    name: 'Report',
-    rows: buildReportExportRows([report], context),
-    currencyColumns: REPORT_CURRENCY_COLUMNS,
-  }])
+  return buildWorkbookBytes([
+    {
+      name: '01_SUMMARY',
+      rows: buildReportExportRows([report], context),
+      currencyColumns: REPORT_CURRENCY_COLUMNS,
+    },
+    { name: '02_ALL_METRICS', rows: buildAllMetricRows(report) },
+    { name: '03_LIVE_TIMELINE', rows: buildLiveTimelineRows(report, context) },
+    { name: '04_EVIDENCE', rows: buildEvidenceRows(report, context) },
+  ])
 }
 export function exportReportImageMetadataToExcel(
   images: ReportImage[],

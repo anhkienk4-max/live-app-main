@@ -19,6 +19,12 @@ export type OperationalPeriodNamingStyle =
   | 'THANG_UPPER_M_DASH_YEAR'
 
 export type OperationalPeriodLabelOverrides = Record<string, Partial<Record<OperationalLogicalCategory | 'default', string>>>
+export interface OperationalPeriodDateRange {
+  start_date: string
+  end_date: string
+  category: OperationalLogicalCategory
+  label: string
+}
 
 export interface OperationalStorageRoute {
   id: string
@@ -33,6 +39,7 @@ export interface OperationalStorageRoute {
   folder_labels: Record<string, unknown>
   period_naming_style: string
   period_label_overrides?: OperationalPeriodLabelOverrides
+  period_date_ranges?: OperationalPeriodDateRange[]
   folder_label_overrides?: Record<string, Partial<Record<OperationalLogicalCategory, string | string[]>>>
   active: boolean
 }
@@ -147,6 +154,38 @@ function dateParts(shiftDate: string): { year: string; month: number } {
   return { year, month }
 }
 
+/**
+ * Verified P-periods may cross a calendar month. Only an explicitly assigned
+ * category and bounded ISO date interval can override the monthly location.
+ * Any overlapping category intervals are rejected to prevent ambiguous routes.
+ */
+function matchedPeriodRange(
+  ranges: OperationalPeriodDateRange[] | undefined,
+  date: string,
+  category: OperationalLogicalCategory,
+): string | undefined {
+  if (ranges === undefined) return undefined
+  if (!Array.isArray(ranges) || ranges.length > 100) fail('STORAGE_ROUTE_CONFIG_INVALID')
+  const byCategory = new Map<OperationalLogicalCategory, OperationalPeriodDateRange[]>()
+  for (const item of ranges) {
+    if (!item || !categories.has(item.category) || typeof item.label !== 'string'
+        || !isSafeHistoricalPeriodLabel(item.label)
+        || typeof item.start_date !== 'string' || typeof item.end_date !== 'string') {
+      fail('STORAGE_ROUTE_CONFIG_INVALID')
+    }
+    dateParts(item.start_date)
+    dateParts(item.end_date)
+    if (item.start_date > item.end_date) fail('STORAGE_ROUTE_CONFIG_INVALID')
+    const peers = byCategory.get(item.category) ?? []
+    if (peers.some(peer => item.start_date <= peer.end_date && peer.start_date <= item.end_date)) {
+      fail('STORAGE_ROUTE_AMBIGUOUS')
+    }
+    peers.push(item)
+    byCategory.set(item.category, peers)
+  }
+  return byCategory.get(category)?.find(item => item.start_date <= date && date <= item.end_date)?.label
+}
+
 function periodLabel(style: string, shiftDate: string, profile: OperationalStorageProfile): string {
   const { year, month } = dateParts(shiftDate)
   if (profile === 'CANONICAL_V1') return `THÁNG ${String(month).padStart(2, '0')}.${year}`
@@ -203,7 +242,8 @@ function exactRouteKey(route: OperationalStorageRoute, input: OperationalStorage
     && route.execution_source === input.executionSource
     && route.brand_id === input.brandId
     && (route.platform_id === null || route.platform_id === input.platformId)
-    && (route.subbrand_key === null || route.subbrand_key === input.subbrandKey)
+    // A NULL-subbrand route is never a fallback for a specific subbrand.
+    && route.subbrand_key === input.subbrandKey
 }
 
 /** Selects only exact-ID route candidates; ties fail closed instead of relying on DB order. */
@@ -237,7 +277,8 @@ export function resolveOperationalStoragePlacement(
 
   const fallbackPeriod = periodLabel(route.period_naming_style, input.shiftDate, profile)
   const overrides = route.period_label_overrides?.[input.shiftDate.slice(0, 7)]
-  const period = overrides?.[input.logicalCategory] ?? overrides?.default ?? fallbackPeriod
+  const period = matchedPeriodRange(route.period_date_ranges, input.shiftDate, input.logicalCategory)
+    ?? overrides?.[input.logicalCategory] ?? overrides?.default ?? fallbackPeriod
   if (!isSafeHistoricalPeriodLabel(period)) fail('STORAGE_ROUTE_CONFIG_INVALID')
   const categoryOverride = route.folder_label_overrides?.[input.shiftDate.slice(0, 7)]?.[input.logicalCategory]
   const category = categoryOverride === undefined

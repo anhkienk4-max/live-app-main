@@ -1,0 +1,196 @@
+name: RC15 storage consolidated code gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/rc15-storage-gate.yml'
+      - 'lib/files/**'
+      - 'lib/server/**'
+      - 'lib/services/fileStorageService.ts'
+      - 'lib/utils/excelUtils.ts'
+      - 'lib/utils/scheduleImportArchive.ts'
+      - 'components/features/calendar/ScheduleImportPanel.tsx'
+      - 'components/features/storage/**'
+      - 'components/features/reports/**'
+      - 'lib/ui/role-ux.ts'
+      - 'app/api/operational-files/**'
+      - 'app/(dashboard)/storage/**'
+      - 'tests/rc14-*.test.ts'
+      - 'tests/rc15-*.test.ts'
+      - 'supabase/migrations/20261008090000_rc15_storage_route_prerequisites.sql'
+      - 'supabase/migrations/20261008093000_rc15_shift_rpc_compatibility.sql'
+      - 'tests/fixtures/rc15_production_shift_rpc_baseline.sql'
+      - 'supabase/migrations/20261009000000_rc15_operational_files.sql'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+    steps:
+      - name: Checkout reviewed branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: Install pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+
+      - name: Install dependencies
+        # pnpm >=10.26 supports minimumReleaseAge and allowBuilds; pnpm 9 did not.
+        # Lockfile must be reproducible. Do not regenerate it during release CI.
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify RC1.5 SQL on isolated PostgreSQL 16
+        env:
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGDATABASE: postgres
+        run: |
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          -- Supabase creates these loginless roles; a vanilla PostgreSQL CI
+          -- service does not. Create exact role names before REVOKE checks.
+          create role anon nologin;
+          create role authenticated nologin;
+          create table public.brands (id text primary key);
+          create table public.platforms (id text primary key);
+          create table public.shifts (id text primary key);
+          create table public.campaigns (id text primary key);
+          create table public.business_users (id text primary key);
+          create schema private;
+          create table public.system_settings (id text primary key, default_host_count smallint, default_support_count smallint, default_technical_count smallint, allow_multi_role_per_shift boolean);
+          SQL
+          # Existing production baseline is missing RC1.3A routes and execution_source.
+          # Verify the additive prerequisite can be applied twice, without backfill.
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261008090000_rc15_storage_route_prerequisites.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261008090000_rc15_storage_route_prerequisites.sql
+          psql -v ON_ERROR_STOP=1 -f tests/fixtures/rc15_production_shift_rpc_baseline.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261008093000_rc15_shift_rpc_compatibility.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261009000000_rc15_operational_files.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261009000000_rc15_operational_files.sql
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          do $rc15$
+          begin
+            if not exists (
+              select 1 from information_schema.columns
+              where table_schema='public' and table_name='operational_files' and column_name='integrity_status'
+            ) then
+              raise exception 'RC15 integrity_status missing';
+            end if;
+            if not (select relrowsecurity from pg_class where oid='public.operational_files'::regclass) then
+              raise exception 'RC15 row level security missing';
+            end if;
+            if to_regclass('public.operational_storage_routes') is null then
+              raise exception 'RC15 route prerequisites missing';
+            end if;
+            if not exists (
+              select 1 from information_schema.columns
+              where table_schema = 'public'
+                and table_name = 'operational_storage_routes'
+                and column_name = 'period_label_overrides'
+                and udt_name = 'jsonb'
+            ) then
+              raise exception 'RC15 historical monthly overrides missing';
+            end if;
+            if not exists (
+              select 1 from information_schema.columns
+              where table_schema = 'public'
+                and table_name = 'operational_storage_routes'
+                and column_name = 'folder_label_overrides'
+                and udt_name = 'jsonb'
+            ) then
+              raise exception 'RC15 category label overrides missing';
+            end if;
+            if not exists (
+              select 1 from information_schema.columns
+              where table_schema = 'public'
+                and table_name = 'operational_storage_routes'
+                and column_name = 'period_date_ranges'
+                and udt_name = 'jsonb'
+            ) then
+              raise exception 'RC15 custom P-period ranges missing';
+            end if;
+            if not exists(select 1 from information_schema.columns
+              where table_schema='public' and table_name='shifts' and column_name='execution_source') then
+              raise exception 'RC15 execution_source missing';
+            end if;
+            if not exists(select 1 from information_schema.columns
+              where table_schema='public' and table_name='brands' and column_name='storage_profile') then
+              raise exception 'RC15 storage_profile missing';
+            end if;
+            if (select count(*) from public.operational_storage_routes) <> 0 then
+              raise exception 'RC15 must not invent operator-approved routes';
+            end if;
+            if not exists (
+              select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+              where n.nspname='public' and p.proname='create_shift'
+                and position('execution_source' in pg_get_functiondef(p.oid)) > 0
+            ) then
+              raise exception 'RC15 create_shift RPC not patched';
+            end if;
+            if (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+              where n.nspname='public' and p.proname='update_shift'
+                and position('execution_source' in pg_get_functiondef(p.oid)) > 0) <> 2 then
+              raise exception 'RC15 must patch both update_shift overloads';
+            end if;
+            if not exists (
+              select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+              where n.nspname='public' and p.proname='update_shift'
+                and position('assert_expected_version' in pg_get_functiondef(p.oid)) > 0
+            ) then
+              raise exception 'RC15 must preserve optimistic concurrency';
+            end if;
+          end
+          $rc15$;
+          SQL
+
+      - name: Type check
+        run: pnpm exec tsc --noEmit --incremental false
+
+      - name: Focused storage contract tests
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc14-report-artifact-storage.test.ts \
+            tests/rc14-data-report-export-fidelity.test.ts \
+            tests/rc15-operational-file-storage.test.ts \
+            tests/rc15-schedule-import-archive.test.ts \
+            tests/rc15-system-export.test.ts \
+            tests/rc15-storage-setup.test.ts
+
+      - name: Next.js build without Production secrets
+        run: pnpm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+
+      - name: Git diff whitespace check
+        # The RPC baseline fixture preserves Production PL/pgSQL CRLF exactly;
+        # changing its line endings invalidates the guarded definition MD5.
+        run: git -c core.whitespace=cr-at-eol diff --check HEAD~1 HEAD
