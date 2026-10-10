@@ -128,7 +128,8 @@ test('system snapshot enforces max bytes, without partial uploads', () => {
 test('generate_system_export requires Admin and indexes one checksum-scoped provider object', async () => {
   const db = makeDb()
   const uploaded: FileUploadInput[] = []
-  const handler = (systemPermission: 'admin' | 'leader') => createOperationalFileRouteHandler({
+  const handler = (systemPermission: 'admin' | 'leader', approved = false) => createOperationalFileRouteHandler({
+    allowConfidentialWrites: () => approved,
     createClient: () => db.client,
     resolveUser: async () => ({ id: 'operator', systemPermission, businessUserId: 'operator' }),
     storage: {
@@ -156,8 +157,12 @@ test('generate_system_export requires Admin and indexes one checksum-scoped prov
     body: JSON.stringify({ action: 'generate_system_export', ...scope, provider: 'google_drive' }),
   })
   assert.equal((await handler('leader').POST(request())).status, 403)
+  const blocked = await handler('admin').POST(request())
+  assert.equal(blocked.status, 423)
+  assert.equal((await blocked.json() as { error: { code: string } }).error.code,
+    'OPERATIONAL_FILE_CONFIDENTIAL_STORAGE_NOT_APPROVED')
   assert.equal(uploaded.length, 0)
-  const first = await handler('admin').POST(request())
+  const first = await handler('admin', true).POST(request())
   assert.equal(first.status, 200)
   const firstBody = await first.json() as { counts: Record<string, number>; reused: boolean }
   assert.equal(firstBody.reused, false)
@@ -169,7 +174,7 @@ test('generate_system_export requires Admin and indexes one checksum-scoped prov
   assert.equal(db.records.operational_files.length, 1)
   assert.equal(db.records.operational_files[0].integrity_status, 'sha256_verified')
   assert.equal('content' in db.records.operational_files[0], false)
-  const second = await handler('admin').POST(request())
+  const second = await handler('admin', true).POST(request())
   assert.equal((await second.json() as { reused: boolean }).reused, true)
   assert.equal(uploaded.length, 1)
 })
