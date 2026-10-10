@@ -164,4 +164,6 @@ jobs:
           OPERATIONAL_STORAGE_ROUTING_MODE: database
 
       - name: Git diff whitespace check
-        run: git diff --check HEAD~1 HEAD
+        # The RPC baseline fixture preserves Production PL/pgSQL CRLF exactly;
+        # changing its line endings invalidates the guarded definition MD5.
+        run: git -c core.whitespace=cr-at-eol diff --check HEAD~1 HEAD
