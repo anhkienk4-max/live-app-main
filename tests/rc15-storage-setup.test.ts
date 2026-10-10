@@ -81,7 +81,7 @@ test('readiness inventory does not guess missing Shift source or brand profile',
   const state = fixture()
   const handler = createOperationalStorageSetupHandler({
     createClient: () => state.conn, getRoot: () => 'approved-drive-root',
-    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin' }),
+    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
   })
   const response = await handler.GET(new Request('https://example.test/api/operational-storage-setup'))
   assert.equal(response.status, 200)
@@ -99,7 +99,7 @@ test('explicit canonical brand approval never silently converts legacy profiles'
   const state = fixture()
   const handler = createOperationalStorageSetupHandler({
     createClient: () => state.conn,
-    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin' }),
+    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
   })
   const make = (brand: string, confirmation: string) => request({
     action: 'classify_brand_profile', brand_id: brand,
@@ -123,7 +123,7 @@ test('route approval requires configured verified root, canonical brand, exact p
       metadataCalls += 1
       return { id, name: 'LIVESTREAM REPORT', kind: 'folder' }
     },
-    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin' }),
+    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
   })
   assert.equal((await handler.POST(request({ ...routePayload(), root_folder_id: 'other' }))).status, 409)
   assert.equal((await handler.POST(request({ ...routePayload(), brand_id: 'brand-2' }))).status, 409)
@@ -152,7 +152,7 @@ test('shift source classification requires explicit review and matching CAS vers
   const rpcCalls: Array<{ id: string; version: number; source: string }> = []
   const handler = createOperationalStorageSetupHandler({
     createClient: () => state.conn,
-    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin' }),
+    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
     updateShift: async (id, version, source) => {
       rpcCalls.push({ id, version, source })
       return { data: { id, version: version + 1, execution_source: source }, error: null }
