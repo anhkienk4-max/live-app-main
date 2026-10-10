@@ -9,7 +9,8 @@ import {
 import { resolveOperationalFilePlacement } from '@/lib/files/operationalFilePlacement'
 import { createOperationalFileRouteHandler } from '@/lib/server/operationalFileRouteHandler'
 import type { FileUploadInput } from '@/lib/files/fileProvider'
-import type { OperationalStoragePlacement } from '@/lib/files/operationalStoragePlacementResolver'
+import { selectOperationalStorageRoute, type OperationalStoragePlacement, type OperationalStorageRoute }
+  from '@/lib/files/operationalStoragePlacementResolver'
 
 const base = {
   provider: 'google_drive',
@@ -22,6 +23,26 @@ const base = {
   logicalCategory: 'data_source',
   periodLabel: 'THÁNG 09.2026',
 } as OperationalStoragePlacement
+
+test('subbrand-scoped files must not fallback to a shared NULL-subbrand route', () => {
+  const generic: OperationalStorageRoute = {
+    id: 'generic', provider: 'google_drive', execution_source: 'internal',
+    brand_id: 'brand-1', platform_id: 'platform-1', subbrand_key: null,
+    storage_profile: 'LEGACY_PERIOD_CATEGORY', root_folder_id: 'root',
+    base_folder_id: 'base', folder_labels: {}, period_naming_style: 'THANG_M_DASH_YEAR',
+    active: true,
+  }
+  const key = {
+    provider: 'google_drive' as const, executionSource: 'internal' as const,
+    brandId: 'brand-1', platformId: 'platform-1', subbrandKey: 'verified-subbrand',
+  }
+  assert.throws(() => selectOperationalStorageRoute([generic], key), {
+    message: 'STORAGE_ROUTE_NOT_CONFIGURED',
+  })
+  const approved = { ...generic, id: 'verified-subbrand-route', subbrand_key: 'verified-subbrand' }
+  assert.equal(selectOperationalStorageRoute([generic, approved], key).id, approved.id)
+  assert.equal(selectOperationalStorageRoute([generic, approved], { ...key, subbrandKey: null }).id, generic.id)
+})
 
 test('V2 categories have unique canonical folders under the same brand/platform/month', () => {
   assert.equal(OPERATIONAL_FILE_CATEGORIES.length, 15)
