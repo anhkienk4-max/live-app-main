@@ -32,7 +32,8 @@ type CatalogResponse = {
   campaigns: CampaignOption[]
   categories: Category[]
   max_single_upload_bytes: number
-}
+  confidential_write_ready: boolean
+
 type ListResponse = { ok: boolean; files?: Stored[]; error?: { code?: string } }
 
 const today = () => {
@@ -55,6 +56,8 @@ export function OperationalFileWorkspace() {
   const [periodDate, setPeriodDate] = React.useState(today)
   const [executionSource, setExecutionSource] = React.useState<'internal' | 'agency'>('internal')
   const [category, setCategory] = React.useState(search.get('category') || 'schedule_source')
+  const confidentialBlocked = ['payment_document', 'system_export'].includes(category)
+    && catalog?.confidential_write_ready !== true
   const [provider, setProvider] = React.useState<'google_drive' | 'onedrive'>('google_drive')
   const [file, setFile] = React.useState<File | null>(null)
   const [files, setFiles] = React.useState<Stored[]>([])
@@ -340,6 +343,10 @@ export function OperationalFileWorkspace() {
             </select>
           </label>
         </div>
+        {confidentialBlocked && <p role="status" className="rounded-md border p-3 text-sm">
+          Finance/System Export đang khóa ghi file cho đến khi quyền truy cập thư mục đích được xác minh và phê duyệt.
+          File đã lưu vẫn có thể truy cập theo phân quyền.
+        </p>}
         <input id="operational-file-input" type="file" className={fieldClass}
           onChange={event => setFile(event.target.files?.[0] || null)}
           aria-label="Chọn file vận hành" />
@@ -348,7 +355,7 @@ export function OperationalFileWorkspace() {
           File lớn hãy dùng phần liên kết file provider bên dưới; không upload binary qua Supabase.
         </p>
         <button type="button" className={buttonClass} onClick={() => void upload()}
-          disabled={!file || !catalog || busy}>
+          disabled={!file || !catalog || busy || confidentialBlocked}>
           <span className="flex items-center gap-2"><Upload className="h-4 w-4" />Lưu file</span>
         </button>
       </section>
@@ -369,7 +376,7 @@ export function OperationalFileWorkspace() {
           <input className={fieldClass} value={externalInput} onChange={event => setExternalInput(event.target.value)}
             placeholder="File ID / https://drive.google.com/file/d/..." />
         </label>
-        <button className={buttonClass} type="button" disabled={busy || !catalog || !externalInput.trim()}
+        <button className={buttonClass} type="button" disabled={busy || !catalog || !externalInput.trim() || confidentialBlocked}
           onClick={() => void providerAction('attach_existing')}>Liên kết file đã tải lên</button>
         <p className="text-xs text-muted-foreground">
           File gắn bằng ID được kiểm tra parent folder; checksum nội dung chưa được xác nhận
@@ -380,13 +387,16 @@ export function OperationalFileWorkspace() {
       {catalog?.categories.some(item => item.id === 'system_export') && (
         <section className="space-y-3 rounded-xl border p-4" aria-label="Admin System Export">
           <h2 className="font-semibold">System Export — Admin</h2>
+          {catalog.confidential_write_ready !== true && <p role="status" className="text-sm">
+            System Export chưa được phép lưu vào provider khi quyền chia sẻ chưa được phê duyệt.
+          </p>}
           <p className="text-sm text-muted-foreground">
             Xuất bản snapshot JSON của một ngày vận hành theo Brand / Platform / Internal hoặc Agency,
             gồm Shift, Report, KPI timeline và metadata bằng chứng. Không phải backup toàn bộ database.
             Khi vượt giới hạn hệ thống sẽ báo lỗi thay vì xuất thiếu bản ghi.
           </p>
           <button className={buttonClass} type="button"
-            disabled={busy || Boolean(shiftId.trim()) || Boolean(campaignId) || !brandId || !platformId}
+            disabled={busy || catalog.confidential_write_ready !== true || Boolean(shiftId.trim()) || Boolean(campaignId) || !brandId || !platformId}
             onClick={() => void generateSystemExport()}>
             Xuất dữ liệu ngày đang chọn lên Drive
           </button>
