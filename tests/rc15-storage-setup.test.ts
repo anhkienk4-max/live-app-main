@@ -174,3 +174,75 @@ test('shift source classification requires explicit review and matching CAS vers
   assert.deepEqual(rpcCalls, [{ id: 'shift-1', version: 3, source: 'agency' }])
   assert.equal(state.rows.shifts[0].execution_source, null, 'must not use service-role shift UPDATE')
 })
+
+
+test('reviewed legacy route requires exact historical folder labels and real base-folder ancestry', async () => {
+  const state = fixture()
+  const checked: string[] = []
+  const handler = createOperationalStorageSetupHandler({
+    createClient: () => state.conn,
+    getRoot: () => 'approved-drive-root',
+    metadata: async folderId => {
+      checked.push(folderId)
+      if (folderId === 'approved-drive-root') return { id: folderId, name: 'Root', kind: 'folder', parent_ids: [] }
+      if (folderId === 'historical-base') return {
+        id: folderId, name: 'Existing Brand Files', kind: 'folder', parent_ids: ['approved-drive-root'],
+      }
+      return { id: folderId, name: 'Unrelated', kind: 'folder', parent_ids: ['external-parent'] }
+    },
+    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
+  })
+  const make = (overrides: Record<string, unknown> = {}) => request({
+    action: 'register_legacy_route', brand_id: 'brand-2', platform_id: 'platform-1',
+    execution_source: 'agency', root_folder_id: 'approved-drive-root',
+    base_folder_id: 'historical-base', storage_profile: 'LEGACY_PERIOD_CATEGORY',
+    period_naming_style: 'THANG_M_DASH_YEAR',
+    folder_labels: {
+      dashboard: 'DASHBOARD', live_visual_internal: 'VISIBILITY',
+      live_visual_agency: 'VISUAL HOST',
+      data_report: ['DATA', 'REPORT'], data_source: ['DATA', 'SOURCE'],
+    },
+    confirmation: 'I_VERIFIED_LEGACY_PROVIDER_BASE_AND_PATHS',
+    ...overrides,
+  })
+  assert.equal((await handler.POST(make({ base_folder_id: 'unrelated' }))).status, 409)
+  assert.equal(state.rows.operational_storage_routes.length, 0)
+  assert.equal((await handler.POST(make({ folder_labels: {
+    dashboard: '../escape', live_visual_internal: 'VISIBILITY',
+    live_visual_agency: 'VISUAL HOST', data_report: ['DATA', 'REPORT'],
+    data_source: ['DATA', 'SOURCE'],
+  } }))).status, 400)
+  assert.equal(state.rows.operational_storage_routes.length, 0)
+  assert.equal((await handler.POST(make({ storage_profile: 'LEGACY_CATEGORY_PERIOD' }))).status, 409)
+  assert.equal((await handler.POST(make())).status, 200)
+  assert.deepEqual(checked.slice(-2), ['approved-drive-root', 'historical-base'])
+  const stored = state.rows.operational_storage_routes[0]
+  assert.equal(stored.storage_profile, 'LEGACY_PERIOD_CATEGORY')
+  assert.equal(stored.root_folder_id, 'approved-drive-root')
+  assert.equal(stored.base_folder_id, 'historical-base')
+  assert.deepEqual(stored.folder_labels.data_source, ['DATA', 'SOURCE'])
+  assert.equal(stored.approved_by, 'admin')
+  assert.equal((await handler.POST(make())).status, 409)
+  assert.equal(state.rows.operational_storage_routes.length, 1)
+})
+
+test('unknown profile may be classified legacy but an existing canonical/legacy profile cannot be overwritten', async () => {
+  const state = fixture()
+  const handler = createOperationalStorageSetupHandler({
+    createClient: () => state.conn,
+    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
+  })
+  const response = await handler.POST(request({
+    action: 'classify_brand_profile', brand_id: 'brand-1',
+    storage_profile: 'LEGACY_CATEGORY_PERIOD',
+    confirmation: 'I_VERIFIED_THIS_BRAND_FOLDER_PROFILE',
+  }))
+  assert.equal(response.status, 200)
+  assert.equal(state.rows.brands[0].storage_profile, 'LEGACY_CATEGORY_PERIOD')
+  assert.equal((await handler.POST(request({
+    action: 'classify_brand_profile', brand_id: 'brand-1',
+    storage_profile: 'CANONICAL_V1',
+    confirmation: 'I_VERIFIED_THIS_BRAND_USES_CANONICAL_FOLDERS',
+  }))).status, 409)
+  assert.equal(state.rows.brands[0].storage_profile, 'LEGACY_CATEGORY_PERIOD')
+})
