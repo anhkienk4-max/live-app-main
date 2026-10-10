@@ -27,6 +27,28 @@ const legacyProfile = z.enum([
 const legacySegment = z.string().min(1).max(160)
   .refine(v => v === v.trim() && v !== '.' && v !== '..'
     && !v.includes('..') && !/[\\/\u0000-\u001f\u007f]/u.test(v))
+const periodRange = z.object({
+  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+  category: z.enum(['dashboard', 'live_visual', 'data_report', 'data_source']),
+  label: z.string().min(1).max(200).refine(isSafeHistoricalPeriodLabel),
+}).strict()
+const periodRanges = z.array(periodRange).max(100).superRefine((ranges, ctx) => {
+  const validDate = (s: string) => {
+    const [year, month, day] = s.split('-').map(Number)
+    const d = new Date(Date.UTC(year, month - 1, day))
+    return d.getUTCFullYear() === year && d.getUTCMonth() + 1 === month && d.getUTCDate() === day
+  }
+  ranges.forEach((r, i) => {
+    if (!validDate(r.start_date) || !validDate(r.end_date) || r.start_date > r.end_date) {
+      ctx.addIssue({ code: 'custom', message: 'Invalid P-period bounds', path: [i] })
+    }
+    if (ranges.slice(0, i).some(other => other.category === r.category
+      && other.start_date <= r.end_date && r.start_date <= other.end_date)) {
+      ctx.addIssue({ code: 'custom', message: 'Overlapping P-period category ranges', path: [i] })
+    }
+  })
+})
 const legacyRouteInput = z.object({
   action: z.literal('register_legacy_route'),
   brand_id: id,
@@ -43,6 +65,7 @@ const legacyRouteInput = z.object({
     z.string().regex(/^\d{4}-(?:0[1-9]|1[0-2])$/u),
     z.object({ default: z.string().refine(isSafeHistoricalPeriodLabel) }).strict(),
   ).optional(),
+  period_date_ranges: periodRanges.optional(),
   folder_labels: z.object({
     dashboard: legacySegment,
     live_visual_internal: legacySegment,
@@ -284,6 +307,7 @@ export function createOperationalStorageSetupHandler(deps: {
             folder_labels: parsed.folder_labels,
             period_naming_style: parsed.period_naming_style,
             period_label_overrides: parsed.period_label_overrides ?? {},
+            period_date_ranges: parsed.period_date_ranges ?? [],
           }
           const verifiedBrandName = String(brand.data.name)
           const verifiedPlatformName = String(platform.data.name)
@@ -329,6 +353,7 @@ export function createOperationalStorageSetupHandler(deps: {
           folder_labels: isLegacy ? parsed.folder_labels : {},
           period_naming_style: isLegacy ? parsed.period_naming_style : 'THANG_M_DOT_YEAR',
           period_label_overrides: isLegacy ? parsed.period_label_overrides ?? {} : {},
+          period_date_ranges: isLegacy ? parsed.period_date_ranges ?? [] : [],
           folder_label_overrides: {},
           active: true, approved_by: actor.businessUserId,
           approved_at: new Date().toISOString(),
