@@ -20,7 +20,7 @@ export type ScheduleArchivePlan = {
   files: ScheduleArchiveIntent[]
   /** These rows cannot safely be assigned to a single brand/platform/month. */
   unresolvedRowNumbers: number[]
-  /** Raw Excel files are NEVER placed in brand folders when they contain mixed scopes. */
+  /** Raw Excel workbooks are NEVER placed in brand folders, even if preview is single-brand. */
   originalSourceArchived: boolean
 }
 
@@ -56,8 +56,8 @@ function exactEntityId<T extends { id: string; name: string }>(
 /**
  * Creates a brand-isolated archive from the reviewed preview, not from any
  * untrusted user-selected destination. Rows with unknown scope are never leaked
- * into a different brand. The exact original workbook is only copied when
- * *every* row belongs to the same resolved brand/platform/execution/month.
+ * into a different brand. Raw Excel is never copied: parsing one brand from
+ * visible schedule rows cannot certify unrelated or hidden workbook content.
  */
 export function planScheduleImportArchive(input: {
   batchId: string
@@ -97,7 +97,7 @@ export function planScheduleImportArchive(input: {
 
   const files: ScheduleArchiveIntent[] = []
   const buckets = [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b))
-  for (const [key, bucket] of buckets) {
+  for (const [index, [, bucket]] of buckets.entries()) {
     const month = bucket.scope.period_date.slice(0, 7)
     const text = JSON.stringify({
       schema: 'schedule_import_preview_v1',
@@ -109,24 +109,20 @@ export function planScheduleImportArchive(input: {
       source_kind: input.sourceType,
       rows: bucket.rows.map(normalizedRecord),
     }, null, 2)
-    const file = new File([text], `schedule_import_${batchId}_${month}_${buckets.indexOf(buckets.find(item => item[0] === key)!) + 1}.json`, {
+    const file = new File([text], `schedule_import_${batchId}_${month}_${index + 1}.json`, {
       type: 'application/json',
     })
     if (file.size > input.maxFileBytes) throw new Error('SCHEDULE_ARCHIVE_PARTITION_TOO_LARGE')
     files.push({ scope: bucket.scope, file, kind: 'normalized_preview', rowCount: bucket.rows.length })
   }
 
-  const oneScope = buckets.length === 1 && unresolvedRowNumbers.length === 0
-  const original = input.sourceType === 'excel' ? input.sourceFile : null
-  const copyOriginal = Boolean(oneScope && original && original.size > 0 && original.size <= input.maxFileBytes)
-  if (copyOriginal && original) files.push({
-    scope: buckets[0][1].scope,
-    file: original,
-    kind: 'original_source',
-    rowCount: input.previews.length,
-  })
-
-  return { files, unresolvedRowNumbers, originalSourceArchived: copyOriginal }
+  // A parsed single-brand preview DOES NOT prove the original workbook is
+  // single-brand: hidden worksheets, unrelated columns and embedded objects
+  // may still carry confidential information from other brands.
+  // Do not copy raw source workbooks into brand-scoped provider folders.
+  // An Admin-only neutral archive with a complete content audit is a
+  // separate feature. Normalized previews remain safely partitioned.
+  return { files, unresolvedRowNumbers, originalSourceArchived: false }
 }
 
 /** Client helper: fail when a provider upload returns an error, never claim success. */
