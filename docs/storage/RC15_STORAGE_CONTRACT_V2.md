@@ -98,6 +98,24 @@ without subbrands**:
 - `LEGACY_PLATFORM_CATEGORY_PERIOD`
 - `LEGACY_PERIOD_CATEGORY`
 
+The read-only Production Drive inspection found historical month labels that
+vary even inside a single existing brand group. The route table now stores
+`period_label_overrides` and `folder_label_overrides` as JSONB, and the route
+repository selects both. Admin setup accepts exact monthly exceptions as
+`YYYY-MM=Historical folder name` rows. **Before submitting a legacy route**, the
+UI calls `preview_legacy_route` for a selected sample date: the server checks
+verified root and base folder ancestry and computes expected Dashboard, Visual,
+DATA/SOURCE, DATA/REPORT and V2 paths without creating folders or modifying DB.
+The UI invalidates a previously approved preview if any route input changes.
+This preview does **not** prove that every historical category/month folder
+physically exists. The operator must inspect the actual provider tree for each
+required month. No invented route seed should be committed.
+
+The sampled metadata audit is in
+`docs/storage/RC15_PRODUCTION_DRIVE_TOPOLOGY_READONLY.md`. It intentionally
+omits raw provider IDs to avoid exposing broad-access Drive locations in
+version-controlled release documentation.
+
 The two subbrand-based legacy profiles remain **unsupported by the Admin
 registration path**: the current file scope does not carry a verified
 `subbrand_key`, and guessing it could mix different brands' evidence.
