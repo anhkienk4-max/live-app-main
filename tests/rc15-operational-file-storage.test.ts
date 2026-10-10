@@ -388,3 +388,52 @@ test('large provider-linked MP4 uses exact-parent verification, never buffers vi
   assert.equal(access.headers.get('Location'), 'https://drive.google.com/file/d/large-video-id/view')
   assert.equal(reads, 0)
 })
+
+
+test('concurrent provider-deduplicated upload NEVER trashes the winning shared object', async () => {
+  const baseState = client()
+  let lookupCount = 0
+  let providerDeletes = 0
+  const winner = {
+    id: 'existing-file', provider: 'google_drive', external_file_id: 'shared-drive-object',
+    category: 'schedule_source', file_name: 'source.csv', deleted_at: null,
+  }
+  const fakeDb = {
+    from(table: string) {
+      if (table !== 'operational_files') return baseState.db.from(table)
+      const query = {
+        select() { return query },
+        eq() { return query },
+        is() { return query },
+        async maybeSingle() {
+          lookupCount += 1
+          return { data: lookupCount > 1 ? winner : null, error: null }
+        },
+        insert() {
+          return { select() {
+            return { async single() { return { data: null, error: { message: 'unique constraint conflict' } } } }
+          } }
+        },
+      }
+      return query
+    },
+  }
+  const handler = createOperationalFileRouteHandler({
+    createClient: () => fakeDb as never,
+    resolveUser: async () => ({ id: 'leader', systemPermission: 'leader', businessUserId: 'leader' }),
+    storage: {
+      async upload() { return { asset: { external_file_id: 'shared-drive-object', provider_metadata: {} } } },
+      async read() { return new Uint8Array([]) },
+      async delete() { providerDeletes += 1 },
+      async ensureFolder() { throw new Error('must reuse existing folder') },
+    } as never,
+    routes: { async resolvePlacement() { return base } },
+    materializeFolders: async () => 'parent-id',
+    routingMode: 'database',
+  })
+  const uploaded = await handler.POST(form('schedule_source', 'source.csv', 'text/csv', new Uint8Array([1, 2, 3])))
+  assert.equal(uploaded.status, 200)
+  assert.equal((await uploaded.json() as { reused: boolean }).reused, true)
+  assert.equal(providerDeletes, 0)
+  assert.equal(lookupCount, 2)
+})
