@@ -74,6 +74,21 @@ Auto-archive writes only normalized per-brand/per-platform/month/execution-sourc
 
 The app currently supports direct provider upload plus exact-parent ID attachment for large video. It does **not** implement an app-hosted resumable/chunked video uploader. Linked files are tagged `integrity_status=provider_reference` because provider ownership/path and MIME/size are checked but bytes SHA-256 are not verified. Before release, perform actual large-file readback and permission test on the configured provider.
 
+## Admin operator-controlled configuration gateway (code staged, no Production writes)
+
+Admin-only `/storage/setup` and `/api/operational-storage-setup` have been staged to close
+the route/source preparation workflow **after** migrations are reviewed and applied:
+
+- Read-only inventory detects missing prerequisite columns/table and shows confirmed routes, brands and paginated unclassified shifts with an exact count. It displays an explicit schema blocker rather than silently substituting a storage provider.
+- Brand profile approval: only an unclassified `NULL` profile may be explicitly set to `CANONICAL_V1` after an operator has inspected Drive folder structure. Legacy profiles are never overwritten; no automated classification of historic brands. Approval is attributed with `storage_profile_reviewed_by` and timestamp.
+- Route approval: exact Google Drive root folder ID must equal the server-configured root and must resolve to a provider folder; explicit Brand + Platform + execution_source, active exact-key conflict rejected. No guessed root, wildcard, folder creation or public-ACL mutation. `approved_by` and `approved_at` stored on the route.
+- Existing Shift source approval: one selected shift only, explicitly verified `internal` or `agency`, optimistic version must match. Routed through the **authenticated user's** `update_shift` RPC to preserve actor attribution, lifecycle and CAS; never through direct service-role SQL UPDATE. The UI supports paginated review; does not attempt bulk backfill of 771 historic shifts.
+- Every write requires a mapped Admin business-user identity plus a distinct human confirmation. Leader/staff users cannot view or call setup actions.
+- Legacy folder layouts are deliberately **not** converted to the canonical V2 tree by this interface. Canonical file-vault route activation remains conditional on actual folder layout verification and explicit operator confirmation.
+
+The gateway remains unexercised on physical Google Drive and Supabase Production.
+**Do not infer that seeing the setup UI implies migration applied or storage ready.**
+
 ## Production schema reconciliation — mandatory release blocker (read-only audit 2026-10-11)
 
 The actual Supabase project `egdjnpmoasarrttvhgds` has the RC1.4 migration recorded, **but not RC1.3A**. It lacks `operational_storage_routes`, `shifts.execution_source`, and `brands.storage_profile`. Current `create_shift` and both `update_shift` overloads also lack `execution_source`. Production currently has **771 shifts and 15 brands**; none of those historical shifts can safely be auto-classified from the existing schema. `operational_files` is also absent, as expected for the staged V2 release. Therefore Storage V2 **must not be deployed** solely on green TypeScript/CI tests.
