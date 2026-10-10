@@ -119,7 +119,8 @@ export function createOperationalStorageSetupHandler(deps: {
     },
     POST(request: Request): Promise<Response> {
       return handle(async () => {
-        await requireRole(request, 'admin', deps.resolveUser)
+        const actor = await requireRole(request, 'admin', deps.resolveUser)
+        if (!actor.businessUserId) fail('STORAGE_SETUP_ACTOR_NOT_READY')
         const raw = await readJsonBody(request, 8192)
         const db = client()
         const parsed = z.union([routeInput, brandInput, shiftInput]).parse(raw)
@@ -138,7 +139,11 @@ export function createOperationalStorageSetupHandler(deps: {
             .eq('brand_id', parsed.brand_id).eq('active', true).limit(1)
           if (active.error) fail('STORAGE_SETUP_NOT_READY')
           if ((active.data ?? []).length > 0) fail('STORAGE_SETUP_ROUTE_CONFLICT')
-          const updated = await db.from('brands').update({ storage_profile: 'CANONICAL_V1' })
+          const updated = await db.from('brands').update({
+            storage_profile: 'CANONICAL_V1',
+            storage_profile_reviewed_by: actor.businessUserId,
+            storage_profile_reviewed_at: new Date().toISOString(),
+          })
             .eq('id', parsed.brand_id).is('storage_profile', null)
             .is('deleted_at', null).select('id,storage_profile').maybeSingle()
           if (updated.error || !updated.data) fail('STORAGE_SETUP_PROFILE_CONFLICT')
@@ -183,7 +188,8 @@ export function createOperationalStorageSetupHandler(deps: {
           subbrand_key: null, storage_profile: 'CANONICAL_V1',
           root_folder_id: rootId, base_folder_id: rootId,
           folder_labels: {}, period_naming_style: 'THANG_M_DOT_YEAR',
-          active: true,
+          active: true, approved_by: actor.businessUserId,
+          approved_at: new Date().toISOString(),
         }).select('id,brand_id,platform_id,execution_source,active').single()
         if (inserted.error || !inserted.data) fail('STORAGE_SETUP_ROUTE_CONFLICT')
         return Response.json({ ok: true, route: inserted.data }, { headers: { 'Cache-Control': 'no-store' } })
