@@ -15,7 +15,8 @@ import {
 
 const routeColumns = [
   'id', 'provider', 'execution_source', 'brand_id', 'platform_id', 'subbrand_key',
-  'storage_profile', 'root_folder_id', 'base_folder_id', 'folder_labels', 'period_naming_style', 'active',
+  'storage_profile', 'root_folder_id', 'base_folder_id', 'folder_labels', 'period_naming_style',
+  'period_label_overrides', 'folder_label_overrides', 'active',
 ].join(',')
 
 export type ResolveOperationalStoragePlacementInput = OperationalStoragePlacementInput
