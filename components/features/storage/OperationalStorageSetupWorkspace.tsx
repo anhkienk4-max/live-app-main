@@ -12,6 +12,7 @@ type Inventory = {
   ok: boolean; schema_ready: boolean; missing: string[]
   brands: Brand[]; platforms: Platform[]
   unclassified_shifts_sample: Shift[]; sample_limit: number
+  unclassified_shifts_count: number | null; offset: number
   routes: Route[]; root_configured: boolean
 }
 const control = 'w-full rounded-md border border-border bg-background px-3 py-2 text-sm'
@@ -19,6 +20,7 @@ const action = 'rounded-md border border-border px-3 py-2 text-sm hover:bg-muted
 
 export function OperationalStorageSetupWorkspace() {
   const [data, setData] = React.useState<Inventory | null>(null)
+  const [offset, setOffset] = React.useState(0)
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
   const [notice, setNotice] = React.useState('')
@@ -36,14 +38,14 @@ export function OperationalStorageSetupWorkspace() {
     setBusy(true)
     setError('')
     try {
-      const response = await fetch('/api/operational-storage-setup', { cache: 'no-store' })
+      const response = await fetch('/api/operational-storage-setup?offset=' + offset, { cache: 'no-store' })
       const json = await response.json() as Inventory & { error?: { code: string } }
       if (!response.ok || !json.ok) throw new Error(json.error?.code || 'Không đọc được tình trạng setup')
       setData(json)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Không đọc được tình trạng setup')
     } finally { setBusy(false) }
-  }, [])
+  }, [offset])
   React.useEffect(() => { void refresh() }, [refresh])
 
   const mutate = async (payload: Record<string, unknown>) => {
@@ -98,7 +100,7 @@ export function OperationalStorageSetupWorkspace() {
         <p className="text-sm">{data.schema_ready ? 'Schema prerequisite đã có.' : 'Chưa thể cấu hình: thiếu schema prerequisite.'}</p>
         {data.missing.length > 0 && <p className="text-sm">Thiếu: {data.missing.join(', ')}</p>}
         <p className="text-sm">Root Drive được cấu hình trên server: {data.root_configured ? 'Có' : 'Chưa có'}</p>
-        <p className="text-sm">Route đang active: {data.routes.length}. Ca chưa phân loại (tối đa {data.sample_limit} mẫu): {data.unclassified_shifts_sample.length}.</p>
+        <p className="text-sm">Route đang active: {data.routes.length}. Ca chưa phân loại: {data.unclassified_shifts_count ?? 'Chưa đếm được'}; đang hiển thị {data.unclassified_shifts_sample.length} ca.</p>
         <p className="text-xs text-muted-foreground">Số ca hiển thị là mẫu giới hạn, không phải tổng số ca chưa phân loại. Không suy đoán nguồn vận hành từ tên brand hoặc status.</p>
       </>}
     </section>
@@ -168,6 +170,14 @@ export function OperationalStorageSetupWorkspace() {
       <section className="rounded-xl border p-4 space-y-3" aria-label="Shift source classification">
         <h2 className="font-semibold">3. Phân loại từng ca cũ</h2>
         <p className="text-sm text-muted-foreground">Không bulk update và không tự gán Internal. Ghi qua RPC với phiên bản ca để bảo toàn audit/lifecycle.</p>
+        <div className="flex items-center gap-3 text-sm">
+          <button type="button" className={action} disabled={busy || offset === 0}
+            onClick={() => { setShiftId(''); setOffset(value => Math.max(0, value - 40)) }}>Trang trước</button>
+          <span>Ca {offset + 1}–{offset + data.unclassified_shifts_sample.length} / {data.unclassified_shifts_count ?? '?'}</span>
+          <button type="button" className={action}
+            disabled={busy || data.unclassified_shifts_sample.length < 40 || (data.unclassified_shifts_count !== null && offset + 40 >= data.unclassified_shifts_count)}
+            onClick={() => { setShiftId(''); setOffset(value => value + 40) }}>Trang sau</button>
+        </div>
         <select className={control} aria-label="Chọn ca chưa phân loại" value={shiftId}
           onChange={e => { setShiftId(e.target.value); setShiftApproved(false) }}>
           <option value="">Chọn ca cần phân loại</option>
