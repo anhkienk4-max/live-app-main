@@ -87,21 +87,28 @@ export function createOperationalStorageSetupHandler(deps: {
     GET(request: Request): Promise<Response> {
       return handle(async () => {
         await requireRole(request, 'admin', deps.resolveUser)
+        const params = new URL(request.url).searchParams
+        const offsetText = params.get('offset') ?? '0'
+        if (!/^\d{1,6}$/u.test(offsetText)) return result(400, 'STORAGE_SETUP_INVALID_PAGE')
+        const offset = Number(offsetText)
         const db = client()
         // Probe required columns/tables independently. Production without RC1.5
         // returns a useful blocked response rather than implying setup is ready.
-        const [brands, platforms, shifts, routes] = await Promise.all([
+        const [brands, platforms, shifts, unclassifiedCount, routes] = await Promise.all([
           db.from('brands').select('id,name,storage_profile').is('deleted_at', null).order('name'),
           db.from('platforms').select('id,name').is('deleted_at', null).order('name'),
           db.from('shifts').select('id,date,title,version,brand_id,platform_id,status,execution_source')
-            .is('execution_source', null).is('deleted_at', null).order('date', { ascending: false }).limit(40),
+            .is('execution_source', null).is('deleted_at', null).order('date', { ascending: false })
+            .range(offset, offset + 39),
+          db.from('shifts').select('id', { count: 'exact', head: true })
+            .is('execution_source', null).is('deleted_at', null),
           db.from('operational_storage_routes')
             .select('id,brand_id,platform_id,execution_source,storage_profile,provider,root_folder_id,active')
             .eq('active', true).order('brand_id'),
         ])
         const missing = [
           ...(brands.error ? ['brands.storage_profile'] : []),
-          ...(shifts.error ? ['shifts.execution_source'] : []),
+          ...(shifts.error || unclassifiedCount.error ? ['shifts.execution_source'] : []),
           ...(routes.error ? ['operational_storage_routes'] : []),
           ...(platforms.error ? ['platforms'] : []),
         ]
@@ -110,6 +117,8 @@ export function createOperationalStorageSetupHandler(deps: {
           brands: brands.error ? [] : brands.data ?? [],
           platforms: platforms.error ? [] : platforms.data ?? [],
           unclassified_shifts_sample: shifts.error ? [] : shifts.data ?? [],
+          unclassified_shifts_count: unclassifiedCount.error ? null : unclassifiedCount.count,
+          offset,
           sample_limit: 40,
           routes: routes.error ? [] : routes.data ?? [],
           root_configured: Boolean(configuredRoot()?.trim()),
