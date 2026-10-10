@@ -20,6 +20,7 @@ import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { fileStorageService, createFileStorageService } from '@/lib/services/fileStorageService'
 import { requireRole, authorizationErrorResponse, isAuthorizationError, type ServerUserResolver } from '@/lib/server/authGuards'
 import { readFormDataBody, readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
+import { loadOperationalSystemExport, encodeOperationalSystemExport } from '@/lib/server/operationalSystemExport'
 
 type Provider = 'google_drive' | 'onedrive'
 type StorageGateway = Pick<ReturnType<typeof createFileStorageService>, 'upload' | 'read' | 'delete' | 'ensureFolder' | 'getMetadata' | 'getViewUrl'>
@@ -60,6 +61,13 @@ const removeFields = z.object({ file_id: z.string().min(1).max(120) }).strict()
 const folderFields = scopeFields.extend({
   action: z.literal('prepare_folder'),
   category: z.enum(OPERATIONAL_FILE_CATEGORIES as [OperationalFileCategory, ...OperationalFileCategory[]]),
+}).strict()
+const generateExportFields = scopeFields.extend({
+  action: z.literal('generate_system_export'),
+  brand_id: z.string().min(1).max(120),
+  platform_id: z.string().min(1).max(120),
+  period_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+  execution_source: z.enum(['internal', 'agency']),
 }).strict()
 const attachFields = scopeFields.extend({
   action: z.literal('attach_existing'),
@@ -327,6 +335,74 @@ export function createOperationalFileRouteHandler(deps: {
         const actor = await requireRole(request, ['leader', 'admin'], deps.resolveUser)
         if ((request.headers.get('content-type') || '').includes('application/json')) {
           const raw = await readJsonBody(request, 16384)
+          const generated = generateExportFields.safeParse(raw)
+          if (generated.success) {
+            if (actor.systemPermission !== 'admin') return errorResponse('PERMISSION_DENIED', 403)
+            const input = generated.data
+            if (input.shift_id || input.campaign_id) return errorResponse('OPERATIONAL_FILE_EXPORT_SCOPE_INVALID', 400)
+            const client = clientFactory()
+            const scope = await scopeFromInput(client, input)
+            const provider = input.provider ?? 'google_drive'
+            const category = 'system_export' as const
+            // Never export an unbounded full database. The snapshot is exact
+            // brand/platform/day/execution-source and explicitly counts records.
+            const bundle = await loadOperationalSystemExport(client, {
+              brand_id: scope.brand_id, platform_id: scope.platform_id,
+              period_date: scope.period_date, execution_source: scope.execution_source,
+            })
+            const bytes = encodeOperationalSystemExport(bundle)
+            const checksum = createHash('sha256').update(bytes).digest('hex')
+            const artifactKey = 'file:' + checksum
+            const lookup = () => client.from('operational_files').select('*')
+              .eq('scope_key', scope.scope_key).eq('category', category)
+              .eq('artifact_key', artifactKey).is('deleted_at', null).maybeSingle()
+            const previous = await lookup()
+            if (previous.error) throw previous.error
+            if (previous.data) {
+              if (previous.data.provider !== provider) return errorResponse('OPERATIONAL_FILE_PROVIDER_CONFLICT', 409)
+              return Response.json({ ok: true, file: publicFile(previous.data as Record<string, unknown>),
+                counts: bundle.counts, reused: true }, { headers: { 'Cache-Control': 'no-store' } })
+            }
+            const name = safeName('operational_daily_snapshot.json', category, scope.period_date, checksum)
+            const { placement, parentId } = await resolveFolder(scope, category, provider, name)
+            const uploaded = await storage.upload({
+              name: placement.fileName, mime_type: 'application/json',
+              size_bytes: bytes.byteLength, checksum_sha256: checksum, content: bytes,
+              entity_type: 'brand', entity_id: scope.brand_id,
+              created_by: actor.businessUserId ?? actor.id,
+              logical_path: [...placement.folderSegments, placement.fileName].join('/'),
+              external_parent_id: parentId, destination: { provider },
+            })
+            const inserted = await client.from('operational_files').insert({
+              scope_key: scope.scope_key, category,
+              brand_id: scope.brand_id, platform_id: scope.platform_id,
+              shift_id: null, campaign_id: null, period_date: scope.period_date,
+              execution_source: scope.execution_source, provider,
+              external_file_id: uploaded.asset.external_file_id, external_parent_id: parentId,
+              provider_metadata: uploaded.asset.provider_metadata ?? {},
+              folder_path: placement.folderPath, file_name: placement.fileName,
+              mime_type: 'application/json', size_bytes: bytes.byteLength,
+              checksum_sha256: checksum, integrity_status: 'sha256_verified',
+              artifact_key: artifactKey, uploaded_by: actor.businessUserId ?? null,
+            }).select('*').single()
+            if (inserted.error || !inserted.data) {
+              const winner = await lookup()
+              if (!winner.error && winner.data && winner.data.provider === provider) {
+                // Never delete an object we may share with the winning row.
+                if (winner.data.external_file_id !== uploaded.asset.external_file_id) {
+                  try { await storage.delete({ provider, external_file_id: uploaded.asset.external_file_id }) }
+                  catch { console.error('OPERATIONAL_FILE_ORPHAN_CLEANUP_FAILED') }
+                }
+                return Response.json({ ok: true, file: publicFile(winner.data as Record<string, unknown>),
+                  counts: bundle.counts, reused: true }, { headers: { 'Cache-Control': 'no-store' } })
+              }
+              try { await storage.delete({ provider, external_file_id: uploaded.asset.external_file_id }) }
+              catch { console.error('OPERATIONAL_FILE_ORPHAN_CLEANUP_FAILED') }
+              throw new Error('OPERATIONAL_FILE_METADATA_WRITE_FAILED')
+            }
+            return Response.json({ ok: true, file: publicFile(inserted.data as Record<string, unknown>),
+              counts: bundle.counts, reused: false }, { headers: { 'Cache-Control': 'no-store' } })
+          }
           const folder = folderFields.safeParse(raw)
           const linked = folder.success ? null : attachFields.safeParse(raw)
           if (!folder.success && !linked?.success) return errorResponse('OPERATIONAL_FILE_REQUEST_INVALID')
