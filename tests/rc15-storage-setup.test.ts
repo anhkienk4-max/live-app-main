@@ -246,3 +246,59 @@ test('unknown profile may be classified legacy but an existing canonical/legacy 
   }))).status, 409)
   assert.equal(state.rows.brands[0].storage_profile, 'LEGACY_CATEGORY_PERIOD')
 })
+
+
+test('legacy route preview applies exact monthly exceptions without creating routes or files', async () => {
+  const state = fixture()
+  let metadataReads = 0
+  const handler = createOperationalStorageSetupHandler({
+    createClient: () => state.conn,
+    getRoot: () => 'approved-drive-root',
+    metadata: async id => {
+      metadataReads += 1
+      if (id === 'approved-drive-root') return { id, kind: 'folder', name: 'Root', parent_ids: [] }
+      if (id === 'historic-base') return {
+        id, kind: 'folder', name: 'Mars Wrigley', parent_ids: ['approved-drive-root'],
+      }
+      return { id, kind: 'folder', name: 'Unrelated', parent_ids: ['unknown'] }
+    },
+    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
+  })
+  const candidate = {
+    action: 'preview_legacy_route', brand_id: 'brand-2', platform_id: 'platform-1',
+    execution_source: 'agency', root_folder_id: 'approved-drive-root',
+    base_folder_id: 'historic-base', storage_profile: 'LEGACY_PERIOD_CATEGORY',
+    period_naming_style: 'THANG_M_DASH_YEAR', shift_date: '2026-07-20',
+    period_label_overrides: { '2026-07': { default: 'Tháng 7-2026' } },
+    folder_labels: {
+      dashboard: 'DASHBOARD', live_visual_internal: 'VISIBILITY',
+      live_visual_agency: 'VISUAL HOST',
+      data_report: ['DATA', 'REPORT'], data_source: ['DATA', 'SOURCE'],
+    },
+  }
+  const result = await handler.POST(request(candidate))
+  assert.equal(result.status, 200)
+  const json = await result.json() as {
+    ok: boolean; read_only: boolean;
+    legacy: { dashboard: string; data_source: string };
+    v2: { folder_path: string; base_folder_id: string }
+  }
+  assert.equal(json.read_only, true)
+  assert.equal(json.legacy.dashboard, 'Tháng 7-2026/DASHBOARD')
+  assert.equal(json.legacy.data_source, 'Tháng 7-2026/DATA/SOURCE')
+  assert.equal(json.v2.base_folder_id, 'approved-drive-root')
+  assert.equal(json.v2.folder_path,
+    'ADA_STORAGE_V2/brand-2/platform-1/AGENCY/Tháng 7-2026/PRODUCTION/ASSETS')
+  assert.equal(metadataReads, 2)
+  assert.equal(state.rows.operational_storage_routes.length, 0)
+
+  const invalid = await handler.POST(request({
+    ...candidate, period_label_overrides: { '2026-13': { default: 'Invalid month' } },
+  }))
+  assert.equal(invalid.status, 400)
+  assert.equal(state.rows.operational_storage_routes.length, 0)
+
+  const outsideRoot = await handler.POST(request({ ...candidate, base_folder_id: 'outside-root' }))
+  assert.equal(outsideRoot.status, 409)
+  assert.equal(state.rows.operational_storage_routes.length, 0)
+})
