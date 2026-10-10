@@ -19,11 +19,41 @@ const routeInput = z.object({
   root_folder_id: id,
   confirmation: z.literal('I_VERIFIED_PROVIDER_ROOT_AND_BRAND'),
 }).strict()
+const legacyProfile = z.enum([
+  'LEGACY_CATEGORY_PERIOD', 'LEGACY_PLATFORM_CATEGORY_PERIOD', 'LEGACY_PERIOD_CATEGORY',
+])
+const legacySegment = z.string().min(1).max(160)
+  .refine(v => v === v.trim() && v !== '.' && v !== '..'
+    && !v.includes('..') && !/[\\/\u0000-\u001f\u007f]/u.test(v))
+const legacyRouteInput = z.object({
+  action: z.literal('register_legacy_route'),
+  brand_id: id,
+  platform_id: id,
+  execution_source: source,
+  root_folder_id: id,
+  base_folder_id: id,
+  storage_profile: legacyProfile,
+  period_naming_style: z.enum([
+    'THANG_M_DASH_YEAR', 'THANG_M_DOT_YEAR', 'THANG_M_DOT_SPACE_YEAR',
+    'T_M_DOT_YEAR', 'THANG_UPPER_M_DASH_YEAR',
+  ]),
+  folder_labels: z.object({
+    dashboard: legacySegment,
+    live_visual_internal: legacySegment,
+    live_visual_agency: legacySegment,
+    data_report: z.array(legacySegment).min(1).max(5),
+    data_source: z.array(legacySegment).min(1).max(5),
+  }).strict(),
+  confirmation: z.literal('I_VERIFIED_LEGACY_PROVIDER_BASE_AND_PATHS'),
+}).strict()
 const brandInput = z.object({
   action: z.literal('classify_brand_profile'),
   brand_id: id,
-  storage_profile: z.literal('CANONICAL_V1'),
-  confirmation: z.literal('I_VERIFIED_THIS_BRAND_USES_CANONICAL_FOLDERS'),
+  storage_profile: z.union([z.literal('CANONICAL_V1'), legacyProfile]),
+  confirmation: z.union([
+    z.literal('I_VERIFIED_THIS_BRAND_USES_CANONICAL_FOLDERS'),
+    z.literal('I_VERIFIED_THIS_BRAND_FOLDER_PROFILE'),
+  ]),
 }).strict()
 const shiftInput = z.object({
   action: z.literal('classify_shift'),
@@ -56,6 +86,26 @@ export function createOperationalStorageSetupHandler(deps: {
   const configuredRoot = deps.getRoot ?? (() => process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID)
   const getMetadata = deps.metadata ?? ((fileId: string) =>
     fileStorageService.getMetadata({ provider: 'google_drive', external_file_id: fileId }))
+
+  async function requireInsideRoot(folderId: string, rootId: string) {
+    if (folderId === rootId) return
+    const visited = new Set<string>()
+    let current = folderId
+    // Walk real provider parent IDs. Never trust a copied folder ID as proof
+    // that it belongs beneath the configured root.
+    for (let depth = 0; depth < 10; depth++) {
+      if (visited.has(current)) fail('STORAGE_SETUP_BASE_FOLDER_MISMATCH')
+      visited.add(current)
+      const folder = await getMetadata(current)
+      if (folder.id !== current || folder.kind !== 'folder' || folder.parent_ids?.length !== 1) {
+        fail('STORAGE_SETUP_BASE_FOLDER_MISMATCH')
+      }
+      const parent = folder.parent_ids[0]
+      if (parent === rootId) return
+      current = parent
+    }
+    fail('STORAGE_SETUP_BASE_FOLDER_MISMATCH')
+  }
 
   const updateShift = deps.updateShift ?? (async (shiftId: string, expectedVersion: number, executionSource: Source) => {
     // Business-user-scoped RPC retains the actor, status, and optimistic CAS rules.
@@ -132,13 +182,21 @@ export function createOperationalStorageSetupHandler(deps: {
         if (!actor.businessUserId) fail('STORAGE_SETUP_ACTOR_NOT_READY')
         const raw = await readJsonBody(request, 8192)
         const db = client()
-        const parsed = z.union([routeInput, brandInput, shiftInput]).parse(raw)
+        const parsed = z.union([routeInput, legacyRouteInput, brandInput, shiftInput]).parse(raw)
 
         if (parsed.action === 'classify_brand_profile') {
           const found = await db.from('brands').select('id,storage_profile')
             .eq('id', parsed.brand_id).is('deleted_at', null).maybeSingle()
           if (found.error || !found.data) fail('STORAGE_SETUP_BRAND_NOT_FOUND')
-          if (found.data.storage_profile === 'CANONICAL_V1') {
+          if (parsed.storage_profile === 'CANONICAL_V1'
+            && parsed.confirmation !== 'I_VERIFIED_THIS_BRAND_USES_CANONICAL_FOLDERS') {
+            fail('STORAGE_SETUP_INVALID_PROFILE_CONFIRMATION')
+          }
+          if (parsed.storage_profile !== 'CANONICAL_V1'
+            && parsed.confirmation !== 'I_VERIFIED_THIS_BRAND_FOLDER_PROFILE') {
+            fail('STORAGE_SETUP_INVALID_PROFILE_CONFIRMATION')
+          }
+          if (found.data.storage_profile === parsed.storage_profile) {
             return Response.json({ ok: true, unchanged: true }, { headers: { 'Cache-Control': 'no-store' } })
           }
           if (found.data.storage_profile !== null) fail('STORAGE_SETUP_PROFILE_CONFLICT')
@@ -149,7 +207,7 @@ export function createOperationalStorageSetupHandler(deps: {
           if (active.error) fail('STORAGE_SETUP_NOT_READY')
           if ((active.data ?? []).length > 0) fail('STORAGE_SETUP_ROUTE_CONFLICT')
           const updated = await db.from('brands').update({
-            storage_profile: 'CANONICAL_V1',
+            storage_profile: parsed.storage_profile,
             storage_profile_reviewed_by: actor.businessUserId,
             storage_profile_reviewed_at: new Date().toISOString(),
           })
@@ -180,9 +238,20 @@ export function createOperationalStorageSetupHandler(deps: {
             .is('deleted_at', null).maybeSingle(),
         ])
         if (brand.error || platform.error || !brand.data || !platform.data) fail('STORAGE_SETUP_CONTEXT_NOT_FOUND')
-        if (brand.data.storage_profile !== 'CANONICAL_V1') fail('STORAGE_SETUP_PROFILE_NOT_READY')
+        const isLegacy = parsed.action === 'register_legacy_route'
+        if (isLegacy) {
+          if (brand.data.storage_profile !== parsed.storage_profile) fail('STORAGE_SETUP_PROFILE_NOT_READY')
+        } else if (brand.data.storage_profile !== 'CANONICAL_V1') {
+          fail('STORAGE_SETUP_PROFILE_NOT_READY')
+        }
         const folder = await getMetadata(rootId)
         if (folder.kind !== 'folder' || folder.id !== rootId) fail('STORAGE_SETUP_ROOT_MISMATCH')
+        if (parsed.action === 'register_legacy_route') {
+          // The original four categories retain their historical layout.
+          // The new 15 V2 categories use the isolated ADA_STORAGE_V2 namespace
+          // beneath rootId. Validate the historical base without rewriting it.
+          await requireInsideRoot(parsed.base_folder_id, rootId)
+        }
         const existing = await db.from('operational_storage_routes').select('id')
           .eq('provider', 'google_drive').eq('brand_id', parsed.brand_id)
           .eq('platform_id', parsed.platform_id).eq('execution_source', parsed.execution_source)
@@ -194,9 +263,12 @@ export function createOperationalStorageSetupHandler(deps: {
         const inserted = await db.from('operational_storage_routes').insert({
           provider: 'google_drive', execution_source: parsed.execution_source,
           brand_id: parsed.brand_id, platform_id: parsed.platform_id,
-          subbrand_key: null, storage_profile: 'CANONICAL_V1',
-          root_folder_id: rootId, base_folder_id: rootId,
-          folder_labels: {}, period_naming_style: 'THANG_M_DOT_YEAR',
+          subbrand_key: null,
+          storage_profile: isLegacy ? parsed.storage_profile : 'CANONICAL_V1',
+          root_folder_id: rootId,
+          base_folder_id: isLegacy ? parsed.base_folder_id : rootId,
+          folder_labels: isLegacy ? parsed.folder_labels : {},
+          period_naming_style: isLegacy ? parsed.period_naming_style : 'THANG_M_DOT_YEAR',
           active: true, approved_by: actor.businessUserId,
           approved_at: new Date().toISOString(),
         }).select('id,brand_id,platform_id,execution_source,active').single()
