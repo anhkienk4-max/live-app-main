@@ -427,7 +427,7 @@ export function createOperationalFileRouteHandler(deps: {
           if (restrictedCategories.has(category) && actor.systemPermission !== 'admin') {
             return errorResponse('PERMISSION_DENIED', 403)
           }
-          if (!folder.success && confidentialWriteBlocked(category)) {
+          if (confidentialWriteBlocked(category)) {
             return errorResponse('OPERATIONAL_FILE_CONFIDENTIAL_STORAGE_NOT_APPROVED', 423)
           }
           const client = clientFactory()
