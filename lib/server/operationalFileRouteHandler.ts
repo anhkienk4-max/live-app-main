@@ -543,6 +543,15 @@ export function createOperationalFileRouteHandler(deps: {
         const inserted = await client.from('operational_files').insert(row).select('*').single()
         if (inserted.error || !inserted.data) {
           const winner = await lookup()
+          // A provider can deduplicate physical content and return the same
+          // external ID as the winning metadata row. Never trash that ID.
+          if (!winner.error && winner.data &&
+            winner.data.provider === provider &&
+            winner.data.external_file_id === uploaded.asset.external_file_id) {
+            return Response.json({ ok: true, file: publicFile(winner.data as Record<string, unknown>), reused: true },
+              { headers: { 'Cache-Control': 'no-store' } })
+          }
+          // Our newly uploaded object is not the winning row; clean it up.
           try { await storage.delete({ provider, external_file_id: uploaded.asset.external_file_id }) }
           catch { console.error('OPERATIONAL_FILE_ORPHAN_CLEANUP_FAILED') }
           if (!winner.error && winner.data && winner.data.provider === provider) {
