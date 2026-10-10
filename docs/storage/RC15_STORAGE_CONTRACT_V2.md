@@ -56,6 +56,24 @@ Campaign Brief, Script/Caption, Content Plan, Production Assets and Livecut.
 - Campaign bulk Excel imports can contain multiple brands; no raw bulk source
   is automatically written to a per-brand folder.
 
+## Admin scoped System Exports (code staged, NOT physical UAT)
+
+The `/storage` Admin-only action `generate_system_export` builds a **daily, brand/platform/execution-source scoped JSON snapshot** from the canonical Supabase database. It contains full structured rows from `shifts`, `reports`, `dashboard_updates`, `report_images`, `live_report_images` and `stored_files` (metadata only, no media binaries), with per-table counts. It preserves all currently stored metric dictionaries and OCR fields in those rows. This is NOT a full Supabase SQL backup, is NOT a background scheduled backup, and is NOT a restore mechanism.
+
+Fail-closed behavior: Admin role only; server resolves exact brand/platform/date; report/evidence rows must be linked to those shift IDs; per-table 1,000-row boundary and 4-MiB output boundary abort instead of claiming completeness. Repeated generation of identical data reuses checksum-scoped provider metadata and avoids duplicate uploads. Snapshot content is deterministic, so changed source data produces a new checksum rather than silently overwriting the previous file.
+
+Provider destination: canonical `SYSTEM/EXPORTS` under configured Brand/Platform/Month; Supabase `operational_files` holds metadata with `integrity_status=sha256_verified`.
+
+**Security hold:** the root Drive folder still has an openly writable ACL per owner's deferment. Do not treat system exports containing live revenue, OCR or private business evidence as cleared for unrestricted production deployment; gate this separately from code test PASS.
+
+## Raw schedule workbook safety
+
+Auto-archive writes only normalized per-brand/per-platform/month/execution-source JSON previews. **It never copies the raw Excel workbook to a brand folder**, even when preview rows resolve to a single brand. The original may contain hidden sheets, unrelated cells, or embedded objects from other brands. A dedicated Admin neutral vault plus full workbook security audit is needed before retaining mixed-brand originals.
+
+## Large video evidence policy
+
+The app currently supports direct provider upload plus exact-parent ID attachment for large video. It does **not** implement an app-hosted resumable/chunked video uploader. Linked files are tagged `integrity_status=provider_reference` because provider ownership/path and MIME/size are checked but bytes SHA-256 are not verified. Before release, perform actual large-file readback and permission test on the configured provider.
+
 ## Database migration safety
 
 The staged RC1.5 migration was found malformed during review and was repaired.
