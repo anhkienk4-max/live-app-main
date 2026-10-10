@@ -33,7 +33,7 @@ function fixture() {
         }
         const found = rows.filter(row => filters.every(fn => fn(row)))
         if (operation === 'update') for (const row of found) Object.assign(row, update)
-        return { data: found, error: null }
+        return { data: found, error: null, count: found.length }
       }
       const q = {
         select(_columns?: string) { return q },
@@ -41,6 +41,7 @@ function fixture() {
         is(key: string, value: unknown) { filters.push(row => (row[key] ?? null) === value); return q },
         order(_key: string, _opts?: unknown) { return q },
         limit(_n: number) { return q },
+        range(_from: number, _to: number) { return q },
         insert(payload: Row) { operation = 'insert'; update = payload; return q },
         update(payload: Row) { operation = 'update'; update = payload; return q },
         async maybeSingle() { const r = evaluate(); return { data: r.data[0] ?? null, error: r.error } },
@@ -91,6 +92,7 @@ test('readiness inventory does not guess missing Shift source or brand profile',
   assert.equal(body.schema_ready, true)
   assert.equal(body.brands.find(b => b.id === 'brand-1')?.storage_profile, null)
   assert.equal(body.unclassified_shifts_sample[0]?.execution_source, null)
+  assert.equal((body as typeof body & { unclassified_shifts_count: number }).unclassified_shifts_count, 1)
   assert.equal(body.root_configured, true)
   assert.equal(state.rows.shifts[0].execution_source, null)
 })
@@ -111,6 +113,7 @@ test('explicit canonical brand approval never silently converts legacy profiles'
   assert.equal(state.rows.brands[1].storage_profile, 'LEGACY_PERIOD_CATEGORY')
   assert.equal((await handler.POST(make('brand-1', 'I_VERIFIED_THIS_BRAND_USES_CANONICAL_FOLDERS'))).status, 200)
   assert.equal(state.rows.brands[0].storage_profile, 'CANONICAL_V1')
+  assert.equal(state.rows.brands[0].storage_profile_reviewed_by, 'admin')
 })
 
 test('route approval requires configured verified root, canonical brand, exact platform and source', async () => {
@@ -141,6 +144,7 @@ test('route approval requires configured verified root, canonical brand, exact p
   assert.equal(saved.root_folder_id, 'approved-drive-root')
   assert.equal(saved.subbrand_key, null)
   assert.equal(saved.active, true)
+  assert.equal(saved.approved_by, 'admin')
 
   const repeated = await handler.POST(request(routePayload()))
   assert.equal(repeated.status, 409)
