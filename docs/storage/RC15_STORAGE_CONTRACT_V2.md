@@ -74,6 +74,26 @@ Auto-archive writes only normalized per-brand/per-platform/month/execution-sourc
 
 The app currently supports direct provider upload plus exact-parent ID attachment for large video. It does **not** implement an app-hosted resumable/chunked video uploader. Linked files are tagged `integrity_status=provider_reference` because provider ownership/path and MIME/size are checked but bytes SHA-256 are not verified. Before release, perform actual large-file readback and permission test on the configured provider.
 
+## Production schema reconciliation — mandatory release blocker (read-only audit 2026-10-11)
+
+The actual Supabase project `egdjnpmoasarrttvhgds` has the RC1.4 migration recorded, **but not RC1.3A**. It lacks `operational_storage_routes`, `shifts.execution_source`, and `brands.storage_profile`. Current `create_shift` and both `update_shift` overloads also lack `execution_source`. Production currently has **771 shifts and 15 brands**; none of those historical shifts can safely be auto-classified from the existing schema. `operational_files` is also absent, as expected for the staged V2 release. Therefore Storage V2 **must not be deployed** solely on green TypeScript/CI tests.
+
+Staged **forward-only migration order** (none applied on Production):
+
+1. `20261008090000_rc15_storage_route_prerequisites.sql`: adds nullable `shifts.execution_source` and `brands.storage_profile`, creates restricted `operational_storage_routes` with exact-key uniqueness, **no route seed/backfill**. Does not touch existing RPC bodies.
+2. `20261008093000_rc15_shift_rpc_compatibility.sql`: built from actual current Production `create_shift` and both `update_shift` definitions, with explicit MD5 guards. Only adds `execution_source` allowlist, validation and insert/update persistence. Retains existing status guards, audit actor and optimistic concurrency. Aborts on definition drift to avoid overwriting later changes.
+3. `20261009000000_rc15_operational_files.sql`: metadata-only file registry, constrained category, provider, SHA-256/reference flags, indexes and RLS.
+
+The isolated CI fixture `tests/fixtures/rc15_production_shift_rpc_baseline.sql` is a **copy of the function definitions only**, no customer data. CI validates the prerequisite twice, the guarded RPC patch once, and the metadata migration twice. This is **not a Production migration**.
+
+**Operator approval is still necessary** to classify required existing shifts and assign route keys, brands' correct `storage_profile`, execution source, parent folder IDs and isolation. No code can safely infer those decisions. Do not seed `internal` indiscriminately or write folder IDs guessed from names. Review Drive `anyone:writer` access separately before uploading sensitive evidence.
+
+The repeatable read-only readiness query is `scripts/storage/rc15-production-readiness.sql`. Current result: **BLOCKED_DO_NOT_DEPLOY_STORAGE_V2**. Route mappings and missing execution source must be reviewed after migrations and before the consolidated physical UAT.
+
+## Upload race safety
+
+When two simultaneous requests upload the same bytes and a provider returns an identical existing external ID, the failed metadata insert path must **not move the winner's file into Trash**. Only an object with a different ID from the metadata winner may be cleaned up. An explicit regression test exercises this path.
+
 ## Database migration safety
 
 The staged RC1.5 migration was found malformed during review and was repaired.
