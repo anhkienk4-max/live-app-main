@@ -284,6 +284,8 @@ export function createOperationalStorageSetupHandler(deps: {
             period_naming_style: parsed.period_naming_style,
             period_label_overrides: parsed.period_label_overrides ?? {},
           }
+          const verifiedBrandName = String(brand.data.name)
+          const verifiedPlatformName = String(platform.data.name)
           const mk = (logicalCategory: OperationalLogicalCategory) =>
             resolveOperationalStoragePlacement(candidate, {
               provider: 'google_drive',
@@ -292,8 +294,8 @@ export function createOperationalStorageSetupHandler(deps: {
               platformId: parsed.platform_id,
               subbrandKey: null, shiftDate: parsed.shift_date,
               logicalCategory, fileName: 'route-preview.txt',
-              brandLabel: String(brand.data.name),
-              platformLabel: String(platform.data.name),
+              brandLabel: verifiedBrandName,
+              platformLabel: verifiedPlatformName,
             })
           const dataSource = mk('data_source')
           const v2 = resolveOperationalFilePlacement(dataSource, 'production_asset', {
