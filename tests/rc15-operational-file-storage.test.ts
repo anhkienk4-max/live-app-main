@@ -533,6 +533,16 @@ test('confidential Finance writes fail closed until separately approved, includi
   })
   assert.equal((await handler(false).POST(finance())).status, 423)
   assert.equal((await handler(false).POST(link())).status, 423)
+  const folderRequest = new Request('https://example.test/api/operational-files', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'prepare_folder', category: 'payment_document',
+      brand_id: 'brand-1', platform_id: 'platform-1',
+      period_date: '2026-09-14', execution_source: 'internal',
+      provider: 'google_drive',
+    }),
+  })
+  assert.equal((await handler(false).POST(folderRequest)).status, 423)
   assert.equal(uploads, 0)
   assert.equal(metadataReads, 0)
   assert.equal(state.rows.length, 0)
