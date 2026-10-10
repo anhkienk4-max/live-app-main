@@ -63,6 +63,7 @@ destination. The Production `LIVESTREAM REPORT` root was observed to have
 `anyone:writer` and the owner explicitly deferred permission changes.
 Therefore **new** `payment_document` (Finance) and `system_export` writes
 are now **blocked by default at the server** — including multipart upload,
+folder preparation (which otherwise offers a direct upload destination),
 existing-provider-ID attachment and on-demand System Export generation.
 The gateway returns HTTP 423 with
 `OPERATIONAL_FILE_CONFIDENTIAL_STORAGE_NOT_APPROVED` before uploading, linking
