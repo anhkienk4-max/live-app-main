@@ -109,6 +109,24 @@ jobs:
             if to_regclass('public.operational_storage_routes') is null then
               raise exception 'RC15 route prerequisites missing';
             end if;
+            if not exists (
+              select 1 from information_schema.columns
+              where table_schema = 'public'
+                and table_name = 'operational_storage_routes'
+                and column_name = 'period_label_overrides'
+                and udt_name = 'jsonb'
+            ) then
+              raise exception 'RC15 historical monthly overrides missing';
+            end if;
+            if not exists (
+              select 1 from information_schema.columns
+              where table_schema = 'public'
+                and table_name = 'operational_storage_routes'
+                and column_name = 'folder_label_overrides'
+                and udt_name = 'jsonb'
+            ) then
+              raise exception 'RC15 category label overrides missing';
+            end if;
             if not exists(select 1 from information_schema.columns
               where table_schema='public' and table_name='shifts' and column_name='execution_source') then
               raise exception 'RC15 execution_source missing';
