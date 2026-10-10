@@ -116,6 +116,25 @@ The sampled metadata audit is in
 omits raw provider IDs to avoid exposing broad-access Drive locations in
 version-controlled release documentation.
 
+For historical P-period folders spanning different months (e.g.
+`P5 | 20/04 - 16/05`), a `YYYY-MM` period-name override is insufficient.
+The staged route metadata now also supports **`period_date_ranges`**, an array
+of explicitly verified inclusive `start_date`/`end_date`, the exact legacy
+folder `label`, and a required logical `category` (Dashboard, Visual,
+DATA/REPORT or DATA/SOURCE). Date ranges for the **same category** must not
+overlap; invalid calendar dates, unknown categories and traversal labels are
+rejected. A date-range match takes precedence over monthly label overrides,
+but applies **only to that category**; every other category retains its own
+verified month label. This allows a Dashboard P5 folder without silently moving
+DATA/SOURCE from its month-based location. The Admin route preview verifies
+the chosen date's planned paths; it does not assert that every historic folder
+physically exists. No P-period label or dates are seeded by AI.
+
+A read-only inspection of the current Supabase schema found no authoritative
+subbrand/product-line table or column. Accordingly, the two subbrand legacy
+profiles remain unsupported in the operational file upload path, and must not
+fall back to an arbitrary brand-level or NULL-subbrand route.
+
 The two subbrand-based legacy profiles remain **unsupported by the Admin
 registration path**: the current file scope does not carry a verified
 `subbrand_key`, and guessing it could mix different brands' evidence.
