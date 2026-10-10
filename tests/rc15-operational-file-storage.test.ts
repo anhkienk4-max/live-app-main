@@ -43,6 +43,41 @@ test('V2 refuses to invent a folder tree for a legacy storage profile', () => {
   }, 'video_recording'), { message: 'STORAGE_CATEGORY_NOT_CONFIGURED' })
 })
 
+test('legacy category-order routes use a separate ID-scoped V2 namespace without touching source folders', () => {
+  const profiles = [
+    'LEGACY_CATEGORY_PERIOD', 'LEGACY_PLATFORM_CATEGORY_PERIOD', 'LEGACY_PERIOD_CATEGORY',
+  ] as const
+  for (const profile of profiles) {
+    const input = {
+      ...base, storageProfile: profile,
+      rootFolderId: 'verified-main-root', baseFolderId: 'historical-base',
+      folderSegments: ['DATA', 'SOURCE', 'Tháng 9 - 2026'],
+      folderPath: 'DATA/SOURCE/Tháng 9 - 2026', periodLabel: 'Tháng 9 - 2026',
+    } as OperationalStoragePlacement
+    const original = JSON.stringify(input)
+    const resolved = resolveOperationalFilePlacement(input, 'production_asset', {
+      brandId: 'brand-1', platformId: 'platform-1', executionSource: 'internal',
+    })
+    assert.equal(resolved.baseFolderId, 'verified-main-root')
+    assert.deepEqual(resolved.folderSegments, [
+      'ADA_STORAGE_V2', 'brand-1', 'platform-1', 'INTERNAL',
+      'Tháng 9 - 2026', 'PRODUCTION', 'ASSETS',
+    ])
+    assert.equal(JSON.stringify(input), original, 'legacy input must remain unchanged')
+    const anotherBrand = resolveOperationalFilePlacement(input, 'production_asset', {
+      brandId: 'brand-2', platformId: 'platform-1', executionSource: 'internal',
+    })
+    const agency = resolveOperationalFilePlacement(input, 'production_asset', {
+      brandId: 'brand-1', platformId: 'platform-1', executionSource: 'agency',
+    })
+    assert.notEqual(resolved.folderPath, anotherBrand.folderPath)
+    assert.notEqual(resolved.folderPath, agency.folderPath)
+    assert.throws(() => resolveOperationalFilePlacement(input, 'production_asset', {
+      brandId: '../brand', platformId: 'platform-1', executionSource: 'internal',
+    }), { message: 'STORAGE_ROUTE_CONFIG_INVALID' })
+  }
+})
+
 test('MIME validation allows only category-compatible extensions', () => {
   assert.equal(resolveOperationalFileMime('video_recording', 'clip.mp4', 'video/mp4'), 'video/mp4')
   assert.equal(resolveOperationalFileMime('schedule_source', 'planning.xlsx', ''), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
