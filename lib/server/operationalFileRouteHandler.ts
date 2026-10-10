@@ -247,7 +247,10 @@ export function createOperationalFileRouteHandler(deps: {
       platformId: scope.platform_id, subbrandKey: null, shiftDate: scope.period_date,
       fileName, brandLabel: scope.brand_label, platformLabel: scope.platform_label,
     }))
-    const placement = resolveOperationalFilePlacement(base, category)
+    const placement = resolveOperationalFilePlacement(base, category, {
+      brandId: scope.brand_id, platformId: scope.platform_id,
+      executionSource: scope.execution_source,
+    })
     const parentId = await materialize(placement)
     return { placement, parentId }
   }
