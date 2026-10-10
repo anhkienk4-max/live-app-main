@@ -18,6 +18,12 @@ export function proxy(request: NextRequest) {
     })
   }
 
+  // Strip client-injected visual QA headers on all normal requests so they cannot bypass auth
+  if (request.headers.has('x-visual-qa-bypass') || request.headers.has('x-visual-qa-role')) {
+    request.headers.delete('x-visual-qa-bypass')
+    request.headers.delete('x-visual-qa-role')
+  }
+
   return authProxy(request)
 }
 

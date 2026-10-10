@@ -1,18 +1,30 @@
 /**
  * Fail-closed environment guard — blocks the app from running/building against
- * the PRODUCTION Supabase project from local development or Vercel preview.
+ * the PRODUCTION Supabase project from local development or Vercel preview,
+ * AND enforces that Preview and Production deployments have all mandatory
+ * Supabase configuration present (fail-closed if missing).
  *
  * Rules:
- *   - LOCAL (NODE_ENV != production, VERCEL_ENV unset) + prod URL  -> exit 1
- *   - PREVIEW (VERCEL_ENV=preview) + prod URL                      -> exit 1
- *   - PRODUCTION (VERCEL_ENV=production) + prod URL                -> allowed
- *   - local/preview + non-production URL                           -> allowed
+ *   - PREVIEW (VERCEL_ENV=preview):
+ *       - NEXT_PUBLIC_SUPABASE_URL missing -> exit 1 (cannot be Preview-ready without Supabase)
+ *       - NEXT_PUBLIC_SUPABASE_ANON_KEY missing -> exit 1
+ *       - URL points to PRODUCTION (egdjnpmoasarrttvhgds) -> exit 1 (STAGING amagnzebmmuqiptmrjmc required)
+ *       - URL points to non-production -> allowed
+ *   - PRODUCTION (VERCEL_ENV=production):
+ *       - NEXT_PUBLIC_SUPABASE_URL missing -> exit 1
+ *       - NEXT_PUBLIC_SUPABASE_ANON_KEY missing -> exit 1
+ *       - URL does NOT point to PRODUCTION -> exit 1
+ *   - LOCAL (NODE_ENV != production, VERCEL_ENV unset):
+ *       - URL points to PRODUCTION -> exit 1
+ *       - URL missing -> allowed (can run in local development mock mode)
  *
  * Wired into `next dev` and `next build` (see package.json) BEFORE app startup.
- * This is a process/build guard, NOT frontend authorization. The production
- * project ref is not a secret and is compared safely. Never prints secrets.
+ * Never prints secrets. Target project ref is compared safely.
  */
 const PRODUCTION_PROJECT_REF = "egdjnpmoasarrttvhgds";
+const STAGING_PROJECT_REF = "amagnzebmmuqiptmrjmc";
+
+type RuntimeMode = "local" | "local-build" | "preview" | "production";
 
 function fail(message: string): never {
   console.error(`[ENV GUARD] ${message}`);
@@ -25,49 +37,80 @@ function resolveSupabaseUrl(): string | null {
   return raw.replace(/\/+$/, "");
 }
 
+function resolveSupabaseAnonKey(): string | null {
+  const raw = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+  if (!raw) return null;
+  return raw;
+}
+
 function isProductionUrl(url: string): boolean {
   return url.includes(`/${PRODUCTION_PROJECT_REF}`) || url.includes(PRODUCTION_PROJECT_REF);
 }
 
-function mode(): "local" | "preview" | "production" {
+function isStagingUrl(url: string): boolean {
+  return url.includes(`/${STAGING_PROJECT_REF}`) || url.includes(STAGING_PROJECT_REF);
+}
+
+function mode(): RuntimeMode {
   if (process.env.VERCEL_ENV === "production") return "production";
   if (process.env.VERCEL_ENV === "preview") return "preview";
-  // Vercel sets NODE_ENV=production for builds; local dev has NODE_ENV=development.
   if (process.env.NODE_ENV === "production") return "local-build";
   return "local";
 }
 
 function main(): void {
   const url = resolveSupabaseUrl();
+  const anonKey = resolveSupabaseAnonKey();
   const currentMode = mode();
 
-  // No Supabase URL configured: let the app fail-closed at runtime (authGuards).
-  if (!url) {
-    console.log("[ENV GUARD] NEXT_PUBLIC_SUPABASE_URL not set; skipping URL check.");
+  if (currentMode === "preview") {
+    if (!url) {
+      fail(
+        "Missing mandatory Supabase configuration: NEXT_PUBLIC_SUPABASE_URL is not set. " +
+          "Vercel Preview deployments cannot be considered Preview-ready without Supabase configuration."
+      );
+    }
+    if (!anonKey) {
+      fail(
+        "Missing mandatory Supabase configuration: NEXT_PUBLIC_SUPABASE_ANON_KEY is not set. " +
+          "Vercel Preview deployments cannot be considered Preview-ready without Supabase configuration."
+      );
+    }
+    if (isProductionUrl(url)) {
+      fail(
+        "Vercel PREVIEW must NOT use the production Supabase project (egdjnpmoasarrttvhgds). " +
+          "Configure preview environment to point at the STAGING project (amagnzebmmuqiptmrjmc)."
+      );
+    }
+    const isStaging = isStagingUrl(url);
+    console.log(
+      `[ENV GUARD] Preview deployment target verified: ${isStaging ? "STAGING OK (" + STAGING_PROJECT_REF + ")" : "non-production OK"}.`
+    );
     return;
   }
 
-  const pointsAtProduction = isProductionUrl(url);
-
   if (currentMode === "production") {
-    if (!pointsAtProduction) {
-      fail(`VERCEL production deployment must use the production Supabase project.`);
+    if (!url || !anonKey) {
+      fail("Production deployment requires both NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+    }
+    if (!isProductionUrl(url)) {
+      fail("VERCEL production deployment must use the production Supabase project.");
     }
     console.log("[ENV GUARD] Production deployment + production Supabase OK.");
     return;
   }
 
-  if (currentMode === "preview" && pointsAtProduction) {
-    fail(
-      "Vercel PREVIEW must NOT use the production Supabase project. " +
-        "Configure preview env to point at the staging project.",
-    );
+  // Local build or local development
+  if (!url) {
+    console.log("[ENV GUARD] NEXT_PUBLIC_SUPABASE_URL not set; local mode allowed.");
+    return;
   }
 
-  if (currentMode === "local" && pointsAtProduction) {
+  const pointsAtProduction = isProductionUrl(url);
+  if (pointsAtProduction) {
     fail(
-      "Local development must NOT run against the production Supabase project. " +
-        "Use a local/dev Supabase or mock mode.",
+      "Local environment must NOT run against the production Supabase project (egdjnpmoasarrttvhgds). " +
+        "Use a local/dev Supabase or mock mode."
     );
   }
 

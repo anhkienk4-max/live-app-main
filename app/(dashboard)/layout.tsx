@@ -31,14 +31,18 @@ export default async function DashboardLayout({
   children: React.ReactNode
 }) {
   const headersList = await headers()
-  const isVisualQaBypass = headersList.get('x-visual-qa-bypass') === 'true'
-  const qaRole = headersList.get('x-visual-qa-role') || 'admin'
+  // Strict Security Boundary: Visual QA header bypass is ONLY allowed in local development
+  // when not deployed (no VERCEL_ENV) AND explicitly running in development mode.
+  // It is unconditionally disabled on all deployed environments (Preview, Staging, Production).
+  const isLocalDev = process.env.NODE_ENV === 'development' && !process.env.VERCEL_ENV
+  const isVisualQaBypass = isLocalDev && headersList.get('x-visual-qa-bypass') === 'true'
+  const qaRole = isVisualQaBypass ? (headersList.get('x-visual-qa-role') || 'admin') : null
   const mockMode = getAuthMode() === 'mock' || isVisualQaBypass
   const operationalStorageRoutingMode = resolveOperationalStorageRoutingMode()
   let identity: AuthIdentity | null = null
   let businessUser: User | null = null
 
-  if (isVisualQaBypass) {
+  if (isVisualQaBypass && qaRole) {
     businessUser = {
       id: `qa-${qaRole}`,
       email: `${qaRole}@livestream.com`,
