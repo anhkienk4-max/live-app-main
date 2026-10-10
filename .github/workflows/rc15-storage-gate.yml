@@ -127,6 +127,15 @@ jobs:
             ) then
               raise exception 'RC15 category label overrides missing';
             end if;
+            if not exists (
+              select 1 from information_schema.columns
+              where table_schema = 'public'
+                and table_name = 'operational_storage_routes'
+                and column_name = 'period_date_ranges'
+                and udt_name = 'jsonb'
+            ) then
+              raise exception 'RC15 custom P-period ranges missing';
+            end if;
             if not exists(select 1 from information_schema.columns
               where table_schema='public' and table_name='shifts' and column_name='execution_source') then
               raise exception 'RC15 execution_source missing';
