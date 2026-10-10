@@ -58,13 +58,12 @@ jobs:
       - name: Install pinned pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@9.15.9 --activate
+          corepack prepare pnpm@10.26.0 --activate
 
       - name: Install dependencies
-        # The pre-existing workspace overrides differ from the committed pnpm lock.
-        # Resolve in the ephemeral runner; keep minimumReleaseAge active.
-        # Follow-up: reconcile and commit the lockfile before protected release.
-        run: pnpm install --no-frozen-lockfile
+        # pnpm >=10.26 supports minimumReleaseAge and allowBuilds; pnpm 9 did not.
+        # Lockfile must be reproducible. Do not regenerate it during release CI.
+        run: pnpm install --frozen-lockfile
 
       - name: Verify RC1.5 SQL on isolated PostgreSQL 16
         env:
