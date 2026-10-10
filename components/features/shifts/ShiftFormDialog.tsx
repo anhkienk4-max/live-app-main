@@ -96,7 +96,7 @@ export function ShiftFormDialog({
   platforms,
   campaigns,
   users,
-  registrations,
+  registrations = [],
   templates,
   onSuccess
 }: ShiftFormDialogProps) {
@@ -357,7 +357,7 @@ export function ShiftFormDialog({
 
   const updateFormData: typeof setFormData = next => {setDirty(true);setFormData(next)}
   const updateRecurrence: typeof setRecurrenceRule = next => {setDirty(true);setRecurrenceRule(next)}
-  const currentShiftRegistrations = shift ? registrations.filter(registration => registration.shift_id === shift.id) : []
+  const currentShiftRegistrations = shift && Array.isArray(registrations) ? registrations.filter(registration => registration.shift_id === shift.id) : []
 
   return (
     <Dialog open={open} onOpenChange={nextOpen => {if (!nextOpen && dirty && !confirm('Bạn có thay đổi chưa lưu. Hủy thay đổi?')) return; onOpenChange(nextOpen)}}>

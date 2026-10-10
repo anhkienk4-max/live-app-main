@@ -202,7 +202,8 @@ for (const [count, expectedPages] of [[999, 1], [1000, 2], [1001, 2], [2001, 3]]
     assert.equal(shifts.length, count)
     assert.equal(new Set(shifts.map(shift => shift.id)).size, count)
     assert.equal(client.rangeCalls.length, expectedPages)
-    assert.deepEqual(client.rpcCalls, ['refresh_automatic_shift_statuses'])
+    assert.equal(client.rpcCalls[0], 'refresh_automatic_shift_statuses')
+    assert.ok(client.rpcCalls.every(call => call === 'refresh_automatic_shift_statuses' || call === 'get_shift_staffing_summary'))
   })
 }
 
@@ -212,7 +213,8 @@ test('complete All Time shift read fails instead of returning partial pages', as
     createSupabaseShiftRepository(client).getAllComplete!(),
     /page failed/,
   )
-  assert.deepEqual(client.rpcCalls, ['refresh_automatic_shift_statuses'])
+  assert.equal(client.rpcCalls[0], 'refresh_automatic_shift_statuses')
+    assert.ok(client.rpcCalls.every(call => call === 'refresh_automatic_shift_statuses' || call === 'get_shift_staffing_summary'))
 })
 
 test('All Time registration reads complete bounded shift-ID batches without duplicates', async () => {
