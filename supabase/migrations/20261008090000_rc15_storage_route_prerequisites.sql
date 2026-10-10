@@ -66,6 +66,8 @@ create table if not exists public.operational_storage_routes (
   period_naming_style text not null check (btrim(period_naming_style) <> ''),
   period_label_overrides jsonb not null default '{}'::jsonb
     check (jsonb_typeof(period_label_overrides) = 'object'),
+  period_date_ranges jsonb not null default '[]'::jsonb
+    check (jsonb_typeof(period_date_ranges) = 'array'),
   folder_label_overrides jsonb not null default '{}'::jsonb
     check (jsonb_typeof(folder_label_overrides) = 'object'),
   active boolean not null default true,
