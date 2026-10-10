@@ -302,3 +302,88 @@ test('legacy route preview applies exact monthly exceptions without creating rou
   assert.equal(outsideRoot.status, 409)
   assert.equal(state.rows.operational_storage_routes.length, 0)
 })
+
+
+test('explicit P-period spans April-May only for the approved category', async () => {
+  const state = fixture()
+  const handler = createOperationalStorageSetupHandler({
+    createClient: () => state.conn,
+    getRoot: () => 'approved-drive-root',
+    metadata: async id => ({
+      id, kind: 'folder', name: id,
+      parent_ids: id === 'legacy-root' ? ['approved-drive-root'] : [],
+    }),
+    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
+  })
+  const payload = {
+    action: 'preview_legacy_route', brand_id: 'brand-2', platform_id: 'platform-1',
+    execution_source: 'internal', root_folder_id: 'approved-drive-root',
+    base_folder_id: 'legacy-root', storage_profile: 'LEGACY_PERIOD_CATEGORY',
+    period_naming_style: 'THANG_M_DASH_YEAR',
+    shift_date: '2026-05-02',
+    period_date_ranges: [
+      { start_date: '2026-04-20', end_date: '2026-05-16', category: 'dashboard',
+        label: 'P5 | 20-04 - 16-05' },
+    ],
+    folder_labels: {
+      dashboard: 'DASHBOARD', live_visual_internal: 'VISIBILITY',
+      live_visual_agency: 'VISUAL HOST', data_report: ['DATA', 'REPORT'],
+      data_source: ['DATA', 'SOURCE'],
+    },
+  }
+  const preview = await handler.POST(request(payload))
+  assert.equal(preview.status, 200)
+  const body = await preview.json() as {
+    read_only: boolean; legacy: { dashboard: string; data_source: string };
+    v2: { folder_path: string }
+  }
+  assert.equal(body.read_only, true)
+  assert.equal(body.legacy.dashboard, 'P5 | 20-04 - 16-05/DASHBOARD')
+  assert.equal(body.legacy.data_source, 'Tháng 5 - 2026/DATA/SOURCE')
+  assert.match(body.v2.folder_path, /Tháng 5 - 2026/)
+  assert.equal(state.rows.operational_storage_routes.length, 0)
+
+  const crossing = await handler.POST(request({ ...payload, shift_date: '2026-05-17' }))
+  assert.equal(crossing.status, 200)
+  const regular = await crossing.json() as { legacy: { dashboard: string } }
+  assert.equal(regular.legacy.dashboard, 'Tháng 5 - 2026/DASHBOARD')
+})
+
+test('P-period validation rejects overlap, bad calendar dates and traversal without DB writes', async () => {
+  const state = fixture()
+  const handler = createOperationalStorageSetupHandler({
+    createClient: () => state.conn,
+    getRoot: () => 'approved-drive-root',
+    metadata: async id => ({
+      id, kind: 'folder', name: id,
+      parent_ids: id === 'legacy-root' ? ['approved-drive-root'] : [],
+    }),
+    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
+  })
+  const route = {
+    action: 'register_legacy_route', brand_id: 'brand-2', platform_id: 'platform-1',
+    execution_source: 'internal', root_folder_id: 'approved-drive-root',
+    base_folder_id: 'legacy-root', storage_profile: 'LEGACY_PERIOD_CATEGORY',
+    period_naming_style: 'THANG_M_DASH_YEAR',
+    folder_labels: {
+      dashboard: 'DASHBOARD', live_visual_internal: 'VISIBILITY',
+      live_visual_agency: 'VISUAL HOST', data_report: ['DATA', 'REPORT'],
+      data_source: ['DATA', 'SOURCE'],
+    },
+    confirmation: 'I_VERIFIED_LEGACY_PROVIDER_BASE_AND_PATHS',
+  }
+  const validRange = {
+    start_date: '2026-04-20', end_date: '2026-05-16',
+    category: 'dashboard', label: 'P5 April-May',
+  }
+  const cases = [
+    [validRange, { ...validRange, start_date: '2026-05-16', end_date: '2026-06-15' }],
+    [{ ...validRange, start_date: '2026-02-30' }],
+    [{ ...validRange, label: '../another brand' }],
+  ]
+  for (const ranges of cases) {
+    const r = await handler.POST(request({ ...route, period_date_ranges: ranges }))
+    assert.equal(r.status, 400)
+    assert.equal(state.rows.operational_storage_routes.length, 0)
+  }
+})
