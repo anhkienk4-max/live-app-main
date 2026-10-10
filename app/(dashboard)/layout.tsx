@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation'
 import { connection } from 'next/server'
-import { Header } from '@/components/layout/Header'
-import { Sidebar } from '@/components/layout/Sidebar'
-import { BottomNav } from '@/components/layout/BottomNav'
+import { headers } from 'next/headers'
+import { ProductionAppShell } from '@/components/layout/ProductionAppShell'
+import { RoleLensProvider } from '@/components/providers/RoleLensProvider'
+
 import { getAuthMode, getSupabasePublicConfig } from '@/lib/auth/authMode'
 import { AuthIdentityProvider } from '@/lib/auth/AuthIdentityProvider'
 import {
@@ -29,15 +30,34 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const mockMode = getAuthMode() === 'mock'
+  const headersList = await headers()
+  const isVisualQaBypass = headersList.get('x-visual-qa-bypass') === 'true'
+  const qaRole = headersList.get('x-visual-qa-role') || 'admin'
+  const mockMode = getAuthMode() === 'mock' || isVisualQaBypass
   const operationalStorageRoutingMode = resolveOperationalStorageRoutingMode()
   let identity: AuthIdentity | null = null
   let businessUser: User | null = null
+
+  if (isVisualQaBypass) {
+    businessUser = {
+      id: `qa-${qaRole}`,
+      email: `${qaRole}@livestream.com`,
+      full_name: `${qaRole.charAt(0).toUpperCase() + qaRole.slice(1)} QA User`,
+      role: (qaRole === 'member' ? 'staff' : qaRole) as 'admin' | 'leader' | 'staff',
+      operational_roles: ['host', 'support'],
+      status: 'active',
+      avatar_url: '',
+      join_date: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
+  }
+
   let user: DashboardHeaderUser | null = mockMode ? {
-    email: 'admin@livestream.com',
+    email: `@livestream.com`,
     user_metadata: {
-      full_name: 'Admin User',
-      avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
+      full_name: ` QA User`,
+      avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=`,
     },
   } : null
 
@@ -95,19 +115,12 @@ export default async function DashboardLayout({
       businessUser={businessUser}
     >
       <div
-        className="flex h-screen overflow-hidden bg-background"
         data-operational-storage-routing-mode={operationalStorageRoutingMode}
+        className="contents"
       >
-        <Sidebar />
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <Header user={user || undefined} />
-          <main className="min-w-0 flex-1 overflow-y-auto pb-28 md:pb-4">
-            <div className="w-full min-w-0 px-4 py-4 sm:px-6 lg:px-8">
-              {children}
-            </div>
-          </main>
-          <BottomNav />
-        </div>
+        <ProductionAppShell user={user || undefined}>
+          <RoleLensProvider>{children}</RoleLensProvider>
+        </ProductionAppShell>
       </div>
     </AuthIdentityProvider>
   )

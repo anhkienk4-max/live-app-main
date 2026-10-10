@@ -156,7 +156,9 @@ test('Calendar, Day Sessions, Shift List, compact and table surfaces share the c
   const registrationBoard = read('components/features/calendar/ShiftRegistrationBoard.tsx')
 
   assert.match(calendar, /<ShiftDetailModal/)
-  assert.match(calendar, /onShiftClick=\{setSelectedShift\}/)
+  assert.match(calendar, /onShiftClick=\{setPreviewShift\}/)
+  assert.match(calendar, /<ShiftPreviewDrawer/)
+  assert.match(calendar, /onViewFullShift=\{[\s\S]*?setSelectedShift/)
   assert.match(daySessions, /day-session-view-shift-/)
   assert.match(shiftList, /<ShiftDetailModal/)
   assert.match(shiftList, /onView: \(\) => setDetailShift\(row\)/)

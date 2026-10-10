@@ -2,14 +2,14 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-09-11T15:17:37+07:00
+Generated at: 2026-10-06T22:10:31+07:00
 
 ## Repository
 
-- Branch: `integration/ui-golden-screens`
-- HEAD: `bc1c0dbd13d2ef64374b2210409f5460698e278a`
-- origin/main: `7be47803690550d1ba891b6d7e1e4585f8f307e7`
-- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-ui-integration`
+- Branch: `feat/frontend-14wave-production`
+- HEAD: `305ecf08cbfbcabecfa1a154689a9108d8687c3d`
+- origin/main: `1933532b749a52cdbc659686a14bd37e457c3ff1`
+- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-14wave`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
 ## Hardening
@@ -21,10 +21,10 @@ Generated at: 2026-09-11T15:17:37+07:00
 
 ## Inventory
 
-- Routes: 31
-- Source files in tracked inventory roots: 468
-- Tests: 112
-- Migrations: 48
+- Routes: 35
+- Source files in tracked inventory roots: 536
+- Tests: 121
+- Migrations: 52
 
 ## Modules
 

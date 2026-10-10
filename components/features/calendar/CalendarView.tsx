@@ -4,6 +4,7 @@ import * as React from 'react'
 import { shiftRegistrationService, shiftService, brandService, platformService, campaignService, userService, reportService } from '@/lib/services/dataService'
 import { Shift, Brand, Platform, Campaign, User, OperationalRole, ShiftRegistration, Report } from '@/lib/types/database.types'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -18,7 +19,6 @@ import {
   Calendar as CalendarIcon,
   Search,
   Filter,
-  Plus,
   UserCheck,
   X,
   Download,
@@ -34,6 +34,7 @@ import { ListView } from './ListView'
 import { ShiftFormModal } from '../shifts/ShiftFormModal'
 import { ShiftFormDialog } from '../shifts/ShiftFormDialog'
 import { ShiftDetailModal } from '../shifts/ShiftDetailModal'
+import { ShiftPreviewDrawer } from '../shifts/ShiftPreviewDrawer'
 import { DaySessionsDialog } from './DaySessionsDialog'
 import { BulkStaffingApprovalDialog } from './BulkStaffingApprovalDialog'
 import { BulkDeleteShiftsDialog } from './BulkDeleteShiftsDialog'
@@ -75,11 +76,92 @@ const DEFAULT_CALENDAR_FILTERS: CalendarFilterState = {
   hostIds: [],
   supportIds: [],
   technicalIds: [],
+  operationalRoles: [],
+  staffingStates: [],
+  registrationStates: [],
+  hasImportedStaffing: false,
   time: 'all',
   customFrom: '',
   customTo: '',
 }
 const EMPTY_SHIFTS: Shift[] = []
+
+
+function ActiveFilterChips({ filters, setFilters, onClearAll, t, brands, platforms, campaigns, users }: { filters: CalendarFilterState, setFilters: (f: CalendarFilterState) => void, onClearAll: () => void, t: (key: string) => string, brands: Brand[], platforms: Platform[], campaigns: Campaign[], users: User[] }) {
+  const activeChips: { id: string, label: string, onRemove: () => void }[] = []
+
+  if (filters.brandIds.length > 0) {
+    const names = filters.brandIds.map(id => brands.find(b => b.id === id)?.name || id).join(', ')
+    activeChips.push({ id: 'brands', label: `${t('brand')}: ${names}`, onRemove: () => setFilters({ ...filters, brandIds: [] }) })
+  }
+  if (filters.platformIds.length > 0) {
+    const names = filters.platformIds.map(id => platforms.find(p => p.id === id)?.name || id).join(', ')
+    activeChips.push({ id: 'platforms', label: `${t('platform')}: ${names}`, onRemove: () => setFilters({ ...filters, platformIds: [] }) })
+  }
+  if (filters.campaignIds.length > 0) {
+    const names = filters.campaignIds.map(id => campaigns.find(c => c.id === id)?.name || id).join(', ')
+    activeChips.push({ id: 'campaigns', label: `${t('campaign')}: ${names}`, onRemove: () => setFilters({ ...filters, campaignIds: [] }) })
+  }
+  if (filters.studios.length > 0) {
+    activeChips.push({ id: 'studios', label: `${t('studio')}: ${filters.studios.join(', ')}`, onRemove: () => setFilters({ ...filters, studios: [] }) })
+  }
+  if (filters.statuses.length > 0) {
+    activeChips.push({ id: 'statuses', label: `${t('status')}: ${filters.statuses.join(', ')}`, onRemove: () => setFilters({ ...filters, statuses: [] }) })
+  }
+  if (filters.hostIds.length > 0) {
+    const names = filters.hostIds.map(id => users.find(u => u.id === id)?.full_name || id).join(', ')
+    activeChips.push({ id: 'hosts', label: `${t('host')}: ${names}`, onRemove: () => setFilters({ ...filters, hostIds: [] }) })
+  }
+  if (filters.supportIds.length > 0) {
+    const names = filters.supportIds.map(id => users.find(u => u.id === id)?.full_name || id).join(', ')
+    activeChips.push({ id: 'support', label: `${t('support')}: ${names}`, onRemove: () => setFilters({ ...filters, supportIds: [] }) })
+  }
+  if (filters.technicalIds.length > 0) {
+    const names = filters.technicalIds.map(id => users.find(u => u.id === id)?.full_name || id).join(', ')
+    activeChips.push({ id: 'technical', label: `${t('technical')}: ${names}`, onRemove: () => setFilters({ ...filters, technicalIds: [] }) })
+  }
+  if (filters.time !== 'all') {
+    let timeLabel = t(filters.time) || filters.time
+    if (filters.time === 'custom') timeLabel = `${filters.customFrom} - ${filters.customTo}`
+    activeChips.push({ id: 'time', label: `Time: ${timeLabel}`, onRemove: () => setFilters({ ...filters, time: 'all', customFrom: '', customTo: '' }) })
+  }
+
+  if (filters.operationalRoles.length > 0) {
+    const roleLabels: Record<string, string> = { host: t('host'), support: t('support'), technical: t('technical') }
+    const names = filters.operationalRoles.map(r => roleLabels[r] || r).join(', ')
+    activeChips.push({ id: 'operationalRoles', label: `Role: ${names}`, onRemove: () => setFilters({ ...filters, operationalRoles: [] }) })
+  }
+  if (filters.staffingStates.length > 0) {
+    const stateLabels: Record<string, string> = { fully_staffed: 'Fully Staffed', missing_staff: 'Missing Staff' }
+    const names = filters.staffingStates.map(s => stateLabels[s] || s).join(', ')
+    activeChips.push({ id: 'staffingStates', label: `Staffing: ${names}`, onRemove: () => setFilters({ ...filters, staffingStates: [] }) })
+  }
+  if (filters.registrationStates.length > 0) {
+    const regLabels: Record<string, string> = { approved: 'Approved', pending: 'Pending', rejected: 'Rejected', manually_assigned: 'Manually Assigned' }
+    const names = filters.registrationStates.map(s => regLabels[s] || s).join(', ')
+    activeChips.push({ id: 'registrationStates', label: `Registration: ${names}`, onRemove: () => setFilters({ ...filters, registrationStates: [] }) })
+  }
+  if (filters.hasImportedStaffing) {
+    activeChips.push({ id: 'importedStaffing', label: 'Imported Staffing', onRemove: () => setFilters({ ...filters, hasImportedStaffing: false }) })
+  }
+  if (activeChips.length === 0) return null
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 mb-4">
+      {activeChips.map(chip => (
+        <span key={chip.id} className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+          {chip.label}
+          <button type="button" onClick={chip.onRemove} className="rounded-full p-0.5 hover:bg-primary/20 focus:bg-primary/20 focus:outline-none" aria-label={`Remove filter ${chip.label}`}>
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+      <button type="button" onClick={onClearAll} className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline focus:outline-none">
+        {t('clearAll') || 'Clear All'}
+      </button>
+    </div>
+  )
+}
 
 export function CalendarView({ createRequest = 0 }: { createRequest?: number }) {
   const { currentUser } = useCurrentUser()
@@ -91,6 +173,17 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     : { all: 'All time', week: 'Current week', month: 'Current month', studios: 'All studios', unassigned: 'Unassigned' }
   const [currentDate, setCurrentDate] = React.useState(new Date())
   const [view, setView] = React.useState<'month' | 'week' | 'day' | 'list'>('month')
+  const viewSwitchedByUser = React.useRef(false)
+  const initializedViewForRole = React.useRef(false)
+
+  React.useEffect(() => {
+    if (currentUser && !initializedViewForRole.current) {
+      initializedViewForRole.current = true
+      if (!viewSwitchedByUser.current) {
+        setView((currentUser.role === 'admin' || currentUser.role === 'leader') ? 'week' : 'month')
+      }
+    }
+  }, [currentUser])
   const [shifts, setShifts] = React.useState<Shift[]>([])
   const [brands, setBrands] = React.useState<Brand[]>([])
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
@@ -102,6 +195,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const [loadError, setLoadError] = React.useState<unknown>(null)
   const [showForm, setShowForm] = React.useState(false)
   const [selectedShift, setSelectedShift] = React.useState<Shift | null>(null)
+  const [previewShift, setPreviewShift] = React.useState<Shift | null>(null)
   const [selectedDay, setSelectedDay] = React.useState<Date | null>(null)
   const [editingShift, setEditingShift] = React.useState<Shift | null>(null)
   const [showFilters, setShowFilters] = React.useState(false)
@@ -129,10 +223,10 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const loadReferenceData = React.useCallback(() => {
     if (referenceLoad.current) return referenceLoad.current
     const request = Promise.all([
-      brandService.getAll(),
-      platformService.getAll(),
-      campaignService.getAll(),
-      userService.getAll(),
+      brandService.getAll().catch(() => [] as Brand[]),
+      platformService.getAll().catch(() => [] as Platform[]),
+      campaignService.getAll().catch(() => [] as Campaign[]),
+      userService.getAll().catch(() => [] as User[]),
     ]).then(([brandsData, platformsData, campaignsData, usersData]) => {
       setBrands(brandsData)
       setPlatforms(platformsData)
@@ -162,8 +256,8 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       ])
       const shiftIds = shiftsData.map(shift => shift.id)
       const [registrationsData, reportsData] = await Promise.all([
-        shiftRegistrationService.getForShifts(shiftIds),
-        reportService.getForShifts(shiftIds),
+        shiftRegistrationService.getForShifts(shiftIds).catch(() => [] as ShiftRegistration[]),
+        reportService.getForShifts(shiftIds).catch(() => [] as Report[]),
       ])
       if (version !== requestVersion.current) return
       setShifts(shiftsData)
@@ -310,6 +404,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   }
 
   const changeView = (nextView: 'month' | 'week' | 'day' | 'list') => {
+    viewSwitchedByUser.current = true
     if (nextView === 'list' && view !== 'list') setListTimeOverride(null)
     setView(nextView)
   }
@@ -323,7 +418,10 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     filters.hostIds,
     filters.supportIds,
     filters.technicalIds,
-  ].reduce((count, values) => count + values.length, 0) + ((view === 'list' ? listTimeFilter : filters.time) !== 'all' ? 1 : 0) + (searchTerm ? 1 : 0)
+    filters.operationalRoles,
+    filters.staffingStates,
+    filters.registrationStates,
+  ].reduce((count, values) => count + values.length, 0) + ((view === 'list' ? listTimeFilter : filters.time) !== 'all' ? 1 : 0) + (searchTerm ? 1 : 0) + (filters.hasImportedStaffing ? 1 : 0)
   const hasActiveFilters = activeFilterCount > 0
 
   const toggleSelectShift = (shiftId: string) => {
@@ -411,6 +509,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     <div className="min-w-0 space-y-0">
       {/* Unified Command Toolbar */}
       <div className="flex flex-col">
+          <ActiveFilterChips filters={filters} setFilters={setFilters} onClearAll={clearFilters} t={t} brands={brands} platforms={platforms} campaigns={campaigns} users={users} />
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between px-0 pb-2 border-b border-border">
           {/* Left: Date Navigation */}
           <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
@@ -425,7 +524,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                   <ChevronRight className="h-4 w-4" />
                 </Button>
             </>
-            <h2 className="flex min-w-0 shrink-0 items-center text-base font-bold sm:text-lg lg:text-xl ml-1 sm:ml-2 whitespace-nowrap">
+            <h2 className="flex min-w-0 shrink-0 items-center text-sm font-semibold sm:text-base ml-1 sm:ml-2 whitespace-nowrap">
               <CalendarIcon className="h-5 w-5 mr-2 text-muted-foreground" />
               {getViewTitle()}
             </h2>
@@ -521,12 +620,6 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                 </DropdownMenu>
               )}
 
-              {hasPermission(currentUser, 'shifts.assign_staff') && (
-                <Button size="sm" className="h-9" onClick={() => setShowForm(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  {t('newShift')}
-                </Button>
-              )}
               {canSelectListShifts && (
                 <Button
                   variant="outline"
@@ -568,10 +661,15 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
               )}
             </div>
 
+            <div className="grid grid-cols-2 gap-2 pt-2 xl:grid-cols-4 [&>div>span]:sr-only">
+<MultiSelectFilter label={t('brand')} value={filters.brandIds} onChange={brandIds => setFilters({ ...filters, brandIds })} options={brands.map(brand => ({ value: brand.id, label: brand.name }))} placeholder={`${t('all')} ${t('brands')}`} testId="calendar-brand-filter" />
+<MultiSelectFilter label={t('platform')} value={filters.platformIds} onChange={platformIds => setFilters({ ...filters, platformIds })} options={platforms.map(platform => ({ value: platform.id, label: platform.name }))} placeholder={`${t('all')} ${t('platforms')}`} testId="calendar-platform-filter" />
+<MultiSelectFilter label={t('studio')} value={filters.studios} onChange={studios => setFilters({ ...filters, studios })} options={studioOptions.map(option => ({ value: option.value, label: option.value === UNASSIGNED_STUDIO_FILTER ? timeFilterLabels.unassigned : option.label }))} placeholder={timeFilterLabels.studios} testId="calendar-studio-filter" />
+<MultiSelectFilter label={t('status')} value={filters.statuses} onChange={statuses => setFilters({ ...filters, statuses: statuses as CalendarFilterState['statuses'] })} options={['scheduled','preparing','live','paused','completed','cancelled'].map(status => ({ value: status, label: status === 'live' ? t('liveStatus') : (t as (key: string) => string)(status) }))} placeholder={t('all')} testId="calendar-status-filter" />
+            </div>
+
             {showFilters && (
               <div className="grid grid-cols-1 gap-4 border-t pt-4 sm:grid-cols-2 lg:grid-cols-4">
-                 <MultiSelectFilter label={t('brand')} value={filters.brandIds} onChange={brandIds => setFilters({ ...filters, brandIds })} options={brands.map(brand => ({ value: brand.id, label: brand.name }))} placeholder={`${t('all')} ${t('brands')}`} testId="calendar-brand-filter" />
-                 <MultiSelectFilter label={t('platform')} value={filters.platformIds} onChange={platformIds => setFilters({ ...filters, platformIds })} options={platforms.map(platform => ({ value: platform.id, label: platform.name }))} placeholder={`${t('all')} ${t('platforms')}`} testId="calendar-platform-filter" />
                  <MultiSelectFilter label={t('campaign')} value={filters.campaignIds} onChange={campaignIds => setFilters({ ...filters, campaignIds })} options={campaigns.map(campaign => ({ value: campaign.id, label: campaign.name }))} placeholder={`${t('all')} ${t('campaigns')}`} testId="calendar-campaign-filter" />
                 <div>
                   <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('time')}</label>
@@ -597,11 +695,18 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                   <Input type="date" value={filters.customTo} onChange={(event) => setFilters({ ...filters, customTo: event.target.value })} />
                 </div>
               </>}
-              <MultiSelectFilter label={t('studio')} value={filters.studios} onChange={studios => setFilters({ ...filters, studios })} options={studioOptions.map(option => ({ value: option.value, label: option.value === UNASSIGNED_STUDIO_FILTER ? timeFilterLabels.unassigned : option.label }))} placeholder={timeFilterLabels.studios} testId="calendar-studio-filter" />
-              <MultiSelectFilter label={t('status')} value={filters.statuses} onChange={statuses => setFilters({ ...filters, statuses: statuses as CalendarFilterState['statuses'] })} options={['scheduled','preparing','live','paused','completed','cancelled'].map(status => ({ value: status, label: status === 'live' ? t('liveStatus') : (t as (key: string) => string)(status) }))} placeholder={t('all')} testId="calendar-status-filter" />
               <MultiSelectFilter label={t('host')} value={filters.hostIds} onChange={hostIds => setFilters({ ...filters, hostIds })} options={users.filter(u => u.operational_roles?.includes('host')).map(u => ({ value: u.id, label: u.full_name }))} placeholder={`${t('all')} ${t('host')}`} testId="calendar-host-filter" />
               <MultiSelectFilter label={t('support')} value={filters.supportIds} onChange={supportIds => setFilters({ ...filters, supportIds })} options={users.filter(u => u.operational_roles?.includes('support')).map(u => ({ value: u.id, label: u.full_name }))} placeholder={`${t('all')} ${t('support')}`} testId="calendar-support-filter" />
               <MultiSelectFilter label={t('technical')} value={filters.technicalIds} onChange={technicalIds => setFilters({ ...filters, technicalIds })} options={users.filter(u => u.operational_roles?.includes('technical')).map(u => ({ value: u.id, label: u.full_name }))} placeholder={`${t('all')} ${t('technical')}`} testId="calendar-technical-filter" />
+              <MultiSelectFilter label={t('role')} value={filters.operationalRoles} onChange={operationalRoles => setFilters({ ...filters, operationalRoles })} options={[{ value: 'host', label: t('host') }, { value: 'support', label: t('support') }, { value: 'technical', label: t('technical') }]} placeholder={t('all')} testId="calendar-role-filter" />
+              <MultiSelectFilter label="Staffing State" value={filters.staffingStates} onChange={staffingStates => setFilters({ ...filters, staffingStates })} options={[{ value: 'fully_staffed', label: 'Fully Staffed' }, { value: 'missing_staff', label: 'Missing Staff' }]} placeholder={t('all')} testId="calendar-staffing-state-filter" />
+              <MultiSelectFilter label="Registration State" value={filters.registrationStates} onChange={registrationStates => setFilters({ ...filters, registrationStates })} options={[{ value: 'approved', label: 'Approved' }, { value: 'pending', label: 'Pending' }, { value: 'rejected', label: 'Rejected' }, { value: 'manually_assigned', label: 'Manually Assigned' }]} placeholder={t('all')} testId="calendar-registration-state-filter" />
+              <div className="flex items-center space-x-2 pt-2">
+                <Checkbox id="imported-staffing" checked={filters.hasImportedStaffing} onCheckedChange={(checked: boolean | 'indeterminate') => setFilters({ ...filters, hasImportedStaffing: !!checked })} />
+                <label htmlFor="imported-staffing" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                  Has Imported Staffing
+                </label>
+              </div>
               {hasActiveFilters && (
                 <div className="sm:col-span-2 lg:col-span-3">
                   <Button variant="outline" size="sm" onClick={clearFilters}>
@@ -616,10 +721,10 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       </div>
 
       {/* Calendar Views */}
-      <Card className="min-w-0 overflow-hidden pt-4">
-        {view === 'month' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} onShiftClick={setSelectedShift} onDayClick={setSelectedDay} /></div></div>}
-        {view === 'week' && <div className="w-full"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} users={users} registrations={registrations} onShiftClick={setSelectedShift} /></div>}
-        {view === 'day' && <DayView currentDate={currentDate} shifts={filteredShifts} allShifts={shifts} registrations={registrations} currentUser={currentUser} brands={brands} platforms={platforms} users={users} onRegister={registerForShift} onShiftClick={setSelectedShift} />}
+      <Card className="min-w-0 overflow-hidden gap-0 py-0">
+        {view === 'month' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onShiftClick={setPreviewShift} onDayClick={setSelectedDay} /></div></div>}
+        {view === 'week' && <div className="w-full"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms}  registrations={registrations} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} currentUser={currentUser} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} /></div>}
+        {view === 'day' && <DayView currentDate={currentDate} shifts={filteredShifts} allShifts={shifts} onRegister={registerForShift} registrations={registrations} currentUser={currentUser} brands={brands} platforms={platforms} users={users} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} />}
         {view === 'list' && (
           <ListView
             shifts={listShifts}
@@ -630,7 +735,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
             registrations={registrations}
             currentUser={currentUser}
             onRegister={registerForShift}
-            onShiftClick={setSelectedShift}
+            onShiftClick={setPreviewShift}
             selectedShiftIds={canSelectListShifts ? selectedVisibleShiftIdSet : undefined}
             onToggleSelectShift={canSelectListShifts ? toggleSelectShift : undefined}
           />
@@ -646,6 +751,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           platforms={platforms}
           campaigns={campaigns}
           users={users}
+          registrations={registrations}
           onSuccess={() => {
             loadData()
             setShowForm(false)
@@ -663,6 +769,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           platforms={platforms}
           campaigns={campaigns}
           users={users}
+          registrations={registrations}
           templates={[]}
           onSuccess={async (updatedShift) => {
             await loadData()
@@ -687,7 +794,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         onOpenChange={(open) => !open && setSelectedDay(null)}
         onViewShift={(shift) => {
           setSelectedDay(null)
-          setSelectedShift(shift)
+          setPreviewShift(shift)
         }}
         onEditShift={(shift) => {
           setSelectedDay(null)
@@ -725,8 +832,25 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           onChanged={loadData}
           onOpenShift={(shift) => {
             setShowBulkStaffingApproval(false)
+            setPreviewShift(shift)
+          }}
+        />
+      )}
+
+      {previewShift && (
+        <ShiftPreviewDrawer
+          open={!!previewShift}
+          onOpenChange={(open) => !open && setPreviewShift(null)}
+          shift={previewShift}
+          brands={brands}
+          platforms={platforms}
+          registrations={registrations}
+          users={users}
+          onViewFullShift={(shift) => {
+            setPreviewShift(null)
             setSelectedShift(shift)
           }}
+          onPrimaryAction={undefined}
         />
       )}
 

@@ -1,7 +1,7 @@
 'use client'
 import * as React from 'react'
-import type { Shift, ShiftRegistration, User } from '@/lib/types/database.types'
-import { isStaffedRegistration, shiftRegistrationService, shiftService, swapRequestService } from '@/lib/services/dataService'
+import type { Shift, ShiftRegistration, User, UserDirectoryEntry, SwapExchangeCandidate } from '@/lib/types/database.types'
+import { userService, shiftRegistrationService, shiftService, swapRequestService } from '@/lib/services/dataService'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -17,7 +17,6 @@ export function SwapRequestDialog({
   sourceShift,
   sourceRegistration,
   shifts,
-  users,
   currentUser,
   onSuccess,
 }: {
@@ -38,8 +37,16 @@ export function SwapRequestDialog({
   const [replacementId, setReplacementId] = React.useState('')
   const [reason, setReason] = React.useState('')
   const [busy, setBusy] = React.useState(false)
-  const [targetRegistrations, setTargetRegistrations] = React.useState<ShiftRegistration[]>([])
+  const [targetRegistrations, setTargetRegistrations] = React.useState<SwapExchangeCandidate[]>([])
 
+  const [directory, setDirectory] = React.useState<UserDirectoryEntry[]>([])
+  React.useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    void userService.getDirectory().then(next => { if (!cancelled) setDirectory(next) })
+      .catch(() => { if (!cancelled) setDirectory([]) })
+    return () => { cancelled = true }
+  }, [open])
   const [loadedShifts, setLoadedShifts] = React.useState<Shift[]>([])
   React.useEffect(() => {
     if (shifts.length > 0) return
@@ -52,22 +59,11 @@ export function SwapRequestDialog({
   React.useEffect(() => {
     let cancelled = false
     if (mode !== 'exchange' || !targetShiftId) return () => { cancelled = true }
-    void shiftRegistrationService.getForShift(targetShiftId).then(registrations => {
-      if (!cancelled) setTargetRegistrations(registrations.filter(registration =>
-        isStaffedRegistration(registration) &&
-        registration.operational_role === sourceRegistration.operational_role &&
-        registration.user_id !== currentUser.id &&
-        users.some(user => user.id === registration.user_id && user.status === 'active'),
-      ))
-    }).catch(() => {
-      if (!cancelled) setTargetRegistrations([])
-    })
+    void shiftRegistrationService.getExchangeCandidates(targetShiftId, sourceRegistration.operational_role).then(candidates => {
+      if (!cancelled) setTargetRegistrations(candidates.filter(candidate => candidate.user_id !== currentUser.id))
+    }).catch(() => { if (!cancelled) setTargetRegistrations([]) })
     return () => { cancelled = true }
-  }, [currentUser.id, mode, sourceRegistration.operational_role, targetShiftId, users])
-
-  const counterpartOptions = React.useMemo(() => targetRegistrations
-    .map(registration => ({ registration, user: users.find(user => user.id === registration.user_id) }))
-    .filter((entry): entry is { registration: ShiftRegistration; user: User } => Boolean(entry.user)), [targetRegistrations, users])
+  }, [currentUser.id, mode, sourceRegistration.operational_role, targetShiftId])
 
   const submit = async () => {
     if (!reason.trim()) { toast({ title: t('error'), description: 'Reason required', variant: 'destructive' }); return }
@@ -126,7 +122,7 @@ export function SwapRequestDialog({
               <Select value={replacementId} onValueChange={setReplacementId}>
                 <SelectTrigger className="mt-1"><SelectValue placeholder="Select staff" /></SelectTrigger>
                 <SelectContent className="max-h-64 overflow-y-auto">
-                  {users.filter(u=>u.status === 'active' && u.id !== currentUser.id && u.operational_roles?.includes(sourceRegistration.operational_role)).map(u=> <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>)}
+                  {directory.filter(u=>u.id !== currentUser.id && u.operational_roles?.includes(sourceRegistration.operational_role)).map(u=> <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </label>
@@ -145,7 +141,7 @@ export function SwapRequestDialog({
                   <Select value={counterpartId} onValueChange={setCounterpartId}>
                     <SelectTrigger className="mt-1"><SelectValue placeholder="Select counterpart" /></SelectTrigger>
                     <SelectContent className="max-h-64 overflow-y-auto">
-                      {counterpartOptions.map(({ registration, user }) => <SelectItem key={registration.id} value={registration.id}>{user.full_name}</SelectItem>)}
+                      {targetRegistrations.map(candidate => <SelectItem key={candidate.registration_id} value={candidate.registration_id}>{candidate.full_name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </label>

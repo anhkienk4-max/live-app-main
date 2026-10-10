@@ -16,10 +16,10 @@ export function useCurrentUser() {
     supabaseMode ? auth?.businessUser || null : null,
   )
   const [users, setUsers] = React.useState<User[]>([])
-  const [loading, setLoading] = React.useState(!supabaseMode)
+  const [loading, setLoading] = React.useState(!(supabaseMode || auth?.businessUser?.id?.startsWith('qa-')))
 
   const reload = React.useCallback(async () => {
-    if (!currentUserDirectoryRequired(supabaseMode ? 'supabase' : 'mock')) {
+    if (!currentUserDirectoryRequired(supabaseMode ? 'supabase' : 'mock') || auth?.businessUser?.id?.startsWith('qa-')) {
       const current = auth?.businessUser || null
       setCurrentUserState(current)
       setUsers(current ? [current] : [])

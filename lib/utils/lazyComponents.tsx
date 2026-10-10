@@ -43,7 +43,7 @@ export const LazyDashboardAnalytics = dynamic(
 
 // Reports list with lazy loading
 export const LazyReportsList = dynamic(
-  () => import('@/components/features/reports/ReportsList').then((mod) => ({ default: mod.ReportsList })),
+  () => import('@/components/features/reports/ReportsContainer').then((mod) => ({ default: mod.ReportsContainer })),
   {
     loading: () => <PageLoader />,
   }

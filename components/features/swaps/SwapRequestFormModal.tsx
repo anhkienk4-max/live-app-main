@@ -8,7 +8,7 @@ import {
 } from "@/lib/services/dataService";
 import {
   Shift,
-  User,
+  UserDirectoryEntry,
   Brand,
   Platform,
   OperationalRole,
@@ -41,7 +41,7 @@ interface SwapRequestFormModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   shifts: Shift[];
-  users: User[];
+  users: UserDirectoryEntry[];
   brands: Brand[];
   platforms: Platform[];
   onSuccess: () => void;
@@ -130,7 +130,6 @@ export function SwapRequestFormModal({
   const byRole = (role: "host" | "support" | "technical") =>
     users.filter(
       (u) =>
-        u.status === "active" &&
         u.operational_roles?.includes(role),
     );
 
@@ -429,7 +428,7 @@ export function SwapRequestFormModal({
                         .filter((user) => user.id !== currentUser?.id)
                         .map((user) => (
                           <SelectItem key={user.id} value={user.id}>
-                            {user.full_name} ({user.email})
+                            {user.full_name}
                           </SelectItem>
                         ))}
                     </SelectContent>

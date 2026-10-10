@@ -1,7 +1,7 @@
 'use client'
 
 import { ShiftFormDialog } from './ShiftFormDialog'
-import { Brand, Platform, Campaign, User } from '@/lib/types/database.types'
+import { Brand, Platform, Campaign, User, ShiftRegistration } from '@/lib/types/database.types'
 
 interface ShiftFormModalProps {
   open: boolean
@@ -10,6 +10,7 @@ interface ShiftFormModalProps {
   platforms: Platform[]
   campaigns: Campaign[]
   users: User[]
+  registrations: ShiftRegistration[]
   onSuccess: () => void
 }
 
@@ -20,6 +21,7 @@ export function ShiftFormModal({
   platforms,
   campaigns,
   users,
+  registrations,
   onSuccess
 }: ShiftFormModalProps) {
   return (
@@ -32,6 +34,7 @@ export function ShiftFormModal({
       platforms={platforms}
       campaigns={campaigns}
       users={users}
+      registrations={registrations}
       templates={[]}
       onSuccess={onSuccess}
     />

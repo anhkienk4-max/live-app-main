@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { format } from 'date-fns'
-import { AlertCircle, Clock, DollarSign, FileText, Filter, Radio, RotateCcw, TrendingUp } from 'lucide-react'
+import { AlertCircle, Radio, DollarSign, FileText, Filter, RotateCcw, TrendingUp } from 'lucide-react'
 import {
   brandService,
   campaignService,
@@ -16,14 +16,10 @@ import {
 import { Brand, Campaign, DashboardUpdate, OperationalRole, Platform, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
-import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { DashboardUpdateModal } from './DashboardUpdateModal'
-import { hasPermission } from '@/lib/permissions'
-import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 
@@ -31,13 +27,13 @@ import { LiveSessionModal } from './LiveSessionModal'
 import { PageLoadError } from '@/components/ui/page-load-error'
 
 type Filters = { date: string; brandIds: string[]; platformIds: string[]; campaignIds: string[]; hostIds: string[]; supportIds: string[]; technicalIds: string[]; statuses: Shift['status'][] }
-const todayValue = () => format(new Date(), 'yyyy-MM-dd')
+const todayValue = () => getCurrentBusinessDate()
 const initialFilters = (): Filters => ({ date: todayValue(), brandIds: [], platformIds: [], campaignIds: [], hostIds: [], supportIds: [], technicalIds: [], statuses: [] })
 
 export function LiveMonitoringDashboard() {
-  const { currentUser } = useCurrentUser()
   const { t } = useTranslation()
   const [shifts, setShifts] = React.useState<Shift[]>([])
+  const [refreshVersion,setRefreshVersion] = React.useState(0)
   const [updates, setUpdates] = React.useState<Record<string, DashboardUpdate[]>>({})
   const [brands, setBrands] = React.useState<Brand[]>([])
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
@@ -47,7 +43,6 @@ export function LiveMonitoringDashboard() {
   const [filters, setFilters] = React.useState<Filters | null>(null)
   const [showFilters, setShowFilters] = React.useState(false)
   const [selectedShift, setSelectedShift] = React.useState<Shift | null>(null)
-  const [updateShift, setUpdateShift] = React.useState<Shift | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
 
@@ -65,6 +60,7 @@ export function LiveMonitoringDashboard() {
       setUsers(loadedUsers)
       setRegistrations(loadedRegistrations)
       setUpdates(Object.fromEntries(updateEntries))
+      setRefreshVersion(version=>version+1)
     } catch (error) {
       setLoadError(error)
     } finally {
@@ -80,7 +76,6 @@ export function LiveMonitoringDashboard() {
     await loadData()
     if (updatedShift) {
       setSelectedShift(prev => prev?.id === updatedShift.id ? updatedShift : prev)
-      setUpdateShift(prev => prev?.id === updatedShift.id ? updatedShift : prev)
     }
   }, [loadData])
   React.useEffect(() => {
@@ -111,28 +106,22 @@ export function LiveMonitoringDashboard() {
     matchesMultiSelect(shift.status, filters.statuses)
   )
   const latestUpdate = (shiftId: string) => [...(updates[shiftId] || [])].sort((a, b) => b.time.localeCompare(a.time))[0]
-  const totalRevenue = filtered.reduce((sum, shift) => sum + (latestUpdate(shift.id)?.revenue || 0), 0)
-  const totalOrders = filtered.reduce((sum, shift) => sum + (latestUpdate(shift.id)?.orders || 0), 0)
+  const revenueValues = filtered.flatMap(shift => { const value = latestUpdate(shift.id)?.revenue; return value == null ? [] : [value] })
+  const totalRevenue = revenueValues.length ? revenueValues.reduce((sum,value)=>sum+value,0) : null
+  const orderValues = filtered.flatMap(shift => { const value = latestUpdate(shift.id)?.orders; return value == null ? [] : [value] })
+  const totalOrders = orderValues.length ? orderValues.reduce((sum,value)=>sum+value,0) : null
+  const activeShift = filtered.find(shift=>shift.id===selectedShift?.id) ?? filtered.find(shift=>shift.status==='live') ?? filtered[0]
   const roleOptions = (role: 'host' | 'support' | 'technical') => users.filter(user => user.operational_roles?.includes(role)).map(user => ({ id: user.id, name: user.full_name }))
   const nameFor = (items: Array<{ id: string; name: string }>, id?: string) => id ? items.find(item => item.id === id)?.name || '—' : '—'
-  const userName = (id?: string) => id ? users.find(user => user.id === id)?.full_name || '—' : '—'
-  const roleNames = (shift: Shift, role: OperationalRole) => {
-    const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
-    const ids = new Set([
-      ...(assignment ? [assignment] : []),
-      ...registrations.filter(registration => registration.shift_id === shift.id && registration.operational_role === role && isStaffedRegistration(registration)).map(registration => registration.user_id),
-    ])
-    return [...ids].map(userName).join(', ') || '—'
-  }
   const statusLabel = (status: Shift['status']) => status === 'live' ? t('liveStatus') : t(status)
 
   return <>
-    <div className="space-y-6">
+    <div className="space-y-3">
 
       {/* 1. Header / Control Strip */}
-      <div className="flex flex-col gap-4 border-b pb-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-2 border-b pb-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">{t('liveFilters')}</h2>
+          <h2 className="text-base font-semibold">{t('liveMonitor')}</h2>
           <p className="text-sm text-muted-foreground">{t('todaysDate')}: {format(new Date(), 'dd/MM/yyyy')}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -166,7 +155,7 @@ export function LiveMonitoringDashboard() {
       )}
 
       {/* 3. Metric / Status Strip */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-5">
         <Metric
           title={t('liveInProgress')}
           value={filtered.filter(shift => shift.status === 'live').length.toString()}
@@ -179,93 +168,17 @@ export function LiveMonitoringDashboard() {
           icon={<AlertCircle className="h-5 w-5 text-amber-600" />}
           intent="warning"
         />
-        <Metric title={t('revenue')} value={formatCurrency(totalRevenue)} icon={<DollarSign className="h-5 w-5 text-green-600" />} />
-        <Metric title={t('orders')} value={totalOrders.toLocaleString()} icon={<TrendingUp className="h-5 w-5 text-blue-600" />} />
+        <Metric title={t('revenue')} value={totalRevenue === null ? '—' : formatCurrency(totalRevenue)} icon={<DollarSign className="h-5 w-5 text-green-600" />} />
+        <Metric title={t('orders')} value={totalOrders === null ? '—' : totalOrders.toLocaleString()} icon={<TrendingUp className="h-5 w-5 text-blue-600" />} />
         <Metric title={t('needsReview')} value={filtered.filter(shift => shift.status === 'completed').length.toString()} icon={<FileText className="h-5 w-5 text-muted-foreground" />} />
       </div>
 
       {/* 4. Session Cards */}
-      {filtered.length === 0 ? (
-        <Card className="flex min-h-[400px] flex-col items-center justify-center border-dashed">
-          <CardContent className="flex flex-col items-center justify-center pt-6 text-center">
-            <Radio className="mb-4 h-12 w-12 text-muted-foreground/50" />
-            <p className="text-lg font-medium text-muted-foreground">{t('noLiveShifts')}</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {filtered.map(shift => {
-            const latest = latestUpdate(shift.id)
-            const isLive = shift.status === 'live'
-            const updatesMissing = isLive && !latest
-
-            return (
-              <Card key={shift.id} className="flex flex-col overflow-hidden transition-all hover:shadow-md">
-                {/* Header Row */}
-                <div className="flex items-center justify-between border-b bg-muted/20 px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <Badge variant={isLive ? 'destructive' : 'secondary'} className={isLive ? 'animate-pulse' : ''}>
-                      {statusLabel(shift.status)}
-                    </Badge>
-                    <span className="text-xs font-medium text-muted-foreground">{nameFor(platforms, shift.platform_id)}</span>
-                  </div>
-                  {updatesMissing && (
-                    <div className="flex items-center text-xs font-medium text-amber-600 dark:text-amber-500">
-                      <AlertCircle className="mr-1 h-3.5 w-3.5" />
-                      {t('updatesMissing')}
-                    </div>
-                  )}
-                  {latest && !updatesMissing && (
-                    <div className="flex items-center text-xs text-muted-foreground">
-                      <Clock className="mr-1 h-3.5 w-3.5" />
-                      {format(new Date(latest.time), 'HH:mm')}
-                    </div>
-                  )}
-                </div>
-
-                {/* Primary Context */}
-                <div className="flex-1 p-4">
-                  <h3 className="line-clamp-1 font-semibold tracking-tight">{shift.title || nameFor(brands, shift.brand_id)}</h3>
-                  <div className="mt-1 flex items-center text-sm text-muted-foreground">
-                    <span className="font-medium text-foreground/80">{formatShiftTimeRange(shift)}</span>
-                    <span className="mx-2 text-muted-foreground/30">•</span>
-                    <span className="line-clamp-1">{nameFor(campaigns, shift.campaign_id)}</span>
-                  </div>
-
-                  {/* Staffing Grid */}
-                  <div className="mt-5 grid grid-cols-3 gap-2 rounded-md bg-muted/40 p-3 text-xs">
-                    <RoleValue label={t('host')} value={roleNames(shift, 'host')} />
-                    <RoleValue label={t('support')} value={roleNames(shift, 'support')} />
-                    <RoleValue label={t('technical')} value={roleNames(shift, 'technical')} />
-                  </div>
-
-                  {/* Performance Grid */}
-                  <div className="mt-4 grid grid-cols-3 gap-2">
-                    <PerformanceValue label={t('revenue')} value={latest ? formatCurrency(latest.revenue) : '—'} />
-                    <PerformanceValue label={t('orders')} value={latest ? latest.orders.toLocaleString() : '—'} />
-                    <PerformanceValue label={t('viewers')} value={latest ? latest.current_viewers.toLocaleString() : '—'} />
-                  </div>
-                </div>
-
-                {/* Actions Footer */}
-                <div className="flex items-center gap-2 border-t bg-muted/10 p-4">
-                  <Button className="flex-1" variant="outline" size="sm" onClick={() => setSelectedShift(shift)} data-testid={`open-live-session-${shift.id}`}>
-                    {t('viewDetails')}
-                  </Button>
-                  {(shift.status === 'live' || shift.status === 'preparing' || shift.status === 'paused') && currentUser && hasPermission(currentUser, 'shifts.edit') && (
-                    <Button className="flex-1" size="sm" onClick={() => setUpdateShift(shift)} data-testid={`open-live-dashboard-update-${shift.id}`}>
-                      {t('submitDashboardUpdate')}
-                    </Button>
-                  )}
-                </div>
-              </Card>
-            )
-          })}
-        </div>
-      )}
+      <div className="space-y-3">
+        {filtered.length > 1 && <div className="flex flex-wrap gap-2">{filtered.map(shift => <Button key={shift.id} variant={activeShift?.id === shift.id ? 'secondary' : 'outline'} size="sm" onClick={() => setSelectedShift(shift)} data-testid={`open-live-session-${shift.id}`}>{shift.title || nameFor(brands, shift.brand_id)}<Badge variant="outline">{statusLabel(shift.status)}</Badge></Button>)}</div>}
+        <div className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white">{activeShift ? <LiveSessionModal key={activeShift.id} refreshVersion={refreshVersion} inline open shift={activeShift} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onOpenChange={open=>!open&&setSelectedShift(null)} onUpdate={handleShiftUpdate} /> : <p className="p-10 text-center text-sm text-slate-500">{t('noLiveShifts')}</p>}</div>
+      </div>
     </div>
-    {selectedShift && <LiveSessionModal open shift={selectedShift} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onOpenChange={open => !open && setSelectedShift(null)} onUpdate={handleShiftUpdate} />}
-    {updateShift && <DashboardUpdateModal open shift={updateShift} platformName={nameFor(platforms, updateShift.platform_id)} onOpenChange={open => !open && setUpdateShift(null)} onSuccess={loadData} />}
   </>
 }
 
@@ -279,34 +192,5 @@ function Metric({ title, value, icon, intent = 'default' }: { title: string; val
     danger: 'bg-red-50/50 border-red-200 dark:bg-red-950/20 dark:border-red-900',
     warning: 'bg-amber-50/50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900',
   }
-  return (
-    <Card className={`overflow-hidden ${intentStyles[intent]}`}>
-      <CardContent className="p-4 sm:p-6">
-        <div className="flex items-center justify-between space-y-0 pb-2">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
-          {icon}
-        </div>
-        <div className="text-2xl font-bold tracking-tight sm:text-3xl">{value}</div>
-      </CardContent>
-    </Card>
-  )
-}
-
-function RoleValue({ label, value }: { label: string; value: string }) {
-  const isUnassigned = value === '—'
-  return (
-    <div className="flex flex-col space-y-1">
-      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
-      <span className={`truncate text-xs ${isUnassigned ? 'text-muted-foreground/50 italic' : 'font-medium'}`}>{value}</span>
-    </div>
-  )
-}
-
-function PerformanceValue({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col space-y-1">
-      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
-      <span className="truncate text-base font-semibold tracking-tight">{value}</span>
-    </div>
-  )
+  return <div className={`flex items-center justify-between gap-2 rounded-md border px-3 py-2 ${intentStyles[intent]}`}><p className="text-[10px] font-semibold uppercase text-muted-foreground">{title}</p><div className="flex items-center gap-2"><span className="text-sm font-bold">{value}</span>{icon}</div></div>
 }

@@ -7,11 +7,10 @@ import { AuditAction, AuditLog, AuditModule, DeletionImpact } from '@/lib/types/
 import { auditService } from '@/lib/services/auditService'
 import { ArchivedEntitySummary, lifecycleService } from '@/lib/services/dataService'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
-import { hasAnyPermission, hasPermission } from '@/lib/permissions'
+import { hasAnyPermission, hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -22,9 +21,11 @@ import { useTranslation } from '@/lib/i18n'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import {
+  auditEntityHref,
   classifyOperationStatus,
   getErrorRecoveryContext,
   getSafeMetadata,
+  sanitizeMetadata,
   normalizeAuditActor,
   normalizeAuditAction,
   normalizeAuditModule,
@@ -88,6 +89,7 @@ export function AuditHistory() {
         isAdmin ? lifecycleService.getArchived(currentUser.id) : Promise.resolve([]),
       ])
       setLogs(visible.items)
+      setSelected(current => current && visible.items.some(item => item.id === current.id) ? current : null)
       setTotal(visible.total)
       setActors(visible.actors)
       if (visible.page !== page) setPage(visible.page)
@@ -138,36 +140,33 @@ export function AuditHistory() {
   }
 
   return (
-    <div className="space-y-6">
-      <div><h1 className="flex items-center gap-2 text-2xl font-bold"><History className="h-6 w-6" />{t('auditHistoryTitle')}</h1><p className="text-sm text-muted-foreground">{t('auditHistoryDescription')}</p></div>
-      <Card><CardHeader className="flex flex-row items-center justify-between space-y-0"><CardTitle className="text-base">{t('filters')}</CardTitle><Button variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="audit-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button></CardHeader>{showFilters && <CardContent id="audit-filter-panel" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Input placeholder={t('entityActorSearch')} value={filters.query} onChange={event => updateFilters({ query: event.target.value })} />
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-3"><div><h1 className="flex items-center gap-2 text-xl font-semibold"><History className="h-5 w-5" />{t('auditHistoryTitle')}</h1><p className="text-xs text-muted-foreground">{t('auditHistoryDescription')}</p></div><Button size="sm" variant="outline" onClick={() => void load()}>{t('refresh')}</Button></div>
+      <div className="grid gap-3 sm:grid-cols-3"><Meta label={t('totalRows')} value={String(total)} /><Meta label={t('actor')} value={String(actors.length)} /><Meta label={t('systemPermissions')} value={resolveSystemPermission(currentUser)} /></div>
+      <div className={`grid min-w-0 items-start gap-3 ${selected ? 'xl:grid-cols-[minmax(0,1.5fr)_minmax(360px,1fr)]' : 'grid-cols-1'}`}><div className="min-w-0 space-y-3"><Card><CardHeader className="flex flex-row items-center justify-between space-y-0 px-3 py-2"><div className="flex min-w-0 flex-1 flex-wrap items-center gap-2"><Input className="w-full sm:w-64" aria-label={t('entityActorSearch')} placeholder={t('entityActorSearch')} value={filters.query} onChange={event => updateFilters({ query: event.target.value })} /><FilterSelect value={filters.modules} onChange={value => updateFilters({ modules: value })} items={modules.map(value => ({ value, label: value }))} placeholder={t('auditModule')} /><FilterSelect value={filters.actions} onChange={value => updateFilters({ actions: value })} items={actions.map(value => ({ value, label: value.replaceAll('_', ' ') }))} placeholder={t('action')} /></div><Button size="sm" variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="audit-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button></CardHeader>{showFilters && <CardContent id="audit-filter-panel" className="grid gap-3 px-3 pb-3 sm:grid-cols-2 lg:grid-cols-4">
         <Input type="date" value={filters.from} onChange={event => updateFilters({ from: event.target.value })} />
         <Input type="date" value={filters.to} onChange={event => updateFilters({ to: event.target.value })} />
          <FilterSelect value={filters.actorIds} onChange={value => updateFilters({ actorIds: value })} items={actors.map(actor => ({ value: actor.id, label: actor.name }))} placeholder={t('actor')} />
          <FilterSelect value={filters.roles} onChange={value => updateFilters({ roles: value })} items={['member','leader','admin'].map(value => ({ value, label: value }))} placeholder={t('role')} />
-         <FilterSelect value={filters.modules} onChange={value => updateFilters({ modules: value })} items={modules.map(value => ({ value, label: value }))} placeholder={t('auditModule')} />
-         <FilterSelect value={filters.actions} onChange={value => updateFilters({ actions: value })} items={actions.map(value => ({ value, label: value.replaceAll('_', ' ') }))} placeholder={t('action')} />
          <FilterSelect value={filters.statuses} onChange={value => updateFilters({ statuses: value })} items={['success','warning','failed','retryable'].map(value => ({ value, label: value }))} placeholder={t('status')} />
          <FilterSelect value={filters.sources} onChange={value => updateFilters({ sources: value })} items={['manual','excel_import','google_sheets','system','ocr','upload'].map(value => ({ value, label: value }))} placeholder={t('source')} />
          <label className="text-xs font-medium">{t('auditSort')}<Select value={sort} onValueChange={value => { setSort(value as 'newest' | 'oldest'); setPage(1) }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="newest">{t('newestFirst')}</SelectItem><SelectItem value="oldest">{t('oldestFirst')}</SelectItem></SelectContent></Select></label>
       </CardContent>}</Card>
 
-      <Card className="overflow-hidden"><CardContent className="p-0"><div className="max-h-[60vh] overflow-auto"><div className="w-full overflow-x-auto min-w-0">
-<table className="w-full min-w-[900px] text-sm"><thead className="sticky top-0 z-10 bg-card shadow-sm"><tr className="border-b text-left"><th className="p-2">{t('time')}</th><th className="p-2">{t('actor')}</th><th className="p-2">{t('action')}</th><th className="p-2">{t('auditEntity')}</th><th className="p-2">{t('auditModule')}</th><th className="p-2">{t('status')}</th><th className="p-2">{t('auditDetails')}</th></tr></thead><tbody>{logs.map(entry => {
+      <Card className="overflow-hidden"><CardContent className="p-0"><div className="max-h-[60vh] overflow-auto"><table className="w-full min-w-[680px] text-xs"><thead className="sticky top-0 z-10 bg-card shadow-sm"><tr className="border-b text-left"><th className="p-2">{t('time')}</th><th className="p-2">{t('actor')}</th><th className="p-2">{t('auditModule')} / {t('action')}</th><th className="p-2">{t('auditEntity')}</th><th className="p-2">{t('status')} / {t('source')}</th><th className="p-2">Correlation</th><th className="p-2">{t('auditDetails')}</th></tr></thead><tbody>{logs.map(entry => {
         const actor = normalizeAuditActor(entry)
         const time = normalizeTimestamp(entry.timestamp).display
         const opStatus = classifyOperationStatus(entry)
         const badge = statusBadgeClass(opStatus)
         const safeModule = normalizeAuditModule(entry.module)
         const safeAction = normalizeAuditAction(entry.action)
-        return <tr className="border-b" key={entry.id}><td className="p-2 whitespace-nowrap">{time}</td><td className="p-2">{actor.name}<p className="text-xs text-muted-foreground">{actor.role}</p></td><td className="p-2"><Badge variant="outline">{safeAction.replaceAll('_', ' ')}</Badge></td><td className="p-2">{entry.entity_name}<p className="text-xs text-muted-foreground">{entry.entity_type} · {entry.entity_id}</p></td><td className="p-2">{safeModule}</td><td className="p-2"><Badge className={badge} variant="outline">{opStatus}</Badge></td><td className="p-2"><Button size="icon" variant="ghost" aria-label={t('viewAuditDetails')} onClick={() => setSelected(entry)}><Eye className="h-4 w-4" /></Button></td></tr>
-      })}</tbody></table>
-</div>{logs.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">{t('noAuditEvents')}</p>}</div><HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); window.localStorage.setItem('livestream-ops-audit-page-size', String(size)) }} /></CardContent></Card>
+        return <tr className="cursor-pointer border-b hover:bg-muted/30" key={entry.id} aria-selected={selected?.id === entry.id} onClick={() => setSelected(entry)}><td className="px-2 py-1.5 whitespace-nowrap">{time}</td><td className="px-2 py-1.5">{actor.name}<p className="text-[10px] text-muted-foreground">{actor.role}</p></td><td className="p-2"><Badge variant="outline">{safeModule}</Badge><p className="mt-1 text-xs">{safeAction.replaceAll('_', ' ')}</p></td><td className="max-w-64 p-2"><p className="truncate font-medium" title={entry.entity_name}>{entry.entity_name}</p><p className="truncate text-[10px] text-muted-foreground" title={entry.entity_id}>{entry.entity_type} · {entry.entity_id}</p></td><td className="p-2"><Badge className={badge} variant="outline">{opStatus}</Badge><p className="mt-1 text-[10px] text-muted-foreground">{entry.source}</p></td><td className="max-w-32 truncate p-2 text-[10px] text-muted-foreground" title={entry.correlation_id}>{entry.correlation_id || '—'}</td><td className="p-2"><Button size="icon" variant="ghost" aria-label={t('viewAuditDetails')} onClick={event => { event.stopPropagation(); setSelected(entry) }}><Eye className="h-4 w-4" /></Button></td></tr>
+      })}</tbody></table>{logs.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">{t('noAuditEvents')}</p>}</div><HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); window.localStorage.setItem('livestream-ops-audit-page-size', String(size)) }} /></CardContent></Card>
+
+      </div>{selected && <aside className="min-w-0"><AuditDetail key={selected.id} entry={selected} currentUser={currentUser} onClose={() => setSelected(null)} onUpdated={async () => { await load() }} /></aside>}</div>
 
       {isAdmin && <Card className="overflow-hidden"><CardHeader><CardTitle className="text-base">{t('archivedRecords')}</CardTitle></CardHeader><CardContent className="p-0"><div className="max-h-[420px] space-y-2 overflow-auto px-6 pb-4">{visibleArchived.map(item => <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3" key={`${item.entity_type}-${item.entity_id}`}><div><p className="font-medium">{item.entity_name}</p><p className="text-xs text-muted-foreground">{item.entity_type} · {new Date(item.archived_at).toLocaleString()} · {item.reason || t('noReasonSupplied')}</p></div><Button variant="outline" size="sm" onClick={() => setRestoreTarget(item)}><RotateCcw className="mr-2 h-4 w-4" />{t('restore')}</Button></div>)}{archived.length === 0 && <p className="text-sm text-muted-foreground">{t('noArchivedRecords')}</p>}</div><HistoryPagination page={safeArchivedPage} pageSize={archivedPageSize} total={archived.length} onPageChange={setArchivedPage} onPageSizeChange={size => { setArchivedPageSize(size); setArchivedPage(1) }} /></CardContent></Card>}
 
-      {selected && <AuditDetail entry={selected} currentUser={currentUser} onClose={() => setSelected(null)} onUpdated={async () => { setSelected(null); await load() }} />}
       <LifecycleActionDialog open={Boolean(restoreTarget)} onOpenChange={open => !open && setRestoreTarget(null)} title={t('restoreRecord')} impact={restoreImpact} confirmText={t('restore')} variant="default" onConfirm={restore} />
     </div>
   )
@@ -178,6 +177,9 @@ function FilterSelect({ value, onChange, items, placeholder }: { value: string[]
 }
 
 function AuditDetail({ entry, currentUser, onClose, onUpdated }: { entry: AuditLog; currentUser: NonNullable<ReturnType<typeof useCurrentUser>['currentUser']>; onClose: () => void; onUpdated: () => Promise<void> }) {
+  const [detailView,setDetailView] = React.useState<'compare' | 'json' | 'table'>('compare')
+  const [saving,setSaving] = React.useState(false)
+  const savingRef = React.useRef(false)
   const [note, setNote] = React.useState(entry.admin_note || '')
   const [reviewStatus, setReviewStatus] = React.useState(entry.review_status || 'unreviewed')
   const [handlingReason, setHandlingReason] = React.useState(entry.handling_reason || '')
@@ -185,7 +187,7 @@ function AuditDetail({ entry, currentUser, onClose, onUpdated }: { entry: AuditL
   const safe = getSafeMetadata(entry)
   const changed = new Set([...Object.keys(safe.before || {}), ...Object.keys(safe.after || {})].filter(key => JSON.stringify(safe.before?.[key]) !== JSON.stringify(safe.after?.[key])))
   const canReview = hasPermission(currentUser, 'audit.review')
-  const entityHref = entityLink(entry)
+  const entityHref = auditEntityHref(entry.entity_type)
   const actor = normalizeAuditActor(entry)
   const time = normalizeTimestamp(entry.timestamp)
   const opStatus = classifyOperationStatus(entry)
@@ -193,18 +195,26 @@ function AuditDetail({ entry, currentUser, onClose, onUpdated }: { entry: AuditL
   const safeAction = normalizeAuditAction(entry.action)
   const safeModule = normalizeAuditModule(entry.module)
   const save = async () => {
-    await auditService.addAdministrativeReview(entry.id, currentUser, { admin_note: note, review_status: reviewStatus, handling_reason: handlingReason })
-    toast({ title: 'Audit review saved', variant: 'success' })
-    await onUpdated()
+    if (!canReview || savingRef.current) return
+    savingRef.current=true;setSaving(true)
+    try {
+      await auditService.addAdministrativeReview(entry.id, currentUser, { admin_note: note, review_status: reviewStatus, handling_reason: handlingReason })
+      toast({title:'Audit review saved',variant:'success'})
+      await onUpdated()
+    } catch(error) {toast({title:'Không thể lưu đánh giá',description:error instanceof Error?error.message:'Vui lòng thử lại.',variant:'destructive'})}
+    finally {savingRef.current=false;setSaving(false)}
   }
-  return <Dialog open onOpenChange={open => !open && onClose()}><DialogContent size="full" className="h-[calc(100vh-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:h-[92vh]"><DialogHeader><DialogTitle>Audit event · {safeAction.replaceAll('_', ' ')}</DialogTitle><p className="text-sm text-muted-foreground">{entry.entity_name} · {entry.correlation_id}</p></DialogHeader><DialogBody className="space-y-4"><div className="grid gap-3 md:grid-cols-3"><Meta label="Actor" value={actor.label} /><Meta label="Module/source" value={`${safeModule} · ${entry.source}`} /><Meta label="Time/status" value={`${time.display} · ${opStatus}`} /></div>{errorCtx.reason && <Meta label="Reason" value={errorCtx.reason} />}{errorCtx.errorCode && <Meta label="Error code" value={errorCtx.errorCode} />}<div className="flex flex-wrap gap-2 text-xs"><Badge variant="outline" className={statusBadgeClass(opStatus)}>{opStatus}</Badge>{errorCtx.retryable && <Badge variant="outline" className="bg-blue-50 text-blue-700">retryable</Badge>}<span className="text-muted-foreground">correlation {errorCtx.correlationId}</span></div>{(errorCtx.references.batchId || errorCtx.references.reportId || errorCtx.references.shiftId || errorCtx.references.requestId) && <div className="rounded-lg border p-3"><p className="mb-2 text-xs font-semibold text-muted-foreground">Recovery references (safe metadata only)</p><div className="grid gap-1 text-xs"><span>entity: {errorCtx.entity.type} · {errorCtx.entity.id}</span>{errorCtx.references.batchId && <span>batch: {errorCtx.references.batchId}</span>}{errorCtx.references.reportId && <span>report: {errorCtx.references.reportId}</span>}{errorCtx.references.shiftId && <span>shift: {errorCtx.references.shiftId}</span>}{errorCtx.references.requestId && <span>request: {errorCtx.references.requestId}</span>}<span>correlation: {errorCtx.references.correlationId}</span></div></div>}<div className="grid gap-4 lg:grid-cols-2"><Snapshot title="Before" value={safe.before} changed={changed} /><Snapshot title="After" value={safe.after} changed={changed} /></div>{errorCtx.relatedRecords.length > 0 && <div><h3 className="mb-2 font-semibold">Related records</h3><ul className="space-y-1">{errorCtx.relatedRecords.map(item => {
-          const href = entityLink({ entity_type: item.entity_type } as AuditLog)
+  return <Card className="max-h-[calc(100vh-180px)] overflow-auto"><div className="sticky top-0 z-10 border-b bg-white px-4 py-3"><div className="flex items-start justify-between gap-3"><div><h2 className="font-semibold">Audit event · {safeAction.replaceAll('_', ' ')}</h2><p className="text-xs text-muted-foreground">{entry.entity_name} · {entry.correlation_id}</p></div><Button size="sm" variant="outline" onClick={onClose}>Close</Button></div></div><CardContent className="space-y-4 p-3"><div className="grid gap-3 md:grid-cols-3"><Meta label="Actor" value={actor.label} /><Meta label="Module/source" value={`${safeModule} · ${entry.source}`} /><Meta label="Time/status" value={`${time.display} · ${opStatus}`} /></div>{errorCtx.reason && <Meta label="Reason" value={errorCtx.reason} />}{errorCtx.errorCode && <Meta label="Error code" value={errorCtx.errorCode} />}<div className="flex flex-wrap gap-2 text-xs"><Badge variant="outline" className={statusBadgeClass(opStatus)}>{opStatus}</Badge>{errorCtx.retryable && <Badge variant="outline" className="bg-blue-50 text-blue-700">retryable</Badge>}<span className="text-muted-foreground">correlation {errorCtx.correlationId}</span></div>{(errorCtx.references.batchId || errorCtx.references.reportId || errorCtx.references.shiftId || errorCtx.references.requestId) && <div className="rounded-lg border p-3"><p className="mb-2 text-xs font-semibold text-muted-foreground">Recovery references (safe metadata only)</p><div className="grid gap-1 text-xs"><span>entity: {errorCtx.entity.type} · {errorCtx.entity.id}</span>{errorCtx.references.batchId && <span>batch: {errorCtx.references.batchId}</span>}{errorCtx.references.reportId && <span>report: {errorCtx.references.reportId}</span>}{errorCtx.references.shiftId && <span>shift: {errorCtx.references.shiftId}</span>}{errorCtx.references.requestId && <span>request: {errorCtx.references.requestId}</span>}<span>correlation: {errorCtx.references.correlationId}</span></div></div>}<nav className="flex flex-wrap gap-2 border-b pb-3" aria-label="Chi tiết nhật ký">{(['compare','json','table'] as const).map(view=><Button type="button" size="sm" key={view} variant={detailView===view?'secondary':'ghost'} aria-pressed={detailView===view} onClick={()=>setDetailView(view)}>{view==='compare'?'So sánh thay đổi':view==='json'?'Dữ liệu JSON':'Bảng thay đổi'}</Button>)}</nav>{detailView==='compare' && <div className="grid gap-4 lg:grid-cols-2"><Snapshot title="Before" value={safe.before} changed={changed} /><Snapshot title="After" value={safe.after} changed={changed} /></div>}{detailView==='json' && <pre className="max-h-[420px] overflow-auto rounded-lg border bg-muted/20 p-3 text-xs">{JSON.stringify(sanitizeMetadata(entry),null,2)}</pre>}{detailView==='table' && <div className="overflow-x-auto rounded-lg border"><table className="w-full text-xs"><thead className="bg-muted/30 text-left"><tr><th className="p-2">Trường</th><th className="p-2">Trước</th><th className="p-2">Sau</th></tr></thead><tbody>{[...new Set([...Object.keys(safe.before || {}),...Object.keys(safe.after || {})])].map(key=><tr key={key} className={`border-t ${changed.has(key)?'bg-amber-50':''}`}><th className="p-2 text-left align-top">{key}</th><td className="max-w-xs break-all p-2 font-mono">{JSON.stringify(safe.before?.[key]) ?? '—'}</td><td className="max-w-xs break-all p-2 font-mono">{JSON.stringify(safe.after?.[key]) ?? '—'}</td></tr>)}</tbody></table></div>}{errorCtx.relatedRecords.length > 0 && <div><h3 className="mb-2 font-semibold">Related records</h3><ul className="space-y-1">{errorCtx.relatedRecords.map(item => {
+          const href = auditEntityHref(item.entity_type)
           return <li className="flex items-center justify-between rounded border p-2 text-sm" key={`${item.entity_type}-${item.entity_id}`}><span>{item.entity_name} {item.count ? `(${item.count})` : ''}<span className="ml-2 text-xs text-muted-foreground">{item.entity_type} · {item.entity_id}</span></span>{href && <Link href={href} className="text-xs font-medium text-primary underline-offset-4 hover:underline">Open</Link>}</li>
-        })}</ul></div>}{entityHref && entry.entity_exists && <Button render={<Link href={entityHref} />} variant="outline">Open entity</Button>}{canReview && <div className="grid gap-3 rounded-lg border p-4 md:grid-cols-2"><label className="text-sm font-medium">Review status<Select value={reviewStatus} onValueChange={value => setReviewStatus(value as NonNullable<AuditLog['review_status']>)}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent>{['unreviewed','reviewed','action_required','resolved'].map(value => <SelectItem key={value} value={value}>{value.replaceAll('_', ' ')}</SelectItem>)}</SelectContent></Select></label><label className="text-sm font-medium">Handling reason<Input className="mt-1" value={handlingReason} onChange={event => setHandlingReason(event.target.value)} /></label><label className="text-sm font-medium md:col-span-2">Administrative note<Textarea className="mt-1" value={note} onChange={event => setNote(event.target.value)} /></label></div>}</DialogBody><DialogFooter><Button variant="outline" onClick={onClose}>Close</Button>{canReview && <Button onClick={() => void save()}>Save review metadata</Button>}</DialogFooter></DialogContent></Dialog>
+        })}</ul></div>}{entityHref && entry.entity_exists && <Button nativeButton={false} render={<Link href={entityHref} />} variant="outline">Open entity</Button>}{canReview && <div className="grid gap-3 rounded-lg border p-4 md:grid-cols-2"><label className="text-sm font-medium">Review status<Select value={reviewStatus} onValueChange={value => setReviewStatus(value as NonNullable<AuditLog['review_status']>)}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent>{['unreviewed','reviewed','action_required','resolved'].map(value => <SelectItem key={value} value={value}>{value.replaceAll('_', ' ')}</SelectItem>)}</SelectContent></Select></label><label className="text-sm font-medium">Handling reason<Input className="mt-1" value={handlingReason} onChange={event => setHandlingReason(event.target.value)} /></label><label className="text-sm font-medium md:col-span-2">Administrative note<Textarea className="mt-1" value={note} onChange={event => setNote(event.target.value)} /></label></div>}</CardContent>{canReview && <div className="flex justify-end border-t p-3"><Button disabled={saving} onClick={() => void save()}>{saving ? 'Đang lưu…' : 'Save review metadata'}</Button></div>}</Card>
 }
 
 function Meta({ label, value }: { label: string; value: string }) { return <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 break-words font-medium">{value}</p></div> }
-function Snapshot({ title, value, changed }: { title: string; value?: Record<string, unknown>; changed: Set<string> }) { return <div><h3 className="mb-2 font-semibold">{title}</h3><div className="max-h-[420px] overflow-auto rounded-lg border"><div className="w-full overflow-x-auto min-w-0">
-<table className="w-full min-w-[420px] text-xs"><tbody>{Object.entries(value || {}).map(([key, field]) => <tr className={changed.has(key) ? 'border-b bg-amber-50' : 'border-b'} key={key}><th className="w-1/3 p-2 text-left align-top">{key}</th><td className="break-all p-2 font-mono">{JSON.stringify(field)}</td></tr>)}</tbody></table>
-</div>{!value && <p className="p-3 text-muted-foreground">No snapshot.</p>}</div></div> }
-function entityLink(entry: AuditLog) { const links: Record<string, string> = { shift: '/calendar', shift_registration: '/calendar', report: '/reports', campaign: '/campaigns', brand: '/brands', platform: '/platforms', staff: '/staff', swap_request: '/swaps', live_snapshot: '/live' }; return links[entry.entity_type] }
+function Snapshot({ title, value, changed }: { title: string; value?: Record<string, unknown>; changed: Set<string> }) {
+  const entries = Object.entries(value || {})
+  const modified = entries.filter(([key]) => changed.has(key))
+  const unchanged = entries.filter(([key]) => !changed.has(key))
+  const rows = (items: typeof entries) => <table className="w-full table-fixed text-xs"><tbody>{items.map(([key, field]) => <tr className={changed.has(key) ? 'border-b bg-amber-50' : 'border-b'} key={key}><th className="w-2/5 break-words p-2 text-left align-top">{key}</th><td className="break-all p-2 font-mono">{JSON.stringify(field)}</td></tr>)}</tbody></table>
+  return <div className="min-w-0"><h3 className="mb-2 font-semibold">{title}</h3><div className="max-h-[420px] overflow-auto rounded-lg border">{rows(modified)}{unchanged.length > 0 && <details className="border-t"><summary className="cursor-pointer p-2 text-xs text-muted-foreground">Unchanged fields ({unchanged.length})</summary>{rows(unchanged)}</details>}{!value && <p className="p-3 text-muted-foreground">No snapshot.</p>}{value && modified.length === 0 && <p className="p-2 text-xs text-muted-foreground">No changed fields.</p>}</div></div>
+}

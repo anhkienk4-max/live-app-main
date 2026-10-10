@@ -96,7 +96,7 @@ export function formatSmokeResults(results: SmokeResult[]): string {
 }
 
 // Route matrix for browser UAT (mirrors tests/harness/routeAccessExpectations but browser-observable)
-export const BROWSER_ROLE_EXPECTATIONS: Record<CoreRole, Record<string, { visible: boolean; canApprove?: boolean }>> = {
+export const BROWSER_ROLE_EXPECTATIONS: Record<CoreRole, Record<string, { visible: boolean; canApprove?: boolean; locked?: boolean }>> = {
   member: {
     calendar: { visible: true, canApprove: false },
     swaps: { visible: true, canApprove: false },
@@ -113,7 +113,7 @@ export const BROWSER_ROLE_EXPECTATIONS: Record<CoreRole, Record<string, { visibl
     staff: { visible: true, canApprove: false },
     reports: { visible: true, canApprove: true },
     settings_team: { visible: true },
-    settings_system: { visible: false },
+    settings_system: { visible: true, locked: true },
   },
   admin: {
     calendar: { visible: true, canApprove: true },

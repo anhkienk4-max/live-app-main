@@ -9,10 +9,10 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "integration/ui-golden-screens",
-    "head": "bc1c0dbd13d2ef64374b2210409f5460698e278a",
-    "origin_main": "7be47803690550d1ba891b6d7e1e4585f8f307e7",
-    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-ui-integration"
+    "branch": "feat/frontend-14wave-production",
+    "head": "305ecf08cbfbcabecfa1a154689a9108d8687c3d",
+    "origin_main": "1933532b749a52cdbc659686a14bd37e457c3ff1",
+    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-14wave"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -41,9 +41,12 @@
       "app/(dashboard)/page.tsx",
       "app/(dashboard)/platforms/page.tsx",
       "app/(dashboard)/profile/page.tsx",
+      "app/(dashboard)/registration/page.tsx",
       "app/(dashboard)/reports/page.tsx",
       "app/(dashboard)/settings/page.tsx",
+      "app/(dashboard)/shifts/page.tsx",
       "app/(dashboard)/staff/page.tsx",
+      "app/(dashboard)/staffing/page.tsx",
       "app/(dashboard)/swaps/page.tsx",
       "app/api/account-requests/[id]/approve/route.ts",
       "app/api/account-requests/[id]/provision/route.ts",
@@ -60,29 +63,32 @@
       "app/forgot-password/page.tsx",
       "app/login/page.tsx",
       "app/register/page.tsx",
-      "app/reset-password/page.tsx"
+      "app/reset-password/page.tsx",
+      "app/visual-qa/page.tsx"
     ],
     "source_files": {
       "roots": {
-        "app": 34,
-        "components": 92,
-        "lib": 153,
+        "app": 38,
+        "components": 138,
+        "lib": 158,
         "scripts": 14,
-        "supabase": 58,
-        "tests": 117
+        "supabase": 62,
+        "tests": 126
       },
-      "total": 468
+      "total": 536
     },
     "tests": {
       "files": [
         "tests/account-lifecycle-contracts.test.ts",
         "tests/account-management-core-v1.test.ts",
+        "tests/account-request-active-lifecycle.test.ts",
         "tests/account-request-patch1.test.ts",
         "tests/account-request-patch2.test.ts",
         "tests/account-request-phase1.test.ts",
         "tests/account-request-phase2-staging.test.ts",
         "tests/account-request-phase2.test.ts",
         "tests/account-request-phase3.test.ts",
+        "tests/account-request-provisioning-boundary-hardening.test.ts",
         "tests/account-request-provisioning-composite.test.ts",
         "tests/auth-confirm-route.test.ts",
         "tests/auth-identity-bridge.test.tsx",
@@ -100,6 +106,7 @@
         "tests/core-data-integrity-p1b.test.ts",
         "tests/core-v1-3role-matrix.test.ts",
         "tests/core-v1-permission-rls-final.test.ts",
+        "tests/dashboard-fixtures.test.ts",
         "tests/dashboard-region-detection.test.ts",
         "tests/e1-role-ux.test.ts",
         "tests/e3-dashboard-domain.test.ts",
@@ -117,11 +124,13 @@
         "tests/false-success-release.test.ts",
         "tests/file-provider-foundation.test.ts",
         "tests/final-report-kpi-filter.test.tsx",
+        "tests/frontend-convergence-metrics.test.ts",
         "tests/gl11-notifications-hardening.test.ts",
         "tests/gl19c-authoritative-operational-settings.test.ts",
         "tests/gl19d-bulk-shift-behavior.test.ts",
         "tests/gl19d-bulk-shift-version.test.ts",
         "tests/google-drive-file-provider.test.ts",
+        "tests/lifecycle-action-dialog.test.ts",
         "tests/live-dashboard-persistence.test.ts",
         "tests/live-report-images.test.tsx",
         "tests/memory-validator-contract.test.ts",
@@ -148,6 +157,9 @@
         "tests/profile-avatar-storage.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
         "tests/registration-board-performance.test.ts",
+        "tests/report-null-semantics-consumers.test.ts",
+        "tests/report-required-metrics.test.ts",
+        "tests/role-lens.test.ts",
         "tests/rw003-staffing-resolver.test.ts",
         "tests/rw004-admin-self-update.test.ts",
         "tests/s2-shift-staffing.test.ts",
@@ -184,11 +196,12 @@
         "tests/swaps-filter-regression.test.ts",
         "tests/tiktok-layout-independent-ocr.test.ts",
         "tests/timezone-contract.test.ts",
+        "tests/ux-import-01.test.tsx",
         "tests/vision-ocr-phase-a.test.ts",
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 112
+      "count": 121
     },
     "migrations": {
       "files": [
@@ -239,17 +252,25 @@
         "supabase/migrations/20260905190925_profile_avatar_storage.sql",
         "supabase/migrations/20260905191836_live_dashboard_update_persistence.sql",
         "supabase/migrations/20260906100000_gl19c_operational_settings_consumers.sql",
-        "supabase/migrations/20260906141234_rw004_admin_self_operational_roles.sql"
+        "supabase/migrations/20260906141234_rw004_admin_self_operational_roles.sql",
+        "supabase/migrations/20260912083056_report_draft_nullable_metrics.sql",
+        "supabase/migrations/20260913120000_shift_status_mode_and_auto_completion.sql",
+        "supabase/migrations/20260913125000_account_request_provisioning_boundary_hardening.sql",
+        "supabase/migrations/20260913130000_account_request_active_lifecycle.sql"
       ],
-      "count": 48
+      "count": 52
     }
   },
   "verification": {
     "memory_validate": "PASS",
     "memory_sync": "PASS",
     "typecheck": "PASS",
-    "lint": "FAIL_BASELINE",
-    "build": "PASS"
+    "lint": "PASS",
+    "build": "PASS",
+    "frontend_convergence_focused_tests": "197/197 PASS",
+    "frontend_convergence_auth_verification": "PENDING_CREDENTIAL_CONFIGURATION",
+    "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
+    "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-09-11T15:17:37+07:00"
+  "synced_at": "2026-10-06T22:10:31+07:00"
 }

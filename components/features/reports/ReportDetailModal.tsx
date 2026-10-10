@@ -48,6 +48,7 @@ import { OcrCropPreview } from '@/components/features/reports/OcrCropPreview'
 import { OcrMetricFilterBar, OcrMetricReviewField } from '@/components/features/reports/OcrMetricReviewField'
 import { AlertDialog } from '@/components/ui/alert-dialog'
 import { HistoryPagination } from '@/components/ui/history-pagination'
+import { PageLoadError } from '@/components/ui/page-load-error'
 import {
   emptyFinalReportRecap,
   finalReportRecapFields,
@@ -216,7 +217,7 @@ export function ReportDetailPlatformMetrics({
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold">{t('platformLivestreamMetrics')}</h3>
-            <Badge variant="secondary" className="font-mono text-[10px]">
+            <Badge variant="secondary" className="font-mono text-micro">
               {report.dashboard_platform === 'tiktok_shop' ? 'TikTok Shop' : report.dashboard_platform === 'shopee_live' ? 'Shopee Live' : t('otherPlatform')}
             </Badge>
           </div>
@@ -239,7 +240,7 @@ export function ReportDetailPlatformMetrics({
               if (value == null || value === '') return null
               return (
                 <div key={key}>
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{t(metricTranslationKeys[key])}</p>
+                  <p className="text-micro font-medium uppercase tracking-wider text-muted-foreground">{t(metricTranslationKeys[key])}</p>
                   <p className="mt-0.5 break-words font-semibold">{formatMetricValue(key, value)}</p>
                 </div>
               )
@@ -307,11 +308,22 @@ export function ReportDetailModal({
   const [revisionPage, setRevisionPage] = React.useState(1)
   const [revisionPageSize, setRevisionPageSize] = React.useState(10)
   const [loadedRevisions, setLoadedRevisions] = React.useState<ReportRevision[]>(report.revisions || [])
+  const [revisionLoadError, setRevisionLoadError] = React.useState<Error | null>(null)
+  const [revisionReloadKey, setRevisionReloadKey] = React.useState(0)
   React.useEffect(() => {
+    let active = true
     if (open && !report.revisions) {
-      void reportService.getReportRevisions(report.id).then(setLoadedRevisions)
+      void reportService.getReportRevisions(report.id).then(revisions => {
+        if (active) {
+          setLoadedRevisions(revisions)
+          setRevisionLoadError(null)
+        }
+      }).catch(error => {
+        if (active) setRevisionLoadError(error instanceof Error ? error : new Error('Report history could not be loaded'))
+      })
     }
-  }, [open, report.id, report.revisions])
+    return () => { active = false }
+  }, [open, report.id, report.revisions, revisionReloadKey])
   const uploadInputRef = React.useRef<HTMLInputElement>(null)
   const dashboardImage = images.find(image => image.image_type === 'dashboard')
   React.useEffect(() => { if (open) void reportImageService.getByReport(report.id).then(setImages) }, [open, report.id])
@@ -847,21 +859,21 @@ export function ReportDetailModal({
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <ThumbsUp className="h-4 w-4" />
-                      <span className="text-[10px] font-medium uppercase tracking-wider">{t('metricLikes')}</span>
+                      <span className="text-micro font-medium uppercase tracking-wider">{t('metricLikes')}</span>
                     </div>
                     <div className="text-lg font-bold">{report.likes?.toLocaleString() ?? '—'}</div>
                   </div>
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <MessageCircle className="h-4 w-4" />
-                      <span className="text-[10px] font-medium uppercase tracking-wider">{t('metricComments')}</span>
+                      <span className="text-micro font-medium uppercase tracking-wider">{t('metricComments')}</span>
                     </div>
                     <div className="text-lg font-bold">{report.comments == null ? t('noData') : report.comments.toLocaleString()}</div>
                   </div>
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Share2 className="h-4 w-4" />
-                      <span className="text-[10px] font-medium uppercase tracking-wider">{t('metricShares')}</span>
+                      <span className="text-micro font-medium uppercase tracking-wider">{t('metricShares')}</span>
                     </div>
                     <div className="text-lg font-bold">{report.shares == null ? t('noData') : report.shares.toLocaleString()}</div>
                   </div>
@@ -1104,7 +1116,9 @@ export function ReportDetailModal({
             </Card>
           </TabsContent>
           <TabsContent value="versions" className="space-y-3">
+            {revisionLoadError ? <div role="alert"><PageLoadError error={revisionLoadError} onRetry={() => setRevisionReloadKey(key => key + 1)} /></div> : <>
             <Card className="overflow-hidden"><CardContent className="p-0"><div className="max-h-[55vh] space-y-3 overflow-auto p-6"><h3 className="mb-4 flex items-center gap-2 font-semibold"><History className="h-4 w-4" />{t('reportVersionHistory')}</h3>{visibleRevisions.map(revision => <div className="rounded-lg border p-3" key={revision.version}><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-medium">{t('version')} {revision.version} · {revision.event.replaceAll('_', ' ')}</p><p className="text-xs text-muted-foreground">{format(new Date(revision.created_at), 'dd/MM/yyyy HH:mm')} · {getUserName(revision.created_by)}</p></div><Badge variant="outline">{revision.status}</Badge></div>{revision.reason && <p className="mt-2 text-sm">{revision.reason}</p>}<div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4"><div>{t('metricRevenue')}: {revision.metrics.revenue == null ? t('noData') : formatCurrency(revision.metrics.revenue)}</div><div>{t('metricOrders')}: {revision.metrics.orders == null ? t('noData') : revision.metrics.orders.toLocaleString()}</div><div>{t('peak')}: {revision.metrics.peak_viewer == null ? t('noData') : revision.metrics.peak_viewer.toLocaleString()}</div><div>{t('reportImages')}: {revision.image_references.length}</div></div></div>)}{!revisions.length && <p className="text-sm text-muted-foreground">{t('noRevisionSnapshots')}</p>}</div><HistoryPagination page={revisionPage} pageSize={revisionPageSize} total={revisions.length} onPageChange={setRevisionPage} onPageSizeChange={size => { setRevisionPageSize(size); setRevisionPage(1) }} /></CardContent></Card>
+            </>}
           </TabsContent>
         </Tabs>
         </DialogBody>

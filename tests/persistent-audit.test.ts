@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { auditEntityHref } from '@/lib/utils/auditNormalize'
 
 const migration = readFileSync(
   'supabase/migrations/20260830113000_core_v1_persistent_audit.sql',
@@ -161,4 +162,16 @@ test('audit schema avoids binary payload persistence', () => {
   assert.doesNotMatch(migration, /create table public\.audit_logs[\s\S]*bytea/i)
   assert.match(migration, /file\|image\|thumbnail.*url/i)
   assert.match(migration, /redacted_reference/i)
+})
+
+test('audit source links accept persisted table names and legacy entity names', () => {
+  for (const [types, href] of [
+    [['shift', 'shifts', 'shift registration', 'shift_registrations'], '/calendar'],
+    [['report', 'reports', 'report revisions', 'report_images'], '/reports'],
+    [['staff', 'business users'], '/staff'],
+    [['swap_request', 'swap requests'], '/swaps'],
+    [['live_snapshot', 'live report images'], '/live'],
+    [['schedule import batches', 'schedule_import_batch_rows'], '/calendar?tab=history'],
+  ] as const) for (const type of types) assert.equal(auditEntityHref(type), href)
+  assert.equal(auditEntityHref('unknown_entity'), undefined)
 })

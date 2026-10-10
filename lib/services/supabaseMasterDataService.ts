@@ -8,6 +8,7 @@ import type {
   OperationalRole,
   Platform,
   User,
+  UserDirectoryEntry,
 } from '@/lib/types/database.types'
 
 const businessUserColumns = [
@@ -399,6 +400,7 @@ function campaignPayload(data: Partial<Campaign>): Record<string, unknown> {
 
 export interface SupabaseMasterDataRepository {
   businessUsers: {
+    getDirectory(): Promise<UserDirectoryEntry[]>
     getAll(includeDeleted?: boolean): Promise<User[]>
     getById(id: string): Promise<User | null>
     getByAuthIdentity(identity: AuthIdentity): Promise<User | null>
@@ -465,6 +467,11 @@ export function createSupabaseMasterDataRepository(
 
   return {
     businessUsers: {
+      async getDirectory() {
+        const result = await client.rpc('get_staff_directory')
+        if (result.error) throw requestError('staff display directory read', result.error)
+        return result.data ?? []
+      },
       async getAll(includeDeleted = false) {
         let query = client.from('business_users')
           .select(businessUserColumns)

@@ -2,9 +2,10 @@
 
 import * as React from 'react'
 import { settingsService, shiftService } from '@/lib/services/dataService'
-import { Shift, Brand, Platform, Campaign, User, ShiftStatus } from '@/lib/types/database.types'
+import { Shift, Brand, Platform, Campaign, User, ShiftStatus, ShiftRegistration } from '@/lib/types/database.types'
 import {
   DEFAULT_SHIFT_STAFFING,
+  DEFAULT_BUSINESS_TIMEZONE,
   type ShiftConflict,
   ShiftTemplate,
   RecurrenceRule,
@@ -26,6 +27,7 @@ import { AlertCircle, Sparkles } from 'lucide-react'
 import { format } from 'date-fns'
 import { useTranslation } from '@/lib/i18n'
 import { getAuthMode } from '@/lib/auth/authMode'
+import { resolveStaffingLabelsForRole } from '@/lib/utils/staffingResolver'
 
 interface ShiftFormDialogProps {
   open: boolean
@@ -36,12 +38,14 @@ interface ShiftFormDialogProps {
   platforms: Platform[]
   campaigns: Campaign[]
   users: User[]
+  registrations: ShiftRegistration[]
   templates: ShiftTemplate[]
   onSuccess: (savedShift?: Shift) => void | Promise<void>
 }
 
 interface ShiftFormState {
   execution_source: '' | 'internal' | 'agency'
+  timezone: string
   title: string
   date: string
   start_time: string
@@ -92,10 +96,13 @@ export function ShiftFormDialog({
   platforms,
   campaigns,
   users,
+  registrations,
   templates,
   onSuccess
 }: ShiftFormDialogProps) {
   const [loading, setLoading] = React.useState(false)
+  const [step,setStep] = React.useState(0)
+  const [dirty,setDirty] = React.useState(false)
   const [operationalDefaultsReady, setOperationalDefaultsReady] = React.useState(() => getAuthMode() !== 'supabase')
   const [showRecurring, setShowRecurring] = React.useState(false)
   const [conflicts, setConflicts] = React.useState<ShiftConflict[]>([])
@@ -104,6 +111,7 @@ export function ShiftFormDialog({
   
   const [formData, setFormData] = React.useState<ShiftFormState>({
     execution_source: '',
+    timezone: DEFAULT_BUSINESS_TIMEZONE,
     title: '',
     date: '',
     start_time: '',
@@ -143,6 +151,7 @@ export function ShiftFormDialog({
       if (shift) {
         setFormData({
         execution_source: shift.execution_source ?? '',
+        timezone: shift.timezone ?? DEFAULT_BUSINESS_TIMEZONE,
         title: shift.title || '',
         date: shift.date,
         start_time: shift.start_time,
@@ -165,7 +174,8 @@ export function ShiftFormDialog({
         })
       } else if (duplicateFrom) {
         setFormData({
-        execution_source: '',
+        execution_source: duplicateFrom.execution_source ?? '',
+        timezone: duplicateFrom.timezone ?? DEFAULT_BUSINESS_TIMEZONE,
         title: duplicateFrom.title || '',
         date: '',
         start_time: duplicateFrom.start_time,
@@ -190,6 +200,7 @@ export function ShiftFormDialog({
         countInputsTouched.current = false
         setFormData({
         execution_source: '',
+        timezone: DEFAULT_BUSINESS_TIMEZONE,
         title: '',
         date: '',
         start_time: '09:00',
@@ -226,6 +237,8 @@ export function ShiftFormDialog({
           })
         }
       }
+      setStep(0)
+      setDirty(false)
       setShowRecurring(false)
       setConflicts([])
       setPreviewShifts([])
@@ -291,7 +304,7 @@ export function ShiftFormDialog({
       toast({ title: 'Error', description: 'Operational settings are not ready.', variant: 'destructive' })
       return
     }
-    const resolvedDateTime = resolveShiftDateTime(formData.date, formData.start_time, formData.end_time)
+    const resolvedDateTime = resolveShiftDateTime(formData.date, formData.start_time, formData.end_time, formData.timezone)
     if (!resolvedDateTime?.valid) {
       toast({ title: 'Invalid shift time', description: resolvedDateTime?.error || 'Enter a valid date and time.', variant: 'destructive' })
       return
@@ -327,34 +340,40 @@ export function ShiftFormDialog({
         await onSuccess(updatedShift)
       } else {
         const createdShift = await shiftService.create({ ...formData, execution_source: formData.execution_source || undefined })
+        if (!createdShift) throw new Error('Shift creation returned no persisted shift.')
         toast({ title: 'Success', description: 'Shift created', variant: 'success' })
         await onSuccess(createdShift)
       }
       onOpenChange(false)
-    } catch {
-      toast({ title: 'Error', description: 'Failed to save shift', variant: 'destructive' })
+    } catch(error) {
+      toast({ title: t('error'), description: error instanceof Error && error.message.includes('STALE_WRITE') ? 'Ca đã được người khác cập nhật. Tải lại ca trước khi lưu; thay đổi của bạn chưa được ghi.' : 'Không thể lưu ca. Thay đổi của bạn chưa được ghi.', variant: 'destructive' })
     } finally {
       setLoading(false)
     }
   }
 
-  const resolvedDateTime = resolveShiftDateTime(formData.date, formData.start_time, formData.end_time)
+  const resolvedDateTime = resolveShiftDateTime(formData.date, formData.start_time, formData.end_time, formData.timezone)
   const duration = resolvedDateTime?.durationMinutes ?? 0
 
+  const updateFormData: typeof setFormData = next => {setDirty(true);setFormData(next)}
+  const updateRecurrence: typeof setRecurrenceRule = next => {setDirty(true);setRecurrenceRule(next)}
+  const currentShiftRegistrations = shift ? registrations.filter(registration => registration.shift_id === shift.id) : []
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="xl" className="overflow-y-auto">
+    <Dialog open={open} onOpenChange={nextOpen => {if (!nextOpen && dirty && !confirm('Bạn có thay đổi chưa lưu. Hủy thay đổi?')) return; onOpenChange(nextOpen)}}>
+      <DialogContent size={shift ? 'xl' : 'md'} className="overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {shift ? 'Edit Shift' : duplicateFrom ? 'Duplicate Shift' : 'Create New Shift'}
+            {shift ? t('edit') : duplicateFrom ? t('duplicate') : t('createShift')}
           </DialogTitle>
           <DialogDescription>
             {duplicateFrom && 'Creating a copy of existing shift with pre-filled data'}
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Template Selector */}
+        <form onSubmit={handleSubmit} className={shift ? 'grid grid-cols-1 items-start gap-4 lg:grid-cols-12' : 'space-y-4'} onChangeCapture={() => setDirty(true)} onInvalidCapture={event => {event.preventDefault(); const field=event.target as HTMLInputElement; const section=field.closest<HTMLElement>('[data-step]'); if(section) setStep(Number(section.dataset.step)); requestAnimationFrame(()=>field.focus())}}>
+          {!shift && <nav className="col-span-full grid grid-cols-2 gap-2 border-b pb-3 sm:grid-cols-4" aria-label="Tạo ca">{['Thông tin chung','Lịch phát sóng','Nhân sự','Kiểm tra'].map((label,index)=><Button type="button" key={label} variant={step===index?'default':'ghost'} size="sm" onClick={()=>setStep(index)} aria-current={step===index?'step':undefined}>{index+1}. {label}</Button>)}</nav>}
+<section data-step="0" hidden={!shift && step !== 0} className={shift ? 'space-y-3 rounded-lg border bg-white p-4 lg:col-span-4' : 'space-y-4'}>          {/* Template Selector */}
           {!shift && templates.length > 0 && (
             <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
               <div className="flex items-center gap-2 mb-2">
@@ -391,57 +410,34 @@ export function ShiftFormDialog({
             <Input
               required
               value={formData.title}
-              onChange={(event) => setFormData({ ...formData, title: event.target.value })}
+              onChange={(event) => updateFormData({ ...formData, title: event.target.value })}
               placeholder="Morning livestream"
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium">Date *</label>
-              <Input required type="date" value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })} />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-2 block">Status</label>
-              <Badge variant="outline" className="capitalize text-sm py-1">{formData.status}</Badge>
-            </div>
-            <div>
-              <label className="text-sm font-medium">Start Time *</label>
-              <Input required type="time" value={formData.start_time} onChange={(e) => setFormData({ ...formData, start_time: e.target.value })} />
-            </div>
-            <div>
-              <label className="text-sm font-medium">End Time *</label>
-              <Input required type="time" value={formData.end_time} onChange={(e) => setFormData({ ...formData, end_time: e.target.value })} />
-              <p className="text-xs text-gray-500 mt-1">Duration: {formatDuration(duration)}</p>
-              {resolvedDateTime?.crossesMidnight && <p className="mt-1 text-xs font-medium text-indigo-700">Ends next day: {format(resolvedDateTime.endAt, 'dd/MM/yyyy')}</p>}
-              {resolvedDateTime?.warning && <p className="mt-1 text-xs text-amber-700">{resolvedDateTime.warning}</p>}
-              {resolvedDateTime && !resolvedDateTime.valid && <p className="mt-1 text-xs text-red-700">{resolvedDateTime.error}</p>}
-            </div>
-          </div>
-
           {/* Brand, Platform, Campaign */}
-          <div className="grid grid-cols-3 gap-4">
-            <div>
+          <div className={shift ? 'grid min-w-0 grid-cols-2 gap-3' : 'grid min-w-0 grid-cols-3 gap-4'}>
+            <div className="min-w-0">
               <label className="text-sm font-medium">Brand *</label>
-              <Select required value={formData.brand_id} onValueChange={(v) => setFormData({ ...formData, brand_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
+              <Select required value={formData.brand_id} onValueChange={(v) => updateFormData({ ...formData, brand_id: v })}>
+                <SelectTrigger className="min-w-0"><SelectValue placeholder="Select..." /></SelectTrigger>
                 <SelectContent>
                   {brands.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="text-sm font-medium">Platform *</label>
-              <Select required value={formData.platform_id} onValueChange={(v) => setFormData({ ...formData, platform_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
+              <Select required value={formData.platform_id} onValueChange={(v) => updateFormData({ ...formData, platform_id: v })}>
+                <SelectTrigger className="min-w-0"><SelectValue placeholder="Select..." /></SelectTrigger>
                 <SelectContent>
                   {platforms.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            <div>
+            <div className={`min-w-0 ${shift ? 'col-span-2' : ''}`}>
               <label className="text-sm font-medium">Campaign</label>
-              <Select value={formData.campaign_id} onValueChange={(v) => setFormData({ ...formData, campaign_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
+              <Select value={formData.campaign_id} onValueChange={(v) => updateFormData({ ...formData, campaign_id: v })}>
+                <SelectTrigger className="min-w-0"><SelectValue placeholder="Select..." /></SelectTrigger>
                 <SelectContent>
                   {campaigns.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                 </SelectContent>
@@ -453,143 +449,36 @@ export function ShiftFormDialog({
             <label className="text-sm font-medium">{t('studio')}</label>
             <Input
               value={formData.studio}
-              onChange={(event) => setFormData({ ...formData, studio: event.target.value })}
+              onChange={(event) => updateFormData({ ...formData, studio: event.target.value })}
               placeholder={t('studioPlaceholder')}
             />
           </div>
 
-          {/* Required role capacity */}
-          <div>
-            <h3 className="mb-2 text-sm font-medium">Required staffing</h3>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="text-sm text-gray-600">Host</label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="1"
-                  max="20"
-                  value={formData.required_host_count}
-                  onChange={(event) => {
-                    countInputsTouched.current = true
-                    const nextValue = event.target.value
-                    const normalized = normalizeCapacity(nextValue === '' ? undefined : nextValue, DEFAULT_SHIFT_STAFFING.required_host_count)
-                    setFormData({ ...formData, required_host_count: normalized ?? DEFAULT_SHIFT_STAFFING.required_host_count })
-                  }}
-                />
-              </div>
-              <div>
-                <label className="text-sm text-gray-600">Support</label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="1"
-                  max="20"
-                  value={formData.required_support_count}
-                  onChange={(event) => {
-                    countInputsTouched.current = true
-                    const nextValue = event.target.value
-                    const normalized = normalizeCapacity(nextValue === '' ? undefined : nextValue, DEFAULT_SHIFT_STAFFING.required_support_count)
-                    setFormData({ ...formData, required_support_count: normalized ?? DEFAULT_SHIFT_STAFFING.required_support_count })
-                  }}
-                />
-              </div>
-              <div>
-                <label className="text-sm text-gray-600">Technical</label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="1"
-                  max="20"
-                  value={formData.required_technical_count}
-                  onChange={(event) => {
-                    countInputsTouched.current = true
-                    const nextValue = event.target.value
-                    const normalized = normalizeCapacity(nextValue === '' ? undefined : nextValue, DEFAULT_SHIFT_STAFFING.required_technical_count)
-                    setFormData({ ...formData, required_technical_count: normalized ?? DEFAULT_SHIFT_STAFFING.required_technical_count })
-                  }}
-                />
-              </div>
+</section>
+<section data-step="1" hidden={!shift && step !== 1} className={shift ? 'space-y-3 rounded-lg border bg-white p-4 lg:col-span-4' : 'space-y-4'}>          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium">Date *</label>
+              <Input required type="date" value={formData.date} onChange={(e) => updateFormData({ ...formData, date: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Status</label>
+              <Badge variant="outline" className="capitalize text-sm py-1">{formData.status}</Badge>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Start Time *</label>
+              <Input required type="time" value={formData.start_time} onChange={(e) => updateFormData({ ...formData, start_time: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">End Time *</label>
+              <Input required type="time" value={formData.end_time} onChange={(e) => updateFormData({ ...formData, end_time: e.target.value })} />
+              <p className="text-xs text-gray-500 mt-1">Duration: {formatDuration(duration)}</p>
+              {resolvedDateTime?.crossesMidnight && <p className="mt-1 text-xs font-medium text-indigo-700">Ends next day: {format(resolvedDateTime.endAt, 'dd/MM/yyyy')}</p>}
+              {resolvedDateTime?.warning && <p className="mt-1 text-xs text-amber-700">{resolvedDateTime.warning}</p>}
+              {resolvedDateTime && !resolvedDateTime.valid && <p className="mt-1 text-xs text-red-700">{resolvedDateTime.error}</p>}
             </div>
           </div>
 
-          {/* Staffing */}
-          {getAuthMode() === 'supabase' && shift ? (
-            <div className="rounded-lg border p-4">
-              <p className="mb-2 text-sm font-medium">Staffing</p>
-              <p className="text-sm text-muted-foreground">Nhân sự được quản lý tại tab Nhân sự (Staffing) của ca.</p>
-              <div className="mt-3 grid grid-cols-3 gap-4 text-sm">
-                <div>
-                  <p className="text-xs text-muted-foreground">Host</p>
-                  <p className="font-medium">{users.find(u => u.id === shift.host_id)?.full_name || '—'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Support Staff</p>
-                  <p className="font-medium">{users.find(u => u.id === shift.support_id)?.full_name || '—'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Technical Staff</p>
-                  <p className="font-medium">{users.find(u => u.id === shift.technical_id)?.full_name || '—'}</p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="text-sm font-medium">Host</label>
-                <Select value={formData.host_id} onValueChange={(v) => setFormData({ ...formData, host_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Assign host..." /></SelectTrigger>
-                  <SelectContent>
-                    {users.filter(u => u.status === 'active' && u.operational_roles?.includes('host')).map(u => (
-                      <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Support Staff</label>
-                <Select value={formData.support_id} onValueChange={(v) => setFormData({ ...formData, support_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Assign support..." /></SelectTrigger>
-                  <SelectContent>
-                    {users.filter(u => u.status === 'active' && u.operational_roles?.includes('support')).map(u => (
-                      <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Technical Staff</label>
-                <Select value={formData.technical_id} onValueChange={(v) => setFormData({ ...formData, technical_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Assign technical..." /></SelectTrigger>
-                  <SelectContent>
-                    {users.filter(u => u.status === 'active' && u.operational_roles?.includes('technical')).map(u => (
-                      <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          )}
-
-          {/* Notes */}
-          <div>
-            <label className="text-sm font-medium">Product Notes</label>
-            <Textarea rows={3} value={formData.product_notes} onChange={(e) => setFormData({ ...formData, product_notes: e.target.value })} placeholder="Focus on trending products..." />
-          </div>
-
-          {/* Conflicts */}
-          {conflicts.length > 0 && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <AlertCircle className="h-4 w-4 text-red-600" />
-                <span className="text-sm font-medium text-red-900">Scheduling Conflicts Detected</span>
-              </div>
-              <ul className="text-sm text-red-700 space-y-1">
-                {conflicts.map((c, i) => <li key={i}>• {c.message}</li>)}
-              </ul>
-            </div>
-          )}
-
+<label className="block text-sm font-medium">{t('timezone')}<Input value={formData.timezone} onChange={event=>updateFormData({...formData,timezone:event.target.value})} required className="mt-1" /></label>
           {/* Recurring Options */}
           {!shift && (
             <div className="border-t pt-4">
@@ -603,7 +492,7 @@ export function ShiftFormDialog({
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium">Frequency</label>
-                      <Select value={recurrenceRule.frequency} onValueChange={value => setRecurrenceRule({ ...recurrenceRule, frequency: value as RecurrenceRule['frequency'] })}>
+                      <Select value={recurrenceRule.frequency} onValueChange={value => updateRecurrence({ ...recurrenceRule, frequency: value as RecurrenceRule['frequency'] })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="daily">Daily</SelectItem>
@@ -614,9 +503,12 @@ export function ShiftFormDialog({
                     </div>
                     <div>
                       <label className="text-sm font-medium">End After</label>
-                      <Input type="number" min="1" max="365" value={recurrenceRule.endCount} onChange={(e) => setRecurrenceRule({ ...recurrenceRule, endCount: parseInt(e.target.value) })} />
+                      <Select value={recurrenceRule.endType} onValueChange={value=>updateRecurrence({...recurrenceRule,endType:value as RecurrenceRule['endType']})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="count">Theo số ca</SelectItem><SelectItem value="date">Đến ngày</SelectItem><SelectItem value="never">Tối đa 365 ca</SelectItem></SelectContent></Select>
+                      {recurrenceRule.endType==='count' && <Input required type="number" min="1" max="365" value={recurrenceRule.endCount} onChange={event=>updateRecurrence({...recurrenceRule,endCount:Number(event.target.value)})} />}
+                      {recurrenceRule.endType==='date' && <Input required type="date" min={formData.date} value={recurrenceRule.endDate || ''} onChange={event=>updateRecurrence({...recurrenceRule,endDate:event.target.value})} />}
                     </div>
                   </div>
+                  {recurrenceRule.frequency==='weekly' ? <div className="flex flex-wrap gap-2">{['CN','T2','T3','T4','T5','T6','T7'].map((label,day)=><Button type="button" size="sm" variant={recurrenceRule.daysOfWeek?.includes(day)?'default':'outline'} aria-pressed={recurrenceRule.daysOfWeek?.includes(day) || false} key={day} onClick={()=>updateRecurrence({...recurrenceRule,daysOfWeek:recurrenceRule.daysOfWeek?.includes(day)?recurrenceRule.daysOfWeek.filter(value=>value!==day):[...(recurrenceRule.daysOfWeek || []),day]})}>{label}</Button>)}</div> : <label className="block text-sm">Khoảng lặp<Input required type="number" min="1" max="365" value={recurrenceRule.interval || 1} onChange={event=>updateRecurrence({...recurrenceRule,interval:Number(event.target.value)})} /></label>}
                   {previewShifts.length > 0 && (
                     <div className="text-sm text-gray-600">
                       Preview: {previewShifts.length} shifts will be created
@@ -632,11 +524,147 @@ export function ShiftFormDialog({
             </div>
           )}
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Cancel</Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? 'Saving...' : showRecurring ? `Create ${previewShifts.length} Shifts` : shift ? 'Update' : 'Create'}
-            </Button>
+</section>
+<section data-step="2" hidden={!shift && step !== 2} className={shift ? 'space-y-3 rounded-lg border bg-white p-4 lg:col-span-4' : 'space-y-4'}>          {/* Required role capacity */}
+          <div>
+            <h3 className="mb-2 text-sm font-medium">Required staffing</h3>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="text-sm text-gray-600">Host</label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  max="20"
+                  value={formData.required_host_count}
+                  onChange={(event) => {
+                    countInputsTouched.current = true
+                    const nextValue = event.target.value
+                    const normalized = normalizeCapacity(nextValue === '' ? undefined : nextValue, DEFAULT_SHIFT_STAFFING.required_host_count)
+                    updateFormData({ ...formData, required_host_count: normalized ?? DEFAULT_SHIFT_STAFFING.required_host_count })
+                  }}
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">Support</label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  max="20"
+                  value={formData.required_support_count}
+                  onChange={(event) => {
+                    countInputsTouched.current = true
+                    const nextValue = event.target.value
+                    const normalized = normalizeCapacity(nextValue === '' ? undefined : nextValue, DEFAULT_SHIFT_STAFFING.required_support_count)
+                    updateFormData({ ...formData, required_support_count: normalized ?? DEFAULT_SHIFT_STAFFING.required_support_count })
+                  }}
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">Technical</label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  max="20"
+                  value={formData.required_technical_count}
+                  onChange={(event) => {
+                    countInputsTouched.current = true
+                    const nextValue = event.target.value
+                    const normalized = normalizeCapacity(nextValue === '' ? undefined : nextValue, DEFAULT_SHIFT_STAFFING.required_technical_count)
+                    updateFormData({ ...formData, required_technical_count: normalized ?? DEFAULT_SHIFT_STAFFING.required_technical_count })
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Staffing */}
+          {getAuthMode() === 'supabase' && shift ? (
+            <div className="rounded-lg border p-4">
+              <p className="mb-2 text-sm font-medium">Staffing</p>
+              <p className="text-sm text-muted-foreground">Nhân sự được quản lý tại tab Nhân sự (Staffing) của ca.</p>
+              <div className="mt-3 grid grid-cols-3 gap-4 text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground">Host</p>
+                  <p className="font-medium">{resolveStaffingLabelsForRole(shift, currentShiftRegistrations, users, 'host', t).map(label => label.name).join(', ') || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Support Staff</p>
+                  <p className="font-medium">{resolveStaffingLabelsForRole(shift, currentShiftRegistrations, users, 'support', t).map(label => label.name).join(', ') || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Technical Staff</p>
+                  <p className="font-medium">{resolveStaffingLabelsForRole(shift, currentShiftRegistrations, users, 'technical', t).map(label => label.name).join(', ') || '—'}</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="min-w-0">
+                <label className="text-sm font-medium">Host</label>
+                <Select value={formData.host_id} onValueChange={(v) => updateFormData({ ...formData, host_id: v })}>
+                  <SelectTrigger className="w-full min-w-0"><SelectValue placeholder="Assign host..." /></SelectTrigger>
+                  <SelectContent>
+                    {users.filter(u => u.status === 'active' && u.operational_roles?.includes('host')).map(u => (
+                      <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="min-w-0">
+                <label className="text-sm font-medium">Support Staff</label>
+                <Select value={formData.support_id} onValueChange={(v) => updateFormData({ ...formData, support_id: v })}>
+                  <SelectTrigger className="w-full min-w-0"><SelectValue placeholder="Assign support..." /></SelectTrigger>
+                  <SelectContent>
+                    {users.filter(u => u.status === 'active' && u.operational_roles?.includes('support')).map(u => (
+                      <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="min-w-0">
+                <label className="text-sm font-medium">Technical Staff</label>
+                <Select value={formData.technical_id} onValueChange={(v) => updateFormData({ ...formData, technical_id: v })}>
+                  <SelectTrigger className="w-full min-w-0"><SelectValue placeholder="Assign technical..." /></SelectTrigger>
+                  <SelectContent>
+                    {users.filter(u => u.status === 'active' && u.operational_roles?.includes('technical')).map(u => (
+                      <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
+</section>
+<section data-step="3" hidden={!shift && step !== 3} className={shift ? 'space-y-3 rounded-lg border bg-white p-4 lg:col-span-12' : 'space-y-4'}>          {/* Notes */}
+          <div>
+            <label className="text-sm font-medium">Product Notes</label>
+            <Textarea rows={3} value={formData.product_notes} onChange={(e) => updateFormData({ ...formData, product_notes: e.target.value })} placeholder="Focus on trending products..." />
+          </div>
+
+          {/* Conflicts */}
+          {conflicts.length > 0 && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertCircle className="h-4 w-4 text-red-600" />
+                <span className="text-sm font-medium text-red-900">Scheduling Conflicts Detected</span>
+              </div>
+              <ul className="text-sm text-red-700 space-y-1">
+                {conflicts.map((c, i) => <li key={i}>• {c.message}</li>)}
+              </ul>
+            </div>
+          )}
+
+<dl className="grid gap-3 rounded-lg border bg-slate-50 p-4 text-xs sm:grid-cols-2">{[['Tên ca',formData.title],['Ngày',formData.date],['Thời gian',formData.start_time+' – '+formData.end_time],['Múi giờ',formData.timezone],['Thương hiệu',brands.find(item=>item.id===formData.brand_id)?.name],['Nền tảng',platforms.find(item=>item.id===formData.platform_id)?.name],['Studio',formData.studio],['Host / Support / Technical',formData.required_host_count+' / '+formData.required_support_count+' / '+formData.required_technical_count]].map(([label,value])=><div key={label}><dt className="text-slate-500">{label}</dt><dd className="mt-1 font-medium">{value||'—'}</dd></div>)}</dl></section>
+          <DialogFooter className={shift ? 'col-span-full w-full' : undefined}>
+            <Button type="button" variant="outline" onClick={() => {if (!dirty || confirm('Bạn có thay đổi chưa lưu. Hủy thay đổi?')) onOpenChange(false)}} disabled={loading}>{t('cancel')}</Button>
+            {!shift && step > 0 && <Button type="button" variant="outline" onClick={()=>setStep(step-1)}>Quay lại</Button>}
+            {!shift && step < 3 ? <Button type="button" onClick={()=>setStep(step+1)}>Tiếp tục</Button> : <Button type="submit" disabled={loading}>
+              {loading ? t('loading') : showRecurring ? `Tạo ${previewShifts.length} ca` : shift ? t('save') : t('createShift')}
+            </Button>}
           </DialogFooter>
         </form>
       </DialogContent>

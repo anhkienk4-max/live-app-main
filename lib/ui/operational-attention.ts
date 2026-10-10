@@ -43,6 +43,8 @@ export interface OperationalAttention {
   href?: string
   /** Count associated with the item, e.g. "3 pending" */
   count?: number
+  /** Action button text (used when href is present) */
+  actionLabel?: string
 }
 
 /**

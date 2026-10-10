@@ -7,6 +7,15 @@ export type TranslationKey = keyof typeof en
 type Variables = Record<string, string | number>
 
 const en = {
+
+  // Role Lens
+  roleAdmin: 'Admin',
+  roleLeader: 'Leader',
+  roleMember: 'Member',
+  scopeGlobal: 'Global',
+  scopeTeam: 'Team',
+  scopePersonal: 'Personal',
+
   statusAutomatic: 'Automatic',
   returnToAutomatic: 'Return to automatic',
   dashboard: 'Dashboard',
@@ -190,6 +199,9 @@ const en = {
   swapsSubtitle: 'Manage shift swap requests',
   analyticsTitle: 'Analytics & Performance',
   analyticsSubtitle: 'Track confirmed revenue, performance, and campaign metrics',
+  additionalMetricsAndFormulas: 'Additional metrics and formulas',
+  pendingAccounts: 'Pending accounts',
+  fullyStaffed: 'Fully staffed',
   dashboardTitle: 'Livestream operations overview',
   dashboardSubtitle: 'Filter one operational dataset across KPIs, shifts, and charts.',
   systemOperationsCommandCenter: 'System Operations Command Center',
@@ -255,6 +267,8 @@ const en = {
   shiftDetail: 'Shift details',
   shiftOverview: 'Overview',
   staffing: 'Staffing',
+  staffingGapsOnly: 'Shifts needing staff',
+    registration: 'Registration',
   additionalInfo: 'Details',
   brandAndPlatform: 'Brand, platform, and campaign',
   team: 'Assigned team',
@@ -994,6 +1008,8 @@ const en = {
   staffSaveFailed: 'Failed to save staff member.',
   markRead: 'Mark Read',
   markAllRead: 'Mark all read',
+  noNotifications: 'No notifications yet.',
+  noMatchingNotifications: 'No notifications match your filters.',
   notificationUpdateFailed: 'Could not update notifications. Please try again.',
   allCaughtUp: 'All caught up!',
   noNewNotifications: 'No new notifications to show',
@@ -1114,6 +1130,15 @@ const en = {
 } as const
 
 const vi: Record<keyof typeof en, string> = {
+
+  // Role Lens
+  roleAdmin: 'Quản trị viên',
+  roleLeader: 'Trưởng nhóm',
+  roleMember: 'Thành viên',
+  scopeGlobal: 'Toàn cục',
+  scopeTeam: 'Đội nhóm',
+  scopePersonal: 'Cá nhân',
+
   statusAutomatic: 'Tự động',
   returnToAutomatic: 'Trở về tự động',
   forgotPasswordTitle: 'Đặt lại mật khẩu',
@@ -1358,6 +1383,9 @@ const vi: Record<keyof typeof en, string> = {
   swapsSubtitle: 'Quản lý yêu cầu đổi ca',
   analyticsTitle: 'Phân tích hiệu suất',
   analyticsSubtitle: 'Theo dõi doanh thu, hiệu suất và chiến dịch đã xác nhận',
+  additionalMetricsAndFormulas: 'Chỉ số bổ sung và công thức',
+  pendingAccounts: 'Tài khoản chờ duyệt',
+  fullyStaffed: 'Đã đủ nhân sự',
   dashboardTitle: 'Tổng quan vận hành livestream',
   dashboardSubtitle: 'Lọc dữ liệu vận hành cho các chỉ số, ca và biểu đồ.',
   systemOperationsCommandCenter: 'Trung tâm Vận hành Hệ thống',
@@ -1422,6 +1450,8 @@ const vi: Record<keyof typeof en, string> = {
   shiftDetail: 'Chi tiết ca',
   shiftOverview: 'Tổng quan',
   staffing: 'Nhân sự',
+  staffingGapsOnly: 'Ca cần bổ sung nhân sự',
+  registration: 'Đăng ký ca',
   additionalInfo: 'Chi tiết',
   brandAndPlatform: 'Thương hiệu, nền tảng và chiến dịch',
   team: 'Đội ngũ được phân công',
@@ -1717,6 +1747,8 @@ const vi: Record<keyof typeof en, string> = {
   staffSaveFailed: 'Không thể lưu nhân sự.',
   markRead: 'Đánh dấu đã đọc',
   markAllRead: 'Đánh dấu tất cả đã đọc',
+  noNotifications: 'Chưa có thông báo nào.',
+  noMatchingNotifications: 'Không có thông báo nào khớp với bộ lọc.',
   notificationUpdateFailed: 'Không thể cập nhật thông báo. Vui lòng thử lại.',
   allCaughtUp: 'Bạn đã xem hết thông báo!',
   noNewNotifications: 'Không có thông báo mới',

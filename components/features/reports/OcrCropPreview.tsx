@@ -147,7 +147,7 @@ export function OcrCropPreview({
                 data-testid={`ocr-dashboard-region-${candidate.id}`}
                 aria-label={`${candidate.platform} ${Math.round(candidate.confidence * 100)}%`}
               >
-                <span className="absolute left-0 top-0 max-w-full truncate bg-black/75 px-1 py-0.5 text-[10px] font-semibold text-white">
+                <span className="absolute left-0 top-0 max-w-full truncate bg-black/75 px-1 py-0.5 text-micro font-semibold text-white">
                   {candidate.platform === 'shopee_live' ? 'Shopee' : 'TikTok'} · {Math.round(candidate.confidence * 100)}% · {candidate.anchor_count} {t('ocrAnchors')}
                 </span>
               </button>

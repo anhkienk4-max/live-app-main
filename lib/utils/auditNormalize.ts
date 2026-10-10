@@ -275,3 +275,19 @@ export function normalizeAuditFilters(filters: Record<string, unknown>): Record<
   }
   return out
 }
+
+export function auditEntityHref(entityType: string): string | undefined {
+  const links: Record<string, string> = {
+    shift: '/calendar', shifts: '/calendar',
+    shift_registration: '/calendar', shift_registrations: '/calendar',
+    report: '/reports', reports: '/reports', report_revisions: '/reports', report_images: '/reports',
+    campaign: '/campaigns', campaigns: '/campaigns',
+    brand: '/brands', brands: '/brands',
+    platform: '/platforms', platforms: '/platforms',
+    staff: '/staff', business_users: '/staff',
+    swap_request: '/swaps', swap_requests: '/swaps',
+    live_snapshot: '/live', live_report_images: '/live',
+    schedule_import_batches: '/calendar?tab=history', schedule_import_batch_rows: '/calendar?tab=history',
+  }
+  return links[entityType.trim().toLowerCase().replace(/\s+/g, '_')]
+}

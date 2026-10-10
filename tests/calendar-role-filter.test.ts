@@ -41,6 +41,7 @@ test('brand plus role filtering keeps only matching shifts and reset restores ev
   const filters: CalendarFilterState = {
     brandIds: ['brand-a'], platformIds: [], campaignIds: [], studios: [], statuses: [],
     hostIds: [], supportIds: [], technicalIds: [], time: 'all', customFrom: '', customTo: '',
+    operationalRoles: [], staffingStates: [], registrationStates: [], hasImportedStaffing: false,
   }
   const shifts = [
     { id: 'target', brand_id: 'brand-a', date: '2026-09-15' },

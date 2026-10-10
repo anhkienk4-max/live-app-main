@@ -83,3 +83,11 @@ test('completion card separates persisted warnings from non-persisted outcomes',
   assert.match(panel, /isNotImportedResultRow/)
   assert.doesNotMatch(panel, /attentionRows/)
 })
+
+
+test('preview confirmation and summary share the actionable ready plus warning count', () => {
+  assert.match(panel, /const importableCount = previewCounts \? previewCounts.ready \+ previewCounts.warning : 0/)
+  assert.match(panel, /if \(!result \|\| !batch \|\| !source \|\| importableCount === 0\) return/)
+  assert.match(panel, /disabled=\{busy \|\| importableCount === 0\}/)
+  assert.match(panel, /ready: importableCount, attention: previewAttention/)
+})

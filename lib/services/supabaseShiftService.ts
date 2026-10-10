@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { withShiftStaffingSummary } from '@/lib/services/supabaseStaffingReadService'
 
 import { createClient } from '@/lib/supabase/client'
 import type {
@@ -314,7 +315,7 @@ export function createSupabaseShiftRepository(
       let query = selectShifts().order('date', { ascending: true }).order('start_time', { ascending: true })
       if (!includeDeleted) query = query.is('deleted_at', null).is('archived_at', null)
       const result = await query
-      return optionalRows('shift read', result).map(row => shiftFromRow(row as unknown as ShiftRow, routingMode))
+      return withShiftStaffingSummary(client, optionalRows('shift read', result).map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)))
     },
 
     async getAllComplete() {
@@ -332,7 +333,7 @@ export function createSupabaseShiftRepository(
         page.forEach(row => rows.set(String((row as unknown as Row).id), row as unknown as Row))
         if (page.length < SUPABASE_PAGE_SIZE) break
       }
-      return [...rows.values()].map(row => shiftFromRow(row as unknown as ShiftRow, routingMode))
+      return withShiftStaffingSummary(client, [...rows.values()].map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)))
     },
 
     async getReportCandidates(limit) {
@@ -346,8 +347,8 @@ export function createSupabaseShiftRepository(
         .order('start_time', { ascending: false })
         .order('id', { ascending: true })
         .limit(Math.min(30, Math.max(1, limit)))
-      return optionalRows('report candidate read', result)
-        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode))
+      return withShiftStaffingSummary(client, optionalRows('report candidate read', result)
+        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)))
     },
 
     async getByIds(ids) {
@@ -357,23 +358,23 @@ export function createSupabaseShiftRepository(
         .in('id', [...new Set(ids)])
         .is('deleted_at', null)
         .is('archived_at', null)
-      return optionalRows('shift ids read', result)
-        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode))
+      return withShiftStaffingSummary(client, optionalRows('shift ids read', result)
+        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)))
     },
 
     async getArchivedShifts() {
       const result = await selectShifts()
         .not('deleted_at', 'is', null)
         .order('deleted_at', { ascending: false })
-      return optionalRows('shift archived read', result)
-        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode))
+      return withShiftStaffingSummary(client, optionalRows('shift archived read', result)
+        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)))
     },
 
     async getById(id) {
       await refreshAutomaticStatuses()
       const result = await selectShifts().eq('id', id).maybeSingle()
       if (result.error) throw requestError('shift lookup', result.error)
-      return result.data ? shiftFromRow(result.data as unknown as ShiftRow, routingMode) : null
+      return result.data ? (await withShiftStaffingSummary(client, [shiftFromRow(result.data as unknown as ShiftRow, routingMode)]))[0] : null
     },
 
     async getByDate(date) {
@@ -383,8 +384,8 @@ export function createSupabaseShiftRepository(
         .is('deleted_at', null)
         .is('archived_at', null)
         .order('start_time', { ascending: true })
-      return optionalRows('shift date read', result)
-        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode))
+      return withShiftStaffingSummary(client, optionalRows('shift date read', result)
+        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)))
     },
 
     async getByDateRange(startDate, endDate) {
@@ -397,8 +398,8 @@ export function createSupabaseShiftRepository(
         .order('date', { ascending: true })
         .order('start_time', { ascending: true })
         .order('id', { ascending: true })
-      return optionalRows('shift date-range read', result)
-        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode))
+      return withShiftStaffingSummary(client, optionalRows('shift date-range read', result)
+        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)))
     },
 
     async getByStatus(status) {
@@ -408,8 +409,8 @@ export function createSupabaseShiftRepository(
         .is('deleted_at', null)
         .is('archived_at', null)
         .order('date', { ascending: true })
-      return optionalRows('shift status read', result)
-        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode))
+      return withShiftStaffingSummary(client, optionalRows('shift status read', result)
+        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)))
     },
 
     async getOpen() {
@@ -421,8 +422,8 @@ export function createSupabaseShiftRepository(
         .is('archived_at', null)
         .gt('end_at', new Date().toISOString())
         .order('date', { ascending: true })
-      return optionalRows('shift open read', result)
-        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode))
+      return withShiftStaffingSummary(client, optionalRows('shift open read', result)
+        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)))
     },
 
     async getToday() {

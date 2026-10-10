@@ -248,6 +248,24 @@ export interface Campaign extends LifecycleMetadata {
   updated_at: string
 }
 
+export type UserDirectoryEntry = Pick<User, 'id' | 'full_name' | 'avatar_url' | 'operational_roles'>
+
+export interface ShiftStaffingSummary {
+  shift_id: string
+  role: OperationalRole
+  required: number
+  approved: number
+  pending: number
+  remaining: number
+  approved_staff: Array<{ name: string; avatar_url: string | null; imported_only: boolean }>
+}
+
+export interface SwapExchangeCandidate {
+  registration_id: string
+  user_id: string
+  full_name: string
+}
+
 export interface Shift extends LifecycleMetadata {
   id: string
   execution_source?: ExecutionSource | null
@@ -272,6 +290,8 @@ export interface Shift extends LifecycleMetadata {
   host_names?: string[]
   assistant_names?: string[]
   technical_names?: string[]
+  /** Authorized read projection; never persisted as shift metadata. */
+  staffing_summary?: ShiftStaffingSummary[]
   required_host_count?: number
   required_support_count?: number
   required_technical_count?: number

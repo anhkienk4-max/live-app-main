@@ -4,8 +4,8 @@ import { PageShell } from '@/components/ui/archetypes'
 import { Suspense } from 'react'
 export default function ReportsPage() {
   return (
-    <PageShell archetype="analytics" className="space-y-6">
-      <LocalizedPageHeading title="reports" subtitle="reportsSubtitle" />
+    <PageShell archetype="analytics" className="space-y-3 p-4">
+      <header className="[&_h1]:mb-1 [&_h1]:text-lg [&_h1]:font-semibold [&_p]:text-xs"><LocalizedPageHeading title="reports" subtitle="reportsSubtitle" /></header>
       <Suspense><LazyReportsList /></Suspense>
     </PageShell>
   )

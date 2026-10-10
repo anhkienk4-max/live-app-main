@@ -7,7 +7,7 @@ import { getAuthMode, getSupabasePublicConfig } from '@/lib/auth/authMode'
 import { isNonEnumeratingPasswordRecoveryError } from '@/lib/auth/passwordRecovery'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { AuthLayout } from '@/components/layouts/AuthLayout'
 import { Input } from '@/components/ui/input'
 
 export default function ForgotPasswordPage() {
@@ -46,9 +46,7 @@ export default function ForgotPasswordPage() {
     }
   }
 
-  return <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-50 p-4">
-    <Card className="w-full max-w-md"><CardHeader><CardTitle>{t('forgotPasswordTitle')}</CardTitle><CardDescription>{t('forgotPasswordHelp')}</CardDescription></CardHeader><CardContent>
+  return <AuthLayout title={t('forgotPasswordTitle')} subtitle={t('forgotPasswordHelp')}>
       {sent ? <div className="space-y-4"><p className="text-sm text-green-700" data-testid="password-reset-sent">{t('resetLinkSent')}</p><Link href="/login" className="text-sm text-blue-700 hover:underline">{t('signIn')}</Link></div> : <form onSubmit={submit} className="space-y-4"><label className="text-sm font-medium" htmlFor="reset-email">{t('email')}</label><Input id="reset-email" type="email" required value={email} onChange={event => setEmail(event.target.value)} data-testid="reset-email-input" />{error && <p className="text-sm text-red-600" data-testid="password-reset-error">{error}</p>}<Button type="submit" disabled={loading} className="w-full" data-testid="send-reset-link">{loading ? t('loading') : t('sendResetLink')}</Button><Link href="/login" className="block text-center text-sm text-blue-700 hover:underline">{t('signIn')}</Link></form>}
-    </CardContent></Card>
-  </div>
+  </AuthLayout>
 }

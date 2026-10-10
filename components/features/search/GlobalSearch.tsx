@@ -201,11 +201,13 @@ export function GlobalSearch() {
       {/* Search Trigger Button */}
       <button
         onClick={() => setOpen(true)}
-        className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors w-64"
+        type="button"
+        aria-label={t('search')}
+        className="flex h-9 w-9 items-center justify-center gap-2 rounded-md text-[12px] text-slate-400 hover:bg-slate-50 lg:w-full lg:max-w-[440px] lg:justify-start lg:border lg:border-slate-200 lg:bg-slate-50 lg:px-3"
       >
         <Search className="h-4 w-4" />
-        <span>Search...</span>
-        <kbd className="ml-auto px-2 py-0.5 text-xs font-semibold text-gray-800 bg-white border border-gray-200 rounded">
+        <span className="hidden lg:inline">{t('search')}...</span>
+        <kbd className="ml-auto hidden rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-400 lg:block">
           ⌘K
         </kbd>
       </button>

@@ -1,208 +1,295 @@
-'use client'
-
-import { Shift, Brand, Platform, User, ShiftRegistration } from '@/lib/types/database.types'
-import { ShiftStatusBadge } from '@/components/domain/ShiftStatusBadge'
-import { format, startOfWeek, addDays, isSameDay } from 'date-fns'
-import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
-import { useTranslation } from '@/lib/i18n'
-import { resolveStaffingLabels } from '@/lib/utils/staffingResolver'
-
-type StaffingLabel = { id: string; name: string; isUnassigned?: boolean }
+"use client";
+import { CalendarFilterContext } from "@/lib/utils/calendarFilters";
+import { ShiftCard } from "@/components/features/shifts/ShiftCard";
+import {
+  Shift,
+  Brand,
+  Platform,
+  ShiftRegistration,
+} from "@/lib/types/database.types";
+import { format, startOfWeek, addDays, isSameDay } from "date-fns";
+import { vi, enUS } from "date-fns/locale";
+import { useTranslation } from "@/lib/i18n";
+import { CurrentTimeIndicator } from "@/components/ui/current-time-indicator";
+import { TIME_COLUMN_WIDTH, calculateShiftPosition, calculateOverlaps, getCurrentTimePosition } from "@/lib/utils/timeGrid";
+import React from "react";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
+import { hasPermission } from "@/lib/permissions";
+import { User } from '@/lib/types/database.types';
 
 interface WeekViewProps {
-  currentDate: Date
-  shifts: Shift[]
-  brands: Brand[]
-  platforms: Platform[]
-  users: User[]
-  registrations: ShiftRegistration[]
-  onShiftClick?: (shift: Shift) => void
+  currentDate: Date;
+  shifts: Shift[];
+  brands: Brand[];
+  platforms: Platform[];
+  registrations: ShiftRegistration[];
+  onShiftClick?: (shift: Shift) => void;
+  hasActiveFilters?: boolean;
+  currentUser?: User | null;
+  onClearFilters?: () => void;
+  onCreateShift?: () => void;
 }
 
-export function WeekView({ currentDate, shifts, brands, users, registrations, onShiftClick }: WeekViewProps) {
-  const { t } = useTranslation()
-  const weekStart = startOfWeek(currentDate)
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
-  const today = new Date()
+
+
+export function WeekView({
+  currentDate,
+  shifts,
+  brands,
+  platforms,
+  registrations,
+  onShiftClick,
+  hasActiveFilters = false,
+  currentUser = null,
+  onClearFilters,
+  onCreateShift,
+}: WeekViewProps) {
+  const context: CalendarFilterContext = {
+    currentDate: new Date(),
+    brands,
+    platforms,
+    registrations,
+  };
+  const { t, language } = useTranslation();
+  const weekStart = startOfWeek(currentDate);
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const today = new Date();
 
   const getShiftsForDate = (date: Date) => {
-    const dateStr = format(date, 'yyyy-MM-dd')
-    return shifts.filter(s => s.date === dateStr)
-  }
+    const dateStr = format(date, "yyyy-MM-dd");
+    return shifts.filter((s) => s.date === dateStr);
+  };
 
-  const getBrandName = (brandId: string) => brands.find(b => b.id === brandId)?.name || 'Unknown Brand'
-  const getBrandColor = (brandId: string) => brands.find(b => b.id === brandId)?.color || '#ccc'
-
-  const renderStaffingChips = (shift: Shift) => {
-    const shiftRegistrations = registrations.filter(r => r.shift_id === shift.id)
-    const labels = resolveStaffingLabels(shift, shiftRegistrations, users, t)
-
-    if (labels.length === 0) return null
-
-    const confirmedLabels = labels.filter((l: StaffingLabel) => !l.isUnassigned)
-    const unassignedLabels = labels.filter((l: StaffingLabel) => l.isUnassigned)
-
-    return (
-      <div className="flex flex-col gap-0.5 mt-1.5 pt-1.5 border-t border-border/40">
-        {confirmedLabels.map((lbl: StaffingLabel, idx: number) => (
-          <span
-            key={lbl.id + idx}
-            className="text-[10px] font-medium leading-none text-foreground truncate max-w-full"
-          >
-            {lbl.name}
-          </span>
-        ))}
-        {unassignedLabels.map((lbl: StaffingLabel, idx: number) => (
-          <span
-            key={lbl.id + 'u' + idx}
-            className="text-[10px] font-medium leading-none text-destructive/90 italic truncate max-w-full"
-          >
-            {lbl.name}
-          </span>
-        ))}
-      </div>
-    )
-  }
+  const firstHour = Math.min(8, ...shifts.map(shift => Number(shift.start_time.slice(0, 2))));
+  const hourHeight = 36;
+  const hours = Array.from({ length: 24 - firstHour }, (_, i) => i + firstHour);
 
   return (
     <>
-      {/* DESKTOP: Horizontally scrollable 7-column grid with 140px min column width */}
-      <div className="hidden sm:block overflow-x-auto" style={{ scrollbarWidth: 'thin' }}>
-        <div className="grid min-w-[980px]" style={{ gridTemplateColumns: 'repeat(7, minmax(140px, 1fr))' }}>
+      {/* DESKTOP: Horizontally scrollable true-time grid */}
+      <div
+        className="hidden sm:block overflow-x-auto relative bg-background"
+        style={{ scrollbarWidth: "thin" }}
+      >
+        {shifts.length === 0 && (
+          <div className="absolute inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm min-h-[400px]">
+            <div className="text-center p-6 bg-background rounded-xl border shadow-sm max-w-sm">
+              <p className="text-lg font-medium text-foreground mb-4">
+                {hasActiveFilters ? "No shifts match these filters." : "No shifts scheduled this week."}
+              </p>
+              {hasActiveFilters ? (
+                <Button variant="outline" onClick={onClearFilters}>
+                  Clear filters
+                </Button>
+              ) : (
+                currentUser && hasPermission(currentUser, 'shifts.edit') ? (
+                  <Button onClick={onCreateShift}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create Shift
+                  </Button>
+                ) : (
+                  <Button variant="outline" onClick={() => window.dispatchEvent(new CustomEvent('calendar:view', { detail: 'list' }))}>
+                    Browse Open Shifts
+                  </Button>
+                )
+              )}
+            </div>
+          </div>
+        )}
+        <div
+          className="grid min-w-[700px]"
+          style={{ gridTemplateColumns: `${TIME_COLUMN_WIDTH}px repeat(7, minmax(90px, 1fr))` }}
+        >
+          {/* Header Row */}
+          <div className="sticky top-0 z-30 bg-background border-b border-border border-r"></div>
           {weekDays.map((day) => {
-            const dayShifts = getShiftsForDate(day)
-            const isToday = isSameDay(day, today)
+            const isToday = isSameDay(day, today);
+            const dayShifts = getShiftsForDate(day);
             return (
               <div
-                key={day.toString()}
-                className={`min-h-[260px] border-r last:border-r-0 border-border px-1.5 pb-3 ${isToday ? 'bg-primary/[0.02]' : ''}`}
+                key={`header-${day.toString()}`}
+                className={`sticky top-0 z-30 bg-background flex flex-col items-center gap-1 py-2 px-1 border-b border-r last:border-r-0 ${isToday ? "border-primary/40 bg-primary/[0.02]" : "border-border"}`}
               >
-                <div className={`flex items-center gap-1.5 py-1.5 mb-2 border-b ${isToday ? 'border-primary/40' : 'border-border'}`}>
-                  <span className={`text-[10px] uppercase tracking-wider font-semibold ${isToday ? 'text-primary' : 'text-muted-foreground'}`}>
-                    {format(day, 'EEE')}
+                <span
+                  className={`text-[10px] uppercase tracking-wider font-semibold ${isToday ? "text-primary" : "text-muted-foreground"}`}
+                >
+                  {format(day, "EEEE", { locale: language === "vi" ? vi : enUS })}
+                </span>
+                <span
+                  className={`text-sm font-bold shrink-0 ${isToday ? "text-primary" : "text-foreground"}`}
+                >
+                  {format(day, "dd/MM")}
+                </span>
+                {dayShifts.length > 0 && (
+                  <span className="text-[10px] text-muted-foreground font-medium">
+                    {dayShifts.length}
                   </span>
-                  <span className={`text-sm font-bold shrink-0 ${isToday ? 'text-primary' : 'text-foreground'}`}>
-                    {format(day, 'd')}
-                  </span>
-                  {dayShifts.length > 0 && (
-                    <span className="ml-auto text-[10px] text-muted-foreground font-medium">
-                      {dayShifts.length}
-                    </span>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  {dayShifts.map((shift) => (
-                    <button
-                      type="button"
-                      key={shift.id}
-                      className="w-full flex flex-col rounded-sm p-1.5 text-left text-sm transition-colors bg-card/50 border-l-[3px] border-y border-r border-border hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring shadow-sm"
-                      data-testid={`week-shift-${shift.id}`}
-                      style={{ borderLeftColor: getBrandColor(shift.brand_id) }}
-                      onClick={() => onShiftClick?.(shift)}
-                    >
-                      <div className="flex items-start justify-between w-full gap-1 mb-1">
-                        <span className="font-semibold text-[11px] leading-none text-foreground tracking-tight whitespace-nowrap">
-                          {formatShiftTimeRange(shift)}
-                        </span>
-                        <span className="shrink-0 leading-none">
-                          <ShiftStatusBadge status={shift.status} className="text-[9px] h-3.5 px-1 py-0 rounded-sm border-border/50" />
-                        </span>
-                      </div>
-                      <div className="text-[11px] font-semibold text-foreground truncate leading-tight">
-                        {getBrandName(shift.brand_id)}
-                      </div>
-                      {shift.studio && (
-                        <div className="text-[10px] text-muted-foreground truncate leading-tight mt-0.5">
-                          {shift.studio}
-                        </div>
-                      )}
-                      {renderStaffingChips(shift)}
-                    </button>
-                  ))}
-                </div>
+                )}
               </div>
-            )
+            );
           })}
+
+          {/* Grid Body */}
+          <div className="col-span-full relative flex">
+            {/* Time Axis Column */}
+            <div
+              className="relative shrink-0 border-r border-border bg-background z-20"
+              style={{ width: TIME_COLUMN_WIDTH }}
+            >
+              {hours.map((hour) => (
+                <div
+                  key={`time-${hour}`}
+                  className="relative text-right pr-2"
+                  style={{ height: hourHeight }}
+                >
+                  <span className="text-[10px] text-muted-foreground font-medium absolute top-0 right-2 bg-background px-1">
+                    {hour.toString().padStart(2, '0')}:00
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Horizontal Grid Lines */}
+            <div className="absolute inset-0 left-[50px] pointer-events-none flex flex-col z-0">
+              {hours.map((hour) => (
+                <div
+                  key={`line-${hour}`}
+                  className="w-full border-t border-border/40"
+                  style={{ height: hourHeight }}
+                />
+              ))}
+            </div>
+
+            {/* Day Columns */}
+            <div className="flex flex-1 z-10 relative">
+              {weekDays.map((day) => {
+                const dayShifts = getShiftsForDate(day);
+                const isToday = isSameDay(day, today);
+                const layouts = calculateOverlaps(dayShifts);
+
+                return (
+                  <div
+                    key={`col-${day.toString()}`}
+                    className={`flex-1 relative border-r last:border-r-0 border-border/40 ${isToday ? "bg-primary/[0.02]" : ""}`}
+                  >
+                    {isToday && today.getHours() >= firstHour && (
+                      <div
+                        className="absolute w-full z-20 pointer-events-none border-t-[1.5px] border-primary"
+                        style={{
+                          top: getCurrentTimePosition(today) / 2 - firstHour * hourHeight,
+                        }}
+                      >
+                        <div className="absolute -top-1.5 -left-1 w-3 h-3 rounded-full bg-primary ring-2 ring-background"></div>
+                        <div className="absolute -top-5 left-3 bg-primary text-primary-foreground px-1.5 py-0.5 rounded text-[10px] font-bold shadow-sm">
+                          NOW {format(today, 'HH:mm')}
+                        </div>
+                      </div>
+                    )}
+
+                    {dayShifts.map((shift) => {
+                      const pos = layouts[shift.id] || calculateShiftPosition(shift.start_time, shift.end_time, shift.crosses_midnight ?? false);
+
+                      return (
+                        <div
+                          key={shift.id}
+                          className="absolute"
+                          style={{
+                            top: pos.top / 2 - firstHour * hourHeight,
+                            height: pos.height / 2,
+                            left: 'left' in pos ? pos.left : '0%',
+                            width: 'width' in pos ? pos.width : '100%',
+                            paddingLeft: '2px',
+                            paddingRight: '2px'
+                          }}
+                        >
+                          <ShiftCard
+                            shift={shift}
+                            variant="embedded"
+                            onClick={() => onShiftClick?.(shift)}
+                            context={context}
+                            isToday={isToday}
+                            className="h-full"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
 
       {/* MOBILE: Compact date-grouped agenda */}
       <div className="sm:hidden divide-y divide-border">
         {weekDays.map((day) => {
-          const dayShifts = getShiftsForDate(day)
-          const isToday = isSameDay(day, today)
+          const dayShifts = getShiftsForDate(day);
+          const isToday = isSameDay(day, today);
           return (
-            <div key={day.toString()} className={isToday ? 'bg-primary/[0.02]' : ''}>
-              <div className={`flex items-baseline gap-2 px-2 py-1.5 ${isToday ? 'text-primary bg-primary/[0.03]' : 'text-muted-foreground bg-muted/10'}`}>
+            <div
+              key={`mob-${day.toString()}`}
+              className={isToday ? "bg-primary/[0.02]" : ""}
+            >
+              <div
+                className={`flex items-baseline gap-2 px-2 py-1.5 ${isToday ? "text-primary bg-primary/[0.03]" : "text-muted-foreground bg-muted/10"}`}
+              >
                 <span className="text-[11px] uppercase tracking-wider font-bold">
-                  {format(day, 'EEE')}
+                  {format(day, "EEEE", { locale: language === "vi" ? vi : enUS })}
                 </span>
-                <span className={`text-base font-bold shrink-0 ${isToday ? 'text-primary' : 'text-foreground'}`}>
-                  {format(day, 'd')}
+                <span
+                  className={`text-base font-bold shrink-0 ${isToday ? "text-primary" : "text-foreground"}`}
+                >
+                  {format(day, "dd/MM")}
                 </span>
-                <span className="text-[11px] text-muted-foreground font-medium">{format(day, 'MMM')}</span>
+                <span className="text-[11px] text-muted-foreground font-medium">
+                  {format(day, "MMM")}
+                </span>
                 {dayShifts.length === 0 && (
-                  <span className="ml-auto text-[11px] text-muted-foreground/60 italic">{t('noShiftsScheduled')}</span>
+                  <span className="ml-auto text-[11px] text-muted-foreground/60 italic">
+                    {t("noShiftsScheduled")}
+                  </span>
                 )}
               </div>
               {dayShifts.length > 0 && (
                 <div className="px-2 py-1.5 space-y-1.5">
-                  {dayShifts.map((shift) => {
-                    const shiftRegistrations = registrations.filter(r => r.shift_id === shift.id)
-                    const labels = resolveStaffingLabels(shift, shiftRegistrations, users, t)
-                    const confirmedLabels = labels.filter((l: StaffingLabel) => !l.isUnassigned)
-                    const unassignedLabels = labels.filter((l: StaffingLabel) => l.isUnassigned)
+                  {dayShifts.map((shift, index) => {
+                    const currentTimeStr = format(today, "HH:mm:ss");
+                    const firstFutureShiftIndex = isToday
+                      ? dayShifts.findIndex(
+                          (s) => s.start_time > currentTimeStr,
+                        )
+                      : -1;
+                    const showIndicator =
+                      isToday && index === firstFutureShiftIndex;
                     return (
-                      <button
-                        type="button"
-                        key={shift.id}
-                        className="w-full text-left flex items-stretch gap-2 py-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:bg-muted/20"
-                        data-testid={`week-shift-mobile-${shift.id}`}
-                        onClick={() => onShiftClick?.(shift)}
-                      >
-                        <div
-                          className="shrink-0 w-[3px] rounded-sm"
-                          style={{ backgroundColor: getBrandColor(shift.brand_id) }}
+                      <React.Fragment key={`mob-shift-${shift.id}`}>
+                        {showIndicator && <CurrentTimeIndicator />}
+                        <ShiftCard
+                          shift={shift}
+                          variant="standard"
+                          onClick={() => onShiftClick?.(shift)}
+                          context={context}
+                          isToday={isToday}
                         />
-                        <div className="min-w-0 flex-1 py-0.5">
-                          <div className="flex items-center justify-between gap-2 mb-0.5">
-                            <span className="text-[12px] font-semibold text-foreground whitespace-nowrap">
-                              {formatShiftTimeRange(shift)}
-                            </span>
-                            <ShiftStatusBadge status={shift.status} className="text-[9px] h-4 px-1.5 rounded-sm border-border/50 shrink-0" />
-                          </div>
-                          <div className="text-[12px] font-medium text-foreground line-clamp-2" title={getBrandName(shift.brand_id)}>
-                            {getBrandName(shift.brand_id)}
-                          </div>
-                          {shift.studio && (
-                            <div className="text-[11px] text-muted-foreground truncate" title={shift.studio}>
-                              {shift.studio}
-                            </div>
-                          )}
-                          {labels.length > 0 && (
-                            <div className="flex flex-col gap-0.5 mt-1 border-t border-border/40 pt-1">
-                              {confirmedLabels.map((lbl: StaffingLabel, idx: number) => (
-                                <span key={lbl.id + idx} className="text-[11px] font-medium leading-tight text-foreground truncate" title={lbl.name}>
-                                  {lbl.name}
-                                </span>
-                              ))}
-                              {unassignedLabels.map((lbl: StaffingLabel, idx: number) => (
-                                <span key={lbl.id + 'u' + idx} className="text-[11px] font-medium leading-tight text-destructive/90 italic truncate" title={lbl.name}>
-                                  {lbl.name}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </button>
-                    )
+                      </React.Fragment>
+                    );
                   })}
+                  {isToday &&
+                    dayShifts.length > 0 &&
+                    dayShifts.findIndex(
+                      (s) => s.start_time > format(today, "HH:mm:ss"),
+                    ) === -1 && <CurrentTimeIndicator />}
+                  {isToday && dayShifts.length === 0 && (
+                    <CurrentTimeIndicator />
+                  )}
                 </div>
               )}
             </div>
-          )
+          );
         })}
       </div>
     </>
-  )
+  );
 }

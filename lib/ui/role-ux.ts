@@ -1,4 +1,4 @@
-import { Home, Calendar, Radio, FileText, User, Settings, Users, Package, Megaphone, BarChart3, RefreshCw, History, Bell, type LucideIcon } from 'lucide-react'
+import { Home, Calendar, Radio, FileText, User, Settings, Users, Package, Megaphone, BarChart3, RefreshCw, History, Bell, UserCheck, type LucideIcon } from 'lucide-react'
 import { SystemPermission, User as UserType } from '@/lib/types/database.types'
 import { hasAnyPermission, Permission } from '@/lib/permissions'
 
@@ -20,6 +20,7 @@ export type NavItem = {
    *   C = intentional UX omission for role simplification (not a permission denial)
    */
   requiredPermissions?: Permission[]
+  group?: string
 }
 
 // Full catalogue of all application destinations
@@ -30,74 +31,68 @@ const navCatalogue: Record<string, NavItem> = {
   reports:       { name: 'Reports',       href: '/reports',       icon: FileText },
   swaps:         { name: 'Swaps',         href: '/swaps',         icon: RefreshCw },
   analytics:     { name: 'Analytics',     href: '/analytics',     icon: BarChart3 },
-  // B: Staff page is readable; canManage gates mutations only
   staff:         { name: 'Staff',         href: '/staff',         icon: Users },
-  // B: Brands page is readable; canManage gates mutations only
   brands:        { name: 'Brands',        href: '/brands',        icon: Package },
-  // B: Platforms page is readable; canManage gates mutations only
   platforms:     { name: 'Platforms',     href: '/platforms',     icon: Megaphone },
-  // B: Campaigns page is readable; canManage / edit_operational gates mutations only
   campaigns:     { name: 'Campaigns',     href: '/campaigns',     icon: Megaphone },
-  // A: Audit page genuinely restricted — AuditHistory renders nothing without audit.view/view_team
   audit:         { name: 'Audit',         href: '/audit',         icon: History,  labelKey: 'auditHistory', requiredPermissions: ['audit.view', 'audit.view_team'] },
   settings:      { name: 'Settings',      href: '/settings',      icon: Settings },
   profile:       { name: 'Profile',       href: '/profile',       icon: User },
-  // navNotifications key avoids clash with existing 'notifications: Notification preferences' key
   notifications: { name: 'Notifications', href: '/notifications', icon: Bell,     labelKey: 'navNotifications' },
+
+  // Additional parity placeholders
+  shifts:        { name: 'Shifts',        href: '/shifts',        icon: Calendar },
+  staffing:      { name: 'Staffing',      href: '/staffing',      icon: Users },
+  registration:  { name: 'Registration',  href: '/staffing?tab=registration', icon: UserCheck, labelKey: 'registration', requiredPermissions: ['shifts.approve_registration'] },
+  staffDirectory:{ name: 'Staff Directory',href: '/staff',        icon: Users },
+  myWorkspace:   { name: 'My Workspace',  href: '/',              icon: Home },
+  mySchedule:    { name: 'My Schedule',   href: '/calendar?tab=mine', icon: Calendar },
+  openShifts:    { name: 'Open Shifts',   href: '/calendar?tab=open', icon: Calendar },
+  mySwaps:       { name: 'My Swaps',      href: '/swaps',         icon: RefreshCw },
 }
 
-// ADMIN priority: operational exceptions > schedule/system > staffing > users/permissions > reports > system/recovery
-// All 13 destinations; admin holds all requiredPermissions so filterNav passes everything through.
+// ADMIN priority
 const adminNav: NavItem[] = [
-  navCatalogue.dashboard,
-  navCatalogue.calendar,
-  navCatalogue.live,
-  navCatalogue.swaps,
-  navCatalogue.staff,
-  navCatalogue.reports,
-  navCatalogue.analytics,
-  navCatalogue.brands,
-  navCatalogue.platforms,
-  navCatalogue.campaigns,
-  navCatalogue.audit,
-  navCatalogue.settings,
-  navCatalogue.profile,
+  { ...navCatalogue.dashboard, group: 'APP OPS' },
+  { ...navCatalogue.calendar, group: 'OPERATIONS' },
+  { ...navCatalogue.live, group: 'OPERATIONS' },
+  { ...navCatalogue.shifts, group: 'OPERATIONS' },
+  { ...navCatalogue.staffing, group: 'OPERATIONS' },
+  { ...navCatalogue.registration, group: 'OPERATIONS' },
+  { ...navCatalogue.swaps, group: 'OPERATIONS' },
+  { ...navCatalogue.reports, group: 'PERFORMANCE' },
+  { ...navCatalogue.analytics, group: 'PERFORMANCE' },
+  { ...navCatalogue.brands, group: 'MANAGEMENT' },
+  { ...navCatalogue.platforms, group: 'MANAGEMENT' },
+  { ...navCatalogue.campaigns, group: 'MANAGEMENT' },
+  { ...navCatalogue.staff, group: 'MANAGEMENT' },
+  { ...navCatalogue.audit, group: 'SYSTEM' },
+  { ...navCatalogue.settings, group: 'SYSTEM' },
 ]
 
-// LEADER priority: today's ops > staffing gaps > swap approvals > schedule > reports
-// staff/brands/platforms/campaigns included as readable (classification B).
-// audit included — leader has audit.view_team so filterNav keeps it.
+// LEADER priority
 const leaderNav: NavItem[] = [
-  navCatalogue.dashboard,
-  navCatalogue.calendar,
-  navCatalogue.live,
-  navCatalogue.swaps,
-  navCatalogue.reports,
-  navCatalogue.analytics,
-  navCatalogue.staff,
-  navCatalogue.brands,
-  navCatalogue.platforms,
-  navCatalogue.campaigns,
-  navCatalogue.audit,
-  navCatalogue.settings,
-  navCatalogue.profile,
+  { ...navCatalogue.dashboard, name: 'Team Operations', group: 'APP OPS' },
+  { ...navCatalogue.calendar, group: 'OPERATIONS' },
+  { ...navCatalogue.live, group: 'OPERATIONS' },
+  { ...navCatalogue.shifts, group: 'OPERATIONS' },
+  { ...navCatalogue.staffing, group: 'OPERATIONS' },
+  { ...navCatalogue.registration, group: 'OPERATIONS' },
+  { ...navCatalogue.swaps, group: 'OPERATIONS' },
+  { ...navCatalogue.reports, group: 'PERFORMANCE' },
+  { ...navCatalogue.staffDirectory, group: 'TEAM' },
+  { ...navCatalogue.notifications, group: 'TEAM' },
 ]
 
-// MEMBER priority: next shift (Calendar) > swaps > notifications > reports > settings > profile
-// Omissions of admin/leader-centric reference pages (analytics, brands, platforms, campaigns,
-// staff, audit) are classification C — UX simplification, not permission denial.
+// MEMBER priority
 const memberNav: NavItem[] = [
-  navCatalogue.dashboard,
-  navCatalogue.calendar,
-  navCatalogue.live,
-  navCatalogue.swaps,
-  navCatalogue.reports,
-  navCatalogue.brands,
-  navCatalogue.platforms,
-  navCatalogue.campaigns,
-  navCatalogue.notifications,
-  navCatalogue.settings,
-  navCatalogue.profile,
+  { ...navCatalogue.myWorkspace, group: 'APP OPS' },
+  { ...navCatalogue.mySchedule, group: 'APP OPS' },
+  { ...navCatalogue.openShifts, group: 'APP OPS' },
+  { ...navCatalogue.mySwaps, group: 'APP OPS' },
+  { ...navCatalogue.live, group: 'APP OPS' },
+  { ...navCatalogue.reports, group: 'APP OPS' },
+  { ...navCatalogue.notifications, group: 'APP OPS' },
 ]
 
 /**
