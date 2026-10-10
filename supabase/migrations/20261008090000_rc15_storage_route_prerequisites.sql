@@ -8,6 +8,14 @@ alter table public.shifts
 alter table public.brands
   add column if not exists storage_profile text null;
 
+-- Store the verified business actor and review timestamp in the same
+-- brand UPDATE transaction; no anonymous/unattributed profile conversions.
+alter table public.brands
+  add column if not exists storage_profile_reviewed_by text
+    references public.business_users(id) on delete set null;
+alter table public.brands
+  add column if not exists storage_profile_reviewed_at timestamptz;
+
 do $route_prereq$
 begin
   if not exists (
@@ -57,6 +65,8 @@ create table if not exists public.operational_storage_routes (
     check (jsonb_typeof(folder_labels) = 'object'),
   period_naming_style text not null check (btrim(period_naming_style) <> ''),
   active boolean not null default true,
+  approved_by text references public.business_users(id) on delete set null,
+  approved_at timestamptz not null default statement_timestamp(),
   created_at timestamptz not null default statement_timestamp(),
   updated_at timestamptz not null default statement_timestamp(),
   constraint operational_storage_routes_subbrand_profile_check
