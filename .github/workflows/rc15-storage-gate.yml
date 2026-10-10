@@ -19,6 +19,8 @@ on:
       - 'tests/rc14-*.test.ts'
       - 'tests/rc15-*.test.ts'
       - 'supabase/migrations/20261008090000_rc15_storage_route_prerequisites.sql'
+      - 'supabase/migrations/20261008093000_rc15_shift_rpc_compatibility.sql'
+      - 'tests/fixtures/rc15_production_shift_rpc_baseline.sql'
       - 'supabase/migrations/20261009000000_rc15_operational_files.sql'
   workflow_dispatch:
 
@@ -82,11 +84,15 @@ jobs:
           create table public.shifts (id text primary key);
           create table public.campaigns (id text primary key);
           create table public.business_users (id text primary key);
+          create schema private;
+          create table public.system_settings (id text primary key, default_host_count smallint, default_support_count smallint, default_technical_count smallint, allow_multi_role_per_shift boolean);
           SQL
           # Existing production baseline is missing RC1.3A routes and execution_source.
           # Verify the additive prerequisite can be applied twice, without backfill.
           psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261008090000_rc15_storage_route_prerequisites.sql
           psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261008090000_rc15_storage_route_prerequisites.sql
+          psql -v ON_ERROR_STOP=1 -f tests/fixtures/rc15_production_shift_rpc_baseline.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261008093000_rc15_shift_rpc_compatibility.sql
           psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261009000000_rc15_operational_files.sql
           psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261009000000_rc15_operational_files.sql
           psql -v ON_ERROR_STOP=1 <<'SQL'
@@ -114,6 +120,25 @@ jobs:
             end if;
             if (select count(*) from public.operational_storage_routes) <> 0 then
               raise exception 'RC15 must not invent operator-approved routes';
+            end if;
+            if not exists (
+              select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+              where n.nspname='public' and p.proname='create_shift'
+                and position('execution_source' in pg_get_functiondef(p.oid)) > 0
+            ) then
+              raise exception 'RC15 create_shift RPC not patched';
+            end if;
+            if (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+              where n.nspname='public' and p.proname='update_shift'
+                and position('execution_source' in pg_get_functiondef(p.oid)) > 0) <> 2 then
+              raise exception 'RC15 must patch both update_shift overloads';
+            end if;
+            if not exists (
+              select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+              where n.nspname='public' and p.proname='update_shift'
+                and position('assert_expected_version' in pg_get_functiondef(p.oid)) > 0
+            ) then
+              raise exception 'RC15 must preserve optimistic concurrency';
             end if;
           end
           $rc15$;
