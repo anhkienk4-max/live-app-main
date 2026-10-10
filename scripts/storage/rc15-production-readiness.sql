@@ -15,12 +15,18 @@ with environment as (
     exists(select 1 from information_schema.columns
       where table_schema='public' and table_name='operational_files'
         and column_name='integrity_status') as has_integrity,
+    exists(select 1 from information_schema.columns
+      where table_schema='public' and table_name='operational_storage_routes'
+        and column_name='period_label_overrides' and udt_name='jsonb') as has_month_overrides,
+    exists(select 1 from information_schema.columns
+      where table_schema='public' and table_name='operational_storage_routes'
+        and column_name='period_date_ranges' and udt_name='jsonb') as has_period_ranges,
     exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
       where n.nspname='public' and p.proname='create_shift'
         and pg_get_function_arguments(p.oid) like 'p_data jsonb%'
         and position('execution_source' in pg_get_functiondef(p.oid)) > 0
     ) as create_shift_supports_source,
-    exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    (select count(*) = 2 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
       where n.nspname='public' and p.proname='update_shift'
         and position('execution_source' in pg_get_functiondef(p.oid)) > 0
     ) as update_shift_supports_source,
@@ -28,13 +34,15 @@ with environment as (
 )
 select
   case when has_route_table and has_v2_registry and has_shift_source
-    and has_brand_profile and has_integrity and create_shift_supports_source
+    and has_brand_profile and has_integrity and has_month_overrides
+    and has_period_ranges and create_shift_supports_source
     and update_shift_supports_source and rc14_report_data_installed
     then 'SCHEMA_READY_REVIEW_ROUTE_DATA'
     else 'BLOCKED_DO_NOT_DEPLOY_STORAGE_V2'
   end as release_state,
   has_route_table, has_v2_registry, has_shift_source, has_brand_profile,
-  has_integrity, create_shift_supports_source, update_shift_supports_source,
+  has_integrity, has_month_overrides, has_period_ranges,
+  create_shift_supports_source, update_shift_supports_source,
   rc14_report_data_installed
 from environment;
 
