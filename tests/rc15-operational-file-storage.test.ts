@@ -493,3 +493,60 @@ test('concurrent provider-deduplicated upload NEVER trashes the winning shared o
   assert.equal(providerDeletes, 0)
   assert.equal(lookupCount, 2)
 })
+
+
+test('confidential Finance writes fail closed until separately approved, including provider-linked files', async () => {
+  const state = client()
+  let uploads = 0
+  let metadataReads = 0
+  const handler = (approved: boolean) => createOperationalFileRouteHandler({
+    createClient: () => state.db,
+    allowConfidentialWrites: () => approved,
+    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
+    storage: {
+      async upload(input: FileUploadInput) {
+        uploads += 1
+        return { asset: { external_file_id: 'finance-drive-' + uploads, provider_metadata: {} } }
+      },
+      async getMetadata() {
+        metadataReads += 1
+        return { id: 'linked-finance', name: 'invoice.pdf', kind: 'file',
+          mime_type: 'application/pdf', size_bytes: 2048, parent_ids: ['verified-parent'] }
+      },
+      async read() { return new Uint8Array([1, 2, 3]) },
+      async delete() { throw new Error('Unexpected delete') },
+    } as never,
+    routes: { async resolvePlacement() { return base } },
+    materializeFolders: async () => 'verified-parent',
+    routingMode: 'database',
+  })
+  const finance = () => form('payment_document', 'invoice.pdf',
+    'application/pdf', new Uint8Array([1, 2, 3]))
+  const link = () => new Request('https://example.test/api/operational-files', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'attach_existing', category: 'payment_document',
+      external_file_id: 'linked-finance', provider: 'google_drive',
+      brand_id: 'brand-1', platform_id: 'platform-1',
+      period_date: '2026-09-14', execution_source: 'internal',
+    }),
+  })
+  assert.equal((await handler(false).POST(finance())).status, 423)
+  assert.equal((await handler(false).POST(link())).status, 423)
+  assert.equal(uploads, 0)
+  assert.equal(metadataReads, 0)
+  assert.equal(state.rows.length, 0)
+
+  const approved = handler(true)
+  const uploaded = await approved.POST(finance())
+  assert.equal(uploaded.status, 200)
+  assert.equal(uploads, 1)
+  assert.equal(state.rows.length, 1)
+  const linked = await approved.POST(link())
+  assert.equal(linked.status, 200)
+  assert.equal(metadataReads, 1)
+  assert.equal(state.rows.length, 2)
+  const catalog = await handler(false).GET(new Request('https://example.test/api/operational-files?catalog=1'))
+  const body = await catalog.json() as { confidential_write_ready: boolean }
+  assert.equal(body.confidential_write_ready, false)
+})
