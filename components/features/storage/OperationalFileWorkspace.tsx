@@ -367,7 +367,7 @@ export function OperationalFileWorkspace() {
           Tạo đúng thư mục, upload trực tiếp file lên Drive/OneDrive, sau đó dán ID để app xác thực
           file thuộc chính thư mục này và lưu metadata. Không tải binary lớn qua Vercel hoặc Supabase.
         </p>
-        <button className={buttonClass} type="button" disabled={busy || !catalog}
+        <button className={buttonClass} type="button" disabled={busy || !catalog || confidentialBlocked}
           onClick={() => void providerAction('prepare_folder')}>Tạo / mở folder lưu trữ</button>
         {folderUrl && <p className="text-sm break-all">
           Folder: <a className="text-primary underline" href={folderUrl} target="_blank" rel="noopener noreferrer">{folderPath || folderUrl}</a>
