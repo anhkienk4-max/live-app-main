@@ -18,6 +18,28 @@ type Inventory = {
 const control = 'w-full rounded-md border border-border bg-background px-3 py-2 text-sm'
 const action = 'rounded-md border border-border px-3 py-2 text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50'
 
+type PathPreview = {
+  read_only: true
+  legacy: { dashboard: string; live_visual: string; data_report: string; data_source: string; base_folder_id: string }
+  v2: { folder_path: string; base_folder_id: string }
+}
+
+function parsePeriodOverrides(raw: string): Record<string, { default: string }> {
+  const value: Record<string, { default: string }> = {}
+  for (const line of raw.split(/\r?\n/u)) {
+    if (!line) continue
+    const match = /^(\d{4}-(?:0[1-9]|1[0-2]))=(.+)$/u.exec(line)
+    if (!match || !match[2].trim() || match[2].includes('/') || match[2].includes('..')) {
+      throw new Error('Định dạng ngoại lệ phải là YYYY-MM=Tên thư mục chính xác, mỗi tháng một dòng.')
+    }
+    if (Object.prototype.hasOwnProperty.call(value, match[1])) {
+      throw new Error('Trùng tháng trong danh sách ngoại lệ: ' + match[1])
+    }
+    value[match[1]] = { default: match[2] }
+  }
+  return value
+}
+
 export function OperationalStorageSetupWorkspace() {
   const [data, setData] = React.useState<Inventory | null>(null)
   const [offset, setOffset] = React.useState(0)
@@ -33,6 +55,9 @@ export function OperationalStorageSetupWorkspace() {
   const [profileChoice, setProfileChoice] = React.useState('CANONICAL_V1')
   const [legacyBaseId, setLegacyBaseId] = React.useState('')
   const [legacyPeriodStyle, setLegacyPeriodStyle] = React.useState('THANG_M_DASH_YEAR')
+  const [periodOverridesText, setPeriodOverridesText] = React.useState('')
+  const [previewDate, setPreviewDate] = React.useState('')
+  const [routePreview, setRoutePreview] = React.useState<(PathPreview & { signature: string }) | null>(null)
   const [legacyLabels, setLegacyLabels] = React.useState({
     dashboard: '', live_visual_internal: '', live_visual_agency: '',
     data_report: '', data_source: '',
@@ -88,6 +113,52 @@ export function OperationalStorageSetupWorkspace() {
     && route.execution_source === executionSource)
   const bname = (id: string) => data?.brands.find(b => b.id === id)?.name || id
   const pname = (id: string) => data?.platforms.find(p => p.id === id)?.name || id
+  const previewSignature = JSON.stringify([
+    brandId, platformId, executionSource, rootId, legacyBaseId,
+    selectedBrand?.storage_profile, legacyPeriodStyle, legacyLabels,
+    periodOverridesText, previewDate,
+  ])
+  const previewReady = routePreview?.signature === previewSignature
+
+  const legacyRoutePayload = () => ({
+    brand_id: brandId, platform_id: platformId,
+    execution_source: executionSource,
+    root_folder_id: rootId.trim(), base_folder_id: legacyBaseId.trim(),
+    storage_profile: selectedBrand?.storage_profile,
+    period_naming_style: legacyPeriodStyle,
+    period_label_overrides: parsePeriodOverrides(periodOverridesText),
+    folder_labels: {
+      dashboard: legacyLabels.dashboard,
+      live_visual_internal: legacyLabels.live_visual_internal,
+      live_visual_agency: legacyLabels.live_visual_agency,
+      data_report: legacyLabels.data_report.split('/').map(v => v.trim()),
+      data_source: legacyLabels.data_source.split('/').map(v => v.trim()),
+    },
+  })
+
+  const previewLegacyRoute = async () => {
+    setBusy(true)
+    setError('')
+    setRoutePreview(null)
+    try {
+      const signature = previewSignature
+      const response = await fetch('/api/operational-storage-setup', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'preview_legacy_route',
+          ...legacyRoutePayload(), shift_date: previewDate,
+        }),
+      })
+      const data = await response.json() as PathPreview & { ok?: boolean; error?: { code: string } }
+      if (!response.ok || data.ok !== true || data.read_only !== true) {
+        throw new Error(data.error?.code || 'PREVIEW_NOT_AVAILABLE')
+      }
+      setRoutePreview({ ...data, signature })
+      setRouteApproved(false)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Không xem trước được đường dẫn')
+    } finally { setBusy(false) }
+  }
 
   return <div className="mx-auto max-w-6xl space-y-5" data-testid="storage-setup">
     <div className="flex items-center gap-3">
@@ -193,6 +264,12 @@ export function OperationalStorageSetupWorkspace() {
               <option value="THANG_UPPER_M_DASH_YEAR">THÁNG 9 - 2026</option>
             </select>
           </label>
+          <label className="block space-y-1 text-sm">
+            <span>Ngoại lệ tên tháng, mỗi dòng YYYY-MM=Tên thư mục chính xác</span>
+            <textarea className={control} rows={3}
+              placeholder={'2026-07=Tháng 7-2026\\n2026-09=Tháng 9 - 2026'}
+              value={periodOverridesText} onChange={e => setPeriodOverridesText(e.target.value)} />
+          </label>
           {([
             ['dashboard', 'Folder Dashboard'],
             ['live_visual_internal', 'Folder Visual Internal'],
@@ -204,6 +281,27 @@ export function OperationalStorageSetupWorkspace() {
             <input className={control} value={legacyLabels[key]}
               onChange={e => setLegacyLabels(old => ({ ...old, [key]: e.target.value }))} />
           </label>)}
+          <label className="block space-y-1 text-sm">
+            <span>Ngày cần xem trước đường dẫn tháng (bắt buộc)</span>
+            <input type="date" className={control} value={previewDate}
+              onChange={e => setPreviewDate(e.target.value)} />
+          </label>
+          <button type="button" className={action} disabled={busy || !previewDate
+            || !data.root_configured || !brandId || !platformId || !executionSource
+            || !rootId.trim() || !legacyBaseId.trim()
+            || Object.values(legacyLabels).some(v => !v.trim())}
+            onClick={() => void previewLegacyRoute()}>
+            Xem trước đường dẫn — không ghi dữ liệu
+          </button>
+          {previewReady && routePreview && <div className="space-y-1 rounded-md border p-3 text-sm" role="status">
+            <p className="font-medium">Đường dẫn dự kiến — chưa tạo folder hay xác minh sự tồn tại của từng folder category</p>
+            <p>Dashboard: {routePreview.legacy.dashboard}</p>
+            <p>Visibility: {routePreview.legacy.live_visual}</p>
+            <p>DATA/REPORT: {routePreview.legacy.data_report}</p>
+            <p>DATA/SOURCE: {routePreview.legacy.data_source}</p>
+            <p>Nhóm file V2: {routePreview.v2.folder_path}</p>
+            <p className="text-xs">Preview dựa trên cấu hình và ancestry của Base Folder; cần đối chiếu tên thực tế trên Drive.</p>
+          </div>}
         </>}
         {routeExists && <p className="text-sm">Route này đã có và active, không tạo bản trùng.</p>}
         <label className="flex items-start gap-2 text-sm">
@@ -213,20 +311,12 @@ export function OperationalStorageSetupWorkspace() {
         <button type="button" className={action}
           disabled={busy || !data.root_configured || !routeApproved || !brandId || !platformId || !executionSource
             || !rootId.trim() || (!needsLegacy && selectedBrand?.storage_profile !== 'CANONICAL_V1')
-            || (needsLegacy && (!legacyBaseId.trim() || Object.values(legacyLabels).some(v => !v.trim())))
+            || (needsLegacy && (!legacyBaseId.trim()
+              || Object.values(legacyLabels).some(v => !v.trim())
+              || !previewReady))
             || routeExists}
           onClick={() => void mutate(needsLegacy ? {
-            action: 'register_legacy_route', brand_id: brandId,
-            platform_id: platformId, execution_source: executionSource,
-            root_folder_id: rootId.trim(), base_folder_id: legacyBaseId.trim(),
-            storage_profile: selectedBrand?.storage_profile, period_naming_style: legacyPeriodStyle,
-            folder_labels: {
-              dashboard: legacyLabels.dashboard,
-              live_visual_internal: legacyLabels.live_visual_internal,
-              live_visual_agency: legacyLabels.live_visual_agency,
-              data_report: legacyLabels.data_report.split('/').map(v => v.trim()),
-              data_source: legacyLabels.data_source.split('/').map(v => v.trim()),
-            },
+            action: 'register_legacy_route', ...legacyRoutePayload(),
             confirmation: 'I_VERIFIED_LEGACY_PROVIDER_BASE_AND_PATHS',
           } : {
             action: 'register_route', brand_id: brandId,
