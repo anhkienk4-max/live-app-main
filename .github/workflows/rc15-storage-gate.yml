@@ -109,7 +109,8 @@ jobs:
             tests/rc14-report-artifact-storage.test.ts \
             tests/rc14-data-report-export-fidelity.test.ts \
             tests/rc15-operational-file-storage.test.ts \
-            tests/rc15-schedule-import-archive.test.ts
+            tests/rc15-schedule-import-archive.test.ts \
+            tests/rc15-system-export.test.ts
 
       - name: Next.js build without Production secrets
         run: pnpm run build
