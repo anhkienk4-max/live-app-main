@@ -74,6 +74,49 @@ Auto-archive writes only normalized per-brand/per-platform/month/execution-sourc
 
 The app currently supports direct provider upload plus exact-parent ID attachment for large video. It does **not** implement an app-hosted resumable/chunked video uploader. Linked files are tagged `integrity_status=provider_reference` because provider ownership/path and MIME/size are checked but bytes SHA-256 are not verified. Before release, perform actual large-file readback and permission test on the configured provider.
 
+## Legacy storage coexistence (RC1.5 code staged)
+
+Legacy Dashboard, Live Visual, DATA/SOURCE and DATA/REPORT continue to resolve
+using their original approved legacy route profile, label mapping and period
+naming. **Never migrate or rearrange existing folders merely to enable V2.**
+
+For 15 *new* V2 file categories on existing legacy routes, placement is
+deliberately rooted at the route's verified Google Drive root and uses a
+non-overlapping, ID-isolated namespace:
+
+`<Drive root>/ADA_STORAGE_V2/<brand_id>/<platform_id>/<INTERNAL|AGENCY>/<legacy period label>/<V2 category path>/...`
+
+This is logical storage separation by verified database IDs, **not security
+isolation by Drive ACL**. It does not justify putting sensitive Finance/System
+Export files on a root with `anyone:writer`. Never claim V2 Production release
+secure before access controls are reviewed.
+
+Admin `/storage/setup` can now register exact root, base folder, period
+naming and category labels after physically reviewing **three legacy profiles
+without subbrands**:
+- `LEGACY_CATEGORY_PERIOD`
+- `LEGACY_PLATFORM_CATEGORY_PERIOD`
+- `LEGACY_PERIOD_CATEGORY`
+
+The two subbrand-based legacy profiles remain **unsupported by the Admin
+registration path**: the current file scope does not carry a verified
+`subbrand_key`, and guessing it could mix different brands' evidence.
+They are fail-closed pending an explicit subbrand association model and physical
+mapping review. All legacy categories require precise label strings; the
+existing base folder must be verified under the configured root by following
+provider parent IDs, with cycles, missing parents and unrelated folders denied.
+
+## Locked dependencies — fixed in CI
+
+The workspace security setting `minimumReleaseAge: 1440` was not honored
+by the old pinned pnpm 9.15.9 in this PR's CI gate (unsupported feature).
+`allowBuilds` likewise requires a newer pnpm.
+CI is now pinned to **pnpm 10.26.0** with `pnpm install --frozen-lockfile`;
+the application `packageManager` field is set to the same version.
+Do not weaken `minimumReleaseAge`, `allowBuilds`, or freeze checks for release.
+The 81 overrides in workspace and lockfile were independently compared and
+found to match; no gratuitous full-lockfile re-resolution was necessary.
+
 ## Admin operator-controlled configuration gateway (code staged, no Production writes)
 
 Admin-only `/storage/setup` and `/api/operational-storage-setup` have been staged to close
