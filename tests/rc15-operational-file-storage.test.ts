@@ -337,3 +337,54 @@ test('Campaign Content/Production files enforce brand, platform, dates and isola
   assert.equal(result.files.length, 1)
   assert.equal(result.files[0].id, 'operational-1')
 })
+
+
+test('large provider-linked MP4 uses exact-parent verification, never buffers video or claims SHA-256', async () => {
+  const state = client()
+  let parent = 'incorrect-folder'
+  let reads = 0
+  const handler = createOperationalFileRouteHandler({
+    createClient: () => state.db,
+    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
+    storage: {
+      async getMetadata() {
+        return {
+          id: 'large-video-id', kind: 'file', name: '2026-live.mp4',
+          mime_type: 'video/mp4', size_bytes: 312 * 1024 * 1024,
+          parent_ids: [parent], provider_metadata: {},
+        }
+      },
+      async getViewUrl() { return 'https://drive.google.com/file/d/large-video-id/view' },
+      async read() { reads += 1; throw new Error('Large files must not be buffered') },
+      async upload() { throw new Error('Large files must not pass serverless upload') },
+      async delete() { throw new Error('Unexpected delete') },
+      async ensureFolder() { throw new Error('Unexpected folder creation') },
+    } as never,
+    routes: { async resolvePlacement() { return base } },
+    materializeFolders: async () => 'verified-folder',
+    routingMode: 'database',
+  })
+  const attach = () => new Request('https://example.test/api/operational-files', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'attach_existing', category: 'video_recording',
+      external_file_id: 'large-video-id', provider: 'google_drive',
+      brand_id: 'brand-1', platform_id: 'platform-1',
+      period_date: '2026-09-14', execution_source: 'internal' }),
+  })
+  const denied = await handler.POST(attach())
+  assert.equal(denied.status, 409)
+  assert.equal(state.rows.length, 0)
+
+  parent = 'verified-folder'
+  const accepted = await handler.POST(attach())
+  assert.equal(accepted.status, 200)
+  assert.equal(state.rows.length, 1)
+  assert.equal(state.rows[0].size_bytes, 312 * 1024 * 1024)
+  assert.equal(state.rows[0].mime_type, 'video/mp4')
+  assert.equal(state.rows[0].integrity_status, 'provider_reference')
+  assert.equal(state.rows[0].checksum_sha256, null)
+  const access = await handler.GET(new Request('https://example.test/api/operational-files?file_id=operational-1'))
+  assert.equal(access.status, 302)
+  assert.equal(access.headers.get('Location'), 'https://drive.google.com/file/d/large-video-id/view')
+  assert.equal(reads, 0)
+})
