@@ -8,6 +8,8 @@ import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { createClient as createSessionClient } from '@/lib/supabase/server'
 import { fileStorageService } from '@/lib/services/fileStorageService'
 import { readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
+import { isSafeHistoricalPeriodLabel, resolveOperationalStoragePlacement, type OperationalLogicalCategory, type OperationalStorageRoute } from '@/lib/files/operationalStoragePlacementResolver'
+import { resolveOperationalFilePlacement } from '@/lib/files/operationalFilePlacement'
 
 const id = z.string().trim().min(1).max(120)
 const source = z.enum(['internal', 'agency'])
@@ -37,6 +39,10 @@ const legacyRouteInput = z.object({
     'THANG_M_DASH_YEAR', 'THANG_M_DOT_YEAR', 'THANG_M_DOT_SPACE_YEAR',
     'T_M_DOT_YEAR', 'THANG_UPPER_M_DASH_YEAR',
   ]),
+  period_label_overrides: z.record(
+    z.string().regex(/^\d{4}-(?:0[1-9]|1[0-2])$/u),
+    z.object({ default: z.string().refine(isSafeHistoricalPeriodLabel) }).strict(),
+  ).optional(),
   folder_labels: z.object({
     dashboard: legacySegment,
     live_visual_internal: legacySegment,
@@ -45,6 +51,12 @@ const legacyRouteInput = z.object({
     data_source: z.array(legacySegment).min(1).max(5),
   }).strict(),
   confirmation: z.literal('I_VERIFIED_LEGACY_PROVIDER_BASE_AND_PATHS'),
+}).strict()
+const previewLegacyRouteInput = legacyRouteInput.omit({
+  action: true, confirmation: true,
+}).extend({
+  action: z.literal('preview_legacy_route'),
+  shift_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
 }).strict()
 const brandInput = z.object({
   action: z.literal('classify_brand_profile'),
@@ -182,7 +194,7 @@ export function createOperationalStorageSetupHandler(deps: {
         if (!actor.businessUserId) fail('STORAGE_SETUP_ACTOR_NOT_READY')
         const raw = await readJsonBody(request, 8192)
         const db = client()
-        const parsed = z.union([routeInput, legacyRouteInput, brandInput, shiftInput]).parse(raw)
+        const parsed = z.union([routeInput, legacyRouteInput, previewLegacyRouteInput, brandInput, shiftInput]).parse(raw)
 
         if (parsed.action === 'classify_brand_profile') {
           const found = await db.from('brands').select('id,storage_profile')
@@ -232,13 +244,13 @@ export function createOperationalStorageSetupHandler(deps: {
         const rootId = configuredRoot()?.trim()
         if (!rootId || rootId !== parsed.root_folder_id) fail('STORAGE_SETUP_ROOT_MISMATCH')
         const [brand, platform] = await Promise.all([
-          db.from('brands').select('id,storage_profile').eq('id', parsed.brand_id)
+          db.from('brands').select('id,name,storage_profile').eq('id', parsed.brand_id)
             .is('deleted_at', null).maybeSingle(),
-          db.from('platforms').select('id').eq('id', parsed.platform_id)
+          db.from('platforms').select('id,name').eq('id', parsed.platform_id)
             .is('deleted_at', null).maybeSingle(),
         ])
         if (brand.error || platform.error || !brand.data || !platform.data) fail('STORAGE_SETUP_CONTEXT_NOT_FOUND')
-        const isLegacy = parsed.action === 'register_legacy_route'
+        const isLegacy = parsed.action === 'register_legacy_route' || parsed.action === 'preview_legacy_route'
         if (isLegacy) {
           if (brand.data.storage_profile !== parsed.storage_profile) fail('STORAGE_SETUP_PROFILE_NOT_READY')
         } else if (brand.data.storage_profile !== 'CANONICAL_V1') {
@@ -258,6 +270,50 @@ export function createOperationalStorageSetupHandler(deps: {
           .is('subbrand_key', null).eq('active', true).maybeSingle()
         if (existing.error) fail('STORAGE_SETUP_NOT_READY')
         if (existing.data) fail('STORAGE_SETUP_ROUTE_CONFLICT')
+        if (parsed.action === 'preview_legacy_route') {
+          // Fully pure path planning after checking only existing folder ancestry.
+          // Does not create folders, upload files, write metadata or classify shifts.
+          const candidate: OperationalStorageRoute = {
+            id: 'UNSAVED_PREVIEW', provider: 'google_drive',
+            execution_source: parsed.execution_source,
+            brand_id: parsed.brand_id, platform_id: parsed.platform_id,
+            subbrand_key: null, active: true,
+            storage_profile: parsed.storage_profile,
+            root_folder_id: rootId, base_folder_id: parsed.base_folder_id,
+            folder_labels: parsed.folder_labels,
+            period_naming_style: parsed.period_naming_style,
+            period_label_overrides: parsed.period_label_overrides ?? {},
+          }
+          const mk = (logicalCategory: OperationalLogicalCategory) =>
+            resolveOperationalStoragePlacement(candidate, {
+              provider: 'google_drive',
+              executionSource: parsed.execution_source,
+              brandId: parsed.brand_id,
+              platformId: parsed.platform_id,
+              subbrandKey: null, shiftDate: parsed.shift_date,
+              logicalCategory, fileName: 'route-preview.txt',
+              brandLabel: String(brand.data.name),
+              platformLabel: String(platform.data.name),
+            })
+          const dataSource = mk('data_source')
+          const v2 = resolveOperationalFilePlacement(dataSource, 'production_asset', {
+            brandId: parsed.brand_id,
+            platformId: parsed.platform_id,
+            executionSource: parsed.execution_source,
+          })
+          return Response.json({
+            ok: true, read_only: true,
+            legacy: {
+              dashboard: mk('dashboard').folderPath,
+              live_visual: mk('live_visual').folderPath,
+              data_report: mk('data_report').folderPath,
+              data_source: dataSource.folderPath,
+              base_folder_id: parsed.base_folder_id,
+            },
+            v2: { folder_path: v2.folderPath, base_folder_id: v2.baseFolderId },
+            note: 'PATHS_ONLY_NO_PROVIDER_CATEGORY_EXISTENCE_VERIFICATION',
+          }, { headers: { 'Cache-Control': 'no-store' } })
+        }
         // No folder created and no shift mutated. Only explicitly approved
         // exact brand/platform/source mapping is inserted.
         const inserted = await db.from('operational_storage_routes').insert({
@@ -269,6 +325,8 @@ export function createOperationalStorageSetupHandler(deps: {
           base_folder_id: isLegacy ? parsed.base_folder_id : rootId,
           folder_labels: isLegacy ? parsed.folder_labels : {},
           period_naming_style: isLegacy ? parsed.period_naming_style : 'THANG_M_DOT_YEAR',
+          period_label_overrides: isLegacy ? parsed.period_label_overrides ?? {} : {},
+          folder_label_overrides: {},
           active: true, approved_by: actor.businessUserId,
           approved_at: new Date().toISOString(),
         }).select('id,brand_id,platform_id,execution_source,active').single()
