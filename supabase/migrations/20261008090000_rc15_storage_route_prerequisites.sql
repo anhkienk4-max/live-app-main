@@ -64,6 +64,10 @@ create table if not exists public.operational_storage_routes (
   folder_labels jsonb not null default '{}'::jsonb
     check (jsonb_typeof(folder_labels) = 'object'),
   period_naming_style text not null check (btrim(period_naming_style) <> ''),
+  period_label_overrides jsonb not null default '{}'::jsonb
+    check (jsonb_typeof(period_label_overrides) = 'object'),
+  folder_label_overrides jsonb not null default '{}'::jsonb
+    check (jsonb_typeof(folder_label_overrides) = 'object'),
   active boolean not null default true,
   approved_by text references public.business_users(id) on delete set null,
   approved_at timestamptz not null default statement_timestamp(),
