@@ -56,6 +56,30 @@ Campaign Brief, Script/Caption, Content Plan, Production Assets and Livecut.
 - Campaign bulk Excel imports can contain multiple brands; no raw bulk source
   is automatically written to a per-brand folder.
 
+## Confidential provider write hold (release safety)
+
+Admin RBAC by itself does not secure the external Google Drive/OneDrive
+destination. The Production `LIVESTREAM REPORT` root was observed to have
+`anyone:writer` and the owner explicitly deferred permission changes.
+Therefore **new** `payment_document` (Finance) and `system_export` writes
+are now **blocked by default at the server** — including multipart upload,
+existing-provider-ID attachment and on-demand System Export generation.
+The gateway returns HTTP 423 with
+`OPERATIONAL_FILE_CONFIDENTIAL_STORAGE_NOT_APPROVED` before uploading, linking
+or retrieving sensitive export rows. Admin UI also disables the relevant
+write actions and explains the hold. Existing records remain readable and
+deletable by authorized roles, to preserve cleanup and migration options.
+
+A separate operator-reviewed production release must assess actual destination
+permissions and set `STORAGE_CONFIDENTIAL_UPLOAD_APPROVED=true` only after
+the provider/root ACL meets the approved confidential-document policy.
+This environment flag is an **approval assertion, not a technical ACL
+verification** and must not be enabled simply to silence HTTP 423.
+It does not alter ACLs, grants or provider files. General operational
+file categories remain available under their separate role and route checks.
+This flag covers only the two confidential categories above; other files may
+still be sensitive depending on content and must be assessed before UAT.
+
 ## Admin scoped System Exports (code staged, NOT physical UAT)
 
 The `/storage` Admin-only action `generate_system_export` builds a **daily, brand/platform/execution-source scoped JSON snapshot** from the canonical Supabase database. It contains full structured rows from `shifts`, `reports`, `dashboard_updates`, `report_images`, `live_report_images` and `stored_files` (metadata only, no media binaries), with per-table counts. It preserves all currently stored metric dictionaries and OCR fields in those rows. This is NOT a full Supabase SQL backup, is NOT a background scheduled backup, and is NOT a restore mechanism.
