@@ -33,6 +33,7 @@ type CatalogResponse = {
   categories: Category[]
   max_single_upload_bytes: number
   confidential_write_ready: boolean
+}
 
 type ListResponse = { ok: boolean; files?: Stored[]; error?: { code?: string } }
 
