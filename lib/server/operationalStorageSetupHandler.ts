@@ -258,7 +258,8 @@ export function createOperationalStorageSetupHandler(deps: {
         }
         const folder = await getMetadata(rootId)
         if (folder.kind !== 'folder' || folder.id !== rootId) fail('STORAGE_SETUP_ROOT_MISMATCH')
-        if (parsed.action === 'register_legacy_route') {
+        if (isLegacy) {
+          // Previews and writes MUST both validate actual provider ancestry.
           // The original four categories retain their historical layout.
           // The new 15 V2 categories use the isolated ADA_STORAGE_V2 namespace
           // beneath rootId. Validate the historical base without rewriting it.
