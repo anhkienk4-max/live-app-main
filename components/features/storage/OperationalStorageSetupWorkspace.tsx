@@ -24,6 +24,23 @@ type PathPreview = {
   v2: { folder_path: string; base_folder_id: string }
 }
 
+function parsePeriodDateRanges(raw: string) {
+  const rows: Array<{ start_date: string; end_date: string;
+    category: 'dashboard' | 'live_visual' | 'data_report' | 'data_source'; label: string }> = []
+  for (const line of raw.split(/\r?\n/u)) {
+    if (!line.trim()) continue
+    const match = /^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})\|(dashboard|live_visual|data_report|data_source)\|(.+)$/u.exec(line)
+    if (!match || match[4].includes('/') || match[4].includes('..')) {
+      throw new Error('Kỳ P: định dạng YYYY-MM-DD..YYYY-MM-DD|dashboard|Tên kỳ, mỗi kỳ một dòng.')
+    }
+    rows.push({
+      start_date: match[1], end_date: match[2],
+      category: match[3] as typeof rows[number]['category'], label: match[4],
+    })
+  }
+  return rows
+}
+
 function parsePeriodOverrides(raw: string): Record<string, { default: string }> {
   const value: Record<string, { default: string }> = {}
   for (const line of raw.split(/\r?\n/u)) {
@@ -56,6 +73,7 @@ export function OperationalStorageSetupWorkspace() {
   const [legacyBaseId, setLegacyBaseId] = React.useState('')
   const [legacyPeriodStyle, setLegacyPeriodStyle] = React.useState('THANG_M_DASH_YEAR')
   const [periodOverridesText, setPeriodOverridesText] = React.useState('')
+  const [periodRangesText, setPeriodRangesText] = React.useState('')
   const [previewDate, setPreviewDate] = React.useState('')
   const [routePreview, setRoutePreview] = React.useState<(PathPreview & { signature: string }) | null>(null)
   const [legacyLabels, setLegacyLabels] = React.useState({
@@ -116,7 +134,7 @@ export function OperationalStorageSetupWorkspace() {
   const previewSignature = JSON.stringify([
     brandId, platformId, executionSource, rootId, legacyBaseId,
     selectedBrand?.storage_profile, legacyPeriodStyle, legacyLabels,
-    periodOverridesText, previewDate,
+    periodOverridesText, periodRangesText, previewDate,
   ])
   const previewReady = routePreview?.signature === previewSignature
 
@@ -127,6 +145,7 @@ export function OperationalStorageSetupWorkspace() {
     storage_profile: selectedBrand?.storage_profile,
     period_naming_style: legacyPeriodStyle,
     period_label_overrides: parsePeriodOverrides(periodOverridesText),
+    period_date_ranges: parsePeriodDateRanges(periodRangesText),
     folder_labels: {
       dashboard: legacyLabels.dashboard,
       live_visual_internal: legacyLabels.live_visual_internal,
@@ -269,6 +288,16 @@ export function OperationalStorageSetupWorkspace() {
             <textarea className={control} rows={3}
               placeholder={'2026-07=Tháng 7-2026\\n2026-09=Tháng 9 - 2026'}
               value={periodOverridesText} onChange={e => setPeriodOverridesText(e.target.value)} />
+          </label>
+          <label className="block space-y-1 text-sm">
+            <span>Kỳ P theo khoảng ngày và loại file (không suy đoán từ tên tháng)</span>
+            <textarea className={control} rows={3}
+              placeholder={'2026-04-20..2026-05-16|dashboard|P5 | 20/04 - 16/05'}
+              value={periodRangesText} onChange={e => setPeriodRangesText(e.target.value)} />
+            <span className="text-xs text-muted-foreground">
+              Định dạng: YYYY-MM-DD..YYYY-MM-DD|dashboard|Tên kỳ. Loại: dashboard, live_visual, data_report, data_source.
+              Không khai báo nếu chưa xác nhận ngày bắt đầu/kết thúc trên Drive.
+            </span>
           </label>
           {([
             ['dashboard', 'Folder Dashboard'],
