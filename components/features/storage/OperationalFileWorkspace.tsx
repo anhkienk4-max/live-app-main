@@ -64,6 +64,7 @@ export function OperationalFileWorkspace() {
   const [externalInput, setExternalInput] = React.useState('')
   const [folderUrl, setFolderUrl] = React.useState('')
   const [folderPath, setFolderPath] = React.useState('')
+  const [exportCounts, setExportCounts] = React.useState<Record<string, number> | null>(null)
   const requestKey = shiftId.trim()
     ? 'shift_id=' + encodeURIComponent(shiftId.trim())
     : new URLSearchParams({
@@ -161,6 +162,33 @@ export function OperationalFileWorkspace() {
         await refresh()
       }
     } catch (err) { setError(err instanceof Error ? err.message : 'Provider action failed') }
+    finally { setBusy(false) }
+  }
+
+  const generateSystemExport = async () => {
+    if (shiftId.trim() || campaignId || !brandId || !platformId || busy) return
+    setBusy(true)
+    setError('')
+    setExportCounts(null)
+    setNotice('')
+    try {
+      const response = await fetch('/api/operational-files', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'generate_system_export', brand_id: brandId,
+          platform_id: platformId, period_date: periodDate,
+          execution_source: executionSource, provider,
+        }),
+      })
+      const data = await response.json() as {
+        ok?: boolean; reused?: boolean; counts?: Record<string, number>; error?: { code?: string }
+      }
+      if (!response.ok || !data.ok) throw new Error(data.error?.code || 'System export failed')
+      setExportCounts(data.counts || null)
+      setNotice(data.reused ? 'System Export đã tồn tại, không tạo duplicate.' :
+        'Đã tạo System Export JSON và lưu vào Drive/OneDrive.')
+      await refresh()
+    } catch (err) { setError(err instanceof Error ? err.message : 'System export failed') }
     finally { setBusy(false) }
   }
 
@@ -343,6 +371,25 @@ export function OperationalFileWorkspace() {
           (integrity_status = provider_reference). Chỉ dùng file có nguồn đáng tin cậy.
         </p>
       </section>
+
+      {catalog?.categories.some(item => item.id === 'system_export') && (
+        <section className="space-y-3 rounded-xl border p-4" aria-label="Admin System Export">
+          <h2 className="font-semibold">System Export — Admin</h2>
+          <p className="text-sm text-muted-foreground">
+            Xuất bản snapshot JSON của một ngày vận hành theo Brand / Platform / Internal hoặc Agency,
+            gồm Shift, Report, KPI timeline và metadata bằng chứng. Không phải backup toàn bộ database.
+            Khi vượt giới hạn hệ thống sẽ báo lỗi thay vì xuất thiếu bản ghi.
+          </p>
+          <button className={buttonClass} type="button"
+            disabled={busy || Boolean(shiftId.trim()) || Boolean(campaignId) || !brandId || !platformId}
+            onClick={() => void generateSystemExport()}>
+            Xuất dữ liệu ngày đang chọn lên Drive
+          </button>
+          {exportCounts && <p role="status" className="text-sm break-words">
+            {Object.entries(exportCounts).map(([key, value]) => `${key}: ${value}`).join(' · ')}
+          </p>}
+        </section>
+      )}
 
       {error && <p role="alert" className="rounded-md border border-red-300 px-3 py-2 text-sm text-red-700">{error}</p>}
       {notice && <p role="status" className="rounded-md border px-3 py-2 text-sm">{notice}</p>}
