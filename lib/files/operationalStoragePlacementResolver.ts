@@ -242,7 +242,8 @@ function exactRouteKey(route: OperationalStorageRoute, input: OperationalStorage
     && route.execution_source === input.executionSource
     && route.brand_id === input.brandId
     && (route.platform_id === null || route.platform_id === input.platformId)
-    && (route.subbrand_key === null || route.subbrand_key === input.subbrandKey)
+    // A NULL-subbrand route is never a fallback for a specific subbrand.
+    && route.subbrand_key === input.subbrandKey
 }
 
 /** Selects only exact-ID route candidates; ties fail closed instead of relying on DB order. */
