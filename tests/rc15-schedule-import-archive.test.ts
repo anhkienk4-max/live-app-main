@@ -54,15 +54,15 @@ test('multi-brand schedules are partitioned and never store a shared original in
   assert.deepEqual([...seen].sort(), ['brand-a', 'brand-b'])
 })
 
-test('single-brand reviewed schedule preserves original Excel as a separate artifact', async () => {
+test('even a single-brand preview does not leak unaudited raw workbook content', async () => {
   const plan = planScheduleImportArchive({
     batchId: 'batch-2',
     previews: [preview(2, 'Alpha Beauty', 'TikTok Shop'), preview(3, 'Alpha Beauty', 'TikTok Shop', '2026-10-10')],
     brands, platforms, sourceType: 'excel', sourceFile: original(), maxFileBytes: 1024 * 1024,
   })
-  assert.equal(plan.files.length, 2)
-  assert.equal(plan.originalSourceArchived, true)
-  assert.ok(plan.files.some(item => item.kind === 'original_source' && item.file.name === 'All_Brands.xlsx'))
+  assert.equal(plan.files.length, 1)
+  assert.equal(plan.originalSourceArchived, false)
+  assert.ok(plan.files.every(item => item.kind === 'normalized_preview'))
   assert.ok(plan.files.every(item => item.scope.brand_id === 'brand-a'))
 })
 
