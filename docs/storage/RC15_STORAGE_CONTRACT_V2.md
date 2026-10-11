@@ -105,16 +105,19 @@ Legacy Dashboard, Live Visual, DATA/SOURCE and DATA/REPORT continue to resolve
 using their original approved legacy route profile, label mapping and period
 naming. **Never migrate or rearrange existing folders merely to enable V2.**
 
-For 15 *new* V2 file categories on existing legacy routes, placement is
-deliberately rooted at the route's verified Google Drive root and uses a
-non-overlapping, ID-isolated namespace:
+For all 15 *new* V2 file categories, legacy route profiles **fail closed**
+with `STORAGE_CATEGORY_NOT_CONFIGURED` until an explicit, compatible, verified
+provider mapping is approved. This prevents a new `ADA_STORAGE_V2` namespace
+from being created under `LIVESTREAM REPORT` (already the ADA root), or new
+categories from being written into shared historical brand/subbrand folders
+without verification. Original Dashboard / Visibility / DATA routes remain
+unchanged. No historical files are moved.
 
-`<Drive root>/ADA_STORAGE_V2/<brand_id>/<platform_id>/<INTERNAL|AGENCY>/<legacy period label>/<V2 category path>/...`
-
-This is logical storage separation by verified database IDs, **not security
-isolation by Drive ACL**. It does not justify putting sensitive Finance/System
-Export files on a root with `anyone:writer`. Never claim V2 Production release
-secure before access controls are reviewed.
+The explicit `EXISTING_BRAND_YEAR_PERIOD_PLATFORM` profile supports verified
+new Brand folders directly under the existing Drive root, then
+`2026/THÁNG 09.2026/SHOPEE_LIVE/<V2 category>` with no duplicate ADA or
+Brand level. Finance/System Export uploads stay blocked independently until
+a separate confidential-safe Drive destination is approved.
 
 Admin `/storage/setup` can now register exact root, base folder, period
 naming and category labels after physically reviewing **three legacy profiles
