@@ -82,8 +82,12 @@ export function createWorkforceActualHandler(deps:Depends={}) {
               .eq('id',action.staff_id).is('deleted_at',null).maybeSingle(),
           ])
           if(shift.error||staff.error)return fail('WORKFORCE_SCOPE_LOOKUP_FAILED',503)
-          if(!shift.data||shift.data.status==='cancelled'||!staff.data||staff.data.status!=='active')
+          if(!shift.data||!staff.data||staff.data.status!=='active')
             return fail('WORKFORCE_SHIFT_OR_STAFF_INVALID',409)
+          // Future/scheduled shifts cannot be treated as completed attendance,
+          // and a missing clock-in must not be called no-show automatically.
+          if(shift.data.status!=='completed')
+            return fail('WORKFORCE_SHIFT_NOT_COMPLETED',409)
           const {data,error}=await client.from('workforce_actual_segments').insert({
             shift_id:action.shift_id,staff_id:action.staff_id,
             operational_role:action.operational_role,event_kind:action.event_kind,
