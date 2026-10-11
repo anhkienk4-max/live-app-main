@@ -154,6 +154,30 @@ jobs:
                 and sqlerrm <> 'WORKFORCE_PAYROLL_ORIGINAL_PERIOD_LOCKED' then raise; end if;
             end;
           end $rc16$;
+          -- Ensure an uncompleted Shift cannot become approved actual work,
+          -- even when a caller bypasses the Next.js API.
+          insert into public.shifts(id,date,status)
+            values ('shift-future','2026-11-20','scheduled');
+          do $unfinished$
+          declare v_id text;
+          begin
+            insert into public.workforce_actual_segments(
+              shift_id,staff_id,operational_role,event_kind,
+              actual_start_at,actual_end_at,evidence_note,created_by
+            ) values (
+              'shift-future','staff-1','host','worked',
+              '2026-11-20T09:00:00+07','2026-11-20T11:00:00+07',
+              'Future shift evidence not verified','admin-1'
+            ) returning id into v_id;
+            begin
+              update public.workforce_actual_segments set review_status='approved',
+                reviewed_by='finance-1',review_note='Incorrect early approval',
+                reviewed_at=now(),version=2 where id=v_id;
+              raise exception 'unfinished shift was approved';
+            exception when sqlstate 'P0001' then
+              if sqlerrm <> 'WORKFORCE_SHIFT_NOT_COMPLETED' then raise; end if;
+            end;
+          end $unfinished$;
           SQL
 
       - name: TypeScript type check
