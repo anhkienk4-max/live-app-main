@@ -9,7 +9,8 @@ import {
 import { resolveOperationalFilePlacement } from '@/lib/files/operationalFilePlacement'
 import { createOperationalFileRouteHandler } from '@/lib/server/operationalFileRouteHandler'
 import type { FileUploadInput } from '@/lib/files/fileProvider'
-import { selectOperationalStorageRoute, type OperationalStoragePlacement, type OperationalStorageRoute }
+import { resolveOperationalStoragePlacement, selectOperationalStorageRoute,
+  type OperationalStoragePlacement, type OperationalStorageRoute }
   from '@/lib/files/operationalStoragePlacementResolver'
 
 const base = {
@@ -42,6 +43,39 @@ test('subbrand-scoped files must not fallback to a shared NULL-subbrand route', 
   const approved = { ...generic, id: 'verified-subbrand-route', subbrand_key: 'verified-subbrand' }
   assert.equal(selectOperationalStorageRoute([generic, approved], key).id, approved.id)
   assert.equal(selectOperationalStorageRoute([generic, approved], { ...key, subbrandKey: null }).id, generic.id)
+})
+
+test('approved existing-brand profile uses physical Brand/year/month/platform hierarchy without extra ADA or Brand', () => {
+  const route: OperationalStorageRoute = {
+    id: 'approved', provider: 'google_drive', execution_source: 'internal',
+    brand_id: 'brand-1', platform_id: 'platform-1', subbrand_key: null,
+    storage_profile: 'EXISTING_BRAND_YEAR_PERIOD_PLATFORM',
+    root_folder_id: 'livestream-root', base_folder_id: 'asm-existing-brand',
+    folder_labels: { platform: 'SHOPEE_LIVE' },
+    period_naming_style: 'THANG_MM_DOT_YEAR', active: true,
+  }
+  const scope = {
+    provider: 'google_drive' as const, executionSource: 'internal' as const,
+    brandId: 'brand-1', platformId: 'platform-1', subbrandKey: null,
+    shiftDate: '2026-09-30', fileName: 'daily-report.xlsx',
+    brandLabel: 'ASM AI Livestream', platformLabel: 'Shopee Live',
+    logicalCategory: 'data_report' as const,
+  }
+  const selected = selectOperationalStorageRoute([route], scope)
+  const existing = resolveOperationalStoragePlacement(selected, scope)
+  assert.equal(existing.baseFolderId, 'asm-existing-brand')
+  assert.deepEqual(existing.folderSegments, [
+    '2026', 'THÁNG 09.2026', 'SHOPEE_LIVE', 'DATA', 'REPORT',
+  ])
+  assert.equal(existing.folderPath.includes('ADA/'), false)
+  assert.equal(existing.folderPath.includes('ASM AI Livestream'), false)
+  const source = resolveOperationalStoragePlacement(route,
+    { ...scope, logicalCategory: 'data_source' })
+  assert.deepEqual(resolveOperationalFilePlacement(source, 'video_livecut').folderSegments,
+    ['2026', 'THÁNG 09.2026', 'SHOPEE_LIVE', 'VIDEO', 'LIVECUT'])
+  assert.throws(() => resolveOperationalStoragePlacement(
+    { ...route, folder_labels: {} }, scope
+  ), { message: 'STORAGE_ROUTE_CONFIG_INVALID' })
 })
 
 test('V2 categories have unique canonical folders under the same brand/platform/month', () => {
