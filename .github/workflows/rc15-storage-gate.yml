@@ -18,10 +18,10 @@ on:
       - 'app/(dashboard)/storage/**'
       - 'tests/rc14-*.test.ts'
       - 'tests/rc15-*.test.ts'
-      - 'supabase/migrations/20261008090000_rc15_storage_route_prerequisites.sql'
-      - 'supabase/migrations/20261008093000_rc15_shift_rpc_compatibility.sql'
+      - 'supabase/migrations/20261011091925_rc15_storage_route_prerequisites.sql'
+      - 'supabase/migrations/20261011092015_rc15_shift_rpc_compatibility.sql'
       - 'tests/fixtures/rc15_production_shift_rpc_baseline.sql'
-      - 'supabase/migrations/20261009000000_rc15_operational_files.sql'
+      - 'supabase/migrations/20261011092051_rc15_operational_files.sql'
   workflow_dispatch:
 
 permissions:
@@ -88,12 +88,12 @@ jobs:
           SQL
           # Existing production baseline is missing RC1.3A routes and execution_source.
           # Verify the additive prerequisite can be applied twice, without backfill.
-          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261008090000_rc15_storage_route_prerequisites.sql
-          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261008090000_rc15_storage_route_prerequisites.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261011091925_rc15_storage_route_prerequisites.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261011091925_rc15_storage_route_prerequisites.sql
           psql -v ON_ERROR_STOP=1 -f tests/fixtures/rc15_production_shift_rpc_baseline.sql
-          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261008093000_rc15_shift_rpc_compatibility.sql
-          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261009000000_rc15_operational_files.sql
-          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261009000000_rc15_operational_files.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261011092015_rc15_shift_rpc_compatibility.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261011092051_rc15_operational_files.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261011092051_rc15_operational_files.sql
           psql -v ON_ERROR_STOP=1 <<'SQL'
           do $rc15$
           begin
