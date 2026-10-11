@@ -4,4 +4,4 @@
 - [x] Verify synthetic legacy data, RPCs, RLS/grants and payroll on PG16/17.
 - [x] Publish UI contract, conflict matrix, backup/recovery and GO/NO-GO package.
 - [x] Run Node22/24, typecheck, lint, build, memory and diff checks.
-- [ ] Verify exact-SHA GitHub CI after feature-branch delivery.
+- [x] Verify exact-SHA GitHub CI after feature-branch delivery (implementation781ebde,run38164109865 success; final checkpoint independently verified in handoff).

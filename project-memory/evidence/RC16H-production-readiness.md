@@ -26,7 +26,11 @@ uses actual authorization/staffing/audit/notification behavior, synthetic rows.
 Node22.23.3/24.18.0 security/auth/payroll106/106 PASS; Storage131/131 PASS after
 verified MIME regression and stale assertion fixes. Node22/24 typecheck and build
 PASS; focused lint0 errors/12 existing fixture warnings, diff and memory PASS.
-Exact-SHA GitHub CI still pending delivery verification. No UAT claim.
+Implementation GitHub CI38164109865 completed/success at
+781ebde19594e3929bfb73f35c430fddd05cc088; both Node22/PG16 and Node24/PG17 lanes
+PASS237 tests each (90 RC16,16 auth,131 Storage), plus PG integrity/49 B/races/
+21 G/10 H groups,typecheck,lint,build,diff. Documentation/memory checkpoint final
+SHA requires separate final CI verification in handoff. No UAT claim.
 
 Current reports: docs/workforce/RC16H_PRODUCTION_READINESS.md,
 RC16H_PRODUCTION_APPROVAL.md,RC16H_ANTIGRAVITY_INTEGRATION.md,

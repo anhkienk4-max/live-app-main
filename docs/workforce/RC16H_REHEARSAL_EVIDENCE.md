@@ -56,8 +56,13 @@ full backup restore, Auth/Storage extension test hay provider physical UAT.
   nhận credential_free_build, không cấp runtime DB access.
 
 Local Node22/24 typecheck và Next build PASS trên code cuối; memory validation
-và diff check PASS. CI final SHA chưa xác nhận trước push; không suy diễn PASS
-từ local rehearsal. Mỗi lane CI giữ nguyên các gate PG16/17 và thêm broad Storage.
+và diff check PASS. GitHub run [38164109865](https://github.com/anhkienk4-max/live-app-main/actions/runs/38164109865)
+đã completed/success trên implementation SHA `781ebde19594e3929bfb73f35c430fddd05cc088`.
+Hai lane Node22.23.3/PG16 và Node24.18.0/PG17 đều PASS:90 RC16 +16 auth +131 Storage
+=237 tests/lane,0 fail; PG integrity/49 B assertions/races/21 G/10 H groups,
+typecheck, focused lint và Next build đều success. Checkpoint documentation/memory
+sau implementation cần kiểm tra CI exact final SHA riêng trong handoff; không
+suy diễn từ run implementation. Không coi CI là Production UAT/authorization.
 
 ## Hashes review artifacts
 
