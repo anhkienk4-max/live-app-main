@@ -30,6 +30,46 @@ test('Payroll protects all salary rates/periods from leader role without DB acce
   assert.equal(a.status,403)
   assert.equal(b.status,403)
 })
+test('Locked payroll CSV preserves negative VND numbers without exposing formulas',async()=>{
+  const payrollRow={
+    staff_id:'=HYPERLINK("https://unsafe.invalid","test")',
+    operational_role:'host',segment_id:'seg-1',actual_minutes:90,
+    payable_minutes:90,overtime_minutes:0,rate_vnd_per_hour:100000,
+    overtime_multiplier_basis_points:10000,gross_vnd:150000,
+    adjustment_vnd:-1000,net_vnd:149000,
+    adjustment_reason:'Correction approved',calculation_version:'rc16-v1',
+  }
+  const fakeClient=()=>({
+    from(name:string){
+      const q={
+        select(_fields:string){return q},
+        eq(_field:string,_value:unknown){return q},
+        order(_field:string,_options:unknown){return q},
+        limit(_max:number){
+          return Promise.resolve({data:name==='workforce_payroll_lines'?[payrollRow]:[],error:null})
+        },
+        maybeSingle(){
+          return Promise.resolve({data:{status:'locked',period_start:'2026-09-01',
+            period_end:'2026-09-30'},error:null})
+        },
+      }
+      return q
+    },
+  })
+  const handler=createWorkforcePayrollHandler({
+    createClient:fakeClient as never,
+    resolveUser:async()=>({id:'auth-admin',businessUserId:'admin-1',systemPermission:'admin'}),
+  })
+  const response=await handler.GET(get(
+    'https://example.test/api/workforce/payroll?period_id=period-1&export=csv',
+  ))
+  assert.equal(response.status,200)
+  const csv=await response.text()
+  assert.ok(csv.includes(',"-1000","149000",'))
+  assert.equal(csv.includes(`"'-1000"`),false)
+  assert.ok(csv.includes(`"'=HYPERLINK`))
+})
+
 test('Workforce Performance allows own scope only; cannot override lateness policy',async()=>{
   const handler=createWorkforcePerformanceHandler({
     createClient:mustNotUseDb,resolveUser:member,lateGraceMinutes:()=>5,
