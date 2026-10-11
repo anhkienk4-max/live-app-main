@@ -449,15 +449,18 @@ async function uploadReportImage(
     existing.data as unknown as Record<string, unknown>, 'image_type', parsed.data.image_type, provider,
     dependencies.routingMode, 'image_url',
   )
-  await inUploadPhase('validation', () => validateFileUploadInput({
-    name,
-    mime_type: fileValue.type,
-    size_bytes: bytes.byteLength,
-    content: bytes,
-    entity_type: 'report',
-    entity_id: parsed.data.report_id,
+  await inUploadPhase('validation', () => {
+    if (!String(fileValue.type || '').toLowerCase().startsWith('image/')) throw new Error('FILE_MIME_NOT_ALLOWED')
+    validateFileUploadInput({
+      name,
+      mime_type: fileValue.type,
+      size_bytes: bytes.byteLength,
+      content: bytes,
+      entity_type: 'report',
+      entity_id: parsed.data.report_id,
     created_by: user.businessUserId || user.id,
     logical_path: logicalPath,
+    })
   }))
   const exactParentId = await inUploadPhase('folder_materialization', () => dependencies.materializeFolders(placement))
   const result = await inUploadPhase('provider_upload', () => storage.upload({

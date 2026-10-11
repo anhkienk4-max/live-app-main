@@ -36,6 +36,12 @@ const initialFilters = (): Filters => ({ preset: '30d', ...rangeFor('30d'), bran
 
 type DashboardDataset = Pick<CommonProps, 'shifts' | 'reports' | 'brands' | 'platforms' | 'campaigns' | 'users' | 'registrations' | 'swapRequests'>
 
+export function calculateAggregate(reports: Array<Record<string, unknown>>, key: 'revenue' | 'orders'): number | null {
+  const numeric = reports.map(r => r[key]).filter((v): v is number => typeof v === 'number')
+  if (!numeric.length) return null
+  return numeric.reduce((acc, v) => acc + v, 0)
+}
+
 export function DashboardOverview() {
   const {currentUser} = useCurrentUser()
   const [data,setData] = React.useState<DashboardDataset | null>(null)

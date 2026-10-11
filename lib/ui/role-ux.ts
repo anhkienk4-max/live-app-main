@@ -1,4 +1,4 @@
-import { Home, Calendar, Radio, FileText, User, Settings, Users, Package, Megaphone, BarChart3, RefreshCw, History, Bell, UserCheck, type LucideIcon } from 'lucide-react'
+import { Home, Calendar, Radio, FileText, User, Settings, Users, Package, Megaphone, BarChart3, RefreshCw, History, Bell, UserCheck, FolderArchive, type LucideIcon } from 'lucide-react'
 import { SystemPermission, User as UserType } from '@/lib/types/database.types'
 import { hasAnyPermission, Permission } from '@/lib/permissions'
 
@@ -29,6 +29,7 @@ const navCatalogue: Record<string, NavItem> = {
   calendar:      { name: 'Calendar',      href: '/calendar',      icon: Calendar },
   live:          { name: 'Live',          href: '/live',          icon: Radio },
   reports:       { name: 'Reports',       href: '/reports',       icon: FileText },
+  storage:       { name: 'Kho file',      href: '/storage',       icon: FolderArchive, requiredPermissions: ['reports.review'] },
   swaps:         { name: 'Swaps',         href: '/swaps',         icon: RefreshCw },
   analytics:     { name: 'Analytics',     href: '/analytics',     icon: BarChart3 },
   staff:         { name: 'Staff',         href: '/staff',         icon: Users },
@@ -59,6 +60,8 @@ const adminNav: NavItem[] = [
   { ...navCatalogue.shifts, group: 'OPERATIONS' },
   { ...navCatalogue.staffing, group: 'OPERATIONS' },
   { ...navCatalogue.registration, group: 'OPERATIONS' },
+  { ...navCatalogue.storage, group: 'OPERATIONS' },
+  { ...navCatalogue.storage, group: 'OPERATIONS' },
   { ...navCatalogue.swaps, group: 'OPERATIONS' },
   { ...navCatalogue.reports, group: 'PERFORMANCE' },
   { ...navCatalogue.analytics, group: 'PERFORMANCE' },

@@ -9,6 +9,7 @@ export type OperationalStorageProfile =
   | 'LEGACY_SUBBRAND_PERIOD_CATEGORY'
   | 'LEGACY_SUBBRAND_CATEGORY_PERIOD'
   | 'CANONICAL_V1'
+  | 'EXISTING_BRAND_YEAR_PERIOD_PLATFORM'
   | 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY'
 export type OperationalLogicalCategory = 'dashboard' | 'live_visual' | 'data_report' | 'data_source'
 export type OperationalPeriodNamingStyle =
@@ -17,8 +18,15 @@ export type OperationalPeriodNamingStyle =
   | 'THANG_M_DOT_SPACE_YEAR'
   | 'T_M_DOT_YEAR'
   | 'THANG_UPPER_M_DASH_YEAR'
+  | 'THANG_MM_DOT_YEAR'
 
 export type OperationalPeriodLabelOverrides = Record<string, Partial<Record<OperationalLogicalCategory | 'default', string>>>
+export interface OperationalPeriodDateRange {
+  start_date: string
+  end_date: string
+  category: OperationalLogicalCategory
+  label: string
+}
 
 export interface OperationalStorageRoute {
   id: string
@@ -33,6 +41,7 @@ export interface OperationalStorageRoute {
   folder_labels: Record<string, unknown>
   period_naming_style: string
   period_label_overrides?: OperationalPeriodLabelOverrides
+  period_date_ranges?: OperationalPeriodDateRange[]
   folder_label_overrides?: Record<string, Partial<Record<OperationalLogicalCategory, string | string[]>>>
   active: boolean
 }
@@ -96,6 +105,7 @@ const profiles = new Set<OperationalStorageProfile>([
   'LEGACY_SUBBRAND_PERIOD_CATEGORY',
   'LEGACY_SUBBRAND_CATEGORY_PERIOD',
   'CANONICAL_V1',
+  'EXISTING_BRAND_YEAR_PERIOD_PLATFORM',
   'TEMP_AGENCY_BRAND_PERIOD_CATEGORY',
 ])
 
@@ -147,6 +157,38 @@ function dateParts(shiftDate: string): { year: string; month: number } {
   return { year, month }
 }
 
+/**
+ * Verified P-periods may cross a calendar month. Only an explicitly assigned
+ * category and bounded ISO date interval can override the monthly location.
+ * Any overlapping category intervals are rejected to prevent ambiguous routes.
+ */
+function matchedPeriodRange(
+  ranges: OperationalPeriodDateRange[] | undefined,
+  date: string,
+  category: OperationalLogicalCategory,
+): string | undefined {
+  if (ranges === undefined) return undefined
+  if (!Array.isArray(ranges) || ranges.length > 100) fail('STORAGE_ROUTE_CONFIG_INVALID')
+  const byCategory = new Map<OperationalLogicalCategory, OperationalPeriodDateRange[]>()
+  for (const item of ranges) {
+    if (!item || !categories.has(item.category) || typeof item.label !== 'string'
+        || !isSafeHistoricalPeriodLabel(item.label)
+        || typeof item.start_date !== 'string' || typeof item.end_date !== 'string') {
+      fail('STORAGE_ROUTE_CONFIG_INVALID')
+    }
+    dateParts(item.start_date)
+    dateParts(item.end_date)
+    if (item.start_date > item.end_date) fail('STORAGE_ROUTE_CONFIG_INVALID')
+    const peers = byCategory.get(item.category) ?? []
+    if (peers.some(peer => item.start_date <= peer.end_date && peer.start_date <= item.end_date)) {
+      fail('STORAGE_ROUTE_AMBIGUOUS')
+    }
+    peers.push(item)
+    byCategory.set(item.category, peers)
+  }
+  return byCategory.get(category)?.find(item => item.start_date <= date && date <= item.end_date)?.label
+}
+
 function periodLabel(style: string, shiftDate: string, profile: OperationalStorageProfile): string {
   const { year, month } = dateParts(shiftDate)
   if (profile === 'CANONICAL_V1') return `THÁNG ${String(month).padStart(2, '0')}.${year}`
@@ -158,6 +200,7 @@ function periodLabel(style: string, shiftDate: string, profile: OperationalStora
     case 'THANG_M_DOT_SPACE_YEAR': return `THÁNG ${monthText}. ${year}`
     case 'T_M_DOT_YEAR': return `T${monthText}.${year}`
     case 'THANG_UPPER_M_DASH_YEAR': return `THÁNG ${monthText} - ${year}`
+    case 'THANG_MM_DOT_YEAR': return `THÁNG ${String(month).padStart(2, '0')}.${year}`
     default: return fail('STORAGE_ROUTE_CONFIG_INVALID')
   }
 }
@@ -170,7 +213,8 @@ function configuredCategorySegments(
 ): string[] {
   if (!categories.has(category)) fail('STORAGE_CATEGORY_UNSUPPORTED')
 
-  if (profile === 'CANONICAL_V1' || profile === 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY') {
+  if (profile === 'CANONICAL_V1' || profile === 'EXISTING_BRAND_YEAR_PERIOD_PLATFORM'
+    || profile === 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY') {
     if (category === 'dashboard') return ['DASHBOARD']
     if (category === 'live_visual') return [source === 'internal' ? 'VISIBILITY' : 'VISUAL HOST']
     if (category === 'data_report') return ['DATA', 'REPORT']
@@ -203,6 +247,7 @@ function exactRouteKey(route: OperationalStorageRoute, input: OperationalStorage
     && route.execution_source === input.executionSource
     && route.brand_id === input.brandId
     && (route.platform_id === null || route.platform_id === input.platformId)
+    // A NULL-subbrand route is never a fallback for a specific subbrand.
     && (route.subbrand_key === null || route.subbrand_key === input.subbrandKey)
 }
 
@@ -213,6 +258,11 @@ export function selectOperationalStorageRoute(
 ): OperationalStorageRoute {
   const eligible = routes.filter(route => exactRouteKey(route, input))
   if (eligible.length === 0) fail('STORAGE_ROUTE_NOT_CONFIGURED')
+
+  // A subbrand-scoped file must not fallback to a shared NULL-subbrand route.
+  if (input.subbrandKey !== null && eligible.every(r => r.subbrand_key === null)) {
+    fail('STORAGE_ROUTE_NOT_CONFIGURED')
+  }
 
   const score = (route: OperationalStorageRoute) => Number(route.platform_id !== null) + Number(route.subbrand_key !== null)
   const highest = Math.max(...eligible.map(score))
@@ -237,7 +287,8 @@ export function resolveOperationalStoragePlacement(
 
   const fallbackPeriod = periodLabel(route.period_naming_style, input.shiftDate, profile)
   const overrides = route.period_label_overrides?.[input.shiftDate.slice(0, 7)]
-  const period = overrides?.[input.logicalCategory] ?? overrides?.default ?? fallbackPeriod
+  const period = matchedPeriodRange(route.period_date_ranges, input.shiftDate, input.logicalCategory)
+    ?? overrides?.[input.logicalCategory] ?? overrides?.default ?? fallbackPeriod
   if (!isSafeHistoricalPeriodLabel(period)) fail('STORAGE_ROUTE_CONFIG_INVALID')
   const categoryOverride = route.folder_label_overrides?.[input.shiftDate.slice(0, 7)]?.[input.logicalCategory]
   const category = categoryOverride === undefined
@@ -270,6 +321,15 @@ export function resolveOperationalStoragePlacement(
       if (!input.brandLabel || !input.platformLabel) fail('STORAGE_ROUTE_CONFIG_INVALID')
       folderSegments = [safeSegment(input.brandLabel), safeSegment(input.platformLabel), period, ...category]
       break
+    case 'EXISTING_BRAND_YEAR_PERIOD_PLATFORM': {
+      // The real Drive root IS the ADA root. An approved existing brand folder
+      // is the base, so do not add another ADA/client/brand folder.
+      const platformFolder = safeSegment(route.folder_labels.platform)
+      if (route.period_naming_style !== 'THANG_MM_DOT_YEAR') fail('STORAGE_ROUTE_CONFIG_INVALID')
+      const year = dateParts(input.shiftDate).year
+      folderSegments = [year, period, platformFolder, ...category]
+      break
+    }
     case 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY':
       if (!input.brandLabel) fail('STORAGE_ROUTE_CONFIG_INVALID')
       folderSegments = [safeSegment(input.brandLabel), period, ...category]
