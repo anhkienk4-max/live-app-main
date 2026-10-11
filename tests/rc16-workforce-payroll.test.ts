@@ -5,6 +5,7 @@ import {
   type ActualStaffingEvidence, type ApprovedPayrollRate,
 } from '@/lib/workforce/payrollCalculation'
 import { summarizeWorkforcePerformance } from '@/lib/workforce/workforcePerformance'
+import { aggregateWorkforceTeam, rankVerifiedWorkforce } from '@/lib/workforce/workforceOverview'
 
 const verified: ActualStaffingEvidence = {
   id:'segment-1',shiftId:'shift-1',staffId:'staff-1',role:'host',
@@ -130,4 +131,32 @@ test('workforce: approved overlapping evidence and conflicting no-show fail clos
   assert.throws(()=>summarizeWorkforcePerformance('staff-1','host',planned,[
     verified,{...verified,id:'no-show',eventKind:'no_show',startAt:null,endAt:null},
   ],{lateGraceMinutes:5}),{message:'WORKFORCE_CONFLICTING_APPROVED_EVIDENCE'})
+})
+
+test('team overview weights denominators correctly and leaderboard excludes incomplete evidence', () => {
+  const complete={
+    staffId:'a',role:'host' as const,assignedShifts:10,verifiedShifts:10,
+    unknownAttendanceShifts:0,approvedNoShows:1,approvedWorkedShifts:9,
+    approvedActualMinutes:900,lateShifts:1,onTimeShifts:8,
+    attendanceCoveragePct:100,punctualityPct:88.89,knownReliabilityPct:90,
+    isComplete:true,warning:null,
+  }
+  const incomplete={
+    ...complete,staffId:'b',assignedShifts:3,verifiedShifts:1,
+    unknownAttendanceShifts:2,approvedNoShows:0,approvedWorkedShifts:1,
+    approvedActualMinutes:40,lateShifts:0,onTimeShifts:1,
+    attendanceCoveragePct:33.33,punctualityPct:100,knownReliabilityPct:100,
+    isComplete:false,warning:'INCOMPLETE_ATTENDANCE_EVIDENCE' as const,
+  }
+  const overview=aggregateWorkforceTeam([complete,incomplete])
+  assert.equal(overview.assignedShifts,13)
+  assert.equal(overview.verifiedShifts,11)
+  assert.equal(overview.unknownAttendanceShifts,2)
+  assert.equal(overview.knownReliabilityPct,90.91)
+  assert.equal(overview.punctualityPct,90)
+  assert.equal(overview.incompleteStaffCount,1)
+  assert.deepEqual(rankVerifiedWorkforce([complete,incomplete],5).map(s=>s.staffId),['a'])
+  assert.throws(()=>rankVerifiedWorkforce([complete],0),{
+    message:'WORKFORCE_LEADERBOARD_POLICY_REQUIRED',
+  })
 })
