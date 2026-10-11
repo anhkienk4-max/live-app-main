@@ -2,14 +2,14 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-09-11T15:17:37+07:00
+Generated at: 2026-10-12T01:34:35+07:00
 
 ## Repository
 
-- Branch: `integration/ui-golden-screens`
-- HEAD: `bc1c0dbd13d2ef64374b2210409f5460698e278a`
-- origin/main: `7be47803690550d1ba891b6d7e1e4585f8f307e7`
-- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-ui-integration`
+- Branch: `feat/rc16-payroll-workforce-backend`
+- HEAD: `39df11343eb2725c647f4fef6ba0f307c98d539a`
+- origin/main: `31efea2d1a60583975e96773f68106d46ab7d8d9`
+- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-payroll`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
 ## Hardening
@@ -21,10 +21,10 @@ Generated at: 2026-09-11T15:17:37+07:00
 
 ## Inventory
 
-- Routes: 31
-- Source files in tracked inventory roots: 468
-- Tests: 112
-- Migrations: 48
+- Routes: 46
+- Source files in tracked inventory roots: 590
+- Tests: 146
+- Migrations: 64
 
 ## Modules
 

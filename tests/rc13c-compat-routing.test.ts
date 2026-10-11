@@ -169,7 +169,7 @@ test('Female AI canonical route uses brand/platform/month/category while Mars le
   assert.deepEqual((await resolve('Mars Snacking', 'agency', 'live_visual')).folderSegments, ['THÁNG 9.2026', 'VISUAL HOST'])
 })
 
-test('static route configuration rejects malformed, duplicate, and ambiguous routes', async () => {
+test('static routes reject malformed/duplicate keys and never use shared NULL-subbrand fallback', async () => {
   const invalidRoutes = [
     { ...staticRoute, provider: 'dropbox' },
     { ...staticRoute, execution_source: 'vendor' },
@@ -190,15 +190,19 @@ test('static route configuration rejects malformed, duplicate, and ambiguous rou
     (error: unknown) => error instanceof OperationalStoragePlacementError && error.code === 'STORAGE_ROUTE_AMBIGUOUS',
   )
 
-  const ambiguous = createStaticOperationalStorageRouteRepository(jsonRoutes(
+  const scoped = createStaticOperationalStorageRouteRepository(jsonRoutes(
     { ...staticRoute, platform: 'TikTok Shop' },
-    { ...staticRoute, subbrand_key: 'xmen' },
+    { ...staticRoute, subbrand_key: 'xmen', base_folder_id: 'subbrand-base' },
   ))
-  await assert.rejects(() => ambiguous.resolvePlacement({
+  const input = {
     provider: 'google_drive', executionSource: 'internal', brandId: 'id', platformId: 'platform-id', subbrandKey: 'XMEN',
     shiftDate: '2026-10-01', logicalCategory: 'dashboard', fileName: 'test.png',
     brandLabel: 'Mars Snacking', platformLabel: 'TikTok Shop',
-  }), (error: unknown) => error instanceof OperationalStoragePlacementError && error.code === 'STORAGE_ROUTE_AMBIGUOUS')
+  } as const
+  assert.equal((await scoped.resolvePlacement(input)).baseFolderId, 'subbrand-base')
+  const sharedOnly = createStaticOperationalStorageRouteRepository(jsonRoutes({ ...staticRoute, platform: 'TikTok Shop' }))
+  await assert.rejects(() => sharedOnly.resolvePlacement(input),
+    (error: unknown) => error instanceof OperationalStoragePlacementError && error.code === 'STORAGE_ROUTE_NOT_CONFIGURED')
 })
 
 test('folder materialization reuses provider folders and creates a new month only through ensureFolder', async () => {

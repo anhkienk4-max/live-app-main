@@ -13,10 +13,10 @@ function resolve(specifier, context, nextResolve) {
     const empty = resolvePath(projectRoot, 'node_modules/server-only/empty.js')
     if (existsSync(empty)) return { url: pathToFileURL(empty).href, shortCircuit: true }
   }
-  // Node ESM requires explicit .js for next/server subpath in this Next version.
+  // Export real Next classes through ESM on both Node 22 and Node 24.
   if (specifier === 'next/server') {
-    const serverJs = resolvePath(projectRoot, 'node_modules/next/server.js')
-    if (existsSync(serverJs)) return { url: pathToFileURL(serverJs).href, shortCircuit: true }
+    const serverShim = resolvePath(projectRoot, 'tests/next-server-test-shim.mjs')
+    if (existsSync(serverShim)) return { url: pathToFileURL(serverShim).href, shortCircuit: true }
   }
   if (specifier === 'next/headers') {
     const headersJs = resolvePath(projectRoot, 'node_modules/next/headers.js')
