@@ -184,5 +184,11 @@ jobs:
         run: pnpm exec tsc --noEmit --incremental false
       - name: RC16 synthetic workforce & payroll contract tests
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc16-*.test.ts
+      - name: Next.js production build without Production secrets
+        run: pnpm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
       - name: Git diff check
         run: git -c core.whitespace=cr-at-eol diff --check HEAD~1 HEAD
