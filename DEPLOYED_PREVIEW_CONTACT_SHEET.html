@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>APP OPS — Deployed Preview Visual UAT Contact Sheet</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #111827;
+      --card-border: #1f2937;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --accent: #3b82f6;
+      --pass: #10b981;
+      --fail: #ef4444;
+      --blocked: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      padding: 24px;
+    }
+    header {
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 20px;
+    }
+    h1 { font-size: 26px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+    .meta-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 11px;
+    }
+    .badge-pass { background: rgba(16, 185, 129, 0.2); color: var(--pass); border: 1px solid var(--pass); }
+    .badge-fail { background: rgba(239, 68, 68, 0.2); color: var(--fail); border: 1px solid var(--fail); }
+    .badge-blocked { background: rgba(245, 158, 11, 0.2); color: var(--blocked); border: 1px solid var(--blocked); }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 24px;
+      background: var(--card-bg);
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--card-border);
+    }
+    .filter-btn {
+      background: #1f2937;
+      color: #e5e7eb;
+      border: 1px solid #374151;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    .filter-btn:hover, .filter-btn.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      flex-col: column;
+    }
+    .card-header {
+      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid var(--card-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .card-title { font-size: 14px; font-weight: 600; color: #fff; }
+    .card-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .card-body {
+      padding: 14px 16px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .status-label { color: var(--text-muted); }
+    .status-val { font-weight: 500; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>APP OPS — Deployed Preview Visual UAT Contact Sheet</h1>
+    <div class="meta-bar">
+      <span><strong>Deployment:</strong> <a href="https://live-app-clean-c6hqn83g9-livestream2.vercel.app" style="color: #60a5fa;" target="_blank">live-app-clean-c6hqn83g9-livestream2.vercel.app</a></span>
+      <span><strong>Runtime SHA:</strong> <code>b5e59a90dde9af22a5f7981cb4ab3c5b54fe6b49</code></span>
+      <span><strong>Git HEAD:</strong> <code>35356b9451bcf04f54cf84f823d2ed7c8a74cab3</code></span>
+      <span><strong>Generated:</strong> 2026-10-11 17:40:00 ICT</span>
+    </div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+      <span class="badge badge-pass">12 WAVES MATCH</span>
+      <span class="badge badge-blocked">2 WAVES BLOCKED_DATA (W02, W04)</span>
+      <span class="badge badge-blocked">DEPLOYMENT GATE: BLOCKED_DEPLOYED_PREVIEW</span>
+    </div>
+  </header>
+
+  <section class="controls">
+    <button class="filter-btn active" onclick="filterCards('all')">All Waves (14)</button>
+    <button class="filter-btn" onclick="filterCards('MATCH')">Match (12)</button>
+    <button class="filter-btn" onclick="filterCards('BLOCKED_DATA')">Blocked Data (2)</button>
+    <button class="filter-btn" onclick="filterCards('admin')">Admin</button>
+    <button class="filter-btn" onclick="filterCards('leader')">Leader</button>
+    <button class="filter-btn" onclick="filterCards('member')">Member</button>
+  </section>
+
+  <div class="grid" id="cardGrid">
+
+    <!-- W01 Reports -->
+    <div class="card" data-status="MATCH" data-role="admin leader member">
+      <div class="card-header">
+        <div>
+          <div class="card-title">W01 — Reports</div>
+          <div class="card-sub">Route: /reports | Reference: ReportsReferenceMock.tsx</div>
+        </div>
+        <span class="badge badge-pass">MATCH</span>
+      </div>
+      <div class="card-body">
+        <div class="status-row"><span class="status-label">Global Shell:</span><span class="status-val">Sidebar 248px / Topbar 56px (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Metrics & KPIs:</span><span class="status-val">Confirmed Revenue Summary (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Draft & CAS:</span><span class="status-val">Versioned Save Draft Enforced (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Responsive:</span><span class="status-val">1440, 1280, 768, 390, 375 (PASS)</span></div>
+        <div class="status-row"><span class="status-label">Evidence:</span><span class="status-val">Attachment storage routing active</span></div>
+      </div>
+    </div>
+
+    <!-- W02 Live Operations -->
+    <div class="card" data-status="BLOCKED_DATA" data-role="admin leader">
+      <div class="card-header">
+        <div>
+          <div class="card-title">W02 — Live Operations</div>
+          <div class="card-sub">Route: /live | Reference: LiveOperationsReferenceMock.tsx</div>
+        </div>
+        <span class="badge badge-blocked">BLOCKED_DATA</span>
+      </div>
+      <div class="card-body">
+        <div class="status-row"><span class="status-label">Empty Monitor:</span><span class="status-val">No Live Sessions Active Today (PASS)</span></div>
+        <div class="status-row"><span class="status-label">Polling Indicator:</span><span class="status-val">30s Auto-Refresh Pulse Active (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Data Scope:</span><span class="status-val">Staging has 0 shifts scheduled today</span></div>
+        <div class="status-row"><span class="status-label">Lifecycle Override:</span><span class="status-val">Guard modal ready; 0 runtime errors</span></div>
+        <div class="status-row"><span class="status-label">Responsive:</span><span class="status-val">1440, 1280, 768, 390, 375 (PASS)</span></div>
+      </div>
+    </div>
+
+    <!-- W03 Analytics -->
+    <div class="card" data-status="MATCH" data-role="admin leader member">
+      <div class="card-header">
+        <div>
+          <div class="card-title">W03 — Analytics</div>
+          <div class="card-sub">Route: /analytics | Reference: AnalyticsReferenceMock.tsx</div>
+        </div>
+        <span class="badge badge-pass">MATCH</span>
+      </div>
+      <div class="card-body">
+        <div class="status-row"><span class="status-label">Shell Layout:</span><span class="status-val">Detached Insight Shell (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">KPI Summary Cards:</span><span class="status-val">4 Tiles: Gross, Net, AOV, Orders (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Data Integrity:</span><span class="status-val">Confirmed-only aggregation (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Skeletons:</span><span class="status-val">Resolved; zero infinite timeouts</span></div>
+        <div class="status-row"><span class="status-label">Responsive:</span><span class="status-val">1440, 1280, 768, 390, 375 (PASS)</span></div>
+      </div>
+    </div>
+
+    <!-- W04 Calendar -->
+    <div class="card" data-status="BLOCKED_DATA" data-role="admin leader member">
+      <div class="card-header">
+        <div>
+          <div class="card-title">W04 — Calendar & Schedule</div>
+          <div class="card-sub">Route: /calendar | Reference: CalendarReferenceMock.tsx</div>
+        </div>
+        <span class="badge badge-blocked">BLOCKED_DATA</span>
+      </div>
+      <div class="card-body">
+        <div class="status-row"><span class="status-label">Grid Layout:</span><span class="status-val">36px Hour Row Grid (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Timezone:</span><span class="status-val">Asia/Ho_Chi_Minh canonical badge (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Populated Range:</span><span class="status-val">August 2026 hosts 52 shifts (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Views:</span><span class="status-val">Month, Week, Day view switches clean</span></div>
+        <div class="status-row"><span class="status-label">Responsive:</span><span class="status-val">Collapses to day agenda on mobile (PASS)</span></div>
+      </div>
+    </div>
+
+    <!-- W05 Shifts -->
+    <div class="card" data-status="MATCH" data-role="admin leader member">
+      <div class="card-header">
+        <div>
+          <div class="card-title">W05 — Shifts Management</div>
+          <div class="card-sub">Route: /shifts | Reference: ShiftOperationalReference.tsx</div>
+        </div>
+        <span class="badge badge-pass">MATCH</span>
+      </div>
+      <div class="card-body">
+        <div class="status-row"><span class="status-label">Table Density:</span><span class="status-val">Compact operational row styling (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Capacities:</span><span class="status-val">Host, Support, Tech capacity pills (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Wizard Dialog:</span><span class="status-val">4 Steps contained within 85vh (PASS)</span></div>
+        <div class="status-row"><span class="status-label">Lifecycle Actions:</span><span class="status-val">Delete / Soft-delete guard active</span></div>
+        <div class="status-row"><span class="status-label">Responsive:</span><span class="status-val">Zero button clipping on 375px mobile (PASS)</span></div>
+      </div>
+    </div>
+
+    <!-- W06 People -->
+    <div class="card" data-status="MATCH" data-role="admin leader member">
+      <div class="card-header">
+        <div>
+          <div class="card-title">W06 — People & Staff</div>
+          <div class="card-sub">Route: /staff | Reference: PeopleReferenceMock.tsx</div>
+        </div>
+        <span class="badge badge-pass">MATCH</span>
+      </div>
+      <div class="card-body">
+        <div class="status-row"><span class="status-label">Roster Layout:</span><span class="status-val">Table + Split Detail Pane (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Role Badges:</span><span class="status-val">Admin, Leader, Member colored badges (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Cache TTL:</span><span class="status-val">Active; invalidates on mutation</span></div>
+        <div class="status-row"><span class="status-label">Self Safeguard:</span><span class="status-val">Admin cannot lock self out (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Responsive:</span><span class="status-val">1440, 1280, 768, 390, 375 (PASS)</span></div>
+      </div>
+    </div>
+
+    <!-- W07 Staffing -->
+    <div class="card" data-status="MATCH" data-role="admin leader">
+      <div class="card-header">
+        <div>
+          <div class="card-title">W07 — Staffing Workspace</div>
+          <div class="card-sub">Route: /staffing | Reference: StaffingReferenceMock.tsx</div>
+        </div>
+        <span class="badge badge-pass">MATCH</span>
+      </div>
+      <div class="card-body">
+        <div class="status-row"><span class="status-label">KPI Cards:</span><span class="status-val">4 Tiles: Total, Gaps, Pending, Staffed (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Split Detail:</span><span class="status-val">Right-side shift inspection panel (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Gap Warning:</span><span class="status-val">Amber pill for missing staff (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Gaps Filter:</span><span class="status-val">Quick toggle isolates under-staffed (PASS)</span></div>
+        <div class="status-row"><span class="status-label">Responsive:</span><span class="status-val">1440, 1280, 768, 390, 375 (PASS)</span></div>
+      </div>
+    </div>
+
+    <!-- W08 Registration -->
+    <div class="card" data-status="MATCH" data-role="admin leader member">
+      <div class="card-header">
+        <div>
+          <div class="card-title">W08 — Registration Review</div>
+          <div class="card-sub">Route: /staffing?tab=registration | Locked</div>
+        </div>
+        <span class="badge badge-pass">MATCH (LOCKED)</span>
+      </div>
+      <div class="card-body">
+        <div class="status-row"><span class="status-label">Review Queue:</span><span class="status-val">Canonical applicant review queue (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Eligibility:</span><span class="status-val">Multi-role and collision checks (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Member View:</span><span class="status-val">Open registration board on calendar (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Integrity:</span><span class="status-val">Zero source regression; fully locked</span></div>
+        <div class="status-row"><span class="status-label">Responsive:</span><span class="status-val">1440, 1280, 768, 390, 375 (PASS)</span></div>
+      </div>
+    </div>
+
+    <!-- W09 Swaps -->
+    <div class="card" data-status="MATCH" data-role="admin leader member">
+      <div class="card-header">
+        <div>
+          <div class="card-title">W09 — Shift Swaps</div>
+          <div class="card-sub">Route: /swaps | Reference: SwapsReferenceMock.tsx</div>
+        </div>
+        <span class="badge badge-pass">MATCH</span>
+      </div>
+      <div class="card-body">
+        <div class="status-row"><span class="status-label">Status Tabs:</span><span class="status-val">Pending, Accepted, Completed, Cancelled (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Scope Buttons:</span><span class="status-val">My requests & For me segmented scopes (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">2-Flow Architecture:</span><span class="status-val">Replacement vs Exchange verified (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Action Bar:</span><span class="status-val">Approve / Reject modals functioning</span></div>
+        <div class="status-row"><span class="status-label">Responsive:</span><span class="status-val">1440, 1280, 768, 390, 375 (PASS)</span></div>
+      </div>
+    </div>
+
+    <!-- W10 Notifications -->
+    <div class="card" data-status="MATCH" data-role="admin leader member">
+      <div class="card-header">
+        <div>
+          <div class="card-title">W10 — Notifications Center</div>
+          <div class="card-sub">Route: /notifications | Reference: NotificationsReferenceMock.tsx</div>
+        </div>
+        <span class="badge badge-pass">MATCH</span>
+      </div>
+      <div class="card-body">
+        <div class="status-row"><span class="status-label">Stream Grouping:</span><span class="status-val">Grouped by date (PPP) with day headers (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Severity Badges:</span><span class="status-val">success, warning, error, info colors (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Detail Pane:</span><span class="status-val">Right-side detail with deep destination link</span></div>
+        <div class="status-row"><span class="status-label">Typography:</span><span class="status-val">Clean UTF-8 Vietnamese text (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Responsive:</span><span class="status-val">1440, 1280, 768, 390, 375 (PASS)</span></div>
+      </div>
+    </div>
+
+    <!-- W11 Import -->
+    <div class="card" data-status="MATCH" data-role="admin leader">
+      <div class="card-header">
+        <div>
+          <div class="card-title">W11 — Schedule Import</div>
+          <div class="card-sub">Route: /calendar?tab=import | Reference: ImportReferenceMock.tsx</div>
+        </div>
+        <span class="badge badge-pass">MATCH</span>
+      </div>
+      <div class="card-body">
+        <div class="status-row"><span class="status-label">Source Cards:</span><span class="status-val">Excel XLSX & Google Sheets URL (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Mapping Table:</span><span class="status-val">Column preview with auto-detection (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Batch History:</span><span class="status-val">Persisted history table with row outcomes (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Attribution:</span><span class="status-val">Execution source preserved</span></div>
+        <div class="status-row"><span class="status-label">Responsive:</span><span class="status-val">1440, 1280, 768, 390, 375 (PASS)</span></div>
+      </div>
+    </div>
+
+    <!-- W12 Audit -->
+    <div class="card" data-status="MATCH" data-role="admin leader">
+      <div class="card-header">
+        <div>
+          <div class="card-title">W12 — Audit & Compliance</div>
+          <div class="card-sub">Route: /audit | Reference: AuditReferenceMock.tsx</div>
+        </div>
+        <span class="badge badge-pass">MATCH</span>
+      </div>
+      <div class="card-body">
+        <div class="status-row"><span class="status-label">Event Table:</span><span class="status-val">Sticky header with multi-select filters (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Split Detail:</span><span class="status-val">Compare diff / JSON tree / Table view (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Archive Panel:</span><span class="status-val">Restoration dialog with impact warning (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Deep Links:</span><span class="status-val">auditEntityHref wired to shifts/users</span></div>
+        <div class="status-row"><span class="status-label">Responsive:</span><span class="status-val">1440, 1280, 768, 390, 375 (PASS)</span></div>
+      </div>
+    </div>
+
+    <!-- W13 Settings -->
+    <div class="card" data-status="MATCH" data-role="admin leader member">
+      <div class="card-header">
+        <div>
+          <div class="card-title">W13 — Settings Workspace</div>
+          <div class="card-sub">Route: /settings | Reference: SettingsReferenceMock.tsx</div>
+        </div>
+        <span class="badge badge-pass">MATCH</span>
+      </div>
+      <div class="card-body">
+        <div class="status-row"><span class="status-label">Tab Hierarchy:</span><span class="status-val">Team, System, Integrations, Personal (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Role Locks:</span><span class="status-val">Leader locked on System/Integrations (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Dirty Indicator:</span><span class="status-val">Bullet dot flag on unsaved changes (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Form Density:</span><span class="status-val">Input rhythm & switches match reference</span></div>
+        <div class="status-row"><span class="status-label">Responsive:</span><span class="status-val">Horizontal scroll tabs on mobile (PASS)</span></div>
+      </div>
+    </div>
+
+    <!-- W14 Authentication -->
+    <div class="card" data-status="MATCH" data-role="public">
+      <div class="card-header">
+        <div>
+          <div class="card-title">W14 — Authentication</div>
+          <div class="card-sub">Route: /login | Reference: AuthReferenceMock.tsx</div>
+        </div>
+        <span class="badge badge-pass">MATCH (LOCKED)</span>
+      </div>
+      <div class="card-body">
+        <div class="status-row"><span class="status-label">Split Layout:</span><span class="status-val">Left navy banner (#082743) + Right card (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Form Fields:</span><span class="status-val">Email, Password, Remember, Submit (MATCH)</span></div>
+        <div class="status-row"><span class="status-label">Security:</span><span class="status-val">Spoofed QA headers blocked; strict SSR redirect</span></div>
+        <div class="status-row"><span class="status-label">Integrity:</span><span class="status-val">Fully locked; zero regression</span></div>
+        <div class="status-row"><span class="status-label">Responsive:</span><span class="status-val">Banner collapses cleanly on mobile (PASS)</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    function filterCards(type) {
+      const cards = document.querySelectorAll('.card');
+      const btns = document.querySelectorAll('.filter-btn');
+      btns.forEach(b => b.classList.remove('active'));
+      event.target.classList.add('active');
+
+      cards.forEach(card => {
+        if (type === 'all') {
+          card.style.display = 'flex';
+        } else if (type === 'MATCH' || type === 'BLOCKED_DATA') {
+          card.style.display = card.getAttribute('data-status') === type ? 'flex' : 'none';
+        } else {
+          const roles = card.getAttribute('data-role') || '';
+          card.style.display = roles.includes(type) ? 'flex' : 'none';
+        }
+      });
+    }
+  </script>
+
+</body>
+</html>
