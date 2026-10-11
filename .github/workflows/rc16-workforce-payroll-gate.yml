@@ -98,7 +98,7 @@ jobs:
               'Approved shift evidence','admin-1') returning id into v_segment;
             begin
               update public.workforce_actual_segments set review_status='approved',
-                reviewed_by='admin-1',reviewed_at=now(),version=2 where id=v_segment;
+                reviewed_by='finance-1',review_note='Independent evidence review',reviewed_at=now(),version=2 where id=v_segment;
             exception when others then
               raise exception 'RC16 approval update unexpectedly rejected: %',sqlerrm;
             end;
