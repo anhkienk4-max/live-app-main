@@ -54,6 +54,7 @@ export function StaffList() {
 
   const shiftsCacheRef = React.useRef<Shift[]>([])
   const registrationsCacheRef = React.useRef<ShiftRegistration[]>([])
+  const cacheTimestampRef = React.useRef<number>(0)
   const currentUserId = currentUser?.id
 
   const loadStaff = React.useCallback(async (forceAll = false) => {
@@ -69,11 +70,15 @@ export function StaffList() {
         ? userService.getAllIncludingDeleted(currentUserId)
         : userService.getAll()
 
-      const fetchShifts = (forceAll || shiftsCacheRef.current.length === 0)
+      const isCacheExpired = Date.now() - cacheTimestampRef.current > 60000
+      const shouldFetchShifts = forceAll || isCacheExpired || shiftsCacheRef.current.length === 0
+      const shouldFetchRegistrations = forceAll || isCacheExpired || registrationsCacheRef.current.length === 0
+
+      const fetchShifts = shouldFetchShifts
         ? shiftService.getAll()
         : Promise.resolve(shiftsCacheRef.current)
 
-      const fetchRegistrations = (forceAll || registrationsCacheRef.current.length === 0)
+      const fetchRegistrations = shouldFetchRegistrations
         ? shiftRegistrationService.getAll()
         : Promise.resolve(registrationsCacheRef.current)
 
@@ -85,6 +90,7 @@ export function StaffList() {
 
       shiftsCacheRef.current = loadedShifts
       registrationsCacheRef.current = loadedRegistrations
+      cacheTimestampRef.current = Date.now()
 
       setStaff(loadedStaff)
       setShifts(loadedShifts)
@@ -107,14 +113,14 @@ export function StaffList() {
     if (!canManage) return
     await userService.approvePendingAccount(user.id, currentUser?.id)
     toast({ title: t('success'), description: t('accountApprovedByAdmin'), variant: 'success' })
-    await loadStaff()
+    await loadStaff(true)
   }
 
   const rejectAccount = async (user: User) => {
     if (!canManage) return
     await userService.rejectPendingAccount(user.id, currentUser?.id)
     toast({ title: t('success'), description: t('accountRejectedByAdmin'), variant: 'success' })
-    await loadStaff()
+    await loadStaff(true)
   }
 
   const visibleStaff = React.useMemo(() => {
@@ -169,7 +175,7 @@ export function StaffList() {
       await userService.update(statusTarget.id, { status })
       toast({ title: t('success'), description: t(status === 'active' ? 'activate' : 'deactivate'), variant: 'success' })
       setStatusTarget(null)
-      await loadStaff()
+      await loadStaff(true)
     } catch {
       toast({ title: t('error'), description: t('permissionDenied'), variant: 'destructive' })
     }
@@ -181,7 +187,7 @@ export function StaffList() {
       await userService.archive(archiveTarget.id, currentUser.id, 'Archived from Staff Management')
       toast({ title: t('success'), description: t('archived'), variant: 'success' })
       setArchiveTarget(null)
-      await loadStaff()
+      await loadStaff(true)
     } catch {
       toast({ title: t('error'), description: t('permissionDenied'), variant: 'destructive' })
     }
@@ -193,7 +199,7 @@ export function StaffList() {
       await userService.restore(restoreTarget.id, currentUser.id, 'Restored from Staff Management')
       toast({ title: t('success'), description: t('restored'), variant: 'success' })
       setRestoreTarget(null)
-      await loadStaff()
+      await loadStaff(true)
     } catch {
       toast({ title: t('error'), description: t('permissionDenied'), variant: 'destructive' })
     }
@@ -305,7 +311,7 @@ export function StaffList() {
       emptyMessage={showArchived ? (t('archivedRecords') + ': ' + t('noStaff')) : t('noStaff')}
     /></div>{detailStaff && <StaffDetail inline user={detailStaff} shifts={assignedShifts(detailStaff.id)} workload={role => workload(detailStaff.id,role)} onClose={() => setDetailStaff(null)} onEdit={canManage ? () => {setSelectedStaff(detailStaff);setIsFormOpen(true)} : undefined} />}</div>}
 
-    <StaffFormDialog open={isFormOpen} onOpenChange={setIsFormOpen} staff={selectedStaff} onSuccess={loadStaff} />
+    <StaffFormDialog open={isFormOpen} onOpenChange={setIsFormOpen} staff={selectedStaff} onSuccess={() => void loadStaff(true)} />
 
     {detailStaff && tab !== 'staff' && (
       <StaffDetail
