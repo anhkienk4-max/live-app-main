@@ -59,3 +59,75 @@ Trước UAT phải xác minh effective configuration trên đúng immutable dep
 ## Ranh giới migration được đề xuất
 
 Chưa có ủy quyền migration. Không chạy `supabase db push`, apply_migration, raw DDL, repair ledger, fixture SQL hoặc seed lên cloud. Kế tiếp là duyệt **manifest migrations forward-only** cho target xác minh, kiểm tra baseline RPC/schema và rehearsal PG17. Không clone Production data vào fixture, không đổi historical shift source, không chạm Drive Production. Sau approval apply chỉ version/scope đã review, rồi list ledger/schema lại trước browser E2E.
+
+## RC1.6E — bảo vệ identity trong code (2026-10-11)
+
+Bắt đầu tại `267604b3d659c4b4e935323c8cbb63785619541b`, Git sạch và khớp remote.
+PR25/PR24 vẫn Draft và giữ nguyên base. CI baseline [38145050264](https://github.com/anhkienk4-max/live-app-main/actions/runs/38145050264)
+success trên đúng SHA đó. Những quan sát ledger cloud ở trên là snapshot RC1.6C;
+RC1.6E không đọc lại DB cloud, không áp dụng migration hoặc sửa dữ liệu/config.
+
+`lib/supabase/environmentIdentity.ts` là validator chung. Process guard nạp `.env`
+bằng loader của Next trước khi kiểm tra; `dev`, `build`, `start` truyền purpose rõ.
+`createSupabaseAdminClient`, server SSR và session refresh tự kiểm tra runtime,
+kể cả khi chạy `next start` trực tiếp. Browser kiểm tra URL và chặn Production
+trong development; không import helper đọc secret phía server. Secret/server
+helpers có marker `server-only`. Một snapshot được dùng cho cả validation và
+client creation; không cache kết quả để bỏ qua lần gọi sau.
+
+| Mode | Public/server target | Credential/mock | Hành vi đã test |
+| --- | --- | --- | --- |
+| Local development | Cùng staging hoặc cùng loopback origin/port | Public key; admin client cần secret; mock chỉ development explicit | Production ở bất kỳ URL nào và mismatch bị chặn |
+| Local build | Cùng staging hoặc loopback; tuyệt đối không Production | Mock true bị chặn; cấu hình DB cần public key | NODE_ENV=production không cấp quyền Production |
+| CI build không DB | Không URL/key; CI=true, purpose=build, không metadata deployment | Không credential, mock false/absent | Build được; runtime vẫn bị chặn |
+| Vercel Preview | Cùng staging đã nhận diện; override hoặc fallback đều được kiểm tra | Public key + server secret; mock false/absent | Missing/malformed/unknown/local/Production/mismatch bị chặn |
+| Vercel Production hợp lệ | Cùng ref Production đã biết | Public key + server secret; mock false/absent | Build/runtime được phép bằng fixture; chưa kiểm tra lại cloud runtime |
+
+Production authorization cần `VERCEL=1` và `VERCEL_ENV=production`, không dựa
+vào NODE_ENV. VERCEL_ENV lạ/missing, VERCEL_TARGET_ENV nếu có nhưng mâu thuẫn,
+hoặc NODE_ENV=development trong deployed Preview/Production đều bị chặn.
+Các giá trị này là metadata platform đáng tin trong deployment; không phải
+chứng thực mật mã nơi tiến trình đang chạy. Không thêm cờ bypass Production.
+
+URL dùng standard URL parser: HTTPS cho cloud, HTTP/HTTPS cho exact localhost,
+127.0.0.1 hoặc ::1. Root trailing slashes được chuẩn hóa. Userinfo, encoded host,
+path/query/fragment (kể cả ref Production giấu bên trong), remote nondefault port,
+hostname giả và unknown project bị chặn. Server override nonempty có ưu tiên;
+empty/absent fallback public, whitespace không fallback. Chỉ Production/staging
+refs đã biết và loopback được nhận diện. Registry custom domains hiện trống:
+domain hoặc dev project khác cần ownership evidence và mapping được code review,
+không suy đoán môi trường từ tên domain hoặc biến env.
+
+Error chỉ gồm mã không nhạy cảm: `ENV_DEPLOYMENT_IDENTITY_INVALID`,
+`ENV_SUPABASE_URL_INVALID`, `ENV_SUPABASE_PROJECT_UNRECOGNIZED`,
+`ENV_PRODUCTION_TARGET_FORBIDDEN`, `ENV_PRODUCTION_TARGET_REQUIRED`,
+`ENV_SUPABASE_TARGET_MISMATCH`, `ENV_PREVIEW_TARGET_REQUIRED`,
+`ENV_SUPABASE_CONFIG_REQUIRED`, `ENV_MOCK_MODE_INVALID`,
+`ENV_MOCK_MODE_FORBIDDEN`, `ENV_DATABASE_ACCESS_DISABLED`.
+Guard context sai trả `ENV_GUARD_CONTEXT_REQUIRED`; lỗi ngoài validator trả
+`ENV_GUARD_FAILED`. Local admin thiếu secret giữ `AUTH_ADMIN_NOT_CONFIGURED`.
+Không log raw URL, key, parser error hoặc auth header.
+
+**Code security PASS / C10 RESOLVED:** 41/41 environment tests, 16/16 authentication
+tests, 36/36 Payroll/Workforce tests; typecheck, focused lint, Next build PASS.
+PG16 foundation, 49 RC16B assertions và 5 race/rollback scenarios PASS trong
+container LOCAL `--network none`, không published ports. SDK query dùng fake
+fetch; không network vào Supabase. CI final SHA được xác minh sau push trong
+handoff; local PASS không thay thế CI hoặc cloud verification.
+
+**Preview metadata mới:** CLI scoped `livestream2/livestream-ops-demo` list READY
+trả20 records và còn pagination; có hai RC16 backend candidates. Candidate ở
+starting SHA là `dpl_GRbiDr4mxwDeDB8Affrh1VRz2nwC`,
+`livestream-ops-demo-fty2gitf5-livestream2.vercel.app`, inspect target=preview,
+READY. List cùng URL ghi branch RC16 và SHA `267604b`. Đây là baseline trước fix,
+không phải bằng chứng RC1.6E runtime hay Gemini UI được duyệt. Quan sát cũ
+“không có RC16 trong page đã kiểm tra” không còn mô tả danh sách hiện tại.
+Không đọc/decrypt env values, không tạo deployment hay bypass protection.
+
+**C02 OPEN:** URL agreement chỉ chứng minh routing identity trong code, không
+chứng minh anon/secret thuộc project đó. Không decode JWT chưa verify làm bằng
+chứng và không thêm network probe mỗi request. Operator cần duyệt immutable
+integration candidate, kiểm tra public/server target, credential ownership bằng
+read-only evidence an toàn và provider root/routes cô lập; lưu bằng chứng không
+chứa key. Cloud configuration, physical UAT và Production readiness chưa PASS.
+**C03 OPEN:** ledger/rehearsal/fixture authorization vẫn cần task riêng.

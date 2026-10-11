@@ -1,3 +1,5 @@
+import { PRODUCTION_SUPABASE_REF, resolveSupabaseTarget, SupabaseEnvironmentError } from '@/lib/supabase/environmentIdentity'
+
 export type AuthMode = 'mock' | 'supabase'
 
 export interface AuthModeEnvironment {
@@ -49,7 +51,11 @@ export function requireSupabasePublicConfig(): SupabasePublicConfig {
   if (!config) {
     throw new Error('Supabase authentication is not configured.')
   }
-  return config
+  const target = resolveSupabaseTarget(config.url)
+  if (process.env.NODE_ENV === 'development' && target.projectRef === PRODUCTION_SUPABASE_REF) {
+    throw new SupabaseEnvironmentError('ENV_PRODUCTION_TARGET_FORBIDDEN')
+  }
+  return { ...config, url: target.url }
 }
 
 export function safeLocalRedirect(value: string | null | undefined): string {

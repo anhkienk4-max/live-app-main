@@ -9,6 +9,14 @@ on:
       - 'docs/workforce/**'
       - 'lib/workforce/**'
       - 'lib/server/workforce*.ts'
+      - 'lib/server/supabase*.ts'
+      - 'lib/supabase/**'
+      - 'lib/auth/authMode.ts'
+      - 'scripts/check-runtime-environment.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'tests/typescript-alias-loader.mjs'
+      - 'tests/auth-session-foundation.test.ts'
       - 'app/api/workforce/**'
       - 'tests/rc16-*.test.ts'
       - 'supabase/migrations/*rc16*.sql'
@@ -16,6 +24,7 @@ on:
       - 'tests/rc16-payroll-postgres.integration.mjs'
       - 'openspec/changes/rc16b-draft-payroll-correction/**'
       - 'openspec/changes/rc16d-payroll-discovery/**'
+      - 'openspec/changes/rc16e-environment-isolation/**'
       - '.github/workflows/rc16-workforce-payroll-gate.yml'
   workflow_dispatch:
 
@@ -67,11 +76,19 @@ jobs:
         run: pnpm exec tsc --noEmit --incremental false
       - name: RC16 synthetic workforce & payroll contract tests
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc16-*.test.ts
+      - name: Authentication isolation regression tests
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/auth-session-foundation.test.ts
+      - name: Focused environment security lint
+        run: pnpm exec eslint lib/supabase/environmentIdentity.ts lib/server/supabaseEnvironment.ts lib/server/supabaseAdmin.ts lib/auth/authMode.ts lib/supabase/server.ts lib/supabase/middleware.ts scripts/check-runtime-environment.ts tests/rc16-environment-security.test.ts
       - name: Next.js production build without Production secrets
         run: pnpm run build
         env:
           NEXT_PUBLIC_SUPABASE_URL: ''
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          NEXT_PUBLIC_USE_MOCK_DATA: 'false'
+          CI: 'true'
           OPERATIONAL_STORAGE_ROUTING_MODE: database
       - name: Git diff check
         run: git -c core.whitespace=cr-at-eol diff --check HEAD~1 HEAD

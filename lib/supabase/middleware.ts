@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { requireSupabasePublicConfig } from '@/lib/auth/authMode'
+import { requireSupabaseServerPublicConfig } from '@/lib/server/supabaseEnvironment'
 
 interface SessionVerifierClient {
   auth: {
@@ -61,7 +61,7 @@ export function createLoginRedirect(
 }
 
 const createSupabaseSessionClient: SessionClientFactory = (request, onResponse) => {
-  const { url, anonKey } = requireSupabasePublicConfig()
+  const { url, anonKey } = requireSupabaseServerPublicConfig()
 
   return createServerClient(url, anonKey, {
     cookies: {
