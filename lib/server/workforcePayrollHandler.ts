@@ -42,6 +42,24 @@ const correction = z.object({
   adjustment_vnd:line.shape.adjustment_vnd,adjustment_reason:line.shape.adjustment_reason,
 }).strict()
 const voidLine = z.object({...correctionFields,action:z.literal('void_line')}).strict()
+const discoveryDate = z.string().date().refine(value=>!value.startsWith('0000'))
+const pageNumber = (max:number) => z.string().regex(/^[1-9]\d{0,6}$/u)
+  .transform(Number).refine(value=>value<=max)
+const discoveryPage = {
+  page:pageNumber(1000000).default('1'),page_size:pageNumber(100).default('50'),
+}
+const periodDiscovery = z.object({
+  ...discoveryPage,action:z.literal('list_periods'),
+  date_from:discoveryDate.optional(),date_to:discoveryDate.optional(),
+  status:z.enum(['draft','reviewed','confirmed','payroll_ready','locked']).optional(),
+}).strict().refine(value=>!value.date_from||!value.date_to||value.date_from<=value.date_to)
+const rateDiscovery = z.object({
+  ...discoveryPage,action:z.literal('list_rates'),staff_id:id.optional(),
+  role:z.enum(['host','support','technical']).optional(),
+  effective_date:discoveryDate.optional(),
+  scope:z.enum(['staff_specific','role_default']).optional(),
+}).strict().refine(value=>value.scope!=='role_default'||!value.staff_id)
+const discoveryQuery = z.union([periodDiscovery,rateDiscovery])
 const correctionErrors = new Set([
   'WORKFORCE_PAYROLL_STALE_LINE','WORKFORCE_PAYROLL_PERIOD_NOT_DRAFT',
   'WORKFORCE_PAYROLL_LINE_VOIDED','WORKFORCE_PAYROLL_IDEMPOTENCY_CONFLICT',
@@ -86,6 +104,62 @@ export function createWorkforcePayrollHandler(options:Options={}) {
       return run(async()=>{
         await requireRole(request,'admin',options.resolveUser)
         const q=new URL(request.url).searchParams
+        if(q.has('action')){
+          if([...q.keys()].some(key=>q.getAll(key).length!==1))
+            return failure('WORKFORCE_PAYROLL_DISCOVERY_QUERY_INVALID',400)
+          const parsed=discoveryQuery.safeParse(Object.fromEntries(q.entries()))
+          if(!parsed.success)return failure('WORKFORCE_PAYROLL_DISCOVERY_QUERY_INVALID',400)
+          const input=parsed.data
+          const isPeriods=input.action==='list_periods'
+          const client=connect()
+          const offset=(input.page-1)*input.page_size
+          const buildQuery=(head=false)=>{
+            let query=client.from(isPeriods?'workforce_payroll_periods':'workforce_rate_cards')
+              .select(isPeriods
+                ?'id,period_start,period_end,status,revision,created_by,reviewed_by,confirmed_by,locked_by,locked_at,created_at,updated_at'
+                :'id,staff_id,operational_role,effective_from,effective_through,vnd_per_hour,overtime_multiplier_basis_points,approved_by,approved_at,approval_note,created_at',
+              {count:'exact',head})
+            if(input.action==='list_periods'){
+              if(input.date_from)query=query.gte('period_end',input.date_from)
+              if(input.date_to)query=query.lte('period_start',input.date_to)
+              if(input.status)query=query.eq('status',input.status)
+              query=query.order('period_start',{ascending:false})
+                .order('period_end',{ascending:false}).order('revision',{ascending:false})
+            }else{
+              query=query.not('approved_by','is',null).not('approved_at','is',null)
+              if(input.staff_id)query=query.eq('staff_id',input.staff_id)
+              if(input.role)query=query.eq('operational_role',input.role)
+              if(input.scope==='role_default')query=query.is('staff_id',null)
+              if(input.scope==='staff_specific')query=query.not('staff_id','is',null)
+              if(input.effective_date)query=query.lte('effective_from',input.effective_date)
+                .or('effective_through.is.null,effective_through.gte.'+input.effective_date)
+              query=query.order('effective_from',{ascending:false})
+            }
+            return query.order('id',{ascending:true})
+          }
+          let {data,count,error}=await buildQuery().range(offset,offset+input.page_size-1)
+            .overrideTypes<Record<string,unknown>[],{merge:false}>()
+          // PostgREST rejects out-of-range offsets; prove an empty page with the same filters.
+          if(error?.code==='PGRST103'){
+            const recount=await buildQuery(true)
+            if(!recount.error&&Number.isSafeInteger(recount.count)&&recount.count!==null
+              &&recount.count>=0&&offset>=recount.count){
+              data=[];count=recount.count;error=null
+            }
+          }
+          if(error)return failure('WORKFORCE_PAYROLL_DISCOVERY_READ_FAILED',503)
+          if(!Array.isArray(data)||!Number.isSafeInteger(count)||count===null||count<0
+            ||data.length!==Math.min(input.page_size,Math.max(0,count-offset)))
+            return failure('WORKFORCE_PAYROLL_DISCOVERY_READ_INCOMPLETE',503)
+          const pagination={page:input.page,page_size:input.page_size,total_count:count,
+            total_pages:Math.ceil(count/input.page_size),has_next:offset+data.length<count,
+            has_previous:input.page>1}
+          return Response.json({ok:true,
+            ...(isPeriods?{periods:data}:{rates:data.map(row=>({...row,
+              scope:row.staff_id===null?'role_default':'staff_specific'}))}),
+            pagination,
+          },{headers:noStore})
+        }
         const parsed=id.safeParse(q.get('period_id'))
         if(!parsed.success)return failure('WORKFORCE_PERIOD_ID_REQUIRED',400)
         const client=connect()

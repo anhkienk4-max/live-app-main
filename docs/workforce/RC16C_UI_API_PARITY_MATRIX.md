@@ -2,6 +2,9 @@
 
 Baseline backend: `2be8cfd56f0bb8dbb76baa4fa23021d5e1eb1f63`. Contract chi tiết: [handoff RC16/RC16B](RC16_GEMINI_UI_API_HANDOFF.md).
 
+RC1.6D cập nhật riêng C06: discovery backend đã kiểm chứng (36 Node tests PASS,
+typecheck/lint và isolated PG regression PASS); không cập nhật UI-U thành PASS.
+
 **UI-U = chưa có source Gemini RC16 được xác nhận để kiểm chứng.** Mọi hàng UI-U là UNKNOWN, không phải UI FAIL. Trên refs đã quét không tìm thấy caller `/api/workforce` trong app/components/services; không lấy UI RC14 làm kết quả parity RC16. Severity dưới đây là ưu tiên tích hợp nếu gap còn tồn tại, không khẳng định lỗi UI chưa được đọc.
 
 | Luồng | UI hiện tại | Backend hỗ trợ | Gap / mức | Fix và acceptance |
@@ -10,8 +13,8 @@ Baseline backend: `2be8cfd56f0bb8dbb76baa4fa23021d5e1eb1f63`. Contract chi tiế
 | Worked/no-show, nhiều Host, cover/replacement/extra | UI-U | POST record, completed Shift, timestamp offset; no_show null times | UI-U / P1 | Giữ staff/role/segment; không sao chép support time theo số Host; nhập evidence_note |
 | Evidence review độc lập | UI-U | POST review + expected_version; author self-review 403, conflict/stale 409 | UI-U / P0 integrity | Disabled self-review; refresh stale; approved/rejected immutable; rejected resubmit mới |
 | Actual timeline nhiều shift | UI-U | Đọc segment từng shift, chưa có cross-shift timeline endpoint | Backend gap / P1 scope | Dùng shift drilldown theo contract; ghi giới hạn thay vì giả timeline đầy đủ |
-| Period Manager | UI-U | POST create_period; GET đúng period_id | **Thiếu list/discovery** / P1 code | Thêm Admin read list/pagination riêng; manager không dựa ID lưu trong một tab/localStorage |
-| Rate Manager | UI-U | POST register_rate; approved/effective dated; staff-specific ưu tiên | **Thiếu read/list rates** / P1 code | Thêm Admin-only đọc rate (amount, dates, approval); không lấy table trực tiếp từ browser |
+| Period Manager | UI-U | POST create_period; GET period_id; GET action=list_periods (date overlap/status/page/page_size, exact counts) | C06 backend RESOLVED RC1.6D; UI chưa kiểm chứng | Wiring Admin manager theo handoff; không dựa ID lưu trong một tab/localStorage |
+| Rate Manager | UI-U | POST register_rate; GET action=list_rates (staff/role/effective_date/scope/page/page_size); approved amount/identity/validity | C06 backend RESOLVED RC1.6D; UI chưa kiểm chứng | staff_id match exact; defaults query scope=role_default; không lấy table trực tiếp từ browser |
 | Prepare line | UI-U | POST prepare_line từ approved worked segment; server/DB calculate; trả version=1 | UI-U / P0 money | Picker chỉ approved worked; dùng date shift; không gửi gross/net/rate authoritative |
 | Correct Draft line | UI-U | correct_line; full replacement 4 mutable fields; reason; atomic RPC/audit | UI-U / P0 integrity | Before/after, current line.version, request UUID, Draft+active eligibility; validate bounds nhưng server vẫn quyết định |
 | Void | UI-U | void_line; terminal voided_at, giữ amounts/evidence/global uniqueness | POLICY/UI-U / P1 | Confirmation rõ không thể reissue/unvoid; loại void khỏi totals; audit vẫn hiện |
@@ -35,5 +38,5 @@ Baseline backend: `2be8cfd56f0bb8dbb76baa4fa23021d5e1eb1f63`. Contract chi tiế
 2. Payroll navigation/component chỉ Admin; kiểm tra Network/DOM/cache cho Leader/Member, không chỉ nút bị ẩn. Actual Admin/Leader, individual own/supervisor, overview supervisor.
 3. Schema correction strict: không gửi actor/segment/rate/actual/gross/net/calculation_version; UUID không tái tạo trên transport retry; expected_version của line, không period.revision.
 4. Totals chỉ `voided_at == null`; full audit lưu receipt độc lập, GET refresh sau replay. Conflict không overwrite tự động.
-5. Rate read/list và period read/list phải thống nhất trước wiring manager; không thêm privileged direct client để bypass API/RLS.
+5. Wiring rate/period read list theo RC1.6D handoff: exact filtered count, fixed sorting, page_size<=100, không fake completeness khi503; không thêm privileged direct client để bypass API/RLS.
 6. Lưu trạng thái từng case PASS/FAIL/BLOCKED cùng response/screenshot đã redact; không đánh dấu cả matrix PASS chỉ vì backend tests xanh.

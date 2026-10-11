@@ -13,8 +13,8 @@ Backend baseline `2be8cfd56f0bb8dbb76baa4fa23021d5e1eb1f63`: GitHub
 [CI PASS](https://github.com/anhkienk4-max/live-app-main/actions/runs/38139343311),
 25/25 synthetic tests. The older checkpoint counts below are historical.
 Official Gemini RC16 branch/SHA is not yet established; no UI integration was
-performed. Payroll GET currently requires period_id: there is no list-periods
-or list-rates API for manager discovery. Browser clients must not query
+performed. At the RC1.6C baseline Payroll GET required period_id and lacked
+list-periods/list-rates discovery; RC1.6D adds the contract below. Browser clients must not query
 privileged payroll tables directly to work around this gap.
 
 Read the [RC1.6C readiness report](RC16C_INTEGRATION_READINESS.md),
@@ -26,6 +26,131 @@ staging lacks RC15/RC16 migrations. Production RC15 migrations are already
 present; both RC16 migrations remain absent. No migration/deployment is
 authorized by this documentation checkpoint. UUID historical replay applies
 to correct_line/void_line only; other actions require read reconciliation.
+
+## RC1.6D Admin Payroll discovery contract
+
+Both discovery operations extend existing GET `/api/workforce/payroll`.
+No ID is needed to open the period/rate manager. All reads authenticate and
+require Admin before creating the server client. Leader/Member receive 403,
+anonymous receives 401; every response uses `Cache-Control: no-store`.
+No new role, schema, salary mutation, UI integration or deployment is included.
+
+### Period discovery
+
+```http
+GET /api/workforce/payroll?action=list_periods&page=1&page_size=50&date_from=2026-09-01&date_to=2026-09-30&status=draft
+```
+
+`action=list_periods` is required. Optional `page` defaults to 1 (1..1000000),
+`page_size` defaults to 50 (1..100). Both are canonical positive integer strings:
+no signs, decimal, exponent, whitespace or leading zero. Optional date_from/
+date_to are real calendar dates `YYYY-MM-DD`, year 0001..9999; inverted ranges
+fail 400. Dates select **inclusive overlap**, not containment:
+period_end >= date_from AND period_start <= date_to. Either bound can stand alone.
+Optional status is draft/reviewed/confirmed/payroll_ready/locked, exactly as stored.
+No status filter returns all five states. Fixed order: period_start DESC,
+period_end DESC, revision DESC, id ASC. Listing a Locked period does not unlock it.
+
+HTTP 200 example:
+
+```json
+{
+  "ok": true,
+  "periods": [{
+    "id": "PERIOD_ID", "period_start": "2026-09-01", "period_end": "2026-09-30",
+    "status": "draft", "revision": 1, "created_by": "ADMIN_A",
+    "reviewed_by": null, "confirmed_by": null, "locked_by": null, "locked_at": null,
+    "created_at": "2026-10-11T10:00:00+00:00", "updated_at": "2026-10-11T10:00:00+00:00"
+  }],
+  "pagination": {"page":1,"page_size":50,"total_count":1,"total_pages":1,
+    "has_next":false,"has_previous":false}
+}
+```
+
+Period summaries contain no lines or salary totals. Open one with the unchanged
+GET `?period_id=PERIOD_ID` to read period/lines/audit. Locked-only CSV remains
+GET `?period_id=PERIOD_ID&export=csv`; existing POST actions are unchanged.
+Bare GET without action or period_id retains its previous 400 behavior.
+
+### Approved rate discovery
+
+```http
+GET /api/workforce/payroll?action=list_rates&page=1&page_size=50&staff_id=STAFF_ID&role=host&effective_date=2026-09-30
+```
+
+Only approved_by AND approved_at nonnull cards are listed. Pagination has the
+same bounds/defaults. Optional staff_id is trimmed, nonblank, max120 characters;
+it matches **that staff exactly** and does not implicitly include role defaults.
+Optional role is host/support/technical; optional effective_date is a valid
+calendar date selecting effective_from <= date AND (effective_through is null
+OR effective_through >= date), including both validity boundaries.
+
+Optional scope is staff_specific (staff_id nonnull) or role_default (staff_id
+null); without scope both are included. scope=role_default together with a
+staff_id is invalid400. To inspect defaults for a staff member's role, use a
+separate role+scope=role_default query. Discovery does not choose the authoritative
+payroll rate: preparation still applies staff-specific precedence and validates
+overlaps against the approved date/attendance snapshot.
+
+Fixed order: effective_from DESC, id ASC. HTTP 200 example for the staff query:
+
+```json
+{
+  "ok": true,
+  "rates": [{
+    "id": "RATE_ID", "staff_id": "STAFF_ID", "scope": "staff_specific",
+    "operational_role": "host", "effective_from": "2026-09-01", "effective_through": "2026-09-30",
+    "vnd_per_hour": 100000, "overtime_multiplier_basis_points": 15000,
+    "approved_by": "ADMIN_B", "approved_at": "2026-08-31T10:00:00+00:00",
+    "approval_note": "Approved synthetic example rate", "created_at": "2026-08-31T10:00:00+00:00"
+  }],
+  "pagination": {"page":1,"page_size":50,"total_count":1,"total_pages":1,
+    "has_next":false,"has_previous":false}
+}
+```
+
+Role-default cards have staff_id=null and scope=role_default. Null effective_through
+means open-ended validity. OT multiplier is integer basis points (15000 = 1.5x),
+hourly VND is an integer; do not modify cards or derive new pay amounts in discovery.
+
+### Pagination, empty states and errors
+
+Both arrays contain one bounded page. total_count is the **exact filtered** count,
+total_pages=ceil(total_count/page_size), has_previous=(page>1), has_next indicates
+more rows after this page. Empty dataset: periods=[] or rates=[], total_count=0,
+total_pages=0, has_next=false; page1 has_previous=false. An out-of-range page also
+returns an empty array with the verified count, never invented count0. The server
+recounts with identical filters when PostgREST rejects an out-of-range offset.
+
+```ts
+type PayrollDiscoveryPagination = {
+  page: number; page_size: number; total_count: number; total_pages: number;
+  has_next: boolean; has_previous: boolean;
+}
+type PayrollDiscoveryErrorCode =
+  | 'AUTHENTICATION_REQUIRED' | 'PERMISSION_DENIED'
+  | 'WORKFORCE_PAYROLL_DISCOVERY_QUERY_INVALID'
+  | 'WORKFORCE_PAYROLL_DISCOVERY_READ_FAILED'
+  | 'WORKFORCE_PAYROLL_DISCOVERY_READ_INCOMPLETE'
+  | 'WORKFORCE_PAYROLL_FAILED'
+// Error envelope: { ok: false, error: { code: PayrollDiscoveryErrorCode } }
+```
+
+| HTTP | Code / UI behavior |
+| --- | --- |
+| 400 | WORKFORCE_PAYROLL_DISCOVERY_QUERY_INVALID: unknown/duplicate keys, unknown action, conflicting scope/staff, invalid date/range/enum/page; fix request |
+| 401 | AUTHENTICATION_REQUIRED: reauthenticate; no salary response |
+| 403 | PERMISSION_DENIED: Admin-only; never grant Leader salary access |
+| 503 | WORKFORCE_PAYROLL_DISCOVERY_READ_FAILED: DB/query unavailable; retry GET, preserve filters |
+| 503 | WORKFORCE_PAYROLL_DISCOVERY_READ_INCOMPLETE: missing exact count or truncated/inconsistent page; do not display returned list as complete |
+| 500 | WORKFORCE_PAYROLL_FAILED: unexpected existing handler failure; show error, no mock fallback |
+
+Discovery queries reject unknown/duplicate parameters, including mixing action
+with period_id/export. No 409 mutation/replay semantics apply to discovery GET;
+existing CSV/correction/void 409 behavior remains. Results must be reloaded after
+period/rate changes. Pagination is deterministic for an unchanged dataset, not
+an immutable snapshot across requests; concurrent insertion can shift offsets.
+Do not use discovery totals as proof of a fixed export dataset.
 
 ## Canonical data flow
 Shift → ShiftRegistration → Actual Staffing → Approved Actual Hours →

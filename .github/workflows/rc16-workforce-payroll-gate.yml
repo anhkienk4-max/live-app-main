@@ -15,6 +15,7 @@ on:
       - 'tests/fixtures/rc16*.sql'
       - 'tests/rc16-payroll-postgres.integration.mjs'
       - 'openspec/changes/rc16b-draft-payroll-correction/**'
+      - 'openspec/changes/rc16d-payroll-discovery/**'
       - '.github/workflows/rc16-workforce-payroll-gate.yml'
   workflow_dispatch:
 

@@ -39,7 +39,7 @@
 | A08 | S1 xuyên Host split; approve overlap ca khác; approve adjacent interval | Không nhân đôi payable; overlap cùng staff bị409 dù role/shift khác; adjacent không overlap |
 | A09 | Approved worked cùng scope explicit no_show | Conflict409; thiếu evidence vẫn UNKNOWN; no-show chỉ sau review explicit |
 | P01 | Create period valid/invalid dates; register rate effective range, self, overlapping | Valid201; invalid400/409; self-rate403; approved date/scope đúng; capture IDs qua contract |
-| P02 | Period/rate manager reload trang/tab mới | Discover period/rates bằng API Admin read; nếu endpoint chưa bổ sung, **BLOCKED C06**, không dùng privileged table client |
+| P02 | Period/rate manager reload trang/tab mới | RC1.6D GET action=list_periods/list_rates; filter/pagination/count/empty/error đúng contract; C06 backend resolved, browser case vẫn NOT RUN; không dùng privileged table client |
 | P03 | Prepare từ approved worked; draft/rejected/no_show/outside-period/missing rate | Valid201 version1; invalid409; shift business date chọn rate; thiếu rate không invent |
 | P04 | Staff-specific vs role-default và effective date/month overnight | Chọn staff-specific đúng; outside-date reject; snapshot không đổi theo rate mới; không chuyển segment sang ngày kết thúc |
 | P05 | Prepare cùng segment ở period giao nhau hoặc lặp trong cùng period | 409 globally; một segment chỉ có một payroll line kể cả period dates khác |

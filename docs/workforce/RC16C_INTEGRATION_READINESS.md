@@ -14,6 +14,27 @@ Ngày kiểm tra: 2026-10-11. Kết luận: **BLOCKED cho tích hợp UI và E2E
 
 Các deliverable: [ma trận contract](RC16C_UI_API_PARITY_MATRIX.md), [identity/ledger môi trường](RC16C_ENVIRONMENT_IDENTITY.md), [checklist synthetic E2E](RC16C_SYNTHETIC_UAT_CHECKLIST.md). P0/P1 và công việc tiếp theo ở dưới.
 
+## RC1.6D — cập nhật C06 backend (2026-10-11)
+
+SHA bắt đầu RC1.6D: `065dff91836b94299674b3bbd28ee10266cf88fe`. C06 **RESOLVED ở backend**:
+GET Payroll hỗ trợ `action=list_periods` / `action=list_rates`, Admin-only, strict
+filters, exact count, bounded page size, deterministic order và empty states.
+Thiếu count/truncated page trả503; vẫn giữ GET period/CSV và correction/void/audit.
+Contract đầy đủ ở [Gemini handoff](RC16_GEMINI_UI_API_HANDOFF.md).
+
+Đã chạy **36/36 Node tests PASS** (11 discovery mới), TypeScript và focused lint
+PASS; isolated PostgreSQL16 giữ regression foundation, **49 assertions RC16B** và
+**5 race/rollback scenarios PASS**. Build/diff/memory và CI exact final SHA được
+xác nhận trong handoff giao việc sau validation/push. Không xem Node/PG tests là
+UI hoặc cloud UAT: nguồn Gemini vẫn UNKNOWN và các blocker khác chưa đóng.
+
+RC1.6E kế tiếp: harden `scripts/check-runtime-environment.ts` và privileged client
+để kiểm tra cả public/server Supabase identity; reject Production và URL mismatch
+trong local dev/local build/Preview, với tests cho override `SUPABASE_URL`, mock
+flags và missing-config fail-closed phù hợp runtime. Sau đó read-only xác minh
+immutable Preview candidate và key/provider isolation. Không tự apply migration,
+provision role, đổi Vercel env hoặc deploy. C02/C03/C10 vẫn là gate mở.
+
 ## Nguồn UI Gemini
 
 Đã kiểm tra cây `app/`, `components/` trên toàn bộ refs `origin/*` sau fetch, và tìm các caller `/api/workforce`, `correct_line`, `void_line` trong `app/`, `components/`, `lib/services/`. Chỉ branch backend có route API Workforce; không tìm thấy màn hình/caller Workforce hoặc Payroll trong các scope này. Điều này không chứng minh code chưa push hoặc nằm ngoài scope không tồn tại.
@@ -49,7 +70,7 @@ P0 = chặn bước an toàn kế tiếp; P1 = cần xử lý trước nghiệm 
 | C03 | P0 / ENV | Staging thiếu RC15 và cả hai RC16 migration; có 78 shifts/9 reports sẵn | Duyệt target/scope và migration plan riêng; kiểm tra RPC baseline, backup/fixture namespace; không tự chạy migration |
 | C04 | P0 go-live / POLICY | Production 1 Admin; không thể hoàn thành review độc lập | Owner chỉ định Admin thứ hai, hoặc duyệt Finance role qua thay đổi RBAC riêng; không cấp salary cho Leader và không bỏ self-review |
 | C05 | P0 UAT acceptance / POLICY | Rate/OT/payable-break/lateness chưa có quyết định được ghi nhận cho RC16C | HR/Finance duyệt policy và config cụ thể; synthetic test dùng giá trị fixture được ghi rõ, không xem là policy thực tế |
-| C06 | P1 / CODE | Payroll GET chỉ đọc một `period_id`; không có list periods/list rate cards | Thêm read action/query Admin-only có pagination, validation và regression; giữ GET period/CSV cũ; không gọi service-role từ browser |
+| C06 | RESOLVED backend / CODE | RC1.6D GET list_periods/list_rates đã qua 36 Node tests, typecheck/lint và PG regression; UI vẫn UNKNOWN | Gemini wiring theo contract mới trên source được xác nhận; không gọi service-role từ browser; chưa claim UI integration/UAT PASS |
 | C07 | P1 / POLICY | Void terminal giữ unique(segment_id); chưa có recovery/reissue | Owner chấp nhận giới hạn và UI xác nhận rõ trước void; nếu cần reissue, thiết kế audited replacement riêng giữ chống double-pay |
 | C08 | P1 / DEPENDENCY | Storage physical provider UAT chưa có bằng chứng PASS hiện hành | Storage owner chạy fixture trong root/account cô lập đã phê duyệt; kiểm tra bytes/hash/parent/reconnect; không dùng Drive Production |
 | C09 | P1 / ENV | Supabase staging PG17.6; CI PG16, Vercel project Node24 so với CI Node22 | Bổ sung rehearsal PG17 + runtime Node24 trên target cô lập trước acceptance; không xem gate PG16 là cloud E2E |
@@ -63,7 +84,7 @@ Không xác minh rằng adjustment đã được người khác phê duyệt ri�
 
 1. Xác nhận Gemini source và UAT deployment/project, hai tài khoản Admin độc lập; ghi identity + approvals trong evidence manifest.
 2. Duyệt migration rehearsal **chỉ staging**. So RPC/schema thực tế với prerequisite PR24; staging có RC13A trước đó nên không giả định baseline Production. Giữ ledger privacy/report-history, không replay/chỉnh history. Apply chỉ sau ủy quyền riêng và plan đã review.
-3. Backend bổ sung discovery periods/rates Admin-only (C06), có test 401/403, pagination/truncation, rate visibility và effective date; thống nhất response với Gemini trước UI work. Không thêm amount authority phía client.
+3. C06 backend đã hoàn tất RC1.6D; Gemini dùng GET action=list_periods/list_rates theo handoff. Kế tiếp thực hiện RC1.6E environment isolation hardening ở trên; không thêm amount authority phía client.
 4. Tạo `integration/rc16c-gemini-uat` từ baseline đã thống nhất, ghép source được chỉ định và backend theo contract. Giữ hai branch gốc. Review hai file overlap và privacy/Storage gates; chạy typecheck, tests, build trên candidate.
 5. Thiết lập config Preview branch cụ thể: public/server cùng staging; mock false; grace/minimum-sample có approval; key server không public; root/provider/route test cô lập. Không tự sửa Vercel env/deploy trong RC16C.
 6. Chạy checklist E2E bên dưới sau khi tất cả entry gates đạt; lưu status thực tế và bằng chứng. Fix defect có reproduction trên integration branch; không biến policy chưa duyệt thành default.
