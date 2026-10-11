@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>APP OPS — Real Preview Contact Sheet & Evidence Audit</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #111827;
+      --border: #1f2937;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --primary: #3b82f6;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --success: #10b981;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      padding: 32px 24px;
+      line-height: 1.5;
+    }
+    .header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 24px;
+      margin-bottom: 24px;
+    }
+    h1 { font-size: 24px; font-weight: 700; margin-bottom: 8px; color: #fff; }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .meta-item {
+      background: var(--card-bg);
+      padding: 12px 16px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .meta-label { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .meta-value { font-family: monospace; font-weight: 600; margin-top: 4px; word-break: break-all; }
+    
+    .alert-banner {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid var(--danger);
+      color: #fca5a5;
+      padding: 16px 20px;
+      border-radius: 8px;
+      margin-bottom: 32px;
+    }
+    .alert-banner h2 { font-size: 16px; font-weight: 700; color: #ef4444; margin-bottom: 6px; }
+
+    .evidence-section {
+      margin-bottom: 36px;
+    }
+    .evidence-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .badge-danger { background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid #ef4444; }
+    .badge-warning { background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid #f59e0b; }
+    .badge-success { background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid #10b981; }
+
+    .screenshot-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      max-width: 900px;
+    }
+    .screenshot-header {
+      padding: 12px 16px;
+      background: #1e293b;
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+    }
+    .screenshot-img-wrapper {
+      padding: 16px;
+      background: #000;
+      text-align: center;
+    }
+    .screenshot-img-wrapper img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 4px;
+      border: 1px solid #334155;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+      background: var(--card-bg);
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      font-size: 13px;
+    }
+    th, td {
+      padding: 12px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      background: #1e293b;
+      color: var(--text-muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    tr:last-child td { border-bottom: none; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>APP OPS — Real Preview Contact Sheet & Evidence Audit</h1>
+    <p style="color: var(--text-muted); font-size: 14px;">Audit & Verification of Vercel Deployed Preview Runtime vs. Source & Staging Contracts</p>
+
+    <div class="meta-grid">
+      <div class="meta-item">
+        <div class="meta-label">Verified Vercel Preview</div>
+        <div class="meta-value"><a href="https://live-app-clean-oyi5j5xig-livestream2.vercel.app" style="color: var(--primary);" target="_blank">https://live-app-clean-oyi5j5xig-livestream2.vercel.app</a></div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Integration Git HEAD</div>
+        <div class="meta-value">5c45e0f2113fe6bf61d35b54fb610862c326ef10</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Runtime Deployment SHA</div>
+        <div class="meta-value">b5e59a90dde9af22a5f7981cb4ab3c5b54fe6b49</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Staging Database Ref</div>
+        <div class="meta-value">amagnzebmmuqiptmrjmc (78 Shifts / 69 Active)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="alert-banner">
+    <h2>EVIDENCE CORRECTION ACTIVE: PREVIEW RUNTIME BLOCKED_SSO</h2>
+    <p>The previous QA run contained synthetic manifests and copied screenshots that have been formally rejected and archived with <code>_REJECTED</code> identifiers. Automated browser navigation against the deployed preview confirms that Vercel Deployment Protection intercepts access with a 302 redirect to Vercel SSO. In strict accordance with the Operator directive, browser automation was halted with <strong>BLOCKED_SSO</strong> rather than fabricating passes.</p>
+  </div>
+
+  <div class="evidence-section">
+    <div class="evidence-title">
+      <span>Authentic Deployment Interception Evidence</span>
+      <span class="badge badge-danger">BLOCKED_SSO</span>
+    </div>
+    <div class="screenshot-card">
+      <div class="screenshot-header">
+        <span><strong>File:</strong> VERCEL_SSO_INTERCEPT_PREVIEW.png</span>
+        <span><strong>SHA-256:</strong> 9D34023BF5CE3B7BFDA6064EE409F12B52BF65027AFADFC6592BB8D86AFB7219</span>
+        <span><strong>Captured:</strong> 2026-10-11T11:21:46.000Z</span>
+      </div>
+      <div class="screenshot-img-wrapper">
+        <img src="VERCEL_SSO_INTERCEPT_PREVIEW.png" alt="Vercel SSO Intercept Screen">
+      </div>
+    </div>
+  </div>
+
+  <div class="evidence-section">
+    <div class="evidence-title">
+      <span>14-Wave Convergence & Parity Status Matrix</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Wave</th>
+          <th>Domain / Route</th>
+          <th>Allowed Roles</th>
+          <th>Source Review</th>
+          <th>Deployed Runtime</th>
+          <th>Visual Parity</th>
+          <th>Data Scope / Staging Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>W01</strong></td>
+          <td>Reports (<code>/reports</code>)</td>
+          <td>Admin, Leader, Member</td>
+          <td><span class="badge badge-success">SOURCE_CODE_REVIEWED</span></td>
+          <td><span class="badge badge-danger">BLOCKED_SSO</span></td>
+          <td><span class="badge badge-warning">UNVERIFIED</span></td>
+          <td>Ready (Drafts & Revision Contracts Verified)</td>
+        </tr>
+        <tr>
+          <td><strong>W02</strong></td>
+          <td>Live Ops (<code>/live</code>)</td>
+          <td>Admin, Leader, Member</td>
+          <td><span class="badge badge-success">SOURCE_CODE_REVIEWED</span></td>
+          <td><span class="badge badge-danger">BLOCKED_SSO</span></td>
+          <td><span class="badge badge-warning">UNVERIFIED</span></td>
+          <td>Empty State Verified (0 shifts today 11/10/2026) / Populated: BLOCKED_DATA</td>
+        </tr>
+        <tr>
+          <td><strong>W03</strong></td>
+          <td>Staffing Directory (<code>/staffing</code>)</td>
+          <td>Admin, Leader, Member</td>
+          <td><span class="badge badge-success">SOURCE_CODE_REVIEWED</span></td>
+          <td><span class="badge badge-danger">BLOCKED_SSO</span></td>
+          <td><span class="badge badge-warning">UNVERIFIED</span></td>
+          <td>Ready (Profiles & Safe Directory Query)</td>
+        </tr>
+        <tr>
+          <td><strong>W04</strong></td>
+          <td>Calendar (<code>/calendar</code>)</td>
+          <td>Admin, Leader, Member</td>
+          <td><span class="badge badge-success">SOURCE_CODE_REVIEWED</span></td>
+          <td><span class="badge badge-danger">BLOCKED_SSO</span></td>
+          <td><span class="badge badge-warning">UNVERIFIED</span></td>
+          <td><strong>Reconciled:</strong> 78 total / 69 active / 5 on 01–04 Aug / 0 today</td>
+        </tr>
+        <tr>
+          <td><strong>W05</strong></td>
+          <td>Import Matrix (<code>/import</code>)</td>
+          <td>Admin, Leader</td>
+          <td><span class="badge badge-success">SOURCE_CODE_REVIEWED</span></td>
+          <td><span class="badge badge-danger">BLOCKED_SSO</span></td>
+          <td><span class="badge badge-warning">UNVERIFIED</span></td>
+          <td>Ready (Actionable preview rows enforced)</td>
+        </tr>
+        <tr>
+          <td><strong>W06</strong></td>
+          <td>Settings (<code>/settings</code>)</td>
+          <td>Admin</td>
+          <td><span class="badge badge-success">SOURCE_CODE_REVIEWED</span></td>
+          <td><span class="badge badge-danger">BLOCKED_SSO</span></td>
+          <td><span class="badge badge-warning">UNVERIFIED</span></td>
+          <td>Ready (Authoritative Settings Reconstructed)</td>
+        </tr>
+        <tr>
+          <td><strong>W07</strong></td>
+          <td>Analytics (<code>/analytics</code>)</td>
+          <td>Admin, Leader</td>
+          <td><span class="badge badge-success">SOURCE_CODE_REVIEWED</span></td>
+          <td><span class="badge badge-danger">BLOCKED_SSO</span></td>
+          <td><span class="badge badge-warning">UNVERIFIED</span></td>
+          <td>Ready (Aggregated metrics views)</td>
+        </tr>
+        <tr>
+          <td><strong>W08</strong></td>
+          <td>Audit Logs (<code>/audit</code>)</td>
+          <td>Admin</td>
+          <td><span class="badge badge-success">SOURCE_CODE_REVIEWED</span></td>
+          <td><span class="badge badge-danger">BLOCKED_SSO</span></td>
+          <td><span class="badge badge-warning">UNVERIFIED</span></td>
+          <td>Ready (Persisted entity types resolved)</td>
+        </tr>
+        <tr>
+          <td><strong>W09</strong></td>
+          <td>Notifications (<code>/notifications</code>)</td>
+          <td>Admin, Leader, Member</td>
+          <td><span class="badge badge-success">SOURCE_CODE_REVIEWED</span></td>
+          <td><span class="badge badge-danger">BLOCKED_SSO</span></td>
+          <td><span class="badge badge-warning">UNVERIFIED</span></td>
+          <td>Ready (Hardened routing & persistence feedback)</td>
+        </tr>
+        <tr>
+          <td><strong>W10</strong></td>
+          <td>Help & Docs (<code>/help</code>)</td>
+          <td>Admin, Leader, Member</td>
+          <td><span class="badge badge-success">SOURCE_CODE_REVIEWED</span></td>
+          <td><span class="badge badge-danger">BLOCKED_SSO</span></td>
+          <td><span class="badge badge-warning">UNVERIFIED</span></td>
+          <td>Ready (Static documentation routes)</td>
+        </tr>
+        <tr>
+          <td><strong>W11</strong></td>
+          <td>User Management (<code>/users</code>)</td>
+          <td>Admin</td>
+          <td><span class="badge badge-success">SOURCE_CODE_REVIEWED</span></td>
+          <td><span class="badge badge-danger">BLOCKED_SSO</span></td>
+          <td><span class="badge badge-warning">UNVERIFIED</span></td>
+          <td>Ready (Authoritative Admin Self Role Updates)</td>
+        </tr>
+        <tr>
+          <td><strong>W12</strong></td>
+          <td>Profile & Security (<code>/profile</code>)</td>
+          <td>Admin, Leader, Member</td>
+          <td><span class="badge badge-success">SOURCE_CODE_REVIEWED</span></td>
+          <td><span class="badge badge-danger">BLOCKED_SSO</span></td>
+          <td><span class="badge badge-warning">UNVERIFIED</span></td>
+          <td>Ready (Protected credentials state maintained)</td>
+        </tr>
+        <tr>
+          <td><strong>W13</strong></td>
+          <td>System Status (<code>/status</code>)</td>
+          <td>Admin, Leader, Member</td>
+          <td><span class="badge badge-success">SOURCE_CODE_REVIEWED</span></td>
+          <td><span class="badge badge-danger">BLOCKED_SSO</span></td>
+          <td><span class="badge badge-warning">UNVERIFIED</span></td>
+          <td>Ready (Health endpoints verified)</td>
+        </tr>
+        <tr>
+          <td><strong>W14</strong></td>
+          <td>Role Dashboards (<code>/dashboard</code>)</td>
+          <td>Admin, Leader, Member</td>
+          <td><span class="badge badge-success">SOURCE_CODE_REVIEWED</span></td>
+          <td><span class="badge badge-danger">BLOCKED_SSO</span></td>
+          <td><span class="badge badge-warning">UNVERIFIED</span></td>
+          <td>Ready (Role dashboards with fixture isolation)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</body>
+</html>
