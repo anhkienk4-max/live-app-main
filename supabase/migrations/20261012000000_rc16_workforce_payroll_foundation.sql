@@ -238,6 +238,27 @@ begin
   if tg_op='UPDATE' and new.version <> old.version + 1 then
     raise exception 'WORKFORCE_ACTUAL_STALE_VERSION';
   end if;
+  if new.review_status='approved' then
+    perform pg_advisory_xact_lock(hashtextextended('staff-attendance:'||new.staff_id,0));
+    if new.event_kind='worked' and exists (
+      select 1 from public.workforce_actual_segments existing
+      where existing.staff_id=new.staff_id and existing.id<>new.id
+        and existing.review_status='approved' and existing.event_kind='worked'
+        and tstzrange(existing.actual_start_at,existing.actual_end_at,'[)')
+          && tstzrange(new.actual_start_at,new.actual_end_at,'[)')
+    ) then
+      raise exception 'WORKFORCE_APPROVED_STAFF_OVERLAP';
+    end if;
+    if exists (
+      select 1 from public.workforce_actual_segments existing
+      where existing.shift_id=new.shift_id and existing.staff_id=new.staff_id
+        and existing.operational_role=new.operational_role
+        and existing.id<>new.id and existing.review_status='approved'
+        and existing.event_kind<>new.event_kind
+    ) then
+      raise exception 'WORKFORCE_APPROVED_NO_SHOW_CONFLICT';
+    end if;
+  end if;
   return case when tg_op='DELETE' then old else new end;
 end $$;
 drop trigger if exists workforce_actual_guard on public.workforce_actual_segments;
