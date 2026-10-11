@@ -292,7 +292,7 @@ export function OperationalStorageSetupWorkspace() {
           <p className="text-xs text-muted-foreground">Server sẽ từ chối nếu bất kỳ Folder ID nào không thuộc đúng cấp cha hoặc tên tháng/platform không khớp. Không tạo folder mới.</p>
         </div>}
         {needsLegacy && <>
-          <p className="text-sm">Legacy: giữ nguyên các folder Dashboard/Visibility/DATA cũ. Các nhóm V2 mới lưu dưới ADA_STORAGE_V2 theo Brand ID/Platform ID/Nguồn/Tháng.</p>
+          <p className="text-sm">Legacy: giữ nguyên Dashboard/Visibility/DATA cũ. Các loại file V2 mới tạm khóa đến khi được duyệt route phù hợp; app không tự tạo thư mục ADA_STORAGE_V2 hoặc di chuyển file cũ.</p>
           <label className="block text-sm space-y-1">
             <span>Legacy Base Folder ID nằm trong Root đã kiểm tra</span>
             <input className={control} value={legacyBaseId}
