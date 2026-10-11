@@ -1,0 +1,1402 @@
+{
+  "capturedAt": "2026-10-11",
+  "project": "egdjnpmoasarrttvhgds",
+  "scope": "baseline only; no business rows; not a database backup",
+  "functions": [
+    {
+      "signature": "create_shift(p_data jsonb)",
+      "md5": "2133950d90a0610b76d4b6623abf4621"
+    },
+    {
+      "signature": "update_shift(p_shift_id text, p_patch jsonb, p_confirm_impact boolean)",
+      "md5": "6737e74fb449e7745b3847b3f95ec0a0"
+    },
+    {
+      "signature": "update_shift(p_shift_id text, p_patch jsonb, p_confirm_impact boolean, p_expected_version integer)",
+      "md5": "c7b743aa97b19c678ff6f84d6c9b8a2c"
+    }
+  ],
+  "columns": [
+    {
+      "table_name": "brands",
+      "column_name": "id",
+      "ordinal_position": 1,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "brands",
+      "column_name": "name",
+      "ordinal_position": 2,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "brands",
+      "column_name": "logo_url",
+      "ordinal_position": 3,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "brands",
+      "column_name": "color",
+      "ordinal_position": 4,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "brands",
+      "column_name": "description",
+      "ordinal_position": 5,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "brands",
+      "column_name": "category",
+      "ordinal_position": 6,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "brands",
+      "column_name": "status",
+      "ordinal_position": 7,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": "'active'::text"
+    },
+    {
+      "table_name": "brands",
+      "column_name": "contact_person",
+      "ordinal_position": 8,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "brands",
+      "column_name": "contact_email",
+      "ordinal_position": 9,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "brands",
+      "column_name": "contact_phone",
+      "ordinal_position": 10,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "brands",
+      "column_name": "brand_guideline",
+      "ordinal_position": 11,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "brands",
+      "column_name": "tone_of_voice",
+      "ordinal_position": 12,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "brands",
+      "column_name": "key_products",
+      "ordinal_position": 13,
+      "data_type": "ARRAY",
+      "udt_name": "_text",
+      "is_nullable": "NO",
+      "column_default": "'{}'::text[]"
+    },
+    {
+      "table_name": "brands",
+      "column_name": "mandatory_claims",
+      "ordinal_position": 14,
+      "data_type": "ARRAY",
+      "udt_name": "_text",
+      "is_nullable": "NO",
+      "column_default": "'{}'::text[]"
+    },
+    {
+      "table_name": "brands",
+      "column_name": "restricted_claims",
+      "ordinal_position": 15,
+      "data_type": "ARRAY",
+      "udt_name": "_text",
+      "is_nullable": "NO",
+      "column_default": "'{}'::text[]"
+    },
+    {
+      "table_name": "brands",
+      "column_name": "dos",
+      "ordinal_position": 16,
+      "data_type": "ARRAY",
+      "udt_name": "_text",
+      "is_nullable": "NO",
+      "column_default": "'{}'::text[]"
+    },
+    {
+      "table_name": "brands",
+      "column_name": "donts",
+      "ordinal_position": 17,
+      "data_type": "ARRAY",
+      "udt_name": "_text",
+      "is_nullable": "NO",
+      "column_default": "'{}'::text[]"
+    },
+    {
+      "table_name": "brands",
+      "column_name": "asset_links",
+      "ordinal_position": 18,
+      "data_type": "ARRAY",
+      "udt_name": "_text",
+      "is_nullable": "NO",
+      "column_default": "'{}'::text[]"
+    },
+    {
+      "table_name": "brands",
+      "column_name": "notes",
+      "ordinal_position": 19,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "brands",
+      "column_name": "updated_by",
+      "ordinal_position": 20,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "brands",
+      "column_name": "created_at",
+      "ordinal_position": 21,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "statement_timestamp()"
+    },
+    {
+      "table_name": "brands",
+      "column_name": "updated_at",
+      "ordinal_position": 22,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "statement_timestamp()"
+    },
+    {
+      "table_name": "brands",
+      "column_name": "deleted_at",
+      "ordinal_position": 23,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "brands",
+      "column_name": "deleted_by",
+      "ordinal_position": 24,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "brands",
+      "column_name": "archived_at",
+      "ordinal_position": 25,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "brands",
+      "column_name": "archived_by",
+      "ordinal_position": 26,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "brands",
+      "column_name": "deletion_reason",
+      "ordinal_position": 27,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "id",
+      "ordinal_position": 1,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "auth_user_id",
+      "ordinal_position": 2,
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "email",
+      "ordinal_position": 3,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "full_name",
+      "ordinal_position": 4,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "avatar_url",
+      "ordinal_position": 5,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "avatar_storage_path",
+      "ordinal_position": 6,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "phone",
+      "ordinal_position": 7,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "role",
+      "ordinal_position": 8,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": "'staff'::text"
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "system_permission",
+      "ordinal_position": 9,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": "'member'::text"
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "operational_roles",
+      "ordinal_position": 10,
+      "data_type": "ARRAY",
+      "udt_name": "_text",
+      "is_nullable": "NO",
+      "column_default": "'{}'::text[]"
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "department",
+      "ordinal_position": 11,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "status",
+      "ordinal_position": 12,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": "'active'::text"
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "account_status",
+      "ordinal_position": 13,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": "'pending_approval'::text"
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "email_verified",
+      "ordinal_position": 14,
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": "false"
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "auth_provider",
+      "ordinal_position": 15,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "join_date",
+      "ordinal_position": 16,
+      "data_type": "date",
+      "udt_name": "date",
+      "is_nullable": "NO",
+      "column_default": "CURRENT_DATE"
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "created_at",
+      "ordinal_position": 17,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "statement_timestamp()"
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "updated_at",
+      "ordinal_position": 18,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "statement_timestamp()"
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "deleted_at",
+      "ordinal_position": 19,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "deleted_by",
+      "ordinal_position": 20,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "archived_at",
+      "ordinal_position": 21,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "archived_by",
+      "ordinal_position": 22,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "business_users",
+      "column_name": "deletion_reason",
+      "ordinal_position": 23,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "id",
+      "ordinal_position": 1,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "name",
+      "ordinal_position": 2,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "brand_id",
+      "ordinal_position": 3,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "start_date",
+      "ordinal_position": 4,
+      "data_type": "date",
+      "udt_name": "date",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "end_date",
+      "ordinal_position": 5,
+      "data_type": "date",
+      "udt_name": "date",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "type",
+      "ordinal_position": 6,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "notes",
+      "ordinal_position": 7,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "campaign_url",
+      "ordinal_position": 8,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "website_url",
+      "ordinal_position": 9,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "website_title",
+      "ordinal_position": 10,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "website_preview_image",
+      "ordinal_position": 11,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "website_embed_enabled",
+      "ordinal_position": 12,
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": "false"
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "platform_source",
+      "ordinal_position": 13,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "platform_ids",
+      "ordinal_position": 14,
+      "data_type": "ARRAY",
+      "udt_name": "_text",
+      "is_nullable": "NO",
+      "column_default": "'{}'::text[]"
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "status",
+      "ordinal_position": 15,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": "'draft'::text"
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "owner_id",
+      "ordinal_position": 16,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "created_at",
+      "ordinal_position": 17,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "statement_timestamp()"
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "updated_at",
+      "ordinal_position": 18,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "statement_timestamp()"
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "deleted_at",
+      "ordinal_position": 19,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "deleted_by",
+      "ordinal_position": 20,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "archived_at",
+      "ordinal_position": 21,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "archived_by",
+      "ordinal_position": 22,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "campaigns",
+      "column_name": "deletion_reason",
+      "ordinal_position": 23,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "id",
+      "ordinal_position": 1,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "name",
+      "ordinal_position": 2,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "icon",
+      "ordinal_position": 3,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "logo_url",
+      "ordinal_position": 4,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "platform_type",
+      "ordinal_position": 5,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "platform_url",
+      "ordinal_position": 6,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "status",
+      "ordinal_position": 7,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": "'active'::text"
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "account_information",
+      "ordinal_position": 8,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "policy_notes",
+      "ordinal_position": 9,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "livestream_rules",
+      "ordinal_position": 10,
+      "data_type": "ARRAY",
+      "udt_name": "_text",
+      "is_nullable": "NO",
+      "column_default": "'{}'::text[]"
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "content_restrictions",
+      "ordinal_position": 11,
+      "data_type": "ARRAY",
+      "udt_name": "_text",
+      "is_nullable": "NO",
+      "column_default": "'{}'::text[]"
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "technical_requirements",
+      "ordinal_position": 12,
+      "data_type": "ARRAY",
+      "udt_name": "_text",
+      "is_nullable": "NO",
+      "column_default": "'{}'::text[]"
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "report_requirements",
+      "ordinal_position": 13,
+      "data_type": "ARRAY",
+      "udt_name": "_text",
+      "is_nullable": "NO",
+      "column_default": "'{}'::text[]"
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "external_links",
+      "ordinal_position": 14,
+      "data_type": "ARRAY",
+      "udt_name": "_text",
+      "is_nullable": "NO",
+      "column_default": "'{}'::text[]"
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "updated_by",
+      "ordinal_position": 15,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "created_at",
+      "ordinal_position": 16,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "statement_timestamp()"
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "updated_at",
+      "ordinal_position": 17,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "statement_timestamp()"
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "deleted_at",
+      "ordinal_position": 18,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "deleted_by",
+      "ordinal_position": 19,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "archived_at",
+      "ordinal_position": 20,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "archived_by",
+      "ordinal_position": 21,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "platforms",
+      "column_name": "deletion_reason",
+      "ordinal_position": 22,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "id",
+      "ordinal_position": 1,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": "(gen_random_uuid())::text"
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "date",
+      "ordinal_position": 2,
+      "data_type": "date",
+      "udt_name": "date",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "start_time",
+      "ordinal_position": 3,
+      "data_type": "time without time zone",
+      "udt_name": "time",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "end_time",
+      "ordinal_position": 4,
+      "data_type": "time without time zone",
+      "udt_name": "time",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "timezone",
+      "ordinal_position": 5,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": "'Asia/Ho_Chi_Minh'::text"
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "start_at",
+      "ordinal_position": 6,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "end_at",
+      "ordinal_position": 7,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "end_date",
+      "ordinal_position": 8,
+      "data_type": "date",
+      "udt_name": "date",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "crosses_midnight",
+      "ordinal_position": 9,
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "duration_minutes",
+      "ordinal_position": 10,
+      "data_type": "smallint",
+      "udt_name": "int2",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "brand_id",
+      "ordinal_position": 11,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "platform_id",
+      "ordinal_position": 12,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "campaign_id",
+      "ordinal_position": 13,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "title",
+      "ordinal_position": 14,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "studio",
+      "ordinal_position": 15,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "host_id",
+      "ordinal_position": 16,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "support_id",
+      "ordinal_position": 17,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "technical_id",
+      "ordinal_position": 18,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "required_host_count",
+      "ordinal_position": 19,
+      "data_type": "smallint",
+      "udt_name": "int2",
+      "is_nullable": "NO",
+      "column_default": "1"
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "required_support_count",
+      "ordinal_position": 20,
+      "data_type": "smallint",
+      "udt_name": "int2",
+      "is_nullable": "NO",
+      "column_default": "1"
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "required_technical_count",
+      "ordinal_position": 21,
+      "data_type": "smallint",
+      "udt_name": "int2",
+      "is_nullable": "NO",
+      "column_default": "1"
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "registration_locked",
+      "ordinal_position": 22,
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": "false"
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "registration_cutoff_at",
+      "ordinal_position": 23,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "allow_multi_role",
+      "ordinal_position": 24,
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": "false"
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "import_batch_id",
+      "ordinal_position": 25,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "status",
+      "ordinal_position": 26,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": "'scheduled'::text"
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "live_link",
+      "ordinal_position": 27,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "product_notes",
+      "ordinal_position": 28,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "updated_by",
+      "ordinal_position": 29,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "created_at",
+      "ordinal_position": 30,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "statement_timestamp()"
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "updated_at",
+      "ordinal_position": 31,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "statement_timestamp()"
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "deleted_at",
+      "ordinal_position": 32,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "deleted_by",
+      "ordinal_position": 33,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "archived_at",
+      "ordinal_position": 34,
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "archived_by",
+      "ordinal_position": 35,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "deletion_reason",
+      "ordinal_position": 36,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "host_names",
+      "ordinal_position": 37,
+      "data_type": "ARRAY",
+      "udt_name": "_text",
+      "is_nullable": "NO",
+      "column_default": "'{}'::text[]"
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "assistant_names",
+      "ordinal_position": 38,
+      "data_type": "ARRAY",
+      "udt_name": "_text",
+      "is_nullable": "NO",
+      "column_default": "'{}'::text[]"
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "technical_names",
+      "ordinal_position": 39,
+      "data_type": "ARRAY",
+      "udt_name": "_text",
+      "is_nullable": "NO",
+      "column_default": "'{}'::text[]"
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "version",
+      "ordinal_position": 40,
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": "1"
+    },
+    {
+      "table_name": "shifts",
+      "column_name": "status_mode",
+      "ordinal_position": 41,
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": "'auto'::text"
+    }
+  ],
+  "constraints": [
+    {
+      "table_name": "brands",
+      "conname": "brands_archived_by_fkey",
+      "constraint_sql": "FOREIGN KEY (archived_by) REFERENCES business_users(id) ON DELETE SET NULL"
+    },
+    {
+      "table_name": "brands",
+      "conname": "brands_deleted_by_fkey",
+      "constraint_sql": "FOREIGN KEY (deleted_by) REFERENCES business_users(id) ON DELETE SET NULL"
+    },
+    {
+      "table_name": "brands",
+      "conname": "brands_id_not_blank",
+      "constraint_sql": "CHECK ((btrim(id) <> ''::text))"
+    },
+    {
+      "table_name": "brands",
+      "conname": "brands_name_not_blank",
+      "constraint_sql": "CHECK ((btrim(name) <> ''::text))"
+    },
+    {
+      "table_name": "brands",
+      "conname": "brands_pkey",
+      "constraint_sql": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "brands",
+      "conname": "brands_status_check",
+      "constraint_sql": "CHECK ((status = ANY (ARRAY['active'::text, 'inactive'::text, 'draft'::text])))"
+    },
+    {
+      "table_name": "brands",
+      "conname": "brands_updated_by_fkey",
+      "constraint_sql": "FOREIGN KEY (updated_by) REFERENCES business_users(id) ON DELETE SET NULL"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_archived_by_fkey",
+      "constraint_sql": "FOREIGN KEY (archived_by) REFERENCES business_users(id) ON DELETE SET NULL"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_brand_id_fkey",
+      "constraint_sql": "FOREIGN KEY (brand_id) REFERENCES brands(id) ON DELETE RESTRICT"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_campaign_id_fkey",
+      "constraint_sql": "FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE RESTRICT NOT VALID"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_crosses_midnight_check",
+      "constraint_sql": "CHECK ((crosses_midnight = (end_date > date)))"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_deleted_by_fkey",
+      "constraint_sql": "FOREIGN KEY (deleted_by) REFERENCES business_users(id) ON DELETE SET NULL"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_duration_check",
+      "constraint_sql": "CHECK (((duration_minutes >= 1) AND (duration_minutes <= 1439)))"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_end_date_check",
+      "constraint_sql": "CHECK (((end_date >= date) AND (end_date <= (date + 1))))"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_host_id_fkey",
+      "constraint_sql": "FOREIGN KEY (host_id) REFERENCES business_users(id) ON DELETE SET NULL"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_id_not_blank",
+      "constraint_sql": "CHECK ((btrim(id) <> ''::text))"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_import_batch_id_fkey",
+      "constraint_sql": "FOREIGN KEY (import_batch_id) REFERENCES schedule_import_batches(id) ON DELETE SET NULL NOT VALID"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_pkey",
+      "constraint_sql": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_platform_id_fkey",
+      "constraint_sql": "FOREIGN KEY (platform_id) REFERENCES platforms(id) ON DELETE RESTRICT"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_registration_cutoff_check",
+      "constraint_sql": "CHECK ((registration_cutoff_at <= start_at))"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_required_host_count_check",
+      "constraint_sql": "CHECK (((required_host_count >= 0) AND (required_host_count <= 100)))"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_required_support_count_check",
+      "constraint_sql": "CHECK (((required_support_count >= 0) AND (required_support_count <= 100)))"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_required_technical_count_check",
+      "constraint_sql": "CHECK (((required_technical_count >= 0) AND (required_technical_count <= 100)))"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_status_check",
+      "constraint_sql": "CHECK ((status = ANY (ARRAY['scheduled'::text, 'preparing'::text, 'live'::text, 'paused'::text, 'completed'::text, 'cancelled'::text])))"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_status_mode_check",
+      "constraint_sql": "CHECK ((status_mode = ANY (ARRAY['auto'::text, 'manual'::text])))"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_support_id_fkey",
+      "constraint_sql": "FOREIGN KEY (support_id) REFERENCES business_users(id) ON DELETE SET NULL"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_technical_id_fkey",
+      "constraint_sql": "FOREIGN KEY (technical_id) REFERENCES business_users(id) ON DELETE SET NULL"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_time_order_check",
+      "constraint_sql": "CHECK ((end_at > start_at))"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_timezone_check",
+      "constraint_sql": "CHECK ((btrim(timezone) <> ''::text)) NOT VALID"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_updated_by_fkey",
+      "constraint_sql": "FOREIGN KEY (updated_by) REFERENCES business_users(id) ON DELETE SET NULL"
+    },
+    {
+      "table_name": "shifts",
+      "conname": "shifts_version_positive_check",
+      "constraint_sql": "CHECK ((version > 0))"
+    }
+  ]
+}
