@@ -21,7 +21,7 @@ const action = 'rounded-md border border-border px-3 py-2 text-sm hover:bg-muted
 type PathPreview = {
   read_only: true
   legacy: { dashboard: string; live_visual: string; data_report: string; data_source: string; base_folder_id: string }
-  v2: { folder_path: string; base_folder_id: string }
+  v2: { folder_path: string | null; base_folder_id: string | null; error?: string }
 }
 
 function parsePeriodDateRanges(raw: string) {
@@ -354,7 +354,9 @@ export function OperationalStorageSetupWorkspace() {
             <p>Visibility: {routePreview.legacy.live_visual}</p>
             <p>DATA/REPORT: {routePreview.legacy.data_report}</p>
             <p>DATA/SOURCE: {routePreview.legacy.data_source}</p>
-            <p>Nhóm file V2: {routePreview.v2.folder_path}</p>
+            <p>Nhóm file V2: {routePreview.v2.error
+              ? 'Chưa được cấu hình — không tạo thư mục mới'
+              : routePreview.v2.folder_path}</p>
             <p className="text-xs">Preview dựa trên cấu hình và ancestry của Base Folder; cần đối chiếu tên thực tế trên Drive.</p>
           </div>}
         </>}
