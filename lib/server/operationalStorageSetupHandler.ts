@@ -333,10 +333,10 @@ export function createOperationalStorageSetupHandler(deps: {
           if (platformName !== expectedPlatform) fail('STORAGE_SETUP_PLATFORM_MISMATCH')
         }
         if (isLegacy) {
-          // Previews and writes MUST both validate actual provider ancestry.
-          // The original four categories retain their historical layout.
-          // The new 15 V2 categories use the isolated ADA_STORAGE_V2 namespace
-          // beneath rootId. Validate the historical base without rewriting it.
+          // Previews and writes MUST validate actual provider ancestry.
+          // Original Dashboard/Visibility/DATA categories retain their
+          // historical layout; V2 categories fail closed until an explicit
+          // compatible route is approved. Never create ADA_STORAGE_V2.
           await requireInsideRoot(parsed.base_folder_id, rootId)
         }
         const existing = await db.from('operational_storage_routes').select('id')
