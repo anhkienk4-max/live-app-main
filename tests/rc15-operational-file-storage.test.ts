@@ -98,9 +98,10 @@ test('V2 refuses to invent a folder tree for a legacy storage profile', () => {
   }, 'video_recording'), { message: 'STORAGE_CATEGORY_NOT_CONFIGURED' })
 })
 
-test('legacy category-order routes use a separate ID-scoped V2 namespace without touching source folders', () => {
+test('legacy storage profiles do not create unapproved ADA_STORAGE_V2 folders', () => {
   const profiles = [
     'LEGACY_CATEGORY_PERIOD', 'LEGACY_PLATFORM_CATEGORY_PERIOD', 'LEGACY_PERIOD_CATEGORY',
+    'LEGACY_SUBBRAND_PERIOD_CATEGORY', 'LEGACY_SUBBRAND_CATEGORY_PERIOD',
   ] as const
   for (const profile of profiles) {
     const input = {
@@ -110,26 +111,14 @@ test('legacy category-order routes use a separate ID-scoped V2 namespace without
       folderPath: 'DATA/SOURCE/Tháng 9 - 2026', periodLabel: 'Tháng 9 - 2026',
     } as OperationalStoragePlacement
     const original = JSON.stringify(input)
-    const resolved = resolveOperationalFilePlacement(input, 'production_asset', {
-      brandId: 'brand-1', platformId: 'platform-1', executionSource: 'internal',
-    })
-    assert.equal(resolved.baseFolderId, 'verified-main-root')
-    assert.deepEqual(resolved.folderSegments, [
-      'ADA_STORAGE_V2', 'brand-1', 'platform-1', 'INTERNAL',
-      'Tháng 9 - 2026', 'PRODUCTION', 'ASSETS',
-    ])
+    for (const category of OPERATIONAL_FILE_CATEGORIES) {
+      assert.throws(() => resolveOperationalFilePlacement(input, category, {
+        brandId: 'brand-1', platformId: 'platform-1', executionSource: 'internal',
+      }), { message: 'STORAGE_CATEGORY_NOT_CONFIGURED' })
+    }
     assert.equal(JSON.stringify(input), original, 'legacy input must remain unchanged')
-    const anotherBrand = resolveOperationalFilePlacement(input, 'production_asset', {
-      brandId: 'brand-2', platformId: 'platform-1', executionSource: 'internal',
-    })
-    const agency = resolveOperationalFilePlacement(input, 'production_asset', {
-      brandId: 'brand-1', platformId: 'platform-1', executionSource: 'agency',
-    })
-    assert.notEqual(resolved.folderPath, anotherBrand.folderPath)
-    assert.notEqual(resolved.folderPath, agency.folderPath)
-    assert.throws(() => resolveOperationalFilePlacement(input, 'production_asset', {
-      brandId: '../brand', platformId: 'platform-1', executionSource: 'internal',
-    }), { message: 'STORAGE_ROUTE_CONFIG_INVALID' })
+    assert.equal(input.baseFolderId, 'historical-base')
+    assert.equal(input.folderPath, 'DATA/SOURCE/Tháng 9 - 2026')
   }
 })
 
