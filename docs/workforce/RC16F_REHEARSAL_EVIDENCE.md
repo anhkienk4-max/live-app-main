@@ -1,5 +1,33 @@
 # RC1.6F — Executed isolated rehearsal
 
+## RC1.6G executed extension — 2026-10-12
+
+PG16.15 / PG17.11 disposable network-none containers rc16f-pg16-gfinal2 và
+rc16f-pg17-gfinal2: **21/21 compatibility scenarios PASS trên mỗi major**.
+Giữ foundation integrity,49RC16B assertions,5race/rollback scenarios,540667VND
+golden fixture và2RC16F legacy scenarios đều PASS. Thêm3Node tests cho
+hash/order/drift/discovery: total100/100 (97existing+3new) trên Node22.23.3/24.18.0.
+Focused lint và typecheck PASS; builds Node22 và Node24 PASS. Exact-SHA GitHub CI được xác minh sau push.
+
+Bốn DB disposable/major: legacy,fresh operational baseline,controlled failure,
+recorded Production RPC branch. Fixture có synthetic historical Shift+Brand+routes,
+actual column/default/check/FK,actor/eligibility/capacity/overlap/staffing/version
+helpers và derived/status/version/update triggers. Route/Brand/Shift row JSON,
+route ACL/trigger/index và RPC owner/ACL/SECDEF/search_path được so pre/post.
+Test cả raw replay và ledger replay; drift và injected failure sau ALTER/function
+replace rollback, không ghi version giả. Legacy/fresh chain tới RC15files/RC16B.
+Digest sau3arg patch=1ed36fa69c62713d89ed2a104c73c013;create/4arg unchanged.
+
+Reproduce bằng runner/lệnh local bên dưới, dùng container mới cho mỗi run;
+RC16G tự chạy cuối tests/rc16-payroll-postgres.integration.mjs.
+Manifest hash phải đúng trước writes. Không port/bind mount hoặc cloud URL.
+Auth JWT service/global operational audit/privacy/report/provider schema không
+clone; không claim full Staging clone, full Git clean install hoặc cloud UAT.
+Chi tiết [RC16G readiness](RC16G_RECONCILIATION_READINESS.md).
+Early replay regression expected constraint error nhưng guard mới bắt column
+drift trước; fixed expected code, final fresh runs PASS. Sandbox spawn EPERM
+được rerun với quyền local child process; không bỏ guard hoặc giảm assertions.
+
 Local execution2026-10-11, Windows Node24.18.0, starting ba9b13f. Docker local,
 network none, no published DB ports, no cloud credentials, initially empty DBs.
 PG16.15 andPG17.11; actual Supabase server17.6. Major compatibility does not prove

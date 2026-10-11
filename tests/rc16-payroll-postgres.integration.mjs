@@ -19,8 +19,11 @@ if (container) {
 const executable = container ? 'docker' : 'psql'
 const args = [...(container ? ['exec', '-i', container, 'psql'] : []),
   '-X', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-At']
-function start(sql) {
-  const child = spawn(executable, args, { stdio: ['pipe', 'pipe', 'pipe'], timeout: 30000 })
+function start(sql, database = 'postgres') {
+  assert.match(database, /^(postgres|rc16g_(legacy|fresh|failure|production))$/)
+  const databaseArgs = [...args]
+  databaseArgs[databaseArgs.indexOf('-d') + 1] = database
+  const child = spawn(executable, databaseArgs, { stdio: ['pipe', 'pipe', 'pipe'], timeout: 30000 })
   let output = ''
   const result = new Promise((resolve, reject) => {
     child.on('error', reject)
@@ -32,8 +35,8 @@ function start(sql) {
   })
   return { child, result }
 }
-async function sql(text) {
-  const result = await start(text).result
+async function sql(text, database = 'postgres') {
+  const result = await start(text, database).result
   assert.equal(result.code, 0, result.output)
   return result.output
 }
@@ -159,3 +162,6 @@ await file('tests/fixtures/rc15_production_shift_rpc_baseline.sql')
 await file('supabase/migrations/20261011092015_rc15_shift_rpc_compatibility.sql')
 await file('supabase/migrations/20261011092051_rc15_operational_files.sql')
 console.log('PASS: recorded Production RPC baseline accepts RC15 compatibility patch and operational-file DDL')
+
+const { runReconciliation } = await import('./rc16g-reconciliation.integration.mjs')
+await runReconciliation({ sql, start })

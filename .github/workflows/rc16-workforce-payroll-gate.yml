@@ -26,6 +26,10 @@ on:
       - 'tests/rc16-payroll-postgres.integration.mjs'
       - 'tests/rc16-rehearsal-safety.mjs'
       - 'tests/fixtures/rc16f*'
+      - 'tests/fixtures/rc16g*'
+      - 'tests/rc16g-reconciliation.integration.mjs'
+      - 'supabase/reconciliation/rc16g/**'
+      - 'openspec/changes/rc16g-forward-reconciliation/**'
       - 'supabase/migrations/*rc15*.sql'
       - 'supabase/migrations/*rc13a*.sql'
       - 'tests/fixtures/rc15_production_shift_rpc_baseline.sql'
@@ -79,7 +83,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify isolated RC16 and legacy RC15 compatibility
+      - name: Verify isolated RC16 and RC16G legacy/fresh reconciliation
         env:
           RC16_PG_MAJOR: ${{ matrix.postgres }}
           PGPASSWORD: postgres
@@ -97,7 +101,7 @@ jobs:
       - name: Authentication isolation regression tests
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/auth-session-foundation.test.ts
       - name: Focused environment security lint
-        run: pnpm exec eslint lib/supabase/environmentIdentity.ts lib/server/supabaseEnvironment.ts lib/server/supabaseAdmin.ts lib/auth/authMode.ts lib/supabase/server.ts lib/supabase/middleware.ts scripts/check-runtime-environment.ts tests/rc16-environment-security.test.ts tests/typescript-alias-loader.mjs tests/next-server-test-shim.mjs tests/rc16-rehearsal-safety.mjs tests/rc16-rehearsal-safety.test.ts tests/rc16-payroll-postgres.integration.mjs
+        run: pnpm exec eslint lib/supabase/environmentIdentity.ts lib/server/supabaseEnvironment.ts lib/server/supabaseAdmin.ts lib/auth/authMode.ts lib/supabase/server.ts lib/supabase/middleware.ts scripts/check-runtime-environment.ts tests/rc16-environment-security.test.ts tests/typescript-alias-loader.mjs tests/next-server-test-shim.mjs tests/rc16-rehearsal-safety.mjs tests/rc16-rehearsal-safety.test.ts tests/rc16-payroll-postgres.integration.mjs tests/rc16g-reconciliation.integration.mjs tests/rc16-reconciliation.test.ts
       - name: Next.js production build without Production secrets
         run: pnpm run build
         env:

@@ -1,5 +1,23 @@
 # RC1.6F — Migration dependency / schema compatibility
 
+## RC1.6G bổ sung — verified code, chưa cloud apply
+
+| Version / Git path | Prerequisites và guard | Staging / Production | Forward-only action |
+| --- | --- | --- | --- |
+|20261013000000 — supabase/reconciliation/rc16g/20261013000000_rc16g_legacy_storage_routes.sql|RC13A14routecolumns + exact constraints/RLS/index/trigger; brands nullable review fields/FK/defaults; business_users|Legacy Staging schema verified SELECT; cloud apply NOT RUN. Production modern schema fail closed|Manifest step2 sau RC15 prerequisites; add5fields,validatedJSON/7profiles,nullableapproval,không DML/backfill |
+|20261013000001 — supabase/reconciliation/rc16g/20261013000001_rc16g_staging_shift_rpc.sql|Exact3StagingMD5+owner/ACL/SECDEF/search_path; privatehelpers unchanged|Digests reverified khớp;cloud apply NOT RUN. Production RPC branch rejects|Manifest step3;patch3arg only, create/4arg untouched;exclude20261011092015 |
+
+Hashes,pre/postqueries,ledgerhandling,lock/backup/STOP và approval owner:
+[approval package](RC16F_STAGING_APPROVAL_PACKAGE.md).
+Hai version mới ngoài auto-discovery; không historical edits hoặc ledger repair.
+Actual ordered chain: prerequisites → A → B → RC15 files → RC16 → RC16B.
+Local/CI executor kiểm version+hash và transaction SQL+new ledger entry atomic.
+Fresh operational baseline có real private security helpers đã chạy cùng chain;
+không claim full historical clean install hoặc full Staging clone.
+3arg post-patch MD5=1ed36fa69c62713d89ed2a104c73c013; hai MD5 còn lại giữ nguyên.
+Full Staging audit/privacy/report/provider schema và physical UAT vẫn UNVERIFIED.
+Thông tin dưới đây giữ nguyên bằng chứng snapshot RC16F, không phải cloud apply RC16G.
+
 Snapshot SELECT/catalog + list_migrations ngày2026-10-11; không apply. Git64,
 Staging61, Production60. Digest dưới đây là md5(pg_get_functiondef), dùng phát
 hiện drift, không phải chứng thực credentials. Không rewrite migration applied.

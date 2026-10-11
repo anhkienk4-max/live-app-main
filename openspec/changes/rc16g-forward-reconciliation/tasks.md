@@ -1,0 +1,5 @@
+- [x] Guarded route reconciliation and legacy unreviewed approval semantics.
+- [x] Digest-guarded minimal Shift RPC patch; preserve ACL and lifecycle/CAS.
+- [x] Realistic isolated legacy/fresh chain, security and rollback regressions.
+- [x] Hashed manifest, approval package and CI path coverage.
+- [x] Execute local gates; exact-SHA CI and Git delivery recorded in final handoff.

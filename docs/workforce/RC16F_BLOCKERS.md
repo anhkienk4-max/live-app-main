@@ -4,7 +4,7 @@
 | --- | --- | --- | --- |
 |C01|P0 dependency|BLOCKED;noofficialGeminiRC16 branch/SHA/PR|Owner supplies approvedsource+scope;engineer audits37flows and parity before separateintegrationbranch |
 |C02|P0 environment|BLOCKED;noauthorizedimmutablecandidate/effectivekey+providerproof;RC16EcodePASS!=cloudisolation|Operator executes read-only I01–I09 protocol on explicitlyapprovedcandidate;deployment/envchange requiresseparateapproval |
-|C03|P0 migration|BLOCKED;RC15RPC digest incompatibility and5missingroutecols/oldchecks;RC16absent|Implement+review newforward-onlyroute/RPCreconciliation,fullschemarehearsal;then approvepackage,target/window/backup separately |
+|C03|P0 migration|OPEN;RC16G forward-only files+21scenario PG16/17 PASS;actual Staging apply NOT RUN|Owner review pinned manifest+hash/SQL;approve fullbaseline gaps,target/window/backup/new ledger recording;actual apply+postverify separately |
 |C04|P0 go-live policy|OPEN;Prod1activeAdmin;Staging2activeAdmin but no login/mappingapproval|OwnernamesindependentA/B forUAT;secondProdreviewer orapprovedFinanceRBACtask;neverLeader salary grant |
 |C05|P0 acceptance policy|OPEN;noapprovedrate/OT/break/late/grace/minsample policies|HR/Finance signs actualpolicy;synthetic100000/15000 isnotproductionpolicy |
 |C06|Backendresolved|Discoverycontracts unchanged;Payrollregressions retained|Gemini wiring stillNOTRUN |
@@ -15,10 +15,11 @@
 |C11|P0 release dependency|OPEN;Stagingprivacy/historyapplied,backendsourceabsent,Proddivergent|Release/Securityownerpinsapprovedforward-onlyfiles preservingnarrowedRLS/RPCcontract |
 |C12|P1 Workforcecoverage|OPEN;trends/fullcompletion/GMVattributionunavailable|N/A/warnings;separateWorkforceiteration, nofabricatedscores |
 
-Next safe executable engineering task: add forward-only RC13A→RC15 route-schema
-and Staging ShiftRPC reconciliation **as new files**, pin current catalogdigests,
-add synthetic compatibility/regressiontests, obtain approved sanitizedschema-only
-baseline for fuller rehearsal. Không applycloud. Inparallel ownercanidentify
+RC16G đã implement hai forward-only reconciliation files với manifest outside
+auto-discovery và real helper regressions. Next safe task: owner technical review
+approval package,obtain approved sanitizedschema-only baseline cho phần còn thiếu
+(Auth/audit/privacy/reports/provider),chốt target/window/backup và operator executor.
+Không applycloud trước authorization riêng. Inparallel ownercanidentify
 Gemini source and nominate immutableintegrationcandidate; operatorcanprepare
 credentialprovenance/providerisolationevidence without revealingkeys.
 

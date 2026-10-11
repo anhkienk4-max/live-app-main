@@ -1,0 +1,39 @@
+{
+  "target": "legacy-rc13a-only",
+  "excluded": [
+    "20261011092015"
+  ],
+  "cloudExecution": "NOT AUTHORIZED; operator-reviewed per-file transaction and ledger insertion required",
+  "steps": [
+    {
+      "version": "20261011091925",
+      "path": "supabase/migrations/20261011091925_rc15_storage_route_prerequisites.sql",
+      "sha256": "319ea68aea1cb42ca88b7403a0c61dac6a9fc4c64025cbe5fab5d946f9380357"
+    },
+    {
+      "version": "20261013000000",
+      "path": "supabase/reconciliation/rc16g/20261013000000_rc16g_legacy_storage_routes.sql",
+      "sha256": "b428609ccd015ad2eab73dfc5074b201b3666422f55ccd1010fc751db9361cf9"
+    },
+    {
+      "version": "20261013000001",
+      "path": "supabase/reconciliation/rc16g/20261013000001_rc16g_staging_shift_rpc.sql",
+      "sha256": "49cfdb33a1849f5e46ba637a220d515e06b0708d7be692a80a459ca71b153706"
+    },
+    {
+      "version": "20261011092051",
+      "path": "supabase/migrations/20261011092051_rc15_operational_files.sql",
+      "sha256": "33aa62e14b50d6d2195d094423b7f876877fd86c9116bdf8434b573906637bb2"
+    },
+    {
+      "version": "20261012000000",
+      "path": "supabase/migrations/20261012000000_rc16_workforce_payroll_foundation.sql",
+      "sha256": "889fae5221c16b4e983f22e07da7e1212f796440eb06f4e327db0b862568b170"
+    },
+    {
+      "version": "20261012000001",
+      "path": "supabase/migrations/20261012000001_rc16b_draft_payroll_correction.sql",
+      "sha256": "5f3484fe3a2203cfa8cb484a97900975b1f72c75a35f8a09f49eb243283c7e72"
+    }
+  ]
+}
