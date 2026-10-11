@@ -18,8 +18,11 @@ Workforce Overview and individual performance read only approved actual evidence
 - Planned shift hours are not worked/paid hours. No automatic backfill from schedules.
 - A missing attendance row is unknown, not a no-show. An explicit no-show has
   event_kind=no_show, null actual_start_at/end_at, a note and independent review.
-- Approved evidence cannot be altered; actual worked segments cannot overlap
-  for the same staff across shifts. The evidence author cannot self-review.
+- Only a Shift with status `completed` can enter the approved-attendance
+  workflow. Future/scheduled/cancelled Shift attempts fail closed with HTTP 409.
+- Approved and rejected evidence decisions are immutable; approved worked
+  segments cannot overlap for the same staff across shifts. The evidence author
+  cannot self-review. A rejected claim must be resubmitted as a fresh draft.
 - Rate cards must be explicitly approved. VND amounts use integer minutes,
   integer VND and one final integer rounding. Overtime minutes are explicitly
   supplied and validated; no automatic legal OT or break-deduction rule.
@@ -135,3 +138,25 @@ XLSX payroll exports and verified per-host GMV attribution.
 5. Review and authorize Payroll migration on Production separately.
 6. Merge Gemini UI under this API contract, then request Production approval.
 7. Storage RC1.5 physical provider UAT remains a separate open release gate.
+
+## Go-live validation (2026-10-11, latest RC1.6 PR revision)
+
+- PostgreSQL16 isolated DDL gate: PASS, including stored VND calculation,
+  immutable locked payroll, reviewed attendance immutability, independent
+  reviewers, and rejecting approvals for an uncompleted Shift.
+- RC1.6 synthetic tests: **17/17 PASS**, TypeScript PASS,
+  Next.js production build PASS (without Production credentials).
+- PR #25 remains Draft and separate from Gemini frontend changes.
+- Payroll migration is **NOT** applied to Supabase Production.
+- Current read-only Production user count: **1 Admin, 1 Leader, 5 Members**
+  active. Payroll API access is **Admin-only**, and creator cannot review their
+  own period. Therefore this approval chain cannot complete with the present
+  single Admin; owner must approve a second authorized payroll reviewer or a
+  narrowly scoped independent finance approval role in a separately reviewed
+  RBAC change. **Do not silently grant Leader access to salary data.**
+- No actual staffing rows or approved rates exist under RC1.6 in Production
+  because this migration is not deployed. UI must show "Chưa có dữ liệu xác minh"
+  instead of simulating staff performance or pay.
+- Workforce attendance/punctuality metrics need an explicit grace-minutes
+  policy before activation. Never infer GMV/hour without a validated session
+  attribution mapping.
