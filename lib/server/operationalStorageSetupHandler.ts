@@ -9,7 +9,6 @@ import { createClient as createSessionClient } from '@/lib/supabase/server'
 import { fileStorageService } from '@/lib/services/fileStorageService'
 import { readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
 import { isSafeHistoricalPeriodLabel, resolveOperationalStoragePlacement, type OperationalLogicalCategory, type OperationalStorageRoute } from '@/lib/files/operationalStoragePlacementResolver'
-import { resolveOperationalFilePlacement } from '@/lib/files/operationalFilePlacement'
 
 const id = z.string().trim().min(1).max(120)
 const source = z.enum(['internal', 'agency'])
@@ -374,11 +373,9 @@ export function createOperationalStorageSetupHandler(deps: {
               platformLabel: verifiedPlatformName,
             })
           const dataSource = mk('data_source')
-          const v2 = resolveOperationalFilePlacement(dataSource, 'production_asset', {
-            brandId: parsed.brand_id,
-            platformId: parsed.platform_id,
-            executionSource: parsed.execution_source,
-          })
+          // The legacy preview only plans original categories. V2 must not
+          // invent ADA_STORAGE_V2 or claim a Drive destination exists.
+          // Its dedicated database route remains explicitly unconfigured.
           return Response.json({
             ok: true, read_only: true,
             legacy: {
@@ -388,7 +385,10 @@ export function createOperationalStorageSetupHandler(deps: {
               data_source: dataSource.folderPath,
               base_folder_id: parsed.base_folder_id,
             },
-            v2: { folder_path: v2.folderPath, base_folder_id: v2.baseFolderId },
+            v2: {
+              folder_path: null, base_folder_id: null,
+              error: 'STORAGE_CATEGORY_NOT_CONFIGURED',
+            },
             note: 'PATHS_ONLY_NO_PROVIDER_CATEGORY_EXISTENCE_VERIFICATION',
           }, { headers: { 'Cache-Control': 'no-store' } })
         }
