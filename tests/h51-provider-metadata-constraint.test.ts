@@ -142,4 +142,17 @@ test('H.5.1 Migration AST/Regex: Verify hardened constraint definitions in 20261
     /raise exception using errcode = '22023',\s*message = 'REPORT_FILE_PROVIDER_METADATA_INVALID'/i,
     'Upload RPCs must reject invalid provider metadata with SQL errcode 22023'
   );
+  // Verify Immutability Check (metrics_confirmed OR status = 'confirmed') in authorize_report_image_delete
+  assert.match(
+    sql,
+    /create or replace function public\.authorize_report_image_delete[\s\S]*?if target_report\.metrics_confirmed or target_report\.status = 'confirmed' then/i,
+    'authorize_report_image_delete must reject when metrics_confirmed is true OR status is confirmed'
+  );
+
+  // Verify Immutability Check (metrics_confirmed OR status = 'confirmed') in authorize_live_report_image_delete
+  assert.match(
+    sql,
+    /create or replace function public\.authorize_live_report_image_delete[\s\S]*?if target_report\.metrics_confirmed or target_report\.status = 'confirmed' then/i,
+    'authorize_live_report_image_delete must reject when metrics_confirmed is true OR status is confirmed'
+  );
 });

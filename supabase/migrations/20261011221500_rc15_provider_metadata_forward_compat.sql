@@ -154,7 +154,7 @@ begin
   if actor_permission = 'member' and (target_report.submitted_by is null or target_report.submitted_by <> actor_id) then
     raise exception using errcode = '42501', message = 'OPERATION_NOT_ALLOWED';
   end if;
-  if target_report.metrics_confirmed then
+  if target_report.metrics_confirmed or target_report.status = 'confirmed' then
     raise exception using errcode = 'P0001', message = 'REPORT_CONFIRMED';
   end if;
   return true;

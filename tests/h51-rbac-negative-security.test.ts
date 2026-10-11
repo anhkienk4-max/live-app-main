@@ -118,6 +118,33 @@ class SecurityContextSimulator {
       archived_at: null,
       deleted_at: null,
     });
+    this.reports.set('rep-status-confirmed-only', {
+      id: 'rep-status-confirmed-only',
+      brand_id: 'brand-alpha',
+      submitted_by: 'member-1',
+      status: 'confirmed',
+      metrics_confirmed: false,
+      archived_at: null,
+      deleted_at: null,
+    });
+    this.reports.set('rep-deleted', {
+      id: 'rep-deleted',
+      brand_id: 'brand-alpha',
+      submitted_by: 'member-1',
+      status: 'draft',
+      metrics_confirmed: false,
+      archived_at: null,
+      deleted_at: '2026-10-10T12:00:00Z',
+    });
+    this.reports.set('rep-archived', {
+      id: 'rep-archived',
+      brand_id: 'brand-alpha',
+      submitted_by: 'member-1',
+      status: 'draft',
+      metrics_confirmed: false,
+      archived_at: '2026-10-10T12:00:00Z',
+      deleted_at: null,
+    });
     this.reports.set('rep-brand-beta', {
       id: 'rep-brand-beta',
       brand_id: 'brand-beta',
@@ -148,6 +175,27 @@ class SecurityContextSimulator {
       uploaded_by: 'member-1',
       provider: 'google_drive',
       external_file_id: 'drive-333',
+    });
+    this.images.set('img-status-confirmed-only', {
+      id: 'img-status-confirmed-only',
+      report_id: 'rep-status-confirmed-only',
+      uploaded_by: 'member-1',
+      provider: 'google_drive',
+      external_file_id: 'drive-888',
+    });
+    this.images.set('img-deleted-report', {
+      id: 'img-deleted-report',
+      report_id: 'rep-deleted',
+      uploaded_by: 'member-1',
+      provider: 'google_drive',
+      external_file_id: 'drive-777',
+    });
+    this.images.set('img-archived-report', {
+      id: 'img-archived-report',
+      report_id: 'rep-archived',
+      uploaded_by: 'member-1',
+      provider: 'google_drive',
+      external_file_id: 'drive-666',
     });
 
     this.shifts.set('shift-100', {
@@ -270,6 +318,39 @@ test('H.5.1 Role & Security: Admin and Leader can delete member image on draft r
   const sim = new SecurityContextSimulator();
   assert.equal(sim.authorizeReportImageDelete('auth-admin-uuid', 'img-member1'), true);
   assert.equal(sim.authorizeReportImageDelete('auth-leader-uuid', 'img-member1'), true);
+});
+
+test('H.5.2 Regression: status=confirmed with metrics_confirmed=false is immutable against all roles', () => {
+  const sim = new SecurityContextSimulator();
+  // Member
+  assert.throws(
+    () => sim.authorizeReportImageDelete('auth-member1-uuid', 'img-status-confirmed-only'),
+    (err: unknown) => { const e = err as { code?: string; message?: string }; return e?.code === 'P0001' && e?.message === 'REPORT_CONFIRMED'; }
+  );
+  // Admin
+  assert.throws(
+    () => sim.authorizeReportImageDelete('auth-admin-uuid', 'img-status-confirmed-only'),
+    (err: unknown) => { const e = err as { code?: string; message?: string }; return e?.code === 'P0001' && e?.message === 'REPORT_CONFIRMED'; }
+  );
+  // Leader
+  assert.throws(
+    () => sim.authorizeReportImageDelete('auth-leader-uuid', 'img-status-confirmed-only'),
+    (err: unknown) => { const e = err as { code?: string; message?: string }; return e?.code === 'P0001' && e?.message === 'REPORT_CONFIRMED'; }
+  );
+});
+
+test('H.5.2 Regression: Deleted or archived report images reject deletion as REPORT_NOT_FOUND', () => {
+  const sim = new SecurityContextSimulator();
+  // Deleted report
+  assert.throws(
+    () => sim.authorizeReportImageDelete('auth-member1-uuid', 'img-deleted-report'),
+    (err: unknown) => { const e = err as { code?: string; message?: string }; return e?.code === 'P0001' && e?.message === 'REPORT_NOT_FOUND'; }
+  );
+  // Archived report
+  assert.throws(
+    () => sim.authorizeReportImageDelete('auth-member1-uuid', 'img-archived-report'),
+    (err: unknown) => { const e = err as { code?: string; message?: string }; return e?.code === 'P0001' && e?.message === 'REPORT_NOT_FOUND'; }
+  );
 });
 
 test('H.5.1 Role & Security: Confirmed report images are immutable against all roles', () => {
