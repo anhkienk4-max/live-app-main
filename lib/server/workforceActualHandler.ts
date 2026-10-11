@@ -101,14 +101,14 @@ export function createWorkforceActualHandler(deps:Depends={}) {
         if(lookup)return fail('WORKFORCE_ACTUAL_READ_FAILED',503)
         if(!current||current.review_status!=='draft'||current.version!==action.expected_version)
           return fail('WORKFORCE_ACTUAL_STALE_OR_LOCKED',409)
-        // Evidence provenance stays immutable. A rejected segment is retained;
-        // reviewed_by/reviewed_at are never authored by the caller.
+        // Separate reviewer from evidence submitter; no self-approval.
+        // Original evidence_note must never be overwritten by review notes.
+        if(current.created_by===actor)return fail('WORKFORCE_SELF_REVIEW_BLOCKED',403)
         const {data,error}=await client.from('workforce_actual_segments')
           .update({
             review_status:action.decision,
             reviewed_by:actor,reviewed_at:new Date().toISOString(),
-            evidence_note:current.created_by===actor
-              ? action.review_note : action.review_note,
+            review_note:action.review_note,
             version:action.expected_version+1,
           }).eq('id',action.segment_id).eq('version',action.expected_version)
           .eq('review_status','draft').select('id,review_status,version').maybeSingle()
