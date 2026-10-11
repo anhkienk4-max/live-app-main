@@ -107,6 +107,11 @@ create table if not exists public.workforce_payroll_lines (
   ),
   constraint workforce_payroll_one_line_per_segment unique (period_id, segment_id)
 );
+-- Fail closed against double payroll across overlapping periods: no approved
+-- attendance segment may generate more than one payroll line globally.
+-- Revisions/reissues require a separately audited future workflow.
+create unique index if not exists workforce_payroll_one_period_per_segment
+  on public.workforce_payroll_lines(segment_id);
 create index if not exists workforce_payroll_lines_by_staff on public.workforce_payroll_lines(period_id,staff_id);
 
 create table if not exists public.workforce_payroll_audit (
@@ -335,6 +340,12 @@ begin
     ('confirmed','payroll_ready'), ('payroll_ready','locked')
   ) then raise exception 'WORKFORCE_PAYROLL_INVALID_TRANSITION'; end if;
   if p_target_status='reviewed' then
+    -- The period cannot be edited after Review; prevent an irrecoverable empty
+    -- Reviewed/Confirmed state that could never reach Payroll Ready.
+    if not exists (select 1 from public.workforce_payroll_lines
+      where period_id=p_period_id) then
+      raise exception 'WORKFORCE_PAYROLL_EMPTY_PERIOD';
+    end if;
     if v_period.created_by=p_actor_id then
       raise exception 'WORKFORCE_PAYROLL_SELF_REVIEW';
     end if;
