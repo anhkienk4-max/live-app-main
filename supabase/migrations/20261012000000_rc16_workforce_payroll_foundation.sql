@@ -124,6 +124,12 @@ create index if not exists workforce_payroll_audit_by_period on public.workforce
 create or replace function public.workforce_rc16_period_guard()
 returns trigger language plpgsql set search_path='' as $$
 begin
+  if tg_op='INSERT' then
+    if new.status <> 'draft' or new.locked_by is not null or new.locked_at is not null then
+      raise exception 'WORKFORCE_PERIOD_MUST_START_DRAFT';
+    end if;
+    return new;
+  end if;
   if tg_op='DELETE' then
     raise exception 'WORKFORCE_PERIOD_DELETE_BLOCKED';
   end if;
@@ -133,6 +139,13 @@ begin
   if new.period_start is distinct from old.period_start or new.period_end is distinct from old.period_end
     or new.revision is distinct from old.revision then
     raise exception 'WORKFORCE_PERIOD_IDENTITY_IMMUTABLE';
+  end if;
+  if new.status='reviewed' and new.reviewed_by is null then
+    raise exception 'WORKFORCE_REVIEW_ACTOR_REQUIRED';
+  end if;
+  if new.status in ('confirmed','payroll_ready','locked')
+    and (new.reviewed_by is null or new.confirmed_by is null) then
+    raise exception 'WORKFORCE_CONFIRM_ACTORS_REQUIRED';
   end if;
   if new.status is distinct from old.status
     and not (
@@ -146,7 +159,7 @@ begin
   return new;
 end $$;
 drop trigger if exists workforce_period_guard on public.workforce_payroll_periods;
-create trigger workforce_period_guard before update or delete on public.workforce_payroll_periods
+create trigger workforce_period_guard before insert or update or delete on public.workforce_payroll_periods
   for each row execute function public.workforce_rc16_period_guard();
 
 create or replace function public.workforce_rc16_line_guard()
@@ -158,6 +171,11 @@ declare
   v_shift_date date;
 begin
   if tg_op='DELETE' then raise exception 'WORKFORCE_PAYROLL_LINE_DELETE_BLOCKED'; end if;
+  if tg_op='UPDATE' then
+    perform 1 from public.workforce_payroll_periods
+      where id=old.period_id and status='draft' for update;
+    if not found then raise exception 'WORKFORCE_PAYROLL_ORIGINAL_PERIOD_LOCKED'; end if;
+  end if;
   select * into v_period from public.workforce_payroll_periods
     where id=new.period_id for update;
   if not found or v_period.status <> 'draft' then
