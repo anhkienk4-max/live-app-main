@@ -74,6 +74,8 @@ jobs:
             v_period text;
             v_rate text;
             v_line text;
+            v_duplicate_period text;
+            v_empty_period text;
           begin
             if (select count(*) from information_schema.tables
                where table_schema='public' and table_name in (
@@ -154,6 +156,43 @@ jobs:
               if sqlerrm <> 'WORKFORCE_PAYROLL_PERIOD_NOT_DRAFT'
                 and sqlerrm <> 'WORKFORCE_PAYROLL_ORIGINAL_PERIOD_LOCKED' then raise; end if;
             end;
+
+            -- Regression: overlapping payroll periods must not pay the
+            -- same verified segment twice, even after the first is Locked.
+            insert into public.workforce_payroll_periods(period_start,period_end,created_by)
+              values ('2026-09-15','2026-09-30','admin-1')
+              returning id into v_duplicate_period;
+            begin
+              insert into public.workforce_payroll_lines(
+                period_id,segment_id,rate_card_id,staff_id,operational_role,
+                actual_minutes,payable_minutes,overtime_minutes,rate_vnd_per_hour,
+                overtime_multiplier_basis_points,gross_vnd
+              ) values (
+                v_duplicate_period,v_segment,v_rate,'staff-1','host',
+                90,90,30,100000,15000,175000
+              );
+              raise exception 'cross-period double-pay line was accepted';
+            exception when unique_violation then
+              null; -- workforce_payroll_one_period_per_segment must reject it
+            end;
+
+            -- Regression: an empty Draft cannot enter an irreversible
+            -- Reviewed/Confirmed state that prevents adding pay lines.
+            insert into public.workforce_payroll_periods(period_start,period_end,created_by)
+              values ('2026-10-01','2026-10-31','admin-1')
+              returning id into v_empty_period;
+            begin
+              perform public.workforce_rc16_transition_payroll(
+                v_empty_period,'draft','reviewed','finance-1',
+                'Independent empty period review');
+              raise exception 'empty payroll review was accepted';
+            exception when sqlstate 'P0001' then
+              if sqlerrm <> 'WORKFORCE_PAYROLL_EMPTY_PERIOD' then raise; end if;
+            end;
+            if (select status from public.workforce_payroll_periods
+                where id=v_empty_period) <> 'draft' then
+              raise exception 'empty payroll period was not left in Draft';
+            end if;
           end $rc16$;
           -- Ensure an uncompleted Shift cannot become approved actual work,
           -- even when a caller bypasses the Next.js API.
