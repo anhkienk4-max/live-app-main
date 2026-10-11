@@ -52,26 +52,51 @@ export function StaffList() {
   const { t } = useTranslation()
   const canManage = Boolean(currentUser && hasPermission(currentUser, 'staff.manage'))
 
-  const loadStaff = React.useCallback(async () => {
+  const shiftsCacheRef = React.useRef<Shift[]>([])
+  const registrationsCacheRef = React.useRef<ShiftRegistration[]>([])
+  const currentUserId = currentUser?.id
+
+  const loadStaff = React.useCallback(async (forceAll = false) => {
     setLoading(true)
     setLoadError(null)
+
+    const timeoutId = setTimeout(() => {
+      console.warn('[StaffList] Data load exceeded 15s timeout limit.')
+    }, 15000)
+
     try {
+      const fetchStaff = showArchived && canManage && currentUserId
+        ? userService.getAllIncludingDeleted(currentUserId)
+        : userService.getAll()
+
+      const fetchShifts = (forceAll || shiftsCacheRef.current.length === 0)
+        ? shiftService.getAll()
+        : Promise.resolve(shiftsCacheRef.current)
+
+      const fetchRegistrations = (forceAll || registrationsCacheRef.current.length === 0)
+        ? shiftRegistrationService.getAll()
+        : Promise.resolve(registrationsCacheRef.current)
+
       const [loadedStaff, loadedShifts, loadedRegistrations] = await Promise.all([
-        showArchived && canManage && currentUser
-          ? userService.getAllIncludingDeleted(currentUser.id)
-          : userService.getAll(),
-        shiftService.getAll(),
-        shiftRegistrationService.getAll(),
+        fetchStaff,
+        fetchShifts,
+        fetchRegistrations,
       ])
+
+      shiftsCacheRef.current = loadedShifts
+      registrationsCacheRef.current = loadedRegistrations
+
       setStaff(loadedStaff)
       setShifts(loadedShifts)
       setRegistrations(loadedRegistrations)
     } catch (error) {
+      console.error('[StaffList] Error loading staff data:', error)
       setLoadError(error)
     } finally {
+      clearTimeout(timeoutId)
       setLoading(false)
     }
-  }, [canManage, currentUser, showArchived])
+  }, [canManage, currentUserId, showArchived])
 
   React.useEffect(() => {
     const frame = window.requestAnimationFrame(() => { void loadStaff() })
@@ -240,8 +265,23 @@ export function StaffList() {
     },
   ]
 
-  if (loading) return <div className="py-12 text-center">{t('loading')}</div>
-  if (loadError) return <PageLoadError error={loadError} onRetry={() => { void loadStaff() }} />
+  if (loadError) return <PageLoadError error={loadError} onRetry={() => { void loadStaff(true) }} />
+  if (loading && staff.length === 0) {
+    return (
+      <div className="space-y-4" data-testid="staff-initial-loading">
+        <div className="flex flex-col gap-2 rounded-lg border bg-white px-3 py-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">{t('staffManagement')}</h2>
+            <p className="mt-1 text-muted-foreground">{t('staffManagementSubtitle')}</p>
+          </div>
+        </div>
+        <div className="rounded-lg border bg-white p-12 text-center">
+          <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent mb-2" />
+          <p className="text-xs text-muted-foreground">{t('loading') || 'Đang tải dữ liệu nhân viên...'}</p>
+        </div>
+      </div>
+    )
+  }
 
   return <>
     <div className="mb-3 flex flex-col gap-2 rounded-lg border bg-white px-3 py-2 md:flex-row md:items-center md:justify-between">
@@ -262,7 +302,7 @@ export function StaffList() {
       searchPlaceholder={t('searchStaff')}
       searchableText={user => [user.full_name, user.email, user.phone, user.department, resolveSystemPermission(user), ...(user.operational_roles || [])].filter(Boolean).join(' ')}
       filterComponent={<StaffFilterControls filters={filters} onChange={setFilters} />}
-      emptyMessage={t('noStaff')}
+      emptyMessage={showArchived ? (t('archivedRecords') + ': ' + t('noStaff')) : t('noStaff')}
     /></div>{detailStaff && <StaffDetail inline user={detailStaff} shifts={assignedShifts(detailStaff.id)} workload={role => workload(detailStaff.id,role)} onClose={() => setDetailStaff(null)} onEdit={canManage ? () => {setSelectedStaff(detailStaff);setIsFormOpen(true)} : undefined} />}</div>}
 
     <StaffFormDialog open={isFormOpen} onOpenChange={setIsFormOpen} staff={selectedStaff} onSuccess={loadStaff} />

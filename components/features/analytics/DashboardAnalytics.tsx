@@ -78,8 +78,32 @@ export function DashboardAnalytics() {
     void loadData()
   }, [loadData])
 
-  if (loading || !filters) return <div className="py-12 text-center">{t('loading')}</div>
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
+
+  if (loading || !filters) {
+    return (
+      <div className="space-y-4" data-testid="analytics-loading-shell">
+        <div className="flex flex-col gap-2 rounded-lg border bg-white px-4 py-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-lg font-semibold">{t('analytics') || 'Phân tích & Hiệu suất'}</h1>
+            <p className="text-xs text-muted-foreground">{t('analyticsSubtitle') || 'Theo dõi doanh thu và hiệu suất ca livestream'}</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[1, 2, 3, 4].map(idx => (
+            <div key={idx} className="rounded-lg border bg-white p-4 animate-pulse">
+              <div className="h-3 w-16 bg-slate-200 rounded mb-2" />
+              <div className="h-6 w-24 bg-slate-200 rounded" />
+            </div>
+          ))}
+        </div>
+        <div className="rounded-lg border bg-white p-12 text-center">
+          <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent mb-2" />
+          <p className="text-xs text-muted-foreground">{t('loading') || 'Đang tải dữ liệu phân tích...'}</p>
+        </div>
+      </div>
+    )
+  }
 
   const matchesRole = (shift: Shift, role: OperationalRole, userId: string) => {
     const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id

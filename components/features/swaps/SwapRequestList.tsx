@@ -162,9 +162,23 @@ export function SwapRequestList() {
     }
   }
 
-  if (loading || userLoading) return <div className="py-12 text-center">{t('loading')}</div>
-
   if (loadError) return <PageLoadError error={new Error(loadError)} onRetry={() => void loadData()} />
+
+  if (loading || userLoading) {
+    return (
+      <div className="space-y-3" data-testid="swaps-loading-shell">
+        <div className="flex items-center justify-between gap-2 border-b border-slate-200 pb-2">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold">{t('swapsTitle') || 'Yêu cầu đổi ca'}</h2>
+          </div>
+        </div>
+        <div className="rounded-lg border bg-white p-12 text-center">
+          <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent mb-2" />
+          <p className="text-xs text-muted-foreground">{t('loading') || 'Đang tải yêu cầu đổi ca...'}</p>
+        </div>
+      </div>
+    )
+  }
   return <div className="space-y-3">
     <div className="flex items-center justify-between gap-2 border-b border-slate-200">
       <nav aria-label={t('status')} className="flex min-w-0 flex-1 overflow-x-auto">
