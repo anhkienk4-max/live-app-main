@@ -177,6 +177,16 @@ jobs:
             exception when sqlstate 'P0001' then
               if sqlerrm <> 'WORKFORCE_SHIFT_NOT_COMPLETED' then raise; end if;
             end;
+            update public.workforce_actual_segments
+              set review_status='rejected',reviewed_by='finance-1',
+                review_note='Rejected unsupported evidence',reviewed_at=now(),version=2
+              where id=v_id;
+            begin
+              delete from public.workforce_actual_segments where id=v_id;
+              raise exception 'rejected evidence deletion was accepted';
+            exception when sqlstate 'P0001' then
+              if sqlerrm <> 'WORKFORCE_REVIEWED_SEGMENT_IMMUTABLE' then raise; end if;
+            end;
           end $unfinished$;
           SQL
 
