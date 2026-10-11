@@ -40,6 +40,19 @@ function csvEscape(input:unknown):string {
   const neutral=/^\s*[=+\-@\t\r]/u.test(s) ? "'"+s : s
   return '"'+neutral.replace(/"/gu,'""')+'"'
 }
+// Text identifiers must be formula-neutralized; salary arithmetic columns
+// must remain numeric in Excel, including negative adjustments. Validate a
+// strict integer literal before emitting a numeric CSV cell.
+const csvNumericColumns=new Set([
+  'actual_minutes','payable_minutes','overtime_minutes','rate_vnd_per_hour',
+  'overtime_multiplier_basis_points','gross_vnd','adjustment_vnd','net_vnd',
+])
+function csvNumber(input:unknown):string {
+  const value=String(input??'')
+  if(!/^-?(?:0|[1-9]\d*)$/u.test(value))
+    throw new WorkforceCalculationError('WORKFORCE_PAYROLL_CSV_NUMERIC_INVALID')
+  return '"'+value+'"'
+}
 
 export function createWorkforcePayrollHandler(options:Options={}) {
   const connect=options.createClient??createSupabaseAdminClient
@@ -80,7 +93,8 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             'overtime_multiplier_basis_points','gross_vnd','adjustment_vnd','net_vnd',
             'adjustment_reason','calculation_version']
           const csv='\ufeff'+[columns.map(csvEscape).join(','),
-            ...(lines.data??[]).map(row=>columns.map(k=>csvEscape(row[k])).join(','))].join('\r\n')+'\r\n'
+            ...(lines.data??[]).map(row=>columns.map(k=>
+               csvNumericColumns.has(k)?csvNumber(row[k]):csvEscape(row[k])).join(','))].join('\r\n')+'\r\n'
           const filename='payroll-'+r.data.period_start+'-'+r.data.period_end+'.csv'
           return new Response(csv,{headers:{'Content-Type':'text/csv; charset=utf-8',
             'Content-Disposition':'attachment; filename="'+filename+'"',
