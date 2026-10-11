@@ -18,14 +18,24 @@ alter table public.report_images
   drop constraint if exists report_images_file_provider_pair,
   add constraint report_images_file_provider_pair check (
     (provider is null and external_file_id is null)
-    or (provider in ('google_drive', 'onedrive') and btrim(external_file_id) <> '')
+    or (
+      provider is not null
+      and provider in ('google_drive', 'onedrive')
+      and external_file_id is not null
+      and btrim(external_file_id) <> ''
+    )
   );
 
 alter table public.live_report_images
   drop constraint if exists live_report_images_file_provider_pair,
   add constraint live_report_images_file_provider_pair check (
     (provider is null and external_file_id is null)
-    or (provider in ('google_drive', 'onedrive') and btrim(external_file_id) <> '')
+    or (
+      provider is not null
+      and provider in ('google_drive', 'onedrive')
+      and external_file_id is not null
+      and btrim(external_file_id) <> ''
+    )
   );
 
 -- 2. Legacy report_images provider upload wrapper
@@ -138,10 +148,10 @@ begin
     raise exception using errcode = 'P0001', message = 'REPORT_NOT_FOUND';
   end if;
   actor_permission := (select system_permission from public.business_users where id = actor_id);
-  if actor_permission = 'member' and target_image.uploaded_by <> actor_id then
+  if actor_permission = 'member' and (target_image.uploaded_by is null or target_image.uploaded_by <> actor_id) then
     raise exception using errcode = '42501', message = 'OPERATION_NOT_ALLOWED';
   end if;
-  if actor_permission = 'member' and target_report.submitted_by <> actor_id then
+  if actor_permission = 'member' and (target_report.submitted_by is null or target_report.submitted_by <> actor_id) then
     raise exception using errcode = '42501', message = 'OPERATION_NOT_ALLOWED';
   end if;
   if target_report.metrics_confirmed then
@@ -177,10 +187,10 @@ begin
     raise exception using errcode = 'P0001', message = 'REPORT_NOT_FOUND';
   end if;
   actor_permission := (select system_permission from public.business_users where id = actor_id);
-  if actor_permission = 'member' and target_image.uploaded_by <> actor_id then
+  if actor_permission = 'member' and (target_image.uploaded_by is null or target_image.uploaded_by <> actor_id) then
     raise exception using errcode = '42501', message = 'OPERATION_NOT_ALLOWED';
   end if;
-  if actor_permission = 'member' and target_report.submitted_by <> actor_id then
+  if actor_permission = 'member' and (target_report.submitted_by is null or target_report.submitted_by <> actor_id) then
     raise exception using errcode = '42501', message = 'OPERATION_NOT_ALLOWED';
   end if;
   if target_report.metrics_confirmed or target_report.status = 'confirmed' then

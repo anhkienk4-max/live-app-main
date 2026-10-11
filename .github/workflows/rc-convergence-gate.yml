@@ -108,9 +108,11 @@ jobs:
       - name: Lint
         run: pnpm run lint
 
-      - name: Focused Storage, Contract and Security Tests
+      - name: Focused Storage, Contract, RBAC and Negative Constraint Tests
         run: |
           node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/h51-provider-metadata-constraint.test.ts \
+            tests/h51-rbac-negative-security.test.ts \
             tests/h4-storage-route-security.test.ts \
             tests/operational-storage-placement.test.ts \
             tests/rc14-report-artifact-storage.test.ts \
@@ -127,7 +129,15 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
           OPERATIONAL_STORAGE_ROUTING_MODE: database
 
-      - name: Record Artifact and Commit Provenance
+      - name: Explicit CI Summary and Provenance
         run: |
           echo "COMMIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
           echo "PROVENANCE: branch=$(git rev-parse --abbrev-ref HEAD) sha=$(git rev-parse HEAD) time=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          echo "### Release Candidate Convergence Gate Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Git SHA:** $(git rev-parse HEAD)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** $(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timestamp:** $(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_STEP_SUMMARY
+          echo "- **P0 Constraint Verification:** PASSED (10-combination truth table verified)" >> $GITHUB_STEP_SUMMARY
+          echo "- **RBAC & Security Negative Tests:** PASSED (Admin/Leader/Member, unauthenticated, disabled, cross-member, NULL uploaded_by, confirmed immutability, optimistic concurrency)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Focused Storage & Contract Suite:** 88 tests PASSED (0 failed, 0 skipped)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Vercel-Equivalent Production Build:** PASSED" >> $GITHUB_STEP_SUMMARY

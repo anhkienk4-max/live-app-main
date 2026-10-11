@@ -112,6 +112,20 @@ async function runRehearsal() {
       archived_at timestamptz,
       version integer default 1
     );
+    create or replace function private.bump_concurrency_version()
+    returns trigger language plpgsql security invoker set search_path = '' as $
+    begin
+      new.version := coalesce(old.version, 1) + 1;
+      new.updated_at := statement_timestamp();
+      return new;
+    end;
+    $;
+
+    drop trigger if exists shifts_bump_concurrency_version on public.shifts;
+    create trigger shifts_bump_concurrency_version
+    before update on public.shifts
+    for each row execute function private.bump_concurrency_version();
+
 
     create table if not exists public.shift_registrations (
       id text primary key default gen_random_uuid()::text,
@@ -477,8 +491,8 @@ async function runRehearsal() {
     select * from public.update_shift($1, $2::jsonb, false, $3);
   `, [createShiftRes.id, JSON.stringify({ title: 'Updated Live Morning Special' }), createShiftRes.version])).rows[0];
   assert.equal(updateShiftRes.title, 'Updated Live Morning Special');
-  // version assertion
-  console.log('? Test 6.2b: update_shift optimistic concurrency succeeded.');
+  assert.equal(updateShiftRes.version, createShiftRes.version + 1, 'Version must increment from ' + createShiftRes.version + ' to ' + (createShiftRes.version + 1));
+  console.log('? Test 6.2b: update_shift optimistic concurrency succeeded and version incremented.');
 
   // Test update_shift conflict with stale expected version
   let conflictCaught = false;
@@ -568,13 +582,53 @@ async function runRehearsal() {
   assert.ok(confirmedRejected, 'Confirmed report must reject image upsert');
   console.log('? Test 6.5: Confirmed report immutability enforced (REPORT_CONFIRMED).');
 
-  // Test 6.6: Delete authorization
+  // Test 6.6a: Delete authorization for owner
   await client.query(`update public.reports set metrics_confirmed = false where id = 'rep-1';`);
   const authDeleteRes = (await client.query(`
     select public.authorize_live_report_image_delete($1) as allowed;
   `, [uploadRes.id])).rows[0];
   assert.equal(authDeleteRes.allowed, true, 'Member should be authorized to delete own unconfirmed report image');
-  console.log('? Test 6.6: authorize_live_report_image_delete authorized owner.');
+  console.log('? Test 6.6a: authorize_live_report_image_delete authorized owner.');
+
+  // Test 6.6b: NULL uploaded_by is strictly blocked for Member
+  const nullUploaderImg = (await client.query(`
+    insert into public.live_report_images (report_id, category, file_name, file_url, uploaded_by)
+    values ('rep-1', 'live_session', 'null_uploader.png', 'cloudref:v1:google_drive:null-up', null)
+    returning id;
+  `)).rows[0];
+  let nullUploaderBlocked = false;
+  try {
+    await client.query(`select public.authorize_live_report_image_delete($1);`, [nullUploaderImg.id]);
+  } catch (err) {
+    nullUploaderBlocked = true;
+    assert.equal(err.code, '42501');
+  }
+  assert.ok(nullUploaderBlocked, 'Member must NOT be authorized to delete image with NULL uploaded_by');
+  console.log('? Test 6.6b: NULL uploaded_by deletion blocked for Member (42501 OPERATION_NOT_ALLOWED).');
+
+  // Test 6.6c: Cross-member deletion is strictly blocked
+  await client.query(`set app.current_user_id = 'member-2';`);
+  let crossDeleteBlocked = false;
+  try {
+    await client.query(`select public.authorize_live_report_image_delete($1);`, [uploadRes.id]);
+  } catch (err) {
+    crossDeleteBlocked = true;
+    assert.equal(err.code, '42501');
+  }
+  assert.ok(crossDeleteBlocked, 'Member-2 must NOT be authorized to delete Member-1 report image');
+  console.log('? Test 6.6c: Cross-member deletion blocked (42501 OPERATION_NOT_ALLOWED).');
+
+  // Test 6.6d: Unauthenticated caller is strictly blocked fail-closed
+  await client.query(`set app.current_user_id = '';`);
+  let unauthBlocked = false;
+  try {
+    await client.query(`select public.authorize_live_report_image_delete($1);`, [uploadRes.id]);
+  } catch (err) {
+    unauthBlocked = true;
+    assert.equal(err.code, '42501');
+  }
+  assert.ok(unauthBlocked, 'Unauthenticated caller must be rejected with 42501 AUTHENTICATION_REQUIRED');
+  console.log('? Test 6.6d: Unauthenticated caller blocked (42501 AUTHENTICATION_REQUIRED).');
 
   // STEP 7: Transactional Rollback Rehearsal
   console.log('\n[7/7] Executing Transactional Rollback Rehearsal...');
@@ -600,7 +654,9 @@ async function runRehearsal() {
   console.log('? Test 7: Transactional rollback cleanly aborted failed migration block without database drift.');
 
   console.log('\n======================================================');
-  console.log('?? ALL DATABASE CLONE REHEARSAL CONTRACTS AND TESTS PASSED (100%)');
+  console.log('?? ISOLATED SYNTHETIC INTEGRATION REHEARSAL PASSED (100% Assertions Passed)');
+  console.log('   Gate: ISOLATED_SYNTHETIC_DB_TEST_PASS');
+  console.log('   Note: Production-equivalent DB clone rehearsal requires live replica.');
   console.log('======================================================\n');
   await client.end();
 }
