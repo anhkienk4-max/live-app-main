@@ -240,8 +240,8 @@ begin
     end if;
     return new;
   end if;
-  if tg_op='DELETE' and old.review_status='approved' then
-    raise exception 'WORKFORCE_APPROVED_SEGMENT_IMMUTABLE';
+  if tg_op='DELETE' and old.review_status in ('approved','rejected') then
+    raise exception 'WORKFORCE_REVIEWED_SEGMENT_IMMUTABLE';
   end if;
   if tg_op='UPDATE' and old.review_status in ('approved','rejected') then
     raise exception 'WORKFORCE_REVIEWED_SEGMENT_IMMUTABLE';
