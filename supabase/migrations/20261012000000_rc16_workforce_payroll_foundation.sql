@@ -169,6 +169,8 @@ declare
   v_segment public.workforce_actual_segments%rowtype;
   v_rate public.workforce_rate_cards%rowtype;
   v_shift_date date;
+  v_duration_seconds numeric;
+  v_computed_gross bigint;
 begin
   if tg_op='DELETE' then raise exception 'WORKFORCE_PAYROLL_LINE_DELETE_BLOCKED'; end if;
   if tg_op='UPDATE' then
@@ -190,6 +192,22 @@ begin
   if v_shift_date is null or v_shift_date < v_period.period_start
     or v_shift_date > v_period.period_end then
     raise exception 'WORKFORCE_PAYROLL_OUTSIDE_PERIOD';
+  end if;
+  v_duration_seconds := extract(epoch from (v_segment.actual_end_at-v_segment.actual_start_at));
+  if v_duration_seconds is null or v_duration_seconds <= 0
+    or mod(v_duration_seconds,60) <> 0
+    or v_duration_seconds/60 <> new.actual_minutes
+    or new.payable_minutes > new.actual_minutes then
+    raise exception 'WORKFORCE_PAYROLL_UNVERIFIED_MINUTES';
+  end if;
+  v_computed_gross := round(
+    new.rate_vnd_per_hour::numeric *
+      ((new.payable_minutes-new.overtime_minutes)::numeric
+        + new.overtime_minutes::numeric*new.overtime_multiplier_basis_points::numeric/10000)
+      / 60
+  )::bigint;
+  if v_computed_gross <> new.gross_vnd then
+    raise exception 'WORKFORCE_PAYROLL_GROSS_MISMATCH';
   end if;
   select * into v_rate from public.workforce_rate_cards where id=new.rate_card_id;
   if not found or v_rate.operational_role <> new.operational_role
