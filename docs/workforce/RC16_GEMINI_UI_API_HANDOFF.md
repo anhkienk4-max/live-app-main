@@ -29,7 +29,10 @@ Workforce Overview and individual performance read only approved actual evidence
 - Each approved rate has a validity range and optional staff scope; a staff
   rate supersedes a role default, but overlapping applicable rates are rejected.
 - Period transitions use an atomic PostgreSQL RPC and append-only audit.
-  A Locked period cannot be edited or silently reopened.
+  An empty Draft cannot pass Review; a segment can appear in only one payroll
+  period (including overlapping periods) to block double payment. A Locked
+  period cannot be edited or silently reopened. A future audited reissue or
+  correction flow must be designed before a segment can be paid again.
 - Salary and rates: Admin only. Actual Staffing: Admin and Leader.
   Individual performance: Admin/Leader or the staff member themselves.
   Team performance: Admin/Leader only.
@@ -86,7 +89,9 @@ independently recalculate rates, minutes and VND, rejecting mismatches.
 "target_status":"reviewed",
 "reason":"Verified attendance evidence against reports"}
 Then reviewed → confirmed → payroll_ready → locked. Review and Confirm
-require different actors. Ready and Lock require at least one verified line.
+require different actors. Review, Ready and Lock each require at least one
+verified line. A segment cannot be entered in two payroll periods, even if
+their date ranges overlap; duplicate submissions return HTTP 409.
 
 9. GET /api/workforce/payroll?period_id=...&export=csv
 Admin-only, locked only. UTF-8 BOM CSV compatible with Excel; formula
