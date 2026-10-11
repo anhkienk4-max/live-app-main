@@ -73,3 +73,11 @@ Success requires API + browser + provider + DB recorded evidence with all checks
 | 20261011092051 | rc15_operational_files | Applied |
 
 The repository file names have been aligned exactly to the Supabase ledger to avoid future CLI attempting reapplication. SQL bodies were byte-for-byte preserved. Original RPC source and schema metadata snapshots: `docs/storage/rc15-release-baseline/`. This is **not** a complete database backup.
+
+## Preview follow-up (2026-10-11): SSO and environmental isolation hold
+
+- Latest preview for PR #24 builds automatically on branch `fix/rc14-data-report-export-fidelity`; check the exact commit SHA against the latest SUCCESS CI before opening.
+- Vercel project `livestream-ops-demo` has `ssoProtection.enabled=true` for non-custom domains. The ChatGPT Vercel plugin is explicitly set to **Allow all actions** and the connected team lists an **OWNER**. Nonetheless the protected Preview content and runtime logs tools return **403**, specifically at `GET /v2/deployments/{id}/aliases`. This does **not** establish missing user permission. Do not ask the user to repeat app permissions and do not disable SSO. Browser UAT requires a supported authenticated browser session (for example ChatGPT Work Cloud Browser) and is not yet PASS.
+- The target preview's Supabase URL/provider account isolation has **not** been verified. No synthetic file uploads or test Shift writes on Production are authorized by this runbook. Supabase development branches currently list none, and historical business shifts must never be reclassified for test convenience.
+- Storage V2 has been further hardened: `compat` static route mode and all original legacy profile paths **fail closed** for the 15 new V2 file categories. Legacy Dashboard/Visibility/DATA flows retain their old routes. Only explicitly approved database routes with an exact existing Brand → Year → Month → Platform chain may materialize new V2 category paths. No `ADA_STORAGE_V2` tree is automatically created in the Drive root.
+- Required before one consolidated physical UAT: a verified isolated Preview data/provider scope (or a separately authorized tightly scoped fixture process), authenticated protected browser access, one approved test-only route, fixture evidence, and cleanup procedure. Record all actual results in PR #24. Do not infer physical PASS from the 43+ test suite.
