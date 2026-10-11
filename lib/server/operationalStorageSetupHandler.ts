@@ -21,6 +21,20 @@ const routeInput = z.object({
   root_folder_id: id,
   confirmation: z.literal('I_VERIFIED_PROVIDER_ROOT_AND_BRAND'),
 }).strict()
+const existingBrandProfile = 'EXISTING_BRAND_YEAR_PERIOD_PLATFORM' as const
+const existingBrandRouteInput = z.object({
+  action: z.literal('register_existing_brand_route'),
+  brand_id: id,
+  platform_id: id,
+  execution_source: source,
+  root_folder_id: id,
+  brand_folder_id: id,
+  year_folder_id: id,
+  period_folder_id: id,
+  platform_folder_id: id,
+  period_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+  confirmation: z.literal('I_VERIFIED_BRAND_YEAR_MONTH_PLATFORM_PROVIDER_IDS'),
+}).strict()
 const legacyProfile = z.enum([
   'LEGACY_CATEGORY_PERIOD', 'LEGACY_PLATFORM_CATEGORY_PERIOD', 'LEGACY_PERIOD_CATEGORY',
 ])
@@ -84,7 +98,7 @@ const previewLegacyRouteInput = legacyRouteInput.omit({
 const brandInput = z.object({
   action: z.literal('classify_brand_profile'),
   brand_id: id,
-  storage_profile: z.union([z.literal('CANONICAL_V1'), legacyProfile]),
+  storage_profile: z.union([z.literal('CANONICAL_V1'), z.literal(existingBrandProfile), legacyProfile]),
   confirmation: z.union([
     z.literal('I_VERIFIED_THIS_BRAND_USES_CANONICAL_FOLDERS'),
     z.literal('I_VERIFIED_THIS_BRAND_FOLDER_PROFILE'),
@@ -217,7 +231,7 @@ export function createOperationalStorageSetupHandler(deps: {
         if (!actor.businessUserId) fail('STORAGE_SETUP_ACTOR_NOT_READY')
         const raw = await readJsonBody(request, 8192)
         const db = client()
-        const parsed = z.union([routeInput, legacyRouteInput, previewLegacyRouteInput, brandInput, shiftInput]).parse(raw)
+        const parsed = z.union([routeInput, existingBrandRouteInput, legacyRouteInput, previewLegacyRouteInput, brandInput, shiftInput]).parse(raw)
 
         if (parsed.action === 'classify_brand_profile') {
           const found = await db.from('brands').select('id,storage_profile')
@@ -274,13 +288,50 @@ export function createOperationalStorageSetupHandler(deps: {
         ])
         if (brand.error || platform.error || !brand.data || !platform.data) fail('STORAGE_SETUP_CONTEXT_NOT_FOUND')
         const isLegacy = parsed.action === 'register_legacy_route' || parsed.action === 'preview_legacy_route'
+        const isExistingBrand = parsed.action === 'register_existing_brand_route'
         if (isLegacy) {
           if (brand.data.storage_profile !== parsed.storage_profile) fail('STORAGE_SETUP_PROFILE_NOT_READY')
+        } else if (isExistingBrand) {
+          if (brand.data.storage_profile !== existingBrandProfile) fail('STORAGE_SETUP_PROFILE_NOT_READY')
         } else if (brand.data.storage_profile !== 'CANONICAL_V1') {
           fail('STORAGE_SETUP_PROFILE_NOT_READY')
         }
         const folder = await getMetadata(rootId)
         if (folder.kind !== 'folder' || folder.id !== rootId) fail('STORAGE_SETUP_ROOT_MISMATCH')
+        if (isExistingBrand) {
+          // This is the already-existing Drive hierarchy. Prove every edge;
+          // never create an ADA, brand, year, month or platform folder here.
+          const year = parsed.period_date.slice(0, 4)
+          const month = parsed.period_date.slice(5, 7)
+          const expectedMonth = `THÁNG ${month}.${year}`
+          const verified = [
+            { id: parsed.brand_folder_id, parent: rootId, name: null },
+            { id: parsed.year_folder_id, parent: parsed.brand_folder_id, name: year },
+            { id: parsed.period_folder_id, parent: parsed.year_folder_id, name: expectedMonth },
+            { id: parsed.platform_folder_id, parent: parsed.period_folder_id, name: null },
+          ]
+          if (new Set(verified.map(value => value.id)).size !== verified.length) {
+            fail('STORAGE_SETUP_FOLDER_CHAIN_MISMATCH')
+          }
+          let platformName = ''
+          for (const candidate of verified) {
+            const actual = await getMetadata(candidate.id)
+            if (actual.id !== candidate.id || actual.kind !== 'folder'
+                || actual.parent_ids?.length !== 1 || actual.parent_ids[0] !== candidate.parent
+                || (candidate.name !== null && actual.name !== candidate.name)) {
+              fail('STORAGE_SETUP_FOLDER_CHAIN_MISMATCH')
+            }
+            if (candidate.id === parsed.platform_folder_id) platformName = actual.name
+          }
+          if (!legacySegment.safeParse(platformName).success) {
+            fail('STORAGE_SETUP_FOLDER_CHAIN_MISMATCH')
+          }
+          // Prevent an arbitrary platform branch from being registered under
+          // a different database platform. Provider label must match platform
+          // name's standard identifier (e.g. Shopee Live -> SHOPEE_LIVE).
+          const expectedPlatform = String(platform.data.name).trim().toUpperCase().replace(/\s+/gu, '_')
+          if (platformName !== expectedPlatform) fail('STORAGE_SETUP_PLATFORM_MISMATCH')
+        }
         if (isLegacy) {
           // Previews and writes MUST both validate actual provider ancestry.
           // The original four categories retain their historical layout.
@@ -347,11 +398,15 @@ export function createOperationalStorageSetupHandler(deps: {
           provider: 'google_drive', execution_source: parsed.execution_source,
           brand_id: parsed.brand_id, platform_id: parsed.platform_id,
           subbrand_key: null,
-          storage_profile: isLegacy ? parsed.storage_profile : 'CANONICAL_V1',
+          storage_profile: isLegacy ? parsed.storage_profile
+            : isExistingBrand ? existingBrandProfile : 'CANONICAL_V1',
           root_folder_id: rootId,
-          base_folder_id: isLegacy ? parsed.base_folder_id : rootId,
-          folder_labels: isLegacy ? parsed.folder_labels : {},
-          period_naming_style: isLegacy ? parsed.period_naming_style : 'THANG_M_DOT_YEAR',
+          base_folder_id: isLegacy ? parsed.base_folder_id
+            : isExistingBrand ? parsed.brand_folder_id : rootId,
+          folder_labels: isLegacy ? parsed.folder_labels
+            : isExistingBrand ? { platform: String(platform.data.name).trim().toUpperCase().replace(/\s+/gu, '_') } : {},
+          period_naming_style: isLegacy ? parsed.period_naming_style
+            : isExistingBrand ? 'THANG_MM_DOT_YEAR' : 'THANG_M_DOT_YEAR',
           period_label_overrides: isLegacy ? parsed.period_label_overrides ?? {} : {},
           period_date_ranges: isLegacy ? parsed.period_date_ranges ?? [] : [],
           folder_label_overrides: {},
