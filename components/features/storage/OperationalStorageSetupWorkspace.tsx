@@ -71,6 +71,11 @@ export function OperationalStorageSetupWorkspace() {
   const [brandApproved, setBrandApproved] = React.useState(false)
   const [profileChoice, setProfileChoice] = React.useState('CANONICAL_V1')
   const [legacyBaseId, setLegacyBaseId] = React.useState('')
+  const [existingBrandFolderId, setExistingBrandFolderId] = React.useState('')
+  const [existingYearFolderId, setExistingYearFolderId] = React.useState('')
+  const [existingPeriodFolderId, setExistingPeriodFolderId] = React.useState('')
+  const [existingPlatformFolderId, setExistingPlatformFolderId] = React.useState('')
+  const [existingRouteDate, setExistingRouteDate] = React.useState('')
   const [legacyPeriodStyle, setLegacyPeriodStyle] = React.useState('THANG_M_DASH_YEAR')
   const [periodOverridesText, setPeriodOverridesText] = React.useState('')
   const [periodRangesText, setPeriodRangesText] = React.useState('')
@@ -125,6 +130,7 @@ export function OperationalStorageSetupWorkspace() {
     'LEGACY_CATEGORY_PERIOD', 'LEGACY_PLATFORM_CATEGORY_PERIOD', 'LEGACY_PERIOD_CATEGORY',
   ]
   const needsLegacy = Boolean(selectedBrand && legacySupported.includes(selectedBrand.storage_profile || ''))
+  const needsExistingBrand = selectedBrand?.storage_profile === 'EXISTING_BRAND_YEAR_PERIOD_PLATFORM'
   const selectedShift = data?.unclassified_shifts_sample.find(shift => shift.id === shiftId)
   const routeExists = data?.routes.some(route => route.provider === 'google_drive'
     && route.brand_id === brandId && route.platform_id === platformId
@@ -220,7 +226,8 @@ export function OperationalStorageSetupWorkspace() {
           <span>Profile đã xác minh</span>
           <select className={control} value={profileChoice}
             onChange={e => { setProfileChoice(e.target.value); setBrandApproved(false) }}>
-            <option value="CANONICAL_V1">CANONICAL_V1 — Brand mới</option>
+            <option value="EXISTING_BRAND_YEAR_PERIOD_PLATFORM">Folder Brand có sẵn → Năm → Tháng → Platform</option>
+            <option value="CANONICAL_V1">CANONICAL_V1 — Cấu trúc cũ của app (không phù hợp cây Drive vừa chỉnh)</option>
             <option value="LEGACY_CATEGORY_PERIOD">Legacy Category → Period</option>
             <option value="LEGACY_PLATFORM_CATEGORY_PERIOD">Legacy Platform → Category → Period</option>
             <option value="LEGACY_PERIOD_CATEGORY">Legacy Period → Category</option>
@@ -242,7 +249,7 @@ export function OperationalStorageSetupWorkspace() {
 
       <section className="rounded-xl border p-4 space-y-3" aria-label="Exact route mapping">
         <h2 className="font-semibold">2. Đăng ký route Google Drive chính xác</h2>
-        <p className="text-sm text-muted-foreground">Không dùng wildcard hoặc tự đoán root. Brand canonical và ba kiểu legacy không-subbrand phải có cấu hình đã kiểm tra.</p>
+        <p className="text-sm text-muted-foreground">Không dùng wildcard. Với ASM/Male AI, chọn profile Folder Brand có sẵn, dùng chính Folder ID hiện hữu; không tạo ADA/Brand thứ hai.</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1 text-sm">
             <label htmlFor="route-platform">Platform</label>
@@ -265,6 +272,24 @@ export function OperationalStorageSetupWorkspace() {
           <span>Google Drive Root Folder ID (sao chép từ folder đã kiểm tra)</span>
           <input className={control} value={rootId} onChange={e => setRootId(e.target.value)} placeholder="Folder ID" />
         </label>
+        {needsExistingBrand && <div className="space-y-3 rounded-md border p-3">
+          <p className="text-sm">Xác minh chuỗi folder có sẵn: Brand → Năm → THÁNG MM.YYYY → Platform. Chỉ lưu route sau khi kiểm tra toàn bộ Folder ID.</p>
+          {([
+            ['Brand Folder ID', existingBrandFolderId, setExistingBrandFolderId],
+            ['Year Folder ID', existingYearFolderId, setExistingYearFolderId],
+            ['Month Folder ID', existingPeriodFolderId, setExistingPeriodFolderId],
+            ['Platform Folder ID', existingPlatformFolderId, setExistingPlatformFolderId],
+          ] as const).map(([label, value, set]) => <label key={label} className="block space-y-1 text-sm">
+            <span>{label}</span>
+            <input className={control} value={value} onChange={e => set(e.target.value)} placeholder="Drive Folder ID" />
+          </label>)}
+          <label className="block space-y-1 text-sm">
+            <span>Ngày ca mẫu để xác minh tháng</span>
+            <input type="date" className={control} value={existingRouteDate}
+              onChange={e => setExistingRouteDate(e.target.value)} />
+          </label>
+          <p className="text-xs text-muted-foreground">Server sẽ từ chối nếu bất kỳ Folder ID nào không thuộc đúng cấp cha hoặc tên tháng/platform không khớp. Không tạo folder mới.</p>
+        </div>}
         {needsLegacy && <>
           <p className="text-sm">Legacy: giữ nguyên các folder Dashboard/Visibility/DATA cũ. Các nhóm V2 mới lưu dưới ADA_STORAGE_V2 theo Brand ID/Platform ID/Nguồn/Tháng.</p>
           <label className="block text-sm space-y-1">
@@ -339,12 +364,24 @@ export function OperationalStorageSetupWorkspace() {
         </label>
         <button type="button" className={action}
           disabled={busy || !data.root_configured || !routeApproved || !brandId || !platformId || !executionSource
-            || !rootId.trim() || (!needsLegacy && selectedBrand?.storage_profile !== 'CANONICAL_V1')
+            || !rootId.trim() || (!needsLegacy && !needsExistingBrand && selectedBrand?.storage_profile !== 'CANONICAL_V1')
+            || (needsExistingBrand && (!existingBrandFolderId.trim() || !existingYearFolderId.trim()
+              || !existingPeriodFolderId.trim() || !existingPlatformFolderId.trim() || !existingRouteDate))
             || (needsLegacy && (!legacyBaseId.trim()
               || Object.values(legacyLabels).some(v => !v.trim())
               || !previewReady))
             || routeExists}
-          onClick={() => void mutate(needsLegacy ? {
+          onClick={() => void mutate(needsExistingBrand ? {
+            action: 'register_existing_brand_route',
+            brand_id: brandId, platform_id: platformId,
+            execution_source: executionSource, root_folder_id: rootId.trim(),
+            brand_folder_id: existingBrandFolderId.trim(),
+            year_folder_id: existingYearFolderId.trim(),
+            period_folder_id: existingPeriodFolderId.trim(),
+            platform_folder_id: existingPlatformFolderId.trim(),
+            period_date: existingRouteDate,
+            confirmation: 'I_VERIFIED_BRAND_YEAR_MONTH_PLATFORM_PROVIDER_IDS',
+          } : needsLegacy ? {
             action: 'register_legacy_route', ...legacyRoutePayload(),
             confirmation: 'I_VERIFIED_LEGACY_PROVIDER_BASE_AND_PATHS',
           } : {
