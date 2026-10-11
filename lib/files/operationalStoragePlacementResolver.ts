@@ -9,6 +9,7 @@ export type OperationalStorageProfile =
   | 'LEGACY_SUBBRAND_PERIOD_CATEGORY'
   | 'LEGACY_SUBBRAND_CATEGORY_PERIOD'
   | 'CANONICAL_V1'
+  | 'EXISTING_BRAND_YEAR_PERIOD_PLATFORM'
   | 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY'
 export type OperationalLogicalCategory = 'dashboard' | 'live_visual' | 'data_report' | 'data_source'
 export type OperationalPeriodNamingStyle =
@@ -17,6 +18,7 @@ export type OperationalPeriodNamingStyle =
   | 'THANG_M_DOT_SPACE_YEAR'
   | 'T_M_DOT_YEAR'
   | 'THANG_UPPER_M_DASH_YEAR'
+  | 'THANG_MM_DOT_YEAR'
 
 export type OperationalPeriodLabelOverrides = Record<string, Partial<Record<OperationalLogicalCategory | 'default', string>>>
 export interface OperationalPeriodDateRange {
@@ -103,6 +105,7 @@ const profiles = new Set<OperationalStorageProfile>([
   'LEGACY_SUBBRAND_PERIOD_CATEGORY',
   'LEGACY_SUBBRAND_CATEGORY_PERIOD',
   'CANONICAL_V1',
+  'EXISTING_BRAND_YEAR_PERIOD_PLATFORM',
   'TEMP_AGENCY_BRAND_PERIOD_CATEGORY',
 ])
 
@@ -197,6 +200,7 @@ function periodLabel(style: string, shiftDate: string, profile: OperationalStora
     case 'THANG_M_DOT_SPACE_YEAR': return `THÁNG ${monthText}. ${year}`
     case 'T_M_DOT_YEAR': return `T${monthText}.${year}`
     case 'THANG_UPPER_M_DASH_YEAR': return `THÁNG ${monthText} - ${year}`
+    case 'THANG_MM_DOT_YEAR': return `THÁNG ${String(month).padStart(2, '0')}.${year}`
     default: return fail('STORAGE_ROUTE_CONFIG_INVALID')
   }
 }
@@ -209,7 +213,8 @@ function configuredCategorySegments(
 ): string[] {
   if (!categories.has(category)) fail('STORAGE_CATEGORY_UNSUPPORTED')
 
-  if (profile === 'CANONICAL_V1' || profile === 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY') {
+  if (profile === 'CANONICAL_V1' || profile === 'EXISTING_BRAND_YEAR_PERIOD_PLATFORM'
+    || profile === 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY') {
     if (category === 'dashboard') return ['DASHBOARD']
     if (category === 'live_visual') return [source === 'internal' ? 'VISIBILITY' : 'VISUAL HOST']
     if (category === 'data_report') return ['DATA', 'REPORT']
@@ -311,6 +316,15 @@ export function resolveOperationalStoragePlacement(
       if (!input.brandLabel || !input.platformLabel) fail('STORAGE_ROUTE_CONFIG_INVALID')
       folderSegments = [safeSegment(input.brandLabel), safeSegment(input.platformLabel), period, ...category]
       break
+    case 'EXISTING_BRAND_YEAR_PERIOD_PLATFORM': {
+      // The real Drive root IS the ADA root. An approved existing brand folder
+      // is the base, so do not add another ADA/client/brand folder.
+      const platformFolder = safeSegment(route.folder_labels.platform)
+      if (route.period_naming_style !== 'THANG_MM_DOT_YEAR') fail('STORAGE_ROUTE_CONFIG_INVALID')
+      const year = dateParts(input.shiftDate).year
+      folderSegments = [year, period, platformFolder, ...category]
+      break
+    }
     case 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY':
       if (!input.brandLabel) fail('STORAGE_ROUTE_CONFIG_INVALID')
       folderSegments = [safeSegment(input.brandLabel), period, ...category]
