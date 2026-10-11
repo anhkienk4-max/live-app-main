@@ -61,7 +61,7 @@ jobs:
           create role authenticated nologin;
           create role service_role nologin;
           create table public.business_users (id text primary key);
-          create table public.shifts (id text primary key, date date not null);
+          create table public.shifts (id text primary key, date date not null, status text not null default 'completed', deleted_at timestamptz);
           insert into public.business_users(id) values ('staff-1'),('admin-1'),('finance-1');
           insert into public.shifts(id,date) values ('shift-1','2026-09-30');
           SQL
@@ -108,7 +108,7 @@ jobs:
               update public.workforce_actual_segments set evidence_note='tamper',version=3 where id=v_segment;
               raise exception 'approved attendance tamper was accepted';
             exception when sqlstate 'P0001' then
-              if sqlerrm <> 'WORKFORCE_APPROVED_SEGMENT_IMMUTABLE' then raise; end if;
+              if sqlerrm <> 'WORKFORCE_REVIEWED_SEGMENT_IMMUTABLE' then raise; end if;
             end;
             insert into public.workforce_rate_cards(staff_id,operational_role,effective_from,
               vnd_per_hour,overtime_multiplier_basis_points,approved_by,approved_at,approval_note)
