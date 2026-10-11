@@ -4,7 +4,7 @@
 **Integration Branch:** `integration/rc14-frontend14wave-convergence`  
 **Current HEAD:** `5c45e0f2113fe6bf61d35b54fb610862c326ef10`  
 **Verified Vercel Deployment:** `https://live-app-clean-oyi5j5xig-livestream2.vercel.app`  
-**Runtime Deployment SHA:** `b5e59a90dde9af22a5f7981cb4ab3c5b54fe6b49`  
+**Runtime Deployment SHA:** `5c45e0f2113fe6bf61d35b54fb610862c326ef10`  
 **Staging Database Target:** Supabase STAGING (`amagnzebmmuqiptmrjmc`)  
 **Production Isolation:** Supabase PRODUCTION (`egdjnpmoasarrttvhgds`) — STRICTLY UNTOUCHED  
 **Date:** 2026-10-11  

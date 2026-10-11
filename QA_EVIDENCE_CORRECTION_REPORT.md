@@ -102,7 +102,7 @@ Moving forward, the following strict validation gates are enforced across all au
      a) Have a physical PNG file existing on disk.
      b) Possess a valid SHA-256 hash computed directly from the file bytes.
      c) Possess an authentic ISO timestamp from the browser execution clock (no static constant strings).
-     d) Link to the exact Git commit SHA (`5c45e0f` or deployment SHA `b5e59a9`) and deployment URL.
+     d) Link to the exact Git commit SHA (`5c45e0f` or deployment SHA `5c45e0f`) and deployment URL.
 
 3. **Status Classification Taxonomy:**
    - `SOURCE_CODE_REVIEWED`: Verified at the TypeScript/React code level.
