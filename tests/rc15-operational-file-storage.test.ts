@@ -198,6 +198,28 @@ function form(category: OperationalFileCategory, filename: string, mime: string,
   return new Request('https://example.test/api/operational-files', { method: 'POST', body: data })
 }
 
+test('V2 refuses static compat mode rather than inventing duplicate ADA and brand folders', async () => {
+  const state = client()
+  let resolved = false
+  let materialized = false
+  const handler = createOperationalFileRouteHandler({
+    createClient: () => state.db,
+    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
+    routes: { async resolvePlacement() { resolved = true; return base } },
+    materializeFolders: async () => { materialized = true; return 'should-never-happen' },
+    routingMode: 'compat',
+  })
+  const response = await handler.POST(form(
+    'schedule_source', 'source.csv', 'text/csv', new Uint8Array([1, 2, 3]),
+  ))
+  assert.equal(response.status, 409)
+  const data = await response.json() as { error?: { code?: string } }
+  assert.equal(data.error?.code, 'STORAGE_ROUTE_NOT_CONFIGURED')
+  assert.equal(resolved, false)
+  assert.equal(materialized, false)
+  assert.equal(state.rows.length, 0)
+})
+
 test('operational file lifecycle uses external object, no duplicate, metadata-only, cleanup and admin guard', async () => {
   const state = client()
   const providerUploads: FileUploadInput[] = []
