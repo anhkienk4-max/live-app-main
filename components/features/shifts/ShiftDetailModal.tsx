@@ -69,6 +69,7 @@ import { deriveShiftAttention } from '@/lib/ui/operational-attention'
 import { OperationalStatusStrip } from '@/components/ui/operational-status'
 import { ShiftLifecycleActions } from './ShiftLifecycleActions'
 import { resolveStaffingLabelsForRole, StaffingLabel } from '@/lib/utils/staffingResolver'
+import { ActualStaffingPanel } from './ActualStaffingPanel'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
 

@@ -1,4 +1,4 @@
-import { Home, Calendar, Radio, FileText, User, Settings, Users, Package, Megaphone, BarChart3, RefreshCw, History, Bell, UserCheck, FolderArchive, type LucideIcon } from 'lucide-react'
+import { Home, Calendar, Radio, FileText, User, Settings, Users, Package, Megaphone, BarChart3, RefreshCw, History, Bell, UserCheck, FolderArchive, Banknote, Activity, type LucideIcon } from 'lucide-react'
 import { SystemPermission, User as UserType } from '@/lib/types/database.types'
 import { hasAnyPermission, Permission } from '@/lib/permissions'
 
@@ -40,6 +40,8 @@ const navCatalogue: Record<string, NavItem> = {
   settings:      { name: 'Settings',      href: '/settings',      icon: Settings },
   profile:       { name: 'Profile',       href: '/profile',       icon: User },
   notifications: { name: 'Notifications', href: '/notifications', icon: Bell,     labelKey: 'navNotifications' },
+  payroll:       { name: 'Bảng lương',    href: '/payroll',       icon: Banknote, labelKey: 'payroll' },
+  workforce:     { name: 'Hiệu suất',     href: '/workforce',     icon: Activity, labelKey: 'workforce' },
 
   // Additional parity placeholders
   shifts:        { name: 'Shifts',        href: '/shifts',        icon: Calendar },
@@ -61,10 +63,11 @@ const adminNav: NavItem[] = [
   { ...navCatalogue.staffing, group: 'OPERATIONS' },
   { ...navCatalogue.registration, group: 'OPERATIONS' },
   { ...navCatalogue.storage, group: 'OPERATIONS' },
-  { ...navCatalogue.storage, group: 'OPERATIONS' },
   { ...navCatalogue.swaps, group: 'OPERATIONS' },
   { ...navCatalogue.reports, group: 'PERFORMANCE' },
+  { ...navCatalogue.workforce, group: 'PERFORMANCE' },
   { ...navCatalogue.analytics, group: 'PERFORMANCE' },
+  { ...navCatalogue.payroll, group: 'MANAGEMENT' },
   { ...navCatalogue.brands, group: 'MANAGEMENT' },
   { ...navCatalogue.platforms, group: 'MANAGEMENT' },
   { ...navCatalogue.campaigns, group: 'MANAGEMENT' },
@@ -83,6 +86,7 @@ const leaderNav: NavItem[] = [
   { ...navCatalogue.registration, group: 'OPERATIONS' },
   { ...navCatalogue.swaps, group: 'OPERATIONS' },
   { ...navCatalogue.reports, group: 'PERFORMANCE' },
+  { ...navCatalogue.workforce, group: 'PERFORMANCE' },
   { ...navCatalogue.staffDirectory, group: 'TEAM' },
   { ...navCatalogue.notifications, group: 'TEAM' },
 ]
@@ -95,6 +99,7 @@ const memberNav: NavItem[] = [
   { ...navCatalogue.mySwaps, group: 'APP OPS' },
   { ...navCatalogue.live, group: 'APP OPS' },
   { ...navCatalogue.reports, group: 'APP OPS' },
+  { ...navCatalogue.workforce, name: 'Hiệu suất cá nhân', group: 'APP OPS' },
   { ...navCatalogue.notifications, group: 'APP OPS' },
 ]
 
