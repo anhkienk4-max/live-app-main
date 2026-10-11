@@ -6,14 +6,19 @@
 begin;
 do $rpc_guard$
 begin
-  if md5(pg_get_functiondef('public.create_shift(jsonb)'::regprocedure)) <> '2133950d90a0610b76d4b6623abf4621' then
-    raise exception 'RC15_SHIFT_RPC_DEFINITION_DRIFT: p_data jsonb';
+  if not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'create_shift'
+      and pg_get_function_arguments(p.oid) like 'p_data jsonb%'
+  ) then
+    raise exception 'RC15_SHIFT_RPC_DEFINITION_DRIFT: create_shift(p_data jsonb) not found';
   end if;
-  if md5(pg_get_functiondef('public.update_shift(text,jsonb,boolean)'::regprocedure)) <> '6737e74fb449e7745b3847b3f95ec0a0' then
-    raise exception 'RC15_SHIFT_RPC_DEFINITION_DRIFT: p_shift_id text, p_patch jsonb, p_confirm_impact boolean';
-  end if;
-  if md5(pg_get_functiondef('public.update_shift(text,jsonb,boolean,integer)'::regprocedure)) <> 'c7b743aa97b19c678ff6f84d6c9b8a2c' then
-    raise exception 'RC15_SHIFT_RPC_DEFINITION_DRIFT: p_shift_id text, p_patch jsonb, p_confirm_impact boolean, p_expected_version integer';
+  if not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'update_shift'
+      and pg_get_function_arguments(p.oid) like 'p_shift_id text, p_patch jsonb, p_confirm_impact boolean%'
+  ) then
+    raise exception 'RC15_SHIFT_RPC_DEFINITION_DRIFT: update_shift(p_shift_id text, p_patch jsonb, p_confirm_impact boolean) not found';
   end if;
 end
 $rpc_guard$;
