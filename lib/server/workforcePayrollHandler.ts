@@ -1,4 +1,5 @@
 import 'server-only'
+import { isFeatureEnabled } from '@/lib/flags'
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { authorizationErrorResponse, isAuthorizationError, requireRole,
@@ -65,7 +66,7 @@ const correctionErrors = new Set([
   'WORKFORCE_PAYROLL_LINE_VOIDED','WORKFORCE_PAYROLL_IDEMPOTENCY_CONFLICT',
   'WORKFORCE_PAYROLL_LINE_NOT_FOUND','WORKFORCE_PAYROLL_GROSS_MISMATCH',
 ])
-type Options={createClient?:()=>SupabaseClient;resolveUser?:ServerUserResolver}
+type Options={createClient?:()=>SupabaseClient;resolveUser?:ServerUserResolver;isEnabled?:()=>boolean}
 const noStore={'Cache-Control':'no-store'}
 const failure=(code:string,status:number)=>Response.json({ok:false,error:{code}},{status,headers:noStore})
 function csvEscape(input:unknown):string {
@@ -103,6 +104,8 @@ export function createWorkforcePayrollHandler(options:Options={}) {
     GET(request:Request){
       return run(async()=>{
         await requireRole(request,'admin',options.resolveUser)
+        if(!(options.isEnabled??(()=>isFeatureEnabled('payroll')))())
+          return failure('WORKFORCE_PAYROLL_FEATURE_DISABLED',503)
         const q=new URL(request.url).searchParams
         if(q.has('action')){
           if([...q.keys()].some(key=>q.getAll(key).length!==1))
@@ -196,6 +199,8 @@ export function createWorkforcePayrollHandler(options:Options={}) {
     POST(request:Request){
       return run(async()=>{
         const user=await requireRole(request,'admin',options.resolveUser)
+        if(!(options.isEnabled??(()=>isFeatureEnabled('payroll')))())
+          return failure('WORKFORCE_PAYROLL_FEATURE_DISABLED',503)
         const actor=user.businessUserId
         if(!actor)return failure('WORKFORCE_BUSINESS_USER_REQUIRED',403)
         const input=z.union([rate,period,line,transition,correction,voidLine])

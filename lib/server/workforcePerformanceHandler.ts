@@ -1,4 +1,5 @@
 import 'server-only'
+import { isFeatureEnabled } from '@/lib/flags'
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { authorizationErrorResponse, isAuthorizationError,
@@ -18,6 +19,7 @@ const params=z.object({
 type Depends={
   createClient?:()=>SupabaseClient
   resolveUser?:ServerUserResolver
+  isEnabled?:()=>boolean
   lateGraceMinutes?:()=>number | null
 }
 export function createWorkforcePerformanceHandler(deps:Depends={}) {
@@ -34,6 +36,8 @@ export function createWorkforcePerformanceHandler(deps:Depends={}) {
         const input=params.parse(Object.fromEntries(raw.entries()))
         const isSupervisor=user.systemPermission==='admin'||user.systemPermission==='leader'
         if(!isSupervisor&&user.businessUserId!==input.staff_id)return fail('PERMISSION_DENIED',403)
+        if(!(deps.isEnabled??(()=>isFeatureEnabled('actual_staffing')))())
+          return fail('WORKFORCE_FEATURE_DISABLED',503)
         const grace=readGrace()
         if(!Number.isSafeInteger(grace)||grace===null||grace<0||grace>120)
           return fail('WORKFORCE_GRACE_POLICY_NOT_CONFIGURED',409)

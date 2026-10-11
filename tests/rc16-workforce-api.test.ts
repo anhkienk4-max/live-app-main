@@ -33,14 +33,14 @@ function correctionClient(rpc: (name:string,args:Record<string,unknown>)=>unknow
 }
 
 test('Actual Staffing rejects anonymous before accessing privileged client',async()=>{
-  const handler=createWorkforceActualHandler({client:mustNotUseDb,resolveUser:anon})
+  const handler=createWorkforceActualHandler({isEnabled:()=>true,client:mustNotUseDb,resolveUser:anon})
   const a=await handler.GET(get('https://example.test/api/workforce/actual?shift_id=shift-1'))
   const b=await handler.POST(post('https://example.test/api/workforce/actual',{action:'record'}))
   assert.equal(a.status,401)
   assert.equal(b.status,401)
 })
 test('Payroll protects all salary rates/periods from leader role without DB access',async()=>{
-  const handler=createWorkforcePayrollHandler({createClient:mustNotUseDb,resolveUser:leader})
+  const handler=createWorkforcePayrollHandler({isEnabled:()=>true,createClient:mustNotUseDb,resolveUser:leader})
   const a=await handler.GET(get('https://example.test/api/workforce/payroll?period_id=period-1'))
   const b=await handler.POST(post('https://example.test/api/workforce/payroll',{
     action:'create_period',period_start:'2026-09-01',period_end:'2026-09-30',
@@ -75,7 +75,7 @@ test('Locked payroll CSV after correction preserves negative VND numbers and exc
       return q
     },
   })
-  const handler=createWorkforcePayrollHandler({
+  const handler=createWorkforcePayrollHandler({isEnabled:()=>true,
     createClient:fakeClient as never,
     resolveUser:async()=>({id:'auth-admin',businessUserId:'admin-1',systemPermission:'admin'}),
   })
@@ -92,7 +92,7 @@ test('Locked payroll CSV after correction preserves negative VND numbers and exc
 
 test('Payroll correction and void reject anonymous/Leader/Member before database access',async()=>{
   for(const resolveUser of [anon,leader,member]){
-    const h=createWorkforcePayrollHandler({createClient:mustNotUseDb,resolveUser})
+    const h=createWorkforcePayrollHandler({isEnabled:()=>true,createClient:mustNotUseDb,resolveUser})
     for(const action of ['correct_line','void_line']){
       const r=await h.POST(post('https://example.test/api/workforce/payroll',{
         ...correctionRequest,action,
@@ -103,7 +103,7 @@ test('Payroll correction and void reject anonymous/Leader/Member before database
 })
 
 test('Payroll correction strictly rejects client salary, missing reason and invalid versions',async()=>{
-  const h=createWorkforcePayrollHandler({createClient:mustNotUseDb,resolveUser:admin})
+  const h=createWorkforcePayrollHandler({isEnabled:()=>true,createClient:mustNotUseDb,resolveUser:admin})
   for(const changes of [
     {gross_vnd:1},{net_vnd:1},{reason:''},{expected_version:0},{expected_version:1.5},
     {request_id:'bad'},{payable_minutes:-1},{overtime_minutes:1441},
@@ -118,7 +118,7 @@ test('Payroll correction strictly rejects client salary, missing reason and inva
 
 test('Payroll correction computes VND using the stored rate and supplies authenticated actor to one RPC',async()=>{
   let calls=0
-  const h=createWorkforcePayrollHandler({resolveUser:admin,createClient:correctionClient((name,args)=>{
+  const h=createWorkforcePayrollHandler({isEnabled:()=>true,resolveUser:admin,createClient:correctionClient((name,args)=>{
     calls++
     assert.equal(name,'workforce_rc16b_correct_payroll_line')
     assert.equal(args.p_actor_id,'admin-1')
@@ -135,7 +135,7 @@ test('Payroll correction computes VND using the stored rate and supplies authent
 })
 
 test('Payroll rejects invalid payable/OT/adjustment independently before invoking RPC',async()=>{
-  const h=createWorkforcePayrollHandler({resolveUser:admin,
+  const h=createWorkforcePayrollHandler({isEnabled:()=>true,resolveUser:admin,
     createClient:correctionClient(()=>{throw Error('INVALID_CORRECTION_RPC')}) as never})
   for(const changes of [
     {payable_minutes:91},{overtime_minutes:61},{adjustment_reason:null},
@@ -155,7 +155,7 @@ test('Payroll maps stale/Reviewed/Locked/voided/idempotency conflicts to 409 and
     'WORKFORCE_PAYROLL_ACTOR_FORBIDDEN','WORKFORCE_PAYROLL_CORRECTION_INVALID',
     'UNEXPECTED_DATABASE_DETAIL',
   ]){
-    const h=createWorkforcePayrollHandler({resolveUser:admin,
+    const h=createWorkforcePayrollHandler({isEnabled:()=>true,resolveUser:admin,
       createClient:correctionClient(()=>({data:null,error:{message}})) as never})
     const r=await h.POST(post('https://example.test/api/workforce/payroll',correctionRequest))
     assert.equal(r.status,message==='WORKFORCE_PAYROLL_ACTOR_FORBIDDEN'?403:
@@ -169,7 +169,7 @@ test('Payroll maps stale/Reviewed/Locked/voided/idempotency conflicts to 409 and
 test('Payroll void forwards no amounts and idempotent response retains original audited result',async()=>{
   const request={action:'void_line',period_id:'period-1',line_id:'line-1',
     expected_version:2,request_id:correctionRequest.request_id,reason:'Void duplicated claim evidence'}
-  const h=createWorkforcePayrollHandler({resolveUser:admin,
+  const h=createWorkforcePayrollHandler({isEnabled:()=>true,resolveUser:admin,
     createClient:correctionClient((_name,args)=>{
       assert.equal(args.p_payable_minutes,null)
       assert.equal(args.p_expected_gross_vnd,null)
@@ -185,7 +185,7 @@ test('Payroll void forwards no amounts and idempotent response retains original 
 })
 
 test('Workforce Performance allows own scope only; cannot override lateness policy',async()=>{
-  const handler=createWorkforcePerformanceHandler({
+  const handler=createWorkforcePerformanceHandler({isEnabled:()=>true,
     createClient:mustNotUseDb,resolveUser:member,lateGraceMinutes:()=>5,
   })
   const other=await handler.GET(get(
@@ -198,7 +198,7 @@ test('Workforce Performance allows own scope only; cannot override lateness poli
   assert.equal(bad.status,400)
 })
 test('Workforce Performance has no unapproved default lateness/grace period',async()=>{
-  const handler=createWorkforcePerformanceHandler({
+  const handler=createWorkforcePerformanceHandler({isEnabled:()=>true,
     createClient:mustNotUseDb,resolveUser:member,lateGraceMinutes:()=>null,
   })
   const result=await handler.GET(get(
@@ -210,7 +210,7 @@ test('Workforce Performance has no unapproved default lateness/grace period',asy
 })
 
 test('team overview requires Leader/Admin; a member cannot enumerate colleagues',async()=>{
-  const handler=createWorkforceOverviewHandler({
+  const handler=createWorkforceOverviewHandler({isEnabled:()=>true,
     createClient:mustNotUseDb,resolveUser:member,grace:()=>5,
   })
   const response=await handler.GET(get('https://example.test/api/workforce/overview?month=2026-09&role=host'))
@@ -237,7 +237,7 @@ test('Actual Staffing cannot record a future/scheduled shift as confirmed attend
       return q
     },
   })
-  const handler=createWorkforceActualHandler({
+  const handler=createWorkforceActualHandler({isEnabled:()=>true,
     client:fakeClient as never,
     resolveUser:async()=>({id:'auth-admin',businessUserId:'admin-1',systemPermission:'admin'}),
   })

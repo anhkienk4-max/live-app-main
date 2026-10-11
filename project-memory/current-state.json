@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/rc16-payroll-workforce-backend",
-    "head": "e08d802304dc3d0f418c539ef79ec119541f5fa3",
+    "head": "7d65097c255ae7ce2973eed78f9f58d10d562c2d",
     "origin_main": "31efea2d1a60583975e96773f68106d46ab7d8d9",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-payroll"
   },
@@ -66,6 +66,7 @@
       "app/api/report-images/route.ts",
       "app/api/staff/invite/route.ts",
       "app/api/workforce/actual/route.ts",
+      "app/api/workforce/capabilities/route.ts",
       "app/api/workforce/overview/route.ts",
       "app/api/workforce/payroll/route.ts",
       "app/api/workforce/performance/route.ts",
@@ -78,14 +79,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 49,
+        "app": 50,
         "components": 94,
-        "lib": 181,
-        "scripts": 15,
-        "supabase": 77,
-        "tests": 165
+        "lib": 182,
+        "scripts": 16,
+        "supabase": 80,
+        "tests": 168
       },
-      "total": 581
+      "total": 590
     },
     "tests": {
       "files": [
@@ -182,6 +183,7 @@
         "tests/rc15-system-export.test.ts",
         "tests/rc16-environment-security.test.ts",
         "tests/rc16-payroll-discovery.test.ts",
+        "tests/rc16-production-readiness.test.ts",
         "tests/rc16-reconciliation.test.ts",
         "tests/rc16-rehearsal-safety.test.ts",
         "tests/rc16-workforce-api.test.ts",
@@ -235,7 +237,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 145
+      "count": 146
     },
     "migrations": {
       "files": [
@@ -314,5 +316,5 @@
     "lint": "FAIL_BASELINE",
     "build": "PASS"
   },
-  "synced_at": "2026-10-12T00:25:59+07:00"
+  "synced_at": "2026-10-12T00:26:04+07:00"
 }

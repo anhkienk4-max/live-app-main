@@ -1,4 +1,5 @@
 import 'server-only'
+import { isFeatureEnabled } from '@/lib/flags'
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { authorizationErrorResponse,isAuthorizationError,requireRole,
@@ -16,6 +17,7 @@ const query=z.object({
 const fail=(code:string,status:number)=>Response.json({ok:false,error:{code}},
   {status,headers:{'Cache-Control':'no-store'}})
 type Options={createClient?:()=>SupabaseClient;resolveUser?:ServerUserResolver,
+  isEnabled?:()=>boolean;
   grace?:()=>number|null;leaderboardMin?:()=>number|null}
 function envInt(key:string):number|null{
   const v=process.env[key]?.trim()
@@ -26,6 +28,8 @@ export function createWorkforceOverviewHandler(options:Options={}) {
   return {async GET(request:Request):Promise<Response>{
     try{
       await requireRole(request,['admin','leader'],options.resolveUser)
+      if(!(options.isEnabled??(()=>isFeatureEnabled('actual_staffing')))())
+        return fail('WORKFORCE_FEATURE_DISABLED',503)
       const input=query.parse(Object.fromEntries(new URL(request.url).searchParams.entries()))
       const grace=(options.grace??(()=>envInt('WORKFORCE_LATE_GRACE_MINUTES')))()
       if(grace===null||!Number.isSafeInteger(grace)||grace<0||grace>120)

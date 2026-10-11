@@ -75,14 +75,14 @@ function discoveryClient(tables:Record<string,Row[]>={
     return q
   }})
 }
-const handler=(client=discoveryClient())=>createWorkforcePayrollHandler({
+const handler=(client=discoveryClient())=>createWorkforcePayrollHandler({isEnabled:()=>true,
   resolveUser:admin,createClient:client as never,
 })
 
 test('discovery authorizes before query validation or any privileged client access',async()=>{
   for(const permission of [null,'leader','member'] as const){
     let accesses=0
-    const h=createWorkforcePayrollHandler({
+    const h=createWorkforcePayrollHandler({isEnabled:()=>true,
       resolveUser:async()=>permission?{id:'auth',businessUserId:'staff-1',systemPermission:permission}:null,
       createClient:()=>{accesses++;throw new Error('Salary database must not be accessed')},
     })
@@ -159,7 +159,7 @@ test('empty datasets and out-of-range pages expose exact metadata including Post
 
 test('discovery strictly rejects unknown/duplicate/conflicting parameters and malformed inputs',async()=>{
   let accesses=0
-  const h=createWorkforcePayrollHandler({resolveUser:admin,createClient:()=>{
+  const h=createWorkforcePayrollHandler({isEnabled:()=>true,resolveUser:admin,createClient:()=>{
     accesses++;throw new Error('Invalid query reached database')
   }})
   const invalid=[
@@ -237,7 +237,7 @@ test('installed Supabase client emits bounded exact-count discovery filters and 
       }})
     }},
   })
-  const h=createWorkforcePayrollHandler({resolveUser:admin,createClient:()=>db})
+  const h=createWorkforcePayrollHandler({isEnabled:()=>true,resolveUser:admin,createClient:()=>db})
   assert.equal((await h.GET(request('action=list_periods&status=locked&date_from=2026-09-01'))).status,200)
   assert.equal((await h.GET(request('action=list_rates&scope=role_default&effective_date=2026-09-30'))).status,200)
   assert.equal(calls[0].searchParams.get('order'),'period_start.desc,period_end.desc,revision.desc,id.asc')
@@ -263,7 +263,7 @@ test('installed Supabase client rechecks exact filtered count after an out-of-ra
       })
     }},
   })
-  const h=createWorkforcePayrollHandler({resolveUser:admin,createClient:()=>db})
+  const h=createWorkforcePayrollHandler({isEnabled:()=>true,resolveUser:admin,createClient:()=>db})
   const response=await h.GET(request('action=list_rates&scope=role_default&role=host&page=2&page_size=100'))
   assert.equal(response.status,200)
   assert.deepEqual((await response.json()).pagination,{page:2,page_size:100,total_count:5,
@@ -279,7 +279,7 @@ test('legacy period GET preserves current correction/void evidence and audit env
   const db=()=>({from(table:string){const q={select(){return q},eq(){return q},order(){return q},
     maybeSingle:async()=>({data:period,error:null}),
     limit:async()=>({data:table==='workforce_payroll_lines'?lines:audit,error:null})};return q}})
-  const h=createWorkforcePayrollHandler({resolveUser:admin,createClient:db as never})
+  const h=createWorkforcePayrollHandler({isEnabled:()=>true,resolveUser:admin,createClient:db as never})
   const response=await h.GET(request('period_id=legacy-period'))
   assert.equal(response.status,200)
   assert.deepEqual(await response.json(),{ok:true,period,lines,audit})

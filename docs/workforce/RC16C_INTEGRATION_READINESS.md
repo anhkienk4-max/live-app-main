@@ -2,6 +2,15 @@
 
 Ngày kiểm tra: 2026-10-11. Kết luận: **BLOCKED cho tích hợp UI và E2E UAT; backend đã qua gate tự động, chưa được nghiệm thu UAT hay phát hành.**
 
+## RC1.6H — quyết định thay thế đường phát hành (2026-10-12)
+
+Owner chọn Production-only; không tiếp tục RC1.6G Staging reconciliation và không
+yêu cầu Preview/Staging trước release. [Readiness H](RC16H_PRODUCTION_READINESS.md)
+và [approval package H](RC16H_PRODUCTION_APPROVAL.md) là đường hiện hành. Các status
+C/F/G ở dưới là lịch sử; C02/C03 không được falsely đóng, cũng không còn là
+prerequisite Staging. UI Antigravity chưa có final approved SHA; reviewer/policies,
+Production backup, provider compatibility và authorization vẫn OPEN/NO-GO.
+
 ## Mốc Git và bằng chứng
 
 - Repository: `anhkienk4-max/live-app-main`; worktree `live-app-rc16-payroll` sạch khi bắt đầu.

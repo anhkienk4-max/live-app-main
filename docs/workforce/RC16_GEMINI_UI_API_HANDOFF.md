@@ -7,6 +7,25 @@ Draft PR: https://github.com/anhkienk4-max/live-app-main/pull/25
 Base: fix/rc14-data-report-export-fidelity (Storage PR #24)
 Status: staged, no Production deployment or Payroll DDL applied.
 
+## RC1.6H current integration target (2026-10-12)
+
+Owner chose direct Production release; Staging/Preview is no longer a prerequisite.
+This does not authorize deployment, DDL, provisioning or feature activation.
+Antigravity now owns the upcoming UI; its final approved branch/SHA is still pending.
+Earlier Gemini/C/F checkpoints below are historical. See the current
+[Production readiness](RC16H_PRODUCTION_READINESS.md),
+[Antigravity capabilities/error contract](RC16H_ANTIGRAVITY_INTEGRATION.md) and
+[Production approval package](RC16H_PRODUCTION_APPROVAL.md).
+
+Actual/performance/overview use existing FEATURE_ACTUAL_STAFFING; Payroll uses
+FEATURE_PAYROLL independently. Both default OFF. Authorized disabled calls return
+503 WORKFORCE_FEATURE_DISABLED or WORKFORCE_PAYROLL_FEATURE_DISABLED, no-store,
+before privileged client access. Anonymous401 and unauthorized403 remain unchanged.
+GET /api/workforce/capabilities returns authenticated role-filtered booleans for
+actual_staffing, team_performance, own_performance and payroll; no salary/configuration.
+UI must use this response to hide/disable surfaces, and fail closed on read errors.
+All ON-state payloads/correction/replay/discovery/CSV contracts below remain intact.
+
 ## RC1.6C integration checkpoint (2026-10-11)
 
 Backend baseline `2be8cfd56f0bb8dbb76baa4fa23021d5e1eb1f63`: GitHub
@@ -422,21 +441,17 @@ XLSX payroll exports and verified per-host GMV attribution.
 
 ## Pre-Go-live release gates
 
-RC1.6F adds isolated PG17/Node24 rehearsal and a
-[Staging approval package](RC16F_STAGING_APPROVAL_PACKAGE.md). New synthetic
-[fixture manifest](RC16F_SYNTHETIC_FIXTURES.md) does not seed cloud or change API.
-All37 browser cases remain NOT RUN. C01/C02/C03 are BLOCKED until approved
-Gemini source, immutable Preview/key/provider proof and forward-only legacy
-Staging schema/RPC reconciliation. Never replay Production-only RC15 RPC patch
-on current Staging. Integration must follow [Preview acceptance](RC16F_PREVIEW_ACCEPTANCE.md).
+RC1.6H supersedes the F Staging/Preview path. All37 browser cases remain NOT RUN;
+isolated fixtures are not authorized for cloud seeding. Both Staging-only RC16G
+SQL files are excluded from the Production Payroll manifest.
 
-1. CI and PostgreSQL 16 business-rule gates PASS on the exact PR SHA.
-2. Finance/HR approve rate basis, overtime, break policy and confirmation rights.
-3. Actual Staffing confirmed from real evidence, including split shifts and no-show.
-4. Preview data/provider isolation confirmed; run one physical end-to-end UAT.
-5. Review and authorize Payroll migration on Production separately.
-6. Merge Gemini UI under this API contract, then request Production approval.
-7. Storage RC1.5 physical provider UAT remains a separate open release gate.
+1. Exact final integrated UI/backend SHA, owner-approved source, Node22/24 and PG16/17 gates.
+2. Production schema/provider compatibility, backup/restore and candidate/key/routing proof.
+3. HR-approved rate basis, overtime, payable breaks, lateness and independent Admin reviewer.
+4. Explicit terminal void/reissue acceptance; keep global segment reservation.
+5. Separate owner approvals for Production DDL, merge/deploy and module activation.
+6. Both flags OFF until applicable gates pass; validate existing operational functions first.
+7. Storage physical provider checks and browser acceptance need separate authorized evidence.
 
 ## Previous RC1.6 checkpoint (recorded 2026-10-11; Production not re-queried for RC1.6B)
 

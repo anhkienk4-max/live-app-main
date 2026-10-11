@@ -1,0 +1,7 @@
+- [x] Refresh read-only Production identity, ledger and catalog evidence.
+- [x] Enforce independent flags and role-filtered capabilities; test OFF/ON/RBAC.
+- [x] Pin missing Production Payroll migrations and rehearse transaction/retry guards.
+- [x] Verify synthetic legacy data, RPCs, RLS/grants and payroll on PG16/17.
+- [x] Publish UI contract, conflict matrix, backup/recovery and GO/NO-GO package.
+- [x] Run Node22/24, typecheck, lint, build, memory and diff checks.
+- [ ] Verify exact-SHA GitHub CI after feature-branch delivery.

@@ -8,11 +8,19 @@ on:
     paths:
       - 'docs/workforce/**'
       - 'lib/workforce/**'
+      - 'lib/flags.ts'
       - 'lib/server/workforce*.ts'
+      - 'lib/server/reportImageRouteHandler.ts'
+      - 'tests/rc12-report-file-provider.test.ts'
+      - 'tests/rc12-*.test.ts'
+      - 'tests/rc13*.test.ts'
+      - 'tests/rc14-*.test.ts'
+      - 'tests/rc15-*.test.ts'
       - 'lib/server/supabase*.ts'
       - 'lib/supabase/**'
       - 'lib/auth/authMode.ts'
       - 'scripts/check-runtime-environment.ts'
+      - 'scripts/workforce/rc16h-production-manifest.mjs'
       - 'package.json'
       - 'vercel.json'
       - 'pnpm-lock.yaml'
@@ -29,6 +37,10 @@ on:
       - 'tests/fixtures/rc16g*'
       - 'tests/rc16g-reconciliation.integration.mjs'
       - 'supabase/reconciliation/rc16g/**'
+      - 'supabase/release/rc16h/**'
+      - 'tests/fixtures/rc16h*'
+      - 'tests/rc16h-production.integration.mjs'
+      - 'openspec/changes/rc16h-production-readiness/**'
       - 'openspec/changes/rc16g-forward-reconciliation/**'
       - 'supabase/migrations/*rc15*.sql'
       - 'supabase/migrations/*rc13a*.sql'
@@ -83,7 +95,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify isolated RC16 and RC16G legacy/fresh reconciliation
+      - name: Verify isolated RC16, RC16G regression and RC16H Production-compatible manifest
         env:
           RC16_PG_MAJOR: ${{ matrix.postgres }}
           PGPASSWORD: postgres
@@ -100,8 +112,12 @@ jobs:
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc16-*.test.ts
       - name: Authentication isolation regression tests
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/auth-session-foundation.test.ts
+      - name: Production Storage dependency regressions
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc12-*.test.ts tests/rc13*.test.ts tests/rc14-*.test.ts tests/rc15-*.test.ts
       - name: Focused environment security lint
         run: pnpm exec eslint lib/supabase/environmentIdentity.ts lib/server/supabaseEnvironment.ts lib/server/supabaseAdmin.ts lib/auth/authMode.ts lib/supabase/server.ts lib/supabase/middleware.ts scripts/check-runtime-environment.ts tests/rc16-environment-security.test.ts tests/typescript-alias-loader.mjs tests/next-server-test-shim.mjs tests/rc16-rehearsal-safety.mjs tests/rc16-rehearsal-safety.test.ts tests/rc16-payroll-postgres.integration.mjs tests/rc16g-reconciliation.integration.mjs tests/rc16-reconciliation.test.ts
+      - name: Focused Production release gate lint
+        run: pnpm exec eslint lib/flags.ts lib/server/workforce*Handler.ts lib/server/reportImageRouteHandler.ts app/api/workforce/capabilities/route.ts tests/rc16-production-readiness.test.ts tests/rc16-workforce-api.test.ts tests/rc16-payroll-discovery.test.ts tests/rc16h-production.integration.mjs scripts/workforce/rc16h-production-manifest.mjs tests/rc12-report-file-provider.test.ts
       - name: Next.js production build without Production secrets
         run: pnpm run build
         env:

@@ -251,6 +251,37 @@ test('report image validation failures identify the validation phase', async () 
   assert.equal(calls.some(call => call.endsWith(':upload')), false)
 })
 
+test('Report/live uploads reject operational-only MIME before retries, routing or provider writes', async () => {
+  for (const kind of ['report', 'live'] as const) {
+    for (const mime of ['text/plain', 'application/json', 'video/mp4', 'application/zip']) {
+      const calls: string[] = []
+      const client = fakeClient({ calls, imageRow: { id: 'existing', provider: 'google_drive', external_file_id: 'existing-file' } })
+      const response = await handlerFor(client, fakeStorage({ calls })).POST(uploadRequest({
+        kind, report_id: 'report-1', ...(kind === 'report' ? { image_type: 'dashboard' } : { category: 'live_session' }),
+      }, 'dashboard.png', mime))
+      assert.equal(response.status, 400)
+      assert.deepEqual((await response.json()).error, {
+        code: 'FILE_MIME_NOT_ALLOWED', phase: 'validation', message: 'The report image file is invalid.',
+      })
+      assert.deepEqual(calls, [])
+    }
+  }
+})
+
+test('Report MIME compatibility retains the seven Production-supported types', async () => {
+  for (const mime of ['image/jpeg', 'image/png', 'image/webp', 'text/csv', 'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/pdf']) {
+    const calls: string[] = []
+    const client = fakeClient({ calls, rpcData: { id: 'report-image', provider: 'google_drive',
+      external_file_id: 'fixture-file', image_type: 'dashboard', image_url: 'logical/path' } })
+    const r = await handlerFor(client, fakeStorage({ calls })).POST(uploadRequest({
+      kind: 'report', report_id: 'report-1', image_type: 'dashboard',
+    }, 'dashboard.png', mime))
+    assert.equal(r.status, 200)
+    assert.ok(calls.includes('google_drive:upload'))
+  }
+})
+
 test('provider upload errors preserve safe codes and never return provider messages', async () => {
   const calls: string[] = []
   const client = fakeClient({ calls })

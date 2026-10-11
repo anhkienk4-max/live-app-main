@@ -1,4 +1,5 @@
 import 'server-only'
+import { isFeatureEnabled } from '@/lib/flags'
 
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -36,7 +37,7 @@ const review = z.object({
   review_note:z.string().trim().min(8).max(2000),
 }).strict()
 
-type Depends = { client?:()=>SupabaseClient; resolveUser?:ServerUserResolver }
+type Depends = { client?:()=>SupabaseClient; resolveUser?:ServerUserResolver; isEnabled?:()=>boolean }
 const noStore={'Cache-Control':'no-store'}
 const fail=(code:string,status:number)=>Response.json({ok:false,error:{code}},
   {status,headers:noStore})
@@ -56,6 +57,8 @@ export function createWorkforceActualHandler(deps:Depends={}) {
     GET(request:Request){
       return guard(async()=>{
         await requireRole(request,['admin','leader'],deps.resolveUser)
+        if(!(deps.isEnabled??(()=>isFeatureEnabled('actual_staffing')))())
+          return fail('WORKFORCE_FEATURE_DISABLED',503)
         const search=new URL(request.url).searchParams
         const shiftId=id.safeParse(search.get('shift_id'))
         if(!shiftId.success)return fail('WORKFORCE_SHIFT_ID_REQUIRED',400)
@@ -69,6 +72,8 @@ export function createWorkforceActualHandler(deps:Depends={}) {
     POST(request:Request){
       return guard(async()=>{
         const user=await requireRole(request,['admin','leader'],deps.resolveUser)
+        if(!(deps.isEnabled??(()=>isFeatureEnabled('actual_staffing')))())
+          return fail('WORKFORCE_FEATURE_DISABLED',503)
         const actor=user.businessUserId
         if(!actor)return fail('WORKFORCE_BUSINESS_USER_REQUIRED',403)
         const body=await readJsonBody(request,16*1024)

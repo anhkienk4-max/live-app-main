@@ -1,0 +1,329 @@
+{
+  "captured_date": "2026-10-12",
+  "starting_sha": "7d65097c255ae7ce2973eed78f9f58d10d562c2d",
+  "target": "production",
+  "project_ref": "egdjnpmoasarrttvhgds",
+  "project_health": "ACTIVE_HEALTHY",
+  "sql_server_version": "17.6",
+  "active_authorized_admin_count": 1,
+  "current_production_deployment": {
+    "project_id": "prj_YSrsxfYK7skM17D3KtiXUGeim2kr",
+    "scope_team_id": "team_MBreE5MCbrZjyyBHnsaI5mc5",
+    "id": "dpl_CAMJ8fjbFw3PZ7bmKja5QxhY5dAr",
+    "target": "production",
+    "state": "READY",
+    "git_ref": "main",
+    "git_sha": "31efea2d1a60583975e96773f68106d46ab7d8d9",
+    "candidate_rc16h": false,
+    "credential_alignment": "UNVERIFIED"
+  },
+  "migration_ledger": [
+    {
+      "version": "20260811110219",
+      "name": "p1b_foundation"
+    },
+    {
+      "version": "20260811110239",
+      "name": "p1b_master_data"
+    },
+    {
+      "version": "20260811112834",
+      "name": "p1b_production_bootstrap"
+    },
+    {
+      "version": "20260814064606",
+      "name": "p1b_security_hardening"
+    },
+    {
+      "version": "20260814085659",
+      "name": "p1c_shift_persistence"
+    },
+    {
+      "version": "20260815122237",
+      "name": "p1c_shift_lifecycle"
+    },
+    {
+      "version": "20260816105052",
+      "name": "p1c_cancel_manual_assignment"
+    },
+    {
+      "version": "20260820120000",
+      "name": "s4a_import_batch_foundation"
+    },
+    {
+      "version": "20260821083750",
+      "name": "s4f_lite_staffing_display_labels"
+    },
+    {
+      "version": "20260822140432",
+      "name": "s4f1_edit_staffing_display_labels"
+    },
+    {
+      "version": "20260822144531",
+      "name": "s4e_import_recovery_reconciliation"
+    },
+    {
+      "version": "20260822160308",
+      "name": "s5_staff_identity_mapping"
+    },
+    {
+      "version": "20260823000000",
+      "name": "p3_report_persistence"
+    },
+    {
+      "version": "20260823120000",
+      "name": "s2b_staff_management_writes"
+    },
+    {
+      "version": "20260824120000",
+      "name": "bulk_staffing_approval"
+    },
+    {
+      "version": "20260826082036",
+      "name": "20260826082036_shift_swap_production"
+    },
+    {
+      "version": "20260826082055",
+      "name": "20260826082055_shift_swap_p0_hardening"
+    },
+    {
+      "version": "20260826083723",
+      "name": "20260826083723_shift_swap_lock_helper_fix"
+    },
+    {
+      "version": "20260826172730",
+      "name": "20260826172730_shift_swap_two_flow_semantics"
+    },
+    {
+      "version": "20260827094704",
+      "name": "core_account_lifecycle"
+    },
+    {
+      "version": "20260827110001",
+      "name": "notifications_persistent_realtime"
+    },
+    {
+      "version": "20260829120000",
+      "name": "core_v1_timezone_contract"
+    },
+    {
+      "version": "20260829130000",
+      "name": "core_v1_data_integrity_p1b"
+    },
+    {
+      "version": "20260830085911",
+      "name": "core_v1_data_integrity_p1c"
+    },
+    {
+      "version": "20260830102222",
+      "name": "core_v1_permission_rls_final"
+    },
+    {
+      "version": "20260830113000",
+      "name": "core_v1_persistent_audit"
+    },
+    {
+      "version": "20260830114000",
+      "name": "core_v1_persistent_audit_read_permission"
+    },
+    {
+      "version": "20260831120000",
+      "name": "core_v1_shift_lifecycle_admin_guard"
+    },
+    {
+      "version": "20260831130000",
+      "name": "core_v1_audit_update_before_state"
+    },
+    {
+      "version": "20260901120000",
+      "name": "account_provisioning_foundation"
+    },
+    {
+      "version": "20260901150241",
+      "name": "before_user_created_google_hook"
+    },
+    {
+      "version": "20260901190744",
+      "name": "account_requests_foundation"
+    },
+    {
+      "version": "20260902110000",
+      "name": "account_request_review"
+    },
+    {
+      "version": "20260902130000",
+      "name": "f6_import_outcome_existing_shift"
+    },
+    {
+      "version": "20260902140000",
+      "name": "account_request_provisioning"
+    },
+    {
+      "version": "20260902150000",
+      "name": "account_request_rate_limit"
+    },
+    {
+      "version": "20260902160000",
+      "name": "account_request_provisioning_boundary"
+    },
+    {
+      "version": "20260902170000",
+      "name": "f9_campaign_leader_edit"
+    },
+    {
+      "version": "20260902180000",
+      "name": "f9_delete_archive_integrity"
+    },
+    {
+      "version": "20260903085439",
+      "name": "fix_account_request_identity_composite_assignment"
+    },
+    {
+      "version": "20260903110000",
+      "name": "f10_report_active_business_user_rls"
+    },
+    {
+      "version": "20260903120000",
+      "name": "core_v1_recursive_audit_sanitizer"
+    },
+    {
+      "version": "20260903130000",
+      "name": "f11_sanitizer_case_normalization"
+    },
+    {
+      "version": "20260905110000",
+      "name": "gl19c_authoritative_settings"
+    },
+    {
+      "version": "20260905190925",
+      "name": "profile_avatar_storage"
+    },
+    {
+      "version": "20260905191836",
+      "name": "live_dashboard_update_persistence"
+    },
+    {
+      "version": "20260906100000",
+      "name": "gl19c_operational_settings_consumers"
+    },
+    {
+      "version": "20260906141234",
+      "name": "rw004_admin_self_operational_roles"
+    },
+    {
+      "version": "20260912083056",
+      "name": "report_draft_nullable_metrics"
+    },
+    {
+      "version": "20260913120000",
+      "name": "shift_status_mode_and_auto_completion"
+    },
+    {
+      "version": "20260913122832",
+      "name": "20260913125000_account_request_provisioning_boundary_hardening"
+    },
+    {
+      "version": "20260913130000",
+      "name": "account_request_active_lifecycle"
+    },
+    {
+      "version": "20260913200045",
+      "name": "restore_import_create_shift_staffing_contract"
+    },
+    {
+      "version": "20260913233111",
+      "name": "report_storage_security"
+    },
+    {
+      "version": "20260916090000",
+      "name": "report_expected_version_cas"
+    },
+    {
+      "version": "20261006160000",
+      "name": "rc14_live_image_storage_contract"
+    },
+    {
+      "version": "20261007183831",
+      "name": "rc14_report_data_artifacts"
+    },
+    {
+      "version": "20261011091925",
+      "name": "rc15_storage_route_prerequisites"
+    },
+    {
+      "version": "20261011092015",
+      "name": "rc15_shift_rpc_compatibility"
+    },
+    {
+      "version": "20261011092051",
+      "name": "rc15_operational_files"
+    }
+  ],
+  "storage_readonly_catalog": {
+    "storage_columns": [
+      {
+        "type": "jsonb",
+        "table": "stored_files",
+        "column": "provider_metadata"
+      },
+      {
+        "type": "text",
+        "table": "live_report_images",
+        "column": "storage_file_name"
+      },
+      {
+        "type": "text",
+        "table": "live_report_images",
+        "column": "storage_idempotency_key"
+      },
+      {
+        "type": "text",
+        "table": "stored_files",
+        "column": "provider"
+      },
+      {
+        "type": "text",
+        "table": "stored_files",
+        "column": "external_file_id"
+      }
+    ],
+    "storage_rpcs": [
+      {
+        "acl": "{postgres=X/postgres}",
+        "md5": "cfa53018324e7b0f43062d9e8c2718b2",
+        "config": [
+          "search_path=\"\""
+        ],
+        "signature": "update_report(text,jsonb,text,text)",
+        "security_definer": true
+      },
+      {
+        "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+        "md5": "931ceec294d4c43edb939c05fbe8588a",
+        "config": [
+          "search_path=\"\""
+        ],
+        "signature": "update_report(text,jsonb,integer,text,text)",
+        "security_definer": true
+      }
+    ],
+    "schema_acl": [
+      {
+        "acl": "{postgres=UC/postgres,authenticated=U/postgres}",
+        "owner": "postgres",
+        "schema": "private"
+      },
+      {
+        "acl": "{pg_database_owner=UC/pg_database_owner,=U/pg_database_owner,postgres=U/pg_database_owner,anon=U/pg_database_owner,authenticated=U/pg_database_owner,service_role=U/pg_database_owner,supabase_auth_admin=U/pg_database_owner}",
+        "owner": "pg_database_owner",
+        "schema": "public"
+      }
+    ]
+  },
+  "cloud_mutations": "NONE",
+  "limitations": [
+    "Metadata/catalog only; no keys, operational records or provider roots read.",
+    "Current Production metadata is not a future RC16 integrated candidate.",
+    "RC12 compatibility requires separately reviewed forward-only Storage solution; it is not included in the Payroll manifest."
+  ]
+}

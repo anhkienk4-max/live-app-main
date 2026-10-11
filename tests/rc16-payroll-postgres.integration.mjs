@@ -20,7 +20,7 @@ const executable = container ? 'docker' : 'psql'
 const args = [...(container ? ['exec', '-i', container, 'psql'] : []),
   '-X', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-At']
 function start(sql, database = 'postgres') {
-  assert.match(database, /^(postgres|rc16g_(legacy|fresh|failure|production))$/)
+  assert.match(database, /^(postgres|rc16g_(legacy|fresh|failure|production)|rc16h_(production|failure))$/)
   const databaseArgs = [...args]
   databaseArgs[databaseArgs.indexOf('-d') + 1] = database
   const child = spawn(executable, databaseArgs, { stdio: ['pipe', 'pipe', 'pipe'], timeout: 30000 })
@@ -165,3 +165,6 @@ console.log('PASS: recorded Production RPC baseline accepts RC15 compatibility p
 
 const { runReconciliation } = await import('./rc16g-reconciliation.integration.mjs')
 await runReconciliation({ sql, start })
+
+const { runProductionRehearsal } = await import('./rc16h-production.integration.mjs')
+await runProductionRehearsal({ sql, start })
