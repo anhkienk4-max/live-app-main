@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { NextRequest } from 'next/server'
 import { proxy } from '../proxy.ts'
-import { hasPermission, permissionMatrix } from '../lib/permissions.ts'
+import { Permission, hasPermission, permissionMatrix } from '../lib/permissions.ts'
 import { resolveAuthMode } from '../lib/auth/authMode.ts'
 
 test('SECURITY: Anonymous request with QA bypass header is rejected on protected routes', async () => {
@@ -115,10 +115,10 @@ test('SECURITY: API and UI permission consistency across 3 roles', () => {
   }
 
   // Admin has exclusive permissions
-  const adminOnly = ['staff.manage', 'settings.admin', 'permissions.manage']
+  const adminOnly: Permission[] = ['staff.manage', 'settings.admin', 'permissions.manage']
   for (const perm of adminOnly) {
-    assert.ok(adminPerms.has(perm as any), `Admin must have ${perm}`)
-    assert.ok(!leaderPerms.has(perm as any), `Leader must NOT have ${perm}`)
-    assert.ok(!memberPerms.has(perm as any), `Member must NOT have ${perm}`)
+    assert.ok(adminPerms.has(perm), `Admin must have ${perm}`)
+    assert.ok(!leaderPerms.has(perm), `Leader must NOT have ${perm}`)
+    assert.ok(!memberPerms.has(perm), `Member must NOT have ${perm}`)
   }
 })

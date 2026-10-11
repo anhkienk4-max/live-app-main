@@ -98,7 +98,7 @@ let shifts: Shift[] = mockShifts.map(shift => ({
 const reports = [...mockReports]
 let reportImages: ReportImage[] = []
 let liveReportImages: LiveReportImage[] = []
-let storedFileArtifacts: StoredFileArtifact[] = []
+const storedFileArtifacts: StoredFileArtifact[] = []
 const dashboardUpdates = [...mockDashboardUpdates]
 let swapRequests = [...mockSwapRequests]
 const scheduleImports: ScheduleImportBatch[] = []
