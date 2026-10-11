@@ -243,13 +243,17 @@ begin
   if tg_op='DELETE' and old.review_status='approved' then
     raise exception 'WORKFORCE_APPROVED_SEGMENT_IMMUTABLE';
   end if;
-  if tg_op='UPDATE' and old.review_status='approved' then
-    raise exception 'WORKFORCE_APPROVED_SEGMENT_IMMUTABLE';
+  if tg_op='UPDATE' and old.review_status in ('approved','rejected') then
+    raise exception 'WORKFORCE_REVIEWED_SEGMENT_IMMUTABLE';
   end if;
   if tg_op='UPDATE' and new.version <> old.version + 1 then
     raise exception 'WORKFORCE_ACTUAL_STALE_VERSION';
   end if;
   if new.review_status='approved' then
+    if not exists (select 1 from public.shifts s
+      where s.id=new.shift_id and s.status='completed' and s.deleted_at is null) then
+      raise exception 'WORKFORCE_SHIFT_NOT_COMPLETED';
+    end if;
     perform pg_advisory_xact_lock(hashtextextended('staff-attendance:'||new.staff_id,0));
     if new.event_kind='worked' and exists (
       select 1 from public.workforce_actual_segments existing
