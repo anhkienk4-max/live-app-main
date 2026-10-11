@@ -387,3 +387,57 @@ test('P-period validation rejects overlap, bad calendar dates and traversal with
     assert.equal(state.rows.operational_storage_routes.length, 0)
   }
 })
+
+
+test('existing Brand/year/month/platform route reuses verified Drive IDs and rejects wrong ancestors', async () => {
+  const state = fixture()
+  state.rows.brands[2].storage_profile = 'EXISTING_BRAND_YEAR_PERIOD_PLATFORM'
+  const seen: string[] = []
+  const metadata = async (id: string) => {
+    seen.push(id)
+    const known: Record<string, { parent: string | null; name: string }> = {
+      'approved-drive-root': { parent: null, name: 'LIVESTREAM REPORT' },
+      'brand-folder': { parent: 'approved-drive-root', name: 'ASM_AI_LIVESTREAM' },
+      'year-folder': { parent: 'brand-folder', name: '2026' },
+      'month-folder': { parent: 'year-folder', name: 'THÁNG 09.2026' },
+      'platform-folder': { parent: 'month-folder', name: 'SHOPEE_LIVE' },
+      'other-folder': { parent: 'other-root', name: '2026' },
+    }
+    const found = known[id]
+    return { id, name: found?.name ?? 'UNKNOWN', kind: 'folder' as const,
+      parent_ids: found?.parent ? [found.parent] : [] }
+  }
+  const handler = createOperationalStorageSetupHandler({
+    createClient: () => state.conn,
+    getRoot: () => 'approved-drive-root',
+    metadata,
+    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
+  })
+  const input = {
+    action: 'register_existing_brand_route', brand_id: 'brand-3',
+    platform_id: 'platform-1', execution_source: 'internal',
+    root_folder_id: 'approved-drive-root', brand_folder_id: 'brand-folder',
+    year_folder_id: 'year-folder', period_folder_id: 'month-folder',
+    platform_folder_id: 'platform-folder', period_date: '2026-09-14',
+    confirmation: 'I_VERIFIED_BRAND_YEAR_MONTH_PLATFORM_PROVIDER_IDS',
+  }
+  assert.equal((await handler.POST(request({ ...input, year_folder_id: 'other-folder' }))).status, 409)
+  assert.equal((await handler.POST(request({ ...input, period_date: '2026-10-14' }))).status, 409)
+  assert.equal((await handler.POST(request({
+    ...input, platform_folder_id: 'year-folder',
+  }))).status, 409)
+  assert.equal(state.rows.operational_storage_routes.length, 0)
+
+  const good = await handler.POST(request(input))
+  assert.equal(good.status, 200)
+  assert.ok(seen.includes('platform-folder'))
+  assert.equal(state.rows.operational_storage_routes.length, 1)
+  const route = state.rows.operational_storage_routes[0]
+  assert.equal(route.storage_profile, 'EXISTING_BRAND_YEAR_PERIOD_PLATFORM')
+  assert.equal(route.base_folder_id, 'brand-folder')
+  assert.equal(route.root_folder_id, 'approved-drive-root')
+  assert.deepEqual(route.folder_labels, { platform: 'SHOPEE_LIVE' })
+  assert.equal(route.period_naming_style, 'THANG_MM_DOT_YEAR')
+  assert.equal(route.approved_by, 'admin')
+  assert.equal((await handler.POST(request(input))).status, 409, 'must not duplicate route')
+})
