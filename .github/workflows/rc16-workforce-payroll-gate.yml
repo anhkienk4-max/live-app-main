@@ -6,6 +6,7 @@ on:
       - fix/rc14-data-report-export-fidelity
       - main
     paths:
+      - 'docs/workforce/**'
       - 'lib/workforce/**'
       - 'lib/server/workforce*.ts'
       - 'app/api/workforce/**'
