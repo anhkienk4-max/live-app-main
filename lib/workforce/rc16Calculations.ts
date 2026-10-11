@@ -129,7 +129,8 @@ export type StaffPerformance = {
   onTimeObserved: number
   lateObserved: number
   punctualityRate: number | null
-  /** A missing denominator is unknown, not 0%. */
+  /** Missing planned-shift denominator is unknown, not 0%. */
+  coverageRate: number | null
   dataQuality: 'no_verified_attendance' | 'partial' | 'verified'
 }
 
@@ -142,6 +143,7 @@ export function summarizeStaffPerformance(
   staffId: string,
   rows: readonly ActualPerformanceRow[],
   graceMinutes: number,
+  expectedScheduledShiftIds?: readonly string[],
 ): StaffPerformance {
   if (!intBetween(graceMinutes, 0, 120)) throw new Error('GRACE_MINUTES_INVALID')
   const shifts = new Set<string>()
@@ -178,7 +180,11 @@ export function summarizeStaffPerformance(
     punctualityObserved += 1
     if (start <= scheduled + graceMinutes * 60000) onTimeObserved += 1
   }
-  const classifiedShifts = shifts.size + noShows.size
+  const accounted = new Set([...shifts, ...noShows])
+  const expected = expectedScheduledShiftIds
+    ? new Set(expectedScheduledShiftIds) : null
+  const coveredCount = expected
+    ? [...expected].filter(shiftId => accounted.has(shiftId)).length : 0
   return {
     staffId, confirmedWorkedShifts: shifts.size,
     confirmedNoShowShifts: noShows.size,
@@ -186,8 +192,10 @@ export function summarizeStaffPerformance(
     lateObserved: punctualityObserved - onTimeObserved,
     punctualityRate: punctualityObserved
       ? Math.round(onTimeObserved / punctualityObserved * 10000) / 100 : null,
+    coverageRate: expected && expected.size > 0
+      ? Math.round(coveredCount / expected.size * 10000) / 100 : null,
     dataQuality: approvedRows === 0 ? 'no_verified_attendance'
-      : punctualityObserved === shifts.size && classifiedShifts > 0
-        ? 'verified' : 'partial',
+      : expected && expected.size > 0 && coveredCount === expected.size
+        && punctualityObserved === shifts.size ? 'verified' : 'partial',
   }
 }
