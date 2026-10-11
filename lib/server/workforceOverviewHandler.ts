@@ -55,6 +55,14 @@ export function createWorkforceOverviewHandler(options:Options={}) {
       if(regs.error||actual.error||(regs.data??[]).length>=1000
         ||(actual.data??[]).length>=1000)
         return fail('WORKFORCE_TEAM_EVIDENCE_INCOMPLETE',503)
+      const registrations=(regs.data??[]) as Array<{
+        shift_id:string; user_id:string; operational_role:string; status:string
+      }>
+      const actualRows=(actual.data??[]) as Array<{
+        id:string; shift_id:string; staff_id:string; operational_role:WorkforceRole;
+        event_kind:'worked'|'no_show'; review_status:'approved';
+        actual_start_at:string|null; actual_end_at:string|null
+      }>
       const known=new Map((staffRes.data??[]).map(s=>[s.id,s]))
       const plannedByStaff=new Map<string,ScheduledStaffing[]>()
       const pairKeys=new Set<string>()
@@ -64,7 +72,7 @@ export function createWorkforceOverviewHandler(options:Options={}) {
       for(const shift of shifts){
         const members=new Set<string>()
         if(shift[roleField])members.add(shift[roleField] as string)
-        for(const r of regs.data??[]){
+        for(const r of registrations){
           if(r.shift_id===shift.id&&r.operational_role===input.role)members.add(r.user_id)
         }
         for(const staffId of members){
@@ -79,7 +87,7 @@ export function createWorkforceOverviewHandler(options:Options={}) {
           }])
         }
       }
-      const evidence:ActualStaffingEvidence[]=(actual.data??[])
+      const evidence:ActualStaffingEvidence[]=actualRows
         .filter(e=>e.operational_role===input.role)
         .map(e=>({id:e.id,shiftId:e.shift_id,staffId:e.staff_id,
           role:e.operational_role,eventKind:e.event_kind,reviewStatus:e.review_status,
