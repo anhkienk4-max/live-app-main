@@ -251,6 +251,12 @@ export function createOperationalFileRouteHandler(deps: {
   )
 
   async function resolveFolder(scope: ResolvedScope, category: OperationalFileCategory, provider: Provider, fileName: string) {
+    // The V2 file workspace may only use administrator-approved DB routes.
+    // The historic 'compat' static route is not an approved V2 placement:
+    // it may invent an ADA/Brand tree under LIVESTREAM REPORT.
+    if (routingMode === 'compat') {
+      throw new OperationalStoragePlacementError('STORAGE_ROUTE_NOT_CONFIGURED')
+    }
     const base = await routes.resolvePlacement(toOperationalFileRouteInput({
       provider, executionSource: scope.execution_source, brandId: scope.brand_id,
       platformId: scope.platform_id, subbrandKey: null, shiftDate: scope.period_date,
