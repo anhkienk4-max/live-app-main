@@ -281,14 +281,14 @@ test('legacy route preview applies exact monthly exceptions without creating rou
   const json = await result.json() as {
     ok: boolean; read_only: boolean;
     legacy: { dashboard: string; data_source: string };
-    v2: { folder_path: string; base_folder_id: string }
+    v2: { folder_path: string | null; base_folder_id: string | null; error: string }
   }
   assert.equal(json.read_only, true)
   assert.equal(json.legacy.dashboard, 'Tháng 7-2026/DASHBOARD')
   assert.equal(json.legacy.data_source, 'Tháng 7-2026/DATA/SOURCE')
-  assert.equal(json.v2.base_folder_id, 'approved-drive-root')
-  assert.equal(json.v2.folder_path,
-    'ADA_STORAGE_V2/brand-2/platform-1/AGENCY/Tháng 7-2026/PRODUCTION/ASSETS')
+  assert.equal(json.v2.base_folder_id, null)
+  assert.equal(json.v2.folder_path, null)
+  assert.equal(json.v2.error, 'STORAGE_CATEGORY_NOT_CONFIGURED')
   assert.equal(metadataReads, 2)
   assert.equal(state.rows.operational_storage_routes.length, 0)
 
@@ -335,12 +335,13 @@ test('explicit P-period spans April-May only for the approved category', async (
   assert.equal(preview.status, 200)
   const body = await preview.json() as {
     read_only: boolean; legacy: { dashboard: string; data_source: string };
-    v2: { folder_path: string }
+    v2: { folder_path: string | null; error: string }
   }
   assert.equal(body.read_only, true)
   assert.equal(body.legacy.dashboard, 'P5 | 20-04 - 16-05/DASHBOARD')
   assert.equal(body.legacy.data_source, 'Tháng 5 - 2026/DATA/SOURCE')
-  assert.match(body.v2.folder_path, /Tháng 5 - 2026/)
+  assert.equal(body.v2.folder_path, null)
+  assert.equal(body.v2.error, 'STORAGE_CATEGORY_NOT_CONFIGURED')
   assert.equal(state.rows.operational_storage_routes.length, 0)
 
   const crossing = await handler.POST(request({ ...payload, shift_date: '2026-05-17' }))
