@@ -7,6 +7,26 @@ Draft PR: https://github.com/anhkienk4-max/live-app-main/pull/25
 Base: fix/rc14-data-report-export-fidelity (Storage PR #24)
 Status: staged, no Production deployment or Payroll DDL applied.
 
+## RC1.6C integration checkpoint (2026-10-11)
+
+Backend baseline `2be8cfd56f0bb8dbb76baa4fa23021d5e1eb1f63`: GitHub
+[CI PASS](https://github.com/anhkienk4-max/live-app-main/actions/runs/38139343311),
+25/25 synthetic tests. The older checkpoint counts below are historical.
+Official Gemini RC16 branch/SHA is not yet established; no UI integration was
+performed. Payroll GET currently requires period_id: there is no list-periods
+or list-rates API for manager discovery. Browser clients must not query
+privileged payroll tables directly to work around this gap.
+
+Read the [RC1.6C readiness report](RC16C_INTEGRATION_READINESS.md),
+[UI/API parity matrix](RC16C_UI_API_PARITY_MATRIX.md),
+[environment/ledger snapshot](RC16C_ENVIRONMENT_IDENTITY.md) and
+[synthetic E2E checklist](RC16C_SYNTHETIC_UAT_CHECKLIST.md) before integration.
+Staging identity exists, but RC16 deployment/runtime isolation is unproven and
+staging lacks RC15/RC16 migrations. Production RC15 migrations are already
+present; both RC16 migrations remain absent. No migration/deployment is
+authorized by this documentation checkpoint. UUID historical replay applies
+to correct_line/void_line only; other actions require read reconciliation.
+
 ## Canonical data flow
 Shift → ShiftRegistration → Actual Staffing → Approved Actual Hours →
 Approved Effective Rate → Payroll Draft → Reviewed → Confirmed → Payroll Ready →
