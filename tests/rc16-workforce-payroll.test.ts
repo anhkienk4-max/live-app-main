@@ -57,7 +57,8 @@ test('payroll refuses draft, no-show, out-of-scope rates, fabricated time and OT
     {message:'WORKFORCE_ACTUAL_TIMES_REQUIRED'})
   assert.throws(()=>calculatePayrollLine({...original,segment:{...verified,startAt:'2026-09-30T21:30:00'}}),
     {message:'WORKFORCE_TIMEZONE_REQUIRED'})
-  assert.throws(()=>calculatePayrollLine({...original,shiftDate:'2026-10-01'}),
+  assert.throws(()=>calculatePayrollLine({...original,shiftDate:'2026-10-01',
+    rate:{...rate,effectiveThrough:'2026-09-30'}}),
     {message:'WORKFORCE_RATE_OUTSIDE_VALIDITY'})
 })
 test('payroll manual adjustment requires reason and cannot make payable negative', () => {
