@@ -1,6 +1,6 @@
 # RC1.5 Storage V2 — Go-live Readiness & Rollback Runbook
 
-**Status:** PREPARED / **NO-GO** until Production gates below are explicitly approved.
+**Status:** PRODUCTION SCHEMA MIGRATED / **NO-GO** for app deployment until physical UAT and release gates are approved.
 **Date:** 2026-10-11 (Vietnam). **PR:** #24 (draft).
 **Invariant:** LIVESTREAM REPORT is already the ADA root. **Never create another ADA folder.**
 Do not move, rename, delete or backfill historical Drive objects. Keep `agency snap` in place.
@@ -8,8 +8,7 @@ Do not move, rename, delete or backfill historical Drive objects. Keep `agency s
 ## Source-of-truth scope observed (READ ONLY)
 
 - Production web alias: `https://ops5729.top` (currently `main` SHA `31efea2d1a60583975e96773f68106d46ab7d8d9`).
-- Supabase project `egdjnpmoasarrttvhgds`: as audited, **no** `operational_storage_routes`, **no** `operational_files`,
-  **no** `shifts.execution_source`, **no** `brands.storage_profile`.
+- Supabase project `egdjnpmoasarrttvhgds`: RC1.5 prerequisites, 3 Shift RPC updates and the operational file registry were applied on 2026-10-11. On post-migration audit: 0 active routes, 0 file metadata rows, 0 classified shifts, 0 classified brands. Tables have RLS and deny direct anon/authenticated access.
 - Existing Drive root: LIVESTREAM REPORT. Existing Opella/Mars/Marico/KAO/PepsiCo/Female AI and agency snap retain their Folder IDs.
 - The previously created empty ADA duplicate tree was deleted. Do NOT recreate it.
 - LAYS was placed within the existing PEPSICO - LS Report folder. LASHE standalone empty folder was deleted; the existing MARICO / FEMALE - LS Report branch is its reporting folder.
@@ -18,15 +17,15 @@ Do not move, rename, delete or backfill historical Drive objects. Keep `agency s
   `<Brand Folder ID>/2026/THÁNG 09.2026/SHOPEE_LIVE/{DASHBOARD,VISIBILITY,DATA/{REPORT,SOURCE},...}`.
   Do NOT use canonical V1's wrong root/brand/platform/month order for them.
 
-## Release schema sequence (one controlled window only)
+## Release schema sequence (executed 2026-10-11, all 3 SUCCESS)
 
 **Preflight/read-only:** Run `scripts/storage/rc15-production-readiness.sql` and inspect RPC definition MD5 digests.
 Record schema table/column existence and current count of `operational_files`. Capture branch HEAD and last Production deployment.
 Back up current schema and current public Shift RPC definitions using approved DBA export; **never log secrets**.
 
-1. Apply `20261008090000_rc15_storage_route_prerequisites.sql`. Additive nullable columns and protected route metadata, with **no auto brand profiles, no route seeds, no shift backfill**. The existing-brand route profile is allowed, but must be human approved.
-2. Review exact Production RPC signature+MD5 guards; then apply `20261008093000_rc15_shift_rpc_compatibility.sql`. Aborts on drift. Preserve current role and optimistic concurrency.
-3. Apply `20261009000000_rc15_operational_files.sql` metadata-only registry.
+1. Applied `20261011091925_rc15_storage_route_prerequisites.sql`. Additive nullable columns and protected route metadata, with **no auto brand profiles, no route seeds, no shift backfill**. The existing-brand route profile is allowed, but must be human approved.
+2. Verified all original Production RPC MD5s; applied `20261011092015_rc15_shift_rpc_compatibility.sql`. Aborts on drift. Preserve current role and optimistic concurrency.
+3. Applied `20261011092051_rc15_operational_files.sql` metadata-only registry.
 4. Rerun read-only schema readiness. Verify RLS/GRANT scope, active routes initially empty and all historical Shift sources still NULL. **If mismatch: stop.**
 5. Verify configured provider environment variables (do not print decrypted values), Drive OAuth access and **configured Drive root ID** matches LIVESTREAM REPORT. Do not silently switch to a static fallback.
 6. Deploy a protected UAT/Preview with exact tested PR commit, **not straight to Production**; confirm role Admin and blocked unauthenticated routes.
@@ -64,3 +63,13 @@ Success requires API + browser + provider + DB recorded evidence with all checks
 **On failure:** stop writes; roll back the Vercel deployment to the recorded prior Production `main` deployment; disable/delete ONLY new RC1.5 active test routes using an explicit, reviewed procedure; preserve metadata rows and externally stored evidence for forensic reconciliation. **Do NOT automatically drop tables/columns or delete Drive folders/files**—schema downgrade could lose data. Compare initial/final provider+DB counts and document any differences. Re-run Production read-only health checks. ACL permission changes are out of scope unless separately approved.
 
 **Explicit unresolved items:** Production migration authorization, source classification for historical Shifts, dedicated ACL plan for Finance/System Export, staging environment verification, physical UAT and formal go-live acceptance.
+
+## Applied Supabase migration ledger (verified)
+
+| Production version | Supabase name | Status |
+|---|---|---|
+| 20261011091925 | rc15_storage_route_prerequisites | Applied |
+| 20261011092015 | rc15_shift_rpc_compatibility | Applied |
+| 20261011092051 | rc15_operational_files | Applied |
+
+The repository file names have been aligned exactly to the Supabase ledger to avoid future CLI attempting reapplication. SQL bodies were byte-for-byte preserved. Original RPC source and schema metadata snapshots: `docs/storage/rc15-release-baseline/`. This is **not** a complete database backup.
