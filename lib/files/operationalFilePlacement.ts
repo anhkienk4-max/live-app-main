@@ -48,7 +48,9 @@ export function resolveOperationalFilePlacement(
     }
   }
 
-  if (base.storageProfile !== 'CANONICAL_V1' && base.storageProfile !== 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY') {
+  if (base.storageProfile !== 'CANONICAL_V1'
+    && base.storageProfile !== 'EXISTING_BRAND_YEAR_PERIOD_PLATFORM'
+    && base.storageProfile !== 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY') {
     throw new OperationalStoragePlacementError('STORAGE_CATEGORY_NOT_CONFIGURED')
   }
   if (base.logicalCategory !== 'data_source' ||
