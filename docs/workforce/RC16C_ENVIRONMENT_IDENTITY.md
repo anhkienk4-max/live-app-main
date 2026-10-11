@@ -1,5 +1,14 @@
 # RC1.6C — Danh tính môi trường và migration ledger
 
+## RC1.6F — snapshot mới (2026-10-11)
+
+[Preflight hiện hành](RC16F_STAGING_PREFLIGHT.md) xác minh project health và SQL
+PG17.6, Staging61/Production60 ledger entries; active Admin counts vẫn2/1.
+[Matrix schema/RPC](RC16F_MIGRATION_COMPATIBILITY.md) xác nhận legacy route/RPC
+không compatible với replay RC15 nguyên trạng. C02/C03 BLOCKED; PG17 local
+rehearsal không đóng cloud isolation/migration approval. Không cloud writes.
+Các số liệu RC1.6C phía dưới là snapshot lịch sử, không thay evidence mới.
+
 Snapshot chỉ đọc ngày 2026-10-11; phải kiểm tra lại trước thao tác ghi sau này. Không migrate/seed/provision/deploy/env update trong RC1.6C. Các ref/ID dưới đây là identity, không phải credential.
 
 ## Target đã xác minh

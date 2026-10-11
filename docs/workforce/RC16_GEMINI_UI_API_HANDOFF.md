@@ -422,6 +422,14 @@ XLSX payroll exports and verified per-host GMV attribution.
 
 ## Pre-Go-live release gates
 
+RC1.6F adds isolated PG17/Node24 rehearsal and a
+[Staging approval package](RC16F_STAGING_APPROVAL_PACKAGE.md). New synthetic
+[fixture manifest](RC16F_SYNTHETIC_FIXTURES.md) does not seed cloud or change API.
+All37 browser cases remain NOT RUN. C01/C02/C03 are BLOCKED until approved
+Gemini source, immutable Preview/key/provider proof and forward-only legacy
+Staging schema/RPC reconciliation. Never replay Production-only RC15 RPC patch
+on current Staging. Integration must follow [Preview acceptance](RC16F_PREVIEW_ACCEPTANCE.md).
+
 1. CI and PostgreSQL 16 business-rule gates PASS on the exact PR SHA.
 2. Finance/HR approve rate basis, overtime, break policy and confirmation rights.
 3. Actual Staffing confirmed from real evidence, including split shifts and no-show.

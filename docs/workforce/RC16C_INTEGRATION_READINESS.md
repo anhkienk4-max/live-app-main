@@ -14,6 +14,14 @@ Ngày kiểm tra: 2026-10-11. Kết luận: **BLOCKED cho tích hợp UI và E2E
 
 Các deliverable: [ma trận contract](RC16C_UI_API_PARITY_MATRIX.md), [identity/ledger môi trường](RC16C_ENVIRONMENT_IDENTITY.md), [checklist synthetic E2E](RC16C_SYNTHETIC_UAT_CHECKLIST.md). P0/P1 và công việc tiếp theo ở dưới.
 
+## RC1.6F — preflight/rehearsal hiện hành
+
+[Preflight](RC16F_STAGING_PREFLIGHT.md) và [blocker matrix](RC16F_BLOCKERS.md)
+thay thế snapshot cloud cũ khi khác biệt. PG16.15/PG17.11 isolated PASS; CI thêm
+Node24/PG17 và giữ Node22/PG16. C09 chỉ hoàn tất rehearsal tự động. C01/C02/C03
+vẫn BLOCKED: Gemini chưa approved, candidate/key/provider chưa chứng minh, legacy
+Staging thiếu route columns/profile reconciliation và không khớp RC15 RPC guard.
+
 ## RC1.6D — cập nhật C06 backend (2026-10-11)
 
 SHA bắt đầu RC1.6D: `065dff91836b94299674b3bbd28ee10266cf88fe`. C06 **RESOLVED ở backend**:

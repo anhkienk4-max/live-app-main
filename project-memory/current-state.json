@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/rc16-payroll-workforce-backend",
-    "head": "bf76a7175d2d75f42a1375b7812b76fdb56342f7",
+    "head": "ba9b13ffa9faef796927170cc1d300301ac03551",
     "origin_main": "31efea2d1a60583975e96773f68106d46ab7d8d9",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-payroll"
   },
@@ -83,9 +83,9 @@
         "lib": 181,
         "scripts": 15,
         "supabase": 74,
-        "tests": 158
+        "tests": 162
       },
-      "total": 571
+      "total": 575
     },
     "tests": {
       "files": [
@@ -182,6 +182,7 @@
         "tests/rc15-system-export.test.ts",
         "tests/rc16-environment-security.test.ts",
         "tests/rc16-payroll-discovery.test.ts",
+        "tests/rc16-rehearsal-safety.test.ts",
         "tests/rc16-workforce-api.test.ts",
         "tests/rc16-workforce-payroll.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
@@ -233,7 +234,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 143
+      "count": 144
     },
     "migrations": {
       "files": [
@@ -312,5 +313,5 @@
     "lint": "FAIL_BASELINE",
     "build": "PASS"
   },
-  "synced_at": "2026-10-11T22:10:29+07:00"
+  "synced_at": "2026-10-11T22:10:33+07:00"
 }

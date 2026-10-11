@@ -2,12 +2,12 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-11T22:10:29+07:00
+Generated at: 2026-10-11T22:10:33+07:00
 
 ## Repository
 
 - Branch: `feat/rc16-payroll-workforce-backend`
-- HEAD: `bf76a7175d2d75f42a1375b7812b76fdb56342f7`
+- HEAD: `ba9b13ffa9faef796927170cc1d300301ac03551`
 - origin/main: `31efea2d1a60583975e96773f68106d46ab7d8d9`
 - Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-payroll`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
@@ -22,8 +22,8 @@ Generated at: 2026-10-11T22:10:29+07:00
 ## Inventory
 
 - Routes: 45
-- Source files in tracked inventory roots: 571
-- Tests: 143
+- Source files in tracked inventory roots: 575
+- Tests: 144
 - Migrations: 64
 
 ## Modules

@@ -24,6 +24,12 @@ on:
       - 'supabase/migrations/*rc16*.sql'
       - 'tests/fixtures/rc16*.sql'
       - 'tests/rc16-payroll-postgres.integration.mjs'
+      - 'tests/rc16-rehearsal-safety.mjs'
+      - 'tests/fixtures/rc16f*'
+      - 'supabase/migrations/*rc15*.sql'
+      - 'supabase/migrations/*rc13a*.sql'
+      - 'tests/fixtures/rc15_production_shift_rpc_baseline.sql'
+      - 'openspec/changes/rc16f-isolated-rehearsal/**'
       - 'openspec/changes/rc16b-draft-payroll-correction/**'
       - 'openspec/changes/rc16d-payroll-discovery/**'
       - 'openspec/changes/rc16e-environment-isolation/**'
@@ -35,15 +41,24 @@ permissions:
 
 jobs:
   validate:
+    name: Node ${{ matrix.node }} / PostgreSQL ${{ matrix.postgres }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node: '22.23.3'
+            postgres: '16'
+          - node: '24.18.0'
+            postgres: '17'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:${{ matrix.postgres }}-alpine
         env:
           POSTGRES_PASSWORD: postgres
         ports:
-          - 5432:5432
+          - 127.0.0.1:5432:5432
         options: >-
           --health-cmd="pg_isready -U postgres"
           --health-interval=5s
@@ -56,7 +71,7 @@ jobs:
           fetch-depth: 2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '22'
+          node-version: ${{ matrix.node }}
       - name: Install pinned pnpm
         run: |
           corepack enable
@@ -64,8 +79,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify RC16 DDL and immutable payroll on isolated PostgreSQL 16
+      - name: Verify isolated RC16 and legacy RC15 compatibility
         env:
+          RC16_PG_MAJOR: ${{ matrix.postgres }}
           PGPASSWORD: postgres
           PGHOST: localhost
           PGPORT: '5432'
@@ -81,7 +97,7 @@ jobs:
       - name: Authentication isolation regression tests
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/auth-session-foundation.test.ts
       - name: Focused environment security lint
-        run: pnpm exec eslint lib/supabase/environmentIdentity.ts lib/server/supabaseEnvironment.ts lib/server/supabaseAdmin.ts lib/auth/authMode.ts lib/supabase/server.ts lib/supabase/middleware.ts scripts/check-runtime-environment.ts tests/rc16-environment-security.test.ts tests/typescript-alias-loader.mjs tests/next-server-test-shim.mjs
+        run: pnpm exec eslint lib/supabase/environmentIdentity.ts lib/server/supabaseEnvironment.ts lib/server/supabaseAdmin.ts lib/auth/authMode.ts lib/supabase/server.ts lib/supabase/middleware.ts scripts/check-runtime-environment.ts tests/rc16-environment-security.test.ts tests/typescript-alias-loader.mjs tests/next-server-test-shim.mjs tests/rc16-rehearsal-safety.mjs tests/rc16-rehearsal-safety.test.ts tests/rc16-payroll-postgres.integration.mjs
       - name: Next.js production build without Production secrets
         run: pnpm run build
         env:

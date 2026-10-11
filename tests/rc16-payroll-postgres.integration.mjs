@@ -1,15 +1,20 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { spawn, execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
+import { assertIsolatedContainer, assertIsolatedCI } from './rc16-rehearsal-safety.mjs'
 
 // Only the named network-isolated test container or CI loopback PostgreSQL.
 const container = process.argv[2] === '--container' ? process.argv[3] : null
-if (container) assert.equal(container, 'rc16b-payroll-test')
-else {
-  assert.equal(process.env.CI, 'true', 'Local runs require --container rc16b-payroll-test')
-  assert.equal(process.env.PGHOST, 'localhost')
-  assert.equal(process.env.PGPORT, '5432')
-  assert.equal(process.env.PGDATABASE, 'postgres')
+const major = process.env.RC16_PG_MAJOR ?? '16'
+assert.ok(['16', '17'].includes(major))
+if (container) {
+  assert.match(container, /^(rc16b-payroll-test|rc16f-pg(?:16|17)-[a-z0-9-]{1,40})$/)
+  assert.equal(process.argv.length, 4)
+  const info = JSON.parse(execFileSync('docker', ['inspect', container], { encoding: 'utf8' }))[0]
+  assertIsolatedContainer(info, major)
+} else {
+  assert.equal(process.argv.length, 2)
+  assertIsolatedCI(process.env)
 }
 const executable = container ? 'docker' : 'psql'
 const args = [...(container ? ['exec', '-i', container, 'psql'] : []),
@@ -33,7 +38,10 @@ async function sql(text) {
   return result.output
 }
 async function file(path) { return sql(readFileSync(path, 'utf8')) }
-assert.match(await sql('show server_version;'), /^16\./)
+const serverVersion = (await sql('show server_version;')).trim()
+assert.equal(serverVersion.split('.')[0], major)
+console.log(`PostgreSQL ${serverVersion}: isolated synthetic rehearsal`)
+assert.equal((await sql("select count(*) from information_schema.tables where table_schema='public';")).trim(), '0', 'Disposable database must start empty')
 await file('tests/fixtures/rc16_payroll_bootstrap.sql')
 await file('supabase/migrations/20261012000000_rc16_workforce_payroll_foundation.sql')
 await file('tests/fixtures/rc16_payroll_integrity.sql')
@@ -123,3 +131,31 @@ assert.match(afterReview.output, /WORKFORCE_PAYROLL_PERIOD_NOT_DRAFT/)
 assert.match(await sql(`select version||':'||(select count(*) from public.workforce_payroll_audit
   where line_id='concurrency-line') from public.workforce_payroll_lines where id='concurrency-line';`), /4:3/)
 console.log('PASS: concurrent Review blocks waiting correction without partial mutation')
+
+const runId = container ?? `ci-${process.env.GITHUB_RUN_ID}-${major}`
+assert.match(runId, /^[a-z0-9-]{1,80}$/)
+const manifest = readFileSync('tests/fixtures/rc16f_synthetic_uat.json', 'utf8')
+await sql(`select set_config('rc16f.namespace','RC16F_${runId}',false);
+  select set_config('rc16f.manifest','${manifest.replaceAll("'", "''")}',false);
+  ${readFileSync('tests/fixtures/rc16f_synthetic_uat.sql', 'utf8')}`)
+console.log(`PASS: ${runId} overnight/split/support/late/no-show/unknown/replacement/extra/cover fixture; locked active net 540667 VND`)
+
+// Deliberately partial legacy fixture: DDL/digest compatibility, not a Staging clone.
+await sql(`create schema private;
+  create function private.set_updated_at() returns trigger language plpgsql as $$ begin return new; end $$;
+  create table public.brands(id text primary key);
+  create table public.platforms(id text primary key);
+  create table public.campaigns(id text primary key);
+  create table public.system_settings(id text primary key);`)
+await file('supabase/migrations/20260924000000_rc13a_execution_source_storage_routes.sql')
+await file('supabase/migrations/20261011091925_rc15_storage_route_prerequisites.sql')
+const legacy = await start(readFileSync('supabase/migrations/20261011092015_rc15_shift_rpc_compatibility.sql', 'utf8')).result
+assert.notEqual(legacy.code, 0)
+assert.match(legacy.output, /RC15_SHIFT_RPC_DEFINITION_DRIFT/)
+assert.equal((await sql("select count(*) from information_schema.columns where table_schema='public' and table_name='operational_storage_routes' and column_name in ('approved_by','approved_at','period_label_overrides','period_date_ranges','folder_label_overrides');")).trim(), '0')
+assert.equal((await sql("select pg_get_constraintdef(oid) like '%EXISTING_BRAND_YEAR_PERIOD_PLATFORM%' from pg_constraint where conname='brands_storage_profile_check';")).trim(), 'f')
+console.log('PASS: legacy RC13A rejects Production-only RC15 RPC patch; CREATE IF NOT EXISTS leaves route columns/profile checks unreconciled')
+await file('tests/fixtures/rc15_production_shift_rpc_baseline.sql')
+await file('supabase/migrations/20261011092015_rc15_shift_rpc_compatibility.sql')
+await file('supabase/migrations/20261011092051_rc15_operational_files.sql')
+console.log('PASS: recorded Production RPC baseline accepts RC15 compatibility patch and operational-file DDL')
