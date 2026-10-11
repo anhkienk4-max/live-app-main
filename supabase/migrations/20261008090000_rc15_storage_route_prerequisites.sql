@@ -33,15 +33,16 @@ begin
       check (storage_profile in (
         'LEGACY_CATEGORY_PERIOD', 'LEGACY_PLATFORM_CATEGORY_PERIOD',
         'LEGACY_PERIOD_CATEGORY', 'LEGACY_SUBBRAND_PERIOD_CATEGORY',
-        'LEGACY_SUBBRAND_CATEGORY_PERIOD', 'CANONICAL_V1'
+        'LEGACY_SUBBRAND_CATEGORY_PERIOD', 'CANONICAL_V1',
+        'EXISTING_BRAND_YEAR_PERIOD_PLATFORM'
       ));
   end if;
 end
 $route_prereq$;
 
--- New brands only. Do not silently rewrite historic brand folder layouts.
+-- Brand layout must be verified. No implicit profile for a new brand.
 alter table public.brands
-  alter column storage_profile set default 'CANONICAL_V1';
+  alter column storage_profile drop default;
 
 create table if not exists public.operational_storage_routes (
   id text primary key default gen_random_uuid()::text,
@@ -57,7 +58,8 @@ create table if not exists public.operational_storage_routes (
     check (storage_profile in (
       'LEGACY_CATEGORY_PERIOD', 'LEGACY_PLATFORM_CATEGORY_PERIOD',
       'LEGACY_PERIOD_CATEGORY', 'LEGACY_SUBBRAND_PERIOD_CATEGORY',
-      'LEGACY_SUBBRAND_CATEGORY_PERIOD', 'CANONICAL_V1'
+      'LEGACY_SUBBRAND_CATEGORY_PERIOD', 'CANONICAL_V1',
+        'EXISTING_BRAND_YEAR_PERIOD_PLATFORM'
     )),
   root_folder_id text not null check (btrim(root_folder_id) <> ''),
   base_folder_id text not null check (btrim(base_folder_id) <> ''),
