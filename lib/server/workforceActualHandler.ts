@@ -60,7 +60,7 @@ export function createWorkforceActualHandler(deps:Depends={}) {
         const shiftId=id.safeParse(search.get('shift_id'))
         if(!shiftId.success)return fail('WORKFORCE_SHIFT_ID_REQUIRED',400)
         const {data,error}=await db().from('workforce_actual_segments')
-          .select('id,shift_id,staff_id,operational_role,event_kind,coverage_kind,actual_start_at,actual_end_at,review_status,evidence_note,created_by,reviewed_by,reviewed_at,version,created_at')
+          .select('id,shift_id,staff_id,operational_role,event_kind,coverage_kind,actual_start_at,actual_end_at,review_status,evidence_note,review_note,created_by,reviewed_by,reviewed_at,version,created_at')
           .eq('shift_id',shiftId.data).order('created_at',{ascending:true}).limit(200)
         if(error)return fail('WORKFORCE_ACTUAL_READ_FAILED',503)
         return Response.json({ok:true,segments:data??[]},{headers:noStore})
