@@ -124,7 +124,37 @@ export function calculatePayrollLine(input: {
     && rate.overtimeMultiplierBasisPoints >= 10_000
     && rate.overtimeMultiplierBasisPoints <= 50_000, 'WORKFORCE_OT_RATE_INVALID')
   const actualMinutes = minuteDifference(segment.startAt, segment.endAt)
-  guard(validMinutes(input.payableMinutes) && input.payableMinutes <= actualMinutes,
+  const amounts = calculatePayrollAmounts({
+    ...input, actualMinutes, rateVndPerHour: rate.vndPerHour,
+    overtimeMultiplierBasisPoints: rate.overtimeMultiplierBasisPoints,
+  })
+  return {
+    segmentId: segment.id, rateCardId: rate.id,
+    staffId: segment.staffId, role: segment.role,
+    actualMinutes, payableMinutes: input.payableMinutes,
+    overtimeMinutes: input.overtimeMinutes, rateVndPerHour: rate.vndPerHour,
+    overtimeMultiplierBasisPoints: rate.overtimeMultiplierBasisPoints,
+    ...amounts, calculationVersion: 'rc16-v1',
+  }
+}
+
+/** Draft corrections reuse the immutable attendance/rate snapshot. */
+export function calculatePayrollAmounts(input: {
+  actualMinutes: number
+  rateVndPerHour: number
+  overtimeMultiplierBasisPoints: number
+  payableMinutes: number
+  overtimeMinutes: number
+  adjustmentVnd?: number
+  adjustmentReason?: string | null
+}): Pick<PayrollLineSnapshot, 'grossVnd' | 'adjustmentVnd' | 'netVnd' | 'adjustmentReason'> {
+  guard(validMinutes(input.actualMinutes), 'WORKFORCE_DURATION_INVALID')
+  guard(Number.isSafeInteger(input.rateVndPerHour) && input.rateVndPerHour >= 0
+    && input.rateVndPerHour <= 100_000_000, 'WORKFORCE_RATE_INVALID')
+  guard(Number.isSafeInteger(input.overtimeMultiplierBasisPoints)
+    && input.overtimeMultiplierBasisPoints >= 10_000
+    && input.overtimeMultiplierBasisPoints <= 50_000, 'WORKFORCE_OT_RATE_INVALID')
+  guard(validMinutes(input.payableMinutes) && input.payableMinutes <= input.actualMinutes,
     'WORKFORCE_PAYABLE_MINUTES_INVALID')
   guard(validMinutes(input.overtimeMinutes) && input.overtimeMinutes <= input.payableMinutes,
     'WORKFORCE_OVERTIME_MINUTES_INVALID')
@@ -133,9 +163,9 @@ export function calculatePayrollLine(input: {
   // (ot_minutes*hour_rate*overtime_bps/(60*10000)).
   const regularMinutes = input.payableMinutes - input.overtimeMinutes
   const denominator = 600_000n
-  const numerator = BigInt(rate.vndPerHour)
+  const numerator = BigInt(input.rateVndPerHour)
     * (BigInt(regularMinutes) * 10_000n
-      + BigInt(input.overtimeMinutes) * BigInt(rate.overtimeMultiplierBasisPoints))
+      + BigInt(input.overtimeMinutes) * BigInt(input.overtimeMultiplierBasisPoints))
   const gross = Number((numerator + denominator / 2n) / denominator)
   guard(validMoney(gross), 'WORKFORCE_GROSS_OUT_OF_RANGE')
   const adjustment = input.adjustmentVnd ?? 0
@@ -146,13 +176,8 @@ export function calculatePayrollLine(input: {
   const net = gross + adjustment
   guard(validMoney(net) && net >= 0, 'WORKFORCE_NET_INVALID')
   return {
-    segmentId: segment.id, rateCardId: rate.id,
-    staffId: segment.staffId, role: segment.role,
-    actualMinutes, payableMinutes: input.payableMinutes,
-    overtimeMinutes: input.overtimeMinutes, rateVndPerHour: rate.vndPerHour,
-    overtimeMultiplierBasisPoints: rate.overtimeMultiplierBasisPoints,
     grossVnd: gross, adjustmentVnd: adjustment, netVnd: net,
-    adjustmentReason: reason, calculationVersion: 'rc16-v1',
+    adjustmentReason: reason,
   }
 }
 

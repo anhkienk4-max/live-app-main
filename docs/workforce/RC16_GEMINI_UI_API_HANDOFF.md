@@ -109,6 +109,147 @@ rather than averaging percentages, data-coverage warnings and a
 conditional leaderboard. Missing chấm công never lowers an unverified
 worker's rank or pretends that their data is zero.
 
+## RC1.6B Draft correction and void contract
+
+Existing actions remain supported. New actions use POST `/api/workforce/payroll`
+and are Admin-only. Leader/Member must never receive salary snapshots or audit.
+All responses have `Cache-Control: no-store`.
+
+### Correct an active Draft line
+
+```json
+{
+  "action": "correct_line",
+  "period_id": "PERIOD_ID",
+  "line_id": "LINE_ID",
+  "expected_version": 1,
+  "request_id": "10000000-0000-4000-8000-000000000001",
+  "payable_minutes": 60,
+  "overtime_minutes": 30,
+  "adjustment_vnd": -1000,
+  "adjustment_reason": "Independent adjustment approved",
+  "reason": "Verified payable and OT correction"
+}
+```
+
+The request is a full replacement of the four editable fields, not a partial
+patch. Required: nonblank IDs (up to 120 characters), UUID request_id, integer
+expected_version in 1..2147483646 and trimmed reason of 8..2000 characters.
+Payable/OT minutes must be integers in 0..1440, payable <= stored actual minutes,
+OT <= payable. Adjustment is an integer between -1e12 and 1e12 VND; its reason
+is null when adjustment is zero, otherwise trimmed 8..1000 characters. Net must
+remain in 0..1e12 VND. No invented tax/break/overtime policy is applied.
+
+UI MUST NOT send gross_vnd, net_vnd, actual_minutes, rate, actor, segment identity
+or calculation version; unknown fields are rejected. The server reuses the
+stored immutable attendance/rate snapshot and integer half-up VND calculator.
+PostgreSQL independently calculates and validates gross before writing.
+Rate changes effective after the shift business date do not rewrite a snapshot.
+
+### Void an active Draft line
+
+```json
+{
+  "action": "void_line",
+  "period_id": "PERIOD_ID",
+  "line_id": "LINE_ID",
+  "expected_version": 2,
+  "request_id": "10000000-0000-4000-8000-000000000002",
+  "reason": "Void claim with preserved evidence"
+}
+```
+
+Void accepts no amount fields. It sets voided_at and increments version while
+preserving all original monetary and attendance evidence. It is terminal:
+there is no delete, unvoid, reissue or transfer to another period. Global
+segment uniqueness remains intact even after void. A voided segment cannot
+be prepared again anywhere; a future reissue needs a separately approved design.
+
+### Success response and audit
+
+HTTP 200 for both first execution and identical retry:
+
+```json
+{
+  "ok": true,
+  "line": {
+    "id": "LINE_ID", "period_id": "PERIOD_ID", "segment_id": "SEGMENT_ID",
+    "rate_card_id": "RATE_ID", "staff_id": "STAFF_ID", "operational_role": "host",
+    "actual_minutes": 90, "payable_minutes": 60, "overtime_minutes": 30,
+    "rate_vnd_per_hour": 100000, "overtime_multiplier_basis_points": 15000,
+    "gross_vnd": 125000, "adjustment_vnd": -1000, "net_vnd": 124000,
+    "adjustment_reason": "Independent adjustment approved",
+    "calculation_version": "rc16-v1", "version": 2, "voided_at": null,
+    "created_at": "2026-10-11T10:00:00+00:00", "updated_at": "2026-10-11T10:05:00+00:00"
+  },
+  "audit": {
+    "id": 7, "period_id": "PERIOD_ID", "line_id": "LINE_ID", "line_version": 2,
+    "action": "correct_line", "actor_id": "ADMIN_ID",
+    "reason": "Verified payable and OT correction", "from_status": "draft", "to_status": "draft",
+    "created_at": "2026-10-11T10:05:00+00:00",
+    "request_id": "10000000-0000-4000-8000-000000000001",
+    "request_payload": { "action": "correct_line" },
+    "previous_values": { "version": 1, "payable_minutes": 90, "gross_vnd": 175000 },
+    "updated_values": { "version": 2, "payable_minutes": 60, "gross_vnd": 125000 }
+  },
+  "replayed": false
+}
+```
+
+The example abbreviates request_payload and the audit snapshots: actual
+previous_values and updated_values contain the full line objects, and
+request_payload contains the normalized RPC inputs (including the server
+computed expected gross). audit.updated_values equals line. Void returns the
+same envelope with action=void_line and non-null voided_at, retaining amounts.
+Existing transition audit rows have null line-specific fields.
+`prepare_line` responses additionally contain version=1 and voided_at=null.
+GET payroll still returns `{ok, period, lines, audit}`; lines include active and
+voided evidence, and audit includes both transitions and line corrections.
+
+The line UPDATE and audit INSERT are one transaction. Each success increments
+the line version once; it does not change period.revision (that identifies the
+period). expected_version is the line version, not the period revision.
+No unaudited line UPDATE/DELETE is exposed; audit UPDATE/DELETE is blocked.
+
+### Retry, conflict and visible states
+
+- Generate one UUID per intended user mutation and retain the exact request
+  while retrying a timeout/503. The key is scoped to the authenticated Admin.
+- Identical retries return the original line/audit and replayed=true, including
+  after later correction, void or Review/Lock. This is a historical receipt;
+  refresh GET after replay to obtain the current line/period state.
+- Reusing that UUID with a different payload returns HTTP 409. After a stale
+  conflict refresh GET, show before/after, obtain a new user decision and send
+  the current version with a new UUID. Never automatically overwrite changes.
+- Only Draft + active line permits correction/void. Reviewed, Confirmed,
+  Payroll Ready and Locked permit neither. A period with only voided lines
+  cannot enter Review. Review/Confirm restrictions remain independent: the
+  period creator and any correction/void author cannot Review that period.
+- Show Active/Voided separately, the correction reason and audit before/after.
+  Never sum voided evidence into payable totals: use only lines with
+  voided_at=null. Locked CSV excludes voided lines and preserves negative
+  numeric adjustments with text formula protection.
+
+Error envelope is `{ "ok": false, "error": { "code": "..." } }`:
+
+| HTTP | Meaning / codes |
+| --- | --- |
+| 400 | WORKFORCE_REQUEST_INVALID (schema/unknown salary fields); MALFORMED_REQUEST; WORKFORCE_PAYROLL_CORRECTION_INVALID (DB validation) |
+| 401 | AUTHENTICATION_REQUIRED |
+| 403 | PERMISSION_DENIED; WORKFORCE_BUSINESS_USER_REQUIRED; WORKFORCE_PAYROLL_ACTOR_FORBIDDEN |
+| 409 | WORKFORCE_PAYROLL_STALE_LINE; WORKFORCE_PAYROLL_PERIOD_NOT_DRAFT; WORKFORCE_PAYROLL_LINE_VOIDED; WORKFORCE_PAYROLL_IDEMPOTENCY_CONFLICT; WORKFORCE_PAYROLL_LINE_NOT_FOUND; WORKFORCE_PAYROLL_GROSS_MISMATCH; existing calculation validation codes such as WORKFORCE_PAYABLE_MINUTES_INVALID / WORKFORCE_OVERTIME_MINUTES_INVALID / WORKFORCE_ADJUSTMENT_REASON_REQUIRED / WORKFORCE_NET_INVALID |
+| 409 | Existing transition failures remain WORKFORCE_PAYROLL_TRANSITION_REJECTED, including empty/all-void periods and self-review/self-confirm |
+| 413 | PAYLOAD_TOO_LARGE (JSON >16 KiB) |
+| 503 | WORKFORCE_PAYROLL_LINE_READ_FAILED / WORKFORCE_PAYROLL_CORRECTION_FAILED; retry exact request safely, do not assume success |
+
+Additive migration, after the foundation:
+`supabase/migrations/20261012000001_rc16b_draft_payroll_correction.sql`.
+No Preview/UAT or Production migration has been run by this task. The existing
+development-environment ledger has not been queried; do not assume it matches Git.
+See [RC1.6B business-rule audit](RC16B_BUSINESS_RULE_AUDIT.md) for source findings
+and integration gates. One authorized Admin remains an approval blocker per
+the previous checkpoint; current Production users were not queried again.
+
 ## Deployment policies requiring owner decision
 
 WORKFORCE_LATE_GRACE_MINUTES: mandatory integer 0–120. No hidden default.
@@ -144,7 +285,7 @@ XLSX payroll exports and verified per-host GMV attribution.
 6. Merge Gemini UI under this API contract, then request Production approval.
 7. Storage RC1.5 physical provider UAT remains a separate open release gate.
 
-## Go-live validation (2026-10-11, latest RC1.6 PR revision)
+## Previous RC1.6 checkpoint (recorded 2026-10-11; Production not re-queried for RC1.6B)
 
 - PostgreSQL16 isolated DDL gate: PASS, including stored VND calculation,
   immutable locked payroll, reviewed attendance immutability, independent

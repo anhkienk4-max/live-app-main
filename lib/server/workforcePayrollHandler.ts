@@ -5,7 +5,7 @@ import { authorizationErrorResponse, isAuthorizationError, requireRole,
   type ServerUserResolver } from '@/lib/server/authGuards'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
-import { calculatePayrollLine, selectApprovedRate, WorkforceCalculationError,
+import { calculatePayrollAmounts, calculatePayrollLine, selectApprovedRate, WorkforceCalculationError,
   type ActualStaffingEvidence, type ApprovedPayrollRate } from '@/lib/workforce/payrollCalculation'
 
 const id = z.string().trim().min(1).max(120)
@@ -32,6 +32,21 @@ const transition = z.object({
   target_status:z.enum(['reviewed','confirmed','payroll_ready','locked']),
   reason:z.string().trim().min(8).max(2000),
 }).strict()
+const correctionFields = {
+  period_id:id,line_id:id,expected_version:z.number().int().min(1).max(2147483646),
+  request_id:z.string().uuid(),reason:z.string().trim().min(8).max(2000),
+}
+const correction = z.object({
+  ...correctionFields,action:z.literal('correct_line'),
+  payable_minutes:line.shape.payable_minutes,overtime_minutes:line.shape.overtime_minutes,
+  adjustment_vnd:line.shape.adjustment_vnd,adjustment_reason:line.shape.adjustment_reason,
+}).strict()
+const voidLine = z.object({...correctionFields,action:z.literal('void_line')}).strict()
+const correctionErrors = new Set([
+  'WORKFORCE_PAYROLL_STALE_LINE','WORKFORCE_PAYROLL_PERIOD_NOT_DRAFT',
+  'WORKFORCE_PAYROLL_LINE_VOIDED','WORKFORCE_PAYROLL_IDEMPOTENCY_CONFLICT',
+  'WORKFORCE_PAYROLL_LINE_NOT_FOUND','WORKFORCE_PAYROLL_GROSS_MISMATCH',
+])
 type Options={createClient?:()=>SupabaseClient;resolveUser?:ServerUserResolver}
 const noStore={'Cache-Control':'no-store'}
 const failure=(code:string,status:number)=>Response.json({ok:false,error:{code}},{status,headers:noStore})
@@ -93,7 +108,7 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             'overtime_multiplier_basis_points','gross_vnd','adjustment_vnd','net_vnd',
             'adjustment_reason','calculation_version']
           const csv='\ufeff'+[columns.map(csvEscape).join(','),
-            ...(lines.data??[]).map(row=>columns.map(k=>
+            ...(lines.data??[]).filter(row=>!row.voided_at).map(row=>columns.map(k=>
                csvNumericColumns.has(k)?csvNumber(row[k]):csvEscape(row[k])).join(','))].join('\r\n')+'\r\n'
           const filename='payroll-'+r.data.period_start+'-'+r.data.period_end+'.csv'
           return new Response(csv,{headers:{'Content-Type':'text/csv; charset=utf-8',
@@ -109,7 +124,7 @@ export function createWorkforcePayrollHandler(options:Options={}) {
         const user=await requireRole(request,'admin',options.resolveUser)
         const actor=user.businessUserId
         if(!actor)return failure('WORKFORCE_BUSINESS_USER_REQUIRED',403)
-        const input=z.union([rate,period,line,transition])
+        const input=z.union([rate,period,line,transition,correction,voidLine])
           .parse(await readJsonBody(request,16384))
         const db=connect()
         if(input.action==='register_rate'){
@@ -142,6 +157,43 @@ export function createWorkforcePayrollHandler(options:Options={}) {
           })
           return error ? failure('WORKFORCE_PAYROLL_TRANSITION_REJECTED',409)
             : Response.json({ok:true,period:data},{headers:noStore})
+        }
+        if(input.action==='correct_line'||input.action==='void_line'){
+          let gross:number|null=null
+          if(input.action==='correct_line'){
+            const current=await db.from('workforce_payroll_lines')
+              .select('actual_minutes,rate_vnd_per_hour,overtime_multiplier_basis_points')
+              .eq('id',input.line_id).eq('period_id',input.period_id).maybeSingle()
+            if(current.error)return failure('WORKFORCE_PAYROLL_LINE_READ_FAILED',503)
+            if(!current.data)return failure('WORKFORCE_PAYROLL_LINE_NOT_FOUND',409)
+            gross=calculatePayrollAmounts({
+              actualMinutes:current.data.actual_minutes,
+              rateVndPerHour:current.data.rate_vnd_per_hour,
+              overtimeMultiplierBasisPoints:current.data.overtime_multiplier_basis_points,
+              payableMinutes:input.payable_minutes,overtimeMinutes:input.overtime_minutes,
+              adjustmentVnd:input.adjustment_vnd,adjustmentReason:input.adjustment_reason,
+            }).grossVnd
+          }
+          // Status/version and retries are checked atomically by the RPC.
+          const {data,error}=await db.rpc('workforce_rc16b_correct_payroll_line',{
+            p_period_id:input.period_id,p_line_id:input.line_id,
+            p_expected_version:input.expected_version,p_request_id:input.request_id,
+            p_action:input.action,p_actor_id:actor,p_reason:input.reason,
+            p_payable_minutes:input.action==='correct_line'?input.payable_minutes:null,
+            p_overtime_minutes:input.action==='correct_line'?input.overtime_minutes:null,
+            p_adjustment_vnd:input.action==='correct_line'?input.adjustment_vnd:null,
+            p_adjustment_reason:input.action==='correct_line'?input.adjustment_reason:null,
+            p_expected_gross_vnd:gross,
+          })
+          if(error){
+            if(error.message==='WORKFORCE_PAYROLL_CORRECTION_INVALID')
+              return failure(error.message,400)
+            if(error.message==='WORKFORCE_PAYROLL_ACTOR_FORBIDDEN')
+              return failure(error.message,403)
+            return correctionErrors.has(error.message) ? failure(error.message,409)
+              : failure('WORKFORCE_PAYROLL_CORRECTION_FAILED',503)
+          }
+          return Response.json({ok:true,...data},{headers:noStore})
         }
         const p=await db.from('workforce_payroll_periods')
           .select('id,status,period_start,period_end').eq('id',input.period_id).maybeSingle()
@@ -189,7 +241,7 @@ export function createWorkforcePayrollHandler(options:Options={}) {
           overtime_multiplier_basis_points:total.overtimeMultiplierBasisPoints,
           gross_vnd:total.grossVnd,adjustment_vnd:total.adjustmentVnd,
           adjustment_reason:total.adjustmentReason,calculation_version:total.calculationVersion,
-        }).select('id,period_id,staff_id,segment_id,net_vnd').single()
+        }).select('id,period_id,staff_id,segment_id,net_vnd,version,voided_at').single()
         return error ? failure('WORKFORCE_PAYROLL_LINE_CONFLICT_OR_UNVERIFIED',409)
           : Response.json({ok:true,line:data},{status:201,headers:noStore})
       })

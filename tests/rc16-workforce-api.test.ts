@@ -13,6 +13,24 @@ const mustNotUseDb=()=>{throw new Error('UNAUTHORIZED_DB_ACCESS')}
 const anon=async()=>null
 const leader=async()=>({id:'auth-leader',businessUserId:'leader-1',systemPermission:'leader' as const})
 const member=async()=>({id:'auth-member',businessUserId:'staff-1',systemPermission:'member' as const})
+const admin=async()=>({id:'auth-admin',businessUserId:'admin-1',systemPermission:'admin' as const})
+const correctionRequest={
+  action:'correct_line',period_id:'period-1',line_id:'line-1',expected_version:1,
+  request_id:'00000000-0000-4000-8000-000000000001',reason:'Verified attendance correction',
+  payable_minutes:60,overtime_minutes:30,adjustment_vnd:-1000,
+  adjustment_reason:'Independent adjustment approved',
+}
+function correctionClient(rpc: (name:string,args:Record<string,unknown>)=>unknown) {
+  return ()=>({
+    from(){
+      const q={select(){return q},eq(){return q},async maybeSingle(){
+        return {data:{actual_minutes:90,rate_vnd_per_hour:100000,
+          overtime_multiplier_basis_points:15000},error:null}
+      }}
+      return q
+    },rpc,
+  })
+}
 
 test('Actual Staffing rejects anonymous before accessing privileged client',async()=>{
   const handler=createWorkforceActualHandler({client:mustNotUseDb,resolveUser:anon})
@@ -30,13 +48,13 @@ test('Payroll protects all salary rates/periods from leader role without DB acce
   assert.equal(a.status,403)
   assert.equal(b.status,403)
 })
-test('Locked payroll CSV preserves negative VND numbers without exposing formulas',async()=>{
+test('Locked payroll CSV after correction preserves negative VND numbers and excludes voided evidence',async()=>{
   const payrollRow={
     staff_id:'=HYPERLINK("https://unsafe.invalid","test")',
     operational_role:'host',segment_id:'seg-1',actual_minutes:90,
-    payable_minutes:90,overtime_minutes:0,rate_vnd_per_hour:100000,
-    overtime_multiplier_basis_points:10000,gross_vnd:150000,
-    adjustment_vnd:-1000,net_vnd:149000,
+    payable_minutes:60,overtime_minutes:30,rate_vnd_per_hour:100000,
+    overtime_multiplier_basis_points:15000,gross_vnd:125000,
+    adjustment_vnd:-1000,net_vnd:124000,
     adjustment_reason:'Correction approved',calculation_version:'rc16-v1',
   }
   const fakeClient=()=>({
@@ -46,7 +64,8 @@ test('Locked payroll CSV preserves negative VND numbers without exposing formula
         eq(_field:string,_value:unknown){return q},
         order(_field:string,_options:unknown){return q},
         limit(_max:number){
-          return Promise.resolve({data:name==='workforce_payroll_lines'?[payrollRow]:[],error:null})
+          return Promise.resolve({data:name==='workforce_payroll_lines'?
+            [payrollRow,{...payrollRow,segment_id:'voided-evidence',voided_at:'2026-10-01T00:00:00Z'}]:[],error:null})
         },
         maybeSingle(){
           return Promise.resolve({data:{status:'locked',period_start:'2026-09-01',
@@ -65,9 +84,104 @@ test('Locked payroll CSV preserves negative VND numbers without exposing formula
   ))
   assert.equal(response.status,200)
   const csv=await response.text()
-  assert.ok(csv.includes(',"-1000","149000",'))
+  assert.ok(csv.includes(',"125000","-1000","124000",'))
   assert.equal(csv.includes(`"'-1000"`),false)
   assert.ok(csv.includes(`"'=HYPERLINK`))
+  assert.equal(csv.includes('voided-evidence'),false)
+})
+
+test('Payroll correction and void reject anonymous/Leader/Member before database access',async()=>{
+  for(const resolveUser of [anon,leader,member]){
+    const h=createWorkforcePayrollHandler({createClient:mustNotUseDb,resolveUser})
+    for(const action of ['correct_line','void_line']){
+      const r=await h.POST(post('https://example.test/api/workforce/payroll',{
+        ...correctionRequest,action,
+      }))
+      assert.equal(r.status,resolveUser===anon?401:403)
+    }
+  }
+})
+
+test('Payroll correction strictly rejects client salary, missing reason and invalid versions',async()=>{
+  const h=createWorkforcePayrollHandler({createClient:mustNotUseDb,resolveUser:admin})
+  for(const changes of [
+    {gross_vnd:1},{net_vnd:1},{reason:''},{expected_version:0},{expected_version:1.5},
+    {request_id:'bad'},{payable_minutes:-1},{overtime_minutes:1441},
+  ]){
+    const r=await h.POST(post('https://example.test/api/workforce/payroll',{
+      ...correctionRequest,...changes,
+    }))
+    assert.equal(r.status,400)
+    assert.equal((await r.json()).error.code,'WORKFORCE_REQUEST_INVALID')
+  }
+})
+
+test('Payroll correction computes VND using the stored rate and supplies authenticated actor to one RPC',async()=>{
+  let calls=0
+  const h=createWorkforcePayrollHandler({resolveUser:admin,createClient:correctionClient((name,args)=>{
+    calls++
+    assert.equal(name,'workforce_rc16b_correct_payroll_line')
+    assert.equal(args.p_actor_id,'admin-1')
+    assert.equal(args.p_expected_gross_vnd,125000)
+    assert.equal(args.p_expected_version,1)
+    assert.equal(args.p_request_id,correctionRequest.request_id)
+    return {data:{line:{version:2,gross_vnd:125000,net_vnd:124000},audit:{id:7},replayed:false},error:null}
+  }) as never})
+  const r=await h.POST(post('https://example.test/api/workforce/payroll',correctionRequest))
+  assert.equal(r.status,200)
+  assert.equal(r.headers.get('Cache-Control'),'no-store')
+  assert.equal((await r.json()).line.net_vnd,124000)
+  assert.equal(calls,1)
+})
+
+test('Payroll rejects invalid payable/OT/adjustment independently before invoking RPC',async()=>{
+  const h=createWorkforcePayrollHandler({resolveUser:admin,
+    createClient:correctionClient(()=>{throw Error('INVALID_CORRECTION_RPC')}) as never})
+  for(const changes of [
+    {payable_minutes:91},{overtime_minutes:61},{adjustment_reason:null},
+    {adjustment_vnd:0},{adjustment_vnd:-200000},
+  ]){
+    const r=await h.POST(post('https://example.test/api/workforce/payroll',{
+      ...correctionRequest,...changes,
+    }))
+    assert.equal(r.status,409)
+  }
+})
+
+test('Payroll maps stale/Reviewed/Locked/voided/idempotency conflicts to 409 and DB authorization to 403',async()=>{
+  for(const message of [
+    'WORKFORCE_PAYROLL_STALE_LINE','WORKFORCE_PAYROLL_PERIOD_NOT_DRAFT',
+    'WORKFORCE_PAYROLL_LINE_VOIDED','WORKFORCE_PAYROLL_IDEMPOTENCY_CONFLICT',
+    'WORKFORCE_PAYROLL_ACTOR_FORBIDDEN','WORKFORCE_PAYROLL_CORRECTION_INVALID',
+    'UNEXPECTED_DATABASE_DETAIL',
+  ]){
+    const h=createWorkforcePayrollHandler({resolveUser:admin,
+      createClient:correctionClient(()=>({data:null,error:{message}})) as never})
+    const r=await h.POST(post('https://example.test/api/workforce/payroll',correctionRequest))
+    assert.equal(r.status,message==='WORKFORCE_PAYROLL_ACTOR_FORBIDDEN'?403:
+      message==='WORKFORCE_PAYROLL_CORRECTION_INVALID'?400:
+        message==='UNEXPECTED_DATABASE_DETAIL'?503:409)
+    assert.equal((await r.json()).error.code,message==='UNEXPECTED_DATABASE_DETAIL'
+      ?'WORKFORCE_PAYROLL_CORRECTION_FAILED':message)
+  }
+})
+
+test('Payroll void forwards no amounts and idempotent response retains original audited result',async()=>{
+  const request={action:'void_line',period_id:'period-1',line_id:'line-1',
+    expected_version:2,request_id:correctionRequest.request_id,reason:'Void duplicated claim evidence'}
+  const h=createWorkforcePayrollHandler({resolveUser:admin,
+    createClient:correctionClient((_name,args)=>{
+      assert.equal(args.p_payable_minutes,null)
+      assert.equal(args.p_expected_gross_vnd,null)
+      return {data:{line:{version:3,voided_at:'2026-10-11T00:00:00Z'},
+        audit:{line_version:3,action:'void_line'},replayed:true},error:null}
+    }) as never})
+  const r=await h.POST(post('https://example.test/api/workforce/payroll',request))
+  assert.equal(r.status,200)
+  const body=await r.json()
+  assert.equal(body.replayed,true)
+  assert.equal(body.line.version,3)
+  assert.equal(body.audit.action,'void_line')
 })
 
 test('Workforce Performance allows own scope only; cannot override lateness policy',async()=>{

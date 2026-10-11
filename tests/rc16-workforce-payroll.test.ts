@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  calculatePayrollLine, nextPayrollState, selectApprovedRate,
+  calculatePayrollAmounts, calculatePayrollLine, nextPayrollState, selectApprovedRate,
   type ActualStaffingEvidence, type ApprovedPayrollRate,
 } from '@/lib/workforce/payrollCalculation'
 import { summarizeWorkforcePerformance } from '@/lib/workforce/workforcePerformance'
@@ -16,6 +16,21 @@ const rate: ApprovedPayrollRate = {
   id:'rate-1',staffId:'staff-1',role:'host',effectiveFrom:'2026-09-01',
   effectiveThrough:null,vndPerHour:100000,overtimeMultiplierBasisPoints:15000,approvedBy:'finance-1',
 }
+
+test('Draft correction uses the same integer rounding and money bounds as preparation',()=>{
+  for(const [payableMinutes,overtimeMinutes] of [[0,0],[1,0],[61,30],[90,90]]){
+    const line=calculatePayrollLine({segment:verified,shiftDate:'2026-09-30',rate,
+      payableMinutes,overtimeMinutes})
+    const amounts=calculatePayrollAmounts({actualMinutes:90,rateVndPerHour:100000,
+      overtimeMultiplierBasisPoints:15000,payableMinutes,overtimeMinutes})
+    assert.equal(amounts.grossVnd,line.grossVnd)
+    assert.equal(amounts.netVnd,line.netVnd)
+  }
+  assert.throws(()=>calculatePayrollAmounts({actualMinutes:90,rateVndPerHour:100000,
+    overtimeMultiplierBasisPoints:15000,payableMinutes:60,overtimeMinutes:0,
+    adjustmentVnd:1000000000000,adjustmentReason:'Explicitly approved amount'}),
+  {message:'WORKFORCE_NET_INVALID'})
+})
 
 test('payroll: 90 actual minutes; 30 overtime minutes; one final VND rounding', () => {
   const item=calculatePayrollLine({
