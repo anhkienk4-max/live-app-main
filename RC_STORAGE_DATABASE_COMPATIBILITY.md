@@ -74,48 +74,124 @@ To prevent corruption, drift, or catastrophic service disruption, the following 
 ```sql
 -- Migration: 20261011120000_rc12_provider_metadata_forward_compat.sql
 -- Idempotent forward-only patch for Production environments lacking RC12 provider columns.
+-- Preserves actual Production schema: report_id (not shift_id), uploaded_by (not created_by),
+-- existing unique constraint (report_id, file_url), and atomic revision audit tracking.
+
+begin;
 
 alter table public.report_images
-  add column if not exists provider text check (provider in ('google_drive', 'onedrive')),
-  add column if not exists external_file_id text;
+  add column if not exists provider text null,
+  add column if not exists external_file_id text null;
 
 alter table public.live_report_images
-  add column if not exists provider text check (provider in ('google_drive', 'onedrive')),
-  add column if not exists external_file_id text;
+  add column if not exists provider text null,
+  add column if not exists external_file_id text null;
 
--- Idempotent RPC definition for live report image upsert with provider
+alter table public.report_images
+  drop constraint if exists report_images_file_provider_pair,
+  add constraint report_images_file_provider_pair check (
+    (provider is null and external_file_id is null)
+    or (provider in ('google_drive', 'onedrive') and btrim(external_file_id) <> '')
+  );
+
+alter table public.live_report_images
+  drop constraint if exists live_report_images_file_provider_pair,
+  add constraint live_report_images_file_provider_pair check (
+    (provider is null and external_file_id is null)
+    or (provider in ('google_drive', 'onedrive') and btrim(external_file_id) <> '')
+  );
+
+-- Function for atomic report image upload with cloud provider metadata
+create or replace function public.upload_report_image_with_provider(
+  p_report_id text,
+  p_storage_path text,
+  p_image_url text,
+  p_original_name text,
+  p_mime_type text,
+  p_size_bytes bigint,
+  p_image_type text,
+  p_provider text,
+  p_external_file_id text
+)
+returns public.report_images
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  created_image public.report_images;
+begin
+  if p_provider not in ('google_drive', 'onedrive')
+    or p_external_file_id is null
+    or btrim(p_external_file_id) = '' then
+    raise exception using errcode = '22023', message = 'REPORT_FILE_PROVIDER_METADATA_INVALID';
+  end if;
+
+  created_image := public.upload_report_image(
+    p_report_id,
+    p_storage_path,
+    p_image_url,
+    p_original_name,
+    p_mime_type,
+    p_size_bytes,
+    p_image_type
+  );
+
+  update public.report_images
+  set provider = p_provider,
+      external_file_id = p_external_file_id
+  where id = created_image.id
+  returning * into created_image;
+
+  return created_image;
+end;
+$$;
+
+-- Function for atomic live report image upsert with provider metadata
+-- Preserves existing upsert_live_report_image validation, RLS, CAS, idempotency and revision tracking
 create or replace function public.upsert_live_report_image_with_provider(p_data jsonb)
 returns public.live_report_images
 language plpgsql
 security definer
-set search_path to ''
-as $function$
+set search_path = ''
+as $$
 declare
-  v_row public.live_report_images;
-  v_actor_id text;
+  created_image public.live_report_images;
+  provider_value text;
+  external_id text;
 begin
-  v_actor_id := private.require_shift_actor(true);
-  insert into public.live_report_images (
-    shift_id, category, file_name, file_url, is_cover, provider, external_file_id, created_by
-  ) values (
-    p_data->>'shift_id',
-    p_data->>'category',
-    p_data->>'file_name',
-    p_data->>'file_url',
-    coalesce((p_data->>'is_cover')::boolean, false),
-    p_data->>'provider',
-    p_data->>'external_file_id',
-    v_actor_id
-  )
-  on conflict (shift_id, category, file_name) do update set
-    file_url = excluded.file_url,
-    provider = excluded.provider,
-    external_file_id = excluded.external_file_id,
-    updated_at = now()
-  returning * into v_row;
-  return v_row;
+  provider_value := p_data->>'provider';
+  external_id := p_data->>'external_file_id';
+  if provider_value not in ('google_drive', 'onedrive')
+    or external_id is null
+    or btrim(external_id) = '' then
+    raise exception using errcode = '22023', message = 'REPORT_FILE_PROVIDER_METADATA_INVALID';
+  end if;
+
+  created_image := public.upsert_live_report_image(
+    p_data - 'provider' - 'external_file_id'
+  );
+
+  -- Do not overwrite the winner of an idempotent retry with the redundant object.
+  if created_image.external_file_id is not null then return created_image; end if;
+
+  update public.live_report_images
+  set provider = provider_value,
+      external_file_id = external_id
+  where id = created_image.id
+  returning * into created_image;
+
+  return created_image;
 end;
-$function$;
+$$;
+
+revoke all on function public.upload_report_image_with_provider(text, text, text, text, text, bigint, text, text, text) from public, anon, authenticated;
+revoke all on function public.upsert_live_report_image_with_provider(jsonb) from public, anon, authenticated;
+
+grant execute on function public.upload_report_image_with_provider(text, text, text, text, text, bigint, text, text, text) to authenticated;
+grant execute on function public.upsert_live_report_image_with_provider(jsonb) to authenticated;
+
+commit;
 ```
 
 ### Compatibility Migration C: Storage Center V2 (Staging Forward-Only)

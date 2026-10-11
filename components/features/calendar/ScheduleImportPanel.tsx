@@ -390,7 +390,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   }
 
   const confirmImport = async () => {
-    if (!result || !batch || !source || result.validRows === 0) return
+    if (!result || !batch || !source || importableCount === 0) return
     const completedSource = source
     setBusy(true)
     try {
@@ -520,6 +520,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     ].some(value => String(value ?? '').toLocaleLowerCase().includes(query))
   }) ?? []
   const completedCounts = completedImport ? batchPresentationCounts(completedImport.rows) : null
+  const importableCount = previewCounts ? previewCounts.ready + previewCounts.warning : 0
   const previewAttention = previewCounts
     ? previewCounts.warning + previewCounts.invalid + previewCounts.duplicate + previewCounts.retryable
     : 0
@@ -699,11 +700,10 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
               })}
             </div>
             {result.invalidRows > 0 && <p className="text-sm text-red-700">{t('correctRows')}</p>}
-            {previewCounts && <p className="text-sm text-muted-foreground" data-testid="schedule-import-confirm-summary">{t('confirmImportSummary', { ready: previewCounts.ready, attention: previewAttention })}</p>}
+            {previewCounts && <p className="text-sm text-muted-foreground" data-testid="schedule-import-confirm-summary">{t('confirmImportSummary', { ready: importableCount, attention: previewAttention })}</p>}
             <div className="flex flex-wrap justify-end gap-2">
               <Button variant="outline" onClick={() => setCancelOpen(true)}>{t('cancel')}</Button>
-              <Button variant="outline" onClick={confirmImport} disabled={busy || result.validRows === 0} aria-label={`${t('confirmImport')} (${result.validRows})`}>{busy ? t('loading') : `${t('confirmImport')} (${result.validRows})`}</Button>
-              <Button onClick={confirmImport} disabled={busy || result.validRows === 0} aria-label={t('confirmImport')}>{busy ? t('loading') : t('confirmImport')}</Button>
+              <Button onClick={confirmImport} disabled={busy || importableCount === 0} aria-label={t('confirmImport')}>{busy ? t('loading') : t('confirmImport')}</Button>
             </div>
           </CardContent>
         </Card>
@@ -750,6 +750,7 @@ function ImportCompletionCard({ completed, counts, t }: { completed: CompletedIm
 
   const warningRows = completed.rows.filter(row => row.status === 'warning')
   const notImportedRows = completed.rows.filter(isNotImportedResultRow)
+  const duplicateRows = notImportedRows.filter(row => row.status === 'duplicate_skipped')
 
   const validationErrors = notImportedRows.filter(row => row.status === 'validation_failed')
   const retryableErrors = notImportedRows.filter(row => row.status === 'retryable')
@@ -764,7 +765,7 @@ function ImportCompletionCard({ completed, counts, t }: { completed: CompletedIm
   const borderClass = state === 'SUCCESS' ? 'border-emerald-200' : state === 'PARTIAL' ? 'border-amber-200' : 'border-red-200'
   const headerClass = state === 'SUCCESS' ? 'bg-emerald-50/60 text-emerald-950' : state === 'PARTIAL' ? 'bg-amber-50/60 text-amber-950' : 'bg-red-50/60 text-red-950'
 
-  const titleText = state === 'SUCCESS'
+  const titleText = completed.batch.status === 'failed' ? t('importNotCompleted') : completed.batch.status === 'cancelled' ? t('cancelled') : state === 'SUCCESS'
     ? t('importCompleted')
     : state === 'PARTIAL'
       ? t('importPartialSuccess', { imported: persistedCount, attention: attention })
@@ -786,6 +787,7 @@ function ImportCompletionCard({ completed, counts, t }: { completed: CompletedIm
         <ImportSummary counts={counts} t={t} persistedCount={persistedCount} />
 
         {persistedCount === 0 && <p className="text-sm text-muted-foreground">{t('importNothingPersisted')}</p>}
+        {notImportedRows.length > 0 && <section data-testid="schedule-import-not-imported-rows" className="space-y-3"><h3 className="text-sm font-semibold">{t('notImported')} ({notImportedRows.length})</h3>{duplicateRows.length > 0 && <details className="overflow-hidden rounded-lg border"><summary className="cursor-pointer bg-muted/30 px-3 py-2 text-sm font-medium">{t('importDuplicateSkipped')} ({duplicateRows.length})</summary><div className="max-h-[300px] overflow-auto"><table className="w-full text-left text-xs"><thead><tr><th className="p-2">{t('importSourceRow')}</th><th className="p-2">{t('shiftDetail')}</th><th className="p-2">{t('reason')}</th></tr></thead><tbody>{duplicateRows.map(row=><tr key={row.id} className="border-t"><td className="p-2">{row.source_row_number}</td><td className="p-2">{row.normalized_values.title || row.normalized_values.brand_name}<p className="text-muted-foreground">{row.normalized_values.date} · {row.normalized_values.start_time} – {row.normalized_values.end_time}</p>{row.duplicate_of_shift_id && <p>{row.duplicate_of_shift_id}</p>}</td><td className="p-2">{row.normalized_values.warnings.join('; ') || t('importDuplicate')}</td></tr>)}</tbody></table></div></details>}</section>}
 
         {(validationErrors.length > 0 || retryableErrors.length > 0 || warningRows.length > 0) && (
           <div className="space-y-4">

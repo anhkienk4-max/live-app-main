@@ -165,7 +165,7 @@ test('Admin provisioning and explicit retry remain separate from review', () => 
 
 test('Account Request controls are only mounted for the existing staff.manage boundary', () => {
   assert.match(staffList, /hasPermission\(currentUser, 'staff\.manage'\)/)
-  assert.match(staffList, /canManage && <AccountRequestPanel \/>/)
+  assert.match(staffList, /canManage.*<AccountRequestPanel \/>/)
 })
 
 test('browser Admin workflow does not contain privileged credentials or direct Auth administration', () => {

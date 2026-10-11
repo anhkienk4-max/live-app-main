@@ -85,7 +85,8 @@ test('exact platform and subbrand specificity beat broader candidates', () => {
   const exact = route({ id: 'exact', platform_id: 'platform-1', subbrand_key: 'xmen' })
   const key = { provider: input.provider, executionSource: input.executionSource, brandId: input.brandId, platformId: 'platform-1', subbrandKey: 'xmen' }
   assert.equal(selectOperationalStorageRoute([broad, platform, subbrand, exact], key).id, 'exact')
-  assert.equal(selectOperationalStorageRoute([broad, platform], key).id, 'platform')
+  assert.equal(selectOperationalStorageRoute([broad, platform], { ...key, subbrandKey: null }).id, 'platform')
+  assertCode('STORAGE_ROUTE_NOT_CONFIGURED', () => selectOperationalStorageRoute([broad, platform], key))
   assert.equal(selectOperationalStorageRoute([broad, subbrand], key).id, 'subbrand')
 })
 

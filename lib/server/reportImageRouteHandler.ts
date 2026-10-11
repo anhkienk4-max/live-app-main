@@ -461,7 +461,7 @@ async function uploadReportImage(
     created_by: user.businessUserId || user.id,
     logical_path: logicalPath,
     })
-  }))
+  })
   const exactParentId = await inUploadPhase('folder_materialization', () => dependencies.materializeFolders(placement))
   const result = await inUploadPhase('provider_upload', () => storage.upload({
     name,
