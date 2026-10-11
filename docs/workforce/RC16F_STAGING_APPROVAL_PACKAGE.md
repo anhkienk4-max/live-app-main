@@ -98,6 +98,15 @@ only;create/4arg also authenticated. No changes to grants or role authority.
 Expected route constraint/index/trigger definitions and column types/defaults:
 tests/fixtures/rc16g_staging_catalog.json; SQL A embeds their exact guard values.
 
+Catalog snapshot file SHA256:
+eb643d121f811ae6a8497203e663ff22caf5c12d200a3b342b7ad0aaba9d90a1.
+Expected legacy MD5(pg_get_constraintdef): brands_storage_profile_check và
+operational_storage_routes_profile_check=3b9c82593913519ac47f664472aa8d90;
+operational_storage_routes_labels_check=56e2601d4569112a72993b7fee4638b1;
+operational_storage_routes_subbrand_profile_check=b0cc848e580d405447157160c62e2e52.
+SQL guards so exact definitions, mạnh hơn chỉ dùng MD5. Preflight phải so toàn bộ
+snapshot/constraints, không coi vài fingerprint bằng nhau là full schema proof.
+
 Read-only pre/post queries (identity verified independently by provider metadata):
 
 ~~~sql
@@ -107,7 +116,7 @@ SELECT p.oid::regprocedure::text,md5(pg_get_functiondef(p.oid)),p.prosecdef,
 FROM pg_proc p WHERE p.oid IN ('public.create_shift(jsonb)'::regprocedure,
   'public.update_shift(text,jsonb,boolean)'::regprocedure,
   'public.update_shift(text,jsonb,boolean,integer)'::regprocedure);
-SELECT conname,convalidated,pg_get_constraintdef(oid) FROM pg_constraint
+SELECT conname,convalidated,md5(pg_get_constraintdef(oid)),pg_get_constraintdef(oid) FROM pg_constraint
 WHERE conrelid IN ('public.operational_storage_routes'::regclass,'public.brands'::regclass)
 ORDER BY conrelid,conname;
 SELECT a.attname,format_type(a.atttypid,a.atttypmod),a.attnotnull,
