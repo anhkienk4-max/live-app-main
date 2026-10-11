@@ -14,6 +14,7 @@ on:
       - 'lib/auth/authMode.ts'
       - 'scripts/check-runtime-environment.ts'
       - 'package.json'
+      - 'vercel.json'
       - 'pnpm-lock.yaml'
       - 'tests/typescript-alias-loader.mjs'
       - 'tests/auth-session-foundation.test.ts'

@@ -29,7 +29,7 @@ xác nhận trong handoff giao việc sau validation/push. Không xem Node/PG te
 UI hoặc cloud UAT: nguồn Gemini vẫn UNKNOWN và các blocker khác chưa đóng.
 
 RC1.6E đã harden build guard và privileged/server runtime bằng validator chung;
-41 security +16 auth +36 Payroll tests PASS, typecheck/focused lint/build PASS,
+42 security/delivery +16 auth +36 Payroll tests PASS, typecheck/focused lint/build PASS,
 isolated PG16 foundation +49 assertions +5 concurrency/rollback PASS.
 C10 **RESOLVED ở code**, C02/C03 vẫn OPEN. Chi tiết mode/error/metadata ở
 [environment identity](RC16C_ENVIRONMENT_IDENTITY.md#rc16e--bảo-vệ-identity-trong-code-2026-10-11).
@@ -75,7 +75,7 @@ P0 = chặn bước an toàn kế tiếp; P1 = cần xử lý trước nghiệm 
 | C07 | P1 / POLICY | Void terminal giữ unique(segment_id); chưa có recovery/reissue | Owner chấp nhận giới hạn và UI xác nhận rõ trước void; nếu cần reissue, thiết kế audited replacement riêng giữ chống double-pay |
 | C08 | P1 / DEPENDENCY | Storage physical provider UAT chưa có bằng chứng PASS hiện hành | Storage owner chạy fixture trong root/account cô lập đã phê duyệt; kiểm tra bytes/hash/parent/reconnect; không dùng Drive Production |
 | C09 | P1 / ENV | Supabase staging PG17.6; CI PG16, Vercel project Node24 so với CI Node22 | Bổ sung rehearsal PG17 + runtime Node24 trên target cô lập trước acceptance; không xem gate PG16 là cloud E2E |
-| C10 | RESOLVED code / security | RC1.6E dùng validator chung cho build/dev/start và privileged/server runtime; strict identities, snapshot, offline exception không cấp quyền runtime; 41 security regressions PASS | Không đóng C02: deployment/key/provider isolation vẫn phải được chứng minh độc lập; không xem matching refs là matching credentials |
+| C10 | RESOLVED code / security | RC1.6E dùng validator chung cho build/dev/start và privileged/server runtime; strict identities, snapshot, offline exception không cấp quyền runtime; 42 security/delivery regressions PASS | Không đóng C02: deployment/key/provider isolation vẫn phải được chứng minh độc lập; không xem matching refs là matching credentials |
 | C11 | P0 release / DEPENDENCY | Frontend có privacy migration staging-only; backend/Production chưa có; report-history fix cũng staging-only | Release owner hội tụ forward-only riêng, xác minh quyền/định nghĩa RPC; không merge/deploy trong task này |
 | C12 | P1 / CODE coverage | Monthly trends/full shift completion/cross-shift actual timeline chưa có endpoint; unmatched cover/extra không vào planned denominator | Hiển thị giới hạn/N/A; reconcile evidence trước leaderboard. Tách iteration Workforce, không chế score/GMV attribution |
 

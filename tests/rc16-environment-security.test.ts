@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -27,6 +27,14 @@ const deployedProduction = {
   ...configured, VERCEL: '1', VERCEL_ENV: 'production', VERCEL_TARGET_ENV: 'production',
   NEXT_PUBLIC_SUPABASE_URL: production, SUPABASE_URL: production,
 }
+
+test('backend branch delivery disables Git auto-deploy without changing other branches', () => {
+  const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'))
+  assert.deepEqual(config, {
+    $schema: 'https://openapi.vercel.sh/vercel.json',
+    git: { deploymentEnabled: { 'feat/rc16-payroll-workforce-backend': false } },
+  })
+})
 
 function rejects(env: SupabaseEnvironment, code: string, purpose: EnvironmentPurpose = 'runtime') {
   assert.throws(() => validateSupabaseEnvironment(env, purpose), (error: unknown) =>

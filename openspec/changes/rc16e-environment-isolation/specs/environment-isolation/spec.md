@@ -39,3 +39,5 @@ development/production precedence before validation.
 CI SHALL trigger for guard, client/helper, package, test and specification changes,
 and run environment/auth tests alongside existing Payroll/PostgreSQL gates. C10
 resolution SHALL mean verified code protection, not cloud isolation or UAT success.
+Repository Git deployment configuration SHALL disable automatic deployment only
+for feat/rc16-payroll-workforce-backend; other branches/settings SHALL stay unchanged.

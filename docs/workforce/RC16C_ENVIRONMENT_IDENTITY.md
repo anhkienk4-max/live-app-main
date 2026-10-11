@@ -108,7 +108,7 @@ Guard context sai trả `ENV_GUARD_CONTEXT_REQUIRED`; lỗi ngoài validator tr�
 `ENV_GUARD_FAILED`. Local admin thiếu secret giữ `AUTH_ADMIN_NOT_CONFIGURED`.
 Không log raw URL, key, parser error hoặc auth header.
 
-**Code security PASS / C10 RESOLVED:** 41/41 environment tests, 16/16 authentication
+**Code security PASS / C10 RESOLVED:** 42/42 environment/delivery tests, 16/16 authentication
 tests, 36/36 Payroll/Workforce tests; typecheck, focused lint, Next build PASS.
 PG16 foundation, 49 RC16B assertions và 5 race/rollback scenarios PASS trong
 container LOCAL `--network none`, không published ports. SDK query dùng fake
@@ -123,6 +123,13 @@ READY. List cùng URL ghi branch RC16 và SHA `267604b`. Đây là baseline trư
 không phải bằng chứng RC1.6E runtime hay Gemini UI được duyệt. Quan sát cũ
 “không có RC16 trong page đã kiểm tra” không còn mô tả danh sách hiện tại.
 Không đọc/decrypt env values, không tạo deployment hay bypass protection.
+
+Do Git integration đã tự tạo các Preview baseline, `vercel.json` thêm
+`git.deploymentEnabled` với đúng backend branch=false để push RC1.6E chỉ chạy
+GitHub Actions. Không sửa dashboard/env cloud; main và branch khác giữ default.
+Theo [Vercel Git configuration](https://vercel.com/docs/project-configuration/git-configuration#gitdeploymentenabled),
+unspecified branches vẫn enabled. Khi integration được phê duyệt, dùng branch
+riêng; không tự mở deploy cho backend trong task này.
 
 **C02 OPEN:** URL agreement chỉ chứng minh routing identity trong code, không
 chứng minh anon/secret thuộc project đó. Không decode JWT chưa verify làm bằng

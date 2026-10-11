@@ -3,7 +3,7 @@
 Starting SHA: `267604b3d659c4b4e935323c8cbb63785619541b`; branch
 `feat/rc16-payroll-workforce-backend`. PR25 remains Draft based on Draft PR24.
 
-- 41 environment security tests PASS; fixtures contain synthetic keys only.
+- 42 environment security/delivery tests PASS; fixtures contain synthetic keys only.
 - 16 authentication foundation tests PASS; 36 existing RC16 tests PASS.
 - TypeScript, focused security lint, Next credential-free CI build and diff checks PASS.
 - LOCAL PG16 foundation, 49 correction assertions and 5 race/rollback scenarios PASS.
@@ -17,6 +17,8 @@ Starting SHA: `267604b3d659c4b4e935323c8cbb63785619541b`; branch
   `dpl_GRbiDr4mxwDeDB8Affrh1VRz2nwC`, READY/preview at starting SHA; this is not an
   approved Gemini integration candidate or proof of RC1.6E runtime isolation.
 - No cloud credential retrieval, env/config update, data write, deployment or merge.
+- Git configuration disables auto-deployment only for this backend branch; all
+  other branches retain defaults. GitHub CI remains enabled for the authorized push.
 
 Final SHA/CI result is checked after push and reported in the delivery handoff.
 Code/CI verification does not advance physical UAT, Production UAT or go-live gates.

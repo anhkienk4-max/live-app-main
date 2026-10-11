@@ -9,6 +9,8 @@ local production builds. Direct server client creation bypasses the build guard.
 - Use one configuration snapshot; keep credentials behind server-only boundaries.
 - Keep an explicit credential-free local CI build exception with no runtime access.
 - Add environment/auth regressions and CI path coverage; preserve Payroll/Storage.
+- Disable Git auto-deployment only for the backend feature branch so authorized
+  pushes run GitHub CI without deploying Preview; other branches retain defaults.
 
 ## Boundaries
 No cloud configuration, credentials retrieval, migration, fixture write, deployment,
