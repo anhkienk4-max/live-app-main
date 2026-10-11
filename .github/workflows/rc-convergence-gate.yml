@@ -1,0 +1,133 @@
+name: Release Candidate Convergence Gate
+
+on:
+  push:
+    branches:
+      - 'rc/convergence-rc14-rc15'
+      - 'rc/**'
+  pull_request:
+    branches:
+      - 'rc/convergence-rc14-rc15'
+      - 'rc/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+    steps:
+      - name: Checkout reviewed branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: Install pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Database contract and forward-only compatibility verification on PostgreSQL 16
+        env:
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGDATABASE: postgres
+        run: |
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          create role anon nologin;
+          create role authenticated nologin;
+          create table public.brands (id text primary key);
+          create table public.platforms (id text primary key);
+          create table public.shifts (id text primary key);
+          create table public.campaigns (id text primary key);
+          create table public.business_users (id text primary key);
+          create schema private;
+          create table public.system_settings (id text primary key, default_host_count smallint, default_support_count smallint, default_technical_count smallint, allow_multi_role_per_shift boolean);
+          create table public.reports (id text primary key, submitted_by text, status text default 'draft', metrics_confirmed boolean default false, deleted_at timestamptz, archived_at timestamptz);
+          create table public.report_images (id text primary key default gen_random_uuid()::text, report_id text references public.reports(id), file_url text not null, uploaded_by text references public.business_users(id));
+          create table public.live_report_images (id text primary key default gen_random_uuid()::text, report_id text references public.reports(id), category text not null check (category in ('key_visual','live_session','other')), file_name text not null, file_url text not null, is_cover boolean default false, uploaded_by text references public.business_users(id), storage_file_name text, storage_idempotency_key text);
+          SQL
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261011091925_rc15_storage_route_prerequisites.sql
+          psql -v ON_ERROR_STOP=1 -f tests/fixtures/rc15_production_shift_rpc_baseline.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261011092015_rc15_shift_rpc_compatibility.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261011092051_rc15_operational_files.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261011221500_rc15_provider_metadata_forward_compat.sql
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          do $contracts$
+          begin
+            if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='report_images' and column_name='provider') then
+              raise exception 'Contract A: report_images.provider missing';
+            end if;
+            if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='live_report_images' and column_name='provider') then
+              raise exception 'Contract A: live_report_images.provider missing';
+            end if;
+            if to_regprocedure('public.upsert_live_report_image_with_provider(jsonb)') is null then
+              raise exception 'Contract A: upsert_live_report_image_with_provider missing';
+            end if;
+            if to_regprocedure('public.authorize_live_report_image_delete(text)') is null then
+              raise exception 'Contract A: authorize_live_report_image_delete missing';
+            end if;
+            if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='operational_files' and column_name='integrity_status') then
+              raise exception 'Contract C: operational_files.integrity_status missing';
+            end if;
+            if to_regclass('public.operational_storage_routes') is null then
+              raise exception 'Contract C: operational_storage_routes missing';
+            end if;
+          end
+          $contracts$;
+          SQL
+
+      - name: Type check
+        run: pnpm exec tsc --noEmit --incremental false
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Focused Storage, Contract and Security Tests
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/h4-storage-route-security.test.ts \
+            tests/operational-storage-placement.test.ts \
+            tests/rc14-report-artifact-storage.test.ts \
+            tests/rc14-data-report-export-fidelity.test.ts \
+            tests/rc15-operational-file-storage.test.ts \
+            tests/rc15-schedule-import-archive.test.ts \
+            tests/rc15-system-export.test.ts \
+            tests/rc15-storage-setup.test.ts
+
+      - name: Vercel-equivalent Production Build
+        run: pnpm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+
+      - name: Record Artifact and Commit Provenance
+        run: |
+          echo "COMMIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
+          echo "PROVENANCE: branch=$(git rev-parse --abbrev-ref HEAD) sha=$(git rev-parse HEAD) time=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
