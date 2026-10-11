@@ -69,7 +69,7 @@ export function OperationalStorageSetupWorkspace() {
   const [rootId, setRootId] = React.useState('')
   const [routeApproved, setRouteApproved] = React.useState(false)
   const [brandApproved, setBrandApproved] = React.useState(false)
-  const [profileChoice, setProfileChoice] = React.useState('CANONICAL_V1')
+  const [profileChoice, setProfileChoice] = React.useState('')
   const [legacyBaseId, setLegacyBaseId] = React.useState('')
   const [existingBrandFolderId, setExistingBrandFolderId] = React.useState('')
   const [existingYearFolderId, setExistingYearFolderId] = React.useState('')
@@ -226,6 +226,7 @@ export function OperationalStorageSetupWorkspace() {
           <span>Profile đã xác minh</span>
           <select className={control} value={profileChoice}
             onChange={e => { setProfileChoice(e.target.value); setBrandApproved(false) }}>
+            <option value="">Chọn profile sau khi kiểm tra Drive</option>
             <option value="EXISTING_BRAND_YEAR_PERIOD_PLATFORM">Folder Brand có sẵn → Năm → Tháng → Platform</option>
             <option value="CANONICAL_V1">CANONICAL_V1 — Cấu trúc cũ của app (không phù hợp cây Drive vừa chỉnh)</option>
             <option value="LEGACY_CATEGORY_PERIOD">Legacy Category → Period</option>
@@ -237,7 +238,7 @@ export function OperationalStorageSetupWorkspace() {
           <input type="checkbox" checked={brandApproved} onChange={e => setBrandApproved(e.target.checked)} />
           Tôi đã kiểm tra thư mục Drive thực tế và chọn đúng profile; không chuyển đổi cấu trúc cũ.
         </label>
-        <button type="button" className={action} disabled={busy || !brandApproved || !selectedBrand || selectedBrand.storage_profile !== null}
+        <button type="button" className={action} disabled={busy || !brandApproved || !profileChoice || !selectedBrand || selectedBrand.storage_profile !== null}
           onClick={() => void mutate({ action: 'classify_brand_profile', brand_id: brandId,
             storage_profile: profileChoice,
             confirmation: profileChoice === 'CANONICAL_V1'
