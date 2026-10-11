@@ -271,3 +271,95 @@ revoke all on function public.workforce_rc16_period_guard(),
   public.workforce_rc16_line_guard(),
   public.workforce_rc16_immutable_approved_segment(),
   public.workforce_rc16_immutable_payroll_audit() from public, anon, authenticated;
+
+
+-- One atomic audited period transition; no client-side multi-write gap.
+create or replace function public.workforce_rc16_transition_payroll(
+  p_period_id text, p_expected_status text, p_target_status text,
+  p_actor_id text, p_reason text
+) returns public.workforce_payroll_periods
+language plpgsql security invoker set search_path = '' as $$
+declare
+  v_period public.workforce_payroll_periods%rowtype;
+  v_action text;
+begin
+  if p_actor_id is null or not exists (
+    select 1 from public.business_users where id=p_actor_id
+  ) then raise exception 'WORKFORCE_ACTOR_UNKNOWN'; end if;
+  if char_length(trim(coalesce(p_reason,''))) not between 8 and 2000 then
+    raise exception 'WORKFORCE_TRANSITION_REASON_REQUIRED';
+  end if;
+  select * into v_period from public.workforce_payroll_periods
+    where id=p_period_id for update;
+  if not found or v_period.status <> p_expected_status then
+    raise exception 'WORKFORCE_PAYROLL_STALE_PERIOD';
+  end if;
+  if (v_period.status,p_target_status) not in (
+    ('draft','reviewed'), ('reviewed','confirmed'),
+    ('confirmed','payroll_ready'), ('payroll_ready','locked')
+  ) then raise exception 'WORKFORCE_PAYROLL_INVALID_TRANSITION'; end if;
+  if p_target_status='reviewed' then
+    if v_period.created_by=p_actor_id then
+      raise exception 'WORKFORCE_PAYROLL_SELF_REVIEW';
+    end if;
+    v_action := 'review';
+  elsif p_target_status='confirmed' then
+    if v_period.reviewed_by=p_actor_id then
+      raise exception 'WORKFORCE_PAYROLL_SELF_CONFIRM';
+    end if;
+    v_action := 'confirm';
+  elsif p_target_status='payroll_ready' then
+    if not exists (select 1 from public.workforce_payroll_lines where period_id=p_period_id) then
+      raise exception 'WORKFORCE_PAYROLL_EMPTY_PERIOD';
+    end if;
+    v_action := 'mark_ready';
+  else
+    if not exists (select 1 from public.workforce_payroll_lines where period_id=p_period_id) then
+      raise exception 'WORKFORCE_PAYROLL_EMPTY_PERIOD';
+    end if;
+    v_action := 'lock';
+  end if;
+  update public.workforce_payroll_periods
+    set status=p_target_status,
+      reviewed_by=case when p_target_status='reviewed' then p_actor_id else reviewed_by end,
+      confirmed_by=case when p_target_status='confirmed' then p_actor_id else confirmed_by end,
+      locked_by=case when p_target_status='locked' then p_actor_id else locked_by end,
+      locked_at=case when p_target_status='locked' then statement_timestamp() else locked_at end,
+      updated_at=statement_timestamp()
+    where id=p_period_id returning * into v_period;
+  insert into public.workforce_payroll_audit(
+    period_id,action,from_status,to_status,actor_id,reason)
+    values(p_period_id,v_action,p_expected_status,p_target_status,p_actor_id,p_reason);
+  return v_period;
+end $$;
+revoke all on function public.workforce_rc16_transition_payroll(text,text,text,text,text)
+  from public,anon,authenticated;
+grant execute on function public.workforce_rc16_transition_payroll(text,text,text,text,text)
+  to service_role;
+
+-- An approved rate card is immutable, and overlapping scopes require
+-- explicit payroll-admin correction rather than silent "latest wins".
+create or replace function public.workforce_rc16_rate_guard()
+returns trigger language plpgsql set search_path='' as $$
+begin
+  if tg_op in ('UPDATE','DELETE') then
+    raise exception 'WORKFORCE_APPROVED_RATE_IMMUTABLE';
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended(
+    coalesce(new.staff_id,'__ROLE_DEFAULT__')||':'||new.operational_role,0));
+  if exists (
+    select 1 from public.workforce_rate_cards r
+    where r.operational_role=new.operational_role
+      and r.staff_id is not distinct from new.staff_id
+      and r.effective_from <= coalesce(new.effective_through,'infinity'::date)
+      and new.effective_from <= coalesce(r.effective_through,'infinity'::date)
+  ) then
+    raise exception 'WORKFORCE_APPROVED_RATE_OVERLAP';
+  end if;
+  return new;
+end $$;
+drop trigger if exists workforce_rate_guard on public.workforce_rate_cards;
+create trigger workforce_rate_guard before insert or update or delete
+  on public.workforce_rate_cards for each row
+  execute function public.workforce_rc16_rate_guard();
+revoke all on function public.workforce_rc16_rate_guard() from public,anon,authenticated;
