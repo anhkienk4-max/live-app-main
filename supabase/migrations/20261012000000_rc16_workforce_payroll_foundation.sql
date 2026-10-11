@@ -12,6 +12,7 @@ create table if not exists public.workforce_actual_segments (
   actual_end_at timestamptz,
   review_status text not null default 'draft' check (review_status in ('draft','approved','rejected')),
   evidence_note text not null check (char_length(trim(evidence_note)) between 8 and 2000),
+  review_note text check (review_note is null or char_length(trim(review_note)) between 8 and 2000),
   created_by text not null references public.business_users(id),
   reviewed_by text references public.business_users(id),
   reviewed_at timestamptz,
@@ -24,8 +25,9 @@ create table if not exists public.workforce_actual_segments (
       and actual_end_at > actual_start_at and actual_end_at <= actual_start_at + interval '24 hours')
   ),
   constraint reviewed_actor_consistency check (
-    (review_status='draft' and reviewed_at is null and reviewed_by is null)
-    or (review_status in ('approved','rejected') and reviewed_by is not null and reviewed_at is not null)
+    (review_status='draft' and reviewed_at is null and reviewed_by is null and review_note is null)
+    or (review_status in ('approved','rejected') and reviewed_by is not null and reviewed_at is not null
+      and reviewed_by <> created_by and review_note is not null)
   )
 );
 create index if not exists workforce_actual_by_shift on public.workforce_actual_segments(shift_id, operational_role);
