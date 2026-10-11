@@ -200,9 +200,9 @@ The actual Supabase project `egdjnpmoasarrttvhgds` has the RC1.4 migration recor
 
 Staged **forward-only migration order** (none applied on Production):
 
-1. `20261008090000_rc15_storage_route_prerequisites.sql`: adds nullable `shifts.execution_source` and `brands.storage_profile`, creates restricted `operational_storage_routes` with exact-key uniqueness, **no route seed/backfill**. Does not touch existing RPC bodies.
-2. `20261008093000_rc15_shift_rpc_compatibility.sql`: built from actual current Production `create_shift` and both `update_shift` definitions, with explicit MD5 guards. Only adds `execution_source` allowlist, validation and insert/update persistence. Retains existing status guards, audit actor and optimistic concurrency. Aborts on definition drift to avoid overwriting later changes.
-3. `20261009000000_rc15_operational_files.sql`: metadata-only file registry, constrained category, provider, SHA-256/reference flags, indexes and RLS.
+1. `20261011091925_rc15_storage_route_prerequisites.sql`: adds nullable `shifts.execution_source` and `brands.storage_profile`, creates restricted `operational_storage_routes` with exact-key uniqueness, **no route seed/backfill**. Does not touch existing RPC bodies.
+2. `20261011092015_rc15_shift_rpc_compatibility.sql`: built from actual current Production `create_shift` and both `update_shift` definitions, with explicit MD5 guards. Only adds `execution_source` allowlist, validation and insert/update persistence. Retains existing status guards, audit actor and optimistic concurrency. Aborts on definition drift to avoid overwriting later changes.
+3. `20261011092051_rc15_operational_files.sql`: metadata-only file registry, constrained category, provider, SHA-256/reference flags, indexes and RLS.
 
 The isolated CI fixture `tests/fixtures/rc15_production_shift_rpc_baseline.sql` is a **copy of the function definitions only**, no customer data. CI validates the prerequisite twice, the guarded RPC patch once, and the metadata migration twice. This is **not a Production migration**.
 
@@ -243,6 +243,6 @@ The Google Drive root `LIVESTREAM REPORT` currently has an `anyone:writer` ACL. 
 
 - Production branch stays untouched until code review and validation pass.
 - Production RC1.4 migration already applied; **never reapply**.
-- V2 migration `20261009000000_rc15_operational_files.sql` exists in the branch, **not applied**.
+- V2 migration `20261011092051_rc15_operational_files.sql` was applied on Supabase Production on 2026-10-11; **no physical provider UAT or Production app deployment has occurred**.
 - The `/storage` workspace is visible only for Leader/Admin and can also be opened in the context of a specific shift from the report editor.
 - Use one consolidated evidence log per artifact type/brand/platform/provider during UAT, rather than many ad hoc tests and early PASS declarations.
