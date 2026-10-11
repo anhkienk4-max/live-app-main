@@ -62,3 +62,39 @@ test('team overview requires Leader/Admin; a member cannot enumerate colleagues'
   const response=await handler.GET(get('https://example.test/api/workforce/overview?month=2026-09&role=host'))
   assert.equal(response.status,403)
 })
+
+
+test('Actual Staffing cannot record a future/scheduled shift as confirmed attendance', async () => {
+  const url='https://example.test/api/workforce/actual'
+  let insertCount=0
+  const fakeClient=()=>({
+    from(name:string) {
+      const q={
+        select(_columns:string){return q},
+        eq(_key:string,_val:unknown){return q},
+        is(_key:string,_val:unknown){return q},
+        async maybeSingle(){
+          if(name==='shifts')return {data:{id:'shift-upcoming',status:'scheduled',deleted_at:null},error:null}
+          if(name==='business_users')return {data:{id:'staff-1',status:'active',deleted_at:null},error:null}
+          return {data:null,error:null}
+        },
+        insert(_data:unknown){insertCount++;throw Error('UNEXPECTED_INSERT')},
+      }
+      return q
+    },
+  })
+  const handler=createWorkforceActualHandler({
+    client:fakeClient as never,
+    resolveUser:async()=>({id:'auth-admin',businessUserId:'admin-1',systemPermission:'admin'}),
+  })
+  const response=await handler.POST(post(url,{
+    action:'record',shift_id:'shift-upcoming',staff_id:'staff-1',
+    operational_role:'host',event_kind:'worked',coverage_kind:'planned',
+    actual_start_at:'2026-11-20T09:00:00+07:00',
+    actual_end_at:'2026-11-20T11:00:00+07:00',
+    evidence_note:'Evidence cannot exist before shift completion',
+  }))
+  assert.equal(response.status,409)
+  assert.equal((await response.json()).error.code,'WORKFORCE_SHIFT_NOT_COMPLETED')
+  assert.equal(insertCount,0)
+})
