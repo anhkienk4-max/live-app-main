@@ -10,18 +10,12 @@ const legacyProfiles = new Set([
   'LEGACY_SUBBRAND_CATEGORY_PERIOD',
 ])
 
-function safeScopePart(value: string | null): string {
-  if (!value || !/^[A-Za-z0-9_-]{1,120}$/u.test(value)) {
-    throw new OperationalStoragePlacementError('STORAGE_ROUTE_CONFIG_INVALID')
-  }
-  return value
-}
-
 /**
- * V2 on legacy routes must NEVER append categories inside a legacy data-source
- * tree. Those trees can use shared base folders or different category/month order.
- * Instead create a distinct, ID-partitioned namespace beneath the verified Drive
- * root, while legacy Dashboard/Visibility/DATA placement remains unchanged.
+ * Legacy Dashboard/Visibility/DATA paths continue to resolve using their exact
+ * existing provider route. However, V2 categories must not create an unapproved
+ * ADA_STORAGE_V2 namespace in LIVESTREAM REPORT (which is already the ADA root),
+ * or write across a shared legacy brand folder. The operator must first approve
+ * an explicit, compatible V2 route. Fail closed until that mapping exists.
  */
 export function resolveOperationalFilePlacement(
   base: OperationalStoragePlacement,
@@ -29,23 +23,7 @@ export function resolveOperationalFilePlacement(
   context?: Pick<OperationalStoragePlacementInput, 'brandId' | 'platformId' | 'executionSource'>,
 ): OperationalStoragePlacement {
   if (legacyProfiles.has(base.storageProfile)) {
-    if (!context || !base.rootFolderId || !base.periodLabel) {
-      throw new OperationalStoragePlacementError('STORAGE_CATEGORY_NOT_CONFIGURED')
-    }
-    const segments = [
-      'ADA_STORAGE_V2', safeScopePart(context.brandId),
-      safeScopePart(context.platformId), context.executionSource.toUpperCase(),
-      base.periodLabel, ...operationalFileSegments(category),
-    ]
-    if (!['INTERNAL', 'AGENCY'].includes(segments[3])) {
-      throw new OperationalStoragePlacementError('STORAGE_ROUTE_CONFIG_INVALID')
-    }
-    return {
-      ...base,
-      baseFolderId: base.rootFolderId,
-      folderSegments: segments,
-      folderPath: segments.join('/'),
-    }
+    throw new OperationalStoragePlacementError('STORAGE_CATEGORY_NOT_CONFIGURED')
   }
 
   if (base.storageProfile !== 'CANONICAL_V1'
