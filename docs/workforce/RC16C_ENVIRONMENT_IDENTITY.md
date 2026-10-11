@@ -115,6 +115,12 @@ container LOCAL `--network none`, không published ports. SDK query dùng fake
 fetch; không network vào Supabase. CI final SHA được xác minh sau push trong
 handoff; local PASS không thay thế CI hoặc cloud verification.
 
+CI đầu tiên tại SHA `e239577` ([38149799624](https://github.com/anhkienk4-max/live-app-main/actions/runs/38149799624))
+đã PASS PG16/typecheck/78 RC16 tests, nhưng FAIL5/16 auth tests do Node22 loader
+trả named export NextRequest không phải constructor. Harness dùng ESM bridge
+đến **class Next thật**, không mock cookie/session semantics, không bỏ assertions
+và không thay runtime ứng dụng. CI được kiểm tra lại trên SHA sau sửa harness.
+
 **Preview metadata mới:** CLI scoped `livestream2/livestream-ops-demo` list READY
 trả20 records và còn pagination; có hai RC16 backend candidates. Candidate ở
 starting SHA là `dpl_GRbiDr4mxwDeDB8Affrh1VRz2nwC`,

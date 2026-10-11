@@ -19,6 +19,9 @@ Starting SHA: `267604b3d659c4b4e935323c8cbb63785619541b`; branch
 - No cloud credential retrieval, env/config update, data write, deployment or merge.
 - Git configuration disables auto-deployment only for this backend branch; all
   other branches retain defaults. GitHub CI remains enabled for the authorized push.
+- Initial CI run38149799624 failed5 auth tests on Node22's hooked CommonJS named
+  exports; PG16/typecheck/78 RC16 tests passed. Test loader now uses an explicit
+  ESM bridge to real Next classes, preserving all authentication assertions.
 
 Final SHA/CI result is checked after push and reported in the delivery handoff.
 Code/CI verification does not advance physical UAT, Production UAT or go-live gates.
