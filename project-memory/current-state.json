@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/rc16-payroll-workforce-backend",
-    "head": "b3449ad645cb27d0f621961987935502e9aadbfd",
+    "head": "bf76a7175d2d75f42a1375b7812b76fdb56342f7",
     "origin_main": "31efea2d1a60583975e96773f68106d46ab7d8d9",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-payroll"
   },
@@ -83,9 +83,9 @@
         "lib": 181,
         "scripts": 15,
         "supabase": 74,
-        "tests": 157
+        "tests": 158
       },
-      "total": 570
+      "total": 571
     },
     "tests": {
       "files": [
@@ -312,5 +312,5 @@
     "lint": "FAIL_BASELINE",
     "build": "PASS"
   },
-  "synced_at": "2026-10-11T22:04:12+07:00"
+  "synced_at": "2026-10-11T22:10:29+07:00"
 }
