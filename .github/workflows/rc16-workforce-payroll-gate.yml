@@ -7,6 +7,8 @@ on:
       - main
     paths:
       - 'lib/workforce/**'
+      - 'lib/server/workforce*.ts'
+      - 'app/api/workforce/**'
       - 'tests/rc16-*.test.ts'
       - 'supabase/migrations/20261012000000_rc16_workforce_payroll_foundation.sql'
       - '.github/workflows/rc16-workforce-payroll-gate.yml'
@@ -125,13 +127,18 @@ jobs:
             exception when sqlstate 'P0001' then
               if sqlerrm <> 'WORKFORCE_PAYROLL_GROSS_MISMATCH' then raise; end if;
             end;
-            update public.workforce_payroll_periods set status='reviewed',
-              reviewed_by='admin-1' where id=v_period;
-            update public.workforce_payroll_periods set status='confirmed',
-              confirmed_by='finance-1' where id=v_period;
-            update public.workforce_payroll_periods set status='payroll_ready' where id=v_period;
-            update public.workforce_payroll_periods set status='locked',
-              locked_by='finance-1',locked_at=now() where id=v_period;
+            perform public.workforce_rc16_transition_payroll(
+              v_period,'draft','reviewed','finance-1','Verified attendance review');
+            perform public.workforce_rc16_transition_payroll(
+              v_period,'reviewed','confirmed','admin-1','Approved payable minutes');
+            perform public.workforce_rc16_transition_payroll(
+              v_period,'confirmed','payroll_ready','finance-1','Reconciled payroll period');
+            perform public.workforce_rc16_transition_payroll(
+              v_period,'payroll_ready','locked','admin-1','Final finance approval');
+            if (select count(*) from public.workforce_payroll_audit
+                where period_id=v_period) <> 4 then
+              raise exception 'RC16 audited transitions missing';
+            end if;
             begin
               update public.workforce_payroll_periods set status='draft' where id=v_period;
               raise exception 'locked period was reopened';
@@ -152,6 +159,6 @@ jobs:
       - name: TypeScript type check
         run: pnpm exec tsc --noEmit --incremental false
       - name: RC16 synthetic workforce & payroll contract tests
-        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc16-workforce-payroll.test.ts
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc16-*.test.ts
       - name: Git diff check
         run: git -c core.whitespace=cr-at-eol diff --check HEAD~1 HEAD
