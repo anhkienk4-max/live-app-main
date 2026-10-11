@@ -150,6 +150,10 @@ begin
     raise exception 'WORKFORCE_CONFIRM_ACTORS_REQUIRED';
   end if;
   if new.status is distinct from old.status
+    and coalesce(current_setting('workforce.rc16_transition_call',true),'') <> '1' then
+    raise exception 'WORKFORCE_PERIOD_TRANSITION_REQUIRES_AUDITED_RPC';
+  end if;
+  if new.status is distinct from old.status
     and not (
       (old.status='draft' and new.status='reviewed')
       or (old.status='reviewed' and new.status='confirmed')
@@ -229,6 +233,13 @@ create trigger workforce_line_guard before insert or update on public.workforce_
 create or replace function public.workforce_rc16_immutable_approved_segment()
 returns trigger language plpgsql set search_path='' as $$
 begin
+  if tg_op='INSERT' then
+    if new.review_status <> 'draft' or new.reviewed_by is not null
+      or new.reviewed_at is not null or new.review_note is not null then
+      raise exception 'WORKFORCE_SEGMENT_MUST_START_DRAFT';
+    end if;
+    return new;
+  end if;
   if tg_op='DELETE' and old.review_status='approved' then
     raise exception 'WORKFORCE_APPROVED_SEGMENT_IMMUTABLE';
   end if;
@@ -262,7 +273,7 @@ begin
   return case when tg_op='DELETE' then old else new end;
 end $$;
 drop trigger if exists workforce_actual_guard on public.workforce_actual_segments;
-create trigger workforce_actual_guard before update or delete on public.workforce_actual_segments
+create trigger workforce_actual_guard before insert or update or delete on public.workforce_actual_segments
   for each row execute function public.workforce_rc16_immutable_approved_segment();
 
 create or replace function public.workforce_rc16_immutable_payroll_audit()
@@ -340,6 +351,7 @@ begin
     end if;
     v_action := 'lock';
   end if;
+  perform set_config('workforce.rc16_transition_call','1',true);
   update public.workforce_payroll_periods
     set status=p_target_status,
       reviewed_by=case when p_target_status='reviewed' then p_actor_id else reviewed_by end,
@@ -365,6 +377,9 @@ returns trigger language plpgsql set search_path='' as $$
 begin
   if tg_op in ('UPDATE','DELETE') then
     raise exception 'WORKFORCE_APPROVED_RATE_IMMUTABLE';
+  end if;
+  if new.staff_id is not null and new.staff_id=new.approved_by then
+    raise exception 'WORKFORCE_RATE_SELF_APPROVAL_BLOCKED';
   end if;
   perform pg_advisory_xact_lock(hashtextextended(
     coalesce(new.staff_id,'__ROLE_DEFAULT__')||':'||new.operational_role,0));
