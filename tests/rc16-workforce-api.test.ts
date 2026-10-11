@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { createWorkforceActualHandler } from '@/lib/server/workforceActualHandler'
 import { createWorkforcePayrollHandler } from '@/lib/server/workforcePayrollHandler'
 import { createWorkforcePerformanceHandler } from '@/lib/server/workforcePerformanceHandler'
+import { createWorkforceOverviewHandler } from '@/lib/server/workforceOverviewHandler'
 
 const get=(url:string)=>new Request(url)
 const post=(url:string,body:object)=>new Request(url,{
@@ -52,4 +53,12 @@ test('Workforce Performance has no unapproved default lateness/grace period',asy
   assert.equal(result.status,409)
   assert.equal((await result.json() as {error:{code:string}}).error.code,
     'WORKFORCE_GRACE_POLICY_NOT_CONFIGURED')
+})
+
+test('team overview requires Leader/Admin; a member cannot enumerate colleagues',async()=>{
+  const handler=createWorkforceOverviewHandler({
+    createClient:mustNotUseDb,resolveUser:member,grace:()=>5,
+  })
+  const response=await handler.GET(get('https://example.test/api/workforce/overview?month=2026-09&role=host'))
+  assert.equal(response.status,403)
 })
