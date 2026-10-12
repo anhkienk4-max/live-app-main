@@ -9,10 +9,10 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "feat/frontend-14wave-production",
-    "head": "305ecf08cbfbcabecfa1a154689a9108d8687c3d",
-    "origin_main": "1933532b749a52cdbc659686a14bd37e457c3ff1",
-    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-14wave"
+    "branch": "integration/rc14-rc15-rc16-prod",
+    "head": "7dddb168e82dbd49cf3b91d7cfc3ac451ed25478",
+    "origin_main": "31efea2d1a60583975e96773f68106d46ab7d8d9",
+    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-prod-integration"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -39,6 +39,7 @@
       "app/(dashboard)/live/page.tsx",
       "app/(dashboard)/notifications/page.tsx",
       "app/(dashboard)/page.tsx",
+      "app/(dashboard)/payroll/page.tsx",
       "app/(dashboard)/platforms/page.tsx",
       "app/(dashboard)/profile/page.tsx",
       "app/(dashboard)/registration/page.tsx",
@@ -47,7 +48,13 @@
       "app/(dashboard)/shifts/page.tsx",
       "app/(dashboard)/staff/page.tsx",
       "app/(dashboard)/staffing/page.tsx",
+      "app/(dashboard)/storage/page.tsx",
+      "app/(dashboard)/storage/setup/page.tsx",
       "app/(dashboard)/swaps/page.tsx",
+      "app/(dashboard)/workforce/page.tsx",
+      "app/(public-info)/about/page.tsx",
+      "app/(public-info)/privacy/page.tsx",
+      "app/(public-info)/terms/page.tsx",
       "app/api/account-requests/[id]/approve/route.ts",
       "app/api/account-requests/[id]/provision/route.ts",
       "app/api/account-requests/[id]/reject/route.ts",
@@ -55,9 +62,19 @@
       "app/api/ai/chat/route.ts",
       "app/api/auth/callback/route.ts",
       "app/api/file-sources/ingest/route.ts",
+      "app/api/internal/file-provider-diagnostics/route.ts",
       "app/api/ocr/route.ts",
       "app/api/ocr/vision/route.ts",
+      "app/api/operational-files/route.ts",
+      "app/api/operational-storage-setup/route.ts",
+      "app/api/report-artifacts/route.ts",
+      "app/api/report-images/route.ts",
       "app/api/staff/invite/route.ts",
+      "app/api/workforce/actual/route.ts",
+      "app/api/workforce/capabilities/route.ts",
+      "app/api/workforce/overview/route.ts",
+      "app/api/workforce/payroll/route.ts",
+      "app/api/workforce/performance/route.ts",
       "app/auth/auth-code-error/page.tsx",
       "app/auth/confirm/route.ts",
       "app/forgot-password/page.tsx",
@@ -68,14 +85,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 38,
-        "components": 138,
-        "lib": 158,
-        "scripts": 14,
-        "supabase": 62,
-        "tests": 126
+        "app": 56,
+        "components": 150,
+        "lib": 191,
+        "scripts": 18,
+        "supabase": 85,
+        "tests": 184
       },
-      "total": 536
+      "total": 684
     },
     "tests": {
       "files": [
@@ -106,8 +123,10 @@
         "tests/core-data-integrity-p1b.test.ts",
         "tests/core-v1-3role-matrix.test.ts",
         "tests/core-v1-permission-rls-final.test.ts",
+        "tests/dashboard-aggregate.test.ts",
         "tests/dashboard-fixtures.test.ts",
         "tests/dashboard-region-detection.test.ts",
+        "tests/dual-file-provider.test.ts",
         "tests/e1-role-ux.test.ts",
         "tests/e3-dashboard-domain.test.ts",
         "tests/e4-action-priority.test.ts",
@@ -130,6 +149,11 @@
         "tests/gl19d-bulk-shift-behavior.test.ts",
         "tests/gl19d-bulk-shift-version.test.ts",
         "tests/google-drive-file-provider.test.ts",
+        "tests/h4-storage-route-security.test.ts",
+        "tests/h51-provider-metadata-constraint.test.ts",
+        "tests/h51-rbac-negative-security.test.ts",
+        "tests/h52-db-auth-integration.test.ts",
+        "tests/leaked-password-protection.test.ts",
         "tests/lifecycle-action-dialog.test.ts",
         "tests/live-dashboard-persistence.test.ts",
         "tests/live-report-images.test.tsx",
@@ -147,6 +171,7 @@
         "tests/one-drive-file-provider.test.ts",
         "tests/openai-vision-ocr-provider.test.ts",
         "tests/operational-role-authority.test.ts",
+        "tests/operational-storage-placement.test.ts",
         "tests/p1c-import-idempotency.test.ts",
         "tests/p3-uat-export-collapse.test.tsx",
         "tests/perf-p0-scoped-refresh.test.ts",
@@ -154,11 +179,39 @@
         "tests/persistent-audit.test.ts",
         "tests/platform-metric-dom-binding.test.tsx",
         "tests/preview-loading-performance.test.tsx",
+        "tests/production-shell-convergence.test.ts",
         "tests/profile-avatar-storage.test.ts",
+        "tests/rc12-provider-runtime-diagnostics.test.ts",
+        "tests/rc12-report-file-provider.test.ts",
+        "tests/rc13a-execution-source-routes.test.ts",
+        "tests/rc13b2b-report-storage-cutover.test.ts",
+        "tests/rc13c-compat-routing.test.ts",
+        "tests/rc14-all-brand-storage.test.ts",
+        "tests/rc14-data-report-export-fidelity.test.ts",
+        "tests/rc14-live-image-migration.test.ts",
+        "tests/rc14-report-artifact-storage.test.ts",
+        "tests/rc15-operational-file-storage.test.ts",
+        "tests/rc15-schedule-import-archive.test.ts",
+        "tests/rc15-storage-setup.test.ts",
+        "tests/rc15-system-export.test.ts",
+        "tests/rc16-environment-security.test.ts",
+        "tests/rc16-payroll-discovery.test.ts",
+        "tests/rc16-production-readiness.test.ts",
+        "tests/rc16-reconciliation.test.ts",
+        "tests/rc16-rehearsal-safety.test.ts",
+        "tests/rc16-ui-navigation-rbac.test.ts",
+        "tests/rc16-ui-session-contract.test.tsx",
+        "tests/rc16-workforce-api.test.ts",
+        "tests/rc16-workforce-payroll.test.ts",
+        "tests/rc16-workforce-ui-client.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
         "tests/registration-board-performance.test.ts",
+        "tests/report-history-access.test.ts",
         "tests/report-null-semantics-consumers.test.ts",
         "tests/report-required-metrics.test.ts",
+        "tests/report-save-draft-cas.test.ts",
+        "tests/report-storage-security.test.ts",
+        "tests/report-work-queue.test.ts",
         "tests/role-lens.test.ts",
         "tests/rw003-staffing-resolver.test.ts",
         "tests/rw004-admin-self-update.test.ts",
@@ -175,6 +228,7 @@
         "tests/schedule-import-mapping.test.ts",
         "tests/schedule-import-readiness.test.ts",
         "tests/schedule-import-recovery.test.ts",
+        "tests/security-qa-header-trust.test.ts",
         "tests/shift-detail-foundation.test.tsx",
         "tests/shift-lifecycle.test.ts",
         "tests/shift-registration-eligibility.test.ts",
@@ -183,6 +237,8 @@
         "tests/shopee-ocr-and-staffing.test.ts",
         "tests/shopee-sequential-ocr.test.ts",
         "tests/spatial-ocr-geometry.test.ts",
+        "tests/staffing-safe-projection.test.ts",
+        "tests/staging-release-blockers.integration.test.ts",
         "tests/supabase-master-data-runtime.test.ts",
         "tests/supabase-p1b-migration-contract.test.ts",
         "tests/supabase-p1c-shift-lifecycle-contract.test.ts",
@@ -201,7 +257,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 121
+      "count": 160
     },
     "migrations": {
       "files": [
@@ -255,10 +311,25 @@
         "supabase/migrations/20260906141234_rw004_admin_self_operational_roles.sql",
         "supabase/migrations/20260912083056_report_draft_nullable_metrics.sql",
         "supabase/migrations/20260913120000_shift_status_mode_and_auto_completion.sql",
-        "supabase/migrations/20260913125000_account_request_provisioning_boundary_hardening.sql",
-        "supabase/migrations/20260913130000_account_request_active_lifecycle.sql"
+        "supabase/migrations/20260913122832_20260913125000_account_request_provisioning_boundary_hardening.sql",
+        "supabase/migrations/20260913130000_account_request_active_lifecycle.sql",
+        "supabase/migrations/20260913200045_restore_import_create_shift_staffing_contract.sql",
+        "supabase/migrations/20260913233111_report_storage_security.sql",
+        "supabase/migrations/20260916090000_report_expected_version_cas.sql",
+        "supabase/migrations/20260919074349_rc12_report_file_provider.sql",
+        "supabase/migrations/20260924000000_rc13a_execution_source_storage_routes.sql",
+        "supabase/migrations/20261006160000_rc14_live_image_storage_contract.sql",
+        "supabase/migrations/20261007183831_rc14_report_data_artifacts.sql",
+        "supabase/migrations/20261008160638_member_registration_directory_privacy.sql",
+        "supabase/migrations/20261008160645_repair_report_revision_history_rpc.sql",
+        "supabase/migrations/20261011091925_rc15_storage_route_prerequisites.sql",
+        "supabase/migrations/20261011092015_rc15_shift_rpc_compatibility.sql",
+        "supabase/migrations/20261011092051_rc15_operational_files.sql",
+        "supabase/migrations/20261011221500_rc15_provider_metadata_forward_compat.sql",
+        "supabase/migrations/20261012000000_rc16_workforce_payroll_foundation.sql",
+        "supabase/migrations/20261012000001_rc16b_draft_payroll_correction.sql"
       ],
-      "count": 52
+      "count": 67
     }
   },
   "verification": {
@@ -272,5 +343,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-06T22:10:31+07:00"
+  "synced_at": "2026-10-12T00:54:20+07:00"
 }

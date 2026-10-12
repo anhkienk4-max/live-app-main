@@ -37,7 +37,7 @@ test('E1: Leader Navigation includes all requested routes', () => {
   assert.ok(paths.includes('/notifications'))
 })
 
-test('E1: Member Navigation exactly matches G03 visual reference', () => {
+test('E1: Member Navigation preserves G03 routes and includes RC16 personal workforce', () => {
   const memberNav = getNavigationForRole('member')
   const paths = memberNav.map(n => n.href)
   
@@ -48,6 +48,7 @@ test('E1: Member Navigation exactly matches G03 visual reference', () => {
     '/swaps',
     '/live',
     '/reports',
+    '/workforce',
     '/notifications'
   ])
   

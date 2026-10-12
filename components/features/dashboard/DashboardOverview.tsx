@@ -45,19 +45,21 @@ export function calculateAggregate(reports: Array<Record<string, unknown>>, key:
 export function DashboardOverview() {
   const {currentUser} = useCurrentUser()
   const [data,setData] = React.useState<DashboardDataset | null>(null)
+  const [loading,setLoading] = React.useState(true)
   const [loadError,setLoadError] = React.useState<unknown>(null)
   const loadData = React.useCallback(async () => {
+    setLoading(true)
     setLoadError(null)
     try {
       const [shifts,reports,brands,platforms,campaigns,users,registrations,swapRequests] = await Promise.all([
         shiftService.getAll(),reportService.getAll(),brandService.getAll(),platformService.getAll(),campaignService.getAll(),userService.getAll(),shiftRegistrationService.getAll(),swapRequestService.getAll(),
       ])
       setData({shifts,reports,brands,platforms,campaigns,users,registrations,swapRequests})
-    } catch(error) {setLoadError(error)}
+    } catch(error) {setLoadError(error)} finally {setLoading(false)}
   },[])
   React.useEffect(()=>{const frame=requestAnimationFrame(()=>{if(currentUser) void loadData()});return ()=>cancelAnimationFrame(frame)},[currentUser,loadData])
   if (loadError) return <PageLoadError error={loadError} onRetry={()=>void loadData()} />
-  if (!data || !currentUser) return <ContentSkeleton />
+  if (loading || !data || !currentUser) return <ContentSkeleton />
   return <DashboardWorkspace data={data} currentUser={currentUser} onUpdate={loadData} />
 }
 

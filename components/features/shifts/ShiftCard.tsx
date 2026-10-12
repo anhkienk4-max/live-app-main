@@ -1,7 +1,8 @@
 'use client'
 
 import * as React from 'react'
-import { Shift } from '@/lib/types/database.types'
+import { Shift, User, OperationalRole } from '@/lib/types/database.types'
+import { resolveStaffingLabelsForRole } from '@/lib/utils/staffingResolver'
 import { getShiftRoleCapacities } from '@/lib/services/dataService'
 import { formatShiftTimeRange, getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
 import { ShiftStatusBadge } from '@/components/domain/ShiftStatusBadge'
@@ -13,6 +14,7 @@ import { CalendarFilterContext } from '@/lib/utils/calendarFilters'
 
 export interface ShiftCardProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   shift: Shift
+  users?: User[]
   variant?: 'compact' | 'standard' | 'expanded' | 'embedded'
   context?: CalendarFilterContext
   isToday?: boolean
@@ -21,7 +23,7 @@ export interface ShiftCardProps extends React.ButtonHTMLAttributes<HTMLButtonEle
 }
 
 export const ShiftCard = React.forwardRef<HTMLButtonElement, ShiftCardProps>(
-  ({ shift, variant = 'standard', context, showDate, selected, className, ...props }, ref) => {
+  ({ shift, users = [], variant = 'standard', context, showDate, selected, className, ...props }, ref) => {
     const { t } = useTranslation()
     
     const crossesMidnight = shift.crosses_midnight
@@ -34,13 +36,15 @@ export const ShiftCard = React.forwardRef<HTMLButtonElement, ShiftCardProps>(
     const platformName = platforms.find(p => p.id === shift.platform_id)?.name ?? ''
     const displayTitle = shift.title || (brandName + ' · ' + platformName)
 
-    // Extract staffing names
-    const hostName = shift.host_names?.[0] || t('notAssigned')
-    const supportName = shift.support_id ? t('staffMatchAssigned') : t('notAssigned')
-    const techName = shift.technical_id ? t('staffMatchAssigned') : t('notAssigned')
+    const shiftRegistrations = registrations.filter(row => row.shift_id === shift.id)
+    const roleName = (role: OperationalRole) => resolveStaffingLabelsForRole(
+      shift, shiftRegistrations, users, role, t,
+    ).filter(label => !label.isUnassigned).map(label => label.name).join(', ') || t('notAssigned')
+    const hostName = roleName('host')
+    const supportName = roleName('support')
+    const techName = roleName('technical')
 
         // Determine operational attention
-    const shiftRegistrations = registrations.filter(r => r.shift_id === shift.id)
     const capacities = getShiftRoleCapacities(shift, shiftRegistrations)
     let pendingCount = 0
     const staffed = { host: 0, support: 0, technical: 0 }

@@ -91,8 +91,8 @@ test('exact platform and subbrand specificity beat broader candidates', () => {
 })
 
 test('same highest specificity tie fails closed', () => {
-  const platform = route({ id: 'platform', platform_id: 'platform-1' })
-  const subbrand = route({ id: 'subbrand', subbrand_key: 'xmen' })
+  const platform = route({ id: 'platform', platform_id: 'platform-1', subbrand_key: 'xmen' })
+  const subbrand = route({ id: 'subbrand', platform_id: 'platform-1', subbrand_key: 'xmen' })
   assertCode('STORAGE_ROUTE_AMBIGUOUS', () => selectOperationalStorageRoute([platform, subbrand], {
     provider: input.provider, executionSource: input.executionSource, brandId: input.brandId,
     platformId: 'platform-1', subbrandKey: 'xmen',

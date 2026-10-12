@@ -1,0 +1,10 @@
+- [x] Resolve eight existing merge conflicts and preserve local integration changes.
+- [x] Recover pinned Gemini UI and shared-file additions.
+- [x] Preserve newer backend capabilities and server flags.
+- [x] Gate API reads by identity/capability and retain status-specific errors.
+- [x] Remove fabricated rate defaults, preserve stable retry UUIDs and independent review.
+- [x] Render fourth Actual Staffing tab; verify no-show and review conflict interactions.
+- [x] Verify 390px/desktop workflow and PostgreSQL 17 isolated contracts.
+- [x] Full local regression, lint, typecheck and default Production build.
+- [ ] Commit/push exact integration source and verify CI.
+- [ ] Verify full Production baseline and backup/restore before any Production release.

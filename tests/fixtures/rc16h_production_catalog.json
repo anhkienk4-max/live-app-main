@@ -1,0 +1,3979 @@
+{
+  "schema_version": 1,
+  "project_ref": "egdjnpmoasarrttvhgds",
+  "captured_at": "2026-10-12",
+  "source_sha": "7d65097c255ae7ce2973eed78f9f58d10d562c2d",
+  "server_version": "17.6",
+  "active_admin_count": 1,
+  "tables": [
+    {
+      "name": "audit_logs",
+      "rls": true,
+      "force_rls": false,
+      "owner": "postgres",
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "default": "(gen_random_uuid())::text",
+          "not_null": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "actor_auth_user_id",
+          "type": "uuid",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "actor_business_user_id",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "actor_name",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "actor_role",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "module",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "action",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "entity_type",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "entity_id",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "entity_name",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "before_data",
+          "type": "jsonb",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "after_data",
+          "type": "jsonb",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "changed_fields",
+          "type": "text[]",
+          "default": "'{}'::text[]",
+          "not_null": true
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "default": "'manual'::text",
+          "not_null": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "default": "'success'::text",
+          "not_null": true
+        },
+        {
+          "name": "error_code",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "correlation_id",
+          "type": "text",
+          "default": "(gen_random_uuid())::text",
+          "not_null": true
+        },
+        {
+          "name": "related_records",
+          "type": "jsonb",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "metadata",
+          "type": "jsonb",
+          "default": "'{}'::jsonb",
+          "not_null": true
+        },
+        {
+          "name": "entity_exists",
+          "type": "boolean",
+          "default": "true",
+          "not_null": true
+        }
+      ],
+      "constraints": [
+        {
+          "name": "audit_logs_actor_business_user_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (actor_business_user_id) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "audit_logs_entity_id_not_blank",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(entity_id) <> ''::text))"
+        },
+        {
+          "name": "audit_logs_entity_type_not_blank",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(entity_type) <> ''::text))"
+        },
+        {
+          "name": "audit_logs_id_not_blank",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(id) <> ''::text))"
+        },
+        {
+          "name": "audit_logs_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "audit_logs_source_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((source = ANY (ARRAY['manual'::text, 'excel_import'::text, 'google_sheets'::text, 'system'::text, 'ocr'::text, 'upload'::text])))"
+        },
+        {
+          "name": "audit_logs_status_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((status = ANY (ARRAY['success'::text, 'failed'::text])))"
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX audit_logs_pkey ON public.audit_logs USING btree (id)",
+        "CREATE INDEX audit_logs_created_at_idx ON public.audit_logs USING btree (created_at DESC)",
+        "CREATE INDEX audit_logs_entity_idx ON public.audit_logs USING btree (entity_type, entity_id, created_at DESC)",
+        "CREATE INDEX audit_logs_actor_idx ON public.audit_logs USING btree (actor_business_user_id, created_at DESC)",
+        "CREATE INDEX audit_logs_module_action_idx ON public.audit_logs USING btree (module, action, created_at DESC)",
+        "CREATE INDEX audit_logs_correlation_idx ON public.audit_logs USING btree (correlation_id)"
+      ],
+      "triggers": null,
+      "policies": [
+        {
+          "name": "audit_logs_read",
+          "check": null,
+          "roles": [
+            "authenticated"
+          ],
+          "using": "((( SELECT private.current_system_permission() AS current_system_permission) = 'admin'::text) OR ((( SELECT private.current_system_permission() AS current_system_permission) = 'leader'::text) AND (module = ANY (ARRAY['calendar'::text, 'live'::text, 'reports'::text, 'campaigns'::text, 'swaps'::text, 'imports'::text]))))",
+          "command": "r"
+        }
+      ]
+    },
+    {
+      "name": "brands",
+      "rls": true,
+      "force_rls": false,
+      "owner": "postgres",
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=arw/postgres}",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "logo_url",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "color",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "default": "'active'::text",
+          "not_null": true
+        },
+        {
+          "name": "contact_person",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "contact_email",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "contact_phone",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "brand_guideline",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "tone_of_voice",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "key_products",
+          "type": "text[]",
+          "default": "'{}'::text[]",
+          "not_null": true
+        },
+        {
+          "name": "mandatory_claims",
+          "type": "text[]",
+          "default": "'{}'::text[]",
+          "not_null": true
+        },
+        {
+          "name": "restricted_claims",
+          "type": "text[]",
+          "default": "'{}'::text[]",
+          "not_null": true
+        },
+        {
+          "name": "dos",
+          "type": "text[]",
+          "default": "'{}'::text[]",
+          "not_null": true
+        },
+        {
+          "name": "donts",
+          "type": "text[]",
+          "default": "'{}'::text[]",
+          "not_null": true
+        },
+        {
+          "name": "asset_links",
+          "type": "text[]",
+          "default": "'{}'::text[]",
+          "not_null": true
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "updated_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "deleted_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "archived_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "deletion_reason",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "storage_profile",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "storage_profile_reviewed_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "storage_profile_reviewed_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        }
+      ],
+      "constraints": [
+        {
+          "name": "brands_archived_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (archived_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "brands_deleted_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (deleted_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "brands_id_not_blank",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(id) <> ''::text))"
+        },
+        {
+          "name": "brands_name_not_blank",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(name) <> ''::text))"
+        },
+        {
+          "name": "brands_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "brands_status_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'inactive'::text, 'draft'::text])))"
+        },
+        {
+          "name": "brands_storage_profile_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((storage_profile = ANY (ARRAY['LEGACY_CATEGORY_PERIOD'::text, 'LEGACY_PLATFORM_CATEGORY_PERIOD'::text, 'LEGACY_PERIOD_CATEGORY'::text, 'LEGACY_SUBBRAND_PERIOD_CATEGORY'::text, 'LEGACY_SUBBRAND_CATEGORY_PERIOD'::text, 'CANONICAL_V1'::text, 'EXISTING_BRAND_YEAR_PERIOD_PLATFORM'::text])))"
+        },
+        {
+          "name": "brands_storage_profile_reviewed_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (storage_profile_reviewed_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "brands_updated_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (updated_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX brands_pkey ON public.brands USING btree (id)",
+        "CREATE INDEX brands_updated_by_idx ON public.brands USING btree (updated_by)",
+        "CREATE INDEX brands_deleted_by_idx ON public.brands USING btree (deleted_by)",
+        "CREATE INDEX brands_archived_by_idx ON public.brands USING btree (archived_by)",
+        "CREATE INDEX brands_active_name_idx ON public.brands USING btree (name) WHERE ((archived_at IS NULL) AND (deleted_at IS NULL))"
+      ],
+      "triggers": [
+        {
+          "name": "audit_brands_change",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER audit_brands_change AFTER INSERT OR DELETE OR UPDATE ON public.brands FOR EACH ROW EXECUTE FUNCTION private.capture_audit_row_change()"
+        },
+        {
+          "name": "brands_set_updated_at",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER brands_set_updated_at BEFORE UPDATE ON public.brands FOR EACH ROW EXECUTE FUNCTION private.set_updated_at()"
+        }
+      ],
+      "policies": [
+        {
+          "name": "brands_admin_insert",
+          "check": "( SELECT private.is_admin() AS is_admin)",
+          "roles": [
+            "authenticated"
+          ],
+          "using": null,
+          "command": "a"
+        },
+        {
+          "name": "brands_admin_select",
+          "check": null,
+          "roles": [
+            "authenticated"
+          ],
+          "using": "( SELECT private.is_admin() AS is_admin)",
+          "command": "r"
+        },
+        {
+          "name": "brands_admin_update",
+          "check": "( SELECT private.is_admin() AS is_admin)",
+          "roles": [
+            "authenticated"
+          ],
+          "using": "( SELECT private.is_admin() AS is_admin)",
+          "command": "w"
+        },
+        {
+          "name": "brands_shared_select",
+          "check": null,
+          "roles": [
+            "authenticated"
+          ],
+          "using": "(( SELECT private.current_business_user_is_active() AS current_business_user_is_active) AND (archived_at IS NULL) AND (deleted_at IS NULL))",
+          "command": "r"
+        }
+      ]
+    },
+    {
+      "name": "business_users",
+      "rls": true,
+      "force_rls": false,
+      "owner": "postgres",
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "auth_user_id",
+          "type": "uuid",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "full_name",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "avatar_url",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "avatar_storage_path",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "phone",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "role",
+          "type": "text",
+          "default": "'staff'::text",
+          "not_null": true
+        },
+        {
+          "name": "system_permission",
+          "type": "text",
+          "default": "'member'::text",
+          "not_null": true
+        },
+        {
+          "name": "operational_roles",
+          "type": "text[]",
+          "default": "'{}'::text[]",
+          "not_null": true
+        },
+        {
+          "name": "department",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "default": "'active'::text",
+          "not_null": true
+        },
+        {
+          "name": "account_status",
+          "type": "text",
+          "default": "'pending_approval'::text",
+          "not_null": true
+        },
+        {
+          "name": "email_verified",
+          "type": "boolean",
+          "default": "false",
+          "not_null": true
+        },
+        {
+          "name": "auth_provider",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "join_date",
+          "type": "date",
+          "default": "CURRENT_DATE",
+          "not_null": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "deleted_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "archived_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "deletion_reason",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        }
+      ],
+      "constraints": [
+        {
+          "name": "business_users_account_status_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((account_status = ANY (ARRAY['pending_email_verification'::text, 'pending_approval'::text, 'rejected'::text, 'active'::text])))"
+        },
+        {
+          "name": "business_users_archived_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (archived_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "business_users_auth_provider_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK (((auth_provider IS NULL) OR (auth_provider = ANY (ARRAY['email'::text, 'google'::text]))))"
+        },
+        {
+          "name": "business_users_auth_user_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (auth_user_id) REFERENCES auth.users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "business_users_deleted_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (deleted_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "business_users_email_not_blank",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(email) <> ''::text))"
+        },
+        {
+          "name": "business_users_full_name_not_blank",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(full_name) <> ''::text))"
+        },
+        {
+          "name": "business_users_id_not_blank",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(id) <> ''::text))"
+        },
+        {
+          "name": "business_users_operational_roles_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((operational_roles <@ ARRAY['host'::text, 'support'::text, 'technical'::text]))"
+        },
+        {
+          "name": "business_users_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "business_users_role_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((role = ANY (ARRAY['admin'::text, 'leader'::text, 'staff'::text])))"
+        },
+        {
+          "name": "business_users_status_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'inactive'::text])))"
+        },
+        {
+          "name": "business_users_system_permission_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((system_permission = ANY (ARRAY['member'::text, 'leader'::text, 'admin'::text])))"
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX business_users_pkey ON public.business_users USING btree (id)",
+        "CREATE UNIQUE INDEX business_users_auth_user_id_uidx ON public.business_users USING btree (auth_user_id) WHERE (auth_user_id IS NOT NULL)",
+        "CREATE UNIQUE INDEX business_users_email_lower_uidx ON public.business_users USING btree (lower(email))",
+        "CREATE INDEX business_users_operational_roles_gin_idx ON public.business_users USING gin (operational_roles)",
+        "CREATE INDEX business_users_deleted_by_idx ON public.business_users USING btree (deleted_by)",
+        "CREATE INDEX business_users_archived_by_idx ON public.business_users USING btree (archived_by)",
+        "CREATE INDEX business_users_active_idx ON public.business_users USING btree (system_permission, full_name) WHERE ((status = 'active'::text) AND (account_status = 'active'::text) AND (archived_at IS NULL) AND (deleted_at IS NULL))"
+      ],
+      "triggers": [
+        {
+          "name": "audit_business_users_change",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER audit_business_users_change AFTER INSERT OR DELETE OR UPDATE ON public.business_users FOR EACH ROW EXECUTE FUNCTION private.capture_audit_row_change()"
+        },
+        {
+          "name": "business_users_set_updated_at",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER business_users_set_updated_at BEFORE UPDATE ON public.business_users FOR EACH ROW EXECUTE FUNCTION private.set_updated_at()"
+        }
+      ],
+      "policies": [
+        {
+          "name": "business_users_active_directory_select",
+          "check": null,
+          "roles": [
+            "authenticated"
+          ],
+          "using": "(( SELECT private.current_business_user_is_active() AS current_business_user_is_active) AND (status = 'active'::text) AND (account_status = 'active'::text) AND (archived_at IS NULL) AND (deleted_at IS NULL))",
+          "command": "r"
+        },
+        {
+          "name": "business_users_admin_all",
+          "check": "( SELECT private.is_admin() AS is_admin)",
+          "roles": [
+            "authenticated"
+          ],
+          "using": "( SELECT private.is_admin() AS is_admin)",
+          "command": "*"
+        }
+      ]
+    },
+    {
+      "name": "campaigns",
+      "rls": true,
+      "force_rls": false,
+      "owner": "postgres",
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=arw/postgres}",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "brand_id",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "start_date",
+          "type": "date",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "end_date",
+          "type": "date",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "type",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "campaign_url",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "website_url",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "website_title",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "website_preview_image",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "website_embed_enabled",
+          "type": "boolean",
+          "default": "false",
+          "not_null": true
+        },
+        {
+          "name": "platform_source",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "platform_ids",
+          "type": "text[]",
+          "default": "'{}'::text[]",
+          "not_null": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "default": "'draft'::text",
+          "not_null": true
+        },
+        {
+          "name": "owner_id",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "deleted_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "archived_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "deletion_reason",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        }
+      ],
+      "constraints": [
+        {
+          "name": "campaigns_archived_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (archived_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "campaigns_brand_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (brand_id) REFERENCES brands(id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "campaigns_date_order_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((end_date >= start_date))"
+        },
+        {
+          "name": "campaigns_deleted_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (deleted_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "campaigns_id_not_blank",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(id) <> ''::text))"
+        },
+        {
+          "name": "campaigns_name_not_blank",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(name) <> ''::text))"
+        },
+        {
+          "name": "campaigns_owner_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (owner_id) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "campaigns_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "campaigns_status_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((status = ANY (ARRAY['draft'::text, 'active'::text, 'completed'::text, 'cancelled'::text])))"
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX campaigns_pkey ON public.campaigns USING btree (id)",
+        "CREATE INDEX campaigns_brand_id_idx ON public.campaigns USING btree (brand_id)",
+        "CREATE INDEX campaigns_owner_id_idx ON public.campaigns USING btree (owner_id)",
+        "CREATE INDEX campaigns_deleted_by_idx ON public.campaigns USING btree (deleted_by)",
+        "CREATE INDEX campaigns_archived_by_idx ON public.campaigns USING btree (archived_by)",
+        "CREATE INDEX campaigns_platform_ids_gin_idx ON public.campaigns USING gin (platform_ids)",
+        "CREATE INDEX campaigns_status_dates_idx ON public.campaigns USING btree (status, start_date, end_date) WHERE ((archived_at IS NULL) AND (deleted_at IS NULL))"
+      ],
+      "triggers": [
+        {
+          "name": "audit_campaigns_change",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER audit_campaigns_change AFTER INSERT OR DELETE OR UPDATE ON public.campaigns FOR EACH ROW EXECUTE FUNCTION private.capture_audit_row_change()"
+        },
+        {
+          "name": "campaigns_leader_update_scope",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER campaigns_leader_update_scope BEFORE UPDATE ON public.campaigns FOR EACH ROW EXECUTE FUNCTION private.enforce_campaign_leader_update_scope()"
+        },
+        {
+          "name": "campaigns_set_updated_at",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER campaigns_set_updated_at BEFORE UPDATE ON public.campaigns FOR EACH ROW EXECUTE FUNCTION private.set_updated_at()"
+        },
+        {
+          "name": "campaigns_validate_platform_ids",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER campaigns_validate_platform_ids BEFORE INSERT OR UPDATE OF platform_ids ON public.campaigns FOR EACH ROW EXECUTE FUNCTION private.validate_campaign_platform_ids()"
+        }
+      ],
+      "policies": [
+        {
+          "name": "campaigns_admin_insert",
+          "check": "( SELECT private.is_admin() AS is_admin)",
+          "roles": [
+            "authenticated"
+          ],
+          "using": null,
+          "command": "a"
+        },
+        {
+          "name": "campaigns_admin_select",
+          "check": null,
+          "roles": [
+            "authenticated"
+          ],
+          "using": "( SELECT private.is_admin() AS is_admin)",
+          "command": "r"
+        },
+        {
+          "name": "campaigns_admin_update",
+          "check": "( SELECT private.is_admin() AS is_admin)",
+          "roles": [
+            "authenticated"
+          ],
+          "using": "( SELECT private.is_admin() AS is_admin)",
+          "command": "w"
+        },
+        {
+          "name": "campaigns_leader_operational_update",
+          "check": "((( SELECT private.current_system_permission() AS current_system_permission) = 'leader'::text) AND (archived_at IS NULL) AND (deleted_at IS NULL))",
+          "roles": [
+            "authenticated"
+          ],
+          "using": "((( SELECT private.current_system_permission() AS current_system_permission) = 'leader'::text) AND (archived_at IS NULL) AND (deleted_at IS NULL))",
+          "command": "w"
+        },
+        {
+          "name": "campaigns_shared_select",
+          "check": null,
+          "roles": [
+            "authenticated"
+          ],
+          "using": "(( SELECT private.current_business_user_is_active() AS current_business_user_is_active) AND (archived_at IS NULL) AND (deleted_at IS NULL))",
+          "command": "r"
+        }
+      ]
+    },
+    {
+      "name": "operational_files",
+      "rls": true,
+      "force_rls": false,
+      "owner": "postgres",
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "default": "(gen_random_uuid())::text",
+          "not_null": true
+        },
+        {
+          "name": "scope_key",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "brand_id",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "platform_id",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "shift_id",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "campaign_id",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "period_date",
+          "type": "date",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "execution_source",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "provider",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "external_file_id",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "external_parent_id",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "provider_metadata",
+          "type": "jsonb",
+          "default": "'{}'::jsonb",
+          "not_null": true
+        },
+        {
+          "name": "folder_path",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "file_name",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "mime_type",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "size_bytes",
+          "type": "bigint",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "checksum_sha256",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "integrity_status",
+          "type": "text",
+          "default": "'sha256_verified'::text",
+          "not_null": true
+        },
+        {
+          "name": "artifact_key",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "uploaded_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "default": "now()",
+          "not_null": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "default": "now()",
+          "not_null": true
+        },
+        {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        }
+      ],
+      "constraints": [
+        {
+          "name": "operational_files_brand_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (brand_id) REFERENCES brands(id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "operational_files_campaign_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "operational_files_category_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((category = ANY (ARRAY['schedule_source'::text, 'schedule_export'::text, 'live_snapshot'::text, 'video_recording'::text, 'video_livecut'::text, 'production_asset'::text, 'content_script'::text, 'content_brief'::text, 'campaign_document'::text, 'staffing_document'::text, 'acceptance_document'::text, 'payment_document'::text, 'ai_output'::text, 'system_export'::text, 'sop_document'::text])))"
+        },
+        {
+          "name": "operational_files_checksum_sha256_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK (((checksum_sha256 IS NULL) OR (checksum_sha256 ~ '^[a-f0-9]{64}$'::text)))"
+        },
+        {
+          "name": "operational_files_execution_source_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((execution_source = ANY (ARRAY['internal'::text, 'agency'::text])))"
+        },
+        {
+          "name": "operational_files_integrity_contract",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((((integrity_status = 'sha256_verified'::text) AND (checksum_sha256 IS NOT NULL) AND (size_bytes > 0)) OR ((integrity_status = 'provider_reference'::text) AND (checksum_sha256 IS NULL))))"
+        },
+        {
+          "name": "operational_files_integrity_status_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((integrity_status = ANY (ARRAY['sha256_verified'::text, 'provider_reference'::text])))"
+        },
+        {
+          "name": "operational_files_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "operational_files_platform_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (platform_id) REFERENCES platforms(id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "operational_files_provider_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((provider = ANY (ARRAY['google_drive'::text, 'onedrive'::text])))"
+        },
+        {
+          "name": "operational_files_scope_key_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((length(btrim(scope_key)) > 0))"
+        },
+        {
+          "name": "operational_files_shift_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "operational_files_size_bytes_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((size_bytes >= 0))"
+        },
+        {
+          "name": "operational_files_uploaded_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (uploaded_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX operational_files_pkey ON public.operational_files USING btree (id)",
+        "CREATE UNIQUE INDEX operational_files_active_scope_checksum ON public.operational_files USING btree (scope_key, category, artifact_key) WHERE (deleted_at IS NULL)",
+        "CREATE UNIQUE INDEX operational_files_active_provider_object ON public.operational_files USING btree (provider, external_file_id) WHERE (deleted_at IS NULL)",
+        "CREATE INDEX operational_files_scope_created ON public.operational_files USING btree (scope_key, created_at DESC) WHERE (deleted_at IS NULL)",
+        "CREATE INDEX operational_files_brand_month ON public.operational_files USING btree (brand_id, platform_id, period_date, category) WHERE (deleted_at IS NULL)",
+        "CREATE INDEX operational_files_campaign_created ON public.operational_files USING btree (campaign_id, created_at DESC) WHERE ((campaign_id IS NOT NULL) AND (deleted_at IS NULL))"
+      ],
+      "triggers": null,
+      "policies": null
+    },
+    {
+      "name": "operational_storage_routes",
+      "rls": true,
+      "force_rls": false,
+      "owner": "postgres",
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "default": "(gen_random_uuid())::text",
+          "not_null": true
+        },
+        {
+          "name": "provider",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "execution_source",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "brand_id",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "platform_id",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "subbrand_key",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "storage_profile",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "root_folder_id",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "base_folder_id",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "folder_labels",
+          "type": "jsonb",
+          "default": "'{}'::jsonb",
+          "not_null": true
+        },
+        {
+          "name": "period_naming_style",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "period_label_overrides",
+          "type": "jsonb",
+          "default": "'{}'::jsonb",
+          "not_null": true
+        },
+        {
+          "name": "period_date_ranges",
+          "type": "jsonb",
+          "default": "'[]'::jsonb",
+          "not_null": true
+        },
+        {
+          "name": "folder_label_overrides",
+          "type": "jsonb",
+          "default": "'{}'::jsonb",
+          "not_null": true
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "default": "true",
+          "not_null": true
+        },
+        {
+          "name": "approved_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "approved_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        }
+      ],
+      "constraints": [
+        {
+          "name": "operational_storage_routes_approved_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (approved_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "operational_storage_routes_base_folder_id_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(base_folder_id) <> ''::text))"
+        },
+        {
+          "name": "operational_storage_routes_brand_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (brand_id) REFERENCES brands(id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "operational_storage_routes_execution_source_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((execution_source = ANY (ARRAY['internal'::text, 'agency'::text])))"
+        },
+        {
+          "name": "operational_storage_routes_folder_label_overrides_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((jsonb_typeof(folder_label_overrides) = 'object'::text))"
+        },
+        {
+          "name": "operational_storage_routes_folder_labels_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((jsonb_typeof(folder_labels) = 'object'::text))"
+        },
+        {
+          "name": "operational_storage_routes_period_date_ranges_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((jsonb_typeof(period_date_ranges) = 'array'::text))"
+        },
+        {
+          "name": "operational_storage_routes_period_label_overrides_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((jsonb_typeof(period_label_overrides) = 'object'::text))"
+        },
+        {
+          "name": "operational_storage_routes_period_naming_style_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(period_naming_style) <> ''::text))"
+        },
+        {
+          "name": "operational_storage_routes_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "operational_storage_routes_platform_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (platform_id) REFERENCES platforms(id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "operational_storage_routes_provider_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((provider = ANY (ARRAY['google_drive'::text, 'onedrive'::text])))"
+        },
+        {
+          "name": "operational_storage_routes_root_folder_id_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(root_folder_id) <> ''::text))"
+        },
+        {
+          "name": "operational_storage_routes_storage_profile_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((storage_profile = ANY (ARRAY['LEGACY_CATEGORY_PERIOD'::text, 'LEGACY_PLATFORM_CATEGORY_PERIOD'::text, 'LEGACY_PERIOD_CATEGORY'::text, 'LEGACY_SUBBRAND_PERIOD_CATEGORY'::text, 'LEGACY_SUBBRAND_CATEGORY_PERIOD'::text, 'CANONICAL_V1'::text, 'EXISTING_BRAND_YEAR_PERIOD_PLATFORM'::text])))"
+        },
+        {
+          "name": "operational_storage_routes_subbrand_key_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK (((subbrand_key IS NULL) OR (btrim(subbrand_key) <> ''::text)))"
+        },
+        {
+          "name": "operational_storage_routes_subbrand_profile_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK (((storage_profile = ANY (ARRAY['LEGACY_SUBBRAND_PERIOD_CATEGORY'::text, 'LEGACY_SUBBRAND_CATEGORY_PERIOD'::text])) = (subbrand_key IS NOT NULL)))"
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX operational_storage_routes_pkey ON public.operational_storage_routes USING btree (id)",
+        "CREATE UNIQUE INDEX operational_storage_routes_active_key_uidx ON public.operational_storage_routes USING btree (provider, execution_source, brand_id, platform_id, subbrand_key) NULLS NOT DISTINCT WHERE active"
+      ],
+      "triggers": null,
+      "policies": null
+    },
+    {
+      "name": "platforms",
+      "rls": true,
+      "force_rls": false,
+      "owner": "postgres",
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=arw/postgres}",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "icon",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "logo_url",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "platform_type",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "platform_url",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "default": "'active'::text",
+          "not_null": true
+        },
+        {
+          "name": "account_information",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "policy_notes",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "livestream_rules",
+          "type": "text[]",
+          "default": "'{}'::text[]",
+          "not_null": true
+        },
+        {
+          "name": "content_restrictions",
+          "type": "text[]",
+          "default": "'{}'::text[]",
+          "not_null": true
+        },
+        {
+          "name": "technical_requirements",
+          "type": "text[]",
+          "default": "'{}'::text[]",
+          "not_null": true
+        },
+        {
+          "name": "report_requirements",
+          "type": "text[]",
+          "default": "'{}'::text[]",
+          "not_null": true
+        },
+        {
+          "name": "external_links",
+          "type": "text[]",
+          "default": "'{}'::text[]",
+          "not_null": true
+        },
+        {
+          "name": "updated_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "deleted_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "archived_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "deletion_reason",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        }
+      ],
+      "constraints": [
+        {
+          "name": "platforms_archived_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (archived_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "platforms_deleted_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (deleted_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "platforms_id_not_blank",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(id) <> ''::text))"
+        },
+        {
+          "name": "platforms_name_not_blank",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(name) <> ''::text))"
+        },
+        {
+          "name": "platforms_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "platforms_status_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'inactive'::text, 'draft'::text])))"
+        },
+        {
+          "name": "platforms_updated_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (updated_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX platforms_pkey ON public.platforms USING btree (id)",
+        "CREATE INDEX platforms_updated_by_idx ON public.platforms USING btree (updated_by)",
+        "CREATE INDEX platforms_deleted_by_idx ON public.platforms USING btree (deleted_by)",
+        "CREATE INDEX platforms_archived_by_idx ON public.platforms USING btree (archived_by)",
+        "CREATE INDEX platforms_active_name_idx ON public.platforms USING btree (name) WHERE ((archived_at IS NULL) AND (deleted_at IS NULL))"
+      ],
+      "triggers": [
+        {
+          "name": "audit_platforms_change",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER audit_platforms_change AFTER INSERT OR DELETE OR UPDATE ON public.platforms FOR EACH ROW EXECUTE FUNCTION private.capture_audit_row_change()"
+        },
+        {
+          "name": "platforms_set_updated_at",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER platforms_set_updated_at BEFORE UPDATE ON public.platforms FOR EACH ROW EXECUTE FUNCTION private.set_updated_at()"
+        }
+      ],
+      "policies": [
+        {
+          "name": "platforms_admin_insert",
+          "check": "( SELECT private.is_admin() AS is_admin)",
+          "roles": [
+            "authenticated"
+          ],
+          "using": null,
+          "command": "a"
+        },
+        {
+          "name": "platforms_admin_select",
+          "check": null,
+          "roles": [
+            "authenticated"
+          ],
+          "using": "( SELECT private.is_admin() AS is_admin)",
+          "command": "r"
+        },
+        {
+          "name": "platforms_admin_update",
+          "check": "( SELECT private.is_admin() AS is_admin)",
+          "roles": [
+            "authenticated"
+          ],
+          "using": "( SELECT private.is_admin() AS is_admin)",
+          "command": "w"
+        },
+        {
+          "name": "platforms_shared_select",
+          "check": null,
+          "roles": [
+            "authenticated"
+          ],
+          "using": "(( SELECT private.current_business_user_is_active() AS current_business_user_is_active) AND (archived_at IS NULL) AND (deleted_at IS NULL))",
+          "command": "r"
+        }
+      ]
+    },
+    {
+      "name": "reports",
+      "rls": true,
+      "force_rls": false,
+      "owner": "postgres",
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "default": "(gen_random_uuid())::text",
+          "not_null": true
+        },
+        {
+          "name": "shift_id",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "default": "'draft'::text",
+          "not_null": true
+        },
+        {
+          "name": "revenue",
+          "type": "numeric",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "orders",
+          "type": "integer",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "peak_viewer",
+          "type": "integer",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "average_viewer",
+          "type": "integer",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "likes",
+          "type": "integer",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "comments",
+          "type": "integer",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "shares",
+          "type": "integer",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "top_products",
+          "type": "text[]",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "insights_good",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "insights_improvement",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "replay_url",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "dashboard_url",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "gmv",
+          "type": "numeric",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "viewers",
+          "type": "integer",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "product_clicks",
+          "type": "integer",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "ctr",
+          "type": "numeric",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "cvr",
+          "type": "numeric",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "average_order_value",
+          "type": "numeric",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "live_duration_minutes",
+          "type": "integer",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "dashboard_platform",
+          "type": "text",
+          "default": "'other'::text",
+          "not_null": true
+        },
+        {
+          "name": "normalized_metrics",
+          "type": "jsonb",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "platform_metrics",
+          "type": "jsonb",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "raw_ocr_output",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "ocr_review",
+          "type": "jsonb",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "final_recap",
+          "type": "jsonb",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "metrics_confirmed",
+          "type": "boolean",
+          "default": "false",
+          "not_null": true
+        },
+        {
+          "name": "confirmed_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "confirmed_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "submitted_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "reviewed_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "reviewed_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "review_notes",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "version_number",
+          "type": "integer",
+          "default": "0",
+          "not_null": true
+        },
+        {
+          "name": "updated_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "deleted_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "archived_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "deletion_reason",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        }
+      ],
+      "constraints": [
+        {
+          "name": "reports_archived_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (archived_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "reports_confirmed_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (confirmed_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "reports_dashboard_platform_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((dashboard_platform = ANY (ARRAY['tiktok_shop'::text, 'shopee_live'::text, 'other'::text])))"
+        },
+        {
+          "name": "reports_deleted_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (deleted_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "reports_id_not_blank",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(id) <> ''::text))"
+        },
+        {
+          "name": "reports_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "reports_revenue_not_negative",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((revenue >= (0)::numeric))"
+        },
+        {
+          "name": "reports_reviewed_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (reviewed_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "reports_shift_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "reports_shift_id_not_blank",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(shift_id) <> ''::text))"
+        },
+        {
+          "name": "reports_status_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((status = ANY (ARRAY['draft'::text, 'in_review'::text, 'confirmed'::text, 'reopened'::text, 'archived'::text])))"
+        },
+        {
+          "name": "reports_submitted_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (submitted_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "reports_updated_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (updated_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX reports_pkey ON public.reports USING btree (id)",
+        "CREATE UNIQUE INDEX reports_active_shift_uidx ON public.reports USING btree (shift_id) WHERE ((deleted_at IS NULL) AND (archived_at IS NULL))",
+        "CREATE INDEX reports_status_idx ON public.reports USING btree (status) WHERE ((deleted_at IS NULL) AND (archived_at IS NULL))",
+        "CREATE INDEX reports_shift_id_idx ON public.reports USING btree (shift_id)",
+        "CREATE INDEX reports_submitted_by_idx ON public.reports USING btree (submitted_by)",
+        "CREATE INDEX reports_confirmed_idx ON public.reports USING btree (confirmed_at) WHERE (metrics_confirmed AND (deleted_at IS NULL) AND (archived_at IS NULL))"
+      ],
+      "triggers": [
+        {
+          "name": "audit_reports_change",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER audit_reports_change AFTER INSERT OR DELETE OR UPDATE ON public.reports FOR EACH ROW EXECUTE FUNCTION private.capture_audit_row_change()"
+        },
+        {
+          "name": "reports_notification_events",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER reports_notification_events AFTER INSERT OR UPDATE OF status ON public.reports FOR EACH ROW EXECUTE FUNCTION private.emit_report_notification()"
+        },
+        {
+          "name": "reports_require_complete_metrics_on_confirmation",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER reports_require_complete_metrics_on_confirmation BEFORE INSERT OR UPDATE ON public.reports FOR EACH ROW EXECUTE FUNCTION private.enforce_report_required_metrics()"
+        },
+        {
+          "name": "reports_set_updated_at",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER reports_set_updated_at BEFORE UPDATE ON public.reports FOR EACH ROW EXECUTE FUNCTION private.set_updated_at()"
+        }
+      ],
+      "policies": [
+        {
+          "name": "reports_active_select",
+          "check": null,
+          "roles": [
+            "authenticated"
+          ],
+          "using": "(( SELECT private.current_business_user_is_active() AS current_business_user_is_active) AND (deleted_at IS NULL) AND (archived_at IS NULL))",
+          "command": "r"
+        },
+        {
+          "name": "reports_archived_select",
+          "check": null,
+          "roles": [
+            "authenticated"
+          ],
+          "using": "(( SELECT private.current_business_user_is_active() AS current_business_user_is_active) AND ((deleted_at IS NOT NULL) OR (archived_at IS NOT NULL)) AND (( SELECT private.current_system_permission() AS current_system_permission) = 'admin'::text))",
+          "command": "r"
+        }
+      ]
+    },
+    {
+      "name": "shift_registrations",
+      "rls": true,
+      "force_rls": false,
+      "owner": "postgres",
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "default": "(gen_random_uuid())::text",
+          "not_null": true
+        },
+        {
+          "name": "shift_id",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "user_id",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "operational_role",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "requested_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "reviewed_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "reviewed_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "review_notes",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "cancelled_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "imported_name",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "match_method",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "default": "1",
+          "not_null": true
+        }
+      ],
+      "constraints": [
+        {
+          "name": "shift_registrations_id_not_blank",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(id) <> ''::text))"
+        },
+        {
+          "name": "shift_registrations_import_match_pair_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((((imported_name IS NULL) AND (match_method IS NULL)) OR ((imported_name IS NOT NULL) AND (match_method IS NOT NULL))))"
+        },
+        {
+          "name": "shift_registrations_imported_name_not_blank",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK (((imported_name IS NULL) OR (btrim(imported_name) <> ''::text)))"
+        },
+        {
+          "name": "shift_registrations_match_method_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK (((match_method IS NULL) OR (match_method = ANY (ARRAY['exact'::text, 'normalized'::text, 'manual'::text]))))"
+        },
+        {
+          "name": "shift_registrations_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "shift_registrations_reviewed_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (reviewed_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "shift_registrations_role_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((operational_role = ANY (ARRAY['host'::text, 'support'::text, 'technical'::text])))"
+        },
+        {
+          "name": "shift_registrations_shift_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "shift_registrations_source_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((source = ANY (ARRAY['self_registration'::text, 'manual_assignment'::text, 'legacy_assignment'::text])))"
+        },
+        {
+          "name": "shift_registrations_status_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text, 'cancelled'::text, 'manually_assigned'::text, 'removed'::text])))"
+        },
+        {
+          "name": "shift_registrations_user_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (user_id) REFERENCES business_users(id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "shift_registrations_version_positive_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((version > 0))"
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX shift_registrations_pkey ON public.shift_registrations USING btree (id)",
+        "CREATE UNIQUE INDEX shift_registrations_active_role_uidx ON public.shift_registrations USING btree (shift_id, user_id, operational_role) WHERE (status = ANY (ARRAY['pending'::text, 'approved'::text, 'manually_assigned'::text]))",
+        "CREATE INDEX shift_registrations_capacity_idx ON public.shift_registrations USING btree (shift_id, operational_role, status)",
+        "CREATE INDEX shift_registrations_user_schedule_idx ON public.shift_registrations USING btree (user_id, status, shift_id)",
+        "CREATE INDEX shift_registrations_reviewed_by_idx ON public.shift_registrations USING btree (reviewed_by) WHERE (reviewed_by IS NOT NULL)"
+      ],
+      "triggers": [
+        {
+          "name": "audit_shift_registrations_change",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER audit_shift_registrations_change AFTER INSERT OR DELETE OR UPDATE ON public.shift_registrations FOR EACH ROW EXECUTE FUNCTION private.capture_audit_row_change()"
+        },
+        {
+          "name": "shift_registrations_bump_concurrency_version",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER shift_registrations_bump_concurrency_version BEFORE UPDATE ON public.shift_registrations FOR EACH ROW EXECUTE FUNCTION private.bump_concurrency_version()"
+        },
+        {
+          "name": "shift_registrations_notification_events",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER shift_registrations_notification_events AFTER INSERT OR UPDATE OF status ON public.shift_registrations FOR EACH ROW EXECUTE FUNCTION private.emit_shift_registration_notification()"
+        },
+        {
+          "name": "shift_registrations_set_updated_at",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER shift_registrations_set_updated_at BEFORE UPDATE ON public.shift_registrations FOR EACH ROW EXECUTE FUNCTION private.set_updated_at()"
+        },
+        {
+          "name": "shift_registrations_sync_projection",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER shift_registrations_sync_projection AFTER INSERT OR DELETE OR UPDATE ON public.shift_registrations FOR EACH ROW EXECUTE FUNCTION private.sync_shift_staffing_projection_trigger()"
+        }
+      ],
+      "policies": [
+        {
+          "name": "shift_registrations_scoped_select",
+          "check": null,
+          "roles": [
+            "authenticated"
+          ],
+          "using": "( SELECT private.can_read_shift(shift_registrations.shift_id) AS can_read_shift)",
+          "command": "r"
+        }
+      ]
+    },
+    {
+      "name": "shifts",
+      "rls": true,
+      "force_rls": false,
+      "owner": "postgres",
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "default": "(gen_random_uuid())::text",
+          "not_null": true
+        },
+        {
+          "name": "date",
+          "type": "date",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "start_time",
+          "type": "time(0) without time zone",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "end_time",
+          "type": "time(0) without time zone",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "timezone",
+          "type": "text",
+          "default": "'Asia/Ho_Chi_Minh'::text",
+          "not_null": true
+        },
+        {
+          "name": "start_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "end_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "end_date",
+          "type": "date",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "crosses_midnight",
+          "type": "boolean",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "duration_minutes",
+          "type": "smallint",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "brand_id",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "platform_id",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "campaign_id",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "studio",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "host_id",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "support_id",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "technical_id",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "required_host_count",
+          "type": "smallint",
+          "default": "1",
+          "not_null": true
+        },
+        {
+          "name": "required_support_count",
+          "type": "smallint",
+          "default": "1",
+          "not_null": true
+        },
+        {
+          "name": "required_technical_count",
+          "type": "smallint",
+          "default": "1",
+          "not_null": true
+        },
+        {
+          "name": "registration_locked",
+          "type": "boolean",
+          "default": "false",
+          "not_null": true
+        },
+        {
+          "name": "registration_cutoff_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "allow_multi_role",
+          "type": "boolean",
+          "default": "false",
+          "not_null": true
+        },
+        {
+          "name": "import_batch_id",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "default": "'scheduled'::text",
+          "not_null": true
+        },
+        {
+          "name": "live_link",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "product_notes",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "updated_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "deleted_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "archived_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "deletion_reason",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "host_names",
+          "type": "text[]",
+          "default": "'{}'::text[]",
+          "not_null": true
+        },
+        {
+          "name": "assistant_names",
+          "type": "text[]",
+          "default": "'{}'::text[]",
+          "not_null": true
+        },
+        {
+          "name": "technical_names",
+          "type": "text[]",
+          "default": "'{}'::text[]",
+          "not_null": true
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "default": "1",
+          "not_null": true
+        },
+        {
+          "name": "status_mode",
+          "type": "text",
+          "default": "'auto'::text",
+          "not_null": true
+        },
+        {
+          "name": "execution_source",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        }
+      ],
+      "constraints": [
+        {
+          "name": "shifts_archived_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (archived_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "shifts_brand_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (brand_id) REFERENCES brands(id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "shifts_campaign_id_fkey",
+          "type": "f",
+          "validated": false,
+          "definition": "FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE RESTRICT NOT VALID"
+        },
+        {
+          "name": "shifts_crosses_midnight_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((crosses_midnight = (end_date > date)))"
+        },
+        {
+          "name": "shifts_deleted_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (deleted_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "shifts_duration_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK (((duration_minutes >= 1) AND (duration_minutes <= 1439)))"
+        },
+        {
+          "name": "shifts_end_date_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK (((end_date >= date) AND (end_date <= (date + 1))))"
+        },
+        {
+          "name": "shifts_execution_source_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((execution_source = ANY (ARRAY['internal'::text, 'agency'::text])))"
+        },
+        {
+          "name": "shifts_host_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (host_id) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "shifts_id_not_blank",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(id) <> ''::text))"
+        },
+        {
+          "name": "shifts_import_batch_id_fkey",
+          "type": "f",
+          "validated": false,
+          "definition": "FOREIGN KEY (import_batch_id) REFERENCES schedule_import_batches(id) ON DELETE SET NULL NOT VALID"
+        },
+        {
+          "name": "shifts_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "shifts_platform_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (platform_id) REFERENCES platforms(id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "shifts_registration_cutoff_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((registration_cutoff_at <= start_at))"
+        },
+        {
+          "name": "shifts_required_host_count_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK (((required_host_count >= 0) AND (required_host_count <= 100)))"
+        },
+        {
+          "name": "shifts_required_support_count_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK (((required_support_count >= 0) AND (required_support_count <= 100)))"
+        },
+        {
+          "name": "shifts_required_technical_count_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK (((required_technical_count >= 0) AND (required_technical_count <= 100)))"
+        },
+        {
+          "name": "shifts_status_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((status = ANY (ARRAY['scheduled'::text, 'preparing'::text, 'live'::text, 'paused'::text, 'completed'::text, 'cancelled'::text])))"
+        },
+        {
+          "name": "shifts_status_mode_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((status_mode = ANY (ARRAY['auto'::text, 'manual'::text])))"
+        },
+        {
+          "name": "shifts_support_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (support_id) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "shifts_technical_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (technical_id) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "shifts_time_order_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((end_at > start_at))"
+        },
+        {
+          "name": "shifts_timezone_check",
+          "type": "c",
+          "validated": false,
+          "definition": "CHECK ((btrim(timezone) <> ''::text)) NOT VALID"
+        },
+        {
+          "name": "shifts_updated_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (updated_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "shifts_version_positive_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((version > 0))"
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX shifts_pkey ON public.shifts USING btree (id)",
+        "CREATE UNIQUE INDEX shifts_active_slot_uidx ON public.shifts USING btree (brand_id, platform_id, date, start_time, end_time) WHERE ((deleted_at IS NULL) AND (archived_at IS NULL))",
+        "CREATE INDEX shifts_calendar_idx ON public.shifts USING btree (date, start_time) WHERE ((deleted_at IS NULL) AND (archived_at IS NULL))",
+        "CREATE INDEX shifts_time_range_idx ON public.shifts USING btree (start_at, end_at) WHERE ((deleted_at IS NULL) AND (archived_at IS NULL) AND (status <> 'cancelled'::text))",
+        "CREATE INDEX shifts_open_registration_idx ON public.shifts USING btree (end_at, registration_cutoff_at) WHERE ((deleted_at IS NULL) AND (archived_at IS NULL) AND (status = 'scheduled'::text) AND (registration_locked = false))",
+        "CREATE INDEX shifts_brand_platform_idx ON public.shifts USING btree (brand_id, platform_id)",
+        "CREATE INDEX shifts_campaign_id_idx ON public.shifts USING btree (campaign_id)",
+        "CREATE INDEX shifts_host_id_idx ON public.shifts USING btree (host_id) WHERE (host_id IS NOT NULL)",
+        "CREATE INDEX shifts_support_id_idx ON public.shifts USING btree (support_id) WHERE (support_id IS NOT NULL)",
+        "CREATE INDEX shifts_technical_id_idx ON public.shifts USING btree (technical_id) WHERE (technical_id IS NOT NULL)",
+        "CREATE INDEX shifts_import_batch_id_idx ON public.shifts USING btree (import_batch_id) WHERE (import_batch_id IS NOT NULL)"
+      ],
+      "triggers": [
+        {
+          "name": "audit_shifts_change",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER audit_shifts_change AFTER INSERT OR DELETE OR UPDATE ON public.shifts FOR EACH ROW EXECUTE FUNCTION private.capture_audit_row_change()"
+        },
+        {
+          "name": "set_shift_status_mode_before_update",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER set_shift_status_mode_before_update BEFORE UPDATE OF status ON public.shifts FOR EACH ROW EXECUTE FUNCTION private.set_shift_status_mode()"
+        },
+        {
+          "name": "shifts_bump_concurrency_version",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER shifts_bump_concurrency_version BEFORE UPDATE ON public.shifts FOR EACH ROW EXECUTE FUNCTION private.bump_concurrency_version()"
+        },
+        {
+          "name": "shifts_derive_fields",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER shifts_derive_fields BEFORE INSERT OR UPDATE OF date, start_time, end_time, timezone, registration_cutoff_at ON public.shifts FOR EACH ROW EXECUTE FUNCTION private.set_shift_derived_fields()"
+        },
+        {
+          "name": "shifts_set_updated_at",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER shifts_set_updated_at BEFORE UPDATE ON public.shifts FOR EACH ROW EXECUTE FUNCTION private.set_updated_at()"
+        }
+      ],
+      "policies": [
+        {
+          "name": "shifts_scoped_select",
+          "check": null,
+          "roles": [
+            "authenticated"
+          ],
+          "using": "( SELECT private.can_read_shift(shifts.id) AS can_read_shift)",
+          "command": "r"
+        }
+      ]
+    },
+    {
+      "name": "system_settings",
+      "rls": true,
+      "force_rls": false,
+      "owner": "postgres",
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "default": "gen_random_uuid()",
+          "not_null": true
+        },
+        {
+          "name": "require_shift_capacity_validation",
+          "type": "boolean",
+          "default": "true",
+          "not_null": true
+        },
+        {
+          "name": "require_time_overlap_validation",
+          "type": "boolean",
+          "default": "true",
+          "not_null": true
+        },
+        {
+          "name": "allow_leader_schedule_edit",
+          "type": "boolean",
+          "default": "false",
+          "not_null": true
+        },
+        {
+          "name": "strict_host_role_binding",
+          "type": "boolean",
+          "default": "true",
+          "not_null": true
+        },
+        {
+          "name": "default_view_mode",
+          "type": "text",
+          "default": "'timeline'::text",
+          "not_null": true
+        },
+        {
+          "name": "calendar_density",
+          "type": "text",
+          "default": "'comfortable'::text",
+          "not_null": true
+        },
+        {
+          "name": "show_unassigned_shifts",
+          "type": "boolean",
+          "default": "true",
+          "not_null": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "default": "now()",
+          "not_null": true
+        },
+        {
+          "name": "registration_cutoff_hours",
+          "type": "smallint",
+          "default": "6",
+          "not_null": true
+        },
+        {
+          "name": "require_registration_approval",
+          "type": "boolean",
+          "default": "true",
+          "not_null": true
+        },
+        {
+          "name": "auto_lock_filled_shifts",
+          "type": "boolean",
+          "default": "true",
+          "not_null": true
+        },
+        {
+          "name": "allow_multi_role_per_shift",
+          "type": "boolean",
+          "default": "false",
+          "not_null": true
+        },
+        {
+          "name": "default_host_count",
+          "type": "smallint",
+          "default": "1",
+          "not_null": true
+        },
+        {
+          "name": "default_support_count",
+          "type": "smallint",
+          "default": "1",
+          "not_null": true
+        },
+        {
+          "name": "default_technical_count",
+          "type": "smallint",
+          "default": "1",
+          "not_null": true
+        }
+      ],
+      "constraints": [
+        {
+          "name": "system_settings_default_host_count_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK (((default_host_count >= 0) AND (default_host_count <= 100)))"
+        },
+        {
+          "name": "system_settings_default_support_count_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK (((default_support_count >= 0) AND (default_support_count <= 100)))"
+        },
+        {
+          "name": "system_settings_default_technical_count_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK (((default_technical_count >= 0) AND (default_technical_count <= 100)))"
+        },
+        {
+          "name": "system_settings_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "system_settings_registration_cutoff_hours_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((registration_cutoff_hours >= 0))"
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX system_settings_pkey ON public.system_settings USING btree (id)",
+        "CREATE UNIQUE INDEX system_settings_single_row_idx ON public.system_settings USING btree ((true))"
+      ],
+      "triggers": null,
+      "policies": [
+        {
+          "name": "Settings are readable by authenticated users",
+          "check": null,
+          "roles": [
+            "authenticated"
+          ],
+          "using": "true",
+          "command": "r"
+        }
+      ]
+    },
+    {
+      "name": "notifications",
+      "rls": true,
+      "force_rls": false,
+      "owner": "postgres",
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "default": "gen_random_uuid()",
+          "not_null": true
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "message",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "type",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "read",
+          "type": "boolean",
+          "default": "false",
+          "not_null": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "recipient_id",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "notification_type",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "severity",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "related_entity_type",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "related_entity_id",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "action_url",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "event_key",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "read_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        }
+      ],
+      "constraints": [
+        {
+          "name": "notifications_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "notifications_recipient_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (recipient_id) REFERENCES business_users(id) ON DELETE CASCADE"
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX notifications_pkey ON public.notifications USING btree (id)",
+        "CREATE INDEX notifications_recipient_created_at_idx ON public.notifications USING btree (recipient_id, created_at DESC)",
+        "CREATE INDEX notifications_recipient_read_at_idx ON public.notifications USING btree (recipient_id, read_at)",
+        "CREATE UNIQUE INDEX notifications_event_key_uidx ON public.notifications USING btree (event_key) WHERE (event_key IS NOT NULL)"
+      ],
+      "triggers": null,
+      "policies": [
+        {
+          "name": "notifications_select_own",
+          "check": null,
+          "roles": [
+            "authenticated"
+          ],
+          "using": "(( SELECT private.current_business_user_is_active() AS current_business_user_is_active) AND ((recipient_id = ( SELECT private.current_business_user_id() AS current_business_user_id)) OR (user_id = ( SELECT auth.uid() AS uid))))",
+          "command": "r"
+        }
+      ]
+    },
+    {
+      "name": "report_revisions",
+      "rls": true,
+      "force_rls": false,
+      "owner": "postgres",
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "default": "(gen_random_uuid())::text",
+          "not_null": true
+        },
+        {
+          "name": "report_id",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "created_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "event",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "metrics",
+          "type": "jsonb",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "ocr_review",
+          "type": "jsonb",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "final_recap",
+          "type": "jsonb",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "image_references",
+          "type": "text[]",
+          "default": null,
+          "not_null": false
+        }
+      ],
+      "constraints": [
+        {
+          "name": "report_revisions_created_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (created_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "report_revisions_event_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((event = ANY (ARRAY['create'::text, 'save'::text, 'ocr_run'::text, 'ocr_rerun'::text, 'confirm'::text, 'reopen'::text, 'upload_image'::text, 'remove_image'::text, 'archive'::text])))"
+        },
+        {
+          "name": "report_revisions_id_not_blank",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(id) <> ''::text))"
+        },
+        {
+          "name": "report_revisions_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "report_revisions_report_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (report_id) REFERENCES reports(id) ON DELETE CASCADE"
+        },
+        {
+          "name": "report_revisions_status_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((status = ANY (ARRAY['draft'::text, 'in_review'::text, 'confirmed'::text, 'reopened'::text, 'archived'::text])))"
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX report_revisions_pkey ON public.report_revisions USING btree (id)",
+        "CREATE UNIQUE INDEX report_revisions_report_version_uidx ON public.report_revisions USING btree (report_id, version)",
+        "CREATE INDEX report_revisions_created_at_idx ON public.report_revisions USING btree (created_at DESC)"
+      ],
+      "triggers": [
+        {
+          "name": "audit_report_revisions_change",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER audit_report_revisions_change AFTER INSERT OR DELETE OR UPDATE ON public.report_revisions FOR EACH ROW EXECUTE FUNCTION private.capture_audit_row_change()"
+        }
+      ],
+      "policies": [
+        {
+          "name": "report_revisions_read",
+          "check": null,
+          "roles": [
+            "authenticated"
+          ],
+          "using": "(( SELECT private.current_business_user_is_active() AS current_business_user_is_active) AND (EXISTS ( SELECT 1\n   FROM reports report\n  WHERE ((report.id = report_revisions.report_id) AND (((report.deleted_at IS NULL) AND (report.archived_at IS NULL)) OR (( SELECT private.current_system_permission() AS current_system_permission) = 'admin'::text))))))",
+          "command": "r"
+        }
+      ]
+    },
+    {
+      "name": "schedule_import_batches",
+      "rls": true,
+      "force_rls": false,
+      "owner": "postgres",
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "default": "(gen_random_uuid())::text",
+          "not_null": true
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "source_name",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "default": "'previewed'::text",
+          "not_null": true
+        },
+        {
+          "name": "total_rows",
+          "type": "integer",
+          "default": "0",
+          "not_null": true
+        },
+        {
+          "name": "valid_rows",
+          "type": "integer",
+          "default": "0",
+          "not_null": true
+        },
+        {
+          "name": "invalid_rows",
+          "type": "integer",
+          "default": "0",
+          "not_null": true
+        },
+        {
+          "name": "warning_rows",
+          "type": "integer",
+          "default": "0",
+          "not_null": true
+        },
+        {
+          "name": "imported_rows",
+          "type": "integer",
+          "default": "0",
+          "not_null": true
+        },
+        {
+          "name": "duplicate_rows",
+          "type": "integer",
+          "default": "0",
+          "not_null": true
+        },
+        {
+          "name": "failed_rows",
+          "type": "integer",
+          "default": "0",
+          "not_null": true
+        },
+        {
+          "name": "retryable_rows",
+          "type": "integer",
+          "default": "0",
+          "not_null": true
+        },
+        {
+          "name": "created_by",
+          "type": "text",
+          "default": null,
+          "not_null": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "default": "statement_timestamp()",
+          "not_null": true
+        },
+        {
+          "name": "confirmed_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "deleted_by",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        },
+        {
+          "name": "deletion_reason",
+          "type": "text",
+          "default": null,
+          "not_null": false
+        }
+      ],
+      "constraints": [
+        {
+          "name": "schedule_import_batches_counts_nonnegative_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK (((total_rows >= 0) AND (valid_rows >= 0) AND (invalid_rows >= 0) AND (warning_rows >= 0) AND (imported_rows >= 0) AND (duplicate_rows >= 0) AND (failed_rows >= 0) AND (retryable_rows >= 0)))"
+        },
+        {
+          "name": "schedule_import_batches_created_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (created_by) REFERENCES business_users(id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "schedule_import_batches_deleted_by_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (deleted_by) REFERENCES business_users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "schedule_import_batches_id_not_blank",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(id) <> ''::text))"
+        },
+        {
+          "name": "schedule_import_batches_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "schedule_import_batches_source_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((source = ANY (ARRAY['excel'::text, 'google_sheets'::text])))"
+        },
+        {
+          "name": "schedule_import_batches_source_name_not_blank",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((btrim(source_name) <> ''::text))"
+        },
+        {
+          "name": "schedule_import_batches_status_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((status = ANY (ARRAY['previewed'::text, 'confirmed'::text, 'failed'::text, 'cancelled'::text])))"
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX schedule_import_batches_pkey ON public.schedule_import_batches USING btree (id)",
+        "CREATE INDEX schedule_import_batches_created_at_idx ON public.schedule_import_batches USING btree (created_at DESC)"
+      ],
+      "triggers": [
+        {
+          "name": "audit_schedule_import_batches_change",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER audit_schedule_import_batches_change AFTER INSERT OR DELETE OR UPDATE ON public.schedule_import_batches FOR EACH ROW EXECUTE FUNCTION private.capture_audit_row_change()"
+        },
+        {
+          "name": "schedule_import_batches_notification_events",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER schedule_import_batches_notification_events AFTER INSERT OR UPDATE OF status ON public.schedule_import_batches FOR EACH ROW EXECUTE FUNCTION private.emit_import_notification()"
+        },
+        {
+          "name": "schedule_import_batches_set_updated_at",
+          "enabled": "O",
+          "definition": "CREATE TRIGGER schedule_import_batches_set_updated_at BEFORE UPDATE ON public.schedule_import_batches FOR EACH ROW EXECUTE FUNCTION private.set_updated_at()"
+        }
+      ],
+      "policies": [
+        {
+          "name": "schedule_import_batches_leader_select",
+          "check": null,
+          "roles": [
+            "authenticated"
+          ],
+          "using": "(( SELECT private.current_business_user_is_active() AS current_business_user_is_active) AND ( SELECT private.is_leader_or_admin() AS is_leader_or_admin))",
+          "command": "r"
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "schema": "public",
+      "name": "create_shift",
+      "signature": "create_shift(jsonb)",
+      "definition": "CREATE OR REPLACE FUNCTION public.create_shift(p_data jsonb)\n RETURNS shifts\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  actor_id text;\n  created_shift public.shifts;\n  settings_row public.system_settings;\n  input_key text;\n  initial_user_id text;\n  role_name text;\nbegin\n  actor_id := private.require_shift_actor(true);\n  select * into settings_row from public.system_settings limit 1;\n  if settings_row.id is null then\n    raise exception using errcode = 'P0001', message = 'OPERATIONAL_SETTINGS_NOT_CONFIGURED';\n  end if;\n  if p_data is null or jsonb_typeof(p_data) <> 'object' then\n    raise exception using errcode = '22023', message = 'SHIFT_PAYLOAD_INVALID';\n  end if;\n  for input_key in select jsonb_object_keys(p_data)\n  loop\n    if input_key <> all (array[\n      'date', 'start_time', 'end_time', 'timezone', 'brand_id', 'platform_id',\n      'campaign_id', 'title', 'studio', 'host_id', 'support_id', 'technical_id',\n      'host_names', 'assistant_names', 'technical_names',\n      'required_host_count', 'required_support_count', 'required_technical_count',\n      'registration_cutoff_at', 'allow_multi_role', 'import_batch_id', 'status',\n      'live_link', 'product_notes', 'execution_source'\n    ]::text[]) then\n      raise exception using errcode = '22023', message = 'SHIFT_FIELD_NOT_ALLOWED';\n    end if;\n  end loop;\n  if (p_data ? 'execution_source' and p_data->>'execution_source' is not null\n    and p_data->>'execution_source' not in ('internal', 'agency')) then\n    raise exception using errcode = '22023', message = 'SHIFT_EXECUTION_SOURCE_INVALID';\n  end if;\n\n  if (p_data ? 'host_names' and jsonb_typeof(p_data->'host_names') <> 'array')\n    or (p_data ? 'assistant_names' and jsonb_typeof(p_data->'assistant_names') <> 'array')\n    or (p_data ? 'technical_names' and jsonb_typeof(p_data->'technical_names') <> 'array')\n  then\n    raise exception using errcode = '22023', message = 'SHIFT_STAFFING_NAMES_INVALID';\n  end if;\n\n  insert into public.shifts (\n    date, start_time, end_time, timezone, brand_id, platform_id, campaign_id,\n    title, studio, host_names, assistant_names, technical_names,\n    required_host_count, required_support_count, required_technical_count,\n    registration_cutoff_at, allow_multi_role, import_batch_id, status,\n    live_link, product_notes, updated_by, execution_source\n  ) values (\n    (p_data->>'date')::date,\n    (p_data->>'start_time')::time,\n    (p_data->>'end_time')::time,\n    coalesce(nullif(p_data->>'timezone', ''), 'Asia/Ho_Chi_Minh'),\n    nullif(p_data->>'brand_id', ''),\n    nullif(p_data->>'platform_id', ''),\n    nullif(p_data->>'campaign_id', ''),\n    nullif(p_data->>'title', ''),\n    nullif(p_data->>'studio', ''),\n    array(select value from jsonb_array_elements_text(coalesce(p_data->'host_names', '[]'::jsonb)) as names(value)),\n    array(select value from jsonb_array_elements_text(coalesce(p_data->'assistant_names', '[]'::jsonb)) as names(value)),\n    array(select value from jsonb_array_elements_text(coalesce(p_data->'technical_names', '[]'::jsonb)) as names(value)),\n    private.normalize_shift_capacity(p_data->>'required_host_count', settings_row.default_host_count),\n    private.normalize_shift_capacity(p_data->>'required_support_count', settings_row.default_support_count),\n    private.normalize_shift_capacity(p_data->>'required_technical_count', settings_row.default_technical_count),\n    nullif(p_data->>'registration_cutoff_at', '')::timestamptz,\n    coalesce((p_data->>'allow_multi_role')::boolean, settings_row.allow_multi_role_per_shift),\n    nullif(p_data->>'import_batch_id', ''),\n    coalesce(nullif(p_data->>'status', ''), 'scheduled'),\n    nullif(p_data->>'live_link', ''),\n    nullif(p_data->>'product_notes', ''),\n    actor_id,\n    p_data->>'execution_source'\n  ) returning * into created_shift;\n\n  foreach role_name in array array['host', 'support', 'technical']::text[]\n  loop\n    initial_user_id := nullif(p_data->>(role_name || '_id'), '');\n    if initial_user_id is not null then\n      perform private.insert_manual_shift_assignment(\n        created_shift.id, initial_user_id, role_name, actor_id, 'Initial shift assignment', false\n      );\n    end if;\n  end loop;\n\n  update public.shifts set registration_locked = false where id = created_shift.id;\n  select * into created_shift from public.shifts where id = created_shift.id;\n  return created_shift;\nend;\n$function$\n",
+      "md5": "7f813fa9c9c4b25f2ed965ffc9fe872c",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "assert_expected_version",
+      "signature": "private.assert_expected_version(text,integer,integer)",
+      "definition": "CREATE OR REPLACE FUNCTION private.assert_expected_version(p_entity text, p_expected_version integer, p_actual_version integer)\n RETURNS void\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  if p_expected_version is null or p_expected_version < 1 then\n    raise exception using\n      errcode = 'P0001',\n      message = 'EXPECTED_VERSION_REQUIRED',\n      detail = pg_catalog.format('%s mutations require the positive revision that was read by the caller', p_entity);\n  end if;\n  if p_expected_version <> p_actual_version then\n    raise exception using\n      errcode = 'P0001',\n      message = 'STALE_WRITE',\n      detail = pg_catalog.format('%s revision is stale; expected %s, actual %s', p_entity, p_expected_version, p_actual_version);\n  end if;\nend;\n$function$\n",
+      "md5": "0e4c68313eead094a40dbf75fd615d09",
+      "security_definer": false,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "assert_no_shift_registration_conflict",
+      "signature": "private.assert_no_shift_registration_conflict(text,shifts,text,text)",
+      "definition": "CREATE OR REPLACE FUNCTION private.assert_no_shift_registration_conflict(p_user_id text, p_shift shifts, p_role text, p_exclude_registration_id text DEFAULT NULL::text)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nbegin\r\n  if exists (\r\n    select 1 from public.shift_registrations as registration\r\n    where registration.shift_id = p_shift.id\r\n      and registration.user_id = p_user_id\r\n      and registration.operational_role = p_role\r\n      and registration.status in ('pending', 'approved', 'manually_assigned')\r\n      and (p_exclude_registration_id is null or registration.id <> p_exclude_registration_id)\r\n  ) then\r\n    raise exception using errcode = '23505', message = 'ALREADY_REGISTERED';\r\n  end if;\r\n\r\n  if not coalesce(p_shift.allow_multi_role, false)\r\n    and not coalesce((select allow_multi_role_per_shift from public.system_settings limit 1), false)\r\n    and exists (\r\n      select 1 from public.shift_registrations as registration\r\n      where registration.shift_id = p_shift.id\r\n        and registration.user_id = p_user_id\r\n        and registration.status in ('pending', 'approved', 'manually_assigned')\r\n        and (p_exclude_registration_id is null or registration.id <> p_exclude_registration_id)\r\n    )\r\n  then\r\n    raise exception using errcode = 'P0001', message = 'MULTI_ROLE_NOT_ALLOWED';\r\n  end if;\r\n\r\n  if exists (\r\n    select 1\r\n    from public.shift_registrations as registration\r\n    join public.shifts as other_shift on other_shift.id = registration.shift_id\r\n    where registration.user_id = p_user_id\r\n      and registration.shift_id <> p_shift.id\r\n      and registration.status in ('pending', 'approved', 'manually_assigned')\r\n      and (p_exclude_registration_id is null or registration.id <> p_exclude_registration_id)\r\n      and other_shift.deleted_at is null\r\n      and other_shift.archived_at is null\r\n      and other_shift.status <> 'cancelled'\r\n      and other_shift.start_at < p_shift.end_at\r\n      and other_shift.end_at > p_shift.start_at\r\n  ) then\r\n    raise exception using errcode = 'P0001', message = 'SHIFT_CONFLICT';\r\n  end if;\r\nend;\r\n$function$\n",
+      "md5": "a71886f9ebbbde5070a03e3d83b5602e",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "assert_shift_capacity",
+      "signature": "private.assert_shift_capacity(shifts,text,text)",
+      "definition": "CREATE OR REPLACE FUNCTION private.assert_shift_capacity(p_shift shifts, p_role text, p_exclude_registration_id text DEFAULT NULL::text)\n RETURNS void\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  staffed_count integer;\nbegin\n  select count(*)\n  into staffed_count\n  from public.shift_registrations as registration\n  where registration.shift_id = p_shift.id\n    and registration.operational_role = p_role\n    and registration.status in ('approved', 'manually_assigned')\n    and (p_exclude_registration_id is null or registration.id <> p_exclude_registration_id);\n\n  if staffed_count >= private.shift_required_capacity(p_shift, p_role) then\n    raise exception using errcode = 'P0001', message = 'SHIFT_FULL';\n  end if;\nend;\n$function$\n",
+      "md5": "a803ebb63d5ba1708527c1998d7bc81a",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "assert_shift_role_eligibility",
+      "signature": "private.assert_shift_role_eligibility(text,text)",
+      "definition": "CREATE OR REPLACE FUNCTION private.assert_shift_role_eligibility(p_user_id text, p_role text)\n RETURNS void\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nbegin\n  if p_role is null or p_role not in ('host', 'support', 'technical') then\n    raise exception using errcode = '22023', message = 'OPERATIONAL_ROLE_INVALID';\n  end if;\n  if not exists (\n    select 1\n    from public.business_users as business_user\n    where business_user.id = p_user_id\n      and business_user.status = 'active'\n      and business_user.account_status = 'active'\n      and business_user.archived_at is null\n      and business_user.deleted_at is null\n      and business_user.operational_roles @> array[p_role]::text[]\n  ) then\n    raise exception using errcode = '22023', message = 'ROLE_NOT_QUALIFIED';\n  end if;\nend;\n$function$\n",
+      "md5": "29b6e6cb2b95289aaa82fbfe0cdd848f",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "assert_shift_staffing_consistent",
+      "signature": "private.assert_shift_staffing_consistent(shifts)",
+      "definition": "CREATE OR REPLACE FUNCTION private.assert_shift_staffing_consistent(p_shift shifts)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\ndeclare\r\n  registrant_id text;\r\n  multi_role_allowed boolean;\r\nbegin\r\n  select allow_multi_role_per_shift into multi_role_allowed\r\n  from public.system_settings\r\n  limit 1;\r\n  if multi_role_allowed is null then\r\n    raise exception using errcode = 'P0001', message = 'OPERATIONAL_SETTINGS_NOT_CONFIGURED';\r\n  end if;\r\n  if (select count(*) from public.shift_registrations r where r.shift_id = p_shift.id and r.operational_role = 'host' and r.status in ('approved', 'manually_assigned')) > p_shift.required_host_count\r\n    or (select count(*) from public.shift_registrations r where r.shift_id = p_shift.id and r.operational_role = 'support' and r.status in ('approved', 'manually_assigned')) > p_shift.required_support_count\r\n    or (select count(*) from public.shift_registrations r where r.shift_id = p_shift.id and r.operational_role = 'technical' and r.status in ('approved', 'manually_assigned')) > p_shift.required_technical_count\r\n  then\r\n    raise exception using errcode = 'P0001', message = 'SHIFT_CAPACITY_BELOW_STAFFING';\r\n  end if;\r\n\r\n  if not p_shift.allow_multi_role and not multi_role_allowed and exists (\r\n    select 1\r\n    from public.shift_registrations as registration\r\n    where registration.shift_id = p_shift.id\r\n      and registration.status in ('pending', 'approved', 'manually_assigned')\r\n    group by registration.user_id\r\n    having count(*) > 1\r\n  ) then\r\n    raise exception using errcode = 'P0001', message = 'MULTI_ROLE_NOT_ALLOWED';\r\n  end if;\r\n\r\n  for registrant_id in\r\n    select distinct registration.user_id\r\n    from public.shift_registrations as registration\r\n    where registration.shift_id = p_shift.id\r\n      and registration.status in ('pending', 'approved', 'manually_assigned')\r\n    order by registration.user_id\r\n  loop\r\n    perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(registrant_id, 91731));\r\n    if exists (\r\n      select 1\r\n      from public.shift_registrations as other_registration\r\n      join public.shifts as other_shift on other_shift.id = other_registration.shift_id\r\n      where other_registration.user_id = registrant_id\r\n        and other_registration.shift_id <> p_shift.id\r\n        and other_registration.status in ('pending', 'approved', 'manually_assigned')\r\n        and other_shift.deleted_at is null\r\n        and other_shift.archived_at is null\r\n        and other_shift.status <> 'cancelled'\r\n        and other_shift.start_at < p_shift.end_at\r\n        and other_shift.end_at > p_shift.start_at\r\n    ) then\r\n      raise exception using errcode = 'P0001', message = 'SHIFT_CONFLICT';\r\n    end if;\r\n  end loop;\r\nend;\r\n$function$\n",
+      "md5": "97a2821572405836144e5717c3e2f164",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "audit_action_for_change",
+      "signature": "private.audit_action_for_change(text,text,jsonb,jsonb)",
+      "definition": "CREATE OR REPLACE FUNCTION private.audit_action_for_change(p_table_name text, p_operation text, p_before jsonb, p_after jsonb)\n RETURNS text\n LANGUAGE plpgsql\n IMMUTABLE\nAS $function$\ndeclare\n  old_deleted timestamptz;\n  new_deleted timestamptz;\n  old_archived timestamptz;\n  new_archived timestamptz;\n  old_status text;\n  new_status text;\n  old_locked boolean;\n  new_locked boolean;\nbegin\n  if p_operation = 'INSERT' then return 'create'; end if;\n  if p_operation = 'DELETE' then return 'delete'; end if;\n  old_deleted := nullif(p_before->>'deleted_at', '')::timestamptz;\n  new_deleted := nullif(p_after->>'deleted_at', '')::timestamptz;\n  old_archived := nullif(p_before->>'archived_at', '')::timestamptz;\n  new_archived := nullif(p_after->>'archived_at', '')::timestamptz;\n  if old_deleted is null and new_deleted is not null then return 'soft_delete'; end if;\n  if old_deleted is not null and new_deleted is null then return 'restore'; end if;\n  if old_archived is null and new_archived is not null then return 'archive'; end if;\n  if old_archived is not null and new_archived is null then return 'restore'; end if;\n  old_locked := nullif(p_before->>'registration_locked', '')::boolean;\n  new_locked := nullif(p_after->>'registration_locked', '')::boolean;\n  if old_locked is false and new_locked is true then return 'lock'; end if;\n  if old_locked is true and new_locked is false then return 'reopen'; end if;\n  old_status := p_before->>'status';\n  new_status := p_after->>'status';\n  if old_status is distinct from new_status then\n    if new_status = 'approved' then return 'approve'; end if;\n    if new_status = 'rejected' then return 'reject'; end if;\n    if new_status = 'cancelled' then return 'cancel_registration'; end if;\n    if new_status = 'completed' then return 'confirm'; end if;\n  end if;\n  return 'update';\nend;\n$function$\n",
+      "md5": "42921282d90e1a504962e97099272c5b",
+      "security_definer": false,
+      "config": null,
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "audit_sanitize_row",
+      "signature": "private.audit_sanitize_row(jsonb)",
+      "definition": "CREATE OR REPLACE FUNCTION private.audit_sanitize_row(p_value jsonb)\n RETURNS jsonb\n LANGUAGE plpgsql\n IMMUTABLE\n SET search_path TO ''\nAS $function$\ndeclare\n  result jsonb;\n  item record;\n  sanitized jsonb;\n  normalized_key text;\nbegin\n  if p_value is null then\n    return null;\n  end if;\n\n  case jsonb_typeof(p_value)\n    when 'object' then\n      result := '{}'::jsonb;\n\n      for item in\n        select entry.key, entry.value\n        from jsonb_each(p_value) as entry(key, value)\n      loop\n        normalized_key := regexp_replace(\n          lower(coalesce(item.key, '')),\n          '[^a-z0-9]',\n          '',\n          'g'\n        );\n\n        -- Keep the key visible for audit shape compatibility, but never retain\n        -- a credential value. Separators/case are normalized before comparison.\n        if normalized_key = any (array[\n          'password', 'passwd', 'passphrase', 'passwordhash',\n          'token', 'accesstoken', 'accesskey', 'refreshtoken', 'idtoken',\n          'apikey', 'clientsecret', 'secret', 'secretkey',\n          'authorization', 'authtoken', 'bearer',\n          'privatekey', 'oauthtoken', 'oauthsecret',\n          'providertoken', 'providersecret',\n          'credentials', 'credential', 'cookie', 'sessiontoken',\n          'refresh', 'otp', 'base64', 'binary'\n        ]) then\n          sanitized := to_jsonb('[REDACTED]'::text);\n        elsif normalized_key ~ '^(file|image|thumbnail)url$'\n          and jsonb_typeof(item.value) = 'string' then\n          sanitized := to_jsonb('[redacted_reference]'::text);\n        else\n          sanitized := private.audit_sanitize_row(item.value);\n        end if;\n\n        result := result || jsonb_build_object(item.key, sanitized);\n      end loop;\n\n      return result;\n\n    when 'array' then\n      select coalesce(\n        jsonb_agg(private.audit_sanitize_row(entry.value) order by entry.ordinality),\n        '[]'::jsonb\n      )\n      into result\n      from jsonb_array_elements(p_value) with ordinality as entry(value, ordinality);\n\n      return result;\n\n    when 'string' then\n      if length(p_value #>> '{}') > 10000 then\n        return to_jsonb('[redacted_large_value]'::text);\n      end if;\n      return p_value;\n\n    else\n      -- Numbers, booleans, and JSON null are safe scalar values and are\n      -- retained exactly. SQL NULL was handled above.\n      return p_value;\n  end case;\nend;\n$function$\n",
+      "md5": "16d3cf4870e23e5596402333daa7bab6",
+      "security_definer": false,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "bump_concurrency_version",
+      "signature": "private.bump_concurrency_version()",
+      "definition": "CREATE OR REPLACE FUNCTION private.bump_concurrency_version()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  new.version := old.version + 1;\n  new.updated_at := statement_timestamp();\n  return new;\nend;\n$function$\n",
+      "md5": "b9b0fe8cc86ae426132f9b231fa8ba10",
+      "security_definer": false,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "capture_audit_row_change",
+      "signature": "private.capture_audit_row_change()",
+      "definition": "CREATE OR REPLACE FUNCTION private.capture_audit_row_change()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\ndeclare\r\n  before_row jsonb;\r\n  after_row jsonb;\r\n  actor_business_id text;\r\n  actor_auth_id uuid;\r\n  actor_display_name text;\r\n  actor_permission text;\r\n  entity_id_value text;\r\n  entity_name_value text;\r\n  changed text[];\r\n  action_value text;\r\n  source_value text := coalesce(nullif(current_setting('app.audit_source', true), ''), 'manual');\r\n  metadata_value jsonb := '{}'::jsonb;\r\nbegin\r\n  if source_value not in ('manual', 'excel_import', 'google_sheets', 'system', 'ocr', 'upload') then\r\n    source_value := 'manual';\r\n  end if;\r\n  before_row := private.audit_sanitize_row(case when tg_op <> 'INSERT' then to_jsonb(old) else null end);\r\n  after_row := private.audit_sanitize_row(case when tg_op <> 'DELETE' then to_jsonb(new) else null end);\r\n  entity_id_value := coalesce(after_row->>'id', before_row->>'id');\r\n  if entity_id_value is null or btrim(entity_id_value) = '' then return coalesce(new, old); end if;\r\n  entity_name_value := coalesce(after_row->>'title', after_row->>'name', after_row->>'full_name', before_row->>'title', before_row->>'name', before_row->>'full_name', entity_id_value);\r\n  actor_auth_id := auth.uid();\r\n  actor_business_id := private.current_business_user_id();\r\n  select business_user.full_name, business_user.system_permission\r\n    into actor_display_name, actor_permission\r\n  from public.business_users as business_user\r\n  where business_user.id = actor_business_id;\r\n  action_value := private.audit_action_for_change(tg_table_name, tg_op, before_row, after_row);\r\n  if tg_op = 'INSERT' and coalesce(after_row->>'source', '') in ('excel_import', 'google_sheets') then\r\n    source_value := after_row->>'source';\r\n  elsif coalesce(after_row->>'source', '') in ('ocr', 'upload', 'system') then\r\n    source_value := after_row->>'source';\r\n  end if;\r\n  metadata_value := jsonb_build_object('table', tg_table_name, 'operation', tg_op);\r\n  if after_row ? 'status' then metadata_value := metadata_value || jsonb_build_object('status', after_row->>'status'); end if;\r\n  if after_row ? 'status_mode' then metadata_value := metadata_value || jsonb_build_object('status_mode', after_row->>'status_mode'); end if;\r\n  if after_row ? 'version' then metadata_value := metadata_value || jsonb_build_object('version', after_row->>'version'); end if;\r\n  select coalesce(array_agg(key order by key), '{}'::text[]) into changed\r\n  from (\r\n    select key from jsonb_object_keys(coalesce(before_row, '{}'::jsonb)) as old_keys(key)\r\n    union select key from jsonb_object_keys(coalesce(after_row, '{}'::jsonb)) as new_keys(key)\r\n  ) as keys\r\n  where (before_row->key) is distinct from (after_row->key);\r\n  insert into public.audit_logs (\r\n    actor_auth_user_id, actor_business_user_id, actor_name, actor_role,\r\n    module, action, entity_type, entity_id, entity_name,\r\n    before_data, after_data, changed_fields, reason, source, correlation_id,\r\n    metadata, entity_exists\r\n  ) values (\r\n    actor_auth_id, actor_business_id, actor_display_name, actor_permission,\r\n    case tg_table_name\r\n      when 'shifts' then 'calendar' when 'shift_registrations' then 'calendar'\r\n      when 'reports' then 'reports' when 'report_revisions' then 'reports'\r\n      when 'report_images' then 'reports' when 'live_report_images' then 'reports'\r\n      when 'swap_requests' then 'swaps' when 'schedule_import_batches' then 'imports'\r\n      when 'schedule_import_batch_rows' then 'imports' when 'business_users' then 'staff'\r\n      when 'brands' then 'brands' when 'platforms' then 'platforms'\r\n      when 'campaigns' then 'campaigns' else 'settings'\r\n    end,\r\n    action_value, replace(tg_table_name, '_', ' '), entity_id_value, entity_name_value,\r\n    before_row, after_row, changed, coalesce(after_row->>'deletion_reason', after_row->>'review_notes'),\r\n    source_value, coalesce(nullif(current_setting('request.header.x-request-id', true), ''), gen_random_uuid()::text),\r\n    metadata_value, tg_op <> 'DELETE'\r\n  );\r\n  if tg_op = 'DELETE' then return old; end if;\r\n  return new;\r\nend;\r\n$function$\n",
+      "md5": "7487a8e1856d876ae88a8fd612d58539",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "current_business_user_id",
+      "signature": "private.current_business_user_id()",
+      "definition": "CREATE OR REPLACE FUNCTION private.current_business_user_id()\n RETURNS text\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n  select business_user.id\n  from public.business_users as business_user\n  where business_user.auth_user_id = (select auth.uid())\n    and business_user.status = 'active'\n    and business_user.account_status = 'active'\n    and business_user.archived_at is null\n    and business_user.deleted_at is null\n  limit 1;\n$function$\n",
+      "md5": "af758d8d788031f301f1894f34bc62e1",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "current_system_permission",
+      "signature": "private.current_system_permission()",
+      "definition": "CREATE OR REPLACE FUNCTION private.current_system_permission()\n RETURNS text\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n  select business_user.system_permission\n  from public.business_users as business_user\n  where business_user.auth_user_id = (select auth.uid())\n    and business_user.status = 'active'\n    and business_user.account_status = 'active'\n    and business_user.archived_at is null\n    and business_user.deleted_at is null\n  limit 1;\n$function$\n",
+      "md5": "2bf4f3b33d11cb6f43c4733163ff4cac",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "insert_manual_shift_assignment",
+      "signature": "private.insert_manual_shift_assignment(text,text,text,text,text,boolean)",
+      "definition": "CREATE OR REPLACE FUNCTION private.insert_manual_shift_assignment(p_shift_id text, p_user_id text, p_role text, p_actor_id text, p_notes text, p_auto_lock boolean)\n RETURNS shift_registrations\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  target_shift public.shifts;\n  created_registration public.shift_registrations;\nbegin\n  select * into target_shift\n  from public.shifts\n  where id = p_shift_id and deleted_at is null and archived_at is null\n  for update;\n  if target_shift.id is null then\n    raise exception using errcode = 'P0001', message = 'SHIFT_NOT_FOUND';\n  end if;\n  if target_shift.status <> 'scheduled' or target_shift.registration_locked then\n    raise exception using errcode = 'P0001', message = 'SHIFT_NOT_OPEN';\n  end if;\n\n  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(p_user_id, 91731));\n  perform private.assert_shift_role_eligibility(p_user_id, p_role);\n  perform private.assert_shift_capacity(target_shift, p_role, null);\n  perform private.assert_no_shift_registration_conflict(p_user_id, target_shift, p_role, null);\n\n  insert into public.shift_registrations (\n    shift_id, user_id, operational_role, status, source,\n    reviewed_by, reviewed_at, review_notes\n  ) values (\n    p_shift_id, p_user_id, p_role, 'manually_assigned', 'manual_assignment',\n    p_actor_id, statement_timestamp(), p_notes\n  ) returning * into created_registration;\n\n  if p_auto_lock then\n    perform private.refresh_shift_registration_lock(p_shift_id, false);\n  end if;\n  return created_registration;\nend;\n$function$\n",
+      "md5": "d013fd7adf7643fd48422127a5f1aacb",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "is_leader_or_admin",
+      "signature": "private.is_leader_or_admin()",
+      "definition": "CREATE OR REPLACE FUNCTION private.is_leader_or_admin()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n  select coalesce(\n    (select private.current_system_permission()) in ('leader', 'admin'),\n    false\n  );\n$function$\n",
+      "md5": "ca20ff5f0bfb3d3e7f0aba2cee9fb282",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "normalize_shift_capacity",
+      "signature": "private.normalize_shift_capacity(text,smallint)",
+      "definition": "CREATE OR REPLACE FUNCTION private.normalize_shift_capacity(p_value text, p_default smallint)\n RETURNS smallint\n LANGUAGE plpgsql\n IMMUTABLE\n SET search_path TO ''\nAS $function$\ndeclare\n  parsed numeric;\nbegin\n  if p_value is null or btrim(p_value) = '' then\n    return p_default;\n  end if;\n  begin\n    parsed := p_value::numeric;\n  exception when others then\n    raise exception using errcode = '22023', message = 'SHIFT_CAPACITY_INVALID';\n  end;\n  if parsed < 0 or parsed > 100 or trunc(parsed) <> parsed then\n    raise exception using errcode = '22023', message = 'SHIFT_CAPACITY_INVALID';\n  end if;\n  return parsed::smallint;\nend;\n$function$\n",
+      "md5": "6148d66483922ece18f6748b58003057",
+      "security_definer": false,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "refresh_shift_registration_lock",
+      "signature": "private.refresh_shift_registration_lock(text,boolean)",
+      "definition": "CREATE OR REPLACE FUNCTION private.refresh_shift_registration_lock(p_shift_id text, p_unlock_when_understaffed boolean)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\ndeclare\r\n  fully_staffed boolean;\r\n  auto_lock boolean;\r\nbegin\r\n  select auto_lock_filled_shifts into auto_lock\r\n  from public.system_settings\r\n  limit 1;\r\n  if auto_lock is null then\r\n    raise exception using errcode = 'P0001', message = 'OPERATIONAL_SETTINGS_NOT_CONFIGURED';\r\n  end if;\r\n  select\r\n    (select count(*) from public.shift_registrations r where r.shift_id = shift.id and r.operational_role = 'host' and r.status in ('approved', 'manually_assigned')) >= shift.required_host_count\r\n    and (select count(*) from public.shift_registrations r where r.shift_id = shift.id and r.operational_role = 'support' and r.status in ('approved', 'manually_assigned')) >= shift.required_support_count\r\n    and (select count(*) from public.shift_registrations r where r.shift_id = shift.id and r.operational_role = 'technical' and r.status in ('approved', 'manually_assigned')) >= shift.required_technical_count\r\n  into fully_staffed\r\n  from public.shifts as shift\r\n  where shift.id = p_shift_id;\r\n\r\n  if fully_staffed and auto_lock then\r\n    update public.shifts set registration_locked = true where id = p_shift_id;\r\n  elsif not fully_staffed and p_unlock_when_understaffed then\r\n    update public.shifts set registration_locked = false where id = p_shift_id;\r\n  end if;\r\nend;\r\n$function$\n",
+      "md5": "61b37f0c47289db8ea7fb66051e56c8f",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "require_shift_actor",
+      "signature": "private.require_shift_actor(boolean)",
+      "definition": "CREATE OR REPLACE FUNCTION private.require_shift_actor(p_leader_required boolean)\n RETURNS text\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  actor_id text;\nbegin\n  actor_id := private.current_business_user_id();\n  if actor_id is null then\n    raise exception using errcode = '42501', message = 'AUTHENTICATION_REQUIRED';\n  end if;\n  if p_leader_required and not private.is_leader_or_admin() then\n    raise exception using errcode = '42501', message = 'OPERATION_NOT_ALLOWED';\n  end if;\n  return actor_id;\nend;\n$function$\n",
+      "md5": "9a6ce1d57323f328023e41da940cb2f3",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "set_shift_derived_fields",
+      "signature": "private.set_shift_derived_fields()",
+      "definition": "CREATE OR REPLACE FUNCTION private.set_shift_derived_fields()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\r\ndeclare\r\n  cutoff_hours smallint;\r\n  old_cutoff_was_default boolean := false;\r\nbegin\r\n  select registration_cutoff_hours into cutoff_hours\r\n  from public.system_settings\r\n  limit 1;\r\n  if cutoff_hours is null then\r\n    raise exception using errcode = 'P0001', message = 'OPERATIONAL_SETTINGS_NOT_CONFIGURED';\r\n  end if;\r\n  if new.timezone is distinct from 'Asia/Ho_Chi_Minh' then\r\n    raise exception using errcode = '22023', message = 'SHIFT_TIMEZONE_INVALID';\r\n  end if;\r\n  if new.start_time = new.end_time then\r\n    raise exception using errcode = '22023', message = 'SHIFT_DURATION_INVALID';\r\n  end if;\r\n  if tg_op = 'UPDATE' then\r\n    old_cutoff_was_default := old.registration_cutoff_at = old.start_at - (cutoff_hours * interval '1 hour');\r\n  end if;\r\n\r\n  new.end_date := new.date + case when new.end_time < new.start_time then 1 else 0 end;\r\n  new.crosses_midnight := new.end_date > new.date;\r\n  new.start_at := (new.date + new.start_time) at time zone 'Asia/Ho_Chi_Minh';\r\n  new.end_at := (new.end_date + new.end_time) at time zone 'Asia/Ho_Chi_Minh';\r\n  new.duration_minutes := (extract(epoch from (new.end_at - new.start_at)) / 60)::smallint;\r\n\r\n  if new.registration_cutoff_at is null\r\n    or (tg_op = 'UPDATE' and old_cutoff_was_default and (\r\n      new.date is distinct from old.date\r\n      or new.start_time is distinct from old.start_time\r\n      or new.end_time is distinct from old.end_time\r\n    ))\r\n  then\r\n    new.registration_cutoff_at := new.start_at - (cutoff_hours * interval '1 hour');\r\n  end if;\r\n  return new;\r\nend;\r\n$function$\n",
+      "md5": "c7547b97a23a1065304fb1bbfe0daea5",
+      "security_definer": false,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "set_shift_status_mode",
+      "signature": "private.set_shift_status_mode()",
+      "definition": "CREATE OR REPLACE FUNCTION private.set_shift_status_mode()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\ndeclare\r\n  override_mode text;\r\n  source_mode text;\r\nbegin\r\n  override_mode := current_setting('app.shift_status_mode_override', true);\r\n  source_mode := current_setting('app.audit_source', true);\r\n  if override_mode in ('auto', 'manual') then\r\n    new.status_mode := override_mode;\r\n  elsif new.status is distinct from old.status and coalesce(source_mode, 'manual') <> 'system' then\r\n    new.status_mode := 'manual';\r\n  end if;\r\n  return new;\r\nend;\r\n$function$\n",
+      "md5": "5cd677bb87233dc12c754107451f50d2",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "set_updated_at",
+      "signature": "private.set_updated_at()",
+      "definition": "CREATE OR REPLACE FUNCTION private.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  new.updated_at := statement_timestamp();\n  return new;\nend;\n$function$\n",
+      "md5": "d24500b910c9669004337da44f369345",
+      "security_definer": false,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "shift_required_capacity",
+      "signature": "private.shift_required_capacity(shifts,text)",
+      "definition": "CREATE OR REPLACE FUNCTION private.shift_required_capacity(p_shift shifts, p_role text)\n RETURNS smallint\n LANGUAGE sql\n IMMUTABLE\n SET search_path TO ''\nAS $function$\n  select case p_role\n    when 'host' then p_shift.required_host_count\n    when 'support' then p_shift.required_support_count\n    when 'technical' then p_shift.required_technical_count\n    else null\n  end;\n$function$\n",
+      "md5": "47f8d49326be299da5ebe28249d3bb1e",
+      "security_definer": false,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "public",
+      "name": "update_shift",
+      "signature": "update_shift(text,jsonb,boolean,integer)",
+      "definition": "CREATE OR REPLACE FUNCTION public.update_shift(p_shift_id text, p_patch jsonb, p_confirm_impact boolean, p_expected_version integer)\n RETURNS shifts\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  actor_id text;\n  actor_permission text;\n  existing_shift public.shifts;\n  updated_shift public.shifts;\n  input_key text;\n  requested_status text;\nbegin\n  actor_id := private.require_shift_actor(true);\n  actor_permission := private.current_system_permission();\n  if p_patch is null or jsonb_typeof(p_patch) <> 'object' then\n    raise exception using errcode = '22023', message = 'SHIFT_PAYLOAD_INVALID';\n  end if;\n  if p_patch ?| array['host_id', 'support_id', 'technical_id'] then\n    raise exception using errcode = '22023', message = 'STAFFING_FIELDS_USE_STAFFING_RPC';\n  end if;\n  for input_key in select jsonb_object_keys(p_patch)\n  loop\n    if input_key <> all (array[\n      'date', 'start_time', 'end_time', 'brand_id', 'platform_id', 'campaign_id',\n      'title', 'studio', 'required_host_count', 'required_support_count',\n      'required_technical_count', 'status', 'live_link', 'product_notes',\n      'registration_cutoff_at', 'allow_multi_role', 'execution_source'\n    ]::text[]) then\n      raise exception using errcode = '22023', message = 'SHIFT_FIELD_NOT_ALLOWED';\n    end if;\n    if actor_permission = 'leader'\n      and input_key in ('registration_cutoff_at', 'allow_multi_role')\n    then\n      raise exception using errcode = '42501', message = 'OPERATION_NOT_ALLOWED';\n    end if;\n  end loop;\n  if (p_patch ? 'execution_source' and p_patch->>'execution_source' is not null\n    and p_patch->>'execution_source' not in ('internal', 'agency')) then\n    raise exception using errcode = '22023', message = 'SHIFT_EXECUTION_SOURCE_INVALID';\n  end if;\n  select * into existing_shift\n  from public.shifts\n  where id = p_shift_id and deleted_at is null and archived_at is null\n  for update;\n  if existing_shift.id is null then\n    raise exception using errcode = 'P0001', message = 'SHIFT_NOT_FOUND';\n  end if;\n  perform private.assert_expected_version('Shift', p_expected_version, existing_shift.version);\n  requested_status := coalesce(nullif(p_patch->>'status', ''), existing_shift.status);\n  if actor_permission in ('leader', 'admin')\n    and requested_status <> existing_shift.status and not (\n      (existing_shift.status = 'scheduled' and requested_status in ('scheduled', 'preparing', 'cancelled'))\n      or (existing_shift.status = 'preparing' and requested_status in ('scheduled', 'preparing', 'live', 'paused', 'cancelled'))\n      or (existing_shift.status = 'live' and requested_status in ('live', 'paused', 'completed'))\n      or (existing_shift.status = 'paused' and requested_status in ('live', 'paused', 'completed'))\n      or (existing_shift.status = 'completed' and existing_shift.status_mode = 'auto'\n        and requested_status in ('scheduled', 'preparing', 'live', 'paused', 'completed'))\n      or (existing_shift.status = 'completed' and existing_shift.status_mode = 'manual' and requested_status = 'completed')\n      or (existing_shift.status = 'cancelled' and requested_status = 'cancelled')\n    ) then\n    raise exception using errcode = '42501', message = 'SHIFT_STATUS_TRANSITION_NOT_ALLOWED';\n  end if;\n  if existing_shift.status = 'live' and p_patch ?| array['date', 'start_time', 'platform_id'] then\n    raise exception using errcode = 'P0001', message = 'LIVE_SHIFT_FIELD_LOCKED';\n  end if;\n  if existing_shift.status = 'completed'\n    and p_patch ?| array['date', 'start_time', 'end_time', 'platform_id', 'campaign_id']\n    and not p_confirm_impact\n  then\n    raise exception using errcode = 'P0001', message = 'COMPLETED_SHIFT_IMPACT_CONFIRMATION_REQUIRED';\n  end if;\n  update public.shifts as shift\n  set\n    date = case when p_patch ? 'date' then (p_patch->>'date')::date else shift.date end,\n    start_time = case when p_patch ? 'start_time' then (p_patch->>'start_time')::time else shift.start_time end,\n    end_time = case when p_patch ? 'end_time' then (p_patch->>'end_time')::time else shift.end_time end,\n    brand_id = case when p_patch ? 'brand_id' then nullif(p_patch->>'brand_id', '') else shift.brand_id end,\n    platform_id = case when p_patch ? 'platform_id' then nullif(p_patch->>'platform_id', '') else shift.platform_id end,\n    campaign_id = case when p_patch ? 'campaign_id' then nullif(p_patch->>'campaign_id', '') else shift.campaign_id end,\n    title = case when p_patch ? 'title' then nullif(p_patch->>'title', '') else shift.title end,\n    studio = case when p_patch ? 'studio' then nullif(p_patch->>'studio', '') else shift.studio end,\n    required_host_count = case when p_patch ? 'required_host_count' then private.normalize_shift_capacity(p_patch->>'required_host_count', 1::smallint) else shift.required_host_count end,\n    required_support_count = case when p_patch ? 'required_support_count' then private.normalize_shift_capacity(p_patch->>'required_support_count', 1::smallint) else shift.required_support_count end,\n    required_technical_count = case when p_patch ? 'required_technical_count' then private.normalize_shift_capacity(p_patch->>'required_technical_count', 1::smallint) else shift.required_technical_count end,\n    registration_cutoff_at = case when p_patch ? 'registration_cutoff_at' then nullif(p_patch->>'registration_cutoff_at', '')::timestamptz else shift.registration_cutoff_at end,\n    allow_multi_role = case when p_patch ? 'allow_multi_role' then (p_patch->>'allow_multi_role')::boolean else shift.allow_multi_role end,\n    status = requested_status,\n    live_link = case when p_patch ? 'live_link' then nullif(p_patch->>'live_link', '') else shift.live_link end,\n    product_notes = case when p_patch ? 'product_notes' then nullif(p_patch->>'product_notes', '') else shift.product_notes end,\n    execution_source = case\n      when p_patch ? 'execution_source' then p_patch->>'execution_source'\n      else shift.execution_source end,\n    updated_by = actor_id\n  where shift.id = p_shift_id\n  returning * into updated_shift;\n  perform private.assert_shift_staffing_consistent(updated_shift);\n  return updated_shift;\nend;\n$function$\n",
+      "md5": "ead3d98c97a4f293a521e1a6bf4aba3c",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}"
+    },
+    {
+      "schema": "public",
+      "name": "update_shift",
+      "signature": "update_shift(text,jsonb,boolean)",
+      "definition": "CREATE OR REPLACE FUNCTION public.update_shift(p_shift_id text, p_patch jsonb, p_confirm_impact boolean DEFAULT false)\n RETURNS shifts\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  actor_id text;\n  actor_permission text;\n  existing_shift public.shifts;\n  updated_shift public.shifts;\n  input_key text;\n  requested_status text;\nbegin\n  actor_id := private.require_shift_actor(true);\n  actor_permission := private.current_system_permission();\n  if p_patch is null or jsonb_typeof(p_patch) <> 'object' then\n    raise exception using errcode = '22023', message = 'SHIFT_PAYLOAD_INVALID';\n  end if;\n  if p_patch ?| array['host_id', 'support_id', 'technical_id'] then\n    raise exception using errcode = '22023', message = 'STAFFING_FIELDS_USE_STAFFING_RPC';\n  end if;\n  for input_key in select jsonb_object_keys(p_patch)\n  loop\n    if input_key <> all (array[\n      'date', 'start_time', 'end_time', 'brand_id', 'platform_id', 'campaign_id',\n      'title', 'studio', 'required_host_count', 'required_support_count',\n      'required_technical_count', 'status', 'live_link', 'product_notes',\n      'registration_cutoff_at', 'allow_multi_role', 'execution_source'\n    ]::text[]) then\n      raise exception using errcode = '22023', message = 'SHIFT_FIELD_NOT_ALLOWED';\n    end if;\n    if actor_permission = 'leader'\n      and input_key in ('registration_cutoff_at', 'allow_multi_role')\n    then\n      raise exception using errcode = '42501', message = 'OPERATION_NOT_ALLOWED';\n    end if;\n  end loop;\n  if (p_patch ? 'execution_source' and p_patch->>'execution_source' is not null\n    and p_patch->>'execution_source' not in ('internal', 'agency')) then\n    raise exception using errcode = '22023', message = 'SHIFT_EXECUTION_SOURCE_INVALID';\n  end if;\n  select * into existing_shift\n  from public.shifts\n  where id = p_shift_id and deleted_at is null and archived_at is null\n  for update;\n  if existing_shift.id is null then\n    raise exception using errcode = 'P0001', message = 'SHIFT_NOT_FOUND';\n  end if;\n  requested_status := coalesce(nullif(p_patch->>'status', ''), existing_shift.status);\n  if actor_permission in ('leader', 'admin')\n    and requested_status <> existing_shift.status and not (\n      (existing_shift.status = 'scheduled' and requested_status in ('scheduled', 'preparing', 'cancelled'))\n      or (existing_shift.status = 'preparing' and requested_status in ('scheduled', 'preparing', 'live', 'paused', 'cancelled'))\n      or (existing_shift.status = 'live' and requested_status in ('live', 'paused', 'completed'))\n      or (existing_shift.status = 'paused' and requested_status in ('live', 'paused', 'completed'))\n      or (existing_shift.status = 'completed' and requested_status = 'completed')\n      or (existing_shift.status = 'cancelled' and requested_status = 'cancelled')\n    ) then\n    raise exception using errcode = '42501', message = 'SHIFT_STATUS_TRANSITION_NOT_ALLOWED';\n  end if;\n  if existing_shift.status = 'live' and p_patch ?| array['date', 'start_time', 'platform_id'] then\n    raise exception using errcode = 'P0001', message = 'LIVE_SHIFT_FIELD_LOCKED';\n  end if;\n  if existing_shift.status = 'completed'\n    and p_patch ?| array['date', 'start_time', 'end_time', 'platform_id', 'campaign_id']\n    and not p_confirm_impact\n  then\n    raise exception using errcode = 'P0001', message = 'COMPLETED_SHIFT_IMPACT_CONFIRMATION_REQUIRED';\n  end if;\n  update public.shifts as shift\n  set\n    date = case when p_patch ? 'date' then (p_patch->>'date')::date else shift.date end,\n    start_time = case when p_patch ? 'start_time' then (p_patch->>'start_time')::time else shift.start_time end,\n    end_time = case when p_patch ? 'end_time' then (p_patch->>'end_time')::time else shift.end_time end,\n    brand_id = case when p_patch ? 'brand_id' then nullif(p_patch->>'brand_id', '') else shift.brand_id end,\n    platform_id = case when p_patch ? 'platform_id' then nullif(p_patch->>'platform_id', '') else shift.platform_id end,\n    campaign_id = case when p_patch ? 'campaign_id' then nullif(p_patch->>'campaign_id', '') else shift.campaign_id end,\n    title = case when p_patch ? 'title' then nullif(p_patch->>'title', '') else shift.title end,\n    studio = case when p_patch ? 'studio' then nullif(p_patch->>'studio', '') else shift.studio end,\n    required_host_count = case when p_patch ? 'required_host_count' then private.normalize_shift_capacity(p_patch->>'required_host_count', 1::smallint) else shift.required_host_count end,\n    required_support_count = case when p_patch ? 'required_support_count' then private.normalize_shift_capacity(p_patch->>'required_support_count', 1::smallint) else shift.required_support_count end,\n    required_technical_count = case when p_patch ? 'required_technical_count' then private.normalize_shift_capacity(p_patch->>'required_technical_count', 1::smallint) else shift.required_technical_count end,\n    registration_cutoff_at = case when p_patch ? 'registration_cutoff_at' then nullif(p_patch->>'registration_cutoff_at', '')::timestamptz else shift.registration_cutoff_at end,\n    allow_multi_role = case when p_patch ? 'allow_multi_role' then (p_patch->>'allow_multi_role')::boolean else shift.allow_multi_role end,\n    status = requested_status,\n    live_link = case when p_patch ? 'live_link' then nullif(p_patch->>'live_link', '') else shift.live_link end,\n    product_notes = case when p_patch ? 'product_notes' then nullif(p_patch->>'product_notes', '') else shift.product_notes end,\n    execution_source = case\n      when p_patch ? 'execution_source' then p_patch->>'execution_source'\n      else shift.execution_source end,\n    updated_by = actor_id\n  where shift.id = p_shift_id\n  returning * into updated_shift;\n  perform private.assert_shift_staffing_consistent(updated_shift);\n  return updated_shift;\nend;\n$function$\n",
+      "md5": "052af1089ed967316d385007828e971c",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "can_read_shift",
+      "signature": "private.can_read_shift(text)",
+      "definition": "CREATE OR REPLACE FUNCTION private.can_read_shift(p_shift_id text)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n  select coalesce((\n    select case\n      when (select private.current_system_permission()) = 'admin' then true\n      when shift.deleted_at is not null or shift.archived_at is not null then false\n      when (select private.current_system_permission()) = 'leader' then true\n      else (\n        (\n          shift.status = 'scheduled'\n          and shift.registration_locked = false\n          and shift.end_at > statement_timestamp()\n        )\n        or (select private.current_business_user_id()) in\n          (shift.host_id, shift.support_id, shift.technical_id)\n        or exists (\n          select 1\n          from public.shift_registrations as registration\n          where registration.shift_id = shift.id\n            and registration.user_id = (select private.current_business_user_id())\n            and registration.status in ('pending', 'approved', 'manually_assigned')\n        )\n      )\n    end\n    from public.shifts as shift\n    where shift.id = p_shift_id\n      and (select private.current_business_user_is_active())\n  ), false);\n$function$\n",
+      "md5": "76f4a8e13c72e29f2932044cb9ed51d0",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "current_business_user_is_active",
+      "signature": "private.current_business_user_is_active()",
+      "definition": "CREATE OR REPLACE FUNCTION private.current_business_user_is_active()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n  select exists (\n    select 1\n    from public.business_users as business_user\n    where business_user.auth_user_id = (select auth.uid())\n      and business_user.status = 'active'\n      and business_user.account_status = 'active'\n      and business_user.archived_at is null\n      and business_user.deleted_at is null\n  );\n$function$\n",
+      "md5": "a5b7f2c2db66342ac91b3927ed3944c3",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "emit_report_notification",
+      "signature": "private.emit_report_notification()",
+      "definition": "CREATE OR REPLACE FUNCTION private.emit_report_notification()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  actor_id text;\n  recipient_id text;\n  event_type text;\n  title text;\n  message text;\nbegin\n  actor_id := private.current_business_user_id();\n  if actor_id is null then\n    raise exception using errcode = '42501', message = 'AUTHENTICATION_REQUIRED';\n  end if;\n  if (tg_op = 'INSERT' and new.status = 'in_review')\n    or (tg_op = 'UPDATE' and old.status in ('draft', 'reopened') and new.status = 'in_review') then\n    for recipient_id in select private.notification_reviewer_ids(new.shift_id)\n    loop\n      perform private.insert_notification(\n        recipient_id, 'report_submitted', 'report', 'info',\n        'Report submitted', 'A report is ready for review.',\n        'report', new.id, '/reports',\n        'report_submitted:' || new.id || ':' || recipient_id\n      );\n    end loop;\n  elsif tg_op = 'UPDATE' and old.status = 'in_review' and new.status in ('confirmed', 'reopened') then\n    event_type := case when new.status = 'confirmed' then 'report_reviewed' else 'report_reviewed' end;\n    title := case when new.status = 'confirmed' then 'Report approved' else 'Report needs updates' end;\n    message := case when new.status = 'confirmed' then 'Your report was approved.' else coalesce(new.review_notes, 'Your report needs updates.') end;\n    perform private.insert_notification(\n      new.submitted_by, event_type, 'report', case when new.status = 'confirmed' then 'success' else 'warning' end,\n      title, message, 'report', new.id, '/reports',\n      event_type || ':' || new.id || ':' || coalesce(new.submitted_by, '') || ':' || new.status\n    );\n  end if;\n  return new;\nend;\n$function$\n",
+      "md5": "28ddc56ab0e13d06db348b818c9f2d8d",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "emit_shift_registration_notification",
+      "signature": "private.emit_shift_registration_notification()",
+      "definition": "CREATE OR REPLACE FUNCTION private.emit_shift_registration_notification()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  actor_id text;\n  reviewer_id text;\n  transition text;\n  notification_type text;\n  title text;\n  message text;\n  event_prefix text;\nbegin\n  actor_id := private.current_business_user_id();\n  if actor_id is null then\n    raise exception using errcode = '42501', message = 'AUTHENTICATION_REQUIRED';\n  end if;\n  if tg_op = 'INSERT' and new.status = 'pending' then\n    for reviewer_id in select private.notification_reviewer_ids(new.shift_id)\n    loop\n      perform private.insert_notification(\n        reviewer_id, 'registration_submitted', 'shift', 'info',\n        'Registration pending', 'A staff member submitted a shift registration for review.',\n        'shift', new.shift_id, '/calendar',\n        'registration_submitted:' || new.id || ':' || reviewer_id\n      );\n    end loop;\n  elsif tg_op = 'INSERT' and new.status = 'manually_assigned' then\n    perform private.insert_notification(\n      new.user_id, 'shift_assigned', 'shift', 'info',\n      'Shift assigned', 'You were assigned to a shift.',\n      'shift', new.shift_id, '/calendar',\n      'shift_assigned:' || new.id || ':' || new.user_id\n    );\n  elsif tg_op = 'UPDATE' and old.status = 'pending' and new.status in ('approved', 'rejected') then\n    transition := case when new.status = 'approved' then 'staffing_approval' else 'staffing_rejection' end;\n    notification_type := case when new.status = 'approved' then 'staffing_approval' else 'staffing_rejection' end;\n    title := case when new.status = 'approved' then 'Registration approved' else 'Registration rejected' end;\n    message := case when new.status = 'approved' then 'Your shift registration was approved.' else coalesce(new.review_notes, 'Your shift registration was rejected.') end;\n    perform private.insert_notification(\n      new.user_id, notification_type, 'shift', case when new.status = 'approved' then 'success' else 'warning' end,\n      title, message, 'shift', new.shift_id, '/calendar',\n      transition || ':' || new.id || ':' || new.user_id\n    );\n  end if;\n  return new;\nend;\n$function$\n",
+      "md5": "eebe24752a93fd277e2a9b1b25b2abd9",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "enforce_campaign_leader_update_scope",
+      "signature": "private.enforce_campaign_leader_update_scope()",
+      "definition": "CREATE OR REPLACE FUNCTION private.enforce_campaign_leader_update_scope()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nbegin\n  if (select private.current_system_permission()) = 'leader'\n    and (\n      new.id is distinct from old.id\n      or new.name is distinct from old.name\n      or new.brand_id is distinct from old.brand_id\n      or new.start_date is distinct from old.start_date\n      or new.end_date is distinct from old.end_date\n      or new.platform_ids is distinct from old.platform_ids\n      or new.created_at is distinct from old.created_at\n      or new.updated_at is distinct from old.updated_at\n      or new.deleted_at is distinct from old.deleted_at\n      or new.deleted_by is distinct from old.deleted_by\n      or new.archived_at is distinct from old.archived_at\n      or new.archived_by is distinct from old.archived_by\n      or new.deletion_reason is distinct from old.deletion_reason\n    ) then\n    raise exception using\n      errcode = '42501',\n      message = 'Leader campaign updates are limited to operational fields.';\n  end if;\n  return new;\nend;\n$function$\n",
+      "md5": "738bd28e73aa6fd30d89386e04339f7e",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "enforce_report_required_metrics",
+      "signature": "private.enforce_report_required_metrics()",
+      "definition": "CREATE OR REPLACE FUNCTION private.enforce_report_required_metrics()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\ndeclare\n  missing_metrics text[] := array[]::text[];\nbegin\n  if (new.status = 'confirmed' and not new.metrics_confirmed)\n    or (new.metrics_confirmed and new.status not in ('confirmed', 'archived')) then\n    raise exception using errcode = '22023', message = 'REPORT_CONFIRMATION_STATE_INVALID';\n  end if;\n\n  if new.status = 'confirmed'\n    and new.ocr_review is not null\n    and jsonb_typeof(new.ocr_review) is distinct from 'object' then\n    raise exception using errcode = '22023', message = 'REPORT_OCR_REVIEW_UNRESOLVED';\n  end if;\n\n  if new.status = 'confirmed'\n    and new.ocr_review ? 'metrics'\n    and jsonb_typeof(new.ocr_review->'metrics') is distinct from 'object' then\n    raise exception using errcode = '22023', message = 'REPORT_OCR_REVIEW_UNRESOLVED';\n  end if;\n\n  if new.status = 'confirmed' and exists (\n    select 1\n    from jsonb_each(coalesce(new.ocr_review->'metrics', '{}'::jsonb)) as reviewed_metric(metric_key, metric_value)\n    where jsonb_typeof(reviewed_metric.metric_value) is distinct from 'object'\n      or reviewed_metric.metric_value->>'status' in ('review_required', 'low_confidence')\n      or reviewed_metric.metric_value->'needs_review' = 'true'::jsonb\n  ) then\n    raise exception using errcode = '22023', message = 'REPORT_OCR_REVIEW_UNRESOLVED';\n  end if;\n\n  if new.status = 'confirmed' then\n    if new.dashboard_platform = 'shopee_live' then\n      if new.revenue is null or (\n        jsonb_typeof(new.normalized_metrics->'sales') is distinct from 'number'\n        and jsonb_typeof(new.platform_metrics->'sales') is distinct from 'number'\n      ) then missing_metrics := array_append(missing_metrics, 'Sales'); end if;\n      if new.orders is null or (\n        jsonb_typeof(new.normalized_metrics->'orders') is distinct from 'number'\n        and jsonb_typeof(new.platform_metrics->'orders') is distinct from 'number'\n      ) then missing_metrics := array_append(missing_metrics, 'Orders'); end if;\n      if new.peak_viewer is null or (\n        jsonb_typeof(new.normalized_metrics->'pcu') is distinct from 'number'\n        and jsonb_typeof(new.platform_metrics->'pcu') is distinct from 'number'\n      ) then missing_metrics := array_append(missing_metrics, 'PCU'); end if;\n      if new.average_viewer is null or (\n        jsonb_typeof(new.normalized_metrics->'total_viewers') is distinct from 'number'\n        and jsonb_typeof(new.platform_metrics->'total_viewers') is distinct from 'number'\n      ) then missing_metrics := array_append(missing_metrics, 'Total Viewers'); end if;\n      if new.comments is null or (\n        jsonb_typeof(new.normalized_metrics->'comments') is distinct from 'number'\n        and jsonb_typeof(new.platform_metrics->'comments') is distinct from 'number'\n      ) then missing_metrics := array_append(missing_metrics, 'Comments'); end if;\n      if new.shares is null or (\n        jsonb_typeof(new.normalized_metrics->'shares') is distinct from 'number'\n        and jsonb_typeof(new.platform_metrics->'shares') is distinct from 'number'\n      ) then missing_metrics := array_append(missing_metrics, 'Shares'); end if;\n      if new.product_clicks is null or (\n        jsonb_typeof(new.normalized_metrics->'add_to_cart') is distinct from 'number'\n        and jsonb_typeof(new.platform_metrics->'add_to_cart') is distinct from 'number'\n      ) then missing_metrics := array_append(missing_metrics, 'Add to Cart'); end if;\n      if new.ctr is null or (\n        jsonb_typeof(new.normalized_metrics->'ctr') is distinct from 'number'\n        and jsonb_typeof(new.platform_metrics->'ctr') is distinct from 'number'\n      ) then missing_metrics := array_append(missing_metrics, 'CTR'); end if;\n      if new.cvr is null or (\n        jsonb_typeof(new.normalized_metrics->'click_to_order_rate') is distinct from 'number'\n        and jsonb_typeof(new.platform_metrics->'click_to_order_rate') is distinct from 'number'\n      ) then missing_metrics := array_append(missing_metrics, 'Click-to-order Rate'); end if;\n      if new.average_order_value is null or (\n        jsonb_typeof(new.normalized_metrics->'average_basket_size') is distinct from 'number'\n        and jsonb_typeof(new.platform_metrics->'average_basket_size') is distinct from 'number'\n      ) then missing_metrics := array_append(missing_metrics, 'Average Basket Size'); end if;\n    elsif new.dashboard_platform = 'tiktok_shop' then\n      if new.gmv is null or new.revenue is null or (\n        jsonb_typeof(new.normalized_metrics->'gmv') is distinct from 'number'\n        and jsonb_typeof(new.platform_metrics->'gmv') is distinct from 'number'\n      ) then missing_metrics := array_append(missing_metrics, 'GMV'); end if;\n      if new.orders is null or (\n        jsonb_typeof(new.normalized_metrics->'sku_orders') is distinct from 'number'\n        and jsonb_typeof(new.platform_metrics->'sku_orders') is distinct from 'number'\n      ) then missing_metrics := array_append(missing_metrics, 'SKU Orders'); end if;\n      if new.peak_viewer is null or (\n        jsonb_typeof(new.normalized_metrics->'current_viewers') is distinct from 'number'\n        and jsonb_typeof(new.platform_metrics->'current_viewers') is distinct from 'number'\n      ) then missing_metrics := array_append(missing_metrics, 'Current Viewers'); end if;\n      if new.viewers is null or (\n        jsonb_typeof(new.normalized_metrics->'total_views') is distinct from 'number'\n        and jsonb_typeof(new.platform_metrics->'total_views') is distinct from 'number'\n      ) then missing_metrics := array_append(missing_metrics, 'Total Views'); end if;\n      if new.comments is null or (\n        jsonb_typeof(new.normalized_metrics->'comments') is distinct from 'number'\n        and jsonb_typeof(new.platform_metrics->'comments') is distinct from 'number'\n      ) then missing_metrics := array_append(missing_metrics, 'Comments'); end if;\n      if new.shares is null or (\n        jsonb_typeof(new.normalized_metrics->'shares') is distinct from 'number'\n        and jsonb_typeof(new.platform_metrics->'shares') is distinct from 'number'\n      ) then missing_metrics := array_append(missing_metrics, 'Shares'); end if;\n      if new.product_clicks is null or (\n        jsonb_typeof(new.normalized_metrics->'product_clicks') is distinct from 'number'\n        and jsonb_typeof(new.platform_metrics->'product_clicks') is distinct from 'number'\n      ) then missing_metrics := array_append(missing_metrics, 'Product Clicks'); end if;\n      if new.ctr is null or (\n        jsonb_typeof(new.normalized_metrics->'live_ctr') is distinct from 'number'\n        and jsonb_typeof(new.platform_metrics->'live_ctr') is distinct from 'number'\n      ) then missing_metrics := array_append(missing_metrics, 'LIVE CTR'); end if;\n      if new.cvr is null or (\n        jsonb_typeof(new.normalized_metrics->'ctor') is distinct from 'number'\n        and jsonb_typeof(new.platform_metrics->'ctor') is distinct from 'number'\n      ) then missing_metrics := array_append(missing_metrics, 'CTOR'); end if;\n      if new.average_order_value is null or (\n        jsonb_typeof(new.normalized_metrics->'average_order_value') is distinct from 'number'\n        and jsonb_typeof(new.platform_metrics->'average_order_value') is distinct from 'number'\n      ) then missing_metrics := array_append(missing_metrics, 'Average Order Value'); end if;\n    end if;\n\n    if cardinality(missing_metrics) > 0 then\n      raise exception using\n        errcode = '22023',\n        message = 'REPORT_REQUIRED_METRICS_MISSING',\n        detail = array_to_string(missing_metrics, ', ');\n    end if;\n  end if;\n\n  return new;\nend;\n$function$\n",
+      "md5": "80b5eff7d3d60cb7353e98851797efda",
+      "security_definer": false,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "is_admin",
+      "signature": "private.is_admin()",
+      "definition": "CREATE OR REPLACE FUNCTION private.is_admin()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n  select coalesce((select private.current_system_permission()) = 'admin', false);\n$function$\n",
+      "md5": "b90b8358fa911d533d27982a8f6ae42e",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "sync_shift_staffing_projection_trigger",
+      "signature": "private.sync_shift_staffing_projection_trigger()",
+      "definition": "CREATE OR REPLACE FUNCTION private.sync_shift_staffing_projection_trigger()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nbegin\n  if tg_op = 'DELETE' then\n    perform private.sync_shift_staffing_projection(old.shift_id);\n    return old;\n  end if;\n  perform private.sync_shift_staffing_projection(new.shift_id);\n  if tg_op = 'UPDATE' and new.shift_id is distinct from old.shift_id then\n    perform private.sync_shift_staffing_projection(old.shift_id);\n  end if;\n  return new;\nend;\n$function$\n",
+      "md5": "5703d0809fe7fbfbce03e62305daf651",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "validate_campaign_platform_ids",
+      "signature": "private.validate_campaign_platform_ids()",
+      "definition": "CREATE OR REPLACE FUNCTION private.validate_campaign_platform_ids()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  referenced_platform_id text;\nbegin\n  if tg_op = 'INSERT' then\n    foreach referenced_platform_id in array coalesce(new.platform_ids, '{}'::text[]) loop\n      if referenced_platform_id is not null\n        and not exists (\n          select 1\n          from public.platforms as platform_record\n          where platform_record.id = referenced_platform_id\n            and platform_record.deleted_at is null\n        ) then\n        raise exception using\n          errcode = '23503',\n          message = 'Campaign platform reference does not exist.';\n      end if;\n    end loop;\n  elsif new.platform_ids is distinct from old.platform_ids then\n    foreach referenced_platform_id in array coalesce(new.platform_ids, '{}'::text[]) loop\n      if referenced_platform_id is not null\n        and not exists (\n          select 1\n          from public.platforms as platform_record\n          where platform_record.id = referenced_platform_id\n            and platform_record.deleted_at is null\n        ) then\n        raise exception using\n          errcode = '23503',\n          message = 'Campaign platform reference does not exist.';\n      end if;\n    end loop;\n  end if;\n  return new;\nend;\n$function$\n",
+      "md5": "713f97533c1d1e3f4b244b8aa6111b38",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "insert_notification",
+      "signature": "private.insert_notification(text,text,text,text,text,text,text,text,text,text)",
+      "definition": "CREATE OR REPLACE FUNCTION private.insert_notification(p_recipient_id text, p_type text, p_legacy_type text, p_severity text, p_title text, p_message text, p_related_entity_type text, p_related_entity_id text, p_action_url text, p_event_key text)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nbegin\n  if p_recipient_id is null or not exists (\n    select 1\n    from public.business_users as business_user\n    where business_user.id = p_recipient_id\n      and business_user.status = 'active'\n      and business_user.account_status = 'active'\n      and business_user.archived_at is null\n      and business_user.deleted_at is null\n  ) then\n    return;\n  end if;\n\n  insert into public.notifications (\n    user_id, recipient_id, type, notification_type, severity, title, message,\n    related_entity_type, related_entity_id, action_url, event_key, read, read_at\n  ) values (\n    null,\n    p_recipient_id,\n    p_legacy_type,\n    p_type,\n    p_severity,\n    p_title,\n    p_message,\n    p_related_entity_type,\n    p_related_entity_id,\n    case when p_action_url like '/%' and p_action_url not like '//%' then p_action_url else null end,\n    p_event_key,\n    false,\n    null\n  )\n  on conflict (event_key) where event_key is not null do nothing;\nend;\n$function$\n",
+      "md5": "9e720e08f3f31e581b1a97e50d690486",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "notification_reviewer_ids",
+      "signature": "private.notification_reviewer_ids(text)",
+      "definition": "CREATE OR REPLACE FUNCTION private.notification_reviewer_ids(p_shift_id text)\n RETURNS SETOF text\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n  with direct_reviewers as (\n    select business_user.id\n    from public.business_users as business_user\n    join public.shifts as shift on shift.id = p_shift_id\n    where business_user.id in (shift.host_id, shift.support_id, shift.technical_id)\n      and business_user.system_permission in ('leader', 'admin')\n      and business_user.status = 'active'\n      and business_user.account_status = 'active'\n      and business_user.archived_at is null\n      and business_user.deleted_at is null\n  )\n  select id from direct_reviewers;\n$function$\n",
+      "md5": "777487cec75376c7586e97cfd10591df",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "sync_shift_staffing_projection",
+      "signature": "private.sync_shift_staffing_projection(text)",
+      "definition": "CREATE OR REPLACE FUNCTION private.sync_shift_staffing_projection(p_shift_id text)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nbegin\n  update public.shifts as shift\n  set\n    host_id = (\n      select registration.user_id\n      from public.shift_registrations as registration\n      where registration.shift_id = p_shift_id\n        and registration.operational_role = 'host'\n        and registration.status in ('approved', 'manually_assigned')\n      order by registration.created_at, registration.id\n      limit 1\n    ),\n    support_id = (\n      select registration.user_id\n      from public.shift_registrations as registration\n      where registration.shift_id = p_shift_id\n        and registration.operational_role = 'support'\n        and registration.status in ('approved', 'manually_assigned')\n      order by registration.created_at, registration.id\n      limit 1\n    ),\n    technical_id = (\n      select registration.user_id\n      from public.shift_registrations as registration\n      where registration.shift_id = p_shift_id\n        and registration.operational_role = 'technical'\n        and registration.status in ('approved', 'manually_assigned')\n      order by registration.created_at, registration.id\n      limit 1\n    ),\n    updated_by = coalesce((select private.current_business_user_id()), shift.updated_by)\n  where shift.id = p_shift_id;\nend;\n$function$\n",
+      "md5": "c464d8a364edd16d0f93cc82685e0e17",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "schema": "private",
+      "name": "emit_import_notification",
+      "signature": "private.emit_import_notification()",
+      "definition": "CREATE OR REPLACE FUNCTION private.emit_import_notification()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  actor_id text;\n  event_type text;\nbegin\n  actor_id := private.current_business_user_id();\n  if actor_id is null then\n    raise exception using errcode = '42501', message = 'AUTHENTICATION_REQUIRED';\n  end if;\n  if (tg_op = 'INSERT' and new.status in ('confirmed', 'failed'))\n    or (tg_op = 'UPDATE' and old.status is distinct from new.status and new.status in ('confirmed', 'failed')) then\n    event_type := case when new.status = 'confirmed' then 'import_completed' else 'import_failure' end;\n    perform private.insert_notification(\n      new.created_by, event_type, 'system', case when new.status = 'confirmed' then 'success' else 'error' end,\n      case when new.status = 'confirmed' then 'Import completed' else 'Import failed' end,\n      case when new.status = 'confirmed' then 'Your schedule import completed.' else 'Your schedule import failed.' end,\n      'schedule_import', new.id, '/calendar',\n      event_type || ':' || new.id || ':' || new.created_by\n    );\n  end if;\n  return new;\nend;\n$function$\n",
+      "md5": "71cbb547cf6da2aa3f30b67ad263c06a",
+      "security_definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}"
+    }
+  ],
+  "limitations": [
+    "Catalog-only snapshot: no operational rows, credentials, folders or employee details.",
+    "Auth users and auth.uid are a synthetic claim harness, not Supabase Auth integration.",
+    "No storage provider I/O, complete historical database, Auth/Storage extensions or physical Production UAT."
+  ]
+}

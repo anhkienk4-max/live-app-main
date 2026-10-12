@@ -69,6 +69,7 @@ import { deriveShiftAttention } from '@/lib/ui/operational-attention'
 import { OperationalStatusStrip } from '@/components/ui/operational-status'
 import { ShiftLifecycleActions } from './ShiftLifecycleActions'
 import { resolveStaffingLabelsForRole, StaffingLabel } from '@/lib/utils/staffingResolver'
+import { ActualStaffingPanel } from './ActualStaffingPanel'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
 
@@ -763,9 +764,10 @@ export function ShiftDetailModal({
 
           <DialogBody className="mx-0 pb-1 bg-muted/5 p-0 overflow-y-auto">
             <Tabs defaultValue="overview" className="min-w-0">
-              <TabsList className="mx-4 mt-4 grid w-auto grid-cols-3 sm:mx-6">
+              <TabsList className="mx-4 mt-4 grid group-data-[orientation=horizontal]/tabs:h-auto w-auto grid-cols-4 sm:mx-6">
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="overview">{t('shiftOverview')}</TabsTrigger>
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="staffing">{t('staffing')}</TabsTrigger>
+                <TabsTrigger className="min-h-11 min-w-0 whitespace-normal px-2 text-xs sm:text-sm" value="actual">Chấm công thực tế</TabsTrigger>
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="details">{t('additionalInfo')}</TabsTrigger>
               </TabsList>
 
@@ -812,6 +814,10 @@ export function ShiftDetailModal({
                     </section>
                   </aside>
                 </div>
+              </TabsContent>
+
+              <TabsContent value="actual" className="min-w-0 p-4 sm:p-6">
+                <ActualStaffingPanel shift={shift} currentUser={currentUser} />
               </TabsContent>
 
               <TabsContent value="details" className="space-y-4 p-4 sm:p-6">

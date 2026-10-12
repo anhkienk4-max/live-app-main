@@ -1,0 +1,24 @@
+{
+  "namespace": "RC16F_<run_id>",
+  "timezone": "Asia/Ho_Chi_Minh",
+  "execution": "isolated Docker/GitHub rehearsal only; cloud seeding requires separate approval",
+  "actors": { "A": "admin-1", "B": "finance-1", "L": "leader alias to provision only after approval", "M": "synthetic staff aliases" },
+  "rate": { "vnd_per_hour": 100000, "overtime_multiplier_basis_points": 15000, "approved_by": "B", "effective_from": "2026-09-01", "effective_through": "2026-09-30", "policy": "SYNTHETIC ONLY" },
+  "fixtures": [
+    { "id": "H1", "role": "host", "coverage": "planned", "start": "2026-09-30T23:30:00+07:00", "end": "2026-10-01T01:00:00+07:00", "actual_minutes": 90, "payable_minutes": 90, "ot_minutes": 30, "gross_vnd": 175000, "final_state": "active corrected version 2", "final_net_vnd": 124000 },
+    { "id": "H2", "role": "host", "coverage": "planned", "start": "2026-09-30T23:30:00+07:00", "end": "2026-10-01T00:15:00+07:00", "actual_minutes": 45, "payable_minutes": 45, "ot_minutes": 0, "gross_vnd": 75000, "final_state": "voided version 2; permanently reserved segment", "final_net_vnd": 0 },
+    { "id": "H3", "role": "host", "coverage": "replacement", "start": "2026-10-01T00:15:00+07:00", "end": "2026-10-01T01:00:00+07:00", "actual_minutes": 45, "payable_minutes": 45, "ot_minutes": 0, "gross_vnd": 75000, "final_state": "active version 1", "final_net_vnd": 75000 },
+    { "id": "S1", "role": "support", "coverage": "planned", "start": "2026-09-30T23:30:00+07:00", "end": "2026-10-01T01:00:00+07:00", "actual_minutes": 90, "payable_minutes": 90, "ot_minutes": 0, "gross_vnd": 150000, "final_state": "one active line across Host splits", "final_net_vnd": 150000 },
+    { "id": "LATE", "role": "host", "coverage": "planned", "start": "2026-09-30T23:35:00+07:00", "end": "2026-10-01T00:30:00+07:00", "actual_minutes": 55, "payable_minutes": 55, "ot_minutes": 0, "gross_vnd": 91667, "final_state": "active; punctuality depends on approved grace", "final_net_vnd": 91667 },
+    { "id": "EXTRA", "role": "technical", "coverage": "extra", "start": "2026-09-30T23:30:00+07:00", "end": "2026-10-01T00:00:00+07:00", "actual_minutes": 30, "payable_minutes": 30, "ot_minutes": 0, "gross_vnd": 50000, "final_state": "active; unmatched planned denominator", "final_net_vnd": 50000 },
+    { "id": "COVER", "role": "host", "coverage": "cover", "start": "2026-10-01T00:30:00+07:00", "end": "2026-10-01T01:00:00+07:00", "actual_minutes": 30, "payable_minutes": 30, "ot_minutes": 0, "gross_vnd": 50000, "final_state": "active; unmatched planned denominator", "final_net_vnd": 50000 },
+    { "id": "NOSHOW", "role": "host", "coverage": "planned", "start": null, "end": null, "actual_minutes": 0, "payable_minutes": 0, "ot_minutes": 0, "gross_vnd": 0, "final_state": "independently approved explicit no_show; no payroll", "final_net_vnd": 0 },
+    { "id": "UNKNOWN", "role": "host", "coverage": "planned", "start": null, "end": null, "actual_minutes": null, "payable_minutes": null, "ot_minutes": null, "gross_vnd": null, "final_state": "no segment; UNKNOWN, no payroll", "final_net_vnd": null }
+  ],
+  "period": { "start": "2026-09-02", "end": "2026-09-30", "final_state": "locked", "active_line_count": 6, "net_vnd": 540667, "csv": "Admin-only; active lines sum 540667; adjustment -1000 preserved" },
+  "correction": { "staff": "H1", "expected_version": 1, "payable_minutes": 60, "overtime_minutes": 30, "adjustment_vnd": -1000, "adjustment_reason": "Synthetic independently reviewed adjustment", "request_id": "30000000-0000-4000-8000-000000000001", "expected_gross_vnd": 125000, "expected_net_vnd": 124000 },
+  "retention": { "all_fixtures": "retain evidence and payroll audit; no row-level cleanup after approval", "disposable_rehearsal": "stop/remove only verified named isolated container after evidence capture", "cloud": "not authorized; later owner-approved namespace retention, no destructive audit cleanup" },
+  "evidence": ["run identifier/container image digest", "immutable deployment/SHA when UAT authorized", "actor aliases/auth mapping", "segment review versions", "rate approval/date/scope", "correction receipt/replay/audit", "period transitions", "CSV hash and monetary reconciliation"],
+  "checklist": "docs/workforce/RC16C_SYNTHETIC_UAT_CHECKLIST.md",
+  "browser_cases": "all 37 remain NOT RUN; isolated SQL does not assert UI/auth/provider UAT"
+}

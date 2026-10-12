@@ -2,14 +2,14 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-06T22:10:31+07:00
+Generated at: 2026-10-12T00:54:20+07:00
 
 ## Repository
 
-- Branch: `feat/frontend-14wave-production`
-- HEAD: `305ecf08cbfbcabecfa1a154689a9108d8687c3d`
-- origin/main: `1933532b749a52cdbc659686a14bd37e457c3ff1`
-- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-14wave`
+- Branch: `integration/rc14-rc15-rc16-prod`
+- HEAD: `7dddb168e82dbd49cf3b91d7cfc3ac451ed25478`
+- origin/main: `31efea2d1a60583975e96773f68106d46ab7d8d9`
+- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-prod-integration`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
 ## Hardening
@@ -21,10 +21,10 @@ Generated at: 2026-10-06T22:10:31+07:00
 
 ## Inventory
 
-- Routes: 35
-- Source files in tracked inventory roots: 536
-- Tests: 121
-- Migrations: 52
+- Routes: 52
+- Source files in tracked inventory roots: 684
+- Tests: 160
+- Migrations: 67
 
 ## Modules
 

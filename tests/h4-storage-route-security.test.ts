@@ -153,15 +153,15 @@ test('H.4 Matrix Case 5: Multiple matching routes with equal specificity cause a
   const candidateA = makeRoute({
     id: 'route-tie-a',
     platform_id: 'platform-lazada',
-    subbrand_key: null,
+    subbrand_key: 'subbrand-silver',
   })
   const candidateB = makeRoute({
     id: 'route-tie-b',
-    platform_id: null,
+    platform_id: 'platform-lazada',
     subbrand_key: 'subbrand-silver',
   })
 
-  // Both have score 1 when input has both platformId and subbrandKey
+  // Both routes match the exact subbrand and platform; duplicate candidates must fail closed.
   assertCode('STORAGE_ROUTE_AMBIGUOUS', () => {
     selectOperationalStorageRoute([candidateA, candidateB], {
       provider: 'google_drive',

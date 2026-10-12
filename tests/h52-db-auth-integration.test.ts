@@ -1,11 +1,18 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { PGlite } from 'file:///C:/Users/KienNguyen/.gemini/antigravity-ide/brain/880f22af-577e-49c1-85de-b9f809e7099f/scratch/node_modules/@electric-sql/pglite/dist/index.js';
+import { PGlite } from '@electric-sql/pglite';
+
+// Isolated integration fixture; hand-built schema is not a Production baseline.
+const databases: PGlite[] = [];
+afterEach(async () => {
+  await Promise.all(databases.splice(0).map(db => db.close()));
+});
 
 async function createDatabase() {
   const db = new PGlite();
+  databases.push(db);
 
   // 1. Core Supabase Roles & Schemas
   await db.exec(`
@@ -28,7 +35,7 @@ async function createDatabase() {
 
     -- Standard Supabase auth helper functions
     create or replace function auth.uid() returns uuid language sql stable as $$
-      select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid;
+      select coalesce(nullif(current_setting('request.jwt.claim.sub', true), ''), nullif(current_setting('request.jwt.claims', true), '')::jsonb->>'sub')::uuid;
     $$;
 
     create or replace function auth.role() returns text language sql stable as $$
@@ -68,7 +75,7 @@ async function createDatabase() {
       deleted_at timestamptz
     );
 
-    -- Production-equivalent private functions (No simulated mocks!)
+    -- Fixture auth helpers; not a schema dump from Production.
     create or replace function private.current_business_user_id()
     returns text language sql stable security definer set search_path = '' as $$
       select business_user.id
@@ -258,11 +265,22 @@ async function createDatabase() {
       ('shift-100', 'Morning Live Shift', 'brand-alpha', 1);
   `);
 
+  await db.exec(`
+    grant usage on schema public, auth, private to authenticated;
+    revoke all on function public.get_staff_directory() from public, anon;
+    grant execute on function public.get_staff_directory() to authenticated;
+    alter table public.business_users enable row level security;
+    grant select on public.business_users to authenticated;
+    create policy fixture_staff_read on public.business_users for select to authenticated
+      using (id = private.current_business_user_id() or private.is_leader_or_admin());
+  `);
   return db;
 }
 
 // Helper to set PostgreSQL transaction auth context
 async function setAuthContext(db: PGlite, authSub: string | null) {
+  await db.exec('reset role; set role authenticated;');
+  await db.query("select set_config('request.jwt.claims', $1, false)", [JSON.stringify({ sub: authSub, role: 'authenticated' })]);
   if (!authSub) {
     await db.exec(`
       set request.jwt.claim.sub = '';
@@ -276,7 +294,7 @@ async function setAuthContext(db: PGlite, authSub: string | null) {
   }
 }
 
-test('H.5.2 Database Auth Integration: Unauthenticated caller is rejected with 42501 AUTHENTICATION_REQUIRED', async () => {
+test('H.5.2 Isolated DB Auth Integration: Unauthenticated caller is rejected with 42501 AUTHENTICATION_REQUIRED', async () => {
   const db = await createDatabase();
   await setAuthContext(db, null);
 
@@ -297,7 +315,7 @@ test('H.5.2 Database Auth Integration: Unauthenticated caller is rejected with 4
   );
 });
 
-test('H.5.2 Database Auth Integration: Suspended or Archived users resolve actor_id to NULL and are rejected', async () => {
+test('H.5.2 Isolated DB Auth Integration: Suspended or Archived users resolve actor_id to NULL and are rejected', async () => {
   const db = await createDatabase();
 
   // Suspended user
@@ -315,7 +333,7 @@ test('H.5.2 Database Auth Integration: Suspended or Archived users resolve actor
   );
 });
 
-test('H.5.2 Database Auth Integration: NULL uploaded_by is strictly rejected for Member (P0 Guard)', async () => {
+test('H.5.2 Isolated DB Auth Integration: NULL uploaded_by is strictly rejected for Member (P0 Guard)', async () => {
   const db = await createDatabase();
   await setAuthContext(db, '33333333-3333-3333-3333-333333333333'); // member-1
 
@@ -330,7 +348,7 @@ test('H.5.2 Database Auth Integration: NULL uploaded_by is strictly rejected for
   );
 });
 
-test('H.5.2 Database Auth Integration: Cross-member deletion is rejected', async () => {
+test('H.5.2 Isolated DB Auth Integration: Cross-member deletion is rejected', async () => {
   const db = await createDatabase();
   await setAuthContext(db, '44444444-4444-4444-4444-444444444444'); // member-2 attempting to delete member-1 image
 
@@ -345,7 +363,7 @@ test('H.5.2 Database Auth Integration: Cross-member deletion is rejected', async
   );
 });
 
-test('H.5.2 Database Auth Integration: Admin and Leader can delete member image on draft report', async () => {
+test('H.5.2 Isolated DB Auth Integration: Admin and Leader can delete member image on draft report', async () => {
   const db = await createDatabase();
 
   // Admin
@@ -363,7 +381,7 @@ test('H.5.2 Database Auth Integration: Admin and Leader can delete member image 
   assert.equal(leaderLiveRes.rows[0].allowed, true);
 });
 
-test('H.5.2 Database Auth Integration: Confirmed report images are immutable (metrics_confirmed = true)', async () => {
+test('H.5.2 Isolated DB Auth Integration: Confirmed report images are immutable (metrics_confirmed = true)', async () => {
   const db = await createDatabase();
 
   // Member
@@ -388,7 +406,7 @@ test('H.5.2 Database Auth Integration: Confirmed report images are immutable (me
   );
 });
 
-test('H.5.2 Database Auth Integration: status=confirmed with metrics_confirmed=false is immutable against all roles', async () => {
+test('H.5.2 Isolated DB Auth Integration: status=confirmed with metrics_confirmed=false is immutable against all roles', async () => {
   const db = await createDatabase();
 
   // Member
@@ -413,7 +431,7 @@ test('H.5.2 Database Auth Integration: status=confirmed with metrics_confirmed=f
   );
 });
 
-test('H.5.2 Database Auth Integration: Deleted or Archived reports reject deletion as REPORT_NOT_FOUND', async () => {
+test('H.5.2 Isolated DB Auth Integration: Deleted or Archived reports reject deletion as REPORT_NOT_FOUND', async () => {
   const db = await createDatabase();
   await setAuthContext(db, '11111111-1111-1111-1111-111111111111'); // Even Admin is rejected
 
@@ -436,7 +454,7 @@ test('H.5.2 Database Auth Integration: Deleted or Archived reports reject deleti
   );
 });
 
-test('H.5.2 Database Auth Integration: Staff Directory (Contract B) only returns safe columns', async () => {
+test('H.5.2 Isolated DB Auth Integration: Staff Directory (Contract B) only returns safe columns', async () => {
   const db = await createDatabase();
   await setAuthContext(db, '33333333-3333-3333-3333-333333333333'); // member-1
 
@@ -448,7 +466,7 @@ test('H.5.2 Database Auth Integration: Staff Directory (Contract B) only returns
   assert.equal(cols.includes('system_permission'), false, 'system_permission must not be exposed');
 });
 
-test('H.5.2 Database Auth Integration: Optimistic Concurrency version bump in shifts table', async () => {
+test('H.5.2 Isolated DB Auth Integration: Optimistic Concurrency version bump in shifts table', async () => {
   const db = await createDatabase();
 
   const initial = await db.query('select version from public.shifts where id = $1;', ['shift-100']);
@@ -459,4 +477,40 @@ test('H.5.2 Database Auth Integration: Optimistic Concurrency version bump in sh
 
   const updated = await db.query('select version from public.shifts where id = $1;', ['shift-100']);
   assert.equal(updated.rows[0].version, 2, 'Version must increment from 1 to 2 via trigger');
+});
+
+test('H.5.2 Isolated DB Auth Integration: anon cannot execute guarded RPCs', async () => {
+  const db = await createDatabase();
+  await db.exec('set role anon;');
+  for (const rpc of ['authorize_report_image_delete', 'authorize_live_report_image_delete']) {
+    await assert.rejects(db.query(`select public.${rpc}($1)`, ['img-member1']),
+      (error: unknown) => (error as { code: string }).code === '42501');
+  }
+});
+
+test('H.5.2 Isolated DB Auth Integration: authenticated RLS and GRANT enforce own-row reads and deny writes', async () => {
+  const db = await createDatabase();
+  await setAuthContext(db, '33333333-3333-3333-3333-333333333333');
+  assert.deepEqual((await db.query('select id from public.business_users')).rows, [{ id: 'member-1' }]);
+  await assert.rejects(db.query("update public.business_users set system_permission = 'admin'"),
+    (error: unknown) => (error as { code: string }).code === '42501');
+  await setAuthContext(db, '22222222-2222-2222-2222-222222222222');
+  assert.equal((await db.query('select id from public.business_users')).rows.length, 6);
+});
+
+test('H.5.2 Isolated DB Auth Integration: SECURITY DEFINER uses JWT identity and rejects forged user metadata', async () => {
+  const db = await createDatabase();
+  const catalog = await db.query(`select prosecdef, proconfig from pg_proc
+    where oid = 'public.authorize_report_image_delete(text)'::regprocedure`);
+  assert.equal(catalog.rows[0].prosecdef, true);
+  assert.ok((catalog.rows[0].proconfig as string[]).some(value => value.startsWith('search_path=')));
+  await setAuthContext(db, '44444444-4444-4444-4444-444444444444');
+  await db.exec("set request.jwt.claim.sub = '';");
+  await db.query("select set_config('request.jwt.claims', $1, false)",
+    [JSON.stringify({ sub: '44444444-4444-4444-4444-444444444444', role: 'authenticated', user_metadata: { system_permission: 'admin' } })]);
+  await assert.rejects(db.query('select public.authorize_report_image_delete($1)', ['img-member1']),
+    (error: unknown) => /OPERATION_NOT_ALLOWED/.test((error as Error).message));
+  await db.query("select set_config('request.jwt.claims', $1, false)", [JSON.stringify({ role: 'authenticated' })]);
+  await assert.rejects(db.query('select public.authorize_report_image_delete($1)', ['img-member1']),
+    (error: unknown) => /AUTHENTICATION_REQUIRED/.test((error as Error).message));
 });

@@ -887,6 +887,12 @@ export function ReportFormModal({
               <Entity label={t('platform')} value={entityName(platforms, selectedShift.platform_id)} />
               <Entity label={t('campaign')} value={entityName(campaigns, selectedShift.campaign_id)} />
               <Entity label={t('roles')} value={roleSummary(selectedShift, users, registrations, { host: t('host'), support: t('support'), technical: t('technical') })} />
+              {currentUser && hasPermission(currentUser, 'reports.review') && (
+                <Button type="button" variant="outline" className="sm:col-span-2 lg:col-span-4"
+                  onClick={() => window.open('/storage?shiftId=' + encodeURIComponent(selectedShift.id), '_blank', 'noopener,noreferrer')}>
+                  Kho file vận hành của ca live
+                </Button>
+              )}
             </div>
           )}
 

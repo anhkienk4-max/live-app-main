@@ -5,10 +5,12 @@ on:
     branches:
       - 'rc/convergence-rc14-rc15'
       - 'rc/**'
+      - 'integration/rc14-rc15-rc16-prod'
   pull_request:
     branches:
       - 'rc/convergence-rc14-rc15'
       - 'rc/**'
+      - 'integration/rc14-rc15-rc16-prod'
   workflow_dispatch:
 
 permissions:
@@ -20,7 +22,7 @@ jobs:
     timeout-minutes: 25
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:17-alpine
         env:
           POSTGRES_PASSWORD: postgres
         ports:
@@ -37,10 +39,10 @@ jobs:
           persist-credentials: false
           fetch-depth: 2
 
-      - name: Set up Node.js 22
+      - name: Set up Node.js 24
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '22'
+          node-version: '24.18.0'
 
       - name: Install pinned pnpm
         run: |
@@ -50,7 +52,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Database contract and forward-only compatibility verification on PostgreSQL 16
+      - name: Isolated hand-built contract fixture on PostgreSQL 17 (not Production baseline)
         env:
           PGPASSWORD: postgres
           PGHOST: localhost
@@ -102,25 +104,26 @@ jobs:
           $contracts$;
           SQL
 
+      - name: Native OCR runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-vie
+          tesseract --list-langs
+
       - name: Type check
         run: pnpm exec tsc --noEmit --incremental false
 
       - name: Lint
         run: pnpm run lint
 
-      - name: Focused Storage, Contract, RBAC and Negative Constraint Tests
-        run: |
-          node --import ./tests/typescript-alias-loader.mjs --test \
-            tests/h51-provider-metadata-constraint.test.ts \
-            tests/h51-rbac-negative-security.test.ts \
-            tests/h4-storage-route-security.test.ts \
-            tests/operational-storage-placement.test.ts \
-            tests/rc14-report-artifact-storage.test.ts \
-            tests/rc14-data-report-export-fidelity.test.ts \
-            tests/rc15-operational-file-storage.test.ts \
-            tests/rc15-schedule-import-archive.test.ts \
-            tests/rc15-system-export.test.ts \
-            tests/rc15-storage-setup.test.ts
+      - name: Full TypeScript and JSX regression inventory
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node scripts/run-final-regression.mjs
+
+      - name: Isolated H52 fixture rehearsal (not Production baseline rehearsal)
+        run: node scripts/rehearse_db_clone.mjs
 
       - name: Vercel-equivalent Production Build
         run: pnpm run build
@@ -129,15 +132,15 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
           OPERATIONAL_STORAGE_ROUTING_MODE: database
 
-      - name: Explicit CI Summary and Provenance
+      - name: Install Chromium for isolated Gemini UI workflows
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: RC16 desktop and 390px browser workflows
+        run: pnpm exec playwright test --config playwright.rc16.config.ts --reporter=line
+
+      - name: CI source provenance
+        if: always()
         run: |
-          echo "COMMIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
-          echo "PROVENANCE: branch=$(git rev-parse --abbrev-ref HEAD) sha=$(git rev-parse HEAD) time=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          echo "### Release Candidate Convergence Gate Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Git SHA:** $(git rev-parse HEAD)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch:** $(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Timestamp:** $(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_STEP_SUMMARY
-          echo "- **P0 Constraint Verification:** PASSED (10-combination truth table verified)" >> $GITHUB_STEP_SUMMARY
-          echo "- **RBAC & Security Negative Tests:** PASSED (Admin/Leader/Member, unauthenticated, disabled, cross-member, NULL uploaded_by, confirmed immutability, optimistic concurrency)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Focused Storage & Contract Suite:** 88 tests PASSED (0 failed, 0 skipped)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Vercel-Equivalent Production Build:** PASSED" >> $GITHUB_STEP_SUMMARY
+          echo "Git SHA: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Branch: $(git rev-parse --abbrev-ref HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Results are recorded by the executed job steps; fixture databases are not Production baselines." >> "$GITHUB_STEP_SUMMARY"

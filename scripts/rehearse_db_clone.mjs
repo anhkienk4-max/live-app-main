@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { PGlite } from 'file:///C:/Users/KienNguyen/.gemini/antigravity-ide/brain/880f22af-577e-49c1-85de-b9f809e7099f/scratch/node_modules/@electric-sql/pglite/dist/index.js';
+import { PGlite } from '@electric-sql/pglite';
 
-async function runProductionEquivalentRehearsal() {
-  console.log('--- STARTING PRODUCTION-EQUIVALENT DATABASE REHEARSAL (NO MOCK HELPERS) ---');
+async function runIsolatedFixtureRehearsal() {
+  console.log('--- STARTING ISOLATED FIXTURE DATABASE REHEARSAL (SYNTHETIC SCHEMA) ---');
   const db = new PGlite();
 
-  // STEP 1: Baseline Setup Matching Current Production (Sanitized, No PII)
-  console.log('\n[1/7] Setting up Production-equivalent baseline schema with authentic Supabase auth...');
+  // Synthetic schema fixture only; never substitute for a Production schema dump.
+  console.log('\n[1/7] Setting up Hand-built fixture baseline schema with authentic Supabase auth...');
   await db.exec(`
     -- Roles
     do $$ begin
@@ -578,17 +578,18 @@ async function runProductionEquivalentRehearsal() {
     where routine_schema in ('public', 'private')
       and routine_name in ('simulate_auth_context', 'set_mock_user', 'mock_jwt_claims');
   `)).rows;
-  assert.equal(simulatedHelpers.length, 0, 'No simulated helper functions may exist in production-equivalent schema');
+  assert.equal(simulatedHelpers.length, 0, 'No simulated helper functions may exist in isolated fixture schema');
   console.log('✔ No simulated helper functions found in schema.');
 
   console.log('\n================================================================');
-  console.log('*** PRODUCTION_EQUIVALENT_DB_REHEARSAL_PASS ***');
-  console.log('Rehearsal baseline matches Production ledger + forward-only Candidate.');
-  console.log('Zero mock helpers used; authentic PostgreSQL/Supabase auth semantics.');
+  console.log('*** ISOLATED_FIXTURE_REHEARSAL_PASS ***');
+  console.log('Hand-built fixture only; does not verify the 60-migration Production baseline.');
+  console.log('SQL fixture regressions only; PostgreSQL 17 Production schema rehearsal remains a separate release gate.');
   console.log('================================================================\n');
+  await db.close();
 }
 
-runProductionEquivalentRehearsal().catch(err => {
+runIsolatedFixtureRehearsal().catch(err => {
   console.error('Rehearsal failed:', err);
   process.exit(1);
 });

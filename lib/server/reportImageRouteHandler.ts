@@ -90,6 +90,15 @@ const liveCategory = z.enum(['key_visual', 'live_session', 'other'])
 const providerType = z.enum(['google_drive', 'onedrive'])
 const kindType = z.enum(['report', 'live'])
 
+// Preserve the Production report allowlist when operational artifacts add MIME types.
+const reportFileMimes = new Set([
+  'image/jpeg', 'image/png', 'image/webp', 'text/csv', 'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/pdf',
+])
+function validateReportFileMime(file: Blob): void {
+  if (!reportFileMimes.has(file.type.toLowerCase())) throw new Error('FILE_MIME_NOT_ALLOWED')
+}
+
 const reportUploadFields = z.object({
   kind: z.literal('report'),
   report_id: z.string().trim().min(1).max(200),
@@ -423,6 +432,7 @@ async function uploadReportImage(
 ) {
   const fileValue = form.get('file')
   if (!(fileValue instanceof Blob)) throw new Error('REPORT_IMAGE_FILE_REQUIRED')
+  await inUploadPhase('validation', () => validateReportFileMime(fileValue))
   const parsed = reportUploadFields.safeParse({
     kind: formString(form, 'kind'),
     report_id: formString(form, 'report_id'),
@@ -450,7 +460,6 @@ async function uploadReportImage(
     dependencies.routingMode, 'image_url',
   )
   await inUploadPhase('validation', () => {
-    if (!String(fileValue.type || '').toLowerCase().startsWith('image/')) throw new Error('FILE_MIME_NOT_ALLOWED')
     validateFileUploadInput({
       name,
       mime_type: fileValue.type,
@@ -524,6 +533,7 @@ async function uploadLiveReportImage(
 ) {
   const fileValue = form.get('file')
   if (!(fileValue instanceof Blob)) throw new Error('REPORT_IMAGE_FILE_REQUIRED')
+  await inUploadPhase('validation', () => validateReportFileMime(fileValue))
   const parsed = liveUploadFields.safeParse({
     kind: formString(form, 'kind'),
     report_id: formString(form, 'report_id'),

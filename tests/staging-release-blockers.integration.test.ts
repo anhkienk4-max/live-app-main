@@ -5,7 +5,9 @@ import { createClient } from '@supabase/supabase-js'
 const stagingRef = 'amagnzebmmuqiptmrjmc'
 const roles = ['admin', 'leader', 'member'] as const
 
-test('real staging API enforces Member privacy and preserves privileged reads/revision history', async () => {
+test('real staging API enforces Member privacy and preserves privileged reads/revision history', {
+  skip: process.env.STAGING_RELEASE_BLOCKERS_RUN === '1' ? false : 'Opt-in staging check; STAGING_RELEASE_BLOCKERS_RUN=1 requires isolated staging credentials.',
+}, async () => {
   assert.equal(new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).hostname, stagingRef + '.supabase.co', 'staging target required')
   const clients = await Promise.all(roles.map(async role => {
     const client = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false, autoRefreshToken: false } })

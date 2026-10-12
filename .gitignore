@@ -80,3 +80,6 @@ Thumbs.db
 .serena/
 .env*
 !.env.example
+
+# Playwright generated traces and screenshots
+/test-results/

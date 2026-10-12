@@ -27,8 +27,10 @@ test('SECURITY: Anonymous request with QA bypass header is rejected on protected
     const location = res.headers.get('location') || ''
     assert.ok(location.includes('/login'), `Expected redirect to /login but got ${location}`)
   } finally {
-    process.env.NODE_ENV = originalNodeEnv
-    process.env.VERCEL_ENV = originalVercelEnv
+    if (originalNodeEnv === undefined) delete process.env.NODE_ENV
+    else process.env.NODE_ENV = originalNodeEnv
+    if (originalVercelEnv === undefined) delete process.env.VERCEL_ENV
+    else process.env.VERCEL_ENV = originalVercelEnv
   }
 })
 

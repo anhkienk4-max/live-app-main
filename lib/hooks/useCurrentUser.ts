@@ -61,9 +61,9 @@ export function useCurrentUser() {
   }, [auth?.businessUser?.id, supabaseMode])
 
   return {
-    currentUser,
-    users,
-    loading,
+    currentUser: supabaseMode ? auth?.businessUser || null : currentUser,
+    users: supabaseMode ? (auth?.businessUser ? [auth.businessUser] : []) : users,
+    loading: supabaseMode ? !auth : loading,
     setCurrentUser,
     reload,
     authIdentity: auth?.identity || null,

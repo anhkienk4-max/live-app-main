@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "status": "BLOCKED",
+  "target_environment": "PRODUCTION",
+  "project_ref": "egdjnpmoasarrttvhgds",
+  "baseline_ledger_count": 60,
+  "source_branch": "integration/rc14-rc15-rc16-prod",
+  "source_status": "RECONCILED_PENDING_EXACT_SHA_CI_AND_PRODUCTION_GATES",
+  "policy": "Explicit missing forward-only steps only. Never run db push/include-all or replay RC12/RC13A/RC15. No historical staffing backfill or rate seeds.",
+  "excluded": [
+    "supabase/reconciliation/rc16g/20261013000000_rc16g_legacy_storage_routes.sql",
+    "supabase/reconciliation/rc16g/20261013000001_rc16g_staging_shift_rpc.sql"
+  ],
+  "steps": [
+    {
+      "path": "supabase/migrations/20261008160638_member_registration_directory_privacy.sql",
+      "sha256": "4e3b028495fb1bba3ca48b7588578ecad35f29f621548a9b0240d17eafc807b6",
+      "status": "NOT_APPLIED",
+      "precondition": "Verify current full Production schema baseline, dependency contracts and restore readiness before execution"
+    },
+    {
+      "path": "supabase/migrations/20261008160645_repair_report_revision_history_rpc.sql",
+      "sha256": "d510242185993444826822ff336b05995a31f8aab21e973e9e7bf9ed268c26fe",
+      "status": "NOT_APPLIED",
+      "precondition": "Verify current full Production schema baseline, dependency contracts and restore readiness before execution"
+    },
+    {
+      "path": "supabase/migrations/20261011221500_rc15_provider_metadata_forward_compat.sql",
+      "sha256": "f649eab692c892f66019b1aad7ad5b98b5f168ca8e69247577554ed7d0723155",
+      "status": "NOT_APPLIED",
+      "precondition": "Verify current full Production schema baseline, dependency contracts and restore readiness before execution"
+    },
+    {
+      "path": "supabase/migrations/20261012000000_rc16_workforce_payroll_foundation.sql",
+      "sha256": "889fae5221c16b4e983f22e07da7e1212f796440eb06f4e327db0b862568b170",
+      "status": "NOT_APPLIED",
+      "precondition": "Verify current full Production schema baseline, dependency contracts and restore readiness before execution"
+    },
+    {
+      "path": "supabase/migrations/20261012000001_rc16b_draft_payroll_correction.sql",
+      "sha256": "5f3484fe3a2203cfa8cb484a97900975b1f72c75a35f8a09f49eb243283c7e72",
+      "status": "NOT_APPLIED",
+      "precondition": "Verify current full Production schema baseline, dependency contracts and restore readiness before execution"
+    }
+  ],
+  "unverified_gates": [
+    "Current schema-only pg_dump from Production restored to PostgreSQL 17",
+    "Data preservation, RLS/RPC/constraint/trigger/index checks on full baseline",
+    "Backup availability and tested restore plan",
+    "Exact merged SHA and full Linux CI",
+    "Payroll activation only: official policies and independent Production Admin reviewer (keep FEATURE_PAYROLL OFF)",
+    "Effective Supabase key identity and provider runtime permissions"
+  ],
+  "ui_source_sha": "a31558255ea330c0044e33c01e90c9299a72dead",
+  "backend_source_sha": "5ea8298a116267a2f463cc3c86761c04d92ccde9"
+}

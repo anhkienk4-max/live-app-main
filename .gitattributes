@@ -1,2 +1,9 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Pinned release SQL hashes must survive Windows checkout.
+supabase/migrations/*rc15*.sql text eol=lf
+supabase/migrations/*rc16*.sql text eol=lf
+supabase/reconciliation/rc16g/*.sql text eol=lf
+supabase/migrations/20261008160638_member_registration_directory_privacy.sql text eol=lf
+supabase/migrations/20261008160645_repair_report_revision_history_rpc.sql text eol=lf

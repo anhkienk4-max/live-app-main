@@ -27,7 +27,7 @@ export function ListView({
   shifts,
   brands,
   platforms,
-  /* users not needed in UI directly anymore but kept for prop consistency */
+  users,
   registrations = [],
   allShifts = shifts,
   currentUser = null,
@@ -80,7 +80,7 @@ export function ListView({
                 className="shrink-0"
               />
             )}
-            <ShiftCard shift={(shift)} variant="expanded" onClick={() => onShiftClick?.((shift))} context={context} showDate={true} />
+            <ShiftCard shift={(shift)} variant="expanded" users={users} onClick={() => onShiftClick?.((shift))} context={context} showDate={true} />
             {onRegister && (
               <div className="shrink-0 border-l pl-4">
                 <ShiftRegistrationActions

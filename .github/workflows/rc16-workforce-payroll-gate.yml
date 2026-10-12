@@ -1,0 +1,135 @@
+name: RC16 workforce and payroll foundation gate
+
+on:
+  push:
+    branches:
+      - 'integration/rc14-rc15-rc16-prod'
+  pull_request:
+    branches:
+      - fix/rc14-data-report-export-fidelity
+      - main
+    paths:
+      - 'docs/workforce/**'
+      - 'lib/workforce/**'
+      - 'lib/flags.ts'
+      - 'lib/server/workforce*.ts'
+      - 'lib/server/reportImageRouteHandler.ts'
+      - 'tests/rc12-report-file-provider.test.ts'
+      - 'tests/rc12-*.test.ts'
+      - 'tests/rc13*.test.ts'
+      - 'tests/rc14-*.test.ts'
+      - 'tests/rc15-*.test.ts'
+      - 'lib/server/supabase*.ts'
+      - 'lib/supabase/**'
+      - 'lib/auth/authMode.ts'
+      - 'scripts/check-runtime-environment.ts'
+      - 'scripts/workforce/rc16h-production-manifest.mjs'
+      - 'package.json'
+      - 'vercel.json'
+      - 'pnpm-lock.yaml'
+      - 'tests/typescript-alias-loader.mjs'
+      - 'tests/next-server-test-shim.mjs'
+      - 'tests/auth-session-foundation.test.ts'
+      - 'app/api/workforce/**'
+      - 'tests/rc16-*.test.ts'
+      - 'supabase/migrations/*rc16*.sql'
+      - 'tests/fixtures/rc16*.sql'
+      - 'tests/rc16-payroll-postgres.integration.mjs'
+      - 'tests/rc16-rehearsal-safety.mjs'
+      - 'tests/fixtures/rc16f*'
+      - 'tests/fixtures/rc16g*'
+      - 'tests/rc16g-reconciliation.integration.mjs'
+      - 'supabase/reconciliation/rc16g/**'
+      - 'supabase/release/rc16h/**'
+      - 'tests/fixtures/rc16h*'
+      - 'tests/rc16h-production.integration.mjs'
+      - 'openspec/changes/rc16h-production-readiness/**'
+      - 'openspec/changes/rc16g-forward-reconciliation/**'
+      - 'supabase/migrations/*rc15*.sql'
+      - 'supabase/migrations/*rc13a*.sql'
+      - 'tests/fixtures/rc15_production_shift_rpc_baseline.sql'
+      - 'openspec/changes/rc16f-isolated-rehearsal/**'
+      - 'openspec/changes/rc16b-draft-payroll-correction/**'
+      - 'openspec/changes/rc16d-payroll-discovery/**'
+      - 'openspec/changes/rc16e-environment-isolation/**'
+      - '.github/workflows/rc16-workforce-payroll-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Node ${{ matrix.node }} / PostgreSQL ${{ matrix.postgres }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node: '22.23.3'
+            postgres: '16'
+          - node: '24.18.0'
+            postgres: '17'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Install pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify isolated RC16, RC16G regression and RC16H Production-compatible manifest
+        env:
+          RC16_PG_MAJOR: ${{ matrix.postgres }}
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGDATABASE: postgres
+        run: |
+          node tests/rc16-payroll-postgres.integration.mjs
+
+      - name: TypeScript type check
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: RC16 synthetic workforce & payroll contract tests
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc16-*.test.ts
+      - name: Authentication isolation regression tests
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/auth-session-foundation.test.ts
+      - name: Production Storage dependency regressions
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc12-*.test.ts tests/rc13*.test.ts tests/rc14-*.test.ts tests/rc15-*.test.ts
+      - name: Focused environment security lint
+        run: pnpm exec eslint lib/supabase/environmentIdentity.ts lib/server/supabaseEnvironment.ts lib/server/supabaseAdmin.ts lib/auth/authMode.ts lib/supabase/server.ts lib/supabase/middleware.ts scripts/check-runtime-environment.ts tests/rc16-environment-security.test.ts tests/typescript-alias-loader.mjs tests/next-server-test-shim.mjs tests/rc16-rehearsal-safety.mjs tests/rc16-rehearsal-safety.test.ts tests/rc16-payroll-postgres.integration.mjs tests/rc16g-reconciliation.integration.mjs tests/rc16-reconciliation.test.ts
+      - name: Focused Production release gate lint
+        run: pnpm exec eslint lib/flags.ts lib/server/workforce*Handler.ts lib/server/reportImageRouteHandler.ts app/api/workforce/capabilities/route.ts tests/rc16-production-readiness.test.ts tests/rc16-workforce-api.test.ts tests/rc16-payroll-discovery.test.ts tests/rc16h-production.integration.mjs scripts/workforce/rc16h-production-manifest.mjs tests/rc12-report-file-provider.test.ts
+      - name: Next.js production build without Production secrets
+        run: pnpm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          NEXT_PUBLIC_USE_MOCK_DATA: 'false'
+          CI: 'true'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+      - name: Git diff check
+        run: git -c core.whitespace=cr-at-eol diff --check HEAD~1 HEAD
