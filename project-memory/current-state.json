@@ -9,10 +9,10 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "fix/rc16i-postmain-hardening",
-    "head": "c6ba8b35fc30dae5adf7a5585b6d602f3aede45c",
-    "origin_main": "d166bd74eb77692a7609cc6c9f3e510053da5edf",
-    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-payroll/.worktrees/rc16i-postmain"
+    "branch": "integration/rc16k-baseline",
+    "head": "2cb3036fa63f2b7f3ea06c0c4612a5e6def5d9fd",
+    "origin_main": "a3cc28ab5c5a212da73af6ef631f5550c7a3a274",
+    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-payroll/.worktrees/rc16k-baseline"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -89,10 +89,10 @@
         "components": 150,
         "lib": 192,
         "scripts": 18,
-        "supabase": 85,
-        "tests": 185
+        "supabase": 86,
+        "tests": 187
       },
-      "total": 686
+      "total": 689
     },
     "tests": {
       "files": [
@@ -328,9 +328,10 @@
         "supabase/migrations/20261011092051_rc15_operational_files.sql",
         "supabase/migrations/20261011221500_rc15_provider_metadata_forward_compat.sql",
         "supabase/migrations/20261012000000_rc16_workforce_payroll_foundation.sql",
-        "supabase/migrations/20261012000001_rc16b_draft_payroll_correction.sql"
+        "supabase/migrations/20261012000001_rc16b_draft_payroll_correction.sql",
+        "supabase/migrations/20261012145735_p0_audit_privilege_hardening.sql"
       ],
-      "count": 67
+      "count": 68
     }
   },
   "verification": {
@@ -344,5 +345,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-12T22:11:22+07:00"
+  "synced_at": "2026-10-12T22:11:50+07:00"
 }
