@@ -70,6 +70,7 @@ import { OperationalStatusStrip } from '@/components/ui/operational-status'
 import { ShiftLifecycleActions } from './ShiftLifecycleActions'
 import { resolveStaffingLabelsForRole, StaffingLabel } from '@/lib/utils/staffingResolver'
 import { ActualStaffingPanel } from './ActualStaffingPanel'
+import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
 
@@ -496,6 +497,7 @@ export function ShiftDetailModal({
   const { toast } = useToast()
   const { language, t, translate } = useTranslation()
   const { currentUser } = useCurrentUser()
+  const { capabilities } = useWorkforceCapabilities()
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   const [capacities, setCapacities] = React.useState<ShiftRoleCapacity[]>([])
   const [selectedRole, setSelectedRole] = React.useState<OperationalRole>('host')
@@ -767,7 +769,7 @@ export function ShiftDetailModal({
               <TabsList className="mx-4 mt-4 grid group-data-[orientation=horizontal]/tabs:h-auto w-auto grid-cols-4 sm:mx-6">
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="overview">{t('shiftOverview')}</TabsTrigger>
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="staffing">{t('staffing')}</TabsTrigger>
-                <TabsTrigger className="min-h-11 min-w-0 whitespace-normal px-2 text-xs sm:text-sm" value="actual">Chấm công thực tế</TabsTrigger>
+                {capabilities?.actual_staffing && <TabsTrigger className="min-h-11 min-w-0 whitespace-normal px-2 text-xs sm:text-sm" value="actual">Chấm công thực tế</TabsTrigger>}
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="details">{t('additionalInfo')}</TabsTrigger>
               </TabsList>
 
@@ -816,9 +818,9 @@ export function ShiftDetailModal({
                 </div>
               </TabsContent>
 
-              <TabsContent value="actual" className="min-w-0 p-4 sm:p-6">
+              {capabilities?.actual_staffing && <TabsContent value="actual" className="min-w-0 p-4 sm:p-6">
                 <ActualStaffingPanel shift={shift} currentUser={currentUser} />
-              </TabsContent>
+              </TabsContent>}
 
               <TabsContent value="details" className="space-y-4 p-4 sm:p-6">
                 <dl className="grid gap-3 rounded-lg border bg-white p-4 text-xs sm:grid-cols-3" data-testid="shift-production-provenance">{[

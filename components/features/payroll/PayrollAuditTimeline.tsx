@@ -163,6 +163,10 @@ export function PayrollAuditTimeline({ audit }: PayrollAuditTimelineProps) {
                       </div>
                     )}
 
+                    <details className="rounded border bg-white p-2 text-xs">
+                      <summary className="cursor-pointer font-semibold">Xem toàn bộ audit / trước và sau</summary>
+                      <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify({action:item.action,actor_id:item.actor_id,line_version:item.line_version,request_id:item.request_id,request_payload:item.request_payload,previous_values:item.previous_values,updated_values:item.updated_values},null,2)}</pre>
+                    </details>
                     {/* Request UUID */}
                     {item.request_id && (
                       <div className="flex items-center gap-1 text-[10px] text-slate-400 font-mono pt-1">

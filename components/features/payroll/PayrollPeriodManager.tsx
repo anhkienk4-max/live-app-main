@@ -72,7 +72,10 @@ export function PayrollPeriodManager({
   const [createSubmitting, setCreateSubmitting] = React.useState(false)
   const [createError, setCreateError] = React.useState<string | null>(null)
 
+  const readSequence = React.useRef(0)
   const loadPeriods = React.useCallback(async () => {
+    const sequence = ++readSequence.current
+    setPeriods([])
     setLoading(true)
     setLoadError(null)
     try {
@@ -83,6 +86,7 @@ export function PayrollPeriodManager({
         dateTo: dateTo || undefined,
         status: statusFilter === 'all' ? undefined : (statusFilter as PayrollPeriodStatus),
       })
+      if (sequence !== readSequence.current) return
       setPeriods(res.periods)
       setPagination(res.pagination)
 
@@ -91,6 +95,8 @@ export function PayrollPeriodManager({
         onSelectPeriod(res.periods[0])
       }
     } catch (err: unknown) {
+      if (sequence !== readSequence.current) return
+      setPeriods([])
       setLoadError(workforceErrorMessage(err))
       toast({
         title: 'Không thể tải danh sách chu kỳ lương',
@@ -98,15 +104,16 @@ export function PayrollPeriodManager({
         variant: 'destructive',
       })
     } finally {
-      setLoading(false)
+      if (sequence === readSequence.current) setLoading(false)
     }
   }, [page, pageSize, statusFilter, dateFrom, dateTo, selectedPeriodId, onSelectPeriod, toast])
 
   React.useEffect(() => {
+    const generation = readSequence
     const frame = requestAnimationFrame(() => {
       void loadPeriods()
     })
-    return () => cancelAnimationFrame(frame)
+    return () => { cancelAnimationFrame(frame); generation.current++ }
   }, [loadPeriods])
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -213,10 +220,10 @@ export function PayrollPeriodManager({
           </div>
 
           <div>
-            <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            <label htmlFor="payrollperiodmanager-field-1" className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               Từ ngày
             </label>
-            <Input
+            <Input id="payrollperiodmanager-field-1"
               type="date"
               value={dateFrom}
               onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
@@ -225,10 +232,10 @@ export function PayrollPeriodManager({
           </div>
 
           <div>
-            <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            <label htmlFor="payrollperiodmanager-field-2" className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               Đến ngày
             </label>
-            <Input
+            <Input id="payrollperiodmanager-field-2"
               type="date"
               value={dateTo}
               onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
@@ -349,15 +356,14 @@ export function PayrollPeriodManager({
                           {isSelected ? 'Đang chọn' : 'Mở không gian'}
                         </Button>
                         {item.status === 'locked' && (
-                          <a
-                            href={workforceService.getExportCsvUrl(item.id)}
-                            download
+                          <Button
+                            onClick={() => void workforceService.downloadCsv(item.id).catch(err => toast({ title: 'Không thể tải CSV', description: workforceErrorMessage(err), variant: 'destructive' }))}
                             className="inline-flex h-7 items-center rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
                             title="Tải bảng lương CSV"
                           >
                             <Download className="h-3 w-3 mr-1 text-slate-500" />
                             CSV
-                          </a>
+                          </Button>
                         )}
                       </td>
                     </tr>
@@ -401,10 +407,10 @@ export function PayrollPeriodManager({
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-700">
+              <label htmlFor="payrollperiodmanager-field-3" className="text-xs font-semibold text-slate-700">
                 Ngày bắt đầu chu kỳ (Period Start)
               </label>
-              <Input
+              <Input id="payrollperiodmanager-field-3"
                 type="date"
                 required
                 value={createStart}
@@ -414,10 +420,10 @@ export function PayrollPeriodManager({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-700">
+              <label htmlFor="payrollperiodmanager-field-4" className="text-xs font-semibold text-slate-700">
                 Ngày kết thúc chu kỳ (Period End)
               </label>
-              <Input
+              <Input id="payrollperiodmanager-field-4"
                 type="date"
                 required
                 value={createEnd}

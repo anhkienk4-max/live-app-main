@@ -4,11 +4,25 @@ on:
   push:
     branches:
       - 'integration/rc14-rc15-rc16-prod'
+      - 'fix/rc16i-postmain-hardening'
   pull_request:
     branches:
       - fix/rc14-data-report-export-fidelity
       - main
     paths:
+      - 'components/features/payroll/**'
+      - 'components/features/workforce/**'
+      - 'components/features/shifts/ActualStaffingPanel.tsx'
+      - 'components/features/shifts/ShiftDetailModal.tsx'
+      - 'components/layout/**'
+      - 'lib/hooks/useWorkforceCapabilities.ts'
+      - 'lib/services/workforceService.ts'
+      - 'lib/ui/workforceNavigation.ts'
+      - 'app/(dashboard)/payroll/**'
+      - 'app/(dashboard)/workforce/**'
+      - 'tests/rc16i-postmain.test.tsx'
+      - 'e2e/rc16i-postmain.spec.ts'
+      - 'playwright.rc16i-postmain.config.ts'
       - 'docs/workforce/**'
       - 'lib/workforce/**'
       - 'lib/flags.ts'
@@ -115,6 +129,22 @@ jobs:
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc16-*.test.ts
       - name: Authentication isolation regression tests
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/auth-session-foundation.test.ts
+      - name: Post-main UI security and session contracts
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc16i-postmain.test.tsx tests/rc16-ui-session-contract.test.tsx
+      - name: Post-main focused lint
+        run: pnpm exec eslint lib/hooks/useWorkforceCapabilities.ts lib/services/workforceService.ts lib/ui/workforceNavigation.ts components/features/payroll components/features/workforce components/features/shifts/ActualStaffingPanel.tsx components/features/shifts/ShiftDetailModal.tsx components/layout/Sidebar.tsx components/layout/BottomNav.tsx components/layout/Header.tsx 'app/(dashboard)/payroll/page.tsx' 'app/(dashboard)/workforce/page.tsx' tests/rc16i-postmain.test.tsx
+      - name: Install isolated browser runner
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Post-main desktop and mobile interaction regressions
+        run: pnpm exec playwright test --config playwright.rc16i-postmain.config.ts
+      - name: Preserve isolated UI evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rc16i-postmain-node-${{ matrix.node }}
+          path: |
+            test-results
+            rc16i-postmain-report
       - name: Production Storage dependency regressions
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc12-*.test.ts tests/rc13*.test.ts tests/rc14-*.test.ts tests/rc15-*.test.ts
       - name: Focused environment security lint
@@ -129,6 +159,8 @@ jobs:
           SUPABASE_URL: ''
           SUPABASE_SECRET_KEY: ''
           NEXT_PUBLIC_USE_MOCK_DATA: 'false'
+          FEATURE_ACTUAL_STAFFING: 'false'
+          FEATURE_PAYROLL: 'false'
           CI: 'true'
           OPERATIONAL_STORAGE_ROUTING_MODE: database
       - name: Git diff check

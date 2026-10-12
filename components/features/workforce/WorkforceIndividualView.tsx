@@ -55,8 +55,11 @@ export function WorkforceIndividualView({
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
 
+  const readSequence = React.useRef(0)
   const loadPerformance = React.useCallback(async () => {
     if (!staffId) return
+    const sequence = ++readSequence.current
+    setSummary(null)
     setLoading(true)
     try {
       setError(null)
@@ -65,10 +68,12 @@ export function WorkforceIndividualView({
         role,
         month,
       })
-      setSummary(res.summary)
+      if (sequence !== readSequence.current) return
+      setSummary(res.performance)
     } catch (err: unknown) {
-      const msg = workforceErrorMessage(err)
+      if (sequence !== readSequence.current) return
       setSummary(null)
+      const msg = workforceErrorMessage(err)
       setError(msg)
       toast({
         title: 'Không thể tải hiệu suất cá nhân',
@@ -76,15 +81,16 @@ export function WorkforceIndividualView({
         variant: 'destructive',
       })
     } finally {
-      setLoading(false)
+      if (sequence === readSequence.current) setLoading(false)
     }
   }, [staffId, role, month, toast])
 
   React.useEffect(() => {
+    const generation = readSequence
     const frame = requestAnimationFrame(() => {
       void loadPerformance()
     })
-    return () => cancelAnimationFrame(frame)
+    return () => { cancelAnimationFrame(frame); generation.current++ }
   }, [loadPerformance])
 
   const roleLabels: Record<WorkforceRole, string> = {

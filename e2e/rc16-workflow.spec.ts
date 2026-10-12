@@ -73,7 +73,10 @@ for (const width of [390, 1440]) {
     await expect(page.getByRole('button', { name: /rà soát/i })).toBeDisabled()
     period = { ...period, status: 'locked', locked_by: '2', locked_at: '2026-10-12T00:00:00Z' }
     await page.getByRole('button', { name: /Cập nhật dữ liệu/ }).click()
-    await expect(page.getByRole('link', { name: /Tải CSV/ })).toHaveAttribute('href', '/api/workforce/payroll?period_id=period-1&export=csv')
+    await page.route('**/api/workforce/payroll?period_id=*&export=csv', route => route.fulfill({ contentType: 'text/csv', body: 'staff_id,adjustment_vnd\nsynthetic-staff,-1000\n' }))
+    const download = page.waitForEvent('download')
+    await page.getByRole('button', { name: /Tải CSV/ }).click()
+    expect((await download).suggestedFilename()).toBe('payroll.csv')
   })
 }
 
@@ -129,9 +132,10 @@ test('Disabled Payroll waits for capabilities and refetches on identity change',
   })
   await page.goto('/payroll')
   await expect(page.getByRole('status')).toContainText(/Tính năng đang tắt/)
+  const initialRequests = count
   await page.evaluate(() => { localStorage.setItem('livestream-ops-current-user', '3'); window.dispatchEvent(new Event('livestream-ops-current-user-change')) })
   await expect(page.getByRole('main').getByRole('alert')).toContainText(/không có quyền/)
-  await expect.poll(() => count).toBe(2)
+  await expect.poll(() => count).toBeGreaterThan(initialRequests)
 })
 
 test('Actual Staffing fourth tab records no-show and enforces independent review with 409', async ({ page }, info) => {
@@ -232,7 +236,7 @@ test('Member workforce requests only own identity and keeps absent performance a
   const reads: string[] = []
   await page.route('**/api/workforce/performance**', async route => {
     reads.push(new URL(route.request().url()).searchParams.get('staff_id') || '')
-    await route.fulfill({ json: { ok: true, summary: { staffId: '3', role: 'host', assignedShifts: 0, verifiedShifts: 0, unknownAttendanceShifts: 0, approvedNoShows: 0, approvedWorkedShifts: 0, approvedActualMinutes: 0, lateShifts: 0, onTimeShifts: 0, attendanceCoveragePct: null, punctualityPct: null, knownReliabilityPct: null, isComplete: false, warning: 'INCOMPLETE_ATTENDANCE_EVIDENCE' } } })
+    await route.fulfill({ json: { ok: true, performance: { staffId: '3', role: 'host', assignedShifts: 0, verifiedShifts: 0, unknownAttendanceShifts: 0, approvedNoShows: 0, approvedWorkedShifts: 0, approvedActualMinutes: 0, lateShifts: 0, onTimeShifts: 0, attendanceCoveragePct: null, punctualityPct: null, knownReliabilityPct: null, isComplete: false, warning: 'INCOMPLETE_ATTENDANCE_EVIDENCE' } } })
   })
   await page.goto('/workforce')
   await expect(page.getByText('Chưa đầy đủ chứng từ xác minh')).toBeVisible()

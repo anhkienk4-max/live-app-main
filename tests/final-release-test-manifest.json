@@ -111,6 +111,7 @@
     "tests/rc16-workforce-api.test.ts",
     "tests/rc16-workforce-payroll.test.ts",
     "tests/rc16-workforce-ui-client.test.ts",
+    "tests/rc16i-postmain.test.tsx",
     "tests/real-dashboard-ocr-smoke.test.ts",
     "tests/registration-board-performance.test.ts",
     "tests/report-history-access.test.ts",

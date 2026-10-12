@@ -1,5 +1,14 @@
 # RC1.6 — Payroll & Workforce Performance backend-to-Gemini UI handoff
 
+## Post-main reconciliation — 2026-10-12
+
+Current baseline is main `d166bd74eb77692a7609cc6c9f3e510053da5edf`, already containing backend and UI.
+Operator reports RC15 provider compatibility, RC16 and RC16B applied; do not replay them.
+Earlier no-deployment/no-DDL checkpoints below are historical. Runtime deployment SHA and effective flags are not independently verified by the post-main patch task.
+See [minimal hardening](RC16I_POSTMAIN_HARDENING.md) and [delta matrix](RC16I_POSTMAIN_DELTA_MATRIX.md).
+API contracts stay unchanged: individual performance is under `performance`, correction/void use stable `request_id` plus line `expected_version`, transitions use `expected_status`, and replay receipts must be followed by a fresh period read.
+Authenticated CSV failures invalidate mounted salary UI just like JSON reads. No browser-authoritative gross/net calculations, additional roles or independent-review bypass.
+
 Date: 2026-10-11
 Repository: anhkienk4-max/live-app-main
 Branch: feat/rc16-payroll-workforce-backend
