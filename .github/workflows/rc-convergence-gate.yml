@@ -52,6 +52,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: P0 audit privilege regression on isolated PostgreSQL 17
+        env:
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGDATABASE: postgres
+        run: node tests/p0-audit-security-postgres.integration.mjs
+
       - name: Isolated hand-built contract fixture on PostgreSQL 17 (not Production baseline)
         env:
           PGPASSWORD: postgres
