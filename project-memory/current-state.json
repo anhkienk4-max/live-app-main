@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "integration/rc14-rc15-rc16-prod",
-    "head": "7dddb168e82dbd49cf3b91d7cfc3ac451ed25478",
+    "head": "36a383bd975b0142bb4df9a1961de47821044706",
     "origin_main": "31efea2d1a60583975e96773f68106d46ab7d8d9",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-prod-integration"
   },
@@ -343,5 +343,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-12T00:54:20+07:00"
+  "synced_at": "2026-10-12T11:37:01+07:00"
 }
