@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "integration/rc14-rc15-rc16-prod",
-    "head": "d166bd74eb77692a7609cc6c9f3e510053da5edf",
+    "head": "5a0e02dd8641c5124120547d74c2f74a6f80d647",
     "origin_main": "d166bd74eb77692a7609cc6c9f3e510053da5edf",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-prod-integration"
   },
@@ -328,7 +328,7 @@
         "supabase/migrations/20261011221500_rc15_provider_metadata_forward_compat.sql",
         "supabase/migrations/20261012000000_rc16_workforce_payroll_foundation.sql",
         "supabase/migrations/20261012000001_rc16b_draft_payroll_correction.sql",
-        "supabase/migrations/20261012143828_p0_audit_privilege_hardening.sql"
+        "supabase/migrations/20261012145735_p0_audit_privilege_hardening.sql"
       ],
       "count": 68
     }
@@ -344,5 +344,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-12T11:38:33+07:00"
+  "synced_at": "2026-10-12T21:49:59+07:00"
 }
