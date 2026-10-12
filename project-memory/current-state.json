@@ -9,10 +9,10 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "integration/rc14-rc15-rc16-prod",
-    "head": "016936559fe9fdd8c51b9a0c87e1f011545b91d5",
-    "origin_main": "31efea2d1a60583975e96773f68106d46ab7d8d9",
-    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-prod-integration"
+    "branch": "fix/rc16i-postmain-hardening",
+    "head": "c6ba8b35fc30dae5adf7a5585b6d602f3aede45c",
+    "origin_main": "d166bd74eb77692a7609cc6c9f3e510053da5edf",
+    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-payroll/.worktrees/rc16i-postmain"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -87,12 +87,12 @@
       "roots": {
         "app": 56,
         "components": 150,
-        "lib": 191,
+        "lib": 192,
         "scripts": 18,
         "supabase": 85,
-        "tests": 184
+        "tests": 185
       },
-      "total": 684
+      "total": 686
     },
     "tests": {
       "files": [
@@ -204,6 +204,7 @@
         "tests/rc16-workforce-api.test.ts",
         "tests/rc16-workforce-payroll.test.ts",
         "tests/rc16-workforce-ui-client.test.ts",
+        "tests/rc16i-postmain.test.tsx",
         "tests/real-dashboard-ocr-smoke.test.ts",
         "tests/registration-board-performance.test.ts",
         "tests/report-history-access.test.ts",
@@ -257,7 +258,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 160
+      "count": 161
     },
     "migrations": {
       "files": [
@@ -343,5 +344,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-12T11:38:31+07:00"
+  "synced_at": "2026-10-12T22:11:22+07:00"
 }
