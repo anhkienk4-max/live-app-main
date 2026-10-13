@@ -9,10 +9,10 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "integration/rc16k-baseline",
-    "head": "9af7ffeca63db32913b77fb2a610783eb816ca77",
+    "branch": "feat/rc16k-ui-consistency-pagination",
+    "head": "daa99a4ad3b86a342e75b345b7726cd2ddd1113e",
     "origin_main": "a3cc28ab5c5a212da73af6ef631f5550c7a3a274",
-    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-payroll/.worktrees/rc16k-baseline"
+    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-payroll/.worktrees/rc16k-ui"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -67,6 +67,9 @@
       "app/api/ocr/vision/route.ts",
       "app/api/operational-files/route.ts",
       "app/api/operational-storage-setup/route.ts",
+      "app/api/operations/analytics-snapshot/route.ts",
+      "app/api/operations/collection/route.ts",
+      "app/api/operations/registration-context/route.ts",
       "app/api/report-artifacts/route.ts",
       "app/api/report-images/route.ts",
       "app/api/staff/invite/route.ts",
@@ -85,14 +88,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 56,
+        "app": 59,
         "components": 150,
-        "lib": 192,
+        "lib": 203,
         "scripts": 18,
-        "supabase": 86,
-        "tests": 187
+        "supabase": 87,
+        "tests": 189
       },
-      "total": 689
+      "total": 706
     },
     "tests": {
       "files": [
@@ -205,6 +208,7 @@
         "tests/rc16-workforce-payroll.test.ts",
         "tests/rc16-workforce-ui-client.test.ts",
         "tests/rc16i-postmain.test.tsx",
+        "tests/rc16k-pagination.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
         "tests/registration-board-performance.test.ts",
         "tests/report-history-access.test.ts",
@@ -258,7 +262,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 161
+      "count": 162
     },
     "migrations": {
       "files": [
@@ -329,9 +333,10 @@
         "supabase/migrations/20261011221500_rc15_provider_metadata_forward_compat.sql",
         "supabase/migrations/20261012000000_rc16_workforce_payroll_foundation.sql",
         "supabase/migrations/20261012000001_rc16b_draft_payroll_correction.sql",
-        "supabase/migrations/20261012145735_p0_audit_privilege_hardening.sql"
+        "supabase/migrations/20261012145735_p0_audit_privilege_hardening.sql",
+        "supabase/migrations/20261012171503_rc16k_bounded_shift_lists.sql"
       ],
-      "count": 68
+      "count": 69
     }
   },
   "verification": {
@@ -345,5 +350,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-12T23:45:19+07:00"
+  "synced_at": "2026-10-12T23:47:16+07:00"
 }

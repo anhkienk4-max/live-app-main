@@ -46,14 +46,14 @@ export function PayrollRateManager() {
   const [loadError, setLoadError] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [page, setPage] = React.useState(1)
-  const [pageSize, setPageSize] = React.useState(10)
+  const [pageSize, setPageSize] = React.useState(20)
   const [roleFilter, setRoleFilter] = React.useState<string>('all')
   const [scopeFilter, setScopeFilter] = React.useState<string>('all')
   const [staffIdFilter, setStaffIdFilter] = React.useState('')
   const [effectiveDateFilter, setEffectiveDateFilter] = React.useState('')
   const [pagination, setPagination] = React.useState<Pagination>({
     page: 1,
-    page_size: 10,
+    page_size: 20,
     total_count: 0,
     total_pages: 0,
     has_next: false,

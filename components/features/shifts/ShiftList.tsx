@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { usePagedList } from '@/lib/hooks/usePagedList'
 import { shiftService, brandService, platformService, campaignService, userService, shiftRegistrationService, getShiftRoleCapacities } from '@/lib/services/dataService'
 import { templateService } from '@/lib/services/templateService'
 import { Shift, Brand, Platform, Campaign, User, DeletionImpact, ShiftRegistration } from '@/lib/types/database.types'
@@ -27,13 +28,11 @@ import { PageLoadError } from '@/components/ui/page-load-error'
 import { resolveStaffingLabelsForRole } from '@/lib/utils/staffingResolver'
 
 export function ShiftList() {
-  const [shifts, setShifts] = React.useState<Shift[]>([])
   const [brands, setBrands] = React.useState<Brand[]>([])
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
   const [users, setUsers] = React.useState<User[]>([])
   const [templates, setTemplates] = React.useState<ShiftTemplate[]>([])
-  const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   
@@ -58,39 +57,44 @@ export function ShiftList() {
   const canEdit = Boolean(currentUser && hasPermission(currentUser, 'shifts.edit'))
   const canDelete = Boolean(currentUser && hasPermission(currentUser, 'shifts.delete'))
   const statusValues = ['scheduled', 'preparing', 'live', 'paused', 'completed', 'cancelled'] as const
-  const filteredShifts = statusFilter === 'all' ? shifts : shifts.filter(shift => shift.status === statusFilter)
-  const sortedShifts = [...filteredShifts].sort((a, b) => {
-    const dateOrder = String(a.date).localeCompare(String(b.date)) || a.start_time.localeCompare(b.start_time)
-    return sortDescending ? -dateOrder : dateOrder
-  })
+  const [search, setSearch] = React.useState('')
+  const listFilters = { search, statuses: statusFilter === 'all' ? [] : [statusFilter], descending: sortDescending }
+  const list = usePagedList(shiftService, 'shifts', listFilters)
+  const { items: shifts, loading } = list
+  const sortedShifts = shifts
 
-  const loadData = React.useCallback(async () => {
-    setLoading(true)
+  const loadReferences = React.useCallback(async () => {
     setLoadError(null)
     try {
-    const [shiftsData, brandsData, platformsData, campaignsData, usersData, templatesData, registrationData] = await Promise.all([
-      shiftService.getAll(),
+    const [brandsData, platformsData, campaignsData, usersData, templatesData] = await Promise.all([
       brandService.getAll(),
       platformService.getAll(),
       campaignService.getAll(),
       userService.getAll(),
       templateService.getAll(),
-      shiftRegistrationService.getAll(),
     ])
-    setShifts(shiftsData)
     setBrands(brandsData)
     setPlatforms(platformsData)
     setCampaigns(campaignsData)
     setUsers(usersData)
     setTemplates(templatesData)
-    setRegistrations(registrationData)
-    } catch (error) { setLoadError(error) } finally { setLoading(false) }
+    } catch (error) { setLoadError(error) }
   }, [])
 
   React.useEffect(() => {
-    const frame = window.requestAnimationFrame(() => { void loadData() })
+    const frame = window.requestAnimationFrame(() => { void loadReferences() })
     return () => window.cancelAnimationFrame(frame)
-  }, [loadData])
+  }, [loadReferences])
+
+  const loadData = async () => { await list.reload() }
+  const pageIds = shifts.map(shift => shift.id).join(',')
+  React.useEffect(() => {
+    let active = true
+    if (!pageIds) return
+    void shiftRegistrationService.getForShifts(pageIds.split(',')).then(rows => { if (active) setRegistrations(rows) }).catch(error => { if (active) setLoadError(error) })
+    return () => { active = false }
+  }, [pageIds])
+  const clearSelection = () => { setSelectedIds(new Set()); setShowBulkActions(false) }
 
   const requestDelete = async (ids: string[]) => {
     if (!canDelete) return
@@ -283,13 +287,13 @@ export function ShiftList() {
     }
   ]
 
+  if (loadError || list.error) return <PageLoadError error={loadError || list.error} onRetry={() => { setLoadError(null); void loadData() }} />
   if (loading) return <div className="text-center py-12">{t('loading')}</div>
-  if (loadError) return <PageLoadError error={loadError} onRetry={() => void loadData()} />
 
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div><h1 className="text-xl font-semibold tracking-tight">{translate('Shift Management')}</h1><p className="mt-1 text-xs text-muted-foreground">{filteredShifts.length} / {shifts.length} {t('totalShifts')}</p></div>
+        <div><h1 className="text-xl font-semibold tracking-tight">{translate('Shift Management')}</h1><p className="mt-1 text-xs text-muted-foreground">{list.total} {t('totalShifts')}</p></div>
         <div className="flex gap-2">
           <Button className="hidden sm:flex" variant="outline" onClick={() => setIsImportExportOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
@@ -307,6 +311,7 @@ export function ShiftList() {
         </div>
       </div>
 
+      {showBulkActions && <p className="text-xs text-muted-foreground">{t('currentPage')} · {t('selectedCount',{count:selectedIds.size})}</p>}
       {showBulkActions && (
         <BulkActionsToolbar
           selectedCount={selectedIds.size}
@@ -320,9 +325,14 @@ export function ShiftList() {
       <div className="[&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2 [&_table]:text-xs [&_tbody_tr]:h-[62px]">
       <DataTable
         data={sortedShifts}
+        search={search}
+        onSearch={value => { setSearch(value); clearSelection(); list.reset() }}
+        pagination={{ loading: list.refreshing, page: list.page, pageSize: list.pageSize, total: list.total,
+          onPageChange: value => { clearSelection(); list.setPage(value) },
+          onPageSizeChange: value => { clearSelection(); list.setPageSize(value) } }}
         columns={columns}
         searchPlaceholder={t('search')}
-        filterComponent={<div className="flex flex-wrap items-center gap-2"><label className="flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600"><span>{t('status')}</span><select aria-label={t('status')} value={statusFilter} onChange={event => setStatusFilter(event.target.value as Shift['status'] | 'all')} className="max-w-40 bg-transparent font-medium text-slate-800 outline-none"><option value="all">{t('all')} ({shifts.length})</option>{statusValues.map(status => <option key={status} value={status}>{translate(status === 'live' ? 'liveStatus' : status)} ({shifts.filter(shift => shift.status === status).length})</option>)}</select></label><Button variant="outline" size="sm" onClick={() => setSortDescending(value => !value)} aria-label={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`} title={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`}><ArrowDownUp className="mr-1.5 h-4 w-4" />{t('date')} {sortDescending ? '↓' : '↑'}</Button></div>}
+        filterComponent={<div className="flex flex-wrap items-center gap-2"><label className="flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600"><span>{t('status')}</span><select aria-label={t('status')} value={statusFilter} onChange={event => { setStatusFilter(event.target.value as Shift['status'] | 'all'); clearSelection(); list.reset() }} className="max-w-40 bg-transparent font-medium text-slate-800 outline-none"><option value="all">{t('all')}</option>{statusValues.map(status => <option key={status} value={status}>{translate(status === 'live' ? 'liveStatus' : status)}</option>)}</select></label><Button variant="outline" size="sm" onClick={() => { setSortDescending(value => !value); clearSelection(); list.reset() }} aria-label={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`} title={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`}><ArrowDownUp className="mr-1.5 h-4 w-4" />{t('date')} {sortDescending ? '↓' : '↑'}</Button></div>}
         searchableText={row => [row.title, row.id, row.date, row.start_time, row.studio, getBrandName(row.brand_id), getPlatformName(row.platform_id), getCampaignName(row.campaign_id), ...(['host', 'support', 'technical'] as const).flatMap(role => getRolePeople(row, role))].filter(Boolean).join(' ')}
         emptyMessage={t('noData')}
       />
@@ -379,6 +389,8 @@ export function ShiftList() {
       )}
 
       <ImportExportDialog
+        exportFilters={listFilters}
+        totalCount={list.total}
         open={isImportExportOpen}
         onOpenChange={setIsImportExportOpen}
         shifts={shifts}

@@ -26,6 +26,8 @@ type AuditInput = {
 let auditLogs: AuditLog[] = []
 
 export type AuditLogFilters = {
+  entity_type?:string
+  entity_id?:string
   query?: string
   from?: string
   to?: string
@@ -188,6 +190,8 @@ const filterAuditLogs = (logs: AuditLog[], filters: AuditLogFilters) => {
     return options.length === 0 || options.includes(candidate)
   }
   return logs.filter(entry => {
+    if(filters.entity_type&&entry.entity_type!==filters.entity_type)return false
+    if(filters.entity_id&&entry.entity_id!==filters.entity_id)return false
     const date = entry.timestamp.slice(0, 10)
     const opStatus = classifyOperationStatus(entry)
     // search includes actor, entity, related entities, correlation, reason, module/action, error_code
@@ -235,7 +239,7 @@ export const auditService = {
       .sort((left, right) => sort === 'newest'
         ? right.timestamp.localeCompare(left.timestamp)
         : left.timestamp.localeCompare(right.timestamp))
-    const safePageSize = [10, 20, 50, 100].includes(pageSize) ? pageSize : 10
+    const safePageSize = [10, 20, 50].includes(pageSize) ? pageSize : 20
     const total = filtered.length
     const totalPages = Math.max(1, Math.ceil(total / safePageSize))
     const safePage = Math.min(Math.max(1, page), totalPages)

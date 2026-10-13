@@ -1,6 +1,9 @@
 'use client'
 
 import * as React from 'react'
+import { useListPagination } from '@/lib/hooks/useListPagination'
+import { pageRange } from '@/lib/utils/pagination'
+import { HistoryPagination } from '@/components/ui/history-pagination'
 import {
   CheckCircle2,
   Clock,
@@ -48,6 +51,9 @@ export function WorkforceTeamOverview({
     )
   }, [staffList, searchTerm])
 
+  const pagination = useListPagination('workforce_staff', 20)
+  const range = pageRange(filteredStaff.length, pagination.page, pagination.pageSize)
+  const pageRows = filteredStaff.slice((range.page - 1) * pagination.pageSize, range.page * pagination.pageSize)
   if (loading) {
     return (
       <div className="space-y-4">
@@ -194,7 +200,7 @@ export function WorkforceTeamOverview({
               type="text"
               placeholder="Tìm theo tên hoặc mã nhân sự..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => { setSearchTerm(e.target.value); pagination.reset() }}
               className="h-8 text-xs"
             />
           </div>
@@ -225,7 +231,7 @@ export function WorkforceTeamOverview({
                     </td>
                   </tr>
                 ) : (
-                  filteredStaff.map((staff) => {
+                  pageRows.map((staff) => {
                     const staffHours = Math.floor(staff.approvedActualMinutes / 60)
                     const staffMins = staff.approvedActualMinutes % 60
                     return (
@@ -306,6 +312,8 @@ export function WorkforceTeamOverview({
                 )}
               </tbody>
             </table>
+        <HistoryPagination page={range.page} pageSize={pagination.pageSize} total={filteredStaff.length} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />
+
           </div>
         </CardContent>
       </Card>

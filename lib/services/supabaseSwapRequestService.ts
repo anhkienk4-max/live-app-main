@@ -74,7 +74,7 @@ function requestError(op: string, e: SupabaseErrorShape): SwapRequestError {
       : e.code || 'SWAP_REQUEST_FAILED'
   return new SwapRequestError(message, code)
 }
-function swapFromRow(row: NullableSwapRow): SwapRequest {
+export function swapFromRow(row: NullableSwapRow): SwapRequest {
   return {
     id: row.id as string,
     shift_id: (row.shift_id as string) || (row.source_shift_id as string) || '',

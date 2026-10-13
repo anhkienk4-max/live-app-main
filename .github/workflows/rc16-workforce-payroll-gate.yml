@@ -4,12 +4,19 @@ on:
   push:
     branches:
       - 'integration/rc14-rc15-rc16-prod'
-      - 'fix/rc16i-postmain-hardening'
+      - 'feat/rc16k-ui-consistency-pagination'
   pull_request:
     branches:
       - fix/rc14-data-report-export-fidelity
       - main
     paths:
+      - 'components/features/search/**'
+      - 'app/api/operations/**'
+      - 'e2e/rc16k-*.spec.ts'
+      - 'tests/rc16k-*'
+      - 'tests/final-release-test-manifest.json'
+      - 'playwright.rc16k.config.ts'
+      - 'scripts/run-final-regression.mjs'
       - 'components/features/payroll/**'
       - 'components/features/workforce/**'
       - 'components/features/shifts/ActualStaffingPanel.tsx'
@@ -112,6 +119,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Native OCR runtime dependencies for full release manifest
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-vie
+
       - name: Verify isolated RC16, RC16G regression and RC16H Production-compatible manifest
         env:
           RC16_PG_MAJOR: ${{ matrix.postgres }}
@@ -121,10 +133,18 @@ jobs:
           PGUSER: postgres
           PGDATABASE: postgres
         run: |
+          node tests/rc16k-pagination-postgres.integration.mjs
           node tests/rc16-payroll-postgres.integration.mjs
 
       - name: TypeScript type check
         run: pnpm exec tsc --noEmit --incremental false
+      - name: Full repository ESLint
+        run: pnpm exec eslint .
+      - name: Full Node release manifest
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node scripts/run-final-regression.mjs
       - name: RC16 synthetic workforce & payroll contract tests
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc16-*.test.ts
       - name: Authentication isolation regression tests
@@ -135,6 +155,8 @@ jobs:
         run: pnpm exec eslint lib/hooks/useWorkforceCapabilities.ts lib/services/workforceService.ts lib/ui/workforceNavigation.ts components/features/payroll components/features/workforce components/features/shifts/ActualStaffingPanel.tsx components/features/shifts/ShiftDetailModal.tsx components/layout/Sidebar.tsx components/layout/BottomNav.tsx components/layout/Header.tsx 'app/(dashboard)/payroll/page.tsx' 'app/(dashboard)/workforce/page.tsx' tests/rc16i-postmain.test.tsx
       - name: Install isolated browser runner
         run: pnpm exec playwright install --with-deps chromium
+      - name: Global UI pagination and four-width route audit
+        run: pnpm exec playwright test --config playwright.rc16k.config.ts
       - name: Post-main desktop and mobile interaction regressions
         run: pnpm exec playwright test --config playwright.rc16i-postmain.config.ts
       - name: Preserve isolated UI evidence
@@ -145,6 +167,7 @@ jobs:
           path: |
             test-results
             rc16i-postmain-report
+            rc16k-browser-report
       - name: Production Storage dependency regressions
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc12-*.test.ts tests/rc13*.test.ts tests/rc14-*.test.ts tests/rc15-*.test.ts
       - name: Focused environment security lint
@@ -165,3 +188,5 @@ jobs:
           OPERATIONAL_STORAGE_ROUTING_MODE: database
       - name: Git diff check
         run: git -c core.whitespace=cr-at-eol diff --check HEAD~1 HEAD
+      - name: Validate canonical project memory
+        run: npm run memory:validate

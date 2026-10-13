@@ -1,3 +1,4 @@
+import { getCollectionPage, localListPage, type ListQuery, type ListPage } from '@/lib/services/operationsPageService'
 import type {
   ScheduleImportBatch,
   ScheduleImportRow,
@@ -239,4 +240,12 @@ export const scheduleImportBatchPort: ScheduleImportBatchPort = {
   removeBatch: (id, actorId, reason) => resolvePort().removeBatch(id, actorId, reason),
   getBatch: id => resolvePort().getBatch(id),
   listBatches: () => resolvePort().listBatches(),
+}
+
+export const scheduleImportHistoryService = {
+  async getPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<ScheduleImportBatch>> {
+    if (getAuthMode() === 'supabase') return getCollectionPage<ScheduleImportBatch>('import_batches', query, signal)
+    const batches = await mockPort.listBatches()
+    return localListPage(batches.sort((a,b) => b.created_at.localeCompare(a.created_at) || a.id.localeCompare(b.id)), query)
+  },
 }

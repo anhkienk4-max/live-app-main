@@ -11,7 +11,6 @@ import {
   shiftService,
   userService,
   getShiftRoleCapacities,
-  isStaffedRegistration,
   type ShiftRoleCapacity,
 } from '@/lib/services/dataService'
 import {
@@ -28,10 +27,14 @@ import {
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
+import { useListPagination } from '@/lib/hooks/useListPagination'
+import { HistoryPagination } from '@/components/ui/history-pagination'
+import { readPage } from '@/lib/utils/pagination'
+import type { ListFilters } from '@/lib/services/operationsPageService'
 import { ActionBar } from '@/components/ui/action-bar'
 import { buildStaffingApprovalActions } from '@/lib/ui/action-priority'
 import { exportShiftStaffingToExcel } from '@/lib/utils/excelUtils'
-import { formatShiftEndDate, formatShiftTimeRange, resolveShiftDateTime } from '@/lib/utils/shiftUtils'
+import { formatShiftEndDate, formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { selectMyShiftEntries, type MyShiftEntry } from '@/lib/utils/myShifts'
 import { getVisibleOperationalRoles, getVisibleRoleCapacities, matchesRoleFilter, type RoleSelection } from '@/lib/utils/shiftRegistrationRoleView'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
@@ -51,7 +54,6 @@ import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import {
   buildStudioFilterOptions,
   calendarTimeScope,
-  filterCalendarShifts,
   type CalendarTimeFilter,
   UNASSIGNED_STUDIO_FILTER,
 } from '@/lib/utils/calendarFilters'
@@ -123,46 +125,87 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
   const [users, setUsers] = React.useState<User[]>([])
-  const [filters, setFilters] = React.useState<Filters>(initialFilters)
-  const [manualSelections, setManualSelections] = React.useState<Record<string, string>>({})
+  const pagination = useListPagination(mode, 10)
+  const { params, navigate, page, pageSize } = pagination
+  const rawFilters = params.get(mode + '_filters') ?? ''
+  const filters = React.useMemo((): Filters => {
+    try {
+      const parsed = JSON.parse(rawFilters)
+      return { ...initialFilters, ...parsed,
+        ...Object.fromEntries(['brandIds', 'platformIds', 'campaignIds', 'studios', 'roles', 'registrationStatuses'].map(key => [key, Array.isArray(parsed[key]) ? parsed[key].filter((value: unknown) => typeof value === 'string') : []])),
+        search: typeof parsed.search === 'string' ? parsed.search : '',
+      }
+    } catch { return initialFilters }
+  }, [rawFilters])
+  const setFilters = (value: Filters | ((current: Filters) => Filters)) => {
+    const next = typeof value === 'function' ? value(filters) : value
+    navigate({ [mode + '_filters']: JSON.stringify(next), [mode + '_page']: null, [mode + '_pending']: null })
+  }
+  const pendingPage = readPage(params.get(mode + '_pending'))
+  const [total, setTotal] = React.useState(0)
+  const [pendingTotal, setPendingTotal] = React.useState(0)
+  const [pendingIds, setPendingIds] = React.useState<string[]>([])
+  const [studios, setStudios] = React.useState<string[]>([])
+    const [currentTime] = React.useState(() => Date.now())
+  const timeScope = calendarTimeScope(filters.time, new Date(currentTime), filters.customFrom, filters.customTo)
+  const queryFilters = JSON.stringify({
+    search: filters.search, brandIds: filters.brandIds, platformIds: filters.platformIds,
+    campaignIds: filters.campaignIds, studios: filters.studios, roles: filters.roles,
+    registrationStatuses: filters.registrationStatuses, from: timeScope.from, to: timeScope.to,
+  } satisfies ListFilters)
+  const identity = currentUser ? currentUser.id + ':' + (currentUser.system_permission ?? currentUser.role) : ''
+  const requestKey = identity + ':' + mode + ':' + page + ':' + pageSize + ':' + pendingPage + ':' + queryFilters
+  const [loadedKey, setLoadedKey] = React.useState('')
+
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
   const [busyId, setBusyId] = React.useState<string | null>(null)
   const [removalTarget, setRemovalTarget] = React.useState<{ registration: ShiftRegistration; kind: 'cancel' | 'unassign' } | null>(null)
-  const [viewMode, setViewMode] = React.useState<ViewMode>('card')
+  const viewValue = params.get(mode + '_view')
+  const viewMode: ViewMode = viewValue === 'table' || viewValue === 'compact' ? viewValue : 'card'
   const [detailShift, setDetailShift] = React.useState<Shift | null>(null)
   const [showFilters, setShowFilters] = React.useState(false)
   const { getLatest, isActive, isCurrent, nextVersion, setLatest } = useOperationalLoadState()
 
+  const referenceVersion = React.useRef(0)
   const loadReferenceData = React.useCallback(async () => {
+    const version = ++referenceVersion.current
     try {
       const [loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers] = await Promise.all([
         brandService.getAll(),
         platformService.getAll(),
         campaignService.getAll(),
-        userService.getAll(),
+        hasPermission(currentUser, 'shifts.approve_registration') ? userService.getAllFiltered() : Promise.resolve([]),
       ])
-      if (!isActive()) return
+      if (!isActive() || version !== referenceVersion.current) return
       setBrands(loadedBrands)
       setPlatforms(loadedPlatforms)
       setCampaigns(loadedCampaigns)
       setUsers(loadedUsers)
     } catch (error) {
-      if (isActive()) setLoadError(error)
+      if (isActive() && version === referenceVersion.current) setLoadError(error)
     }
-  }, [isActive])
+  }, [currentUser, isActive])
 
-  const loadRegistrationOperationalData = React.useCallback(() => {
+  const loadRegistrationOperationalData = React.useCallback((signal?: AbortSignal) => {
     const loadVersion = nextVersion()
     const request = (async () => {
       try {
-        const [loadedShifts, loadedRegistrations] = await Promise.all([
-          shiftService.getAll(),
-          shiftRegistrationService.getAll(),
-        ])
+        if (!identity) return null
+        const result = await shiftService.getRegistrationPage(mode, { page, pageSize, pendingPage, filters: JSON.parse(queryFilters) }, signal)
+        const loadedShifts = result.items
+        const loadedRegistrations = result.registrations
         if (!isCurrent(loadVersion)) {
           return getLatest()
         }
+        if (result.page !== page || result.pendingPage !== pendingPage) {
+          navigate({ [mode + '_page']: String(result.page), [mode + '_pending']: String(result.pendingPage) }, true)
+        }
+        setTotal(result.total)
+        setPendingTotal(result.pendingTotal)
+        setPendingIds(result.pendingIds)
+        setStudios(result.studios)
+        setLoadedKey(requestKey)
         setShifts(loadedShifts)
         setRegistrations(loadedRegistrations)
         setCapacities(Object.fromEntries(loadedShifts.map(shift => [
@@ -171,7 +214,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         ])))
         return { shifts: loadedShifts, registrations: loadedRegistrations }
       } catch (error) {
-        if (isCurrent(loadVersion)) setLoadError(error)
+        if (isCurrent(loadVersion) && !(error instanceof Error && error.name === 'AbortError')) setLoadError(error)
         return null
       } finally {
         if (isCurrent(loadVersion)) setLoading(false)
@@ -179,28 +222,38 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
     })()
     setLatest(request)
     return request
-  }, [getLatest, isCurrent, nextVersion, setLatest])
+  }, [getLatest, identity, isCurrent, mode, navigate, nextVersion, page, pageSize, pendingPage, queryFilters, requestKey, setLatest])
 
-  const loadData = React.useCallback(async () => {
+  const loadData = React.useCallback(async (signal?: AbortSignal) => {
     setLoadError(null)
     setLoading(true)
-    await Promise.all([loadReferenceData(), loadRegistrationOperationalData()])
+    await Promise.all([loadReferenceData(), loadRegistrationOperationalData(signal)])
   }, [loadReferenceData, loadRegistrationOperationalData])
 
   React.useEffect(() => {
-    const frame = window.requestAnimationFrame(() => { void loadData() })
-    return () => window.cancelAnimationFrame(frame)
-  }, [loadData])
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => {
+      if (!identity) return
+      setLoadError(null)
+      setLoading(true)
+      void loadRegistrationOperationalData(controller.signal)
+    }, 150)
+    return () => { window.clearTimeout(timer); controller.abort(); nextVersion() }
+  }, [identity, loadRegistrationOperationalData, nextVersion, requestKey])
   React.useEffect(() => {
-    const stored = window.localStorage.getItem('livestream-ops-open-shift-view')
-    if (stored !== 'card' && stored !== 'compact' && stored !== 'table') return
-    const frame = window.requestAnimationFrame(() => setViewMode(stored))
-    return () => window.cancelAnimationFrame(frame)
-  }, [])
+    const timer = window.setTimeout(() => { if (identity) void loadReferenceData() }, 0)
+    return () => { window.clearTimeout(timer) }
+  }, [identity, loadReferenceData])
+
+  React.useEffect(()=>{
+    if(viewValue)return
+    const stored=window.localStorage.getItem('livestream-ops-'+mode+'-shift-view')??window.localStorage.getItem('livestream-ops-open-shift-view')
+    if(stored==='table'||stored==='compact'||stored==='card')navigate({[mode+'_view']:stored,...(!params.get(mode+'_size')?{[mode+'_size']:stored==='table'?'20':'10'}:{})},true)
+  },[mode,navigate,params,viewValue])
 
   const changeViewMode = (next: ViewMode) => {
-    setViewMode(next)
-    window.localStorage.setItem('livestream-ops-open-shift-view', next)
+    window.localStorage.setItem('livestream-ops-'+mode+'-shift-view',next)
+    navigate({ [mode + '_view']: next, [mode + '_page']: null, [mode + '_size']: next === 'table' ? '20' : '10', [mode + '_pending']: null })
   }
 
   const runAction = async (id: string, action: () => Promise<unknown>, success: string, openShiftId?: string) => {
@@ -256,54 +309,12 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
     }
   }
 
-  const [currentTime] = React.useState(() => Date.now())
-  const timeScope = calendarTimeScope(filters.time, new Date(currentTime), filters.customFrom, filters.customTo)
-  const studioOptions = React.useMemo(() => buildStudioFilterOptions(shifts), [shifts])
-  const filteredBoardShifts = React.useMemo(() => filterCalendarShifts(
-    shifts,
-    {
-      brandIds: filters.brandIds,
-      platformIds: filters.platformIds,
-      campaignIds: filters.campaignIds,
-      studios: filters.studios,
-      statuses: [],
-      hostIds: [],
-      supportIds: [],
-      technicalIds: [],
-      operationalRoles: [],
-      staffingStates: [],
-      registrationStates: [],
-      hasImportedStaffing: false,
-      time: filters.time,
-      customFrom: filters.customFrom,
-      customTo: filters.customTo,
-    },
-    filters.search,
-    { currentDate: new Date(currentTime), brands, platforms, campaigns, registrations },
-  ), [brands, campaigns, currentTime, filters, platforms, registrations, shifts])
-  const filteredBoardShiftIds = React.useMemo(() => new Set(filteredBoardShifts.map(shift => shift.id)), [filteredBoardShifts])
-  const visibleShifts = React.useMemo(() => {
-    return filteredBoardShifts
-      .filter(shift => shift.status === 'scheduled' && (resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)?.endAt.getTime() ?? 0) > currentTime)
-      .filter(shift => filters.roles.length === 0 || getVisibleRoleCapacities(capacities[shift.id] || [], filters.roles).some(capacity =>
-        filters.roles.includes(capacity.role)
-      ))
-      .sort((left, right) => `${left.date}${left.start_time}`.localeCompare(`${right.date}${right.start_time}`))
-  }, [capacities, currentTime, filteredBoardShifts, filters.roles])
-
+  const studioOptions = React.useMemo(() => buildStudioFilterOptions(studios.map(studio => ({ studio }) as Shift)), [studios])
+  const visibleShifts = shifts
   const visibleMyEntries = React.useMemo(() => selectMyShiftEntries({
-    shifts,
-    registrations,
-    userId: currentUser?.id || '',
-    filters: {
-      date: '',
-      brand: [],
-      platform: [],
-      campaign: [],
-      role: filters.roles,
-      registrationStatus: filters.registrationStatuses,
-    },
-  }).filter(entry => filteredBoardShiftIds.has(entry.shift.id)), [currentUser?.id, filteredBoardShiftIds, filters.registrationStatuses, filters.roles, registrations, shifts])
+    shifts, registrations, userId: currentUser?.id || '',
+    filters: { date: '', brand: [], platform: [], campaign: [], role: filters.roles, registrationStatus: filters.registrationStatuses },
+  }), [currentUser?.id, filters.registrationStatuses, filters.roles, registrations, shifts])
 
   const activeFilterCount = [
     filters.brandIds,
@@ -316,13 +327,13 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const hasActiveFilters = activeFilterCount > 0
 
   const pendingApprovals = registrations.filter(registration =>
-    registration.status === 'pending' &&
+    pendingIds.includes(registration.id) && registration.status === 'pending' &&
     matchesRoleFilter(registration, filters.roles) &&
     visibleShifts.some(shift => shift.id === registration.shift_id)
   )
 
-  if (loading || userLoading || !currentUser) return <ContentSkeleton />
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
+  if (userLoading || !currentUser) return <ContentSkeleton />
 
   return (
     <div className="space-y-4">
@@ -401,7 +412,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
 
       {(mode === 'open' || mode === 'mine') && (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">{mode === 'mine' ? visibleMyEntries.length : visibleShifts.length} {mode === 'mine' ? t('myShifts').toLowerCase() : t('openShifts').toLowerCase()}</p>
+          <p className="text-sm text-muted-foreground">{total} {mode === 'mine' ? t('myShifts').toLowerCase() : t('openShifts').toLowerCase()}</p>
           <div className="inline-flex rounded-lg border bg-background p-1" aria-label={mode === 'mine' ? 'My shift view' : 'Open shift view'}>
             <ViewButton active={viewMode === 'card'} onClick={() => changeViewMode('card')} icon={<LayoutGrid className="h-4 w-4" />} label={t('cardView')} />
             <ViewButton active={viewMode === 'compact'} onClick={() => changeViewMode('compact')} icon={<List className="h-4 w-4" />} label={t('compactView')} />
@@ -410,14 +421,16 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         </div>
       )}
 
-      {mode === 'open' && hasPermission(currentUser, 'shifts.approve_registration') && pendingApprovals.length > 0 && (
+      {loading || loadedKey !== requestKey ? <ContentSkeleton /> : <>
+      {mode === 'open' && hasPermission(currentUser, 'shifts.approve_registration') && pendingTotal > 0 && (
         <Card className="border-amber-200 bg-amber-50/30 shadow-none">
-          {deriveStaffingAttention({ pendingCount: pendingApprovals.length }).map(item => (
+          {deriveStaffingAttention({ pendingCount: pendingTotal }).map(item => (
             <div key={item.key} className="mb-3">
               <AttentionBanner item={item} className="border-0 rounded-b-none border-b border-amber-200/50 bg-transparent" />
             </div>
           ))}
           <CardContent className="space-y-2 px-4 pb-4">
+            <p className="text-xs text-muted-foreground">{t('pendingOnCurrentPage')}</p>
             {pendingApprovals.map(registration => {
               const shift = shifts.find(candidate => candidate.id === registration.shift_id)
               const staff = users.find(user => user.id === registration.user_id) || { full_name: registration.user_id }
@@ -446,6 +459,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
               )
             })}
           </CardContent>
+          <HistoryPagination page={pendingPage} pageSize={20} total={pendingTotal} onPageChange={value => navigate({ [mode + '_pending']: String(value) })} />
         </Card>
       )}
 
@@ -532,95 +546,23 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                     <Info label={t('platform')} value={platformName(platforms, shift.platform_id)} />
                     <Info label={t('campaign')} value={campaignName(campaigns, shift.campaign_id)} />
                   </div>
-                  <div className="space-y-2">
-                    {visibleCapacities.map(capacity => {
-                      const myRegistration = mine.find(registration => registration.operational_role === capacity.role)
-                      const assignmentKey = `${shift.id}-${capacity.role}`
-                      const approvedAssignments = shiftRegistrations.filter(registration =>
-                        registration.operational_role === capacity.role && isStaffedRegistration(registration)
-                      )
-                      const eligibleUsers = users.filter(user =>
-                        user.operational_roles?.includes(capacity.role) &&
-                        !shiftRegistrations.some(registration =>
-                          registration.user_id === user.id &&
-                          registration.operational_role === capacity.role &&
-                          (registration.status === 'pending' || isStaffedRegistration(registration))
-                        )
-                      )
-                      const canManageAssignments = hasPermission(currentUser, 'shifts.approve_registration')
-                      return (
-                        <div key={capacity.role} className="space-y-3 rounded-lg border p-4">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-medium">{t(capacity.role)}</span>
-                                <Badge variant={capacity.remaining > 0 ? 'outline' : 'secondary'}>{capacity.approved}/{capacity.required}</Badge>
-                              </div>
-                              <Badge variant={capacity.remaining > 0 ? 'outline' : 'secondary'}>{capacity.remaining > 0 ? t('available') : t('full')}</Badge>
-                            </div>
-                            <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                              <RoleSummary label={t('confirmedCount')} value={capacity.approved} />
-                              <RoleSummary label={t('pendingCount')} value={capacity.pending} />
-                              <RoleSummary label={t('missingCount')} value={capacity.remaining} />
-                            </div>
-                          </div>
-                          {myRegistration && (
-                            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                              <Badge className={isStaffedRegistration(myRegistration) ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{registrationLabel(myRegistration, t)}</Badge>
-                              {myRegistration.source === 'manual_assignment' || myRegistration.status === 'manually_assigned' ? (
-                                <Badge variant="outline">{t('assignedByManager')}</Badge>
-                              ) : hasPermission(currentUser, 'shifts.cancel_registration') && !shift.registration_locked ? (
-                                <Button size="sm" variant="outline" disabled={busyId === myRegistration.id} onClick={() => setRemovalTarget({ registration: myRegistration, kind: 'cancel' })}>{t('cancelRegistration')}</Button>
-                              ) : null}
-                            </div>
-                          )}
-                          {canManageAssignments && (
-                            <div className="space-y-2 border-t pt-3">
-                              {approvedAssignments.map(registration => (
-                                <div key={registration.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                                  <span className="min-w-0 font-medium">{users.find(user => user.id === registration.user_id)?.full_name || registration.user_id}<Badge className="ml-2 whitespace-nowrap" variant="outline">{registrationLabel(registration, t)}</Badge></span>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    disabled={busyId === `remove-${registration.id}` || shift.registration_locked}
-                                    onClick={() => setRemovalTarget({ registration, kind: 'unassign' })}
-                                  >
-                                    {t('removeAssignment')}
-                                  </Button>
-                                </div>
-                              ))}
-                              {!shift.registration_locked && capacity.approved < capacity.required && (
-                                <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto]">
-                                  <Select value={manualSelections[assignmentKey] || ''} onValueChange={value => setManualSelections(current => ({ ...current, [assignmentKey]: value }))}>
-                                    <SelectTrigger className="min-w-0 flex-1"><SelectValue placeholder={t('chooseStaff')} /></SelectTrigger>
-                                    <SelectContent>{eligibleUsers.map(user => <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>)}</SelectContent>
-                                  </Select>
-                                  <Button
-                                    size="sm"
-                                    disabled={!manualSelections[assignmentKey] || busyId === `assign-${assignmentKey}`}
-                                    onClick={() => runAction(
-                                      `assign-${assignmentKey}`,
-                                      () => shiftRegistrationService.assignManually(shift.id, manualSelections[assignmentKey], capacity.role, currentUser.id, shift.version),
-                                      t('registrationApproved'),
-                                    )}
-                                  >
-                                    {t('assignStaff')}
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {visibleCapacities.map(capacity => <div key={capacity.role} className="rounded-lg border p-2 text-xs">
+                      <p className="font-medium">{t(capacity.role)} · {capacity.approved}/{capacity.required}</p>
+                      <p className="text-muted-foreground">{t('pending')}: {capacity.pending} · {t('missingCount')}: {capacity.remaining}</p>
+                    </div>)}
                   </div>
+                  {mine.length > 0 && <div className="flex flex-wrap gap-2">{mine.map(registration => <Badge key={registration.id} variant="outline">{t(registration.operational_role)} · {registrationLabel(registration, t)}</Badge>)}</div>}
                   {(hasPermission(currentUser, 'shifts.export') || hasPermission(currentUser, 'shifts.lock')) && (
                     <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
                       {hasPermission(currentUser, 'shifts.export') && (
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => exportShiftStaffingToExcel(shift, shiftRegistrations, new Map(users.map(user => [user.id, user.full_name])))}
+                          onClick={() => void runAction('export-' + shift.id, async () => {
+                            const complete = await shiftRegistrationService.getForShifts([shift.id])
+                            exportShiftStaffingToExcel(shift, complete, new Map(users.map(user => [user.id, user.full_name])))
+                          }, t('success'))}
                         >
                           <Download className="mr-1 h-4 w-4" />{t('exportStaffing')}
                         </Button>
@@ -636,7 +578,9 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           })}
         </div>
       )}
-      {detailShift && (
+      <HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />
+      </>}
+      {detailShift && loadedKey === requestKey && (
         <ShiftDetailModal
           open
           onOpenChange={open => { if (!open) setDetailShift(null) }}
@@ -674,9 +618,6 @@ function Info({ label, value }: { label: string; value: string }) {
   return <div><p className="text-xs text-muted-foreground">{label}</p><p className="truncate font-medium">{value}</p></div>
 }
 
-function RoleSummary({ label, value }: { label: string; value: number }) {
-  return <div className="min-w-0 rounded-md bg-muted/50 p-2"><p className="break-words text-muted-foreground">{label}</p><p className="mt-1 text-base font-semibold">{value}</p></div>
-}
 
 function ViewButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
   return <Button type="button" size="sm" variant={active ? 'secondary' : 'ghost'} className="whitespace-nowrap" aria-label={label} aria-pressed={active} title={label} onClick={onClick}>{icon}<span className="ml-2 hidden sm:inline">{label}</span></Button>

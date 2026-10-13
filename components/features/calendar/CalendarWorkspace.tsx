@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Upload } from "lucide-react";
+import { Plus } from "lucide-react";
+import { PageHeader, PageHeaderContent } from "@/components/ui/archetypes";
 import { CalendarView } from "@/components/features/calendar/CalendarView";
 import {
   ImportHistoryPanel,
@@ -77,59 +78,35 @@ export function CalendarWorkspace() {
   const handleTabChange = (value: string) => {
     setTab(value);
     setVisitedTabs((current) => current.has(value) ? current : new Set(current).add(value));
-    const next = new URLSearchParams(searchParams.toString());
+    const next = new URLSearchParams(window.location.search);
     next.set("tab", value);
     const qs = next.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    window.history.pushState(null, "", qs ? `${pathname}?${qs}` : pathname);
   };
 
   return (
     <Tabs
       value={tab}
       onValueChange={handleTabChange}
-      className="min-w-0 w-full"
+      className="min-w-0 w-full space-y-3"
     >
-      <div className={tab === "calendar" ? "flex flex-wrap items-center gap-3" : "contents"}>
-      {tab === "calendar" && <h1 className="text-lg font-semibold">{t("calendar")}</h1>}
-      {tab !== "import" && tab !== "calendar" && <header className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-lg font-semibold">{t("calendar")}</h1><p className="mt-1 text-xs text-muted-foreground">{t("calendarSubtitle")}</p></div><div className="flex flex-wrap gap-2">
-        {hasPermission(currentUser, "shifts.assign_staff") && (
-          <Button
-            onClick={() => {
-              setTab("calendar");
-              setCreateRequest((value) => value + 1);
-            }}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            {t("newShift")}
-          </Button>
-        )}
-        {hasPermission(currentUser, "shifts.import") && (
-          <Button variant="outline" onClick={() => setTab("import")}>
-            <Upload className="mr-2 h-4 w-4" />
-            {t("importSchedule")}
-          </Button>
-        )}
-      </div></header>}
-      <div className="min-w-0 max-w-full flex-1 overflow-x-auto pb-1">
-        <TabsList className="h-auto w-max min-w-full flex-nowrap justify-start sm:min-w-0">
-          <TabsTrigger className="!flex-none px-3 py-1.5" value="calendar">
-            {t("shiftCalendar")}
-          </TabsTrigger>
-          <TabsTrigger className="!flex-none px-3 py-1.5" value="open">
-            {t("openShifts")}
-          </TabsTrigger>
-          <TabsTrigger className="!flex-none px-3 py-1.5" value="mine">
-            {t("myShifts")}
-          </TabsTrigger>
-          <TabsTrigger className="!flex-none px-3 py-1.5" value="import">
-            {t("importSchedule")}
-          </TabsTrigger>
-          <TabsTrigger className="!flex-none px-3 py-1.5" value="history">
-            {t("importHistory")}
-          </TabsTrigger>
+      <PageHeader className="mb-0 min-h-16" data-testid="calendar-stable-header">
+        <PageHeaderContent>
+          <h1 className="text-xl font-semibold tracking-tight">{t("calendar")}</h1>
+          <p className="text-sm text-muted-foreground">{t("calendarSubtitle")}</p>
+        </PageHeaderContent>
+      </PageHeader>
+      <div className="min-w-0 max-w-full overflow-x-auto" data-testid="calendar-stable-tabs">
+        <TabsList aria-label={t("calendar")} className="h-auto w-max min-w-full flex-nowrap justify-start sm:min-w-0">
+          <TabsTrigger className="!flex-none px-3 py-2" value="calendar">{t("shiftCalendar")}</TabsTrigger>
+          <TabsTrigger className="!flex-none px-3 py-2" value="open">{t("openShifts")}</TabsTrigger>
+          <TabsTrigger className="!flex-none px-3 py-2" value="mine">{t("myShifts")}</TabsTrigger>
+          <TabsTrigger className="!flex-none px-3 py-2" value="import">{t("importSchedule")}</TabsTrigger>
+          <TabsTrigger className="!flex-none px-3 py-2" value="history">{t("importHistory")}</TabsTrigger>
         </TabsList>
       </div>
-      {tab === "calendar" && hasPermission(currentUser, "shifts.assign_staff") && <Button onClick={() => setCreateRequest(value => value + 1)}><Plus className="mr-2 h-4 w-4" />{t("newShift")}</Button>}
+      <div className="flex min-h-10 flex-wrap items-center gap-2" data-testid="calendar-tab-toolbar">
+        {tab === "calendar" && hasPermission(currentUser, "shifts.assign_staff") && <Button size="sm" onClick={() => setCreateRequest(value => value + 1)}><Plus className="mr-2 h-4 w-4" />{t("newShift")}</Button>}
       </div>
       <TabsContent className="min-w-0 w-full" value="calendar">
         <CalendarView createRequest={createRequest} />

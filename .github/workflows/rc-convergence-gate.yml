@@ -6,7 +6,7 @@ on:
       - 'rc/convergence-rc14-rc15'
       - 'rc/**'
       - 'integration/rc14-rc15-rc16-prod'
-      - 'fix/rc16i-postmain-hardening'
+      - 'feat/rc16k-ui-consistency-pagination'
   pull_request:
     branches:
       - 'main'
@@ -149,6 +149,9 @@ jobs:
 
       - name: Install Chromium for isolated Gemini UI workflows
         run: pnpm exec playwright install --with-deps chromium
+
+      - name: Storage SSR and hydration regression at desktop and 390px
+        run: node --import ./tests/typescript-alias-loader.mjs tests/storage-hydration-browser.integration.mjs
 
       - name: RC16 desktop and 390px browser workflows
         run: pnpm exec playwright test --config playwright.rc16.config.ts --reporter=line

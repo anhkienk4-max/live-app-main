@@ -1,6 +1,9 @@
 'use client'
 
 import * as React from 'react'
+import { HistoryPagination } from '@/components/ui/history-pagination'
+import { useRequestSequence } from '@/lib/hooks/useRequestSequence'
+import {resolveSystemPermission} from '@/lib/permissions'
 import { History, Clock, User, AlertCircle, Loader2 } from 'lucide-react'
 import type { AuditLog, User as UserType } from '@/lib/types/database.types'
 import { auditService } from '@/lib/services/auditService'
@@ -27,45 +30,43 @@ export function RegistrationAuditHistoryDialog({
   currentUser,
   registrationId,
 }: RegistrationAuditHistoryDialogProps) {
+  const [page,setPage]=React.useState(1)
+  const [pageSize,setPageSize]=React.useState(20)
+  const [total,setTotal]=React.useState(0)
+  const {next,isCurrent,invalidate}=useRequestSequence()
   const [logs, setLogs] = React.useState<AuditLog[]>([])
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
   const loadAuditData = React.useCallback(async () => {
     if (!currentUser) return
+    const request=next()
     setLoading(true)
     setError(null)
     try {
       const response = await auditService.getAuditLogs({
         user: currentUser,
-        page: 1,
-        pageSize: 50,
-        filters: { module: 'calendar' },
+        page,
+        pageSize,
+        filters: { module: 'calendar',entity_type:'shift_registration',...(registrationId?{entity_id:registrationId}:{}) },
         sort: 'newest',
       })
-      const registrationLogs = (response.items || []).filter(item => {
-        const isReg = item.entity_type === 'shift_registration' || item.action.includes('registration') || item.action === 'approve' || item.action === 'reject'
-        if (!isReg) return false
-        if (registrationId) {
-          return item.entity_id === registrationId || item.entity_name?.includes(registrationId)
-        }
-        return true
-      })
-      setLogs(registrationLogs)
+      if(!isCurrent(request))return
+      setLogs(response.items);setTotal(response.total);setPage(response.page)
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Không thể tải lịch sử kiểm toán.')
+      if(isCurrent(request))setError(err instanceof Error ? err.message : 'Không thể tải lịch sử kiểm toán.')
     } finally {
-      setLoading(false)
+      if(isCurrent(request))setLoading(false)
     }
-  }, [currentUser, registrationId])
+  }, [currentUser, registrationId,page,pageSize,next,isCurrent])
 
   React.useEffect(() => {
-    if (!open) return
+    if (!open || !currentUser || resolveSystemPermission(currentUser) === 'member') return
     const frame = window.requestAnimationFrame(() => {
       void loadAuditData()
     })
-    return () => window.cancelAnimationFrame(frame)
-  }, [open, loadAuditData])
+    return () => { window.cancelAnimationFrame(frame); invalidate() }
+  }, [open, currentUser, loadAuditData, invalidate])
 
   const renderActionBadge = (action: string) => {
     switch (action) {
@@ -85,7 +86,7 @@ export function RegistrationAuditHistoryDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open && !!currentUser && resolveSystemPermission(currentUser) !== 'member'} onOpenChange={onOpenChange}>
       <DialogContent size="lg" className="p-5">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900">
@@ -166,7 +167,7 @@ export function RegistrationAuditHistoryDialog({
             Đóng
           </Button>
         </div>
-      </DialogContent>
+      <HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={size=>{setPageSize(size);setPage(1)}} /></DialogContent>
     </Dialog>
   )
 }

@@ -1,3 +1,5 @@
+import { pageRange } from '@/lib/utils/pagination'
+import type { ListQuery, ListPage } from '@/lib/services/operationsPageService'
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 
 import { createClient } from '@/lib/supabase/client'
@@ -81,6 +83,8 @@ function notificationFromRow(row: NotificationRow): AppNotification {
 }
 
 export interface SupabaseNotificationRepository {
+  getPage(query: ListQuery): Promise<ListPage<AppNotification> & { counts: { all: number; unread: number; read: number } }>
+  getUnreadCount(): Promise<number>
   getForCurrentUser(): Promise<AppNotification[]>
   markRead(id: string): Promise<void>
   markAllRead(): Promise<void>
@@ -108,9 +112,43 @@ export function createSupabaseNotificationRepository(
 
   return {
     async getForCurrentUser() {
-      const result = await select().order('created_at', { ascending: false })
+      const result = await select().order('created_at', { ascending: false }).order('id').limit(30)
       if (result.error) throw requestError('notification read', result.error)
       return (result.data ?? []).map(row => notificationFromRow(row as unknown as NotificationRow))
+    },
+
+    async getUnreadCount() {
+      const result = await client.from('notifications').select('id', { count: 'exact', head: true }).is('read_at', null).or('read.eq.false,read.is.null')
+      if (result.error) throw requestError('notification count', result.error)
+      return result.count ?? 0
+    },
+    async getPage(query) {
+      const fetch = (page: number) => {
+        let request = client.from('notifications').select('id,user_id,recipient_id,type,notification_type,severity,title,message,related_entity_type,related_entity_id,action_url,event_key,read,read_at,created_at', { count: 'exact' })
+        const status = query.filters?.statuses?.[0]
+        if (status === 'unread') request = request.is('read_at', null).or('read.eq.false,read.is.null')
+        if (status === 'read') request = request.or('read_at.not.is.null,read.eq.true')
+        if (query.filters?.types?.length) request = request.in('notification_type', query.filters.types)
+        const search = query.filters?.search?.trim()
+        if (search) {
+          const escaped = ('%' + search.replace(/[\\%_]/g, value => '\\' + value) + '%').replace(/"/g, '\\"')
+          request = request.or('title.ilike."' + escaped + '",message.ilike."' + escaped + '",related_entity_id.ilike."' + escaped + '"')
+        }
+        return request.order('created_at', { ascending: false }).order('id').range((page - 1) * query.pageSize, page * query.pageSize - 1)
+      }
+      let result = await fetch(query.page)
+      if (result.error && result.error.code !== 'PGRST103') throw requestError('notification page', result.error)
+      if (result.count === null) throw new Error('LIST_COUNT_UNAVAILABLE')
+      const page = pageRange(result.count, query.page, query.pageSize).page
+      if (page !== query.page) result = await fetch(page)
+      if (result.error) throw requestError('notification page', result.error)
+      const [all, unread] = await Promise.all([
+        client.from('notifications').select('id', { count: 'exact', head: true }),
+        this.getUnreadCount(),
+      ])
+      if (all.error) throw requestError('notification count', all.error)
+      return { items: (result.data ?? []).map(row => notificationFromRow(row as unknown as NotificationRow)), total: result.count ?? 0, page, pageSize: query.pageSize,
+        counts: { all: all.count ?? 0, unread, read: (all.count ?? 0) - unread } }
     },
 
     async markRead(id) {

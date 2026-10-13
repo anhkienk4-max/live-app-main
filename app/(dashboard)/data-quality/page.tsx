@@ -1,43 +1,18 @@
 'use client'
 import * as React from 'react'
 import { DataQualityPanel } from '@/components/features/data-quality/DataQualityPanel'
-import { getAllIssues } from '@/lib/utils/dataQuality'
-import { shiftService, reportService, shiftRegistrationService, scheduleImportService } from '@/lib/services/dataService'
-import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
-import { hasPermission } from '@/lib/permissions'
-import type { DataQualityIssue } from '@/lib/types/dataQuality'
+import { usePagedList } from '@/lib/hooks/usePagedList'
+import { dataQualityPageService,type QualityPage } from '@/lib/services/dataQualityPageService'
+import { PageLoadError } from '@/components/ui/page-load-error'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import { PageShell, PageHeader, PageHeaderContent } from '@/components/ui/archetypes'
 
 export default function DataQualityPage() {
-  const { currentUser } = useCurrentUser()
-  const [issues, setIssues] = React.useState<DataQualityIssue[] | null>(null)
-
-  React.useEffect(()=> {
-    const frame = requestAnimationFrame(() => {
-    if (!currentUser) { setIssues([]); return }
-    // permission checked BEFORE fetch — avoid loading broad data then only hiding in UI
-    const canImport = hasPermission(currentUser,'shifts.import')
-    const canReport = hasPermission(currentUser,'reports.review') || hasPermission(currentUser,'reports.submit')
-    const canStaff = hasPermission(currentUser,'shifts.view_open') || hasPermission(currentUser,'shifts.view_assigned')
-    if (!canImport && !canReport && !canStaff) { setIssues([]); return }
-    void (async()=>{
-      const [shifts, reports, regs, imports] = await Promise.all([
-        (canStaff || canReport ? shiftService.getAll().catch(()=>[]) : Promise.resolve([] as never[])),
-        (canReport ? reportService.getAll().catch(()=>[]) : Promise.resolve([] as never[])),
-        (canStaff ? shiftRegistrationService.getAll().catch(()=>[]) : Promise.resolve([] as never[])),
-        (canImport ? scheduleImportService.getAll().catch(()=>[]) : Promise.resolve([] as never[])),
-      ])
-      const lastImport = imports[0]
-      const importResult = null // read-only, no heavy parsing
-      const all = getAllIssues({ reports, shifts, registrations: regs, importResult, batchId: lastImport?.id })
-      setIssues(all)
-    })()
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [currentUser])
-
-  if (!issues) return <ContentSkeleton />
+  const [filters,setFilters]=React.useState<{severity:'all'|'error'|'warning'|'info';source:string}>({severity:'all',source:'all'})
+  const list=usePagedList(dataQualityPageService,'quality',{severity:filters.severity,qualitySources:filters.source==='all'?[]:[filters.source]},10)
+  const metadata=list.result as QualityPage|undefined
+  if(list.error)return <PageLoadError error={list.error} onRetry={()=>void list.reload()} />
+  if(list.loading)return <ContentSkeleton />
   return (
     <PageShell archetype="analytics" className="space-y-6">
       <PageHeader>
@@ -46,7 +21,8 @@ export default function DataQualityPage() {
           <p className="text-sm text-muted-foreground">Operational issues and recovery actions</p>
         </PageHeaderContent>
       </PageHeader>
-      <DataQualityPanel issues={issues} />
+      <DataQualityPanel issues={list.items} remote={{total:list.total,totalIssues:metadata?.totalIssues??0,counts:metadata?.counts??{error:0,warning:0,info:0},page:list.page,pageSize:list.pageSize,setPage:list.setPage,setPageSize:list.setPageSize}}
+        filters={filters} onFiltersChange={value=>{setFilters(value);list.reset()}} />
     </PageShell>
   )
 }

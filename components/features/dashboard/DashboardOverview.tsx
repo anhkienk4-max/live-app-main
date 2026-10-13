@@ -47,29 +47,49 @@ export function DashboardOverview() {
   const [data,setData] = React.useState<DashboardDataset | null>(null)
   const [loading,setLoading] = React.useState(true)
   const [loadError,setLoadError] = React.useState<unknown>(null)
+  const [filters,setFilters]=React.useState<Filters|null>(()=>initialFilters())
+  const sequence=React.useRef(0)
   const loadData = React.useCallback(async () => {
+    if(!currentUser||!filters)return
+    const request=++sequence.current
     setLoading(true)
     setLoadError(null)
     try {
-      const [shifts,reports,brands,platforms,campaigns,users,registrations,swapRequests] = await Promise.all([
-        shiftService.getAll(),reportService.getAll(),brandService.getAll(),platformService.getAll(),campaignService.getAll(),userService.getAll(),shiftRegistrationService.getAll(),swapRequestService.getAll(),
+      const today=getCurrentBusinessDate()
+      const from=filters.start<today?filters.start:today
+      const to=filters.end>today?filters.end:today
+      const [rangeShifts,reports,brands,platforms,campaigns,users,future,swapPage,scopeSwaps]=await Promise.all([
+        shiftService.getAllFiltered({from,to}),reportService.getAllFiltered({from,to}),
+        brandService.getAll(),platformService.getAll(),campaignService.getAll(),userService.getAll(),
+        resolveSystemPermission(currentUser)==='member'
+          ? shiftService.getRegistrationPage('mine',{page:1,pageSize:10,filters:{from:today,registrationStatuses:['approved','manually_assigned']}})
+          : shiftService.getCalendarPage({page:1,pageSize:10,filters:{from:today,statuses:['scheduled','preparing','live','paused']}}),
+        swapRequestService.getPage({page:1,pageSize:10,filters:{statuses:['pending','accepted']}}),
+        swapRequestService.getAllFiltered({from,to}),
       ])
-      setData({shifts,reports,brands,platforms,campaigns,users,registrations,swapRequests})
+      const previewIds=[...new Set(swapPage.items.flatMap(swap=>[swap.shift_id,swap.target_shift_id].filter((id):id is string=>!!id)))]
+      const related=previewIds.length?await shiftService.getAllFiltered({shiftIds:previewIds}):[]
+      const shifts=[...new Map([...rangeShifts,...future.items,...related].map(shift=>[shift.id,shift])).values()]
+      const registrations=await shiftRegistrationService.getForShifts(shifts.map(shift=>shift.id))
+      if(request!==sequence.current)return
+      setData({shifts,reports,brands,platforms,campaigns,users,registrations,swapRequests:[...new Map([...scopeSwaps,...swapPage.items].map(swap=>[swap.id,swap])).values()]})
     } catch(error) {setLoadError(error)} finally {setLoading(false)}
-  },[])
+  },[currentUser,filters])
   React.useEffect(()=>{const frame=requestAnimationFrame(()=>{if(currentUser) void loadData()});return ()=>cancelAnimationFrame(frame)},[currentUser,loadData])
   if (loadError) return <PageLoadError error={loadError} onRetry={()=>void loadData()} />
   if (loading || !data || !currentUser) return <ContentSkeleton />
-  return <DashboardWorkspace data={data} currentUser={currentUser} onUpdate={loadData} />
+  return <DashboardWorkspace data={data} currentUser={currentUser} onUpdate={loadData} filterState={filters} onFilterChange={setFilters} />
 }
 
 // Presentation accepts typed data; only the visual-QA route supplies fixture data.
-export function DashboardWorkspace({data,currentUser,onUpdate}: {data:DashboardDataset;currentUser:User;onUpdate:()=>void | Promise<void>}) {
+export function DashboardWorkspace({data,currentUser,onUpdate,filterState,onFilterChange}: {data:DashboardDataset;currentUser:User;onUpdate:()=>void | Promise<void>;filterState?:Filters|null;onFilterChange?:React.Dispatch<React.SetStateAction<Filters|null>>}) {
   const {t} = useTranslation()
-  const [filters,setFilters] = React.useState<Filters | null>(null)
+  const [localFilters,setLocalFilters] = React.useState<Filters | null>(null)
+  const filters=filterState??localFilters
+  const setFilters=onFilterChange??setLocalFilters
   const [showFilters,setShowFilters] = React.useState(false)
   const [selectedShift,setSelectedShift] = React.useState<Shift | null>(null)
-  React.useEffect(()=>{const frame=requestAnimationFrame(()=>setFilters(initialFilters()));return ()=>cancelAnimationFrame(frame)},[])
+  React.useEffect(()=>{const frame=requestAnimationFrame(()=>setLocalFilters(initialFilters()));return ()=>cancelAnimationFrame(frame)},[])
   if (!filters) return <ContentSkeleton />
   const role = resolveSystemPermission(currentUser)
   const setPreset = (preset:Preset)=>setFilters(current=>current ? {...current,preset,...(preset==='custom'?{}:rangeFor(preset))} : current)

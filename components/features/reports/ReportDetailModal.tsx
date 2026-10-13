@@ -306,7 +306,7 @@ export function ReportDetailModal({
   const [activeTab, setActiveTab] = React.useState('overview')
   const [showConfirmWarning, setShowConfirmWarning] = React.useState(false)
   const [revisionPage, setRevisionPage] = React.useState(1)
-  const [revisionPageSize, setRevisionPageSize] = React.useState(10)
+  const [revisionPageSize, setRevisionPageSize] = React.useState(20)
   const [loadedRevisions, setLoadedRevisions] = React.useState<ReportRevision[]>(report.revisions || [])
   const [revisionLoadError, setRevisionLoadError] = React.useState<Error | null>(null)
   const [revisionReloadKey, setRevisionReloadKey] = React.useState(0)

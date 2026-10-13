@@ -158,6 +158,7 @@ function client() {
       const filters: Array<(row: Row) => boolean> = []
       let operation: 'select' | 'insert' | 'update' = 'select'
       let payload: Row = {}
+      let range: [number,number] | undefined
       const evaluate = () => {
         let chosen = get(table).filter(row => filters.every(fn => fn(row)))
         if (operation === 'insert') {
@@ -166,13 +167,17 @@ function client() {
           chosen = [next]
         }
         if (operation === 'update') for (const row of chosen) Object.assign(row, payload)
-        return { data: chosen, error: null }
+        const count = chosen.length
+        if (range) chosen = chosen.slice(range[0], range[1]+1)
+        return { data: chosen, error: null, count }
       }
       const q = {
         select(_cols?: string) { return q },
         eq(key: string, val: unknown) { filters.push(row => row[key] === val); return q },
         is(key: string, val: unknown) { filters.push(row => (row[key] ?? null) === val); return q },
         order(_name: string, _opts?: unknown) { return q },
+        not(key: string, op: string, value: string) { assert.equal(op, 'in'); const excluded = value.slice(1,-1).split(','); filters.push(row => !excluded.includes(String(row[key]))); return q },
+        range(from: number, to: number) { assert.ok(to-from+1<=50); range=[from,to]; return q },
         insert(value: Row) { operation = 'insert' as const; payload = value; return q },
         update(value: Row) { operation = 'update' as const; payload = value; return q },
         async single() { const result = evaluate(); return { data: result.data[0] ?? null, error: result.error } },

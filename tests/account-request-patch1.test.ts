@@ -143,7 +143,7 @@ test('rate-limit SQL hardens the table and helper permissions', () => {
 })
 
 test('Admin panel lists all request states through the canonical API', () => {
-  assert.match(panel, /fetch\('\/api\/account-requests\?status=all'/)
+  assert.match(panel, /getCollectionPage<AccountRequest>\('account_requests'/)
   assert.match(panel, /accountRequests/)
   assert.match(panel, /selected\.status/)
   assert.match(panel, /provisioning_status/)

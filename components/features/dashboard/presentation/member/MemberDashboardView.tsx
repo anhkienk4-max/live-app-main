@@ -218,7 +218,7 @@ export function MemberDashboardView({
           </div>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm p-4 flex flex-col flex-1">
             <div className="space-y-3">
-              {mySchedule.length > 0 ? mySchedule.map((s, i) => (
+              {mySchedule.length > 0 ? mySchedule.slice(0, 6).map((s, i) => (
                 <ScheduleItem key={i} date={s.date} time={s.time} brand={s.brand} platform={s.platform} role={s.role} />
               )) : (
                 <div className="text-center text-sm text-slate-500 py-4">Không có lịch trình</div>
@@ -234,7 +234,7 @@ export function MemberDashboardView({
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm p-4 flex flex-col gap-3 flex-1">
             {myActions === null ? (
               <div className="text-center text-sm text-slate-500 py-4">Dữ liệu chưa khả dụng</div>
-            ) : myActions.length > 0 ? myActions.map((a, i) => (
+            ) : myActions.length > 0 ? myActions.slice(0, 6).map((a, i) => (
               <ActionCard key={i} type={a.type} title={a.title} time={a.time} description={a.description} />
             )) : (
               <div className="text-center text-sm text-slate-500 py-4">Không có hành động nào</div>
@@ -252,7 +252,7 @@ export function MemberDashboardView({
           <div className="space-y-3">
             {openShifts === null ? (
               <div className="text-center text-sm text-slate-500 py-4">Dữ liệu chưa khả dụng</div>
-            ) : openShifts.length > 0 ? openShifts.map((s, i) => (
+            ) : openShifts.length > 0 ? openShifts.slice(0, 6).map((s, i) => (
               <OpenShiftItem key={i} brand={s.brand} time={s.time} platform={s.platform} role={s.role} />
             )) : (
               <div className="text-center text-sm text-slate-500 py-4">Không có ca mở</div>
@@ -271,7 +271,7 @@ export function MemberDashboardView({
             <div className="space-y-3">
               {myRequests === null ? (
                 <div className="text-center text-sm text-slate-500 py-4">Dữ liệu chưa khả dụng</div>
-              ) : myRequests.length > 0 ? myRequests.map((r, i) => (
+              ) : myRequests.length > 0 ? myRequests.slice(0, 6).map((r, i) => (
                 <RequestItem key={i} type={r.type} title={r.title} status={r.status} />
               )) : (
                 <div className="text-center text-sm text-slate-500 py-4">Không có yêu cầu</div>
@@ -288,7 +288,7 @@ export function MemberDashboardView({
             <div className="space-y-3">
               {notifications === null ? (
                 <div className="text-center text-sm text-slate-500 py-4">Dữ liệu chưa khả dụng</div>
-              ) : notifications.length > 0 ? notifications.map((n, i) => (
+              ) : notifications.length > 0 ? notifications.slice(0, 6).map((n, i) => (
                 <NotificationItem key={i} title={n.title} time={n.time} unread={n.unread} />
               )) : (
                 <div className="text-center text-sm text-slate-500 py-4">Không có thông báo</div>
@@ -297,6 +297,7 @@ export function MemberDashboardView({
           </div>
         </div>
       </div>
+    <nav aria-label="Xem tất cả" className="flex flex-wrap gap-4 text-sm"><a className="underline underline-offset-4" href="/calendar">Xem tất cả: Lịch</a><a className="underline underline-offset-4" href="/reports">Xem tất cả: Báo cáo</a><a className="underline underline-offset-4" href="/notifications">Xem tất cả: Thông báo</a></nav>
     </main>
   )
 }

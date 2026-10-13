@@ -1,6 +1,10 @@
 'use client'
 
 import * as React from 'react'
+import { useListPagination } from '@/lib/hooks/useListPagination'
+import { HistoryPagination } from '@/components/ui/history-pagination'
+import { getCollectionPage } from '@/lib/services/operationsPageService'
+import { useRequestSequence } from '@/lib/hooks/useRequestSequence'
 import { CheckCircle2, Eye, Loader2, RefreshCw, RotateCcw, XCircle } from 'lucide-react'
 
 import type { AccountRequest } from '@/lib/types/accountRequest.types'
@@ -31,6 +35,10 @@ async function readResponse(response: Response, fallback: string) {
 export function AccountRequestPanel() {
   const { t } = useTranslation()
   const { toast } = useToast()
+  const pagination=useListPagination('account_requests',10)
+  const {page,pageSize,navigate}=pagination
+  const [total,setTotal]=React.useState(0)
+  const {next,isCurrent,invalidate}=useRequestSequence()
   const [requests, setRequests] = React.useState<AccountRequest[]>([])
   const [selected, setSelected] = React.useState<AccountRequest | null>(null)
   const [rejectionReason, setRejectionReason] = React.useState('')
@@ -39,23 +47,25 @@ export function AccountRequestPanel() {
   const [busyId, setBusyId] = React.useState<string | null>(null)
 
   const loadRequests = React.useCallback(async () => {
+    const request=next()
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch('/api/account-requests?status=all', { cache: 'no-store' })
-      const payload = await readResponse(response, t('accountRequestReadFailed')) as { requests?: AccountRequest[] } | null
-      setRequests(payload?.requests ?? [])
+      const payload=await getCollectionPage<AccountRequest>('account_requests',{page,pageSize})
+      if(!isCurrent(request))return
+      setRequests(payload.items);setTotal(payload.total)
+      if(payload.page!==page)navigate({account_requests_page:String(payload.page)},true)
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : t('accountRequestReadFailed'))
+      if(isCurrent(request))setError(loadError instanceof Error ? loadError.message : t('accountRequestReadFailed'))
     } finally {
-      setLoading(false)
+      if(isCurrent(request))setLoading(false)
     }
-  }, [t])
+  }, [t,page,pageSize,navigate,next,isCurrent])
 
   React.useEffect(() => {
     const frame = window.requestAnimationFrame(() => { void loadRequests() })
-    return () => window.cancelAnimationFrame(frame)
-  }, [loadRequests])
+    return () => {window.cancelAnimationFrame(frame);invalidate()}
+  }, [loadRequests,invalidate])
 
   const mutate = React.useCallback(async (
     request: AccountRequest,
@@ -160,7 +170,7 @@ export function AccountRequestPanel() {
             })}
           </div>
         ) : null}
-      </CardContent>
+      <HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} /></CardContent>
 
       {selected && (
         <Dialog open onOpenChange={open => !open && setSelected(null)}>

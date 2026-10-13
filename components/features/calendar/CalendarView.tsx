@@ -1,6 +1,8 @@
-'use client'
+﻿'use client'
 
 import * as React from 'react'
+import { useListPagination } from '@/lib/hooks/useListPagination'
+import { HistoryPagination } from '@/components/ui/history-pagination'
 import { shiftRegistrationService, shiftService, brandService, platformService, campaignService, userService, reportService } from '@/lib/services/dataService'
 import { Shift, Brand, Platform, Campaign, User, OperationalRole, ShiftRegistration, Report } from '@/lib/types/database.types'
 import { Button } from '@/components/ui/button'
@@ -205,29 +207,48 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const [selectedShiftIds, setSelectedShiftIds] = React.useState<Set<string>>(new Set())
   const [filters, setFilters] = React.useState<CalendarFilterState>(DEFAULT_CALENDAR_FILTERS)
   const [listTimeOverride, setListTimeOverride] = React.useState<CalendarFilterState['time'] | null>(null)
-  const [nonListTimeOverride, setNonListTimeOverride] = React.useState<CalendarFilterState['time'] | null>(null)
   const listTimeFilter = effectiveListTimeFilter(filters.time, listTimeOverride)
   const dataScope = React.useMemo(
-    () => calendarDataScope(view, currentDate, view === 'list' ? listTimeFilter : filters.time, filters.customFrom, filters.customTo, nonListTimeOverride === 'all'),
-    [currentDate, filters.customFrom, filters.customTo, filters.time, listTimeFilter, nonListTimeOverride, view],
+    () => calendarDataScope(view, currentDate, view === 'list' ? listTimeFilter : filters.time, filters.customFrom, filters.customTo, false),
+    [currentDate, filters.customFrom, filters.customTo, filters.time, listTimeFilter, view],
   )
   const authorityScope = React.useMemo(() => calendarAuthorityScope(dataScope), [dataScope])
   const canSelectListShifts = view === 'list' && !!currentUser && (
     hasPermission(currentUser, 'shifts.export') || hasPermission(currentUser, 'shifts.delete')
   )
 
-  const referenceLoad = React.useRef<Promise<void> | null>(null)
+  const listPagination = useListPagination('calendar_list', 10)
+  const { page: listPage, pageSize: listSize, navigate: listNavigate } = listPagination
+  const [listTotal, setListTotal] = React.useState(0)
+  const listQuery = JSON.stringify({
+    search: searchTerm, brandIds: filters.brandIds, platformIds: filters.platformIds, campaignIds: filters.campaignIds,
+    studios: filters.studios, statuses: filters.statuses, hostIds: filters.hostIds, supportIds: filters.supportIds,
+    technicalIds: filters.technicalIds, operationalRoles: filters.operationalRoles, staffingStates: filters.staffingStates,
+    registrationStates: filters.registrationStates, hasImportedStaffing: filters.hasImportedStaffing,
+    from: dataScope.startDate, to: dataScope.endDate,
+  })
+  const previousListQuery = React.useRef(listQuery)
+  React.useEffect(() => {
+    if (previousListQuery.current === listQuery) return
+    previousListQuery.current = listQuery
+    if (view === 'list') listNavigate({ calendar_list_page: null }, true)
+  }, [listNavigate, listQuery, view])
+
+  const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role):''
+  const [loadedIdentity,setLoadedIdentity]=React.useState('')
+  const referenceLoad = React.useRef<{identity:string;promise:Promise<void>} | null>(null)
   const requestVersion = React.useRef(0)
   const hasLoadedData = React.useRef(false)
 
   const loadReferenceData = React.useCallback(() => {
-    if (referenceLoad.current) return referenceLoad.current
+    if (referenceLoad.current?.identity === identity) return referenceLoad.current.promise
     const request = Promise.all([
       brandService.getAll().catch(() => [] as Brand[]),
       platformService.getAll().catch(() => [] as Platform[]),
       campaignService.getAll().catch(() => [] as Campaign[]),
       userService.getAll().catch(() => [] as User[]),
     ]).then(([brandsData, platformsData, campaignsData, usersData]) => {
+      if(referenceLoad.current?.identity!==identity)return
       setBrands(brandsData)
       setPlatforms(platformsData)
       setCampaigns(campaignsData)
@@ -236,40 +257,44 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       referenceLoad.current = null
       throw error
     })
-    referenceLoad.current = request
+    referenceLoad.current = {identity,promise:request}
     return request
-  }, [])
+  }, [identity])
 
   const loadData = React.useCallback(async () => {
     const version = ++requestVersion.current
     const initialLoad = !hasLoadedData.current
-    if (initialLoad) setLoading(true)
+    if (initialLoad || view === 'list') setLoading(true)
     setLoadError(null)
     try {
-      const [shiftsData] = await Promise.all([
-        dataScope.allTime
-          ? shiftService.getAllComplete()
-          : !authorityScope.startDate || !authorityScope.endDate
-            ? shiftService.getAll()
-          : shiftService.getInRange(authorityScope.startDate, authorityScope.endDate),
+      const [result] = await Promise.all([
+        view === 'list' ? shiftService.getCalendarPage({ page: listPage, pageSize: listSize, filters: JSON.parse(listQuery) })
+          : shiftService.getInRange(authorityScope.startDate!, authorityScope.endDate!),
         loadReferenceData(),
       ])
+      const shiftsData = Array.isArray(result) ? result : result.items
+      if (!Array.isArray(result)) {
+        if (version !== requestVersion.current) return
+        setListTotal(result.total)
+        if (result.page !== listPage) listNavigate({ calendar_list_page: String(result.page) }, true)
+      }
       const shiftIds = shiftsData.map(shift => shift.id)
       const [registrationsData, reportsData] = await Promise.all([
-        shiftRegistrationService.getForShifts(shiftIds).catch(() => [] as ShiftRegistration[]),
+        Array.isArray(result) ? shiftRegistrationService.getForShifts(shiftIds) : Promise.resolve(result.registrations),
         reportService.getForShifts(shiftIds).catch(() => [] as Report[]),
       ])
       if (version !== requestVersion.current) return
+      setLoadedIdentity(identity)
       setShifts(shiftsData)
       setRegistrations(registrationsData)
       setReports(reportsData)
       hasLoadedData.current = true
     } catch (error: unknown) {
-      if (version === requestVersion.current && !hasLoadedData.current) setLoadError(error)
+      if (version === requestVersion.current) setLoadError(error)
     } finally {
       if (version === requestVersion.current) setLoading(false)
     }
-  }, [authorityScope.endDate, authorityScope.startDate, dataScope.allTime, loadReferenceData])
+  }, [identity, authorityScope.endDate, authorityScope.startDate, listNavigate, listPage, listQuery, listSize, loadReferenceData, view])
 
   React.useEffect(() => {
     const frame = window.requestAnimationFrame(() => { void loadData() })
@@ -316,35 +341,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     }),
     [shifts, displayFilters, searchTerm, currentDate, brands, platforms, campaigns, registrations],
   )
-  const shiftsByMonth = React.useMemo(() => {
-    const byMonth = new Map<string, Shift[]>()
-    shifts.forEach(shift => {
-      const monthShifts = byMonth.get(shift.date.slice(0, 7)) ?? []
-      monthShifts.push(shift)
-      byMonth.set(shift.date.slice(0, 7), monthShifts)
-    })
-    return byMonth
-  }, [shifts])
-  const listSourceShifts = React.useMemo(
-    () => view === 'list' && listTimeFilter === 'current_month'
-      ? shiftsByMonth.get(format(currentDate, 'yyyy-MM')) ?? EMPTY_SHIFTS
-      : shifts,
-    [currentDate, listTimeFilter, shifts, shiftsByMonth, view],
-  )
-  const listFilters = React.useMemo(
-    () => ({ ...filters, time: listTimeFilter }),
-    [filters, listTimeFilter],
-  )
-  const listShifts = React.useMemo(
-    () => view === 'list' ? filterCalendarShifts(listSourceShifts, listFilters, searchTerm, {
-      currentDate,
-      brands,
-      platforms,
-      campaigns,
-      registrations,
-    }) : EMPTY_SHIFTS,
-    [listSourceShifts, listFilters, searchTerm, currentDate, brands, platforms, campaigns, registrations, view],
-  )
+  const listShifts = view === 'list' ? shifts : EMPTY_SHIFTS
   const [selectionScope, setSelectionScope] = React.useState(listShifts)
   if (selectionScope !== listShifts) {
     setSelectionScope(listShifts)
@@ -391,7 +388,6 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     setFilters(DEFAULT_CALENDAR_FILTERS)
     setSearchTerm('')
     if (view === 'list') setListTimeOverride(null)
-    else setNonListTimeOverride(null)
   }
 
   const changeTimeFilter = (time: CalendarFilterState['time']) => {
@@ -399,7 +395,6 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       setListTimeOverride(time)
     } else {
       setFilters({ ...filters, time })
-      setNonListTimeOverride(time === 'all' ? 'all' : null)
     }
   }
 
@@ -440,8 +435,10 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     setSelectedShiftIds(current => toggleAllVisibleShiftSelection(listShifts, current))
   }
 
-  const handleExport = (formatType: 'xlsx' | 'csv', scope: 'filtered' | 'selected') => {
-    const exportShifts = view === 'list' ? listShifts : filteredShifts
+  const handleExport = async (formatType: 'xlsx' | 'csv', scope: 'filtered' | 'selected') => {
+    try {
+    const exportShifts = view === 'list' && scope === 'filtered' ? await shiftService.getAllFiltered(JSON.parse(listQuery))
+      : view === 'list' ? listShifts : filteredShifts
     const targetShifts = scope === 'selected'
       ? exportShifts.filter(s => selectedVisibleShiftIdSet.has(s.id))
       : exportShifts
@@ -466,7 +463,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       platformsMap,
       campaignsMap,
       usersMap,
-      registrations,
+      await shiftRegistrationService.getForShifts(targetShifts.map(shift => shift.id)),
     )
     const filename = buildScheduleExportFilename(scope, targetShifts, formatType, currentDate)
 
@@ -481,6 +478,9 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       description: `Exported ${targetShifts.length} shift(s) to ${filename}`,
       variant: 'success',
     })
+    } catch (error) {
+      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+    }
   }
 
   const getViewTitle = () => {
@@ -502,8 +502,8 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     }
   }
 
-  if (loading) return <div className="text-center py-12">{t('loading')}</div>
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoadError(null); setLoading(true); void loadData() }} />
+  if (loading || loadedIdentity!==identity) return <div className="text-center py-12">{t('loading')}</div>
 
   return (
     <div className="min-w-0 space-y-0">
@@ -700,7 +700,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
               <MultiSelectFilter label={t('technical')} value={filters.technicalIds} onChange={technicalIds => setFilters({ ...filters, technicalIds })} options={users.filter(u => u.operational_roles?.includes('technical')).map(u => ({ value: u.id, label: u.full_name }))} placeholder={`${t('all')} ${t('technical')}`} testId="calendar-technical-filter" />
               <MultiSelectFilter label={t('role')} value={filters.operationalRoles} onChange={operationalRoles => setFilters({ ...filters, operationalRoles })} options={[{ value: 'host', label: t('host') }, { value: 'support', label: t('support') }, { value: 'technical', label: t('technical') }]} placeholder={t('all')} testId="calendar-role-filter" />
               <MultiSelectFilter label="Staffing State" value={filters.staffingStates} onChange={staffingStates => setFilters({ ...filters, staffingStates })} options={[{ value: 'fully_staffed', label: 'Fully Staffed' }, { value: 'missing_staff', label: 'Missing Staff' }]} placeholder={t('all')} testId="calendar-staffing-state-filter" />
-              <MultiSelectFilter label="Registration State" value={filters.registrationStates} onChange={registrationStates => setFilters({ ...filters, registrationStates })} options={[{ value: 'approved', label: 'Approved' }, { value: 'pending', label: 'Pending' }, { value: 'rejected', label: 'Rejected' }, { value: 'manually_assigned', label: 'Manually Assigned' }]} placeholder={t('all')} testId="calendar-registration-state-filter" />
+              <MultiSelectFilter label="Registration State" value={filters.registrationStates} onChange={registrationStates => setFilters({ ...filters, registrationStates })} options={[{ value: 'approved', label: t('approved') }, { value: 'pending', label: t('pending') }, { value: 'rejected', label: t('rejected') }, { value: 'manually_assigned', label: 'Manually Assigned' }]} placeholder={t('all')} testId="calendar-registration-state-filter" />
               <div className="flex items-center space-x-2 pt-2">
                 <Checkbox id="imported-staffing" checked={filters.hasImportedStaffing} onCheckedChange={(checked: boolean | 'indeterminate') => setFilters({ ...filters, hasImportedStaffing: !!checked })} />
                 <label htmlFor="imported-staffing" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
@@ -740,6 +740,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
             onToggleSelectShift={canSelectListShifts ? toggleSelectShift : undefined}
           />
         )}
+        {view === 'list' && <HistoryPagination page={listPage} pageSize={listSize} total={listTotal} onPageChange={listPagination.setPage} onPageSizeChange={listPagination.setPageSize} />}
       </Card>
 
       {/* Modals */}

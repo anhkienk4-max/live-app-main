@@ -508,7 +508,7 @@ export function ShiftDetailModal({
   const [staffingError, setStaffingError] = React.useState(false)
   const [deleteImpact, setDeleteImpact] = React.useState<DeletionImpact | null>(null)
   const [registrationPage, setRegistrationPage] = React.useState(1)
-  const [registrationPageSize, setRegistrationPageSize] = React.useState(10)
+  const [registrationPageSize, setRegistrationPageSize] = React.useState(20)
   const [showSwapDialog, setShowSwapDialog] = React.useState(false)
   const canDeleteShift = Boolean(currentUser && hasPermission(currentUser, 'shifts.delete'))
   const canEditStaffingLabels = Boolean(currentUser && hasPermission(currentUser, 'shifts.edit'))

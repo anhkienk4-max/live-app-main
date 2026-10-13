@@ -102,9 +102,9 @@ export function resolveRegistrationCta({
       const otherShift = allShifts.find(candidate => candidate.id === registration.shift_id)
       return Boolean(otherShift && shiftsOverlap(otherShift, shift))
     })
-    if (conflict) return { role, state: 'conflict' }
+    if (shift.registration_conflict || conflict) return { role, state: 'conflict' }
 
-    const staffedCount = registrations.filter(registration =>
+    const staffedCount = shift.staffing_summary?.find(summary => summary.role === role)?.approved ?? registrations.filter(registration =>
       registration.shift_id === shift.id &&
       registration.operational_role === role &&
       isStaffed(registration),

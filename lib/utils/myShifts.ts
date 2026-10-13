@@ -59,5 +59,6 @@ export function selectMyShiftEntries({
 
   return [...byShift.values()].sort((left, right) =>
     `${left.shift.date}${left.shift.start_time}`.localeCompare(`${right.shift.date}${right.shift.start_time}`)
+ || left.shift.id.localeCompare(right.shift.id)
   )
 }

@@ -1,26 +1,25 @@
 'use client'
 
 import * as React from 'react'
+import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useListPagination } from '@/lib/hooks/useListPagination'
+import { HistoryPagination } from '@/components/ui/history-pagination'
 import { format } from 'date-fns'
 import { AlertCircle, Radio, DollarSign, FileText, Filter, RotateCcw, TrendingUp } from 'lucide-react'
 import {
   brandService,
   campaignService,
-  dashboardUpdateService,
-  isStaffedRegistration,
   platformService,
-  shiftRegistrationService,
   shiftService,
   userService,
 } from '@/lib/services/dataService'
-import { Brand, Campaign, DashboardUpdate, OperationalRole, Platform, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
+import { Brand, Campaign, DashboardUpdate, Platform, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
 import { getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 
 import { LiveSessionModal } from './LiveSessionModal'
@@ -32,6 +31,9 @@ const initialFilters = (): Filters => ({ date: todayValue(), brandIds: [], platf
 
 export function LiveMonitoringDashboard() {
   const { t } = useTranslation()
+  const {currentUser}=useCurrentUser()
+  const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role):''
+  const [loadedIdentity,setLoadedIdentity]=React.useState('')
   const [shifts, setShifts] = React.useState<Shift[]>([])
   const [refreshVersion,setRefreshVersion] = React.useState(0)
   const [updates, setUpdates] = React.useState<Record<string, DashboardUpdate[]>>({})
@@ -46,30 +48,38 @@ export function LiveMonitoringDashboard() {
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
 
+  const pagination=useListPagination('live',10)
+  const {page,pageSize,navigate}=pagination
+  const [total,setTotal]=React.useState(0)
+  const sequence=React.useRef(0)
+  const encodedFilters=JSON.stringify(filters?{from:filters.date||undefined,to:filters.date||undefined,brandIds:filters.brandIds,platformIds:filters.platformIds,campaignIds:filters.campaignIds,hostIds:filters.hostIds,supportIds:filters.supportIds,technicalIds:filters.technicalIds,statuses:filters.statuses}:{})
+  React.useEffect(()=>{const frame=requestAnimationFrame(()=>setFilters(initialFilters()));return()=>cancelAnimationFrame(frame)},[])
   const loadData = React.useCallback(async () => {
+    if(!filters||!identity)return
+    const request=++sequence.current
     setLoadError(null)
     try {
-      const [loadedShifts, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers, loadedRegistrations] = await Promise.all([
-        shiftService.getAll(), brandService.getAll(), platformService.getAll(), campaignService.getAll(), userService.getAll(), shiftRegistrationService.getAll(),
+      const [result,loadedBrands,loadedPlatforms,loadedCampaigns,loadedUsers]=await Promise.all([
+        shiftService.getLivePage({page,pageSize,filters:JSON.parse(encodedFilters)}),
+        brandService.getAll(),platformService.getAll(),campaignService.getAll(),userService.getAll(),
       ])
-      const updateEntries = await Promise.all(loadedShifts.map(async shift => [shift.id, await dashboardUpdateService.getByShift(shift.id)] as const))
-      setShifts(loadedShifts)
-      setBrands(loadedBrands)
-      setPlatforms(loadedPlatforms)
-      setCampaigns(loadedCampaigns)
-      setUsers(loadedUsers)
-      setRegistrations(loadedRegistrations)
-      setUpdates(Object.fromEntries(updateEntries))
+      if(request!==sequence.current)return
+      setLoadedIdentity(identity)
+      setShifts(result.items);setTotal(result.total)
+      if(result.page!==page)navigate({live_page:String(result.page)},true)
+      setBrands(loadedBrands);setPlatforms(loadedPlatforms);setCampaigns(loadedCampaigns);setUsers(loadedUsers)
+      setRegistrations(result.registrations)
+      setUpdates(Object.fromEntries(result.items.map(shift=>[shift.id,result.updates.filter(update=>update.shift_id===shift.id)])))
       setRefreshVersion(version=>version+1)
     } catch (error) {
       setLoadError(error)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [encodedFilters,filters,identity,navigate,page,pageSize])
 
   React.useEffect(() => {
-    const frame = requestAnimationFrame(() => { setFilters(initialFilters()); void loadData() })
+    const frame = requestAnimationFrame(() => { void loadData() })
     return () => cancelAnimationFrame(frame)
   }, [loadData])
   const handleShiftUpdate = React.useCallback(async (updatedShift?: Shift) => {
@@ -83,28 +93,10 @@ export function LiveMonitoringDashboard() {
     return () => window.clearInterval(interval)
   }, [loadData])
 
-  if (loading || !filters) return <div className="py-12 text-center">{t('loading')}</div>
+  if (loading || !filters || loadedIdentity!==identity) return <div className="py-12 text-center">{t('loading')}</div>
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
 
-  const matchesRole = (shift: Shift, role: OperationalRole, userId: string) => {
-    const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
-    return assignment === userId || registrations.some(registration =>
-      registration.shift_id === shift.id &&
-      registration.user_id === userId &&
-      registration.operational_role === role &&
-      isStaffedRegistration(registration)
-    )
-  }
-  const filtered = shifts.filter(shift =>
-    (!filters.date || shift.date === filters.date) &&
-    matchesMultiSelect(shift.brand_id, filters.brandIds) &&
-    matchesMultiSelect(shift.platform_id, filters.platformIds) &&
-    matchesMultiSelect(shift.campaign_id, filters.campaignIds) &&
-    (filters.hostIds.length === 0 || filters.hostIds.some(userId => matchesRole(shift, 'host', userId))) &&
-    (filters.supportIds.length === 0 || filters.supportIds.some(userId => matchesRole(shift, 'support', userId))) &&
-    (filters.technicalIds.length === 0 || filters.technicalIds.some(userId => matchesRole(shift, 'technical', userId))) &&
-    matchesMultiSelect(shift.status, filters.statuses)
-  )
+  const filtered=shifts
   const latestUpdate = (shiftId: string) => [...(updates[shiftId] || [])].sort((a, b) => b.time.localeCompare(a.time))[0]
   const revenueValues = filtered.flatMap(shift => { const value = latestUpdate(shift.id)?.revenue; return value == null ? [] : [value] })
   const totalRevenue = revenueValues.length ? revenueValues.reduce((sum,value)=>sum+value,0) : null
@@ -173,9 +165,11 @@ export function LiveMonitoringDashboard() {
         <Metric title={t('needsReview')} value={filtered.filter(shift => shift.status === 'completed').length.toString()} icon={<FileText className="h-5 w-5 text-muted-foreground" />} />
       </div>
 
+      <p className="text-xs text-muted-foreground">{t('currentPage')}</p>
       {/* 4. Session Cards */}
       <div className="space-y-3">
         {filtered.length > 1 && <div className="flex flex-wrap gap-2">{filtered.map(shift => <Button key={shift.id} variant={activeShift?.id === shift.id ? 'secondary' : 'outline'} size="sm" onClick={() => setSelectedShift(shift)} data-testid={`open-live-session-${shift.id}`}>{shift.title || nameFor(brands, shift.brand_id)}<Badge variant="outline">{statusLabel(shift.status)}</Badge></Button>)}</div>}
+        <HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />
         <div className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white">{activeShift ? <LiveSessionModal key={activeShift.id} refreshVersion={refreshVersion} inline open shift={activeShift} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onOpenChange={open=>!open&&setSelectedShift(null)} onUpdate={handleShiftUpdate} /> : <p className="p-10 text-center text-sm text-slate-500">{t('noLiveShifts')}</p>}</div>
       </div>
     </div>

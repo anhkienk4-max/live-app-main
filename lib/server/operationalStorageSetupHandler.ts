@@ -188,18 +188,21 @@ export function createOperationalStorageSetupHandler(deps: {
         const params = new URL(request.url).searchParams
         const offsetText = params.get('offset') ?? '0'
         if (!/^\d{1,6}$/u.test(offsetText)) return result(400, 'STORAGE_SETUP_INVALID_PAGE')
-        const offset = Number(offsetText)
+        const size=Number(params.get('pageSize')??20)
+        if(![10,20,50].includes(size))return result(400,'STORAGE_SETUP_INVALID_PAGE')
+        let offset = Number(offsetText)
         const db = client()
         // Probe required columns/tables independently. Production without RC1.5
         // returns a useful blocked response rather than implying setup is ready.
-        const [brands, platforms, shifts, unclassifiedCount, routes] = await Promise.all([
+        const unclassifiedCount=await db.from('shifts').select('id',{count:'exact',head:true}).is('execution_source',null).is('deleted_at',null)
+        if(!unclassifiedCount.error&&unclassifiedCount.count!==null)
+          offset=Math.min(offset,Math.max(0,(Math.ceil(unclassifiedCount.count/size)-1)*size))
+        const [brands, platforms, shifts, routes] = await Promise.all([
           db.from('brands').select('id,name,storage_profile').is('deleted_at', null).order('name'),
           db.from('platforms').select('id,name').is('deleted_at', null).order('name'),
           db.from('shifts').select('id,date,title,version,brand_id,platform_id,status,execution_source')
             .is('execution_source', null).is('deleted_at', null).order('date', { ascending: false })
-            .range(offset, offset + 39),
-          db.from('shifts').select('id', { count: 'exact', head: true })
-            .is('execution_source', null).is('deleted_at', null),
+            .order('start_time').order('id').range(offset, offset + size-1),
           db.from('operational_storage_routes')
             .select('id,brand_id,platform_id,execution_source,storage_profile,provider,root_folder_id,active')
             .eq('active', true).order('brand_id'),
@@ -217,7 +220,7 @@ export function createOperationalStorageSetupHandler(deps: {
           unclassified_shifts_sample: shifts.error ? [] : shifts.data ?? [],
           unclassified_shifts_count: unclassifiedCount.error ? null : unclassifiedCount.count,
           offset,
-          sample_limit: 40,
+          sample_limit: size,
           routes: routes.error ? [] : routes.data ?? [],
           root_configured: Boolean(configuredRoot()?.trim()),
           // Snapshot only, never return raw provider credentials / tokens.

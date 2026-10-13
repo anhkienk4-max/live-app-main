@@ -1,6 +1,9 @@
 'use client'
 
 import * as React from 'react'
+import { useListPagination } from '@/lib/hooks/useListPagination'
+import { pageRange } from '@/lib/utils/pagination'
+import { HistoryPagination } from '@/components/ui/history-pagination'
 import {
   History,
   ShieldCheck,
@@ -59,6 +62,9 @@ export function PayrollAuditTimeline({ audit }: PayrollAuditTimelineProps) {
     },
   }
 
+  const pagination = useListPagination('payroll_audit', 20)
+  const range = pageRange(sortedAudit.length, pagination.page, pagination.pageSize)
+  const pageRows = sortedAudit.slice((range.page - 1) * pagination.pageSize, range.page * pagination.pageSize)
   return (
     <Card className="border-slate-200 bg-white shadow-sm">
       <CardHeader className="border-b border-slate-100 pb-4">
@@ -84,7 +90,7 @@ export function PayrollAuditTimeline({ audit }: PayrollAuditTimelineProps) {
           </div>
         ) : (
           <div className="relative pl-6 space-y-6 before:absolute before:bottom-0 before:left-2 before:top-2 before:w-0.5 before:bg-slate-200">
-            {sortedAudit.map((item) => {
+            {pageRows.map((item) => {
               const config = actionConfig[item.action] || {
                 label: item.action,
                 badgeClass: 'bg-slate-100 text-slate-700 border-slate-300',
@@ -180,7 +186,9 @@ export function PayrollAuditTimeline({ audit }: PayrollAuditTimelineProps) {
             })}
           </div>
         )}
-      </CardContent>
+
+        <HistoryPagination page={range.page} pageSize={pagination.pageSize} total={sortedAudit.length} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />
+</CardContent>
     </Card>
   )
 }

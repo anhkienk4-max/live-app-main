@@ -1,11 +1,11 @@
 'use client'
 
 import * as React from 'react'
-import { Search, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { Input } from './input'
-import { Button } from './button'
+import { HistoryPagination } from './history-pagination'
+import { pageRange } from '@/lib/utils/pagination'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './table'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select'
 
 export interface Column<T> {
   header: React.ReactNode | (() => React.ReactNode)
@@ -17,11 +17,13 @@ interface DataTableProps<T> {
   data: T[]
   columns: Column<T>[]
   searchPlaceholder?: string
+  search?: string
   onSearch?: (query: string) => void
   filterComponent?: React.ReactNode
   searchableText?: (row: T) => string
   emptyMessage?: string
   pageSize?: number
+  pagination?: { page: number; pageSize: number; total: number; onPageChange: (page: number) => void; onPageSizeChange: (size: number) => void; loading?: boolean }
 }
 
 export function DataTable<T extends { id: string }>({
@@ -29,17 +31,19 @@ export function DataTable<T extends { id: string }>({
   columns,
   searchPlaceholder = 'Search...',
   onSearch,
+  search,
   filterComponent,
   searchableText,
   emptyMessage = 'No data available',
-  pageSize = 10,
+  pageSize = 20,
+  pagination,
 }: DataTableProps<T>) {
   const [searchQuery, setSearchQuery] = React.useState('')
   const [currentPage, setCurrentPage] = React.useState(1)
   const [itemsPerPage, setItemsPerPage] = React.useState(pageSize)
 
   const filteredData = React.useMemo(() => {
-    if (!searchQuery) return data
+    if (pagination || !searchQuery) return data
     
     return data.filter(row => {
       if (searchableText?.(row).toLowerCase().includes(searchQuery.toLowerCase())) return true
@@ -49,12 +53,13 @@ export function DataTable<T extends { id: string }>({
         return String(value).toLowerCase().includes(searchQuery.toLowerCase())
       })
     })
-  }, [data, searchQuery, columns, searchableText])
+  }, [data, searchQuery, columns, searchableText, pagination])
 
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage)
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const endIndex = startIndex + itemsPerPage
-  const paginatedData = filteredData.slice(startIndex, endIndex)
+  const size = pagination?.pageSize ?? itemsPerPage
+  const range = pageRange(pagination?.total ?? filteredData.length, pagination?.page ?? currentPage, size)
+  const startIndex = (range.page - 1) * size
+  const paginatedData = pagination ? filteredData : filteredData.slice(startIndex, startIndex + size)
+
 
   const handleSearch = (query: string) => {
     setCurrentPage(1)
@@ -63,13 +68,13 @@ export function DataTable<T extends { id: string }>({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" aria-busy={pagination?.loading}>
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
             placeholder={searchPlaceholder}
-            value={searchQuery}
+            value={search ?? searchQuery}
             onChange={(e) => handleSearch(e.target.value)}
             className="pl-10"
           />
@@ -116,54 +121,12 @@ export function DataTable<T extends { id: string }>({
         </Table>
       </div>
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between px-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">Rows per page:</span>
-            <Select
-              value={String(itemsPerPage)}
-              onValueChange={(val) => {
-                setItemsPerPage(Number(val))
-                setCurrentPage(1)
-              }}
-            >
-              <SelectTrigger className="w-16">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="5">5</SelectItem>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="20">20</SelectItem>
-                <SelectItem value="50">50</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+      <HistoryPagination
+        page={range.page} pageSize={size} total={pagination?.total ?? filteredData.length}
+        onPageChange={pagination?.onPageChange ?? setCurrentPage}
+        onPageSizeChange={pagination?.onPageSizeChange ?? (value => { setItemsPerPage(value); setCurrentPage(1) })}
+      />
 
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">
-              Page {currentPage} of {totalPages}
-            </span>
-            <div className="flex gap-1">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

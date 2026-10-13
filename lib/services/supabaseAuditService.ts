@@ -47,7 +47,6 @@ const auditColumns = [
   'related_records', 'metadata', 'entity_exists',
 ].join(',')
 
-const safeString = (value: unknown, fallback: string) => typeof value === 'string' && value ? value : fallback
 const actions = new Set<AuditAction>([
   'create', 'update', 'delete', 'soft_delete', 'restore', 'archive', 'unarchive', 'confirm', 'unconfirm',
   'approve', 'reject', 'assign', 'unassign', 'register', 'cancel_registration', 'lock', 'reopen', 'import',
@@ -132,13 +131,15 @@ export function createSupabaseAuditRepository(client: SupabaseClient): SupabaseA
     sort?: 'newest' | 'oldest'
   }) => {
     const page = Math.max(1, input.page ?? 1)
-    const pageSize = [10, 20, 50, 100].includes(input.pageSize ?? 10) ? input.pageSize ?? 10 : 10
+    const pageSize = [10, 20, 50].includes(input.pageSize ?? 20) ? input.pageSize ?? 20 : 20
     let query = client.from('audit_logs').select(auditColumns, { count: 'exact' })
-      .order('created_at', { ascending: input.sort === 'oldest' })
+      .order('created_at', { ascending: input.sort === 'oldest' }).order('id')
     const filters = input.filters ?? {}
     if (filters.from) query = query.gte('created_at', `${filters.from}T00:00:00.000Z`)
     if (filters.to) query = query.lt('created_at', `${filters.to}T23:59:59.999Z`)
     const selected = (value: string | readonly string[] | undefined) => Array.isArray(value) ? value.filter(item => item !== 'all') : value && value !== 'all' ? [value] : []
+    if(typeof filters.entity_type==='string')query=query.eq('entity_type',filters.entity_type)
+    if(typeof filters.entity_id==='string')query=query.eq('entity_id',filters.entity_id)
     const actor = selected(filters.actor)
     const role = selected(filters.role)
     const moduleFilters = selected(filters.module)
@@ -161,17 +162,28 @@ export function createSupabaseAuditRepository(client: SupabaseClient): SupabaseA
 
   return {
     async getVisibleFor() {
-      const result = await queryRows({ page: 1, pageSize: 100 })
-      return result.rows.map(auditFromRow)
+      const rows: AuditLog[] = []
+      const seen = new Set<string>()
+      let total: number | undefined
+      for (let page=1; ; page++) {
+        const result=await queryRows({page,pageSize:50})
+        total ??= result.total
+        if(result.total!==total || result.rows.some(row=>seen.has(row.id))) throw new Error('EXPORT_COLLECTION_CHANGED')
+        for(const row of result.rows) { seen.add(row.id); rows.push(auditFromRow(row)) }
+        if(page*50>=total)break
+      }
+      if(rows.length!==total)throw new Error('EXPORT_COLLECTION_CHANGED')
+      return rows
     },
     async getAuditLogs({ page, pageSize, filters, sort }) {
       const result = await queryRows({ page, pageSize, filters, sort })
-      const actorsResult = await client.from('audit_logs').select('actor_business_user_id,actor_name').not('actor_business_user_id', 'is', null)
-      if (actorsResult.error) throw requestError('audit actors read', actorsResult.error)
-      const actors = [...new Map((actorsResult.data ?? []).map(actor => [
-        actor.actor_business_user_id as string,
-        safeString(actor.actor_name, actor.actor_business_user_id as string),
-      ])).entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
+      const actors: Array<{ id: string; name: string }> = []
+      for (let page = 1; ; page++) {
+        const result = await client.rpc('get_audit_actor_page', { p_page: page, p_page_size: 50 })
+        if (result.error || !result.data || result.data.total > 1000) throw new Error('AUDIT_ACTOR_DIRECTORY_INCOMPLETE')
+        actors.push(...result.data.items)
+        if (page * 50 >= result.data.total) break
+      }
       const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize))
       const safePage = Math.min(result.page, totalPages)
       return {
@@ -203,8 +215,18 @@ export function createSupabaseAuditRepository(client: SupabaseClient): SupabaseA
       return updated
     },
     async exportAll() {
-      const result = await queryRows({ page: 1, pageSize: 100 })
-      return result.rows.map(auditFromRow)
+      const rows: AuditLog[] = []
+      const seen = new Set<string>()
+      let total: number | undefined
+      for (let page=1; ; page++) {
+        const result=await queryRows({page,pageSize:50})
+        total ??= result.total
+        if(result.total!==total || result.rows.some(row=>seen.has(row.id))) throw new Error('EXPORT_COLLECTION_CHANGED')
+        for(const row of result.rows) { seen.add(row.id); rows.push(auditFromRow(row)) }
+        if(page*50>=total)break
+      }
+      if(rows.length!==total)throw new Error('EXPORT_COLLECTION_CHANGED')
+      return rows
     },
   }
 }

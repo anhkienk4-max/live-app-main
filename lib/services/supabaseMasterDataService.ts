@@ -1,3 +1,5 @@
+import { pageRange } from '@/lib/utils/pagination'
+import type { ListQuery, ListPage } from '@/lib/services/operationsPageService'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { isAuthBusinessIdentityConsistent, type AuthIdentity } from '@/lib/auth/authIdentity'
@@ -400,6 +402,7 @@ function campaignPayload(data: Partial<Campaign>): Record<string, unknown> {
 
 export interface SupabaseMasterDataRepository {
   businessUsers: {
+    getPage(query: ListQuery): Promise<ListPage<User>>
     getDirectory(): Promise<UserDirectoryEntry[]>
     getAll(includeDeleted?: boolean): Promise<User[]>
     getById(id: string): Promise<User | null>
@@ -412,6 +415,7 @@ export interface SupabaseMasterDataRepository {
     restore(id: string, reason: string): Promise<User | null>
   }
   brands: {
+    getPage(query: ListQuery): Promise<ListPage<Brand>>
     getAll(includeArchived?: boolean): Promise<Brand[]>
     getById(id: string): Promise<Brand | null>
     create(id: string, data: Omit<Brand, 'id' | 'created_at' | 'updated_at'>, actorId: string): Promise<Brand>
@@ -420,6 +424,7 @@ export interface SupabaseMasterDataRepository {
     restore(id: string, actorId: string): Promise<Brand | null>
   }
   platforms: {
+    getPage(query: ListQuery): Promise<ListPage<Platform>>
     getAll(includeArchived?: boolean): Promise<Platform[]>
     getById(id: string): Promise<Platform | null>
     create(id: string, data: Omit<Platform, 'id' | 'created_at' | 'updated_at'>, actorId: string): Promise<Platform>
@@ -428,6 +433,7 @@ export interface SupabaseMasterDataRepository {
     restore(id: string, actorId: string): Promise<Platform | null>
   }
   campaigns: {
+    getPage(query: ListQuery): Promise<ListPage<Campaign>>
     getAll(includeArchived?: boolean): Promise<Campaign[]>
     getById(id: string): Promise<Campaign | null>
     getByBrand(brandId: string): Promise<Campaign[]>
@@ -465,21 +471,56 @@ export function createSupabaseMasterDataRepository(
     return map(row as TRow)
   }
 
+  async function readPage<T>(table: string, columns: string, name: string, map: (row: never) => T, query: ListQuery): Promise<ListPage<T>> {
+    const fetchPage = (page: number) => {
+      let request = client.from(table).select(columns, { count: 'exact' })
+      if (table === 'business_users' && query.filters?.archived) request = request.or('deleted_at.not.is.null,archived_at.not.is.null')
+      else request = request.is('deleted_at', null).is('archived_at', null)
+      const search = query.filters?.search?.trim()
+      if (search) request = request.ilike(name, '%' + search.replace(/[\\%_]/g, value => '\\' + value) + '%')
+      if (query.filters?.statuses?.length) request = request.in('status', query.filters.statuses)
+      if (table === 'business_users' && query.filters?.systemPermissions?.length) request = request.in('system_permission', query.filters.systemPermissions)
+      if (table === 'business_users' && query.filters?.roles?.length) request = request.overlaps('operational_roles', query.filters.roles)
+      if (table === 'campaigns' && query.filters?.brandIds?.length) request = request.in('brand_id', query.filters.brandIds)
+      return request.order(name).order('id').range((page - 1) * query.pageSize, page * query.pageSize - 1)
+    }
+    let result = await fetchPage(query.page)
+    if (result.error && result.error.code !== 'PGRST103') throw new Error(result.error.message)
+    if (result.count === null) throw new Error('LIST_COUNT_UNAVAILABLE')
+    const page = pageRange(result.count, query.page, query.pageSize).page
+    if (page !== query.page) result = await fetchPage(page)
+    if (result.error) throw new Error(result.error.message)
+    return { items: (result.data ?? []).map(row => map(row as never)), total: result.count ?? 0, page, pageSize: query.pageSize }
+  }
+  // shortcut: Reference pickers accept at most 1000 records; use server search if a catalogue grows beyond this.
+  async function readReferenceRows(table:string,columns:string,order:string,includeArchived:boolean,descending=false){
+    const rows:Array<Record<string,unknown>>=[]
+    let total:number|undefined
+    const seen=new Set<unknown>()
+    for(let offset=0;;offset+=50){
+      let query=client.from(table).select(columns,{count:'exact'})
+      if(!includeArchived)query=query.is('deleted_at',null).is('archived_at',null)
+      const result=await query.order(order,{ascending:!descending}).order('id').range(offset,offset+49)
+      if(result.error)throw requestError(table+' reference read',result.error)
+      if(!Number.isSafeInteger(result.count)||result.count===null||result.count>1000
+        ||(total!==undefined&&total!==result.count)||result.data?.length!==Math.min(50,Math.max(0,result.count-offset)))
+        throw new Error('REFERENCE_READ_INCOMPLETE')
+      total??=result.count
+      for(const rawRow of result.data??[]){const row=rawRow as unknown as Record<string,unknown>;if(seen.has(row.id))throw new Error('REFERENCE_READ_INCOMPLETE');seen.add(row.id);rows.push(row)}
+      if(rows.length===total)return rows
+    }
+  }
   return {
     businessUsers: {
+      getPage: query => readPage('business_users', businessUserColumns, 'full_name', userFromRow, query),
       async getDirectory() {
         const result = await client.rpc('get_staff_directory')
         if (result.error) throw requestError('staff display directory read', result.error)
         return result.data ?? []
       },
       async getAll(includeDeleted = false) {
-        let query = client.from('business_users')
-          .select(businessUserColumns)
-          .order('full_name', { ascending: true })
-        if (!includeDeleted) query = query.is('deleted_at', null).is('archived_at', null)
-        const result = await query
-        return requiredData('business user directory read', result)
-          .map(row => userFromRow(row as unknown as BusinessUserRow))
+        return (await readReferenceRows('business_users',businessUserColumns,'full_name',includeDeleted))
+          .map(row=>userFromRow(row as unknown as BusinessUserRow))
       },
       async getById(id) {
         const result = await client.from('business_users')
@@ -553,11 +594,9 @@ export function createSupabaseMasterDataRepository(
       },
     },
     brands: {
+      getPage: query => readPage('brands', brandColumns, 'name', brandFromRow, query),
       async getAll(includeArchived = false) {
-        let query = client.from('brands').select(brandColumns).order('name', { ascending: true })
-        if (!includeArchived) query = activeRows(query)
-        const result = await query
-        return requiredData('brand read', result).map(row => brandFromRow(row as unknown as BrandRow))
+        return (await readReferenceRows('brands',brandColumns,'name',includeArchived,false)).map(row=>brandFromRow(row as unknown as BrandRow))
       },
       async getById(id) {
         const result = await client.from('brands').select(brandColumns).eq('id', id).maybeSingle()
@@ -599,11 +638,9 @@ export function createSupabaseMasterDataRepository(
       },
     },
     platforms: {
+      getPage: query => readPage('platforms', platformColumns, 'name', platformFromRow, query),
       async getAll(includeArchived = false) {
-        let query = client.from('platforms').select(platformColumns).order('name', { ascending: true })
-        if (!includeArchived) query = activeRows(query)
-        const result = await query
-        return requiredData('platform read', result).map(row => platformFromRow(row as unknown as PlatformRow))
+        return (await readReferenceRows('platforms',platformColumns,'name',includeArchived,false)).map(row=>platformFromRow(row as unknown as PlatformRow))
       },
       async getById(id) {
         const result = await client.from('platforms').select(platformColumns).eq('id', id).maybeSingle()
@@ -645,13 +682,9 @@ export function createSupabaseMasterDataRepository(
       },
     },
     campaigns: {
+      getPage: query => readPage('campaigns', campaignColumns, 'name', campaignFromRow, query),
       async getAll(includeArchived = false) {
-        let query = client.from('campaigns')
-          .select(campaignColumns)
-          .order('start_date', { ascending: false })
-        if (!includeArchived) query = activeRows(query)
-        const result = await query
-        return requiredData('campaign read', result).map(row => campaignFromRow(row as unknown as CampaignRow))
+        return (await readReferenceRows('campaigns',campaignColumns,'start_date',includeArchived,true)).map(row=>campaignFromRow(row as unknown as CampaignRow))
       },
       async getById(id) {
         const result = await client.from('campaigns').select(campaignColumns).eq('id', id).maybeSingle()

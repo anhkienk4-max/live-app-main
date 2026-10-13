@@ -1,6 +1,8 @@
 'use client'
 
 import * as React from 'react'
+import { usePagedList } from '@/lib/hooks/usePagedList'
+import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import Image from 'next/image'
 import { ExternalLink, Eye, Pencil, Plus, Power, PowerOff } from 'lucide-react'
 import { brandService, campaignService, currentUserService, platformService, userService } from '@/lib/services/dataService'
@@ -42,7 +44,9 @@ export function PlatformList() {
   const { currentUser } = useCurrentUser()
   const { t } = useTranslation()
   const { toast } = useToast()
-  const [platforms, setPlatforms] = React.useState<Platform[]>([])
+  const [search, setSearch] = React.useState('')
+  const list = usePagedList(platformService, 'platforms', { search })
+  const { items: platforms, loading } = list
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
   const [brands, setBrands] = React.useState<Brand[]>([])
   const [users, setUsers] = React.useState<User[]>([])
@@ -51,19 +55,16 @@ export function PlatformList() {
   const [statusTarget, setStatusTarget] = React.useState<Platform | null>(null)
   const [formOpen, setFormOpen] = React.useState(false)
   const [form, setForm] = React.useState(formFor())
-  const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
   const [saving, setSaving] = React.useState(false)
 
   const loadData = React.useCallback(async () => {
     setLoadError(null)
     try {
-      const [loadedPlatforms, loadedCampaigns, loadedBrands, loadedUsers] = await Promise.all([platformService.getAll(), campaignService.getAll(), brandService.getAll(), userService.getAll()])
-      setPlatforms(loadedPlatforms); setCampaigns(loadedCampaigns); setBrands(loadedBrands); setUsers(loadedUsers)
+      const [loadedCampaigns, loadedBrands, loadedUsers] = await Promise.all([campaignService.getAll(), brandService.getAll(), userService.getAll()])
+      setCampaigns(loadedCampaigns); setBrands(loadedBrands); setUsers(loadedUsers)
     } catch (error) {
       setLoadError(error)
-    } finally {
-      setLoading(false)
     }
   }, [])
   React.useEffect(() => {
@@ -120,10 +121,11 @@ export function PlatformList() {
   ]
 
   if (loading) return <div className="py-12 text-center">{t('loading')}</div>
-  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
+  if (loadError || list.error) return <PageLoadError error={loadError || list.error} onRetry={() => { void loadData(); void list.reload() }} />
+  if (loading) return <ContentSkeleton />
   return <>
-    <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t('platformKnowledge')}</h2><p className="mt-1 text-muted-foreground">{t('credentialsSafe')}</p></div>{canManage && <Button onClick={() => openForm()}><Plus className="mr-2 h-4 w-4" />{t('create')} {t('platform')}</Button>}</div>
-    <DataTable data={platforms} columns={columns} searchPlaceholder={`${t('search')} ${t('platforms')}`} />
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-xl font-semibold">{t('platformKnowledge')}</h1><p className="mt-1 text-muted-foreground">{t('credentialsSafe')}</p></div>{canManage && <Button onClick={() => openForm()}><Plus className="mr-2 h-4 w-4" />{t('create')} {t('platform')}</Button>}</div>
+    <DataTable data={platforms} columns={columns} pagination={{ loading: list.refreshing, page: list.page, pageSize: list.pageSize, total: list.total, onPageChange: list.setPage, onPageSizeChange: list.setPageSize }} search={search} onSearch={value => { setSearch(value); list.reset() }} searchPlaceholder={`${t('search')} ${t('platforms')}`} />
 
     <Dialog open={formOpen} onOpenChange={setFormOpen}><DialogContent size="xl" className="overflow-y-auto"><DialogHeader><DialogTitle>{selected ? t('edit') : t('create')} {t('platform')}</DialogTitle><DialogDescription>{t('credentialsSafe')}</DialogDescription></DialogHeader><form onSubmit={submit} className="space-y-5">
       <div className="grid gap-4 md:grid-cols-3"><Field label={`${t('platform')} *`} value={form.name} required onChange={value => setForm(current => ({ ...current, name: value }))} /><Field label={t('icon')} value={form.icon} onChange={value => setForm(current => ({ ...current, icon: value }))} /><Field label={t('logoUrl')} value={form.logo_url} onChange={value => setForm(current => ({ ...current, logo_url: value }))} /><Field label={t('platformType')} value={form.platform_type} onChange={value => setForm(current => ({ ...current, platform_type: value }))} /><Field label={t('platformUrl')} value={form.platform_url} type="url" onChange={value => setForm(current => ({ ...current, platform_url: value }))} /><label className="text-sm font-medium">{t('status')}<Select value={form.status} onValueChange={value => setForm(current => ({ ...current, status: value as KnowledgeStatus }))}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent>{(['active','inactive','draft'] as KnowledgeStatus[]).map(status => <SelectItem key={status} value={status}>{t(status)}</SelectItem>)}</SelectContent></Select></label></div>

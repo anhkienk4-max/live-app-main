@@ -1,6 +1,9 @@
 'use client'
 
 import * as React from 'react'
+import { useListPagination } from '@/lib/hooks/useListPagination'
+import { pageRange } from '@/lib/utils/pagination'
+import { HistoryPagination } from '@/components/ui/history-pagination'
 import {
   AlertCircle,
   Plus,
@@ -384,6 +387,9 @@ export function PayrollDraftWorkspace({
     technical: 'Kỹ thuật',
   }
 
+  const pagination = useListPagination('payroll_lines', 20)
+  const range = pageRange(displayedLines.length, pagination.page, pagination.pageSize)
+  const pageRows = displayedLines.slice((range.page - 1) * pagination.pageSize, range.page * pagination.pageSize)
   return (
     <Card className="border-slate-200 bg-white shadow-sm">
       <CardHeader className="flex flex-col gap-4 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
@@ -465,7 +471,7 @@ export function PayrollDraftWorkspace({
                   </td>
                 </tr>
               ) : (
-                displayedLines.map((line) => {
+                pageRows.map((line) => {
                   const isVoided = Boolean(line.voided_at)
                   return (
                     <tr
@@ -602,6 +608,8 @@ export function PayrollDraftWorkspace({
               )}
             </tbody>
           </table>
+        <HistoryPagination page={range.page} pageSize={pagination.pageSize} total={displayedLines.length} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />
+
         </div>
       </CardContent>
 

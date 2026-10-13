@@ -1,9 +1,15 @@
-'use client'
+﻿'use client'
 
 import * as React from 'react'
+import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { resolveSystemPermission } from '@/lib/permissions'
+import { useListPagination } from '@/lib/hooks/useListPagination'
+import { HistoryPagination } from '@/components/ui/history-pagination'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { useTranslation } from '@/lib/i18n'
 import { FolderArchive, Upload, Download, Trash2, RefreshCw } from 'lucide-react'
+import { businessLocalDate } from '@/lib/utils/shiftUtils'
 
 type Option = { id: string; name: string }
 type Category = { id: string; label: string }
@@ -35,12 +41,9 @@ type CatalogResponse = {
   confidential_write_ready: boolean
 }
 
-type ListResponse = { ok: boolean; files?: Stored[]; error?: { code?: string } }
+type ListResponse = { ok: boolean; total: number; page: number; pageSize: number; files?: Stored[]; error?: { code?: string } }
 
-const today = () => {
-  const d = new Date()
-  return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-')
-}
+const today = () => businessLocalDate(new Date())
 const formatBytes = (n: number) => n >= 1024 * 1024
   ? (n / (1024 * 1024)).toFixed(1) + ' MB'
   : (n / 1024).toFixed(1) + ' KB'
@@ -48,13 +51,21 @@ const fieldClass = 'w-full rounded-md border border-border bg-background px-3 py
 const buttonClass = 'rounded-md border border-border px-3 py-2 text-sm transition-colors hover:bg-muted disabled:opacity-50'
 
 export function OperationalFileWorkspace() {
+  const { t, translate } = useTranslation()
   const search = useSearchParams()
+  const requestedCategory = search.get('category')
+  const requestedCampaignId = search.get('campaignId')
+  const requestedShiftId = search.get('shiftId')
+  const {currentUser,loading:userLoading}=useCurrentUser()
+  const actorKey=currentUser?currentUser.id+':'+resolveSystemPermission(currentUser):''
+  const canView=!!currentUser&&resolveSystemPermission(currentUser)!=='member'
   const [shiftId, setShiftId] = React.useState(search.get('shiftId') || '')
   const [campaignId, setCampaignId] = React.useState(search.get('campaignId') || '')
-  const [catalog, setCatalog] = React.useState<CatalogResponse | null>(null)
+  const [catalogState,setCatalogState]=React.useState<{owner:string;value:CatalogResponse}|null>(null)
+  const catalog=catalogState?.owner===actorKey?catalogState.value:null
   const [brandId, setBrandId] = React.useState('')
   const [platformId, setPlatformId] = React.useState('')
-  const [periodDate, setPeriodDate] = React.useState(today)
+  const [periodDate, setPeriodDate] = React.useState('')
   const [executionSource, setExecutionSource] = React.useState<'internal' | 'agency'>('internal')
   const [category, setCategory] = React.useState(search.get('category') || 'schedule_source')
   const confidentialBlocked = ['payment_document', 'system_export'].includes(category)
@@ -62,10 +73,15 @@ export function OperationalFileWorkspace() {
   const [provider, setProvider] = React.useState<'google_drive' | 'onedrive'>('google_drive')
   const [file, setFile] = React.useState<File | null>(null)
   const [files, setFiles] = React.useState<Stored[]>([])
+  const [loadedOwner,setLoadedOwner]=React.useState('')
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
   const [notice, setNotice] = React.useState('')
   const [filter, setFilter] = React.useState('all')
+  const pagination = useListPagination('storage', 10)
+  const { page, pageSize, navigate } = pagination
+  const [total, setTotal] = React.useState(0)
+  const requestVersion = React.useRef(0)
   const [externalInput, setExternalInput] = React.useState('')
   const [folderUrl, setFolderUrl] = React.useState('')
   const [folderPath, setFolderPath] = React.useState('')
@@ -79,20 +95,21 @@ export function OperationalFileWorkspace() {
     }).toString()
 
   React.useEffect(() => {
+    if(!canView)return
     let active = true
+    setPeriodDate(today())
     void fetch('/api/operational-files?catalog=1', { cache: 'no-store' })
       .then(async response => {
         const data = await response.json() as CatalogResponse & { error?: { code: string } }
         if (!response.ok || !data.ok) throw new Error(data.error?.code || 'Không tải được danh mục')
         if (!active) return
-        setCatalog(data)
+        setCatalogState({owner:actorKey,value:data})
         setBrandId(current => current || data.brands[0]?.id || '')
         setPlatformId(current => current || data.platforms[0]?.id || '')
-        const requestedCategory = search.get('category')
         setCategory(data.categories.some(item => item.id === requestedCategory)
           ? String(requestedCategory) : (data.categories[0]?.id || 'schedule_source'))
-        const chosen = data.campaigns?.find(item => item.id === search.get('campaignId'))
-        if (chosen && !search.get('shiftId')) {
+        const chosen = data.campaigns?.find(item => item.id === requestedCampaignId)
+        if (chosen && !requestedShiftId) {
           setCampaignId(chosen.id)
           setBrandId(chosen.brand_id)
           setPeriodDate(chosen.start_date)
@@ -103,25 +120,32 @@ export function OperationalFileWorkspace() {
         }
       }).catch(err => { if (active) setError(String(err instanceof Error ? err.message : err)) })
     return () => { active = false }
-  }, [])
+  }, [actorKey,canView,requestedCategory,requestedCampaignId,requestedShiftId])
 
   const refresh = React.useCallback(async () => {
+    const version = ++requestVersion.current
+    if (!canView)return
     if (!shiftId.trim() && (!brandId || !platformId || !periodDate)) return
     setBusy(true)
     setError('')
     try {
-      const response = await fetch('/api/operational-files?' + requestKey, { cache: 'no-store' })
+      const response = await fetch('/api/operational-files?' + requestKey + '&' + new URLSearchParams({ page: String(page), pageSize: String(pageSize), category: filter }), { cache: 'no-store' })
       const data = await response.json() as ListResponse
       if (!response.ok || !data.ok) throw new Error(data.error?.code || 'Không tải được file')
+      if (version !== requestVersion.current) return
+      setLoadedOwner(actorKey)
       setFiles(data.files || [])
+      setTotal(data.total)
+      if (data.page !== page) navigate({ storage_page: String(data.page) }, true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không tải được file')
-    } finally { setBusy(false) }
-  }, [requestKey, shiftId, brandId, platformId, periodDate])
+      if(version===requestVersion.current)setError(err instanceof Error ? err.message : 'Không tải được file')
+    } finally { if(version===requestVersion.current)setBusy(false) }
+  }, [requestKey, shiftId, brandId, platformId, periodDate, page, pageSize, filter, navigate, actorKey, canView])
 
   React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial storage catalog load
+    const versionRef = requestVersion
     if (catalog) void refresh()
+    return()=>{versionRef.current++}
   }, [catalog, refresh])
 
   const providerPayload = (action: 'prepare_folder' | 'attach_existing') => ({
@@ -249,25 +273,25 @@ export function OperationalFileWorkspace() {
     finally { setBusy(false) }
   }
 
-  const filtered = filter === 'all' ? files : files.filter(item => item.category === filter)
+  const filtered = loadedOwner===actorKey?files:[]
+  if(userLoading||!currentUser)return <p className="p-4">{t('loading')}</p>
+  if(currentUser&&!canView)return <p className="p-4 text-sm" role="alert">Bạn không có quyền truy cập kho file.</p>
   return (
     <div className="mx-auto max-w-6xl space-y-5" data-testid="operational-file-workspace">
       <div className="flex items-center gap-3">
         <FolderArchive className="h-8 w-8 text-primary" />
         <div>
-          <h1 className="text-2xl font-semibold">Kho file vận hành</h1>
-          <p className="text-sm text-muted-foreground">File trên Google Drive/OneDrive · Supabase chỉ lưu metadata. Dành cho Leader/Admin.</p>
+          <h1 className="text-2xl font-semibold">{translate("Kho file vận hành")}</h1>
+          <p className="text-sm text-muted-foreground">{translate("File trên Google Drive/OneDrive · Supabase chỉ lưu metadata. Dành cho Leader/Admin.")}</p>
         </div>
       </div>
       {catalog?.categories.some(item => item.id === 'system_export') &&
-        <Link href="/storage/setup" className="inline-flex items-center rounded-md border px-3 py-2 text-sm hover:bg-muted">
-          Admin: Kiểm tra và cấu hình Storage Routes
-        </Link>}
+        <Link href="/storage/setup" className="inline-flex items-center rounded-md border px-3 py-2 text-sm hover:bg-muted">{translate("Admin: Kiểm tra và cấu hình Storage Routes")}</Link>}
 
-      <section className="space-y-4 rounded-xl border p-4" aria-label="Ngữ cảnh lưu file">
-        <h2 className="font-semibold">Ngữ cảnh lưu trữ</h2>
+      <section className="space-y-4 rounded-xl border p-4" aria-label={translate("Ngữ cảnh lưu file")}>
+        <h2 className="font-semibold">{translate("Ngữ cảnh lưu trữ")}</h2>
         <label className="block text-sm">
-          <span className="mb-1 block">Chiến dịch (tùy chọn, để gắn file Content / Production / Campaign)</span>
+          <span className="mb-1 block">{translate("Chiến dịch (tùy chọn, để gắn file Content / Production / Campaign)")}</span>
           <select className={fieldClass} disabled={Boolean(shiftId.trim())} value={campaignId}
             onChange={event => {
               const next = event.target.value
@@ -282,149 +306,128 @@ export function OperationalFileWorkspace() {
                 setPlatformId(valid?.id || '')
               }
             }}>
-            <option value="">Không gắn với chiến dịch</option>
+            <option value="">{translate("Không gắn với chiến dịch")}</option>
             {(catalog?.campaigns ?? []).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
         </label>
         <label className="block text-sm">
-          <span className="mb-1 block">Shift ID (nếu lưu cho một ca cụ thể)</span>
+          <span className="mb-1 block">{translate("Shift ID (nếu lưu cho một ca cụ thể)")}</span>
           <input className={fieldClass} value={shiftId} onChange={event => {
             setShiftId(event.target.value)
             if (event.target.value.trim()) setCampaignId('')
           }}
-            placeholder="Để trống để lưu theo Brand / Platform / Ngày" />
+            placeholder={translate("Để trống để lưu theo Brand / Platform / Ngày")} />
         </label>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block text-sm">
-            <span className="mb-1 block">Brand</span>
+            <span className="mb-1 block">{translate("Brand")}</span>
             <select className={fieldClass} value={brandId} disabled={Boolean(shiftId.trim() || campaignId)}
               onChange={event => setBrandId(event.target.value)}>
               {(catalog?.brands || []).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block">Platform</span>
+            <span className="mb-1 block">{translate("Platform")}</span>
             <select className={fieldClass} value={platformId} disabled={Boolean(shiftId.trim())}
               onChange={event => setPlatformId(event.target.value)}>
               {(catalog?.platforms || []).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block">Ngày vận hành</span>
+            <span className="mb-1 block">{translate("Ngày vận hành")}</span>
             <input className={fieldClass} type="date" value={periodDate} disabled={Boolean(shiftId.trim())}
               min={campaignId ? catalog?.campaigns.find(item => item.id === campaignId)?.start_date : undefined}
               max={campaignId ? catalog?.campaigns.find(item => item.id === campaignId)?.end_date : undefined}
               onChange={event => setPeriodDate(event.target.value)} />
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block">Nguồn vận hành</span>
+            <span className="mb-1 block">{translate("Nguồn vận hành")}</span>
             <select className={fieldClass} value={executionSource} disabled={Boolean(shiftId.trim())}
               onChange={event => setExecutionSource(event.target.value as 'internal' | 'agency')}>
-              <option value="internal">Internal</option>
-              <option value="agency">Agency</option>
+              <option value="internal">{translate("Internal")}</option>
+              <option value="agency">{translate("Agency")}</option>
             </select>
           </label>
         </div>
       </section>
 
-      <section className="space-y-4 rounded-xl border p-4" aria-label="Upload file">
-        <h2 className="font-semibold">Thêm file mới</h2>
+      <section className="space-y-4 rounded-xl border p-4" aria-label={translate("Upload file")}>
+        <h2 className="font-semibold">{translate("Thêm file mới")}</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block text-sm">
-            <span className="mb-1 block">Loại tài liệu</span>
+            <span className="mb-1 block">{translate("Loại tài liệu")}</span>
             <select className={fieldClass} value={category} onChange={event => setCategory(event.target.value)}>
               {(catalog?.categories || []).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
             </select>
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block">File provider</span>
+            <span className="mb-1 block">{translate("File provider")}</span>
             <select className={fieldClass} value={provider}
               onChange={event => setProvider(event.target.value as 'google_drive' | 'onedrive')}>
-              <option value="google_drive">Google Drive</option>
-              <option value="onedrive">OneDrive (chỉ khi đã cấu hình)</option>
+              <option value="google_drive">{translate("Google Drive")}</option>
+              <option value="onedrive">{translate("OneDrive (chỉ khi đã cấu hình)")}</option>
             </select>
           </label>
         </div>
-        {confidentialBlocked && <p role="status" className="rounded-md border p-3 text-sm">
-          Finance/System Export đang khóa ghi file cho đến khi quyền truy cập thư mục đích được xác minh và phê duyệt.
-          File đã lưu vẫn có thể truy cập theo phân quyền.
-        </p>}
+        {confidentialBlocked && <p role="status" className="rounded-md border p-3 text-sm">{translate("Finance/System Export đang khóa ghi file cho đến khi quyền truy cập thư mục đích được xác minh và phê duyệt. File đã lưu vẫn có thể truy cập theo phân quyền.")}</p>}
         <input id="operational-file-input" type="file" className={fieldClass}
           onChange={event => setFile(event.target.files?.[0] || null)}
-          aria-label="Chọn file vận hành" />
-        <p className="text-xs text-muted-foreground">
-          File định dạng ảnh, Excel, PDF, Office, audio hoặc video nhỏ (tối đa 4 MB).
-          File lớn hãy dùng phần liên kết file provider bên dưới; không upload binary qua Supabase.
-        </p>
+          aria-label={translate("Chọn file vận hành")} />
+        <p className="text-xs text-muted-foreground">{translate("File định dạng ảnh, Excel, PDF, Office, audio hoặc video nhỏ (tối đa 4 MB). File lớn hãy dùng phần liên kết file provider bên dưới; không upload binary qua Supabase.")}</p>
         <button type="button" className={buttonClass} onClick={() => void upload()}
           disabled={!file || !catalog || busy || confidentialBlocked}>
-          <span className="flex items-center gap-2"><Upload className="h-4 w-4" />Lưu file</span>
+          <span className="flex items-center gap-2"><Upload className="h-4 w-4" />{translate("Lưu file")}</span>
         </button>
       </section>
 
-      <section className="space-y-3 rounded-xl border p-4" aria-label="Đính kèm file dung lượng lớn">
-        <h2 className="font-semibold">Video lớn / file đã có trên provider</h2>
-        <p className="text-sm text-muted-foreground">
-          Tạo đúng thư mục, upload trực tiếp file lên Drive/OneDrive, sau đó dán ID để app xác thực
-          file thuộc chính thư mục này và lưu metadata. Không tải binary lớn qua Vercel hoặc Supabase.
-        </p>
+      <section className="space-y-3 rounded-xl border p-4" aria-label={translate("Đính kèm file dung lượng lớn")}>
+        <h2 className="font-semibold">{translate("Video lớn / file đã có trên provider")}</h2>
+        <p className="text-sm text-muted-foreground">{translate("Tạo đúng thư mục, upload trực tiếp file lên Drive/OneDrive, sau đó dán ID để app xác thực file thuộc chính thư mục này và lưu metadata. Không tải binary lớn qua Vercel hoặc Supabase.")}</p>
         <button className={buttonClass} type="button" disabled={busy || !catalog || confidentialBlocked}
-          onClick={() => void providerAction('prepare_folder')}>Tạo / mở folder lưu trữ</button>
-        {folderUrl && <p className="text-sm break-all">
-          Folder: <a className="text-primary underline" href={folderUrl} target="_blank" rel="noopener noreferrer">{folderPath || folderUrl}</a>
+          onClick={() => void providerAction('prepare_folder')}>{translate("Tạo / mở folder lưu trữ")}</button>
+        {folderUrl && <p className="text-sm break-all">{translate("Folder:")}<a className="text-primary underline" href={folderUrl} target="_blank" rel="noopener noreferrer">{folderPath || folderUrl}</a>
         </p>}
         <label className="block text-sm">
-          <span className="mb-1 block">File ID hoặc link Google Drive của file trong folder trên</span>
+          <span className="mb-1 block">{translate("File ID hoặc link Google Drive của file trong folder trên")}</span>
           <input className={fieldClass} value={externalInput} onChange={event => setExternalInput(event.target.value)}
             placeholder="File ID / https://drive.google.com/file/d/..." />
         </label>
         <button className={buttonClass} type="button" disabled={busy || !catalog || !externalInput.trim() || confidentialBlocked}
-          onClick={() => void providerAction('attach_existing')}>Liên kết file đã tải lên</button>
-        <p className="text-xs text-muted-foreground">
-          File gắn bằng ID được kiểm tra parent folder; checksum nội dung chưa được xác nhận
-          (integrity_status = provider_reference). Chỉ dùng file có nguồn đáng tin cậy.
-        </p>
+          onClick={() => void providerAction('attach_existing')}>{translate("Liên kết file đã tải lên")}</button>
+        <p className="text-xs text-muted-foreground">{translate("File gắn bằng ID được kiểm tra parent folder; checksum nội dung chưa được xác nhận (integrity_status = provider_reference). Chỉ dùng file có nguồn đáng tin cậy.")}</p>
       </section>
 
       {catalog?.categories.some(item => item.id === 'system_export') && (
-        <section className="space-y-3 rounded-xl border p-4" aria-label="Admin System Export">
-          <h2 className="font-semibold">System Export — Admin</h2>
-          {catalog.confidential_write_ready !== true && <p role="status" className="text-sm">
-            System Export chưa được phép lưu vào provider khi quyền chia sẻ chưa được phê duyệt.
-          </p>}
-          <p className="text-sm text-muted-foreground">
-            Xuất bản snapshot JSON của một ngày vận hành theo Brand / Platform / Internal hoặc Agency,
-            gồm Shift, Report, KPI timeline và metadata bằng chứng. Không phải backup toàn bộ database.
-            Khi vượt giới hạn hệ thống sẽ báo lỗi thay vì xuất thiếu bản ghi.
-          </p>
+        <section className="space-y-3 rounded-xl border p-4" aria-label={translate("Admin System Export")}>
+          <h2 className="font-semibold">{translate("System Export — Admin")}</h2>
+          {catalog.confidential_write_ready !== true && <p role="status" className="text-sm">{translate("System Export chưa được phép lưu vào provider khi quyền chia sẻ chưa được phê duyệt.")}</p>}
+          <p className="text-sm text-muted-foreground">{translate("Xuất bản snapshot JSON của một ngày vận hành theo Brand / Platform / Internal hoặc Agency, gồm Shift, Report, KPI timeline và metadata bằng chứng. Không phải backup toàn bộ database. Khi vượt giới hạn hệ thống sẽ báo lỗi thay vì xuất thiếu bản ghi.")}</p>
           <button className={buttonClass} type="button"
             disabled={busy || catalog.confidential_write_ready !== true || Boolean(shiftId.trim()) || Boolean(campaignId) || !brandId || !platformId}
-            onClick={() => void generateSystemExport()}>
-            Xuất dữ liệu ngày đang chọn lên Drive
-          </button>
+            onClick={() => void generateSystemExport()}>{translate("Xuất dữ liệu ngày đang chọn lên Drive")}</button>
           {exportCounts && <p role="status" className="text-sm break-words">
             {Object.entries(exportCounts).map(([key, value]) => `${key}: ${value}`).join(' · ')}
           </p>}
         </section>
       )}
 
-      {error && <p role="alert" className="rounded-md border border-red-300 px-3 py-2 text-sm text-red-700">{error}</p>}
-      {notice && <p role="status" className="rounded-md border px-3 py-2 text-sm">{notice}</p>}
+      {error && <p role="alert" className="rounded-md border border-red-300 px-3 py-2 text-sm text-red-700">{translate(error)}</p>}
+      {notice && <p role="status" className="rounded-md border px-3 py-2 text-sm">{translate(notice)}</p>}
 
-      <section className="space-y-3 rounded-xl border p-4" aria-label="File đã lưu">
+      <section className="space-y-3 rounded-xl border p-4" aria-label={translate("File đã lưu")}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-semibold">File đã lưu ({filtered.length})</h2>
+          <h2 className="font-semibold">{translate('File đã lưu')} ({total})</h2>
           <div className="flex items-center gap-2">
-            <select aria-label="Lọc loại file" className={fieldClass} value={filter}
-              onChange={event => setFilter(event.target.value)}>
-              <option value="all">Tất cả</option>
+            <select aria-label={translate('Lọc loại file')} className={fieldClass} value={filter}
+              onChange={event => { setFilter(event.target.value); pagination.reset() }}>
+              <option value="all">{t('all')}</option>
               {(catalog?.categories || []).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
             </select>
             <button className={buttonClass} type="button" disabled={busy} onClick={() => void refresh()}
-              aria-label="Làm mới"><RefreshCw className="h-4 w-4" /></button>
+              aria-label={t('refresh')}><RefreshCw className="h-4 w-4" /></button>
           </div>
         </div>
-        {filtered.length === 0 ? <p className="text-sm text-muted-foreground">Chưa có file cho ngữ cảnh được chọn.</p> : (
+        {filtered.length === 0 ? <p className="text-sm text-muted-foreground">{translate("Chưa có file cho ngữ cảnh được chọn.")}</p> : (
           <div className="divide-y">
             {filtered.map(item => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
               <div className="min-w-0 flex-1">
@@ -441,6 +444,7 @@ export function OperationalFileWorkspace() {
             </div>)}
           </div>
         )}
+        <HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />
       </section>
     </div>
   )

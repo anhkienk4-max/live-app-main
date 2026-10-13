@@ -2,14 +2,14 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-12T23:45:19+07:00
+Generated at: 2026-10-12T23:47:16+07:00
 
 ## Repository
 
-- Branch: `integration/rc16k-baseline`
-- HEAD: `9af7ffeca63db32913b77fb2a610783eb816ca77`
+- Branch: `feat/rc16k-ui-consistency-pagination`
+- HEAD: `daa99a4ad3b86a342e75b345b7726cd2ddd1113e`
 - origin/main: `a3cc28ab5c5a212da73af6ef631f5550c7a3a274`
-- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-payroll/.worktrees/rc16k-baseline`
+- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-payroll/.worktrees/rc16k-ui`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
 ## Hardening
@@ -21,10 +21,10 @@ Generated at: 2026-10-12T23:45:19+07:00
 
 ## Inventory
 
-- Routes: 52
-- Source files in tracked inventory roots: 689
-- Tests: 161
-- Migrations: 68
+- Routes: 55
+- Source files in tracked inventory roots: 706
+- Tests: 162
+- Migrations: 69
 
 ## Modules
 

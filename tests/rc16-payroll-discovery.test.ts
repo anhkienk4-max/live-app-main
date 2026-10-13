@@ -276,9 +276,7 @@ test('legacy period GET preserves current correction/void evidence and audit env
   const lines=[{id:'corrected',version:2,net_vnd:124000,voided_at:null},
     {id:'voided',version:3,net_vnd:100000,voided_at:'2026-10-01T00:00:00Z'}]
   const audit=[{id:7,action:'correct_line',line_version:2,previous_values:{version:1},updated_values:lines[0]}]
-  const db=()=>({from(table:string){const q={select(){return q},eq(){return q},order(){return q},
-    maybeSingle:async()=>({data:period,error:null}),
-    limit:async()=>({data:table==='workforce_payroll_lines'?lines:audit,error:null})};return q}})
+  const db=()=>({rpc:async()=>({data:{period,lines,audit,lineCount:lines.length,auditCount:audit.length},error:null})})
   const h=createWorkforcePayrollHandler({isEnabled:()=>true,resolveUser:admin,createClient:db as never})
   const response=await h.GET(request('period_id=legacy-period'))
   assert.equal(response.status,200)

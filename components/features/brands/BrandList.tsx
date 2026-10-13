@@ -16,43 +16,50 @@ import { useToast } from '@/components/ui/toast'
 import { BrandDetailDialog } from './BrandDetailDialog'
 import { BrandFormDialog } from './BrandFormDialog'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
-import { refreshCollection } from '@/lib/utils/scopedRefresh'
+import { usePagedList } from '@/lib/hooks/usePagedList'
+import { HistoryPagination } from '@/components/ui/history-pagination'
+import { Input } from '@/components/ui/input'
 import { PageLoadError } from '@/components/ui/page-load-error'
 
 export function BrandList() {
   const { currentUser } = useCurrentUser()
   const { t } = useTranslation()
   const { toast } = useToast()
-  const [brands, setBrands] = React.useState<Brand[]>([])
+
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
   const [users, setUsers] = React.useState<User[]>([])
-  const [loading, setLoading] = React.useState(true)
+
   const [loadError, setLoadError] = React.useState<unknown>(null)
   const [selectedBrand, setSelectedBrand] = React.useState<Brand | null>(null)
   const [detailBrand, setDetailBrand] = React.useState<Brand | null>(null)
   const [statusTarget, setStatusTarget] = React.useState<Brand | null>(null)
   const [formOpen, setFormOpen] = React.useState(false)
   const [viewMode, setViewMode] = React.useState<'grid' | 'table'>('grid')
+  const [search, setSearch] = React.useState('')
+  const list = usePagedList(brandService, 'brands', { search }, viewMode === 'grid' ? 10 : 20)
+  const { items: brands, loading } = list
+  const changeView = (value: 'grid' | 'table') => {
+    setViewMode(value)
+    list.setPageSize(value === 'grid' ? 10 : 20)
+  }
 
   const loadData = React.useCallback(async () => {
     setLoadError(null)
     try {
-      const [loadedBrands, loadedCampaigns, loadedPlatforms, loadedUsers] = await Promise.all([
-        brandService.getAll(), campaignService.getAll(), platformService.getAll(), userService.getAll(),
+      const [loadedCampaigns, loadedPlatforms, loadedUsers] = await Promise.all([
+        campaignService.getAll(), platformService.getAll(), userService.getAll(),
       ])
-      setBrands(loadedBrands); setCampaigns(loadedCampaigns); setPlatforms(loadedPlatforms); setUsers(loadedUsers)
+      setCampaigns(loadedCampaigns); setPlatforms(loadedPlatforms); setUsers(loadedUsers)
     } catch (error) {
       setLoadError(error)
-    } finally {
-      setLoading(false)
     }
   }, [])
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => { void loadData() })
     return () => cancelAnimationFrame(frame)
   }, [loadData])
-  const refreshBrands = React.useCallback(() => refreshCollection(brandService, setBrands), [])
+  const refreshBrands = list.reload
   const canManage = Boolean(currentUser && hasPermission(currentUser, 'brands.manage'))
   const edit = (brand: Brand) => { setSelectedBrand(brand); setFormOpen(true) }
   const toggleStatus = async () => {
@@ -72,11 +79,13 @@ export function BrandList() {
     { header: t('actions'), accessor: actions },
   ]
 
+  if (loadError || list.error) return <PageLoadError error={loadError || list.error} onRetry={() => { void loadData(); void list.reload() }} />
   if (loading) return <ContentSkeleton />
-  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
   return <>
-    <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t('brandKnowledge')}</h2><p className="mt-1 text-muted-foreground">{t('description')}</p></div><div className="flex gap-2"><div className="flex rounded-lg border"><Button variant={viewMode === 'grid' ? 'default' : 'ghost'} size="icon" onClick={() => setViewMode('grid')}><LayoutGrid className="h-4 w-4" /></Button><Button variant={viewMode === 'table' ? 'default' : 'ghost'} size="icon" onClick={() => setViewMode('table')}><List className="h-4 w-4" /></Button></div>{canManage && <Button onClick={() => { setSelectedBrand(null); setFormOpen(true) }}><Plus className="mr-2 h-4 w-4" />{t('create')} {t('brand')}</Button>}</div></div>
-    {viewMode === 'table' ? <DataTable data={brands} columns={columns} searchPlaceholder={`${t('search')} ${t('brands')}`} /> : <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">{brands.map(brand => <Card key={brand.id}><CardContent className="space-y-4 pt-5"><div className="flex items-start justify-between">{brand.logo_url ? <Image unoptimized width={64} height={64} src={brand.logo_url} alt={brand.name} className="h-16 w-16 rounded-lg border object-contain" /> : <div className="h-16 w-16 rounded-lg" style={{ backgroundColor: brand.color }} />}{actions(brand)}</div><div><h3 className="text-lg font-semibold">{brand.name}</h3><p className="text-sm text-muted-foreground">{brand.category || '—'} · {t(brand.status || 'active')}</p></div><p className="line-clamp-3 text-sm">{brand.description || '—'}</p><Button className="w-full" variant="outline" onClick={() => setDetailBrand(brand)}>{t('viewDetails')}</Button></CardContent></Card>)}</div>}
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-xl font-semibold">{t('brandKnowledge')}</h1><p className="mt-1 text-muted-foreground">{t('description')}</p></div><div className="flex gap-2"><div className="flex rounded-lg border"><Button variant={viewMode === 'grid' ? 'default' : 'ghost'} size="icon" onClick={() => changeView('grid')}><LayoutGrid className="h-4 w-4" /></Button><Button variant={viewMode === 'table' ? 'default' : 'ghost'} size="icon" onClick={() => changeView('table')}><List className="h-4 w-4" /></Button></div>{canManage && <Button onClick={() => { setSelectedBrand(null); setFormOpen(true) }}><Plus className="mr-2 h-4 w-4" />{t('create')} {t('brand')}</Button>}</div></div>
+    {viewMode === 'grid' && <Input className="mb-3" value={search} aria-label={t('search')} placeholder={t('search')} onChange={event => { setSearch(event.target.value); list.reset() }} />}
+    {viewMode === 'table' ? <DataTable data={brands} columns={columns} pagination={{ loading: list.refreshing, page: list.page, pageSize: list.pageSize, total: list.total, onPageChange: list.setPage, onPageSizeChange: list.setPageSize }} search={search} onSearch={value => { setSearch(value); list.reset() }} searchPlaceholder={`${t('search')} ${t('brands')}`} /> : <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">{brands.map(brand => <Card key={brand.id}><CardContent className="space-y-4 pt-5"><div className="flex items-start justify-between">{brand.logo_url ? <Image unoptimized width={64} height={64} src={brand.logo_url} alt={brand.name} className="h-16 w-16 rounded-lg border object-contain" /> : <div className="h-16 w-16 rounded-lg" style={{ backgroundColor: brand.color }} />}{actions(brand)}</div><div><h3 className="text-lg font-semibold">{brand.name}</h3><p className="text-sm text-muted-foreground">{brand.category || '—'} · {t(brand.status || 'active')}</p></div><p className="line-clamp-3 text-sm">{brand.description || '—'}</p><Button className="w-full" variant="outline" onClick={() => setDetailBrand(brand)}>{t('viewDetails')}</Button></CardContent></Card>)}</div>}
+    {viewMode === 'grid' && <HistoryPagination page={list.page} pageSize={list.pageSize} total={list.total} onPageChange={list.setPage} onPageSizeChange={list.setPageSize} />}
     <BrandFormDialog open={formOpen} onOpenChange={setFormOpen} brand={selectedBrand} onSuccess={refreshBrands} />
     {detailBrand && <BrandDetailDialog open brand={detailBrand} campaigns={campaigns} platforms={platforms} users={users} onOpenChange={open => !open && setDetailBrand(null)} onEdit={() => { edit(detailBrand); setDetailBrand(null) }} />}
     <AlertDialog open={Boolean(statusTarget)} onOpenChange={open => !open && setStatusTarget(null)} title={`${t(statusTarget?.status === 'inactive' ? 'activate' : 'deactivate')} ${t('brand')}`} description={statusTarget?.name || ''} onConfirm={toggleStatus} confirmText={t(statusTarget?.status === 'inactive' ? 'activate' : 'deactivate')} variant={statusTarget?.status === 'inactive' ? 'default' : 'destructive'} />

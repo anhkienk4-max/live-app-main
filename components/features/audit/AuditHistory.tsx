@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useRequestSequence } from '@/lib/hooks/useRequestSequence'
 import Link from 'next/link'
 import { Eye, Filter, History, RotateCcw, ShieldAlert } from 'lucide-react'
 import { AuditAction, AuditLog, AuditModule, DeletionImpact } from '@/lib/types/database.types'
@@ -48,8 +49,9 @@ export function AuditHistory() {
   const [total, setTotal] = React.useState(0)
   const [actors, setActors] = React.useState<Array<{ id: string; name: string }>>([])
   const [page, setPage] = React.useState(1)
-  const [pageSize, setPageSize] = React.useState(10)
+  const [pageSize, setPageSize] = React.useState(20)
   const [sort, setSort] = React.useState<'newest' | 'oldest'>('newest')
+  const [archivedTotal,setArchivedTotal]=React.useState(0)
   const [archived, setArchived] = React.useState<ArchivedEntitySummary[]>([])
   const [archivedPage, setArchivedPage] = React.useState(1)
   const [archivedPageSize, setArchivedPageSize] = React.useState(10)
@@ -62,59 +64,65 @@ export function AuditHistory() {
 
   const canView = Boolean(currentUser && hasAnyPermission(currentUser, ['audit.view', 'audit.view_team']))
   const isAdmin = Boolean(currentUser && hasPermission(currentUser, 'audit.view'))
+  const {next,isCurrent,invalidate}=useRequestSequence()
 
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => {
       const stored = Number(window.localStorage.getItem('livestream-ops-audit-page-size'))
-      if ([10, 20, 50, 100].includes(stored)) setPageSize(stored)
+      if ([10, 20, 50].includes(stored)) setPageSize(stored)
     })
-    return () => cancelAnimationFrame(frame)
-  }, [])
+    return () => {cancelAnimationFrame(frame);invalidate()}
+  }, [invalidate])
 
   const updateFilters = (next: Partial<typeof filters>) => {
     setFilters(current => ({ ...current, ...next }))
     setPage(1)
   }
 
+  const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role):''
+  const [loadedIdentity,setLoadedIdentity]=React.useState('')
   const load = React.useCallback(async () => {
     if (!currentUser || !canView) {
       setLoading(false)
       return
     }
+    const request=next()
     setLoading(true)
     setLoadError(null)
     try {
       const [visible, deleted] = await Promise.all([
         auditService.getAuditLogs({ user: currentUser, page, pageSize, filters: { ...filters, actor: filters.actorIds, role: filters.roles, module: filters.modules, action: filters.actions, status: filters.statuses, source: filters.sources }, sort }),
-        isAdmin ? lifecycleService.getArchived(currentUser.id) : Promise.resolve([]),
+        isAdmin ? lifecycleService.getArchivedPage(currentUser.id,{page:archivedPage,pageSize:archivedPageSize as 10|20|50}) : Promise.resolve({items:[],total:0,page:1}),
       ])
+      if(!isCurrent(request))return
+      setLoadedIdentity(identity)
       setLogs(visible.items)
       setSelected(current => current && visible.items.some(item => item.id === current.id) ? current : null)
       setTotal(visible.total)
       setActors(visible.actors)
       if (visible.page !== page) setPage(visible.page)
-      setArchived(deleted)
+      setArchived(deleted.items);setArchivedTotal(deleted.total);setArchivedPage(deleted.page)
     } catch (error) {
-      setLoadError(error)
+      if(isCurrent(request))setLoadError(error)
     } finally {
-      setLoading(false)
+      if(isCurrent(request))setLoading(false)
     }
-  }, [canView, currentUser, filters, isAdmin, page, pageSize, sort])
+  }, [canView, currentUser, filters, isAdmin, page, pageSize, sort,archivedPage,archivedPageSize,identity,next,isCurrent])
 
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => { void load() })
     return () => cancelAnimationFrame(frame)
-  }, [load])
+  }, [load,invalidate])
 
-  if (userLoading || loading) return <p className="text-sm text-muted-foreground">{t('loading')}</p>
+  if (userLoading || loading || canView&&identity!==loadedIdentity) return <p className="text-sm text-muted-foreground">{t('loading')}</p>
   if (!currentUser || !canView) {
     return <Card><CardContent className="flex min-h-64 flex-col items-center justify-center text-center"><ShieldAlert className="mb-3 h-10 w-10 text-amber-600" /><h2 className="font-semibold">{t('accessDenied')}</h2><p className="mt-1 text-sm text-muted-foreground">{t('auditAccessDeniedHelp')}</p></CardContent></Card>
   }
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { void load() }} />
 
-  const archivedTotalPages = Math.max(1, Math.ceil(archived.length / archivedPageSize))
+  const archivedTotalPages = Math.max(1, Math.ceil(archivedTotal / archivedPageSize))
   const safeArchivedPage = Math.min(archivedPage, archivedTotalPages)
-  const visibleArchived = archived.slice((safeArchivedPage - 1) * archivedPageSize, safeArchivedPage * archivedPageSize)
+  const visibleArchived = archived
 
   const restoreImpact: DeletionImpact | null = restoreTarget ? {
     entity_type: restoreTarget.entity_type,
@@ -165,7 +173,7 @@ export function AuditHistory() {
 
       </div>{selected && <aside className="min-w-0"><AuditDetail key={selected.id} entry={selected} currentUser={currentUser} onClose={() => setSelected(null)} onUpdated={async () => { await load() }} /></aside>}</div>
 
-      {isAdmin && <Card className="overflow-hidden"><CardHeader><CardTitle className="text-base">{t('archivedRecords')}</CardTitle></CardHeader><CardContent className="p-0"><div className="max-h-[420px] space-y-2 overflow-auto px-6 pb-4">{visibleArchived.map(item => <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3" key={`${item.entity_type}-${item.entity_id}`}><div><p className="font-medium">{item.entity_name}</p><p className="text-xs text-muted-foreground">{item.entity_type} · {new Date(item.archived_at).toLocaleString()} · {item.reason || t('noReasonSupplied')}</p></div><Button variant="outline" size="sm" onClick={() => setRestoreTarget(item)}><RotateCcw className="mr-2 h-4 w-4" />{t('restore')}</Button></div>)}{archived.length === 0 && <p className="text-sm text-muted-foreground">{t('noArchivedRecords')}</p>}</div><HistoryPagination page={safeArchivedPage} pageSize={archivedPageSize} total={archived.length} onPageChange={setArchivedPage} onPageSizeChange={size => { setArchivedPageSize(size); setArchivedPage(1) }} /></CardContent></Card>}
+      {isAdmin && <Card className="overflow-hidden"><CardHeader><CardTitle className="text-base">{t('archivedRecords')}</CardTitle></CardHeader><CardContent className="p-0"><div className="max-h-[420px] space-y-2 overflow-auto px-6 pb-4">{visibleArchived.map(item => <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3" key={`${item.entity_type}-${item.entity_id}`}><div><p className="font-medium">{item.entity_name}</p><p className="text-xs text-muted-foreground">{item.entity_type} · {new Date(item.archived_at).toLocaleString()} · {item.reason || t('noReasonSupplied')}</p></div><Button variant="outline" size="sm" onClick={() => setRestoreTarget(item)}><RotateCcw className="mr-2 h-4 w-4" />{t('restore')}</Button></div>)}{archived.length === 0 && <p className="text-sm text-muted-foreground">{t('noArchivedRecords')}</p>}</div><HistoryPagination page={safeArchivedPage} pageSize={archivedPageSize} total={archivedTotal} onPageChange={setArchivedPage} onPageSizeChange={size => { setArchivedPageSize(size); setArchivedPage(1) }} /></CardContent></Card>}
 
       <LifecycleActionDialog open={Boolean(restoreTarget)} onOpenChange={open => !open && setRestoreTarget(null)} title={t('restoreRecord')} impact={restoreImpact} confirmText={t('restore')} variant="default" onConfirm={restore} />
     </div>

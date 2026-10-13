@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { LanguageProvider } from '@/lib/i18n'
 import { workforceService, WorkforceServiceError } from '@/lib/services/workforceService'
 import { filterWorkforceNavigation } from '@/lib/ui/workforceNavigation'
 import { PayrollAuditTimeline } from '@/components/features/payroll/PayrollAuditTimeline'
@@ -9,6 +10,8 @@ import { WorkforceTeamOverview } from '@/components/features/workforce/Workforce
 import { WorkforceLeaderboard } from '@/components/features/workforce/WorkforceLeaderboard'
 import { aggregateWorkforceTeam } from '@/lib/workforce/workforceOverview'
 import { summarizeWorkforcePerformance } from '@/lib/workforce/workforcePerformance'
+
+const render = (content: React.ReactNode) => renderToStaticMarkup(<LanguageProvider>{content}</LanguageProvider>)
 
 test('Capabilities hide each module independently and fail closed for malformed booleans',async()=>{
   const items=[{href:'/calendar'},{href:'/payroll'},{href:'/workforce'}]
@@ -58,16 +61,16 @@ test('Client preserves typed 401/403/409/503 failures; never promotes partial re
 
 test('Real components show UNKNOWN evidence and do not fabricate punctuality or rankings',()=>{
   const summary=summarizeWorkforcePerformance('employee','host',[{shiftId:'s',staffId:'employee',role:'host',scheduledStartAt:'2026-09-01T00:00:00Z',shiftDate:'2026-09-01'}],[],{lateGraceMinutes:0})
-  const html=renderToStaticMarkup(<WorkforceTeamOverview overview={aggregateWorkforceTeam([summary])} staffList={[summary]} month="2026-09" role="host" onSelectStaff={()=>{}} />)
+  const html=render(<WorkforceTeamOverview overview={aggregateWorkforceTeam([summary])} staffList={[summary]} month="2026-09" role="host" onSelectStaff={()=>{}} />)
   assert.equal(summary.approvedNoShows,0);assert.equal(summary.unknownAttendanceShifts,1)
   assert.equal(summary.punctualityPct,null)
   assert.match(html,/employee/)
-  const leaderboard=renderToStaticMarkup(<WorkforceLeaderboard leaderboard={[]} isConfigured={false} month="2026-09" role="host" />)
+  const leaderboard=render(<WorkforceLeaderboard leaderboard={[]} isConfigured={false} month="2026-09" role="host" />)
   assert.match(leaderboard,/Chưa kích hoạt/)
 })
 
 test('Audit component renders full immutable snapshots and UUID details',()=>{
-  const html=renderToStaticMarkup(<PayrollAuditTimeline audit={[{id:1,period_id:'p',line_id:'l',line_version:2,action:'void_line',actor_id:'admin',reason:'Approved terminal void',from_status:'draft',to_status:'draft',created_at:'2026-09-01T00:00:00Z',request_id:'synthetic-uuid',request_payload:{action:'void_line'},previous_values:{net_vnd:125000},updated_values:{voided_at:'2026-09-01T00:00:00Z'}}]} />)
+  const html=render(<PayrollAuditTimeline audit={[{id:1,period_id:'p',line_id:'l',line_version:2,action:'void_line',actor_id:'admin',reason:'Approved terminal void',from_status:'draft',to_status:'draft',created_at:'2026-09-01T00:00:00Z',request_id:'synthetic-uuid',request_payload:{action:'void_line'},previous_values:{net_vnd:125000},updated_values:{voided_at:'2026-09-01T00:00:00Z'}}]} />)
   assert.match(html,/synthetic-uuid/);assert.match(html,/net_vnd/);assert.match(html,/voided_at/)
   assert.match(html,/<details/)
 })

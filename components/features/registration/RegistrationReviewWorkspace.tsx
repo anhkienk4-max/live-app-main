@@ -7,31 +7,21 @@ import {
   AlertTriangle, History, UserPlus,
   FileText, ChevronRight
 } from 'lucide-react'
-import type {
-  Brand,
-  OperationalRole,
-  Platform,
-  RegistrationStatus,
-  Shift,
-  ShiftRegistration,
-  User,
-} from '@/lib/types/database.types'
+import type { OperationalRole, RegistrationStatus, ShiftRegistration } from '@/lib/types/database.types'
 import {
-  brandService,
-  platformService,
   shiftRegistrationService,
-  shiftService,
-  userService,
   getShiftRoleCapacities,
-    type ShiftRoleCapacity,
+  type ShiftRoleCapacity,
 } from '@/lib/services/dataService'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useToast } from '@/components/ui/toast'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
+import { HistoryPagination } from '@/components/ui/history-pagination'
+import { PageLoadError } from '@/components/ui/page-load-error'
+import { usePagedList } from '@/lib/hooks/usePagedList'
 import { RegistrationApproveDialog } from './RegistrationApproveDialog'
 import { RegistrationRejectDialog } from './RegistrationRejectDialog'
 import { RegistrationAuditHistoryDialog } from './RegistrationAuditHistoryDialog'
@@ -39,28 +29,42 @@ import { RegistrationRequestDetailPanel } from './RegistrationRequestDetailPanel
 
 type StatusFilter = 'all' | RegistrationStatus
 type RoleFilter = 'all' | OperationalRole
+const reviewList = { getPage: shiftRegistrationService.getReviewPage }
 
 export function RegistrationReviewWorkspace() {
   const { currentUser } = useCurrentUser()
-  const { toast } = useToast()
 
   // State
-  const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
-  const [shifts, setShifts] = React.useState<Shift[]>([])
-  const [users, setUsers] = React.useState<User[]>([])
-  const [brands, setBrands] = React.useState<Brand[]>([])
-  const [platforms, setPlatforms] = React.useState<Platform[]>([])
-  const [capacities, setCapacities] = React.useState<Record<string, Record<OperationalRole, ShiftRoleCapacity>>>({})
-
-  const [loading, setLoading] = React.useState(true)
-  const [refreshing, setRefreshing] = React.useState(false)
   const [selectedRegId, setSelectedRegId] = React.useState<string | null>(null)
+  const [contextRevision, setContextRevision] = React.useState(0)
   const [showMobileDetail, setShowMobileDetail] = React.useState(false)
 
   // Filters
-  const [searchQuery, setSearchQuery] = React.useState('')
-  const [statusFilter, setStatusFilter] = React.useState<StatusFilter>('all')
-  const [roleFilter, setRoleFilter] = React.useState<RoleFilter>('all')
+  const [searchQuery, setSearchQueryRaw] = React.useState('')
+  const [statusFilter, setStatusFilterRaw] = React.useState<StatusFilter>('all')
+  const [roleFilter, setRoleFilterRaw] = React.useState<RoleFilter>('all')
+  const statuses = statusFilter === 'all' ? [] : statusFilter === 'approved' ? ['approved', 'manually_assigned'] : statusFilter === 'cancelled' ? ['cancelled', 'removed'] : [statusFilter]
+  const list = usePagedList<ShiftRegistration>(reviewList, 'registration_reviews', {
+    search: searchQuery.trim(), statuses, roles: roleFilter === 'all' ? [] : [roleFilter],
+  })
+  const setSearchQuery = (value: string) => { setSearchQueryRaw(value); list.reset() }
+  const setStatusFilter = (value: StatusFilter) => { setStatusFilterRaw(value); list.reset() }
+  const setRoleFilter = (value: RoleFilter) => { setRoleFilterRaw(value); list.reset() }
+  const result = (list.refreshing ? undefined : list.result) as Awaited<ReturnType<typeof shiftRegistrationService.getReviewPage>> | undefined
+  const registrations = result?.items ?? []
+  const shifts = result?.shifts ?? []
+  const users = result?.users ?? []
+  const brands = result?.brands ?? []
+  const platforms = result?.platforms ?? []
+  const counts = result?.counts
+  const loading = list.loading || list.refreshing
+  const refreshing = list.refreshing
+  const reload = list.reload
+  const capacities: Record<string, Record<OperationalRole, ShiftRoleCapacity>> = {}
+  for (const shift of shifts) {
+    const byRole = getShiftRoleCapacities(shift, registrations)
+    capacities[shift.id] = Object.fromEntries(byRole.map(capacity => [capacity.role, capacity])) as Record<OperationalRole, ShiftRoleCapacity>
+  }
 
   // Concurrency & Dialogs
   const [concurrencyError, setConcurrencyError] = React.useState<string | null>(null)
@@ -72,116 +76,24 @@ export function RegistrationReviewWorkspace() {
   const canReview = currentUser ? hasPermission(currentUser, 'shifts.approve_registration') : false
 
   // Load Data
-  const loadData = React.useCallback(async (isSilent = false) => {
-    if (!isSilent) setLoading(true)
-    else setRefreshing(true)
-    setConcurrencyError(null)
-
-    try {
-      const [allRegs, allShifts, allUsers, allBrands, allPlatforms] = await Promise.all([
-        shiftRegistrationService.getAll(),
-        shiftService.getAll(),
-        userService.getAll(),
-        brandService.getAll(),
-        platformService.getAll(),
-      ])
-
-      setRegistrations(allRegs)
-      setShifts(allShifts)
-      setUsers(allUsers)
-      setBrands(allBrands)
-      setPlatforms(allPlatforms)
-
-      const capsMap: Record<string, Record<OperationalRole, ShiftRoleCapacity>> = {}
-      for (const shift of allShifts) {
-        const capsList = getShiftRoleCapacities(shift, allRegs)
-        const hostCap = capsList.find(c => c.role === 'host') || { role: 'host' as OperationalRole, required: shift.required_host_count ?? 1, approved: 0, pending: 0, remaining: 1 }
-        const supportCap = capsList.find(c => c.role === 'support') || { role: 'support' as OperationalRole, required: shift.required_support_count ?? 2, approved: 0, pending: 0, remaining: 2 }
-        const technicalCap = capsList.find(c => c.role === 'technical') || { role: 'technical' as OperationalRole, required: shift.required_technical_count ?? 1, approved: 0, pending: 0, remaining: 1 }
-        capsMap[shift.id] = { host: hostCap, support: supportCap, technical: technicalCap }
-      }
-      setCapacities(capsMap)
-
-      // Set initial selected item if none or if current not found
-      if (allRegs.length > 0) {
-        setSelectedRegId(prev => {
-          if (prev && allRegs.some(r => r.id === prev)) return prev
-          return allRegs[0].id
-        })
-      }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Lỗi tải dữ liệu đăng ký ca.'
-      toast({
-        title: 'Lỗi tải dữ liệu',
-        description: message,
-        variant: 'destructive',
-      })
-    } finally {
-      setLoading(false)
-      setRefreshing(false)
-    }
-  }, [toast])
-
-  React.useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      void loadData()
-    })
-    return () => window.cancelAnimationFrame(frame)
-  }, [loadData])
+  const loadData = React.useCallback(async () => { setConcurrencyError(null); setContextRevision(value => value + 1); await reload() }, [reload])
 
   // Lookups
-  const userMap = React.useMemo(() => new Map(users.map(u => [u.id, u])), [users])
-  const shiftMap = React.useMemo(() => new Map(shifts.map(s => [s.id, s])), [shifts])
-  const brandMap = React.useMemo(() => new Map(brands.map(b => [b.id, b])), [brands])
-  const platformMap = React.useMemo(() => new Map(platforms.map(p => [p.id, p])), [platforms])
+  const userMap = new Map(users.map(u => [u.id, u]))
+  const shiftMap = new Map(shifts.map(s => [s.id, s]))
+  const brandMap = new Map(brands.map(b => [b.id, b]))
+  const platformMap = new Map(platforms.map(p => [p.id, p]))
 
   // Counts
-  const totalCount = registrations.length
-  const pendingCount = registrations.filter(r => r.status === 'pending').length
-  const approvedCount = registrations.filter(r => r.status === 'approved' || r.status === 'manually_assigned').length
-  const rejectedCount = registrations.filter(r => r.status === 'rejected').length
-  const cancelledCount = registrations.filter(r => r.status === 'cancelled' || r.status === 'removed').length
-
-  // Filtered List
-  const filteredRegistrations = React.useMemo(() => {
-    return registrations.filter(reg => {
-      // Status filter
-      if (statusFilter !== 'all') {
-        if (statusFilter === 'approved') {
-          if (reg.status !== 'approved' && reg.status !== 'manually_assigned') return false
-        } else if (statusFilter === 'cancelled') {
-          if (reg.status !== 'cancelled' && reg.status !== 'removed') return false
-        } else if (reg.status !== statusFilter) {
-          return false
-        }
-      }
-
-      // Role filter
-      if (roleFilter !== 'all' && reg.operational_role !== roleFilter) {
-        return false
-      }
-
-      // Search query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim()
-        const user = userMap.get(reg.user_id)
-        const shift = shiftMap.get(reg.shift_id)
-        const nameMatch = user?.full_name?.toLowerCase().includes(q) || reg.imported_name?.toLowerCase().includes(q)
-        const emailMatch = user?.email?.toLowerCase().includes(q)
-        const shiftMatch = shift?.title?.toLowerCase().includes(q) || reg.shift_id.toLowerCase().includes(q)
-        const idMatch = reg.id.toLowerCase().includes(q)
-        if (!nameMatch && !emailMatch && !shiftMatch && !idMatch) return false
-      }
-
-      return true
-    })
-  }, [registrations, statusFilter, roleFilter, searchQuery, userMap, shiftMap])
+  const totalCount = counts?.all ?? 0
+  const pendingCount = counts?.pending ?? 0
+  const approvedCount = counts?.approved ?? 0
+  const rejectedCount = counts?.rejected ?? 0
+  const cancelledCount = counts?.cancelled ?? 0
+  const filteredRegistrations = registrations
 
   // Active Selected Item
-  const activeReg = React.useMemo(() => {
-    if (!selectedRegId) return filteredRegistrations[0] || null
-    return registrations.find(r => r.id === selectedRegId) || filteredRegistrations[0] || null
-  }, [selectedRegId, registrations, filteredRegistrations])
+  const activeReg = selectedRegId ? registrations.find(r => r.id === selectedRegId) || registrations[0] || null : registrations[0] || null
 
   const activeApplicant = activeReg ? userMap.get(activeReg.user_id) : undefined
   const activeShift = activeReg ? shiftMap.get(activeReg.shift_id) : undefined
@@ -191,6 +103,20 @@ export function RegistrationReviewWorkspace() {
     ? capacities[activeShift.id][activeReg.operational_role]
     : undefined
 
+  const activeRegId = activeReg?.id
+  const contextKey = activeRegId && currentUser ? currentUser.id + ':' + (currentUser.system_permission ?? currentUser.role) + ':' + activeRegId + ':' + contextRevision : ''
+  const [context, setContext] = React.useState<{ key: string; registrations: ShiftRegistration[]; shifts: typeof shifts } | null>(null)
+  const [contextError, setContextError] = React.useState<{ key: string; error: unknown } | null>(null)
+  React.useEffect(() => {
+    if (!activeRegId || !contextKey) return
+    const controller = new AbortController()
+    void shiftRegistrationService.getReviewContext(activeRegId, controller.signal).then(value => {
+      if (!controller.signal.aborted) setContext({ key: contextKey, ...value })
+    }).catch(error => { if (!controller.signal.aborted) setContextError({ key: contextKey, error }) })
+    return () => controller.abort()
+  }, [activeRegId, contextKey])
+
+  if (list.error) return <PageLoadError error={list.error} onRetry={() => void loadData()} />
   if (loading) {
     return (
       <div className="p-6 space-y-4">
@@ -227,7 +153,7 @@ export function RegistrationReviewWorkspace() {
             size="sm"
             variant="outline"
             className="h-7 text-xs border-rose-300 bg-white text-rose-700 hover:bg-rose-100"
-            onClick={() => void loadData(true)}
+            onClick={() => void loadData()}
           >
             <RefreshCw className="h-3 w-3 mr-1" />
             Tải lại dữ liệu
@@ -402,7 +328,7 @@ export function RegistrationReviewWorkspace() {
               size="sm"
               className="h-8 text-xs text-slate-600"
               disabled={refreshing}
-              onClick={() => void loadData(true)}
+              onClick={() => void loadData()}
             >
               <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
             </Button>
@@ -588,6 +514,7 @@ export function RegistrationReviewWorkspace() {
               </tbody>
             </table>
           )}
+          <HistoryPagination page={result?.page ?? list.page} pageSize={list.pageSize} total={result?.total ?? 0} onPageChange={list.setPage} onPageSizeChange={list.setPageSize} />
         </div>
 
         {/* RIGHT PANE: DETAIL DRAWER (DESKTOP OR MOBILE SHEET) */}
@@ -595,6 +522,7 @@ export function RegistrationReviewWorkspace() {
           <div className={`w-full lg:w-[420px] flex-shrink-0 border-l border-slate-200 bg-white ${
             showMobileDetail ? 'block absolute inset-0 z-20 lg:relative lg:inset-auto' : 'hidden lg:block'
           }`}>
+            {contextError?.key === contextKey ? <PageLoadError error={contextError.error} onRetry={() => setContextRevision(value => value + 1)} /> : context?.key !== contextKey ? <ContentSkeleton /> :
             <RegistrationRequestDetailPanel
               registration={activeReg}
               applicant={activeApplicant}
@@ -602,13 +530,13 @@ export function RegistrationReviewWorkspace() {
               brand={activeBrand}
               platform={activePlatform}
               capacity={activeCapacity}
-              allUserRegistrations={registrations}
-              allShifts={shifts}
+              allUserRegistrations={context.registrations}
+              allShifts={context.shifts}
               canReview={canReview}
               onOpenApprove={() => setApproveDialogOpen(true)}
               onOpenReject={() => setRejectDialogOpen(true)}
               onCloseMobile={() => setShowMobileDetail(false)}
-            />
+            />}
           </div>
         )}
       </div>
@@ -623,7 +551,7 @@ export function RegistrationReviewWorkspace() {
         capacity={activeCapacity}
         reviewerId={currentUser?.id || 'system'}
         onSuccess={async () => {
-          await loadData(true)
+          await loadData()
         }}
       />
 
@@ -635,7 +563,7 @@ export function RegistrationReviewWorkspace() {
         shift={activeShift}
         reviewerId={currentUser?.id || 'system'}
         onSuccess={async () => {
-          await loadData(true)
+          await loadData()
         }}
       />
 

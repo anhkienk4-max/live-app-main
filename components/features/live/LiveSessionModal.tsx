@@ -1,6 +1,8 @@
 'use client'
 
 import * as React from 'react'
+import { useRequestSequence } from '@/lib/hooks/useRequestSequence'
+import type { PageSize } from '@/lib/utils/pagination'
 import Image from 'next/image'
 import { Shift, Brand, Platform, Campaign, User, DashboardUpdate, OperationalRole, ShiftRegistration, Report } from '@/lib/types/database.types'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
@@ -68,17 +70,26 @@ export function LiveSessionModal({
   const [showReportDetail, setShowReportDetail] = React.useState(false)
   const [showAllSnapshotMetrics, setShowAllSnapshotMetrics] = React.useState(false)
   const [snapshotPage, setSnapshotPage] = React.useState(1)
-  const [snapshotPageSize, setSnapshotPageSize] = React.useState(10)
+  const [snapshotPageSize, setSnapshotPageSize] = React.useState<PageSize>(20)
 
+  const {next,isCurrent,invalidate}=useRequestSequence()
+  const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role):''
+  const [loadedIdentity,setLoadedIdentity]=React.useState('')
+  const [snapshotTotal,setSnapshotTotal]=React.useState(0)
+  const [snapshotSummary,setSnapshotSummary]=React.useState<{total:number;peakViewers:number|null;recent:DashboardUpdate[]}>({total:0,peakViewers:null,recent:[]})
   const loadUpdates = React.useCallback(async () => {
+    const request=next()
     setLoading(true)
     setLoadError(null)
     try {
-      const [data, loadedReport] = await Promise.all([dashboardUpdateService.getByShift(shift.id), reportService.getByShift(shift.id)])
-      setUpdates(data)
+      const [data, loadedReport] = await Promise.all([dashboardUpdateService.getPage(shift.id,{page:snapshotPage,pageSize:snapshotPageSize}), reportService.getByShift(shift.id)])
+      if(!isCurrent(request))return
+      setLoadedIdentity(identity)
+      setUpdates(data.items);setSnapshotTotal(data.total);setSnapshotPage(data.page)
+      setSnapshotSummary({total:data.total,peakViewers:data.peakViewers,recent:data.recent})
       setReport(loadedReport)
-    } catch (error) { setLoadError(error) } finally { setLoading(false) }
-  }, [shift.id])
+    } catch (error) { if(isCurrent(request))setLoadError(error) } finally { if(isCurrent(request))setLoading(false) }
+  }, [shift.id,snapshotPage,snapshotPageSize,identity,next,isCurrent])
   const loadReport = loadUpdates
 
   React.useEffect(() => {
@@ -86,8 +97,8 @@ export function LiveSessionModal({
     const frame = requestAnimationFrame(() => {
       void loadUpdates()
     })
-    return () => cancelAnimationFrame(frame)
-  }, [loadReport, loadUpdates, open, refreshVersion])
+    return () => { cancelAnimationFrame(frame);invalidate() }
+  }, [loadReport, loadUpdates, open, refreshVersion,invalidate])
 
   const getBrandName = (id: string) => brands.find((b: Brand) => b.id === id)?.name || 'Unknown'
   const getBrandColor = (id: string) => brands.find((b: Brand) => b.id === id)?.color || '#2563EB'
@@ -104,8 +115,8 @@ export function LiveSessionModal({
   }
   const statusLabel = shift.status === 'live' ? t('liveStatus') : t(shift.status)
 
-  const safePage = Math.min(snapshotPage, Math.max(1, Math.ceil(updates.length / snapshotPageSize)))
-  const visibleUpdates = [...updates].sort((a,b) => b.time.localeCompare(a.time)).slice((safePage - 1) * snapshotPageSize, safePage * snapshotPageSize)
+  const safePage = snapshotPage
+  const visibleUpdates = updates
   const removeImpact: DeletionImpact | null = removeTarget ? {
     entity_type: 'live_snapshot',
     entity_id: removeTarget.id,
@@ -120,7 +131,7 @@ export function LiveSessionModal({
     if (!currentUser || !removeTarget) return
     try {
       await dashboardUpdateService.remove(removeTarget.id, currentUser.id, reason)
-      setUpdates(current => current.filter(update => update.id !== removeTarget.id))
+      await loadUpdates()
       toast({ title: 'Snapshot deleted', variant: 'success' })
       setRemoveTarget(null)
     } catch (error) {
@@ -129,8 +140,8 @@ export function LiveSessionModal({
     }
   }
 
-  const consoleContent = (loadError ? <PageLoadError error={loadError} onRetry={() => void loadUpdates()} /> : <LiveOperationsConsole shift={shift} updates={updates} report={report} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations}
-          loading={loading} onRefresh={() => void loadUpdates()}
+  const consoleContent = (loadError ? <PageLoadError error={loadError} onRetry={() => void loadUpdates()} /> : <LiveOperationsConsole shift={shift} updates={updates} snapshotSummary={snapshotSummary} report={report} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations}
+          loading={loading||identity!==loadedIdentity} onRefresh={() => void loadUpdates()}
           actions={<>
             <ShiftLifecycleActions shift={shift} onSuccess={onUpdate} />
             {['preparing', 'live', 'paused'].includes(shift.status) && currentUser && hasPermission(currentUser, 'shifts.edit') && <>
@@ -140,7 +151,7 @@ export function LiveSessionModal({
             {currentUser && hasPermission(currentUser, 'reports.submit') && <Button size="sm" variant="outline" data-testid="open-final-report-modal" onClick={() => report ? setShowReportDetail(true) : setShowReportForm(true)}>{report ? t('viewDetails') : t('createFinalReport')}</Button>}
           </>}
           snapshots={<div className="space-y-3">            <div className="flex justify-end"><div className="inline-flex rounded-lg border p-1"><Button size="sm" variant={!showAllSnapshotMetrics ? 'secondary' : 'ghost'} onClick={() => setShowAllSnapshotMetrics(false)}>Chỉ số có dữ liệu</Button><Button size="sm" variant={showAllSnapshotMetrics ? 'secondary' : 'ghost'} onClick={() => setShowAllSnapshotMetrics(true)}>Tất cả chỉ số</Button></div></div>
-            {loading ? (
+            {loading||identity!==loadedIdentity ? (
               <div className="text-center py-12 text-gray-600">Loading updates...</div>
             ) : updates.length === 0 ? (
               <Card className="p-12">
@@ -182,7 +193,7 @@ export function LiveSessionModal({
                     </CardContent>
                   </Card>
                 ))}
-                <HistoryPagination page={safePage} pageSize={snapshotPageSize} total={updates.length} onPageChange={setSnapshotPage} onPageSizeChange={size => { setSnapshotPageSize(size); setSnapshotPage(1) }} />
+                <HistoryPagination page={safePage} pageSize={snapshotPageSize} total={snapshotTotal} onPageChange={setSnapshotPage} onPageSizeChange={size => { setSnapshotPageSize(size as PageSize); setSnapshotPage(1) }} />
               </div>
             )}
 </div>}
@@ -251,7 +262,7 @@ export function LiveSessionModal({
                   <span className="text-xs text-muted-foreground">{format(new Date(item.time), 'dd/MM/yyyy HH:mm')}</span>
                 </div>
               ))}
-            </CardContent></Card>}
+            <HistoryPagination page={safePage} pageSize={snapshotPageSize} total={snapshotTotal} onPageChange={setSnapshotPage} onPageSizeChange={size=>{setSnapshotPageSize(size as PageSize);setSnapshotPage(1)}} /></CardContent></Card>}
         />)
   return (<>
     {inline ? consoleContent : <Dialog open={open} onOpenChange={onOpenChange}><DialogContent size="full" className="overflow-y-auto gap-0 p-0 bg-slate-50"><DialogTitle className="sr-only">{shift.title || getBrandName(shift.brand_id)} · {t('liveMonitor')}</DialogTitle>{consoleContent}</DialogContent></Dialog>}

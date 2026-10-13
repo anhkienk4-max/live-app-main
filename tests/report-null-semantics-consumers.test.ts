@@ -11,14 +11,15 @@ test('dashboard does not manufacture unavailable performance aggregates; analyti
   const dashboard = read('../components/features/dashboard/DashboardOverview.tsx')
   const analytics = read('../components/features/analytics/DashboardAnalytics.tsx')
   const migration = read('../supabase/migrations/20260912083056_report_draft_nullable_metrics.sql')
+  const pagination = read('../supabase/migrations/20261012171503_rc16k_bounded_shift_lists.sql')
 
   // The current production dashboard leaves this surface unavailable; its
   // presentation workspace receives real records instead of loading QA fixtures.
   assert.match(dashboard, /performance={null}/)
   assert.doesNotMatch(dashboard, /visual-fixtures|const revenue = .*reduce|const previousRevenue = .*reduce/)
-  assert.match(analytics, /loadedReports\.filter\(report => report\.status === 'confirmed' && report\.metrics_confirmed === true\)/)
-  assert.match(analytics, /calculateNullableAnalyticsMetrics\(currentReports\)/)
-  assert.match(analytics, /calculateNullableAnalyticsMetrics\(previousReports\)/)
+  assert.match(analytics, /reportService\.getAnalyticsSnapshot/)
+  assert.match(pagination, /r\.status='confirmed' and r\.metrics_confirmed/)
+  assert.match(pagination, /avg\(v\.ctr\) ctr,avg\(v\.cvr\) cvr/)
   assert.match(migration, /new\.status = 'confirmed' and not new\.metrics_confirmed/i)
 })
 
@@ -27,9 +28,9 @@ test('analytics reportMetric callers load confirmed-only reports', () => {
   const dataService = read('../lib/services/dataService.ts')
   const reportService = read('../lib/services/supabaseReportService.ts')
 
-  assert.match(dashboard, /reportService\.getConfirmed\(\)/)
-  assert.match(dashboard, /const currentReports = reports\.filter\(/)
-  assert.match(dashboard, /const previousReports = reports\.filter\(/)
+  assert.match(dashboard, /usePagedList<Report>\(analyticsList,[\s\S]*reportStatuses: \['confirmed'\], metricsStatuses: \['confirmed'\]/)
+  assert.doesNotMatch(dashboard, /getAnalyticsSummary|currentReports\.slice/)
+  assert.match(dataService, /getCollectionPage<Report>\('analytics_reports'/)
   assert.match(dataService, /report\.status === 'confirmed'[\s\S]*?report\.metrics_confirmed === true/)
   assert.match(reportService, /\.eq\('metrics_confirmed', true\)/)
 })

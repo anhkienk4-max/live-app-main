@@ -237,11 +237,11 @@ test('All Time report reads complete bounded shift-ID batches without duplicates
   assert.ok(client.rangeCalls.length > 12)
 })
 
-test('Calendar uses complete history only for explicit All Time and guards late responses', () => {
+test('Calendar List uses bounded server pages and guards late responses', () => {
   const source = readFileSync('components/features/calendar/CalendarView.tsx', 'utf8')
-  assert.match(source, /dataScope\.allTime\s*\n\s*\? shiftService\.getAllComplete\(\)/)
+  assert.match(source, /view === 'list' \? shiftService\.getCalendarPage\(\{ page: listPage, pageSize: listSize, filters:/)
   assert.match(source, /shiftRegistrationService\.getForShifts\(shiftIds\)/)
   assert.match(source, /reportService\.getForShifts\(shiftIds\)/)
   assert.match(source, /if \(version !== requestVersion\.current\) return/)
-  assert.doesNotMatch(source, /dataScope\.allTime[\s\S]{0,180}shiftRegistrationService\.getAll\(\)/)
+  assert.doesNotMatch(source, /shiftService\.getAllComplete\(\)|shiftRegistrationService\.getAll\(\)/)
 })

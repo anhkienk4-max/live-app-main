@@ -17,6 +17,7 @@ const eslintConfig = defineConfig([
     ".kilo/worktrees/**",
     "artifacts/**",
     ".migration-backup/**",
+    ".rc16k-checkpoints/**",
     "public/ocr/tesseract/**",
     "supabase/.temp/**",
     // Static visual-clone files — pixel-faithful reference mocks, not
