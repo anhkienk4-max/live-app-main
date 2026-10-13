@@ -598,7 +598,7 @@ export function ShiftList() {
                         )}
                       </div>
                       {shift.title && (
-                        <p className="text-xs text-slate-500 truncate mt-0.5 font-normal">{shift.title}</p>
+                        <button type="button" className="block max-w-full text-xs text-slate-500 hover:text-blue-700 truncate mt-0.5 font-normal text-left" onClick={() => setDetailShift(shift)}>{shift.title}</button>
                       )}
                     </div>
                     <Badge variant={statusVariants[shift.status] || 'secondary'} className="capitalize shrink-0 text-[11px] font-medium">
