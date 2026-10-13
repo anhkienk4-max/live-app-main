@@ -145,7 +145,7 @@ test('staffing names survive preview edit, source commit and reparse exactly', (
 test('Calendar list renders imported names without staff IDs', () => {
   const markup = renderToStaticMarkup(createElement(
     LanguageProvider,
-    null,
+    { defaultLanguage: 'en' },
     createElement(ListView, {
       shifts: [shift],
       brands: [{ id: 'brand-1', name: 'Mars Wrigley', created_at: '', updated_at: '' }],

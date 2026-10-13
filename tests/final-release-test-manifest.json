@@ -88,6 +88,7 @@
     "tests/preview-loading-performance.test.tsx",
     "tests/production-shell-convergence.test.ts",
     "tests/profile-avatar-storage.test.ts",
+    "tests/storage-hydration-regression.test.ts",
     "tests/rc12-provider-runtime-diagnostics.test.ts",
     "tests/rc12-report-file-provider.test.ts",
     "tests/rc13a-execution-source-routes.test.ts",

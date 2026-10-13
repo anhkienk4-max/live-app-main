@@ -3,6 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { FolderCog, RefreshCw, ShieldAlert } from 'lucide-react'
+import { useTranslation } from '@/lib/i18n'
 
 type Brand = { id: string; name: string; storage_profile: string | null }
 type Platform = { id: string; name: string }
@@ -58,6 +59,7 @@ function parsePeriodOverrides(raw: string): Record<string, { default: string }> 
 }
 
 export function OperationalStorageSetupWorkspace() {
+  const { translate } = useTranslation()
   const [data, setData] = React.useState<Inventory | null>(null)
   const [offset, setOffset] = React.useState(0)
   const [busy, setBusy] = React.useState(false)
@@ -190,8 +192,8 @@ export function OperationalStorageSetupWorkspace() {
     <div className="flex items-center gap-3">
       <FolderCog className="h-8 w-8 text-primary" />
       <div>
-        <h1 className="text-2xl font-semibold">Thiết lập Storage — Admin</h1>
-        <p className="text-sm text-muted-foreground">Kiểm tra cấu hình, phân loại có phê duyệt; không tự tạo route hay backfill ca.</p>
+        <h1 className="text-2xl font-semibold">{translate('Thiết lập Storage — Admin')}</h1>
+        <p className="text-sm text-muted-foreground">{translate('Kiểm tra cấu hình, phân loại có phê duyệt; không tự tạo route hay backfill ca.')}</p>
       </div>
     </div>
     <Link href="/storage" className="text-sm underline">← Kho file</Link>
@@ -199,9 +201,9 @@ export function OperationalStorageSetupWorkspace() {
     {notice && <p role="status" className="rounded-md border p-3 text-sm">{notice}</p>}
     <section className="rounded-xl border p-4 space-y-3" aria-label="Storage readiness">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold">Schema & Route Readiness</h2>
+        <h2 className="font-semibold">{translate('Schema & Route Readiness')}</h2>
         <button type="button" className={action} disabled={busy} onClick={() => void refresh()}>
-          <span className="flex gap-2 items-center"><RefreshCw className="h-4 w-4" />Kiểm tra lại</span>
+          <span className="flex gap-2 items-center"><RefreshCw className="h-4 w-4" />{translate('Kiểm tra lại')}</span>
         </button>
       </div>
       {!data ? <p className="text-sm">Đang kiểm tra…</p> : <>

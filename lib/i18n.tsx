@@ -20,6 +20,7 @@ const en = {
   returnToAutomatic: 'Return to automatic',
   dashboard: 'Dashboard',
   calendar: 'Calendar',
+  shifts: 'Shifts',
   live: 'Live',
   reports: 'Reports',
   swaps: 'Swaps',
@@ -1207,6 +1208,7 @@ const vi: Record<keyof typeof en, string> = {
   dashboard: 'Tổng quan',
   reviewReport: 'Kiểm tra báo cáo',
   calendar: 'Lịch',
+  shifts: 'Ca trực',
   live: 'Trực tiếp',
   reports: 'Báo cáo',
   swaps: 'Đổi ca',
@@ -2307,6 +2309,45 @@ const vietnameseToEnglish = new Map<string, string>(
 )
 
 const legacyVietnamese: Record<string, string> = {
+  'Manage shift requirements, gaps, and assignments.': 'Quản lý định biên, vị trí còn thiếu và phân công ca.',
+  'The feature is disabled. Await approved configuration.': 'Tính năng đang tắt. Vui lòng chờ cấu hình được phê duyệt.',
+  'Verifying session and access permissions…': 'Đang xác minh phiên đăng nhập và quyền truy cập…',
+  'You do not have access to payroll (403).': 'Bạn không có quyền truy cập bảng lương (403).',
+  'Storage setup — Admin': 'Thiết lập Storage — Admin',
+  'Check configuration and approved classifications; do not create routes or backfill shifts automatically.': 'Kiểm tra cấu hình, phân loại có phê duyệt; không tự tạo route hay backfill ca.',
+  'Schema & Route Readiness': 'Mức sẵn sàng Schema & Route',
+  'Check again': 'Kiểm tra lại',
+  'Operational file storage': 'Kho file vận hành',
+  'Files on Google Drive/OneDrive · Supabase stores metadata only. For Leaders/Admins.': 'File trên Google Drive/OneDrive · Supabase chỉ lưu metadata. Dành cho Leader/Admin.',
+  'Admin: Check and configure Storage Routes': 'Admin: Kiểm tra và cấu hình Storage Routes',
+  'File storage context': 'Ngữ cảnh lưu file',
+  'Storage context': 'Ngữ cảnh lưu trữ',
+  'Campaign (optional, to attach Content / Production / Campaign files)': 'Chiến dịch (tùy chọn, để gắn file Content / Production / Campaign)',
+  'No campaign': 'Không gắn với chiến dịch',
+  'Shift ID (for a specific shift)': 'Shift ID (nếu lưu cho một ca cụ thể)',
+  'Leave blank to store by Brand / Platform / Date': 'Để trống để lưu theo Brand / Platform / Ngày',
+  'Operational date': 'Ngày vận hành',
+  'Execution source': 'Nguồn vận hành',
+  'Add a new file': 'Thêm file mới',
+  'Document category': 'Loại tài liệu',
+  'OneDrive (only when configured)': 'OneDrive (chỉ khi đã cấu hình)',
+  'Finance/System Export file writes are locked until destination folder access is verified and approved. Existing files remain accessible according to permissions.': 'Finance/System Export đang khóa ghi file cho đến khi quyền truy cập thư mục đích được xác minh và phê duyệt. File đã lưu vẫn có thể truy cập theo phân quyền.',
+  'Choose an operational file': 'Chọn file vận hành',
+  'Images, Excel, PDF, Office, audio or small videos (up to 4 MB). For larger files, use the provider linking section below; do not upload binary data through Supabase.': 'File định dạng ảnh, Excel, PDF, Office, audio hoặc video nhỏ (tối đa 4 MB). File lớn hãy dùng phần liên kết file provider bên dưới; không upload binary qua Supabase.',
+  'Save file': 'Lưu file',
+  'Attach a large file': 'Đính kèm file dung lượng lớn',
+  'Large videos / existing provider files': 'Video lớn / file đã có trên provider',
+  'Create the correct folder, upload directly to Drive/OneDrive, then paste the ID so the app verifies folder ownership and stores metadata. Large binary files do not pass through Vercel or Supabase.': 'Tạo đúng thư mục, upload trực tiếp file lên Drive/OneDrive, sau đó dán ID để app xác thực file thuộc chính thư mục này và lưu metadata. Không tải binary lớn qua Vercel hoặc Supabase.',
+  'Create / open storage folder': 'Tạo / mở folder lưu trữ',
+  'File ID or Google Drive link for a file in the folder above': 'File ID hoặc link Google Drive của file trong folder trên',
+  'Link an uploaded file': 'Liên kết file đã tải lên',
+  'Files linked by ID have their parent folder checked; the content checksum is not confirmed (integrity_status = provider_reference). Use trusted files only.': 'File gắn bằng ID được kiểm tra parent folder; checksum nội dung chưa được xác nhận (integrity_status = provider_reference). Chỉ dùng file có nguồn đáng tin cậy.',
+  'System Export cannot be saved to a provider until sharing permissions are approved.': 'System Export chưa được phép lưu vào provider khi quyền chia sẻ chưa được phê duyệt.',
+  'Publish a JSON snapshot for an operational day by Brand / Platform / Internal or Agency, including Shift, Report, KPI timeline and evidence metadata. This is not a full database backup. Exceeding system limits produces an error instead of incomplete records.': 'Xuất bản snapshot JSON của một ngày vận hành theo Brand / Platform / Internal hoặc Agency, gồm Shift, Report, KPI timeline và metadata bằng chứng. Không phải backup toàn bộ database. Khi vượt giới hạn hệ thống sẽ báo lỗi thay vì xuất thiếu bản ghi.',
+  'Export the selected day to Drive': 'Xuất dữ liệu ngày đang chọn lên Drive',
+  'Saved files': 'File đã lưu',
+  'Filter file category': 'Lọc loại file',
+  'No files for the selected context.': 'Chưa có file cho ngữ cảnh được chọn.',
   'Loading reports...': 'Đang tải báo cáo…',
   'Loading calendar...': 'Đang tải lịch…',
   'Loading shifts...': 'Đang tải ca…',
@@ -2709,58 +2750,31 @@ type Context = {
 
 const LanguageContext = React.createContext<Context | null>(null)
 
-export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [language, setLanguageState] = React.useState<Language>('en')
+export function LanguageProvider({
+  children,
+  defaultLanguage = 'vi',
+}: {
+  children: React.ReactNode
+  defaultLanguage?: Language
+}) {
+  const [language, setLanguageState] = React.useState<Language>(defaultLanguage)
   React.useEffect(() => {
     const saved = window.localStorage.getItem('livestream-ops-language')
     if (saved === 'en' || saved === 'vi') {
-      const frame = window.requestAnimationFrame(() => setLanguageState(saved))
+      // Restore preferences without interrupting hydration of streamed descendants.
+      const frame = window.requestAnimationFrame(() => {
+        React.startTransition(() => setLanguageState(saved))
+      })
       return () => window.cancelAnimationFrame(frame)
     }
     return undefined
   }, [])
   const setLanguage = React.useCallback((next: Language) => {
-    setLanguageState(next)
+    React.startTransition(() => setLanguageState(next))
     window.localStorage.setItem('livestream-ops-language', next)
   }, [])
   React.useEffect(() => {
     document.documentElement.lang = language
-    const apply = (root: Node) => {
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-      const nodes: Text[] = []
-      let node: Node | null
-      while ((node = walker.nextNode())) nodes.push(node as Text)
-      nodes.forEach(text => {
-        const trimmed = text.nodeValue?.trim()
-        if (!trimmed) return
-        const translated = translateLegacyValue(trimmed, language)
-        if (translated !== trimmed) text.nodeValue = text.nodeValue?.replace(trimmed, translated) ?? translated
-      })
-      if (root instanceof Element) {
-        ;[root, ...root.querySelectorAll('*')].forEach(element =>
-          ['placeholder', 'title', 'aria-label'].forEach(attribute => {
-            const value = element.getAttribute(attribute)
-            if (value) {
-              const translated = translateLegacyValue(value, language)
-              if (translated !== value) element.setAttribute(attribute, translated)
-            }
-          })
-        )
-      }
-    }
-    apply(document.body)
-    const observer = new MutationObserver(records => records.forEach(record => {
-      if (record.type === 'characterData' || record.type === 'attributes') apply(record.target)
-      else record.addedNodes.forEach(apply)
-    }))
-    observer.observe(document.body, {
-      attributes: true,
-      attributeFilter: ['placeholder', 'title', 'aria-label'],
-      characterData: true,
-      childList: true,
-      subtree: true,
-    })
-    return () => observer.disconnect()
   }, [language])
   const value = React.useMemo<Context>(() => ({
     language,

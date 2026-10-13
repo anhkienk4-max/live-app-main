@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
+import { useTranslation } from '@/lib/i18n'
 import type { User as BusinessUser } from '@/lib/types/database.types'
 import { resolveSystemPermission } from '@/lib/permissions'
 import { useToast } from '@/components/ui/toast'
@@ -34,10 +35,11 @@ import { WorkforceIndividualView } from '@/components/features/workforce/Workfor
 import { WorkforceLeaderboard } from '@/components/features/workforce/WorkforceLeaderboard'
 
 export default function WorkforcePage() {
+  const { translate } = useTranslation()
   const { currentUser, loading, error, capabilities, identityKey } = useWorkforceCapabilities()
-  if (loading) return <PageShell archetype="command" className="p-4 md:p-6"><p role="status">Đang xác minh phiên đăng nhập và quyền truy cập…</p></PageShell>
-  if (error) return <PageShell archetype="command" className="p-4 md:p-6"><p role="alert">{error}</p></PageShell>
-  if (!currentUser || !capabilities?.own_performance) return <PageShell archetype="command" className="p-4 md:p-6"><p role="status">Tính năng đang tắt. Vui lòng chờ cấu hình được phê duyệt.</p></PageShell>
+  if (loading) return <PageShell archetype="command" className="p-4 md:p-6"><p role="status">{translate('Đang xác minh phiên đăng nhập và quyền truy cập…')}</p></PageShell>
+  if (error) return <PageShell archetype="command" className="p-4 md:p-6"><p role="alert">{translate(error)}</p></PageShell>
+  if (!currentUser || !capabilities?.own_performance) return <PageShell archetype="command" className="p-4 md:p-6"><p role="status">{translate('Tính năng đang tắt. Vui lòng chờ cấu hình được phê duyệt.')}</p></PageShell>
   return <WorkforceWorkspace key={identityKey} currentUser={currentUser} canViewTeam={capabilities.team_performance} />
 }
 

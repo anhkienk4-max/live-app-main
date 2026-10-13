@@ -14,9 +14,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full">
+    <html lang="vi" className="h-full">
       <body className="min-h-full bg-background font-sans antialiased">
-        <LanguageProvider>
+        <LanguageProvider defaultLanguage="vi">
           <ToastProvider>{children}</ToastProvider>
         </LanguageProvider>
       </body>

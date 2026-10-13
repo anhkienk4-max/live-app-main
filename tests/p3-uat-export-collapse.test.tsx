@@ -174,7 +174,7 @@ test('ReportDetailHeaderActions — renders Export button on saved report UI', (
   )
 
   assert.ok(html.includes('data-testid="export-report-detail"'), 'Export button must be rendered in header actions')
-  assert.ok(html.includes('Export report detail') || html.includes('Xuất báo cáo chi tiết'), 'Export label must be rendered')
+  assert.ok(html.includes('Xuất chi tiết báo cáo'), 'Vietnamese export label must be rendered')
 })
 
 test('Collapsible Metrics — collapse state preserves metric values and review data intact', () => {

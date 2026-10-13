@@ -151,7 +151,7 @@ test('invalid MIME, oversized files, and maximum image count are rejected', () =
 test('report detail gallery renders the cover and category metadata', () => {
   const markup = renderToStaticMarkup(createElement(
     LanguageProvider,
-    null,
+    { defaultLanguage: 'en' },
     createElement(LiveReportImageGallery, {
       images: [
         makeImage('session', 0, {
@@ -193,7 +193,7 @@ test('empty editor remains visible and hides all actions in read-only mode', () 
   const noop = () => undefined
   const editableMarkup = renderToStaticMarkup(createElement(
     LanguageProvider,
-    null,
+    { defaultLanguage: 'en' },
     createElement(LiveReportImageEditor, {
       images: [],
       editable: true,
@@ -213,7 +213,7 @@ test('empty editor remains visible and hides all actions in read-only mode', () 
 
   const readOnlyMarkup = renderToStaticMarkup(createElement(
     LanguageProvider,
-    null,
+    { defaultLanguage: 'en' },
     createElement(LiveReportImageEditor, {
       images: [],
       editable: false,
@@ -231,7 +231,7 @@ test('empty editor remains visible and hides all actions in read-only mode', () 
 
   const readOnlyGalleryMarkup = renderToStaticMarkup(createElement(
     LanguageProvider,
-    null,
+    { defaultLanguage: 'en' },
     createElement(LiveReportImageGallery, { images: [] }),
   ))
   assert.match(readOnlyGalleryMarkup, /Live session images/)
