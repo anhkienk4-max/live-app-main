@@ -76,6 +76,7 @@ export function BulkActionsToolbar({
           size="sm"
           variant="outline"
           data-testid="bulk-mark-scheduled-btn"
+          disabled={selectedCount === 0 || shifts.length === 0}
           onClick={() => onBulkStatus ? onBulkStatus('scheduled') : handleBulkStatusChange('scheduled')}
         >
           {t('markScheduled')}
@@ -84,6 +85,7 @@ export function BulkActionsToolbar({
           size="sm"
           variant="outline"
           data-testid="bulk-mark-completed-btn"
+          disabled={selectedCount === 0 || shifts.length === 0}
           onClick={() => onBulkStatus ? onBulkStatus('completed') : handleBulkStatusChange('completed')}
         >
           {t('markCompleted')}
@@ -93,6 +95,7 @@ export function BulkActionsToolbar({
             size="sm"
             variant="destructive"
             data-testid="bulk-delete-btn"
+            disabled={selectedCount === 0 || shifts.length === 0}
             onClick={() => onBulkDelete(shifts.map(s => s.id))}
           >
             <Trash2 className="h-4 w-4 mr-2" />

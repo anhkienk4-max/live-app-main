@@ -44,27 +44,47 @@ export function DataTable<T extends { id: string }>({
   const [currentPage, setCurrentPage] = React.useState(1)
   const [itemsPerPage, setItemsPerPage] = React.useState(pageSize)
 
+  // Sync itemsPerPage if pageSize prop changes
+  const [prevPageSize, setPrevPageSize] = React.useState(pageSize)
+  if (pageSize !== prevPageSize) {
+    setPrevPageSize(pageSize)
+    setItemsPerPage(pageSize)
+  }
+
   const filteredData = React.useMemo(() => {
-    if (!searchQuery) return data
-    
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return data
+
     return data.filter(row => {
-      if (searchableText?.(row).toLowerCase().includes(searchQuery.toLowerCase())) return true
+      if (searchableText?.(row).toLowerCase().includes(q)) return true
       return columns.some(col => {
         if (typeof col.accessor === 'function') return false
         const value = row[col.accessor]
-        return String(value).toLowerCase().includes(searchQuery.toLowerCase())
+        return String(value).toLowerCase().includes(q)
       })
     })
   }, [data, searchQuery, columns, searchableText])
 
   const totalPages = Math.max(1, Math.ceil(filteredData.length / itemsPerPage))
-  const startIndex = (currentPage - 1) * itemsPerPage
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages)
+  const startIndex = (safeCurrentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
   const paginatedData = filteredData.slice(startIndex, endIndex)
 
-  const prevVisibleIdsRef = React.useRef<string>('')
-  const prevFilteredIdsRef = React.useRef<string>('')
+  const prevVisibleIdsRef = React.useRef<string | null>(null)
+  const prevFilteredIdsRef = React.useRef<string | null>(null)
   const prevPageRef = React.useRef<string>('')
+
+  // Reconcile currentPage state whenever totalPages changes
+  const [prevTotalPages, setPrevTotalPages] = React.useState(totalPages)
+  if (totalPages !== prevTotalPages) {
+    setPrevTotalPages(totalPages)
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages)
+    } else if (currentPage < 1) {
+      setCurrentPage(1)
+    }
+  }
 
   React.useEffect(() => {
     const ids = paginatedData.map(r => r.id).join(',')
@@ -83,12 +103,12 @@ export function DataTable<T extends { id: string }>({
   }, [filteredData, onFilteredDataChange])
 
   React.useEffect(() => {
-    const pageKey = `${currentPage}_${totalPages}`
+    const pageKey = `${safeCurrentPage}_${totalPages}`
     if (pageKey !== prevPageRef.current) {
       prevPageRef.current = pageKey
-      onPageChange?.(currentPage, totalPages)
+      onPageChange?.(safeCurrentPage, totalPages)
     }
-  }, [currentPage, totalPages, onPageChange])
+  }, [safeCurrentPage, totalPages, onPageChange])
 
   const handleSearch = (query: string) => {
     setCurrentPage(1)
@@ -106,6 +126,7 @@ export function DataTable<T extends { id: string }>({
             value={searchQuery}
             onChange={(e) => handleSearch(e.target.value)}
             className="pl-10"
+            data-testid="data-table-search-input"
           />
         </div>
         {filterComponent}
@@ -131,7 +152,7 @@ export function DataTable<T extends { id: string }>({
               </TableRow>
             ) : (
               paginatedData.map((row) => (
-                <TableRow key={row.id}>
+                <TableRow key={row.id} data-testid={`data-table-row-${row.id}`}>
                   {columns.map((col, i) => {
                     const value =
                       typeof col.accessor === 'function'
@@ -150,8 +171,8 @@ export function DataTable<T extends { id: string }>({
         </Table>
       </div>
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between px-2">
+      {filteredData.length > 0 && (
+        <div className="flex items-center justify-between px-2" data-testid="data-table-pagination">
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-600">Rows per page:</span>
             <Select
@@ -161,7 +182,7 @@ export function DataTable<T extends { id: string }>({
                 setCurrentPage(1)
               }}
             >
-              <SelectTrigger className="w-16">
+              <SelectTrigger className="w-16" data-testid="data-table-rows-per-page-select">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -174,15 +195,17 @@ export function DataTable<T extends { id: string }>({
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">
-              Page {currentPage} of {totalPages}
+            <span className="text-sm text-gray-600" data-testid="data-table-page-info">
+              Page {safeCurrentPage} of {totalPages}
             </span>
             <div className="flex gap-1">
               <Button
                 variant="outline"
                 size="icon"
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
+                disabled={safeCurrentPage <= 1}
+                data-testid="data-table-prev-page-btn"
+                aria-label="Previous page"
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
@@ -190,7 +213,9 @@ export function DataTable<T extends { id: string }>({
                 variant="outline"
                 size="icon"
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
+                disabled={safeCurrentPage >= totalPages}
+                data-testid="data-table-next-page-btn"
+                aria-label="Next page"
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>

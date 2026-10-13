@@ -151,62 +151,249 @@ try {
     console.log('  -> PASS: Leader capability boundaries & delete protection verified.')
   }
 
+      // -------------------------------------------------------------
+  // GATE 3: DESKTOP BULK SELECTION SCOPE, RECONCILIATION & PAGINATION
+  // (Items 1, 2, 3, 4, 5, 6 from UX-W1 Edge-Case Patch)
   // -------------------------------------------------------------
-  // GATE 3: BLOCKER 1 — DESKTOP BULK SELECTION SCOPE & STATUS CONFIRMATION
-  // -------------------------------------------------------------
-  console.log('\n[TEST 3] Testing Blocker 1: Desktop Bulk Selection Scope & Confirmation (Admin)...')
+  console.log('\n[TEST 3] Testing Desktop Bulk Selection & Pagination Edge Cases (Admin)...')
   {
     const { context, page } = await createContextWithUser('1', 'vi', { width: 1440, height: 900 })
     await page.goto(`${BASE_URL}/shifts`, { waitUntil: 'networkidle' })
     await page.waitForSelector('table tbody tr', { timeout: 15000 })
 
-    // Step A: Search to filter data
-    const searchInput = page.locator('.relative.flex-1.max-w-sm input, input[placeholder*="Tìm"], input[placeholder*="Search"]').first()
-    await searchInput.fill('Tech')
-    await page.waitForTimeout(400)
+    const searchInput = page.locator('[data-testid="data-table-search-input"]')
+    await searchInput.waitFor({ state: 'visible', timeout: 5000 })
 
-    const visibleRowsCount = await page.locator('table tbody tr').count()
-    console.log('  Visible rows after search "Tech":', visibleRowsCount)
-    assert.ok(visibleRowsCount > 0, 'Search "Tech" should return visible rows')
+    // ---------------------------------------------------------
+    // SCENARIO 1: Select row -> search 0 results -> cannot bulk update hidden rows
+    // ---------------------------------------------------------
+    console.log('  [Scenario 1] Testing zero-result search bulk action prevention...')
+    const firstRowCheckbox = page.locator('[data-testid="shift-row-checkbox"]').first()
+    await firstRowCheckbox.click()
 
-    // Step B: Select All on current visible page
-    const selectAllCheckbox = page.locator('[data-testid="shift-select-all-checkbox"]')
-    await selectAllCheckbox.click()
-
-    // Assert bulk toolbar badge shows exact selected count
     const bulkBadge = page.locator('[data-testid="bulk-selected-badge"]')
     await bulkBadge.waitFor({ state: 'visible', timeout: 5000 })
-    const badgeText = await bulkBadge.innerText()
-    console.log('  Bulk badge text:', badgeText)
-    assert.ok(badgeText.includes(String(visibleRowsCount)), 'Bulk badge must reflect visible count')
+    assert.ok(await bulkBadge.isVisible(), 'Bulk badge must appear when a row is selected')
 
-    // Step C: Bulk Status Update Confirmation Dialog
+    // Fill search with query returning 0 items
+    await searchInput.fill('xyz_nonexistent_search_query_999')
+    await page.waitForTimeout(400)
+
+    // Table should show empty message or 0 checkboxes
+    const emptyRowCount = await page.locator('[data-testid="shift-row-checkbox"]').count()
+    assert.equal(emptyRowCount, 0, 'Zero rows must be visible when search matches nothing')
+
+    // Bulk toolbar must be hidden / disabled when 0 items match
+    const bulkToolbarVisible = await page.locator('[data-testid="bulk-selected-badge"]').isVisible()
+    assert.equal(bulkToolbarVisible, false, 'Bulk toolbar must be hidden when current filter yields 0 matches')
+
+    const bulkMarkCompletedCount = await page.locator('[data-testid="bulk-mark-completed-btn"]').count()
+    assert.equal(bulkMarkCompletedCount, 0, 'Bulk action buttons must not be visible on 0 matches')
+
+    // Clear search query
+    await searchInput.fill('')
+    await page.waitForTimeout(400)
+    console.log('  -> PASS Scenario 1: Zero-result search prevents bulk action on hidden rows.')
+
+    // ---------------------------------------------------------
+    // SCENARIO 2: Select 2 rows -> change search -> selection reconciled accurately
+    // ---------------------------------------------------------
+    console.log('  [Scenario 2] Testing selection reconciliation on search change...')
+    // Select row 0 (Tech gadgets) and row 2 (Fashion launch live)
+    const rowCheckboxes = page.locator('[data-testid="shift-row-checkbox"]')
+    await rowCheckboxes.nth(0).click()
+    await rowCheckboxes.nth(2).click()
+
+    await bulkBadge.waitFor({ state: 'visible', timeout: 5000 })
+    const badgeTextTwo = await bulkBadge.innerText()
+    console.log('  Badge with 2 rows selected:', badgeTextTwo)
+    assert.ok(badgeTextTwo.includes('2'), 'Badge must show 2 selected items')
+
+    // Search "Fashion" so only row 2 matches
+    await searchInput.fill('Fashion')
+    await page.waitForTimeout(400)
+
+    // After filtering to "Fashion", selection must reconcile to 1 item
+    const badgeTextReconciled = await bulkBadge.innerText()
+    console.log('  Badge after filtering to "Fashion":', badgeTextReconciled)
+    assert.ok(badgeTextReconciled.includes('1'), 'Badge must reconcile to 1 selected item matching "Fashion"')
+
+    // Open confirmation dialog to verify affected list shows ONLY 1 item
     const markCompletedBtn = page.locator('[data-testid="bulk-mark-completed-btn"]')
     await markCompletedBtn.click()
 
     const confirmDialog = page.locator('[data-testid="confirm-bulk-status-dialog"]')
     await confirmDialog.waitFor({ state: 'visible', timeout: 5000 })
-    assert.ok(await confirmDialog.isVisible(), 'Bulk status change must prompt confirmation dialog')
 
-    const dialogText = await confirmDialog.innerText()
-    console.log('  Confirmation dialog text:', dialogText)
-    assert.ok(dialogText.includes(String(visibleRowsCount)), 'Confirmation dialog must show exact count of records')
+    const affectedList = page.locator('[data-testid="bulk-affected-ids"]')
+    await affectedList.waitFor({ state: 'visible', timeout: 5000 })
+    const affectedItemCount = await page.locator('[data-testid^="bulk-affected-item-"]').count()
+    assert.equal(affectedItemCount, 1, 'Confirmation dialog must show exactly 1 affected item')
 
     // Cancel without mutating
-    const cancelStatusBtn = page.locator('[data-testid="cancel-bulk-status-btn"]')
-    await cancelStatusBtn.click()
+    await page.locator('[data-testid="cancel-bulk-status-btn"]').click()
     await confirmDialog.waitFor({ state: 'hidden', timeout: 5000 })
-    assert.ok(await confirmDialog.isHidden(), 'Confirmation dialog must close on cancel')
 
-    // Deselect all
+    // Deselect all and clear search
     await page.locator('[data-testid="bulk-deselect-btn"]').click()
     await searchInput.fill('')
     await page.waitForTimeout(400)
+    console.log('  -> PASS Scenario 2: Selection reconciled accurately on filter change.')
 
-    // Capture Admin Desktop
+    // ---------------------------------------------------------
+    // SCENARIO 3: Page 2 -> filter to 1 page -> data remains visible at Page 1 of 1
+    // ---------------------------------------------------------
+    console.log('  [Scenario 3] Testing out-of-bounds page recovery to Page 1 on filter change...')
+    // Change page size to 5 rows to generate 2 pages (6 total shifts / 5 = 2 pages)
+    const rowsPerPageTrigger = page.locator('[data-testid="data-table-rows-per-page-select"]')
+    await rowsPerPageTrigger.click()
+    await page.locator('[role="option"]').filter({ hasText: /^5$/ }).click()
+    await page.waitForTimeout(300)
+
+    const pageInfo = page.locator('[data-testid="data-table-page-info"]')
+    await pageInfo.waitFor({ state: 'visible', timeout: 5000 })
+    console.log('  Page info after setting page size 5:', await pageInfo.innerText())
+
+    // Navigate to page 2 (last page)
+    const nextBtn = page.locator('[data-testid="data-table-next-page-btn"]')
+    assert.equal(await nextBtn.isEnabled(), true, 'Next button must be enabled on Page 1 of 2')
+    await nextBtn.click()
+    await page.waitForTimeout(200)
+
+    const endPageText = await pageInfo.innerText()
+    console.log('  Reached last page:', endPageText)
+    assert.ok(endPageText.includes('2'), 'Must be on page 2')
+
+    // Now filter data to only 1 page by searching "Fashion" (1 result)
+    await searchInput.fill('Fashion')
+    await page.waitForTimeout(400)
+
+    // Table MUST NOT be empty! It must immediately show Page 1 of 1 with matching data
+    const filteredRowCount = await page.locator('table tbody tr').count()
+    assert.equal(filteredRowCount, 1, 'Data must remain visible on page 1 after filtering down from high page')
+    const pageInfoAfterFilter = await pageInfo.innerText()
+    console.log('  Page info after filtering down to 1 page:', pageInfoAfterFilter)
+    assert.ok(pageInfoAfterFilter.includes('1') && (pageInfoAfterFilter.includes('of 1') || pageInfoAfterFilter.includes('/ 1')), 'Page indicator must show Page 1 of 1')
+
+    const prevBtn = page.locator('[data-testid="data-table-prev-page-btn"]')
+    assert.equal(await prevBtn.isDisabled(), true, 'Prev button must be disabled on Page 1 of 1')
+    assert.equal(await nextBtn.isDisabled(), true, 'Next button must be disabled on Page 1 of 1')
+
+    // Clear search
+    await searchInput.fill('')
+    await page.waitForTimeout(300)
+    console.log('  -> PASS Scenario 3: Page out-of-bounds automatically recovers and displays Page 1.')
+
+    // ---------------------------------------------------------
+    // SCENARIO 4: Change page size 10/20/50 -> total pages and visible row count accurate
+    // ---------------------------------------------------------
+    console.log('  [Scenario 4] Testing page size transitions 5/10/20/50...')
+    // At page size 5 (already set): 5 rows visible out of 6
+    const rowsAt5 = await page.locator('table tbody tr').count()
+    assert.equal(rowsAt5, 5, 'Page size 5 must display 5 rows')
+
+    // Change to page size 10: all 6 rows visible, Page 1 of 1
+    await rowsPerPageTrigger.click()
+    await page.locator('[role="option"]').filter({ hasText: /^10$/ }).click()
+    await page.waitForTimeout(300)
+    const rowsAt10 = await page.locator('table tbody tr').count()
+    assert.equal(rowsAt10, 6, 'Page size 10 must display all 6 mock rows')
+    const pageInfo10 = await pageInfo.innerText()
+    assert.ok(pageInfo10.includes('1') && (pageInfo10.includes('of 1') || pageInfo10.includes('/ 1')), 'Page size 10 yields Page 1 of 1')
+
+    // Change to page size 20: 6 rows visible, Page 1 of 1
+    await rowsPerPageTrigger.click()
+    await page.locator('[role="option"]').filter({ hasText: /^20$/ }).click()
+    await page.waitForTimeout(300)
+    const rowsAt20 = await page.locator('table tbody tr').count()
+    assert.equal(rowsAt20, 6, 'Page size 20 must display all 6 mock rows')
+
+    // Change to page size 50: 6 rows visible, Page 1 of 1
+    await rowsPerPageTrigger.click()
+    await page.locator('[role="option"]').filter({ hasText: /^50$/ }).click()
+    await page.waitForTimeout(300)
+    const rowsAt50 = await page.locator('table tbody tr').count()
+    assert.equal(rowsAt50, 6, 'Page size 50 must display all 6 mock rows')
+    console.log('  -> PASS Scenario 4: Page size transitions accurate.')
+
+    // ---------------------------------------------------------
+    // SCENARIO 5: Select current page vs Select all filtered results
+    // ---------------------------------------------------------
+    console.log('  [Scenario 5] Testing Select current page vs Select all filtered results...')
+    // Set page size to 5 so page 1 has 5 rows out of 6
+    await rowsPerPageTrigger.click()
+    await page.locator('[role="option"]').filter({ hasText: /^5$/ }).click()
+    await page.waitForTimeout(300)
+
+    const selectAllHeader = page.locator('[data-testid="shift-select-all-checkbox"]')
+    await selectAllHeader.click()
+
+    // Assert only page 1 (5 rows) is selected initially
+    await bulkBadge.waitFor({ state: 'visible', timeout: 5000 })
+    const badgePageOnly = await bulkBadge.innerText()
+    console.log('  Badge after selecting page only:', badgePageOnly)
+    assert.ok(badgePageOnly.includes('5'), 'Selecting header checkbox must select only current page (5)')
+
+    // Scope banner must appear
+    const scopeBanner = page.locator('[data-testid="select-scope-banner"]')
+    await scopeBanner.waitFor({ state: 'visible', timeout: 5000 })
+    assert.ok(await scopeBanner.isVisible(), 'Scope banner must offer to select all filtered results')
+
+    // Click "Select all filtered shifts"
+    const selectAllFilteredBtn = page.locator('[data-testid="select-all-filtered-btn"]')
+    await selectAllFilteredBtn.click()
+    await page.waitForTimeout(300)
+
+    // Bulk badge must now show all 6 shifts
+    const badgeAllFiltered = await bulkBadge.innerText()
+    console.log('  Badge after selecting all filtered results:', badgeAllFiltered)
+    assert.ok(badgeAllFiltered.includes('6'), 'Badge must reflect all 6 filtered shifts')
+
+    // Clear selection button in banner
+    const clearSelectionBtn = page.locator('[data-testid="clear-all-filtered-btn"]')
+    await clearSelectionBtn.click()
+    await bulkBadge.waitFor({ state: 'hidden', timeout: 5000 })
+    assert.equal(await bulkBadge.isVisible(), false, 'Bulk badge must be hidden after clearing selection')
+
+    // Restore page size 10
+    await rowsPerPageTrigger.click()
+    await page.locator('[role="option"]').filter({ hasText: /^10$/ }).click()
+    await page.waitForTimeout(300)
+    console.log('  -> PASS Scenario 5: Page-level selection vs All-filtered selection verified.')
+
+    // ---------------------------------------------------------
+    // SCENARIO 6: Bulk status confirmation -> Cancel -> 0 writes
+    // ---------------------------------------------------------
+    console.log('  [Scenario 6] Testing Bulk status confirmation -> Cancel -> 0 writes...')
+    // Select first row
+    await page.locator('[data-testid="shift-row-checkbox"]').first().click()
+    await bulkBadge.waitFor({ state: 'visible', timeout: 5000 })
+
+    // Check status badge text before
+    const statusBadgeBefore = await page.locator('table tbody tr').first().locator('td').nth(5).innerText()
+    console.log('  Shift status before:', statusBadgeBefore)
+
+    // Click Mark Completed
+    await page.locator('[data-testid="bulk-mark-completed-btn"]').click()
+    await confirmDialog.waitFor({ state: 'visible', timeout: 5000 })
+
+    // Click Cancel in dialog
+    await page.locator('[data-testid="cancel-bulk-status-btn"]').click()
+    await confirmDialog.waitFor({ state: 'hidden', timeout: 5000 })
+
+    // Verify status is unchanged
+    const statusBadgeAfter = await page.locator('table tbody tr').first().locator('td').nth(5).innerText()
+    console.log('  Shift status after cancel:', statusBadgeAfter)
+    assert.equal(statusBadgeAfter, statusBadgeBefore, 'Shift status must be completely unchanged (0 writes) on Cancel')
+
+    // Clean up selection
+    await page.locator('[data-testid="bulk-deselect-btn"]').click()
+    console.log('  -> PASS Scenario 6: Bulk status confirmation cancel produces 0 writes.')
+
+    // Capture Admin Desktop Final
     await page.screenshot({ path: path.join(CAPTURE_DIR, 'admin_shifts_desktop_1440.png') })
     await context.close()
-    console.log('  -> PASS: Blocker 1 desktop bulk selection and confirmation verified.')
+    console.log('  -> PASS: All desktop edge cases in Gate 3 verified successfully.')
   }
 
   // -------------------------------------------------------------

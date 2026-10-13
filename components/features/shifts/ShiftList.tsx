@@ -69,6 +69,7 @@ export function ShiftList() {
   const [mobilePageSize, setMobilePageSize] = React.useState(10)
   const [visibleShifts, setVisibleShifts] = React.useState<Shift[]>([])
   const [filteredTableShifts, setFilteredTableShifts] = React.useState<Shift[]>([])
+  const [tableFilterInitialized, setTableFilterInitialized] = React.useState(false)
 
   const handleVisibleDataChange = React.useCallback((next: Shift[]) => {
     setVisibleShifts(prev => {
@@ -80,6 +81,7 @@ export function ShiftList() {
   }, [])
 
   const handleFilteredDataChange = React.useCallback((next: Shift[]) => {
+    setTableFilterInitialized(true)
     setFilteredTableShifts(prev => {
       if (prev.length === next.length && prev.every((s, i) => s.id === next[i]?.id)) {
         return prev
@@ -274,14 +276,49 @@ export function ShiftList() {
     setShowBulkActions(newSet.size > 0)
   }
 
+  // Active filtered shifts on desktop:
+  // - If table filter is initialized: strictly filteredTableShifts (which is [] when 0 results match)
+  // - If table filter is not yet initialized: sortedShifts
+  const currentTableFilteredShifts = React.useMemo(() => {
+    if (tableFilterInitialized) {
+      return filteredTableShifts
+    }
+    return sortedShifts
+  }, [tableFilterInitialized, filteredTableShifts, sortedShifts])
+
+  // Reconcile selectedIds during render when filtered table data changes:
+  // Prunes any previously selected IDs that no longer exist in currentTableFilteredShifts.
+  const [prevFilteredShifts, setPrevFilteredShifts] = React.useState<Shift[]>(filteredTableShifts)
+  if (filteredTableShifts !== prevFilteredShifts) {
+    setPrevFilteredShifts(filteredTableShifts)
+    if (selectedIds.size > 0 && tableFilterInitialized) {
+      const validIdSet = new Set(filteredTableShifts.map(s => s.id))
+      const next = new Set<string>()
+      selectedIds.forEach(id => {
+        if (validIdSet.has(id)) next.add(id)
+      })
+      if (next.size !== selectedIds.size) {
+        setSelectedIds(next)
+        if (next.size === 0) {
+          setShowBulkActions(false)
+        }
+      }
+    }
+  }
+
+  // Only shifts that are currently selected AND in currentTableFilteredShifts
   const selectedFilteredShifts = React.useMemo(() => {
-    const validIds = new Set(filteredTableShifts.length > 0 ? filteredTableShifts.map(s => s.id) : sortedShifts.map(s => s.id))
-    return sortedShifts.filter(s => selectedIds.has(s.id) && validIds.has(s.id))
-  }, [sortedShifts, selectedIds, filteredTableShifts])
+    if (tableFilterInitialized && filteredTableShifts.length === 0) {
+      return []
+    }
+    const pool = currentTableFilteredShifts
+    const validIds = new Set(pool.map(s => s.id))
+    return pool.filter(s => selectedIds.has(s.id) && validIds.has(s.id))
+  }, [tableFilterInitialized, filteredTableShifts, currentTableFilteredShifts, selectedIds])
 
   const allPageSelected = visibleShifts.length > 0 && visibleShifts.every(s => selectedIds.has(s.id))
   const somePageSelected = visibleShifts.some(s => selectedIds.has(s.id)) && !allPageSelected
-  const allFilteredSelected = filteredTableShifts.length > 0 && filteredTableShifts.every(s => selectedIds.has(s.id))
+  const allFilteredSelected = currentTableFilteredShifts.length > 0 && currentTableFilteredShifts.every(s => selectedIds.has(s.id))
 
   const toggleSelectPage = () => {
     if (allPageSelected) {
@@ -420,10 +457,10 @@ export function ShiftList() {
         </div>
       </div>
 
-      {showBulkActions && (
+      {showBulkActions && selectedFilteredShifts.length > 0 && (
         <BulkActionsToolbar
           selectedCount={selectedFilteredShifts.length}
-          totalFilteredCount={filteredTableShifts.length || sortedShifts.length}
+          totalFilteredCount={currentTableFilteredShifts.length}
           onBulkDelete={() => void requestDelete(selectedFilteredShifts.map(s => s.id))}
           onDeselectAll={() => { setSelectedIds(new Set()); setShowBulkActions(false) }}
           shifts={selectedFilteredShifts}
@@ -435,11 +472,11 @@ export function ShiftList() {
 
       {/* DESKTOP VIEW: Data Table (UX-P1-02: Hidden on mobile < md) */}
       <div className="hidden md:block [&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2 [&_table]:text-xs [&_tbody_tr]:h-[62px]">
-        {allPageSelected && filteredTableShifts.length > visibleShifts.length && (
+        {allPageSelected && currentTableFilteredShifts.length > visibleShifts.length && (
           <div className="mb-2 p-2.5 bg-slate-50 border border-slate-200 rounded-md text-xs text-slate-700 flex items-center justify-between" data-testid="select-scope-banner">
             <span>
               {allFilteredSelected
-                ? t('allFilteredSelected', { count: filteredTableShifts.length })
+                ? t('allFilteredSelected', { count: currentTableFilteredShifts.length })
                 : t('allPageSelected', { count: visibleShifts.length })}
             </span>
             {!allFilteredSelected ? (
@@ -450,12 +487,12 @@ export function ShiftList() {
                 data-testid="select-all-filtered-btn"
                 onClick={() => {
                   const next = new Set(selectedIds)
-                  filteredTableShifts.forEach(s => next.add(s.id))
+                  currentTableFilteredShifts.forEach(s => next.add(s.id))
                   setSelectedIds(next)
                   setShowBulkActions(true)
                 }}
               >
-                {t('selectAllFiltered', { count: filteredTableShifts.length })}
+                {t('selectAllFiltered', { count: currentTableFilteredShifts.length })}
               </Button>
             ) : (
               <Button
@@ -819,6 +856,18 @@ export function ShiftList() {
                 })}
               </DialogDescription>
             </DialogHeader>
+            <div className="max-h-36 overflow-y-auto rounded border border-slate-100 bg-slate-50 p-2 my-2 text-xs text-slate-600" data-testid="bulk-affected-shifts-list">
+              <span className="font-semibold block mb-1 text-slate-700">
+                {t('affectedShifts', { count: selectedFilteredShifts.length }) || `Affected shifts (${selectedFilteredShifts.length}):`}
+              </span>
+              <ul className="list-disc pl-4 space-y-0.5" data-testid="bulk-affected-ids">
+                {selectedFilteredShifts.map(s => (
+                  <li key={s.id} className="truncate" data-testid={`bulk-affected-item-${s.id}`}>
+                    <span className="font-mono text-[11px] text-slate-500">{s.id.slice(0, 8)}:</span> {s.title || s.id}
+                  </li>
+                ))}
+              </ul>
+            </div>
             <DialogFooter className="flex justify-end gap-2 mt-4">
               <Button
                 variant="outline"
