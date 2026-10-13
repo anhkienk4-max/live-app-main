@@ -63,7 +63,7 @@ export function LifecycleActionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="md">
+      <DialogContent size="md" data-testid="lifecycle-action-dialog">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-amber-600" />
@@ -83,8 +83,8 @@ export function LifecycleActionDialog({
                 <p className="text-sm text-muted-foreground">No related records.</p>
               ) : (
                 <ul className="space-y-1 text-sm">
-                  {impact.related_records.map(record => (
-                    <li className="flex justify-between rounded border px-3 py-2" key={`${record.entity_type}-${record.entity_id}`}>
+                  {impact.related_records.map((record, index) => (
+                    <li className="flex justify-between rounded border px-3 py-2" key={`${record.entity_type}-${record.entity_id}-${index}`}>
                       <span>{record.entity_name}</span>
                       <Badge variant="secondary">{record.count ?? 1}</Badge>
                     </li>

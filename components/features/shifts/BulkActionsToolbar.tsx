@@ -10,13 +10,23 @@ import { useToast } from '@/components/ui/toast'
 
 interface BulkActionsToolbarProps {
   selectedCount: number
+  totalFilteredCount?: number
   onBulkDelete: (ids: string[]) => void
   onDeselectAll: () => void
   shifts: Shift[]
   onUpdate: () => void
+  canDelete?: boolean
 }
 
-export function BulkActionsToolbar({ selectedCount, onBulkDelete, onDeselectAll, shifts, onUpdate }: BulkActionsToolbarProps) {
+export function BulkActionsToolbar({
+  selectedCount,
+  totalFilteredCount,
+  onBulkDelete,
+  onDeselectAll,
+  shifts,
+  onUpdate,
+  canDelete = true,
+}: BulkActionsToolbarProps) {
   const { toast } = useToast()
 
   const handleBulkStatusChange = async (status: 'scheduled' | 'live' | 'completed' | 'cancelled') => {
@@ -38,19 +48,28 @@ export function BulkActionsToolbar({ selectedCount, onBulkDelete, onDeselectAll,
   return (
     <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
       <div className="flex items-center gap-3">
-        <Badge variant="default">{selectedCount} selected</Badge>
+        <Badge variant="default" data-testid="bulk-selected-badge">
+          {totalFilteredCount ? `${selectedCount} / ${totalFilteredCount} selected` : `${selectedCount} selected`}
+        </Badge>
         <Button size="sm" variant="outline" onClick={() => handleBulkStatusChange('scheduled')}>
           Mark Scheduled
         </Button>
         <Button size="sm" variant="outline" onClick={() => handleBulkStatusChange('completed')}>
           Mark Completed
         </Button>
-        <Button size="sm" variant="destructive" onClick={() => onBulkDelete(shifts.map(s => s.id))}>
-          <Trash2 className="h-4 w-4 mr-2" />
-          Delete All
-        </Button>
+        {canDelete && (
+          <Button
+            size="sm"
+            variant="destructive"
+            data-testid="bulk-delete-btn"
+            onClick={() => onBulkDelete(shifts.map(s => s.id))}
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Delete All
+          </Button>
+        )}
       </div>
-      <Button size="sm" variant="ghost" onClick={onDeselectAll}>
+      <Button size="sm" variant="ghost" data-testid="bulk-deselect-btn" onClick={onDeselectAll}>
         <X className="h-4 w-4 mr-2" />
         Deselect All
       </Button>

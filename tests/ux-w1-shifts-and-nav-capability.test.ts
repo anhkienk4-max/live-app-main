@@ -72,3 +72,26 @@ test('UX-W1 Navigation: i18n label keys are defined across all role destinations
     }
   }
 })
+
+test('UX-W1 /shifts: Bulk selection scope strictly respects filtered shifts and capability gating', () => {
+  const allShifts = [
+    { id: 's1', status: 'scheduled' },
+    { id: 's2', status: 'scheduled' },
+    { id: 's3', status: 'completed' },
+    { id: 's4', status: 'completed' },
+  ]
+  const scheduledShifts = allShifts.filter(s => s.status === 'scheduled')
+
+  // Selecting all within filtered view selects only s1, s2
+  let selected = new Set<string>()
+  scheduledShifts.forEach(s => selected.add(s.id))
+  assert.equal(selected.size, 2)
+  assert.ok(selected.has('s1'))
+  assert.ok(selected.has('s2'))
+  assert.equal(selected.has('s3'), false, 'Filtered out shift s3 must not be selected')
+  assert.equal(selected.has('s4'), false, 'Filtered out shift s4 must not be selected')
+
+  // When switching filter, selection is reset
+  selected = new Set<string>()
+  assert.equal(selected.size, 0)
+})

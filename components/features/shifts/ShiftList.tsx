@@ -63,6 +63,20 @@ export function ShiftList() {
   const [sortDescending, setSortDescending] = React.useState(false)
   const [mobilePage, setMobilePage] = React.useState(1)
   const [mobilePageSize, setMobilePageSize] = React.useState(10)
+
+  const handleStatusFilterChange = React.useCallback((status: Shift['status'] | 'all') => {
+    setStatusFilter(status)
+    setMobilePage(1)
+    setSelectedIds(new Set())
+    setShowBulkActions(false)
+  }, [])
+
+  const handleSearchQueryChange = React.useCallback((query: string) => {
+    setSearchQuery(query)
+    setMobilePage(1)
+    setSelectedIds(new Set())
+    setShowBulkActions(false)
+  }, [])
   
   const { toast } = useToast()
   const { t, translate } = useTranslation()
@@ -177,7 +191,7 @@ export function ShiftList() {
   }
 
   const handleDelete = async (reason: string) => {
-    if (!currentUser) return
+    if (!currentUser || !canDelete) return
     try {
       for (const id of deleteIds) {
         await shiftService.remove(id, currentUser.id, reason, shifts.find(shift => shift.id === id)?.version)
@@ -236,12 +250,24 @@ export function ShiftList() {
     setShowBulkActions(newSet.size > 0)
   }
 
+  const selectedFilteredShifts = React.useMemo(
+    () => sortedShifts.filter(s => selectedIds.has(s.id)),
+    [sortedShifts, selectedIds]
+  )
+
+  const allFilteredSelected = sortedShifts.length > 0 && selectedFilteredShifts.length === sortedShifts.length
+  const someFilteredSelected = selectedFilteredShifts.length > 0 && selectedFilteredShifts.length < sortedShifts.length
+
   const toggleSelectAll = () => {
-    if (selectedIds.size === shifts.length) {
-      setSelectedIds(new Set())
-      setShowBulkActions(false)
+    if (allFilteredSelected) {
+      const next = new Set(selectedIds)
+      sortedShifts.forEach(s => next.delete(s.id))
+      setSelectedIds(next)
+      setShowBulkActions(next.size > 0)
     } else {
-      setSelectedIds(new Set(shifts.map(s => s.id)))
+      const next = new Set(selectedIds)
+      sortedShifts.forEach(s => next.add(s.id))
+      setSelectedIds(next)
       setShowBulkActions(true)
     }
   }
@@ -250,9 +276,10 @@ export function ShiftList() {
     ...(canMutate ? [{
       header: () => (
         <Checkbox
-          checked={selectedIds.size === shifts.length && shifts.length > 0}
+          checked={allFilteredSelected ? true : someFilteredSelected ? 'indeterminate' : false}
           onCheckedChange={toggleSelectAll}
           aria-label={t('selectAll')}
+          data-testid="shift-select-all-checkbox"
         />
       ),
       accessor: (row: Shift) => (
@@ -260,6 +287,7 @@ export function ShiftList() {
           checked={selectedIds.has(row.id)}
           onCheckedChange={() => toggleSelect(row.id)}
           aria-label={`${t('select')} ${row.id}`}
+          data-testid="shift-row-checkbox"
         />
       )
     }] : []),
@@ -347,7 +375,7 @@ export function ShiftList() {
         <div className="flex gap-2">
           {canImportExport && (
             <>
-              <Button className="hidden sm:flex" variant="outline" onClick={() => setIsImportExportOpen(true)}>
+              <Button className="hidden sm:flex" variant="outline" onClick={() => setIsImportExportOpen(true)} data-testid="import-export-btn">
                 <Upload className="h-4 w-4 mr-2" />
                 Import/Export
               </Button>
@@ -369,11 +397,13 @@ export function ShiftList() {
 
       {showBulkActions && (
         <BulkActionsToolbar
-          selectedCount={selectedIds.size}
-          onBulkDelete={() => void requestDelete(Array.from(selectedIds))}
+          selectedCount={selectedFilteredShifts.length}
+          totalFilteredCount={sortedShifts.length}
+          onBulkDelete={() => void requestDelete(selectedFilteredShifts.map(s => s.id))}
           onDeselectAll={() => { setSelectedIds(new Set()); setShowBulkActions(false) }}
-          shifts={shifts.filter(s => selectedIds.has(s.id))}
+          shifts={selectedFilteredShifts}
           onUpdate={loadData}
+          canDelete={canDelete}
         />
       )}
 
@@ -390,7 +420,7 @@ export function ShiftList() {
                 <select
                   aria-label={t('status')}
                   value={statusFilter}
-                  onChange={event => { setStatusFilter(event.target.value as Shift['status'] | 'all'); setMobilePage(1); }}
+                  onChange={event => handleStatusFilterChange(event.target.value as Shift['status'] | 'all')}
                   className="max-w-40 bg-transparent font-medium text-slate-800 outline-none"
                 >
                   <option value="all">{t('all')} ({shifts.length})</option>
@@ -432,7 +462,7 @@ export function ShiftList() {
               type="text"
               placeholder={t('search')}
               value={searchQuery}
-              onChange={e => { setSearchQuery(e.target.value); setMobilePage(1); }}
+              onChange={e => handleSearchQueryChange(e.target.value)}
               className="pl-8 h-9 text-xs"
               data-testid="shifts-mobile-search"
             />
@@ -441,7 +471,7 @@ export function ShiftList() {
             <select
               aria-label={t('status')}
               value={statusFilter}
-              onChange={event => setStatusFilter(event.target.value as Shift['status'] | 'all')}
+              onChange={event => handleStatusFilterChange(event.target.value as Shift['status'] | 'all')}
               className="flex-1 h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none"
               data-testid="shifts-mobile-status-filter"
             >
@@ -467,7 +497,7 @@ export function ShiftList() {
 
         {/* Compact Cards List */}
         {mobilePaginatedShifts.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-slate-200 p-8 text-center text-xs text-muted-foreground">
+          <div className="rounded-lg border border-dashed border-slate-200 p-8 text-center text-xs text-muted-foreground" data-testid="shifts-mobile-empty-state">
             {t('noData')}
           </div>
         ) : (
