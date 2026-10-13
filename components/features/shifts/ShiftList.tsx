@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import * as React from 'react'
 import { shiftService, brandService, platformService, campaignService, userService, shiftRegistrationService, getShiftRoleCapacities } from '@/lib/services/dataService'
@@ -12,7 +12,9 @@ import { DataTable, Column } from '@/components/ui/data-table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Plus, Pencil, Trash2, Copy, Upload, Eye, ArrowDownUp } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Plus, Pencil, Trash2, Copy, Upload, Eye, ArrowDownUp, Search, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { ShiftFormDialog } from './ShiftFormDialog'
@@ -25,6 +27,13 @@ import { hasPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { resolveStaffingLabelsForRole } from '@/lib/utils/staffingResolver'
+
+const statusVariants: Record<string, 'default' | 'secondary' | 'destructive'> = {
+  scheduled: 'secondary',
+  live: 'destructive',
+  completed: 'default',
+  cancelled: 'secondary'
+}
 
 export function ShiftList() {
   const [shifts, setShifts] = React.useState<Shift[]>([])
@@ -50,40 +59,98 @@ export function ShiftList() {
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
   const [showBulkActions, setShowBulkActions] = React.useState(false)
   const [statusFilter, setStatusFilter] = React.useState<Shift['status'] | 'all'>('all')
+  const [searchQuery, setSearchQuery] = React.useState('')
   const [sortDescending, setSortDescending] = React.useState(false)
+  const [mobilePage, setMobilePage] = React.useState(1)
+  const [mobilePageSize, setMobilePageSize] = React.useState(10)
   
   const { toast } = useToast()
   const { t, translate } = useTranslation()
   const { currentUser } = useCurrentUser()
+
+  // Granular capability gating (UX-P1-01)
+  const canCreate = Boolean(currentUser && hasPermission(currentUser, 'shifts.edit'))
   const canEdit = Boolean(currentUser && hasPermission(currentUser, 'shifts.edit'))
   const canDelete = Boolean(currentUser && hasPermission(currentUser, 'shifts.delete'))
+  const canImport = Boolean(currentUser && hasPermission(currentUser, 'shifts.import'))
+  const canExport = Boolean(currentUser && hasPermission(currentUser, 'shifts.export'))
+  const canImportExport = canImport || canExport
+  const canMutate = canEdit || canDelete
+
   const statusValues = ['scheduled', 'preparing', 'live', 'paused', 'completed', 'cancelled'] as const
-  const filteredShifts = statusFilter === 'all' ? shifts : shifts.filter(shift => shift.status === statusFilter)
-  const sortedShifts = [...filteredShifts].sort((a, b) => {
-    const dateOrder = String(a.date).localeCompare(String(b.date)) || a.start_time.localeCompare(b.start_time)
-    return sortDescending ? -dateOrder : dateOrder
-  })
+
+  const getBrandName = React.useCallback((id: string) => brands.find(b => b.id === id)?.name || 'Unknown', [brands])
+  const getPlatformName = React.useCallback((id: string) => platforms.find(p => p.id === id)?.name || 'Unknown', [platforms])
+  const getUserName = React.useCallback((id?: string) => id ? users.find(u => u.id === id)?.full_name || 'Unassigned' : 'Unassigned', [users])
+  const getCampaignName = React.useCallback((id?: string) => id ? campaigns.find(campaign => campaign.id === id)?.name || 'Unknown' : null, [campaigns])
+  
+  const getRolePeople = React.useCallback((shift: Shift, role: 'host' | 'support' | 'technical') => {
+    const shiftRegistrations = registrations.filter(registration => registration.shift_id === shift.id)
+    const resolved = resolveStaffingLabelsForRole(shift, shiftRegistrations, users, role, translate)
+      .filter(label => !label.isUnassigned)
+      .map(label => label.name)
+    if (resolved.length > 0) return resolved
+    const legacyId = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
+    return legacyId ? [getUserName(legacyId)] : []
+  }, [registrations, users, translate, getUserName])
+
+  // Filtered and sorted shifts
+  const filteredShifts = React.useMemo(() => {
+    let result = statusFilter === 'all' ? shifts : shifts.filter(shift => shift.status === statusFilter)
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim()
+      result = result.filter(shift => {
+        const text = [
+          shift.title,
+          shift.id,
+          shift.date,
+          shift.start_time,
+          shift.studio,
+          getBrandName(shift.brand_id),
+          getPlatformName(shift.platform_id),
+          getCampaignName(shift.campaign_id),
+          ...(['host', 'support', 'technical'] as const).flatMap(role => getRolePeople(shift, role))
+        ].filter(Boolean).join(' ').toLowerCase()
+        return text.includes(q)
+      })
+    }
+    return result
+  }, [shifts, statusFilter, searchQuery, getBrandName, getPlatformName, getCampaignName, getRolePeople])
+
+  const sortedShifts = React.useMemo(() => {
+    return [...filteredShifts].sort((a, b) => {
+      const dateOrder = String(a.date).localeCompare(String(b.date)) || a.start_time.localeCompare(b.start_time)
+      return sortDescending ? -dateOrder : dateOrder
+    })
+  }, [filteredShifts, sortDescending])
+
+  // Mobile pagination slice
+  const mobileTotalPages = Math.ceil(sortedShifts.length / mobilePageSize) || 1
+  const safeMobilePage = Math.min(Math.max(1, mobilePage), mobileTotalPages)
+  const mobileStartIndex = (safeMobilePage - 1) * mobilePageSize
+  const mobileEndIndex = Math.min(mobileStartIndex + mobilePageSize, sortedShifts.length)
+  const mobilePaginatedShifts = sortedShifts.slice(mobileStartIndex, mobileEndIndex)
 
   const loadData = React.useCallback(async () => {
     setLoading(true)
     setLoadError(null)
     try {
-    const [shiftsData, brandsData, platformsData, campaignsData, usersData, templatesData, registrationData] = await Promise.all([
-      shiftService.getAll(),
-      brandService.getAll(),
-      platformService.getAll(),
-      campaignService.getAll(),
-      userService.getAll(),
-      templateService.getAll(),
-      shiftRegistrationService.getAll(),
-    ])
-    setShifts(shiftsData)
-    setBrands(brandsData)
-    setPlatforms(platformsData)
-    setCampaigns(campaignsData)
-    setUsers(usersData)
-    setTemplates(templatesData)
-    setRegistrations(registrationData)
+      const [shiftsData, brandsData, platformsData, campaignsData, usersData, templatesData, registrationData] = await Promise.all([
+        shiftService.getAll(),
+        brandService.getAll(),
+        platformService.getAll(),
+        campaignService.getAll(),
+        userService.getAll(),
+        templateService.getAll(),
+        shiftRegistrationService.getAll(),
+      ])
+      setShifts(shiftsData)
+      setBrands(brandsData)
+      setPlatforms(platformsData)
+      setCampaigns(campaignsData)
+      setUsers(usersData)
+      setTemplates(templatesData)
+      setRegistrations(registrationData)
     } catch (error) { setLoadError(error) } finally { setLoading(false) }
   }, [])
 
@@ -134,7 +201,7 @@ export function ShiftList() {
   }
 
   const handleDuplicate = (shift: Shift) => {
-    if (!canEdit) return
+    if (!canCreate) return
     setDuplicateShift(shift)
     setEditingShift(null)
     setReopenDetailAfterEdit(false)
@@ -142,7 +209,7 @@ export function ShiftList() {
   }
 
   const handleCreate = () => {
-    if (!canEdit) return
+    if (!canCreate) return
     setEditingShift(null)
     setDuplicateShift(null)
     setReopenDetailAfterEdit(false)
@@ -179,35 +246,23 @@ export function ShiftList() {
     }
   }
 
-  const getBrandName = (id: string) => brands.find(b => b.id === id)?.name || 'Unknown'
-  const getPlatformName = (id: string) => platforms.find(p => p.id === id)?.name || 'Unknown'
-  const getUserName = (id?: string) => id ? users.find(u => u.id === id)?.full_name || 'Unassigned' : 'Unassigned'
-  const getCampaignName = (id?: string) => id ? campaigns.find(campaign => campaign.id === id)?.name || 'Unknown' : null
-  const getRolePeople = (shift: Shift, role: 'host' | 'support' | 'technical') => {
-    const shiftRegistrations = registrations.filter(registration => registration.shift_id === shift.id)
-    const resolved = resolveStaffingLabelsForRole(shift, shiftRegistrations, users, role, translate)
-      .filter(label => !label.isUnassigned)
-      .map(label => label.name)
-    if (resolved.length > 0) return resolved
-    const legacyId = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
-    return legacyId ? [getUserName(legacyId)] : []
-  }
-
   const columns: Column<Shift>[] = [
-    {
+    ...(canMutate ? [{
       header: () => (
         <Checkbox
           checked={selectedIds.size === shifts.length && shifts.length > 0}
           onCheckedChange={toggleSelectAll}
+          aria-label={t('selectAll')}
         />
       ),
-      accessor: (row) => (
+      accessor: (row: Shift) => (
         <Checkbox
           checked={selectedIds.has(row.id)}
           onCheckedChange={() => toggleSelect(row.id)}
+          aria-label={`${t('select')} ${row.id}`}
         />
       )
-    },
+    }] : []),
     {
       header: t('shiftDetail'),
       accessor: row => {
@@ -239,14 +294,8 @@ export function ShiftList() {
       header: t('status'),
       accessor: 'status',
       cell: (value) => {
-        const variants: Record<string, 'default' | 'secondary' | 'destructive'> = {
-          scheduled: 'secondary',
-          live: 'destructive',
-          completed: 'default',
-          cancelled: 'secondary'
-        }
         const status = String(value)
-        return <Badge variant={variants[status] || 'secondary'} className="capitalize">{translate(status === 'live' ? 'liveStatus' : status)}</Badge>
+        return <Badge variant={statusVariants[status] || 'secondary'} className="capitalize">{translate(status === 'live' ? 'liveStatus' : status)}</Badge>
       }
     },
     {
@@ -262,7 +311,7 @@ export function ShiftList() {
             {
               onView: () => setDetailShift(row),
               onEdit: canEdit ? () => handleEdit(row) : undefined,
-              onDuplicate: () => handleDuplicate(row),
+              onDuplicate: canCreate ? () => handleDuplicate(row) : undefined,
               onDelete: canDelete ? () => void requestDelete([row.id]) : undefined,
             },
             {
@@ -289,21 +338,32 @@ export function ShiftList() {
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div><h1 className="text-xl font-semibold tracking-tight">{translate('Shift Management')}</h1><p className="mt-1 text-xs text-muted-foreground">{filteredShifts.length} / {shifts.length} {t('totalShifts')}</p></div>
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">{translate('Shift Management')}</h1>
+          <p className="mt-1 text-xs text-muted-foreground">{filteredShifts.length} / {shifts.length} {t('totalShifts')}</p>
+        </div>
+        
+        {/* Capability-gated Action Buttons (UX-P1-01) */}
         <div className="flex gap-2">
-          <Button className="hidden sm:flex" variant="outline" onClick={() => setIsImportExportOpen(true)}>
-            <Upload className="h-4 w-4 mr-2" />
-            Import/Export
-          </Button>
-          <MobileActionMenu
-            breakpoint="sm"
-            actions={[{ key: 'import', label: 'Import/Export', icon: <Upload className="h-4 w-4" />, onClick: () => setIsImportExportOpen(true) }]}
-          />
-          <Button disabled={!canEdit} onClick={handleCreate} data-testid="add-shift-btn">
-            <Plus className="h-4 w-4 mr-2" />
-            <span className="hidden sm:inline">Add Shift</span>
-            <span className="sm:hidden">Add</span>
-          </Button>
+          {canImportExport && (
+            <>
+              <Button className="hidden sm:flex" variant="outline" onClick={() => setIsImportExportOpen(true)}>
+                <Upload className="h-4 w-4 mr-2" />
+                Import/Export
+              </Button>
+              <MobileActionMenu
+                breakpoint="sm"
+                actions={[{ key: 'import', label: 'Import/Export', icon: <Upload className="h-4 w-4" />, onClick: () => setIsImportExportOpen(true) }]}
+              />
+            </>
+          )}
+          {canCreate && (
+            <Button onClick={handleCreate} data-testid="add-shift-btn">
+              <Plus className="h-4 w-4 mr-2" />
+              <span className="hidden sm:inline">Add Shift</span>
+              <span className="sm:hidden">Add</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -317,15 +377,266 @@ export function ShiftList() {
         />
       )}
 
-      <div className="[&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2 [&_table]:text-xs [&_tbody_tr]:h-[62px]">
-      <DataTable
-        data={sortedShifts}
-        columns={columns}
-        searchPlaceholder={t('search')}
-        filterComponent={<div className="flex flex-wrap items-center gap-2"><label className="flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600"><span>{t('status')}</span><select aria-label={t('status')} value={statusFilter} onChange={event => setStatusFilter(event.target.value as Shift['status'] | 'all')} className="max-w-40 bg-transparent font-medium text-slate-800 outline-none"><option value="all">{t('all')} ({shifts.length})</option>{statusValues.map(status => <option key={status} value={status}>{translate(status === 'live' ? 'liveStatus' : status)} ({shifts.filter(shift => shift.status === status).length})</option>)}</select></label><Button variant="outline" size="sm" onClick={() => setSortDescending(value => !value)} aria-label={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`} title={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`}><ArrowDownUp className="mr-1.5 h-4 w-4" />{t('date')} {sortDescending ? '↓' : '↑'}</Button></div>}
-        searchableText={row => [row.title, row.id, row.date, row.start_time, row.studio, getBrandName(row.brand_id), getPlatformName(row.platform_id), getCampaignName(row.campaign_id), ...(['host', 'support', 'technical'] as const).flatMap(role => getRolePeople(row, role))].filter(Boolean).join(' ')}
-        emptyMessage={t('noData')}
-      />
+      {/* DESKTOP VIEW: Data Table (UX-P1-02: Hidden on mobile < md) */}
+      <div className="hidden md:block [&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2 [&_table]:text-xs [&_tbody_tr]:h-[62px]">
+        <DataTable
+          data={sortedShifts}
+          columns={columns}
+          searchPlaceholder={t('search')}
+          filterComponent={
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600">
+                <span>{t('status')}</span>
+                <select
+                  aria-label={t('status')}
+                  value={statusFilter}
+                  onChange={event => { setStatusFilter(event.target.value as Shift['status'] | 'all'); setMobilePage(1); }}
+                  className="max-w-40 bg-transparent font-medium text-slate-800 outline-none"
+                >
+                  <option value="all">{t('all')} ({shifts.length})</option>
+                  {statusValues.map(status => (
+                    <option key={status} value={status}>
+                      {translate(status === 'live' ? 'liveStatus' : status)} ({shifts.filter(shift => shift.status === status).length})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSortDescending(value => !value)}
+                aria-label={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`}
+                title={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`}
+              >
+                <ArrowDownUp className="mr-1.5 h-4 w-4" />
+                {t('date')} {sortDescending ? '↓' : '↑'}
+              </Button>
+            </div>
+          }
+          searchableText={row => [
+            row.title, row.id, row.date, row.start_time, row.studio,
+            getBrandName(row.brand_id), getPlatformName(row.platform_id), getCampaignName(row.campaign_id),
+            ...(['host', 'support', 'technical'] as const).flatMap(role => getRolePeople(row, role))
+          ].filter(Boolean).join(' ')}
+          emptyMessage={t('noData')}
+        />
+      </div>
+
+      {/* MOBILE VIEW: Compact Shift Cards with 10/20/50 pagination (UX-P1-02: 390px mobile scan) */}
+      <div className="block md:hidden space-y-3" data-testid="shifts-mobile-container">
+        {/* Mobile Search & Filter Toolbar */}
+        <div className="flex flex-col gap-2 bg-white p-2.5 rounded-lg border border-slate-200 shadow-xs">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input
+              type="text"
+              placeholder={t('search')}
+              value={searchQuery}
+              onChange={e => { setSearchQuery(e.target.value); setMobilePage(1); }}
+              className="pl-8 h-9 text-xs"
+              data-testid="shifts-mobile-search"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              aria-label={t('status')}
+              value={statusFilter}
+              onChange={event => setStatusFilter(event.target.value as Shift['status'] | 'all')}
+              className="flex-1 h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none"
+              data-testid="shifts-mobile-status-filter"
+            >
+              <option value="all">{t('all')} ({shifts.length})</option>
+              {statusValues.map(status => (
+                <option key={status} value={status}>
+                  {translate(status === 'live' ? 'liveStatus' : status)} ({shifts.filter(shift => shift.status === status).length})
+                </option>
+              ))}
+            </select>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 px-2.5 text-xs shrink-0"
+              onClick={() => setSortDescending(value => !value)}
+              aria-label={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`}
+            >
+              <ArrowDownUp className="mr-1 h-3.5 w-3.5" />
+              {t('date')} {sortDescending ? '↓' : '↑'}
+            </Button>
+          </div>
+        </div>
+
+        {/* Compact Cards List */}
+        {mobilePaginatedShifts.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-slate-200 p-8 text-center text-xs text-muted-foreground">
+            {t('noData')}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {mobilePaginatedShifts.map(shift => {
+              const capacities = getShiftRoleCapacities(shift, registrations)
+              const brand = getBrandName(shift.brand_id)
+              const platform = getPlatformName(shift.platform_id)
+              const campaign = getCampaignName(shift.campaign_id)
+
+              return (
+                <div
+                  key={shift.id}
+                  className="rounded-lg border border-slate-200 bg-white p-3 shadow-xs space-y-2.5 transition-colors hover:border-slate-300"
+                  data-testid={`shift-mobile-card-${shift.id}`}
+                >
+                  {/* Top Line: Brand, Platform, Studio & Status Badge */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-semibold text-sm text-slate-900 truncate">
+                          {brand}
+                        </span>
+                        <span className="text-slate-400 text-xs">•</span>
+                        <span className="text-xs font-medium text-slate-600 truncate">
+                          {platform}
+                        </span>
+                        {shift.studio && (
+                          <span className="text-[10px] text-muted-foreground bg-slate-100 rounded px-1 py-0.5">
+                            {shift.studio}
+                          </span>
+                        )}
+                      </div>
+                      {shift.title && (
+                        <p className="text-xs text-slate-500 truncate mt-0.5 font-normal">{shift.title}</p>
+                      )}
+                    </div>
+                    <Badge variant={statusVariants[shift.status] || 'secondary'} className="capitalize shrink-0 text-[11px] font-medium">
+                      {translate(shift.status === 'live' ? 'liveStatus' : shift.status)}
+                    </Badge>
+                  </div>
+
+                  {/* Middle Line: Date, Time & Campaign */}
+                  <div className="flex items-center justify-between text-xs text-slate-600 gap-2 pt-1 border-t border-slate-100">
+                    <div className="flex items-center gap-1.5 font-medium text-slate-800">
+                      <span>{shift.date}</span>
+                      <span className="text-slate-400">•</span>
+                      <span>{formatShiftTimeRange(shift)}</span>
+                    </div>
+                    {campaign && (
+                      <span className="text-[11px] text-muted-foreground truncate max-w-[120px]" title={campaign}>
+                        {campaign}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Bottom Line: Occupancy Chips & Quick View Drilldown */}
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
+                    {/* Staffing Occupancy Chips */}
+                    <div className="flex flex-wrap items-center gap-1" aria-label={t('staffing')}>
+                      {capacities.map(cap => (
+                        <span
+                          key={cap.role}
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                            cap.remaining > 0
+                              ? 'bg-amber-50 text-amber-800 border border-amber-200/60'
+                              : 'bg-emerald-50 text-emerald-800 border border-emerald-200/60'
+                          }`}
+                          title={`${t(cap.role)} ${cap.approved}/${cap.required}`}
+                        >
+                          {cap.role === 'host' ? 'H' : cap.role === 'support' ? 'S' : 'T'} {cap.approved}/{cap.required}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* View Action / Drilldown */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2.5 text-xs font-medium"
+                        onClick={() => setDetailShift(shift)}
+                        data-testid={`view-shift-mobile-${shift.id}`}
+                      >
+                        <Eye className="h-3.5 w-3.5 mr-1" />
+                        {t('viewShiftDetail')}
+                      </Button>
+                      {canEdit && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0"
+                          onClick={() => handleEdit(shift)}
+                          aria-label={t('edit')}
+                        >
+                          <Pencil className="h-3.5 w-3.5 text-slate-600" />
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0 text-red-600 hover:text-red-700"
+                          onClick={() => void requestDelete([shift.id])}
+                          aria-label={t('delete')}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Mobile 10/20/50 Pagination (UX-P1-02) */}
+        {sortedShifts.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 px-1 text-xs text-slate-600" data-testid="shifts-mobile-pagination">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-muted-foreground">{t('show')}:</span>
+              <Select
+                value={String(mobilePageSize)}
+                onValueChange={val => {
+                  setMobilePageSize(Number(val))
+                  setMobilePage(1)
+                }}
+              >
+                <SelectTrigger className="h-8 w-16 text-xs px-2" aria-label="Mobile page size">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground">
+                {mobileStartIndex + 1}–{mobileEndIndex} / {sortedShifts.length}
+              </span>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 min-h-[32px] min-w-[32px]"
+                  disabled={safeMobilePage <= 1}
+                  onClick={() => setMobilePage(p => Math.max(1, p - 1))}
+                  aria-label={t('previousPage')}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 min-h-[32px] min-w-[32px]"
+                  disabled={safeMobilePage >= mobileTotalPages}
+                  onClick={() => setMobilePage(p => Math.min(mobileTotalPages, p + 1))}
+                  aria-label={t('nextPage')}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <ShiftFormDialog
@@ -378,16 +689,18 @@ export function ShiftList() {
         />
       )}
 
-      <ImportExportDialog
-        open={isImportExportOpen}
-        onOpenChange={setIsImportExportOpen}
-        shifts={shifts}
-        brands={brands}
-        platforms={platforms}
-        campaigns={campaigns}
-        users={users}
-        onSuccess={loadData}
-      />
+      {canImportExport && (
+        <ImportExportDialog
+          open={isImportExportOpen}
+          onOpenChange={setIsImportExportOpen}
+          shifts={shifts}
+          brands={brands}
+          platforms={platforms}
+          campaigns={campaigns}
+          users={users}
+          onSuccess={loadData}
+        />
+      )}
 
       <LifecycleActionDialog
         open={!!deleteId}

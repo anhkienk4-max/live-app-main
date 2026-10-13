@@ -10,8 +10,8 @@
   },
   "repository": {
     "branch": "integration/rc14-rc15-rc16-prod",
-    "head": "5a0e02dd8641c5124120547d74c2f74a6f80d647",
-    "origin_main": "d166bd74eb77692a7609cc6c9f3e510053da5edf",
+    "head": "7fa8b005e6351973b035530aff29822edd0aad39",
+    "origin_main": "a3cc28ab5c5a212da73af6ef631f5550c7a3a274",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-prod-integration"
   },
   "hardening": {
@@ -90,9 +90,9 @@
         "lib": 191,
         "scripts": 18,
         "supabase": 87,
-        "tests": 186
+        "tests": 189
       },
-      "total": 688
+      "total": 691
     },
     "tests": {
       "files": [
@@ -239,6 +239,7 @@
         "tests/spatial-ocr-geometry.test.ts",
         "tests/staffing-safe-projection.test.ts",
         "tests/staging-release-blockers.integration.test.ts",
+        "tests/storage-hydration-regression.test.ts",
         "tests/supabase-master-data-runtime.test.ts",
         "tests/supabase-p1b-migration-contract.test.ts",
         "tests/supabase-p1c-shift-lifecycle-contract.test.ts",
@@ -257,7 +258,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 160
+      "count": 161
     },
     "migrations": {
       "files": [
@@ -344,5 +345,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-12T21:49:59+07:00"
+  "synced_at": "2026-10-13T14:16:48+07:00"
 }

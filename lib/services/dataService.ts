@@ -712,7 +712,7 @@ export const currentUserService = {
       return authenticatedBusinessUser.id
     }
     if (typeof window === 'undefined') return '1'
-    if (process.env.NEXT_PUBLIC_ENABLE_MOCK_USER_SWITCHER !== 'true') return '1'
+    if (process.env.NEXT_PUBLIC_ENABLE_MOCK_USER_SWITCHER !== 'true' && getAuthMode() !== 'mock') return '1'
     return window.localStorage.getItem('livestream-ops-current-user') || '1'
   },
 

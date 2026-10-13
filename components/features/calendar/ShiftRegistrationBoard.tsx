@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { format } from 'date-fns'
-import { Download, Filter, LayoutGrid, List, Lock, LockOpen, RotateCcw, Search, Table2 } from 'lucide-react'
+import { Download, Filter, LayoutGrid, List, Lock, LockOpen, RotateCcw, Search, Table2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react'
 import {
   brandService,
   campaignService,
@@ -129,6 +129,8 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const [loadError, setLoadError] = React.useState<unknown>(null)
   const [busyId, setBusyId] = React.useState<string | null>(null)
   const [removalTarget, setRemovalTarget] = React.useState<{ registration: ShiftRegistration; kind: 'cancel' | 'unassign' } | null>(null)
+  const [boardPage, setBoardPage] = React.useState(1)
+  const [boardPageSize, setBoardPageSize] = React.useState(10)
   const [viewMode, setViewMode] = React.useState<ViewMode>('card')
   const [detailShift, setDetailShift] = React.useState<Shift | null>(null)
   const [showFilters, setShowFilters] = React.useState(false)
@@ -315,6 +317,21 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   ].reduce((count, values) => count + values.length, 0) + (filters.search.trim() ? 1 : 0) + (filters.time === 'all' ? 0 : 1)
   const hasActiveFilters = activeFilterCount > 0
 
+  const totalOpenPages = Math.ceil(visibleShifts.length / boardPageSize) || 1
+  const totalMyPages = Math.ceil(visibleMyEntries.length / boardPageSize) || 1
+  const currentTotalPages = mode === 'mine' ? totalMyPages : totalOpenPages
+  const safeBoardPage = Math.min(Math.max(1, boardPage), currentTotalPages)
+
+  const paginatedOpenShifts = React.useMemo(() => {
+    const start = (safeBoardPage - 1) * boardPageSize
+    return visibleShifts.slice(start, start + boardPageSize)
+  }, [visibleShifts, safeBoardPage, boardPageSize])
+
+  const paginatedMyEntries = React.useMemo(() => {
+    const start = (safeBoardPage - 1) * boardPageSize
+    return visibleMyEntries.slice(start, start + boardPageSize)
+  }, [visibleMyEntries, safeBoardPage, boardPageSize])
+
   const pendingApprovals = registrations.filter(registration =>
     registration.status === 'pending' &&
     matchesRoleFilter(registration, filters.roles) &&
@@ -335,7 +352,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                 aria-label={t('searchShifts')}
                 className="pl-9"
                 data-testid={`registration-${mode}-search`}
-                onChange={event => setFilters(current => ({ ...current, search: event.target.value }))}
+                onChange={event => { setFilters(current => ({ ...current, search: event.target.value })); setBoardPage(1); }}
                 placeholder={t('searchShifts')}
                 value={filters.search}
               />
@@ -390,7 +407,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                 />
               )}
               <div className="flex items-end">
-                <Button className="w-full" disabled={!hasActiveFilters} onClick={() => setFilters(initialFilters)} size="sm" type="button" variant="outline">
+                <Button className="w-full" disabled={!hasActiveFilters} onClick={() => { setFilters(initialFilters); setBoardPage(1); }} size="sm" type="button" variant="outline">
                   <RotateCcw className="mr-2 h-3 w-3" />{t('resetFilters')}
                 </Button>
               </div>
@@ -453,25 +470,25 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         <Card><CardContent className="py-12 text-center text-muted-foreground">{mode === 'open' ? t('noOpenShifts') : t('noMyShifts')}</CardContent></Card>
       ) : mode === 'mine' ? (
         viewMode === 'table' ? (
-          <MyShiftTable entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+          <MyShiftTable entries={paginatedMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
         ) : viewMode === 'compact' ? (
-          <MyShiftCompactList entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+          <MyShiftCompactList entries={paginatedMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
         ) : (
-          <MyShiftCards entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+          <MyShiftCards entries={paginatedMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
         )
       ) : viewMode === 'table' ? (
         <ShiftSummaryTable
           allShifts={shifts}
           currentUser={currentUser}
           onRegister={(shiftId, role) => runAction(`${shiftId}-${role}`, () => shiftRegistrationService.register(shiftId, currentUser.id, role), t('registrationPending'), shiftId)}
-          shifts={visibleShifts}
+          shifts={paginatedOpenShifts}
           registrations={registrations}
           roleFilter={filters.roles}
           brands={brands}
           platforms={platforms}
           onManage={setDetailShift}
         />
-      ) : viewMode === 'compact' ? (
+      ) : (
         <CompactShiftList
           allShifts={shifts}
           brands={brands}
@@ -483,159 +500,83 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           platforms={platforms}
           registrations={registrations}
           roleFilter={filters.roles}
-          shifts={visibleShifts}
+          shifts={paginatedOpenShifts}
+          users={users}
+          busyId={busyId}
+          onCancelRegistration={reg => setRemovalTarget({ registration: reg, kind: 'cancel' })}
+          onRemoveAssignment={reg => setRemovalTarget({ registration: reg, kind: 'unassign' })}
+          onAssignManually={async (shiftId, role, userId, version) => {
+            await runAction(
+              `assign-${shiftId}-${role}`,
+              () => shiftRegistrationService.assignManually(shiftId, userId, role, currentUser.id, version),
+              t('registrationApproved'),
+            )
+          }}
+          manualSelections={manualSelections}
+          setManualSelections={setManualSelections}
         />
-      ) : (
-        <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2 min-[1900px]:grid-cols-3">
-          {visibleShifts.map(shift => {
-            const shiftRegistrations = registrations.filter(registration => registration.shift_id === shift.id)
-            const mine = shiftRegistrations.filter(registration =>
-              registration.user_id === currentUser.id &&
-              !['cancelled', 'rejected', 'removed'].includes(registration.status)
-            )
-            const visibleCapacities = getVisibleRoleCapacities(capacities[shift.id] || [], filters.roles)
-            const fullyStaffed = visibleCapacities.every(capacity => capacity.approved >= capacity.required)
-            return (
-              <Card key={shift.id} className="shadow-sm border-border overflow-hidden">
-                <CardHeader className="p-4 pb-2 bg-muted/10 border-b">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <CardTitle className="text-lg">{shift.title || `${brandName(brands, shift.brand_id)} live`}</CardTitle>
-                      <p className="mt-1 text-sm text-muted-foreground">{format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} · {formatShiftTimeRange(shift)}</p>
-                      {formatShiftEndDate(shift) && <p className="mt-1 text-xs text-indigo-700">{t('endsNextDay')}: {displayDate(formatShiftEndDate(shift)!)}</p>}
-                    </div>
-                    <Badge variant={shift.registration_locked ? 'secondary' : 'outline'}>{fullyStaffed ? t('full') : shift.registration_locked ? t('closed') : t('openShifts')}</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-4 space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <Button
-                      data-testid={`open-shift-detail-card-${shift.id}`}
-                      onClick={() => setDetailShift(shift)}
-                      size="sm"
-                      variant="secondary"
-                      className="h-8 text-xs font-medium"
-                    >
-                      {t('viewShiftDetail')}
-                    </Button>
-                    <ShiftRegistrationActions
-                      allShifts={shifts}
-                      compact
-                      currentUser={currentUser}
-                      onRegister={role => runAction(`${shift.id}-${role}`, () => shiftRegistrationService.register(shift.id, currentUser.id, role), t('registrationPending'), shift.id)}
-                      registrations={registrations}
-                      shift={shift}
-                    />
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-sm">
-                    <Info label={t('brand')} value={brandName(brands, shift.brand_id)} />
-                    <Info label={t('platform')} value={platformName(platforms, shift.platform_id)} />
-                    <Info label={t('campaign')} value={campaignName(campaigns, shift.campaign_id)} />
-                  </div>
-                  <div className="space-y-2">
-                    {visibleCapacities.map(capacity => {
-                      const myRegistration = mine.find(registration => registration.operational_role === capacity.role)
-                      const assignmentKey = `${shift.id}-${capacity.role}`
-                      const approvedAssignments = shiftRegistrations.filter(registration =>
-                        registration.operational_role === capacity.role && isStaffedRegistration(registration)
-                      )
-                      const eligibleUsers = users.filter(user =>
-                        user.operational_roles?.includes(capacity.role) &&
-                        !shiftRegistrations.some(registration =>
-                          registration.user_id === user.id &&
-                          registration.operational_role === capacity.role &&
-                          (registration.status === 'pending' || isStaffedRegistration(registration))
-                        )
-                      )
-                      const canManageAssignments = hasPermission(currentUser, 'shifts.approve_registration')
-                      return (
-                        <div key={capacity.role} className="space-y-3 rounded-lg border p-4">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-medium">{t(capacity.role)}</span>
-                                <Badge variant={capacity.remaining > 0 ? 'outline' : 'secondary'}>{capacity.approved}/{capacity.required}</Badge>
-                              </div>
-                              <Badge variant={capacity.remaining > 0 ? 'outline' : 'secondary'}>{capacity.remaining > 0 ? t('available') : t('full')}</Badge>
-                            </div>
-                            <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                              <RoleSummary label={t('confirmedCount')} value={capacity.approved} />
-                              <RoleSummary label={t('pendingCount')} value={capacity.pending} />
-                              <RoleSummary label={t('missingCount')} value={capacity.remaining} />
-                            </div>
-                          </div>
-                          {myRegistration && (
-                            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                              <Badge className={isStaffedRegistration(myRegistration) ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{registrationLabel(myRegistration, t)}</Badge>
-                              {myRegistration.source === 'manual_assignment' || myRegistration.status === 'manually_assigned' ? (
-                                <Badge variant="outline">{t('assignedByManager')}</Badge>
-                              ) : hasPermission(currentUser, 'shifts.cancel_registration') && !shift.registration_locked ? (
-                                <Button size="sm" variant="outline" disabled={busyId === myRegistration.id} onClick={() => setRemovalTarget({ registration: myRegistration, kind: 'cancel' })}>{t('cancelRegistration')}</Button>
-                              ) : null}
-                            </div>
-                          )}
-                          {canManageAssignments && (
-                            <div className="space-y-2 border-t pt-3">
-                              {approvedAssignments.map(registration => (
-                                <div key={registration.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                                  <span className="min-w-0 font-medium">{users.find(user => user.id === registration.user_id)?.full_name || registration.user_id}<Badge className="ml-2 whitespace-nowrap" variant="outline">{registrationLabel(registration, t)}</Badge></span>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    disabled={busyId === `remove-${registration.id}` || shift.registration_locked}
-                                    onClick={() => setRemovalTarget({ registration, kind: 'unassign' })}
-                                  >
-                                    {t('removeAssignment')}
-                                  </Button>
-                                </div>
-                              ))}
-                              {!shift.registration_locked && capacity.approved < capacity.required && (
-                                <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto]">
-                                  <Select value={manualSelections[assignmentKey] || ''} onValueChange={value => setManualSelections(current => ({ ...current, [assignmentKey]: value }))}>
-                                    <SelectTrigger className="min-w-0 flex-1"><SelectValue placeholder={t('chooseStaff')} /></SelectTrigger>
-                                    <SelectContent>{eligibleUsers.map(user => <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>)}</SelectContent>
-                                  </Select>
-                                  <Button
-                                    size="sm"
-                                    disabled={!manualSelections[assignmentKey] || busyId === `assign-${assignmentKey}`}
-                                    onClick={() => runAction(
-                                      `assign-${assignmentKey}`,
-                                      () => shiftRegistrationService.assignManually(shift.id, manualSelections[assignmentKey], capacity.role, currentUser.id, shift.version),
-                                      t('registrationApproved'),
-                                    )}
-                                  >
-                                    {t('assignStaff')}
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                  {(hasPermission(currentUser, 'shifts.export') || hasPermission(currentUser, 'shifts.lock')) && (
-                    <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
-                      {hasPermission(currentUser, 'shifts.export') && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => exportShiftStaffingToExcel(shift, shiftRegistrations, new Map(users.map(user => [user.id, user.full_name])))}
-                        >
-                          <Download className="mr-1 h-4 w-4" />{t('exportStaffing')}
-                        </Button>
-                      )}
-                      {hasPermission(currentUser, 'shifts.lock') && (shift.registration_locked
-                        ? <Button size="sm" variant="outline" disabled={busyId === `lock-${shift.id}` || shift.status !== 'scheduled'} onClick={() => runAction(`lock-${shift.id}`, () => shiftService.reopen(shift.id, undefined, shift.version), t('reopenShift'))}><LockOpen className="mr-1 h-4 w-4" />{t('reopenShift')}</Button>
-                        : <Button size="sm" variant="outline" disabled={busyId === `lock-${shift.id}`} onClick={() => runAction(`lock-${shift.id}`, () => shiftService.lock(shift.id, undefined, shift.version), t('lockShift'))}><Lock className="mr-1 h-4 w-4" />{t('lockShift')}</Button>)}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )
-          })}
+      )}
+
+      {/* Staffing 10/20/50 Pagination Controls (UX-P1-03) */}
+      {(mode === 'mine' ? visibleMyEntries.length > 0 : visibleShifts.length > 0) && (
+        <div className="flex flex-wrap items-center justify-between gap-3 px-1 py-3 text-xs text-muted-foreground border-t" data-testid="staffing-pagination">
+          <div className="flex items-center gap-2">
+            <span>{t('show')}:</span>
+            <Select
+              value={String(boardPageSize)}
+              onValueChange={val => {
+                setBoardPageSize(Number(val))
+                setBoardPage(1)
+              }}
+            >
+              <SelectTrigger className="h-8 w-16 text-xs px-2" aria-label="Staffing page size">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="20">20</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+              </SelectContent>
+            </Select>
+            <span>{t('recordsPerPage')}</span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span>
+              {mode === 'mine'
+                ? `${(boardPage - 1) * boardPageSize + 1}–${Math.min(boardPage * boardPageSize, visibleMyEntries.length)} / ${visibleMyEntries.length} ${t('myShifts').toLowerCase()}`
+                : `${(boardPage - 1) * boardPageSize + 1}–${Math.min(boardPage * boardPageSize, visibleShifts.length)} / ${visibleShifts.length} ${t('openShifts').toLowerCase()}`
+              }
+            </span>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 min-h-[32px] min-w-[32px]"
+                disabled={safeBoardPage <= 1}
+                onClick={() => setBoardPage(p => Math.max(1, p - 1))}
+                aria-label={t('previousPage')}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="px-1 font-medium text-foreground">
+                {safeBoardPage} / {currentTotalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 min-h-[32px] min-w-[32px]"
+                disabled={safeBoardPage >= currentTotalPages}
+                onClick={() => setBoardPage(p => Math.min(mode === 'mine' ? totalMyPages : totalOpenPages, p + 1))}
+                aria-label={t('nextPage')}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </div>
       )}
+
       {detailShift && (
         <ShiftDetailModal
           open
@@ -733,9 +674,16 @@ function CompactShiftList({
   brands,
   platforms,
   campaigns,
+  users,
   currentUser,
   onRegister,
   onManage,
+  busyId,
+  onCancelRegistration,
+  onRemoveAssignment,
+  onAssignManually,
+  manualSelections,
+  setManualSelections,
 }: {
   allShifts: Shift[]
   shifts: Shift[]
@@ -745,30 +693,256 @@ function CompactShiftList({
   brands: Brand[]
   platforms: Platform[]
   campaigns: Campaign[]
+  users?: User[]
   currentUser: User
   onRegister: (shiftId: string, role: OperationalRole) => Promise<void>
   onManage: (shift: Shift) => void
+  busyId?: string | null
+  onCancelRegistration?: (registration: ShiftRegistration) => void
+  onRemoveAssignment?: (registration: ShiftRegistration) => void
+  onAssignManually?: (shiftId: string, role: OperationalRole, userId: string, version?: number) => Promise<void>
+  manualSelections?: Record<string, string>
+  setManualSelections?: React.Dispatch<React.SetStateAction<Record<string, string>>>
 }) {
   const { t } = useTranslation()
-  return <div className="space-y-3">{shifts.map(shift => {
-    const roleValue = (role: OperationalRole) => {
-      const capacity = capacities[shift.id]?.find(item => item.role === role)
-      return `${capacity?.approved || 0}/${capacity?.required || 0}`
-    }
-    const visibleRoles = getVisibleOperationalRoles(roleFilter)
-    const pending = registrations.filter(item => item.shift_id === shift.id && item.status === 'pending' && matchesRoleFilter(item, roleFilter)).length
-    return <Card key={shift.id}><CardContent className="grid gap-3 pt-5 md:grid-cols-[minmax(220px,1.5fr)_repeat(3,minmax(90px,.6fr))_auto] md:items-center">
-      <div className="min-w-0"><p className="truncate font-semibold">{shift.title || `${brandName(brands, shift.brand_id)} live`}</p><p className="text-sm text-muted-foreground">{shift.date} · {formatShiftTimeRange(shift)} · {platformName(platforms, shift.platform_id)}</p><p className="truncate text-xs text-muted-foreground">{campaignName(campaigns, shift.campaign_id)}</p></div>
-      {visibleRoles.map(role => <Info key={role} label={t(role)} value={roleValue(role)} />)}
-      <div className="flex items-center gap-2 md:justify-end">
-        <Badge variant={pending ? 'outline' : 'secondary'}>{t('pending')}: {pending}</Badge>
-        <ShiftRegistrationActions allShifts={allShifts} compact currentUser={currentUser} onRegister={role => onRegister(shift.id, role)} registrations={registrations} shift={shift} />
-        <Button data-testid={`open-shift-detail-compact-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button>
-      </div>
-    </CardContent></Card>
-  })}</div>
-}
+  const [expandedIds, setExpandedIds] = React.useState<Set<string>>(new Set())
 
+  const toggleExpand = (id: string) => {
+    setExpandedIds(current => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  return (
+    <div className="space-y-2.5">
+      {shifts.map(shift => {
+        const shiftRegistrations = registrations.filter(r => r.shift_id === shift.id)
+        const mine = shiftRegistrations.filter(r =>
+          r.user_id === currentUser.id &&
+          !['cancelled', 'rejected', 'removed'].includes(r.status)
+        )
+        const myRegistration = mine[0]
+        const visibleCapacities = getVisibleRoleCapacities(capacities[shift.id] || [], roleFilter)
+        const fullyStaffed = visibleCapacities.every(c => c.approved >= c.required)
+        const totalMissing = visibleCapacities.reduce((acc, c) => acc + (c.remaining > 0 ? c.remaining : 0), 0)
+        const pending = shiftRegistrations.filter(item => item.status === 'pending' && matchesRoleFilter(item, roleFilter)).length
+        const isExpanded = expandedIds.has(shift.id)
+        const canManageAssignments = hasPermission(currentUser, 'shifts.approve_registration')
+
+        return (
+          <Card key={shift.id} className="overflow-hidden border border-slate-200 bg-white shadow-xs transition-colors hover:border-slate-300" data-testid={`open-shift-card-${shift.id}`}>
+            <CardContent className="p-3.5 space-y-2.5">
+              {/* Header: Title, Brand, Platform, Studio, Date, Time & Status */}
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-semibold text-sm text-foreground truncate">
+                      {shift.title || `${brandName(brands, shift.brand_id)} live`}
+                    </span>
+                    <span className="text-muted-foreground text-xs">•</span>
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {brandName(brands, shift.brand_id)}
+                    </span>
+                    <span className="text-muted-foreground text-xs">•</span>
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {platformName(platforms, shift.platform_id)}
+                    </span>
+                    {shift.studio && (
+                      <span className="text-[10px] text-muted-foreground bg-muted rounded px-1.5 py-0.5">
+                        {shift.studio}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} · {formatShiftTimeRange(shift)}
+                    {campaignName(campaigns, shift.campaign_id) && ` · ${campaignName(campaigns, shift.campaign_id)}`}
+                  </p>
+                </div>
+
+                {/* Status Badges */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {fullyStaffed ? (
+                    <Badge variant="secondary" className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs">
+                      {t('fullyStaffed')}
+                    </Badge>
+                  ) : shift.registration_locked ? (
+                    <Badge variant="outline" className="text-xs text-muted-foreground">
+                      {t('closed')}
+                    </Badge>
+                  ) : totalMissing > 0 ? (
+                    <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800 text-xs font-medium">
+                      {t('needsStaffing')}: {totalMissing}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-xs">
+                      {t('openShifts')}
+                    </Badge>
+                  )}
+                  {pending > 0 && (
+                    <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-800 text-xs">
+                      {t('pending')}: {pending}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              {/* Occupancy Chips and Action Row */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                {/* Staffing Occupancy Chips */}
+                <div className="flex flex-wrap items-center gap-1.5" aria-label={t('staffing')}>
+                  {visibleCapacities.map(cap => {
+                    const isFull = cap.approved >= cap.required
+                    return (
+                      <span
+                        key={cap.role}
+                        className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${
+                          isFull
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            : 'bg-amber-50 text-amber-800 border border-amber-200'
+                        }`}
+                        title={`${t(cap.role)}: ${cap.approved}/${cap.required}${cap.pending ? ` (${cap.pending} ${t('pending')})` : ''}`}
+                      >
+                        <span>{cap.role === 'host' ? t('host') : cap.role === 'support' ? t('support') : t('technical')}</span>
+                        <span className="font-semibold">{cap.approved}/{cap.required}</span>
+                      </span>
+                    )
+                  })}
+                </div>
+
+                {/* Primary Actions: Quick Register & View Details */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {myRegistration && (
+                    <div className="flex items-center gap-1">
+                      <Badge className={isStaffedRegistration(myRegistration) ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>
+                        {registrationLabel(myRegistration, t)}
+                      </Badge>
+                      {hasPermission(currentUser, 'shifts.cancel_registration') && !shift.registration_locked && onCancelRegistration && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs"
+                          disabled={busyId === myRegistration.id}
+                          onClick={() => onCancelRegistration(myRegistration)}
+                        >
+                          {t('cancelRegistration')}
+                        </Button>
+                      )}
+                    </div>
+                  )}
+
+                  <ShiftRegistrationActions
+                    allShifts={allShifts}
+                    compact
+                    currentUser={currentUser}
+                    onRegister={role => onRegister(shift.id, role)}
+                    registrations={registrations}
+                    shift={shift}
+                  />
+
+                  <Button
+                    data-testid={`open-shift-detail-compact-${shift.id}`}
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs font-medium"
+                    onClick={() => onManage(shift)}
+                  >
+                    {t('viewDetails')}
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 w-8 p-0"
+                    onClick={() => toggleExpand(shift.id)}
+                    aria-label={isExpanded ? 'Collapse' : 'Expand'}
+                    title={isExpanded ? 'Collapse details' : 'Expand details'}
+                  >
+                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Expandable Section: Roster details & Leader manual assignment */}
+              {isExpanded && (
+                <div className="pt-2 border-t border-slate-100 space-y-3 bg-slate-50/60 p-3 rounded-md text-xs">
+                  {visibleCapacities.map(capacity => {
+                    const assignmentKey = `${shift.id}-${capacity.role}`
+                    const approvedAssignments = shiftRegistrations.filter(r =>
+                      r.operational_role === capacity.role && isStaffedRegistration(r)
+                    )
+                    const eligibleUsers = (users || []).filter(u =>
+                      u.operational_roles?.includes(capacity.role) &&
+                      !shiftRegistrations.some(r =>
+                        r.user_id === u.id &&
+                        r.operational_role === capacity.role &&
+                        (r.status === 'pending' || isStaffedRegistration(r))
+                      )
+                    )
+
+                    return (
+                      <div key={capacity.role} className="space-y-1.5 border-b pb-2 last:border-b-0 last:pb-0">
+                        <div className="flex items-center justify-between font-medium">
+                          <span className="capitalize">{t(capacity.role)} ({capacity.approved}/{capacity.required})</span>
+                          <span className="text-muted-foreground">
+                            {approvedAssignments.length > 0
+                              ? approvedAssignments.map(a => users?.find(u => u.id === a.user_id)?.full_name || a.user_id).join(', ')
+                              : t('notAssigned')}
+                          </span>
+                        </div>
+
+                        {canManageAssignments && approvedAssignments.map(reg => (
+                          <div key={reg.id} className="flex items-center justify-between text-[11px] text-muted-foreground pl-2">
+                            <span>{users?.find(u => u.id === reg.user_id)?.full_name || reg.user_id}</span>
+                            {onRemoveAssignment && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 text-[10px] text-red-600 hover:text-red-700"
+                                disabled={busyId === `remove-${reg.id}` || shift.registration_locked}
+                                onClick={() => onRemoveAssignment(reg)}
+                              >
+                                {t('removeAssignment')}
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+
+                        {canManageAssignments && !shift.registration_locked && capacity.approved < capacity.required && manualSelections && setManualSelections && onAssignManually && (
+                          <div className="flex items-center gap-2 pt-1">
+                            <Select
+                              value={manualSelections[assignmentKey] || ''}
+                              onValueChange={value => setManualSelections(current => ({ ...current, [assignmentKey]: value }))}
+                            >
+                              <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder={t('chooseStaff')} /></SelectTrigger>
+                              <SelectContent>
+                                {eligibleUsers.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs"
+                              disabled={!manualSelections[assignmentKey] || busyId === `assign-${assignmentKey}`}
+                              onClick={() => onAssignManually(shift.id, capacity.role, manualSelections[assignmentKey], shift.version)}
+                            >
+                              {t('assignStaff')}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )
+      })}
+    </div>
+  )
+}
 function ShiftSummaryTable({
   allShifts,
   currentUser,
