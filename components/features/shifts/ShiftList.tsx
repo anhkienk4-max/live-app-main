@@ -1,4 +1,6 @@
-﻿'use client'
+'use client'
+
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 
 import * as React from 'react'
 import { shiftService, brandService, platformService, campaignService, userService, shiftRegistrationService, getShiftRoleCapacities } from '@/lib/services/dataService'
@@ -43,6 +45,8 @@ export function ShiftList() {
   const [users, setUsers] = React.useState<User[]>([])
   const [templates, setTemplates] = React.useState<ShiftTemplate[]>([])
   const [loading, setLoading] = React.useState(true)
+  const [pendingBulkStatus, setPendingBulkStatus] = React.useState<'scheduled' | 'completed' | null>(null)
+  const [isBulkUpdating, setIsBulkUpdating] = React.useState(false)
   const [loadError, setLoadError] = React.useState<unknown>(null)
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   
@@ -63,6 +67,26 @@ export function ShiftList() {
   const [sortDescending, setSortDescending] = React.useState(false)
   const [mobilePage, setMobilePage] = React.useState(1)
   const [mobilePageSize, setMobilePageSize] = React.useState(10)
+  const [visibleShifts, setVisibleShifts] = React.useState<Shift[]>([])
+  const [filteredTableShifts, setFilteredTableShifts] = React.useState<Shift[]>([])
+
+  const handleVisibleDataChange = React.useCallback((next: Shift[]) => {
+    setVisibleShifts(prev => {
+      if (prev.length === next.length && prev.every((s, i) => s.id === next[i]?.id)) {
+        return prev
+      }
+      return next
+    })
+  }, [])
+
+  const handleFilteredDataChange = React.useCallback((next: Shift[]) => {
+    setFilteredTableShifts(prev => {
+      if (prev.length === next.length && prev.every((s, i) => s.id === next[i]?.id)) {
+        return prev
+      }
+      return next
+    })
+  }, [])
 
   const handleStatusFilterChange = React.useCallback((status: Shift['status'] | 'all') => {
     setStatusFilter(status)
@@ -250,23 +274,24 @@ export function ShiftList() {
     setShowBulkActions(newSet.size > 0)
   }
 
-  const selectedFilteredShifts = React.useMemo(
-    () => sortedShifts.filter(s => selectedIds.has(s.id)),
-    [sortedShifts, selectedIds]
-  )
+  const selectedFilteredShifts = React.useMemo(() => {
+    const validIds = new Set(filteredTableShifts.length > 0 ? filteredTableShifts.map(s => s.id) : sortedShifts.map(s => s.id))
+    return sortedShifts.filter(s => selectedIds.has(s.id) && validIds.has(s.id))
+  }, [sortedShifts, selectedIds, filteredTableShifts])
 
-  const allFilteredSelected = sortedShifts.length > 0 && selectedFilteredShifts.length === sortedShifts.length
-  const someFilteredSelected = selectedFilteredShifts.length > 0 && selectedFilteredShifts.length < sortedShifts.length
+  const allPageSelected = visibleShifts.length > 0 && visibleShifts.every(s => selectedIds.has(s.id))
+  const somePageSelected = visibleShifts.some(s => selectedIds.has(s.id)) && !allPageSelected
+  const allFilteredSelected = filteredTableShifts.length > 0 && filteredTableShifts.every(s => selectedIds.has(s.id))
 
-  const toggleSelectAll = () => {
-    if (allFilteredSelected) {
+  const toggleSelectPage = () => {
+    if (allPageSelected) {
       const next = new Set(selectedIds)
-      sortedShifts.forEach(s => next.delete(s.id))
+      visibleShifts.forEach(s => next.delete(s.id))
       setSelectedIds(next)
       setShowBulkActions(next.size > 0)
     } else {
       const next = new Set(selectedIds)
-      sortedShifts.forEach(s => next.add(s.id))
+      visibleShifts.forEach(s => next.add(s.id))
       setSelectedIds(next)
       setShowBulkActions(true)
     }
@@ -276,9 +301,9 @@ export function ShiftList() {
     ...(canMutate ? [{
       header: () => (
         <Checkbox
-          checked={allFilteredSelected ? true : someFilteredSelected ? 'indeterminate' : false}
-          onCheckedChange={toggleSelectAll}
-          aria-label={t('selectAll')}
+          checked={allPageSelected ? true : somePageSelected ? 'indeterminate' : false}
+          onCheckedChange={toggleSelectPage}
+          aria-label={t('selectAllPage')}
           data-testid="shift-select-all-checkbox"
         />
       ),
@@ -377,19 +402,19 @@ export function ShiftList() {
             <>
               <Button className="hidden sm:flex" variant="outline" onClick={() => setIsImportExportOpen(true)} data-testid="import-export-btn">
                 <Upload className="h-4 w-4 mr-2" />
-                Import/Export
+                {t('importExport')}
               </Button>
               <MobileActionMenu
                 breakpoint="sm"
-                actions={[{ key: 'import', label: 'Import/Export', icon: <Upload className="h-4 w-4" />, onClick: () => setIsImportExportOpen(true) }]}
+                actions={[{ key: 'import', label: t('importExport'), icon: <Upload className="h-4 w-4" />, onClick: () => setIsImportExportOpen(true) }]}
               />
             </>
           )}
           {canCreate && (
             <Button onClick={handleCreate} data-testid="add-shift-btn">
               <Plus className="h-4 w-4 mr-2" />
-              <span className="hidden sm:inline">Add Shift</span>
-              <span className="sm:hidden">Add</span>
+              <span className="hidden sm:inline">{t('addShift')}</span>
+              <span className="sm:hidden">{t('addShift')}</span>
             </Button>
           )}
         </div>
@@ -398,20 +423,61 @@ export function ShiftList() {
       {showBulkActions && (
         <BulkActionsToolbar
           selectedCount={selectedFilteredShifts.length}
-          totalFilteredCount={sortedShifts.length}
+          totalFilteredCount={filteredTableShifts.length || sortedShifts.length}
           onBulkDelete={() => void requestDelete(selectedFilteredShifts.map(s => s.id))}
           onDeselectAll={() => { setSelectedIds(new Set()); setShowBulkActions(false) }}
           shifts={selectedFilteredShifts}
           onUpdate={loadData}
           canDelete={canDelete}
+          onBulkStatus={setPendingBulkStatus}
         />
       )}
 
       {/* DESKTOP VIEW: Data Table (UX-P1-02: Hidden on mobile < md) */}
       <div className="hidden md:block [&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2 [&_table]:text-xs [&_tbody_tr]:h-[62px]">
+        {allPageSelected && filteredTableShifts.length > visibleShifts.length && (
+          <div className="mb-2 p-2.5 bg-slate-50 border border-slate-200 rounded-md text-xs text-slate-700 flex items-center justify-between" data-testid="select-scope-banner">
+            <span>
+              {allFilteredSelected
+                ? t('allFilteredSelected', { count: filteredTableShifts.length })
+                : t('allPageSelected', { count: visibleShifts.length })}
+            </span>
+            {!allFilteredSelected ? (
+              <Button
+                size="sm"
+                variant="link"
+                className="text-xs h-auto p-0 font-medium text-blue-600 hover:text-blue-800"
+                data-testid="select-all-filtered-btn"
+                onClick={() => {
+                  const next = new Set(selectedIds)
+                  filteredTableShifts.forEach(s => next.add(s.id))
+                  setSelectedIds(next)
+                  setShowBulkActions(true)
+                }}
+              >
+                {t('selectAllFiltered', { count: filteredTableShifts.length })}
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="link"
+                className="text-xs h-auto p-0 font-medium text-slate-600 hover:text-slate-800"
+                data-testid="clear-all-filtered-btn"
+                onClick={() => {
+                  setSelectedIds(new Set())
+                  setShowBulkActions(false)
+                }}
+              >
+                {t('clearSelection')}
+              </Button>
+            )}
+          </div>
+        )}
         <DataTable
           data={sortedShifts}
           columns={columns}
+          onVisibleDataChange={handleVisibleDataChange}
+          onFilteredDataChange={handleFilteredDataChange}
           searchPlaceholder={t('search')}
           filterComponent={
             <div className="flex flex-wrap items-center gap-2">
@@ -740,6 +806,63 @@ export function ShiftList() {
         confirmText={deleteImpact?.action === 'delete' ? 'Delete' : 'Cancel shift'}
         onConfirm={handleDelete}
       />
+    
+      {pendingBulkStatus && (
+        <Dialog open onOpenChange={open => { if (!open) setPendingBulkStatus(null) }}>
+          <DialogContent size="sm" data-testid="confirm-bulk-status-dialog">
+            <DialogHeader>
+              <DialogTitle>{t('confirmBulkStatusTitle')}</DialogTitle>
+              <DialogDescription>
+                {t('confirmBulkStatusMessage', {
+                  count: selectedFilteredShifts.length,
+                  status: pendingBulkStatus === 'scheduled' ? t('scheduled') : t('completed'),
+                })}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex justify-end gap-2 mt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid="cancel-bulk-status-btn"
+                disabled={isBulkUpdating}
+                onClick={() => setPendingBulkStatus(null)}
+              >
+                {t('cancel')}
+              </Button>
+              <Button
+                size="sm"
+                data-testid="confirm-bulk-status-btn"
+                disabled={isBulkUpdating}
+                onClick={async () => {
+                  setIsBulkUpdating(true)
+                  try {
+                    const result = await shiftService.bulkUpdateStatus(selectedFilteredShifts, pendingBulkStatus)
+                    await loadData()
+                    if (result.failed === 0) {
+                      toast({ title: 'Success', description: `Updated ${result.succeeded} shifts`, variant: 'success' })
+                      setSelectedIds(new Set())
+                      setShowBulkActions(false)
+                      return
+                    }
+                    const conflicts = result.outcomes.filter(outcome => !outcome.success && outcome.error_message?.includes('STALE_WRITE')).length
+                    toast({
+                      title: result.succeeded > 0 ? 'Partial update' : 'Action failed',
+                      description: `Updated ${result.succeeded} of ${selectedFilteredShifts.length} shifts. ${result.failed} failed${conflicts > 0 ? ` (${conflicts} version conflict)` : ''}: ${result.outcomes.filter(outcome => !outcome.success).map(outcome => outcome.shift_title || outcome.shift_id).join(', ')}`,
+                      variant: 'destructive',
+                    })
+                  } finally {
+                    setIsBulkUpdating(false)
+                    setPendingBulkStatus(null)
+                  }
+                }}
+              >
+                {isBulkUpdating ? '...' : t('confirm')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
     </>
   )
 }

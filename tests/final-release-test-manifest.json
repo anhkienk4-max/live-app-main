@@ -88,7 +88,6 @@
     "tests/preview-loading-performance.test.tsx",
     "tests/production-shell-convergence.test.ts",
     "tests/profile-avatar-storage.test.ts",
-    "tests/storage-hydration-regression.test.ts",
     "tests/rc12-provider-runtime-diagnostics.test.ts",
     "tests/rc12-report-file-provider.test.ts",
     "tests/rc13a-execution-source-routes.test.ts",
@@ -147,6 +146,7 @@
     "tests/spatial-ocr-geometry.test.ts",
     "tests/staffing-safe-projection.test.ts",
     "tests/staging-release-blockers.integration.test.ts",
+    "tests/storage-hydration-regression.test.ts",
     "tests/supabase-master-data-runtime.test.ts",
     "tests/supabase-p1b-migration-contract.test.ts",
     "tests/supabase-p1c-shift-lifecycle-contract.test.ts",
@@ -161,6 +161,7 @@
     "tests/tiktok-layout-independent-ocr.test.ts",
     "tests/timezone-contract.test.ts",
     "tests/ux-import-01.test.tsx",
+    "tests/ux-w1-shifts-and-nav-capability.test.ts",
     "tests/vision-ocr-phase-a.test.ts",
     "tests/vision-ocr-route.test.ts",
     "tests/workflow-restoration.test.ts"

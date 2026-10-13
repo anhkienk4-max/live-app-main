@@ -18,6 +18,9 @@ interface DataTableProps<T> {
   columns: Column<T>[]
   searchPlaceholder?: string
   onSearch?: (query: string) => void
+  onVisibleDataChange?: (visibleRows: T[]) => void
+  onFilteredDataChange?: (filteredRows: T[]) => void
+  onPageChange?: (page: number, totalPages: number) => void
   filterComponent?: React.ReactNode
   searchableText?: (row: T) => string
   emptyMessage?: string
@@ -29,6 +32,9 @@ export function DataTable<T extends { id: string }>({
   columns,
   searchPlaceholder = 'Search...',
   onSearch,
+  onVisibleDataChange,
+  onFilteredDataChange,
+  onPageChange,
   filterComponent,
   searchableText,
   emptyMessage = 'No data available',
@@ -51,10 +57,38 @@ export function DataTable<T extends { id: string }>({
     })
   }, [data, searchQuery, columns, searchableText])
 
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage)
+  const totalPages = Math.max(1, Math.ceil(filteredData.length / itemsPerPage))
   const startIndex = (currentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
   const paginatedData = filteredData.slice(startIndex, endIndex)
+
+  const prevVisibleIdsRef = React.useRef<string>('')
+  const prevFilteredIdsRef = React.useRef<string>('')
+  const prevPageRef = React.useRef<string>('')
+
+  React.useEffect(() => {
+    const ids = paginatedData.map(r => r.id).join(',')
+    if (ids !== prevVisibleIdsRef.current) {
+      prevVisibleIdsRef.current = ids
+      onVisibleDataChange?.(paginatedData)
+    }
+  }, [paginatedData, onVisibleDataChange])
+
+  React.useEffect(() => {
+    const ids = filteredData.map(r => r.id).join(',')
+    if (ids !== prevFilteredIdsRef.current) {
+      prevFilteredIdsRef.current = ids
+      onFilteredDataChange?.(filteredData)
+    }
+  }, [filteredData, onFilteredDataChange])
+
+  React.useEffect(() => {
+    const pageKey = `${currentPage}_${totalPages}`
+    if (pageKey !== prevPageRef.current) {
+      prevPageRef.current = pageKey
+      onPageChange?.(currentPage, totalPages)
+    }
+  }, [currentPage, totalPages, onPageChange])
 
   const handleSearch = (query: string) => {
     setCurrentPage(1)

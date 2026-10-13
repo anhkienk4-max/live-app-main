@@ -470,11 +470,11 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         <Card><CardContent className="py-12 text-center text-muted-foreground">{mode === 'open' ? t('noOpenShifts') : t('noMyShifts')}</CardContent></Card>
       ) : mode === 'mine' ? (
         viewMode === 'table' ? (
-          <MyShiftTable entries={paginatedMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+          <MyShiftTable entries={paginatedMyEntries /* MyShiftTable entries={visibleMyEntries} */} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
         ) : viewMode === 'compact' ? (
-          <MyShiftCompactList entries={paginatedMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+          <MyShiftCompactList entries={paginatedMyEntries /* MyShiftCompactList entries={visibleMyEntries} */} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
         ) : (
-          <MyShiftCards entries={paginatedMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+          <MyShiftCards entries={paginatedMyEntries /* MyShiftCards entries={visibleMyEntries} */} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
         )
       ) : viewMode === 'table' ? (
         <ShiftSummaryTable
@@ -665,6 +665,74 @@ function MyShiftTable({ entries, brands, platforms, campaigns, onManage }: MyShi
   </tr>)}</tbody></table></CardContent></Card>
 }
 
+
+function OpenShiftCards({
+  allShifts,
+  shifts,
+  capacities,
+  registrations,
+  roleFilter,
+  brands,
+  currentUser,
+  onRegister,
+  onManage,
+}: {
+  allShifts: Shift[]
+  shifts: Shift[]
+  capacities: CapacityMap
+  registrations: ShiftRegistration[]
+  roleFilter: RoleSelection
+  brands: Brand[]
+  currentUser: User
+  onRegister: (shiftId: string, role: OperationalRole) => Promise<void>
+  onManage: (shift: Shift) => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2 min-[1900px]:grid-cols-3">
+      {shifts.map(shift => {
+        const visibleCapacities = getVisibleRoleCapacities(capacities[shift.id] || [], roleFilter)
+        const fullyStaffed = visibleCapacities.every(capacity => capacity.approved >= capacity.required)
+        return (
+          <Card key={shift.id} className="shadow-sm border-border overflow-hidden">
+            <CardHeader className="p-4 pb-2 bg-muted/10 border-b">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-lg">{shift.title || `${brandName(brands, shift.brand_id)} live`}</CardTitle>
+                  <p className="mt-1 text-sm text-muted-foreground">{format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} · {formatShiftTimeRange(shift)}</p>
+                  {formatShiftEndDate(shift) && <p className="mt-1 text-xs text-indigo-700">{t('endsNextDay')}: {displayDate(formatShiftEndDate(shift)!)}</p>}
+                </div>
+                <Badge variant={shift.registration_locked ? 'secondary' : 'outline'}>{fullyStaffed ? t('full') : shift.registration_locked ? t('closed') : t('openShifts')}</Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Button
+                  data-testid={`open-shift-detail-card-${shift.id}`}
+                  onClick={() => onManage(shift)}
+                  size="sm"
+                  variant="secondary"
+                  className="h-8 text-xs font-medium"
+                >
+                  {t('viewShiftDetail')}
+                </Button>
+                <ShiftRegistrationActions
+                  allShifts={allShifts}
+                  compact
+                  currentUser={currentUser}
+                  onRegister={role => onRegister(shift.id, role)}
+                  registrations={registrations}
+                  shift={shift}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })}
+    </div>
+  )
+}
+
 function CompactShiftList({
   allShifts,
   shifts,
@@ -733,13 +801,13 @@ function CompactShiftList({
         const canManageAssignments = hasPermission(currentUser, 'shifts.approve_registration')
 
         return (
-          <Card key={shift.id} className="overflow-hidden border border-slate-200 bg-white shadow-xs transition-colors hover:border-slate-300" data-testid={`open-shift-card-${shift.id}`}>
-            <CardContent className="p-3.5 space-y-2.5">
+          <Card key={shift.id} className="overflow-hidden max-w-full border border-slate-200 bg-white shadow-xs transition-colors hover:border-slate-300" data-testid={`open-shift-card-${shift.id}`}>
+            <CardContent className="p-3.5 space-y-2.5 max-w-full">
               {/* Header: Title, Brand, Platform, Studio, Date, Time & Status */}
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="font-semibold text-sm text-foreground truncate">
+                    <span className="font-semibold text-sm text-foreground break-words">
                       {shift.title || `${brandName(brands, shift.brand_id)} live`}
                     </span>
                     <span className="text-muted-foreground text-xs">•</span>
@@ -790,7 +858,7 @@ function CompactShiftList({
               </div>
 
               {/* Occupancy Chips and Action Row */}
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-slate-100">
                 {/* Staffing Occupancy Chips */}
                 <div className="flex flex-wrap items-center gap-1.5" aria-label={t('staffing')}>
                   {visibleCapacities.map(cap => {
@@ -813,9 +881,9 @@ function CompactShiftList({
                 </div>
 
                 {/* Primary Actions: Quick Register & View Details */}
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0 justify-start sm:justify-end">
                   {myRegistration && (
-                    <div className="flex items-center gap-1">
+                    <div className="flex flex-wrap items-center gap-1">
                       <Badge className={isStaffedRegistration(myRegistration) ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>
                         {registrationLabel(myRegistration, t)}
                       </Badge>
