@@ -19,11 +19,29 @@ test('Untrusted page inputs stay bounded and sizes only accept 10/20/50', () => 
   assert.equal(readPageSize('50', 10), 50)
 })
 
-import { getCompleteCollection, localListPage } from '@/lib/services/operationsPageService'
-import { createOperationsCollectionHandler, listFiltersSchema } from '@/lib/server/operationsCollectionHandler'
+import { assertCollectionResponseOwner, getCompleteCollection, localListPage } from '@/lib/services/operationsPageService'
+import { createOperationsCollectionHandler, listFiltersSchema, operationsOwnerKey } from '@/lib/server/operationsCollectionHandler'
 import { createRegistrationReviewContextHandler } from '@/lib/server/registrationReviewContextHandler'
 import { createAnalyticsSnapshotHandler } from '@/lib/server/analyticsSnapshotHandler'
 import type { AuthenticatedServerUser } from '@/lib/server/authGuards'
+
+test('Paginated collection owner uses business UUID, not the distinct Supabase auth UUID', () => {
+  const auth = { id: 'auth-user-42', businessUserId: 'business-user-9', systemPermission: 'member' as const }
+  assert.equal(operationsOwnerKey(auth), 'business-user-9:member')
+  assert.equal(operationsOwnerKey({ id: 'synthetic', systemPermission: 'admin' }), 'synthetic:admin')
+})
+
+test('Collection rejects mismatched identity, role and missing owner metadata before exposing rows', () => {
+  assert.doesNotThrow(() => assertCollectionResponseOwner('business-user-9:member', 'business-user-9:member'))
+  for (const ownerKey of ['auth-user-42:member', 'business-user-10:member', 'business-user-9:admin', '', null, undefined]) {
+    assert.throws(
+      () => assertCollectionResponseOwner('business-user-9:member', ownerKey),
+      /LIST_IDENTITY_CHANGED/,
+    )
+  }
+  // Node-only fixtures have no authenticated browser identity to compare.
+  assert.doesNotThrow(() => assertCollectionResponseOwner(undefined, undefined))
+})
 
 test('Export All reads three bounded chunks for 117 rows, not the visible page', async () => {
   const fixture = Array.from({ length: 117 }, (_, i) => ({ id: String(i) }))
