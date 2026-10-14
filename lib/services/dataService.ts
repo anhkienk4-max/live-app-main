@@ -2738,7 +2738,7 @@ export const reportService = {
     return this.getAllFiltered(filters)
   },
 
-  async getFilteredPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<Report>> {
+  async getFilteredPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<Report> & { summary?: { revenue: number | null; aov: number | null; needsReview: number } }> {
     if (getAuthMode() === 'supabase') return getCollectionPage<Report>('reports', query, signal)
     const { search, reportStatuses, metricsStatuses, ...shiftFilters } = query.filters ?? {}
     const ids = new Set(filterMockList(shifts, shiftFilters).map(shift => shift.id))
