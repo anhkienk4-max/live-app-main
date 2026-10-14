@@ -2,29 +2,29 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-14T17:36:25+07:00
+Generated at: 2026-10-15T02:33:06+07:00
 
 ## Repository
 
-- Branch: `feat/rc16k-ui-consistency-pagination`
-- HEAD: `80d20bc418e55f672b68eaea547539db8830fadb`
-- origin/main: `662f30077350681b9fb3fd97f490a4037b6105d4`
-- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-payroll/.worktrees/rc16k-ui`
+- Branch: `integration/rc16k-uxw2-release-candidate`
+- HEAD: `0b3157e813b9155327c00eccb222d6678b627156`
+- origin/main: `4f03c0b881bcc77547e72a2d5c655b07690746d6`
+- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-prod-integration`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
 ## Hardening
 
-- Main: `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
+- Main: `4f03c0b881bcc77547e72a2d5c655b07690746d6`
 - G1 technical baseline: NOT_YET_CLOSED
-- Production UAT: PAUSED
+- Production UAT: BLOCKED_NO_AUTHENTICATED_SESSIONS
 - Go-live: NO
 
 ## Inventory
 
 - Routes: 55
-- Source files in tracked inventory roots: 712
-- Tests: 165
-- Migrations: 69
+- Source files in tracked inventory roots: 723
+- Tests: 169
+- Migrations: 71
 
 ## Modules
 
