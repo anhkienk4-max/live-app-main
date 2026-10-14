@@ -82,9 +82,11 @@ if (state) {
       const relevantChanges = changedPathsBetween(storedHead, live.head).filter((changedPath) => !memoryOnlyPaths.has(changedPath))
       if (relevantChanges.length) fail('current-state repository.head is stale; relevant changes since snapshot: ' + relevantChanges.join(', '))
     }
-    for (const field of ['branch', 'origin_main']) {
-      if (state.repository[field] !== live[field]) fail(`current-state repository.${field} does not match live Git`)
-    }
+    const ciBranch = live.branch === 'DETACHED' && process.env.GITHUB_ACTIONS === 'true'
+      ? process.env.GITHUB_HEAD_REF || (process.env.GITHUB_REF_TYPE === 'branch' ? process.env.GITHUB_REF_NAME : '')
+      : live.branch
+    if (state.repository.branch !== ciBranch) fail('current-state repository.branch does not match live Git or CI event')
+    if (state.repository.origin_main !== live.origin_main) fail('current-state repository.origin_main does not match live Git')
   } catch (error) {
     fail(`could not verify live Git: ${error.message}`)
   }
