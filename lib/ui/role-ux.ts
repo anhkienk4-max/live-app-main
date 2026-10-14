@@ -86,6 +86,7 @@ const leaderNav: NavItem[] = [
   { ...navCatalogue.shifts, group: 'OPERATIONS' },
   { ...navCatalogue.staffing, group: 'OPERATIONS' },
   { ...navCatalogue.registration, group: 'OPERATIONS' },
+  { ...navCatalogue.storage, group: 'OPERATIONS' },
   { ...navCatalogue.swaps, group: 'OPERATIONS' },
   { ...navCatalogue.reports, group: 'PERFORMANCE' },
   { ...navCatalogue.workforce, group: 'PERFORMANCE' },
