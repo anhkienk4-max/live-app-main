@@ -1,0 +1,27 @@
+✔ export checks anonymous, Member and unauthorized fields before database reads (120.1723ms)
+✔ export XLSX verifies all 0 records with bounded reads (110.293ms)
+✔ export XLSX verifies all 1 records with bounded reads (31.1762ms)
+✔ export XLSX verifies all 117 records with bounded reads (236.7746ms)
+✔ export XLSX verifies all 1001 records with bounded reads (3003.0716ms)
+✔ export refuses changed collection and an inaccessible selected shift (19.8166ms)
+✔ actual amendment authenticates actor, forwards CAS/UUID, and retains 409 conflicts (24.9057ms)
+✔ overnight projections preserve the original schedule and include adjacent dates (4.8205ms)
+✔ overlap clusters retain all real shifts and keep adjacent shifts separate (10.8513ms)
+✔ actual date/time picker respects business timezone, overnight and invalid dates (30.4245ms)
+✔ field permissions fail closed before salary, PII or audit can enter a workbook (2.2075ms)
+✔ XLSX and CSV preserve Vietnamese and times and neutralize formulas (18.7474ms)
+✔ bounded Calendar window reads 0 without duplicates (1.376ms)
+✔ bounded Calendar window reads 1 without duplicates (0.4324ms)
+✔ bounded Calendar window reads 50 without duplicates (0.4636ms)
+✔ bounded Calendar window reads 117 without duplicates (0.9269ms)
+✔ bounded Calendar window reads 1001 without duplicates (2.4797ms)
+✔ Calendar abort and changed owner/count fail closed (1.2684ms)
+✔ reference promises deduplicate same owner and isolate permission/identity (0.9403ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20859.7698

@@ -224,7 +224,7 @@ function addCalendarDays(date: string, days: number): string {
   return format(addDays(parseISO(date), days), 'yyyy-MM-dd')
 }
 
-function zonedWallTimeToUtc(date: string, time: string, timezone: string): Date {
+export function zonedWallTimeToUtc(date: string, time: string, timezone: string): Date {
   const [year, month, day] = date.split('-').map(Number)
   const [hour, minute] = time.split(':').map(Number)
   const wallTimestamp = Date.UTC(year, month - 1, day, hour, minute)

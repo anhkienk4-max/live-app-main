@@ -52,7 +52,7 @@ export function createWorkforceOverviewHandler(options:Options={}) {
       const [regs,actual]=shiftIds.length?await Promise.all([
         db.from('shift_registrations').select('shift_id,user_id,operational_role,status')
           .in('shift_id',shiftIds).in('status',['approved','manually_assigned']).limit(1000),
-        db.from('workforce_actual_segments')
+        db.from('workforce_actual_active_segments')
           .select('id,shift_id,staff_id,operational_role,event_kind,review_status,actual_start_at,actual_end_at')
           .in('shift_id',shiftIds).eq('review_status','approved').limit(1000),
       ]):[{data:[],error:null},{data:[],error:null}]

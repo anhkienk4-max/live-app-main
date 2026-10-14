@@ -83,7 +83,7 @@ export function createWorkforcePerformanceHandler(deps:Depends={}) {
             metrics_note:'No planned staffing matches this scope; no GMV attribution is inferred'},
             {headers:noStore})
         }
-        const evidenceRes=await client.from('workforce_actual_segments')
+        const evidenceRes=await client.from('workforce_actual_active_segments')
           .select('id,shift_id,staff_id,operational_role,event_kind,review_status,actual_start_at,actual_end_at')
           .eq('staff_id',input.staff_id).eq('operational_role',input.role)
           .eq('review_status','approved').in('shift_id',shiftIds).limit(1000)

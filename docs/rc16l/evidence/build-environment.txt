@@ -1,0 +1,6 @@
+node : [ENV GUARD] ENV_SUPABASE_CONFIG_REQUIRED
+At line:2 char:1
++ node --import ./tests/typescript-alias-loader.mjs scripts/check-runti ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([ENV GUARD] ENV_SUPABASE_CONFIG_REQUIRED:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError

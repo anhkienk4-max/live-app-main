@@ -11,7 +11,7 @@ import { format, startOfWeek, addDays, isSameDay } from "date-fns";
 import { vi, enUS } from "date-fns/locale";
 import { useTranslation } from "@/lib/i18n";
 import { CurrentTimeIndicator } from "@/components/ui/current-time-indicator";
-import { TIME_COLUMN_WIDTH, calculateShiftPosition, calculateOverlaps, getCurrentTimePosition } from "@/lib/utils/timeGrid";
+import { TIME_COLUMN_WIDTH, calculateShiftPosition, groupTimeGridShifts, shiftsForGridDate, getCurrentTimePosition } from "@/lib/utils/timeGrid";
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -60,19 +60,21 @@ export function WeekView({
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const today = new Date();
   const [detailDay, setDetailDay] = React.useState<Date | null>(null);
+  const [detailIds, setDetailIds] = React.useState<string[] | null>(null);
   const [detailPage, setDetailPage] = React.useState(1);
   const [detailSize, setDetailSize] = React.useState(10);
-  const detailShifts = shifts.filter(shift => detailDay && shift.date === format(detailDay, "yyyy-MM-dd"))
+  const detailShifts = (detailDay ? shiftsForGridDate(shifts, format(detailDay, "yyyy-MM-dd")).map(item => item.shift) : [])
+    .filter(shift => !detailIds || detailIds.includes(shift.id))
     .sort((a, b) => a.start_time.localeCompare(b.start_time) || a.id.localeCompare(b.id));
   const detailRange = pageRange(detailShifts.length, detailPage, detailSize);
 
 
   const getShiftsForDate = (date: Date) => {
     const dateStr = format(date, "yyyy-MM-dd");
-    return shifts.filter((s) => s.date === dateStr).sort((a,b)=>a.start_time.localeCompare(b.start_time)||a.id.localeCompare(b.id));
+    return shiftsForGridDate(shifts, dateStr).map(item => item.shift);
   };
 
-  const firstHour = Math.min(8, ...shifts.map(shift => Number(shift.start_time.slice(0, 2))));
+  const firstHour = Math.min(8, ...weekDays.flatMap(day => shiftsForGridDate(shifts, format(day, 'yyyy-MM-dd')).map(item => Number(item.start_time.slice(0, 2)))));
   const hourHeight = 36;
   const hours = Array.from({ length: 24 - firstHour }, (_, i) => i + firstHour);
 
@@ -81,7 +83,7 @@ export function WeekView({
       <div className="hidden flex-wrap gap-1 border-b p-2 sm:flex" aria-label={t("viewDetails")}>
         {weekDays.map(day => {
           const count = getShiftsForDate(day).length;
-          return count > 0 && <Button key={day.toISOString()} size="sm" variant="ghost" onClick={() => { setDetailDay(day); setDetailPage(1); }}>
+          return count > 0 && <Button key={day.toISOString()} size="sm" variant="ghost" onClick={() => { setDetailIds(null); setDetailDay(day); setDetailPage(1); }}>
             {format(day, "dd/MM")} · {count} {t("totalShifts")} · {t("viewDetails")}
           </Button>;
         })}
@@ -183,9 +185,8 @@ export function WeekView({
             {/* Day Columns */}
             <div className="flex flex-1 z-10 relative">
               {weekDays.map((day) => {
-                const dayShifts = getShiftsForDate(day);
                 const isToday = isSameDay(day, today);
-                const layouts = calculateOverlaps(dayShifts, 60);
+                const groups = groupTimeGridShifts(shiftsForGridDate(shifts, format(day, 'yyyy-MM-dd')));
 
                 return (
                   <div
@@ -206,8 +207,9 @@ export function WeekView({
                       </div>
                     )}
 
-                    {dayShifts.map((shift) => {
-                      const pos = layouts[shift.id] || calculateShiftPosition(shift.start_time, shift.end_time, shift.crosses_midnight ?? false, 60);
+                    {groups.map((group) => {
+                      const { shift } = group[0];
+                      const pos = calculateShiftPosition(group[0].start_time, group[0].end_time, false, 60);
 
                       return (
                         <div
@@ -216,22 +218,25 @@ export function WeekView({
                           style={{
                             top: pos.top / 2 - firstHour * hourHeight,
                             height: pos.height / 2,
-                            left: 'left' in pos ? pos.left : '0%',
-                            width: 'width' in pos ? pos.width : '100%',
+                            left: '0%',
+                            width: '100%',
                             paddingLeft: '2px',
                             paddingRight: '2px'
                           }}
                         >
-                          <ShiftCard
+                          {group.length > 1 ? <Button variant="outline" data-testid={'week-overlap-' + format(day, 'yyyy-MM-dd') + '-' + shift.id} aria-label={group[0].start_time.slice(0, 5) + ' · ' + group.length + ' ' + t('totalShifts') + ' · ' + t('viewDetails')} className="h-full w-full flex-col gap-0 whitespace-normal px-1 py-0 text-xs leading-tight" onClick={() => { setDetailIds(group.map(item => item.id)); setDetailDay(day); setDetailPage(1); }}>
+                            <span>{group[0].start_time.slice(0, 5)} · {group.length} {language === 'vi' ? 'ca' : 'shifts'}</span>
+                            <span>{t('viewDetails')}</span>
+                          </Button> : <ShiftCard
                             title={[shift.title, formatShiftTimeRange(shift)].filter(Boolean).join(" · ")}
                             aria-label={[shift.title || shift.id, formatShiftTimeRange(shift), t("viewDetails")].join(" · ")}
                             shift={shift}
-                            variant={'width' in pos && Number.parseFloat(pos.width) < 34 || pos.height / 2 < 40 ? "compact" : "embedded"}
+                            variant="compact"
                             onClick={() => onShiftClick?.(shift)}
                             context={context}
                             isToday={isToday}
                             className="h-full"
-                          />
+                          />}
                         </div>
                       );
                     })}
@@ -298,7 +303,7 @@ export function WeekView({
                     );
                   })}
                   {dayShifts.length>3 && <Button size="sm" variant="outline" className="w-full"
-                    onClick={()=>{setDetailDay(day);setDetailPage(1)}}>{t('viewDetails')} · {dayShifts.length} {t('totalShifts')}</Button>}
+                    onClick={()=>{setDetailIds(null);setDetailDay(day);setDetailPage(1)}}>{t('viewDetails')} · {dayShifts.length} {t('totalShifts')}</Button>}
                   {isToday &&
                     dayShifts.length > 0 &&
                     dayShifts.findIndex(

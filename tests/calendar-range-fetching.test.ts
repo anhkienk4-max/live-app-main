@@ -34,12 +34,10 @@ test('explicit list All Time and custom ranges retain their semantics', () => {
   })
 })
 
-test('CalendarView uses scoped operational reads, cached references, and latest-response guards', () => {
+test('Calendar uses bounded windows, on-demand reports and abort guards', () => {
   const source = readFileSync('components/features/calendar/CalendarView.tsx', 'utf8')
-  assert.match(source, /shiftService\.getInRange\(authorityScope\.startDate!, authorityScope\.endDate!\)/)
-  assert.match(source, /shiftRegistrationService\.getForShifts\(shiftIds\)/)
-  assert.match(source, /reportService\.getForShifts\(shiftIds\)/)
-  assert.match(source, /if \(referenceLoad\.current\?\.identity === identity\) return referenceLoad\.current\.promise/)
-  assert.match(source, /if \(version !== requestVersion\.current\) return/)
-  assert.match(source, /if \(initialLoad \|\| view === 'list'\) setLoading\(true\)/)
+  assert.match(source, /readCalendarWindow\(JSON\.parse\(operationalQuery\), controller\.signal\)/)
+  assert.match(source, /if \(version !== requestVersion\.current \|\| controller\.signal\.aborted\) return/)
+  assert.match(source, /if \(!dayReportIds\) return/)
+  assert.doesNotMatch(source, /shiftService\.getAllComplete\(\)|shiftRegistrationService\.getAll\(\)/)
 })

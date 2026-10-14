@@ -14,9 +14,18 @@ import { useTranslation } from "@/lib/i18n";
 import { useCurrentUser } from "@/lib/hooks/useCurrentUser";
 import { hasPermission } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
+import { clearCalendarReferences } from "@/lib/services/calendarReferenceData";
+import { resolveSystemPermission } from "@/lib/permissions";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 
 export function CalendarWorkspace() {
+  const { currentUser } = useCurrentUser();
+  const identity = currentUser ? currentUser.id + ':' + resolveSystemPermission(currentUser) + ':' + currentUser.updated_at : '';
+  React.useEffect(() => () => clearCalendarReferences(), [identity]);
+  return <CalendarIdentityWorkspace key={identity} />;
+}
+
+function CalendarIdentityWorkspace() {
   const { t } = useTranslation();
   const { currentUser } = useCurrentUser();
   const router = useRouter();
@@ -33,6 +42,7 @@ export function CalendarWorkspace() {
   );
   const [createRequest, setCreateRequest] = React.useState(0);
   const [visitedTabs, setVisitedTabs] = React.useState(() => new Set([tab]));
+  const tabScroll = React.useRef<Record<string, number>>({});
 
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -76,12 +86,14 @@ export function CalendarWorkspace() {
   }, [searchParams, pathname, router, currentUser, tab]);
 
   const handleTabChange = (value: string) => {
+    tabScroll.current[tab] = window.scrollY;
     setTab(value);
     setVisitedTabs((current) => current.has(value) ? current : new Set(current).add(value));
     const next = new URLSearchParams(window.location.search);
     next.set("tab", value);
     const qs = next.toString();
     window.history.pushState(null, "", qs ? `${pathname}?${qs}` : pathname);
+    window.requestAnimationFrame(() => window.scrollTo({ top: tabScroll.current[value] ?? 0 }));
   };
 
   return (
@@ -111,10 +123,10 @@ export function CalendarWorkspace() {
       <TabsContent className="min-w-0 w-full" value="calendar">
         <CalendarView createRequest={createRequest} />
       </TabsContent>
-      <TabsContent className="min-w-0 w-full" keepMounted value="open">
+      <TabsContent className="min-w-0 w-full" value="open">
         {visitedTabs.has("open") && <ShiftRegistrationBoard mode="open" />}
       </TabsContent>
-      <TabsContent className="min-w-0 w-full" keepMounted value="mine">
+      <TabsContent className="min-w-0 w-full" value="mine">
         {visitedTabs.has("mine") && <ShiftRegistrationBoard mode="mine" />}
       </TabsContent>
       <TabsContent className="min-w-0 w-full" value="import">

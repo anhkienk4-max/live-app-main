@@ -1,0 +1,105 @@
+✔ Calendar pending count follows the active month/week/day/list scope (9.2061ms)
+✔ bulk approval modal contract renders pending request columns, filters and actions (5.1835ms)
+✔ Supabase bulk repository maps approve one, approve multiple and per-row failures (2.1244ms)
+✔ Member cannot invoke bulk review even when a repository is available (2.9856ms)
+✔ bulk RPC reuses canonical single review logic and isolates row failures (0.9995ms)
+✔ canonical approval rechecks active role, capacity and conflicts before mutation (0.5199ms)
+✔ bulk RPC is authenticated-only, fail-closed and preserves canonical projections (0.9737ms)
+✔ inactive or archived staff is blocked by the shared role-eligibility guard (3.6241ms)
+✔ F6 defines explicit input formats and business-time guidance (0.623ms)
+✔ F6 uses the package-supported XLSX namespace import across import/export utilities (1.0905ms)
+✔ F6 separates preview from persistence and requires an explicit confirmation action (0.5908ms)
+✔ F6 maps row outcomes to human states and preserves duplicate/retryable semantics (1.5542ms)
+✔ F6 completion summary distinguishes imported rows from exceptions (0.9137ms)
+✔ F6 prevents duplicate submit and keeps loading/error/empty states accessible (0.517ms)
+✔ F6 gives import actions and editable rows unique accessible names (0.6417ms)
+✔ F6 retains native tab semantics, filter pressed state, and live completion status (0.4456ms)
+✔ F6 keeps import access behind the existing permission contract and does not add fetch loops (0.3728ms)
+✔ F6 retains E/F architecture integration points (4.5517ms)
+✔ F6 mock confirmation persists one shift, history, and is repeat-safe (38.7538ms)
+✔ F6 aggregates mixed outcomes without contradicting row states (4.6455ms)
+✔ F6 validation failure is preserved without creating a shift (1.3838ms)
+✔ F6 warning remains importable and is persisted as warning (1.399ms)
+✔ F6 empty import produces a controlled zero-row result (0.4099ms)
+✔ absent metrics stay absent and recorded zero remains zero (1.1688ms)
+✔ normalized metric precedence and available-only rate averages are preserved (0.5227ms)
+✔ AOV excludes unpaired observations and does not divide by zero (0.2375ms)
+✔ Reports presenter uses actual shift metadata and handles absent and zero metrics (149.9621ms)
+✔ Live console exposes the real state and unavailable metrics when there is no snapshot (28.5081ms)
+✔ compact Day agenda keeps 08:00 and earlier real shifts visible (15.8745ms)
+✔ staffing summary scopes canonical approved registrations and excludes pending/other shifts (2.6603ms)
+✔ production wave entrypoints have no visual-QA imports or business fixture controllers (50.6603ms)
+✔ one frontend realtime owner updates both notification surfaces without duplicate toasts (7.6374ms)
+✔ backend, integration and post-main delivery disable Git auto-deploy while retaining Production defaults (1.1185ms)
+✔ environment security allows Staging public/server in Preview (1.8485ms)
+✔ environment security allows Staging public/server local development (0.3867ms)
+✔ environment security allows Staging local production build (0.3106ms)
+✔ environment security allows authorized Vercel Production build (0.3824ms)
+✔ environment security allows authorized Vercel Production runtime (0.379ms)
+✔ environment security allows public fallback when server URL absent (0.2543ms)
+✔ environment security allows public fallback when server URL empty (0.3021ms)
+✔ environment security allows isolated localhost development (0.2802ms)
+✔ environment security blocks Staging public + Production server (0.6983ms)
+✔ environment security blocks Production public + Staging server (0.229ms)
+✔ environment security blocks Production public/server in Preview (0.2328ms)
+✔ environment security blocks Production local development (0.232ms)
+✔ environment security blocks Production local build (0.2068ms)
+✔ environment security blocks Production local CI build (0.1905ms)
+✔ environment security blocks Production mismatched targets (0.1275ms)
+✔ environment security blocks Production requires Production project (0.1554ms)
+✔ environment security blocks malformed server override (0.239ms)
+✔ environment security blocks whitespace override does not fallback (0.3714ms)
+✔ environment security blocks unknown custom domain (0.1935ms)
+✔ environment security blocks unknown cloud project (0.1493ms)
+✔ environment security blocks missing public URL (0.1321ms)
+✔ environment security blocks missing public key (0.1433ms)
+✔ environment security blocks missing privileged key in Preview (0.1331ms)
+✔ environment security blocks empty Preview (0.1267ms)
+✔ environment security blocks mock Preview (0.1068ms)
+✔ environment security blocks invalid mock flag (0.099ms)
+✔ environment security blocks bare production label (0.1599ms)
+✔ environment security blocks contradictory deployment metadata (0.112ms)
+✔ environment security blocks missing deployment metadata (0.105ms)
+✔ environment security blocks unknown deployment metadata (0.0958ms)
+✔ environment security blocks development process claiming Production (0.0927ms)
+✔ environment security blocks loopback in Preview (0.4974ms)
+✔ environment security blocks different loopback databases (0.2516ms)
+✔ strict URL parsing normalizes root slashes and checks exact scheme/authority (1.4692ms)
+✔ credential-free build exception is explicit, local, empty and never runtime access (0.7034ms)
+✔ offline mock development remains explicit and disables database access (0.5315ms)
+✔ direct privileged entry cannot bypass validation or use credential-free CI permission (4.047ms)
+✔ privileged creation uses one validated snapshot and revalidates subsequent calls (1.4745ms)
+✔ server public runtime and browser development keep their isolation boundaries (82.7343ms)
+✔ real privileged SDK routes synthetic reads only to the validated effective override (25.772ms)
+✖ process guard loads Next env files before validation and emits only error codes (15.9015ms)
+ℹ tests 74
+ℹ suites 0
+ℹ pass 73
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11274.1734
+
+✖ failing tests:
+
+test at tests\rc16-environment-security.test.ts:191:1
+✖ process guard loads Next env files before validation and emits only error codes (15.9015ms)
+  AssertionError [ERR_ASSERTION]: spawnSync C:\Program Files\nodejs\node.exe EPERM
+
+  null !== 0
+
+      at TestContext.<anonymous> (file:///C:/Users/KienNguyen/OPS_RESTORE_LAB_RC16K/rc16l-calendar-ux-worktime-export/tests/rc16-environment-security.test.ts:202:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: null,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

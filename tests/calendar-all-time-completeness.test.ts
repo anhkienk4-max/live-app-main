@@ -237,11 +237,10 @@ test('All Time report reads complete bounded shift-ID batches without duplicates
   assert.ok(client.rangeCalls.length > 12)
 })
 
-test('Calendar List uses bounded server pages and guards late responses', () => {
+test('Calendar uses bounded windows, on-demand reports and abort guards', () => {
   const source = readFileSync('components/features/calendar/CalendarView.tsx', 'utf8')
-  assert.match(source, /view === 'list' \? shiftService\.getCalendarPage\(\{ page: listPage, pageSize: listSize, filters:/)
-  assert.match(source, /shiftRegistrationService\.getForShifts\(shiftIds\)/)
-  assert.match(source, /reportService\.getForShifts\(shiftIds\)/)
-  assert.match(source, /if \(version !== requestVersion\.current\) return/)
+  assert.match(source, /readCalendarWindow\(JSON\.parse\(operationalQuery\), controller\.signal\)/)
+  assert.match(source, /if \(version !== requestVersion\.current \|\| controller\.signal\.aborted\) return/)
+  assert.match(source, /if \(!dayReportIds\) return/)
   assert.doesNotMatch(source, /shiftService\.getAllComplete\(\)|shiftRegistrationService\.getAll\(\)/)
 })

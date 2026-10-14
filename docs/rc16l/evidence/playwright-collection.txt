@@ -1,0 +1,16 @@
+Listing tests:
+  rc16l-calendar.spec.ts:9:7 › Admin Calendar at 1366: views, URL, empty states and screenshots
+  rc16l-calendar.spec.ts:9:7 › Admin Calendar at 1536: views, URL, empty states and screenshots
+  rc16l-calendar.spec.ts:9:7 › Admin Calendar at 1920: views, URL, empty states and screenshots
+  rc16l-calendar.spec.ts:9:7 › Admin Calendar at 390: views, URL, empty states and screenshots
+  rc16l-calendar.spec.ts:9:7 › Leader Calendar at 1366: views, URL, empty states and screenshots
+  rc16l-calendar.spec.ts:9:7 › Leader Calendar at 1536: views, URL, empty states and screenshots
+  rc16l-calendar.spec.ts:9:7 › Leader Calendar at 1920: views, URL, empty states and screenshots
+  rc16l-calendar.spec.ts:9:7 › Leader Calendar at 390: views, URL, empty states and screenshots
+  rc16l-calendar.spec.ts:9:7 › Member Calendar at 1366: views, URL, empty states and screenshots
+  rc16l-calendar.spec.ts:9:7 › Member Calendar at 1536: views, URL, empty states and screenshots
+  rc16l-calendar.spec.ts:9:7 › Member Calendar at 1920: views, URL, empty states and screenshots
+  rc16l-calendar.spec.ts:9:7 › Member Calendar at 390: views, URL, empty states and screenshots
+  rc16l-calendar.spec.ts:50:5 › Calendar preserves URL view/date across reload and history navigation
+  rc16l-calendar.spec.ts:63:5 › Dense Week opens grouped details and Day includes an overnight continuation
+Total: 14 tests in 1 file

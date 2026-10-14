@@ -33,6 +33,8 @@ import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@/
 import { ShiftRegistrationActions } from './ShiftRegistrationActions'
 import { resolveRegistrationCta } from '@/lib/utils/shiftRegistration'
 import { reportShiftHref } from '@/lib/utils/reportTarget'
+import { HistoryPagination } from '@/components/ui/history-pagination'
+import { pageRange } from '@/lib/utils/pagination'
 
 interface DaySessionsDialogProps {
   open: boolean
@@ -45,6 +47,7 @@ interface DaySessionsDialogProps {
   users: User[]
   registrations: ShiftRegistration[]
   reports: Report[]
+  reportsReady?: boolean
   currentUser: User | null
   onOpenChange: (open: boolean) => void
   onViewShift: (shift: Shift) => void
@@ -112,6 +115,7 @@ export function DaySessionsDialog({
   users,
   registrations,
   reports,
+  reportsReady = true,
   currentUser,
   onOpenChange,
   onViewShift,
@@ -122,11 +126,14 @@ export function DaySessionsDialog({
   const { language, t } = useTranslation()
   const { toast } = useToast()
   const [busyAction, setBusyAction] = React.useState('')
+  const [page, setPage] = React.useState(1)
+  const [pageSize, setPageSize] = React.useState(10)
   const locale = language === 'vi' ? vi : enUS
   const dateValue = date ? format(date, 'yyyy-MM-dd') : ''
   const dayShifts = shifts
     .filter(shift => shift.date === dateValue)
     .sort((left, right) => left.start_time.localeCompare(right.start_time))
+  const range = pageRange(dayShifts.length, page, pageSize)
 
   const entityName = (items: Array<{ id: string; name: string }>, id?: string) =>
     id ? items.find(item => item.id === id)?.name || t('notUpdated') : t('notUpdated')
@@ -173,7 +180,7 @@ export function DaySessionsDialog({
           {dayShifts.length === 0 && (
             <div className="py-16 text-center text-muted-foreground">{t('noSessionsForDay')}</div>
           )}
-          {dayShifts.map(shift => {
+          {dayShifts.slice((range.page - 1) * pageSize, range.page * pageSize).map(shift => {
             const overnightEndDate = formatShiftEndDate(shift)
             const report = reports.find(candidate => candidate.shift_id === shift.id)
             const myRegistrations = currentUser
@@ -236,7 +243,7 @@ export function DaySessionsDialog({
                     <Info label={t('technical')} value={roleNames(shift, 'technical')} />
                     <Info
                       label={t('reportStatus')}
-                      value={report
+                      value={!reportsReady ? t('notProvided') : report
                         ? report.status === 'in_review'
                           ? t('inReview')
                           : t(report.status || (report.metrics_confirmed ? 'confirmed' : 'draft'))
@@ -407,6 +414,7 @@ export function DaySessionsDialog({
               </Card>
             )
           })}
+          <HistoryPagination page={range.page} pageSize={pageSize} total={dayShifts.length} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1) }} />
         </DialogBody>
       </DialogContent>
     </Dialog>

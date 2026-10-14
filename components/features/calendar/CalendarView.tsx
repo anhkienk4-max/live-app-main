@@ -3,7 +3,10 @@
 import * as React from 'react'
 import { useListPagination } from '@/lib/hooks/useListPagination'
 import { HistoryPagination } from '@/components/ui/history-pagination'
-import { shiftRegistrationService, shiftService, brandService, platformService, campaignService, userService, reportService } from '@/lib/services/dataService'
+import { shiftRegistrationService, shiftService, reportService } from '@/lib/services/dataService'
+import { getCalendarReferences } from '@/lib/services/calendarReferenceData'
+import { readCalendarWindow } from '@/lib/services/calendarWindow'
+import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import { Shift, Brand, Platform, Campaign, User, OperationalRole, ShiftRegistration, Report } from '@/lib/types/database.types'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -11,7 +14,7 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+
 import {
   ChevronLeft,
   ChevronRight,
@@ -24,8 +27,6 @@ import {
   UserCheck,
   X,
   Download,
-  FileSpreadsheet,
-  FileText,
   Trash2,
 } from 'lucide-react'
 import { format, addMonths, addDays, addWeeks, startOfWeek } from 'date-fns'
@@ -46,16 +47,7 @@ import { useTranslation } from '@/lib/i18n'
 import { useToast } from '@/components/ui/toast'
 import { enUS, vi } from 'date-fns/locale'
 import { pendingRegistrationsInScope, shiftsInCalendarScope } from '@/lib/utils/calendarStaffingApproval'
-import {
-  buildScheduleExportRows,
-  buildScheduleExportFilename,
-  downloadScheduleExportXlsx,
-  downloadScheduleExportCsv,
-  brandsToNameMap,
-  platformsToNameMap,
-  campaignsToNameMap,
-  usersToNameMap,
-} from '@/lib/utils/scheduleExportUtils'
+import { CalendarExportDialog } from '../shifts/CalendarExportDialog'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import {
   buildStudioFilterOptions,
@@ -173,19 +165,19 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const timeFilterLabels = language === 'vi'
     ? { all: 'Tất cả thời gian', week: 'Tuần đang xem', month: 'Tháng đang xem', studios: 'Tất cả Studio', unassigned: 'Chưa gán Studio' }
     : { all: 'All time', week: 'Current week', month: 'Current month', studios: 'All studios', unassigned: 'Unassigned' }
-  const [currentDate, setCurrentDate] = React.useState(new Date())
-  const [view, setView] = React.useState<'month' | 'week' | 'day' | 'list'>('month')
-  const viewSwitchedByUser = React.useRef(false)
-  const initializedViewForRole = React.useRef(false)
-
-  React.useEffect(() => {
-    if (currentUser && !initializedViewForRole.current) {
-      initializedViewForRole.current = true
-      if (!viewSwitchedByUser.current) {
-        setView((currentUser.role === 'admin' || currentUser.role === 'leader') ? 'week' : 'month')
-      }
-    }
-  }, [currentUser])
+  const listPagination = useListPagination('calendar_list', 10)
+  const { params, navigate: listNavigate } = listPagination
+  const rawView = params.get('calendar_view')
+  const view = rawView === 'month' || rawView === 'week' || rawView === 'day' || rawView === 'list' ? rawView
+    : hasPermission(currentUser, 'shifts.approve_registration') ? 'week' : 'month'
+  const [today] = React.useState(() => format(new Date(), 'yyyy-MM-dd'))
+  const rawDate = params.get('calendar_date') ?? today
+  const currentDate = React.useMemo(() => {
+    const parsed = new Date(rawDate + 'T12:00:00')
+    return Number.isFinite(parsed.getTime()) && format(parsed, 'yyyy-MM-dd') === rawDate ? parsed : new Date(today + 'T12:00:00')
+  }, [rawDate, today])
+  const setCurrentDate = (date: Date) => listNavigate({ calendar_date: format(date, 'yyyy-MM-dd'), calendar_list_page: null })
+  const setView = React.useCallback((value: 'month' | 'week' | 'day' | 'list') => listNavigate({ calendar_view: value, calendar_list_page: null }), [listNavigate])
   const [shifts, setShifts] = React.useState<Shift[]>([])
   const [brands, setBrands] = React.useState<Brand[]>([])
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
@@ -193,8 +185,10 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const [users, setUsers] = React.useState<User[]>([])
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   const [reports, setReports] = React.useState<Report[]>([])
+  const [reportsReady, setReportsReady] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
+  const [exportOpen, setExportOpen] = React.useState(false)
   const [showForm, setShowForm] = React.useState(false)
   const [selectedShift, setSelectedShift] = React.useState<Shift | null>(null)
   const [previewShift, setPreviewShift] = React.useState<Shift | null>(null)
@@ -202,11 +196,37 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const [editingShift, setEditingShift] = React.useState<Shift | null>(null)
   const [showFilters, setShowFilters] = React.useState(false)
   const [showBulkStaffingApproval, setShowBulkStaffingApproval] = React.useState(false)
+  const [bulkApprovalLoading, setBulkApprovalLoading] = React.useState(false)
   const [showBulkDelete, setShowBulkDelete] = React.useState(false)
-  const [searchTerm, setSearchTerm] = React.useState('')
+  const searchTerm = params.get('calendar_search') ?? ''
+  const [searchInput, setSearchInput] = React.useState(searchTerm)
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setSearchInput(searchTerm), 0)
+    return () => window.clearTimeout(timer)
+  }, [searchTerm])
+  React.useEffect(() => {
+    if (searchInput === searchTerm) return
+    const timer = window.setTimeout(() => listNavigate({ calendar_search: searchInput || null, calendar_list_page: null }, true), 250)
+    return () => window.clearTimeout(timer)
+  }, [listNavigate, searchInput, searchTerm])
   const [selectedShiftIds, setSelectedShiftIds] = React.useState<Set<string>>(new Set())
-  const [filters, setFilters] = React.useState<CalendarFilterState>(DEFAULT_CALENDAR_FILTERS)
-  const [listTimeOverride, setListTimeOverride] = React.useState<CalendarFilterState['time'] | null>(null)
+  const encodedFilters = params.get('calendar_filters') ?? ''
+  const filters = React.useMemo((): CalendarFilterState => {
+    try {
+      const parsed = JSON.parse(encodedFilters)
+      return { ...DEFAULT_CALENDAR_FILTERS, ...parsed,
+        ...Object.fromEntries(Object.keys(DEFAULT_CALENDAR_FILTERS).filter(key => Array.isArray(DEFAULT_CALENDAR_FILTERS[key as keyof CalendarFilterState])).map(key => [key, Array.isArray(parsed[key]) ? parsed[key].filter((value: unknown) => typeof value === 'string') : []])),
+        time: ['all', 'today', 'current_week', 'current_month', 'custom'].includes(parsed.time) ? parsed.time : 'all',
+        customFrom: typeof parsed.customFrom === 'string' ? parsed.customFrom : '',
+        customTo: typeof parsed.customTo === 'string' ? parsed.customTo : '',
+        hasImportedStaffing: parsed.hasImportedStaffing === true,
+      }
+    } catch { return DEFAULT_CALENDAR_FILTERS }
+  }, [encodedFilters])
+  const setFilters = (value: CalendarFilterState) => listNavigate({ calendar_filters: JSON.stringify(value), calendar_list_page: null })
+  const rawTime = params.get('calendar_time')
+  const listTimeOverride = rawTime === 'all' || rawTime === 'today' || rawTime === 'current_week' || rawTime === 'current_month' || rawTime === 'custom' ? rawTime : null
+  const setListTimeOverride = (value: CalendarFilterState['time'] | null) => listNavigate({ calendar_time: value, calendar_list_page: null })
   const listTimeFilter = effectiveListTimeFilter(filters.time, listTimeOverride)
   const dataScope = React.useMemo(
     () => calendarDataScope(view, currentDate, view === 'list' ? listTimeFilter : filters.time, filters.customFrom, filters.customTo, false),
@@ -217,8 +237,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     hasPermission(currentUser, 'shifts.export') || hasPermission(currentUser, 'shifts.delete')
   )
 
-  const listPagination = useListPagination('calendar_list', 10)
-  const { page: listPage, pageSize: listSize, navigate: listNavigate } = listPagination
+  const { page: listPage, pageSize: listSize } = listPagination
   const [listTotal, setListTotal] = React.useState(0)
   const listQuery = JSON.stringify({
     search: searchTerm, brandIds: filters.brandIds, platformIds: filters.platformIds, campaignIds: filters.campaignIds,
@@ -227,7 +246,20 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     registrationStates: filters.registrationStates, hasImportedStaffing: filters.hasImportedStaffing,
     from: dataScope.startDate, to: dataScope.endDate,
   })
+  const operationalQuery = view === 'list' ? listQuery : JSON.stringify({ from: authorityScope.startDate, to: authorityScope.endDate })
   const previousListQuery = React.useRef(listQuery)
+  const toolbar = React.useRef<HTMLDivElement>(null)
+  const scrollContext = view + ':' + rawDate + ':' + listPage + ':' + listSize + ':' + listQuery
+  const previousScrollContext = React.useRef(scrollContext)
+  React.useEffect(() => {
+    if (previousScrollContext.current === scrollContext) return
+    previousScrollContext.current = scrollContext
+    const frame = window.requestAnimationFrame(() => {
+      const top = toolbar.current?.getBoundingClientRect().top
+      if (top !== undefined && top < 0) toolbar.current?.scrollIntoView({ block: 'start' })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [scrollContext])
   React.useEffect(() => {
     if (previousListQuery.current === listQuery) return
     previousListQuery.current = listQuery
@@ -236,70 +268,56 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
 
   const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role):''
   const [loadedIdentity,setLoadedIdentity]=React.useState('')
-  const referenceLoad = React.useRef<{identity:string;promise:Promise<void>} | null>(null)
   const requestVersion = React.useRef(0)
-  const hasLoadedData = React.useRef(false)
+  const requestController = React.useRef<AbortController | null>(null)
 
   const loadReferenceData = React.useCallback(() => {
-    if (referenceLoad.current?.identity === identity) return referenceLoad.current.promise
-    const request = Promise.all([
-      brandService.getAll().catch(() => [] as Brand[]),
-      platformService.getAll().catch(() => [] as Platform[]),
-      campaignService.getAll().catch(() => [] as Campaign[]),
-      userService.getAll().catch(() => [] as User[]),
-    ]).then(([brandsData, platformsData, campaignsData, usersData]) => {
-      if(referenceLoad.current?.identity!==identity)return
-      setBrands(brandsData)
-      setPlatforms(platformsData)
-      setCampaigns(campaignsData)
-      setUsers(usersData)
-    }).catch(error => {
-      referenceLoad.current = null
-      throw error
+    if (!currentUser) return Promise.resolve()
+    return getCalendarReferences(currentUser).then(data => {
+      setBrands(data.brands); setPlatforms(data.platforms); setCampaigns(data.campaigns); setUsers(data.users)
     })
-    referenceLoad.current = {identity,promise:request}
-    return request
-  }, [identity])
+  }, [currentUser])
 
   const loadData = React.useCallback(async () => {
+    if (!identity) return
+    requestController.current?.abort()
+    const controller = new AbortController()
+    requestController.current = controller
     const version = ++requestVersion.current
-    const initialLoad = !hasLoadedData.current
-    if (initialLoad || view === 'list') setLoading(true)
+    setLoading(true)
     setLoadError(null)
     try {
-      const [result] = await Promise.all([
-        view === 'list' ? shiftService.getCalendarPage({ page: listPage, pageSize: listSize, filters: JSON.parse(listQuery) })
-          : shiftService.getInRange(authorityScope.startDate!, authorityScope.endDate!),
-        loadReferenceData(),
-      ])
-      const shiftsData = Array.isArray(result) ? result : result.items
-      if (!Array.isArray(result)) {
-        if (version !== requestVersion.current) return
+      const result = view === 'list' ? await shiftService.getCalendarPage({ page: listPage, pageSize: listSize, filters: JSON.parse(operationalQuery) }, controller.signal)
+        : await readCalendarWindow(JSON.parse(operationalQuery), controller.signal)
+      if (version !== requestVersion.current || controller.signal.aborted) return
+      const shiftsData = result.items
+      if (view === 'list') {
         setListTotal(result.total)
         if (result.page !== listPage) listNavigate({ calendar_list_page: String(result.page) }, true)
       }
-      const shiftIds = shiftsData.map(shift => shift.id)
-      const [registrationsData, reportsData] = await Promise.all([
-        Array.isArray(result) ? shiftRegistrationService.getForShifts(shiftIds) : Promise.resolve(result.registrations),
-        reportService.getForShifts(shiftIds).catch(() => [] as Report[]),
-      ])
-      if (version !== requestVersion.current) return
       setLoadedIdentity(identity)
       setShifts(shiftsData)
-      setRegistrations(registrationsData)
-      setReports(reportsData)
-      hasLoadedData.current = true
+      setRegistrations(result.registrations)
     } catch (error: unknown) {
-      if (version === requestVersion.current) setLoadError(error)
+      if (version === requestVersion.current && !controller.signal.aborted) setLoadError(error)
     } finally {
       if (version === requestVersion.current) setLoading(false)
     }
-  }, [identity, authorityScope.endDate, authorityScope.startDate, listNavigate, listPage, listQuery, listSize, loadReferenceData, view])
+  }, [identity, listNavigate, listPage, operationalQuery, listSize, view])
 
   React.useEffect(() => {
+    const generation = requestVersion
     const frame = window.requestAnimationFrame(() => { void loadData() })
-    return () => window.cancelAnimationFrame(frame)
+    return () => { window.cancelAnimationFrame(frame); requestController.current?.abort(); ++generation.current }
   }, [loadData])
+
+  React.useEffect(() => {
+    let active = true
+    const frame = window.requestAnimationFrame(() => {
+      void loadReferenceData().catch(error => { if (active) setLoadError(error) })
+    })
+    return () => { active = false; window.cancelAnimationFrame(frame) }
+  }, [loadReferenceData])
 
   React.useEffect(() => {
     if (createRequest > 0) {
@@ -327,10 +345,10 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
 
   const displayFilters = React.useMemo(() => {
     if (view !== 'list' && filters.time === 'all' && dataScope.startDate && dataScope.endDate) {
-      return { ...filters, time: 'custom' as const, customFrom: dataScope.startDate, customTo: dataScope.endDate }
+      return { ...filters, time: 'custom' as const, customFrom: view === 'week' || view === 'day' ? authorityScope.startDate! : dataScope.startDate, customTo: dataScope.endDate }
     }
     return { ...filters, time: view === 'list' ? listTimeFilter : filters.time }
-  }, [dataScope.endDate, dataScope.startDate, filters, listTimeFilter, view])
+  }, [authorityScope.startDate, dataScope.endDate, dataScope.startDate, filters, listTimeFilter, view])
   const filteredShifts = React.useMemo(
     () => filterCalendarShifts(shifts, displayFilters, searchTerm, {
       currentDate,
@@ -341,6 +359,19 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     }),
     [shifts, displayFilters, searchTerm, currentDate, brands, platforms, campaigns, registrations],
   )
+  const dayReportIds = selectedDay ? filteredShifts.filter(shift => shift.date === format(selectedDay, 'yyyy-MM-dd')).map(shift => shift.id).join(',') : ''
+  React.useEffect(() => {
+    let active = true
+    const timer = window.setTimeout(() => {
+      setReportsReady(false)
+      setReports([])
+      if (!dayReportIds) return
+      void reportService.getForShifts(dayReportIds.split(',')).then(data => {
+        if (active) { setReports(data); setReportsReady(true) }
+      }).catch(error => { if (active) toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' }) })
+    }, 0)
+    return () => { active = false; window.clearTimeout(timer) }
+  }, [dayReportIds, t, toast])
   const listShifts = view === 'list' ? shifts : EMPTY_SHIFTS
   const [selectionScope, setSelectionScope] = React.useState(listShifts)
   if (selectionScope !== listShifts) {
@@ -373,6 +404,19 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     () => pendingRegistrationsInScope(registrations, calendarScopeShifts),
     [calendarScopeShifts, registrations],
   )
+  const pendingStaffingCount = calendarScopeShifts.reduce((count, shift) => count + (shift.staffing_summary?.reduce((total, role) => total + role.pending, 0) ?? pendingStaffingRegistrations.filter(row => row.shift_id === shift.id).length), 0)
+  const openBulkStaffingApproval = async () => {
+    if (bulkApprovalLoading) return
+    const version = requestVersion.current
+    setBulkApprovalLoading(true)
+    try {
+      const records = await shiftRegistrationService.getForShifts(calendarScopeShifts.map(shift => shift.id))
+      if (version !== requestVersion.current) return
+      setRegistrations(records)
+      setShowBulkStaffingApproval(true)
+    } catch (error) { toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' }) }
+    finally { setBulkApprovalLoading(false) }
+  }
 
   const navigate = (direction: 'prev' | 'next') => {
     if (view === 'month' || view === 'list') {
@@ -385,9 +429,8 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   }
 
   const clearFilters = () => {
-    setFilters(DEFAULT_CALENDAR_FILTERS)
-    setSearchTerm('')
-    if (view === 'list') setListTimeOverride(null)
+    setSearchInput('')
+    listNavigate({ calendar_filters: null, calendar_search: null, calendar_time: null, calendar_list_page: null })
   }
 
   const changeTimeFilter = (time: CalendarFilterState['time']) => {
@@ -399,8 +442,6 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   }
 
   const changeView = (nextView: 'month' | 'week' | 'day' | 'list') => {
-    viewSwitchedByUser.current = true
-    if (nextView === 'list' && view !== 'list') setListTimeOverride(null)
     setView(nextView)
   }
 
@@ -435,54 +476,6 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     setSelectedShiftIds(current => toggleAllVisibleShiftSelection(listShifts, current))
   }
 
-  const handleExport = async (formatType: 'xlsx' | 'csv', scope: 'filtered' | 'selected') => {
-    try {
-    const exportShifts = view === 'list' && scope === 'filtered' ? await shiftService.getAllFiltered(JSON.parse(listQuery))
-      : view === 'list' ? listShifts : filteredShifts
-    const targetShifts = scope === 'selected'
-      ? exportShifts.filter(s => selectedVisibleShiftIdSet.has(s.id))
-      : exportShifts
-
-    if (targetShifts.length === 0) {
-      toast({
-        title: t('exportExcel'),
-        description: 'No shifts available to export.',
-        variant: 'destructive',
-      })
-      return
-    }
-
-    const brandsMap = brandsToNameMap(brands)
-    const platformsMap = platformsToNameMap(platforms)
-    const campaignsMap = campaignsToNameMap(campaigns)
-    const usersMap = usersToNameMap(users)
-
-    const rows = buildScheduleExportRows(
-      targetShifts,
-      brandsMap,
-      platformsMap,
-      campaignsMap,
-      usersMap,
-      await shiftRegistrationService.getForShifts(targetShifts.map(shift => shift.id)),
-    )
-    const filename = buildScheduleExportFilename(scope, targetShifts, formatType, currentDate)
-
-    if (formatType === 'xlsx') {
-      downloadScheduleExportXlsx(rows, filename)
-    } else {
-      downloadScheduleExportCsv(rows, filename)
-    }
-
-    toast({
-      title: 'Export successful',
-      description: `Exported ${targetShifts.length} shift(s) to ${filename}`,
-      variant: 'success',
-    })
-    } catch (error) {
-      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
-    }
-  }
-
   const getViewTitle = () => {
     switch (view) {
       case 'month':
@@ -502,13 +495,12 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     }
   }
 
-  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoadError(null); setLoading(true); void loadData() }} />
-  if (loading || loadedIdentity!==identity) return <div className="text-center py-12">{t('loading')}</div>
+  if (loadedIdentity && loadedIdentity !== identity) return <ContentSkeleton />
 
   return (
     <div className="min-w-0 space-y-0">
       {/* Unified Command Toolbar */}
-      <div className="flex flex-col">
+      <div ref={toolbar} className="sticky top-0 z-30 flex flex-col bg-background pb-2">
           <ActiveFilterChips filters={filters} setFilters={setFilters} onClearAll={clearFilters} t={t} brands={brands} platforms={platforms} campaigns={campaigns} users={users} />
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between px-0 pb-2 border-b border-border">
           {/* Left: Date Navigation */}
@@ -559,9 +551,11 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
               <div className="relative min-w-[200px] flex-1 shrink-0 sm:min-w-56">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
+                  aria-label={t('searchShifts')}
+                  data-testid="calendar-search"
                   placeholder={t('searchShifts')}
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
                   className="pl-9 h-9"
                 />
               </div>
@@ -576,48 +570,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                 {hasActiveFilters && <span className="ml-2 bg-primary text-primary-foreground rounded-full w-5 h-5 text-xs flex items-center justify-center">{activeFilterCount}</span>}
               </Button>
               {hasPermission(currentUser, 'shifts.export') && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button variant="outline" size="sm" className="h-9" data-testid="export-schedule-dropdown-btn">
-                        <Download className="h-4 w-4 mr-2" />
-                        {t('exportExcel')}
-                        {visibleSelection.selectedVisibleShiftIds.length > 0 && (
-                          <span className="ml-2 bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 text-xs">
-                            {visibleSelection.selectedVisibleShiftIds.length}
-                          </span>
-                        )}
-                      </Button>
-                    }
-                  />
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => handleExport('xlsx', 'filtered')} data-testid="export-filtered-xlsx">
-                      <FileSpreadsheet className="h-4 w-4 mr-2" />
-                      Filtered XLSX
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExport('csv', 'filtered')} data-testid="export-filtered-csv">
-                      <FileText className="h-4 w-4 mr-2" />
-                      Filtered CSV
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => handleExport('xlsx', 'selected')}
-                      disabled={visibleSelection.selectedVisibleShiftIds.length === 0}
-                      data-testid="export-selected-xlsx"
-                    >
-                      <FileSpreadsheet className="h-4 w-4 mr-2" />
-                      Selected XLSX
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => handleExport('csv', 'selected')}
-                      disabled={visibleSelection.selectedVisibleShiftIds.length === 0}
-                      data-testid="export-selected-csv"
-                    >
-                      <FileText className="h-4 w-4 mr-2" />
-                      Selected CSV
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+<Button variant="outline" size="sm" className="h-9" data-testid="export-schedule-dropdown-btn" onClick={() => setExportOpen(true)}><Download className="mr-2 h-4 w-4" />{t('exportExcel')}</Button>
               )}
 
               {canSelectListShifts && (
@@ -652,11 +605,12 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                   variant="outline"
                   size="sm"
                   className="h-9"
-                  onClick={() => setShowBulkStaffingApproval(true)}
+                  onClick={() => void openBulkStaffingApproval()}
+                  disabled={bulkApprovalLoading}
                   data-testid="open-bulk-staffing-approval"
                 >
                   <UserCheck className="mr-2 h-4 w-4" />
-                  {t('bulkStaffingApproval')} ({pendingStaffingRegistrations.length})
+                  {t('bulkStaffingApproval')} ({pendingStaffingCount})
                 </Button>
               )}
             </div>
@@ -720,8 +674,11 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         </div>
       </div>
 
+      {!!loadError && <PageLoadError error={loadError} onRetry={() => { void loadData(); void loadReferenceData().catch(setLoadError) }} />}
       {/* Calendar Views */}
-      <Card className="min-w-0 overflow-hidden gap-0 py-0">
+      <Card className="min-w-0 overflow-hidden gap-0 py-0" aria-busy={loading}>
+        {loading && <ContentSkeleton />}
+        {!loading && <>
         {view === 'month' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onShiftClick={setPreviewShift} onDayClick={setSelectedDay} /></div></div>}
         {view === 'week' && <div className="w-full"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms}  registrations={registrations} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} currentUser={currentUser} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} /></div>}
         {view === 'day' && <DayView currentDate={currentDate} shifts={filteredShifts} allShifts={shifts} onRegister={registerForShift} registrations={registrations} currentUser={currentUser} brands={brands} platforms={platforms} users={users} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} />}
@@ -741,8 +698,10 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           />
         )}
         {view === 'list' && <HistoryPagination page={listPage} pageSize={listSize} total={listTotal} onPageChange={listPagination.setPage} onPageSizeChange={listPagination.setPageSize} />}
+        </>}
       </Card>
 
+      <CalendarExportDialog open={exportOpen} onOpenChange={setExportOpen} selectedIds={[...selectedVisibleShiftIdSet]} filters={JSON.parse(listQuery)} />
       {/* Modals */}
       {showForm && (
         <ShiftFormModal
@@ -781,6 +740,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       )}
 
       <DaySessionsDialog
+        key={selectedDay ? format(selectedDay, 'yyyy-MM-dd') : 'closed'}
         open={!!selectedDay}
         date={selectedDay}
         shifts={filteredShifts}
@@ -791,6 +751,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         users={users}
         registrations={registrations}
         reports={reports}
+        reportsReady={reportsReady}
         currentUser={currentUser}
         onOpenChange={(open) => !open && setSelectedDay(null)}
         onViewShift={(shift) => {
@@ -865,6 +826,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           campaigns={campaigns}
           users={users}
           allShifts={shifts}
+          exportFilters={JSON.parse(listQuery)}
           allRegistrations={registrations}
           onUpdate={(updatedShift?: Shift) => {
             void (async () => {

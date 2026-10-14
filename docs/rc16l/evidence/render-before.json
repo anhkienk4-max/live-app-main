@@ -1,0 +1,22 @@
+{
+  "methodology": "Local synthetic React SSR, 80 same-time shifts, five warmed samples. Not browser render, network or Production evidence.",
+  "baselineLabel": "before",
+  "metrics": [
+    {
+      "view": "week",
+      "shifts": 80,
+      "sampleCount": 5,
+      "medianSsrMs": 262.14270000000033,
+      "elementCount": 542,
+      "htmlBytes": 117617
+    },
+    {
+      "view": "day",
+      "shifts": 80,
+      "sampleCount": 5,
+      "medianSsrMs": 544.2127999999993,
+      "elementCount": 3656,
+      "htmlBytes": 405524
+    }
+  ]
+}

@@ -37,6 +37,29 @@ export const ShiftCard = React.forwardRef<HTMLButtonElement, ShiftCardProps>(
     const platformName = platforms.find(p => p.id === shift.platform_id)?.name ?? ''
     const displayTitle = shift.title || (brandName + ' · ' + platformName)
 
+    if (variant === 'compact') {
+      return (
+        <button
+          ref={ref}
+          className={cn(
+            'w-full text-left flex items-center gap-1.5 px-1.5 py-1 text-xs rounded-sm transition-colors overflow-hidden',
+            'hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            selected && 'bg-primary/10',
+            className
+          )}
+          {...props}
+        >
+          <span className='shrink-0 font-semibold'>
+            {shift.start_time}{crossesMidnight ? ' +1' : ''}
+          </span>
+          <span className='min-w-0 flex-1 truncate whitespace-nowrap text-foreground'>
+            {displayTitle}
+          </span>
+          <ShiftStatusBadge status={shift.status} className='shrink-0 text-micro h-4 px-1 py-0 border-none scale-90 origin-right' />
+        </button>
+      )
+    }
+
     const shiftRegistrations = registrations.filter(row => row.shift_id === shift.id)
     const roleName = (role: OperationalRole) => resolveStaffingLabelsForRole(
       shift, shiftRegistrations, users, role, t,
@@ -68,29 +91,6 @@ export const ShiftCard = React.forwardRef<HTMLButtonElement, ShiftCardProps>(
       required,
       staffed,
     })
-
-    if (variant === 'compact') {
-      return (
-        <button
-          ref={ref}
-          className={cn(
-            'w-full text-left flex items-center gap-1.5 px-1.5 py-1 text-xs rounded-sm transition-colors overflow-hidden',
-            'hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            selected && 'bg-primary/10',
-            className
-          )}
-          {...props}
-        >
-          <span className='shrink-0 font-semibold'>
-            {shift.start_time}{crossesMidnight ? ' +1' : ''}
-          </span>
-          <span className='min-w-0 flex-1 truncate whitespace-nowrap text-foreground'>
-            {displayTitle}
-          </span>
-          <ShiftStatusBadge status={shift.status} className='shrink-0 text-micro h-4 px-1 py-0 border-none scale-90 origin-right' />
-        </button>
-      )
-    }
 
     if (variant === 'expanded') {
       return (

@@ -275,7 +275,7 @@ export function createWorkforcePayrollHandler(options:Options={}) {
           .select('id,status,period_start,period_end').eq('id',input.period_id).maybeSingle()
         if(p.error)return failure('WORKFORCE_PERIOD_READ_FAILED',503)
         if(!p.data||p.data.status!=='draft')return failure('WORKFORCE_PAYROLL_PERIOD_NOT_DRAFT',409)
-        const a=await db.from('workforce_actual_segments')
+        const a=await db.from('workforce_actual_active_segments')
           .select('id,shift_id,staff_id,operational_role,event_kind,review_status,actual_start_at,actual_end_at')
           .eq('id',input.segment_id).maybeSingle()
         if(a.error)return failure('WORKFORCE_ACTUAL_READ_FAILED',503)

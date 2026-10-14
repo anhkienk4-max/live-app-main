@@ -5,11 +5,21 @@ on:
     branches:
       - 'integration/rc14-rc15-rc16-prod'
       - 'feat/rc16k-ui-consistency-pagination'
+      - 'fix/rc16l-calendar-ux-worktime-export'
   pull_request:
     branches:
       - fix/rc14-data-report-export-fidelity
       - main
     paths:
+      - 'components/features/calendar/**'
+      - 'lib/services/calendar*.ts'
+      - 'lib/utils/calendarExport*.ts'
+      - 'lib/utils/scheduleExportFields.ts'
+      - 'lib/hooks/useListPagination.ts'
+      - 'tests/rc16l-*'
+      - 'e2e/rc16l-*.spec.ts'
+      - 'playwright.rc16l.config.ts'
+      - 'docs/rc16l/**'
       - 'components/features/search/**'
       - 'app/api/operations/**'
       - 'e2e/rc16k-*.spec.ts'
@@ -107,6 +117,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
           fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -134,6 +145,7 @@ jobs:
           PGDATABASE: postgres
         run: |
           node tests/rc16k-pagination-postgres.integration.mjs
+          node tests/rc16l-actual.integration.mjs
           node tests/rc16-payroll-postgres.integration.mjs
 
       - name: TypeScript type check
@@ -163,6 +175,16 @@ jobs:
           pnpm exec playwright test --config playwright.rc16k.config.ts --grep-invert 'Local route audit role' --output rc16k-route-evidence/interactions --reporter=line
       - name: Post-main desktop and mobile interaction regressions
         run: pnpm exec playwright test --config playwright.rc16i-postmain.config.ts
+      - name: RC16L Calendar role and width matrix
+        run: pnpm exec playwright test --config playwright.rc16l.config.ts
+      - name: RC16L before and after screenshots and fixture request measurements
+        run: |
+          git worktree add --detach /tmp/rc16l-baseline 4f03c0b881bcc77547e72a2d5c655b07690746d6
+          cp playwright.rc16l.config.ts /tmp/rc16l-baseline/
+          cp e2e/rc16l-performance.spec.ts /tmp/rc16l-baseline/e2e/
+          ln -s "$GITHUB_WORKSPACE/node_modules" /tmp/rc16l-baseline/node_modules
+          (cd /tmp/rc16l-baseline && RC16L_PERF_ONLY=true RC16L_EVIDENCE_PHASE=before pnpm exec playwright test --config playwright.rc16l.config.ts --output "$GITHUB_WORKSPACE/rc16l-before-evidence")
+          RC16L_PERF_ONLY=true RC16L_EVIDENCE_PHASE=after pnpm exec playwright test --config playwright.rc16l.config.ts --output rc16l-after-evidence
       - name: Preserve isolated UI evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -173,6 +195,9 @@ jobs:
             rc16k-route-evidence
             rc16i-postmain-report
             rc16k-browser-report
+            rc16l-browser-report
+            rc16l-before-evidence
+            rc16l-after-evidence
       - name: Production Storage dependency regressions
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc12-*.test.ts tests/rc13*.test.ts tests/rc14-*.test.ts tests/rc15-*.test.ts
       - name: Focused environment security lint

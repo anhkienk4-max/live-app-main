@@ -31,7 +31,9 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
-import type { Shift, User as UserType } from '@/lib/types/database.types'
+import { resolveShiftDateTime } from '@/lib/utils/shiftUtils'
+import { actualPickerInstant, actualPickerValue } from '@/lib/workforce/actualTime'
+import type { ShiftRegistration, Shift, User as UserType } from '@/lib/types/database.types'
 import { resolveSystemPermission } from '@/lib/permissions'
 import {
   workforceService,
@@ -43,18 +45,20 @@ import {
 interface ActualStaffingPanelProps {
   shift: Shift
   currentUser: UserType | null
+  users?: UserType[]
+  registrations?: ShiftRegistration[]
 }
 
-export function ActualStaffingPanel({ shift }: ActualStaffingPanelProps) {
+export function ActualStaffingPanel({ shift, users, registrations }: ActualStaffingPanelProps) {
   const { currentUser, loading, error, capabilities, identityKey } = useWorkforceCapabilities()
   if (loading) return <p role="status">Đang xác minh phiên đăng nhập và quyền truy cập…</p>
   if (error) return <p role="alert">{error}</p>
   if (currentUser && !['admin', 'leader'].includes(resolveSystemPermission(currentUser))) return <p role="alert">Bạn không có quyền truy cập chấm công thực tế (403).</p>
   if (!capabilities?.actual_staffing) return <p role="status">Chấm công thực tế đang tắt. Vui lòng chờ cấu hình được phê duyệt.</p>
-  return <ActualStaffingWorkspace key={identityKey + ':' + shift.id} shift={shift} currentUser={currentUser} />
+  return <ActualStaffingWorkspace key={identityKey + ':' + shift.id} shift={shift} currentUser={currentUser} users={users} registrations={registrations} />
 }
 
-function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProps) {
+function ActualStaffingWorkspace({ shift, currentUser, users = [], registrations = [] }: ActualStaffingPanelProps) {
   const { toast } = useToast()
   const permission = resolveSystemPermission(currentUser)
   const isSupervisor = permission === 'admin' || permission === 'leader'
@@ -66,6 +70,12 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
 
   // Record Modal State
   const [isRecordOpen, setIsRecordOpen] = React.useState(false)
+  const [amending, setAmending] = React.useState<ActualSegment | null>(null)
+  const [amendReason, setAmendReason] = React.useState('')
+  const [recConflict, setRecConflict] = React.useState(false)
+  const intent = React.useRef<{ key: string; id: string } | null>(null)
+  const staffOptions = [...new Set([shift.host_id, shift.support_id, shift.technical_id, ...registrations.filter(row => ['approved', 'manually_assigned', 'pending'].includes(row.status)).map(row => row.user_id)].filter((id): id is string => !!id))]
+  const staffName = (id: string) => users.find(user => user.id === id)?.full_name ?? id
   const [recStaffId, setRecStaffId] = React.useState('')
   const [recRole, setRecRole] = React.useState<WorkforceRole>('host')
   const [recEventKind, setRecEventKind] = React.useState<'worked' | 'no_show'>('worked')
@@ -82,19 +92,19 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
   const [revNote, setRevNote] = React.useState('')
   const [revSubmitting, setRevSubmitting] = React.useState(false)
   const [revError, setRevError] = React.useState<string | null>(null)
+  const [revConflict, setRevConflict] = React.useState(false)
 
   const readSequence = React.useRef(0)
-  const loadSegments = React.useCallback(async () => {
+  const loadSegments = React.useCallback(async (signal?: AbortSignal) => {
     const sequence = ++readSequence.current
-    setSegments([])
     setLoading(true)
     setLoadError(null)
     try {
-      const res = await workforceService.getActualSegments(shift.id)
-      if (sequence !== readSequence.current) return
+      const res = await workforceService.getActualSegments(shift.id, signal)
+      if (sequence !== readSequence.current || signal?.aborted) return
       setSegments(res.segments)
     } catch (err: unknown) {
-      if (sequence !== readSequence.current) return
+      if (sequence !== readSequence.current || signal?.aborted) return
       setSegments([])
       setLoadError(workforceErrorMessage(err))
       toast({
@@ -109,30 +119,29 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
 
   React.useEffect(() => {
     const generation = readSequence
+    const controller = new AbortController()
     const frame = requestAnimationFrame(() => {
-      void loadSegments()
+      void loadSegments(controller.signal)
     })
-    return () => { cancelAnimationFrame(frame); generation.current++ }
+    return () => { cancelAnimationFrame(frame); controller.abort(); generation.current++ }
   }, [loadSegments])
 
   // Pre-fill time when opening record modal
-  const openRecordModal = () => {
-    setRecStaffId(shift.host_id || '')
-    setRecRole('host')
-    setRecEventKind('worked')
-    setRecCoverageKind('planned')
-    // Build default times from shift date and start/end time
-    if (shift.date && shift.start_time) {
-      setRecStartTime(`${shift.date}T${shift.start_time.slice(0, 5)}:00+07:00`)
-    } else {
-      setRecStartTime('')
-    }
-    if (shift.date && shift.end_time) {
-      setRecEndTime(`${shift.date}T${shift.end_time.slice(0, 5)}:00+07:00`)
-    } else {
-      setRecEndTime('')
-    }
-    setRecEvidenceNote('')
+  const openRecordModal = (source?: ActualSegment) => {
+    setAmending(source ?? null)
+    setAmendReason('')
+    setRecConflict(false)
+    intent.current = null
+    setRecStaffId(source?.staff_id ?? shift.host_id ?? staffOptions[0] ?? '')
+    setRecRole(source?.operational_role ?? 'host')
+    setRecEventKind(source?.event_kind ?? 'worked')
+    setRecCoverageKind(source?.coverage_kind ?? 'planned')
+    const planned = resolveShiftDateTime(shift.date, shift.start_time.slice(0, 5), shift.end_time.slice(0, 5), shift.timezone)
+    setRecStartTime(planned?.valid ? actualPickerValue(planned.startAt.toISOString(), shift.timezone) : '')
+    setRecEndTime(planned?.valid ? actualPickerValue(planned.endAt.toISOString(), shift.timezone) : '')
+    if (source?.actual_start_at) setRecStartTime(actualPickerValue(source.actual_start_at, shift.timezone))
+    if (source?.actual_end_at) setRecEndTime(actualPickerValue(source.actual_end_at, shift.timezone))
+    setRecEvidenceNote(source?.evidence_note ?? '')
     setRecError(null)
     setIsRecordOpen(true)
   }
@@ -163,15 +172,25 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
     }
 
     try {
+      if (recConflict) return
+      if (amending && amendReason.trim().length < 8) throw new Error('Lý do điều chỉnh phải có ít nhất 8 ký tự.')
+      const actualStartAt = recEventKind === 'worked' ? actualPickerInstant(recStartTime, shift.timezone) : null
+      const actualEndAt = recEventKind === 'worked' ? actualPickerInstant(recEndTime, shift.timezone) : null
+      if (actualStartAt && actualEndAt && (Date.parse(actualEndAt) <= Date.parse(actualStartAt) || Date.parse(actualEndAt) - Date.parse(actualStartAt) > 86400000)) throw new Error('Khoảng làm việc phải lớn hơn 0 và không quá 24 giờ.')
       setRecSubmitting(true)
-      await workforceService.recordActualSegment({
+      if (amending) {
+        const patch = { staff_id: recStaffId, operational_role: recRole, event_kind: recEventKind, coverage_kind: recCoverageKind, actual_start_at: actualStartAt, actual_end_at: actualEndAt, evidence_note: recEvidenceNote.trim() }
+        const key = JSON.stringify({ id: amending.id, version: amending.version, patch, reason: amendReason.trim() })
+        if (intent.current?.key !== key) intent.current = { key, id: crypto.randomUUID() }
+        await workforceService.amendActualSegment({ segmentId: amending.id, expectedVersion: amending.version, requestId: intent.current.id, reason: amendReason.trim(), patch })
+      } else await workforceService.recordActualSegment({
         shiftId: shift.id,
         staffId: recStaffId.trim(),
         operationalRole: recRole,
         eventKind: recEventKind,
         coverageKind: recCoverageKind,
-        actualStartAt: recEventKind === 'worked' ? recStartTime : null,
-        actualEndAt: recEventKind === 'worked' ? recEndTime : null,
+        actualStartAt,
+        actualEndAt,
         evidenceNote: recEvidenceNote.trim(),
       })
 
@@ -183,8 +202,9 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
       setIsRecordOpen(false)
       loadSegments()
     } catch (err: unknown) {
+      if (err instanceof Error && 'status' in err && err.status === 409) { setRecConflict(true); void loadSegments() }
       setRecError(
-        workforceErrorMessage(err)
+        err instanceof Error && !('status' in err) ? err.message : workforceErrorMessage(err)
       )
     } finally {
       setRecSubmitting(false)
@@ -192,6 +212,7 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
   }
 
   const openReviewModal = (seg: ActualSegment) => {
+    setRevConflict(false)
     setReviewingSegment(seg)
     setRevDecision('approved')
     setRevNote('')
@@ -200,7 +221,7 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
 
   const handleReviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!reviewingSegment) return
+    if (!reviewingSegment || revConflict) return
     setRevError(null)
 
     if (!revNote.trim() || revNote.trim().length < 8) {
@@ -225,6 +246,7 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
       setReviewingSegment(null)
       loadSegments()
     } catch (err: unknown) {
+      if (err instanceof Error && 'status' in err && err.status === 409) { setRevConflict(true); void loadSegments() }
       setRevError(
         workforceErrorMessage(err)
       )
@@ -275,7 +297,7 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
         {isCompleted && isSupervisor && (
           <Button
             size="sm"
-            onClick={openRecordModal}
+            onClick={() => openRecordModal()}
             className="bg-blue-600 hover:bg-blue-700 text-xs text-white"
           >
             <Plus className="h-3.5 w-3.5 mr-1" />
@@ -318,7 +340,7 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
               </tr>
             ) : (
               segments.map((seg) => {
-                const isCreator = currentUser?.id === seg.created_by
+                const isCreator = currentUser?.id === seg.created_by || Boolean(seg.supersedes_segment_id && segments.find(source => source.id === seg.supersedes_segment_id)?.created_by === currentUser?.id)
                 const isApproved = seg.review_status === 'approved'
                 const isRejected = seg.review_status === 'rejected'
                 const isDraftStatus = seg.review_status === 'draft'
@@ -326,7 +348,7 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
                 return (
                   <tr key={seg.id} className="hover:bg-slate-50/60 transition-colors">
                     <td className="px-3 py-2.5 font-mono font-bold text-slate-900">
-                      {seg.staff_id}
+                      {staffName(seg.staff_id)}
                     </td>
                     <td className="px-3 py-2.5 font-medium text-slate-700">
                       {roleLabels[seg.operational_role]}
@@ -349,9 +371,9 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
                       {seg.event_kind === 'worked' && seg.actual_start_at && seg.actual_end_at ? (
                         <div>
                           <span>
-                            {new Date(seg.actual_start_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                            {new Date(seg.actual_start_at).toLocaleString('vi-VN', { timeZone: shift.timezone ?? 'Asia/Ho_Chi_Minh', dateStyle: 'short', timeStyle: 'short' })}
                             {' → '}
-                            {new Date(seg.actual_end_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                            {new Date(seg.actual_end_at).toLocaleString('vi-VN', { timeZone: shift.timezone ?? 'Asia/Ho_Chi_Minh', dateStyle: 'short', timeStyle: 'short' })}
                           </span>
                         </div>
                       ) : (
@@ -360,8 +382,11 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
                     </td>
                     <td className="px-3 py-2.5 max-w-[180px] truncate text-slate-600" title={seg.evidence_note}>
                       {seg.evidence_note}
+                      {seg.supersedes_segment_id && <p className="mt-1 whitespace-normal text-xs">Điều chỉnh {seg.supersedes_segment_id}: {seg.amendment_reason}</p>}
+                      <span className="text-xs">v{seg.version}</span>
                     </td>
                     <td className="px-3 py-2.5">
+                      {segments.some(child => child.supersedes_segment_id === seg.id && child.review_status === 'approved') && <Badge variant="outline">Đã thay thế</Badge>}
                       {isApproved ? (
                         <div className="flex items-center gap-1 text-emerald-700 font-semibold text-[11px]">
                           <CheckCircle2 className="h-3.5 w-3.5" />
@@ -385,6 +410,7 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-right">
+                      {isSupervisor && isCompleted && (!seg.supersedes_segment_id || isApproved) && !segments.some(child => child.supersedes_segment_id === seg.id && child.review_status !== 'rejected') && <Button size="sm" variant="outline" onClick={() => openRecordModal(seg)}>Điều chỉnh</Button>}
                       {isDraftStatus && isSupervisor && (
                         <Button
                           size="sm"
@@ -421,6 +447,7 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
           </DialogHeader>
 
           <form onSubmit={handleRecordSubmit} className="space-y-4 pt-2">
+            {amending && <label className="block space-y-1 text-xs">Lý do điều chỉnh (đi trễ, về sớm, thay ca, làm thêm)<Textarea value={amendReason} onChange={event => setAmendReason(event.target.value)} required minLength={8} maxLength={2000} /></label>}
             {recError && (
               <div className="flex items-center gap-2 rounded-md bg-rose-50 p-2.5 text-xs text-rose-700 border border-rose-200">
                 <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
@@ -431,16 +458,12 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <label htmlFor="actualstaffingpanel-field-1" className="text-xs font-semibold text-slate-700">
-                  Mã nhân sự (Staff ID) <span className="text-rose-500">*</span>
+                  Nhân sự <span className="text-rose-500">*</span>
                 </label>
-                <Input id="actualstaffingpanel-field-1"
-                  type="text"
-                  required
-                  placeholder="Nhập staff_id..."
-                  value={recStaffId}
-                  onChange={(e) => setRecStaffId(e.target.value)}
-                  className="h-9 text-xs font-mono"
-                />
+                <select id="actualstaffingpanel-field-1" required value={recStaffId} onChange={event => setRecStaffId(event.target.value)} className="h-9 w-full rounded-md border bg-background px-2 text-xs">
+                  <option value="">Chọn nhân sự</option>
+                  {[...new Set([...staffOptions, ...(amending ? [amending.staff_id] : [])])].map(id => <option key={id} value={id}>{staffName(id)}</option>)}
+                </select>
               </div>
 
               <div className="space-y-1.5">
@@ -465,7 +488,7 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
                   value={recEventKind}
                   onValueChange={(val: 'worked' | 'no_show') => setRecEventKind(val)}
                 >
-                  <SelectTrigger className="h-9 text-xs">
+                  <SelectTrigger aria-label="Sự kiện chấm công" className="h-9 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -498,13 +521,13 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <label htmlFor="actualstaffingpanel-field-2" className="text-xs font-semibold text-slate-700">
-                    Bắt đầu thực tế (ISO) <span className="text-rose-500">*</span>
+                    Bắt đầu thực tế  <span className="text-rose-500">*</span>
                   </label>
                   <Input id="actualstaffingpanel-field-2"
-                    type="text"
+                    type="datetime-local"
                     required
                     aria-label="Bắt đầu thực tế"
-                    placeholder="YYYY-MM-DDTHH:MM:SS+07:00"
+
                     value={recStartTime}
                     onChange={(e) => setRecStartTime(e.target.value)}
                     className="h-9 text-xs font-mono"
@@ -513,13 +536,13 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
 
                 <div className="space-y-1.5">
                   <label htmlFor="actualstaffingpanel-field-3" className="text-xs font-semibold text-slate-700">
-                    Kết thúc thực tế (ISO) <span className="text-rose-500">*</span>
+                    Kết thúc thực tế  <span className="text-rose-500">*</span>
                   </label>
                   <Input id="actualstaffingpanel-field-3"
-                    type="text"
+                    type="datetime-local"
                     required
                     aria-label="Kết thúc thực tế"
-                    placeholder="YYYY-MM-DDTHH:MM:SS+07:00"
+
                     value={recEndTime}
                     onChange={(e) => setRecEndTime(e.target.value)}
                     className="h-9 text-xs font-mono"
@@ -532,7 +555,7 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
               <label htmlFor="actualstaffingpanel-field-4" className="text-xs font-semibold text-slate-700">
                 Ghi chú minh chứng đối soát <span className="text-rose-500">*</span>
               </label>
-              <Textarea id="actualstaffingpanel-field-4"
+              <Textarea id="actualstaffingpanel-field-4" maxLength={2000}
                 required
                 rows={2}
                 placeholder="Ghi rõ nguồn kiểm tra: camera, nhật ký phiên live, biên bản ca..."
@@ -559,7 +582,7 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
               <Button
                 type="submit"
                 size="sm"
-                disabled={recSubmitting}
+                disabled={recSubmitting || recConflict}
                 className="bg-blue-600 hover:bg-blue-700 text-xs text-white"
               >
                 {recSubmitting ? 'Đang lưu...' : 'Lưu chấm công'}
@@ -646,7 +669,7 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
                 <Button
                   type="submit"
                   size="sm"
-                  disabled={revSubmitting}
+                  disabled={revSubmitting || revConflict}
                   className={`text-xs text-white ${
                     revDecision === 'approved' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'
                   }`}
