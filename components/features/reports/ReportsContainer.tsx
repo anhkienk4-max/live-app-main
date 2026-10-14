@@ -94,6 +94,7 @@ export function ReportsContainer() {
   const [removeImpact, setRemoveImpact] = React.useState<DeletionImpact | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
+  const [loadErrorIdentity, setLoadErrorIdentity] = React.useState('')
   const handledDeepLink = React.useRef<string | null>(null)
   const identity = currentUser ? currentUser.id + ':' + resolveSystemPermission(currentUser) : ''
   const [loadedIdentity, setLoadedIdentity] = React.useState('')
@@ -124,7 +125,10 @@ export function ReportsContainer() {
       setRegistrations(loadedRegistrations)
       setLoadedIdentity(identity)
     } catch (error) {
-      if (version === requestVersion.current) setLoadError(error)
+      if (version === requestVersion.current) {
+        setLoadError(error)
+        setLoadErrorIdentity(identity)
+      }
     } finally {
       if (version === requestVersion.current) setLoading(false)
     }
@@ -300,8 +304,9 @@ export function ReportsContainer() {
     toast({ title: t('success'), description: t('exportImageMetadata'), variant: 'success' })
   }
 
-  if (loading || userLoading || !identity || identity !== loadedIdentity) return <div className="py-12 text-center">{t('loading')}</div>
-  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
+  if (loading || userLoading || !identity) return <div className="py-12 text-center">{t('loading')}</div>
+  if (loadError && loadErrorIdentity === identity) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
+  if (identity !== loadedIdentity) return <div className="py-12 text-center">{t('loading')}</div>
 
   return (
     <div className="space-y-4">
