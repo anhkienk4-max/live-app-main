@@ -183,6 +183,10 @@ export function OperationalFileWorkspace() {
       const response = await fetch('/api/operational-files?' + requestKey + '&' + new URLSearchParams({ page: String(page), pageSize: String(pageSize), category: filter }), { cache: 'no-store' })
       const data = await response.json() as ListResponse
       if (!response.ok || !data.ok) throw new Error(data.error?.code || 'Không tải được file')
+      if (!Number.isSafeInteger(data.total) || data.total < 0 ||
+          !Number.isSafeInteger(data.page) || data.page < 1 ||
+          data.pageSize !== pageSize || !Array.isArray(data.files) ||
+          data.files.length > pageSize) throw new Error('STORAGE_LIST_RESPONSE_INVALID')
       if (version !== requestVersion.current) return
       setLoadedOwner(actorKey)
       setLoadedListKey(listKey)
@@ -808,7 +812,7 @@ export function OperationalFileWorkspace() {
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Tìm trong trang hiện tại..."
+                placeholder={t('storageCurrentPageSearchPlaceholder')}
                 className="w-full rounded-md border border-slate-200 bg-slate-50/50 pl-8 pr-3 py-1.5 text-xs text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
               />
             </div>
@@ -831,7 +835,7 @@ export function OperationalFileWorkspace() {
               value={providerFilter}
               onChange={event => setProviderFilter(event.target.value as typeof providerFilter)}
             >
-              <option value="all">Provider (trang hiện tại)</option>
+              <option value="all">{t('storageCurrentPageProviderAll')}</option>
               <option value="google_drive">Google Drive</option>
               <option value="onedrive">OneDrive</option>
             </select>
@@ -850,7 +854,7 @@ export function OperationalFileWorkspace() {
         </div>
 
         <p className="text-xs text-muted-foreground" role="note">
-          {translate("Tên file và Provider chỉ lọc trang hiện tại; Danh mục lọc toàn bộ kho file. Dùng phân trang để xem file khác.")}
+          {t('storageCurrentPageScope')}
         </p>
 
         {/* 9. Files Rendering: Mobile Cards (md:hidden) vs Desktop Table (hidden md:block) */}
