@@ -3,7 +3,7 @@ import { dashboardUpdateFromRow } from '@/lib/services/supabaseDashboardUpdateSe
 import { readDataQualityPage } from '@/lib/server/dataQualityPage'
 import { pageRange } from '@/lib/utils/pagination'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { requireUser, isAuthorizationError, authorizationErrorResponse, type ServerUserResolver } from '@/lib/server/authGuards'
+import { requireUser, isAuthorizationError, authorizationErrorResponse, type ServerUserResolver, type AuthenticatedServerUser } from '@/lib/server/authGuards'
 import { readScheduleImportBatchPage } from '@/lib/services/supabaseScheduleImportService'
 import { swapFromRow } from '@/lib/services/supabaseSwapRequestService'
 import { reportFromRow } from '@/lib/services/supabaseReportService'
@@ -44,11 +44,17 @@ const schema = z.object({
   pendingPage: z.coerce.number().int().min(1).max(100000),
   filters: listFiltersSchema,
 })
+// The browser's business user ID is the same identity shown by currentUserService.
+// Supabase Auth's UUID can differ and must not be used for a browser response owner.
+export function operationsOwnerKey(user: Pick<AuthenticatedServerUser, 'id' | 'businessUserId' | 'systemPermission'>): string {
+  return `${user.businessUserId || user.id}:${user.systemPermission}`
+}
+
 export function createOperationsCollectionHandler(dependencies: { resolveUser?: ServerUserResolver; createClient?: () => Promise<SupabaseClient> } = {}) {
   return { GET: async (request: Request) => {
     try {
       const user = await requireUser(request, dependencies.resolveUser)
-      const ownerKey=user.id+':'+user.systemPermission
+      const ownerKey=operationsOwnerKey(user)
       const reply=(data:object)=>Response.json({...data,ownerKey},{headers:{'Cache-Control':'private, no-store'}})
       const params = new URL(request.url).searchParams
       const raw = params.get('filters') ?? '{}'
