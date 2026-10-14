@@ -1,5 +1,6 @@
 import type { Shift, ShiftRegistration } from '@/lib/types/database.types'
 import { pageRange, type PageSize } from '@/lib/utils/pagination'
+import { resolveSystemPermission } from '@/lib/permissions'
 
 export type OperationsList = 'shifts' | 'open_shifts' | 'my_shifts' | 'brands' | 'platforms' | 'campaigns' | 'staff' | 'notifications' | 'reports' | 'registration_reviews' | 'import_batches' | 'schedule_changes' | 'swaps' | 'quality' | 'live_shifts' | 'analytics_reports' | 'live_updates' | 'archives' | 'account_requests'
 export interface ListFilters {
@@ -48,12 +49,21 @@ export interface ShiftListPage extends ListPage<Shift> {
 export class OperationsListError extends Error {
   constructor(public readonly code: string, public readonly status: number) { super(code) }
 }
+// Fail closed if a server response belongs to a different business user or role.
+// On the server (e.g. pure Node unit tests), there is no browser owner to compare.
+export function assertCollectionResponseOwner(localOwner: string | undefined, responseOwner: unknown): void {
+  if (localOwner === undefined) return
+  if (typeof responseOwner !== 'string' || responseOwner !== localOwner) {
+    throw new OperationsListError('LIST_IDENTITY_CHANGED', 409)
+  }
+}
+
 async function browserOwner():Promise<string|undefined> {
   if(typeof window==='undefined')return undefined
   const {currentUserService}=await import('@/lib/services/dataService')
   const user=await currentUserService.getCurrent()
   if(!user)throw new OperationsListError('AUTHENTICATION_REQUIRED',401)
-  return user.id+':'+(user.system_permission??user.role)
+  return user.id+':'+resolveSystemPermission(user)
 }
 export async function getCollectionPage<T>(entity: OperationsList, query: ListQuery, signal?: AbortSignal): Promise<ListPage<T>> {
   const params = new URLSearchParams({ entity, page: String(query.page), pageSize: String(query.pageSize), filters: JSON.stringify(query.filters ?? {}), pendingPage: String(query.pendingPage ?? 1) })
@@ -62,6 +72,7 @@ export async function getCollectionPage<T>(entity: OperationsList, query: ListQu
   const body = await response.json()
   if(owner!==await browserOwner())throw new OperationsListError('LIST_IDENTITY_CHANGED',409)
   if (!response.ok) throw new OperationsListError(body.error?.code ?? 'LIST_READ_FAILED', response.status)
+  assertCollectionResponseOwner(owner, body?.ownerKey)
   if ((body.ownerKey !== undefined && typeof body.ownerKey !== 'string') || !Array.isArray(body.items) || body.items.length > query.pageSize || !Number.isSafeInteger(body.total) || body.total < body.items.length || body.pageSize !== query.pageSize || !Number.isSafeInteger(body.page) || body.page < 1) {
     throw new OperationsListError('LIST_RESPONSE_INVALID', 502)
   }
