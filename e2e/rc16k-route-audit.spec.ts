@@ -31,7 +31,8 @@ for(const role of ['1','2','3']) for(const width of widths) {
     const evidence=[]
     for(const route of routes) {
       const begin=Date.now()
-      await page.goto(route)
+      // Next dev can restart at its memory threshold during the full route matrix.
+      await expect(async()=>{ await page.goto(route) }).toPass({timeout:30000})
       await expect(page.locator('body')).not.toHaveText('')
       await expect(page.locator('main').first()).toBeVisible()
       await page.waitForTimeout(400)
