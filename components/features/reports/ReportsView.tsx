@@ -38,6 +38,11 @@ export function ReportsView({
   totalUnfilteredReports,
   onCreateReport,
   completedShiftsCount,
+  page: externalPage,
+  pageSize: externalSize,
+  total: externalTotal,
+  onPageChange,
+  onPageSizeChange,
 }: {
   reports: Report[]
   shifts: Shift[]
@@ -55,6 +60,11 @@ export function ReportsView({
   totalUnfilteredReports?: number
   onCreateReport?: () => void
   completedShiftsCount?: number
+  page?: number
+  pageSize?: 10 | 20 | 50
+  total?: number
+  onPageChange?: (page: number) => void
+  onPageSizeChange?: (size: 10 | 20 | 50) => void
 }) {
   const { t } = useTranslation()
   const [page, setPage] = useState(1)
@@ -62,9 +72,12 @@ export function ReportsView({
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detailTab, setDetailTab] = useState<DetailTab>('overview')
 
-  const totalPages = Math.max(1, Math.ceil(reports.length / pageSize))
-  const safePage = Math.min(page, totalPages)
-  const visible = reports.slice((safePage - 1) * pageSize, safePage * pageSize)
+  const serverPaged = externalPage !== undefined && externalSize !== undefined && externalTotal !== undefined
+  const effectiveSize = externalSize ?? pageSize
+  const total = externalTotal ?? reports.length
+  const totalPages = Math.max(1, Math.ceil(total / effectiveSize))
+  const safePage = Math.min(externalPage ?? page, totalPages)
+  const visible = serverPaged ? reports : reports.slice((safePage - 1) * effectiveSize, safePage * effectiveSize)
   const selected = reports.find(report => report.id === selectedId) ?? reports[0]
   const selectedShift = selected && shifts.find(item => item.id === selected.shift_id)
 
@@ -315,13 +328,16 @@ export function ReportsView({
         )}
 
         {/* History Pagination: Render ONLY when data exists */}
-        {reports.length > 0 && (
+        {total > 0 && (
           <HistoryPagination
             page={safePage}
-            pageSize={pageSize}
-            total={reports.length}
-            onPageChange={setPage}
-            onPageSizeChange={size => { setPageSize(size); setPage(1) }}
+            pageSize={effectiveSize}
+            total={total}
+            onPageChange={onPageChange ?? setPage}
+            onPageSizeChange={size => {
+              if (onPageSizeChange) onPageSizeChange(size as 10 | 20 | 50)
+              else { setPageSize(size); setPage(1) }
+            }}
           />
         )}
       </section>

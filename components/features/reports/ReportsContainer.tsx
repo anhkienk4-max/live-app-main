@@ -20,14 +20,13 @@ import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
-import { reportMetricValue, calculateNullableAnalyticsMetrics } from '@/lib/utils/analytics'
 import {
   downloadReportTemplate,
   exportReportImageMetadataToExcel,
   exportReportsToExcel,
   exportReportDetailToExcel,
 } from '@/lib/utils/excelUtils'
-import { clearReportShiftQuery } from '@/lib/utils/reportTarget'
+import { clearReportShiftQuery, loadReportTarget } from '@/lib/utils/reportTarget'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { ReportsView } from './ReportsView'
 import { Button } from '@/components/ui/button'
@@ -79,6 +78,12 @@ export function ReportsContainer() {
   const { toast } = useToast()
   const [reports, setReports] = React.useState<Report[]>([])
   const [shifts, setShifts] = React.useState<Shift[]>([])
+  const [candidateShifts, setCandidateShifts] = React.useState<Shift[]>([])
+  const [candidateReports, setCandidateReports] = React.useState<Report[]>([])
+  const [reportTotal, setReportTotal] = React.useState(0)
+  const [reportPage, setReportPage] = React.useState(1)
+  const [reportPageSize, setReportPageSize] = React.useState<10 | 20 | 50>(20)
+  const [reportSummary, setReportSummary] = React.useState<{ revenue: number | null; aov: number | null; needsReview: number } | null>(null)
   const [brands, setBrands] = React.useState<Brand[]>([])
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
@@ -87,6 +92,7 @@ export function ReportsContainer() {
   const [filters, setFilters] = React.useState<Filters>(emptyFilters)
   const [showFilters, setShowFilters] = React.useState(false)
   const [selectedReport, setSelectedReport] = React.useState<Report | null>(null)
+  const [deepLinkedShift, setDeepLinkedShift] = React.useState<Shift | null>(null)
   const [showForm, setShowForm] = React.useState(false)
   const [formInitialShiftId, setFormInitialShiftId] = React.useState<string | undefined>(undefined)
   const [formInitialReport, setFormInitialReport] = React.useState<Report | undefined>(undefined)
@@ -99,25 +105,45 @@ export function ReportsContainer() {
   const identity = currentUser ? currentUser.id + ':' + resolveSystemPermission(currentUser) : ''
   const [loadedIdentity, setLoadedIdentity] = React.useState('')
   const requestVersion = React.useRef(0)
+  const identityForExport = React.useRef(identity)
+  identityForExport.current = identity
 
+  const deferredSearch = React.useDeferredValue(filters.search)
+  const encodedFilters = JSON.stringify({
+    search: deferredSearch, from: filters.start || undefined, to: filters.end || undefined,
+    brandIds: filters.brandIds, platformIds: filters.platformIds, campaignIds: filters.campaignIds,
+    hostIds: filters.hostIds, supportIds: filters.supportIds, technicalIds: filters.technicalIds,
+    reportStatuses: filters.reportStatuses, metricsStatuses: filters.metricsStatuses,
+  })
   const loadData = React.useCallback(async () => {
     const version = ++requestVersion.current
     if (!identity) return
     setLoading(true)
     setLoadError(null)
     try {
-      const [loadedReports, loadedShifts, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers, loadedRegistrations] = await Promise.all([
-        reportService.getAll(),
-        shiftService.getAll(),
-        brandService.getAll(),
-        platformService.getAll(),
-        campaignService.getAll(),
-        userService.getAll(),
-        shiftRegistrationService.getAll(),
+      const [page, candidates, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers] = await Promise.all([
+        reportService.getFilteredPage({ page: reportPage, pageSize: reportPageSize, filters: JSON.parse(encodedFilters) }),
+        shiftService.getReportCandidates(30),
+        brandService.getAll(), platformService.getAll(), campaignService.getAll(), userService.getAll(),
       ])
+      const candidateIds = candidates.map(shift => shift.id)
+      const [existingCandidateReports, reportShifts] = await Promise.all([
+        reportService.getForShifts(candidateIds),
+        shiftService.getByIds(page.items.map(report => report.shift_id)),
+      ])
+      const candidateSet = new Set(candidateIds)
+      const relevantShifts = [...candidates, ...reportShifts.filter(shift => !candidateSet.has(shift.id))]
+      const loadedRegistrations = await shiftRegistrationService.getForShifts(relevantShifts.map(shift => shift.id))
       if (version !== requestVersion.current) return
-      setReports(loadedReports)
-      setShifts(loadedShifts)
+      setReports(page.items)
+      setReportTotal(page.total)
+      if (page.page !== reportPage) setReportPage(page.page)
+      // Do not present the current page's sum as an all-filtered aggregate.
+      const summary = (page as typeof page & { summary?: { revenue: number | null; aov: number | null; needsReview: number } }).summary
+      setReportSummary(summary ?? null)
+      setShifts(relevantShifts)
+      setCandidateShifts(candidates)
+      setCandidateReports(existingCandidateReports)
       setBrands(loadedBrands)
       setPlatforms(loadedPlatforms)
       setCampaigns(loadedCampaigns)
@@ -132,7 +158,9 @@ export function ReportsContainer() {
     } finally {
       if (version === requestVersion.current) setLoading(false)
     }
-  }, [identity])
+  }, [encodedFilters, identity, reportPage, reportPageSize])
+
+  React.useEffect(() => { setReportPage(1) }, [encodedFilters])
 
   React.useEffect(() => {
     const versionRef = requestVersion
@@ -144,6 +172,7 @@ export function ReportsContainer() {
   React.useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       setSelectedReport(null)
+      setDeepLinkedShift(null)
       setShowForm(false)
       setFormInitialReport(undefined)
       setFormInitialShiftId(undefined)
@@ -205,13 +234,13 @@ export function ReportsContainer() {
   }, [registrations])
 
   const completedShifts = React.useMemo(() => {
-    const reported = new Set(reports.map(report => report.shift_id))
-    return shifts.filter(shift =>
+    const reported = new Set(candidateReports.map(report => report.shift_id))
+    return candidateShifts.filter(shift =>
       ['preparing', 'live', 'paused', 'completed'].includes(shift.status) &&
       !reported.has(shift.id) &&
       (currentUser && hasPermission(currentUser, 'reports.review') || myShiftIds.has(shift.id))
     )
-  }, [currentUser, myShiftIds, reports, shifts])
+  }, [candidateReports, candidateShifts, currentUser, myShiftIds])
 
   const activeFilterCount = React.useMemo(() => {
     let count = 0
@@ -228,63 +257,51 @@ export function ReportsContainer() {
     return count
   }, [filters])
 
-  // Deep link handler for ?shiftId=...
+  // Resolve direct links outside the current page; never reuse stale identity data.
   React.useEffect(() => {
-    if (!deepLinkShiftId || identity !== loadedIdentity || loading || userLoading || handledDeepLink.current === deepLinkShiftId) return
-    handledDeepLink.current = deepLinkShiftId
-
+    if (!deepLinkShiftId || identity !== loadedIdentity || loading || userLoading ||
+        handledDeepLink.current === deepLinkShiftId || !currentUser) return
+    let active = true
+    const version = requestVersion.current
     const timer = setTimeout(() => {
-      const existingReport = reports.find(r => r.shift_id === deepLinkShiftId)
-      if (existingReport) {
-        const shift = shiftById.get(existingReport.shift_id)
-        if (shift) {
-          setSelectedReport(existingReport)
-        }
-      } else {
-        const targetShift = shifts.find(s => s.id === deepLinkShiftId)
-        if (targetShift && ['preparing', 'live', 'paused', 'completed'].includes(targetShift.status)) {
-          if (currentUser && (hasPermission(currentUser, 'reports.submit') || myShiftIds.has(targetShift.id))) {
-            setFormInitialShiftId(targetShift.id)
-            setFormInitialReport(undefined)
+      void (async () => {
+        try {
+          const targetRegistrations = await shiftRegistrationService.getForShift(deepLinkShiftId)
+          const staffed = new Set(myShiftIds)
+          for (const registration of targetRegistrations) {
+            if (registration.user_id === currentUser.id && isStaffedRegistration(registration)) staffed.add(registration.shift_id)
+          }
+          const target = await loadReportTarget(deepLinkShiftId, {
+            getShift: id => shiftService.getById(id),
+            getReport: id => reportService.getByShift(id),
+          }, currentUser, staffed)
+          if (!active || version !== requestVersion.current) return
+          handledDeepLink.current = deepLinkShiftId
+          setDeepLinkedShift(target.shift)
+          if (target.mode === 'detail') setSelectedReport(target.report)
+          else {
+            setFormInitialShiftId(target.shift.id)
+            setFormInitialReport(target.report)
             setShowForm(true)
           }
+        } catch {
+          if (!active || version !== requestVersion.current) return
+          handledDeepLink.current = deepLinkShiftId
         }
-      }
-
-      if (searchParams.has('shiftId')) {
-        router.replace(clearReportShiftQuery(pathname, searchParams.toString()), { scroll: false })
-      }
+        if (active && version === requestVersion.current && searchParams.has('shiftId')) {
+          router.replace(clearReportShiftQuery(pathname, searchParams.toString()), { scroll: false })
+        }
+      })()
     }, 0)
-      return () => clearTimeout(timer)
-  }, [currentUser, deepLinkShiftId, identity, loadedIdentity, loading, myShiftIds, pathname, reports, router, searchParams, shiftById, shifts, userLoading])
+    return () => { active = false; clearTimeout(timer) }
+  }, [currentUser, deepLinkShiftId, identity, loadedIdentity, loading, myShiftIds, pathname, router, searchParams, userLoading])
 
-  const filteredReports = React.useMemo(() => reports.filter(report => {
-    const shift = shiftById.get(report.shift_id)
-    if (!shift) return false
-    if (filters.start && shift.date < filters.start) return false
-    if (filters.end && shift.date > filters.end) return false
-    if (!matchesMultiSelect(shift.brand_id, filters.brandIds)) return false
-    if (!matchesMultiSelect(shift.platform_id, filters.platformIds)) return false
-    if (!matchesMultiSelect(shift.campaign_id, filters.campaignIds)) return false
-    if (filters.hostIds.length > 0 && !filters.hostIds.some(userId => matchesRole(shift, 'host', userId))) return false
-    if (filters.supportIds.length > 0 && !filters.supportIds.some(userId => matchesRole(shift, 'support', userId))) return false
-    if (filters.technicalIds.length > 0 && !filters.technicalIds.some(userId => matchesRole(shift, 'technical', userId))) return false
-    const status = report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
-    if (filters.reportStatuses.length > 0 && !filters.reportStatuses.includes(status)) return false
-    const metricsStatus = report.metrics_confirmed ? 'confirmed' : 'unconfirmed'
-    if (filters.metricsStatuses.length > 0 && !filters.metricsStatuses.includes(metricsStatus)) return false
-    if (filters.search) {
-      const query = filters.search.toLowerCase()
-      const haystack = [report.id, shift.title, nameById(brands, shift.brand_id), nameById(platforms, shift.platform_id), nameById(campaigns, shift.campaign_id)].filter(Boolean).join(' ').toLowerCase()
-      if (!haystack.includes(query)) return false
-    }
-    return true
-  }), [brands, campaigns, filters, matchesRole, platforms, reports, shiftById])
+  // Server already applies all filters across all pages.
 
-  const confirmed = filteredReports.filter(report => report.status === 'confirmed' && report.metrics_confirmed === true)
-  const revenueValues = confirmed.map(report => reportMetricValue(report, 'revenue')).filter((value): value is number => value !== null)
-  const totalRevenue = revenueValues.length ? revenueValues.reduce((sum, value) => sum + value, 0) : null
-  const aov = calculateNullableAnalyticsMetrics(confirmed).averageOrderValue
+  const filteredReports = reports
+  const totalRevenue = reportSummary?.revenue ?? null
+  const aov = reportSummary?.aov ?? null
+
   const exportContext = {
     shifts,
     campaigns,
@@ -294,14 +311,49 @@ export function ReportsContainer() {
     registrations,
   }
 
-  const exportImages = async () => {
-    if (!currentUser || !hasPermission(currentUser, 'reports.export')) {
-      toast({ title: t('error'), description: t('permissionDenied'), variant: 'destructive' })
-      return
+  // Full dataset reads are deliberately restricted to an explicit export action.
+  const loadFullExport = async () => {
+    if (!currentUser || !hasPermission(currentUser, 'reports.export')) throw new Error(t('permissionDenied'))
+    const originalIdentity = identity
+    const allReports = await reportService.getAllFiltered(JSON.parse(encodedFilters))
+    const ids = [...new Set(allReports.map(report => report.shift_id))]
+    const allShifts: Shift[] = []
+    const allRegistrations: ShiftRegistration[] = []
+    for (let i = 0; i < ids.length; i += 50) {
+      const batch = ids.slice(i, i + 50)
+      const [batchShifts, batchRegistrations] = await Promise.all([
+        shiftService.getByIds(batch),
+        shiftRegistrationService.getForShifts(batch),
+      ])
+      allShifts.push(...batchShifts)
+      allRegistrations.push(...batchRegistrations)
     }
-    const images = (await Promise.all(filteredReports.map(report => reportImageService.getByReport(report.id)))).flat()
-    exportReportImageMetadataToExcel(images, filteredReports)
-    toast({ title: t('success'), description: t('exportImageMetadata'), variant: 'success' })
+    if (originalIdentity !== identityForExport.current || allShifts.length !== ids.length) throw new Error('EXPORT_DATA_CHANGED')
+    return { allReports, context: {
+      shifts: allShifts, campaigns, users,
+      brands: new Map(brands.map(brand => [brand.id, brand.name])),
+      platforms: new Map(platforms.map(platform => [platform.id, platform.name])),
+      registrations: allRegistrations,
+    } }
+  }
+  const exportFiltered = async () => {
+    try {
+      const { allReports, context } = await loadFullExport()
+      exportReportsToExcel(allReports, context)
+    } catch (error) {
+      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+    }
+  }
+  const exportImages = async () => {
+    try {
+      const { allReports } = await loadFullExport()
+      const images = []
+      for (const report of allReports) images.push(...await reportImageService.getByReport(report.id))
+      exportReportImageMetadataToExcel(images, allReports)
+      toast({ title: t('success'), description: t('exportImageMetadata'), variant: 'success' })
+    } catch (error) {
+      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+    }
   }
 
   if (loading || userLoading || !identity) return <div className="py-12 text-center">{t('loading')}</div>
@@ -313,10 +365,10 @@ export function ReportsContainer() {
       {/* Metrics Banner */}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs">
-          <SummaryMetric label={t('reportCount')} value={filteredReports.length.toLocaleString()} />
+          <SummaryMetric label={t('reportCount')} value={reportTotal.toLocaleString()} />
           <SummaryMetric label={t('confirmedRevenue')} value={totalRevenue === null ? '—' : formatCurrency(totalRevenue)} />
           <SummaryMetric label={t('averageOrderValue')} value={aov === null ? '—' : formatCurrency(aov)} />
-          <SummaryMetric label={t('needsReview')} value={filteredReports.filter(report => !report.metrics_confirmed).length.toLocaleString()} />
+          <SummaryMetric label={t('needsReview')} value={reportSummary ? reportSummary.needsReview.toLocaleString() : '—'} />
         </div>
         {currentUser && hasPermission(currentUser, 'reports.submit') && (
           <div className="flex items-center gap-2">
@@ -390,7 +442,7 @@ export function ReportsContainer() {
                       <Download className="mr-2 h-4 w-4" />{t('exportFilteredReports')}
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => exportReportsToExcel(filteredReports, exportContext)} disabled={!filteredReports.length}>
+                      <DropdownMenuItem onClick={() => { void exportFiltered() }} disabled={!filteredReports.length}>
                         <FileSpreadsheet className="mr-2 h-4 w-4" />{t('exportFilteredReports')}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => void exportImages()} disabled={!filteredReports.length}>
@@ -407,7 +459,7 @@ export function ReportsContainer() {
                   <MobileActionMenu
                     breakpoint="md"
                     actions={[
-                      { key: 'export-reports', label: t('exportFilteredReports'), icon: <FileSpreadsheet className="h-4 w-4" />, onClick: () => exportReportsToExcel(filteredReports, exportContext), disabled: !filteredReports.length },
+                      { key: 'export-reports', label: t('exportFilteredReports'), icon: <FileSpreadsheet className="h-4 w-4" />, onClick: () => { void exportFiltered() }, disabled: !filteredReports.length },
                       { key: 'export-images', label: t('exportImageMetadata'), icon: <FileImage className="h-4 w-4" />, onClick: () => void exportImages(), disabled: !filteredReports.length },
                       { key: 'download-template', label: t('downloadReportTemplate'), icon: <Download className="h-4 w-4" />, onClick: downloadReportTemplate }
                     ]}
@@ -468,6 +520,11 @@ export function ReportsContainer() {
       <ReportsView
         reports={filteredReports}
         shifts={shifts}
+        page={reportPage}
+        pageSize={reportPageSize}
+        total={reportTotal}
+        onPageChange={setReportPage}
+        onPageSizeChange={size => { setReportPageSize(size); setReportPage(1) }}
         brands={brands}
         platforms={platforms}
         campaigns={campaigns}
@@ -479,7 +536,7 @@ export function ReportsContainer() {
         onRemove={report => { void requestRemove(report) }}
         hasActiveFilters={activeFilterCount > 0 || Boolean(filters.search)}
         onResetFilters={() => setFilters(emptyFilters)}
-        totalUnfilteredReports={reports.length}
+        totalUnfilteredReports={reportTotal}
         onCreateReport={currentUser && hasPermission(currentUser, 'reports.submit') && completedShifts.length > 0 ? () => {
           setFormInitialShiftId(undefined)
           setFormInitialReport(undefined)
@@ -494,7 +551,7 @@ export function ReportsContainer() {
           onOpenChange={setShowForm}
           initialShiftId={formInitialShiftId}
           initialReport={formInitialReport}
-          completedShifts={completedShifts}
+          completedShifts={deepLinkedShift && !completedShifts.some(shift => shift.id === deepLinkedShift.id) ? [...completedShifts, deepLinkedShift] : completedShifts}
           brands={brands}
           platforms={platforms}
           campaigns={campaigns}
@@ -507,7 +564,7 @@ export function ReportsContainer() {
         <ReportDetailModal
           open
           report={selectedReport}
-          shift={shiftById.get(selectedReport.shift_id)!}
+          shift={(deepLinkedShift?.id === selectedReport.shift_id ? deepLinkedShift : shiftById.get(selectedReport.shift_id))!}
           brands={brands}
           platforms={platforms}
           users={users}

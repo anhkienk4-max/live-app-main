@@ -2749,7 +2749,12 @@ export const reportService = {
         const shift = shifts.find(item => item.id === report.shift_id)
         return [report.id, brands.find(b => b.id === shift?.brand_id)?.name, platforms.find(p => p.id === shift?.platform_id)?.name, campaigns.find(c => c.id === shift?.campaign_id)?.name].join(' ').toLowerCase().includes(search.toLowerCase())
       })())).sort((a, b) => b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id))
-    return localListPage(filtered, query)
+    const confirmed = filtered.filter(report => report.status === 'confirmed' && report.metrics_confirmed === true)
+    const metrics = calculateNullableAnalyticsMetrics(confirmed)
+    return { ...localListPage(filtered, query), summary: {
+      revenue: metrics.revenue, aov: metrics.averageOrderValue,
+      needsReview: filtered.filter(report => !report.metrics_confirmed).length,
+    } }
   },
   async getAllFiltered(filters: ListFilters = {}): Promise<Report[]> {
     if (getAuthMode() === 'supabase') return getCompleteCollection<Report>('reports', filters)
