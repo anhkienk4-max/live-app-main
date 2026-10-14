@@ -158,9 +158,9 @@ jobs:
       - name: Global UI pagination and four-width route audit
         run: |
           for role in 1 2 3; do
-            pnpm exec playwright test --config playwright.rc16k.config.ts --grep "Local route audit role $role width" --output "test-results/rc16k-role-$role" --reporter=line
+            pnpm exec playwright test --config playwright.rc16k.config.ts --grep "Local route audit role $role width" --output "rc16k-route-evidence/role-$role" --reporter=line
           done
-          pnpm exec playwright test --config playwright.rc16k.config.ts --grep-invert 'Local route audit role' --output test-results/rc16k-interactions --reporter=line
+          pnpm exec playwright test --config playwright.rc16k.config.ts --grep-invert 'Local route audit role' --output rc16k-route-evidence/interactions --reporter=line
       - name: Post-main desktop and mobile interaction regressions
         run: pnpm exec playwright test --config playwright.rc16i-postmain.config.ts
       - name: Preserve isolated UI evidence
@@ -170,6 +170,7 @@ jobs:
           name: rc16i-postmain-node-${{ matrix.node }}
           path: |
             test-results
+            rc16k-route-evidence
             rc16i-postmain-report
             rc16k-browser-report
       - name: Production Storage dependency regressions
