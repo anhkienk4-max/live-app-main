@@ -10,8 +10,8 @@
   },
   "repository": {
     "branch": "feat/rc16k-ui-consistency-pagination",
-    "head": "daa99a4ad3b86a342e75b345b7726cd2ddd1113e",
-    "origin_main": "a3cc28ab5c5a212da73af6ef631f5550c7a3a274",
+    "head": "f4509225c180a1a51107f93e19f01ba28f62744b",
+    "origin_main": "7fa8b005e6351973b035530aff29822edd0aad39",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-payroll/.worktrees/rc16k-ui"
   },
   "hardening": {
@@ -93,9 +93,9 @@
         "lib": 203,
         "scripts": 18,
         "supabase": 87,
-        "tests": 189
+        "tests": 193
       },
-      "total": 706
+      "total": 710
     },
     "tests": {
       "files": [
@@ -208,6 +208,7 @@
         "tests/rc16-workforce-payroll.test.ts",
         "tests/rc16-workforce-ui-client.test.ts",
         "tests/rc16i-postmain.test.tsx",
+        "tests/rc16k-global-search.test.tsx",
         "tests/rc16k-pagination.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
         "tests/registration-board-performance.test.ts",
@@ -244,6 +245,7 @@
         "tests/spatial-ocr-geometry.test.ts",
         "tests/staffing-safe-projection.test.ts",
         "tests/staging-release-blockers.integration.test.ts",
+        "tests/storage-hydration-regression.test.ts",
         "tests/supabase-master-data-runtime.test.ts",
         "tests/supabase-p1b-migration-contract.test.ts",
         "tests/supabase-p1c-shift-lifecycle-contract.test.ts",
@@ -262,7 +264,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 162
+      "count": 164
     },
     "migrations": {
       "files": [
@@ -350,5 +352,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-12T23:47:16+07:00"
+  "synced_at": "2026-10-14T10:21:35+07:00"
 }
