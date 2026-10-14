@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Download, FileImage, FileSpreadsheet, Filter, Plus, RotateCcw, Search } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import {
@@ -26,6 +27,7 @@ import {
   exportReportsToExcel,
   exportReportDetailToExcel,
 } from '@/lib/utils/excelUtils'
+import { clearReportShiftQuery } from '@/lib/utils/reportTarget'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { ReportsView } from './ReportsView'
 import { Button } from '@/components/ui/button'
@@ -67,6 +69,11 @@ const emptyFilters: Filters = {
 }
 
 export function ReportsContainer() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const deepLinkShiftId = searchParams.get('shiftId')
+
   const { currentUser, loading: userLoading } = useCurrentUser()
   const { t } = useTranslation()
   const { toast } = useToast()
@@ -81,10 +88,13 @@ export function ReportsContainer() {
   const [showFilters, setShowFilters] = React.useState(false)
   const [selectedReport, setSelectedReport] = React.useState<Report | null>(null)
   const [showForm, setShowForm] = React.useState(false)
+  const [formInitialShiftId, setFormInitialShiftId] = React.useState<string | undefined>(undefined)
+  const [formInitialReport, setFormInitialReport] = React.useState<Report | undefined>(undefined)
   const [removeTarget, setRemoveTarget] = React.useState<Report | null>(null)
   const [removeImpact, setRemoveImpact] = React.useState<DeletionImpact | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
+  const handledDeepLink = React.useRef<string | null>(null)
 
   const loadData = React.useCallback(async () => {
     setLoadError(null)
@@ -113,14 +123,16 @@ export function ReportsContainer() {
   }, [])
 
   React.useEffect(() => {
-    const frame = requestAnimationFrame(() => { void loadData() })
-    return () => cancelAnimationFrame(frame)
+    const timer = setTimeout(() => { void loadData() }, 0)
+    return () => clearTimeout(timer)
   }, [loadData])
+
   const myShiftIds = React.useMemo(() => new Set(registrations
     .filter(registration => registration.user_id === currentUser?.id && isStaffedRegistration(registration))
     .map(registration => registration.shift_id)), [currentUser?.id, registrations])
 
   const requestRemove = async (report: Report) => {
+    if (!currentUser) return
     const images = await reportImageService.getByReport(report.id)
     const shift = shifts.find(candidate => candidate.id === report.shift_id)
     const archive = Boolean(report.metrics_confirmed)
@@ -164,6 +176,7 @@ export function ReportsContainer() {
       isStaffedRegistration(registration)
     )
   }, [registrations])
+
   const completedShifts = React.useMemo(() => {
     const reported = new Set(reports.map(report => report.shift_id))
     return shifts.filter(shift =>
@@ -172,6 +185,51 @@ export function ReportsContainer() {
       (currentUser && hasPermission(currentUser, 'reports.review') || myShiftIds.has(shift.id))
     )
   }, [currentUser, myShiftIds, reports, shifts])
+
+  const activeFilterCount = React.useMemo(() => {
+    let count = 0
+    if (filters.start) count++
+    if (filters.end) count++
+    count += filters.brandIds.length
+    count += filters.platformIds.length
+    count += filters.campaignIds.length
+    count += filters.hostIds.length
+    count += filters.supportIds.length
+    count += filters.technicalIds.length
+    count += filters.reportStatuses.length
+    count += filters.metricsStatuses.length
+    return count
+  }, [filters])
+
+  // Deep link handler for ?shiftId=...
+  React.useEffect(() => {
+    if (!deepLinkShiftId || loading || userLoading || handledDeepLink.current === deepLinkShiftId) return
+    handledDeepLink.current = deepLinkShiftId
+
+    const timer = setTimeout(() => {
+      const existingReport = reports.find(r => r.shift_id === deepLinkShiftId)
+      if (existingReport) {
+        const shift = shiftById.get(existingReport.shift_id)
+        if (shift) {
+          setSelectedReport(existingReport)
+        }
+      } else {
+        const targetShift = shifts.find(s => s.id === deepLinkShiftId)
+        if (targetShift && ['preparing', 'live', 'paused', 'completed'].includes(targetShift.status)) {
+          if (currentUser && (hasPermission(currentUser, 'reports.submit') || myShiftIds.has(targetShift.id))) {
+            setFormInitialShiftId(targetShift.id)
+            setFormInitialReport(undefined)
+            setShowForm(true)
+          }
+        }
+      }
+
+      if (searchParams.has('shiftId')) {
+        router.replace(clearReportShiftQuery(pathname, searchParams.toString()), { scroll: false })
+      }
+    }, 0)
+      return () => clearTimeout(timer)
+  }, [currentUser, deepLinkShiftId, loading, myShiftIds, pathname, reports, router, searchParams, shiftById, shifts, userLoading])
 
   const filteredReports = React.useMemo(() => reports.filter(report => {
     const shift = shiftById.get(report.shift_id)
@@ -190,7 +248,7 @@ export function ReportsContainer() {
     if (filters.metricsStatuses.length > 0 && !filters.metricsStatuses.includes(metricsStatus)) return false
     if (filters.search) {
       const query = filters.search.toLowerCase()
-      const haystack = [report.id, nameById(brands, shift.brand_id), nameById(platforms, shift.platform_id), nameById(campaigns, shift.campaign_id)].join(' ').toLowerCase()
+      const haystack = [report.id, shift.title, nameById(brands, shift.brand_id), nameById(platforms, shift.platform_id), nameById(campaigns, shift.campaign_id)].filter(Boolean).join(' ').toLowerCase()
       if (!haystack.includes(query)) return false
     }
     return true
@@ -224,6 +282,7 @@ export function ReportsContainer() {
 
   return (
     <div className="space-y-4">
+      {/* Metrics Banner */}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs">
           <SummaryMetric label={t('reportCount')} value={filteredReports.length.toLocaleString()} />
@@ -233,23 +292,68 @@ export function ReportsContainer() {
         </div>
         {currentUser && hasPermission(currentUser, 'reports.submit') && (
           <div className="flex items-center gap-2">
-            <div className="text-right text-[11px] leading-tight"><p className="font-medium text-slate-700">{t('finalReportWorkflow')}</p><p className="hidden text-amber-800 sm:block">{completedShifts.length ? t('reportDraftReady', { count: completedShifts.length }) : t('noReportDraftReady')}</p></div>
-            <Button size="sm" onClick={() => setShowForm(true)} disabled={!completedShifts.length} data-testid="open-final-report-modal"><Plus className="mr-1.5 h-4 w-4" />{t('createFinalReport')}</Button>
+            <div className="text-right text-[11px] leading-tight">
+              <p className="font-medium text-slate-700">{t('finalReportWorkflow')}</p>
+              <p className="hidden text-amber-800 sm:block">
+                {completedShifts.length ? t('reportDraftReady', { count: completedShifts.length }) : t('noReportDraftReady')}
+              </p>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => {
+                setFormInitialShiftId(undefined)
+                setFormInitialReport(undefined)
+                setShowForm(true)
+              }}
+              disabled={!completedShifts.length}
+              data-testid="open-final-report-modal"
+            >
+              <Plus className="mr-1.5 h-4 w-4" />
+              {t('createFinalReport')}
+            </Button>
           </div>
         )}
       </div>
 
+      {/* Search & Filter Bar (UX-P2-01: Collapsible filters with active count badge) */}
       <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-2">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <div className="relative max-w-sm flex-1">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input className="pl-9 bg-background" value={filters.search} onChange={event => setFilters(current => ({ ...current, search: event.target.value }))} placeholder={t('reportSearchPlaceholder')} />
+              <Input
+                className="pl-9 bg-background"
+                value={filters.search}
+                onChange={event => setFilters(current => ({ ...current, search: event.target.value }))}
+                placeholder={t('reportSearchPlaceholder')}
+              />
             </div>
-            <Button variant={showFilters ? 'secondary' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="reports-filter-panel" className="shrink-0"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button>
+            <Button
+              variant={showFilters ? 'secondary' : 'outline'}
+              onClick={() => setShowFilters(!showFilters)}
+              aria-expanded={showFilters}
+              aria-controls="reports-filter-panel"
+              className="shrink-0"
+            >
+              <Filter className="mr-2 h-4 w-4" />
+              {t('filters')}
+              {activeFilterCount > 0 && (
+                <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" onClick={() => setFilters(emptyFilters)} title={t('resetFilters')}><RotateCcw className="h-4 w-4" /></Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setFilters(emptyFilters)}
+              title={t('resetFilters')}
+              className={activeFilterCount > 0 || filters.search ? 'text-destructive hover:bg-destructive/10' : ''}
+            >
+              <RotateCcw className="h-4 w-4" />
+            </Button>
             {currentUser && hasPermission(currentUser, 'reports.export') && (
               <>
                 <div className="hidden md:block">
@@ -286,32 +390,113 @@ export function ReportsContainer() {
           </div>
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-            <EntityFilter label={t('brand')} value={filters.brandIds} options={brands} onChange={value => setFilters(current => ({ ...current, brandIds: value }))} />
-            <EntityFilter label={t('platform')} value={filters.platformIds} options={platforms} onChange={value => setFilters(current => ({ ...current, platformIds: value }))} />
-            <EntityFilter label={t('campaign')} value={filters.campaignIds} options={campaigns} onChange={value => setFilters(current => ({ ...current, campaignIds: value }))} />
-            <StatusFilter label={t('reportStatus')} value={filters.reportStatuses} values={['draft', 'in_review', 'confirmed', 'reopened', 'archived']} onChange={value => setFilters(current => ({ ...current, reportStatuses: value }))} />
-            <StatusFilter label={t('metricsStatus')} value={filters.metricsStatuses} values={['confirmed', 'unconfirmed']} onChange={value => setFilters(current => ({ ...current, metricsStatuses: value }))} />
-        </div>
-
+        {/* Collapsible Filter Panel */}
         {showFilters && (
-          <div id="reports-filter-panel" className="grid gap-4 rounded-md bg-muted/40 p-4 md:grid-cols-4 lg:grid-cols-5">
-            <label className="text-xs font-medium text-foreground">{t('startDate')}<Input className="mt-1.5 bg-background" type="date" value={filters.start} onChange={event => setFilters(current => ({ ...current, start: event.target.value }))} /></label>
-            <label className="text-xs font-medium text-foreground">{t('endDate')}<Input className="mt-1.5 bg-background" type="date" value={filters.end} onChange={event => setFilters(current => ({ ...current, end: event.target.value }))} /></label>
-            <EntityFilter label={t('host')} value={filters.hostIds} options={users.filter(user => user.operational_roles?.includes('host')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, hostIds: value }))} />
-            <EntityFilter label={t('support')} value={filters.supportIds} options={users.filter(user => user.operational_roles?.includes('support')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, supportIds: value }))} />
-            <EntityFilter label={t('technical')} value={filters.technicalIds} options={users.filter(user => user.operational_roles?.includes('technical')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, technicalIds: value }))} />
+          <div id="reports-filter-panel" className="space-y-3 rounded-md bg-muted/40 p-3">
+            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+              <label className="text-xs font-medium text-foreground">
+                {t('startDate')}
+                <Input
+                  className="mt-1.5 bg-background"
+                  type="date"
+                  value={filters.start}
+                  onChange={event => setFilters(current => ({ ...current, start: event.target.value }))}
+                />
+              </label>
+              <label className="text-xs font-medium text-foreground">
+                {t('endDate')}
+                <Input
+                  className="mt-1.5 bg-background"
+                  type="date"
+                  value={filters.end}
+                  onChange={event => setFilters(current => ({ ...current, end: event.target.value }))}
+                />
+              </label>
+              <EntityFilter label={t('brand')} value={filters.brandIds} options={brands} onChange={value => setFilters(current => ({ ...current, brandIds: value }))} />
+              <EntityFilter label={t('platform')} value={filters.platformIds} options={platforms} onChange={value => setFilters(current => ({ ...current, platformIds: value }))} />
+              <EntityFilter label={t('campaign')} value={filters.campaignIds} options={campaigns} onChange={value => setFilters(current => ({ ...current, campaignIds: value }))} />
+              <StatusFilter label={t('reportStatus')} value={filters.reportStatuses} values={['draft', 'in_review', 'confirmed', 'reopened', 'archived']} onChange={value => setFilters(current => ({ ...current, reportStatuses: value }))} />
+              <StatusFilter label={t('metricsStatus')} value={filters.metricsStatuses} values={['confirmed', 'unconfirmed']} onChange={value => setFilters(current => ({ ...current, metricsStatuses: value }))} />
+              <EntityFilter label={t('host')} value={filters.hostIds} options={users.filter(user => user.operational_roles?.includes('host')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, hostIds: value }))} />
+              <EntityFilter label={t('support')} value={filters.supportIds} options={users.filter(user => user.operational_roles?.includes('support')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, supportIds: value }))} />
+              <EntityFilter label={t('technical')} value={filters.technicalIds} options={users.filter(user => user.operational_roles?.includes('technical')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, technicalIds: value }))} />
+            </div>
+            {activeFilterCount > 0 && (
+              <div className="flex items-center justify-between border-t border-slate-200/60 pt-2 text-xs">
+                <span className="text-muted-foreground">{activeFilterCount} {t('filters').toLowerCase()} đang áp dụng</span>
+                <button
+                  type="button"
+                  onClick={() => setFilters(emptyFilters)}
+                  className="font-medium text-destructive hover:underline"
+                >
+                  {t('clearFilters')}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      <ReportsView reports={filteredReports} shifts={shifts} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations}
-        onView={setSelectedReport} onExport={currentUser && hasPermission(currentUser, 'reports.export') ? report => exportReportDetailToExcel(report, exportContext) : undefined}
-        onRemove={report => { void requestRemove(report) }} currentUser={currentUser} />
+      <ReportsView
+        reports={filteredReports}
+        shifts={shifts}
+        brands={brands}
+        platforms={platforms}
+        campaigns={campaigns}
+        users={users}
+        registrations={registrations}
+        currentUser={currentUser}
+        onView={setSelectedReport}
+        onExport={currentUser && hasPermission(currentUser, 'reports.export') ? report => exportReportDetailToExcel(report, exportContext) : undefined}
+        onRemove={report => { void requestRemove(report) }}
+        hasActiveFilters={activeFilterCount > 0 || Boolean(filters.search)}
+        onResetFilters={() => setFilters(emptyFilters)}
+        totalUnfilteredReports={reports.length}
+        onCreateReport={currentUser && hasPermission(currentUser, 'reports.submit') && completedShifts.length > 0 ? () => {
+          setFormInitialShiftId(undefined)
+          setFormInitialReport(undefined)
+          setShowForm(true)
+        } : undefined}
+        completedShiftsCount={completedShifts.length}
+      />
 
-      {showForm && <ReportFormModal open={showForm} onOpenChange={setShowForm} completedShifts={completedShifts} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onSuccess={() => { void loadData(); setShowForm(false) }} />}
-      {selectedReport && <ReportDetailModal open report={selectedReport} shift={shiftById.get(selectedReport.shift_id)!} brands={brands} platforms={platforms} users={users} registrations={registrations} onOpenChange={open => !open && setSelectedReport(null)} onUpdated={() => { void loadData(); setSelectedReport(null) }} campaigns={campaigns} />}
-      <LifecycleActionDialog open={Boolean(removeTarget)} onOpenChange={open => { if (!open) { setRemoveTarget(null); setRemoveImpact(null) } }} title={removeTarget?.metrics_confirmed ? t('archiveConfirmedReport') : t('deleteUnconfirmedReport')} impact={removeImpact} confirmText={removeTarget?.metrics_confirmed ? t('archive') : t('delete')} onConfirm={removeReport} />
+      {showForm && (
+        <ReportFormModal
+          open={showForm}
+          onOpenChange={setShowForm}
+          initialShiftId={formInitialShiftId}
+          initialReport={formInitialReport}
+          completedShifts={completedShifts}
+          brands={brands}
+          platforms={platforms}
+          campaigns={campaigns}
+          users={users}
+          registrations={registrations}
+          onSuccess={() => { void loadData(); setShowForm(false) }}
+        />
+      )}
+      {selectedReport && (
+        <ReportDetailModal
+          open
+          report={selectedReport}
+          shift={shiftById.get(selectedReport.shift_id)!}
+          brands={brands}
+          platforms={platforms}
+          users={users}
+          registrations={registrations}
+          onOpenChange={open => !open && setSelectedReport(null)}
+          onUpdated={() => { void loadData(); setSelectedReport(null) }}
+          campaigns={campaigns}
+        />
+      )}
+      <LifecycleActionDialog
+        open={Boolean(removeTarget)}
+        onOpenChange={open => { if (!open) { setRemoveTarget(null); setRemoveImpact(null) } }}
+        title={removeTarget?.metrics_confirmed ? t('archiveConfirmedReport') : t('deleteUnconfirmedReport')}
+        impact={removeImpact}
+        confirmText={removeTarget?.metrics_confirmed ? t('archive') : t('delete')}
+        onConfirm={removeReport}
+      />
     </div>
   )
 }

@@ -44,11 +44,11 @@ export function useCurrentUser() {
 
   React.useEffect(() => {
     if (supabaseMode) return
-    const frame = requestAnimationFrame(() => { void reload() })
+    const timer = setTimeout(() => { void reload() }, 0)
     const handleChange = () => void reload()
     window.addEventListener('livestream-ops-current-user-change', handleChange)
     return () => {
-      cancelAnimationFrame(frame)
+      clearTimeout(timer)
       window.removeEventListener('livestream-ops-current-user-change', handleChange)
     }
   }, [reload, supabaseMode])

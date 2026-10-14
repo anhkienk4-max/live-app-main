@@ -148,7 +148,22 @@ export function ReportsList() {
     return () => cancelAnimationFrame(frame)
   }, [loadData])
 
-  const myShiftIds = React.useMemo(() => new Set(registrations
+    const activeFilterCount = React.useMemo(() => {
+    let count = 0
+    if (filters.start) count++
+    if (filters.end) count++
+    count += filters.brandIds.length
+    count += filters.platformIds.length
+    count += filters.campaignIds.length
+    count += filters.hostIds.length
+    count += filters.supportIds.length
+    count += filters.technicalIds.length
+    count += filters.reportStatuses.length
+    count += filters.metricsStatuses.length
+    return count
+  }, [filters])
+
+const myShiftIds = React.useMemo(() => new Set(registrations
     .filter(registration => registration.user_id === currentUser?.id && isStaffedRegistration(registration))
     .map(registration => registration.shift_id)), [currentUser?.id, registrations])
 
@@ -312,7 +327,7 @@ export function ReportsList() {
     if (filters.metricsStatuses.length > 0 && !filters.metricsStatuses.includes(metricsStatus)) return false
     if (filters.search) {
       const query = filters.search.toLowerCase()
-      const haystack = [report.id, nameById(brands, shift.brand_id), nameById(platforms, shift.platform_id), nameById(campaigns, shift.campaign_id)].join(' ').toLowerCase()
+      const haystack = [report.id, shift.title, nameById(brands, shift.brand_id), nameById(platforms, shift.platform_id), nameById(campaigns, shift.campaign_id)].filter(Boolean).join(' ').toLowerCase()
       if (!haystack.includes(query)) return false
     }
     return true
@@ -366,7 +381,15 @@ export function ReportsList() {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input className="pl-9 bg-background" value={filters.search} onChange={event => setFilters(current => ({ ...current, search: event.target.value }))} placeholder={t('reportSearchPlaceholder')} />
             </div>
-            <Button variant={showFilters ? 'secondary' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="reports-filter-panel" className="shrink-0"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button>
+            <Button variant={showFilters ? 'secondary' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="reports-filter-panel" className="shrink-0">
+              <Filter className="mr-2 h-4 w-4" />
+              {t('filters')}
+              {activeFilterCount > 0 && (
+                <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="icon" onClick={() => setFilters(emptyFilters)} title={t('resetFilters')}><RotateCcw className="h-4 w-4" /></Button>
@@ -465,7 +488,19 @@ export function ReportsList() {
 
       <section aria-labelledby="created-reports-heading" className="space-y-3">
         <h2 id="created-reports-heading" className="text-lg font-semibold">{t('createdReports')}</h2>
-      {filteredReports.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noReports')}</CardContent></Card> : (
+      {filteredReports.length === 0 ? (
+        <Card className="overflow-hidden shadow-none">
+          <CardContent className="space-y-3 py-10 text-center text-muted-foreground">
+            <p>{(activeFilterCount > 0 || filters.search) ? t('noReports') : 'Chưa có báo cáo ca trực nào được tạo.'}</p>
+            {(activeFilterCount > 0 || filters.search) && (
+              <Button type="button" variant="outline" size="sm" onClick={() => setFilters(emptyFilters)}>
+                <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                {t('clearFilters')}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredReports.map(report => {
             const shift = shiftById.get(report.shift_id)
