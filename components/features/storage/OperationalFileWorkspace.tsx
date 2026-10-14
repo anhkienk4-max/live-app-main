@@ -1,11 +1,15 @@
-'use client'
+﻿'use client'
 
 import * as React from 'react'
+import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { resolveSystemPermission } from '@/lib/permissions'
+import { useListPagination } from '@/lib/hooks/useListPagination'
+import { HistoryPagination } from '@/components/ui/history-pagination'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { useTranslation } from '@/lib/i18n'
 import { FolderArchive, Upload, Download, Trash2, RefreshCw } from 'lucide-react'
 import { businessLocalDate } from '@/lib/utils/shiftUtils'
-import { useTranslation } from '@/lib/i18n'
 
 type Option = { id: string; name: string }
 type Category = { id: string; label: string }
@@ -37,7 +41,7 @@ type CatalogResponse = {
   confidential_write_ready: boolean
 }
 
-type ListResponse = { ok: boolean; files?: Stored[]; error?: { code?: string } }
+type ListResponse = { ok: boolean; total: number; page: number; pageSize: number; files?: Stored[]; error?: { code?: string } }
 
 const today = () => businessLocalDate(new Date())
 const formatBytes = (n: number) => n >= 1024 * 1024
@@ -47,11 +51,18 @@ const fieldClass = 'w-full rounded-md border border-border bg-background px-3 py
 const buttonClass = 'rounded-md border border-border px-3 py-2 text-sm transition-colors hover:bg-muted disabled:opacity-50'
 
 export function OperationalFileWorkspace() {
-  const { translate } = useTranslation()
+  const { t, translate } = useTranslation()
   const search = useSearchParams()
+  const requestedCategory = search.get('category')
+  const requestedCampaignId = search.get('campaignId')
+  const requestedShiftId = search.get('shiftId')
+  const {currentUser,loading:userLoading}=useCurrentUser()
+  const actorKey=currentUser?currentUser.id+':'+resolveSystemPermission(currentUser):''
+  const canView=!!currentUser&&resolveSystemPermission(currentUser)!=='member'
   const [shiftId, setShiftId] = React.useState(search.get('shiftId') || '')
   const [campaignId, setCampaignId] = React.useState(search.get('campaignId') || '')
-  const [catalog, setCatalog] = React.useState<CatalogResponse | null>(null)
+  const [catalogState,setCatalogState]=React.useState<{owner:string;value:CatalogResponse}|null>(null)
+  const catalog=catalogState?.owner===actorKey?catalogState.value:null
   const [brandId, setBrandId] = React.useState('')
   const [platformId, setPlatformId] = React.useState('')
   const [periodDate, setPeriodDate] = React.useState('')
@@ -62,10 +73,15 @@ export function OperationalFileWorkspace() {
   const [provider, setProvider] = React.useState<'google_drive' | 'onedrive'>('google_drive')
   const [file, setFile] = React.useState<File | null>(null)
   const [files, setFiles] = React.useState<Stored[]>([])
+  const [loadedOwner,setLoadedOwner]=React.useState('')
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
   const [notice, setNotice] = React.useState('')
   const [filter, setFilter] = React.useState('all')
+  const pagination = useListPagination('storage', 10)
+  const { page, pageSize, navigate } = pagination
+  const [total, setTotal] = React.useState(0)
+  const requestVersion = React.useRef(0)
   const [externalInput, setExternalInput] = React.useState('')
   const [folderUrl, setFolderUrl] = React.useState('')
   const [folderPath, setFolderPath] = React.useState('')
@@ -79,22 +95,21 @@ export function OperationalFileWorkspace() {
     }).toString()
 
   React.useEffect(() => {
+    if(!canView)return
     let active = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- use the business date after identical server/client initial renders
-    setPeriodDate(today())
+    const frame = window.requestAnimationFrame(() => setPeriodDate(today()))
     void fetch('/api/operational-files?catalog=1', { cache: 'no-store' })
       .then(async response => {
         const data = await response.json() as CatalogResponse & { error?: { code: string } }
         if (!response.ok || !data.ok) throw new Error(data.error?.code || 'Không tải được danh mục')
         if (!active) return
-        setCatalog(data)
+        setCatalogState({owner:actorKey,value:data})
         setBrandId(current => current || data.brands[0]?.id || '')
         setPlatformId(current => current || data.platforms[0]?.id || '')
-        const requestedCategory = search.get('category')
         setCategory(data.categories.some(item => item.id === requestedCategory)
           ? String(requestedCategory) : (data.categories[0]?.id || 'schedule_source'))
-        const chosen = data.campaigns?.find(item => item.id === search.get('campaignId'))
-        if (chosen && !search.get('shiftId')) {
+        const chosen = data.campaigns?.find(item => item.id === requestedCampaignId)
+        if (chosen && !requestedShiftId) {
           setCampaignId(chosen.id)
           setBrandId(chosen.brand_id)
           setPeriodDate(chosen.start_date)
@@ -104,26 +119,33 @@ export function OperationalFileWorkspace() {
           setPlatformId(valid?.id || '')
         }
       }).catch(err => { if (active) setError(String(err instanceof Error ? err.message : err)) })
-    return () => { active = false }
-  }, [])
+    return () => { active = false; window.cancelAnimationFrame(frame) }
+  }, [actorKey,canView,requestedCategory,requestedCampaignId,requestedShiftId])
 
   const refresh = React.useCallback(async () => {
+    const version = ++requestVersion.current
+    if (!canView)return
     if (!shiftId.trim() && (!brandId || !platformId || !periodDate)) return
     setBusy(true)
     setError('')
     try {
-      const response = await fetch('/api/operational-files?' + requestKey, { cache: 'no-store' })
+      const response = await fetch('/api/operational-files?' + requestKey + '&' + new URLSearchParams({ page: String(page), pageSize: String(pageSize), category: filter }), { cache: 'no-store' })
       const data = await response.json() as ListResponse
       if (!response.ok || !data.ok) throw new Error(data.error?.code || 'Không tải được file')
+      if (version !== requestVersion.current) return
+      setLoadedOwner(actorKey)
       setFiles(data.files || [])
+      setTotal(data.total)
+      if (data.page !== page) navigate({ storage_page: String(data.page) }, true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không tải được file')
-    } finally { setBusy(false) }
-  }, [requestKey, shiftId, brandId, platformId, periodDate])
+      if(version===requestVersion.current)setError(err instanceof Error ? err.message : 'Không tải được file')
+    } finally { if(version===requestVersion.current)setBusy(false) }
+  }, [requestKey, shiftId, brandId, platformId, periodDate, page, pageSize, filter, navigate, actorKey, canView])
 
   React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial storage catalog load
-    if (catalog) void refresh()
+    const versionRef = requestVersion
+    const frame = window.requestAnimationFrame(() => { if (catalog) void refresh() })
+    return()=>{window.cancelAnimationFrame(frame);versionRef.current++}
   }, [catalog, refresh])
 
   const providerPayload = (action: 'prepare_folder' | 'attach_existing') => ({
@@ -251,7 +273,9 @@ export function OperationalFileWorkspace() {
     finally { setBusy(false) }
   }
 
-  const filtered = filter === 'all' ? files : files.filter(item => item.category === filter)
+  const filtered = loadedOwner===actorKey?files:[]
+  if(userLoading||!currentUser)return <p className="p-4">{t('loading')}</p>
+  if(currentUser&&!canView)return <p className="p-4 text-sm" role="alert">Bạn không có quyền truy cập kho file.</p>
   return (
     <div className="mx-auto max-w-6xl space-y-5" data-testid="operational-file-workspace">
       <div className="flex items-center gap-3">
@@ -392,15 +416,15 @@ export function OperationalFileWorkspace() {
 
       <section className="space-y-3 rounded-xl border p-4" aria-label={translate("File đã lưu")}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-semibold">{translate('File đã lưu')} ({filtered.length})</h2>
+          <h2 className="font-semibold">{translate('File đã lưu')} ({total})</h2>
           <div className="flex items-center gap-2">
-            <select aria-label={translate("Lọc loại file")} className={fieldClass} value={filter}
-              onChange={event => setFilter(event.target.value)}>
-              <option value="all">{translate('Tất cả')}</option>
+            <select aria-label={translate('Lọc loại file')} className={fieldClass} value={filter}
+              onChange={event => { setFilter(event.target.value); pagination.reset() }}>
+              <option value="all">{t('all')}</option>
               {(catalog?.categories || []).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
             </select>
             <button className={buttonClass} type="button" disabled={busy} onClick={() => void refresh()}
-              aria-label={translate("Làm mới")}><RefreshCw className="h-4 w-4" /></button>
+              aria-label={t('refresh')}><RefreshCw className="h-4 w-4" /></button>
           </div>
         </div>
         {filtered.length === 0 ? <p className="text-sm text-muted-foreground">{translate("Chưa có file cho ngữ cảnh được chọn.")}</p> : (
@@ -420,6 +444,7 @@ export function OperationalFileWorkspace() {
             </div>)}
           </div>
         )}
+        <HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />
       </section>
     </div>
   )

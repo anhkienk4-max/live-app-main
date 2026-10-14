@@ -52,25 +52,35 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
   const [loadingDetails, setLoadingDetails] = React.useState(false)
 
   // Load period details whenever selectedPeriod changes
+  const readSequence = React.useRef(0)
+  const [readError, setReadError] = React.useState<string | null>(null)
   const loadPeriodDetails = React.useCallback(async (periodId: string) => {
+    const sequence = ++readSequence.current
+    setLines([])
+    setAudit([])
+    setReadError(null)
     setLoadingDetails(true)
     try {
       const res = await workforceService.getPeriod(periodId)
+      if (sequence !== readSequence.current) return
       setSelectedPeriod(res.period)
       setLines(res.lines)
       setAudit(res.audit)
     } catch (err: unknown) {
+      if (sequence !== readSequence.current) return
+      setReadError(workforceErrorMessage(err))
       toast({
         title: 'Không thể tải chi tiết chu kỳ lương',
         description: workforceErrorMessage(err),
         variant: 'destructive',
       })
     } finally {
-      setLoadingDetails(false)
+      if (sequence === readSequence.current) setLoadingDetails(false)
     }
   }, [toast])
 
   React.useEffect(() => {
+    const generation = readSequence
     let frame: number | undefined
     if (selectedPeriod?.id) {
       frame = requestAnimationFrame(() => {
@@ -79,6 +89,7 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
     }
     return () => {
       if (frame !== undefined) cancelAnimationFrame(frame)
+      generation.current++
     }
   }, [selectedPeriod?.id, loadPeriodDetails])
 
@@ -145,18 +156,18 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
           )}
 
           {selectedPeriod?.status === 'locked' && (
-            <a
-              href={workforceService.getExportCsvUrl(selectedPeriod.id)}
-              download
+            <Button
+              onClick={() => void workforceService.downloadCsv(selectedPeriod.id).catch(err => toast({ title: 'Không thể tải CSV', description: workforceErrorMessage(err), variant: 'destructive' }))}
               className="inline-flex h-8 items-center rounded-md bg-emerald-600 px-3 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
             >
               <Download className="h-3.5 w-3.5 mr-1.5" />
               Tải CSV khóa sổ
-            </a>
+            </Button>
           )}
         </div>
       </div>
 
+      {readError && <p role="alert">{readError}</p>}
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as typeof activeTab)} className="space-y-4">
         <TabsList className="grid group-data-[orientation=horizontal]/tabs:h-auto w-full grid-cols-3 bg-slate-100 p-1 rounded-lg">
@@ -181,13 +192,14 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
 
           {selectedPeriod ? (
             <>
-              <PayrollDraftWorkspace
+              {!loadingDetails && !readError && <PayrollDraftWorkspace
                 period={selectedPeriod}
                 lines={lines}
                 currentUserId={currentUser?.id}
                 currentUserRole={permission}
+                audit={audit}
                 onRefresh={() => loadPeriodDetails(selectedPeriod.id)}
-              />
+              />}
 
               <PayrollAuditTimeline audit={audit} />
             </>

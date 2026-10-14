@@ -192,9 +192,11 @@ function statefulDouble(rows: FixtureRow[], rpcError: { message: string } | null
     from() {
       return {
         select() {
-          return {
-            order: async () => ({ data: rows.map(row => ({ ...row })), error: null }),
+          const query = {
+            order: () => query,
+            limit: async () => ({ data: rows.map(row => ({ ...row })), error: null }),
           }
+          return query
         },
       }
     },

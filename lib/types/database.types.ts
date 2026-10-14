@@ -267,6 +267,7 @@ export interface SwapExchangeCandidate {
 }
 
 export interface Shift extends LifecycleMetadata {
+  registration_conflict?: boolean
   id: string
   execution_source?: ExecutionSource | null
   date: string

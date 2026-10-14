@@ -1,0 +1,8 @@
+# RC1.6K global UI consistency and bounded collections
+Baseline: main a3cc28ab5c5a212da73af6ef631f5550c7a3a274 + verified PR26 2cb3036; reconciled candidate daa99a4ad3b86a342e75b345b7726cd2ddd1113e. Security migration 20261012145735 is immutable in this task. Original dirty RC16I and backup are preserved.
+Calendar has one stable H1/subtitle, five URL-addressable tabs, and tab-specific actions. Existing role permissions and query parameters remain authoritative.
+Reuse PageHeader, DataTable and HistoryPagination. Cards default 10; tables/history 20; sizes 10/20/50. Lists use stable ordering and clamp/reset on filters/mutations. Open/My Shifts require server query pagination, complete capacity summaries, bounded related reads, canonical one-row-per-shift My Shifts, and no client-only transport fix.
+Every dashboard route is classified A list, B feed, C bounded widget, D date-range calendar or E form/detail. Forms and calendar cells are not mechanically paginated. Export All loads the complete authorized filtered collection explicitly; bulk selection states current-page scope.
+Import persistence and source archiving are distinct operations. Archive retry preserves batch identity and never invokes import persistence. Cloud diagnostics are read-only; no Production or provider writes.
+Implement focused tests during work. Only once all items are complete and source is frozen, run comprehensive code, PG16/17/security, browser roles/widths/states, performance and release-evidence validation. Real cloud/provider/UAT remains unverified unless directly checked.
+No merge, deployment, activation, Production DDL/DML or cloud configuration changes. New RPC migrations remain unapplied pending release approval.

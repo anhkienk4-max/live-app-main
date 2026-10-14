@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import type { ListFilters } from '@/lib/services/operationsPageService'
 import { shiftService } from '@/lib/services/dataService'
 import { Shift, Brand, Platform, Campaign, User } from '@/lib/types/database.types'
 import { exportShiftsToExcel, downloadExcelTemplate, importShiftsFromExcel, type ImportResult } from '@/lib/utils/excelUtils'
@@ -14,6 +15,8 @@ interface ImportExportDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   shifts: Shift[]
+  exportFilters?: ListFilters
+  totalCount?: number
   brands: Brand[]
   platforms: Platform[]
   campaigns: Campaign[]
@@ -21,19 +24,24 @@ interface ImportExportDialogProps {
   onSuccess: () => void
 }
 
-export function ImportExportDialog({ open, onOpenChange, shifts, brands, platforms, campaigns, users, onSuccess }: ImportExportDialogProps) {
+export function ImportExportDialog({ open, onOpenChange, shifts, exportFilters, totalCount = shifts.length, brands, platforms, campaigns, users, onSuccess }: ImportExportDialogProps) {
   const [importing, setImporting] = React.useState(false)
   const [importResult, setImportResult] = React.useState<ImportResult | null>(null)
   const { toast } = useToast()
 
-  const handleExport = () => {
+  const handleExport = async () => {
+    setImporting(true)
+    try {
+    const complete = await shiftService.getAllFiltered(exportFilters)
     const brandMap = new Map(brands.map(b => [b.id, b.name]))
     const platformMap = new Map(platforms.map(p => [p.id, p.name]))
     const campaignMap = new Map(campaigns.map(c => [c.id, c.name]))
     const userMap = new Map(users.map(u => [u.id, u.full_name]))
     
-    exportShiftsToExcel(shifts, brandMap, platformMap, campaignMap, userMap)
+    exportShiftsToExcel(complete, brandMap, platformMap, campaignMap, userMap)
     toast({ title: 'Success', description: 'Shifts exported to Excel', variant: 'success' })
+    } catch (error) { toast({ title: 'Error', description: error instanceof Error ? error.message : 'Export failed', variant: 'destructive' }) }
+    finally { setImporting(false) }
   }
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -98,9 +106,9 @@ export function ImportExportDialog({ open, onOpenChange, shifts, brands, platfor
           <TabsContent value="export" className="space-y-4 py-4">
             <p className="text-sm text-gray-600">Export all shifts to Excel for external editing or backup.</p>
             <div className="flex gap-2">
-              <Button onClick={handleExport}>
+              <Button onClick={() => void handleExport()} disabled={importing}>
                 <Download className="h-4 w-4 mr-2" />
-                Export All Shifts ({shifts.length})
+                Export All Shifts ({totalCount})
               </Button>
             </div>
           </TabsContent>

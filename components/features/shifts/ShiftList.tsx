@@ -3,6 +3,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 
 import * as React from 'react'
+import { usePagedList } from '@/lib/hooks/usePagedList'
 import { shiftService, brandService, platformService, campaignService, userService, shiftRegistrationService, getShiftRoleCapacities } from '@/lib/services/dataService'
 import { templateService } from '@/lib/services/templateService'
 import { Shift, Brand, Platform, Campaign, User, DeletionImpact, ShiftRegistration } from '@/lib/types/database.types'
@@ -38,13 +39,11 @@ const statusVariants: Record<string, 'default' | 'secondary' | 'destructive'> = 
 }
 
 export function ShiftList() {
-  const [shifts, setShifts] = React.useState<Shift[]>([])
   const [brands, setBrands] = React.useState<Brand[]>([])
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
   const [users, setUsers] = React.useState<User[]>([])
   const [templates, setTemplates] = React.useState<ShiftTemplate[]>([])
-  const [loading, setLoading] = React.useState(true)
   const [pendingBulkStatus, setPendingBulkStatus] = React.useState<'scheduled' | 'completed' | null>(null)
   const [isBulkUpdating, setIsBulkUpdating] = React.useState(false)
   const [loadError, setLoadError] = React.useState<unknown>(null)
@@ -65,8 +64,6 @@ export function ShiftList() {
   const [statusFilter, setStatusFilter] = React.useState<Shift['status'] | 'all'>('all')
   const [searchQuery, setSearchQuery] = React.useState('')
   const [sortDescending, setSortDescending] = React.useState(false)
-  const [mobilePage, setMobilePage] = React.useState(1)
-  const [mobilePageSize, setMobilePageSize] = React.useState(10)
   const [visibleShifts, setVisibleShifts] = React.useState<Shift[]>([])
   const [filteredTableShifts, setFilteredTableShifts] = React.useState<Shift[]>([])
   const [tableFilterInitialized, setTableFilterInitialized] = React.useState(false)
@@ -92,14 +89,12 @@ export function ShiftList() {
 
   const handleStatusFilterChange = React.useCallback((status: Shift['status'] | 'all') => {
     setStatusFilter(status)
-    setMobilePage(1)
     setSelectedIds(new Set())
     setShowBulkActions(false)
   }, [])
 
   const handleSearchQueryChange = React.useCallback((query: string) => {
     setSearchQuery(query)
-    setMobilePage(1)
     setSelectedIds(new Set())
     setShowBulkActions(false)
   }, [])
@@ -118,12 +113,16 @@ export function ShiftList() {
   const canMutate = canEdit || canDelete
 
   const statusValues = ['scheduled', 'preparing', 'live', 'paused', 'completed', 'cancelled'] as const
+  const listFilters = { search: searchQuery, statuses: statusFilter === 'all' ? [] : [statusFilter], descending: sortDescending }
+  const list = usePagedList(shiftService, 'shifts', listFilters)
+  const { items: shifts, loading } = list
+  const sortedShifts = shifts
 
   const getBrandName = React.useCallback((id: string) => brands.find(b => b.id === id)?.name || 'Unknown', [brands])
   const getPlatformName = React.useCallback((id: string) => platforms.find(p => p.id === id)?.name || 'Unknown', [platforms])
   const getUserName = React.useCallback((id?: string) => id ? users.find(u => u.id === id)?.full_name || 'Unassigned' : 'Unassigned', [users])
   const getCampaignName = React.useCallback((id?: string) => id ? campaigns.find(campaign => campaign.id === id)?.name || 'Unknown' : null, [campaigns])
-  
+
   const getRolePeople = React.useCallback((shift: Shift, role: 'host' | 'support' | 'technical') => {
     const shiftRegistrations = registrations.filter(registration => registration.shift_id === shift.id)
     const resolved = resolveStaffingLabelsForRole(shift, shiftRegistrations, users, role, translate)
@@ -134,70 +133,44 @@ export function ShiftList() {
     return legacyId ? [getUserName(legacyId)] : []
   }, [registrations, users, translate, getUserName])
 
-  // Filtered and sorted shifts
-  const filteredShifts = React.useMemo(() => {
-    let result = statusFilter === 'all' ? shifts : shifts.filter(shift => shift.status === statusFilter)
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim()
-      result = result.filter(shift => {
-        const text = [
-          shift.title,
-          shift.id,
-          shift.date,
-          shift.start_time,
-          shift.studio,
-          getBrandName(shift.brand_id),
-          getPlatformName(shift.platform_id),
-          getCampaignName(shift.campaign_id),
-          ...(['host', 'support', 'technical'] as const).flatMap(role => getRolePeople(shift, role))
-        ].filter(Boolean).join(' ').toLowerCase()
-        return text.includes(q)
-      })
-    }
-    return result
-  }, [shifts, statusFilter, searchQuery, getBrandName, getPlatformName, getCampaignName, getRolePeople])
+  const mobilePaginatedShifts = sortedShifts
+  const mobileTotalPages = Math.max(1, Math.ceil(list.total / list.pageSize))
+  const safeMobilePage = Math.min(Math.max(1, list.page), mobileTotalPages)
+  const mobileStartIndex = list.total === 0 ? 0 : (safeMobilePage - 1) * list.pageSize + 1
+  const mobileEndIndex = Math.min(safeMobilePage * list.pageSize, list.total)
 
-  const sortedShifts = React.useMemo(() => {
-    return [...filteredShifts].sort((a, b) => {
-      const dateOrder = String(a.date).localeCompare(String(b.date)) || a.start_time.localeCompare(b.start_time)
-      return sortDescending ? -dateOrder : dateOrder
-    })
-  }, [filteredShifts, sortDescending])
-
-  // Mobile pagination slice
-  const mobileTotalPages = Math.ceil(sortedShifts.length / mobilePageSize) || 1
-  const safeMobilePage = Math.min(Math.max(1, mobilePage), mobileTotalPages)
-  const mobileStartIndex = (safeMobilePage - 1) * mobilePageSize
-  const mobileEndIndex = Math.min(mobileStartIndex + mobilePageSize, sortedShifts.length)
-  const mobilePaginatedShifts = sortedShifts.slice(mobileStartIndex, mobileEndIndex)
-
-  const loadData = React.useCallback(async () => {
-    setLoading(true)
+  const loadReferences = React.useCallback(async () => {
     setLoadError(null)
     try {
-      const [shiftsData, brandsData, platformsData, campaignsData, usersData, templatesData, registrationData] = await Promise.all([
-        shiftService.getAll(),
+      const [brandsData, platformsData, campaignsData, usersData, templatesData] = await Promise.all([
         brandService.getAll(),
         platformService.getAll(),
         campaignService.getAll(),
         userService.getAll(),
         templateService.getAll(),
-        shiftRegistrationService.getAll(),
       ])
-      setShifts(shiftsData)
       setBrands(brandsData)
       setPlatforms(platformsData)
       setCampaigns(campaignsData)
       setUsers(usersData)
       setTemplates(templatesData)
-      setRegistrations(registrationData)
-    } catch (error) { setLoadError(error) } finally { setLoading(false) }
+    } catch (error) { setLoadError(error) }
   }, [])
 
   React.useEffect(() => {
-    const frame = window.requestAnimationFrame(() => { void loadData() })
+    const frame = window.requestAnimationFrame(() => { void loadReferences() })
     return () => window.cancelAnimationFrame(frame)
-  }, [loadData])
+  }, [loadReferences])
+
+  const loadData = async () => { await list.reload() }
+  const pageIds = shifts.map(shift => shift.id).join(',')
+  React.useEffect(() => {
+    let active = true
+    if (!pageIds) return
+    void shiftRegistrationService.getForShifts(pageIds.split(',')).then(rows => { if (active) setRegistrations(rows) }).catch(error => { if (active) setLoadError(error) })
+    return () => { active = false }
+  }, [pageIds])
+  const clearSelection = () => { setSelectedIds(new Set()); setShowBulkActions(false) }
 
   const requestDelete = async (ids: string[]) => {
     if (!canDelete) return
@@ -318,7 +291,6 @@ export function ShiftList() {
 
   const allPageSelected = visibleShifts.length > 0 && visibleShifts.every(s => selectedIds.has(s.id))
   const somePageSelected = visibleShifts.some(s => selectedIds.has(s.id)) && !allPageSelected
-  const allFilteredSelected = currentTableFilteredShifts.length > 0 && currentTableFilteredShifts.every(s => selectedIds.has(s.id))
 
   const toggleSelectPage = () => {
     if (allPageSelected) {
@@ -422,18 +394,16 @@ export function ShiftList() {
     }
   ]
 
+  if (loadError || list.error) return <PageLoadError error={loadError || list.error} onRetry={() => { setLoadError(null); void loadData() }} />
   if (loading) return <div className="text-center py-12">{t('loading')}</div>
-  if (loadError) return <PageLoadError error={loadError} onRetry={() => void loadData()} />
 
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">{translate('Shift Management')}</h1>
-          <p className="mt-1 text-xs text-muted-foreground">{filteredShifts.length} / {shifts.length} {t('totalShifts')}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{list.total} {t('totalShifts')}</p>
         </div>
-        
-        {/* Capability-gated Action Buttons (UX-P1-01) */}
         <div className="flex gap-2">
           {canImportExport && (
             <>
@@ -457,6 +427,7 @@ export function ShiftList() {
         </div>
       </div>
 
+      {showBulkActions && <p className="text-xs text-muted-foreground">{t('currentPage')} · {t('selectedCount',{count:selectedIds.size})}</p>}
       {showBulkActions && selectedFilteredShifts.length > 0 && (
         <BulkActionsToolbar
           selectedCount={selectedFilteredShifts.length}
@@ -472,47 +443,14 @@ export function ShiftList() {
 
       {/* DESKTOP VIEW: Data Table (UX-P1-02: Hidden on mobile < md) */}
       <div className="hidden md:block [&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2 [&_table]:text-xs [&_tbody_tr]:h-[62px]">
-        {allPageSelected && currentTableFilteredShifts.length > visibleShifts.length && (
-          <div className="mb-2 p-2.5 bg-slate-50 border border-slate-200 rounded-md text-xs text-slate-700 flex items-center justify-between" data-testid="select-scope-banner">
-            <span>
-              {allFilteredSelected
-                ? t('allFilteredSelected', { count: currentTableFilteredShifts.length })
-                : t('allPageSelected', { count: visibleShifts.length })}
-            </span>
-            {!allFilteredSelected ? (
-              <Button
-                size="sm"
-                variant="link"
-                className="text-xs h-auto p-0 font-medium text-blue-600 hover:text-blue-800"
-                data-testid="select-all-filtered-btn"
-                onClick={() => {
-                  const next = new Set(selectedIds)
-                  currentTableFilteredShifts.forEach(s => next.add(s.id))
-                  setSelectedIds(next)
-                  setShowBulkActions(true)
-                }}
-              >
-                {t('selectAllFiltered', { count: currentTableFilteredShifts.length })}
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                variant="link"
-                className="text-xs h-auto p-0 font-medium text-slate-600 hover:text-slate-800"
-                data-testid="clear-all-filtered-btn"
-                onClick={() => {
-                  setSelectedIds(new Set())
-                  setShowBulkActions(false)
-                }}
-              >
-                {t('clearSelection')}
-              </Button>
-            )}
-          </div>
-        )}
         <DataTable
           data={sortedShifts}
           columns={columns}
+          search={searchQuery}
+          onSearch={value => { handleSearchQueryChange(value); list.reset() }}
+          pagination={{ loading: list.refreshing, page: list.page, pageSize: list.pageSize, total: list.total,
+            onPageChange: value => { clearSelection(); list.setPage(value) },
+            onPageSizeChange: value => { clearSelection(); list.setPageSize(value) } }}
           onVisibleDataChange={handleVisibleDataChange}
           onFilteredDataChange={handleFilteredDataChange}
           searchPlaceholder={t('search')}
@@ -523,13 +461,13 @@ export function ShiftList() {
                 <select
                   aria-label={t('status')}
                   value={statusFilter}
-                  onChange={event => handleStatusFilterChange(event.target.value as Shift['status'] | 'all')}
+                  onChange={event => { handleStatusFilterChange(event.target.value as Shift['status'] | 'all'); list.reset() }}
                   className="max-w-40 bg-transparent font-medium text-slate-800 outline-none"
                 >
-                  <option value="all">{t('all')} ({shifts.length})</option>
+                  <option value="all">{t('all')}</option>
                   {statusValues.map(status => (
                     <option key={status} value={status}>
-                      {translate(status === 'live' ? 'liveStatus' : status)} ({shifts.filter(shift => shift.status === status).length})
+                      {translate(status === 'live' ? 'liveStatus' : status)}
                     </option>
                   ))}
                 </select>
@@ -537,7 +475,7 @@ export function ShiftList() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setSortDescending(value => !value)}
+                onClick={() => { setSortDescending(value => !value); clearSelection(); list.reset() }}
                 aria-label={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`}
                 title={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`}
               >
@@ -546,11 +484,6 @@ export function ShiftList() {
               </Button>
             </div>
           }
-          searchableText={row => [
-            row.title, row.id, row.date, row.start_time, row.studio,
-            getBrandName(row.brand_id), getPlatformName(row.platform_id), getCampaignName(row.campaign_id),
-            ...(['host', 'support', 'technical'] as const).flatMap(role => getRolePeople(row, role))
-          ].filter(Boolean).join(' ')}
           emptyMessage={t('noData')}
         />
       </div>
@@ -565,7 +498,7 @@ export function ShiftList() {
               type="text"
               placeholder={t('search')}
               value={searchQuery}
-              onChange={e => handleSearchQueryChange(e.target.value)}
+              onChange={e => { handleSearchQueryChange(e.target.value); list.reset() }}
               className="pl-8 h-9 text-xs"
               data-testid="shifts-mobile-search"
             />
@@ -574,14 +507,14 @@ export function ShiftList() {
             <select
               aria-label={t('status')}
               value={statusFilter}
-              onChange={event => handleStatusFilterChange(event.target.value as Shift['status'] | 'all')}
+              onChange={event => { handleStatusFilterChange(event.target.value as Shift['status'] | 'all'); list.reset() }}
               className="flex-1 h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none"
               data-testid="shifts-mobile-status-filter"
             >
-              <option value="all">{t('all')} ({shifts.length})</option>
+              <option value="all">{t('all')}</option>
               {statusValues.map(status => (
                 <option key={status} value={status}>
-                  {translate(status === 'live' ? 'liveStatus' : status)} ({shifts.filter(shift => shift.status === status).length})
+                  {translate(status === 'live' ? 'liveStatus' : status)}
                 </option>
               ))}
             </select>
@@ -589,7 +522,7 @@ export function ShiftList() {
               variant="outline"
               size="sm"
               className="h-9 px-2.5 text-xs shrink-0"
-              onClick={() => setSortDescending(value => !value)}
+              onClick={() => { setSortDescending(value => !value); clearSelection(); list.reset() }}
               aria-label={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`}
             >
               <ArrowDownUp className="mr-1 h-3.5 w-3.5" />
@@ -718,17 +651,14 @@ export function ShiftList() {
           </div>
         )}
 
-        {/* Mobile 10/20/50 Pagination (UX-P1-02) */}
-        {sortedShifts.length > 0 && (
+        {/* Mobile controls use the same bounded server page as the desktop table. */}
+        {list.total > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2 px-1 text-xs text-slate-600" data-testid="shifts-mobile-pagination">
             <div className="flex items-center gap-1.5">
               <span className="text-[11px] text-muted-foreground">{t('show')}:</span>
               <Select
-                value={String(mobilePageSize)}
-                onValueChange={val => {
-                  setMobilePageSize(Number(val))
-                  setMobilePage(1)
-                }}
+                value={String(list.pageSize)}
+                onValueChange={val => { clearSelection(); list.setPageSize(Number(val)) }}
               >
                 <SelectTrigger className="h-8 w-16 text-xs px-2" aria-label="Mobile page size">
                   <SelectValue />
@@ -743,7 +673,7 @@ export function ShiftList() {
 
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-muted-foreground">
-                {mobileStartIndex + 1}–{mobileEndIndex} / {sortedShifts.length}
+                {mobileStartIndex}–{mobileEndIndex} / {list.total}
               </span>
               <div className="flex items-center gap-1">
                 <Button
@@ -751,7 +681,7 @@ export function ShiftList() {
                   size="icon"
                   className="h-8 w-8 min-h-[32px] min-w-[32px]"
                   disabled={safeMobilePage <= 1}
-                  onClick={() => setMobilePage(p => Math.max(1, p - 1))}
+                  onClick={() => { clearSelection(); list.setPage(safeMobilePage - 1) }}
                   aria-label={t('previousPage')}
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -761,7 +691,7 @@ export function ShiftList() {
                   size="icon"
                   className="h-8 w-8 min-h-[32px] min-w-[32px]"
                   disabled={safeMobilePage >= mobileTotalPages}
-                  onClick={() => setMobilePage(p => Math.min(mobileTotalPages, p + 1))}
+                  onClick={() => { clearSelection(); list.setPage(safeMobilePage + 1) }}
                   aria-label={t('nextPage')}
                 >
                   <ChevronRight className="h-4 w-4" />
@@ -824,6 +754,8 @@ export function ShiftList() {
 
       {canImportExport && (
         <ImportExportDialog
+          exportFilters={listFilters}
+          totalCount={list.total}
           open={isImportExportOpen}
           onOpenChange={setIsImportExportOpen}
           shifts={shifts}
@@ -843,7 +775,7 @@ export function ShiftList() {
         confirmText={deleteImpact?.action === 'delete' ? 'Delete' : 'Cancel shift'}
         onConfirm={handleDelete}
       />
-    
+
       {pendingBulkStatus && (
         <Dialog open onOpenChange={open => { if (!open) setPendingBulkStatus(null) }}>
           <DialogContent size="sm" data-testid="confirm-bulk-status-dialog">

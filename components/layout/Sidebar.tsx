@@ -10,6 +10,8 @@ import { resolveSystemPermission } from '@/lib/permissions'
 import { getNavigationForRole, filterNav } from '@/lib/ui/role-ux'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { resolveActiveNavigation } from './shellConfig'
+import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
+import { filterWorkforceNavigation } from '@/lib/ui/workforceNavigation'
 
 export function Sidebar() {
   const pathname = usePathname()
@@ -17,7 +19,8 @@ export function Sidebar() {
   const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
   const permission = resolveSystemPermission(currentUser)
-  const navigation = filterNav(getNavigationForRole(permission), currentUser)
+  const { capabilities } = useWorkforceCapabilities()
+  const navigation = filterWorkforceNavigation(filterNav(getNavigationForRole(permission), currentUser), capabilities)
   const activeHref = resolveActiveNavigation(navigation, pathname, search)
   const initials = currentUser?.full_name?.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase() || currentUser?.email?.[0].toUpperCase() || 'U'
   return (

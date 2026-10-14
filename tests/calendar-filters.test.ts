@@ -152,10 +152,10 @@ test('existing role and status filters remain supported and invalid custom range
 test('Calendar preserves global view filtering and scopes List-only work separately', () => {
   const source = readFileSync(new URL('../components/features/calendar/CalendarView.tsx', import.meta.url), 'utf8')
   assert.match(source, /const filteredShifts = React\.useMemo\(/)
-  assert.match(source, /const listShifts = React\.useMemo\(/)
+  assert.match(source, /shiftService\.getCalendarPage\(\{ page: listPage, pageSize: listSize, filters: JSON\.parse\(listQuery\) \}/)
   assert.match(source, /effectiveListTimeFilter\(filters\.time, listTimeOverride\)/)
   assert.match(source, /const calendarScopeShifts = React\.useMemo\(\s+\(\) => shiftsInCalendarScope\(view === 'list' \? listShifts : filteredShifts/)
-  assert.match(source, /const exportShifts = view === 'list' \? listShifts : filteredShifts/)
+  assert.match(source, /view === 'list' && scope === 'filtered' \? await shiftService\.getAllFiltered\(JSON\.parse\(listQuery\)\)/)
   assert.match(source, /targetShifts = scope === 'selected'\s+\? exportShifts\.filter/)
   assert.match(source, /<MonthView currentDate=\{currentDate\} shifts=\{filteredShifts\}/)
   assert.match(source, /<ListView\s+shifts=\{listShifts\}/)

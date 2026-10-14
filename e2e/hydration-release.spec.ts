@@ -9,7 +9,7 @@ const routes = [
   ['/reports', 'Báo cáo', 'Reports'],
   ['/storage', 'Kho file vận hành', 'Operational file storage'],
   ['/storage/setup', 'Thiết lập Storage — Admin', 'Storage setup — Admin'],
-  ['/staffing', 'Nhân sự', 'Staffing'],
+  ['/staffing', 'Điều phối ca', 'Staffing'],
   ['/workforce', 'Tính năng đang tắt. Vui lòng chờ cấu hình được phê duyệt.', 'The feature is disabled. Await approved configuration.'],
   ['/payroll', 'Tính năng đang tắt. Vui lòng chờ cấu hình được phê duyệt.', 'The feature is disabled. Await approved configuration.'],
 ] as const
@@ -30,7 +30,7 @@ async function fixtures(page: Page, language: 'vi' | 'en') {
       platforms: [{ id: 'fixture-platform', name: 'Frontend fixture platform' }], campaigns: [],
       categories: [{ id: 'schedule_source', label: 'Schedule source' }, { id: 'dashboard', label: 'Dashboard' }],
       max_single_upload_bytes: 4 * 1024 * 1024, confidential_write_ready: false,
-    } : { ok: true, files: [] } })
+    } : { ok: true, files: [], total: 0, page: 1, pageSize: 10 } })
   })
   await page.route('**/api/operational-storage-setup**', route => {
     expect(route.request().method()).toBe('GET')

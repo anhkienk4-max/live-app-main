@@ -1,0 +1,9 @@
+- [x] Verify main and PR26; preserve original; reconcile Audit security on isolated candidate.
+- [ ] Stabilize Calendar header/tabs/actions/deep links.
+- [ ] Bound Open/My Shifts queries, related data and all three renderers.
+- [ ] Inventory and implement consistent pagination for every list route; document justified exceptions.
+- [ ] Fix week density, navigation duplication, headers/filter/action density and responsive overflow.
+- [ ] Diagnose import versus archive failures; preserve batch-safe archive-only retry.
+- [ ] Focused unit/component/query/RBAC/regression tests.
+- [ ] Freeze candidate; execute one comprehensive final validation and per-route browser/performance audit.
+- [ ] Commit/push isolated branch, Draft PR, exact-SHA CI and Vietnamese delivery.

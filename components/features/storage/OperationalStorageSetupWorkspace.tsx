@@ -1,9 +1,14 @@
-'use client'
+﻿'use client'
 
 import * as React from 'react'
 import Link from 'next/link'
-import { FolderCog, RefreshCw, ShieldAlert } from 'lucide-react'
 import { useTranslation } from '@/lib/i18n'
+import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { resolveSystemPermission } from '@/lib/permissions'
+import { useListPagination } from '@/lib/hooks/useListPagination'
+import { HistoryPagination } from '@/components/ui/history-pagination'
+import { useRequestSequence } from '@/lib/hooks/useRequestSequence'
+import { FolderCog, RefreshCw, ShieldAlert } from 'lucide-react'
 
 type Brand = { id: string; name: string; storage_profile: string | null }
 type Platform = { id: string; name: string }
@@ -59,9 +64,14 @@ function parsePeriodOverrides(raw: string): Record<string, { default: string }> 
 }
 
 export function OperationalStorageSetupWorkspace() {
-  const { translate } = useTranslation()
+  const { t, translate } = useTranslation()
+  const {currentUser,loading:userLoading}=useCurrentUser()
+  const canManage=!!currentUser&&resolveSystemPermission(currentUser)==='admin'
   const [data, setData] = React.useState<Inventory | null>(null)
-  const [offset, setOffset] = React.useState(0)
+  const pagination=useListPagination('storage_setup',20)
+  const {page,pageSize,navigate}=pagination
+  const offset=(page-1)*pageSize
+  const {next,isCurrent,invalidate}=useRequestSequence()
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
   const [notice, setNotice] = React.useState('')
@@ -92,19 +102,25 @@ export function OperationalStorageSetupWorkspace() {
   const [shiftApproved, setShiftApproved] = React.useState(false)
 
   const refresh = React.useCallback(async () => {
+    if(!canManage)return
+    const request=next()
     setBusy(true)
     setError('')
     try {
-      const response = await fetch('/api/operational-storage-setup?offset=' + offset, { cache: 'no-store' })
+      const response = await fetch('/api/operational-storage-setup?offset=' + offset+'&pageSize='+pageSize, { cache: 'no-store' })
       const json = await response.json() as Inventory & { error?: { code: string } }
       if (!response.ok || !json.ok) throw new Error(json.error?.code || 'Không đọc được tình trạng setup')
+      if(!isCurrent(request))return
       setData(json)
+      if(json.offset!==offset)navigate({storage_setup_page:String(Math.floor(json.offset/pageSize)+1)},true)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Không đọc được tình trạng setup')
-    } finally { setBusy(false) }
-  }, [offset])
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- initial storage setup inventory fetch
-  React.useEffect(() => { void refresh() }, [refresh])
+      if(isCurrent(request))setError(reason instanceof Error ? reason.message : 'Không đọc được tình trạng setup')
+    } finally { if(isCurrent(request))setBusy(false) }
+  }, [offset,pageSize,navigate,next,isCurrent,canManage])
+  React.useEffect(() => {
+    const frame = window.requestAnimationFrame(() => { void refresh() })
+    return () => { window.cancelAnimationFrame(frame); invalidate() }
+  }, [refresh,invalidate])
 
   const mutate = async (payload: Record<string, unknown>) => {
     setBusy(true)
@@ -188,6 +204,8 @@ export function OperationalStorageSetupWorkspace() {
     } finally { setBusy(false) }
   }
 
+  if(userLoading)return <p className="p-6">{t('loading')}</p>
+  if(!canManage)return <p className="p-6" role="alert">Bạn không có quyền thiết lập lưu trữ.</p>
   return <div className="mx-auto max-w-6xl space-y-5" data-testid="storage-setup">
     <div className="flex items-center gap-3">
       <FolderCog className="h-8 w-8 text-primary" />
@@ -403,12 +421,9 @@ export function OperationalStorageSetupWorkspace() {
         <h2 className="font-semibold">3. Phân loại từng ca cũ</h2>
         <p className="text-sm text-muted-foreground">Không bulk update và không tự gán Internal. Ghi qua RPC với phiên bản ca để bảo toàn audit/lifecycle.</p>
         <div className="flex items-center gap-3 text-sm">
-          <button type="button" className={action} disabled={busy || offset === 0}
-            onClick={() => { setShiftId(''); setOffset(value => Math.max(0, value - 40)) }}>Trang trước</button>
-          <span>Ca {offset + 1}–{offset + data.unclassified_shifts_sample.length} / {data.unclassified_shifts_count ?? '?'}</span>
-          <button type="button" className={action}
-            disabled={busy || data.unclassified_shifts_sample.length < 40 || (data.unclassified_shifts_count !== null && offset + 40 >= data.unclassified_shifts_count)}
-            onClick={() => { setShiftId(''); setOffset(value => value + 40) }}>Trang sau</button>
+          <HistoryPagination page={page} pageSize={pageSize} total={data.unclassified_shifts_count??0}
+            onPageChange={value=>{setShiftId('');pagination.setPage(value)}}
+            onPageSizeChange={value=>{setShiftId('');pagination.setPageSize(value)}} />
         </div>
         <select className={control} aria-label="Chọn ca chưa phân loại" value={shiftId}
           onChange={e => { setShiftId(e.target.value); setShiftApproved(false) }}>

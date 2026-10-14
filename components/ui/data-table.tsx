@@ -4,8 +4,10 @@ import * as React from 'react'
 import { Search, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Input } from './input'
 import { Button } from './button'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select'
+import { HistoryPagination } from './history-pagination'
+import { pageRange } from '@/lib/utils/pagination'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './table'
 
 export interface Column<T> {
   header: React.ReactNode | (() => React.ReactNode)
@@ -17,6 +19,7 @@ interface DataTableProps<T> {
   data: T[]
   columns: Column<T>[]
   searchPlaceholder?: string
+  search?: string
   onSearch?: (query: string) => void
   onVisibleDataChange?: (visibleRows: T[]) => void
   onFilteredDataChange?: (filteredRows: T[]) => void
@@ -25,6 +28,7 @@ interface DataTableProps<T> {
   searchableText?: (row: T) => string
   emptyMessage?: string
   pageSize?: number
+  pagination?: { page: number; pageSize: number; total: number; onPageChange: (page: number) => void; onPageSizeChange: (size: number) => void; loading?: boolean }
 }
 
 export function DataTable<T extends { id: string }>({
@@ -32,13 +36,15 @@ export function DataTable<T extends { id: string }>({
   columns,
   searchPlaceholder = 'Search...',
   onSearch,
+  search,
   onVisibleDataChange,
   onFilteredDataChange,
   onPageChange,
   filterComponent,
   searchableText,
   emptyMessage = 'No data available',
-  pageSize = 10,
+  pageSize = 20,
+  pagination,
 }: DataTableProps<T>) {
   const [searchQuery, setSearchQuery] = React.useState('')
   const [currentPage, setCurrentPage] = React.useState(1)
@@ -52,9 +58,9 @@ export function DataTable<T extends { id: string }>({
   }
 
   const filteredData = React.useMemo(() => {
+    if (pagination) return data
     const q = searchQuery.toLowerCase().trim()
     if (!q) return data
-
     return data.filter(row => {
       if (searchableText?.(row).toLowerCase().includes(q)) return true
       return columns.some(col => {
@@ -63,13 +69,14 @@ export function DataTable<T extends { id: string }>({
         return String(value).toLowerCase().includes(q)
       })
     })
-  }, [data, searchQuery, columns, searchableText])
+  }, [data, searchQuery, columns, searchableText, pagination])
 
-  const totalPages = Math.max(1, Math.ceil(filteredData.length / itemsPerPage))
-  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages)
+  const size = pagination?.pageSize ?? itemsPerPage
+  const range = pageRange(pagination?.total ?? filteredData.length, pagination?.page ?? currentPage, size)
+  const totalPages = range.totalPages
+  const safeCurrentPage = range.page
   const startIndex = (safeCurrentPage - 1) * itemsPerPage
-  const endIndex = startIndex + itemsPerPage
-  const paginatedData = filteredData.slice(startIndex, endIndex)
+  const paginatedData = pagination ? filteredData : filteredData.slice(startIndex, startIndex + itemsPerPage)
 
   const prevVisibleIdsRef = React.useRef<string | null>(null)
   const prevFilteredIdsRef = React.useRef<string | null>(null)
@@ -117,13 +124,13 @@ export function DataTable<T extends { id: string }>({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" aria-busy={pagination?.loading}>
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
             placeholder={searchPlaceholder}
-            value={searchQuery}
+            value={search ?? searchQuery}
             onChange={(e) => handleSearch(e.target.value)}
             className="pl-10"
             data-testid="data-table-search-input"
@@ -171,7 +178,11 @@ export function DataTable<T extends { id: string }>({
         </Table>
       </div>
 
-      {filteredData.length > 0 && (
+      {pagination ? <HistoryPagination
+        page={range.page} pageSize={size} total={pagination?.total ?? filteredData.length}
+        onPageChange={pagination?.onPageChange ?? setCurrentPage}
+        onPageSizeChange={pagination?.onPageSizeChange ?? (value => { setItemsPerPage(value); setCurrentPage(1) })}
+      /> : filteredData.length > 0 && (
         <div className="flex items-center justify-between px-2" data-testid="data-table-pagination">
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-600">Rows per page:</span>

@@ -1,3 +1,5 @@
+import { pageRange } from '@/lib/utils/pagination'
+import type { ListQuery, ListPage } from '@/lib/services/operationsPageService'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { createClient } from '@/lib/supabase/client'
@@ -182,6 +184,18 @@ interface RpcOutcomeInput {
  * the authenticated user inside each RPC. Rows are persisted with outcome
  * 'pending' at create time and finalized through record/confirm.
  */
+export async function readScheduleImportBatchPage(client: SupabaseClient, query: ListQuery): Promise<ListPage<ScheduleImportBatch>> {
+  const fetchPage = (page: number) => client.from('schedule_import_batches').select(batchColumns, { count: 'exact' })
+    .is('deleted_at', null).order('created_at', { ascending: false }).order('id').range((page - 1) * query.pageSize, page * query.pageSize - 1)
+  let result = await fetchPage(query.page)
+  if (result.error && result.error.code !== 'PGRST103') throw result.error
+  if (result.count === null) throw new Error('LIST_COUNT_UNAVAILABLE')
+  const page = pageRange(result.count, query.page, query.pageSize).page
+  if (page !== query.page) result = await fetchPage(page)
+  if (result.error) throw result.error
+  return { items: (result.data ?? []).map(row => batchFromRow(row as unknown as BatchDbRow)), total: result.count ?? 0, page, pageSize: query.pageSize }
+}
+
 export function createSupabaseScheduleImportPort(
   client: SupabaseClient,
 ): ScheduleImportBatchPort {

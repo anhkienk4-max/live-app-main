@@ -14,17 +14,38 @@ export function useWorkforceCapabilities() {
     capabilities?: WorkforceCapabilities
     error?: string
   } | null>(null)
+  const [revision, reload] = React.useReducer(n => n + 1, 0)
+  const request = React.useRef<AbortController | null>(null)
+
+  React.useEffect(() => {
+    const invalidate = (event: Event) => {
+      request.current?.abort()
+      const message = (event as CustomEvent<{ message?: string }>).detail?.message
+      setResult(identityKey ? { identityKey, error: message || 'Quyền truy cập đã thay đổi. Vui lòng xác minh lại.' } : null)
+    }
+    const refresh = () => reload()
+    const visible = () => { if (document.visibilityState === 'visible') reload() }
+    window.addEventListener('workforce-access-invalidated', invalidate)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', visible)
+    return () => {
+      window.removeEventListener('workforce-access-invalidated', invalidate)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', visible)
+    }
+  }, [identityKey])
 
   React.useEffect(() => {
     if (userLoading || !identityKey) return
     const controller = new AbortController()
+    request.current = controller
     void workforceService.getCapabilities(controller.signal).then(({ capabilities }) => {
       if (!controller.signal.aborted) setResult({ identityKey, capabilities })
     }).catch(error => {
       if (!controller.signal.aborted) setResult({ identityKey, error: workforceErrorMessage(error) })
     })
     return () => controller.abort()
-  }, [identityKey, userLoading])
+  }, [identityKey, userLoading, revision])
 
   const current = result?.identityKey === identityKey ? result : null
   return {
@@ -34,5 +55,6 @@ export function useWorkforceCapabilities() {
     error: userLoading ? undefined : !currentUser
       ? 'Vui lòng đăng nhập để truy cập dữ liệu.' : current?.error,
     identityKey,
+    reload,
   }
 }

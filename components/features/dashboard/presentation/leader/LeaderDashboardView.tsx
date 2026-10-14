@@ -190,7 +190,7 @@ export function LeaderDashboardView({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {todaysSchedule.map((s, i) => (
+                  {todaysSchedule.slice(0, 6).map((s, i) => (
                     <ScheduleRow key={i} time={s.time} brand={s.brand} platform={s.platform} status={s.status} statusColor={s.statusColor} staffing={s.staffing} />
                   ))}
                 </tbody>
@@ -208,7 +208,7 @@ export function LeaderDashboardView({
               <div className="flex-1 flex items-center justify-center text-sm text-slate-500">Dữ liệu chưa khả dụng</div>
             ) : decisions.length > 0 ? (
               <div className="flex flex-col divide-y divide-slate-50 flex-1">
-                {decisions.map((d) => (
+                {decisions.slice(0, 6).map((d) => (
                   <DecisionRow key={d.key} type={d.type} title={d.title} subtitle={d.subtitle} time={d.time} action={d.action} iconBg={d.iconBg} />
                 ))}
               </div>
@@ -286,7 +286,7 @@ export function LeaderDashboardView({
             <div className="text-center py-8 text-sm text-slate-500">Dữ liệu chưa khả dụng</div>
           ) : activityLog.length > 0 ? (
             <div className="flex flex-col divide-y divide-slate-50">
-              {activityLog.map((entry, i) => (
+              {activityLog.slice(0, 6).map((entry, i) => (
                 <div key={i} className="flex items-center justify-between px-4 py-3.5 hover:bg-slate-50 transition-colors rounded-lg">
                   <div className="flex items-center gap-3.5">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${entry.iconBg}`}>
@@ -306,6 +306,7 @@ export function LeaderDashboardView({
           )}
         </div>
       </div>
+    <nav aria-label="Xem tất cả" className="flex flex-wrap gap-4 text-sm"><a className="underline underline-offset-4" href="/calendar">Xem tất cả: Lịch</a><a className="underline underline-offset-4" href="/reports">Xem tất cả: Báo cáo</a><a className="underline underline-offset-4" href="/notifications">Xem tất cả: Thông báo</a><a className="underline underline-offset-4" href="/data-quality">Xem tất cả: Chất lượng dữ liệu</a></nav>
     </main>
   )
 }

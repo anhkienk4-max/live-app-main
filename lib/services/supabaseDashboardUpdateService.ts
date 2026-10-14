@@ -8,7 +8,7 @@ type DashboardUpdateRepository = {
   remove(id: string, reason: string): Promise<boolean>
 }
 
-function mapRow(row: Record<string, unknown>): DashboardUpdate {
+export function dashboardUpdateFromRow(row: Record<string, unknown>): DashboardUpdate {
   return {
     ...(row as unknown as DashboardUpdate),
     id: String(row.id),
@@ -28,14 +28,14 @@ export function createSupabaseDashboardUpdateRepository(client: SupabaseClient):
     async getByShift(shiftId) {
       const result = await client.from('dashboard_updates').select('*').eq('shift_id', shiftId).is('deleted_at', null).order('time', { ascending: false })
       if (result.error) throw new Error('Dashboard updates could not be loaded.')
-      return (result.data || []).map(row => mapRow(row as Record<string, unknown>))
+      return (result.data || []).map(row => dashboardUpdateFromRow(row as Record<string, unknown>))
     },
     async create(data) {
       const result = await client.rpc('create_dashboard_update', {
         p_data: Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined)),
       }).single()
       if (result.error || !result.data) throw new Error('Dashboard update could not be persisted.')
-      return mapRow(result.data as Record<string, unknown>)
+      return dashboardUpdateFromRow(result.data as Record<string, unknown>)
     },
     async remove(id, reason) {
       const result = await client.rpc('delete_dashboard_update', { p_update_id: id, p_reason: reason })

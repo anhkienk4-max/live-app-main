@@ -85,8 +85,8 @@ test('Calendar My Shifts renders all three views from the canonical entry projec
 
 test('Open and My Shifts share shift filters but keep mode-specific status rules isolated', () => {
   const source = readFileSync(resolve(process.cwd(), 'components/features/calendar/ShiftRegistrationBoard.tsx'), 'utf8')
-  assert.match(source, /const filteredBoardShifts = React\.useMemo\(\(\) => filterCalendarShifts\(/)
-  assert.match(source, /filteredBoardShifts[\s\S]{0,300}shift\.status === 'scheduled'/)
+  assert.match(source, /shiftService\.getRegistrationPage\(mode, \{ page, pageSize, pendingPage, filters: JSON\.parse\(queryFilters\) \}/)
+  assert.doesNotMatch(source, /shiftService\.getAll\(\)|shiftRegistrationService\.getAll\(\)/)
   assert.match(source, /selectMyShiftEntries\([\s\S]{0,400}registrationStatus: filters\.registrationStatuses/)
   assert.match(source, /mode === 'mine' && \([\s\S]{0,800}testId="registration-status-filter"/)
   assert.doesNotMatch(source, /testId="registration-shift-status-filter"/)

@@ -1,3 +1,4 @@
+import { getCollectionPage, getCompleteCollection, localListPage, type ListQuery, type ListFilters, type ListPage, type ShiftListPage, OperationsListError } from '@/lib/services/operationsPageService'
 import {
   User,
   UserDirectoryEntry,
@@ -54,6 +55,7 @@ import {
   type ShiftStaffingLabels,
 } from '@/lib/services/supabaseShiftService'
 import { getSupabaseShiftRegistrationRepository } from '@/lib/services/supabaseShiftRegistrationService'
+import { addDateOnlyDays, calculateNullableAnalyticsMetrics, startOfBusinessWeek, type AnalyticsMetricKey } from '@/lib/utils/analytics'
 import {
   getSupabaseReportRepository,
   ReportRequestError,
@@ -452,8 +454,69 @@ async function inviteStaffAccount(
   return payload.user
 }
 
+function canReadMockPagedShift(shift:Shift,actor:User):boolean {
+  if(resolveSystemPermission(actor)!=='member')return true
+  return (shift.status==='scheduled'&&!shift.registration_locked&&(resolveShiftDateTime(shift.date,shift.start_time,shift.end_time,shift.timezone)?.endAt.getTime()??0)>Date.now())
+    || [shift.host_id,shift.support_id,shift.technical_id].includes(actor.id)
+    || shiftRegistrations.some(r=>r.shift_id===shift.id&&r.user_id===actor.id&&['pending','approved','manually_assigned'].includes(r.status))
+}
+
+function filterMockList<T extends { id: string }>(rows: T[], filters: ListFilters = {}): T[] {
+  return rows.filter(item => {
+    const row = item as T & { name?: string; full_name?: string; title?: string; brand_id?: string; platform_id?: string; campaign_id?: string; date?: string; studio?: string; status?: string; deleted_at?: string; archived_at?: string }
+    if (filters.archived ? !row.deleted_at && !row.archived_at : row.deleted_at || row.archived_at) return false
+    const staff = item as T & { system_permission?: string; operational_roles?: string[] }
+    if (filters.systemPermissions?.length && !filters.systemPermissions.includes(staff.system_permission ?? 'member')) return false
+    if (filters.roles?.length && 'operational_roles' in staff && !filters.roles.some(role => staff.operational_roles?.includes(role))) return false
+    if (filters.shiftIds?.length && row.date && !filters.shiftIds.includes(row.id)) return false
+    if (filters.statuses?.length && !filters.statuses.includes(row.status ?? '')) return false
+    if (filters.brandIds?.length && !filters.brandIds.includes(row.brand_id ?? '')) return false
+    if (filters.platformIds?.length && !filters.platformIds.includes(row.platform_id ?? '')) return false
+    if (filters.campaignIds?.length && !filters.campaignIds.includes(row.campaign_id ?? '')) return false
+    if (filters.from && (row.date ?? '') < filters.from || filters.to && (row.date ?? '') > filters.to) return false
+    const studio = (row.studio ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase()
+    if (filters.studios?.length && !filters.studios.includes(studio || '__unassigned__')) return false
+    if (row.date) {
+      const shift = item as unknown as Shift
+      const belongs = (role: OperationalRole, ids: string[]) => ids.includes(shift[role === 'host' ? 'host_id' : role === 'support' ? 'support_id' : 'technical_id'] ?? '')
+        || shiftRegistrations.some(r => r.shift_id === shift.id && r.operational_role === role && ids.includes(r.user_id) && isStaffedRegistration(r))
+      if (filters.assignedUserIds?.length && !(['host', 'support', 'technical'] as const).some(role => belongs(role, filters.assignedUserIds!))) return false
+      if (filters.hostIds?.length && !belongs('host', filters.hostIds)) return false
+      if (filters.supportIds?.length && !belongs('support', filters.supportIds)) return false
+      if (filters.technicalIds?.length && !belongs('technical', filters.technicalIds)) return false
+      const capacities = getShiftRoleCapacities(shift, shiftRegistrations)
+      if (filters.operationalRoles?.length && !capacities.some(capacity => capacity.required > 0 && filters.operationalRoles!.includes(capacity.role))) return false
+      const full = capacities.every(capacity => capacity.approved >= capacity.required)
+      if (filters.staffingStates?.length && !filters.staffingStates.includes(full ? 'fully_staffed' : 'missing_staff')) return false
+      if (filters.registrationStates?.length && !shiftRegistrations.some(r => r.shift_id === shift.id && filters.registrationStates!.includes(r.status))) return false
+      if (filters.hasImportedStaffing && !shiftRegistrations.some(r => r.shift_id === shift.id && (r.imported_name != null || r.source === 'legacy_assignment'))) return false
+    }
+    const search = filters.search?.trim().toLowerCase()
+    if (search && ![row.name, row.full_name, row.title, row.studio, brands.find(b => b.id === row.brand_id)?.name, platforms.find(p => p.id === row.platform_id)?.name].join(' ').toLowerCase().includes(search)) return false
+    return true
+  }).sort((a, b) => {
+    const left = a as T & { date?: string; start_time?: string; name?: string; full_name?: string }
+    const right = b as typeof left
+    const value = left.date ? ((left.date ?? '') + left.start_time).localeCompare((right.date ?? '') + right.start_time) : (left.name ?? left.full_name ?? '').localeCompare(right.name ?? right.full_name ?? '')
+    return (filters.descending ? -value : value) || a.id.localeCompare(b.id)
+  })
+}
+
 // User Service
 export const userService = {
+  async getPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<User>> {
+    if (getAuthMode() === 'supabase') return getCollectionPage<User>('staff', query, signal)
+    if(resolveSystemPermission(actorFor())==='member')throw new OperationsListError('PERMISSION_DENIED',403)
+    const result = localListPage(filterMockList(users, query.filters), query)
+    return { ...result, workload: result.items.flatMap(user => (['host', 'support', 'technical'] as const).map(role => ({
+      staff_id: user.id, role, shift_count: shifts.filter(shift => !shift.deleted_at && !shift.archived_at && (shift[role === 'host' ? 'host_id' : role === 'support' ? 'support_id' : 'technical_id'] === user.id || shiftRegistrations.some(r => r.shift_id === shift.id && r.user_id === user.id && r.operational_role === role && isStaffedRegistration(r)))).length,
+    }))) } as ListPage<User>
+  },
+  async getAllFiltered(filters: ListFilters = {}): Promise<User[]> {
+    if (getAuthMode() === 'supabase') return getCompleteCollection<User>('staff', filters)
+    return filterMockList(users, filters)
+  },
+
   async getDirectory(): Promise<UserDirectoryEntry[]> {
     if (getAuthMode() === 'supabase') return getSupabaseMasterDataRepository().businessUsers.getDirectory()
     return users.filter(user => user.status === 'active' && !user.deleted_at && !user.archived_at)
@@ -749,6 +812,15 @@ export const currentUserService = {
 
 // Brand Service
 export const brandService = {
+  async getPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<Brand>> {
+    if (getAuthMode() === 'supabase') return getCollectionPage<Brand>('brands', query, signal)
+    return localListPage(filterMockList(brands, query.filters), query)
+  },
+  async getAllFiltered(filters: ListFilters = {}): Promise<Brand[]> {
+    if (getAuthMode() === 'supabase') return getCompleteCollection<Brand>('brands', filters)
+    return filterMockList(brands, filters)
+  },
+
   async getAll(): Promise<Brand[]> {
     if (getAuthMode() === 'supabase') {
       return getSupabaseMasterDataRepository().brands.getAll()
@@ -874,6 +946,15 @@ export const brandService = {
 
 // Platform Service
 export const platformService = {
+  async getPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<Platform>> {
+    if (getAuthMode() === 'supabase') return getCollectionPage<Platform>('platforms', query, signal)
+    return localListPage(filterMockList(platforms, query.filters), query)
+  },
+  async getAllFiltered(filters: ListFilters = {}): Promise<Platform[]> {
+    if (getAuthMode() === 'supabase') return getCompleteCollection<Platform>('platforms', filters)
+    return filterMockList(platforms, filters)
+  },
+
   async getAll(): Promise<Platform[]> {
     if (getAuthMode() === 'supabase') {
       return getSupabaseMasterDataRepository().platforms.getAll()
@@ -999,6 +1080,15 @@ export const platformService = {
 
 // Campaign Service
 export const campaignService = {
+  async getPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<Campaign>> {
+    if (getAuthMode() === 'supabase') return getCollectionPage<Campaign>('campaigns', query, signal)
+    return localListPage(filterMockList(campaigns, query.filters), query)
+  },
+  async getAllFiltered(filters: ListFilters = {}): Promise<Campaign[]> {
+    if (getAuthMode() === 'supabase') return getCompleteCollection<Campaign>('campaigns', filters)
+    return filterMockList(campaigns, filters)
+  },
+
   async getAll(): Promise<Campaign[]> {
     if (getAuthMode() === 'supabase') {
       return getSupabaseMasterDataRepository().campaigns.getAll()
@@ -1219,6 +1309,67 @@ const refreshMockAutomaticStatuses = () => {
 }
 
 export const shiftService = {
+  async getLivePage(query: ListQuery,signal?:AbortSignal):Promise<ShiftListPage & {updates:DashboardUpdate[]}> {
+    if(getAuthMode()==='supabase')return await getCollectionPage<Shift>('live_shifts',query,signal) as ShiftListPage & {updates:DashboardUpdate[]}
+    const actor=actorFor()
+    const priority:Record<string,number>={live:0,paused:1,preparing:2,scheduled:3,completed:4,cancelled:5}
+    const matching=filterMockList(shifts,query.filters).filter(shift=>canReadMockPagedShift(shift,actor))
+      .sort((a,b)=>(priority[a.status]-priority[b.status])||a.date.localeCompare(b.date)||a.start_time.localeCompare(b.start_time)||a.id.localeCompare(b.id))
+    const base=localListPage(matching,query)
+    const result={...base,registrations:shiftRegistrations.filter(r=>base.items.some(s=>s.id===r.shift_id)&&(resolveSystemPermission(actor)!=='member'||r.user_id===actor.id)),pendingTotal:0,pendingPage:1,pendingIds:[],studios:[]}
+
+    return {...result,updates:result.items.flatMap(shift=>{
+      const latest=dashboardUpdates.filter(update=>update.shift_id===shift.id&&!update.deleted_at).sort((a,b)=>b.time.localeCompare(a.time)||a.id.localeCompare(b.id))[0]
+      return latest?[latest]:[]
+    })}
+  },
+
+  async getCalendarPage(query: ListQuery, signal?: AbortSignal): Promise<ShiftListPage> {
+    if (getAuthMode() === 'supabase') return await getCollectionPage<Shift>('shifts', query, signal) as ShiftListPage
+    const result = await this.getPage(query)
+    const ids = new Set(result.items.map(shift => shift.id))
+    const actor = actorFor()
+    const registrations = shiftRegistrations.filter(r => ids.has(r.shift_id) && (resolveSystemPermission(actor) !== 'member' || r.user_id === actor.id))
+    return { ...result, registrations, pendingTotal: registrations.filter(r => r.status === 'pending').length, pendingPage: 1, pendingIds: [], studios: [],
+      items: result.items.map(shift => ({ ...shift, staffing_summary: getShiftRoleCapacities(shift, shiftRegistrations).map(capacity => ({ shift_id: shift.id, role: capacity.role, required: capacity.required, approved: capacity.approved, pending: capacity.pending, remaining: capacity.remaining, approved_staff: [] })) })) }
+  },
+
+  async getRegistrationPage(mode: 'open' | 'mine', query: ListQuery, signal?: AbortSignal): Promise<ShiftListPage> {
+    if (getAuthMode() === 'supabase') return await getCollectionPage<Shift>(mode === 'open' ? 'open_shifts' : 'my_shifts', query, signal) as ShiftListPage
+    refreshMockAutomaticStatuses()
+    const actor = actorFor()
+    const owned = shiftRegistrations.filter(r => r.user_id === actor.id && ['pending', 'approved', 'manually_assigned'].includes(r.status))
+    const filtered = filterMockList(shifts, query.filters).filter(shift=>canReadMockPagedShift(shift,actor)).filter(shift => mode === 'open'
+      ? shift.status === 'scheduled' && (resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)?.endAt.getTime() ?? 0) > Date.now()
+      : owned.some(r => r.shift_id === shift.id && (!query.filters?.roles?.length || query.filters.roles.includes(r.operational_role)) && (!query.filters?.registrationStatuses?.length || query.filters.registrationStatuses.includes(r.status))))
+    const result = localListPage(filtered, query)
+    const ids = new Set(result.items.map(item => item.id))
+    const visible = shiftRegistrations.filter(r => ids.has(r.shift_id) && (resolveSystemPermission(actor) !== 'member' || r.user_id === actor.id))
+    const pending = visible.filter(r => r.status === 'pending' && (!query.filters?.roles?.length || query.filters.roles.includes(r.operational_role)))
+    const pendingResult = localListPage(pending, { page: query.pendingPage ?? 1, pageSize: 20 })
+    const registrations = [...new Map([...visible.filter(r => r.user_id === actor.id || isStaffedRegistration(r)), ...pendingResult.items].map(r => [r.id, r])).values()]
+    return { ...result, items: result.items.map(shift => ({ ...shift,
+      registration_conflict: owned.some(r => r.shift_id !== shift.id && (() => {
+        const other = shifts.find(s => s.id === r.shift_id && !s.deleted_at && !s.archived_at)
+        const left = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
+        const right = other && resolveShiftDateTime(other.date, other.start_time, other.end_time, other.timezone)
+        return !!left && !!right && right.startAt < left.endAt && right.endAt > left.startAt
+      })()),
+      staffing_summary: getShiftRoleCapacities(shift, shiftRegistrations).map(capacity => ({ shift_id: shift.id, role: capacity.role, required: capacity.required, approved: capacity.approved, pending: capacity.pending, remaining: capacity.remaining, approved_staff: [] })),
+    })), registrations, pendingTotal: pending.length, pendingPage: pendingResult.page, pendingIds: pendingResult.items.map(item => item.id),
+      studios: [...new Set(shifts.map(shift => shift.studio?.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase()).filter((value): value is string => !!value))] }
+  },
+
+  async getPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<Shift>> {
+    if (getAuthMode() === 'supabase') return getCollectionPage<Shift>('shifts', query, signal)
+    refreshMockAutomaticStatuses()
+    return localListPage(filterMockList(shifts, query.filters).filter(shift=>canReadMockPagedShift(shift,actorFor())), query)
+  },
+  async getAllFiltered(filters: ListFilters = {}): Promise<Shift[]> {
+    if (getAuthMode() === 'supabase') return getCompleteCollection<Shift>('shifts', filters)
+    return filterMockList(shifts, filters)
+  },
+
   async getAll(): Promise<Shift[]> {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getAll()
@@ -1883,6 +2034,55 @@ const findRegistrationConflict = (
   })
 
 export const shiftRegistrationService = {
+  async getReviewPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<ShiftRegistration> & { shifts: Shift[]; users: User[]; brands: Brand[]; platforms: Platform[]; counts: Record<'all' | 'pending' | 'approved' | 'rejected' | 'cancelled', number> }> {
+    if (getAuthMode() === 'supabase') {
+      const result = await getCollectionPage<ShiftRegistration>('registration_reviews', query, signal) as ListPage<ShiftRegistration> & { shifts: Shift[]; users: User[]; brands: Brand[]; platforms: Platform[]; counts: Record<'all' | 'pending' | 'approved' | 'rejected' | 'cancelled', number> }
+      if (!Array.isArray(result.shifts) || result.shifts.length > query.pageSize || !Array.isArray(result.users) || result.users.length > query.pageSize || !Array.isArray(result.brands) || !Array.isArray(result.platforms) || !result.counts) throw new OperationsListError('LIST_RESPONSE_INVALID', 502)
+      return result
+    }
+    const actor = actorFor()
+    if (!hasPermission(actor, 'shifts.approve_registration')) throw new Error('Only Leader or Admin can review registrations.')
+    const status = query.filters?.statuses ?? []
+    const role = query.filters?.roles ?? []
+    const search = query.filters?.search?.trim().toLowerCase() ?? ''
+    const matching = shiftRegistrations.filter(reg =>
+      (!status.length || status.includes(reg.status)) && (!role.length || role.includes(reg.operational_role)) &&
+      (!search || [reg.id, reg.imported_name, users.find(user => user.id === reg.user_id)?.full_name, users.find(user => user.id === reg.user_id)?.email, reg.shift_id, shifts.find(shift => shift.id === reg.shift_id)?.title].some(value => value?.toLowerCase().includes(search)))
+    ).sort((a, b) => b.requested_at.localeCompare(a.requested_at) || a.id.localeCompare(b.id))
+    const result = localListPage(matching, query)
+    const ids = new Set(result.items.map(item => item.shift_id))
+    const userIds = new Set(result.items.map(item => item.user_id))
+    const pageShifts = shifts.filter(shift => ids.has(shift.id))
+    return { ...result, shifts: pageShifts, users: users.filter(user => userIds.has(user.id)), brands: brands.filter(brand => pageShifts.some(shift => shift.brand_id === brand.id)), platforms: platforms.filter(platform => pageShifts.some(shift => shift.platform_id === platform.id)), counts: {
+      all: shiftRegistrations.length, pending: shiftRegistrations.filter(reg => reg.status === 'pending').length,
+      approved: shiftRegistrations.filter(reg => isStaffedRegistration(reg)).length,
+      rejected: shiftRegistrations.filter(reg => reg.status === 'rejected').length,
+      cancelled: shiftRegistrations.filter(reg => reg.status === 'cancelled' || reg.status === 'removed').length,
+    } }
+  },
+  async getReviewContext(id: string, signal?: AbortSignal): Promise<{ registrations: ShiftRegistration[]; shifts: Shift[] }> {
+    if (getAuthMode() === 'supabase') {
+      const before = await currentUserService.getCurrent()
+      if (!before || !hasPermission(before, 'shifts.approve_registration')) throw new Error('PERMISSION_DENIED')
+      const response = await fetch('/api/operations/registration-context?id=' + encodeURIComponent(id), { credentials: 'same-origin', cache: 'no-store', signal })
+      const body = await response.json()
+      const after = await currentUserService.getCurrent()
+      if (!after || before.id !== after.id || before.system_permission !== after.system_permission) throw new Error('LIST_IDENTITY_CHANGED')
+      if (!response.ok) throw new Error(body.error?.code ?? 'REGISTRATION_CONTEXT_FAILED')
+      if (!Array.isArray(body.registrations) || !Array.isArray(body.shifts) || body.registrations.length > 500 || body.shifts.length > 500) throw new Error('REGISTRATION_CONTEXT_INVALID')
+      return body
+    }
+    const actor = actorFor()
+    if (!hasPermission(actor, 'shifts.approve_registration')) throw new Error('PERMISSION_DENIED')
+    const target = shiftRegistrations.find(registration => registration.id === id)
+    const targetShift = shifts.find(shift => shift.id === target?.shift_id)
+    if (!target || !targetShift) throw new Error('REGISTRATION_CONTEXT_FAILED')
+    const week = startOfBusinessWeek(targetShift.date)
+    const registrations = shiftRegistrations.filter(registration => registration.user_id === target.user_id && isStaffedRegistration(registration) && shifts.some(shift => shift.id === registration.shift_id && startOfBusinessWeek(shift.date) === week))
+    if (registrations.length > 500) throw new Error('REGISTRATION_CONTEXT_TOO_LARGE')
+    const ids = new Set(registrations.map(registration => registration.shift_id))
+    return { registrations, shifts: shifts.filter(shift => ids.has(shift.id)) }
+  },
   async getExchangeCandidates(shiftId: string, role: OperationalRole): Promise<SwapExchangeCandidate[]> {
     if (getAuthMode() === 'supabase') return getSupabaseShiftRegistrationRepository().getExchangeCandidates(shiftId, role)
     return shiftRegistrations.filter(reg => reg.shift_id === shiftId && reg.operational_role === role && isStaffedRegistration(reg))
@@ -2471,7 +2671,96 @@ export const shiftRegistrationService = {
 }
 
 // Report Service
+export interface AnalyticsSnapshot {
+  totals: Record<AnalyticsMetricKey, number | null>
+  previous: Record<AnalyticsMetricKey, number | null>
+  trend: Array<{ period: string } & Record<AnalyticsMetricKey, number | null>>
+  brands: Array<{ id: string | null } & Record<AnalyticsMetricKey, number | null>>
+  platforms: Array<{ id: string | null } & Record<AnalyticsMetricKey, number | null>>
+  campaigns: Array<{ id: string | null } & Record<AnalyticsMetricKey, number | null>>
+  workload: Array<{ user_id: string; host: number; support: number; technical: number }>
+  hostPerformance: Array<{ user_id: string; revenue: number | null }>
+}
+
 export const reportService = {
+  async getAnalyticsPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<Report> & { shifts: Shift[] }> {
+    if (getAuthMode() === 'supabase') {
+      const result = await getCollectionPage<Report>('analytics_reports', query, signal) as ListPage<Report> & { shifts: Shift[] }
+      if (!Array.isArray(result.shifts) || result.shifts.length > query.pageSize) throw new OperationsListError('LIST_RESPONSE_INVALID', 502)
+      return result
+    }
+    const filteredShifts = filterMockList(shifts, query.filters)
+    const ids = new Set(filteredShifts.map(shift => shift.id))
+    const matching = reports.filter(report => ids.has(report.shift_id) && !report.deleted_at && !report.archived_at && (!query.filters?.reportStatuses?.length || query.filters.reportStatuses.includes(report.status ?? 'draft')) && (!query.filters?.metricsStatuses?.length || query.filters.metricsStatuses.includes(report.metrics_confirmed ? 'confirmed' : 'unconfirmed')))
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id))
+    const result = localListPage(matching, query)
+    const pageIds = new Set(result.items.map(report => report.shift_id))
+    return { ...result, shifts: filteredShifts.filter(shift => pageIds.has(shift.id)) }
+  },
+  async getAnalyticsSnapshot(filters: ListFilters, signal?: AbortSignal): Promise<AnalyticsSnapshot> {
+    if (getAuthMode() === 'supabase') {
+      const before = await currentUserService.getCurrent()
+      if (!before) throw new Error('AUTHENTICATION_REQUIRED')
+      const params = new URLSearchParams({ filters: JSON.stringify(filters) })
+      const response = await fetch('/api/operations/analytics-snapshot?' + params, { credentials: 'same-origin', cache: 'no-store', signal })
+      const body = await response.json()
+      const after = await currentUserService.getCurrent()
+      if (!after || before.id !== after.id || before.system_permission !== after.system_permission) throw new Error('LIST_IDENTITY_CHANGED')
+      if (!response.ok) throw new Error(body.error?.code ?? 'ANALYTICS_SNAPSHOT_FAILED')
+      if (body.ownerKey !== after.id + ':' + after.system_permission) throw new Error('LIST_IDENTITY_CHANGED')
+      if (!body.snapshot?.totals || !body.snapshot?.previous || !Array.isArray(body.snapshot?.trend) || !Array.isArray(body.snapshot?.brands) || !Array.isArray(body.snapshot?.platforms) || !Array.isArray(body.snapshot?.campaigns) || !Array.isArray(body.snapshot?.workload) || !Array.isArray(body.snapshot?.hostPerformance)) throw new Error('ANALYTICS_SNAPSHOT_INVALID')
+      return body.snapshot
+    }
+    const start = filters.from ?? '', end = filters.to ?? ''
+    const days = Math.max(1, Math.round((Date.parse(end) - Date.parse(start)) / 86400000) + 1)
+    const previousStart = addDateOnlyDays(start, -days)
+    const matchingShifts = filterMockList(shifts, { ...filters, from: previousStart, to: end })
+    const byShift = new Map(matchingShifts.map(shift => [shift.id, shift]))
+    const matchingReports = reports.filter(report => report.status === 'confirmed' && report.metrics_confirmed === true && !report.deleted_at && !report.archived_at && byShift.has(report.shift_id))
+    const current = matchingReports.filter(report => byShift.get(report.shift_id)!.date >= start)
+    const previous = matchingReports.filter(report => byShift.get(report.shift_id)!.date < start)
+    const group = <T extends string>(keyFor: (report: Report) => T) => {
+      const values = new Map<T, Report[]>()
+      for (const report of current) { const key = keyFor(report); values.set(key, [...(values.get(key) ?? []), report]) }
+      return [...values].map(([id, rows]) => ({ id, ...calculateNullableAnalyticsMetrics(rows) }))
+    }
+    const trend = group(report => { const date = byShift.get(report.shift_id)!.date; return days <= 31 ? date : days <= 120 ? startOfBusinessWeek(date) : date.slice(0, 7) }).map(({ id, ...metrics }) => ({ period: id, ...metrics })).sort((a, b) => a.period.localeCompare(b.period))
+    const staffed = (shift: Shift, role: OperationalRole, userId: string) => shift[role === 'host' ? 'host_id' : role === 'support' ? 'support_id' : 'technical_id'] === userId || shiftRegistrations.some(reg => reg.shift_id === shift.id && reg.user_id === userId && reg.operational_role === role && isStaffedRegistration(reg))
+    const currentShifts = matchingShifts.filter(shift => shift.date >= start)
+    return { totals: calculateNullableAnalyticsMetrics(current), previous: calculateNullableAnalyticsMetrics(previous), trend,
+      brands: group(report => byShift.get(report.shift_id)!.brand_id), platforms: group(report => byShift.get(report.shift_id)!.platform_id), campaigns: group(report => byShift.get(report.shift_id)!.campaign_id ?? ''),
+      workload: users.map(user => ({ user_id: user.id, host: currentShifts.filter(shift => staffed(shift, 'host', user.id)).length, support: currentShifts.filter(shift => staffed(shift, 'support', user.id)).length, technical: currentShifts.filter(shift => staffed(shift, 'technical', user.id)).length })).filter(row => row.host + row.support + row.technical > 0),
+      hostPerformance: users.filter(user => user.operational_roles?.includes('host')).map(user => ({ user_id: user.id, revenue: calculateNullableAnalyticsMetrics(current.filter(report => staffed(byShift.get(report.shift_id)!, 'host', user.id))).revenue })).filter(row => row.revenue !== null),
+    }
+  },
+  async getAnalyticsSummary(filters:ListFilters,signal?:AbortSignal):Promise<Report[]> {
+    if(getAuthMode()==='supabase')return getCompleteCollection<Report>('analytics_reports',filters,signal)
+    return this.getAllFiltered(filters)
+  },
+
+  async getFilteredPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<Report>> {
+    if (getAuthMode() === 'supabase') return getCollectionPage<Report>('reports', query, signal)
+    const { search, reportStatuses, metricsStatuses, ...shiftFilters } = query.filters ?? {}
+    const ids = new Set(filterMockList(shifts, shiftFilters).map(shift => shift.id))
+    const filtered = reports.filter(report => !report.deleted_at && !report.archived_at && ids.has(report.shift_id)
+      && (!reportStatuses?.length || reportStatuses.includes(report.status ?? (report.metrics_confirmed ? 'confirmed' : 'draft')))
+      && (!metricsStatuses?.length || metricsStatuses.includes(report.metrics_confirmed ? 'confirmed' : 'unconfirmed'))
+      && (!search || (() => {
+        const shift = shifts.find(item => item.id === report.shift_id)
+        return [report.id, brands.find(b => b.id === shift?.brand_id)?.name, platforms.find(p => p.id === shift?.platform_id)?.name, campaigns.find(c => c.id === shift?.campaign_id)?.name].join(' ').toLowerCase().includes(search.toLowerCase())
+      })())).sort((a, b) => b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id))
+    return localListPage(filtered, query)
+  },
+  async getAllFiltered(filters: ListFilters = {}): Promise<Report[]> {
+    if (getAuthMode() === 'supabase') return getCompleteCollection<Report>('reports', filters)
+    const rows: Report[] = []
+    for (let page = 1; ; page++) {
+      const result = await this.getFilteredPage({ page, pageSize: 50, filters })
+      rows.push(...result.items)
+      if (page * 50 >= result.total) return rows
+    }
+  },
+
   async getAll(): Promise<Report[]> {
     if (getAuthMode() === 'supabase') return getSupabaseReportRepository().getAll()
     return Promise.resolve(reports.filter(report => !report.deleted_at && !report.archived_at))
@@ -3609,6 +3898,14 @@ function logOcrPipeline(stage: string, details: Record<string, unknown>) {
 
 // Dashboard Update Service
 export const dashboardUpdateService = {
+  async getPage(shiftId:string,query:ListQuery,signal?:AbortSignal):Promise<ListPage<DashboardUpdate>&{recent:DashboardUpdate[];peakViewers:number|null}> {
+    if(getAuthMode()==='supabase')return getCollectionPage('live_updates',{...query,filters:{shiftIds:[shiftId]}},signal) as Promise<ListPage<DashboardUpdate>&{recent:DashboardUpdate[];peakViewers:number|null}>
+    const actor=await currentUserService.getCurrent()
+    const shift=shifts.find(item=>item.id===shiftId)
+    if(!actor||!shift||!canReadMockPagedShift(shift,actor))throw new OperationsListError('PERMISSION_DENIED',403)
+    const items=(await this.getByShift(shiftId)).sort((a,b)=>b.time.localeCompare(a.time)||a.id.localeCompare(b.id))
+    return {...localListPage(items,query),recent:items.slice(0,4),peakViewers:items.length?Math.max(...items.map(item=>item.peak_viewers)):null}
+  },
   async getByShift(shiftId: string): Promise<DashboardUpdate[]> {
     if (getAuthMode() === 'supabase') return getSupabaseDashboardUpdateRepository().getByShift(shiftId)
     return Promise.resolve(dashboardUpdates.filter(update => update.shift_id === shiftId && !update.deleted_at))
@@ -3692,6 +3989,34 @@ const canViewMockSwapRequest = (request: SwapRequest, actor: User): boolean =>
   || swapParticipantId(request) === actor.id
 
 export const swapRequestService = {
+  async getPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<SwapRequest> & { counts: Record<string,number> }> {
+    if (getAuthMode() === 'supabase') return await getCollectionPage<SwapRequest>('swaps', query, signal) as ListPage<SwapRequest> & { counts: Record<string,number> }
+    const all = await this.getAll()
+    const actor = actorFor()
+    const f = query.filters ?? {}
+    const { search, statuses, scope, requesterIds, roles, ...shiftFilters } = f
+    const ids = new Set(filterMockList(shifts, shiftFilters).map(shift => shift.id))
+    const filtered = all.filter(swap => ids.has(swap.shift_id)
+      && (!scope || scope === 'all' || (scope === 'mine' ? swap.requester_id === actor.id : swap.counterpart_id === actor.id))
+      && (!requesterIds?.length || requesterIds.includes(swap.requester_id))
+      && (!statuses?.length || statuses.includes(swap.status))
+      && (!roles?.length || roles.includes(swap.operational_role ?? (swap.new_support_id ? 'support' : swap.new_technical_id ? 'technical' : 'host')))
+      && (!search || [swap.id, shifts.find(s=>s.id===swap.shift_id)?.title, swap.reason, users.find(u=>u.id===swap.requester_id)?.full_name, users.find(u=>u.id===(swap.replacement_staff_id||swap.counterpart_id))?.full_name].join(' ').toLowerCase().includes(search.trim().toLowerCase())))
+      .sort((a,b)=>b.created_at.localeCompare(a.created_at)||a.id.localeCompare(b.id))
+    return { ...localListPage(filtered,query), counts: { all: all.length, mine: all.filter(s=>s.requester_id===actor.id).length, forMe: all.filter(s=>s.counterpart_id===actor.id).length,
+      pending: all.filter(s=>s.status==='pending').length, accepted: all.filter(s=>s.status==='accepted'||s.status==='approved').length,
+      completed: all.filter(s=>s.status==='completed').length, rejected: all.filter(s=>s.status==='rejected').length, cancelled: all.filter(s=>s.status==='cancelled').length } }
+  },
+  async getAllFiltered(filters: ListFilters = {}): Promise<SwapRequest[]> {
+    if (getAuthMode() === 'supabase') return getCompleteCollection<SwapRequest>('swaps',filters)
+    const rows: SwapRequest[] = []
+    for (let page=1; ; page++) {
+      const result=await this.getPage({page,pageSize:50,filters})
+      rows.push(...result.items)
+      if(page*50>=result.total)return rows
+    }
+  },
+
   async getAll(): Promise<SwapRequest[]> {
     if (getAuthMode() === 'supabase') return getSupabaseSwapRequestRepository().getAll()
     const actor = actorFor()
@@ -4112,6 +4437,16 @@ export const scheduleImportService = {
 }
 
 export const scheduleChangeService = {
+  async getPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<ScheduleChangeLog>> {
+    if (getAuthMode() === 'supabase') return getCollectionPage<ScheduleChangeLog>('schedule_changes', query, signal)
+    const f = query.filters ?? {}
+    const filtered = scheduleChangeLogs.filter(log => (!f.from || log.timestamp.slice(0,10)>=f.from) && (!f.to || log.timestamp.slice(0,10)<=f.to)
+      && (!f.actorIds?.length || f.actorIds.includes(log.actor_id)) && (!f.actionIds?.length || f.actionIds.includes(log.action))
+      && (!f.shiftIds?.length || f.shiftIds.includes(log.shift_id)) && (!f.sources?.length || f.sources.includes(log.source))
+      && (!f.brandIds?.length || f.brandIds.includes(String(log.after?.brand_id ?? log.before?.brand_id ?? shifts.find(s=>s.id===log.shift_id)?.brand_id ?? ''))))
+      .sort((a,b)=>b.timestamp.localeCompare(a.timestamp)||a.id.localeCompare(b.id))
+    return localListPage(filtered,query)
+  },
   async getAll(): Promise<ScheduleChangeLog[]> {
     return Promise.resolve([...scheduleChangeLogs])
   },
@@ -4128,6 +4463,10 @@ export interface ArchivedEntitySummary {
 }
 
 export const lifecycleService = {
+  async getArchivedPage(actorId:string,query:ListQuery):Promise<ListPage<ArchivedEntitySummary>>{
+    if(getAuthMode()==='supabase')return getCollectionPage('archives',query)
+    return localListPage(await this.getArchived(actorId),query)
+  },
   async getArchived(actorId: string): Promise<ArchivedEntitySummary[]> {
     if (resolveSystemPermission(actorFor(actorId)) !== 'admin') throw new Error('Only Admin can view archived data.')
     const archivedShifts = getAuthMode() === 'supabase'

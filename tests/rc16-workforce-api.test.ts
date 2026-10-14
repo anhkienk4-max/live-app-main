@@ -58,6 +58,11 @@ test('Locked payroll CSV after correction preserves negative VND numbers and exc
     adjustment_reason:'Correction approved',calculation_version:'rc16-v1',
   }
   const fakeClient=()=>({
+    rpc(name:string){
+      assert.equal(name,'get_payroll_period_snapshot')
+      const lines=[payrollRow,{...payrollRow,segment_id:'voided-evidence',voided_at:'2026-10-01T00:00:00Z'}]
+      return Promise.resolve({data:{period:{status:'locked',period_start:'2026-09-01',period_end:'2026-09-30'},lines,audit:[],lineCount:2,auditCount:0},error:null})
+    },
     from(name:string){
       const q={
         select(_fields:string){return q},

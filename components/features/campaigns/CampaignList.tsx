@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
-import { refreshCollection } from '@/lib/utils/scopedRefresh'
+import { usePagedList } from '@/lib/hooks/usePagedList'
 import { PageLoadError } from '@/components/ui/page-load-error'
 
 type CampaignForm = { name: string; brand_id: string; start_date: string; end_date: string; type: string; notes: string; campaign_url: string; website_title: string; website_preview_image: string; website_embed_enabled: boolean; platform_source: string; status: CampaignStatus; owner_id: string }
@@ -37,7 +37,9 @@ export function CampaignList() {
   const { toast } = useToast()
   const fileRef = React.useRef<HTMLInputElement>(null)
   const previewImageRef = React.useRef<HTMLInputElement>(null)
-  const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
+  const [search, setSearch] = React.useState('')
+  const list = usePagedList(campaignService, 'campaigns', { search })
+  const { items: campaigns, loading } = list
   const [brands, setBrands] = React.useState<Brand[]>([])
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
   const [shifts, setShifts] = React.useState<Shift[]>([])
@@ -51,28 +53,25 @@ export function CampaignList() {
   const [form, setForm] = React.useState<CampaignForm>(emptyForm())
   const [importRows, setImportRows] = React.useState<ImportRow[]>([])
   const [importOpen, setImportOpen] = React.useState(false)
-  const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
   const [saving, setSaving] = React.useState(false)
 
   const loadData = React.useCallback(async () => {
     setLoadError(null)
     try {
-      const [loadedCampaigns, loadedBrands, loadedPlatforms, loadedShifts, loadedReports, loadedUsers] = await Promise.all([
-        campaignService.getAll(), brandService.getAll(), platformService.getAll(), shiftService.getAll(), reportService.getAll(), userService.getAll(),
+      const [loadedBrands, loadedPlatforms, loadedUsers] = await Promise.all([
+        brandService.getAll(), platformService.getAll(), userService.getAll(),
       ])
-      setCampaigns(loadedCampaigns); setBrands(loadedBrands); setPlatforms(loadedPlatforms); setShifts(loadedShifts); setReports(loadedReports); setUsers(loadedUsers)
+      setBrands(loadedBrands); setPlatforms(loadedPlatforms); setUsers(loadedUsers)
     } catch (error) {
       setLoadError(error)
-    } finally {
-      setLoading(false)
     }
   }, [])
   React.useEffect(() => {
     const frame = window.requestAnimationFrame(() => { void loadData() })
     return () => window.cancelAnimationFrame(frame)
   }, [loadData])
-  const refreshCampaigns = React.useCallback(() => refreshCollection(campaignService, setCampaigns), [])
+  const refreshCampaigns = list.reload
   const canManage = Boolean(currentUser && hasPermission(currentUser, 'campaigns.manage'))
   const canEdit = Boolean(currentUser && (canManage || hasPermission(currentUser, 'campaigns.edit_operational')))
   const openForm = (campaign?: Campaign | null) => { setSelected(campaign || null); setForm(formFor(campaign)); setFormOpen(true) }
@@ -107,10 +106,23 @@ export function CampaignList() {
       setSaving(false)
     }
   }
-  const requestArchive = (campaign: Campaign) => {
-    const relatedShifts = shifts.filter(shift => shift.campaign_id === campaign.id)
-    const relatedShiftIds = new Set(relatedShifts.map(shift => shift.id))
-    const relatedReports = reports.filter(report => relatedShiftIds.has(report.shift_id))
+  const loadRelated = async (campaign: Campaign) => {
+    const filters = { campaignIds: [campaign.id] }
+    const [relatedShifts, relatedReports] = await Promise.all([
+      shiftService.getAllFiltered(filters), reportService.getAllFiltered(filters),
+    ])
+    return { relatedShifts, relatedReports }
+  }
+  const showDetail = async (campaign: Campaign) => {
+    try {
+      const result = await loadRelated(campaign)
+      setShifts(result.relatedShifts); setReports(result.relatedReports); setDetail(campaign)
+    } catch (error) { setLoadError(error) }
+  }
+  const requestArchive = async (campaign: Campaign) => {
+    let result
+    try { result = await loadRelated(campaign) } catch (error) { setLoadError(error); return }
+    const { relatedShifts, relatedReports } = result
     setDeleteId(campaign.id)
     setDeleteImpact({
       entity_type: 'campaign',
@@ -196,14 +208,14 @@ export function CampaignList() {
         <span className="min-w-0"><span className="block truncate text-sm font-medium">{row.website_title || row.name}</span><span className="block truncate text-xs text-muted-foreground">{safeDomain(url)}</span></span>
       </a> : '—'
     } },
-    { header: t('actions'), accessor: row => <div className="flex gap-1"><Button variant="ghost" size="icon" aria-label={t('viewDetails')} onClick={() => setDetail(row)}><Eye className="h-4 w-4" /></Button>{canEdit && <Button variant="ghost" size="icon" aria-label={t('edit')} onClick={() => openForm(row)}><Pencil className="h-4 w-4" /></Button>}{canManage && <Button variant="ghost" size="icon" aria-label="Archive campaign" title="Archive campaign" onClick={() => requestArchive(row)}><Trash2 className="h-4 w-4 text-red-600" /></Button>}</div> },
+    { header: t('actions'), accessor: row => <div className="flex gap-1"><Button variant="ghost" size="icon" aria-label={t('viewDetails')} onClick={() => void showDetail(row)}><Eye className="h-4 w-4" /></Button>{canEdit && <Button variant="ghost" size="icon" aria-label={t('edit')} onClick={() => openForm(row)}><Pencil className="h-4 w-4" /></Button>}{canManage && <Button variant="ghost" size="icon" aria-label="Archive campaign" title="Archive campaign" onClick={() => void requestArchive(row)}><Trash2 className="h-4 w-4 text-red-600" /></Button>}</div> },
   ]
 
+  if (loadError || list.error) return <PageLoadError error={loadError || list.error} onRetry={() => { void loadData(); void list.reload() }} />
   if (loading) return <ContentSkeleton />
-  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
   return <>
-    <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t('campaigns')}</h2><p className="mt-1 text-muted-foreground">{t('campaignPreviewHelp')}</p></div>{canManage && <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => fileRef.current?.click()}><FileSpreadsheet className="mr-2 h-4 w-4" />{t('importExcel')}</Button><input ref={fileRef} className="sr-only" type="file" accept=".xlsx,.xls" onChange={parseImport} /><Button onClick={() => openForm()}><Plus className="mr-2 h-4 w-4" />{t('create')} {t('campaign')}</Button></div>}</div>
-    <DataTable data={campaigns} columns={columns} searchPlaceholder={`${t('search')} ${t('campaigns')}`} />
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-xl font-semibold">{t('campaigns')}</h1><p className="mt-1 text-muted-foreground">{t('campaignPreviewHelp')}</p></div>{canManage && <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => fileRef.current?.click()}><FileSpreadsheet className="mr-2 h-4 w-4" />{t('importExcel')}</Button><input ref={fileRef} className="sr-only" type="file" accept=".xlsx,.xls" onChange={parseImport} /><Button onClick={() => openForm()}><Plus className="mr-2 h-4 w-4" />{t('create')} {t('campaign')}</Button></div>}</div>
+    <DataTable data={campaigns} columns={columns} pagination={{ loading: list.refreshing, page: list.page, pageSize: list.pageSize, total: list.total, onPageChange: list.setPage, onPageSizeChange: list.setPageSize }} search={search} onSearch={value => { setSearch(value); list.reset() }} searchPlaceholder={`${t('search')} ${t('campaigns')}`} />
 
     <Dialog open={formOpen} onOpenChange={setFormOpen}><DialogContent size="xl" className="overflow-y-auto"><DialogHeader><DialogTitle>{selected ? t('edit') : t('create')} {t('campaign')}</DialogTitle><DialogDescription>{t('campaignPreviewHelp')}</DialogDescription></DialogHeader><form onSubmit={submit} className="space-y-5">
       <div className="grid gap-4 md:grid-cols-2"><Field label={`${t('campaign')} *`} value={form.name} required disabled={Boolean(selected && !canManage)} onChange={value => setForm(current => ({ ...current, name: value }))} /><label className="text-sm font-medium">{t('brand')}<Select disabled={Boolean(selected && !canManage)} value={form.brand_id} onValueChange={value => setForm(current => ({ ...current, brand_id: value }))}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent>{brands.map(brand => <SelectItem key={brand.id} value={brand.id}>{brand.name}</SelectItem>)}</SelectContent></Select></label><Field label={t('startDate')} value={form.start_date} required disabled={Boolean(selected && !canManage)} type="date" onChange={value => setForm(current => ({ ...current, start_date: value }))} /><Field label={t('endDate')} value={form.end_date} required disabled={Boolean(selected && !canManage)} type="date" onChange={value => setForm(current => ({ ...current, end_date: value }))} /><Field label={t('type')} value={form.type} onChange={value => setForm(current => ({ ...current, type: value }))} /><Field label={t('platform')} value={form.platform_source} onChange={value => setForm(current => ({ ...current, platform_source: value }))} /><label className="text-sm font-medium">{t('status')}<Select value={form.status} onValueChange={value => setForm(current => ({ ...current, status: value as CampaignStatus }))}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent>{(['draft','active','completed','cancelled'] as CampaignStatus[]).map(status => <SelectItem key={status} value={status}>{t(status)}</SelectItem>)}</SelectContent></Select></label><label className="text-sm font-medium">{t('owner')}<Select value={form.owner_id || 'none'} onValueChange={value => setForm(current => ({ ...current, owner_id: value === 'none' ? '' : value }))}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">—</SelectItem>{users.map(user => <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>)}</SelectContent></Select></label>

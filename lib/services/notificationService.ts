@@ -1,5 +1,6 @@
 'use client'
 
+import { getCollectionPage, localListPage, type ListQuery, type ListPage } from '@/lib/services/operationsPageService'
 import { getAuthMode } from '@/lib/auth/authMode'
 import { currentUserService } from '@/lib/services/dataService'
 import type { AppNotification } from '@/lib/types/database.types'
@@ -25,6 +26,18 @@ function getMockNotifications() {
 }
 
 export const notificationService = {
+  async getPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<AppNotification> & { counts: { all: number; unread: number; read: number } }> {
+    if (getAuthMode() === 'supabase') return await getCollectionPage<AppNotification>('notifications', query, signal) as ListPage<AppNotification> & { counts: { all: number; unread: number; read: number } }
+    const all = getMockNotifications()
+    const unread = all.filter(item => !item.read_at).length
+    const search = query.filters?.search?.toLowerCase() ?? ''
+    const status = query.filters?.statuses?.[0]
+    const filtered = all.filter(item => (!status || (status === 'read' ? !!item.read_at : !item.read_at))
+      && (!query.filters?.types?.length || query.filters.types.includes(item.type))
+      && [item.title, item.message, item.related_entity_id].join(' ').toLowerCase().includes(search))
+    return { ...localListPage(filtered, query), counts: { all: all.length, unread, read: all.length - unread } }
+  },
+
   async getAll(): Promise<AppNotification[]> {
     return this.getForCurrentUser()
   },
@@ -35,8 +48,8 @@ export const notificationService = {
   },
 
   async getUnreadCount(): Promise<number> {
-    const all = await this.getForCurrentUser()
-    return all.filter(notification => !notification.read_at).length
+    if (getAuthMode() === 'supabase') return getSupabaseNotificationRepository().getUnreadCount()
+    return getMockNotifications().filter(notification => !notification.read_at).length
   },
 
   async markRead(id: string): Promise<void> {

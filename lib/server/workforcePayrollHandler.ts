@@ -166,17 +166,14 @@ export function createWorkforcePayrollHandler(options:Options={}) {
         const parsed=id.safeParse(q.get('period_id'))
         if(!parsed.success)return failure('WORKFORCE_PERIOD_ID_REQUIRED',400)
         const client=connect()
-        const r=await client.from('workforce_payroll_periods').select('*')
-          .eq('id',parsed.data).maybeSingle()
-        if(r.error)return failure('WORKFORCE_PERIOD_READ_FAILED',503)
-        if(!r.data)return failure('WORKFORCE_PERIOD_NOT_FOUND',404)
-        const [lines,audit]=await Promise.all([
-          client.from('workforce_payroll_lines').select('*')
-            .eq('period_id',parsed.data).order('created_at',{ascending:true}).limit(3000),
-          client.from('workforce_payroll_audit').select('*')
-            .eq('period_id',parsed.data).order('created_at',{ascending:true}).limit(3000),
-        ])
-        if(lines.error||audit.error||(lines.data??[]).length>=3000||(audit.data??[]).length>=3000)
+        const snapshot = await client.rpc('get_payroll_period_snapshot', { p_period_id: parsed.data })
+        if (snapshot.error) return failure('WORKFORCE_PAYROLL_READ_INCOMPLETE',503)
+        if (!snapshot.data?.period) return failure('WORKFORCE_PERIOD_NOT_FOUND',404)
+        const r = { data: snapshot.data.period }
+        const lines = { data: snapshot.data.lines as Array<Record<string, unknown>> }
+        const audit = { data: snapshot.data.audit as Array<Record<string, unknown>> }
+        if (!Array.isArray(lines.data) || !Array.isArray(audit.data)
+          || lines.data.length !== snapshot.data.lineCount || audit.data.length !== snapshot.data.auditCount)
           return failure('WORKFORCE_PAYROLL_READ_INCOMPLETE',503)
         if(q.get('export')==='csv'){
           if(r.data.status!=='locked')return failure('WORKFORCE_PAYROLL_EXPORT_REQUIRES_LOCK',409)

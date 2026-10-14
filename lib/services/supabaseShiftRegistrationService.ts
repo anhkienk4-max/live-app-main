@@ -161,7 +161,7 @@ function uniqueBatches(ids: string[]): string[][] {
   return batches
 }
 
-function registrationFromRow(row: RegistrationRow): ShiftRegistration {
+export function registrationFromRow(row: RegistrationRow): ShiftRegistration {
   return {
     id: row.id,
     shift_id: row.shift_id,

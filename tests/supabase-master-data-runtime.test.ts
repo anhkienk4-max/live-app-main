@@ -32,6 +32,8 @@ class FakeQuery {
   private action: 'select' | 'insert' | 'update' = 'select'
   private payload: Row | null = null
   private filters: Array<(row: Row) => boolean> = []
+  private offset=0
+  private end=Infinity
   private orderBy: { column: string; ascending: boolean } | null = null
 
   constructor(
@@ -40,6 +42,7 @@ class FakeQuery {
     private readonly options: FakeClientOptions,
   ) {}
 
+  range(from:number,to:number){this.offset=from;this.end=to;return this}
   select() {
     return this
   }
@@ -118,7 +121,7 @@ class FakeQuery {
       const { column, ascending } = this.orderBy
       ordered.sort((left, right) => String(left[column] ?? '').localeCompare(String(right[column] ?? '')) * (ascending ? 1 : -1))
     }
-    return { data: single ? ordered[0] ?? null : ordered, error: null }
+    return { data: single ? ordered[0] ?? null : ordered.slice(this.offset,this.end+1), error: null,count:ordered.length }
   }
 }
 
@@ -422,4 +425,13 @@ test('permission and RLS failures surface and never fall back to mock rows', asy
     )
     assert.equal(remoteDatabase.brands.some(row => row.name === 'Forbidden Brand'), false)
   })
+})
+
+test('Reference catalogues read 1000 rows in bounded requests and reject silent truncation',async()=>{
+  const rows=Array.from({length:1000},(_,i)=>({id:String(i).padStart(4,'0'),name:'Brand '+i,deleted_at:null,archived_at:null}))
+  const database={business_users:[],brands:rows,platforms:[],campaigns:[]}
+  const repo=createSupabaseMasterDataRepository(fakeClient(database) as never)
+  assert.equal((await repo.brands.getAll()).length,1000)
+  rows.push({id:'overflow',name:'Overflow',deleted_at:null,archived_at:null})
+  await assert.rejects(repo.brands.getAll(),/REFERENCE_READ_INCOMPLETE/)
 })

@@ -23,8 +23,9 @@ export interface ShiftCardProps extends React.ButtonHTMLAttributes<HTMLButtonEle
 }
 
 export const ShiftCard = React.forwardRef<HTMLButtonElement, ShiftCardProps>(
-  ({ shift, users = [], variant = 'standard', context, showDate, selected, className, ...props }, ref) => {
+  ({ shift, users = [], variant = 'standard', context, showDate, selected, className, isToday, ...props }, ref) => {
     const { t } = useTranslation()
+    void isToday
     
     const crossesMidnight = shift.crosses_midnight
 

@@ -46,14 +46,14 @@ export function PayrollRateManager() {
   const [loadError, setLoadError] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [page, setPage] = React.useState(1)
-  const [pageSize, setPageSize] = React.useState(10)
+  const [pageSize, setPageSize] = React.useState(20)
   const [roleFilter, setRoleFilter] = React.useState<string>('all')
   const [scopeFilter, setScopeFilter] = React.useState<string>('all')
   const [staffIdFilter, setStaffIdFilter] = React.useState('')
   const [effectiveDateFilter, setEffectiveDateFilter] = React.useState('')
   const [pagination, setPagination] = React.useState<Pagination>({
     page: 1,
-    page_size: 10,
+    page_size: 20,
     total_count: 0,
     total_pages: 0,
     has_next: false,
@@ -73,7 +73,10 @@ export function PayrollRateManager() {
   const [regSubmitting, setRegSubmitting] = React.useState(false)
   const [regError, setRegError] = React.useState<string | null>(null)
 
+  const readSequence = React.useRef(0)
   const loadRates = React.useCallback(async () => {
+    const sequence = ++readSequence.current
+    setRates([])
     setLoading(true)
     setLoadError(null)
     try {
@@ -85,9 +88,12 @@ export function PayrollRateManager() {
         staffId: staffIdFilter.trim() || undefined,
         effectiveDate: effectiveDateFilter || undefined,
       })
+      if (sequence !== readSequence.current) return
       setRates(res.rates)
       setPagination(res.pagination)
     } catch (err: unknown) {
+      if (sequence !== readSequence.current) return
+      setRates([])
       setLoadError(workforceErrorMessage(err))
       toast({
         title: 'Không thể tải danh sách khung lương',
@@ -95,15 +101,16 @@ export function PayrollRateManager() {
         variant: 'destructive',
       })
     } finally {
-      setLoading(false)
+      if (sequence === readSequence.current) setLoading(false)
     }
   }, [page, pageSize, roleFilter, scopeFilter, staffIdFilter, effectiveDateFilter, toast])
 
   React.useEffect(() => {
+    const generation = readSequence
     const frame = requestAnimationFrame(() => {
       void loadRates()
     })
-    return () => cancelAnimationFrame(frame)
+    return () => { cancelAnimationFrame(frame); generation.current++ }
   }, [loadRates])
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -247,10 +254,10 @@ export function PayrollRateManager() {
           </div>
 
           <div>
-            <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            <label htmlFor="payrollratemanager-field-1" className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               Mã nhân sự (Staff ID)
             </label>
-            <Input
+            <Input id="payrollratemanager-field-1"
               type="text"
               placeholder="Lọc theo staff_id..."
               value={staffIdFilter}
@@ -260,10 +267,10 @@ export function PayrollRateManager() {
           </div>
 
           <div>
-            <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            <label htmlFor="payrollratemanager-field-2" className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               Ngày kiểm tra hiệu lực
             </label>
-            <Input
+            <Input id="payrollratemanager-field-2"
               type="date"
               value={effectiveDateFilter}
               onChange={(e) => { setEffectiveDateFilter(e.target.value); setPage(1); }}
@@ -425,10 +432,10 @@ export function PayrollRateManager() {
 
             {regScope === 'staff_specific' && (
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">
+                <label htmlFor="payrollratemanager-field-3" className="text-xs font-semibold text-slate-700">
                   Mã nhân sự (Staff ID) <span className="text-rose-500">*</span>
                 </label>
-                <Input
+                <Input id="payrollratemanager-field-3"
                   type="text"
                   required
                   placeholder="Nhập ID nhân sự được áp dụng đơn giá riêng..."
@@ -441,10 +448,10 @@ export function PayrollRateManager() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">
+                <label htmlFor="payrollratemanager-field-4" className="text-xs font-semibold text-slate-700">
                   Đơn giá cơ bản (VND / giờ) <span className="text-rose-500">*</span>
                 </label>
-                <Input
+                <Input id="payrollratemanager-field-4"
                   type="number"
                   min="0"
                   max="100000000"
@@ -461,10 +468,10 @@ export function PayrollRateManager() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">
+                <label htmlFor="payrollratemanager-field-5" className="text-xs font-semibold text-slate-700">
                   Hệ số tăng ca (OT Multiplier) <span className="text-rose-500">*</span>
                 </label>
-                <Input
+                <Input id="payrollratemanager-field-5"
                   type="number"
                   min="1"
                   max="5"
@@ -483,10 +490,10 @@ export function PayrollRateManager() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">
+                <label htmlFor="payrollratemanager-field-6" className="text-xs font-semibold text-slate-700">
                   Hiệu lực từ ngày (Effective From) <span className="text-rose-500">*</span>
                 </label>
-                <Input
+                <Input id="payrollratemanager-field-6"
                   type="date"
                   required
                   value={regEffectiveFrom}
@@ -496,10 +503,10 @@ export function PayrollRateManager() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">
+                <label htmlFor="payrollratemanager-field-7" className="text-xs font-semibold text-slate-700">
                   Hiệu lực đến ngày (Tùy chọn)
                 </label>
-                <Input
+                <Input id="payrollratemanager-field-7"
                   type="date"
                   value={regEffectiveThrough}
                   onChange={(e) => setRegEffectiveThrough(e.target.value)}
@@ -509,10 +516,10 @@ export function PayrollRateManager() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-700">
+              <label htmlFor="payrollratemanager-field-8" className="text-xs font-semibold text-slate-700">
                 Ghi chú phê duyệt & Căn cứ hợp đồng <span className="text-rose-500">*</span>
               </label>
-              <Textarea
+              <Textarea id="payrollratemanager-field-8"
                 required
                 rows={2}
                 placeholder="Ví dụ: Đơn giá phê duyệt theo hợp đồng nguyên tắc ký ngày 01/09..."

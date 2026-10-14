@@ -27,6 +27,8 @@ import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { resolveActiveNavigation } from './shellConfig'
 import { Menu } from 'lucide-react'
+import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
+import { filterWorkforceNavigation } from '@/lib/ui/workforceNavigation'
 
 function MobileNavMenu() {
   const pathname = usePathname()
@@ -34,7 +36,8 @@ function MobileNavMenu() {
   const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
   const rawNav = getNavigationForRole(resolveSystemPermission(currentUser))
-  const roleNav = filterNav(rawNav, currentUser)
+  const { capabilities } = useWorkforceCapabilities()
+  const roleNav = filterWorkforceNavigation(filterNav(rawNav, currentUser), capabilities)
   const activeHref = resolveActiveNavigation(roleNav, pathname, search)
 
   return (

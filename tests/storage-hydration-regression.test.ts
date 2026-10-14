@@ -6,6 +6,14 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { LanguageProvider, useTranslation } from '../lib/i18n.tsx'
 import { businessLocalDate } from '../lib/utils/shiftUtils.ts'
 import { OperationalFileWorkspace } from '../components/features/storage/OperationalFileWorkspace.tsx'
+import { AuthIdentityProvider } from '../lib/auth/AuthIdentityProvider.tsx'
+import type { User } from '../lib/types/database.types.ts'
+
+const fixtureAdmin: User = {
+  id: 'qa-storage-admin', email: 'qa-storage@example.invalid', full_name: 'Storage fixture Admin',
+  role: 'admin', system_permission: 'admin', status: 'active', join_date: '2026-10-13',
+  created_at: '2026-10-13', updated_at: '2026-10-13',
+}
 
 test('storage hydration: LanguageProvider defaults to Vietnamese (vi) and preserves native copy', () => {
   function TestConsumer() {
@@ -68,7 +76,8 @@ for (const [language, heading, label, all, savedFiles] of [
 ] as const) {
   test(`storage hydration: real workspace SSR renders ${language} labels and a stable initial date`, () => {
     const markup = renderToStaticMarkup(React.createElement(LanguageProvider,
-      { defaultLanguage: language }, React.createElement(OperationalFileWorkspace)))
+      { defaultLanguage: language }, React.createElement(AuthIdentityProvider,
+        { mode: 'supabase', identity: null, businessUser: fixtureAdmin }, React.createElement(OperationalFileWorkspace))))
     assert.ok(markup.includes(heading))
     assert.ok(markup.includes(`aria-label="${label}"`))
     assert.ok(markup.includes(`<option value="all" selected="">${all}</option>`))

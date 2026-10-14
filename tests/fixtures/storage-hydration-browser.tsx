@@ -2,6 +2,14 @@ import React, { Suspense } from 'react'
 import { hydrateRoot } from 'react-dom/client'
 import { LanguageProvider, useTranslation } from '../../lib/i18n'
 import { OperationalFileWorkspace } from '../../components/features/storage/OperationalFileWorkspace'
+import { AuthIdentityProvider } from '../../lib/auth/AuthIdentityProvider'
+import type { User } from '../../lib/types/database.types'
+
+const fixtureAdmin: User = {
+  id: 'qa-storage-admin', email: 'qa-storage@example.invalid', full_name: 'Storage fixture Admin',
+  role: 'admin', system_permission: 'admin', status: 'active', join_date: '2026-10-13',
+  created_at: '2026-10-13', updated_at: '2026-10-13',
+}
 
 function LanguageControls() {
   const { setLanguage, t } = useTranslation()
@@ -15,7 +23,9 @@ function LanguageControls() {
 export function HydrationFixture() {
   return <LanguageProvider>
     <LanguageControls />
-    <Suspense><OperationalFileWorkspace /></Suspense>
+    <AuthIdentityProvider mode="supabase" identity={null} businessUser={fixtureAdmin}>
+      <Suspense><OperationalFileWorkspace /></Suspense>
+    </AuthIdentityProvider>
     <p data-testid="untranslated-data">All</p>
   </LanguageProvider>
 }

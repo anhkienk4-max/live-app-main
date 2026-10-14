@@ -80,14 +80,19 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
   }, [currentUser?.id, selectedStaffId])
 
   // Load Team Overview for Supervisors
+  const readSequence = React.useRef(0)
   const loadOverview = React.useCallback(async () => {
     if (!isSupervisor) return
+    const sequence = ++readSequence.current
+    setOverviewData(null)
     setLoadingOverview(true)
     setOverviewError(null)
     try {
       const res = await workforceService.getWorkforceOverview({ month, role })
+      if (sequence !== readSequence.current) return
       setOverviewData(res)
     } catch (err: unknown) {
+      if (sequence !== readSequence.current) return
       setOverviewError(workforceErrorMessage(err))
       setOverviewData(null)
       toast({
@@ -96,11 +101,12 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
         variant: 'destructive',
       })
     } finally {
-      setLoadingOverview(false)
+      if (sequence === readSequence.current) setLoadingOverview(false)
     }
   }, [isSupervisor, month, role, toast])
 
   React.useEffect(() => {
+    const generation = readSequence
     let frame: number | undefined
     if (isSupervisor) {
       frame = requestAnimationFrame(() => {
@@ -109,6 +115,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
     }
     return () => {
       if (frame !== undefined) cancelAnimationFrame(frame)
+      generation.current++
     }
   }, [isSupervisor, loadOverview])
 

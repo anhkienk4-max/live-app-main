@@ -115,7 +115,7 @@ function jsonOrNull(value: unknown): unknown {
   return value
 }
 
-function reportFromRow(row: ReportRow): Report {
+export function reportFromRow(row: ReportRow): Report {
   return {
     id: row.id as string,
     shift_id: row.shift_id as string,

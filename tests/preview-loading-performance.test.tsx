@@ -84,7 +84,11 @@ test('operational page loaders settle and expose a retryable error state', () =>
   for (const file of files) {
     const source = readFileSync(file, 'utf8')
     assert.match(source, /PageLoadError/, `${file} must render an explicit load failure`)
-    assert.match(source, /finally[\s\S]{0,100}set(?:Settings)?Loading\(false\)/, `${file} must settle loading in finally`)
+    if (source.includes('usePagedList')) {
+      assert.match(source, /\b\w+\.(?:error|loading)\b/, `${file} must consume paged loading/error state`)
+    } else {
+      assert.match(source, /finally[\s\S]{0,100}set(?:Settings)?Loading\(false\)/, `${file} must settle loading in finally`)
+    }
   }
 
   const markup = renderToStaticMarkup(createElement(

@@ -12,6 +12,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { format } from "date-fns";
+import { useRequestSequence } from "@/lib/hooks/useRequestSequence";
+import { currentUserService } from "@/lib/services/dataService";
 import { notificationService } from "@/lib/services/notificationService";
 import { resolveNotificationDestination } from "@/lib/services/notificationRoutes";
 import type { AppNotification } from "@/lib/types/database.types";
@@ -23,6 +25,7 @@ export { resolveNotificationDestination };
 
 export function NotificationCenter() {
   const [open, setOpen] = React.useState(false);
+  const [unreadCount, setUnreadCount] = React.useState(0);
   const [notifications, setNotifications] = React.useState<AppNotification[]>(
     [],
   );
@@ -34,12 +37,23 @@ export function NotificationCenter() {
   const seenIds = React.useRef<Set<string>>(new Set());
   const initialLoadDone = React.useRef(false);
 
+  const { next, isCurrent, invalidate } = useRequestSequence();
+  const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role):'';
+  const [loadedIdentity,setLoadedIdentity]=React.useState('');
+
   const load = React.useCallback(async () => {
+    const request=next();
     if (!currentUser) {
       setNotifications([]);
       return;
     }
-    const items = await notificationService.getForCurrentUser();
+    const [items, unread] = await Promise.all([notificationService.getForCurrentUser(), notificationService.getUnreadCount()]);
+    const latestUser=await currentUserService.getCurrent();
+    const latestIdentity=latestUser?latestUser.id+':'+(latestUser.system_permission??latestUser.role):'';
+    if(!isCurrent(request)||latestIdentity!==identity)return;
+    if(loadedIdentity!==identity){seenIds.current.clear();initialLoadDone.current=false;}
+    setLoadedIdentity(identity);
+    setUnreadCount(unread);
 
     if (initialLoadDone.current) {
       items.forEach((n) => {
@@ -73,7 +87,7 @@ export function NotificationCenter() {
     setNotifications(items);
     // This header owns the service's single realtime subscription.
     window.dispatchEvent(new CustomEvent('livestream-ops-notifications-changed',{detail:currentUser.id}));
-  }, [currentUser, router, t, toast]);
+  }, [currentUser, router, t, toast,identity,loadedIdentity,next,isCurrent]);
 
   React.useEffect(() => {
     let active = true;
@@ -100,11 +114,12 @@ export function NotificationCenter() {
     window.addEventListener('livestream-ops-notification-read-changed',onReadChanged);
     return () => {
       active = false;
+      invalidate();
       unsubscribeRealtime();
       unsubscribeMock();
       window.removeEventListener('livestream-ops-notification-read-changed',onReadChanged);
     };
-  }, [currentUser, load]);
+  }, [currentUser, load,invalidate]);
 
   React.useEffect(() => {
     if (!open) return
@@ -125,16 +140,15 @@ export function NotificationCenter() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [open]);
 
-  const unreadCount = notifications.filter((n) => !n.read_at).length;
   const groupedNotifications = React.useMemo(() => {
     const newItems: AppNotification[] = [];
     const earlierItems: AppNotification[] = [];
-    notifications.slice(0, 30).forEach((n) => {
+    (loadedIdentity===identity?notifications:[]).slice(0, 30).forEach((n) => {
       if (!n.read_at) newItems.push(n);
       else earlierItems.push(n);
     });
     return { new: newItems, earlier: earlierItems };
-  }, [notifications]);
+  }, [notifications,loadedIdentity,identity]);
 
   const markAsRead = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -268,20 +282,21 @@ export function NotificationCenter() {
     );
   };
 
+  const visibleUnreadCount=loadedIdentity===identity?unreadCount:0;
   return (
     <div className="relative" ref={panelRef}>
       <Button
         variant="ghost"
         size="icon"
-        className={`relative h-11 w-11 ${unreadCount > 0 ? "text-foreground" : "text-muted-foreground"}`}
+        className={`relative h-11 w-11 ${visibleUnreadCount > 0 ? "text-foreground" : "text-muted-foreground"}`}
         onClick={() => setOpen(!open)}
         aria-label="Notifications"
         aria-expanded={open}
       >
         <Bell className="h-5 w-5" />
-        {unreadCount > 0 && (
+        {visibleUnreadCount > 0 && (
           <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-danger text-micro font-bold text-white ring-2 ring-background">
-            {unreadCount > 99 ? "99+" : unreadCount}
+            {visibleUnreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
       </Button>
@@ -294,11 +309,11 @@ export function NotificationCenter() {
                 {t("notifications")}
               </h3>
               <p className="text-xs text-muted-foreground">
-                {unreadCount} {t("unread")}
+                {visibleUnreadCount} {t("unread")}
               </p>
             </div>
             <div className="flex gap-1.5">
-              {unreadCount > 0 && (
+              {visibleUnreadCount > 0 && (
                 <Button
                   size="sm"
                   variant="outline"

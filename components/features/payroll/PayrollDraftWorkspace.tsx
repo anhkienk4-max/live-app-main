@@ -1,6 +1,9 @@
 'use client'
 
 import * as React from 'react'
+import { useListPagination } from '@/lib/hooks/useListPagination'
+import { pageRange } from '@/lib/utils/pagination'
+import { HistoryPagination } from '@/components/ui/history-pagination'
 import {
   AlertCircle,
   Plus,
@@ -30,8 +33,10 @@ import {
   workforceErrorMessage,
   type PayrollPeriod,
   type PayrollLine,
+  type PayrollAudit,
   type PayrollPeriodStatus,
   type WorkforceRole,
+  WorkforceServiceError,
 } from '@/lib/services/workforceService'
 
 interface PayrollDraftWorkspaceProps {
@@ -39,6 +44,7 @@ interface PayrollDraftWorkspaceProps {
   lines: PayrollLine[]
   currentUserId?: string
   currentUserRole?: string
+  audit?: PayrollAudit[]
   onRefresh: () => void
 }
 
@@ -47,17 +53,12 @@ export function PayrollDraftWorkspace({
   lines,
   currentUserId,
   currentUserRole,
+  audit = [],
   onRefresh,
 }: PayrollDraftWorkspaceProps) {
   const { toast } = useToast()
-  const mutationReceipt = React.useRef<{ payload: string; requestId: string } | null>(null)
-  const requestIdFor = (payload: object) => {
-    const serialized = JSON.stringify(payload)
-    if (mutationReceipt.current?.payload !== serialized) {
-      mutationReceipt.current = { payload: serialized, requestId: crypto.randomUUID() }
-    }
-    return mutationReceipt.current.requestId
-  }
+  const correctionIntent = React.useRef<Parameters<typeof workforceService.correctLine>[0] | null>(null)
+  const voidIntent = React.useRef<Parameters<typeof workforceService.voidLine>[0] | null>(null)
   const [showVoided, setShowVoided] = React.useState(true)
 
   // Transition Modal State
@@ -70,7 +71,7 @@ export function PayrollDraftWorkspace({
   // Prepare Line Modal State
   const [isPrepareOpen, setIsPrepareOpen] = React.useState(false)
   const [prepSegmentId, setPrepSegmentId] = React.useState('')
-  const [prepPayableMinutes, setPrepPayableMinutes] = React.useState<number>(90)
+  const [prepPayableMinutes, setPrepPayableMinutes] = React.useState<number>(0)
   const [prepOvertimeMinutes, setPrepOvertimeMinutes] = React.useState<number>(0)
   const [prepAdjustmentVnd, setPrepAdjustmentVnd] = React.useState<number>(0)
   const [prepAdjustmentReason, setPrepAdjustmentReason] = React.useState('')
@@ -148,6 +149,7 @@ export function PayrollDraftWorkspace({
   const currentTransition = nextTransitionConfig[period.status]
   const canTransition = currentUserRole === 'admin' && Boolean(currentUserId)
     && !(period.status === 'draft' && period.created_by === currentUserId)
+    && !(period.status === 'draft' && audit.some(row => row.actor_id === currentUserId && ['correct_line', 'void_line'].includes(row.action)))
     && !(period.status === 'reviewed' && period.reviewed_by === currentUserId)
 
   const openTransitionModal = () => {
@@ -272,8 +274,8 @@ export function PayrollDraftWorkspace({
 
     try {
       setCorrSubmitting(true)
-      const requestId = requestIdFor({ action: 'correct_line', periodId: period.id, lineId: correctingLine.id, version: correctingLine.version, corrReason, corrPayableMinutes, corrOvertimeMinutes, corrAdjustmentVnd, corrAdjustmentReason })
-      const res = await workforceService.correctLine({
+      const requestId = correctionIntent.current?.requestId ?? crypto.randomUUID()
+      const payload = {
         periodId: period.id,
         lineId: correctingLine.id,
         expectedVersion: correctingLine.version,
@@ -283,7 +285,14 @@ export function PayrollDraftWorkspace({
         overtimeMinutes: corrOvertimeMinutes,
         adjustmentVnd: corrAdjustmentVnd,
         adjustmentReason: corrAdjustmentVnd !== 0 ? corrAdjustmentReason.trim() : null,
-      })
+      }
+      if (correctionIntent.current && JSON.stringify(correctionIntent.current) !== JSON.stringify(payload)) {
+        setCorrError('Retry phải giữ nguyên dữ liệu đã gửi. Tải lại và đối soát audit trước khi tạo yêu cầu mới.')
+        return
+      }
+      correctionIntent.current = payload
+      const res = await workforceService.correctLine(payload)
+      correctionIntent.current = null
 
       if (res.replayed) {
         setCorrReplayed(true)
@@ -304,6 +313,12 @@ export function PayrollDraftWorkspace({
       setCorrError(
         workforceErrorMessage(err)
       )
+      if (err instanceof WorkforceServiceError && err.status === 409) {
+        correctionIntent.current = null
+        setCorrectingLine(null)
+        onRefresh()
+        toast({ title: 'Dữ liệu đã thay đổi', description: 'Đã tải lại dữ liệu hiện hành. Kiểm tra audit trước khi tạo yêu cầu mới.', variant: 'destructive' })
+      }
     } finally {
       setCorrSubmitting(false)
     }
@@ -328,14 +343,21 @@ export function PayrollDraftWorkspace({
 
     try {
       setVoidSubmitting(true)
-      const requestId = crypto.randomUUID()
-      await workforceService.voidLine({
+      const requestId = voidIntent.current?.requestId ?? crypto.randomUUID()
+      const payload = {
         periodId: period.id,
         lineId: voidingLine.id,
         expectedVersion: voidingLine.version,
         requestId,
         reason: voidReason.trim(),
-      })
+      }
+      if (voidIntent.current && JSON.stringify(voidIntent.current) !== JSON.stringify(payload)) {
+        setVoidError('Retry phải giữ nguyên lý do đã gửi. Tải lại và đối soát audit trước khi tạo yêu cầu mới.')
+        return
+      }
+      voidIntent.current = payload
+      await workforceService.voidLine(payload)
+      voidIntent.current = null
 
       toast({
         title: 'Đã vô hiệu hóa dòng lương',
@@ -348,6 +370,12 @@ export function PayrollDraftWorkspace({
       setVoidError(
         workforceErrorMessage(err)
       )
+      if (err instanceof WorkforceServiceError && err.status === 409) {
+        voidIntent.current = null
+        setVoidingLine(null)
+        onRefresh()
+        toast({ title: 'Không thể void bản ghi cũ', description: 'Đã tải lại trạng thái hiện hành. Không tự ghi đè dữ liệu.', variant: 'destructive' })
+      }
     } finally {
       setVoidSubmitting(false)
     }
@@ -359,6 +387,9 @@ export function PayrollDraftWorkspace({
     technical: 'Kỹ thuật',
   }
 
+  const pagination = useListPagination('payroll_lines', 20)
+  const range = pageRange(displayedLines.length, pagination.page, pagination.pageSize)
+  const pageRows = displayedLines.slice((range.page - 1) * pagination.pageSize, range.page * pagination.pageSize)
   return (
     <Card className="border-slate-200 bg-white shadow-sm">
       <CardHeader className="flex flex-col gap-4 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
@@ -440,7 +471,7 @@ export function PayrollDraftWorkspace({
                   </td>
                 </tr>
               ) : (
-                displayedLines.map((line) => {
+                pageRows.map((line) => {
                   const isVoided = Boolean(line.voided_at)
                   return (
                     <tr
@@ -577,6 +608,8 @@ export function PayrollDraftWorkspace({
               )}
             </tbody>
           </table>
+        <HistoryPagination page={range.page} pageSize={pagination.pageSize} total={displayedLines.length} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />
+
         </div>
       </CardContent>
 
@@ -601,10 +634,10 @@ export function PayrollDraftWorkspace({
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-700">
+              <label htmlFor="payrolldraftworkspace-field-1" className="text-xs font-semibold text-slate-700">
                 Lý do & Căn cứ chuyển trạng thái <span className="text-rose-500">*</span>
               </label>
-              <Textarea
+              <Textarea id="payrolldraftworkspace-field-1"
                 required
                 rows={3}
                 placeholder="Nhập lý do đối soát, kiểm tra chứng từ hoặc quyết định phê duyệt..."
@@ -662,10 +695,10 @@ export function PayrollDraftWorkspace({
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-700">
-                Mã phân đoạn ca (Segment ID) <span className="text-rose-500">*</span>
+              <label htmlFor="payrolldraftworkspace-field-2" className="text-xs font-semibold text-slate-700">
+                Mã phân đoạn worked đã được duyệt độc lập <span className="text-rose-500">*</span>
               </label>
-              <Input
+              <Input id="payrolldraftworkspace-field-2"
                 type="text"
                 required
                 placeholder="Nhập ID phân đoạn ca làm việc..."
@@ -675,12 +708,13 @@ export function PayrollDraftWorkspace({
               />
             </div>
 
+            <p className="text-xs text-slate-500">Payable bao gồm OT. Nhập số phút theo chính sách đã duyệt; không tự áp dụng break hoặc phạt trễ.</p>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">
+                <label htmlFor="payrolldraftworkspace-field-3" className="text-xs font-semibold text-slate-700">
                   Số phút tính lương <span className="text-rose-500">*</span>
                 </label>
-                <Input
+                <Input id="payrolldraftworkspace-field-3"
                   type="number"
                   min="0"
                   max="1440"
@@ -692,10 +726,10 @@ export function PayrollDraftWorkspace({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">
+                <label htmlFor="payrolldraftworkspace-field-4" className="text-xs font-semibold text-slate-700">
                   Số phút tăng ca (OT) <span className="text-rose-500">*</span>
                 </label>
-                <Input
+                <Input id="payrolldraftworkspace-field-4"
                   type="number"
                   min="0"
                   max="1440"
@@ -708,10 +742,10 @@ export function PayrollDraftWorkspace({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-700">
+              <label htmlFor="payrolldraftworkspace-field-5" className="text-xs font-semibold text-slate-700">
                 Khoản điều chỉnh (VND)
               </label>
-              <Input
+              <Input id="payrolldraftworkspace-field-5"
                 type="number"
                 step="1"
                 value={prepAdjustmentVnd}
@@ -725,10 +759,10 @@ export function PayrollDraftWorkspace({
 
             {prepAdjustmentVnd !== 0 && (
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">
+                <label htmlFor="payrolldraftworkspace-field-6" className="text-xs font-semibold text-slate-700">
                   Lý do điều chỉnh <span className="text-rose-500">*</span>
                 </label>
-                <Input
+                <Input id="payrolldraftworkspace-field-6"
                   type="text"
                   required
                   placeholder="Lý do điều chỉnh (tối thiểu 8 ký tự)..."
@@ -824,10 +858,10 @@ export function PayrollDraftWorkspace({
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">
+                  <label htmlFor="payrolldraftworkspace-field-7" className="text-xs font-semibold text-slate-700">
                     Số phút tính lương <span className="text-rose-500">*</span>
                   </label>
-                  <Input
+                  <Input id="payrolldraftworkspace-field-7"
                     type="number"
                     min="0"
                     max={correctingLine.actual_minutes}
@@ -842,10 +876,10 @@ export function PayrollDraftWorkspace({
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">
+                  <label htmlFor="payrolldraftworkspace-field-8" className="text-xs font-semibold text-slate-700">
                     Số phút tăng ca <span className="text-rose-500">*</span>
                   </label>
-                  <Input
+                  <Input id="payrolldraftworkspace-field-8"
                     type="number"
                     min="0"
                     max={corrPayableMinutes}
@@ -862,10 +896,10 @@ export function PayrollDraftWorkspace({
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">
+                  <label htmlFor="payrolldraftworkspace-field-9" className="text-xs font-semibold text-slate-700">
                     Điều chỉnh (VND)
                   </label>
-                  <Input
+                  <Input id="payrolldraftworkspace-field-9"
                     type="number"
                     step="1"
                     value={corrAdjustmentVnd}
@@ -875,10 +909,10 @@ export function PayrollDraftWorkspace({
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">
+                  <label htmlFor="payrolldraftworkspace-field-10" className="text-xs font-semibold text-slate-700">
                     Lý do giải trình điều chỉnh
                   </label>
-                  <Input
+                  <Input id="payrolldraftworkspace-field-10"
                     type="text"
                     placeholder="Lý do điều chỉnh số tiền..."
                     value={corrAdjustmentReason}
@@ -889,10 +923,10 @@ export function PayrollDraftWorkspace({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">
+                <label htmlFor="payrolldraftworkspace-field-11" className="text-xs font-semibold text-slate-700">
                   Lý do sửa đổi dòng lương <span className="text-rose-500">*</span>
                 </label>
-                <Textarea
+                <Textarea id="payrolldraftworkspace-field-11"
                   required
                   rows={2}
                   placeholder="Ghi rõ lý do điều chỉnh để lưu vào biên bản kiểm toán (tối thiểu 8 ký tự)..."
@@ -903,6 +937,7 @@ export function PayrollDraftWorkspace({
               </div>
 
               <DialogFooter className="gap-2 sm:gap-0">
+                {corrError && <Button type="button" variant="outline" disabled={corrSubmitting} onClick={() => { correctionIntent.current = null; setCorrectingLine(null); onRefresh() }}>Tải lại và đối soát audit</Button>}
                 <Button
                   type="button"
                   variant="outline"
@@ -959,10 +994,10 @@ export function PayrollDraftWorkspace({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">
+                <label htmlFor="payrolldraftworkspace-field-12" className="text-xs font-semibold text-slate-700">
                   Lý do vô hiệu hóa <span className="text-rose-500">*</span>
                 </label>
-                <Textarea
+                <Textarea id="payrolldraftworkspace-field-12"
                   required
                   rows={3}
                   placeholder="Nhập lý do vô hiệu hóa phân đoạn lương này (tối thiểu 8 ký tự)..."
@@ -973,6 +1008,7 @@ export function PayrollDraftWorkspace({
               </div>
 
               <DialogFooter className="gap-2 sm:gap-0">
+                {voidError && <Button type="button" variant="outline" disabled={voidSubmitting} onClick={() => { voidIntent.current = null; setVoidingLine(null); onRefresh() }}>Tải lại và đối soát audit</Button>}
                 <Button
                   type="button"
                   variant="outline"

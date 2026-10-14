@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { format } from 'date-fns'
-import { Download, Filter, LayoutGrid, List, Lock, LockOpen, RotateCcw, Search, Table2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Download, Filter, LayoutGrid, List, Lock, LockOpen, RotateCcw, Search, Table2, ChevronDown, ChevronUp } from 'lucide-react'
 import {
   brandService,
   campaignService,
@@ -28,10 +28,14 @@ import {
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
+import { useListPagination } from '@/lib/hooks/useListPagination'
+import { HistoryPagination } from '@/components/ui/history-pagination'
+import { readPage } from '@/lib/utils/pagination'
+import type { ListFilters } from '@/lib/services/operationsPageService'
 import { ActionBar } from '@/components/ui/action-bar'
 import { buildStaffingApprovalActions } from '@/lib/ui/action-priority'
 import { exportShiftStaffingToExcel } from '@/lib/utils/excelUtils'
-import { formatShiftEndDate, formatShiftTimeRange, resolveShiftDateTime } from '@/lib/utils/shiftUtils'
+import { formatShiftEndDate, formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { selectMyShiftEntries, type MyShiftEntry } from '@/lib/utils/myShifts'
 import { getVisibleOperationalRoles, getVisibleRoleCapacities, matchesRoleFilter, type RoleSelection } from '@/lib/utils/shiftRegistrationRoleView'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
@@ -51,7 +55,6 @@ import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import {
   buildStudioFilterOptions,
   calendarTimeScope,
-  filterCalendarShifts,
   type CalendarTimeFilter,
   UNASSIGNED_STUDIO_FILTER,
 } from '@/lib/utils/calendarFilters'
@@ -123,48 +126,88 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
   const [users, setUsers] = React.useState<User[]>([])
-  const [filters, setFilters] = React.useState<Filters>(initialFilters)
   const [manualSelections, setManualSelections] = React.useState<Record<string, string>>({})
+  const pagination = useListPagination(mode, 10)
+  const { params, navigate, page, pageSize } = pagination
+  const rawFilters = params.get(mode + '_filters') ?? ''
+  const filters = React.useMemo((): Filters => {
+    try {
+      const parsed = JSON.parse(rawFilters)
+      return { ...initialFilters, ...parsed,
+        ...Object.fromEntries(['brandIds', 'platformIds', 'campaignIds', 'studios', 'roles', 'registrationStatuses'].map(key => [key, Array.isArray(parsed[key]) ? parsed[key].filter((value: unknown) => typeof value === 'string') : []])),
+        search: typeof parsed.search === 'string' ? parsed.search : '',
+      }
+    } catch { return initialFilters }
+  }, [rawFilters])
+  const setFilters = (value: Filters | ((current: Filters) => Filters)) => {
+    const next = typeof value === 'function' ? value(filters) : value
+    navigate({ [mode + '_filters']: JSON.stringify(next), [mode + '_page']: null, [mode + '_pending']: null })
+  }
+  const pendingPage = readPage(params.get(mode + '_pending'))
+  const [total, setTotal] = React.useState(0)
+  const [pendingTotal, setPendingTotal] = React.useState(0)
+  const [pendingIds, setPendingIds] = React.useState<string[]>([])
+  const [studios, setStudios] = React.useState<string[]>([])
+  const [currentTime] = React.useState(() => Date.now())
+  const timeScope = calendarTimeScope(filters.time, new Date(currentTime), filters.customFrom, filters.customTo)
+  const queryFilters = JSON.stringify({
+    search: filters.search, brandIds: filters.brandIds, platformIds: filters.platformIds,
+    campaignIds: filters.campaignIds, studios: filters.studios, roles: filters.roles,
+    registrationStatuses: filters.registrationStatuses, from: timeScope.from, to: timeScope.to,
+  } satisfies ListFilters)
+  const identity = currentUser ? currentUser.id + ':' + (currentUser.system_permission ?? currentUser.role) : ''
+  const requestKey = identity + ':' + mode + ':' + page + ':' + pageSize + ':' + pendingPage + ':' + queryFilters
+  const [loadedKey, setLoadedKey] = React.useState('')
+
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
   const [busyId, setBusyId] = React.useState<string | null>(null)
   const [removalTarget, setRemovalTarget] = React.useState<{ registration: ShiftRegistration; kind: 'cancel' | 'unassign' } | null>(null)
-  const [boardPage, setBoardPage] = React.useState(1)
-  const [boardPageSize, setBoardPageSize] = React.useState(10)
-  const [viewMode, setViewMode] = React.useState<ViewMode>('card')
+  const viewValue = params.get(mode + '_view')
+  const viewMode: ViewMode = viewValue === 'table' || viewValue === 'compact' ? viewValue : 'card'
   const [detailShift, setDetailShift] = React.useState<Shift | null>(null)
   const [showFilters, setShowFilters] = React.useState(false)
   const { getLatest, isActive, isCurrent, nextVersion, setLatest } = useOperationalLoadState()
 
+  const referenceVersion = React.useRef(0)
   const loadReferenceData = React.useCallback(async () => {
+    const version = ++referenceVersion.current
     try {
       const [loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers] = await Promise.all([
         brandService.getAll(),
         platformService.getAll(),
         campaignService.getAll(),
-        userService.getAll(),
+        hasPermission(currentUser, 'shifts.approve_registration') ? userService.getAllFiltered() : Promise.resolve([]),
       ])
-      if (!isActive()) return
+      if (!isActive() || version !== referenceVersion.current) return
       setBrands(loadedBrands)
       setPlatforms(loadedPlatforms)
       setCampaigns(loadedCampaigns)
       setUsers(loadedUsers)
     } catch (error) {
-      if (isActive()) setLoadError(error)
+      if (isActive() && version === referenceVersion.current) setLoadError(error)
     }
-  }, [isActive])
+  }, [currentUser, isActive])
 
-  const loadRegistrationOperationalData = React.useCallback(() => {
+  const loadRegistrationOperationalData = React.useCallback((signal?: AbortSignal) => {
     const loadVersion = nextVersion()
     const request = (async () => {
       try {
-        const [loadedShifts, loadedRegistrations] = await Promise.all([
-          shiftService.getAll(),
-          shiftRegistrationService.getAll(),
-        ])
+        if (!identity) return null
+        const result = await shiftService.getRegistrationPage(mode, { page, pageSize, pendingPage, filters: JSON.parse(queryFilters) }, signal)
+        const loadedShifts = result.items
+        const loadedRegistrations = result.registrations
         if (!isCurrent(loadVersion)) {
           return getLatest()
         }
+        if (result.page !== page || result.pendingPage !== pendingPage) {
+          navigate({ [mode + '_page']: String(result.page), [mode + '_pending']: String(result.pendingPage) }, true)
+        }
+        setTotal(result.total)
+        setPendingTotal(result.pendingTotal)
+        setPendingIds(result.pendingIds)
+        setStudios(result.studios)
+        setLoadedKey(requestKey)
         setShifts(loadedShifts)
         setRegistrations(loadedRegistrations)
         setCapacities(Object.fromEntries(loadedShifts.map(shift => [
@@ -173,7 +216,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         ])))
         return { shifts: loadedShifts, registrations: loadedRegistrations }
       } catch (error) {
-        if (isCurrent(loadVersion)) setLoadError(error)
+        if (isCurrent(loadVersion) && !(error instanceof Error && error.name === 'AbortError')) setLoadError(error)
         return null
       } finally {
         if (isCurrent(loadVersion)) setLoading(false)
@@ -181,28 +224,38 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
     })()
     setLatest(request)
     return request
-  }, [getLatest, isCurrent, nextVersion, setLatest])
+  }, [getLatest, identity, isCurrent, mode, navigate, nextVersion, page, pageSize, pendingPage, queryFilters, requestKey, setLatest])
 
-  const loadData = React.useCallback(async () => {
+  const loadData = React.useCallback(async (signal?: AbortSignal) => {
     setLoadError(null)
     setLoading(true)
-    await Promise.all([loadReferenceData(), loadRegistrationOperationalData()])
+    await Promise.all([loadReferenceData(), loadRegistrationOperationalData(signal)])
   }, [loadReferenceData, loadRegistrationOperationalData])
 
   React.useEffect(() => {
-    const frame = window.requestAnimationFrame(() => { void loadData() })
-    return () => window.cancelAnimationFrame(frame)
-  }, [loadData])
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => {
+      if (!identity) return
+      setLoadError(null)
+      setLoading(true)
+      void loadRegistrationOperationalData(controller.signal)
+    }, 150)
+    return () => { window.clearTimeout(timer); controller.abort(); nextVersion() }
+  }, [identity, loadRegistrationOperationalData, nextVersion, requestKey])
   React.useEffect(() => {
-    const stored = window.localStorage.getItem('livestream-ops-open-shift-view')
-    if (stored !== 'card' && stored !== 'compact' && stored !== 'table') return
-    const frame = window.requestAnimationFrame(() => setViewMode(stored))
-    return () => window.cancelAnimationFrame(frame)
-  }, [])
+    const timer = window.setTimeout(() => { if (identity) void loadReferenceData() }, 0)
+    return () => { window.clearTimeout(timer) }
+  }, [identity, loadReferenceData])
+
+  React.useEffect(()=>{
+    if(viewValue)return
+    const stored=window.localStorage.getItem('livestream-ops-'+mode+'-shift-view')??window.localStorage.getItem('livestream-ops-open-shift-view')
+    if(stored==='table'||stored==='compact'||stored==='card')navigate({[mode+'_view']:stored,...(!params.get(mode+'_size')?{[mode+'_size']:stored==='table'?'20':'10'}:{})},true)
+  },[mode,navigate,params,viewValue])
 
   const changeViewMode = (next: ViewMode) => {
-    setViewMode(next)
-    window.localStorage.setItem('livestream-ops-open-shift-view', next)
+    window.localStorage.setItem('livestream-ops-'+mode+'-shift-view',next)
+    navigate({ [mode + '_view']: next, [mode + '_page']: null, [mode + '_size']: next === 'table' ? '20' : '10', [mode + '_pending']: null })
   }
 
   const runAction = async (id: string, action: () => Promise<unknown>, success: string, openShiftId?: string) => {
@@ -258,54 +311,12 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
     }
   }
 
-  const [currentTime] = React.useState(() => Date.now())
-  const timeScope = calendarTimeScope(filters.time, new Date(currentTime), filters.customFrom, filters.customTo)
-  const studioOptions = React.useMemo(() => buildStudioFilterOptions(shifts), [shifts])
-  const filteredBoardShifts = React.useMemo(() => filterCalendarShifts(
-    shifts,
-    {
-      brandIds: filters.brandIds,
-      platformIds: filters.platformIds,
-      campaignIds: filters.campaignIds,
-      studios: filters.studios,
-      statuses: [],
-      hostIds: [],
-      supportIds: [],
-      technicalIds: [],
-      operationalRoles: [],
-      staffingStates: [],
-      registrationStates: [],
-      hasImportedStaffing: false,
-      time: filters.time,
-      customFrom: filters.customFrom,
-      customTo: filters.customTo,
-    },
-    filters.search,
-    { currentDate: new Date(currentTime), brands, platforms, campaigns, registrations },
-  ), [brands, campaigns, currentTime, filters, platforms, registrations, shifts])
-  const filteredBoardShiftIds = React.useMemo(() => new Set(filteredBoardShifts.map(shift => shift.id)), [filteredBoardShifts])
-  const visibleShifts = React.useMemo(() => {
-    return filteredBoardShifts
-      .filter(shift => shift.status === 'scheduled' && (resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)?.endAt.getTime() ?? 0) > currentTime)
-      .filter(shift => filters.roles.length === 0 || getVisibleRoleCapacities(capacities[shift.id] || [], filters.roles).some(capacity =>
-        filters.roles.includes(capacity.role)
-      ))
-      .sort((left, right) => `${left.date}${left.start_time}`.localeCompare(`${right.date}${right.start_time}`))
-  }, [capacities, currentTime, filteredBoardShifts, filters.roles])
-
+  const studioOptions = React.useMemo(() => buildStudioFilterOptions(studios.map(studio => ({ studio }) as Shift)), [studios])
+  const visibleShifts = shifts
   const visibleMyEntries = React.useMemo(() => selectMyShiftEntries({
-    shifts,
-    registrations,
-    userId: currentUser?.id || '',
-    filters: {
-      date: '',
-      brand: [],
-      platform: [],
-      campaign: [],
-      role: filters.roles,
-      registrationStatus: filters.registrationStatuses,
-    },
-  }).filter(entry => filteredBoardShiftIds.has(entry.shift.id)), [currentUser?.id, filteredBoardShiftIds, filters.registrationStatuses, filters.roles, registrations, shifts])
+    shifts, registrations, userId: currentUser?.id || '',
+    filters: { date: '', brand: [], platform: [], campaign: [], role: filters.roles, registrationStatus: filters.registrationStatuses },
+  }), [currentUser?.id, filters.registrationStatuses, filters.roles, registrations, shifts])
 
   const activeFilterCount = [
     filters.brandIds,
@@ -317,29 +328,14 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   ].reduce((count, values) => count + values.length, 0) + (filters.search.trim() ? 1 : 0) + (filters.time === 'all' ? 0 : 1)
   const hasActiveFilters = activeFilterCount > 0
 
-  const totalOpenPages = Math.ceil(visibleShifts.length / boardPageSize) || 1
-  const totalMyPages = Math.ceil(visibleMyEntries.length / boardPageSize) || 1
-  const currentTotalPages = mode === 'mine' ? totalMyPages : totalOpenPages
-  const safeBoardPage = Math.min(Math.max(1, boardPage), currentTotalPages)
-
-  const paginatedOpenShifts = React.useMemo(() => {
-    const start = (safeBoardPage - 1) * boardPageSize
-    return visibleShifts.slice(start, start + boardPageSize)
-  }, [visibleShifts, safeBoardPage, boardPageSize])
-
-  const paginatedMyEntries = React.useMemo(() => {
-    const start = (safeBoardPage - 1) * boardPageSize
-    return visibleMyEntries.slice(start, start + boardPageSize)
-  }, [visibleMyEntries, safeBoardPage, boardPageSize])
-
   const pendingApprovals = registrations.filter(registration =>
-    registration.status === 'pending' &&
+    pendingIds.includes(registration.id) && registration.status === 'pending' &&
     matchesRoleFilter(registration, filters.roles) &&
     visibleShifts.some(shift => shift.id === registration.shift_id)
   )
 
-  if (loading || userLoading || !currentUser) return <ContentSkeleton />
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
+  if (userLoading || !currentUser) return <ContentSkeleton />
 
   return (
     <div className="space-y-4">
@@ -352,7 +348,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                 aria-label={t('searchShifts')}
                 className="pl-9"
                 data-testid={`registration-${mode}-search`}
-                onChange={event => { setFilters(current => ({ ...current, search: event.target.value })); setBoardPage(1); }}
+                onChange={event => setFilters(current => ({ ...current, search: event.target.value }))}
                 placeholder={t('searchShifts')}
                 value={filters.search}
               />
@@ -407,7 +403,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                 />
               )}
               <div className="flex items-end">
-                <Button className="w-full" disabled={!hasActiveFilters} onClick={() => { setFilters(initialFilters); setBoardPage(1); }} size="sm" type="button" variant="outline">
+                <Button className="w-full" disabled={!hasActiveFilters} onClick={() => setFilters(initialFilters)} size="sm" type="button" variant="outline">
                   <RotateCcw className="mr-2 h-3 w-3" />{t('resetFilters')}
                 </Button>
               </div>
@@ -418,7 +414,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
 
       {(mode === 'open' || mode === 'mine') && (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">{mode === 'mine' ? visibleMyEntries.length : visibleShifts.length} {mode === 'mine' ? t('myShifts').toLowerCase() : t('openShifts').toLowerCase()}</p>
+          <p className="text-sm text-muted-foreground">{total} {mode === 'mine' ? t('myShifts').toLowerCase() : t('openShifts').toLowerCase()}</p>
           <div className="inline-flex rounded-lg border bg-background p-1" aria-label={mode === 'mine' ? 'My shift view' : 'Open shift view'}>
             <ViewButton active={viewMode === 'card'} onClick={() => changeViewMode('card')} icon={<LayoutGrid className="h-4 w-4" />} label={t('cardView')} />
             <ViewButton active={viewMode === 'compact'} onClick={() => changeViewMode('compact')} icon={<List className="h-4 w-4" />} label={t('compactView')} />
@@ -427,14 +423,16 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         </div>
       )}
 
-      {mode === 'open' && hasPermission(currentUser, 'shifts.approve_registration') && pendingApprovals.length > 0 && (
+      {loading || loadedKey !== requestKey ? <ContentSkeleton /> : <>
+      {mode === 'open' && hasPermission(currentUser, 'shifts.approve_registration') && pendingTotal > 0 && (
         <Card className="border-amber-200 bg-amber-50/30 shadow-none">
-          {deriveStaffingAttention({ pendingCount: pendingApprovals.length }).map(item => (
+          {deriveStaffingAttention({ pendingCount: pendingTotal }).map(item => (
             <div key={item.key} className="mb-3">
               <AttentionBanner item={item} className="border-0 rounded-b-none border-b border-amber-200/50 bg-transparent" />
             </div>
           ))}
           <CardContent className="space-y-2 px-4 pb-4">
+            <p className="text-xs text-muted-foreground">{t('pendingOnCurrentPage')}</p>
             {pendingApprovals.map(registration => {
               const shift = shifts.find(candidate => candidate.id === registration.shift_id)
               const staff = users.find(user => user.id === registration.user_id) || { full_name: registration.user_id }
@@ -463,6 +461,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
               )
             })}
           </CardContent>
+          <HistoryPagination page={pendingPage} pageSize={20} total={pendingTotal} onPageChange={value => navigate({ [mode + '_pending']: String(value) })} />
         </Card>
       )}
 
@@ -470,25 +469,25 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         <Card><CardContent className="py-12 text-center text-muted-foreground">{mode === 'open' ? t('noOpenShifts') : t('noMyShifts')}</CardContent></Card>
       ) : mode === 'mine' ? (
         viewMode === 'table' ? (
-          <MyShiftTable entries={paginatedMyEntries /* MyShiftTable entries={visibleMyEntries} */} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+          <MyShiftTable entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
         ) : viewMode === 'compact' ? (
-          <MyShiftCompactList entries={paginatedMyEntries /* MyShiftCompactList entries={visibleMyEntries} */} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+          <MyShiftCompactList entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
         ) : (
-          <MyShiftCards entries={paginatedMyEntries /* MyShiftCards entries={visibleMyEntries} */} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+          <MyShiftCards entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
         )
       ) : viewMode === 'table' ? (
         <ShiftSummaryTable
           allShifts={shifts}
           currentUser={currentUser}
           onRegister={(shiftId, role) => runAction(`${shiftId}-${role}`, () => shiftRegistrationService.register(shiftId, currentUser.id, role), t('registrationPending'), shiftId)}
-          shifts={paginatedOpenShifts}
+          shifts={visibleShifts}
           registrations={registrations}
           roleFilter={filters.roles}
           brands={brands}
           platforms={platforms}
           onManage={setDetailShift}
         />
-      ) : (
+      ) : viewMode === 'compact' ? (
         <CompactShiftList
           allShifts={shifts}
           brands={brands}
@@ -500,7 +499,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           platforms={platforms}
           registrations={registrations}
           roleFilter={filters.roles}
-          shifts={paginatedOpenShifts}
+          shifts={visibleShifts}
           users={users}
           busyId={busyId}
           onCancelRegistration={reg => setRemovalTarget({ registration: reg, kind: 'cancel' })}
@@ -515,69 +514,88 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           manualSelections={manualSelections}
           setManualSelections={setManualSelections}
         />
-      )}
-
-      {/* Staffing 10/20/50 Pagination Controls (UX-P1-03) */}
-      {(mode === 'mine' ? visibleMyEntries.length > 0 : visibleShifts.length > 0) && (
-        <div className="flex flex-wrap items-center justify-between gap-3 px-1 py-3 text-xs text-muted-foreground border-t" data-testid="staffing-pagination">
-          <div className="flex items-center gap-2">
-            <span>{t('show')}:</span>
-            <Select
-              value={String(boardPageSize)}
-              onValueChange={val => {
-                setBoardPageSize(Number(val))
-                setBoardPage(1)
-              }}
-            >
-              <SelectTrigger className="h-8 w-16 text-xs px-2" aria-label="Staffing page size">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="20">20</SelectItem>
-                <SelectItem value="50">50</SelectItem>
-              </SelectContent>
-            </Select>
-            <span>{t('recordsPerPage')}</span>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <span>
-              {mode === 'mine'
-                ? `${(boardPage - 1) * boardPageSize + 1}–${Math.min(boardPage * boardPageSize, visibleMyEntries.length)} / ${visibleMyEntries.length} ${t('myShifts').toLowerCase()}`
-                : `${(boardPage - 1) * boardPageSize + 1}–${Math.min(boardPage * boardPageSize, visibleShifts.length)} / ${visibleShifts.length} ${t('openShifts').toLowerCase()}`
-              }
-            </span>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-8 w-8 min-h-[32px] min-w-[32px]"
-                disabled={safeBoardPage <= 1}
-                onClick={() => setBoardPage(p => Math.max(1, p - 1))}
-                aria-label={t('previousPage')}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <span className="px-1 font-medium text-foreground">
-                {safeBoardPage} / {currentTotalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-8 w-8 min-h-[32px] min-w-[32px]"
-                disabled={safeBoardPage >= currentTotalPages}
-                onClick={() => setBoardPage(p => Math.min(mode === 'mine' ? totalMyPages : totalOpenPages, p + 1))}
-                aria-label={t('nextPage')}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2 min-[1900px]:grid-cols-3">
+          {visibleShifts.map(shift => {
+            const shiftRegistrations = registrations.filter(registration => registration.shift_id === shift.id)
+            const mine = shiftRegistrations.filter(registration =>
+              registration.user_id === currentUser.id &&
+              !['cancelled', 'rejected', 'removed'].includes(registration.status)
+            )
+            const visibleCapacities = getVisibleRoleCapacities(capacities[shift.id] || [], filters.roles)
+            const fullyStaffed = visibleCapacities.every(capacity => capacity.approved >= capacity.required)
+            return (
+              <Card key={shift.id} className="shadow-sm border-border overflow-hidden">
+                <CardHeader className="p-4 pb-2 bg-muted/10 border-b">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <CardTitle className="text-lg">{shift.title || `${brandName(brands, shift.brand_id)} live`}</CardTitle>
+                      <p className="mt-1 text-sm text-muted-foreground">{format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} · {formatShiftTimeRange(shift)}</p>
+                      {formatShiftEndDate(shift) && <p className="mt-1 text-xs text-indigo-700">{t('endsNextDay')}: {displayDate(formatShiftEndDate(shift)!)}</p>}
+                    </div>
+                    <Badge variant={shift.registration_locked ? 'secondary' : 'outline'}>{fullyStaffed ? t('full') : shift.registration_locked ? t('closed') : t('openShifts')}</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-4 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Button
+                      data-testid={`open-shift-detail-card-${shift.id}`}
+                      onClick={() => setDetailShift(shift)}
+                      size="sm"
+                      variant="secondary"
+                      className="h-8 text-xs font-medium"
+                    >
+                      {t('viewShiftDetail')}
+                    </Button>
+                    <ShiftRegistrationActions
+                      allShifts={shifts}
+                      compact
+                      currentUser={currentUser}
+                      onRegister={role => runAction(`${shift.id}-${role}`, () => shiftRegistrationService.register(shift.id, currentUser.id, role), t('registrationPending'), shift.id)}
+                      registrations={registrations}
+                      shift={shift}
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <Info label={t('brand')} value={brandName(brands, shift.brand_id)} />
+                    <Info label={t('platform')} value={platformName(platforms, shift.platform_id)} />
+                    <Info label={t('campaign')} value={campaignName(campaigns, shift.campaign_id)} />
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {visibleCapacities.map(capacity => <div key={capacity.role} className="rounded-lg border p-2 text-xs">
+                      <p className="font-medium">{t(capacity.role)} · {capacity.approved}/{capacity.required}</p>
+                      <p className="text-muted-foreground">{t('pending')}: {capacity.pending} · {t('missingCount')}: {capacity.remaining}</p>
+                    </div>)}
+                  </div>
+                  {mine.length > 0 && <div className="flex flex-wrap gap-2">{mine.map(registration => <Badge key={registration.id} variant="outline">{t(registration.operational_role)} · {registrationLabel(registration, t)}</Badge>)}</div>}
+                  {(hasPermission(currentUser, 'shifts.export') || hasPermission(currentUser, 'shifts.lock')) && (
+                    <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
+                      {hasPermission(currentUser, 'shifts.export') && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void runAction('export-' + shift.id, async () => {
+                            const complete = await shiftRegistrationService.getForShifts([shift.id])
+                            exportShiftStaffingToExcel(shift, complete, new Map(users.map(user => [user.id, user.full_name])))
+                          }, t('success'))}
+                        >
+                          <Download className="mr-1 h-4 w-4" />{t('exportStaffing')}
+                        </Button>
+                      )}
+                      {hasPermission(currentUser, 'shifts.lock') && (shift.registration_locked
+                        ? <Button size="sm" variant="outline" disabled={busyId === `lock-${shift.id}` || shift.status !== 'scheduled'} onClick={() => runAction(`lock-${shift.id}`, () => shiftService.reopen(shift.id, undefined, shift.version), t('reopenShift'))}><LockOpen className="mr-1 h-4 w-4" />{t('reopenShift')}</Button>
+                        : <Button size="sm" variant="outline" disabled={busyId === `lock-${shift.id}`} onClick={() => runAction(`lock-${shift.id}`, () => shiftService.lock(shift.id, undefined, shift.version), t('lockShift'))}><Lock className="mr-1 h-4 w-4" />{t('lockShift')}</Button>)}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
       )}
-
-      {detailShift && (
+      <HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />
+      </>}
+      {detailShift && loadedKey === requestKey && (
         <ShiftDetailModal
           open
           onOpenChange={open => { if (!open) setDetailShift(null) }}
@@ -615,9 +633,6 @@ function Info({ label, value }: { label: string; value: string }) {
   return <div><p className="text-xs text-muted-foreground">{label}</p><p className="truncate font-medium">{value}</p></div>
 }
 
-function RoleSummary({ label, value }: { label: string; value: number }) {
-  return <div className="min-w-0 rounded-md bg-muted/50 p-2"><p className="break-words text-muted-foreground">{label}</p><p className="mt-1 text-base font-semibold">{value}</p></div>
-}
 
 function ViewButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
   return <Button type="button" size="sm" variant={active ? 'secondary' : 'ghost'} className="whitespace-nowrap" aria-label={label} aria-pressed={active} title={label} onClick={onClick}>{icon}<span className="ml-2 hidden sm:inline">{label}</span></Button>
@@ -665,73 +680,6 @@ function MyShiftTable({ entries, brands, platforms, campaigns, onManage }: MyShi
   </tr>)}</tbody></table></CardContent></Card>
 }
 
-
-function OpenShiftCards({
-  allShifts,
-  shifts,
-  capacities,
-  registrations,
-  roleFilter,
-  brands,
-  currentUser,
-  onRegister,
-  onManage,
-}: {
-  allShifts: Shift[]
-  shifts: Shift[]
-  capacities: CapacityMap
-  registrations: ShiftRegistration[]
-  roleFilter: RoleSelection
-  brands: Brand[]
-  currentUser: User
-  onRegister: (shiftId: string, role: OperationalRole) => Promise<void>
-  onManage: (shift: Shift) => void
-}) {
-  const { t } = useTranslation()
-  return (
-    <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2 min-[1900px]:grid-cols-3">
-      {shifts.map(shift => {
-        const visibleCapacities = getVisibleRoleCapacities(capacities[shift.id] || [], roleFilter)
-        const fullyStaffed = visibleCapacities.every(capacity => capacity.approved >= capacity.required)
-        return (
-          <Card key={shift.id} className="shadow-sm border-border overflow-hidden">
-            <CardHeader className="p-4 pb-2 bg-muted/10 border-b">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <CardTitle className="text-lg">{shift.title || `${brandName(brands, shift.brand_id)} live`}</CardTitle>
-                  <p className="mt-1 text-sm text-muted-foreground">{format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} · {formatShiftTimeRange(shift)}</p>
-                  {formatShiftEndDate(shift) && <p className="mt-1 text-xs text-indigo-700">{t('endsNextDay')}: {displayDate(formatShiftEndDate(shift)!)}</p>}
-                </div>
-                <Badge variant={shift.registration_locked ? 'secondary' : 'outline'}>{fullyStaffed ? t('full') : shift.registration_locked ? t('closed') : t('openShifts')}</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="p-4 space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <Button
-                  data-testid={`open-shift-detail-card-${shift.id}`}
-                  onClick={() => onManage(shift)}
-                  size="sm"
-                  variant="secondary"
-                  className="h-8 text-xs font-medium"
-                >
-                  {t('viewShiftDetail')}
-                </Button>
-                <ShiftRegistrationActions
-                  allShifts={allShifts}
-                  compact
-                  currentUser={currentUser}
-                  onRegister={role => onRegister(shift.id, role)}
-                  registrations={registrations}
-                  shift={shift}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        )
-      })}
-    </div>
-  )
-}
 
 function CompactShiftList({
   allShifts,

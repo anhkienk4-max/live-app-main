@@ -171,7 +171,7 @@ function normalizeTime(value: string | null | undefined): string {
   return value.length > 5 ? value.slice(0, 5) : value
 }
 
-function shiftFromRow(row: ShiftRow, mode: ShiftSchemaMode, explicitExecutionSource?: unknown): Shift {
+export function shiftFromRow(row: ShiftRow, mode: ShiftSchemaMode, explicitExecutionSource?: unknown): Shift {
   return {
     id: row.id,
     date: row.date,
@@ -354,12 +354,13 @@ export function createSupabaseShiftRepository(
     async getByIds(ids) {
       if (ids.length === 0) return []
       await refreshAutomaticStatuses()
-      const result = await selectShifts()
-        .in('id', [...new Set(ids)])
-        .is('deleted_at', null)
-        .is('archived_at', null)
-      return withShiftStaffingSummary(client, optionalRows('shift ids read', result)
-        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)))
+      const rows: Shift[] = []
+      const unique=[...new Set(ids)]
+      for(let offset=0;offset<unique.length;offset+=50) {
+        const result=await selectShifts().in('id',unique.slice(offset,offset+50)).is('deleted_at',null).is('archived_at',null).order('id')
+        rows.push(...optionalRows('shift ids read',result).map(row=>shiftFromRow(row as unknown as ShiftRow,routingMode)))
+      }
+      return withShiftStaffingSummary(client,rows)
     },
 
     async getArchivedShifts() {

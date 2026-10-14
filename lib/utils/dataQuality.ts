@@ -8,7 +8,7 @@ function issue(
   partial: Omit<DataQualityIssue, 'id' | 'created_at'> & { id?: string }
 ): DataQualityIssue {
   return {
-    id: partial.id || Math.random().toString(36).slice(2, 9),
+    id: partial.id || [partial.source, partial.issue_code, partial.related_entity_type ?? '', partial.related_entity_id ?? '', partial.title].map(encodeURIComponent).join(':'),
     created_at: new Date().toISOString(),
     ...partial,
   } as DataQualityIssue
@@ -137,7 +137,7 @@ export function getStaffingIssues(shifts: Shift[], registrations: ShiftRegistrat
   for (const shift of shifts) {
     if (shift.status !== 'scheduled') continue
     const required = (shift.required_host_count ?? 1) + (shift.required_support_count ?? 1) + (shift.required_technical_count ?? 1)
-    const staffed = registrations.filter(r=> r.shift_id===shift.id && isStaffedRegistration(r)).length
+    const staffed = shift.staffing_summary?.reduce((sum, role) => sum + role.approved, 0) ?? registrations.filter(r=> r.shift_id===shift.id && isStaffedRegistration(r)).length
     if (staffed < required) {
       out.push(issue({
         severity: 'warning',

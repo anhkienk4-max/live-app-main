@@ -205,11 +205,11 @@ export function workforceErrorMessage(error: unknown): string {
   return 'Không thể kết nối máy chủ. Vui lòng thử lại.'
 }
 
-async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
+async function requestResponse(url: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(url, {
+    ...init,
     cache: 'no-store',
     credentials: 'same-origin',
-    ...init,
     headers: {
       'Cache-Control': 'no-store',
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
@@ -227,15 +227,28 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
     } catch {
       // not json
     }
-    throw new WorkforceServiceError(errorCode, res.status, errorCode, details)
+    const failure = new WorkforceServiceError(errorCode, res.status, errorCode, details)
+    if (typeof window !== 'undefined' && (res.status === 401 || res.status === 403 || errorCode.endsWith('FEATURE_DISABLED'))) {
+      window.dispatchEvent(new CustomEvent('workforce-access-invalidated', { detail: { message: workforceErrorMessage(failure) } }))
+    }
+    throw failure
   }
 
-  return (await res.json()) as T
+  return res
+}
+
+async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
+  return (await requestResponse(url, init)).json()
 }
 
 export const workforceService = {
-  getCapabilities(signal?: AbortSignal): Promise<{ ok: true; capabilities: WorkforceCapabilities }> {
-    return requestJson('/api/workforce/capabilities', { signal })
+  async getCapabilities(signal?: AbortSignal): Promise<{ ok: true; capabilities: WorkforceCapabilities }> {
+    const result = await requestJson<{ ok: true; capabilities: WorkforceCapabilities }>('/api/workforce/capabilities', { signal })
+    if (!result.ok || !result.capabilities || !['actual_staffing', 'team_performance', 'own_performance', 'payroll']
+      .every(key => typeof result.capabilities[key as keyof WorkforceCapabilities] === 'boolean')) {
+      throw new WorkforceServiceError('WORKFORCE_CAPABILITIES_INVALID', 503)
+    }
+    return result
   },
   // PAYROLL DISCOVERY & CRUD
   async listPeriods(params: {
@@ -423,6 +436,19 @@ export const workforceService = {
     return `/api/workforce/payroll?period_id=${encodeURIComponent(periodId)}&export=csv`
   },
 
+  async downloadCsv(periodId: string): Promise<void> {
+    const response = await requestResponse(this.getExportCsvUrl(periodId))
+    if (!response.headers.get('Content-Type')?.includes('text/csv')) throw new WorkforceServiceError('WORKFORCE_CSV_RESPONSE_INVALID', 503)
+    const url = URL.createObjectURL(await response.blob())
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'payroll.csv'
+    document.body.append(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  },
+
   // ACTUAL STAFFING
   async getActualSegments(shiftId: string): Promise<{ ok: true; segments: ActualSegment[] }> {
     return requestJson<{ ok: true; segments: ActualSegment[] }>(
@@ -479,13 +505,13 @@ export const workforceService = {
     staffId: string
     role: WorkforceRole
     month: string
-  }): Promise<{ ok: true; summary: WorkforcePerformanceSummary }> {
+  }): Promise<{ ok: true; performance: WorkforcePerformanceSummary }> {
     const q = new URLSearchParams()
     q.set('staff_id', params.staffId)
     q.set('role', params.role)
     q.set('month', params.month)
 
-    return requestJson<{ ok: true; summary: WorkforcePerformanceSummary }>(
+    return requestJson<{ ok: true; performance: WorkforcePerformanceSummary }>(
       `/api/workforce/performance?${q.toString()}`
     )
   },

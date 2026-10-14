@@ -12,13 +12,13 @@ export const getCurrentTimePosition = (date: Date) => {
   return mins * MINUTE_HEIGHT;
 };
 
-export const calculateShiftPosition = (startTime: string, endTime: string, crossesMidnight: boolean) => {
+export const calculateShiftPosition = (startTime: string, endTime: string, crossesMidnight: boolean, minimumMinutes = 30) => {
   const startMins = timeToMinutes(startTime);
   let endMins = timeToMinutes(endTime);
   if (crossesMidnight || endMins <= startMins) endMins = 1440;
   
   const durationMins = endMins - startMins;
-  const visualDuration = Math.max(durationMins, 30); // Minimum 30 mins visual height
+  const visualDuration = Math.max(durationMins, minimumMinutes); // Minimum 30 mins visual height
   
   return {
     top: startMins * MINUTE_HEIGHT,
@@ -33,7 +33,7 @@ export interface ShiftLayout {
   width: string;
 }
 
-export function calculateOverlaps(shifts: { id: string; start_time: string; end_time: string; crosses_midnight?: boolean }[]): Record<string, ShiftLayout> {
+export function calculateOverlaps(shifts: { id: string; start_time: string; end_time: string; crosses_midnight?: boolean }[], minimumMinutes = 30): Record<string, ShiftLayout> {
   const layouts: Record<string, ShiftLayout> = {};
   
   const sorted = [...shifts].sort((a, b) => {
@@ -42,7 +42,7 @@ export function calculateOverlaps(shifts: { id: string; start_time: string; end_
     if (startA !== startB) return startA - startB;
     const endA = a.crosses_midnight ? 1440 : timeToMinutes(a.end_time);
     const endB = b.crosses_midnight ? 1440 : timeToMinutes(b.end_time);
-    return endB - endA;
+    return endB - endA || a.id.localeCompare(b.id);
   });
 
   let columns: typeof sorted[] = [];
@@ -51,11 +51,11 @@ export function calculateOverlaps(shifts: { id: string; start_time: string; end_
   sorted.forEach((shift) => {
     const startMins = timeToMinutes(shift.start_time);
     const endMins = shift.crosses_midnight || timeToMinutes(shift.end_time) <= startMins ? 1440 : timeToMinutes(shift.end_time);
-    const visualEnd = startMins + Math.max(endMins - startMins, 30);
+    const visualEnd = startMins + Math.max(endMins - startMins, minimumMinutes);
 
     if (startMins >= lastEventEnding) {
       // Pack the previous group
-      packGroup(columns, layouts);
+      packGroup(columns, layouts, minimumMinutes);
       columns = [];
       lastEventEnding = 0;
     }
@@ -66,7 +66,7 @@ export function calculateOverlaps(shifts: { id: string; start_time: string; end_
       const lastInCol = col[col.length - 1];
       const lastStart = timeToMinutes(lastInCol.start_time);
       const lastEnd = lastInCol.crosses_midnight || timeToMinutes(lastInCol.end_time) <= lastStart ? 1440 : timeToMinutes(lastInCol.end_time);
-      const lastVisualEnd = lastStart + Math.max(lastEnd - lastStart, 30);
+      const lastVisualEnd = lastStart + Math.max(lastEnd - lastStart, minimumMinutes);
 
       if (lastVisualEnd <= startMins) {
         col.push(shift);
@@ -85,17 +85,17 @@ export function calculateOverlaps(shifts: { id: string; start_time: string; end_
   });
 
   if (columns.length > 0) {
-    packGroup(columns, layouts);
+    packGroup(columns, layouts, minimumMinutes);
   }
 
   return layouts;
 }
 
-function packGroup(columns: { id: string; start_time: string; end_time: string; crosses_midnight?: boolean }[][], layouts: Record<string, ShiftLayout>) {
+function packGroup(columns: { id: string; start_time: string; end_time: string; crosses_midnight?: boolean }[][], layouts: Record<string, ShiftLayout>, minimumMinutes: number) {
   const numColumns = columns.length;
   columns.forEach((col, colIndex) => {
     col.forEach((shift) => {
-      const pos = calculateShiftPosition(shift.start_time, shift.end_time, shift.crosses_midnight ?? false);
+      const pos = calculateShiftPosition(shift.start_time, shift.end_time, shift.crosses_midnight ?? false, minimumMinutes);
       layouts[shift.id] = {
         top: pos.top,
         height: pos.height,

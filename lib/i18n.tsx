@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import * as React from 'react'
 
@@ -221,7 +221,9 @@ const en = {
   copyUrl: 'Copy URL',
   openExternalPage: 'Open external page',
   previewUnavailable: 'Preview unavailable',
-  calendarSubtitle: 'Operational center for livestream schedule management',
+  currentPage: 'Current page',
+  pendingOnCurrentPage: 'Pending registrations for shifts on this page',
+  calendarSubtitle: 'Manage livestream schedules, shift registration and schedule imports',
   liveSubtitle: 'Operational command center for today’s livestream shifts',
   reportsSubtitle: 'Live session reports and analytics',
   swapsTitle: 'Swap Requests',
@@ -1434,7 +1436,9 @@ const vi: Record<keyof typeof en, string> = {
   copyUrl: 'Sao chép URL',
   openExternalPage: 'Mở trang ngoài',
   previewUnavailable: 'Không xem trước được',
-  calendarSubtitle: 'Trung tâm vận hành lịch livestream',
+  currentPage: 'Trang hiện tại',
+  pendingOnCurrentPage: 'Đăng ký chờ duyệt của các ca trên trang hiện tại',
+  calendarSubtitle: 'Quản lý lịch livestream, đăng ký ca và nhập lịch',
   liveSubtitle: 'Trung tâm điều hành các ca livestream trong ngày',
   reportsSubtitle: 'Báo cáo và phân tích phiên livestream',
   swapsTitle: 'Yêu cầu đổi ca',
@@ -1507,7 +1511,7 @@ const vi: Record<keyof typeof en, string> = {
   shiftTitle: 'Tên ca',
   shiftDetail: 'Chi tiết ca',
   shiftOverview: 'Tổng quan',
-  staffing: 'Nhân sự',
+  staffing: 'Điều phối ca',
   staffingGapsOnly: 'Ca cần bổ sung nhân sự',
   registration: 'Đăng ký ca',
   additionalInfo: 'Chi tiết',

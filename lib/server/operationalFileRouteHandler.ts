@@ -1,3 +1,4 @@
+import { pageRange } from '@/lib/utils/pagination'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -340,13 +341,30 @@ export function createOperationalFileRouteHandler(deps: {
           })
         }
 
+        const parsedPage = z.object({
+          page: z.coerce.number().int().min(1).max(100000),
+          pageSize: z.coerce.number().refine(value => [10, 20, 50].includes(value)),
+          category: z.enum(['all', ...OPERATIONAL_FILE_CATEGORIES]).default('all'),
+        }).safeParse({ page: params.get('page') ?? 1, pageSize: params.get('pageSize') ?? 20, category: params.get('category') ?? 'all' })
+        if (!parsedPage.success) return errorResponse('OPERATIONAL_FILE_LIST_INVALID')
+        const { page: requestedPage, pageSize, category } = parsedPage.data
+        if (restrictedCategories.has(category) && actor.systemPermission !== 'admin') return errorResponse('PERMISSION_DENIED', 403)
         const scope = await scopeFromInput(client, fromQuery(params))
-        const result = await client.from('operational_files').select('*')
-          .eq('scope_key', scope.scope_key).is('deleted_at', null)
-          .order('created_at', { ascending: false })
+        const fetchPage = (page: number) => {
+          let query = client.from('operational_files').select('*', { count: 'exact' })
+            .eq('scope_key', scope.scope_key).is('deleted_at', null)
+          if (actor.systemPermission !== 'admin') query = query.not('category', 'in', '(payment_document,system_export)')
+          if (category !== 'all') query = query.eq('category', category)
+          return query.order('created_at', { ascending: false }).order('id').range((page - 1) * pageSize, page * pageSize - 1)
+        }
+        let result = await fetchPage(requestedPage)
+        if (result.error && result.error.code !== 'PGRST103') throw result.error
+        if (result.count === null) throw new Error('OPERATIONAL_FILE_COUNT_UNAVAILABLE')
+        const page = pageRange(result.count, requestedPage, pageSize).page
+        if (page !== requestedPage) result = await fetchPage(page)
         if (result.error) throw result.error
-        return Response.json({ ok: true, files: (result.data ?? []).filter(row => actor.systemPermission === 'admin' || !restrictedCategories.has(row.category)).map(row => publicFile(row as Record<string, unknown>)) },
-          { headers: { 'Cache-Control': 'no-store' } })
+        return Response.json({ ok: true, files: (result.data ?? []).map(row => publicFile(row as Record<string, unknown>)), total: result.count ?? 0, page, pageSize },
+          { headers: { 'Cache-Control': 'private, no-store' } })
       })
     },
     POST(request: Request) {

@@ -9,7 +9,7 @@ const workspace = readFileSync('components/features/calendar/CalendarWorkspace.t
 test('registration mutations refresh operational data without reloading master data', () => {
   assert.match(board, /const loadReferenceData = React\.useCallback/)
   assert.match(board, /const loadRegistrationOperationalData = React\.useCallback/)
-  assert.match(board, /Promise\.all\(\[loadReferenceData\(\), loadRegistrationOperationalData\(\)\]\)/)
+  assert.match(board, /Promise\.all\(\[loadReferenceData\(\), loadRegistrationOperationalData\(signal\)\]\)/)
   assert.match(board, /void loadRegistrationOperationalData\(\)/)
   assert.doesNotMatch(board.slice(board.indexOf('const runAction'), board.indexOf('const removalImpact')), /loadReferenceData/)
   assert.doesNotMatch(board.slice(board.indexOf('const runAction'), board.indexOf('const removalImpact')), /brandService\.getAll|platformService\.getAll|campaignService\.getAll|userService\.getAll/)
@@ -23,8 +23,8 @@ test('successful actions keep their controls guarded through the authoritative r
 })
 
 test('late reference data cannot gate or invent operational board state', () => {
-  assert.match(board, /if \(loading \|\| userLoading \|\| !currentUser\) return <ContentSkeleton \/>/)
-  assert.match(board, /const studioOptions = React\.useMemo\(\(\) => buildStudioFilterOptions\(shifts\)/)
+  assert.match(board, /if \(userLoading \|\| !currentUser\) return <ContentSkeleton \/>/)
+  assert.match(board, /const studioOptions = React\.useMemo\(\(\) => buildStudioFilterOptions\(studios\.map/)
   assert.match(board, /brandName\(brands, shift\.brand_id\)/)
   assert.match(board, /platformName\(platforms, shift\.platform_id\)/)
   assert.match(board, /campaignName\(campaigns, shift\.campaign_id\)/)

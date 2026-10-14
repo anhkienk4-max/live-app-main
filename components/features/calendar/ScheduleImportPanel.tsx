@@ -11,7 +11,7 @@ import {
   shiftService,
   userService,
 } from '@/lib/services/dataService'
-import { Brand, Campaign, DeletionImpact, Platform, ScheduleChangeLog, ScheduleImportBatch, Shift, User } from '@/lib/types/database.types'
+import { Brand, Campaign, DeletionImpact, Platform, ScheduleImportBatch, Shift, User } from '@/lib/types/database.types'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation, type TranslationKey } from '@/lib/i18n'
@@ -36,7 +36,6 @@ import { HistoryPagination } from '@/components/ui/history-pagination'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import { DEFAULT_SHIFT_STAFFING } from '@/lib/utils/shiftUtils'
-import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
 import {
   buildScheduleImportPreviewSourceRow,
   normalizeScheduleImportResult,
@@ -68,8 +67,10 @@ import {
   type ImportPreviewPresentationStatus,
   type ImportResultPresentationStatus,
 } from '@/lib/utils/scheduleImportUx'
+import { scheduleArchiveFailureMessage } from '@/lib/utils/scheduleArchiveMessage'
 import { processScheduleImportRows } from '@/lib/utils/scheduleImportRecovery'
-import { scheduleImportBatchPort } from '@/lib/services/scheduleImportBatchPort'
+import { usePagedList } from '@/lib/hooks/usePagedList'
+import { scheduleImportBatchPort, scheduleImportHistoryService } from '@/lib/services/scheduleImportBatchPort'
 import { planScheduleImportArchive, persistScheduleArchive, type ScheduleArchivePlan } from '@/lib/utils/scheduleImportArchive'
 import {
   type MasterDataState,
@@ -335,7 +336,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
 
   // This archive is deliberately isolated from import-batch state transitions.
   // A storage outage must never mark already imported shifts as failed.
-  const archiveCompletedSchedule = async (sourceType: Source['type'], batchId: string, previews: ImportResult['rows']) => {
+  const archiveCompletedSchedule = async (sourceType: Source['type'], batchId: string, previews: ImportResult['rows'], persistedRows: number) => {
     let plan: ScheduleArchivePlan | null = null
     try {
       plan = planScheduleImportArchive({
@@ -358,9 +359,8 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
         : ''
       return { archiveStatus: status + note + originalNote, archiveIncomplete: partial }
     } catch (error) {
-      const reason = error instanceof Error ? error.message : 'SCHEDULE_ARCHIVE_FAILED'
       return {
-        archiveStatus: `Import đã được xử lý, nhưng lưu Google Drive chưa hoàn chỉnh: ${reason}. ${plan ? 'Có thể thử đồng bộ lại mà không cần import lại ca.' : 'Cần kiểm tra lại thông tin brand và platform.'}`,
+        archiveStatus: scheduleArchiveFailureMessage(error, persistedRows),
         archiveIncomplete: true,
       }
     }
@@ -384,7 +384,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     } catch (error) {
       setCompletedImport(prev => prev ? {
         ...prev, archiveIncomplete: true,
-        archiveStatus: `Lưu lại chưa thành công: ${error instanceof Error ? error.message : 'PROVIDER_FAILED'}.`,
+        archiveStatus: scheduleArchiveFailureMessage(error, persistedImportCount(batchPresentationCounts(prev.rows))),
       } : prev)
     } finally { setRetryingArchive(false) }
   }
@@ -428,7 +428,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       if (importResult.retryable > 0) {
         completedBatch = await scheduleImportBatchPort.markBatchStatus(batch.id, 'failed')
         const finalRows = await scheduleImportBatchPort.listBatchRows(batch.id)
-        const archive = await archiveCompletedSchedule(completedSource.type, batch.id, result.rows)
+        const archive = await archiveCompletedSchedule(completedSource.type, batch.id, result.rows, importedCount)
         setCompletedImport({ source: completedSource, batch: completedBatch ?? { ...batch, status: 'failed' }, rows: finalRows, ...archive })
         setResult(null)
         setBatch(null)
@@ -445,7 +445,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       }
       completedBatch = await scheduleImportBatchPort.markBatchStatus(batch.id, 'confirmed')
       const finalRows = await scheduleImportBatchPort.listBatchRows(batch.id)
-      const archive = await archiveCompletedSchedule(completedSource.type, batch.id, result.rows)
+      const archive = await archiveCompletedSchedule(completedSource.type, batch.id, result.rows, importedCount)
       setCompletedImport({ source: completedSource, batch: completedBatch ?? { ...batch, status: 'confirmed' }, rows: finalRows, ...archive })
       const finalCounts = batchPresentationCounts(finalRows)
       const attention = finalCounts.warning + finalCounts.invalid + finalCounts.duplicate + finalCounts.retryable
@@ -944,53 +944,38 @@ function PreviewEntitySelect({ value, onChange, options, optional = false, ariaL
 
 export function ImportHistoryPanel() {
   const { t } = useTranslation()
-  const [history, setHistory] = React.useState<ScheduleImportBatch[]>([])
-  const [changes, setChanges] = React.useState<ScheduleChangeLog[]>([])
   const [shifts, setShifts] = React.useState<Shift[]>([])
   const [users, setUsers] = React.useState<User[]>([])
   const [brands, setBrands] = React.useState<Brand[]>([])
   const [filters, setFilters] = React.useState({ date: '', actorIds: [] as string[], actionIds: [] as string[], shiftIds: [] as string[], brandIds: [] as string[], sources: [] as string[] })
-  const [loading, setLoading] = React.useState(true)
-  const [loadError, setLoadError] = React.useState<unknown>(null)
-  const [importPage, setImportPage] = React.useState(1)
-  const [importPageSize, setImportPageSize] = React.useState(10)
-  const [changePage, setChangePage] = React.useState(1)
-  const [changePageSize, setChangePageSize] = React.useState(10)
-  const loadHistory = React.useCallback(() => Promise.all([
-    scheduleImportBatchPort.listBatches(),
-    scheduleChangeService.getAll(),
-    shiftService.getAll(),
-    userService.getAll(),
-    brandService.getAll(),
-  ]).then(([imports, logs, loadedShifts, loadedUsers, loadedBrands]) => {
-      setHistory(imports)
-      setChanges(logs)
-      setShifts(loadedShifts)
-      setUsers(loadedUsers)
-      setBrands(loadedBrands)
-    }).catch((error: unknown) => {
-      setLoadError(error)
-    }).finally(() => {
-      setLoading(false)
-    }), [])
-  React.useEffect(() => { void loadHistory() }, [loadHistory])
+  const imports = usePagedList(scheduleImportHistoryService, 'import_history', {}, 20)
+  const journal = usePagedList(scheduleChangeService, 'schedule_history', {
+    from: filters.date || undefined, to: filters.date || undefined, actorIds: filters.actorIds, actionIds: filters.actionIds,
+    shiftIds: filters.shiftIds, brandIds: filters.brandIds, sources: filters.sources,
+  }, 20)
+  const history = imports.items
+  const changes = journal.items
+  const importPage = imports.page, importPageSize = imports.pageSize, setImportPage = imports.setPage, setImportPageSize = imports.setPageSize
+  const changePage = journal.page, changePageSize = journal.pageSize, setChangePage = journal.setPage, setChangePageSize = journal.setPageSize
+  const loading = imports.loading || journal.loading
+  const loadError = imports.error || journal.error
+  const loadHistory = async () => { await Promise.all([imports.reload(), journal.reload()]) }
+  const ids = changes.map(log => log.shift_id).filter(Boolean).join(',')
+  React.useEffect(() => {
+    let active = true
+    void Promise.all([shiftService.getByIds(ids ? ids.split(',') : []), userService.getAll(), brandService.getAll()]).then(([shifts,users,brands]) => {
+      if (active) { setShifts(shifts); setUsers(users); setBrands(brands) }
+    })
+    return () => { active = false }
+  }, [ids])
   const updateChangeFilter = (key: keyof typeof filters, value: string | string[]) => {
     setFilters(current => ({ ...current, [key]: value }))
     setChangePage(1)
   }
   if (loading) return <div className="py-12 text-center" role="status" aria-live="polite" data-testid="schedule-import-history-loading">{t('loading')}</div>
-  if (loadError) return <PageLoadError error={new Error(t('importLoadError'))} onRetry={() => { setLoadError(null); setLoading(true); void loadHistory() }} />
-  const visibleChanges = changes.filter(log => {
-    const shift = shifts.find(item => item.id === log.shift_id)
-    return (!filters.date || log.timestamp.slice(0, 10) === filters.date) &&
-      matchesMultiSelect(log.actor_id, filters.actorIds) &&
-      matchesMultiSelect(log.action, filters.actionIds) &&
-      matchesMultiSelect(log.shift_id, filters.shiftIds) &&
-      matchesMultiSelect(shift?.brand_id, filters.brandIds) &&
-      matchesMultiSelect(log.source, filters.sources)
-  })
-  const pagedImports = history.slice((importPage - 1) * importPageSize, importPage * importPageSize)
-  const pagedChanges = visibleChanges.slice((changePage - 1) * changePageSize, changePage * changePageSize)
+  if (loadError) return <PageLoadError error={new Error(t('importLoadError'))} onRetry={() => void loadHistory()} />
+  const pagedImports = history
+  const pagedChanges = changes
   const actions = [...new Set(changes.map(log => log.action))]
   return (
     <Tabs defaultValue="imports">
@@ -1051,7 +1036,7 @@ export function ImportHistoryPanel() {
                 </table>
               </div>
               <div className="border border-t-0 p-3 bg-slate-50/50 rounded-b-xl flex justify-between items-center">
-                <HistoryPagination page={importPage} pageSize={importPageSize} total={history.length} onPageChange={setImportPage} onPageSizeChange={size => { setImportPageSize(size); setImportPage(1) }} />
+                <HistoryPagination page={importPage} pageSize={importPageSize} total={imports.total} onPageChange={setImportPage} onPageSizeChange={setImportPageSize} />
               </div>
             </CardContent></Card>}
       </TabsContent>
@@ -1072,7 +1057,7 @@ export function ImportHistoryPanel() {
                 <tbody>{pagedChanges.map(log => <tr key={log.id} className="border-b align-top"><td className="p-2 whitespace-nowrap">{new Date(log.timestamp).toLocaleString()}</td><td className="p-2">{users.find(user => user.id === log.actor_id)?.full_name || log.actor_id}</td><td className="p-2"><Badge variant="outline">{log.action}</Badge></td><td className="p-2">{shifts.find(shift => shift.id === log.shift_id)?.title || log.shift_id}</td><td className="max-w-64 p-2 text-xs"><ChangeValue value={log.before} /></td><td className="max-w-64 p-2 text-xs"><ChangeValue value={log.after} /></td><td className="p-2">{log.source.replaceAll('_', ' ')}</td><td className="p-2">{log.reason || '—'}</td><td className="p-2"><Badge>{log.status}</Badge></td></tr>)}</tbody>
               </table>
             </div>
-            <HistoryPagination page={changePage} pageSize={changePageSize} total={visibleChanges.length} onPageChange={setChangePage} onPageSizeChange={size => { setChangePageSize(size); setChangePage(1) }} />
+            <HistoryPagination page={changePage} pageSize={changePageSize} total={journal.total} onPageChange={setChangePage} onPageSizeChange={setChangePageSize} />
           </CardContent>
         </Card>
       </TabsContent>

@@ -1,9 +1,11 @@
 'use client'
 
 import * as React from 'react'
+import { usePagedList } from '@/lib/hooks/usePagedList'
+import { HistoryPagination } from '@/components/ui/history-pagination'
 import { Archive, CheckCircle2, Eye, MoreHorizontal, Pencil, Power, PowerOff, RotateCcw, UserPlus, XCircle } from 'lucide-react'
-import { isStaffedRegistration, shiftRegistrationService, shiftService, userService } from '@/lib/services/dataService'
-import { OperationalRole, Shift, ShiftRegistration, SystemPermission, User } from '@/lib/types/database.types'
+import { shiftService, userService } from '@/lib/services/dataService'
+import { OperationalRole, SystemPermission, User } from '@/lib/types/database.types'
 import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
@@ -32,11 +34,6 @@ const initialFilters: StaffFilters = { permissionIds: [], roleIds: [], statuses:
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
 
 export function StaffList() {
-  const [staff, setStaff] = React.useState<User[]>([])
-  const [shifts, setShifts] = React.useState<Shift[]>([])
-  const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
-  const [loading, setLoading] = React.useState(true)
-  const [loadError, setLoadError] = React.useState<unknown>(null)
   const [selectedStaff, setSelectedStaff] = React.useState<User | null>(null)
   const [detailStaff, setDetailStaff] = React.useState<User | null>(null)
   const detailInitialized = React.useRef(false)
@@ -52,62 +49,11 @@ export function StaffList() {
   const { t } = useTranslation()
   const canManage = Boolean(currentUser && hasPermission(currentUser, 'staff.manage'))
 
-  const shiftsCacheRef = React.useRef<Shift[]>([])
-  const registrationsCacheRef = React.useRef<ShiftRegistration[]>([])
-  const cacheTimestampRef = React.useRef<number>(0)
-  const currentUserId = currentUser?.id
-
-  const loadStaff = React.useCallback(async (forceAll = false) => {
-    setLoading(true)
-    setLoadError(null)
-
-    const timeoutId = setTimeout(() => {
-      console.warn('[StaffList] Data load exceeded 15s timeout limit.')
-    }, 15000)
-
-    try {
-      const fetchStaff = showArchived && canManage && currentUserId
-        ? userService.getAllIncludingDeleted(currentUserId)
-        : userService.getAll()
-
-      const isCacheExpired = Date.now() - cacheTimestampRef.current > 60000
-      const shouldFetchShifts = forceAll || isCacheExpired || shiftsCacheRef.current.length === 0
-      const shouldFetchRegistrations = forceAll || isCacheExpired || registrationsCacheRef.current.length === 0
-
-      const fetchShifts = shouldFetchShifts
-        ? shiftService.getAll()
-        : Promise.resolve(shiftsCacheRef.current)
-
-      const fetchRegistrations = shouldFetchRegistrations
-        ? shiftRegistrationService.getAll()
-        : Promise.resolve(registrationsCacheRef.current)
-
-      const [loadedStaff, loadedShifts, loadedRegistrations] = await Promise.all([
-        fetchStaff,
-        fetchShifts,
-        fetchRegistrations,
-      ])
-
-      shiftsCacheRef.current = loadedShifts
-      registrationsCacheRef.current = loadedRegistrations
-      cacheTimestampRef.current = Date.now()
-
-      setStaff(loadedStaff)
-      setShifts(loadedShifts)
-      setRegistrations(loadedRegistrations)
-    } catch (error) {
-      console.error('[StaffList] Error loading staff data:', error)
-      setLoadError(error)
-    } finally {
-      clearTimeout(timeoutId)
-      setLoading(false)
-    }
-  }, [canManage, currentUserId, showArchived])
-
-  React.useEffect(() => {
-    const frame = window.requestAnimationFrame(() => { void loadStaff() })
-    return () => window.cancelAnimationFrame(frame)
-  }, [loadStaff])
+  const [search, setSearch] = React.useState('')
+  const list = usePagedList(userService, 'staff', { search, archived: showArchived, systemPermissions: filters.permissionIds, roles: filters.roleIds, statuses: filters.statuses })
+  const { items: staff, loading, error: loadError } = list
+  const workloadRows = (list.result as typeof list.result & { workload?: Array<{ staff_id: string; role: string; shift_count: number }> })?.workload ?? []
+  const loadStaff = async (forceAll = false) => { void forceAll; await list.reload() }
 
   const approveAccount = async (user: User) => {
     if (!canManage) return
@@ -123,16 +69,7 @@ export function StaffList() {
     await loadStaff(true)
   }
 
-  const visibleStaff = React.useMemo(() => {
-    const permitted = resolveSystemPermission(currentUser) === 'member'
-      ? staff.filter(user => user.id === currentUser?.id)
-      : staff
-    return permitted
-      .filter(user => showArchived ? Boolean(user.archived_at || user.deleted_at) : !user.archived_at && !user.deleted_at)
-      .filter(user => filters.permissionIds.length === 0 || filters.permissionIds.includes(resolveSystemPermission(user)))
-      .filter(user => filters.roleIds.length === 0 || filters.roleIds.some(role => user.operational_roles?.includes(role)))
-      .filter(user => filters.statuses.length === 0 || filters.statuses.includes(user.status))
-  }, [currentUser, filters, showArchived, staff])
+  const visibleStaff = staff
 
   React.useEffect(() => {
     if (loading || detailInitialized.current || !visibleStaff.length) return
@@ -140,30 +77,7 @@ export function StaffList() {
     setDetailStaff(visibleStaff[0])
   }, [loading, visibleStaff])
 
-  const assignedShifts = React.useCallback((userId: string) => {
-    const registeredShiftIds = new Set(registrations
-      .filter(registration => registration.user_id === userId && isStaffedRegistration(registration))
-      .map(registration => registration.shift_id))
-    return shifts.filter(shift =>
-      registeredShiftIds.has(shift.id) ||
-      shift.host_id === userId ||
-      shift.support_id === userId ||
-      shift.technical_id === userId
-    )
-  }, [registrations, shifts])
-
-  const workload = React.useCallback((userId: string, role: OperationalRole) => {
-    const field = role === 'host' ? 'host_id' : role === 'support' ? 'support_id' : 'technical_id'
-    return shifts.filter(shift =>
-      shift[field] === userId ||
-      registrations.some(registration =>
-        registration.shift_id === shift.id &&
-        registration.user_id === userId &&
-        registration.operational_role === role &&
-        isStaffedRegistration(registration)
-      )
-    ).length
-  }, [registrations, shifts])
+  const workload = (userId: string, role: OperationalRole) => workloadRows.find(row => row.staff_id === userId && row.role === role)?.shift_count ?? 0
 
   const updateStatus = async () => {
     if (!statusTarget || !canManage) {
@@ -277,7 +191,7 @@ export function StaffList() {
       <div className="space-y-4" data-testid="staff-initial-loading">
         <div className="flex flex-col gap-2 rounded-lg border bg-white px-3 py-2 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-lg font-semibold">{t('staffManagement')}</h2>
+            <h1 className="text-xl font-semibold">{t('staffManagement')}</h1>
             <p className="mt-1 text-muted-foreground">{t('staffManagementSubtitle')}</p>
           </div>
         </div>
@@ -291,32 +205,38 @@ export function StaffList() {
 
   return <>
     <div className="mb-3 flex flex-col gap-2 rounded-lg border bg-white px-3 py-2 md:flex-row md:items-center md:justify-between">
-      <div><h2 className="text-lg font-semibold">{t('staffManagement')}</h2><p className="mt-1 text-muted-foreground">{t('staffManagementSubtitle')}</p></div>
+      <div><h1 className="text-xl font-semibold">{t('staffManagement')}</h1><p className="mt-1 text-muted-foreground">{t('staffManagementSubtitle')}</p></div>
       {canManage && <div className="flex flex-col sm:flex-row w-full md:w-auto gap-2">
         <Button className="w-full sm:w-auto" variant="outline" onClick={() => setShowArchived(value => !value)} data-testid="toggle-archived-staff"><Archive className="mr-2 h-4 w-4" />{t(showArchived ? 'active' : 'archivedRecords')}</Button>
         {!showArchived && <Button className="w-full sm:w-auto" onClick={() => { setSelectedStaff(null); setIsFormOpen(true) }} data-testid="add-staff-btn"><UserPlus className="mr-2 h-4 w-4" />{t('addStaff')}</Button>}
       </div>}
     </div>
-    <div className="mb-3 grid grid-cols-2 overflow-hidden rounded-lg border border-slate-200 bg-white sm:grid-cols-4">{[[t('staff'),visibleStaff.length],[t('active'),visibleStaff.filter(user=>user.status==='active').length],[t('inactive'),visibleStaff.filter(user=>user.status==='inactive').length],[t('pendingAccounts'),visibleStaff.filter(user=>user.account_status==='pending_approval').length]].map(([label,value])=><div key={String(label)} className="border-r border-slate-200 px-3 py-2 last:border-r-0"><p className="text-[11px] text-slate-500">{label}</p><p className="text-base font-semibold">{value}</p></div>)}</div>
+    <p className="mb-2 text-xs text-muted-foreground">{t('currentPage')}</p>
+    <div className="mb-3 grid grid-cols-2 overflow-hidden rounded-lg border border-slate-200 bg-white sm:grid-cols-4">{[[t('staff'),list.total],[t('active'),visibleStaff.filter(user=>user.status==='active').length],[t('inactive'),visibleStaff.filter(user=>user.status==='inactive').length],[t('pendingAccounts'),visibleStaff.filter(user=>user.account_status==='pending_approval').length]].map(([label,value])=><div key={String(label)} className="border-r border-slate-200 px-3 py-2 last:border-r-0"><p className="text-[11px] text-slate-500">{label}</p><p className="text-base font-semibold">{value}</p></div>)}</div>
 
-    <nav className="mb-4 flex flex-wrap gap-2 border-b pb-2" aria-label={t('staff')}><Button size="sm" variant={tab === 'staff' && !showArchived ? 'default' : 'ghost'} onClick={() => {setTab('staff');setShowArchived(false)}}>{t('staff')} ({visibleStaff.length})</Button>{canManage && <><Button size="sm" variant={tab === 'requests' ? 'default' : 'ghost'} onClick={() => setTab('requests')}>{t('pending')}</Button><Button size="sm" variant={showArchived ? 'default' : 'ghost'} onClick={() => {setTab('staff');setShowArchived(true)}}>{t('archivedRecords')}</Button></>}</nav>
+    <nav className="mb-4 flex flex-wrap gap-2 border-b pb-2" aria-label={t('staff')}><Button size="sm" variant={tab === 'staff' && !showArchived ? 'default' : 'ghost'} onClick={() => {setTab('staff');setShowArchived(false)}}>{t('staff')} ({list.total})</Button>{canManage && <><Button size="sm" variant={tab === 'requests' ? 'default' : 'ghost'} onClick={() => setTab('requests')}>{t('pending')}</Button><Button size="sm" variant={showArchived ? 'default' : 'ghost'} onClick={() => {setTab('staff');setShowArchived(true)}}>{t('archivedRecords')}</Button></>}</nav>
     {tab === 'requests' && canManage ? <AccountRequestPanel /> : <div className={`grid items-start gap-3 ${detailStaff ? 'xl:grid-cols-[minmax(0,1fr)_340px]' : 'grid-cols-1'}`}><div className="min-w-0 [&_table]:text-xs [&_th]:px-2 [&_th]:py-2 [&_th]:text-[11px] [&_th]:bg-slate-50 [&_td]:px-2 [&_td]:py-2">
 
     <DataTable
       data={visibleStaff}
+      search={search}
+      onSearch={value => { setSearch(value); setDetailStaff(null); list.reset() }}
+      pagination={{ loading: list.refreshing, page: list.page, pageSize: list.pageSize, total: list.total,
+        onPageChange: value => { setDetailStaff(null); list.setPage(value) },
+        onPageSizeChange: value => { setDetailStaff(null); list.setPageSize(value) } }}
       columns={columns}
       searchPlaceholder={t('searchStaff')}
       searchableText={user => [user.full_name, user.email, user.phone, user.department, resolveSystemPermission(user), ...(user.operational_roles || [])].filter(Boolean).join(' ')}
-      filterComponent={<StaffFilterControls filters={filters} onChange={setFilters} />}
+      filterComponent={<StaffFilterControls filters={filters} onChange={value => { setFilters(value); setDetailStaff(null); list.reset() }} />}
       emptyMessage={showArchived ? (t('archivedRecords') + ': ' + t('noStaff')) : t('noStaff')}
-    /></div>{detailStaff && <StaffDetail inline user={detailStaff} shifts={assignedShifts(detailStaff.id)} workload={role => workload(detailStaff.id,role)} onClose={() => setDetailStaff(null)} onEdit={canManage ? () => {setSelectedStaff(detailStaff);setIsFormOpen(true)} : undefined} />}</div>}
+    /></div>{detailStaff && <StaffDetail inline user={detailStaff} workload={role => workload(detailStaff.id,role)} onClose={() => setDetailStaff(null)} onEdit={canManage ? () => {setSelectedStaff(detailStaff);setIsFormOpen(true)} : undefined} />}</div>}
 
     <StaffFormDialog open={isFormOpen} onOpenChange={setIsFormOpen} staff={selectedStaff} onSuccess={() => void loadStaff(true)} />
 
     {detailStaff && tab !== 'staff' && (
       <StaffDetail
         user={detailStaff}
-        shifts={assignedShifts(detailStaff.id)}
+
         workload={role => workload(detailStaff.id, role)}
         onClose={() => setDetailStaff(null)}
         onEdit={canManage ? () => { setSelectedStaff(detailStaff); setDetailStaff(null); setIsFormOpen(true) } : undefined}
@@ -366,15 +286,20 @@ function Filter({ value, onChange, label, options }: { value: string[]; onChange
   return <MultiSelectFilter label={label} value={value} onChange={onChange} options={options.map(option => ({ value: option, label: translate(option) }))} className="w-40" />
 }
 
-function StaffDetail({ user, shifts, workload, onClose, onEdit, inline = false }: { inline?: boolean; user: User; shifts: Shift[]; workload: (role: OperationalRole) => number; onClose: () => void; onEdit?: () => void }) {
+function StaffDetail({ user, workload, onClose, onEdit, inline = false }: { inline?: boolean; user: User; workload: (role: OperationalRole) => number; onClose: () => void; onEdit?: () => void }) {
   const { t } = useTranslation()
+  const assigned = usePagedList(shiftService, 'staff_detail_' + user.id, { assignedUserIds: [user.id] }, 10)
+  const shifts = assigned.items
+
   const content = <><DialogHeader className="border-b pb-4 mb-2"><div className="flex items-start justify-between gap-3"><div><DialogTitle>{user.full_name}</DialogTitle><p className="mt-1 text-sm text-muted-foreground">{user.email}</p></div>{onEdit && <Button onClick={onEdit} size="sm"><Pencil className="mr-2 h-4 w-4" />{t('edit')}</Button>}</div></DialogHeader>
     <div className="grid gap-3 sm:grid-cols-5 mb-4">
       <Card className="shadow-none sm:col-span-2"><CardContent className="p-4"><p className="text-xs font-medium text-muted-foreground">{t('systemPermissions')}</p><Badge className="mt-1.5">{t(resolveSystemPermission(user))}</Badge></CardContent></Card>
       <Card className="shadow-none sm:col-span-3"><CardContent className="p-4"><p className="text-xs font-medium text-muted-foreground">{t('operationalRoles')}</p><div className="mt-1.5 flex flex-wrap gap-1.5">{user.operational_roles?.length ? user.operational_roles.map(role => <Badge variant="outline" key={role}>{t(role)}</Badge>) : '—'}</div></CardContent></Card>
       {operationalRoles.map(role => <Card key={role} className="shadow-none sm:col-span-1"><CardContent className="p-4"><p className="text-xs font-medium text-muted-foreground truncate">{t(role)}</p><p className="mt-1 text-xl font-bold">{workload(role)}</p></CardContent></Card>)}
     </div>
-    <div className="rounded-md border"><div className="bg-muted/30 px-4 py-2 border-b"><h3 className="font-semibold text-sm">{t('assignedShifts')} ({shifts.length})</h3></div><div className="p-0">{shifts.length ? <div className="divide-y max-h-[300px] overflow-y-auto">{shifts.sort((left, right) => `${left.date}${left.start_time}`.localeCompare(`${right.date}${right.start_time}`)).map(shift => <div className="flex items-center justify-between gap-4 p-3 hover:bg-muted/10 transition-colors" key={shift.id}><div className="min-w-0 flex-1"><p className="font-medium truncate">{shift.title || shift.id}</p><div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground"><span>{shift.date}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{formatShiftTimeRange(shift)}</span></div></div><Badge variant="secondary" className="shrink-0">{t(shift.status)}</Badge></div>)}</div> : <div className="p-4"><p className="text-sm text-muted-foreground">{t('noData')}</p></div>}</div></div>
+    {assigned.error && <PageLoadError error={assigned.error} onRetry={() => void assigned.reload()} />}
+    <div className="rounded-md border"><div className="bg-muted/30 px-4 py-2 border-b"><h3 className="font-semibold text-sm">{t('assignedShifts')} ({assigned.total})</h3></div><div className="p-0">{shifts.length ? <div className="divide-y max-h-[300px] overflow-y-auto">{shifts.map(shift => <div className="flex items-center justify-between gap-4 p-3 hover:bg-muted/10 transition-colors" key={shift.id}><div className="min-w-0 flex-1"><p className="font-medium truncate">{shift.title || shift.id}</p><div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground"><span>{shift.date}</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span>{formatShiftTimeRange(shift)}</span></div></div><Badge variant="secondary" className="shrink-0">{t(shift.status)}</Badge></div>)}</div> : <div className="p-4"><p className="text-sm text-muted-foreground">{assigned.loading ? t('loading') : t('noData')}</p></div>}</div></div>
+    <HistoryPagination page={assigned.page} pageSize={assigned.pageSize} total={assigned.total} onPageChange={assigned.setPage} onPageSizeChange={assigned.setPageSize} />
   </>
-  return inline ? <section className="min-w-0 rounded-lg border bg-white p-3 [&_h2]:text-base" role="region" aria-label={user.full_name}><div className="mb-3 flex items-start gap-2 border-b pb-3"><Avatar className="h-9 w-9 shrink-0"><AvatarImage src={user.avatar_url} /><AvatarFallback className="bg-blue-100 text-xs text-blue-700">{user.full_name.split(' ').map(part=>part[0]).join('').slice(0,2).toUpperCase()}</AvatarFallback></Avatar><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{user.full_name}</p><p className="truncate text-xs text-slate-500">{user.email}</p><div className="mt-1 flex flex-wrap gap-1"><Badge variant={user.status === 'active' ? 'default' : 'secondary'}>{t(user.status)}</Badge>{user.account_status && <Badge variant="outline">{t(user.account_status === 'active' ? 'active' : user.account_status === 'rejected' ? 'rejected' : 'pending')}</Badge>}</div></div><Button variant="ghost" size="sm" onClick={onClose}>{t('close')}</Button></div><section className="rounded-md border p-2.5"><h3 className="mb-2 text-xs font-semibold">{t('systemPermissions')} · {t('operationalRoles')}</h3><div className="flex flex-wrap items-center gap-1"><Badge variant={resolveSystemPermission(user) === 'admin' ? 'default' : 'secondary'}>{t(resolveSystemPermission(user))}</Badge>{user.operational_roles?.length ? user.operational_roles.map(role=><Badge variant="outline" key={role}>{t(role)}</Badge>) : <span className="text-xs text-muted-foreground">—</span>}</div></section><section className="mt-2 rounded-md border p-2.5"><h3 className="mb-2 text-xs font-semibold">{t('staff')}</h3><dl className="space-y-1.5 text-xs">{[['Department',user.department],['Join date',user.join_date],['Updated',user.updated_at]].map(([label,value])=><div key={label} className="grid grid-cols-[72px_1fr] gap-2"><dt className="text-slate-500">{label}</dt><dd className="break-words">{value || '—'}</dd></div>)}</dl></section><section className="mt-2 rounded-md border p-2.5"><h3 className="mb-2 text-xs font-semibold">{t('workload')}</h3><div className="grid grid-cols-3 gap-1">{operationalRoles.map(role=><div key={role} className="rounded bg-slate-50 px-1.5 py-1 text-center"><p className="truncate text-[10px] text-slate-500">{t(role)}</p><p className="text-sm font-semibold">{workload(role)}</p></div>)}</div></section>{onEdit && <Button className="mt-2" size="sm" variant="outline" onClick={onEdit}>{t('edit')}</Button>}<section className="mt-2 rounded-md border p-2.5"><h3 className="mb-2 text-xs font-semibold">{t('assignedShifts')} ({shifts.length})</h3><div className="divide-y text-xs">{shifts.length ? shifts.map(shift=><div key={shift.id} className="py-2"><p className="truncate font-medium">{shift.title || shift.id}</p><p className="mt-1 text-slate-500">{shift.date} · {formatShiftTimeRange(shift)}</p></div>) : <p className="py-2 text-slate-500">{t('noData')}</p>}</div></section></section> : <Dialog open onOpenChange={open => !open && onClose()}><DialogContent size="xl" className="overflow-y-auto">{content}</DialogContent></Dialog>
+  return inline ? <section className="min-w-0 rounded-lg border bg-white p-3 [&_h2]:text-base" role="region" aria-label={user.full_name}><div className="mb-3 flex items-start gap-2 border-b pb-3"><Avatar className="h-9 w-9 shrink-0"><AvatarImage src={user.avatar_url} /><AvatarFallback className="bg-blue-100 text-xs text-blue-700">{user.full_name.split(' ').map(part=>part[0]).join('').slice(0,2).toUpperCase()}</AvatarFallback></Avatar><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{user.full_name}</p><p className="truncate text-xs text-slate-500">{user.email}</p><div className="mt-1 flex flex-wrap gap-1"><Badge variant={user.status === 'active' ? 'default' : 'secondary'}>{t(user.status)}</Badge>{user.account_status && <Badge variant="outline">{t(user.account_status === 'active' ? 'active' : user.account_status === 'rejected' ? 'rejected' : 'pending')}</Badge>}</div></div><Button variant="ghost" size="sm" onClick={onClose}>{t('close')}</Button></div><section className="rounded-md border p-2.5"><h3 className="mb-2 text-xs font-semibold">{t('systemPermissions')} · {t('operationalRoles')}</h3><div className="flex flex-wrap items-center gap-1"><Badge variant={resolveSystemPermission(user) === 'admin' ? 'default' : 'secondary'}>{t(resolveSystemPermission(user))}</Badge>{user.operational_roles?.length ? user.operational_roles.map(role=><Badge variant="outline" key={role}>{t(role)}</Badge>) : <span className="text-xs text-muted-foreground">—</span>}</div></section><section className="mt-2 rounded-md border p-2.5"><h3 className="mb-2 text-xs font-semibold">{t('staff')}</h3><dl className="space-y-1.5 text-xs">{[['Department',user.department],['Join date',user.join_date],['Updated',user.updated_at]].map(([label,value])=><div key={label} className="grid grid-cols-[72px_1fr] gap-2"><dt className="text-slate-500">{label}</dt><dd className="break-words">{value || '—'}</dd></div>)}</dl></section><section className="mt-2 rounded-md border p-2.5"><h3 className="mb-2 text-xs font-semibold">{t('workload')}</h3><div className="grid grid-cols-3 gap-1">{operationalRoles.map(role=><div key={role} className="rounded bg-slate-50 px-1.5 py-1 text-center"><p className="truncate text-[10px] text-slate-500">{t(role)}</p><p className="text-sm font-semibold">{workload(role)}</p></div>)}</div></section>{onEdit && <Button className="mt-2" size="sm" variant="outline" onClick={onEdit}>{t('edit')}</Button>}<section className="mt-2 rounded-md border p-2.5"><h3 className="mb-2 text-xs font-semibold">{t('assignedShifts')} ({assigned.total})</h3><div className="divide-y text-xs">{shifts.length ? shifts.map(shift=><div key={shift.id} className="py-2"><p className="truncate font-medium">{shift.title || shift.id}</p><p className="mt-1 text-slate-500">{shift.date} · {formatShiftTimeRange(shift)}</p></div>) : <p className="py-2 text-slate-500">{t('noData')}</p>}</div><HistoryPagination page={assigned.page} pageSize={assigned.pageSize} total={assigned.total} onPageChange={assigned.setPage} onPageSizeChange={assigned.setPageSize} /></section></section> : <Dialog open onOpenChange={open => !open && onClose()}><DialogContent size="xl" className="overflow-y-auto">{content}</DialogContent></Dialog>
 }

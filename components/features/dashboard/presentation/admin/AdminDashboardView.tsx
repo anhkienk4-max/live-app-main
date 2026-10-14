@@ -234,7 +234,7 @@ export function AdminDashboardView({
           <h2 className="text-[16px] font-bold text-slate-900 mb-3">Operational Attention</h2>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm flex flex-col flex-1 p-2">
             <div className="flex flex-col divide-y divide-slate-50 flex-1 justify-center">
-              {dqAttention.length > 0 ? dqAttention.map((item) => (
+              {dqAttention.length > 0 ? dqAttention.slice(0, 6).map((item) => (
                 <AttentionRow key={item.key} severity={item.severity} title={item.title} context={item.context} time={item.time} action={item.action} />
               )) : (
                 <div className="text-center py-8 text-sm text-slate-500">Không có mục cần chú ý</div>
@@ -245,7 +245,7 @@ export function AdminDashboardView({
         <div className="col-span-4 flex flex-col">
           <h2 className="text-[16px] font-bold text-slate-900 mb-3">Live Now</h2>
           <div className="flex flex-col gap-3 flex-1">
-            {liveShifts.length > 0 ? liveShifts.map((item, i) => (
+            {liveShifts.length > 0 ? liveShifts.slice(0, 6).map((item, i) => (
               <LiveItem key={i} brand={item.brand} platform={item.platform} duration={item.duration} viewers={item.viewers} health={item.health} />
             )) : (
               <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm p-4 text-center text-sm text-slate-500 flex-1 flex items-center justify-center">Không có ca đang live</div>
@@ -270,7 +270,7 @@ export function AdminDashboardView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {todaysOperations.map((op, i) => (
+                {todaysOperations.slice(0, 6).map((op, i) => (
                   <OperationRowItem key={i} brand={op.brand} shiftTime={op.shiftTime} platform={op.platform} status={op.status} statusColor={op.statusColor} metrics={op.metrics} manager={op.manager} />
                 ))}
               </tbody>
@@ -302,7 +302,7 @@ export function AdminDashboardView({
             <div className="flex flex-col divide-y divide-slate-50 flex-1 justify-center">
               {activityLog === null ? (
                 <div className="text-center py-8 text-sm text-slate-500">Dữ liệu chưa khả dụng</div>
-              ) : activityLog.length > 0 ? activityLog.map((log, i) => (
+              ) : activityLog.length > 0 ? activityLog.slice(0, 6).map((log, i) => (
                 <ActLogRow key={i} iconName={log.iconName} iconBg={log.iconBg} title={log.title} user={log.user} time={log.time} />
               )) : (
                 <div className="text-center py-8 text-sm text-slate-500">Không có hoạt động gần đây</div>
@@ -311,6 +311,7 @@ export function AdminDashboardView({
           </div>
         </div>
       </div>
+    <nav aria-label="Xem tất cả" className="flex flex-wrap gap-4 text-sm"><a className="underline underline-offset-4" href="/calendar">Xem tất cả: Lịch</a><a className="underline underline-offset-4" href="/reports">Xem tất cả: Báo cáo</a><a className="underline underline-offset-4" href="/notifications">Xem tất cả: Thông báo</a><a className="underline underline-offset-4" href="/data-quality">Xem tất cả: Chất lượng dữ liệu</a></nav>
     </main>
   )
 }

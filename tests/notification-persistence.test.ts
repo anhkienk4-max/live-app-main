@@ -23,8 +23,9 @@ function repositoryDouble() {
     from() {
       return {
         select() {
-          return {
-            order: async () => ({
+          const q = {
+            order() { return q },
+            limit: async (size: number) => { assert.equal(size, 30); return ({
               data: [{
                 id: 'notification-1',
                 user_id: null,
@@ -43,8 +44,9 @@ function repositoryDouble() {
                 created_at: '2031-08-20T00:00:00.000Z',
               }],
               error: null,
-            }),
+            }) },
           }
+          return q
         },
       }
     },

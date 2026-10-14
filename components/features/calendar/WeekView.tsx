@@ -14,6 +14,10 @@ import { CurrentTimeIndicator } from "@/components/ui/current-time-indicator";
 import { TIME_COLUMN_WIDTH, calculateShiftPosition, calculateOverlaps, getCurrentTimePosition } from "@/lib/utils/timeGrid";
 import React from "react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { HistoryPagination } from "@/components/ui/history-pagination";
+import { pageRange } from "@/lib/utils/pagination";
+import { formatShiftTimeRange } from "@/lib/utils/shiftUtils";
 import { Plus } from "lucide-react";
 import { hasPermission } from "@/lib/permissions";
 import { User } from '@/lib/types/database.types';
@@ -55,10 +59,17 @@ export function WeekView({
   const weekStart = startOfWeek(currentDate);
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const today = new Date();
+  const [detailDay, setDetailDay] = React.useState<Date | null>(null);
+  const [detailPage, setDetailPage] = React.useState(1);
+  const [detailSize, setDetailSize] = React.useState(10);
+  const detailShifts = shifts.filter(shift => detailDay && shift.date === format(detailDay, "yyyy-MM-dd"))
+    .sort((a, b) => a.start_time.localeCompare(b.start_time) || a.id.localeCompare(b.id));
+  const detailRange = pageRange(detailShifts.length, detailPage, detailSize);
+
 
   const getShiftsForDate = (date: Date) => {
     const dateStr = format(date, "yyyy-MM-dd");
-    return shifts.filter((s) => s.date === dateStr);
+    return shifts.filter((s) => s.date === dateStr).sort((a,b)=>a.start_time.localeCompare(b.start_time)||a.id.localeCompare(b.id));
   };
 
   const firstHour = Math.min(8, ...shifts.map(shift => Number(shift.start_time.slice(0, 2))));
@@ -67,6 +78,14 @@ export function WeekView({
 
   return (
     <>
+      <div className="hidden flex-wrap gap-1 border-b p-2 sm:flex" aria-label={t("viewDetails")}>
+        {weekDays.map(day => {
+          const count = getShiftsForDate(day).length;
+          return count > 0 && <Button key={day.toISOString()} size="sm" variant="ghost" onClick={() => { setDetailDay(day); setDetailPage(1); }}>
+            {format(day, "dd/MM")} · {count} {t("totalShifts")} · {t("viewDetails")}
+          </Button>;
+        })}
+      </div>
       {/* DESKTOP: Horizontally scrollable true-time grid */}
       <div
         className="hidden sm:block overflow-x-auto relative bg-background"
@@ -166,7 +185,7 @@ export function WeekView({
               {weekDays.map((day) => {
                 const dayShifts = getShiftsForDate(day);
                 const isToday = isSameDay(day, today);
-                const layouts = calculateOverlaps(dayShifts);
+                const layouts = calculateOverlaps(dayShifts, 60);
 
                 return (
                   <div
@@ -188,7 +207,7 @@ export function WeekView({
                     )}
 
                     {dayShifts.map((shift) => {
-                      const pos = layouts[shift.id] || calculateShiftPosition(shift.start_time, shift.end_time, shift.crosses_midnight ?? false);
+                      const pos = layouts[shift.id] || calculateShiftPosition(shift.start_time, shift.end_time, shift.crosses_midnight ?? false, 60);
 
                       return (
                         <div
@@ -204,8 +223,10 @@ export function WeekView({
                           }}
                         >
                           <ShiftCard
+                            title={[shift.title, formatShiftTimeRange(shift)].filter(Boolean).join(" · ")}
+                            aria-label={[shift.title || shift.id, formatShiftTimeRange(shift), t("viewDetails")].join(" · ")}
                             shift={shift}
-                            variant="embedded"
+                            variant={'width' in pos && Number.parseFloat(pos.width) < 34 || pos.height / 2 < 40 ? "compact" : "embedded"}
                             onClick={() => onShiftClick?.(shift)}
                             context={context}
                             isToday={isToday}
@@ -254,7 +275,7 @@ export function WeekView({
               </div>
               {dayShifts.length > 0 && (
                 <div className="px-2 py-1.5 space-y-1.5">
-                  {dayShifts.map((shift, index) => {
+                  {dayShifts.slice(0,3).map((shift, index) => {
                     const currentTimeStr = format(today, "HH:mm:ss");
                     const firstFutureShiftIndex = isToday
                       ? dayShifts.findIndex(
@@ -268,7 +289,7 @@ export function WeekView({
                         {showIndicator && <CurrentTimeIndicator />}
                         <ShiftCard
                           shift={shift}
-                          variant="standard"
+                          variant="compact"
                           onClick={() => onShiftClick?.(shift)}
                           context={context}
                           isToday={isToday}
@@ -276,6 +297,8 @@ export function WeekView({
                       </React.Fragment>
                     );
                   })}
+                  {dayShifts.length>3 && <Button size="sm" variant="outline" className="w-full"
+                    onClick={()=>{setDetailDay(day);setDetailPage(1)}}>{t('viewDetails')} · {dayShifts.length} {t('totalShifts')}</Button>}
                   {isToday &&
                     dayShifts.length > 0 &&
                     dayShifts.findIndex(
@@ -290,6 +313,17 @@ export function WeekView({
           );
         })}
       </div>
+      <Dialog open={!!detailDay} onOpenChange={open => { if (!open) setDetailDay(null); }}>
+        <DialogContent size="lg">
+          <DialogHeader><DialogTitle>{detailDay ? format(detailDay, "dd/MM/yyyy") : ""} · {detailShifts.length} {t("totalShifts")}</DialogTitle></DialogHeader>
+          <div className="space-y-2">
+            {detailShifts.slice((detailRange.page - 1) * detailSize, detailRange.page * detailSize).map(shift =>
+              <ShiftCard key={shift.id} shift={shift} context={context} showDate onClick={() => { setDetailDay(null); onShiftClick?.(shift); }} />
+            )}
+          </div>
+          <HistoryPagination page={detailRange.page} pageSize={detailSize} total={detailShifts.length} onPageChange={setDetailPage} onPageSizeChange={size => { setDetailSize(size); setDetailPage(1); }} />
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

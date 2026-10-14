@@ -1,6 +1,9 @@
 'use client'
 
 import * as React from 'react'
+import { useListPagination } from '@/lib/hooks/useListPagination'
+import { pageRange } from '@/lib/utils/pagination'
+import { HistoryPagination } from '@/components/ui/history-pagination'
 import {
   History,
   ShieldCheck,
@@ -59,6 +62,9 @@ export function PayrollAuditTimeline({ audit }: PayrollAuditTimelineProps) {
     },
   }
 
+  const pagination = useListPagination('payroll_audit', 20)
+  const range = pageRange(sortedAudit.length, pagination.page, pagination.pageSize)
+  const pageRows = sortedAudit.slice((range.page - 1) * pagination.pageSize, range.page * pagination.pageSize)
   return (
     <Card className="border-slate-200 bg-white shadow-sm">
       <CardHeader className="border-b border-slate-100 pb-4">
@@ -84,7 +90,7 @@ export function PayrollAuditTimeline({ audit }: PayrollAuditTimelineProps) {
           </div>
         ) : (
           <div className="relative pl-6 space-y-6 before:absolute before:bottom-0 before:left-2 before:top-2 before:w-0.5 before:bg-slate-200">
-            {sortedAudit.map((item) => {
+            {pageRows.map((item) => {
               const config = actionConfig[item.action] || {
                 label: item.action,
                 badgeClass: 'bg-slate-100 text-slate-700 border-slate-300',
@@ -163,6 +169,10 @@ export function PayrollAuditTimeline({ audit }: PayrollAuditTimelineProps) {
                       </div>
                     )}
 
+                    <details className="rounded border bg-white p-2 text-xs">
+                      <summary className="cursor-pointer font-semibold">Xem toàn bộ audit / trước và sau</summary>
+                      <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify({action:item.action,actor_id:item.actor_id,line_version:item.line_version,request_id:item.request_id,request_payload:item.request_payload,previous_values:item.previous_values,updated_values:item.updated_values},null,2)}</pre>
+                    </details>
                     {/* Request UUID */}
                     {item.request_id && (
                       <div className="flex items-center gap-1 text-[10px] text-slate-400 font-mono pt-1">
@@ -176,7 +186,9 @@ export function PayrollAuditTimeline({ audit }: PayrollAuditTimelineProps) {
             })}
           </div>
         )}
-      </CardContent>
+
+        <HistoryPagination page={range.page} pageSize={pagination.pageSize} total={sortedAudit.length} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />
+</CardContent>
     </Card>
   )
 }

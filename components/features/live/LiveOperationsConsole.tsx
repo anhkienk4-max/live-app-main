@@ -10,13 +10,15 @@ import { formatCurrency } from '@/lib/utils/currency'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
-export function LiveOperationsConsole({ shift, updates, report, brands, platforms, campaigns, users, registrations, loading, actions, snapshots, details, timeline, onRefresh }: {
+export function LiveOperationsConsole({ shift, updates, snapshotSummary, report, brands, platforms, campaigns, users, registrations, loading, actions, snapshots, details, timeline, onRefresh }: {
   shift: Shift; updates: DashboardUpdate[]; report: Report | null; brands: Brand[]; platforms: Platform[]; campaigns: Campaign[]; users: User[]; registrations: ShiftRegistration[]
+  snapshotSummary?:{total:number;peakViewers:number|null;recent:DashboardUpdate[]}
   loading: boolean; actions: ReactNode; snapshots: ReactNode; details: ReactNode; timeline: ReactNode; onRefresh: () => void
 }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<'updates' | 'details' | 'timeline'>('updates')
-  const latest = [...updates].sort((a,b) => b.time.localeCompare(a.time))[0]
+  const recent=snapshotSummary?.recent??[...updates].sort((a,b)=>b.time.localeCompare(a.time)||a.id.localeCompare(b.id)).slice(0,4)
+  const latest=recent[0]
   const name = (items: Array<{ id: string; name: string }>, id?: string) => items.find(item => item.id === id)?.name ?? '—'
   const duration = resolveShiftDateTime(shift.date, shift.start_time.slice(0,5), shift.end_time.slice(0,5), shift.timezone)
   const roles: OperationalRole[] = ['host', 'support', 'technical']
@@ -31,7 +33,7 @@ export function LiveOperationsConsole({ shift, updates, report, brands, platform
     { label: t('gmv'), value: latest?.normalized_metrics?.gmv ?? latest?.gmv, currency: true },
     { label: t('orders'), value: latest?.normalized_metrics?.orders ?? latest?.orders },
     { label: t('currentViewers'), value: latest?.normalized_metrics?.current_viewers ?? latest?.current_viewers },
-    { label: t('peakViewers'), value: updates.length ? Math.max(...updates.flatMap(update => typeof update.peak_viewers === 'number' ? [update.peak_viewers] : [])) : null },
+    { label: t('peakViewers'), value: snapshotSummary?snapshotSummary.peakViewers:updates.length ? Math.max(...updates.flatMap(update => typeof update.peak_viewers === 'number' ? [update.peak_viewers] : [])) : null },
     { label: t('ctr'), value: latest?.normalized_metrics?.ctr },
   ]
   return <div className="min-w-0 text-slate-900">
@@ -40,7 +42,7 @@ export function LiveOperationsConsole({ shift, updates, report, brands, platform
       <p className="mt-2 text-xs text-slate-500">{name(brands, shift.brand_id)} · {name(platforms, shift.platform_id)} · {name(campaigns, shift.campaign_id)} · {shift.studio ?? '—'} · {shift.timezone ?? duration?.timezone ?? '—'}</p>
     </header>
     <section className="grid grid-cols-2 gap-2 border-b bg-white p-3 lg:grid-cols-6">{metrics.map(metric => <div key={metric.label} className="rounded-md border border-slate-200 bg-slate-50 p-2.5"><p className="text-[11px] font-medium text-slate-500">{metric.label}</p><p className="mt-1 text-sm font-semibold">{typeof metric.value === 'number' && Number.isFinite(metric.value) ? display(metric.value, metric.currency) : '—'}</p></div>)}</section>
-    <div className="flex flex-wrap border-b bg-white" role="tablist" aria-label={t('liveMonitor')}>{(['updates','details','timeline'] as const).map(key => <button key={key} role="tab" aria-selected={tab === key} className={`px-4 py-3 text-xs font-semibold border-b-2 ${tab === key ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`} onClick={() => setTab(key)}>{key === 'updates' ? t('liveMonitor') : key === 'details' ? t('viewDetails') : 'Timeline'}{key === 'updates' && ' (' + updates.length + ')'}</button>)}</div>
+    <div className="flex flex-wrap border-b bg-white" role="tablist" aria-label={t('liveMonitor')}>{(['updates','details','timeline'] as const).map(key => <button key={key} role="tab" aria-selected={tab === key} className={`px-4 py-3 text-xs font-semibold border-b-2 ${tab === key ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`} onClick={() => setTab(key)}>{key === 'updates' ? t('liveMonitor') : key === 'details' ? t('viewDetails') : 'Timeline'}{key === 'updates' && ' (' + (snapshotSummary?.total??updates.length) + ')'}</button>)}</div>
     <div className="grid items-start gap-3 bg-slate-50 p-3 xl:grid-cols-[210px_minmax(0,1fr)_250px]">
       <aside className="space-y-3">
         <section className="rounded-lg border bg-white p-3"><h3 className="mb-3 text-xs font-semibold uppercase text-slate-500">{t('shiftDetail')}</h3><dl className="space-y-3 text-xs">{[
@@ -56,7 +58,7 @@ export function LiveOperationsConsole({ shift, updates, report, brands, platform
       </aside>
       <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-3" role="tabpanel">{tab === 'updates' ? snapshots : tab === 'details' ? details : timeline}</section>
       <aside className="space-y-3"><section className="rounded-lg border bg-white p-3"><h3 className="mb-3 text-xs font-semibold uppercase text-slate-500">{t('staffing')}</h3>{roles.map(role => <div key={role} className="border-t py-2 text-xs"><p className="text-slate-500">{t(role)}</p><p className="mt-1 font-medium">{staffFor(role)}</p></div>)}</section>
-        <section className="rounded-lg border bg-white p-3"><h3 className="mb-2 text-xs font-semibold uppercase text-slate-500">{'Timeline'}</h3>{[...updates].sort((a,b) => b.time.localeCompare(a.time)).slice(0,4).map(update => <div key={update.id} className="border-t py-2 text-xs"><p className="text-slate-500">{new Date(update.time).toLocaleString()}</p><p className="mt-1">{update.notes || t('dashboardScreenshot')}</p></div>)}{!updates.length && <p className="text-xs text-slate-500">{t('updatesMissing')}</p>}</section>
+        <section className="rounded-lg border bg-white p-3"><h3 className="mb-2 text-xs font-semibold uppercase text-slate-500">{'Timeline'}</h3>{recent.map(update => <div key={update.id} className="border-t py-2 text-xs"><p className="text-slate-500">{new Date(update.time).toLocaleString()}</p><p className="mt-1">{update.notes || t('dashboardScreenshot')}</p></div>)}{!updates.length && <p className="text-xs text-slate-500">{t('updatesMissing')}</p>}</section>
         <section className="rounded-lg border bg-white p-3"><h3 className="mb-2 text-xs font-semibold uppercase text-slate-500">{t('reports')}</h3><p className="text-xs text-slate-500">{report ? report.status === 'in_review' ? t('inReview') : t(report.status ?? (report.metrics_confirmed ? 'confirmed' : 'draft')) : t('noReports')}</p></section>
       </aside>
     </div>

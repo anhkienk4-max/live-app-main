@@ -83,13 +83,19 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
   const [revSubmitting, setRevSubmitting] = React.useState(false)
   const [revError, setRevError] = React.useState<string | null>(null)
 
+  const readSequence = React.useRef(0)
   const loadSegments = React.useCallback(async () => {
+    const sequence = ++readSequence.current
+    setSegments([])
     setLoading(true)
     setLoadError(null)
     try {
       const res = await workforceService.getActualSegments(shift.id)
+      if (sequence !== readSequence.current) return
       setSegments(res.segments)
     } catch (err: unknown) {
+      if (sequence !== readSequence.current) return
+      setSegments([])
       setLoadError(workforceErrorMessage(err))
       toast({
         title: 'Không thể tải minh chứng chấm công',
@@ -97,15 +103,16 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
         variant: 'destructive',
       })
     } finally {
-      setLoading(false)
+      if (sequence === readSequence.current) setLoading(false)
     }
   }, [shift.id, toast])
 
   React.useEffect(() => {
+    const generation = readSequence
     const frame = requestAnimationFrame(() => {
       void loadSegments()
     })
-    return () => cancelAnimationFrame(frame)
+    return () => { cancelAnimationFrame(frame); generation.current++ }
   }, [loadSegments])
 
   // Pre-fill time when opening record modal
@@ -306,7 +313,7 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
             ) : segments.length === 0 ? (
               <tr>
                 <td colSpan={8} className="py-6 text-center text-slate-500">
-                  Chưa có phân đoạn chấm công nào được ghi nhận cho ca này.
+                  Chưa có minh chứng chấm công: UNKNOWN. Không suy diễn thành no-show từ lịch ca.
                 </td>
               </tr>
             ) : (
@@ -423,10 +430,10 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">
+                <label htmlFor="actualstaffingpanel-field-1" className="text-xs font-semibold text-slate-700">
                   Mã nhân sự (Staff ID) <span className="text-rose-500">*</span>
                 </label>
-                <Input
+                <Input id="actualstaffingpanel-field-1"
                   type="text"
                   required
                   placeholder="Nhập staff_id..."
@@ -490,10 +497,10 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
             {recEventKind === 'worked' && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">
+                  <label htmlFor="actualstaffingpanel-field-2" className="text-xs font-semibold text-slate-700">
                     Bắt đầu thực tế (ISO) <span className="text-rose-500">*</span>
                   </label>
-                  <Input
+                  <Input id="actualstaffingpanel-field-2"
                     type="text"
                     required
                     aria-label="Bắt đầu thực tế"
@@ -505,10 +512,10 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">
+                  <label htmlFor="actualstaffingpanel-field-3" className="text-xs font-semibold text-slate-700">
                     Kết thúc thực tế (ISO) <span className="text-rose-500">*</span>
                   </label>
-                  <Input
+                  <Input id="actualstaffingpanel-field-3"
                     type="text"
                     required
                     aria-label="Kết thúc thực tế"
@@ -522,10 +529,10 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-700">
+              <label htmlFor="actualstaffingpanel-field-4" className="text-xs font-semibold text-slate-700">
                 Ghi chú minh chứng đối soát <span className="text-rose-500">*</span>
               </label>
-              <Textarea
+              <Textarea id="actualstaffingpanel-field-4"
                 required
                 rows={2}
                 placeholder="Ghi rõ nguồn kiểm tra: camera, nhật ký phiên live, biên bản ca..."
@@ -611,10 +618,10 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">
+                <label htmlFor="actualstaffingpanel-field-5" className="text-xs font-semibold text-slate-700">
                   Ghi chú của người xét duyệt <span className="text-rose-500">*</span>
                 </label>
-                <Textarea
+                <Textarea id="actualstaffingpanel-field-5"
                   required
                   rows={2}
                   placeholder="Ghi rõ lý do phê duyệt hoặc từ chối (tối thiểu 8 ký tự)..."

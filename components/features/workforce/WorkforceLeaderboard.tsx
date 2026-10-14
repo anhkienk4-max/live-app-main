@@ -1,6 +1,9 @@
 'use client'
 
 import * as React from 'react'
+import { useListPagination } from '@/lib/hooks/useListPagination'
+import { pageRange } from '@/lib/utils/pagination'
+import { HistoryPagination } from '@/components/ui/history-pagination'
 import {
   Trophy,
   Award,
@@ -24,6 +27,9 @@ export function WorkforceLeaderboard({
   month,
   role,
 }: WorkforceLeaderboardProps) {
+  const pagination = useListPagination('workforce_leaderboard', 10)
+  const range = pageRange(leaderboard.length, pagination.page, pagination.pageSize)
+  const pageRows = leaderboard.slice((range.page - 1) * pagination.pageSize, range.page * pagination.pageSize)
   const roleLabels: Record<WorkforceRole, string> = {
     host: 'Host Livestream',
     support: 'Trợ lý phiên Live',
@@ -89,7 +95,7 @@ export function WorkforceLeaderboard({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {leaderboard.map((entry) => {
+                {pageRows.map((entry) => {
                   const hours = Math.floor(entry.approved_actual_minutes / 60)
                   const mins = entry.approved_actual_minutes % 60
                   const medal = rankBadges[entry.rank - 1]
@@ -159,7 +165,9 @@ export function WorkforceLeaderboard({
             <li>Ưu tiên xếp hạng theo <strong>Tỷ lệ đúng giờ</strong>, sau đó đến <strong>Số ca làm việc thực tế</strong> và <strong>Tổng giờ làm việc</strong>.</li>
           </ul>
         </div>
-      </CardContent>
+
+        <HistoryPagination page={range.page} pageSize={pagination.pageSize} total={leaderboard.length} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />
+</CardContent>
     </Card>
   )
 }

@@ -26,7 +26,7 @@ export function ReportsView({ reports, shifts, brands, platforms, campaigns, use
 }) {
   const { t } = useTranslation()
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [pageSize, setPageSize] = useState(20)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detailTab, setDetailTab] = useState<DetailTab>('overview')
   const safePage = Math.min(page, Math.max(1, Math.ceil(reports.length / pageSize)))

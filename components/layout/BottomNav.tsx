@@ -9,6 +9,8 @@ import { useTranslation } from '@/lib/i18n'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { resolveSystemPermission } from '@/lib/permissions'
 import { getNavigationForRole, filterNav } from '@/lib/ui/role-ux'
+import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
+import { filterWorkforceNavigation } from '@/lib/ui/workforceNavigation'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,7 +25,8 @@ export function BottomNav() {
   const { currentUser } = useCurrentUser()
 
   const rawNav = getNavigationForRole(resolveSystemPermission(currentUser))
-  const roleNav = filterNav(rawNav, currentUser)
+  const { capabilities } = useWorkforceCapabilities()
+  const roleNav = filterWorkforceNavigation(filterNav(rawNav, currentUser), capabilities)
   const activeHref = resolveActiveNavigation(roleNav, pathname, search)
 
   // At 390px: up to 4 primary slots + 1 overflow trigger (5th col)

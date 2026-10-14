@@ -38,6 +38,11 @@ try {
       },
     },
     module: { rules: [{ test: /\.tsx?$/, exclude: /node_modules/, use: loader }] },
+    plugins: [new webpack.DefinePlugin({
+      'process.env.NEXT_PUBLIC_USE_MOCK_DATA': JSON.stringify('false'),
+      'process.env.NEXT_PUBLIC_SUPABASE_URL': JSON.stringify(''),
+      'process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY': JSON.stringify(''),
+    })],
     optimization: { minimize: false },
   }, (error, stats) => error || stats.hasErrors()
     ? reject(error || new Error(stats.toString({ all: false, errors: true }))) : accept()))
