@@ -241,7 +241,7 @@ test('Month View uses stable responsive limits and sorts sessions by start time'
   }))
   const markup = renderToStaticMarkup(createElement(
     LanguageProvider,
-    null,
+    { defaultLanguage: 'en' },
     createElement(MonthView, {
       currentDate: new Date('2026-08-20T00:00:00'),
       shifts: tenSessions,

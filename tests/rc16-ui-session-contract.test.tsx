@@ -6,18 +6,23 @@ import { AuthIdentityProvider } from '@/lib/auth/AuthIdentityProvider'
 import PayrollPage from '@/app/(dashboard)/payroll/page'
 import WorkforcePage from '@/app/(dashboard)/workforce/page'
 import { mockUsers } from '@/lib/services/mockData'
+import { LanguageProvider } from '@/lib/i18n'
 
 for (const Page of [PayrollPage, WorkforcePage]) {
-  test(Page.name + ' waits for capabilities before mounting protected workspace', () => {
-    const markup = renderToStaticMarkup(
-      <AuthIdentityProvider mode="supabase" identity={null} businessUser={mockUsers[0]}>
-        <Page />
-      </AuthIdentityProvider>,
-    )
-    assert.match(markup, /role="status"/)
-    assert.match(markup, /Đang xác minh/)
-    assert.doesNotMatch(markup, /AUTHENTICATION_REQUIRED|Khung lương|Dòng lương chi tiết/)
-  })
+  for (const [language, loadingLabel] of [['vi', 'Đang xác minh'], ['en', 'Verifying session']] as const) {
+    test(Page.name + ' waits for capabilities before mounting protected workspace in ' + language, () => {
+      const markup = renderToStaticMarkup(
+        <LanguageProvider defaultLanguage={language}>
+          <AuthIdentityProvider mode="supabase" identity={null} businessUser={mockUsers[0]}>
+            <Page />
+          </AuthIdentityProvider>
+        </LanguageProvider>,
+      )
+      assert.match(markup, /role="status"/)
+      assert.ok(markup.includes(loadingLabel))
+      assert.doesNotMatch(markup, /AUTHENTICATION_REQUIRED|Khung lương|Dòng lương chi tiết/)
+    })
+  }
 }
 
 test('client requests authenticated no-store capabilities and preserves cancellation', async () => {

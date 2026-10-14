@@ -97,7 +97,7 @@ export function OperationalFileWorkspace() {
   React.useEffect(() => {
     if(!canView)return
     let active = true
-    setPeriodDate(today())
+    const frame = window.requestAnimationFrame(() => setPeriodDate(today()))
     void fetch('/api/operational-files?catalog=1', { cache: 'no-store' })
       .then(async response => {
         const data = await response.json() as CatalogResponse & { error?: { code: string } }
@@ -119,7 +119,7 @@ export function OperationalFileWorkspace() {
           setPlatformId(valid?.id || '')
         }
       }).catch(err => { if (active) setError(String(err instanceof Error ? err.message : err)) })
-    return () => { active = false }
+    return () => { active = false; window.cancelAnimationFrame(frame) }
   }, [actorKey,canView,requestedCategory,requestedCampaignId,requestedShiftId])
 
   const refresh = React.useCallback(async () => {
@@ -144,8 +144,8 @@ export function OperationalFileWorkspace() {
 
   React.useEffect(() => {
     const versionRef = requestVersion
-    if (catalog) void refresh()
-    return()=>{versionRef.current++}
+    const frame = window.requestAnimationFrame(() => { if (catalog) void refresh() })
+    return()=>{window.cancelAnimationFrame(frame);versionRef.current++}
   }, [catalog, refresh])
 
   const providerPayload = (action: 'prepare_folder' | 'attach_existing') => ({

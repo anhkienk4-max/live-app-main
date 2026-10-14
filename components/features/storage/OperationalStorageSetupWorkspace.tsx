@@ -117,7 +117,10 @@ export function OperationalStorageSetupWorkspace() {
       if(isCurrent(request))setError(reason instanceof Error ? reason.message : 'Không đọc được tình trạng setup')
     } finally { if(isCurrent(request))setBusy(false) }
   }, [offset,pageSize,navigate,next,isCurrent,canManage])
-  React.useEffect(() => {void refresh();return()=>invalidate()}, [refresh,invalidate])
+  React.useEffect(() => {
+    const frame = window.requestAnimationFrame(() => { void refresh() })
+    return () => { window.cancelAnimationFrame(frame); invalidate() }
+  }, [refresh,invalidate])
 
   const mutate = async (payload: Record<string, unknown>) => {
     setBusy(true)

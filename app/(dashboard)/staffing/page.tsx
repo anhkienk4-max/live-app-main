@@ -9,8 +9,10 @@ import { ShiftRegistrationBoard } from '@/components/features/calendar/ShiftRegi
 import { RegistrationReviewWorkspace } from '@/components/features/registration'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useTranslation } from '@/lib/i18n'
 
 function StaffingContent() {
+  const { t, translate } = useTranslation()
   const searchParams = useSearchParams()
   const router = useRouter()
   const { currentUser } = useCurrentUser()
@@ -33,8 +35,8 @@ function StaffingContent() {
         <PageHeaderContent>
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-semibold">Staffing</h1>
-              <p className="text-sm text-muted-foreground">Manage shift requirements, gaps, and assignments.</p>
+              <h1 className="text-2xl font-semibold">{t('staffing')}</h1>
+              <p className="text-sm text-muted-foreground">{translate('Manage shift requirements, gaps, and assignments.')}</p>
             </div>
 
             {/* TAB SELECTOR */}

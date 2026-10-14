@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
+import { useTranslation } from '@/lib/i18n'
 import type { User as BusinessUser } from '@/lib/types/database.types'
 import { resolveSystemPermission } from '@/lib/permissions'
 import { useToast } from '@/components/ui/toast'
@@ -31,11 +32,12 @@ import { PayrollDraftWorkspace } from '@/components/features/payroll/PayrollDraf
 import { PayrollAuditTimeline } from '@/components/features/payroll/PayrollAuditTimeline'
 
 export default function PayrollPage() {
+  const { translate } = useTranslation()
   const { currentUser, loading, error, capabilities, identityKey } = useWorkforceCapabilities()
-  if (loading) return <PageShell archetype="command" className="p-4 md:p-6"><p role="status">Đang xác minh phiên đăng nhập và quyền truy cập…</p></PageShell>
-  if (error) return <PageShell archetype="command" className="p-4 md:p-6"><p role="alert">{error}</p></PageShell>
-  if (!currentUser || resolveSystemPermission(currentUser) !== 'admin') return <PageShell archetype="command" className="p-4 md:p-6"><p role="alert">Bạn không có quyền truy cập bảng lương (403).</p></PageShell>
-  if (!capabilities?.payroll) return <PageShell archetype="command" className="p-4 md:p-6"><p role="status">Tính năng đang tắt. Vui lòng chờ cấu hình được phê duyệt.</p></PageShell>
+  if (loading) return <PageShell archetype="command" className="p-4 md:p-6"><p role="status">{translate('Đang xác minh phiên đăng nhập và quyền truy cập…')}</p></PageShell>
+  if (error) return <PageShell archetype="command" className="p-4 md:p-6"><p role="alert">{translate(error)}</p></PageShell>
+  if (!currentUser || resolveSystemPermission(currentUser) !== 'admin') return <PageShell archetype="command" className="p-4 md:p-6"><p role="alert">{translate('Bạn không có quyền truy cập bảng lương (403).')}</p></PageShell>
+  if (!capabilities?.payroll) return <PageShell archetype="command" className="p-4 md:p-6"><p role="status">{translate('Tính năng đang tắt. Vui lòng chờ cấu hình được phê duyệt.')}</p></PageShell>
   return <PayrollWorkspace key={identityKey} currentUser={currentUser} />
 }
 

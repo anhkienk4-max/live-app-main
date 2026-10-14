@@ -69,7 +69,7 @@ test('compact Day grid keeps 08:00 and earlier real shifts visible',()=>{
 
 test('staffing summary scopes canonical approved registrations and excludes pending/other shifts',()=>{
   const registration=(id:string,shiftId:string,status:ShiftRegistration['status']):ShiftRegistration=>({id,shift_id:shiftId,user_id:id,operational_role:'host',status,source:'self_registration',requested_at:'2100-09-01T00:00:00Z',created_at:'2100-09-01T00:00:00Z',updated_at:'2100-09-01T00:00:00Z'})
-  const html=renderToStaticMarkup(React.createElement(LanguageProvider,null,React.createElement(StaffingShiftSummary,{shift:gridShift,registrations:[registration('approved',gridShift.id,'approved'),registration('pending',gridShift.id,'pending'),registration('other','other-shift','approved')]})))
+  const html=renderToStaticMarkup(React.createElement(LanguageProvider,{defaultLanguage:'en'},React.createElement(StaffingShiftSummary,{shift:gridShift,registrations:[registration('approved',gridShift.id,'approved'),registration('pending',gridShift.id,'pending'),registration('other','other-shift','approved')]})))
   assert.match(html,/Host: 1\/2/)
   assert.match(html,/Support: 0\/1/)
   assert.doesNotMatch(html,/Host: 2\/2/)
