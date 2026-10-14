@@ -52,4 +52,7 @@ do $$ begin
   raise exception 'Anonymous Reports unexpectedly allowed';
 end $$;
 reset role;
+set role authenticated;
+select set_config('rc16k.actor','member',true);
 explain (analyze,buffers) select public.get_report_list_page(1,20,'{"brandIds":["reports-gate"]}');
+reset role;

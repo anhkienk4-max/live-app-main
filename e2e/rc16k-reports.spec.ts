@@ -116,3 +116,66 @@ test('Closing Reports picker prevents a pending target from reopening a modal', 
   })
   await expect(page.getByRole('dialog')).toHaveCount(0)
 })
+
+test('Changing Reports picker filters discards pending selected-target staffing', async ({ page }) => {
+  await fixture(page)
+  await delayStaffing(page)
+  await page.getByTestId('open-final-report-modal').click()
+  const picker = page.getByTestId('report-shift-picker')
+  await expect(picker.getByTestId('report-shift-choose').first()).toBeVisible()
+  await picker.getByTestId('report-shift-choose').first().click()
+  await expect.poll(() => page.evaluate(() => (window as FixtureWindow).reportsFixture.calls.length)).toBeGreaterThan(0)
+  await picker.getByTestId('report-shift-search').fill('absent-picker-filter')
+  await expect(picker.getByTestId('report-shift-choose')).toHaveCount(0)
+  await page.evaluate(async () => {
+    (window as FixtureWindow).reportsFixture.release?.()
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  })
+  await expect(picker).toBeVisible()
+  await expect(page.getByRole('dialog')).toHaveCount(1)
+})
+
+test('Reports Member picker opens a directly assigned Support shift', async ({ page }) => {
+  await fixture(page, '5')
+  await page.getByTestId('open-final-report-modal').click()
+  const picker = page.getByTestId('report-shift-picker')
+  await picker.getByTestId('report-shift-search').fill('Fashion launch live')
+  await expect(picker.getByTestId('report-shift-choose')).toHaveCount(1)
+  await picker.getByTestId('report-shift-choose').click()
+  await expect(picker).toHaveCount(0)
+  await expect(page.getByRole('dialog').getByRole('heading', { name: 'Create Final Report' })).toBeVisible()
+  await expect(page.getByRole('dialog').getByText(/Emily Davis/)).toBeVisible()
+})
+
+test('Reports Member deep link resumes their own draft with submission and review boundaries', async ({ page }) => {
+  await fixture(page, '3')
+  await page.evaluate(() => {
+    const service = (window as FixtureWindow).reportsFixture.services.reportService
+    const original = service.getByShift
+    service.getByShift = async id => {
+      const report = await original.call(service, id)
+      return report && { ...report, status: 'draft', metrics_confirmed: false }
+    }
+    history.pushState(null, '', '/reports?shiftId=s5')
+  })
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('button', { name: 'Save draft' })).toBeEnabled()
+  await expect(dialog.getByRole('button', { name: 'Save Final Report' })).toBeDisabled()
+  await expect(dialog.getByText(/Sarah Johnson/)).toBeVisible()
+})
+
+test('Reports latest selection wins over a delayed earlier deep link', async ({ page }) => {
+  await fixture(page)
+  await delayStaffing(page)
+  await page.evaluate(() => history.pushState(null, '', '/reports?shiftId=s2'))
+  await expect.poll(() => page.evaluate(() => (window as FixtureWindow).reportsFixture.calls)).toContain('s2')
+  await page.evaluate(() => history.pushState(null, '', '/reports?shiftId=s5'))
+  const heading = page.getByRole('dialog').getByRole('heading', { name: 'TechGear Pro - Final Report' })
+  await expect(heading).toBeVisible()
+  await page.evaluate(async () => {
+    (window as FixtureWindow).reportsFixture.release?.()
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  })
+  await expect(heading).toBeVisible()
+  await expect(page.getByRole('dialog').getByRole('heading', { name: 'Create Final Report' })).toHaveCount(0)
+})

@@ -22,6 +22,7 @@ Canonical memory must be synchronized after the implementation commit and commit
 Read-only snapshot: `rc16k-uxw2-production-schema-snapshot.json`, project `egdjnpmoasarrttvhgds`. It records actual `pg_get_functiondef`, regprocedure signatures, ACLs, security modes, search_path, table RLS/policies and indexes.
 
 - Ledger `20261014173408` is named `20261012171503_rc16k_bounded_shift_lists`, with joined-statements MD5 `5b72cf4d6aea5c63e0bc143d99c5da7a`. The filename version is not the applied version.
+- The full applied ledger SQL (one 47,750-character statement) was fetched read-only and compared with source. The only substantive difference is the source hunk adding direct assignment/report-submitter to `mine`; the other difference is final whitespace. The applied SQL contains the registration-only predicate.
 - Actual `get_report_list_page(integer,integer,jsonb,boolean)` lacks whole-filter `summary` and shift-title search.
 - Actual `private.filtered_shift_ids(text,jsonb)` lacks direct assignment and report-submitter Reports candidates.
 - Actual `private.can_read_shift(text)` lacks submitter-only shift access; changing only the picker predicate cannot bypass caller RLS.
@@ -41,7 +42,9 @@ Reports modal context now loads target registrations instead of current-page reg
 
 New evidence comprises actual PostgreSQL RPC/RLS checks, runtime collection handler tests for all three roles and mounted `/reports` browser tests at 390/768/1440/1920 with deferred staffing responses. Browser fixtures do not represent signed-in Supabase or physical provider UAT.
 
-Local PG17 and PG16 broad rehearsals each passed 90 assertions. PG16 focused Reports rehearsal also passed 21 assertions. Six mounted browser cases passed: four widths and delayed account/close responses. An earlier local PG16 broad run timed out in the pre-existing 1000-row baseline loop; limits were not raised. Fixture ANALYZE supplies real planner statistics. A sequential broad PG16 run subsequently passed without changing timeout limits; final GitHub matrix remains required. Performance figures from isolated fixture EXPLAIN are not Production-load evidence.
+Local PG17 and PG16 broad rehearsals each passed 90 assertions. Focused Reports rehearsal passed 21 assertions. Eleven mounted browser cases passed: four widths, delayed account/close/filter responses, privacy-safe staffing, a Support Member's picker, an owner's draft review boundary and latest-selection wins. The filter-race regression first reproduced stale selection opening a modal after the picker search changed; picker invalidation now cancels the container's target request too. An earlier local PG16 broad run timed out in the pre-existing 1000-row baseline loop; limits were not raised. Fixture ANALYZE supplies real planner statistics, and the report shift/submitter indexes mirror the captured Production definitions. A sequential broad PG16 run subsequently passed without changing timeout limits; final GitHub matrix remains required. Performance figures from isolated authenticated-Member fixture EXPLAIN are not Production-load evidence.
+
+Full local release manifest with checked-in Shopee/TikTok screenshot environment variables: **1628 PASS, 0 FAIL, 3 SKIP**; only the three named opt-in staging checks were skipped, as allowed by the unchanged gate. Full ESLint: 0 errors, 24 warnings. TypeScript, secret-free CI build and canonical memory validation passed. The historical GL-03 gate fields stay pinned by the existing validator; current Git baseline is recorded in `repository.origin_main` and this evidence, without changing policy rules.
 
 ## Remaining gates
 

@@ -51,6 +51,8 @@ const setup = [
   "insert into public.business_users(id,system_permission) select 'other-'||n,'member' from generate_series(1,117) n; insert into public.shift_registrations(id,shift_id,user_id,operational_role,status,source) select 'pending-'||n,'0001','other-'||n,'host','pending','self_registration' from generate_series(1,117) n;",
   "grant select on public.business_users to authenticated;",
   table(reportSource,'reports'),table(reportSource,'report_revisions'),table(auditSource,'audit_logs'),table(auditSource,'audit_log_reviews'),
+  ...JSON.parse(read('docs/release/rc16k-uxw2-production-schema-snapshot.json')).indexes
+    .filter(index => ['reports_shift_id_idx','reports_submitted_by_idx'].includes(index.indexname)).map(index => index.indexdef + ';'),
   table('supabase/migrations/20260905191836_live_dashboard_update_persistence.sql','dashboard_updates'),
   table('supabase/migrations/20260826082036_shift_swap_production.sql','swap_requests'),
   "alter table public.reports enable row level security; grant select on public.reports to authenticated; "+read('supabase/migrations/20260903110000_f10_report_active_business_user_rls.sql').slice(read('supabase/migrations/20260903110000_f10_report_active_business_user_rls.sql').indexOf('drop policy if exists reports_active_select'),read('supabase/migrations/20260903110000_f10_report_active_business_user_rls.sql').indexOf('drop policy if exists report_revisions_read')),
@@ -141,3 +143,4 @@ child.stdin.end(sql)
 const code = await new Promise((resolve,reject) => { child.on('error',reject); child.on('close',resolve); child.stdin.on('error',reject) })
 assert.equal(code,0,output)
 console.log('PASS PostgreSQL ' + major + ': ' + (output.match(/RC16K_PASS:/g)?.length ?? 0) + ' bounded pagination/RLS assertions; fixture rolled back')
+console.log('Reports filtered RPC fixture EXPLAIN: ' + (output.match(/Execution Time: [\d.]+ ms/)?.[0] ?? 'unavailable'))

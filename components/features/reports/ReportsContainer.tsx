@@ -154,6 +154,7 @@ export function ReportsContainer() {
   }, [encodedFilters, identity, reportPage, reportPageSize])
 
   React.useEffect(() => () => { targetVersion.current++ }, [identity, encodedFilters, reportPage, reportPageSize])
+  const invalidateTarget = React.useCallback(() => { targetVersion.current++ }, [])
 
   const closeTarget = () => {
     targetVersion.current++
@@ -545,6 +546,7 @@ export function ReportsContainer() {
           open={showShiftPicker}
           onOpenChange={open => { if (!open) targetVersion.current++; setShowShiftPicker(open) }}
           currentUser={currentUser}
+          onInvalidateTarget={invalidateTarget}
           onTarget={target => { void openTarget(target.shift.id).catch(showTargetError) }}
         />
       )}

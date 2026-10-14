@@ -19,12 +19,13 @@ const PAGE_SIZE = 20
  * A selected target is always verified by an exact authenticated lookup.
  */
 export function ReportShiftPicker({
-  open, onOpenChange, currentUser, onTarget,
+  open, onOpenChange, currentUser, onTarget, onInvalidateTarget,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   currentUser: User
   onTarget: (target: ReportTarget) => void
+  onInvalidateTarget: () => void
 }) {
   const { t, language } = useTranslation()
   const [search, setSearch] = React.useState('')
@@ -90,8 +91,8 @@ export function ReportShiftPicker({
   React.useEffect(() => {
     const versionRef = requestVersion
     const timer = setTimeout(() => { void loadPage() }, 0)
-    return () => { clearTimeout(timer); versionRef.current++ }
-  }, [loadPage])
+    return () => { clearTimeout(timer); versionRef.current++; onInvalidateTarget() }
+  }, [loadPage, onInvalidateTarget])
 
   // A permission or account switch must not leak the previous user's list.
   const visible = open && loadedIdentity === identity && loadedFilterKey === filterKey &&
