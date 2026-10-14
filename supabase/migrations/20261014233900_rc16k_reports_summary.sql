@@ -31,10 +31,10 @@ begin
     select * from matching order by updated_at desc,id limit p_page_size offset ((select page from stats)-1)*p_page_size
   ), metrics as (
     select count(*) filter(where not m.metrics_confirmed) needs_review,
-      sum(private.rc16k_report_metric(m,'revenue')) filter(where m.status='confirmed' and m.metrics_confirmed) total_revenue,
-      sum(private.rc16k_report_metric(m,'revenue')) filter(where m.status='confirmed' and m.metrics_confirmed and private.rc16k_report_metric(m,'orders') is not null and private.rc16k_report_metric(m,'revenue') is not null) paired_revenue,
-      sum(private.rc16k_report_metric(m,'orders')) filter(where m.status='confirmed' and m.metrics_confirmed and private.rc16k_report_metric(m,'orders') is not null and private.rc16k_report_metric(m,'revenue') is not null) paired_orders
-    from matching m
+      sum(private.rc16k_report_metric(r,'revenue')) filter(where m.status='confirmed' and m.metrics_confirmed) total_revenue,
+      sum(private.rc16k_report_metric(r,'revenue')) filter(where m.status='confirmed' and m.metrics_confirmed and private.rc16k_report_metric(r,'orders') is not null and private.rc16k_report_metric(r,'revenue') is not null) paired_revenue,
+      sum(private.rc16k_report_metric(r,'orders')) filter(where m.status='confirmed' and m.metrics_confirmed and private.rc16k_report_metric(r,'orders') is not null and private.rc16k_report_metric(r,'revenue') is not null) paired_orders
+    from matching m join public.reports r on r.id=m.id
   )
   select jsonb_build_object('rows',coalesce(jsonb_agg(case when p_summary then (
       select jsonb_object_agg(key,value) from jsonb_each(to_jsonb(selected)) where key in (
