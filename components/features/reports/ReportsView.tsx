@@ -311,12 +311,10 @@ export function ReportsView({
                       ? 'Chưa có báo cáo ca trực nào được tạo'
                       : 'Chưa có báo cáo ca trực nào được tạo.')}
                 </p>
-                <p className="text-xs text-slate-500">
-                  {completedShiftsCount && completedShiftsCount > 0
-                    ? t('reportDraftReady', { count: completedShiftsCount })
-                    : t('noReportDraftReady')}
-                </p>
-                {onCreateReport && completedShiftsCount && completedShiftsCount > 0 ? (
+                {completedShiftsCount !== undefined && <p className="text-xs text-slate-500">
+                  {completedShiftsCount > 0 ? t('reportDraftReady', { count: completedShiftsCount }) : t('noReportDraftReady')}
+                </p>}
+                {onCreateReport ? (
                   <Button size="sm" onClick={onCreateReport} className="mt-2" data-testid="empty-create-report-button">
                     <Plus className="mr-1.5 h-3.5 w-3.5" />
                     {t('createFinalReport')}

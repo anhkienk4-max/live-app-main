@@ -34,6 +34,7 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { ReportDetailModal } from './ReportDetailModal'
 import { ReportFormModal } from './ReportFormModal'
+import { ReportShiftPicker } from './ReportShiftPicker'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
@@ -77,8 +78,6 @@ export function ReportsContainer() {
   const { toast } = useToast()
   const [reports, setReports] = React.useState<Report[]>([])
   const [shifts, setShifts] = React.useState<Shift[]>([])
-  const [candidateShifts, setCandidateShifts] = React.useState<Shift[]>([])
-  const [candidateReports, setCandidateReports] = React.useState<Report[]>([])
   const [reportTotal, setReportTotal] = React.useState(0)
   const [reportPage, setReportPage] = React.useState(1)
   const [reportPageSize, setReportPageSize] = React.useState<10 | 20 | 50>(20)
@@ -93,6 +92,7 @@ export function ReportsContainer() {
   const [selectedReport, setSelectedReport] = React.useState<Report | null>(null)
   const [deepLinkedShift, setDeepLinkedShift] = React.useState<Shift | null>(null)
   const [showForm, setShowForm] = React.useState(false)
+  const [showShiftPicker, setShowShiftPicker] = React.useState(false)
   const [formInitialShiftId, setFormInitialShiftId] = React.useState<string | undefined>(undefined)
   const [formInitialReport, setFormInitialReport] = React.useState<Report | undefined>(undefined)
   const [removeTarget, setRemoveTarget] = React.useState<Report | null>(null)
@@ -120,18 +120,11 @@ export function ReportsContainer() {
     setLoading(true)
     setLoadError(null)
     try {
-      const [page, candidates, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers] = await Promise.all([
+      const [page, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers] = await Promise.all([
         reportService.getFilteredPage({ page: reportPage, pageSize: reportPageSize, filters: JSON.parse(encodedFilters) }),
-        shiftService.getReportCandidates(30),
         brandService.getAll(), platformService.getAll(), campaignService.getAll(), userService.getAll(),
       ])
-      const candidateIds = candidates.map(shift => shift.id)
-      const [existingCandidateReports, reportShifts] = await Promise.all([
-        reportService.getForShifts(candidateIds),
-        shiftService.getByIds(page.items.map(report => report.shift_id)),
-      ])
-      const candidateSet = new Set(candidateIds)
-      const relevantShifts = [...candidates, ...reportShifts.filter(shift => !candidateSet.has(shift.id))]
+      const relevantShifts = await shiftService.getByIds(page.items.map(report => report.shift_id))
       const loadedRegistrations = await shiftRegistrationService.getForShifts(relevantShifts.map(shift => shift.id))
       if (version !== requestVersion.current) return
       setReports(page.items)
@@ -141,8 +134,6 @@ export function ReportsContainer() {
       const summary = (page as typeof page & { summary?: { revenue: number | null; aov: number | null; needsReview: number } }).summary
       setReportSummary(summary ?? null)
       setShifts(relevantShifts)
-      setCandidateShifts(candidates)
-      setCandidateReports(existingCandidateReports)
       setBrands(loadedBrands)
       setPlatforms(loadedPlatforms)
       setCampaigns(loadedCampaigns)
@@ -176,6 +167,7 @@ export function ReportsContainer() {
       setSelectedReport(null)
       setDeepLinkedShift(null)
       setShowForm(false)
+      setShowShiftPicker(false)
       setFormInitialReport(undefined)
       setFormInitialShiftId(undefined)
       setRemoveTarget(null)
@@ -224,15 +216,6 @@ export function ReportsContainer() {
   }
 
   const shiftById = React.useMemo(() => new Map(shifts.map(shift => [shift.id, shift])), [shifts])
-  const completedShifts = React.useMemo(() => {
-    const reported = new Set(candidateReports.map(report => report.shift_id))
-    return candidateShifts.filter(shift =>
-      ['preparing', 'live', 'paused', 'completed'].includes(shift.status) &&
-      !reported.has(shift.id) &&
-      (currentUser && hasPermission(currentUser, 'reports.review') || myShiftIds.has(shift.id))
-    )
-  }, [candidateReports, candidateShifts, currentUser, myShiftIds])
-
   const activeFilterCount = React.useMemo(() => {
     let count = 0
     if (filters.start) count++
@@ -366,17 +349,14 @@ export function ReportsContainer() {
             <div className="text-right text-[11px] leading-tight">
               <p className="font-medium text-slate-700">{t('finalReportWorkflow')}</p>
               <p className="hidden text-amber-800 sm:block">
-                {completedShifts.length ? t('reportDraftReady', { count: completedShifts.length }) : t('noReportDraftReady')}
+                {t('chooseLiveOrCompletedShift')}
               </p>
             </div>
             <Button
               size="sm"
               onClick={() => {
-                setFormInitialShiftId(undefined)
-                setFormInitialReport(undefined)
-                setShowForm(true)
+                setShowShiftPicker(true)
               }}
-              disabled={!completedShifts.length}
               data-testid="open-final-report-modal"
             >
               <Plus className="mr-1.5 h-4 w-4" />
@@ -528,21 +508,33 @@ export function ReportsContainer() {
         hasActiveFilters={activeFilterCount > 0 || Boolean(filters.search)}
         onResetFilters={() => setFilters(emptyFilters)}
         totalUnfilteredReports={reportTotal}
-        onCreateReport={currentUser && hasPermission(currentUser, 'reports.submit') && completedShifts.length > 0 ? () => {
-          setFormInitialShiftId(undefined)
-          setFormInitialReport(undefined)
-          setShowForm(true)
-        } : undefined}
-        completedShiftsCount={completedShifts.length}
+        onCreateReport={currentUser && hasPermission(currentUser, 'reports.submit') ? () => setShowShiftPicker(true) : undefined}
       />
 
+      {showShiftPicker && currentUser && hasPermission(currentUser, 'reports.submit') && (
+        <ReportShiftPicker
+          open={showShiftPicker}
+          onOpenChange={setShowShiftPicker}
+          currentUser={currentUser}
+          onTarget={target => {
+            setShowShiftPicker(false)
+            setDeepLinkedShift(target.shift)
+            if (target.mode === 'detail') setSelectedReport(target.report)
+            else {
+              setFormInitialShiftId(target.shift.id)
+              setFormInitialReport(target.report)
+              setShowForm(true)
+            }
+          }}
+        />
+      )}
       {showForm && (
         <ReportFormModal
           open={showForm}
-          onOpenChange={setShowForm}
+          onOpenChange={open => { setShowForm(open); if (!open) setDeepLinkedShift(null) }}
           initialShiftId={formInitialShiftId}
           initialReport={formInitialReport}
-          completedShifts={deepLinkedShift && !completedShifts.some(shift => shift.id === deepLinkedShift.id) ? [...completedShifts, deepLinkedShift] : completedShifts}
+          completedShifts={deepLinkedShift ? [deepLinkedShift] : []}
           brands={brands}
           platforms={platforms}
           campaigns={campaigns}
