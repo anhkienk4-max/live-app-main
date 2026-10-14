@@ -82,6 +82,10 @@ test('unassigned staff and another report owner cannot open an editable target',
   await assert.rejects(loadReportTarget(oldShift.id, lookup(oldShift, { ...draft, submitted_by: 'someone-else' }), member, new Set([oldShift.id])), /REPORT_TARGET_FORBIDDEN/)
 })
 
+test('Member cannot open another finalized report on an unrelated shift', async () => {
+  await assert.rejects(loadReportTarget(oldShift.id, lookup(oldShift, { ...draft, submitted_by: 'other', status: 'confirmed', metrics_confirmed: true }), member, new Set()), /REPORT_TARGET_FORBIDDEN/)
+})
+
 test('missing, inaccessible, deleted, archived and mismatched targets never resolve another shift', async () => {
   for (const shift of [null, { ...oldShift, deleted_at: '2026-10-07' },
     { ...oldShift, archived_at: '2026-10-07' }, recent[0]]) {

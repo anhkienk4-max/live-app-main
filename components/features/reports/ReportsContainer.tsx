@@ -91,6 +91,9 @@ export function ReportsContainer() {
   const [showFilters, setShowFilters] = React.useState(false)
   const [selectedReport, setSelectedReport] = React.useState<Report | null>(null)
   const [deepLinkedShift, setDeepLinkedShift] = React.useState<Shift | null>(null)
+  const [targetRegistrations, setTargetRegistrations] = React.useState<ShiftRegistration[]>([])
+  const [targetIdentity, setTargetIdentity] = React.useState('')
+  const targetVersion = React.useRef(0)
   const [showForm, setShowForm] = React.useState(false)
   const [showShiftPicker, setShowShiftPicker] = React.useState(false)
   const [formInitialShiftId, setFormInitialShiftId] = React.useState<string | undefined>(undefined)
@@ -150,6 +153,49 @@ export function ReportsContainer() {
     }
   }, [encodedFilters, identity, reportPage, reportPageSize])
 
+  React.useEffect(() => () => { targetVersion.current++ }, [identity, encodedFilters, reportPage, reportPageSize])
+
+  const closeTarget = () => {
+    targetVersion.current++
+    setShowForm(false)
+    setSelectedReport(null)
+    setDeepLinkedShift(null)
+    setTargetRegistrations([])
+    setTargetIdentity('')
+  }
+
+  const openTarget = React.useCallback(async (shiftId: string, detail = false) => {
+    if (!currentUser) return
+    const version = ++targetVersion.current
+    setShowForm(false)
+    setSelectedReport(null)
+    try {
+      const staffing = await shiftRegistrationService.getForShift(shiftId)
+      const staffed = new Set(staffing.filter(registration =>
+        registration.user_id === currentUser.id && isStaffedRegistration(registration)
+      ).map(registration => registration.shift_id))
+      const target = await loadReportTarget(shiftId, {
+        getShift: id => shiftService.getById(id),
+        getReport: id => reportService.getByShift(id),
+      }, currentUser, staffed)
+      if (version !== targetVersion.current || identityForExport.current !== identity) return
+      setDeepLinkedShift(target.shift)
+      setTargetRegistrations(staffing)
+      setTargetIdentity(identity)
+      setShowShiftPicker(false)
+      if (target.mode === 'detail' || detail && target.report) setSelectedReport(target.report!)
+      else {
+        setFormInitialShiftId(target.shift.id)
+        setFormInitialReport(target.report)
+        setShowForm(true)
+      }
+    } catch (error) {
+      if (version === targetVersion.current && identityForExport.current === identity) throw error
+    }
+  }, [currentUser, identity])
+
+  const showTargetError = (error: unknown) => toast({ title: t('reportTargetUnavailable'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+
   React.useEffect(() => {
     const timer = setTimeout(() => setReportPage(1), 0)
     return () => clearTimeout(timer)
@@ -176,10 +222,6 @@ export function ReportsContainer() {
     })
     return () => window.cancelAnimationFrame(frame)
   }, [identity])
-
-  const myShiftIds = React.useMemo(() => new Set(registrations
-    .filter(registration => registration.user_id === currentUser?.id && isStaffedRegistration(registration))
-    .map(registration => registration.shift_id)), [currentUser?.id, registrations])
 
   const requestRemove = async (report: Report) => {
     if (!currentUser) return
@@ -236,39 +278,26 @@ export function ReportsContainer() {
     if (!deepLinkShiftId || identity !== loadedIdentity || loading || userLoading ||
         handledDeepLink.current === deepLinkShiftId || !currentUser) return
     let active = true
+    const targetRef = targetVersion
     const version = requestVersion.current
     const timer = setTimeout(() => {
       void (async () => {
         try {
-          const targetRegistrations = await shiftRegistrationService.getForShift(deepLinkShiftId)
-          const staffed = new Set(myShiftIds)
-          for (const registration of targetRegistrations) {
-            if (registration.user_id === currentUser.id && isStaffedRegistration(registration)) staffed.add(registration.shift_id)
-          }
-          const target = await loadReportTarget(deepLinkShiftId, {
-            getShift: id => shiftService.getById(id),
-            getReport: id => reportService.getByShift(id),
-          }, currentUser, staffed)
+          await openTarget(deepLinkShiftId)
           if (!active || version !== requestVersion.current) return
           handledDeepLink.current = deepLinkShiftId
-          setDeepLinkedShift(target.shift)
-          if (target.mode === 'detail') setSelectedReport(target.report)
-          else {
-            setFormInitialShiftId(target.shift.id)
-            setFormInitialReport(target.report)
-            setShowForm(true)
-          }
-        } catch {
+        } catch (error) {
           if (!active || version !== requestVersion.current) return
           handledDeepLink.current = deepLinkShiftId
+          toast({ title: t('reportTargetUnavailable'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
         }
         if (active && version === requestVersion.current && searchParams.has('shiftId')) {
           router.replace(clearReportShiftQuery(pathname, searchParams.toString()), { scroll: false })
         }
       })()
     }, 0)
-    return () => { active = false; clearTimeout(timer) }
-  }, [currentUser, deepLinkShiftId, identity, loadedIdentity, loading, myShiftIds, pathname, router, searchParams, userLoading])
+    return () => { active = false; clearTimeout(timer); targetRef.current++ }
+  }, [currentUser, deepLinkShiftId, identity, loadedIdentity, loading, openTarget, pathname, router, searchParams, t, toast, userLoading])
 
   // Server already applies all filters across all pages.
 
@@ -502,7 +531,7 @@ export function ReportsContainer() {
         users={users}
         registrations={registrations}
         currentUser={currentUser}
-        onView={setSelectedReport}
+        onView={report => { void openTarget(report.shift_id, true).catch(showTargetError) }}
         onExport={currentUser && hasPermission(currentUser, 'reports.export') ? report => exportReportDetailToExcel(report, exportContext) : undefined}
         onRemove={report => { void requestRemove(report) }}
         hasActiveFilters={activeFilterCount > 0 || Boolean(filters.search)}
@@ -514,24 +543,15 @@ export function ReportsContainer() {
       {showShiftPicker && currentUser && hasPermission(currentUser, 'reports.submit') && (
         <ReportShiftPicker
           open={showShiftPicker}
-          onOpenChange={setShowShiftPicker}
+          onOpenChange={open => { if (!open) targetVersion.current++; setShowShiftPicker(open) }}
           currentUser={currentUser}
-          onTarget={target => {
-            setShowShiftPicker(false)
-            setDeepLinkedShift(target.shift)
-            if (target.mode === 'detail') setSelectedReport(target.report)
-            else {
-              setFormInitialShiftId(target.shift.id)
-              setFormInitialReport(target.report)
-              setShowForm(true)
-            }
-          }}
+          onTarget={target => { void openTarget(target.shift.id).catch(showTargetError) }}
         />
       )}
-      {showForm && (
+      {showForm && targetIdentity === identity && (
         <ReportFormModal
           open={showForm}
-          onOpenChange={open => { setShowForm(open); if (!open) setDeepLinkedShift(null) }}
+          onOpenChange={open => { if (!open) closeTarget() }}
           initialShiftId={formInitialShiftId}
           initialReport={formInitialReport}
           completedShifts={deepLinkedShift ? [deepLinkedShift] : []}
@@ -539,11 +559,11 @@ export function ReportsContainer() {
           platforms={platforms}
           campaigns={campaigns}
           users={users}
-          registrations={registrations}
-          onSuccess={() => { void loadData(); setShowForm(false) }}
+          registrations={targetRegistrations}
+          onSuccess={() => { closeTarget(); void loadData() }}
         />
       )}
-      {selectedReport && (
+      {selectedReport && targetIdentity === identity && (
         <ReportDetailModal
           open
           report={selectedReport}
@@ -551,9 +571,9 @@ export function ReportsContainer() {
           brands={brands}
           platforms={platforms}
           users={users}
-          registrations={registrations}
-          onOpenChange={open => !open && setSelectedReport(null)}
-          onUpdated={() => { void loadData(); setSelectedReport(null) }}
+          registrations={targetRegistrations}
+          onOpenChange={open => { if (!open) closeTarget() }}
+          onUpdated={() => { closeTarget(); void loadData() }}
           campaigns={campaigns}
         />
       )}

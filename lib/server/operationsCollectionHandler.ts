@@ -16,7 +16,7 @@ import type { ListQuery } from '@/lib/services/operationsPageService'
 
 const shiftFilterKeys = ['search','from','to','brandIds','platformIds','campaignIds','studios','roles','registrationStatuses','statuses','descending','assignedUserIds','hostIds','supportIds','technicalIds','operationalRoles','staffingStates','registrationStates','hasImportedStaffing','shiftIds']
 const filterKeys: Record<string,string[]> = {
-  shifts:shiftFilterKeys,live_shifts:shiftFilterKeys,open_shifts:shiftFilterKeys,my_shifts:shiftFilterKeys,
+  shifts:shiftFilterKeys,live_shifts:shiftFilterKeys,open_shifts:shiftFilterKeys,my_shifts:[...shiftFilterKeys,'reportCandidates'],
   staff:['search','statuses','roles','systemPermissions','archived'],brands:['search','statuses'],platforms:['search','statuses'],campaigns:['search','statuses','brandIds'],
   notifications:['search','statuses','types'],reports:[...shiftFilterKeys,'reportStatuses','metricsStatuses'],analytics_reports:[...shiftFilterKeys,'reportStatuses','metricsStatuses'],registration_reviews:['search','statuses','roles'],
   archives:[],account_requests:['statuses'],live_updates:['shiftIds'],import_batches:[],schedule_changes:['from','to','actorIds','actionIds','shiftIds','brandIds','sources'],
@@ -29,6 +29,7 @@ export const listFiltersSchema = z.object({
   brandIds: choices, platformIds: choices, campaignIds: choices, studios: choices,
   roles: z.array(z.enum(['host', 'support', 'technical'])).max(3).optional(),
   registrationStatuses: z.array(z.enum(['pending', 'approved', 'manually_assigned'])).max(3).optional(),
+  reportCandidates: z.boolean().optional(),
   archived: z.boolean().optional(), systemPermissions: z.array(z.enum(['admin', 'leader', 'member'])).max(3).optional(), assignedUserIds: choices,
   hostIds: choices, supportIds: choices, technicalIds: choices, operationalRoles: z.array(z.enum(['host','support','technical'])).max(3).optional(), staffingStates: z.array(z.enum(['fully_staffed','missing_staff'])).max(2).optional(), registrationStates: z.array(z.enum(['pending','approved','manually_assigned','rejected','cancelled','removed'])).max(6).optional(), hasImportedStaffing: z.boolean().optional(),
   severity: z.enum(['all','error','warning','info']).optional(), qualitySources: z.array(z.enum(['schedule_import','report','staffing'])).max(3).optional(),

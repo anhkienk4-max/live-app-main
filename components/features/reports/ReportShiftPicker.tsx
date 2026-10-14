@@ -52,6 +52,7 @@ export function ReportShiftPicker({
     if (!open || !canSubmit || (from && to && from > to)) return
     const version = ++requestVersion.current
     setLoading(true)
+    setSelectingId(null)
     setError('')
     try {
       const filters = {
@@ -60,10 +61,10 @@ export function ReportShiftPicker({
         from: from || undefined,
         to: to || undefined,
       }
-      // Members see only their registered shifts; reviewers can browse all visible shifts.
+      // Reports add direct assignments and own submissions without changing My Shifts filters.
       const result = canReview
         ? await shiftService.getPage({ page, pageSize: PAGE_SIZE, filters })
-        : await shiftService.getRegistrationPage('mine', { page, pageSize: PAGE_SIZE, filters })
+        : await shiftService.getRegistrationPage('mine', { page, pageSize: PAGE_SIZE, filters: { ...filters, reportCandidates: true } })
       const ids = result.items.map(shift => shift.id)
       const [existingReports, staffing] = await Promise.all([
         reportService.getForShifts(ids),
@@ -87,8 +88,9 @@ export function ReportShiftPicker({
   }, [canReview, canSubmit, deferredSearch, filterKey, from, identity, open, page, to])
 
   React.useEffect(() => {
+    const versionRef = requestVersion
     const timer = setTimeout(() => { void loadPage() }, 0)
-    return () => { clearTimeout(timer); requestVersion.current++ }
+    return () => { clearTimeout(timer); versionRef.current++ }
   }, [loadPage])
 
   // A permission or account switch must not leak the previous user's list.

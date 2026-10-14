@@ -1,0 +1,290 @@
+{
+  "target": "PRODUCTION",
+  "project": "egdjnpmoasarrttvhgds",
+  "captured_at": "2026-10-15",
+  "ledger": [
+    {
+      "version": "20261012000000",
+      "name": "rc16_workforce_payroll_foundation",
+      "statements_md5": null
+    },
+    {
+      "version": "20261012000001",
+      "name": "rc16b_draft_payroll_correction",
+      "statements_md5": null
+    },
+    {
+      "version": "20261012145735",
+      "name": "p0_audit_privilege_hardening",
+      "statements_md5": "be74b525a9d3ca5b8b0d8aea1f8d4a36"
+    },
+    {
+      "version": "20261014173408",
+      "name": "20261012171503_rc16k_bounded_shift_lists",
+      "statements_md5": "5b72cf4d6aea5c63e0bc143d99c5da7a"
+    }
+  ],
+  "functions": [
+    {
+      "nspname": "private",
+      "proname": "can_read_shift",
+      "signature": "private.can_read_shift(text)",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "definition": "CREATE OR REPLACE FUNCTION private.can_read_shift(p_shift_id text)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n  select coalesce((\n    select case\n      when (select private.current_system_permission()) = 'admin' then true\n      when shift.deleted_at is not null or shift.archived_at is not null then false\n      when (select private.current_system_permission()) = 'leader' then true\n      else (\n        (\n          shift.status = 'scheduled'\n          and shift.registration_locked = false\n          and shift.end_at > statement_timestamp()\n        )\n        or (select private.current_business_user_id()) in\n          (shift.host_id, shift.support_id, shift.technical_id)\n        or exists (\n          select 1\n          from public.shift_registrations as registration\n          where registration.shift_id = shift.id\n            and registration.user_id = (select private.current_business_user_id())\n            and registration.status in ('pending', 'approved', 'manually_assigned')\n        )\n      )\n    end\n    from public.shifts as shift\n    where shift.id = p_shift_id\n      and (select private.current_business_user_is_active())\n  ), false);\n$function$\n"
+    },
+    {
+      "nspname": "private",
+      "proname": "filtered_shift_ids",
+      "signature": "private.filtered_shift_ids(text,jsonb)",
+      "prosecdef": false,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "definition": "CREATE OR REPLACE FUNCTION private.filtered_shift_ids(p_scope text, p_filters jsonb)\n RETURNS TABLE(id text, date date, start_time time without time zone, status text)\n LANGUAGE plpgsql\n STABLE\n SET search_path TO ''\nAS $function$\ndeclare\n  actor text := private.current_business_user_id();\n  key text;\n  roles text[];\n  reg_statuses text[];\n  search_text text;\nbegin\n  if actor is null then raise exception using errcode='42501',message='AUTHENTICATION_REQUIRED'; end if;\n  if p_scope not in ('all','open','mine') or jsonb_typeof(p_filters) is distinct from 'object'\n    or octet_length(p_filters::text)>16384 then raise exception using errcode='22023',message='LIST_FILTER_INVALID'; end if;\n  for key in select jsonb_object_keys(p_filters) loop\n    if key not in ('search','from','to','brandIds','platformIds','campaignIds','studios','roles','registrationStatuses','statuses','descending','assignedUserIds','hostIds','supportIds','technicalIds','operationalRoles','staffingStates','registrationStates','hasImportedStaffing','shiftIds') then\n      raise exception using errcode='22023',message='LIST_FILTER_INVALID';\n    end if;\n  end loop;\n  foreach key in array array['brandIds','platformIds','campaignIds','studios','roles','registrationStatuses','statuses','assignedUserIds','hostIds','supportIds','technicalIds','operationalRoles','staffingStates','registrationStates','shiftIds'] loop\n    if p_filters ? key and (jsonb_typeof(p_filters->key) is distinct from 'array') then\n      raise exception using errcode='22023',message='LIST_FILTER_INVALID';\n    end if;\n    if p_filters ? key and jsonb_array_length(p_filters->key)>50 then\n      raise exception using errcode='22023',message='LIST_FILTER_INVALID';\n    end if;\n    if exists(select 1 from jsonb_array_elements(coalesce(p_filters->key,'[]'::jsonb)) value\n      where jsonb_typeof(value)<>'string' or length(value#>>'{}')>128) then\n      raise exception using errcode='22023',message='LIST_FILTER_INVALID';\n    end if;\n  end loop;\n  if (p_filters ? 'hasImportedStaffing' and jsonb_typeof(p_filters->'hasImportedStaffing')<>'boolean')\n    or (p_filters ? 'search' and jsonb_typeof(p_filters->'search')<>'string')\n    or (p_filters ? 'descending' and jsonb_typeof(p_filters->'descending')<>'boolean')\n    or (p_filters ? 'from' and (jsonb_typeof(p_filters->'from')<>'string' or p_filters->>'from' !~ '^\\d{4}-\\d{2}-\\d{2}$'))\n    or (p_filters ? 'to' and (jsonb_typeof(p_filters->'to')<>'string' or p_filters->>'to' !~ '^\\d{4}-\\d{2}-\\d{2}$'))\n    or (p_filters ? 'from' and p_filters ? 'to' and (p_filters->>'from')::date>(p_filters->>'to')::date) then\n    raise exception using errcode='22023',message='LIST_FILTER_INVALID';\n  end if;\n  if length(coalesce(p_filters->>'search',''))>256 then raise exception using errcode='22023',message='LIST_FILTER_INVALID'; end if;\n  roles := array(select jsonb_array_elements_text(coalesce(p_filters->'roles','[]'::jsonb)));\n  reg_statuses := array(select jsonb_array_elements_text(coalesce(p_filters->'registrationStatuses','[]'::jsonb)));\n  if exists(select 1 from unnest(roles) value where value not in ('host','support','technical'))\n    or exists(select 1 from unnest(reg_statuses) value where value not in ('pending','approved','manually_assigned')) then\n    raise exception using errcode='22023',message='LIST_FILTER_INVALID';\n  end if;\n  search_text := replace(replace(replace(lower(coalesce(p_filters->>'search','')),chr(92),chr(92)||chr(92)),'%',chr(92)||'%'),'_',chr(92)||'_');\n  return query\n    select s.id,s.date,s.start_time,s.status\n    from public.shifts s\n    left join public.brands b on b.id=s.brand_id\n    left join public.platforms p on p.id=s.platform_id\n    where s.deleted_at is null and s.archived_at is null\n      and (jsonb_array_length(coalesce(p_filters->'shiftIds','[]'))=0 or s.id in (select jsonb_array_elements_text(p_filters->'shiftIds')))\n      and (p_scope<>'open' or (s.status='scheduled' and s.end_at>now()))\n      and (not p_filters ? 'from' or s.date >= (p_filters->>'from')::date)\n      and (not p_filters ? 'to' or s.date <= (p_filters->>'to')::date)\n      and (jsonb_array_length(coalesce(p_filters->'brandIds','[]'))=0 or s.brand_id in (select jsonb_array_elements_text(p_filters->'brandIds')))\n      and (jsonb_array_length(coalesce(p_filters->'platformIds','[]'))=0 or s.platform_id in (select jsonb_array_elements_text(p_filters->'platformIds')))\n      and (jsonb_array_length(coalesce(p_filters->'campaignIds','[]'))=0 or s.campaign_id in (select jsonb_array_elements_text(p_filters->'campaignIds')))\n      and (jsonb_array_length(coalesce(p_filters->'statuses','[]'))=0 or s.status::text in (select jsonb_array_elements_text(p_filters->'statuses')))\n      and (jsonb_array_length(coalesce(p_filters->'studios','[]'))=0 or exists(\n        select 1 from jsonb_array_elements_text(p_filters->'studios') studio\n        where lower(regexp_replace(btrim(coalesce(s.studio,'')), '\\s+', ' ', 'g'))=studio\n          or (studio='__unassigned__' and btrim(coalesce(s.studio,''))='')\n      ))\n      and (search_text='' or lower(concat_ws(' ',b.name,p.name,s.title,s.product_notes,s.studio)) like '%'||search_text||'%' escape E'\\\\')\n      and (jsonb_array_length(coalesce(p_filters->'assignedUserIds','[]'))=0 or exists(\n        select 1 from jsonb_array_elements_text(p_filters->'assignedUserIds') staff_id\n        where staff_id in (s.host_id,s.support_id,s.technical_id) or exists(\n          select 1 from public.shift_registrations r where r.shift_id=s.id and r.user_id=staff_id and r.status in ('approved','manually_assigned')\n        )\n      ))\n      and (jsonb_array_length(coalesce(p_filters->'hostIds','[]'))=0 or s.host_id in (select jsonb_array_elements_text(p_filters->'hostIds')) or exists(\n        select 1 from public.shift_registrations r where r.shift_id=s.id and r.operational_role='host' and r.status in ('approved','manually_assigned') and r.user_id in (select jsonb_array_elements_text(p_filters->'hostIds'))))\n      and (jsonb_array_length(coalesce(p_filters->'supportIds','[]'))=0 or s.support_id in (select jsonb_array_elements_text(p_filters->'supportIds')) or exists(\n        select 1 from public.shift_registrations r where r.shift_id=s.id and r.operational_role='support' and r.status in ('approved','manually_assigned') and r.user_id in (select jsonb_array_elements_text(p_filters->'supportIds'))))\n      and (jsonb_array_length(coalesce(p_filters->'technicalIds','[]'))=0 or s.technical_id in (select jsonb_array_elements_text(p_filters->'technicalIds')) or exists(\n        select 1 from public.shift_registrations r where r.shift_id=s.id and r.operational_role='technical' and r.status in ('approved','manually_assigned') and r.user_id in (select jsonb_array_elements_text(p_filters->'technicalIds'))))\n      and (jsonb_array_length(coalesce(p_filters->'operationalRoles','[]'))=0 or exists(\n        select 1 from (values ('host',s.required_host_count),('support',s.required_support_count),('technical',s.required_technical_count)) demand(role,n)\n        where demand.n>0 and demand.role in (select jsonb_array_elements_text(p_filters->'operationalRoles'))))\n      and (jsonb_array_length(coalesce(p_filters->'staffingStates','[]'))=0 or exists(\n        select 1 from public.get_shift_staffing_summary(array[s.id]) summary\n        having (bool_and(summary.approved>=summary.required) and p_filters->'staffingStates' ? 'fully_staffed')\n          or (not bool_and(summary.approved>=summary.required) and p_filters->'staffingStates' ? 'missing_staff')))\n      and (jsonb_array_length(coalesce(p_filters->'registrationStates','[]'))=0 or exists(\n        select 1 from public.shift_registrations r where r.shift_id=s.id and r.status::text in (select jsonb_array_elements_text(p_filters->'registrationStates'))))\n      and (not coalesce((p_filters->>'hasImportedStaffing')::boolean,false) or exists(\n        select 1 from public.shift_registrations r where r.shift_id=s.id and (r.imported_name is not null or r.source='legacy_assignment')))\n      and (p_scope<>'mine' or exists(\n        select 1 from public.shift_registrations r where r.shift_id=s.id and r.user_id=actor\n          and r.status in ('pending','approved','manually_assigned')\n          and (cardinality(roles)=0 or r.operational_role::text=any(roles))\n          and (cardinality(reg_statuses)=0 or r.status::text=any(reg_statuses))\n      ))\n;\nend;\n$function$\n"
+    },
+    {
+      "nspname": "private",
+      "proname": "rc16k_report_metric",
+      "signature": "private.rc16k_report_metric(reports,text)",
+      "prosecdef": false,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "definition": "CREATE OR REPLACE FUNCTION private.rc16k_report_metric(r reports, k text)\n RETURNS numeric\n LANGUAGE plpgsql\n IMMUTABLE\n SET search_path TO ''\nAS $function$\nbegin\n  if jsonb_typeof(r.normalized_metrics->k)='number' then return (r.normalized_metrics->>k)::numeric; end if;\n  if jsonb_typeof(r.platform_metrics->k)='number' then return (r.platform_metrics->>k)::numeric; end if;\n  if k='revenue' then\n    if jsonb_typeof(r.platform_metrics->'sales')='number' then return (r.platform_metrics->>'sales')::numeric; end if;\n    return r.revenue;\n  end if;\n  if k='gmv' then return r.gmv; end if;\n  if k='orders' then return r.orders; end if;\n  if k='engaged_viewers' then return coalesce(r.viewers,r.average_viewer); end if;\n  if k='product_clicks' then return r.product_clicks; end if;\n  if k='ctr' then return r.ctr; end if;\n  if k='conversion_rate' then return r.cvr; end if;\n  if k='live_duration_seconds' then return r.live_duration_minutes*60; end if;\n  raise exception using errcode='22023',message='ANALYTICS_METRIC_INVALID';\nend;\n$function$\n"
+    },
+    {
+      "nspname": "public",
+      "proname": "get_analytics_snapshot",
+      "signature": "get_analytics_snapshot(jsonb)",
+      "prosecdef": false,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "definition": "CREATE OR REPLACE FUNCTION public.get_analytics_snapshot(p_filters jsonb)\n RETURNS jsonb\n LANGUAGE plpgsql\n STABLE\n SET search_path TO ''\nAS $function$\ndeclare start_date date; end_date date; previous_start date; days integer; filter_key text; result jsonb;\n  empty_metrics jsonb:='{\"revenue\":null,\"gmv\":null,\"orders\":null,\"viewers\":null,\"productClicks\":null,\"ctr\":null,\"cvr\":null,\"averageOrderValue\":null,\"liveDuration\":null,\"reportCount\":0}'::jsonb;\nbegin\n  if private.current_business_user_id() is null then raise exception using errcode='42501',message='AUTHENTICATION_REQUIRED'; end if;\n  if jsonb_typeof(p_filters) is distinct from 'object' or octet_length(p_filters::text)>16384\n    or not p_filters ? 'from' or not p_filters ? 'to'\n    or p_filters->>'from' !~ '^\\d{4}-\\d{2}-\\d{2}$' or p_filters->>'to' !~ '^\\d{4}-\\d{2}-\\d{2}$' then\n    raise exception using errcode='22023',message='LIST_FILTER_INVALID';\n  end if;\n  for filter_key in select jsonb_object_keys(p_filters) loop\n    if filter_key not in ('from','to','brandIds','platformIds','campaignIds','hostIds','supportIds','technicalIds') then\n      raise exception using errcode='22023',message='LIST_FILTER_INVALID';\n    end if;\n  end loop;\n  start_date:=(p_filters->>'from')::date; end_date:=(p_filters->>'to')::date;\n  if start_date>end_date then raise exception using errcode='22023',message='LIST_FILTER_INVALID'; end if;\n  days:=end_date-start_date+1; previous_start:=start_date-days;\n  with scoped as materialized (\n    select s.* from private.filtered_shift_ids('all',jsonb_set(jsonb_set(p_filters,'{from}',to_jsonb(previous_start::text)),'{to}',to_jsonb(end_date::text))) ids\n    join public.shifts s on s.id=ids.id\n  ), staffed as materialized (\n    select s.id shift_id,a.user_id,a.role from scoped s\n    cross join lateral (values (s.host_id,'host'),(s.support_id,'support'),(s.technical_id,'technical')) a(user_id,role) where a.user_id is not null\n    union\n    select s.id,r.user_id,r.operational_role::text from scoped s join public.shift_registrations r on r.shift_id=s.id\n      where r.status in ('approved','manually_assigned')\n  ), report_values as materialized (\n    select r.id,s.id shift_id,s.date,s.brand_id,s.platform_id,s.campaign_id,\n      private.rc16k_report_metric(r,'revenue') revenue,private.rc16k_report_metric(r,'gmv') gmv,\n      private.rc16k_report_metric(r,'orders') orders,private.rc16k_report_metric(r,'engaged_viewers') viewers,\n      private.rc16k_report_metric(r,'product_clicks') clicks,private.rc16k_report_metric(r,'ctr') ctr,\n      private.rc16k_report_metric(r,'conversion_rate') cvr,private.rc16k_report_metric(r,'live_duration_seconds') duration\n    from public.reports r join scoped s on s.id=r.shift_id\n    where r.status='confirmed' and r.metrics_confirmed and r.deleted_at is null and r.archived_at is null\n  ), grouped as materialized (\n    select g.kind,g.key,sum(v.revenue) revenue,sum(v.gmv) gmv,sum(v.orders) orders,sum(v.viewers) viewers,\n      sum(v.clicks) \"productClicks\",avg(v.ctr) ctr,avg(v.cvr) cvr,\n      case when sum(v.orders) filter(where v.revenue is not null and v.orders is not null)>0\n        then sum(v.revenue) filter(where v.revenue is not null and v.orders is not null)\n          /sum(v.orders) filter(where v.revenue is not null and v.orders is not null) else null end \"averageOrderValue\",\n      sum(v.duration)/60 \"liveDuration\",count(*) \"reportCount\"\n    from report_values v cross join lateral (values\n      ('total',case when v.date>=start_date then 'current' else 'previous' end),\n      (case when v.date>=start_date then 'trend' else null end,\n        case when days<=31 then v.date::text when days<=120 then date_trunc('week',v.date)::date::text else to_char(v.date,'YYYY-MM') end),\n      (case when v.date>=start_date then 'brand' else null end,v.brand_id),\n      (case when v.date>=start_date then 'platform' else null end,v.platform_id),\n      (case when v.date>=start_date then 'campaign' else null end,v.campaign_id)\n    ) g(kind,key) where g.kind is not null group by g.kind,g.key\n  ), workload as (\n    select st.user_id,count(*) filter(where st.role='host') host,count(*) filter(where st.role='support') support,\n      count(*) filter(where st.role='technical') technical from staffed st join scoped s on s.id=st.shift_id\n    where s.date>=start_date group by st.user_id\n  ), host_performance as (\n    select st.user_id,sum(v.revenue) revenue from report_values v join staffed st on st.shift_id=v.shift_id and st.role='host'\n    where v.date>=start_date group by st.user_id\n  )\n  select jsonb_build_object(\n    'totals',coalesce((select to_jsonb(g)-'kind'-'key' from grouped g where kind='total' and key='current'),empty_metrics),\n    'previous',coalesce((select to_jsonb(g)-'kind'-'key' from grouped g where kind='total' and key='previous'),empty_metrics),\n    'trend',coalesce((select jsonb_agg((to_jsonb(g)-'kind'-'key')||jsonb_build_object('period',key) order by key) from grouped g where kind='trend'),'[]'::jsonb),\n    'brands',coalesce((select jsonb_agg((to_jsonb(g)-'kind'-'key')||jsonb_build_object('id',key) order by key) from grouped g where kind='brand'),'[]'::jsonb),\n    'platforms',coalesce((select jsonb_agg((to_jsonb(g)-'kind'-'key')||jsonb_build_object('id',key) order by key) from grouped g where kind='platform'),'[]'::jsonb),\n    'campaigns',coalesce((select jsonb_agg((to_jsonb(g)-'kind'-'key')||jsonb_build_object('id',key) order by key) from grouped g where kind='campaign'),'[]'::jsonb),\n    'workload',coalesce((select jsonb_agg(to_jsonb(w) order by w.user_id) from workload w),'[]'::jsonb),\n    'hostPerformance',coalesce((select jsonb_agg(to_jsonb(h) order by h.user_id) from host_performance h),'[]'::jsonb)\n  ) into result;\n  return result;\nend;\n$function$\n"
+    },
+    {
+      "nspname": "public",
+      "proname": "get_report_list_page",
+      "signature": "get_report_list_page(integer,integer,jsonb,boolean)",
+      "prosecdef": false,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "definition": "CREATE OR REPLACE FUNCTION public.get_report_list_page(p_page integer DEFAULT 1, p_page_size integer DEFAULT 20, p_filters jsonb DEFAULT '{}'::jsonb, p_summary boolean DEFAULT false)\n RETURNS jsonb\n LANGUAGE plpgsql\n STABLE\n SET search_path TO ''\nAS $function$\ndeclare result jsonb; search_text text;\nbegin\n  if private.current_business_user_id() is null then raise exception using errcode='42501',message='AUTHENTICATION_REQUIRED'; end if;\n  if p_page is null or p_page<1 or p_page>100000 or p_page_size is null or p_page_size not in (10,20,50)\n    or jsonb_typeof(p_filters) is distinct from 'object' or octet_length(p_filters::text)>16384\n    or length(coalesce(p_filters->>'search',''))>256 then raise exception using errcode='22023',message='LIST_QUERY_INVALID'; end if;\n  if (p_filters ? 'reportStatuses' and (jsonb_typeof(p_filters->'reportStatuses')<>'array' or jsonb_array_length(p_filters->'reportStatuses')>50))\n    or (p_filters ? 'metricsStatuses' and (jsonb_typeof(p_filters->'metricsStatuses')<>'array' or jsonb_array_length(p_filters->'metricsStatuses')>2)) then\n    raise exception using errcode='22023',message='LIST_FILTER_INVALID';\n  end if;\n  search_text := replace(replace(replace(lower(coalesce(p_filters->>'search','')),chr(92),chr(92)||chr(92)),'%',chr(92)||'%'),'_',chr(92)||'_');\n  with shift_ids as materialized (\n    select * from private.filtered_shift_ids('all',p_filters-'reportStatuses'-'metricsStatuses'-'search')\n  ), matching as materialized (\n    select r.* from public.reports r join shift_ids on shift_ids.id=r.shift_id\n    join public.shifts s on s.id=r.shift_id\n    left join public.brands b on b.id=s.brand_id left join public.platforms p on p.id=s.platform_id\n    left join public.campaigns c on c.id=s.campaign_id\n    where r.deleted_at is null and r.archived_at is null\n      and (jsonb_array_length(coalesce(p_filters->'reportStatuses','[]'))=0 or r.status::text in (select jsonb_array_elements_text(p_filters->'reportStatuses')))\n      and (jsonb_array_length(coalesce(p_filters->'metricsStatuses','[]'))=0 or (case when r.metrics_confirmed then 'confirmed' else 'unconfirmed' end) in (select jsonb_array_elements_text(p_filters->'metricsStatuses')))\n      and (search_text='' or lower(concat_ws(' ',r.id,b.name,p.name,c.name)) like '%'||search_text||'%' escape E'\\\\')\n  ), stats as (\n    select count(*) total,least(p_page,greatest(1,ceil(count(*)::numeric/p_page_size)::integer)) page from matching\n  ), selected as (\n    select * from matching order by updated_at desc,id limit p_page_size offset ((select page from stats)-1)*p_page_size\n  )\n  select jsonb_build_object('rows',coalesce(jsonb_agg(case when p_summary then (\n      select jsonb_object_agg(key,value) from jsonb_each(to_jsonb(selected)) where key in (\n        'id','shift_id','status','metrics_confirmed','created_at','updated_at','normalized_metrics','platform_metrics',\n        'revenue','gmv','orders','viewers','peak_viewer','average_viewer','product_clicks','ctr','cvr','average_order_value','live_duration_minutes','dashboard_platform'\n      )\n    ) else to_jsonb(selected) end order by updated_at desc,id),'[]'::jsonb),\n    'total',(select total from stats),'page',(select page from stats),'pageSize',p_page_size) into result from selected;\n  return result;\nend;\n$function$\n"
+    },
+    {
+      "nspname": "public",
+      "proname": "get_shift_list_page",
+      "signature": "get_shift_list_page(text,integer,integer,jsonb,integer,boolean)",
+      "prosecdef": false,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "definition": "CREATE OR REPLACE FUNCTION public.get_shift_list_page(p_scope text DEFAULT 'all'::text, p_page integer DEFAULT 1, p_page_size integer DEFAULT 20, p_filters jsonb DEFAULT '{}'::jsonb, p_pending_page integer DEFAULT 1, p_include_live boolean DEFAULT false)\n RETURNS jsonb\n LANGUAGE plpgsql\n STABLE\n SET search_path TO ''\nAS $function$\ndeclare\n  actor text := private.current_business_user_id();\n  total bigint;\n  safe_page integer;\n  ids text[];\n  key text;\n  result jsonb;\n  related jsonb;\n  pending_total bigint := 0;\n  pending_page integer := 1;\n  pending_ids jsonb;\n  latest_updates jsonb;\n  roles text[];\n  reg_statuses text[];\n  search_text text;\nbegin\n  if actor is null then raise exception using errcode='42501',message='AUTHENTICATION_REQUIRED'; end if;\n  if p_scope is null or p_scope not in ('all','open','mine')\n    or p_page is null or p_page < 1 or p_page > 100000\n    or p_page_size is null or p_page_size not in (10,20,50)\n    or p_pending_page is null or p_pending_page < 1\n    or jsonb_typeof(p_filters) is distinct from 'object'\n    or octet_length(p_filters::text) > 16384 then\n    raise exception using errcode='22023',message='PAGINATION_INVALID';\n  end if;\n  roles := array(select jsonb_array_elements_text(coalesce(p_filters->'roles','[]'::jsonb)));\n  with matching as materialized (\n    select * from private.filtered_shift_ids(p_scope,p_filters)\n\n  ), stats as (\n    select count(*) n,least(p_page,greatest(1,ceil(count(*)::numeric/p_page_size)::integer)) page from matching\n  ), selected as (\n    select m.* from matching m\n    order by case when p_include_live then case m.status when 'live' then 0 when 'paused' then 1 when 'preparing' then 2 when 'scheduled' then 3 when 'completed' then 4 else 5 end end,\n      case when coalesce((p_filters->>'descending')::boolean,false) then m.date end desc,\n      case when not coalesce((p_filters->>'descending')::boolean,false) then m.date end,\n      case when coalesce((p_filters->>'descending')::boolean,false) then m.start_time end desc,\n      case when not coalesce((p_filters->>'descending')::boolean,false) then m.start_time end, m.id\n    limit p_page_size offset ((select page from stats)-1)*p_page_size\n  ), rows as (\n    select s.id, s.date, s.start_time, s.end_time, s.timezone, s.start_at, s.end_at, s.end_date, s.crosses_midnight, s.duration_minutes, s.brand_id, s.execution_source, s.platform_id, s.campaign_id, s.title, s.studio, s.host_id, s.support_id, s.technical_id, s.host_names, s.assistant_names, s.technical_names, s.required_host_count, s.required_support_count, s.required_technical_count, s.registration_locked, s.registration_cutoff_at, s.allow_multi_role, s.import_batch_id, s.status, s.status_mode, s.live_link, s.product_notes, s.updated_by, s.created_at, s.updated_at, s.version, s.deleted_at, s.deleted_by, s.archived_at, s.archived_by, s.deletion_reason, exists(\n      select 1 from public.shift_registrations r join public.shifts other_shift on other_shift.id=r.shift_id\n      where r.user_id=actor and r.shift_id<>s.id and r.status in ('pending','approved','manually_assigned')\n        and other_shift.deleted_at is null and other_shift.archived_at is null\n        and other_shift.start_at<s.end_at and other_shift.end_at>s.start_at\n    ) as registration_conflict from selected chosen join public.shifts s on s.id=chosen.id\n  ) select coalesce(jsonb_agg(to_jsonb(rows) order by\n    case when p_include_live then case rows.status when 'live' then 0 when 'paused' then 1 when 'preparing' then 2 when 'scheduled' then 3 when 'completed' then 4 else 5 end end,\n    case when coalesce((p_filters->>'descending')::boolean,false) then rows.date end desc,\n    case when not coalesce((p_filters->>'descending')::boolean,false) then rows.date end,\n    case when coalesce((p_filters->>'descending')::boolean,false) then rows.start_time end desc,\n    case when not coalesce((p_filters->>'descending')::boolean,false) then rows.start_time end, rows.id), '[]'::jsonb),\n    array_agg(rows.id), (select n from stats), (select page from stats) into result,ids,total,safe_page from rows;\n  if total is null then total := 0; safe_page := 1; end if;\n  ids := coalesce(ids,array[]::text[]);\n  select count(*) into pending_total from public.shift_registrations r\n    where r.shift_id=any(ids) and r.status='pending'\n      and (cardinality(roles)=0 or r.operational_role::text=any(roles));\n  pending_page := least(p_pending_page,greatest(1,ceil(pending_total::numeric/20)::integer));\n  with mine as (\n    select r.* from public.shift_registrations r where r.shift_id=any(ids) and r.user_id=actor\n      and r.status in ('pending','approved','manually_assigned')\n  ), pending as (\n    select r.* from public.shift_registrations r where r.shift_id=any(ids) and r.status='pending'\n      and (cardinality(roles)=0 or r.operational_role::text=any(roles))\n    order by r.requested_at,r.id limit 20 offset (pending_page-1)*20\n  ), approved as (\n    select r.* from public.shift_registrations r where r.shift_id=any(ids) and r.status in ('approved','manually_assigned')\n    order by r.requested_at,r.id limit 150\n  ), related_rows as (select * from mine union select * from pending union select * from approved)\n  select coalesce(jsonb_agg(to_jsonb(related_rows) order by requested_at,id),'[]'::jsonb) into related from related_rows;\n  select coalesce(jsonb_agg(id),'[]'::jsonb) into pending_ids from (select r.id from public.shift_registrations r where r.shift_id=any(ids) and r.status='pending' and (cardinality(roles)=0 or r.operational_role::text=any(roles)) order by r.requested_at,r.id limit 20 offset (pending_page-1)*20) pending;\n  if p_include_live then\n    select coalesce(jsonb_agg(to_jsonb(latest)),'[]'::jsonb) into latest_updates from (\n      select distinct on (u.shift_id) u.* from public.dashboard_updates u\n      where u.shift_id=any(ids) and u.deleted_at is null order by u.shift_id,u.time desc,u.id\n    ) latest;\n  end if;\n  return jsonb_build_object('rows',result,'registrations',related,'total',total,'page',safe_page,'pageSize',p_page_size,\n    'updates',coalesce(latest_updates,'[]'::jsonb),'pendingIds',pending_ids,'pendingTotal',pending_total,'pendingPage',pending_page,'studios',\n    (select coalesce(jsonb_agg(studio),'[]'::jsonb) from (\n      select distinct lower(regexp_replace(btrim(coalesce(s.studio,'')), '\\s+', ' ', 'g')) studio\n      from public.shifts s where s.deleted_at is null and s.archived_at is null and btrim(coalesce(s.studio,''))<>''\n      order by studio limit 50\n    ) locations));\nend;\n$function$\n"
+    }
+  ],
+  "policies": [
+    {
+      "security": {
+        "tables": [
+          {
+            "acl": [
+              "postgres=arwdDxtm/postgres",
+              "service_role=arwdDxtm/postgres",
+              "authenticated=r/postgres"
+            ],
+            "rls": true,
+            "name": "business_users",
+            "forceRls": false
+          },
+          {
+            "acl": [
+              "postgres=arwdDxtm/postgres",
+              "service_role=arwdDxtm/postgres",
+              "authenticated=r/postgres"
+            ],
+            "rls": true,
+            "name": "reports",
+            "forceRls": false
+          },
+          {
+            "acl": [
+              "postgres=arwdDxtm/postgres",
+              "service_role=arwdDxtm/postgres",
+              "authenticated=r/postgres"
+            ],
+            "rls": true,
+            "name": "shift_registrations",
+            "forceRls": false
+          },
+          {
+            "acl": [
+              "postgres=arwdDxtm/postgres",
+              "service_role=arwdDxtm/postgres",
+              "authenticated=r/postgres"
+            ],
+            "rls": true,
+            "name": "shifts",
+            "forceRls": false
+          }
+        ],
+        "policies": [
+          {
+            "cmd": "SELECT",
+            "qual": "(( SELECT private.current_business_user_is_active() AS current_business_user_is_active) AND (deleted_at IS NULL) AND (archived_at IS NULL))",
+            "roles": [
+              "authenticated"
+            ],
+            "tablename": "reports",
+            "permissive": "PERMISSIVE",
+            "policyname": "reports_active_select",
+            "schemaname": "public",
+            "with_check": null
+          },
+          {
+            "cmd": "SELECT",
+            "qual": "(( SELECT private.current_business_user_is_active() AS current_business_user_is_active) AND ((deleted_at IS NOT NULL) OR (archived_at IS NOT NULL)) AND (( SELECT private.current_system_permission() AS current_system_permission) = 'admin'::text))",
+            "roles": [
+              "authenticated"
+            ],
+            "tablename": "reports",
+            "permissive": "PERMISSIVE",
+            "policyname": "reports_archived_select",
+            "schemaname": "public",
+            "with_check": null
+          },
+          {
+            "cmd": "SELECT",
+            "qual": "(( SELECT private.current_business_user_is_active() AS current_business_user_is_active) AND ( SELECT private.can_read_shift(shift_registrations.shift_id) AS can_read_shift) AND (( SELECT private.is_leader_or_admin() AS is_leader_or_admin) OR (user_id = ( SELECT private.current_business_user_id() AS current_business_user_id))))",
+            "roles": [
+              "authenticated"
+            ],
+            "tablename": "shift_registrations",
+            "permissive": "PERMISSIVE",
+            "policyname": "shift_registrations_scoped_select",
+            "schemaname": "public",
+            "with_check": null
+          },
+          {
+            "cmd": "SELECT",
+            "qual": "( SELECT private.can_read_shift(shifts.id) AS can_read_shift)",
+            "roles": [
+              "authenticated"
+            ],
+            "tablename": "shifts",
+            "permissive": "PERMISSIVE",
+            "policyname": "shifts_scoped_select",
+            "schemaname": "public",
+            "with_check": null
+          }
+        ]
+      }
+    }
+  ],
+  "indexes": [
+    {
+      "indexname": "reports_pkey",
+      "indexdef": "CREATE UNIQUE INDEX reports_pkey ON public.reports USING btree (id)"
+    },
+    {
+      "indexname": "reports_active_shift_uidx",
+      "indexdef": "CREATE UNIQUE INDEX reports_active_shift_uidx ON public.reports USING btree (shift_id) WHERE ((deleted_at IS NULL) AND (archived_at IS NULL))"
+    },
+    {
+      "indexname": "reports_status_idx",
+      "indexdef": "CREATE INDEX reports_status_idx ON public.reports USING btree (status) WHERE ((deleted_at IS NULL) AND (archived_at IS NULL))"
+    },
+    {
+      "indexname": "reports_shift_id_idx",
+      "indexdef": "CREATE INDEX reports_shift_id_idx ON public.reports USING btree (shift_id)"
+    },
+    {
+      "indexname": "reports_submitted_by_idx",
+      "indexdef": "CREATE INDEX reports_submitted_by_idx ON public.reports USING btree (submitted_by)"
+    },
+    {
+      "indexname": "reports_confirmed_idx",
+      "indexdef": "CREATE INDEX reports_confirmed_idx ON public.reports USING btree (confirmed_at) WHERE (metrics_confirmed AND (deleted_at IS NULL) AND (archived_at IS NULL))"
+    },
+    {
+      "indexname": "shift_registrations_pkey",
+      "indexdef": "CREATE UNIQUE INDEX shift_registrations_pkey ON public.shift_registrations USING btree (id)"
+    },
+    {
+      "indexname": "shift_registrations_active_role_uidx",
+      "indexdef": "CREATE UNIQUE INDEX shift_registrations_active_role_uidx ON public.shift_registrations USING btree (shift_id, user_id, operational_role) WHERE (status = ANY (ARRAY['pending'::text, 'approved'::text, 'manually_assigned'::text]))"
+    },
+    {
+      "indexname": "shift_registrations_capacity_idx",
+      "indexdef": "CREATE INDEX shift_registrations_capacity_idx ON public.shift_registrations USING btree (shift_id, operational_role, status)"
+    },
+    {
+      "indexname": "shift_registrations_user_schedule_idx",
+      "indexdef": "CREATE INDEX shift_registrations_user_schedule_idx ON public.shift_registrations USING btree (user_id, status, shift_id)"
+    },
+    {
+      "indexname": "shift_registrations_reviewed_by_idx",
+      "indexdef": "CREATE INDEX shift_registrations_reviewed_by_idx ON public.shift_registrations USING btree (reviewed_by) WHERE (reviewed_by IS NOT NULL)"
+    },
+    {
+      "indexname": "shifts_pkey",
+      "indexdef": "CREATE UNIQUE INDEX shifts_pkey ON public.shifts USING btree (id)"
+    },
+    {
+      "indexname": "shifts_active_slot_uidx",
+      "indexdef": "CREATE UNIQUE INDEX shifts_active_slot_uidx ON public.shifts USING btree (brand_id, platform_id, date, start_time, end_time) WHERE ((deleted_at IS NULL) AND (archived_at IS NULL))"
+    },
+    {
+      "indexname": "shifts_calendar_idx",
+      "indexdef": "CREATE INDEX shifts_calendar_idx ON public.shifts USING btree (date, start_time) WHERE ((deleted_at IS NULL) AND (archived_at IS NULL))"
+    },
+    {
+      "indexname": "shifts_time_range_idx",
+      "indexdef": "CREATE INDEX shifts_time_range_idx ON public.shifts USING btree (start_at, end_at) WHERE ((deleted_at IS NULL) AND (archived_at IS NULL) AND (status <> 'cancelled'::text))"
+    },
+    {
+      "indexname": "shifts_open_registration_idx",
+      "indexdef": "CREATE INDEX shifts_open_registration_idx ON public.shifts USING btree (end_at, registration_cutoff_at) WHERE ((deleted_at IS NULL) AND (archived_at IS NULL) AND (status = 'scheduled'::text) AND (registration_locked = false))"
+    },
+    {
+      "indexname": "shifts_brand_platform_idx",
+      "indexdef": "CREATE INDEX shifts_brand_platform_idx ON public.shifts USING btree (brand_id, platform_id)"
+    },
+    {
+      "indexname": "shifts_campaign_id_idx",
+      "indexdef": "CREATE INDEX shifts_campaign_id_idx ON public.shifts USING btree (campaign_id)"
+    },
+    {
+      "indexname": "shifts_host_id_idx",
+      "indexdef": "CREATE INDEX shifts_host_id_idx ON public.shifts USING btree (host_id) WHERE (host_id IS NOT NULL)"
+    },
+    {
+      "indexname": "shifts_support_id_idx",
+      "indexdef": "CREATE INDEX shifts_support_id_idx ON public.shifts USING btree (support_id) WHERE (support_id IS NOT NULL)"
+    },
+    {
+      "indexname": "shifts_technical_id_idx",
+      "indexdef": "CREATE INDEX shifts_technical_id_idx ON public.shifts USING btree (technical_id) WHERE (technical_id IS NOT NULL)"
+    },
+    {
+      "indexname": "shifts_import_batch_id_idx",
+      "indexdef": "CREATE INDEX shifts_import_batch_id_idx ON public.shifts USING btree (import_batch_id) WHERE (import_batch_id IS NOT NULL)"
+    }
+  ],
+  "production_deployment": {
+    "sha": "4f03c0b881bcc77547e72a2d5c655b07690746d6",
+    "target": "production",
+    "alias": "ops5729.top",
+    "id": "dpl_9RY5JjwLZhsdzqqSKM3awBk3A7ce",
+    "state": "READY"
+  }
+}

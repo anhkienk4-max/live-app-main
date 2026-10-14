@@ -13,6 +13,7 @@ export interface ListFilters {
   studios?: string[]
   roles?: string[]
   registrationStatuses?: string[]
+  reportCandidates?: boolean
   statuses?: string[]
   archived?: boolean
   systemPermissions?: string[]

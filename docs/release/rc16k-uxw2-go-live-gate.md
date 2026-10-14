@@ -1,0 +1,52 @@
+# RC1.6K + UX-W2 Má»‘c A evidence and migration gate
+
+Decision: **NO-GO pending final CI, authenticated UAT and approved migration execution**. No Production writes were performed.
+
+## Git and Production baseline
+
+- Handover integration head: `136cab4d4e77916dca50b35ede660593e45c9fbd`.
+- Live fetched main: `4f03c0b881bcc77547e72a2d5c655b07690746d6`; previous local `origin/main=662f3007` was stale.
+- Merge-base: `a074a7d5fe80735c60fdbc7fc5381f9a5cb2ac15`. Main-only commit is the PR #27 merge. `git diff HEAD...origin/main` was empty before reconciliation; no new security/RBAC/Storage/pagination source delta.
+- Main reconciled into integration by history-preserving merge `029bcdea3f915289555012116b86311e109c2c67`, without conflicts. PR #30 remains Draft/open; no merge into main.
+- Vercel CLI verified Production READY for main SHA above at `livestream-ops-demo-fk179b0d8-livestream2.vercel.app`; deployment API confirmed the Production aliases and exact Git SHA; inspection of `ops5729.top` resolves deployment `dpl_9RY5JjwLZhsdzqqSKM3awBk3A7ce`. Handover Preview READY for `136cab4d` at `livestream-ops-demo-72r7k4c9c-livestream2.vercel.app`. Deployment metadata is not authenticated runtime UAT.
+- Vercel connector lacked project access; existing CLI credentials supplied the read-only evidence.
+
+## Existing Workforce CI failure
+
+Run https://github.com/anhkienk4-max/live-app-main/actions/runs/38614599022 at `136cab4d`: PG16/Node22 and PG17/Node24 both **FAIL** at canonical project-memory validation. All preceding SQL, typecheck, full ESLint, full release manifest, browser, Storage dependency and production build steps passed. Logs identify stale repository.head, repository.branch and repository.origin_main in `project-memory/current-state.json`. No browser failure caused this result. Artifacts: `11919509611` (Node22), `11921277273` (Node24).
+
+Canonical memory must be synchronized after the implementation commit and committed separately so the recorded implementation SHA remains an ancestor with only memory changes afterward. This preserves the existing validator rather than weakening it.
+
+## Production SQL and ledger reconciliation
+
+Read-only snapshot: `rc16k-uxw2-production-schema-snapshot.json`, project `egdjnpmoasarrttvhgds`. It records actual `pg_get_functiondef`, regprocedure signatures, ACLs, security modes, search_path, table RLS/policies and indexes.
+
+- Ledger `20261014173408` is named `20261012171503_rc16k_bounded_shift_lists`, with joined-statements MD5 `5b72cf4d6aea5c63e0bc143d99c5da7a`. The filename version is not the applied version.
+- Actual `get_report_list_page(integer,integer,jsonb,boolean)` lacks whole-filter `summary` and shift-title search.
+- Actual `private.filtered_shift_ids(text,jsonb)` lacks direct assignment and report-submitter Reports candidates.
+- Actual `private.can_read_shift(text)` lacks submitter-only shift access; changing only the picker predicate cannot bypass caller RLS.
+- `20261014233900` Reports summary and newly generated CLI version `20261014190429` were both absent from the Production ledger at verification.
+- Existing list/metric/analytics RPCs are SECURITY INVOKER, with empty search_path and only postgres/authenticated EXECUTE. Existing `can_read_shift` is SECURITY DEFINER with the same ACL/search_path boundary. Tables have RLS and authenticated SELECT only.
+- Reports active-table policy permits active-user report reads; the paged RPC intersects these with shift RLS. This migration does not broaden the underlying Reports table policy.
+
+Forward delta: `supabase/migrations/20261014190429_rc16k_reports_forward_reconciliation.sql`. It replaces only three existing signatures: `can_read_shift`, `filtered_shift_ids`, `get_report_list_page`. It guards required baseline functions, preserves existing owners/grants/security modes, performs no row writes, and changes no Storage or Workforce objects. Historical migrations are unchanged. Pinned new-delta SHA256: `40572a4684f7315c26e25def3db1c971eef1f4bf49de8851df5dbe393e040cbc`.
+
+**Do not run a blind `supabase db push`:** the original `20261012171503` version is missing even though its SQL is already applied under `20261014173408`; replay would hit existing functions. An approved operator must pin the new delta/hash and target and apply that exact forward migration once, after backup/restore and schema preflight. No ledger editing or historical replay is part of this plan. The new delta includes the missing summary body, so the older summary file need not be separately replayed on Production.
+
+Rollback: before commit, abort the transaction. After commit, restore the three captured pre-change definitions through a separately approved compensating migration; do not edit/delete migration history. No data restoration is needed for this function-only delta. Rehearsal tests rollback to a savepoint and repeat application, checking ACLs and policies before/after.
+
+## Implementation and validation boundaries
+
+Reports modal context now loads target registrations instead of current-page registrations; exact shifts, reports and existing user directory feed the modal. Manual assignments and the authoritative privacy-safe staffing summary contribute to the form role display. A separate target request version invalidates stale identity/filter/page/selection and close responses. Finalized targets also reject unrelated Members in the shared target resolver.
+
+New evidence comprises actual PostgreSQL RPC/RLS checks, runtime collection handler tests for all three roles and mounted `/reports` browser tests at 390/768/1440/1920 with deferred staffing responses. Browser fixtures do not represent signed-in Supabase or physical provider UAT.
+
+Local PG17 and PG16 broad rehearsals each passed 90 assertions. PG16 focused Reports rehearsal also passed 21 assertions. Six mounted browser cases passed: four widths and delayed account/close responses. An earlier local PG16 broad run timed out in the pre-existing 1000-row baseline loop; limits were not raised. Fixture ANALYZE supplies real planner statistics. A sequential broad PG16 run subsequently passed without changing timeout limits; final GitHub matrix remains required. Performance figures from isolated fixture EXPLAIN are not Production-load evidence.
+
+## Remaining gates
+
+- P0: final-head convergence/Storage/Workforce CI conclusions; approved exact-delta migration application and postconditions; authenticated Reports create/draft/edit/review/confirm/deep-link and denied-member UAT.
+- P1: physical Drive/OneDrive upload/read/delete evidence using approved routes; responsive authenticated UAT; all-filter export on multi-page authorized data; full schema-clone/backup/restore rehearsal (function snapshots plus repository DDL are not a complete Production clone).
+- P2: Storage provider/name filters remain page-local per existing approved UI disclosure; no server-search contract was added.
+
+Needed UAT access: an explicitly approved environment URL, separate Admin/Leader/Member sessions via browser or approved secret store, an authorized multi-page test dataset, and existing Google Drive/OneDrive routes/credentials with permission for test file lifecycle operations. Do not send passwords/tokens in chat. No such access was supplied during this execution.

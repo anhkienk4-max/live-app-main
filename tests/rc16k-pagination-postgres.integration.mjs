@@ -4,13 +4,14 @@ import { readFileSync } from 'node:fs'
 import { assertIsolatedContainer, assertIsolatedCI } from './rc16-rehearsal-safety.mjs'
 
 const container = process.argv[2] === '--container' ? process.argv[3] : null
+const reportsOnly = process.argv.at(-1) === '--reports-only'
 const major = process.env.RC16_PG_MAJOR ?? '17'
 assert.ok(['16', '17'].includes(major))
 if (container) {
-  assert.equal(process.argv.length, 4)
+  assert.equal(process.argv.length, reportsOnly ? 5 : 4)
   assert.match(container, /^rc16f-pg(?:16|17)-[a-z0-9-]{1,40}$/)
   assertIsolatedContainer(JSON.parse(execFileSync('docker', ['inspect', container], { encoding: 'utf8' }))[0], major)
-} else { assert.equal(process.argv.length, 2); assertIsolatedCI(process.env) }
+} else { assert.equal(process.argv.length, reportsOnly ? 3 : 2); assertIsolatedCI(process.env) }
 const read = path => readFileSync(path, 'utf8')
 const foundation = read('supabase/migrations/20260814085659_p1c_shift_persistence.sql')
 function extract(pattern) { const match = foundation.match(pattern); assert.ok(match); return match[0] }
@@ -26,7 +27,7 @@ const table = (path, name) => {
 const reportSource='supabase/migrations/20260823000000_p3_report_persistence.sql'
 const auditSource='supabase/migrations/20260830113000_core_v1_persistent_audit.sql'
 const swapPolicy=read('supabase/migrations/20260826172730_shift_swap_two_flow_semantics.sql').match(/create policy swap_requests_select[\s\S]*?\n\);/)[0]
-const sql = [
+const setup = [
   "begin;",
   "do $$ begin if (select count(*) from information_schema.tables where table_schema='public')<>0 then raise exception 'Requires empty isolated fixture'; end if; end $$;",
   "create role anon; create role authenticated; create role service_role bypassrls; create schema private;",
@@ -68,7 +69,10 @@ const sql = [
   "insert into public.workforce_payroll_periods values('period','locked'); insert into public.workforce_payroll_lines(id,period_id,net_vnd) select 'line-'||n,'period',100000 from generate_series(1,1001)n; insert into public.workforce_payroll_audit(period_id) select 'period' from generate_series(1,1001)n;",
   summary,
   read('supabase/migrations/20261012171503_rc16k_bounded_shift_lists.sql'),
+  "analyze public.shifts; analyze public.shift_registrations; analyze public.reports;",
   "create function public.k_assert(value boolean,label text) returns void language plpgsql as $$ begin if value is distinct from true then raise exception 'RC16K_FAILED: %',label; end if; raise notice 'RC16K_PASS: %',label; end $$;",
+]
+const baselineChecks = [
   "set role authenticated; select set_config('rc16k.actor','member',true);",
   "select public.k_assert((public.get_shift_list_page('open',1,10,'{\"brandIds\":[\"b\"]}')->>'total')::int=117,'117 open rows');",
   "select public.k_assert(jsonb_array_length(public.get_shift_list_page('open',12,10,'{\"brandIds\":[\"b\"]}')->'rows')=7,'partial last page');",
@@ -114,8 +118,22 @@ const sql = [
   "select set_config('rc16k.actor','leader',true); do $$ begin begin perform public.get_archived_entity_page(); exception when insufficient_privilege then raise notice 'RC16K_PASS: Leader archive denied'; return; end; raise exception 'Expected archive denial'; end $$;",
   "select set_config('rc16k.actor','unknown',true); do $$ begin begin perform public.get_archived_entity_page(); exception when insufficient_privilege then raise notice 'RC16K_PASS: unknown role fails closed'; return; end; raise exception 'Expected unknown role denial'; end $$;",
   "reset role; set role anon; do $$ begin begin perform public.get_shift_list_page(); exception when insufficient_privilege then raise notice 'RC16K_PASS: anonymous denied'; return; end; raise exception 'Anonymous unexpectedly allowed'; end $$;",
+]
+const reportsChecks = [
+  "reset role; select set_config('rc16k.actor','admin',true);",
+  // Reproduce captured Production definitions, then rehearse only the new forward migration.
+  ...JSON.parse(read('docs/release/rc16k-uxw2-production-schema-snapshot.json')).functions.map(f => f.definition + ';'),
+  "create temporary table reports_acl_before as select oid,proacl,proowner,prosecdef,proconfig from pg_proc where oid in ('private.can_read_shift(text)'::regprocedure,'private.filtered_shift_ids(text,jsonb)'::regprocedure,'public.get_report_list_page(integer,integer,jsonb,boolean)'::regprocedure); create temporary table reports_policies_before as select * from pg_policies;",
+  "savepoint reports_forward;",
+  read('supabase/migrations/20261014190429_rc16k_reports_forward_reconciliation.sql'),
+  "rollback to savepoint reports_forward; select public.k_assert(not (public.get_report_list_page()->'summary' is not null),'migration rollback restores Production RPC');",
+  read('supabase/migrations/20261014190429_rc16k_reports_forward_reconciliation.sql'),
+  read('supabase/migrations/20261014190429_rc16k_reports_forward_reconciliation.sql'),
+  "select public.k_assert(not exists(select 1 from reports_acl_before old join pg_proc p using(oid) where old.proacl is distinct from p.proacl or old.proowner<>p.proowner or old.prosecdef<>p.prosecdef or old.proconfig is distinct from p.proconfig),'forward replay preserves owners ACL search_path and security modes'); select public.k_assert(not exists((select * from reports_policies_before except select * from pg_policies) union all (select * from pg_policies except select * from reports_policies_before)),'forward preserves all RLS policies');",
+  read('tests/fixtures/rc16k_reports_permission_assertions.sql'),
   "reset role; rollback;",
-].join('\n')
+]
+const sql = [...setup, ...(reportsOnly ? [] : baselineChecks), ...reportsChecks].join('\n')
 const child = spawn(container ? 'docker' : 'psql', [...(container ? ['exec','-i',container,'psql'] : []), '-X','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-At'], { stdio: ['pipe','pipe','pipe'], timeout: 180000 })
 let output=''
 child.stdout.on('data', part => { output += part }); child.stderr.on('data', part => { output += part })
