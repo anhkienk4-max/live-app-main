@@ -35,3 +35,10 @@ test('page 5 exists for 117 reportable shifts, rather than silently dropping old
   assert.equal(localListPage(shifts, { page: 6, pageSize: 20 }).items.length, 17)
   assert.equal(localListPage([], { page: 2, pageSize: 20 }).total, 0)
 })
+
+test('Member can select candidate shifts from staffed registration, direct host/support/tech assignment, or submitted report', () => {
+  assert.match(picker, /canSelect\s*=\s*\(shift:\s*Shift\)\s*=>/)
+  assert.match(picker, /\[shift\.host_id,\s*shift\.support_id,\s*shift\.technical_id\]\.includes\(currentUser\.id\)/)
+  assert.match(picker, /isStaffedRegistration\(registration\)/)
+  assert.match(picker, /reportsByShift\.get\(shift\.id\)\?\.submitted_by\s*===\s*currentUser\.id/)
+})

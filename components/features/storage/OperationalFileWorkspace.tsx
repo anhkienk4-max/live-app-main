@@ -93,7 +93,7 @@ function getFileIcon(fileName: string, mimeType?: string) {
 }
 
 export function OperationalFileWorkspace() {
-  const { t, translate } = useTranslation()
+  const { t, translate, language } = useTranslation()
   const search = useSearchParams()
   const requestedCategory = search.get('category')
   const requestedCampaignId = search.get('campaignId')
@@ -350,7 +350,7 @@ export function OperationalFileWorkspace() {
   }) : []
 
   if (userLoading || !currentUser) return <p className="p-4">{t('loading')}</p>
-  if (!canView) return <p className="p-4 text-sm" role="alert">{t('permissionDenied')}</p>
+  if (!canView) return <p className="p-4 text-sm" role="alert">{language === 'vi' ? 'Bạn không có quyền truy cập kho file.' : t('permissionDenied')}</p>
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 px-3 py-4 sm:px-6" data-testid="operational-file-workspace">

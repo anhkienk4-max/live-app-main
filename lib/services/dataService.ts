@@ -1341,7 +1341,9 @@ export const shiftService = {
     const owned = shiftRegistrations.filter(r => r.user_id === actor.id && ['pending', 'approved', 'manually_assigned'].includes(r.status))
     const filtered = filterMockList(shifts, query.filters).filter(shift=>canReadMockPagedShift(shift,actor)).filter(shift => mode === 'open'
       ? shift.status === 'scheduled' && (resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)?.endAt.getTime() ?? 0) > Date.now()
-      : owned.some(r => r.shift_id === shift.id && (!query.filters?.roles?.length || query.filters.roles.includes(r.operational_role)) && (!query.filters?.registrationStatuses?.length || query.filters.registrationStatuses.includes(r.status))))
+      : owned.some(r => r.shift_id === shift.id && (!query.filters?.roles?.length || query.filters.roles.includes(r.operational_role)) && (!query.filters?.registrationStatuses?.length || query.filters.registrationStatuses.includes(r.status)))
+        || [shift.host_id, shift.support_id, shift.technical_id].includes(actor.id)
+        || reports.some(rep => rep.shift_id === shift.id && rep.submitted_by === actor.id && !rep.deleted_at && !rep.archived_at))
     const result = localListPage(filtered, query)
     const ids = new Set(result.items.map(item => item.id))
     const visible = shiftRegistrations.filter(r => ids.has(r.shift_id) && (resolveSystemPermission(actor) !== 'member' || r.user_id === actor.id))

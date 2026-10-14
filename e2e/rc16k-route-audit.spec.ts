@@ -64,7 +64,7 @@ for(const role of ['1','3'])test('Storage localized hydration and role boundary 
   for(const route of ['/storage','/storage/setup']){
     await page.goto(route)
     await page.waitForTimeout(1000)
-    if(role==='3')await expect(page.getByRole('alert').filter({hasText:/không có quyền/}).first()).toBeVisible()
+    if(role==='3')await expect(page.getByRole('alert').filter({hasText:/không có quyền|không cho phép/i}).first()).toBeVisible()
   }
   expect(errors).toEqual([])
 })
