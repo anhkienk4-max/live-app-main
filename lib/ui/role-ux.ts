@@ -8,6 +8,8 @@ export type NavItem = {
   icon: LucideIcon
   /** i18n key override; falls back to name.toLowerCase() */
   labelKey?: string
+  /** Short label for compact layouts (e.g. mobile bottom nav) */
+  shortLabelKey?: string
   /**
    * When set, item is only rendered if the user holds at least one of these
    * permissions. Only use this for routes that have a genuine access requirement
@@ -25,11 +27,11 @@ export type NavItem = {
 
 // Full catalogue of all application destinations
 const navCatalogue: Record<string, NavItem> = {
-  dashboard:     { name: 'Dashboard',     href: '/',              icon: Home },
-  calendar:      { name: 'Calendar',      href: '/calendar',      icon: Calendar },
-  live:          { name: 'Live',          href: '/live',          icon: Radio },
+  dashboard:     { name: 'Dashboard',     href: '/',              icon: Home, labelKey: 'dashboard', shortLabelKey: 'myWorkspaceShort' },
+  calendar:      { name: 'Calendar',      href: '/calendar',      icon: Calendar, labelKey: 'calendar', shortLabelKey: 'myScheduleShort' },
+  live:          { name: 'Live',          href: '/live',          icon: Radio, labelKey: 'live', shortLabelKey: 'live' },
   reports:       { name: 'Reports',       href: '/reports',       icon: FileText },
-  storage:       { name: 'Kho file',      href: '/storage',       icon: FolderArchive, requiredPermissions: ['reports.review'] },
+  storage:       { name: 'Storage',       href: '/storage',       icon: FolderArchive, labelKey: 'storage', requiredPermissions: ['reports.review'] },
   swaps:         { name: 'Swaps',         href: '/swaps',         icon: RefreshCw },
   analytics:     { name: 'Analytics',     href: '/analytics',     icon: BarChart3 },
   staff:         { name: 'Staff',         href: '/staff',         icon: Users },
@@ -44,14 +46,14 @@ const navCatalogue: Record<string, NavItem> = {
   workforce:     { name: 'Hiệu suất',     href: '/workforce',     icon: Activity, labelKey: 'workforce' },
 
   // Additional parity placeholders
-  shifts:        { name: 'Shifts',        href: '/shifts',        icon: Calendar },
-  staffing:      { name: 'Staffing',      href: '/staffing',      icon: Users },
+  shifts:        { name: 'Shifts',        href: '/shifts',        icon: Calendar, labelKey: 'shifts' },
+  staffing:      { name: 'Staffing',      href: '/staffing',      icon: Users, labelKey: 'staffing' },
   registration:  { name: 'Registration',  href: '/staffing?tab=registration', icon: UserCheck, labelKey: 'registration', requiredPermissions: ['shifts.approve_registration'] },
-  staffDirectory:{ name: 'Staff Directory',href: '/staff',        icon: Users },
-  myWorkspace:   { name: 'My Workspace',  href: '/',              icon: Home },
-  mySchedule:    { name: 'My Schedule',   href: '/calendar?tab=mine', icon: Calendar },
-  openShifts:    { name: 'Open Shifts',   href: '/calendar?tab=open', icon: Calendar },
-  mySwaps:       { name: 'My Swaps',      href: '/swaps',         icon: RefreshCw },
+  staffDirectory:{ name: 'Staff Directory',href: '/staff',        icon: Users, labelKey: 'staffDirectory' },
+  myWorkspace:   { name: 'My Workspace',  href: '/',              icon: Home, labelKey: 'myWorkspace', shortLabelKey: 'myWorkspaceShort' },
+  mySchedule:    { name: 'My Schedule',   href: '/calendar?tab=mine', icon: Calendar, labelKey: 'mySchedule', shortLabelKey: 'myScheduleShort' },
+  openShifts:    { name: 'Open Shifts',   href: '/calendar?tab=open', icon: Calendar, labelKey: 'openShifts', shortLabelKey: 'openShiftsShort' },
+  mySwaps:       { name: 'My Swaps',      href: '/swaps',         icon: RefreshCw, labelKey: 'mySwaps', shortLabelKey: 'mySwapsShort' },
 }
 
 // ADMIN priority
@@ -78,7 +80,7 @@ const adminNav: NavItem[] = [
 
 // LEADER priority
 const leaderNav: NavItem[] = [
-  { ...navCatalogue.dashboard, name: 'Team Operations', group: 'APP OPS' },
+  { ...navCatalogue.dashboard, name: 'Team Operations', labelKey: 'teamOperations', shortLabelKey: 'teamOperationsShort', group: 'APP OPS' },
   { ...navCatalogue.calendar, group: 'OPERATIONS' },
   { ...navCatalogue.live, group: 'OPERATIONS' },
   { ...navCatalogue.shifts, group: 'OPERATIONS' },
@@ -99,7 +101,7 @@ const memberNav: NavItem[] = [
   { ...navCatalogue.mySwaps, group: 'APP OPS' },
   { ...navCatalogue.live, group: 'APP OPS' },
   { ...navCatalogue.reports, group: 'APP OPS' },
-  { ...navCatalogue.workforce, name: 'Hiệu suất cá nhân', group: 'APP OPS' },
+  { ...navCatalogue.workforce, name: 'Hiệu suất cá nhân', labelKey: 'myWorkforce', group: 'APP OPS' },
   { ...navCatalogue.notifications, group: 'APP OPS' },
 ]
 

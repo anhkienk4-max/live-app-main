@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { format } from 'date-fns'
-import { Download, Filter, LayoutGrid, List, Lock, LockOpen, RotateCcw, Search, Table2 } from 'lucide-react'
+import { Download, Filter, LayoutGrid, List, Lock, LockOpen, RotateCcw, Search, Table2, ChevronDown, ChevronUp } from 'lucide-react'
 import {
   brandService,
   campaignService,
@@ -11,6 +11,7 @@ import {
   shiftService,
   userService,
   getShiftRoleCapacities,
+  isStaffedRegistration,
   type ShiftRoleCapacity,
 } from '@/lib/services/dataService'
 import {
@@ -125,6 +126,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
   const [users, setUsers] = React.useState<User[]>([])
+  const [manualSelections, setManualSelections] = React.useState<Record<string, string>>({})
   const pagination = useListPagination(mode, 10)
   const { params, navigate, page, pageSize } = pagination
   const rawFilters = params.get(mode + '_filters') ?? ''
@@ -146,7 +148,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const [pendingTotal, setPendingTotal] = React.useState(0)
   const [pendingIds, setPendingIds] = React.useState<string[]>([])
   const [studios, setStudios] = React.useState<string[]>([])
-    const [currentTime] = React.useState(() => Date.now())
+  const [currentTime] = React.useState(() => Date.now())
   const timeScope = calendarTimeScope(filters.time, new Date(currentTime), filters.customFrom, filters.customTo)
   const queryFilters = JSON.stringify({
     search: filters.search, brandIds: filters.brandIds, platformIds: filters.platformIds,
@@ -498,6 +500,19 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           registrations={registrations}
           roleFilter={filters.roles}
           shifts={visibleShifts}
+          users={users}
+          busyId={busyId}
+          onCancelRegistration={reg => setRemovalTarget({ registration: reg, kind: 'cancel' })}
+          onRemoveAssignment={reg => setRemovalTarget({ registration: reg, kind: 'unassign' })}
+          onAssignManually={async (shiftId, role, userId, version) => {
+            await runAction(
+              `assign-${shiftId}-${role}`,
+              () => shiftRegistrationService.assignManually(shiftId, userId, role, currentUser.id, version),
+              t('registrationApproved'),
+            )
+          }}
+          manualSelections={manualSelections}
+          setManualSelections={setManualSelections}
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2 min-[1900px]:grid-cols-3">
@@ -665,15 +680,14 @@ function MyShiftTable({ entries, brands, platforms, campaigns, onManage }: MyShi
   </tr>)}</tbody></table></CardContent></Card>
 }
 
-function CompactShiftList({
+
+function OpenShiftCards({
   allShifts,
   shifts,
   capacities,
   registrations,
   roleFilter,
   brands,
-  platforms,
-  campaigns,
   currentUser,
   onRegister,
   onManage,
@@ -684,32 +698,334 @@ function CompactShiftList({
   registrations: ShiftRegistration[]
   roleFilter: RoleSelection
   brands: Brand[]
-  platforms: Platform[]
-  campaigns: Campaign[]
   currentUser: User
   onRegister: (shiftId: string, role: OperationalRole) => Promise<void>
   onManage: (shift: Shift) => void
 }) {
   const { t } = useTranslation()
-  return <div className="space-y-3">{shifts.map(shift => {
-    const roleValue = (role: OperationalRole) => {
-      const capacity = capacities[shift.id]?.find(item => item.role === role)
-      return `${capacity?.approved || 0}/${capacity?.required || 0}`
-    }
-    const visibleRoles = getVisibleOperationalRoles(roleFilter)
-    const pending = registrations.filter(item => item.shift_id === shift.id && item.status === 'pending' && matchesRoleFilter(item, roleFilter)).length
-    return <Card key={shift.id}><CardContent className="grid gap-3 pt-5 md:grid-cols-[minmax(220px,1.5fr)_repeat(3,minmax(90px,.6fr))_auto] md:items-center">
-      <div className="min-w-0"><p className="truncate font-semibold">{shift.title || `${brandName(brands, shift.brand_id)} live`}</p><p className="text-sm text-muted-foreground">{shift.date} · {formatShiftTimeRange(shift)} · {platformName(platforms, shift.platform_id)}</p><p className="truncate text-xs text-muted-foreground">{campaignName(campaigns, shift.campaign_id)}</p></div>
-      {visibleRoles.map(role => <Info key={role} label={t(role)} value={roleValue(role)} />)}
-      <div className="flex items-center gap-2 md:justify-end">
-        <Badge variant={pending ? 'outline' : 'secondary'}>{t('pending')}: {pending}</Badge>
-        <ShiftRegistrationActions allShifts={allShifts} compact currentUser={currentUser} onRegister={role => onRegister(shift.id, role)} registrations={registrations} shift={shift} />
-        <Button data-testid={`open-shift-detail-compact-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button>
-      </div>
-    </CardContent></Card>
-  })}</div>
+  return (
+    <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2 min-[1900px]:grid-cols-3">
+      {shifts.map(shift => {
+        const visibleCapacities = getVisibleRoleCapacities(capacities[shift.id] || [], roleFilter)
+        const fullyStaffed = visibleCapacities.every(capacity => capacity.approved >= capacity.required)
+        return (
+          <Card key={shift.id} className="shadow-sm border-border overflow-hidden">
+            <CardHeader className="p-4 pb-2 bg-muted/10 border-b">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-lg">{shift.title || `${brandName(brands, shift.brand_id)} live`}</CardTitle>
+                  <p className="mt-1 text-sm text-muted-foreground">{format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} · {formatShiftTimeRange(shift)}</p>
+                  {formatShiftEndDate(shift) && <p className="mt-1 text-xs text-indigo-700">{t('endsNextDay')}: {displayDate(formatShiftEndDate(shift)!)}</p>}
+                </div>
+                <Badge variant={shift.registration_locked ? 'secondary' : 'outline'}>{fullyStaffed ? t('full') : shift.registration_locked ? t('closed') : t('openShifts')}</Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Button
+                  data-testid={`open-shift-detail-card-${shift.id}`}
+                  onClick={() => onManage(shift)}
+                  size="sm"
+                  variant="secondary"
+                  className="h-8 text-xs font-medium"
+                >
+                  {t('viewShiftDetail')}
+                </Button>
+                <ShiftRegistrationActions
+                  allShifts={allShifts}
+                  compact
+                  currentUser={currentUser}
+                  onRegister={role => onRegister(shift.id, role)}
+                  registrations={registrations}
+                  shift={shift}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })}
+    </div>
+  )
 }
 
+function CompactShiftList({
+  allShifts,
+  shifts,
+  capacities,
+  registrations,
+  roleFilter,
+  brands,
+  platforms,
+  campaigns,
+  users,
+  currentUser,
+  onRegister,
+  onManage,
+  busyId,
+  onCancelRegistration,
+  onRemoveAssignment,
+  onAssignManually,
+  manualSelections,
+  setManualSelections,
+}: {
+  allShifts: Shift[]
+  shifts: Shift[]
+  capacities: CapacityMap
+  registrations: ShiftRegistration[]
+  roleFilter: RoleSelection
+  brands: Brand[]
+  platforms: Platform[]
+  campaigns: Campaign[]
+  users?: User[]
+  currentUser: User
+  onRegister: (shiftId: string, role: OperationalRole) => Promise<void>
+  onManage: (shift: Shift) => void
+  busyId?: string | null
+  onCancelRegistration?: (registration: ShiftRegistration) => void
+  onRemoveAssignment?: (registration: ShiftRegistration) => void
+  onAssignManually?: (shiftId: string, role: OperationalRole, userId: string, version?: number) => Promise<void>
+  manualSelections?: Record<string, string>
+  setManualSelections?: React.Dispatch<React.SetStateAction<Record<string, string>>>
+}) {
+  const { t } = useTranslation()
+  const [expandedIds, setExpandedIds] = React.useState<Set<string>>(new Set())
+
+  const toggleExpand = (id: string) => {
+    setExpandedIds(current => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  return (
+    <div className="space-y-2.5">
+      {shifts.map(shift => {
+        const shiftRegistrations = registrations.filter(r => r.shift_id === shift.id)
+        const mine = shiftRegistrations.filter(r =>
+          r.user_id === currentUser.id &&
+          !['cancelled', 'rejected', 'removed'].includes(r.status)
+        )
+        const myRegistration = mine[0]
+        const visibleCapacities = getVisibleRoleCapacities(capacities[shift.id] || [], roleFilter)
+        const fullyStaffed = visibleCapacities.every(c => c.approved >= c.required)
+        const totalMissing = visibleCapacities.reduce((acc, c) => acc + (c.remaining > 0 ? c.remaining : 0), 0)
+        const pending = shiftRegistrations.filter(item => item.status === 'pending' && matchesRoleFilter(item, roleFilter)).length
+        const isExpanded = expandedIds.has(shift.id)
+        const canManageAssignments = hasPermission(currentUser, 'shifts.approve_registration')
+
+        return (
+          <Card key={shift.id} className="overflow-hidden max-w-full border border-slate-200 bg-white shadow-xs transition-colors hover:border-slate-300" data-testid={`open-shift-card-${shift.id}`}>
+            <CardContent className="p-3.5 space-y-2.5 max-w-full">
+              {/* Header: Title, Brand, Platform, Studio, Date, Time & Status */}
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-semibold text-sm text-foreground break-words">
+                      {shift.title || `${brandName(brands, shift.brand_id)} live`}
+                    </span>
+                    <span className="text-muted-foreground text-xs">•</span>
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {brandName(brands, shift.brand_id)}
+                    </span>
+                    <span className="text-muted-foreground text-xs">•</span>
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {platformName(platforms, shift.platform_id)}
+                    </span>
+                    {shift.studio && (
+                      <span className="text-[10px] text-muted-foreground bg-muted rounded px-1.5 py-0.5">
+                        {shift.studio}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} · {formatShiftTimeRange(shift)}
+                    {campaignName(campaigns, shift.campaign_id) && ` · ${campaignName(campaigns, shift.campaign_id)}`}
+                  </p>
+                </div>
+
+                {/* Status Badges */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {fullyStaffed ? (
+                    <Badge variant="secondary" className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs">
+                      {t('fullyStaffed')}
+                    </Badge>
+                  ) : shift.registration_locked ? (
+                    <Badge variant="outline" className="text-xs text-muted-foreground">
+                      {t('closed')}
+                    </Badge>
+                  ) : totalMissing > 0 ? (
+                    <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800 text-xs font-medium">
+                      {t('needsStaffing')}: {totalMissing}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-xs">
+                      {t('openShifts')}
+                    </Badge>
+                  )}
+                  {pending > 0 && (
+                    <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-800 text-xs">
+                      {t('pending')}: {pending}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              {/* Occupancy Chips and Action Row */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-slate-100">
+                {/* Staffing Occupancy Chips */}
+                <div className="flex flex-wrap items-center gap-1.5" aria-label={t('staffing')}>
+                  {visibleCapacities.map(cap => {
+                    const isFull = cap.approved >= cap.required
+                    return (
+                      <span
+                        key={cap.role}
+                        className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${
+                          isFull
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            : 'bg-amber-50 text-amber-800 border border-amber-200'
+                        }`}
+                        title={`${t(cap.role)}: ${cap.approved}/${cap.required}${cap.pending ? ` (${cap.pending} ${t('pending')})` : ''}`}
+                      >
+                        <span>{cap.role === 'host' ? t('host') : cap.role === 'support' ? t('support') : t('technical')}</span>
+                        <span className="font-semibold">{cap.approved}/{cap.required}</span>
+                      </span>
+                    )
+                  })}
+                </div>
+
+                {/* Primary Actions: Quick Register & View Details */}
+                <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0 justify-start sm:justify-end">
+                  {myRegistration && (
+                    <div className="flex flex-wrap items-center gap-1">
+                      <Badge className={isStaffedRegistration(myRegistration) ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>
+                        {registrationLabel(myRegistration, t)}
+                      </Badge>
+                      {hasPermission(currentUser, 'shifts.cancel_registration') && !shift.registration_locked && onCancelRegistration && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs"
+                          disabled={busyId === myRegistration.id}
+                          onClick={() => onCancelRegistration(myRegistration)}
+                        >
+                          {t('cancelRegistration')}
+                        </Button>
+                      )}
+                    </div>
+                  )}
+
+                  <ShiftRegistrationActions
+                    allShifts={allShifts}
+                    compact
+                    currentUser={currentUser}
+                    onRegister={role => onRegister(shift.id, role)}
+                    registrations={registrations}
+                    shift={shift}
+                  />
+
+                  <Button
+                    data-testid={`open-shift-detail-compact-${shift.id}`}
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs font-medium"
+                    onClick={() => onManage(shift)}
+                  >
+                    {t('viewDetails')}
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 w-8 p-0"
+                    onClick={() => toggleExpand(shift.id)}
+                    aria-label={isExpanded ? 'Collapse' : 'Expand'}
+                    title={isExpanded ? 'Collapse details' : 'Expand details'}
+                  >
+                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Expandable Section: Roster details & Leader manual assignment */}
+              {isExpanded && (
+                <div className="pt-2 border-t border-slate-100 space-y-3 bg-slate-50/60 p-3 rounded-md text-xs">
+                  {visibleCapacities.map(capacity => {
+                    const assignmentKey = `${shift.id}-${capacity.role}`
+                    const approvedAssignments = shiftRegistrations.filter(r =>
+                      r.operational_role === capacity.role && isStaffedRegistration(r)
+                    )
+                    const eligibleUsers = (users || []).filter(u =>
+                      u.operational_roles?.includes(capacity.role) &&
+                      !shiftRegistrations.some(r =>
+                        r.user_id === u.id &&
+                        r.operational_role === capacity.role &&
+                        (r.status === 'pending' || isStaffedRegistration(r))
+                      )
+                    )
+
+                    return (
+                      <div key={capacity.role} className="space-y-1.5 border-b pb-2 last:border-b-0 last:pb-0">
+                        <div className="flex items-center justify-between font-medium">
+                          <span className="capitalize">{t(capacity.role)} ({capacity.approved}/{capacity.required})</span>
+                          <span className="text-muted-foreground">
+                            {approvedAssignments.length > 0
+                              ? approvedAssignments.map(a => users?.find(u => u.id === a.user_id)?.full_name || a.user_id).join(', ')
+                              : t('notAssigned')}
+                          </span>
+                        </div>
+
+                        {canManageAssignments && approvedAssignments.map(reg => (
+                          <div key={reg.id} className="flex items-center justify-between text-[11px] text-muted-foreground pl-2">
+                            <span>{users?.find(u => u.id === reg.user_id)?.full_name || reg.user_id}</span>
+                            {onRemoveAssignment && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 text-[10px] text-red-600 hover:text-red-700"
+                                disabled={busyId === `remove-${reg.id}` || shift.registration_locked}
+                                onClick={() => onRemoveAssignment(reg)}
+                              >
+                                {t('removeAssignment')}
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+
+                        {canManageAssignments && !shift.registration_locked && capacity.approved < capacity.required && manualSelections && setManualSelections && onAssignManually && (
+                          <div className="flex items-center gap-2 pt-1">
+                            <Select
+                              value={manualSelections[assignmentKey] || ''}
+                              onValueChange={value => setManualSelections(current => ({ ...current, [assignmentKey]: value }))}
+                            >
+                              <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder={t('chooseStaff')} /></SelectTrigger>
+                              <SelectContent>
+                                {eligibleUsers.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs"
+                              disabled={!manualSelections[assignmentKey] || busyId === `assign-${assignmentKey}`}
+                              onClick={() => onAssignManually(shift.id, capacity.role, manualSelections[assignmentKey], shift.version)}
+                            >
+                              {t('assignStaff')}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )
+      })}
+    </div>
+  )
+}
 function ShiftSummaryTable({
   allShifts,
   currentUser,

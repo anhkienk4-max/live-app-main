@@ -27,6 +27,32 @@ const en = {
   analytics: 'Analytics',
   payroll: 'Payroll',
   workforce: 'Workforce Performance',
+  storage: 'Storage',
+  staffDirectory: 'Staff Directory',
+  mySwaps: 'My Swaps',
+  teamOperations: 'Team Operations',
+  myWorkforce: 'Personal Performance',
+  needsStaffing: 'Needs Staffing',
+  addShift: 'Add Shift',
+  importExport: 'Import / Export',
+  markScheduled: 'Mark Scheduled',
+  markCompleted: 'Mark Completed',
+  deleteAll: 'Delete All',
+  selectAllPage: 'Select current page',
+  selectAllFiltered: 'Select all {count} filtered shifts',
+  allPageSelected: 'All {count} shifts on this page are selected.',
+  allFilteredSelected: 'All {count} filtered shifts are selected.',
+  confirmBulkStatusTitle: 'Confirm status update',
+  confirmBulkStatusMessage: 'Update status of {count} selected shifts to "{status}"?',
+    affectedShifts: 'Affected shifts ({count}):',
+  openShiftsShort: 'Open Shifts',
+  myScheduleShort: 'Schedule',
+  mySwapsShort: 'Swaps',
+  myWorkspaceShort: 'Overview',
+  teamOperationsShort: 'Team',
+  partialUpdate: 'Partial update',
+  actionFailed: 'Action failed',
+  selectedOfFiltered: '{selected} of {total} selected',
   staff: 'Staff',
   brands: 'Brands',
   platforms: 'Platforms',
@@ -1217,6 +1243,32 @@ const vi: Record<keyof typeof en, string> = {
   analytics: 'Phân tích',
   payroll: 'Bảng lương',
   workforce: 'Hiệu suất nhân sự',
+  storage: 'Kho file',
+  staffDirectory: 'Danh bạ nhân sự',
+  mySwaps: 'Đổi ca của tôi',
+  teamOperations: 'Vận hành nhóm',
+  myWorkforce: 'Hiệu suất cá nhân',
+  needsStaffing: 'Thiếu nhân sự',
+  addShift: 'Thêm ca',
+  importExport: 'Nhập / Xuất',
+  markScheduled: 'Chuyển Đã lên lịch',
+  markCompleted: 'Chuyển Hoàn thành',
+  deleteAll: 'Xóa tất cả',
+  selectAllPage: 'Chọn trang hiện tại',
+  selectAllFiltered: 'Chọn tất cả {count} ca theo bộ lọc',
+  allPageSelected: 'Đã chọn tất cả {count} ca trên trang này.',
+  allFilteredSelected: 'Đã chọn tất cả {count} ca phù hợp bộ lọc.',
+  confirmBulkStatusTitle: 'Xác nhận cập nhật trạng thái',
+  confirmBulkStatusMessage: 'Cập nhật trạng thái của {count} ca đã chọn thành "{status}"?',
+    affectedShifts: 'Các ca bị ảnh hưởng ({count}):',
+  openShiftsShort: 'Ca mở',
+  myScheduleShort: 'Lịch trực',
+  mySwapsShort: 'Đổi ca',
+  myWorkspaceShort: 'Tổng quan',
+  teamOperationsShort: 'Nhóm',
+  partialUpdate: 'Cập nhật một phần',
+  actionFailed: 'Thao tác thất bại',
+  selectedOfFiltered: 'Đã chọn {selected} / {total}',
   staff: 'Nhân sự',
   brands: 'Thương hiệu',
   platforms: 'Nền tảng',
@@ -2732,6 +2784,9 @@ function interpolate(value: string, variables?: Variables) {
 }
 
 function translateLegacyValue(value: string, language: Language) {
+  if (value in dictionary.en) {
+    return dictionary[language][value as TranslationKey]
+  }
   const exact = language === 'vi'
     ? englishToVietnamese.get(value) || legacyVietnamese[value]
     : vietnameseToEnglish.get(value) ||
@@ -2745,14 +2800,16 @@ function translateLegacyValue(value: string, language: Language) {
   return value
 }
 
-type Context = {
+export type LanguageContextType = {
   language: Language
   setLanguage: (language: Language) => void
   t: (key: TranslationKey, variables?: Variables) => string
   translate: (value: string) => string
 }
 
-const LanguageContext = React.createContext<Context | null>(null)
+type Context = LanguageContextType
+
+export const LanguageContext = React.createContext<Context | null>(null)
 
 export function LanguageProvider({
   children,

@@ -60,7 +60,7 @@ export function BottomNav() {
               data-testid={`nav-${item.name.toLowerCase()}`}
             >
               <Icon className="h-5 w-5" />
-              <span className="text-xs font-medium">{getLabel(item)}</span>
+              <span className="text-[10px] sm:text-xs font-medium text-center leading-tight px-0.5 line-clamp-1">{getLabel(item)}</span>
             </Link>
           )
         })}
@@ -70,13 +70,13 @@ export function BottomNav() {
             <DropdownMenuTrigger
               className={cn(
                 'flex flex-col items-center justify-center gap-1 transition-colors',
-                'text-muted-foreground hover:text-foreground outline-none cursor-pointer'
+                'text-slate-200 hover:bg-white/10 outline-none cursor-pointer min-h-11 px-1'
               )}
               data-testid="nav-menu-more"
               aria-label={t('moreMenu')}
             >
               <Menu className="h-5 w-5" />
-              <span className="text-xs font-medium">{t('moreMenu')}</span>
+              <span className="text-[10px] sm:text-xs font-medium text-center leading-tight px-0.5 line-clamp-1">{t('moreMenu')}</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 mb-2">
               {overflowNav.map((item) => {

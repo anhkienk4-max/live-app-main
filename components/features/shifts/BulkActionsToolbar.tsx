@@ -7,17 +7,44 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { X, Trash2 } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
+import { LanguageContext, LanguageContextType, TranslationKey } from '@/lib/i18n'
 
 interface BulkActionsToolbarProps {
   selectedCount: number
+  totalFilteredCount?: number
   onBulkDelete: (ids: string[]) => void
   onDeselectAll: () => void
   shifts: Shift[]
   onUpdate: () => void
+  canDelete?: boolean
+  onBulkStatus?: (status: 'scheduled' | 'completed') => void
 }
 
-export function BulkActionsToolbar({ selectedCount, onBulkDelete, onDeselectAll, shifts, onUpdate }: BulkActionsToolbarProps) {
+export function BulkActionsToolbar({
+  selectedCount,
+  totalFilteredCount,
+  onBulkDelete,
+  onDeselectAll,
+  shifts,
+  onUpdate,
+  canDelete = true,
+  onBulkStatus,
+}: BulkActionsToolbarProps) {
   const { toast } = useToast()
+  const langContext = React.useContext(LanguageContext) as LanguageContextType | null
+
+  const t = (key: TranslationKey, params?: Record<string, string | number>): string => {
+    if (langContext && typeof langContext.t === 'function') {
+      return langContext.t(key, params)
+    }
+    switch (key) {
+      case 'markScheduled': return 'Mark Scheduled'
+      case 'markCompleted': return 'Mark Completed'
+      case 'deleteAll': return 'Delete All'
+      case 'deselectAll': return 'Deselect All'
+      default: return key
+    }
+  }
 
   const handleBulkStatusChange = async (status: 'scheduled' | 'live' | 'completed' | 'cancelled') => {
     const result = await shiftService.bulkUpdateStatus(shifts, status)
@@ -35,24 +62,50 @@ export function BulkActionsToolbar({ selectedCount, onBulkDelete, onDeselectAll,
     })
   }
 
+  const badgeText = totalFilteredCount && totalFilteredCount > selectedCount
+    ? (langContext && typeof langContext.t === 'function' ? t('selectedOfFiltered', { selected: selectedCount, total: totalFilteredCount }) : `${selectedCount} / ${totalFilteredCount} selected`)
+    : (langContext && typeof langContext.t === 'function' ? t('selectedCount', { count: selectedCount }) : `${selectedCount} selected`)
+
   return (
-    <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <Badge variant="default">{selectedCount} selected</Badge>
-        <Button size="sm" variant="outline" onClick={() => handleBulkStatusChange('scheduled')}>
-          Mark Scheduled
+    <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <Badge variant="default" data-testid="bulk-selected-badge">
+          {badgeText}
+        </Badge>
+        <Button
+          size="sm"
+          variant="outline"
+          data-testid="bulk-mark-scheduled-btn"
+          disabled={selectedCount === 0 || shifts.length === 0}
+          onClick={() => onBulkStatus ? onBulkStatus('scheduled') : handleBulkStatusChange('scheduled')}
+        >
+          {t('markScheduled')}
         </Button>
-        <Button size="sm" variant="outline" onClick={() => handleBulkStatusChange('completed')}>
-          Mark Completed
+        <Button
+          size="sm"
+          variant="outline"
+          data-testid="bulk-mark-completed-btn"
+          disabled={selectedCount === 0 || shifts.length === 0}
+          onClick={() => onBulkStatus ? onBulkStatus('completed') : handleBulkStatusChange('completed')}
+        >
+          {t('markCompleted')}
         </Button>
-        <Button size="sm" variant="destructive" onClick={() => onBulkDelete(shifts.map(s => s.id))}>
-          <Trash2 className="h-4 w-4 mr-2" />
-          Delete All
-        </Button>
+        {canDelete && (
+          <Button
+            size="sm"
+            variant="destructive"
+            data-testid="bulk-delete-btn"
+            disabled={selectedCount === 0 || shifts.length === 0}
+            onClick={() => onBulkDelete(shifts.map(s => s.id))}
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            {t('deleteAll')}
+          </Button>
+        )}
       </div>
-      <Button size="sm" variant="ghost" onClick={onDeselectAll}>
+      <Button size="sm" variant="ghost" data-testid="bulk-deselect-btn" onClick={onDeselectAll}>
         <X className="h-4 w-4 mr-2" />
-        Deselect All
+        {t('deselectAll')}
       </Button>
     </div>
   )
