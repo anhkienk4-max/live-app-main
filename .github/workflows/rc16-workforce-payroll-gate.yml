@@ -156,7 +156,11 @@ jobs:
       - name: Install isolated browser runner
         run: pnpm exec playwright install --with-deps chromium
       - name: Global UI pagination and four-width route audit
-        run: pnpm exec playwright test --config playwright.rc16k.config.ts
+        run: |
+          for role in 1 2 3; do
+            pnpm exec playwright test --config playwright.rc16k.config.ts --grep "Local route audit role $role width" --output "test-results/rc16k-role-$role" --reporter=line
+          done
+          pnpm exec playwright test --config playwright.rc16k.config.ts --grep-invert 'Local route audit role' --output test-results/rc16k-interactions --reporter=line
       - name: Post-main desktop and mobile interaction regressions
         run: pnpm exec playwright test --config playwright.rc16i-postmain.config.ts
       - name: Preserve isolated UI evidence
