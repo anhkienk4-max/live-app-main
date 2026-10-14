@@ -16,7 +16,7 @@ import {
   isStaffedRegistration,
 } from '@/lib/services/dataService'
 import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Report, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
-import { hasPermission } from '@/lib/permissions'
+import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
@@ -95,8 +95,14 @@ export function ReportsContainer() {
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
   const handledDeepLink = React.useRef<string | null>(null)
+  const identity = currentUser ? currentUser.id + ':' + resolveSystemPermission(currentUser) : ''
+  const [loadedIdentity, setLoadedIdentity] = React.useState('')
+  const requestVersion = React.useRef(0)
 
   const loadData = React.useCallback(async () => {
+    const version = ++requestVersion.current
+    if (!identity) return
+    setLoading(true)
     setLoadError(null)
     try {
       const [loadedReports, loadedShifts, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers, loadedRegistrations] = await Promise.all([
@@ -108,6 +114,7 @@ export function ReportsContainer() {
         userService.getAll(),
         shiftRegistrationService.getAll(),
       ])
+      if (version !== requestVersion.current) return
       setReports(loadedReports)
       setShifts(loadedShifts)
       setBrands(loadedBrands)
@@ -115,17 +122,33 @@ export function ReportsContainer() {
       setCampaigns(loadedCampaigns)
       setUsers(loadedUsers)
       setRegistrations(loadedRegistrations)
+      setLoadedIdentity(identity)
     } catch (error) {
-      setLoadError(error)
+      if (version === requestVersion.current) setLoadError(error)
     } finally {
-      setLoading(false)
+      if (version === requestVersion.current) setLoading(false)
     }
-  }, [])
+  }, [identity])
 
   React.useEffect(() => {
+    const versionRef = requestVersion
     const timer = setTimeout(() => { void loadData() }, 0)
-    return () => clearTimeout(timer)
+    return () => { clearTimeout(timer); versionRef.current += 1 }
   }, [loadData])
+
+  // Modal state from an earlier account/permission must not survive a role switch.
+  React.useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setSelectedReport(null)
+      setShowForm(false)
+      setFormInitialReport(undefined)
+      setFormInitialShiftId(undefined)
+      setRemoveTarget(null)
+      setRemoveImpact(null)
+      handledDeepLink.current = null
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [identity])
 
   const myShiftIds = React.useMemo(() => new Set(registrations
     .filter(registration => registration.user_id === currentUser?.id && isStaffedRegistration(registration))
@@ -277,7 +300,7 @@ export function ReportsContainer() {
     toast({ title: t('success'), description: t('exportImageMetadata'), variant: 'success' })
   }
 
-  if (loading || userLoading) return <div className="py-12 text-center">{t('loading')}</div>
+  if (loading || userLoading || !identity || identity !== loadedIdentity) return <div className="py-12 text-center">{t('loading')}</div>
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
 
   return (
