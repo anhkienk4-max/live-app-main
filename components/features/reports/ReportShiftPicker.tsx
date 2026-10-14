@@ -37,6 +37,7 @@ export function ReportShiftPicker({
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   const [total, setTotal] = React.useState(0)
   const [loadedIdentity, setLoadedIdentity] = React.useState('')
+  const [loadedFilterKey, setLoadedFilterKey] = React.useState('')
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState('')
   const [selectingId, setSelectingId] = React.useState<string | null>(null)
@@ -44,6 +45,8 @@ export function ReportShiftPicker({
   const identity = currentUser.id + ':' + resolveSystemPermission(currentUser)
   const canReview = hasPermission(currentUser, 'reports.review')
   const canSubmit = hasPermission(currentUser, 'reports.submit')
+  const filterKey = JSON.stringify({ page, search: deferredSearch, from, to })
+  const invalidDates = Boolean(from && to && from > to)
 
   const loadPage = React.useCallback(async () => {
     if (!open || !canSubmit || (from && to && from > to)) return
@@ -73,6 +76,7 @@ export function ReportShiftPicker({
       setTotal(result.total)
       if (result.page !== page) setPage(result.page)
       setLoadedIdentity(identity)
+      setLoadedFilterKey(filterKey)
     } catch (err) {
       if (version !== requestVersion.current) return
       setError(err instanceof Error ? err.message : 'LIST_READ_FAILED')
@@ -80,7 +84,7 @@ export function ReportShiftPicker({
     } finally {
       if (version === requestVersion.current) setLoading(false)
     }
-  }, [canReview, canSubmit, deferredSearch, from, identity, open, page, to])
+  }, [canReview, canSubmit, deferredSearch, filterKey, from, identity, open, page, to])
 
   React.useEffect(() => {
     const timer = setTimeout(() => { void loadPage() }, 0)
@@ -88,7 +92,8 @@ export function ReportShiftPicker({
   }, [loadPage])
 
   // A permission or account switch must not leak the previous user's list.
-  const visible = open && loadedIdentity === identity && !loading && !error
+  const visible = open && loadedIdentity === identity && loadedFilterKey === filterKey &&
+    search === deferredSearch && !invalidDates && !loading && !error
   const reportsByShift = new Map(reports.map(report => [report.shift_id, report]))
   const canSelect = (shift: Shift) =>
     canSubmit && (canReview ||

@@ -21,6 +21,8 @@ test('picker uses bounded, searchable server pages with business permission scop
   assert.match(picker, /shiftRegistrationService\.getForShifts\(ids\)/)
   assert.match(picker, /loadReportTarget\(shift\.id/)
   assert.match(picker, /loadedIdentity === identity/)
+  assert.match(picker, /loadedFilterKey === filterKey/)
+  assert.match(picker, /search === deferredSearch && !invalidDates/)
   assert.match(picker, /requestVersion\.current/)
 })
 
