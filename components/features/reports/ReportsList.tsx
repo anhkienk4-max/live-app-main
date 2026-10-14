@@ -327,7 +327,7 @@ const myShiftIds = React.useMemo(() => new Set(registrations
     if (filters.metricsStatuses.length > 0 && !filters.metricsStatuses.includes(metricsStatus)) return false
     if (filters.search) {
       const query = filters.search.toLowerCase()
-      const haystack = [report.id, nameById(brands, shift.brand_id), nameById(platforms, shift.platform_id), nameById(campaigns, shift.campaign_id)].join(' ').toLowerCase()
+      const haystack = [report.id, shift.title, nameById(brands, shift.brand_id), nameById(platforms, shift.platform_id), nameById(campaigns, shift.campaign_id)].filter(Boolean).join(' ').toLowerCase()
       if (!haystack.includes(query)) return false
     }
     return true

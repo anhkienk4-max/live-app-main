@@ -1,5 +1,6 @@
 'use client'
 
+import * as React from 'react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Archive, Download, Eye, FileText, Plus, RotateCcw } from 'lucide-react'
 import type { Brand, Campaign, Platform, Report, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
@@ -87,7 +88,7 @@ export function ReportsView({
     { label: t('orders'), value: reportOrders === null ? null : reportOrders.toLocaleString() },
     { label: t('averageOrderValue'), value: averageOrderValue === null ? null : formatCurrency(averageOrderValue) },
     { label: t('ctr'), value: reportMetricValue(selected, 'ctr') === null ? null : `${reportMetricValue(selected, 'ctr')!.toFixed(2)}%` },
-    { label: 'Peak viewers', value: selected?.peak_viewer == null ? null : selected.peak_viewer.toLocaleString() },
+    { label: t('peakViewers'), value: selected?.peak_viewer == null ? null : selected.peak_viewer.toLocaleString() },
   ].filter((metric): metric is { label: string; value: string } => metric.value !== null) : []
 
   return (
@@ -175,15 +176,15 @@ export function ReportsView({
                     className="text-xs text-slate-500 hover:text-slate-800"
                     onClick={() => { setSelectedId(report.id); setDetailTab('overview') }}
                   >
-                    {isSelected ? '✓ Đang xem' : 'Xem chi tiết'}
+                    {isSelected ? `✓ ${t('currentlyViewing')}` : t('viewDetails')}
                   </button>
                   <div className="flex items-center gap-1.5">
-                    <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs" onClick={() => onView(report)}>
+                    <Button size="sm" variant="outline" className="h-8 min-h-[32px] px-2.5 text-xs" onClick={() => onView(report)}>
                       <Eye className="mr-1 h-3.5 w-3.5" />
                       {t('viewDetails')}
                     </Button>
                     {onExport && (
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => onExport(report)} title={t('exportExcel')}>
+                      <Button size="sm" variant="ghost" className="h-8 w-8 min-h-[32px] min-w-[32px] p-0" onClick={() => onExport(report)} title={t('exportExcel')}>
                         <Download className="h-3.5 w-3.5" />
                       </Button>
                     )}
@@ -280,7 +281,7 @@ export function ReportsView({
             {hasActiveFilters ? (
               <div className="space-y-2">
                 <p className="text-sm font-medium text-slate-800">{t('noReports')}</p>
-                <p className="text-xs text-slate-500">Không có báo cáo nào phù hợp với bộ lọc hiện tại.</p>
+                <p className="text-xs text-slate-500">{t('noReports')}</p>
                 {onResetFilters && (
                   <Button variant="outline" size="sm" onClick={onResetFilters} className="mt-2">
                     <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
@@ -363,7 +364,7 @@ export function ReportsView({
                 <p className="truncate text-[11px] font-medium text-slate-500">{metric.label}</p>
                 <p className="mt-0.5 truncate text-base font-semibold text-slate-900">{metric.value}</p>
               </div>
-            )) : <p className="col-span-full px-4 py-3 text-sm text-slate-500">Metrics unavailable</p>}
+            )) : <p className="col-span-full px-4 py-3 text-sm text-slate-500">{t('metricsUnavailable')}</p>}
           </div>
 
           <div className="border-b border-slate-200 bg-slate-50/60 px-4 py-2 text-xs text-slate-600">
@@ -396,7 +397,7 @@ export function ReportsView({
                 <DetailField label={t('campaign')} value={name(campaigns, selectedShift.campaign_id)} />
                 <DetailField label={t('studio')} value={selectedShift.studio ?? '—'} />
                 <DetailField label={t('reportStatus')} value={statusLabel(selected, t)} />
-                <DetailField label="Reviewed by" value={selected.reviewed_by ? users.find(user => user.id === selected.reviewed_by)?.full_name ?? '—' : '—'} />
+                <DetailField label={t('reviewedBy')} value={selected.reviewed_by ? users.find(user => user.id === selected.reviewed_by)?.full_name ?? '—' : '—'} />
                 <DetailField label={t('createdAt')} value={new Date(selected.created_at).toLocaleString()} />
                 <DetailField label={t('updatedAt')} value={new Date(selected.updated_at).toLocaleString()} />
               </div>
@@ -406,7 +407,7 @@ export function ReportsView({
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   {metrics.map(metric => <DetailField key={metric.label} label={metric.label} value={metric.value} />)}
                 </div>
-              ) : <EmptyDetail>Metrics unavailable</EmptyDetail>}
+              ) : <EmptyDetail>{t('metricsUnavailable')}</EmptyDetail>}
               {detailedMetrics.length > 0 && (
                 <div className="mt-3 overflow-x-auto rounded-md border border-slate-200">
                   <table className="w-full min-w-[420px] text-left text-xs">
@@ -432,8 +433,8 @@ export function ReportsView({
             </TabsContent>
             <TabsContent value="evidence" className="m-0 p-4">
               <div className="grid gap-3 sm:grid-cols-2">
-                <DetailField label="OCR review status" value={selected.ocr_review?.status ?? 'Not available'} />
-                <DetailField label={t('rawOcrOutput')} value={selected.raw_ocr_output ? t('available') : 'Not available'} />
+                <DetailField label={t('ocrReviewStatus')} value={selected.ocr_review?.status ?? '—'} />
+                <DetailField label={t('rawOcrOutput')} value={selected.raw_ocr_output ? t('available') : '—'} />
               </div>
               {selected.raw_ocr_output && (
                 <details className="mt-3 rounded-md border bg-slate-50 p-3">
@@ -442,7 +443,7 @@ export function ReportsView({
                 </details>
               )}
               <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm">
-                <span>{t('reportImages')} · OCR review and raw report evidence</span>
+                <span>{t('reportImages')} · {t('rawOcrAndEvidence')}</span>
                 <Button size="sm" variant="outline" onClick={() => onView(selected)}>
                   <Eye className="mr-1.5 h-4 w-4" />
                   {t('viewDetails')}
@@ -460,12 +461,12 @@ export function ReportsView({
                     />
                   ))}
                 </div>
-              ) : <EmptyDetail>No staff assigned</EmptyDetail>}
+              ) : <EmptyDetail>{t('noStaffAssigned')}</EmptyDetail>}
             </TabsContent>
             <TabsContent value="notes" className="m-0 p-4">
               <div className="grid gap-4 lg:grid-cols-2">
-                <DetailField label="What went well" value={selected.insights_good || '—'} />
-                <DetailField label="Needs improvement" value={selected.insights_improvement || '—'} />
+                <DetailField label={t('whatWentWell')} value={selected.insights_good || '—'} />
+                <DetailField label={t('needsImprovement')} value={selected.insights_improvement || '—'} />
                 {selected.final_recap && (
                   <DetailField
                     label="Final recap"
@@ -486,7 +487,7 @@ export function ReportsView({
                 </ol>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <DetailField label="Submitted by" value={selected.submitted_by ? users.find(user => user.id === selected.submitted_by)?.full_name ?? '—' : '—'} />
+                  <DetailField label={t('submittedBy')} value={selected.submitted_by ? users.find(user => user.id === selected.submitted_by)?.full_name ?? '—' : '—'} />
                   <DetailField label={t('createdAt')} value={new Date(selected.created_at).toLocaleString()} />
                   <DetailField label={t('updatedBy')} value={selected.updated_by ? users.find(user => user.id === selected.updated_by)?.full_name ?? '—' : '—'} />
                   <DetailField label={t('updatedAt')} value={new Date(selected.updated_at).toLocaleString()} />
