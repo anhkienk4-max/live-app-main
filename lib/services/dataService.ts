@@ -2747,7 +2747,7 @@ export const reportService = {
       && (!metricsStatuses?.length || metricsStatuses.includes(report.metrics_confirmed ? 'confirmed' : 'unconfirmed'))
       && (!search || (() => {
         const shift = shifts.find(item => item.id === report.shift_id)
-        return [report.id, brands.find(b => b.id === shift?.brand_id)?.name, platforms.find(p => p.id === shift?.platform_id)?.name, campaigns.find(c => c.id === shift?.campaign_id)?.name].join(' ').toLowerCase().includes(search.toLowerCase())
+        return [report.id, shift?.title, brands.find(b => b.id === shift?.brand_id)?.name, platforms.find(p => p.id === shift?.platform_id)?.name, campaigns.find(c => c.id === shift?.campaign_id)?.name].join(' ').toLowerCase().includes(search.toLowerCase())
       })())).sort((a, b) => b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id))
     const confirmed = filtered.filter(report => report.status === 'confirmed' && report.metrics_confirmed === true)
     const metrics = calculateNullableAnalyticsMetrics(confirmed)

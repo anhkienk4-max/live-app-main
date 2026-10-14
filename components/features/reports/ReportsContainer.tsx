@@ -15,7 +15,7 @@ import {
   userService,
   isStaffedRegistration,
 } from '@/lib/services/dataService'
-import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Report, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
+import { Brand, Campaign, DeletionImpact, Platform, Report, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
@@ -222,17 +222,6 @@ export function ReportsContainer() {
   }
 
   const shiftById = React.useMemo(() => new Map(shifts.map(shift => [shift.id, shift])), [shifts])
-  const nameById = (items: Array<{ id: string; name: string }>, id?: string) => id ? items.find(item => item.id === id)?.name || '—' : '—'
-  const matchesRole = React.useCallback((shift: Shift, role: OperationalRole, userId: string) => {
-    const assignment = role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
-    return assignment === userId || registrations.some(registration =>
-      registration.shift_id === shift.id &&
-      registration.user_id === userId &&
-      registration.operational_role === role &&
-      isStaffedRegistration(registration)
-    )
-  }, [registrations])
-
   const completedShifts = React.useMemo(() => {
     const reported = new Set(candidateReports.map(report => report.shift_id))
     return candidateShifts.filter(shift =>
