@@ -36,7 +36,6 @@ import { ReportDetailModal } from './ReportDetailModal'
 import { ReportFormModal } from './ReportFormModal'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { PageLoadError } from '@/components/ui/page-load-error'
-import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 
 type Filters = {
@@ -106,7 +105,7 @@ export function ReportsContainer() {
   const [loadedIdentity, setLoadedIdentity] = React.useState('')
   const requestVersion = React.useRef(0)
   const identityForExport = React.useRef(identity)
-  identityForExport.current = identity
+  React.useEffect(() => { identityForExport.current = identity }, [identity])
 
   const deferredSearch = React.useDeferredValue(filters.search)
   const encodedFilters = JSON.stringify({
@@ -160,7 +159,10 @@ export function ReportsContainer() {
     }
   }, [encodedFilters, identity, reportPage, reportPageSize])
 
-  React.useEffect(() => { setReportPage(1) }, [encodedFilters])
+  React.useEffect(() => {
+    const timer = setTimeout(() => setReportPage(1), 0)
+    return () => clearTimeout(timer)
+  }, [encodedFilters])
 
   React.useEffect(() => {
     const versionRef = requestVersion
