@@ -30,7 +30,7 @@ begin
   ), selected as (
     select * from matching order by updated_at desc,id limit p_page_size offset ((select page from stats)-1)*p_page_size
   ), metrics as (
-    select count(*) filter(where not m.metrics_confirmed) needs_review,
+    select count(*) filter(where m.metrics_confirmed is distinct from true) needs_review,
       sum(private.rc16k_report_metric(r,'revenue')) filter(where m.status='confirmed' and m.metrics_confirmed) total_revenue,
       sum(private.rc16k_report_metric(r,'revenue')) filter(where m.status='confirmed' and m.metrics_confirmed and private.rc16k_report_metric(r,'orders') is not null and private.rc16k_report_metric(r,'revenue') is not null) paired_revenue,
       sum(private.rc16k_report_metric(r,'orders')) filter(where m.status='confirmed' and m.metrics_confirmed and private.rc16k_report_metric(r,'orders') is not null and private.rc16k_report_metric(r,'revenue') is not null) paired_orders

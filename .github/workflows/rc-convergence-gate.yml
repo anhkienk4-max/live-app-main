@@ -115,6 +115,19 @@ jobs:
           $contracts$;
           SQL
 
+      - name: RC1.6K Reports RPC fixture on isolated PostgreSQL 17 (not Production UAT)
+        env:
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGDATABASE: postgres
+        run: |
+          createdb rc16k_reports_fixture
+          psql -v ON_ERROR_STOP=1 -d rc16k_reports_fixture -f tests/fixtures/rc16k_reports_rpc_baseline.sql
+          psql -v ON_ERROR_STOP=1 -d rc16k_reports_fixture -f supabase/migrations/20261014233900_rc16k_reports_summary.sql
+          psql -v ON_ERROR_STOP=1 -d rc16k_reports_fixture -f tests/fixtures/rc16k_reports_rpc_assertions.sql
+
       - name: Native OCR runtime dependencies
         run: |
           sudo apt-get update
