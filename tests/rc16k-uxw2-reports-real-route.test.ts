@@ -10,7 +10,8 @@ const migration = readFileSync('supabase/migrations/20261014233900_rc16k_reports
 test('real /reports entrypoint fetches bounded pages', () => {
   assert.match(route, /import\('@\/components\/features\/reports\/ReportsContainer'\)/)
   assert.match(container, /reportService\.getFilteredPage\(/)
-  assert.match(container, /shiftService\.getReportCandidates\(/)
+  assert.match(container, /<ReportShiftPicker/)
+  assert.doesNotMatch(container, /getReportCandidates\(/)
   assert.match(container, /shiftRegistrationService\.getForShifts\(/)
   assert.doesNotMatch(container, /(?:reportService|shiftService|shiftRegistrationService)\.getAll\(\)/)
   assert.match(view, /serverPaged \? reports : reports\.slice/)
