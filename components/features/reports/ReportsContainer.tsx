@@ -230,7 +230,7 @@ export function ReportsContainer() {
 
   // Deep link handler for ?shiftId=...
   React.useEffect(() => {
-    if (!deepLinkShiftId || loading || userLoading || handledDeepLink.current === deepLinkShiftId) return
+    if (!deepLinkShiftId || identity !== loadedIdentity || loading || userLoading || handledDeepLink.current === deepLinkShiftId) return
     handledDeepLink.current = deepLinkShiftId
 
     const timer = setTimeout(() => {
@@ -256,7 +256,7 @@ export function ReportsContainer() {
       }
     }, 0)
       return () => clearTimeout(timer)
-  }, [currentUser, deepLinkShiftId, loading, myShiftIds, pathname, reports, router, searchParams, shiftById, shifts, userLoading])
+  }, [currentUser, deepLinkShiftId, identity, loadedIdentity, loading, myShiftIds, pathname, reports, router, searchParams, shiftById, shifts, userLoading])
 
   const filteredReports = React.useMemo(() => reports.filter(report => {
     const shift = shiftById.get(report.shift_id)
