@@ -5,7 +5,8 @@
       "feat/rc16-payroll-workforce-backend": false,
       "integration/rc14-rc15-rc16-prod": false,
       "feat/rc16k-ui-consistency-pagination": false,
-      "fix/rc16l-calendar-ux-worktime-export": false
+      "fix/rc16l-calendar-ux-worktime-export": false,
+      "fix/rc16l-capabilities-dedupe": false
     }
   }
 }
