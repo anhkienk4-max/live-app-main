@@ -1,0 +1,38 @@
+RELEASE_SHA=083a015688676c3cb2eda94f363f26de3fd9ed5e
+MIGRATION_COPY_COUNT=71
+MIGRATION_TEMP_PATCH=20261011092015_rc15_shift_rpc_compatibility.sql production-definition guard bypassed only for empty local database; source file unchanged
+UAT_SEED_STAGE=auth_users_created
+UAT_SEED_STAGE=reference_data_created
+UAT_SEED_STAGE=historical_shifts_created
+UAT_SEED_STAGE=direct_assignment_shifts_created
+UAT_SEED_STAGE=approved_registration_created
+UAT_SEED_STAGE=open_unregistered_shift_created
+UAT_SEED_STAGE=pending_shift_created
+UAT_SEED_STAGE=pending_registration_created
+UAT_SEED_STAGE=approved_registration_shift_created
+UAT_SEED_STAGE=registration_status_fixtures_created
+UAT_SEED_STAGE=historical_reports_created
+UAT_SEED_STAGE=report_and_image_fixtures_created
+UAT_BASELINE_REPRODUCTION={"target":"isolated_local_supabase_before_rc16k_member_report_read_rls","authenticatedMember":true,"unrelatedReportRows":1,"openRegistrationWithoutSignupRows":1,"pendingRegistrationRows":1,"unrelatedInReportListRpc":false,"openInReportListRpc":true,"pendingInReportListRpc":true,"unrelatedRevisionsReturned":1,"unrelatedReportImagesReturned":1,"unrelatedLiveReportImagesReturned":1,"unlinkedLiveReportImagesReturned":1}
+{"authUsers":4,"shifts":131,"directAssignments":3,"memberRegistrations":3,"reports":128,"credentialFileWritten":true,"unauthorizedReadBaselineReproduced":true}
+BASELINE_READ_REPRODUCTION=baseline-report-read-reproduction.json; migration excluded before this probe
+MIGRATION_ROLLBACK=PASS; candidate DDL applied inside a savepoint, rolled back, and baseline policy/function state restored
+FORWARD_MIGRATION_SHA256=698DB467BB1BCD1B549DCE94CB51704BB4771C814CF8AB6E23D3439564622BA7
+FORWARD_MIGRATION_REHEARSAL=applied through Supabase CLI migration history on isolated local database
+MIGRATION_POSTCONDITIONS=PASS; policy set, RLS, grants, owner, SECURITY DEFINER, and search_path asserted
+[ENV GUARD] local: target identity verified
+Running 10 tests using 1 worker
+  ok  1 e2e\isolated-authenticated-uat.spec.ts:85:7 › leader signs in, reaches Reports, and signs out with Supabase Auth (46.2s)
+  ok  2 e2e\isolated-authenticated-uat.spec.ts:96:5 › Admin pages and searches more than 100 persisted reports (19.7s)
+  ok  4 e2e\isolated-authenticated-uat.spec.ts:168:5 › Member creates and edits an assigned-shift draft, then deep-links to it (43.3s)
+  ok  5 e2e\isolated-authenticated-uat.spec.ts:252:5 › Admin final-report form blocks submission without dashboard evidence (24.7s)
+  ok  6 e2e\isolated-authenticated-uat.spec.ts:279:5 › Confirmed report remains confirmed when isolated DATA/REPORT generation fails (10.2s)
+  ok  7 e2e\isolated-authenticated-uat.spec.ts:364:5 › Member Reports RPC is scoped and draft writes enforce ownership and version (861ms)
+  ok  8 e2e\isolated-authenticated-uat.spec.ts:444:5 › Report reads, revisions, images, and report API enforce the authenticated entitlement boundary (17.1s)
+  ok  9 e2e\isolated-authenticated-uat.spec.ts:617:5 › Member draft uses CAS; Leader review and confirmation persist after reload (604ms)
+  ok 10 e2e\isolated-authenticated-uat.spec.ts:693:5 › Admin export downloads and reconciles every filtered report from all pages (20.3s)
+  1 skipped
+  9 passed (3.5m)
+MIGRATION_COMPENSATING_ROLLBACK=PASS; restored prior report policies and revision RPC on the disposable local database; migration ledger retained
+CLEANUP_REMAINING_CONTAINERS=0
+CLEANUP_REMAINING_VOLUMES=0

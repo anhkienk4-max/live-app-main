@@ -1,0 +1,60 @@
+{
+  "memberAuthenticated": true,
+  "allowedDirectEntitlements": 5,
+  "allowedRevisionRpcRows": 3,
+  "allowedRevisionTableRows": 3,
+  "allowedReportImageRows": 1,
+  "allowedLiveReportImageRows": 1,
+  "unrelatedRestRows": 0,
+  "openUnregisteredRows": 0,
+  "pendingRows": 0,
+  "archivedOrDeletedReportRows": [
+    0,
+    0
+  ],
+  "archivedOrDeletedParentShiftRows": [
+    0,
+    0
+  ],
+  "unrelatedReportListRpcRows": 0,
+  "unrelatedRevisionRpcStatus": "42501",
+  "unrelatedRevisionRows": 0,
+  "unrelatedReportImageRows": 0,
+  "unrelatedLiveReportImageRows": 0,
+  "unlinkedLiveReportImageRows": 0,
+  "pendingRegistrationStillVisibleInMyShifts": true,
+  "inactiveAuthSession": true,
+  "inactiveReportRows": 0,
+  "inactiveRevisionError": "42501",
+  "anonymousReportRows": 0,
+  "roleReadbacks": {
+    "leader": {
+      "unrelated": 1,
+      "archivedReport": 0,
+      "deletedReport": 0,
+      "reportOnArchivedShift": 1,
+      "reportOnDeletedShift": 1,
+      "revisions": 1,
+      "unlinkedLiveImage": 1,
+      "archivedReportRevisions": 0,
+      "archivedReportRevisionError": "42501"
+    },
+    "admin": {
+      "unrelated": 1,
+      "archivedReport": 1,
+      "deletedReport": 1,
+      "reportOnArchivedShift": 1,
+      "reportOnDeletedShift": 1,
+      "revisions": 1,
+      "unlinkedLiveImage": 1,
+      "archivedReportRevisions": 2,
+      "archivedReportRevisionError": null
+    }
+  },
+  "apiResults": {
+    "collectionStatus": 200,
+    "unrelatedInCollection": false,
+    "artifactStatus": 403,
+    "imageStatus": 404
+  }
+}

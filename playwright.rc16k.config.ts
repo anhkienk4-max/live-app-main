@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test'
 export default defineConfig({
-  testDir: './e2e', testMatch: ['rc16k-ui.spec.ts','rc16k-route-audit.spec.ts'], workers: 1, timeout: 120000,
+  testDir: './e2e', testMatch: ['rc16k-ui.spec.ts','rc16k-route-audit.spec.ts','rc16k-reports.spec.ts'], workers: 1, timeout: 120000,
   expect: { timeout: 20000 },
   use: { baseURL: 'http://127.0.0.1:3108', headless: true, trace: 'retain-on-failure' },
   reporter: [['list'], ['html', { outputFolder: 'rc16k-browser-report', open: 'never' }]],

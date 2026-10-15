@@ -459,6 +459,7 @@ function canReadMockPagedShift(shift:Shift,actor:User):boolean {
   return (shift.status==='scheduled'&&!shift.registration_locked&&(resolveShiftDateTime(shift.date,shift.start_time,shift.end_time,shift.timezone)?.endAt.getTime()??0)>Date.now())
     || [shift.host_id,shift.support_id,shift.technical_id].includes(actor.id)
     || shiftRegistrations.some(r=>r.shift_id===shift.id&&r.user_id===actor.id&&['pending','approved','manually_assigned'].includes(r.status))
+    || reports.some(r=>r.shift_id===shift.id&&r.submitted_by===actor.id&&!r.deleted_at&&!r.archived_at)
 }
 
 function filterMockList<T extends { id: string }>(rows: T[], filters: ListFilters = {}): T[] {
@@ -1341,7 +1342,10 @@ export const shiftService = {
     const owned = shiftRegistrations.filter(r => r.user_id === actor.id && ['pending', 'approved', 'manually_assigned'].includes(r.status))
     const filtered = filterMockList(shifts, query.filters).filter(shift=>canReadMockPagedShift(shift,actor)).filter(shift => mode === 'open'
       ? shift.status === 'scheduled' && (resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)?.endAt.getTime() ?? 0) > Date.now()
-      : owned.some(r => r.shift_id === shift.id && (!query.filters?.roles?.length || query.filters.roles.includes(r.operational_role)) && (!query.filters?.registrationStatuses?.length || query.filters.registrationStatuses.includes(r.status))))
+      : owned.some(r => r.shift_id === shift.id && (!query.filters?.roles?.length || query.filters.roles.includes(r.operational_role)) && (!query.filters?.registrationStatuses?.length || query.filters.registrationStatuses.includes(r.status)))
+        || (query.filters?.reportCandidates === true && !query.filters.roles?.length && !query.filters.registrationStatuses?.length && (
+          [shift.host_id, shift.support_id, shift.technical_id].includes(actor.id)
+          || reports.some(rep => rep.shift_id === shift.id && rep.submitted_by === actor.id && !rep.deleted_at && !rep.archived_at))))
     const result = localListPage(filtered, query)
     const ids = new Set(result.items.map(item => item.id))
     const visible = shiftRegistrations.filter(r => ids.has(r.shift_id) && (resolveSystemPermission(actor) !== 'member' || r.user_id === actor.id))
@@ -2738,7 +2742,7 @@ export const reportService = {
     return this.getAllFiltered(filters)
   },
 
-  async getFilteredPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<Report>> {
+  async getFilteredPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<Report> & { summary?: { revenue: number | null; aov: number | null; needsReview: number } }> {
     if (getAuthMode() === 'supabase') return getCollectionPage<Report>('reports', query, signal)
     const { search, reportStatuses, metricsStatuses, ...shiftFilters } = query.filters ?? {}
     const ids = new Set(filterMockList(shifts, shiftFilters).map(shift => shift.id))
@@ -2747,9 +2751,14 @@ export const reportService = {
       && (!metricsStatuses?.length || metricsStatuses.includes(report.metrics_confirmed ? 'confirmed' : 'unconfirmed'))
       && (!search || (() => {
         const shift = shifts.find(item => item.id === report.shift_id)
-        return [report.id, brands.find(b => b.id === shift?.brand_id)?.name, platforms.find(p => p.id === shift?.platform_id)?.name, campaigns.find(c => c.id === shift?.campaign_id)?.name].join(' ').toLowerCase().includes(search.toLowerCase())
+        return [report.id, shift?.title, brands.find(b => b.id === shift?.brand_id)?.name, platforms.find(p => p.id === shift?.platform_id)?.name, campaigns.find(c => c.id === shift?.campaign_id)?.name].join(' ').toLowerCase().includes(search.toLowerCase())
       })())).sort((a, b) => b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id))
-    return localListPage(filtered, query)
+    const confirmed = filtered.filter(report => report.status === 'confirmed' && report.metrics_confirmed === true)
+    const metrics = calculateNullableAnalyticsMetrics(confirmed)
+    return { ...localListPage(filtered, query), summary: {
+      revenue: metrics.revenue, aov: metrics.averageOrderValue,
+      needsReview: filtered.filter(report => !report.metrics_confirmed).length,
+    } }
   },
   async getAllFiltered(filters: ListFilters = {}): Promise<Report[]> {
     if (getAuthMode() === 'supabase') return getCompleteCollection<Report>('reports', filters)
