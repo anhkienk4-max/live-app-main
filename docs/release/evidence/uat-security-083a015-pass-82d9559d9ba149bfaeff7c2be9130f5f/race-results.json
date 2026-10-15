@@ -1,0 +1,6 @@
+{
+  "case": "change-report-filter-during-pending-response",
+  "result": "not_executable",
+  "observation": "Reports search input is removed from the page while the filtered collection request is pending.",
+  "responseReleased": true
+}

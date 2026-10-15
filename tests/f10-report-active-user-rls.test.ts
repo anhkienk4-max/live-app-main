@@ -6,6 +6,10 @@ const migration = readFileSync(
   'supabase/migrations/20260903110000_f10_report_active_business_user_rls.sql',
   'utf8',
 )
+const reportReadHardening = readFileSync(
+  'supabase/migrations/20261015154159_rc16k_member_report_read_rls.sql',
+  'utf8',
+)
 const originalReportMigration = readFileSync(
   'supabase/migrations/20260823000000_p3_report_persistence.sql',
   'utf8',
@@ -60,4 +64,22 @@ test('Analytics still reads the existing report-backed source and audit is untou
   assert.match(analytics, /report|analytics/i)
   assert.doesNotMatch(migration, /create table|create or replace function|audit_/i)
   assert.match(auditMigration, /create trigger audit_reports_change after insert or update or delete on public\.reports/i)
+})
+
+test('Report-specific access does not inherit open-shift or pending-registration visibility', () => {
+  assert.match(reportReadHardening, /private\.can_read_report\(p_shift_id text, p_submitted_by text\)/i)
+  assert.match(reportReadHardening, /security definer[\s\S]*?set search_path to ''/i)
+  assert.match(reportReadHardening, /registration\.status in \('approved', 'manually_assigned'\)/i)
+  assert.match(reportReadHardening, /p\.cmd in \('SELECT', 'ALL'\)[\s\S]*?p\.cmd = 'SELECT'/i)
+  assert.doesNotMatch(reportReadHardening, /private\.can_read_shift\(shift_id\)/i)
+  assert.doesNotMatch(reportReadHardening, /registration\.status in \('pending', 'approved', 'manually_assigned'\)/i)
+  assert.match(reportReadHardening, /current_system_permission\(\)\) in \('admin', 'leader'\)/i)
+  assert.match(reportReadHardening, /revoke all on function private\.can_read_report\(text, text\) from public, anon, service_role/i)
+})
+
+test('The security-definer report revision RPC checks the same member entitlement as table reads', () => {
+  const revisionRpc = reportReadHardening.slice(reportReadHardening.indexOf('create or replace function public.get_report_revisions'))
+  assert.match(revisionRpc, /private\.require_report_actor\(false\)/i)
+  assert.match(revisionRpc, /private\.can_read_report\(target_report\.shift_id, target_report\.submitted_by\)/i)
+  assert.match(revisionRpc, /actor_permission is distinct from 'admin'[\s\S]*?actor_permission is distinct from 'leader'/i)
 })
