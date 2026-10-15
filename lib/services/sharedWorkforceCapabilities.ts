@@ -4,7 +4,7 @@
  * This is a client-side UX optimization, never an authorization source.
  * The server re-checks session and permissions for every privileged action.
  */
-type Entry = { promise: Promise<unknown>; expiresAt: number }
+type Entry = { promise: Promise<unknown>; expiresAt: number; pending: boolean }
 const requests = new Map<string, Entry>()
 const DEDUPE_WINDOW_MS = 1000
 
@@ -15,13 +15,16 @@ export function readSharedWorkforceCapabilities<T>(
 ): Promise<T> {
   if (!identityKey.trim()) return Promise.reject(new Error('WORKFORCE_IDENTITY_REQUIRED'))
   const current = requests.get(identityKey)
-  if (current && current.expiresAt > nowMs) return current.promise as Promise<T>
+  if (current && (current.pending || current.expiresAt > nowMs)) return current.promise as Promise<T>
   const promise = Promise.resolve().then(load)
-  const entry: Entry = { promise, expiresAt: nowMs + DEDUPE_WINDOW_MS }
+  const entry: Entry = { promise, expiresAt: nowMs + DEDUPE_WINDOW_MS, pending: true }
   requests.set(identityKey, entry)
   // Clear failures immediately. A late rejected request must not evict
   // a newer request created after an identity/visibility invalidation.
-  void promise.then(undefined, () => {
+  void promise.then(() => {
+    // Continue sharing only during the short post-request window.
+    if (requests.get(identityKey) === entry) entry.pending = false
+  }, () => {
     if (requests.get(identityKey) === entry) requests.delete(identityKey)
   })
   return promise
