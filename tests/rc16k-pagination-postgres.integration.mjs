@@ -4,14 +4,19 @@ import { readFileSync } from 'node:fs'
 import { assertIsolatedContainer, assertIsolatedCI } from './rc16-rehearsal-safety.mjs'
 
 const container = process.argv[2] === '--container' ? process.argv[3] : null
-const reportsOnly = process.argv.at(-1) === '--reports-only'
+const reportsOnly = process.argv.includes('--reports-only')
+const backupRestore = process.argv.includes('--backup-restore')
 const major = process.env.RC16_PG_MAJOR ?? '17'
 assert.ok(['16', '17'].includes(major))
 if (container) {
-  assert.equal(process.argv.length, reportsOnly ? 5 : 4)
+  assert.equal(process.argv.length, 4 + Number(reportsOnly) + Number(backupRestore))
   assert.match(container, /^rc16f-pg(?:16|17)-[a-z0-9-]{1,40}$/)
   assertIsolatedContainer(JSON.parse(execFileSync('docker', ['inspect', container], { encoding: 'utf8' }))[0], major)
-} else { assert.equal(process.argv.length, reportsOnly ? 3 : 2); assertIsolatedCI(process.env) }
+} else {
+  assert.equal(process.argv.length, 2 + Number(reportsOnly) + Number(backupRestore))
+  assert.ok(!backupRestore, 'Backup/restore rehearsal requires a verified isolated container')
+  assertIsolatedCI(process.env)
+}
 const read = path => readFileSync(path, 'utf8')
 const foundation = read('supabase/migrations/20260814085659_p1c_shift_persistence.sql')
 function extract(pattern) { const match = foundation.match(pattern); assert.ok(match); return match[0] }
@@ -133,7 +138,7 @@ const reportsChecks = [
   read('supabase/migrations/20261014190429_rc16k_reports_forward_reconciliation.sql'),
   "select public.k_assert(not exists(select 1 from reports_acl_before old join pg_proc p using(oid) where old.proacl is distinct from p.proacl or old.proowner<>p.proowner or old.prosecdef<>p.prosecdef or old.proconfig is distinct from p.proconfig),'forward replay preserves owners ACL search_path and security modes'); select public.k_assert(not exists((select * from reports_policies_before except select * from pg_policies) union all (select * from pg_policies except select * from reports_policies_before)),'forward preserves all RLS policies');",
   read('tests/fixtures/rc16k_reports_permission_assertions.sql'),
-  "reset role; rollback;",
+  `reset role; ${backupRestore ? 'commit' : 'rollback'};`,
 ]
 const sql = [...setup, ...(reportsOnly ? [] : baselineChecks), ...reportsChecks].join('\n')
 const child = spawn(container ? 'docker' : 'psql', [...(container ? ['exec','-i',container,'psql'] : []), '-X','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-At'], { stdio: ['pipe','pipe','pipe'], timeout: 180000 })
@@ -142,5 +147,45 @@ child.stdout.on('data', part => { output += part }); child.stderr.on('data', par
 child.stdin.end(sql)
 const code = await new Promise((resolve,reject) => { child.on('error',reject); child.on('close',resolve); child.stdin.on('error',reject) })
 assert.equal(code,0,output)
-console.log('PASS PostgreSQL ' + major + ': ' + (output.match(/RC16K_PASS:/g)?.length ?? 0) + ' bounded pagination/RLS assertions; fixture rolled back')
+console.log('PASS PostgreSQL ' + major + ': ' + (output.match(/RC16K_PASS:/g)?.length ?? 0) + ' bounded pagination/RLS assertions; fixture ' + (backupRestore ? 'committed inside disposable container' : 'rolled back'))
 console.log('Reports filtered RPC fixture EXPLAIN: ' + (output.match(/Execution Time: [\d.]+ ms/)?.[0] ?? 'unavailable'))
+
+if (backupRestore) {
+  const restoreDatabase = 'rc16k_reports_restore'
+  const archive = execFileSync('docker', ['exec', container, 'pg_dump', '-Fc', '-U', 'postgres', '-d', 'postgres'], { maxBuffer: 64 * 1024 * 1024 })
+  execFileSync('docker', ['exec', container, 'createdb', '-U', 'postgres', restoreDatabase])
+  try {
+    execFileSync('docker', ['exec', '-i', container, 'pg_restore', '--exit-on-error', '-U', 'postgres', '-d', restoreDatabase], { input: archive, maxBuffer: 64 * 1024 * 1024 })
+    const fingerprintSql = `
+      select jsonb_build_object(
+        'rowCounts', jsonb_build_object(
+          'shifts',(select count(*) from public.shifts),
+          'reports',(select count(*) from public.reports),
+          'registrations',(select count(*) from public.shift_registrations)
+        ),
+        'rowHashes', jsonb_build_object(
+          'shifts',(select md5(coalesce(string_agg(to_jsonb(s)::text,E'\\n' order by s.id),'')) from public.shifts s),
+          'reports',(select md5(coalesce(string_agg(to_jsonb(r)::text,E'\\n' order by r.id),'')) from public.reports r),
+          'registrations',(select md5(coalesce(string_agg(to_jsonb(r)::text,E'\\n' order by r.id),'')) from public.shift_registrations r)
+        ),
+        'functions',(select jsonb_agg(jsonb_build_object(
+          'signature',p.oid::regprocedure::text,'definition',md5(pg_get_functiondef(p.oid)),
+          'owner',pg_get_userbyid(p.proowner),'acl',p.proacl,'securityDefiner',p.prosecdef,'config',p.proconfig
+        ) order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+          where (n.nspname,p.proname) in (('private','can_read_shift'),('private','filtered_shift_ids'),('public','get_report_list_page'))),
+        'rls',(select jsonb_agg(jsonb_build_object('table',c.relname,'enabled',c.relrowsecurity,'forced',c.relforcerowsecurity) order by c.relname)
+          from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind='r'),
+        'policies',(select jsonb_agg(jsonb_build_object('table',tablename,'name',policyname,'roles',roles,'command',cmd,'using',qual,'check',with_check) order by tablename,policyname)
+          from pg_policies where schemaname='public')
+      )::text;
+    `
+    const fingerprint = database => execFileSync('docker', ['exec', container, 'psql', '-XqAt', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', database, '-c', fingerprintSql], { encoding: 'utf8' }).trim()
+    const before = fingerprint('postgres')
+    const restored = fingerprint(restoreDatabase)
+    assert.ok(before.length > 0, 'Source database fingerprint must exist')
+    assert.equal(restored, before, 'Backup/restore must preserve synthetic rows, function definitions and ACLs, RLS flags, and policies')
+    console.log('PASS PostgreSQL ' + major + ': synthetic backup/restore preserved row hashes, RPC definitions/ACLs, RLS, and policies')
+  } finally {
+    execFileSync('docker', ['exec', container, 'dropdb', '-U', 'postgres', restoreDatabase])
+  }
+}
