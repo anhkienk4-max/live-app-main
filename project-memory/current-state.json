@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "integration/rc16k-uxw2-release-candidate",
-    "head": "92bf18247d6604fdcd89df7247ba7b01ea1b6593",
+    "head": "c1cddaf43a48247a073add8583c49abfeeefda01",
     "origin_main": "4f03c0b881bcc77547e72a2d5c655b07690746d6",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-prod-integration"
   },
@@ -91,11 +91,11 @@
         "app": 59,
         "components": 151,
         "lib": 203,
-        "scripts": 18,
-        "supabase": 90,
+        "scripts": 20,
+        "supabase": 91,
         "tests": 202
       },
-      "total": 723
+      "total": 726
     },
     "tests": {
       "files": [
@@ -343,9 +343,10 @@
         "supabase/migrations/20261012145735_p0_audit_privilege_hardening.sql",
         "supabase/migrations/20261012171503_rc16k_bounded_shift_lists.sql",
         "supabase/migrations/20261014190429_rc16k_reports_forward_reconciliation.sql",
-        "supabase/migrations/20261014233900_rc16k_reports_summary.sql"
+        "supabase/migrations/20261014233900_rc16k_reports_summary.sql",
+        "supabase/migrations/20261015154159_rc16k_member_report_read_rls.sql"
       ],
-      "count": 71
+      "count": 72
     }
   },
   "verification": {
@@ -359,5 +360,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-15T15:26:14+07:00"
+  "synced_at": "2026-10-16T01:31:42+07:00"
 }

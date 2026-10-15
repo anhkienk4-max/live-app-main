@@ -2,12 +2,12 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-15T15:26:14+07:00
+Generated at: 2026-10-16T01:31:42+07:00
 
 ## Repository
 
 - Branch: `integration/rc16k-uxw2-release-candidate`
-- HEAD: `92bf18247d6604fdcd89df7247ba7b01ea1b6593`
+- HEAD: `c1cddaf43a48247a073add8583c49abfeeefda01`
 - origin/main: `4f03c0b881bcc77547e72a2d5c655b07690746d6`
 - Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-prod-integration`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
@@ -22,9 +22,9 @@ Generated at: 2026-10-15T15:26:14+07:00
 ## Inventory
 
 - Routes: 55
-- Source files in tracked inventory roots: 723
+- Source files in tracked inventory roots: 726
 - Tests: 169
-- Migrations: 71
+- Migrations: 72
 
 ## Modules
 
