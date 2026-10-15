@@ -2,14 +2,14 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-15T11:42:51+07:00
+Generated at: 2026-10-15T07:58:41Z
 
 ## Repository
 
-- Branch: `fix/rc16l-calendar-ux-worktime-export`
-- HEAD: `c00a68c4abe10ed3cb40f6e5354fe90997c54676`
+- Branch: `fix/rc16l-capabilities-dedupe`
+- HEAD: `987ecf432d9be8d13fa63a27581696f9f9566deb`
 - origin/main: `4f03c0b881bcc77547e72a2d5c655b07690746d6`
-- Worktree: `C:/Users/KienNguyen/OPS_RESTORE_LAB_RC16K/rc16l-calendar-ux-worktime-export`
+- Worktree: `GitHub remote branch (no local worktree)`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
 ## Hardening
@@ -22,8 +22,8 @@ Generated at: 2026-10-15T11:42:51+07:00
 ## Inventory
 
 - Routes: 56
-- Source files in tracked inventory roots: 727
-- Tests: 167
+- Source files in tracked inventory roots: 729
+- Tests: 168
 - Migrations: 70
 
 ## Modules

@@ -9,10 +9,10 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "fix/rc16l-calendar-ux-worktime-export",
-    "head": "c00a68c4abe10ed3cb40f6e5354fe90997c54676",
+    "branch": "fix/rc16l-capabilities-dedupe",
+    "head": "987ecf432d9be8d13fa63a27581696f9f9566deb",
     "origin_main": "4f03c0b881bcc77547e72a2d5c655b07690746d6",
-    "worktree": "C:/Users/KienNguyen/OPS_RESTORE_LAB_RC16K/rc16l-calendar-ux-worktime-export"
+    "worktree": "GitHub remote branch (no local worktree)"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -91,12 +91,12 @@
       "roots": {
         "app": 60,
         "components": 151,
-        "lib": 210,
+        "lib": 211,
         "scripts": 18,
         "supabase": 88,
-        "tests": 200
+        "tests": 201
       },
-      "total": 727
+      "total": 729
     },
     "tests": {
       "files": [
@@ -198,6 +198,7 @@
         "tests/rc15-schedule-import-archive.test.ts",
         "tests/rc15-storage-setup.test.ts",
         "tests/rc15-system-export.test.ts",
+        "tests/rc16-capability-sharing.test.ts",
         "tests/rc16-environment-security.test.ts",
         "tests/rc16-payroll-discovery.test.ts",
         "tests/rc16-production-readiness.test.ts",
@@ -268,7 +269,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 167
+      "count": 168
     },
     "migrations": {
       "files": [
@@ -357,5 +358,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-15T11:42:51+07:00"
+  "synced_at": "2026-10-15T07:58:41Z"
 }
