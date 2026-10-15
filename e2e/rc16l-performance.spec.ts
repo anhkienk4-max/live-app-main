@@ -22,14 +22,15 @@ for (const role of ['1', '2', '3']) for (const width of [1366, 1536, 1920, 390])
         requests.push({ path: new URL(response.url()).pathname, key, startMs: start, durationMs: Date.now() - start, bytes: bytes.length, status: response.status() })
       })())
     })
-    await page.goto('/calendar?tab=calendar')
     const phase = process.env.RC16L_EVIDENCE_PHASE ?? 'after'
     for (const [view, name] of [['month', 'Tháng'], ['week', 'Tuần'], ['day', 'Ngày'], ['list', 'Danh sách']] as const) {
       const firstRequest = requests.length
       const start = Date.now()
-      await page.getByRole('button', { name, exact: true }).click()
-      await expect(page.getByPlaceholder(/Tìm kiếm ca|Search shifts/)).toBeVisible()
+      if (view === 'month') await page.goto('/calendar?tab=calendar')
+      else await page.getByRole('button', { name, exact: true }).click()
+      await expect(page.getByPlaceholder(/Tìm ca theo|Search shifts/)).toBeVisible()
       await expect(page.locator('[aria-busy="true"]')).toHaveCount(0)
+      await expect(page.locator('[data-testid="content-skeleton"]:visible')).toHaveCount(0)
       await Promise.all(pending)
       const measured = requests.slice(firstRequest)
       const domReadyMs = Date.now() - start
@@ -41,6 +42,7 @@ for (const role of ['1', '2', '3']) for (const width of [1366, 1536, 1920, 390])
       const start = Date.now()
       await page.getByTestId('calendar-stable-tabs').getByRole('tab', { name, exact: true }).click()
       await expect(page.getByTestId(`registration-${view}-search`)).toBeVisible()
+      await expect(page.locator('[data-testid="content-skeleton"]:visible')).toHaveCount(0)
       await Promise.all(pending)
       const measured = requests.slice(firstRequest)
       const domReadyMs = Date.now() - start
