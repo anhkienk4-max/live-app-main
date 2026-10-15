@@ -1,0 +1,38 @@
+
+C:\Users\KienNguyen\OPS_RESTORE_LAB_RC16K\rc16l-calendar-ux-worktime-export\lib\files\operationalFilePlacement.ts
+  23:3  warning  '_context' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\KienNguyen\OPS_RESTORE_LAB_RC16K\rc16l-calendar-ux-worktime-export\tests\rc15-operational-file-storage.test.ts
+  175:16  warning  '_cols' is defined but never used  @typescript-eslint/no-unused-vars
+  178:15  warning  '_name' is defined but never used  @typescript-eslint/no-unused-vars
+  178:30  warning  '_opts' is defined but never used  @typescript-eslint/no-unused-vars
+  557:20  warning  'input' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\KienNguyen\OPS_RESTORE_LAB_RC16K\rc16l-calendar-ux-worktime-export\tests\rc15-storage-setup.test.ts
+  39:16  warning  '_columns' is defined but never used  @typescript-eslint/no-unused-vars
+  42:15  warning  '_key' is defined but never used      @typescript-eslint/no-unused-vars
+  42:29  warning  '_opts' is defined but never used     @typescript-eslint/no-unused-vars
+  43:15  warning  '_n' is defined but never used        @typescript-eslint/no-unused-vars
+  44:15  warning  '_from' is defined but never used     @typescript-eslint/no-unused-vars
+  44:30  warning  '_to' is defined but never used       @typescript-eslint/no-unused-vars
+
+C:\Users\KienNguyen\OPS_RESTORE_LAB_RC16K\rc16l-calendar-ux-worktime-export\tests\rc15-system-export.test.ts
+  50:16  warning  '_columns' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\KienNguyen\OPS_RESTORE_LAB_RC16K\rc16l-calendar-ux-worktime-export\tests\rc16-workforce-api.test.ts
+   68:16  warning  '_fields' is defined but never used   @typescript-eslint/no-unused-vars
+   69:12  warning  '_field' is defined but never used    @typescript-eslint/no-unused-vars
+   69:26  warning  '_value' is defined but never used    @typescript-eslint/no-unused-vars
+   70:15  warning  '_field' is defined but never used    @typescript-eslint/no-unused-vars
+   70:29  warning  '_options' is defined but never used  @typescript-eslint/no-unused-vars
+   71:15  warning  '_max' is defined but never used      @typescript-eslint/no-unused-vars
+  232:16  warning  '_columns' is defined but never used  @typescript-eslint/no-unused-vars
+  233:12  warning  '_key' is defined but never used      @typescript-eslint/no-unused-vars
+  233:24  warning  '_val' is defined but never used      @typescript-eslint/no-unused-vars
+  234:12  warning  '_key' is defined but never used      @typescript-eslint/no-unused-vars
+  234:24  warning  '_val' is defined but never used      @typescript-eslint/no-unused-vars
+  240:16  warning  '_data' is defined but never used     @typescript-eslint/no-unused-vars
+
+✖ 24 problems (0 errors, 24 warnings)
+
+FULL_LINT_EXIT=0

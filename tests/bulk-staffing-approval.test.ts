@@ -108,7 +108,8 @@ test('Calendar pending count follows the active month/week/day/list scope', () =
 })
 
 test('bulk approval modal contract renders pending request columns, filters and actions', () => {
-  assert.match(calendarSource, /bulkStaffingApproval[\s\S]*pendingStaffingRegistrations\.length/)
+  assert.match(calendarSource, /bulkStaffingApproval[\s\S]*pendingStaffingCount/)
+  assert.match(calendarSource, /await shiftRegistrationService\.getForShifts\(calendarScopeShifts\.map/)
   assert.match(calendarSource, /data-testid="open-bulk-staffing-approval"/)
   assert.match(dialogSource, /data-testid="bulk-staffing-approval-dialog"/)
   assert.match(dialogSource, /bulk-staffing-date-filter/)

@@ -177,7 +177,7 @@ test('F6 retains E/F architecture integration points', () => {
   const dashboard = read('components/features/calendar/CalendarView.tsx')
   const reports = read('components/features/reports/ReportFormModal.tsx')
   const live = read('components/features/live/LiveMonitoringDashboard.tsx')
-  assert.match(dashboard, /FileSpreadsheet/)
+  assert.match(dashboard, /CalendarExportDialog/)
   assert.match(panel, /ImportHistoryPanel/)
   assert.match(reports, /useTranslation|hasPermission/)
   assert.match(live, /live-session-attention|Promise\.all/)

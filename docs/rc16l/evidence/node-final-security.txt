@@ -1,0 +1,42 @@
+✔ Actual Staffing rejects anonymous before accessing privileged client (148.7621ms)
+✔ Payroll protects all salary rates/periods from leader role without DB access (12.6401ms)
+✔ Locked payroll CSV after correction preserves negative VND numbers and excludes voided evidence (11.2634ms)
+✔ Payroll correction and void reject anonymous/Leader/Member before database access (14.8729ms)
+✔ Payroll correction strictly rejects client salary, missing reason and invalid versions (26.1358ms)
+✔ Payroll correction computes VND using the stored rate and supplies authenticated actor to one RPC (3.5717ms)
+✔ Payroll rejects invalid payable/OT/adjustment independently before invoking RPC (15.3986ms)
+✔ Payroll maps stale/Reviewed/Locked/voided/idempotency conflicts to 409 and DB authorization to 403 (20.2329ms)
+✔ Payroll void forwards no amounts and idempotent response retains original audited result (2.7966ms)
+✔ Workforce Performance allows own scope only; cannot override lateness policy (4.7609ms)
+✔ Workforce Performance has no unapproved default lateness/grace period (1.4027ms)
+✔ team overview requires Leader/Admin; a member cannot enumerate colleagues (2.2775ms)
+✔ Actual Staffing cannot record a future/scheduled shift as confirmed attendance (5.0088ms)
+✔ export checks anonymous, Member and unauthorized fields before database reads (8.6143ms)
+✔ export XLSX verifies all 0 records with bounded reads (67.6445ms)
+✔ export XLSX verifies all 1 records with bounded reads (21.8035ms)
+✔ export XLSX verifies all 117 records with bounded reads (222.0452ms)
+✔ export XLSX verifies all 1001 records with bounded reads (1200.6965ms)
+✔ export refuses changed collection and an inaccessible selected shift (5.7357ms)
+✔ actual amendment authenticates actor, forwards CAS/UUID, and retains 409 conflicts (3.6706ms)
+✔ actual GET reads 501 segments in bounded chunks and rejects an incomplete count (4.385ms)
+✔ original evidence creator cannot review somebody else’s amendment (2.1903ms)
+✔ overnight projections preserve the original schedule and include adjacent dates (0.9643ms)
+✔ overlap clusters retain all real shifts and keep adjacent shifts separate (3.5587ms)
+✔ actual date/time picker respects business timezone, overnight and invalid dates (11.4274ms)
+✔ field permissions fail closed before salary, PII or audit can enter a workbook (0.8698ms)
+✔ XLSX and CSV preserve Vietnamese and times and neutralize formulas (10.0903ms)
+✔ bounded Calendar window reads 0 without duplicates (1.0404ms)
+✔ bounded Calendar window reads 1 without duplicates (0.1942ms)
+✔ bounded Calendar window reads 50 without duplicates (0.3169ms)
+✔ bounded Calendar window reads 117 without duplicates (0.4252ms)
+✔ bounded Calendar window reads 1001 without duplicates (1.0437ms)
+✔ Calendar abort and changed owner/count fail closed (5.2693ms)
+✔ reference promises deduplicate same owner and isolate permission/identity (2.1531ms)
+ℹ tests 34
+ℹ suites 0
+ℹ pass 34
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11228.1828

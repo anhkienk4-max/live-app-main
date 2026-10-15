@@ -83,3 +83,4 @@ Thumbs.db
 
 # Playwright generated traces and screenshots
 /test-results/
+/rc16l-browser-report/

@@ -1,4 +1,4 @@
-import { endOfMonth, endOfWeek, format, startOfMonth, startOfWeek } from 'date-fns'
+import { endOfMonth, endOfWeek, format, isMatch, startOfMonth, startOfWeek } from 'date-fns'
 import type { Brand, Campaign, Platform, Shift, ShiftRegistration } from '@/lib/types/database.types'
 import { businessLocalDate } from '@/lib/utils/shiftUtils'
 import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
@@ -125,6 +125,9 @@ export function calendarTimeScope(
   if (!customFrom || !customTo) {
     return { valid: false, error: 'Custom time range requires both a start and end date.' }
   }
+  if (![customFrom, customTo].every(value => /^\d{4}-\d{2}-\d{2}$/.test(value) && isMatch(value, 'yyyy-MM-dd'))) {
+    return { valid: false, error: 'Custom time range requires valid calendar dates.' }
+  }
   if (customFrom > customTo) {
     return { valid: false, error: 'Custom time range start date must be on or before the end date.' }
   }
@@ -210,7 +213,7 @@ export function filterCalendarShifts(
     if (search) {
       const brand = brands.find(item => item.id === shift.brand_id)?.name ?? ''
       const platform = platforms.find(item => item.id === shift.platform_id)?.name ?? ''
-      const haystack = [brand, platform, shift.product_notes]
+      const haystack = [brand, platform, shift.title, shift.product_notes, shift.studio]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()

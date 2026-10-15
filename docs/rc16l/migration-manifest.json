@@ -1,0 +1,25 @@
+{
+  "release": "RC1.6L",
+  "baseline": "4f03c0b881bcc77547e72a2d5c655b07690746d6",
+  "target": "STAGED_ONLY_NOT_APPLIED",
+  "payroll": "OFF",
+  "actual_staffing_production": "OFF_UNTIL_RBAC_UAT_APPROVAL",
+  "migrations": [
+    {
+      "path": "supabase/migrations/20261014181044_rc16l_actual_amendments.sql",
+      "sha256": "717dbe756017eecc2c530f6ad45e8dd61112e36a4730b78ebee82075c0a2b3c8",
+      "prerequisites": [
+        "20261012000000_rc16_workforce_payroll_foundation.sql",
+        "20261012000001_rc16b_draft_payroll_correction.sql"
+      ],
+      "objects": [
+        "workforce_actual_segments amendment columns/indexes",
+        "workforce_actual_active_segments security invoker view",
+        "workforce_actual_audit append-only table/trigger",
+        "workforce_rc16l_amend_actual service-only RPC",
+        "workforce_payroll_segment_amendment_guard"
+      ],
+      "rollback": "Do not drop evidence/audit. Keep features disabled and use a reviewed forward repair."
+    }
+  ]
+}

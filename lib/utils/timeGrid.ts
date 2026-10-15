@@ -33,6 +33,32 @@ export interface ShiftLayout {
   width: string;
 }
 
+/** Project overnight coverage without changing the authoritative Shift. */
+export function shiftsForGridDate<T extends { id: string; date: string; start_time: string; end_time: string; crosses_midnight?: boolean }>(shifts: T[], date: string) {
+  const previous = new Date(date + 'T12:00:00Z')
+  previous.setUTCDate(previous.getUTCDate() - 1)
+  const previousDate = previous.toISOString().slice(0, 10)
+  return shifts.flatMap(shift => {
+    const overnight = shift.crosses_midnight || shift.end_time < shift.start_time
+    if (shift.date === date) return [{ shift, id: shift.id, start_time: shift.start_time, end_time: overnight ? '24:00' : shift.end_time, crosses_midnight: false, continuation: false }]
+    if (shift.date === previousDate && overnight && timeToMinutes(shift.end_time) > 0) return [{ shift, id: shift.id, start_time: '00:00', end_time: shift.end_time, crosses_midnight: false, continuation: true }]
+    return []
+  }).sort((a, b) => a.start_time.localeCompare(b.start_time) || a.id.localeCompare(b.id))
+}
+
+export function groupTimeGridShifts<T extends { id: string; start_time: string; end_time: string; crosses_midnight?: boolean }>(shifts: T[], minimumMinutes = 60): T[][] {
+  const groups: T[][] = []
+  let end = -1
+  for (const shift of [...shifts].sort((a, b) => timeToMinutes(a.start_time) - timeToMinutes(b.start_time) || a.id.localeCompare(b.id))) {
+    const start = timeToMinutes(shift.start_time)
+    if (start >= end) groups.push([])
+    groups[groups.length - 1].push(shift)
+    const actualEnd = shift.crosses_midnight || timeToMinutes(shift.end_time) <= start ? 1440 : timeToMinutes(shift.end_time)
+    end = Math.max(start >= end ? 0 : end, start + Math.max(minimumMinutes, actualEnd - start))
+  }
+  return groups
+}
+
 export function calculateOverlaps(shifts: { id: string; start_time: string; end_time: string; crosses_midnight?: boolean }[], minimumMinutes = 30): Record<string, ShiftLayout> {
   const layouts: Record<string, ShiftLayout> = {};
   

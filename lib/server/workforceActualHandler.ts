@@ -25,7 +25,8 @@ const record = z.object({
     ctx.addIssue({code:'custom',message:'NO_SHOW_MUST_NOT_HAVE_ACTUAL_TIMES'})
   }
   if (v.event_kind==='worked' && (!v.actual_start_at || !v.actual_end_at
-    || Date.parse(v.actual_end_at)<=Date.parse(v.actual_start_at))) {
+    || Date.parse(v.actual_end_at)<=Date.parse(v.actual_start_at)
+    || Date.parse(v.actual_end_at)-Date.parse(v.actual_start_at)>86400000)) {
     ctx.addIssue({code:'custom',message:'WORKED_REQUIRES_VALID_TIMES'})
   }
 })
@@ -35,6 +36,17 @@ const review = z.object({
   expected_version:z.number().int().min(1),
   decision:z.enum(['approved','rejected']),
   review_note:z.string().trim().min(8).max(2000),
+}).strict()
+const amend = z.object({
+  action:z.literal('amend'), segment_id:id, expected_version:z.number().int().min(1),
+  request_id:z.string().uuid(), reason:z.string().trim().min(8).max(2000),
+  patch:z.object({ staff_id:id, operational_role:z.enum(['host','support','technical']),
+    event_kind:z.enum(['worked','no_show']), coverage_kind:z.enum(['planned','cover','replacement','extra']),
+    actual_start_at:time.nullable(), actual_end_at:time.nullable(), evidence_note:z.string().trim().min(8).max(2000),
+  }).strict().superRefine((v,ctx)=>{
+    if(v.event_kind==='no_show'&&(v.actual_start_at!==null||v.actual_end_at!==null))ctx.addIssue({code:'custom',message:'NO_SHOW_MUST_NOT_HAVE_ACTUAL_TIMES'})
+    if(v.event_kind==='worked'&&(!v.actual_start_at||!v.actual_end_at||Date.parse(v.actual_end_at)<=Date.parse(v.actual_start_at)||Date.parse(v.actual_end_at)-Date.parse(v.actual_start_at)>86400000))ctx.addIssue({code:'custom',message:'WORKED_REQUIRES_VALID_TIMES'})
+  }),
 }).strict()
 
 type Depends = { client?:()=>SupabaseClient; resolveUser?:ServerUserResolver; isEnabled?:()=>boolean }
@@ -62,11 +74,20 @@ export function createWorkforceActualHandler(deps:Depends={}) {
         const search=new URL(request.url).searchParams
         const shiftId=id.safeParse(search.get('shift_id'))
         if(!shiftId.success)return fail('WORKFORCE_SHIFT_ID_REQUIRED',400)
-        const {data,error}=await db().from('workforce_actual_segments')
-          .select('id,shift_id,staff_id,operational_role,event_kind,coverage_kind,actual_start_at,actual_end_at,review_status,evidence_note,review_note,created_by,reviewed_by,reviewed_at,version,created_at')
-          .eq('shift_id',shiftId.data).order('created_at',{ascending:true}).limit(200)
-        if(error)return fail('WORKFORCE_ACTUAL_READ_FAILED',503)
-        return Response.json({ok:true,segments:data??[]},{headers:noStore})
+        const segments:unknown[]=[]
+        const ids=new Set<string>()
+        let total:number|undefined
+        for(let offset=0;;offset+=200){
+          const {data,error,count}=await db().from('workforce_actual_segments')
+            .select('id,shift_id,staff_id,operational_role,event_kind,coverage_kind,actual_start_at,actual_end_at,review_status,evidence_note,review_note,created_by,reviewed_by,reviewed_at,version,created_at,supersedes_segment_id,amendment_reason',{count:'exact'})
+            .eq('shift_id',shiftId.data).order('created_at',{ascending:true}).order('id').range(offset,offset+199)
+          total??=count??undefined
+          if(error||total===undefined||count!==total||data?.length!==Math.min(200,Math.max(0,total-offset)))return fail('WORKFORCE_ACTUAL_READ_INCOMPLETE',503)
+          for(const row of data??[]){if(ids.has(row.id))return fail('WORKFORCE_ACTUAL_READ_INCOMPLETE',503);ids.add(row.id)}
+          segments.push(...(data??[]))
+          if(segments.length>=total)break
+        }
+        return Response.json({ok:true,segments,total},{headers:noStore})
       })
     },
     POST(request:Request){
@@ -77,8 +98,16 @@ export function createWorkforceActualHandler(deps:Depends={}) {
         const actor=user.businessUserId
         if(!actor)return fail('WORKFORCE_BUSINESS_USER_REQUIRED',403)
         const body=await readJsonBody(request,16*1024)
-        const action=z.union([record,review]).parse(body)
+        const action=z.union([record,review,amend]).parse(body)
         const client=db()
+        if(action.action==='amend'){
+          const {data,error}=await client.rpc('workforce_rc16l_amend_actual',{
+            p_segment_id:action.segment_id,p_expected_version:action.expected_version,p_request_id:action.request_id,
+            p_actor_id:actor,p_patch:action.patch,p_reason:action.reason,
+          })
+          if(error)return fail('WORKFORCE_ACTUAL_STALE_OR_LOCKED',409)
+          return Response.json(data,{status:201,headers:noStore})
+        }
         if(action.action==='record'){
           const [shift,staff]=await Promise.all([
             client.from('shifts').select('id,status,deleted_at')
@@ -105,7 +134,7 @@ export function createWorkforceActualHandler(deps:Depends={}) {
         }
         // Review is optimistic and only draft evidence can be decided.
         const {data:current,error:lookup}=await client.from('workforce_actual_segments')
-          .select('id,review_status,version,created_by')
+          .select('id,review_status,version,created_by,supersedes_segment_id')
           .eq('id',action.segment_id).maybeSingle()
         if(lookup)return fail('WORKFORCE_ACTUAL_READ_FAILED',503)
         if(!current||current.review_status!=='draft'||current.version!==action.expected_version)
@@ -113,6 +142,11 @@ export function createWorkforceActualHandler(deps:Depends={}) {
         // Separate reviewer from evidence submitter; no self-approval.
         // Original evidence_note must never be overwritten by review notes.
         if(current.created_by===actor)return fail('WORKFORCE_SELF_REVIEW_BLOCKED',403)
+        if(current.supersedes_segment_id){
+          const source=await client.from('workforce_actual_segments').select('created_by').eq('id',current.supersedes_segment_id).maybeSingle()
+          if(source.error)return fail('WORKFORCE_ACTUAL_READ_FAILED',503)
+          if(source.data?.created_by===actor)return fail('WORKFORCE_SELF_REVIEW_BLOCKED',403)
+        }
         const {data,error}=await client.from('workforce_actual_segments')
           .update({
             review_status:action.decision,

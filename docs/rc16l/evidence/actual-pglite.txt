@@ -1,0 +1,1 @@
+PASS PGlite: actual amendments, immutable before/after audit, independent reviewer, CAS, UUID replay, active evidence and ACL. This is not PostgreSQL 16/17 container evidence.

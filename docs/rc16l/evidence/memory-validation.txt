@@ -1,0 +1,10 @@
+node : Memory validation failed with 3 error(s):
+At line:2 char:1
++ node scripts/memory-validate.mjs *> docs\rc16l\evidence\memory-valida ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Memory validati...ith 3 error(s)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+- could not verify live Git: spawnSync git EPERM
+- generated/project-memory.md is out of sync; run npm run memory:sync
+- PROJECT_STATE.md must remain the generated pointer

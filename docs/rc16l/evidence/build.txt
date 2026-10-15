@@ -1,0 +1,17 @@
+▲ Next.js 16.2.10 (webpack)
+
+  Creating an optimized production build ...
+node :
+At line:2 char:1
++ node node_modules/next/dist/bin/next build --webpack *> docs\rc16l\ev ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+> Build error occurred
+Error: spawn EPERM
+    at ignore-listed frames {
+  errno: -4048,
+  code: 'EPERM',
+  syscall: 'spawn'
+}

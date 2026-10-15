@@ -95,6 +95,8 @@ export interface PeriodDetailResponse {
 }
 
 export interface ActualSegment {
+  supersedes_segment_id?: string | null
+  amendment_reason?: string | null
   id: string
   shift_id: string
   staff_id: string
@@ -450,10 +452,18 @@ export const workforceService = {
   },
 
   // ACTUAL STAFFING
-  async getActualSegments(shiftId: string): Promise<{ ok: true; segments: ActualSegment[] }> {
+  async getActualSegments(shiftId: string, signal?: AbortSignal): Promise<{ ok: true; segments: ActualSegment[] }> {
     return requestJson<{ ok: true; segments: ActualSegment[] }>(
-      `/api/workforce/actual?shift_id=${encodeURIComponent(shiftId)}`
+      `/api/workforce/actual?shift_id=${encodeURIComponent(shiftId)}`, { signal }
     )
+  },
+
+  async amendActualSegment(payload: { segmentId: string; expectedVersion: number; requestId: string; reason: string;
+    patch: { staff_id: string; operational_role: WorkforceRole; event_kind: 'worked' | 'no_show'; coverage_kind: 'planned' | 'cover' | 'replacement' | 'extra'; actual_start_at: string | null; actual_end_at: string | null; evidence_note: string } }) {
+    return requestJson<{ ok: true; segment: ActualSegment; replayed: boolean }>('/api/workforce/actual', {
+      method: 'POST', body: JSON.stringify({ action: 'amend', segment_id: payload.segmentId, expected_version: payload.expectedVersion,
+        request_id: payload.requestId, reason: payload.reason, patch: payload.patch }),
+    })
   },
 
   async recordActualSegment(payload: {

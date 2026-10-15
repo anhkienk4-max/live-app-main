@@ -166,7 +166,7 @@ test('Actual Staffing fourth tab records no-show and enforces independent review
   await review.getByRole('button', { name: 'Tải lại minh chứng' }).click()
   await detail.getByRole('button', { name: 'Ghi nhận chấm công' }).click()
   const record = page.getByRole('dialog').last()
-  await record.getByRole('combobox').nth(1).click()
+  await record.getByRole('combobox', { name: 'Sự kiện chấm công' }).click()
   await page.getByRole('option', { name: 'Vắng mặt (No-show)' }).click()
   await record.locator('textarea').fill('Verified no-show evidence from independent witness')
   await record.getByRole('button', { name: 'Lưu chấm công' }).click()

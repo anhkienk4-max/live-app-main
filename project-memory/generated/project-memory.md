@@ -2,14 +2,14 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-14T17:36:25+07:00
+Generated at: 2026-10-15T11:42:51+07:00
 
 ## Repository
 
-- Branch: `feat/rc16k-ui-consistency-pagination`
-- HEAD: `80d20bc418e55f672b68eaea547539db8830fadb`
-- origin/main: `662f30077350681b9fb3fd97f490a4037b6105d4`
-- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-payroll/.worktrees/rc16k-ui`
+- Branch: `fix/rc16l-calendar-ux-worktime-export`
+- HEAD: `c00a68c4abe10ed3cb40f6e5354fe90997c54676`
+- origin/main: `4f03c0b881bcc77547e72a2d5c655b07690746d6`
+- Worktree: `C:/Users/KienNguyen/OPS_RESTORE_LAB_RC16K/rc16l-calendar-ux-worktime-export`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
 ## Hardening
@@ -21,10 +21,10 @@ Generated at: 2026-10-14T17:36:25+07:00
 
 ## Inventory
 
-- Routes: 55
-- Source files in tracked inventory roots: 712
-- Tests: 165
-- Migrations: 69
+- Routes: 56
+- Source files in tracked inventory roots: 727
+- Tests: 167
+- Migrations: 70
 
 ## Modules
 
