@@ -1,5 +1,12 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type TestInfo } from '@playwright/test'
 import { createHash } from 'node:crypto'
+import { writeFile } from 'node:fs/promises'
+
+async function recordMetrics(info: TestInfo, name: string, metrics: object) {
+  const path = info.outputPath(name)
+  await writeFile(path, JSON.stringify(metrics, null, 2))
+  await info.attach(name, { path, contentType: 'application/json' })
+}
 
 // The same probe runs against unchanged RC16K and the candidate in disposable CI worktrees.
 for (const role of ['1', '2', '3']) for (const width of [1366, 1536, 1920, 390]) {
@@ -35,7 +42,7 @@ for (const role of ['1', '2', '3']) for (const width of [1366, 1536, 1920, 390])
       const measured = requests.slice(firstRequest)
       const domReadyMs = Date.now() - start
       await page.screenshot({ path: info.outputPath(`${phase}-${role}-${width}-${view}.png`), fullPage: true })
-      await info.attach(`${phase}-${view}.json`, { body: JSON.stringify({ phase, role, width, view, domReadyMs, requests: measured, duplicatedCalls: measured.length - new Set(measured.map(request => request.key)).size, methodology: 'Local mock identity and data. DOM-ready time is not React commit duration. Authenticated Supabase waterfall remains a staging UAT gate.' }), contentType: 'application/json' })
+      await recordMetrics(info, `${phase}-${view}.json`, { phase, role, width, view, domReadyMs, requests: measured, duplicatedCalls: measured.length - new Set(measured.map(request => request.key)).size, methodology: 'Local mock identity and data. DOM-ready time is not React commit duration. Authenticated Supabase waterfall remains a staging UAT gate.' })
     }
     for (const [view, name] of [['open', 'Ca đang mở'], ['mine', 'Ca của tôi']] as const) {
       const firstRequest = requests.length
@@ -47,7 +54,7 @@ for (const role of ['1', '2', '3']) for (const width of [1366, 1536, 1920, 390])
       const measured = requests.slice(firstRequest)
       const domReadyMs = Date.now() - start
       await page.screenshot({ path: info.outputPath(`${phase}-${role}-${width}-${view}.png`), fullPage: true })
-      await info.attach(`${phase}-${view}.json`, { body: JSON.stringify({ phase, role, width, view, domReadyMs, requests: measured, duplicatedCalls: measured.length - new Set(measured.map(request => request.key)).size, methodology: 'Local mock identity and data; authenticated Supabase timing NOT_VERIFIED' }), contentType: 'application/json' })
+      await recordMetrics(info, `${phase}-${view}.json`, { phase, role, width, view, domReadyMs, requests: measured, duplicatedCalls: measured.length - new Set(measured.map(request => request.key)).size, methodology: 'Local mock identity and data; authenticated Supabase timing NOT_VERIFIED' })
     }
   })
 }

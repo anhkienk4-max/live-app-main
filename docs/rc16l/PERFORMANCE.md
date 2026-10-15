@@ -18,4 +18,15 @@ Request-path audit (source evidence):
 | Open/Mine | Bounded pages and debounce already present; previously visited tabs stay mounted; separate reference loads | Inactive tabs unmount; shared references for one identity/permission with 60s TTL; URL state retained |
 | Search/navigation | Calendar loads can complete after navigation; search changes retrigger reads | Abort previous requests and invalidate sequence; Calendar search settles at 250ms; grid search remains client-side without repeat operational fetch |
 
-Browser waterfall, durations, response payload sizes, duplicate-call counts and React browser render timing for Month/Week/Day/List/Open/Mine: NOT_VERIFIED. Playwright cannot spawn locally (evidence/playwright.txt). The new fixture matrix captures screenshots and DOM-ready/network metadata in CI; authenticated staging UAT remains separate. No before/after screenshots have been fabricated.
+The local browser matrix passed 14/14 after running outside the Windows process sandbox. The same performance probe passed 12/12 on each side (three mock roles, four widths, six views), with 72 screenshots and 72 standalone JSON measurements per side retained in the delivery package and produced by CI artifacts.
+
+| View | Before DOM-ready median ms | After DOM-ready median ms |
+|---|---:|---:|
+| Month (cold navigation) | 3190.0 | 2862.0 |
+| Week | 137.0 | 135.5 |
+| Day | 286.0 | 195.5 |
+| List | 412.5 | 289.0 |
+| Open | 597.0 | 405.5 |
+| Mine | 583.0 | 399.0 |
+
+These are single-run development fixture samples; compilation, host noise and warmup affect timings. DOM-ready includes navigation/loading assertions/network completion, not React commit duration. Month recorded 36 capability requests / 4212 bytes / 24 duplicate calls across 12 cases in both phases. Other modes recorded no API requests because mock reads are in memory. This does not demonstrate authenticated Supabase request improvements. The source changes remove duplicated reference reads, defer reports and abort obsolete operational reads; authenticated waterfall, duration, payload, duplicate calls and React profiling remain NOT_VERIFIED until staging UAT. Earlier sandbox failures remain in evidence/playwright.txt as historical evidence.
