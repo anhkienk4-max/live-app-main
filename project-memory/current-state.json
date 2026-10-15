@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "fix/rc16l-calendar-ux-worktime-export",
-    "head": "cfab5f0290a2f3e6c9a0fdd6302b76b00b2407b1",
+    "head": "c00a68c4abe10ed3cb40f6e5354fe90997c54676",
     "origin_main": "4f03c0b881bcc77547e72a2d5c655b07690746d6",
     "worktree": "C:/Users/KienNguyen/OPS_RESTORE_LAB_RC16K/rc16l-calendar-ux-worktime-export"
   },
@@ -357,5 +357,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-15T11:36:59+07:00"
+  "synced_at": "2026-10-15T11:42:51+07:00"
 }
