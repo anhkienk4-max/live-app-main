@@ -155,6 +155,18 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const identity = currentUser ? currentUser.id + ':' + (currentUser.system_permission ?? currentUser.role) : ''
   const requestKey = identity + ':' + mode + ':' + page + ':' + pageSize + ':' + pendingPage + ':' + queryFilters
   const [loadedKey, setLoadedKey] = React.useState('')
+  const boardRoot = React.useRef<HTMLDivElement>(null)
+  const previousRequestKey = React.useRef(requestKey)
+  React.useEffect(() => {
+    if (previousRequestKey.current === requestKey) return
+    previousRequestKey.current = requestKey
+    const frame = window.requestAnimationFrame(() => {
+      const root = boardRoot.current
+      const viewportTop = root?.closest('main')?.getBoundingClientRect().top ?? 0
+      if (root && root.getBoundingClientRect().top < viewportTop) root.scrollIntoView({ block: 'start' })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [requestKey])
 
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
@@ -332,7 +344,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   if (userLoading || !currentUser) return <ContentSkeleton />
 
   return (
-    <div className="space-y-4">
+    <div ref={boardRoot} className="space-y-4">
       <CalendarExportDialog open={exportOpen} onOpenChange={setExportOpen} shiftId={exportShiftId ?? undefined} selectedIds={exportShiftId ? [exportShiftId] : []} filters={JSON.parse(queryFilters)} listScope={mode} />
       {!!loadError && <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />}
       <Card className="border-none bg-background p-2 shadow-sm sm:p-3">
@@ -420,7 +432,8 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         </div>
       )}
 
-      {loading || loadedKey !== requestKey ? <ContentSkeleton /> : <>
+      {loading && loadedKey === requestKey && <div role="status" className="text-xs text-muted-foreground">{t('loading')}</div>}
+      {loadedKey !== requestKey ? <ContentSkeleton /> : <>
       {mode === 'open' && hasPermission(currentUser, 'shifts.approve_registration') && pendingTotal > 0 && (
         <Card className="border-amber-200 bg-amber-50/30 shadow-none">
           {deriveStaffingAttention({ pendingCount: pendingTotal }).map(item => (

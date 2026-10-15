@@ -248,15 +248,16 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   })
   const operationalQuery = view === 'list' ? listQuery : JSON.stringify({ from: authorityScope.startDate, to: authorityScope.endDate })
   const previousListQuery = React.useRef(listQuery)
-  const toolbar = React.useRef<HTMLDivElement>(null)
+  const calendarRoot = React.useRef<HTMLDivElement>(null)
   const scrollContext = view + ':' + rawDate + ':' + listPage + ':' + listSize + ':' + listQuery
   const previousScrollContext = React.useRef(scrollContext)
   React.useEffect(() => {
     if (previousScrollContext.current === scrollContext) return
     previousScrollContext.current = scrollContext
     const frame = window.requestAnimationFrame(() => {
-      const top = toolbar.current?.getBoundingClientRect().top
-      if (top !== undefined && top < 0) toolbar.current?.scrollIntoView({ block: 'start' })
+      const root = calendarRoot.current
+      const viewportTop = root?.closest('main')?.getBoundingClientRect().top ?? 0
+      if (root && root.getBoundingClientRect().top < viewportTop) root.scrollIntoView({ block: 'start' })
     })
     return () => window.cancelAnimationFrame(frame)
   }, [scrollContext])
@@ -268,6 +269,8 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
 
   const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role):''
   const [loadedIdentity,setLoadedIdentity]=React.useState('')
+  const requestKey = identity + ':' + view + ':' + listPage + ':' + listSize + ':' + operationalQuery
+  const [loadedKey, setLoadedKey] = React.useState('')
   const requestVersion = React.useRef(0)
   const requestController = React.useRef<AbortController | null>(null)
 
@@ -296,6 +299,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         if (result.page !== listPage) listNavigate({ calendar_list_page: String(result.page) }, true)
       }
       setLoadedIdentity(identity)
+      setLoadedKey(requestKey)
       setShifts(shiftsData)
       setRegistrations(result.registrations)
     } catch (error: unknown) {
@@ -303,7 +307,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     } finally {
       if (version === requestVersion.current) setLoading(false)
     }
-  }, [identity, listNavigate, listPage, operationalQuery, listSize, view])
+  }, [identity, listNavigate, listPage, operationalQuery, listSize, requestKey, view])
 
   React.useEffect(() => {
     const generation = requestVersion
@@ -498,13 +502,13 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   if (loadedIdentity && loadedIdentity !== identity) return <ContentSkeleton />
 
   return (
-    <div className="min-w-0 space-y-0">
+    <div ref={calendarRoot} className="min-w-0 space-y-0">
       {/* Unified Command Toolbar */}
-      <div ref={toolbar} className="sticky top-0 z-30 flex flex-col bg-background pb-2">
+      <div className="sticky top-0 z-30 flex flex-col bg-background pb-2">
           <ActiveFilterChips filters={filters} setFilters={setFilters} onClearAll={clearFilters} t={t} brands={brands} platforms={platforms} campaigns={campaigns} users={users} />
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between px-0 pb-2 border-b border-border">
           {/* Left: Date Navigation */}
-          <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 sm:gap-2">
             <>
                 <Button variant="outline" size="icon" aria-label={t('previousNavigation')} onClick={() => navigate('prev')} className="h-9 w-9">
                   <ChevronLeft className="h-4 w-4" />
@@ -516,9 +520,9 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                   <ChevronRight className="h-4 w-4" />
                 </Button>
             </>
-            <h2 className="flex min-w-0 shrink-0 items-center text-sm font-semibold sm:text-base ml-1 sm:ml-2 whitespace-nowrap">
-              <CalendarIcon className="h-5 w-5 mr-2 text-muted-foreground" />
-              {getViewTitle()}
+            <h2 className="flex min-w-0 basis-full items-center text-sm font-semibold sm:basis-auto sm:text-base sm:ml-2">
+              <CalendarIcon className="h-5 w-5 shrink-0 mr-2 text-muted-foreground" />
+              <span className="min-w-0">{getViewTitle()}</span>
             </h2>
           </div>
 
@@ -677,8 +681,9 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       {!!loadError && <PageLoadError error={loadError} onRetry={() => { void loadData(); void loadReferenceData().catch(setLoadError) }} />}
       {/* Calendar Views */}
       <Card className="min-w-0 overflow-hidden gap-0 py-0" aria-busy={loading}>
-        {loading && <ContentSkeleton />}
-        {!loading && <>
+        {loadedKey !== requestKey && <ContentSkeleton />}
+        {loading && loadedKey === requestKey && <div role="status" className="px-3 py-1 text-xs text-muted-foreground">{t('loading')}</div>}
+        {loadedKey === requestKey && <>
         {view === 'month' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onShiftClick={setPreviewShift} onDayClick={setSelectedDay} /></div></div>}
         {view === 'week' && <div className="w-full"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms}  registrations={registrations} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} currentUser={currentUser} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} /></div>}
         {view === 'day' && <DayView currentDate={currentDate} shifts={filteredShifts} allShifts={shifts} onRegister={registerForShift} registrations={registrations} currentUser={currentUser} brands={brands} platforms={platforms} users={users} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} />}

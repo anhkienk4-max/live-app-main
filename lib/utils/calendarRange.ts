@@ -1,5 +1,5 @@
 import { addDays, endOfMonth, endOfWeek, format, parseISO, startOfMonth, startOfWeek } from 'date-fns'
-import type { CalendarTimeFilter } from './calendarFilters'
+import { calendarTimeScope, type CalendarTimeFilter } from './calendarFilters'
 import { businessLocalDate } from './shiftUtils'
 
 export type CalendarViewMode = 'month' | 'week' | 'day' | 'list'
@@ -22,8 +22,9 @@ export function calendarDataScope(
   today = businessLocalDate(),
 ): CalendarDataScope {
   if (time === 'all' && (view === 'list' || explicitAllTime)) return { allTime: true }
-  if (time === 'custom' && customFrom && customTo && customFrom <= customTo) {
-    return { startDate: customFrom, endDate: customTo, allTime: false }
+  if (time === 'custom') {
+    const custom = calendarTimeScope(time, currentDate, customFrom, customTo, today)
+    if (custom.valid) return { startDate: custom.from, endDate: custom.to, allTime: false }
   }
   if (time === 'today') {
     return { startDate: today, endDate: today, allTime: false }

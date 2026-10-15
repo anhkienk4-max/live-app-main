@@ -235,7 +235,7 @@ export function WeekView({
                             onClick={() => onShiftClick?.(shift)}
                             context={context}
                             isToday={isToday}
-                            className="h-full"
+                            className="h-full items-start border bg-card"
                           />}
                         </div>
                       );

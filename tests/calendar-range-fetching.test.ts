@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { calendarAuthorityScope, calendarDataScope } from '../lib/utils/calendarRange.ts'
+import { calendarTimeScope } from '../lib/utils/calendarFilters.ts'
 
 test('calendar scopes normal views to their visible business dates', () => {
   const date = new Date('2026-10-14T12:00:00.000Z')
@@ -40,4 +41,14 @@ test('Calendar uses bounded windows, on-demand reports and abort guards', () => 
   assert.match(source, /if \(version !== requestVersion\.current \|\| controller\.signal\.aborted\) return/)
   assert.match(source, /if \(!dayReportIds\) return/)
   assert.doesNotMatch(source, /shiftService\.getAllComplete\(\)|shiftRegistrationService\.getAll\(\)/)
+})
+
+test('invalid custom dates from shared URLs cannot crash or expand the Calendar range', () => {
+  const date = new Date('2026-10-14T12:00:00.000Z')
+  for (const value of ['2026-02-30', 'bad', '2026-1-01', '2026-10-15T00:00:00Z']) {
+    assert.equal(calendarTimeScope('custom', date, value, '2026-12-31').valid, false)
+    const scope = calendarDataScope('day', date, 'custom', value, '2026-12-31')
+    assert.deepEqual(scope, { startDate: '2026-10-14', endDate: '2026-10-14', allTime: false })
+    assert.doesNotThrow(() => calendarAuthorityScope(scope))
+  }
 })

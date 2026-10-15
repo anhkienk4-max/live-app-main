@@ -1,7 +1,8 @@
 - [x] Implement bounded Calendar/URL/identity/cache behavior; local contracts pass, browser navigation remains a separate gate.
 - [x] Implement dense Week and overnight Day; Node/SSR evidence retained, visual browser gate pending.
-- [x] Implement actual evidence amendment/RBAC/CAS/audit; PGlite passes, PostgreSQL 16/17 and authenticated UAT pending.
+- [x] Implement actual evidence amendment/RBAC/CAS/audit; PostgreSQL 16/17 integration passed on initial candidate; authenticated UAT pending.
 - [x] Implement configurable XLSX/CSV export; local API/field/security tests pass.
 - [ ] Run Node, PostgreSQL 16/17, desktop/mobile browser matrix, TypeScript, full lint and build.
 - [ ] Retain before/after screenshots, performance report, migration hashes and UAT checklist.
-- [ ] Publish Draft PR and inspect CI on exact final SHA; no merge or Production actions.
+- [x] Publish Draft PR #31; no merge or Production actions.
+- [ ] Inspect CI on exact final SHA after follow-up browser fixes and metadata sync.

@@ -43,6 +43,29 @@ function CalendarIdentityWorkspace() {
   const [createRequest, setCreateRequest] = React.useState(0);
   const [visitedTabs, setVisitedTabs] = React.useState(() => new Set([tab]));
   const tabScroll = React.useRef<Record<string, number>>({});
+  const workspace = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const root = workspace.current;
+    const main = root?.closest('main');
+    if (!root || !main) return;
+    const top = tabScroll.current[tab] ?? 0;
+    const observer = new ResizeObserver(() => {
+      main.scrollTo({ top });
+      if (main.scrollHeight - main.clientHeight >= top) observer.disconnect();
+    });
+    observer.observe(root);
+    const stop = () => observer.disconnect();
+    main.addEventListener('wheel', stop, { passive: true });
+    main.addEventListener('touchstart', stop, { passive: true });
+    main.addEventListener('keydown', stop);
+    return () => {
+      observer.disconnect();
+      main.removeEventListener('wheel', stop);
+      main.removeEventListener('touchstart', stop);
+      main.removeEventListener('keydown', stop);
+    };
+  }, [tab]);
 
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -71,6 +94,7 @@ function CalendarIdentityWorkspace() {
       }
 
       if (nextTab !== tab) {
+        tabScroll.current[tab] = workspace.current?.closest('main')?.scrollTop ?? 0;
         setTab(nextTab);
       }
       setVisitedTabs((current) => current.has(nextTab) ? current : new Set(current).add(nextTab));
@@ -86,18 +110,18 @@ function CalendarIdentityWorkspace() {
   }, [searchParams, pathname, router, currentUser, tab]);
 
   const handleTabChange = (value: string) => {
-    tabScroll.current[tab] = window.scrollY;
+    tabScroll.current[tab] = workspace.current?.closest('main')?.scrollTop ?? 0;
     setTab(value);
     setVisitedTabs((current) => current.has(value) ? current : new Set(current).add(value));
     const next = new URLSearchParams(window.location.search);
     next.set("tab", value);
     const qs = next.toString();
     window.history.pushState(null, "", qs ? `${pathname}?${qs}` : pathname);
-    window.requestAnimationFrame(() => window.scrollTo({ top: tabScroll.current[value] ?? 0 }));
   };
 
   return (
     <Tabs
+      ref={workspace}
       value={tab}
       onValueChange={handleTabChange}
       className="min-w-0 w-full space-y-3"
