@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "integration/rc16k-uxw2-release-candidate",
-    "head": "068d09a0c889610e64792e8687edf245521f4916",
+    "head": "92bf18247d6604fdcd89df7247ba7b01ea1b6593",
     "origin_main": "4f03c0b881bcc77547e72a2d5c655b07690746d6",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-prod-integration"
   },
@@ -359,5 +359,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-15T11:40:46+07:00"
+  "synced_at": "2026-10-15T15:26:14+07:00"
 }
