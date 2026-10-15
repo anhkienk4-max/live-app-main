@@ -1,4 +1,4 @@
-# RC1.6K + UX-W2 Má»‘c A evidence and migration gate
+# RC1.6K + UX-W2 Milestone A evidence and migration gate
 
 Decision: **NO-GO pending final CI, authenticated UAT and approved migration execution**. No Production writes were performed.
 
@@ -16,6 +16,8 @@ Decision: **NO-GO pending final CI, authenticated UAT and approved migration exe
 Run https://github.com/anhkienk4-max/live-app-main/actions/runs/38614599022 at `136cab4d`: PG16/Node22 and PG17/Node24 both **FAIL** at canonical project-memory validation. All preceding SQL, typecheck, full ESLint, full release manifest, browser, Storage dependency and production build steps passed. Logs identify stale repository.head, repository.branch and repository.origin_main in `project-memory/current-state.json`. No browser failure caused this result. Artifacts: `11919509611` (Node22), `11921277273` (Node24).
 
 Canonical memory must be synchronized after the implementation commit and committed separately so the recorded implementation SHA remains an ancestor with only memory changes afterward. This preserves the existing validator rather than weakening it.
+
+Final-candidate run `38679044302` at `0ed20b9` exposed a separate real picker race in PG16/Node22: the new filter regression opened the old Confirmed target after search changed. Artifact `11948726168` includes the exact trace and screenshot. Search hid the old list before deferred-search effect cleanup invalidated the parent staffing request. Cancellation now runs synchronously in search/date/page events. The strengthened regression dispatches input and resolves staffing in the same browser task; it reproduced the failure locally before this fix, then passed five repeated runs after the fix. All eleven Reports browser regressions, focused lint and typecheck subsequently passed. Assertions and timeouts remain unchanged. CI for the subsequent source SHA is required; earlier green workflows do not cover this fix.
 
 ## Production SQL and ledger reconciliation
 
@@ -52,4 +54,4 @@ Full local release manifest with checked-in Shopee/TikTok screenshot environment
 - P1: physical Drive/OneDrive upload/read/delete evidence using approved routes; responsive authenticated UAT; all-filter export on multi-page authorized data; full schema-clone/backup/restore rehearsal (function snapshots plus repository DDL are not a complete Production clone).
 - P2: Storage provider/name filters remain page-local per existing approved UI disclosure; no server-search contract was added.
 
-Needed UAT access: an explicitly approved environment URL, separate Admin/Leader/Member sessions via browser or approved secret store, an authorized multi-page test dataset, and existing Google Drive/OneDrive routes/credentials with permission for test file lifecycle operations. Do not send passwords/tokens in chat. No such access was supplied during this execution.
+The user identified the available database target as PRODUCTION and plans to connect permitted role sessions. Browser connections remain unavailable at this checkpoint. Production verification is read-only under the current authorization. Reports create/draft/edit/review/confirm and provider upload/delete remain BLOCKED until an explicitly authorized non-Production environment, migrated schema, role sessions, multi-page test dataset and approved provider test routes are available. Do not send passwords/tokens in chat.

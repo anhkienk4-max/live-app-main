@@ -48,6 +48,11 @@ export function ReportShiftPicker({
   const canSubmit = hasPermission(currentUser, 'reports.submit')
   const filterKey = JSON.stringify({ page, search: deferredSearch, from, to })
   const invalidDates = Boolean(from && to && from > to)
+  const invalidateSelection = () => {
+    requestVersion.current++
+    onInvalidateTarget()
+    setSelectingId(null)
+  }
 
   const loadPage = React.useCallback(async () => {
     if (!open || !canSubmit || (from && to && from > to)) return
@@ -149,7 +154,7 @@ export function ReportShiftPicker({
               aria-label={t('searchShifts')}
               data-testid="report-shift-search"
               value={search}
-              onChange={event => { setSearch(event.target.value); setPage(1) }}
+              onChange={event => { invalidateSelection(); setSearch(event.target.value); setPage(1) }}
               placeholder={t('searchShifts')}
               className="pl-9"
               maxLength={256}
@@ -157,10 +162,10 @@ export function ReportShiftPicker({
           </div>
           <div className="grid grid-cols-2 gap-2">
             <label className="text-xs font-medium">{t('startDate')}
-              <Input type="date" value={from} onChange={event => { setFrom(event.target.value); setPage(1) }} className="mt-1" />
+              <Input type="date" value={from} onChange={event => { invalidateSelection(); setFrom(event.target.value); setPage(1) }} className="mt-1" />
             </label>
             <label className="text-xs font-medium">{t('endDate')}
-              <Input type="date" value={to} onChange={event => { setTo(event.target.value); setPage(1) }} className="mt-1" />
+              <Input type="date" value={to} onChange={event => { invalidateSelection(); setTo(event.target.value); setPage(1) }} className="mt-1" />
             </label>
           </div>
           {from && to && from > to ? <p role="alert" className="text-xs text-destructive">{language === 'vi' ? 'Ngày bắt đầu phải trước ngày kết thúc.' : 'Start date must not exceed end date.'}</p> : null}
@@ -200,7 +205,7 @@ export function ReportShiftPicker({
                   ? 'Tổng số tính cả ca đã có báo cáo hoặc chưa đủ quyền tạo, không phải số báo cáo còn thiếu.'
                   : 'Page totals include shifts with reports or without submit permission; they are not missing-report counts.'}
               </p>
-              <HistoryPagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
+              <HistoryPagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={value => { invalidateSelection(); setPage(value) }} />
             </>
           )}
         </div>

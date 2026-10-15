@@ -125,13 +125,18 @@ test('Changing Reports picker filters discards pending selected-target staffing'
   await expect(picker.getByTestId('report-shift-choose').first()).toBeVisible()
   await picker.getByTestId('report-shift-choose').first().click()
   await expect.poll(() => page.evaluate(() => (window as FixtureWindow).reportsFixture.calls.length)).toBeGreaterThan(0)
-  await picker.getByTestId('report-shift-search').fill('absent-picker-filter')
-  await expect(picker.getByTestId('report-shift-choose')).toHaveCount(0)
   await page.evaluate(async () => {
-    (window as FixtureWindow).reportsFixture.release?.()
+    const f = (window as FixtureWindow).reportsFixture
+    const input = document.querySelector<HTMLInputElement>('[data-testid="report-shift-search"]')!
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'absent-picker-filter')
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    // Resolve in the same browser task, before deferred search/effect cleanup can cancel it.
+    f.release?.()
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
   })
   await expect(picker).toBeVisible()
+  await expect(picker.getByTestId('report-shift-search')).toHaveValue('absent-picker-filter')
+  await expect(picker.getByTestId('report-shift-choose')).toHaveCount(0)
   await expect(page.getByRole('dialog')).toHaveCount(1)
 })
 
