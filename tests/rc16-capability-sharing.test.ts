@@ -87,3 +87,21 @@ test('RC16L missing capability identity fails closed', async () => {
     /WORKFORCE_IDENTITY_REQUIRED/,
   )
 })
+
+test('RC16L slow in-flight capability reads remain coalesced beyond the short TTL', async () => {
+  const identity = 'slow-request-fixture'
+  let calls = 0
+  let resolve!: (value: string) => void
+  const load = () => {
+    calls++
+    return new Promise<string>(done => { resolve = done })
+  }
+  const first = readSharedWorkforceCapabilities(identity, load, 1000)
+  const later = readSharedWorkforceCapabilities(identity, load, 6000)
+  assert.strictEqual(first, later)
+  await Promise.resolve()
+  assert.equal(calls, 1)
+  resolve('approved-by-server')
+  assert.equal(await later, 'approved-by-server')
+  invalidateSharedWorkforceCapabilities(identity)
+})
