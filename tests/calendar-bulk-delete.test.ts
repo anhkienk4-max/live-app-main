@@ -63,7 +63,7 @@ const deleteActionsSource = calendarSource.slice(
 test('export-only users can bulk select and export without exposing delete', () => {
   assert.match(calendarSource, /const canSelectListShifts = view === 'list' && !!currentUser && \([\s\S]{0,120}'shifts\.export'\) \|\| hasPermission\(currentUser, 'shifts\.delete'\)/)
   assert.match(calendarSource, /\{canSelectListShifts && \([\s\S]{0,500}data-testid="toggle-all-visible-shifts"/)
-  assert.match(exportActionsSource, /data-testid="export-selected-xlsx"/)
+  assert.match(exportActionsSource, /onClick=\{\(\) => setExportOpen\(true\)\}/)
   assert.doesNotMatch(exportActionsSource, /open-bulk-delete-shifts/)
   assert.match(deleteActionsSource, /data-testid="open-bulk-delete-shifts"/)
 })
@@ -73,7 +73,7 @@ test('delete-only users can bulk select and delete without exposing export', () 
   assert.match(calendarSource, /\{canSelectListShifts && \([\s\S]{0,500}data-testid="toggle-all-visible-shifts"/)
   assert.match(deleteActionsSource, /data-testid="open-bulk-delete-shifts"/)
   assert.doesNotMatch(deleteActionsSource, /export-selected-(?:xlsx|csv)/)
-  assert.match(exportActionsSource, /data-testid="export-selected-xlsx"/)
+  assert.match(exportActionsSource, /onClick=\{\(\) => setExportOpen\(true\)\}/)
 })
 
 test('users without export or delete do not receive list selection controls', () => {
@@ -113,7 +113,7 @@ test('selected count follows the visible selected set', () => {
 test('selected export remains limited to visible filtered shifts', () => {
   const selection = getVisibleShiftSelection(visibleShifts, new Set(['shift-b', 'hidden-shift']))
   assert.deepEqual(selection.selectedVisibleShiftIds, ['shift-b'])
-  assert.match(calendarSource, /scope === 'selected'[\s\S]{0,120}exportShifts\.filter\(s => selectedVisibleShiftIdSet\.has\(s\.id\)\)/)
+  assert.match(calendarSource, /selectedIds=\{\[\.\.\.selectedVisibleShiftIdSet\]\}/)
 })
 
 test('selection state distinguishes none, partial, and all visible', () => {

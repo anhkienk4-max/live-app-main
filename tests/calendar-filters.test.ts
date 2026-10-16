@@ -134,10 +134,11 @@ test('time, studio, existing dimensions and baseline search compose with AND sem
   const filters = { ...baseFilters, time: 'current_month' as const, studios: ['ai'], brandIds: ['brand-a'], platformIds: ['platform-a'] }
   assert.deepEqual(filterCalendarShifts(shifts, filters, 'Brand A', context()).map(s => s.id), ['match'])
   assert.deepEqual(filterCalendarShifts(shifts, filters, 'NO_MATCH', context()).map(s => s.id), [])
-  assert.deepEqual(filterCalendarShifts(shifts, baseFilters, 'AI', context()).map(s => s.id), [])
+  assert.deepEqual(filterCalendarShifts(shifts, baseFilters, 'AI', context()).map(s => s.id), ['match', 'wrong-studio', 'wrong-brand', 'wrong-time'])
   assert.deepEqual(filterCalendarShifts(shifts, baseFilters, 'Campaign A', context()).map(s => s.id), [])
   assert.deepEqual(filterCalendarShifts(shifts, baseFilters, ' Brand A ', context()).map(s => s.id), [])
   assert.deepEqual(filterCalendarShifts(shifts, { ...baseFilters, studios: ['ai'] }, '', context()).map(s => s.id), ['match', 'wrong-brand', 'wrong-time'])
+  assert.deepEqual(filterCalendarShifts([shift('title', { title: 'RC16L overlap' })], baseFilters, 'RC16L overlap', context()).map(s => s.id), ['title'])
 })
 
 test('existing role and status filters remain supported and invalid custom ranges return no misleading rows', () => {
@@ -152,11 +153,11 @@ test('existing role and status filters remain supported and invalid custom range
 test('Calendar preserves global view filtering and scopes List-only work separately', () => {
   const source = readFileSync(new URL('../components/features/calendar/CalendarView.tsx', import.meta.url), 'utf8')
   assert.match(source, /const filteredShifts = React\.useMemo\(/)
-  assert.match(source, /shiftService\.getCalendarPage\(\{ page: listPage, pageSize: listSize, filters: JSON\.parse\(listQuery\) \}/)
+  assert.match(source, /shiftService\.getCalendarPage\(\{ page: listPage, pageSize: listSize, filters: JSON\.parse\(operationalQuery\) \}/)
   assert.match(source, /effectiveListTimeFilter\(filters\.time, listTimeOverride\)/)
   assert.match(source, /const calendarScopeShifts = React\.useMemo\(\s+\(\) => shiftsInCalendarScope\(view === 'list' \? listShifts : filteredShifts/)
-  assert.match(source, /view === 'list' && scope === 'filtered' \? await shiftService\.getAllFiltered\(JSON\.parse\(listQuery\)\)/)
-  assert.match(source, /targetShifts = scope === 'selected'\s+\? exportShifts\.filter/)
+  assert.match(source, /<CalendarExportDialog open=\{exportOpen\}/)
+  assert.match(source, /selectedIds=\{\[\.\.\.selectedVisibleShiftIdSet\]\}/)
   assert.match(source, /<MonthView currentDate=\{currentDate\} shifts=\{filteredShifts\}/)
   assert.match(source, /<ListView\s+shifts=\{listShifts\}/)
   assert.match(source, /if \(view === 'month' \|\| view === 'list'\)/)
@@ -170,7 +171,7 @@ test('List uses the shared ShiftCard contract and keeps selection and registrati
   const source = readFileSync(new URL('../components/features/calendar/ListView.tsx', import.meta.url), 'utf8')
   assert.match(source, /const brandsById = React\.useMemo\(\(\) => new Map/)
   assert.match(source, /const context: CalendarFilterContext =/)
-  assert.match(source, /<ShiftCard shift=\{\(shift\)\} variant="expanded"/)
+  assert.match(source, /<ShiftCard shift=\{\(shift\)\} variant="compact"/)
   assert.match(source, /onToggleSelectShift\(shift\.id\)/)
   assert.match(source, /onRegister=\{role => onRegister\(shift\.id, role\)\}/)
   assert.doesNotMatch(source, /registrations\.filter\(r => r\.shift_id === shift\.id\)/)

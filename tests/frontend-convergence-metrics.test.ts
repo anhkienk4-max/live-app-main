@@ -57,14 +57,14 @@ import type { Shift, ShiftRegistration } from '../lib/types/database.types.ts'
 
 const gridShift: Shift = {id:'grid-test',title:'Test shift',date:'2100-09-09',start_time:'08:00',end_time:'10:00',brand_id:'test-brand',platform_id:'test-platform',required_host_count:2,required_support_count:1,required_technical_count:0,status:'scheduled',created_at:'2100-09-01T00:00:00Z',updated_at:'2100-09-01T00:00:00Z'}
 
-test('compact Day grid keeps 08:00 and earlier real shifts visible',()=>{
+test('compact Day agenda keeps 08:00 and earlier real shifts visible',()=>{
   const render=(shift:Shift)=>renderToStaticMarkup(React.createElement(LanguageProvider,null,React.createElement(DayView,{currentDate:new Date(2100,8,9),shifts:[shift],brands:[],platforms:[],users:[],registrations:[]})))
   const normal=render(gridShift)
   assert.match(normal,/08:00/)
-  assert.match(normal,/top:0;height:72px/)
+  assert.doesNotMatch(normal,/top:-\d/)
   const early=render({...gridShift,start_time:'06:00',end_time:'07:00'})
   assert.match(early,/06:00/)
-  assert.match(early,/top:0;height:36px/)
+  assert.doesNotMatch(early,/top:-\d/)
 })
 
 test('staffing summary scopes canonical approved registrations and excludes pending/other shifts',()=>{

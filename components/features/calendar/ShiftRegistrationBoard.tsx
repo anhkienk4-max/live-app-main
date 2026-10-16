@@ -4,16 +4,13 @@ import * as React from 'react'
 import { format } from 'date-fns'
 import { Download, Filter, LayoutGrid, List, Lock, LockOpen, RotateCcw, Search, Table2, ChevronDown, ChevronUp } from 'lucide-react'
 import {
-  brandService,
-  campaignService,
-  platformService,
   shiftRegistrationService,
   shiftService,
-  userService,
   getShiftRoleCapacities,
   isStaffedRegistration,
   type ShiftRoleCapacity,
 } from '@/lib/services/dataService'
+import { getCalendarReferences } from '@/lib/services/calendarReferenceData'
 import {
   Brand,
   Campaign,
@@ -34,7 +31,7 @@ import { readPage } from '@/lib/utils/pagination'
 import type { ListFilters } from '@/lib/services/operationsPageService'
 import { ActionBar } from '@/components/ui/action-bar'
 import { buildStaffingApprovalActions } from '@/lib/ui/action-priority'
-import { exportShiftStaffingToExcel } from '@/lib/utils/excelUtils'
+import { CalendarExportDialog } from '@/components/features/shifts/CalendarExportDialog'
 import { formatShiftEndDate, formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { selectMyShiftEntries, type MyShiftEntry } from '@/lib/utils/myShifts'
 import { getVisibleOperationalRoles, getVisibleRoleCapacities, matchesRoleFilter, type RoleSelection } from '@/lib/utils/shiftRegistrationRoleView'
@@ -158,14 +155,28 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const identity = currentUser ? currentUser.id + ':' + (currentUser.system_permission ?? currentUser.role) : ''
   const requestKey = identity + ':' + mode + ':' + page + ':' + pageSize + ':' + pendingPage + ':' + queryFilters
   const [loadedKey, setLoadedKey] = React.useState('')
+  const boardRoot = React.useRef<HTMLDivElement>(null)
+  const previousRequestKey = React.useRef(requestKey)
+  React.useEffect(() => {
+    if (previousRequestKey.current === requestKey) return
+    previousRequestKey.current = requestKey
+    const frame = window.requestAnimationFrame(() => {
+      const root = boardRoot.current
+      const viewportTop = root?.closest('main')?.getBoundingClientRect().top ?? 0
+      if (root && root.getBoundingClientRect().top < viewportTop) root.scrollIntoView({ block: 'start' })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [requestKey])
 
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
   const [busyId, setBusyId] = React.useState<string | null>(null)
   const [removalTarget, setRemovalTarget] = React.useState<{ registration: ShiftRegistration; kind: 'cancel' | 'unassign' } | null>(null)
   const viewValue = params.get(mode + '_view')
-  const viewMode: ViewMode = viewValue === 'table' || viewValue === 'compact' ? viewValue : 'card'
+  const viewMode: ViewMode = viewValue === 'table' || viewValue === 'card' ? viewValue : 'compact'
   const [detailShift, setDetailShift] = React.useState<Shift | null>(null)
+  const [exportShiftId, setExportShiftId] = React.useState<string | null>(null)
+  const [exportOpen, setExportOpen] = React.useState(false)
   const [showFilters, setShowFilters] = React.useState(false)
   const { getLatest, isActive, isCurrent, nextVersion, setLatest } = useOperationalLoadState()
 
@@ -173,12 +184,8 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const loadReferenceData = React.useCallback(async () => {
     const version = ++referenceVersion.current
     try {
-      const [loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers] = await Promise.all([
-        brandService.getAll(),
-        platformService.getAll(),
-        campaignService.getAll(),
-        hasPermission(currentUser, 'shifts.approve_registration') ? userService.getAllFiltered() : Promise.resolve([]),
-      ])
+      if (!currentUser) return
+      const { brands: loadedBrands, platforms: loadedPlatforms, campaigns: loadedCampaigns, users: loadedUsers } = await getCalendarReferences(currentUser)
       if (!isActive() || version !== referenceVersion.current) return
       setBrands(loadedBrands)
       setPlatforms(loadedPlatforms)
@@ -334,14 +341,16 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
     visibleShifts.some(shift => shift.id === registration.shift_id)
   )
 
-  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
   if (userLoading || !currentUser) return <ContentSkeleton />
 
   return (
-    <div className="space-y-4">
+    <div ref={boardRoot} className="space-y-4">
+      <CalendarExportDialog open={exportOpen} onOpenChange={setExportOpen} shiftId={exportShiftId ?? undefined} selectedIds={exportShiftId ? [exportShiftId] : []} filters={JSON.parse(queryFilters)} listScope={mode} />
+      {!!loadError && <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />}
       <Card className="border-none bg-background p-2 shadow-sm sm:p-3">
         <CardContent className="space-y-4 p-0">
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            {hasPermission(currentUser, 'shifts.export') && <Button size="sm" variant="outline" onClick={() => { setExportShiftId(null); setExportOpen(true) }}><Download className="mr-2 h-4 w-4" />{t('exportExcel')}</Button>}
             <div className="relative min-w-[220px] flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -423,7 +432,8 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         </div>
       )}
 
-      {loading || loadedKey !== requestKey ? <ContentSkeleton /> : <>
+      {loading && loadedKey === requestKey && <div role="status" className="text-xs text-muted-foreground">{t('loading')}</div>}
+      {loadedKey !== requestKey ? <ContentSkeleton /> : <>
       {mode === 'open' && hasPermission(currentUser, 'shifts.approve_registration') && pendingTotal > 0 && (
         <Card className="border-amber-200 bg-amber-50/30 shadow-none">
           {deriveStaffingAttention({ pendingCount: pendingTotal }).map(item => (
@@ -574,10 +584,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => void runAction('export-' + shift.id, async () => {
-                            const complete = await shiftRegistrationService.getForShifts([shift.id])
-                            exportShiftStaffingToExcel(shift, complete, new Map(users.map(user => [user.id, user.full_name])))
-                          }, t('success'))}
+                          onClick={() => { setExportShiftId(shift.id); setExportOpen(true) }}
                         >
                           <Download className="mr-1 h-4 w-4" />{t('exportStaffing')}
                         </Button>
