@@ -56,7 +56,8 @@ import {
 import { useToast } from '@/components/ui/toast'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
-import { exportShiftStaffingToExcel } from '@/lib/utils/excelUtils'
+import { CalendarExportDialog } from './CalendarExportDialog'
+import type { ListFilters } from '@/lib/services/operationsPageService'
 import { useTranslation, type Language, type TranslationKey } from '@/lib/i18n'
 import { getCurrentBusinessDate, resolveShiftDateTime } from '@/lib/utils/shiftUtils'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
@@ -406,6 +407,7 @@ const statusStyles: Record<ShiftStatus, string> = {
 
 
 interface ShiftDetailModalProps {
+  exportFilters?: ListFilters
   open: boolean
   onOpenChange: (open: boolean) => void
   shift: Shift
@@ -481,6 +483,7 @@ export function ShiftDetailActions({
 }
 
 export function ShiftDetailModal({
+  exportFilters,
   open,
   onOpenChange,
   shift,
@@ -498,6 +501,7 @@ export function ShiftDetailModal({
   const { language, t, translate } = useTranslation()
   const { currentUser } = useCurrentUser()
   const { capabilities } = useWorkforceCapabilities()
+  const [exportOpen, setExportOpen] = React.useState(false)
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   const [capacities, setCapacities] = React.useState<ShiftRoleCapacity[]>([])
   const [selectedRole, setSelectedRole] = React.useState<OperationalRole>('host')
@@ -688,6 +692,7 @@ export function ShiftDetailModal({
 
   return (
     <>
+      <CalendarExportDialog open={exportOpen} onOpenChange={setExportOpen} shiftId={shift.id} selectedIds={[shift.id]} filters={exportFilters} />
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           size="xl"
@@ -736,7 +741,7 @@ export function ShiftDetailModal({
               <div className="flex min-w-0 max-w-full flex-col items-stretch gap-3 sm:shrink-0 sm:items-end">
                 <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
                    {currentUser && hasPermission(currentUser, 'shifts.export') ? (
-                    <Button size="sm" variant="outline" onClick={() => exportShiftStaffingToExcel(shift, registrations, new Map(users.map(user => [user.id, user.full_name])))}>
+                    <Button size="sm" variant="outline" onClick={() => setExportOpen(true)}>
                       <Download className="mr-2 h-4 w-4" />{t('exportStaffing')}
                     </Button>
                   ) : null}

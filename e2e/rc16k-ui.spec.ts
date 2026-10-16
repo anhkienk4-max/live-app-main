@@ -116,6 +116,7 @@ test('117 local imported shifts paginate in Card, Compact and Table without arch
   expect(batchIds[0]).toBeTruthy()
   expect(new Set(batchIds).size).toBe(1)
   await page.getByTestId('calendar-stable-tabs').getByRole('tab', { name: 'Ca đang mở', exact: true }).click()
+  await page.getByRole('button', { name: /Card view|Dạng thẻ/, exact: true }).click()
   await page.getByTestId('registration-open-search').fill('RC16K synthetic')
   await expect(page.getByText(/1.*10.*117/).last()).toBeVisible()
   await expect(page.locator('[data-testid^="open-shift-detail-card-"]')).toHaveCount(10)

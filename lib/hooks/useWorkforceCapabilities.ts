@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { useCurrentUser } from './useCurrentUser'
 import { workforceService, workforceErrorMessage, type WorkforceCapabilities } from '@/lib/services/workforceService'
+import { readSharedWorkforceCapabilities, invalidateSharedWorkforceCapabilities } from '@/lib/services/sharedWorkforceCapabilities'
 
 export function useWorkforceCapabilities() {
   const { currentUser, loading: userLoading, authIdentity } = useCurrentUser()
@@ -20,11 +21,12 @@ export function useWorkforceCapabilities() {
   React.useEffect(() => {
     const invalidate = (event: Event) => {
       request.current?.abort()
+      invalidateSharedWorkforceCapabilities(identityKey)
       const message = (event as CustomEvent<{ message?: string }>).detail?.message
       setResult(identityKey ? { identityKey, error: message || 'Quyền truy cập đã thay đổi. Vui lòng xác minh lại.' } : null)
     }
-    const refresh = () => reload()
-    const visible = () => { if (document.visibilityState === 'visible') reload() }
+    const refresh = () => { invalidateSharedWorkforceCapabilities(identityKey); reload() }
+    const visible = () => { if (document.visibilityState === 'visible') refresh() }
     window.addEventListener('workforce-access-invalidated', invalidate)
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', visible)
@@ -39,7 +41,10 @@ export function useWorkforceCapabilities() {
     if (userLoading || !identityKey) return
     const controller = new AbortController()
     request.current = controller
-    void workforceService.getCapabilities(controller.signal).then(({ capabilities }) => {
+    // Sharing the underlying request prevents duplicate fetches from Sidebar,
+    // Shift Details and Export Dialog. Unmounting one consumer only cancels
+    // its own state update, not the shared network request.
+    void readSharedWorkforceCapabilities(identityKey, () => workforceService.getCapabilities()).then(({ capabilities }) => {
       if (!controller.signal.aborted) setResult({ identityKey, capabilities })
     }).catch(error => {
       if (!controller.signal.aborted) setResult({ identityKey, error: workforceErrorMessage(error) })

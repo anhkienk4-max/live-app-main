@@ -46,10 +46,10 @@ test('role dialog opening is local and registration has no network side effect u
   assert.match(actions, /await runEligibleRegistration\(state, onRegister\)/)
 })
 
-test('registration tabs mount lazily and stay mounted after first visit', () => {
+test('registration tabs mount lazily and stop fetching when inactive', () => {
   assert.match(workspace, /const \[visitedTabs, setVisitedTabs\]/)
-  assert.match(workspace, /keepMounted value="open"/)
-  assert.match(workspace, /keepMounted value="mine"/)
+  assert.doesNotMatch(workspace, /keepMounted value="open"/)
+  assert.doesNotMatch(workspace, /keepMounted value="mine"/)
   assert.match(workspace, /visitedTabs\.has\("open"\)/)
   assert.match(workspace, /visitedTabs\.has\("mine"\)/)
 })
