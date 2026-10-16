@@ -174,10 +174,11 @@ test('F6 keeps import access behind the existing permission contract and does no
 })
 
 test('F6 retains E/F architecture integration points', () => {
-  const dashboard = read('components/features/calendar/CalendarView.tsx')
+  const workspace = read('components/features/calendar/CalendarWorkspace.tsx')
   const reports = read('components/features/reports/ReportFormModal.tsx')
   const live = read('components/features/live/LiveMonitoringDashboard.tsx')
-  assert.match(dashboard, /FileSpreadsheet/)
+  assert.match(workspace, /<ScheduleImportPanel\s*\/>/)
+  assert.match(panel, /FileSpreadsheet/)
   assert.match(panel, /ImportHistoryPanel/)
   assert.match(reports, /useTranslation|hasPermission/)
   assert.match(live, /live-session-attention|Promise\.all/)
