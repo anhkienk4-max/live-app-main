@@ -2,7 +2,7 @@
 
 ## Status — 2026-10-18
 
-**APPLIED AND VERIFIED ON EXISTING FREE STAGING ONLY.**
+**BOTH STAGING BRIDGES APPLIED AND VERIFIED — 13/14 RC16K FUNCTIONS.**
 Database project `amagnzebmmuqiptmrjmc` (PostgreSQL 17).
 Production project `egdjnpmoasarrttvhgds` was NOT modified.
 No branch/project was purchased or created. Existing staging was NOT reset.
@@ -13,9 +13,9 @@ Apply name: `ops_p0_staging_rc16k_four_read_rpc_bridge`.
 Rollback source:
 `supabase/reconciliation/ops-p0-staging/rollback_rc16k_list_bridge.sql`.
 
-The migration is a **narrow bridge**, NOT a replay of full RC16K,
+The first migration is a **narrow bridge**, NOT a replay of full RC16K,
 NOT a full staging/production schema sync, and not a Production migration.
-It installs only four unmodified function bodies sourced from
+It installs four unmodified function bodies sourced from
 `supabase/migrations/20261012171503_rc16k_bounded_shift_lists.sql`:
 
 - `private.filtered_shift_ids(text,jsonb)`
@@ -89,8 +89,9 @@ archived/deleted rows and selected example roles, not total table counts.
 2. RC13A was applied on Staging historically while Production took a
    different forward-compatible RC15 migration path. **Do not replay both
    histories or mark absent versions applied without reviewing dependencies.**
-3. Before deploying Calendar code to staging, ensure its `get_staff_workload`
-   and other referenced RPCs exist or are separately reconciled.
+3. Calendar/Staff/Review/History/Analytics READ RPCs were reconciled in
+   the second migration. The full HTTP/Next.js staging route flow, JWT and
+   Storage/Payroll dependencies must still be tested.
 4. Run real HTTP/PostgREST/JWT integration, fail-closed negative tests,
    web-role UAT, and storage/payroll workflows on an approved staging build.
 5. Load testing with thousands of synthetic rows should remain on isolated
@@ -135,3 +136,67 @@ establish that all other existing warnings are newly introduced or exploitable.
 Review each against its intended authorization model before remediation.
 Reference:
 https://supabase.com/docs/guides/database/database-linter
+
+## Second staging-only migration: nine additional read RPCs
+
+After the first bridge passed runtime/role smoke tests, the same Staging
+project received migration
+`ops_p0_staging_rc16k_remaining_read_rpc_bridge`, sourced verbatim from
+the canonical RC16K SQL:
+
+- `public.get_staff_workload`
+- `private.rc16k_report_metric`
+- `public.get_analytics_snapshot`
+- `public.get_registration_review_page`
+- `public.get_registration_review_context`
+- `public.get_schedule_change_page`
+- `public.get_audit_actor_page`
+- `public.get_live_update_page`
+- `public.get_archived_entity_page`
+
+Each uses **SECURITY INVOKER**, `anon` EXECUTE=false,
+`authenticated` EXECUTE=true, and `service_role` EXECUTE=false.
+All nine post-apply function-definition hashes were compared DIRECTLY
+against Production and **matched**.
+
+The second bridge underwent transactional `BEGIN`/`ROLLBACK` dry-run
+on existing Staging before applying. Read-only Admin smoke before apply:
+
+| Endpoint | Observed result |
+| --- | ---: |
+| Registration review | 36 |
+| Schedule history | 0 |
+| Audit actors | 4 |
+| Archived entities | 13 |
+| Analytics confirmed reports | 2 |
+| Empty staff workload | 0 rows |
+| Live-update history for visible shift | 0 |
+
+After apply, Leader with a staging test claim also succeeded on
+registration review (36), change history (0), audit actor list (4),
+empty workload and analytics snapshot (2).
+
+Member fail-closed regression (all four **PASS**, SQLSTATE 42501):
+`get_staff_workload`, `get_registration_review_page`,
+`get_schedule_change_page`, and `get_archived_entity_page`.
+Tests were read-only and returned no personal records.
+
+There are now **13 of 14** RC16K functions from the source migration on
+existing Staging. Only `get_payroll_period_snapshot` remains omitted,
+intentionally, because Staging still lacks the RC16 payroll tables and
+the function is service-role-only and financially sensitive.
+
+Verified unchanged row counts after second bridge:
+79 shifts, 43 registrations, 9 reports, 12 business users and
+1,398 audit rows. Exactly two staging bridge migration-history records
+are present.
+
+Second bridge source:
+`supabase/reconciliation/ops-p0-staging/rc16k_remaining_read_rpc_bridge.sql`.
+
+Rollback, if necessary, guarded by exact function-definition fingerprints:
+`supabase/reconciliation/ops-p0-staging/rollback_rc16k_remaining_read_rpc_bridge.sql`.
+
+**Both migration scripts are Staging-only reconciliation artifacts,
+not repository `supabase/migrations` for Production deployment.
+Never merge their SQL into a Production release migration automatically.**
