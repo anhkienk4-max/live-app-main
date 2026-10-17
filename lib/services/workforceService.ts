@@ -94,6 +94,36 @@ export interface PeriodDetailResponse {
   audit: PayrollAudit[]
 }
 
+export interface ActualSegmentsResponse {
+  ok: true
+  segments: ActualSegment[]
+  shift_context?: {
+    id: string
+    date: string
+    start_time: string
+    end_time: string
+    start_at?: string | null
+    end_at?: string | null
+    end_date?: string | null
+    crosses_midnight?: boolean | null
+    duration_minutes?: number | null
+    status: string
+    host_id?: string | null
+    support_id?: string | null
+    technical_id?: string | null
+  } | null
+  planned_staff?: Array<{
+    id: string
+    user_id: string
+    operational_role: string
+    status: string
+  }>
+  lateness_policy?: {
+    grace_minutes: number
+    policy_status: string
+  }
+}
+
 export interface ActualSegment {
   id: string
   shift_id: string
@@ -450,8 +480,8 @@ export const workforceService = {
   },
 
   // ACTUAL STAFFING
-  async getActualSegments(shiftId: string): Promise<{ ok: true; segments: ActualSegment[] }> {
-    return requestJson<{ ok: true; segments: ActualSegment[] }>(
+  async getActualSegments(shiftId: string): Promise<ActualSegmentsResponse> {
+    return requestJson<ActualSegmentsResponse>(
       `/api/workforce/actual?shift_id=${encodeURIComponent(shiftId)}`
     )
   },

@@ -1,6 +1,12 @@
-﻿import test from 'node:test'
+import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createWorkforceActualHandler } from '@/lib/server/workforceActualHandler'
+import {
+  resolveShiftPlannedInterval,
+  evaluateLateness,
+  evaluateEndVariance,
+} from '@/lib/workforce/latenessPolicy'
+import { AuthorizationError } from '@/lib/server/authGuards'
 
 const get = (url: string) => new Request(url)
 const post = (url: string, body: object) => new Request(url, {
@@ -13,7 +19,13 @@ const mustNotUseDb = () => { throw new Error('UNAUTHORIZED_DB_ACCESS') }
 const leaderUser = async () => ({ id: 'auth-leader', businessUserId: 'leader-1', systemPermission: 'leader' as const })
 const reviewerUser = async () => ({ id: 'auth-reviewer', businessUserId: 'leader-2', systemPermission: 'leader' as const })
 const adminUser = async () => ({ id: 'auth-admin', businessUserId: 'admin-1', systemPermission: 'admin' as const })
+const memberUser = async () => {
+  throw new AuthorizationError(403, 'PERMISSION_DENIED', 'Role member is not authorized')
+}
 
+// ---------------------------------------------------------------------------
+// TEST 1: Feature Flag Fail-Closed
+// ---------------------------------------------------------------------------
 test('RC1.7A: Actual Staffing fails closed (HTTP 503) when feature flag is disabled', async () => {
   const handler = createWorkforceActualHandler({
     isEnabled: () => false,
@@ -42,7 +54,10 @@ test('RC1.7A: Actual Staffing fails closed (HTTP 503) when feature flag is disab
   assert.equal(postBody.error.code, 'WORKFORCE_FEATURE_DISABLED')
 })
 
-test('RC1.7A: Actual Staffing GET returns segments, shift_context, and planned_staff', async () => {
+// ---------------------------------------------------------------------------
+// TEST 2: GET segments with lateness policy and planned staff
+// ---------------------------------------------------------------------------
+test('RC1.7A: Actual Staffing GET returns segments, shift_context, and lateness_policy', async () => {
   const fakeDb = () => ({
     from(table: string) {
       if (table === 'workforce_actual_segments') {
@@ -133,8 +148,12 @@ test('RC1.7A: Actual Staffing GET returns segments, shift_context, and planned_s
   assert.equal(body.shift_context.id, 'shift-100')
   assert.equal(body.shift_context.duration_minutes, 120)
   assert.equal(body.planned_staff.length, 2)
+  assert.equal(typeof body.lateness_policy.grace_minutes, 'number')
 })
 
+// ---------------------------------------------------------------------------
+// TEST 3: Multi-Host / Co-Hosting on the Same Completed Shift
+// ---------------------------------------------------------------------------
 test('RC1.7A: Multi-Host / Co-Hosting on the same completed shift is supported', async () => {
   const inserted: Record<string, unknown>[] = []
   const fakeDb = () => ({
@@ -146,7 +165,7 @@ test('RC1.7A: Multi-Host / Co-Hosting on the same completed shift is supported',
           is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-cohost', status: 'completed', deleted_at: null },
+              data: { id: 'shift-cohost', status: 'completed', host_id: 'host-A', deleted_at: null },
               error: null,
             })
           },
@@ -165,6 +184,24 @@ test('RC1.7A: Multi-Host / Co-Hosting on the same completed shift is supported',
           },
         }
       }
+      if (table === 'shift_registrations') {
+        return {
+          select() { return this },
+          eq() { return this },
+          in() {
+            return Promise.resolve({
+              data: [{ id: 'reg-b', user_id: 'host-B', operational_role: 'host', status: 'approved' }],
+              error: null,
+            })
+          },
+          limit() {
+            return Promise.resolve({
+              data: [{ id: 'reg-b' }],
+              error: null,
+            })
+          },
+        }
+      }
       if (table === 'workforce_actual_segments') {
         return {
           select() { return this },
@@ -172,7 +209,6 @@ test('RC1.7A: Multi-Host / Co-Hosting on the same completed shift is supported',
           lt() { return this },
           gt() { return this },
           limit() {
-            // No conflicting overlap for this distinct staff member
             return Promise.resolve({ data: [], error: null })
           },
           insert(row: Record<string, unknown>) {
@@ -202,7 +238,7 @@ test('RC1.7A: Multi-Host / Co-Hosting on the same completed shift is supported',
     resolveUser: leaderUser,
   })
 
-  // Host A records worked (19:00 - 21:00)
+  // Host A records worked (planned host)
   const resA = await handler.POST(post('https://example.test/api/workforce/actual', {
     action: 'record',
     shift_id: 'shift-cohost',
@@ -216,7 +252,7 @@ test('RC1.7A: Multi-Host / Co-Hosting on the same completed shift is supported',
   }))
   assert.equal(resA.status, 201)
 
-  // Host B co-hosts simultaneously (19:00 - 21:00)
+  // Host B records worked as co-host (registered co-host)
   const resB = await handler.POST(post('https://example.test/api/workforce/actual', {
     action: 'record',
     shift_id: 'shift-cohost',
@@ -234,6 +270,9 @@ test('RC1.7A: Multi-Host / Co-Hosting on the same completed shift is supported',
   assert.equal(inserted[1].staff_id, 'host-B')
 })
 
+// ---------------------------------------------------------------------------
+// TEST 4: Assistant (Trợ live) Cross-Shift Overlap Rejection
+// ---------------------------------------------------------------------------
 test('RC1.7A: Assistant (Trợ live) cross-shift overlapping hours are strictly rejected', async () => {
   const fakeDb = () => ({
     from(table: string) {
@@ -244,7 +283,7 @@ test('RC1.7A: Assistant (Trợ live) cross-shift overlapping hours are strictly 
           is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-split-2', status: 'completed', deleted_at: null },
+              data: { id: 'shift-split-2', status: 'completed', support_id: 'support-1', deleted_at: null },
               error: null,
             })
           },
@@ -312,32 +351,32 @@ test('RC1.7A: Assistant (Trợ live) cross-shift overlapping hours are strictly 
   assert.equal(body.error.code, 'WORKFORCE_APPROVED_STAFF_OVERLAP')
 })
 
+// ---------------------------------------------------------------------------
+// TEST 5: Anti-Self-Approval
+// ---------------------------------------------------------------------------
 test('RC1.7A: Segregation of Duties: Creator cannot approve their own recorded evidence', async () => {
   const fakeDb = () => ({
     from(table: string) {
       if (table === 'workforce_actual_segments') {
         return {
           select() { return this },
-          eq() {
-            return {
-              maybeSingle() {
-                return Promise.resolve({
-                  data: {
-                    id: 'seg-creator-1',
-                    shift_id: 'shift-1',
-                    staff_id: 'host-1',
-                    operational_role: 'host',
-                    event_kind: 'worked',
-                    actual_start_at: '2026-10-17T19:00:00+07:00',
-                    actual_end_at: '2026-10-17T21:00:00+07:00',
-                    review_status: 'draft',
-                    version: 1,
-                    created_by: 'leader-1', // created by leader-1
-                  },
-                  error: null,
-                })
+          eq() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: {
+                id: 'seg-draft-1',
+                shift_id: 'shift-100',
+                staff_id: 'host-1',
+                operational_role: 'host',
+                event_kind: 'worked',
+                actual_start_at: '2026-10-17T19:00:00+07:00',
+                actual_end_at: '2026-10-17T21:00:00+07:00',
+                review_status: 'draft',
+                version: 1,
+                created_by: 'leader-1',
               },
-            }
+              error: null,
+            })
           },
         }
       }
@@ -345,19 +384,18 @@ test('RC1.7A: Segregation of Duties: Creator cannot approve their own recorded e
     },
   })
 
-  // Same user (leader-1) attempts to review
   const handler = createWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
-    resolveUser: leaderUser, // businessUserId = 'leader-1'
+    resolveUser: leaderUser, // leaderUser has businessUserId: 'leader-1'
   })
 
   const res = await handler.POST(post('https://example.test/api/workforce/actual', {
     action: 'review',
-    segment_id: 'seg-creator-1',
+    segment_id: 'seg-draft-1',
     expected_version: 1,
     decision: 'approved',
-    review_note: 'Self approval attempt must fail',
+    review_note: 'Attempting to self-approve my own submission',
   }))
 
   assert.equal(res.status, 403)
@@ -365,16 +403,66 @@ test('RC1.7A: Segregation of Duties: Creator cannot approve their own recorded e
   assert.equal(body.error.code, 'WORKFORCE_SELF_REVIEW_BLOCKED')
 })
 
-test('RC1.7A: Independent Reviewer can approve with optimistic locking version increment', async () => {
-  let updatedPayload: Record<string, unknown> | null = null
+test('RC1.7A: Segregation of Duties: Blocks self-approval when created_by matches auth user id', async () => {
   const fakeDb = () => ({
     from(table: string) {
       if (table === 'workforce_actual_segments') {
-        const queryBuilder = {
+        return {
           select() { return this },
-          eq(col: string, val: unknown) {
-            return this
+          eq() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: {
+                id: 'seg-draft-uuid',
+                shift_id: 'shift-100',
+                staff_id: 'host-1',
+                operational_role: 'host',
+                event_kind: 'worked',
+                actual_start_at: '2026-10-17T19:00:00+07:00',
+                actual_end_at: '2026-10-17T21:00:00+07:00',
+                review_status: 'draft',
+                version: 1,
+                created_by: 'auth-leader', // created_by was auth UUID
+              },
+              error: null,
+            })
           },
+        }
+      }
+      throw new Error(`Unexpected table ${table}`)
+    },
+  })
+
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: fakeDb as never,
+    resolveUser: leaderUser, // leaderUser has id: 'auth-leader'
+  })
+
+  const res = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'review',
+    segment_id: 'seg-draft-uuid',
+    expected_version: 1,
+    decision: 'approved',
+    review_note: 'Attempting self-approval matching auth id',
+  }))
+
+  assert.equal(res.status, 403)
+  const body = await res.json()
+  assert.equal(body.error.code, 'WORKFORCE_SELF_REVIEW_BLOCKED')
+})
+
+// ---------------------------------------------------------------------------
+// TEST 6: Independent Reviewer Approves with Optimistic Locking
+// ---------------------------------------------------------------------------
+test('RC1.7A: Independent Reviewer can approve with optimistic locking version increment', async () => {
+  let updatedRow: Record<string, unknown> | null = null
+  const fakeDb = () => ({
+    from(table: string) {
+      if (table === 'workforce_actual_segments') {
+        return {
+          select() { return this },
+          eq() { return this },
           neq() { return this },
           lt() { return this },
           gt() { return this },
@@ -384,8 +472,8 @@ test('RC1.7A: Independent Reviewer can approve with optimistic locking version i
           maybeSingle() {
             return Promise.resolve({
               data: {
-                id: 'seg-creator-1',
-                shift_id: 'shift-1',
+                id: 'seg-draft-1',
+                shift_id: 'shift-100',
                 staff_id: 'host-1',
                 operational_role: 'host',
                 event_kind: 'worked',
@@ -393,20 +481,24 @@ test('RC1.7A: Independent Reviewer can approve with optimistic locking version i
                 actual_end_at: '2026-10-17T21:00:00+07:00',
                 review_status: 'draft',
                 version: 1,
-                created_by: 'leader-1', // created by leader-1
+                created_by: 'leader-1',
               },
               error: null,
             })
           },
           update(patch: Record<string, unknown>) {
-            updatedPayload = patch
+            updatedRow = patch
             return {
               eq() { return this },
               select() {
                 return {
                   maybeSingle() {
                     return Promise.resolve({
-                      data: { id: 'seg-creator-1', review_status: patch.review_status, version: patch.version },
+                      data: {
+                        id: 'seg-draft-1',
+                        review_status: patch.review_status,
+                        version: patch.version,
+                      },
                       error: null,
                     })
                   },
@@ -415,7 +507,6 @@ test('RC1.7A: Independent Reviewer can approve with optimistic locking version i
             }
           },
         }
-        return queryBuilder
       }
       if (table === 'shifts') {
         return {
@@ -423,7 +514,7 @@ test('RC1.7A: Independent Reviewer can approve with optimistic locking version i
           eq() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-1', status: 'completed' },
+              data: { id: 'shift-100', status: 'completed' },
               error: null,
             })
           },
@@ -433,19 +524,18 @@ test('RC1.7A: Independent Reviewer can approve with optimistic locking version i
     },
   })
 
-  // Independent reviewer (leader-2) reviews
   const handler = createWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
-    resolveUser: reviewerUser, // businessUserId = 'leader-2'
+    resolveUser: reviewerUser, // reviewerUser has businessUserId: 'leader-2'
   })
 
   const res = await handler.POST(post('https://example.test/api/workforce/actual', {
     action: 'review',
-    segment_id: 'seg-creator-1',
+    segment_id: 'seg-draft-1',
     expected_version: 1,
     decision: 'approved',
-    review_note: 'Verified against studio check-in sheet',
+    review_note: 'Verified with livestream recording and approved',
   }))
 
   assert.equal(res.status, 200)
@@ -453,34 +543,34 @@ test('RC1.7A: Independent Reviewer can approve with optimistic locking version i
   assert.equal(body.ok, true)
   assert.equal(body.segment.review_status, 'approved')
   assert.equal(body.segment.version, 2)
-  assert.equal(updatedPayload?.reviewed_by, 'leader-2')
+  assert.equal(updatedRow?.reviewed_by, 'leader-2')
+  assert.equal(updatedRow?.version, 2)
 })
-// Additional tests appended to tests/rc17a-actual-staffing.test.ts
 
+// ---------------------------------------------------------------------------
+// TEST 7: Optimistic Locking Rejects Stale Version
+// ---------------------------------------------------------------------------
 test('RC1.7A: Optimistic Locking rejects stale expected_version with HTTP 409', async () => {
   const fakeDb = () => ({
     from(table: string) {
       if (table === 'workforce_actual_segments') {
         return {
           select() { return this },
-          eq() {
-            return {
-              maybeSingle() {
-                return Promise.resolve({
-                  data: {
-                    id: 'seg-version-2',
-                    shift_id: 'shift-1',
-                    staff_id: 'host-1',
-                    operational_role: 'host',
-                    event_kind: 'worked',
-                    review_status: 'draft',
-                    version: 2, // version in database is 2
-                    created_by: 'leader-1',
-                  },
-                  error: null,
-                })
+          eq() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: {
+                id: 'seg-draft-1',
+                shift_id: 'shift-100',
+                staff_id: 'host-1',
+                operational_role: 'host',
+                event_kind: 'worked',
+                review_status: 'draft',
+                version: 3, // current version in DB is 3
+                created_by: 'leader-1',
               },
-            }
+              error: null,
+            })
           },
         }
       }
@@ -491,16 +581,16 @@ test('RC1.7A: Optimistic Locking rejects stale expected_version with HTTP 409', 
   const handler = createWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
-    resolveUser: reviewerUser, // leader-2
+    resolveUser: reviewerUser,
   })
 
-  // Reviewer sends stale expected_version: 1
+  // Reviewer submits with stale expected_version = 1
   const res = await handler.POST(post('https://example.test/api/workforce/actual', {
     action: 'review',
-    segment_id: 'seg-version-2',
-    expected_version: 1, // Stale!
+    segment_id: 'seg-draft-1',
+    expected_version: 1,
     decision: 'approved',
-    review_note: 'Attempting to approve with stale version',
+    review_note: 'Attempting to approve stale version',
   }))
 
   assert.equal(res.status, 409)
@@ -508,6 +598,9 @@ test('RC1.7A: Optimistic Locking rejects stale expected_version with HTTP 409', 
   assert.equal(body.error.code, 'WORKFORCE_ACTUAL_STALE_OR_LOCKED')
 })
 
+// ---------------------------------------------------------------------------
+// TEST 8: Contradictory Attendance Rejected
+// ---------------------------------------------------------------------------
 test('RC1.7A: Contradictory attendance (no_show when worked already approved) is rejected', async () => {
   const fakeDb = () => ({
     from(table: string) {
@@ -518,7 +611,7 @@ test('RC1.7A: Contradictory attendance (no_show when worked already approved) is
           is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-contra', status: 'completed', deleted_at: null },
+              data: { id: 'shift-contra', status: 'completed', host_id: 'host-1', deleted_at: null },
               error: null,
             })
           },
@@ -540,9 +633,7 @@ test('RC1.7A: Contradictory attendance (no_show when worked already approved) is
       if (table === 'workforce_actual_segments') {
         return {
           select() { return this },
-          eq(col: string, val: unknown) {
-            return this
-          },
+          eq() { return this },
           lt() { return this },
           gt() { return this },
           limit() {
@@ -574,10 +665,321 @@ test('RC1.7A: Contradictory attendance (no_show when worked already approved) is
     coverage_kind: 'planned',
     actual_start_at: null,
     actual_end_at: null,
-    evidence_note: 'Host claimed no show despite already being approved as worked',
+    evidence_note: 'Attempting conflicting no_show record',
   }))
 
   assert.equal(res.status, 409)
   const body = await res.json()
   assert.equal(body.error.code, 'WORKFORCE_APPROVED_NO_SHOW_CONFLICT')
+})
+
+// ---------------------------------------------------------------------------
+// TEST 9: Overnight Shift Interval Resolution (23:00–02:00 and 23:45–01:45)
+// ---------------------------------------------------------------------------
+test('RC1.7A: Overnight shifts resolve start_at and end_at crossing midnight correctly', () => {
+  // Test case 1: 23:00 to 02:00
+  const shift1 = {
+    date: '2026-10-17',
+    start_time: '23:00',
+    end_time: '02:00',
+  }
+  const res1 = resolveShiftPlannedInterval(shift1)
+  assert.equal(res1.startIso, '2026-10-17T23:00:00+07:00')
+  assert.equal(res1.endIso, '2026-10-18T02:00:00+07:00')
+  assert.equal(res1.crossesMidnight, true)
+  assert.equal(res1.durationMinutes, 180)
+  assert(Date.parse(res1.endIso) > Date.parse(res1.startIso), 'End ISO must be strictly after start ISO')
+
+  // Test case 2: 23:45 to 01:45
+  const shift2 = {
+    date: '2026-10-17',
+    start_time: '23:45',
+    end_time: '01:45',
+  }
+  const res2 = resolveShiftPlannedInterval(shift2)
+  assert.equal(res2.startIso, '2026-10-17T23:45:00+07:00')
+  assert.equal(res2.endIso, '2026-10-18T01:45:00+07:00')
+  assert.equal(res2.crossesMidnight, true)
+  assert.equal(res2.durationMinutes, 120)
+  assert(Date.parse(res2.endIso) > Date.parse(res2.startIso), 'End ISO must be strictly after start ISO')
+
+  // Test case 3: Preserves existing authoritative DB start_at and end_at
+  const shift3 = {
+    date: '2026-10-17',
+    start_time: '23:00',
+    end_time: '02:00',
+    start_at: '2026-10-17T23:00:00+07:00',
+    end_at: '2026-10-18T02:00:00+07:00',
+    crosses_midnight: true,
+  }
+  const res3 = resolveShiftPlannedInterval(shift3)
+  assert.equal(res3.startIso, '2026-10-17T23:00:00+07:00')
+  assert.equal(res3.endIso, '2026-10-18T02:00:00+07:00')
+  assert.equal(res3.crossesMidnight, true)
+})
+
+// ---------------------------------------------------------------------------
+// TEST 10: Role Access Matrix (Operator, Host, Assistant, Member rejected 403)
+// ---------------------------------------------------------------------------
+test('RC1.7A: Role Access Matrix strictly rejects Member/Operator/Host/Trợ with HTTP 403', async () => {
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: mustNotUseDb,
+    resolveUser: memberUser, // Non-leader/non-admin user
+  })
+
+  const getRes = await handler.GET(get('https://example.test/api/workforce/actual?shift_id=shift-1'))
+  assert.equal(getRes.status, 403)
+  const getBody = await getRes.json()
+  assert.equal(getBody.error.code, 'PERMISSION_DENIED')
+
+  const postRes = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-1',
+    staff_id: 'host-1',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'planned',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Operator trying to record attendance',
+  }))
+  assert.equal(postRes.status, 403)
+  const postBody = await postRes.json()
+  assert.equal(postBody.error.code, 'PERMISSION_DENIED')
+})
+
+// ---------------------------------------------------------------------------
+// TEST 11: Configurable Lateness Policy (No Hardcoded 15m)
+// ---------------------------------------------------------------------------
+test('RC1.7A: Lateness evaluation distinguishes actual_late_minutes and late_after_grace', () => {
+  const scheduledStart = '2026-10-17T19:00:00+07:00'
+
+  // Case A: Grace = 0 (strictly punctual, no grace)
+  const late10m = '2026-10-17T19:10:00+07:00'
+  const evalGrace0 = evaluateLateness(late10m, scheduledStart, 0)
+  assert.equal(evalGrace0.actualLateMinutes, 10)
+  assert.equal(evalGrace0.lateAfterGraceMinutes, 10)
+  assert.equal(evalGrace0.isLate, true)
+  assert.equal(evalGrace0.isWithinGrace, false)
+  assert.equal(evalGrace0.isOnTime, false)
+
+  // Case B: Grace = 10 (clocked in 8m late -> within grace)
+  const late8m = '2026-10-17T19:08:00+07:00'
+  const evalGrace10 = evaluateLateness(late8m, scheduledStart, 10)
+  assert.equal(evalGrace10.actualLateMinutes, 8)
+  assert.equal(evalGrace10.lateAfterGraceMinutes, 0)
+  assert.equal(evalGrace10.isLate, false)
+  assert.equal(evalGrace10.isWithinGrace, true)
+  assert.equal(evalGrace10.isOnTime, false)
+
+  // Case C: Grace = 15 (clocked in 20m late -> lateAfterGrace = 5)
+  const late20m = '2026-10-17T19:20:00+07:00'
+  const evalGrace15 = evaluateLateness(late20m, scheduledStart, 15)
+  assert.equal(evalGrace15.actualLateMinutes, 20)
+  assert.equal(evalGrace15.lateAfterGraceMinutes, 5)
+  assert.equal(evalGrace15.isLate, true)
+  assert.equal(evalGrace15.isWithinGrace, false)
+  assert.equal(evalGrace15.isOnTime, false)
+
+  // Case D: Early clock-in (5m early)
+  const early5m = '2026-10-17T18:55:00+07:00'
+  const evalEarly = evaluateLateness(early5m, scheduledStart, 15)
+  assert.equal(evalEarly.actualLateMinutes, -5)
+  assert.equal(evalEarly.lateAfterGraceMinutes, 0)
+  assert.equal(evalEarly.isOnTime, true)
+  assert.equal(evalEarly.isLate, false)
+  assert.equal(evalEarly.isWithinGrace, false)
+
+  // Overtime and Early Departure
+  const scheduledEnd = '2026-10-17T21:00:00+07:00'
+  const endOT30m = '2026-10-17T21:30:00+07:00'
+  const varianceOT = evaluateEndVariance(endOT30m, scheduledEnd)
+  assert.equal(varianceOT.overtimeMinutes, 30)
+  assert.equal(varianceOT.earlyDepartureMinutes, 0)
+
+  const endEarly20m = '2026-10-17T20:40:00+07:00'
+  const varianceEarly = evaluateEndVariance(endEarly20m, scheduledEnd)
+  assert.equal(varianceEarly.earlyDepartureMinutes, 20)
+  assert.equal(varianceEarly.overtimeMinutes, 0)
+})
+
+// ---------------------------------------------------------------------------
+// TEST 12: Coverage Kind Verification (Planned requires scheduled assignment)
+// ---------------------------------------------------------------------------
+test('RC1.7A: Coverage kind planned requires scheduled assignment or registration', async () => {
+  const fakeDb = () => ({
+    from(table: string) {
+      if (table === 'shifts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: {
+                id: 'shift-strict',
+                status: 'completed',
+                host_id: 'host-official',
+                support_id: null,
+                technical_id: null,
+                deleted_at: null,
+              },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'business_users') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'host-unscheduled', status: 'active', deleted_at: null },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'shift_registrations') {
+        return {
+          select() { return this },
+          eq() { return this },
+          in() { return this },
+          limit() {
+            // Not registered
+            return Promise.resolve({ data: [], error: null })
+          },
+        }
+      }
+      throw new Error(`Unexpected table ${table}`)
+    },
+  })
+
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: fakeDb as never,
+    resolveUser: leaderUser,
+  })
+
+  // Attempting 'planned' coverage for unscheduled staff member fails with 409
+  const res = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-strict',
+    staff_id: 'host-unscheduled',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'planned',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Recording planned coverage for unscheduled host',
+  }))
+
+  assert.equal(res.status, 409)
+  const body = await res.json()
+  assert.equal(body.error.code, 'WORKFORCE_PLANNED_STAFF_UNSCHEDULED')
+})
+
+// ---------------------------------------------------------------------------
+// TEST 13: Concurrent Approval Race Condition & Trigger Error Mapping
+// ---------------------------------------------------------------------------
+test('RC1.7A: Concurrent approval race condition maps DB trigger exception to HTTP 409', async () => {
+  const fakeDb = () => ({
+    from(table: string) {
+      if (table === 'workforce_actual_segments') {
+        return {
+          select() { return this },
+          eq() { return this },
+          neq() { return this },
+          lt() { return this },
+          gt() { return this },
+          limit() {
+            // Suppose application-level overlap check was raced past
+            return Promise.resolve({ data: [], error: null })
+          },
+          maybeSingle() {
+            return Promise.resolve({
+              data: {
+                id: 'seg-race-1',
+                shift_id: 'shift-race',
+                staff_id: 'host-raced',
+                operational_role: 'host',
+                event_kind: 'worked',
+                actual_start_at: '2026-10-17T19:00:00+07:00',
+                actual_end_at: '2026-10-17T21:00:00+07:00',
+                review_status: 'draft',
+                version: 1,
+                created_by: 'leader-1',
+              },
+              error: null,
+            })
+          },
+          update() {
+            return {
+              eq() { return this },
+              select() {
+                return {
+                  maybeSingle() {
+                    // Database trigger workforce_actual_guard threw WORKFORCE_APPROVED_STAFF_OVERLAP
+                    return Promise.resolve({
+                      data: null,
+                      error: { message: 'WORKFORCE_APPROVED_STAFF_OVERLAP: conflicting active range' },
+                    })
+                  },
+                }
+              },
+            }
+          },
+        }
+      }
+      if (table === 'shifts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'shift-race', status: 'completed' },
+              error: null,
+            })
+          },
+        }
+      }
+      throw new Error(`Unexpected table ${table}`)
+    },
+  })
+
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: fakeDb as never,
+    resolveUser: reviewerUser,
+  })
+
+  const res = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'review',
+    segment_id: 'seg-race-1',
+    expected_version: 1,
+    decision: 'approved',
+    review_note: 'Raced approval submission',
+  }))
+
+  assert.equal(res.status, 409)
+  const body = await res.json()
+  assert.equal(body.error.code, 'WORKFORCE_APPROVED_STAFF_OVERLAP')
+})
+
+// ---------------------------------------------------------------------------
+// TEST 15: Admin user has full access to workforce actual staffing
+// ---------------------------------------------------------------------------
+test('RC1.7A: Admin user has full access to record and review actual staffing', async () => {
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: mustNotUseDb,
+    resolveUser: adminUser,
+  })
+  const res = await handler.GET(get('https://example.test/api/workforce/actual'))
+  assert.equal(res.status, 400)
+  const body = await res.json()
+  assert.equal(body.error.code, 'WORKFORCE_SHIFT_ID_REQUIRED')
 })
