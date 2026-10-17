@@ -81,6 +81,29 @@ All inserts and ANALYZE statements occur in the fixture transaction,
 which ends with `ROLLBACK`. This CI probe is **pending verification**
 until the new workflow run completes.
 
+## RLS optimization candidate — NOT released
+
+The repository now contains
+`scripts/performance/candidates/shift-rls-fast-path-EXPERIMENT.sql`.
+It rewrites **only the RLS policy expression** in an isolated transaction:
+active Admin and Leader users can take the constant-role fast path;
+Member and unknown-role users continue using the existing row-scoped
+`private.can_read_shift(id)`. This is an **experiment**, not a migration
+and not a deployed fix.
+
+The isolated PG16/17 test captures the complete visible shift-ID sets for
+Admin, Leader, Member and unknown actor before applying the candidate policy,
+compares them after policy modification, and checks archived/completed
+inaccessibility for the Member fixture. All fixture operations are rolled
+back. Successful fixture parity still does **not** establish equivalence
+for real JWT claims, disabled accounts, privilege grants, payroll exposure
+or production load; these require further staging UAT and security review.
+
+Measure the original and candidate `get_shift_list_page` after seeding the
+same synthetic 5k shifts. Keep the candidate **out of**
+`supabase/migrations` until the isolated role matrix, staging parity,
+query plans and concurrent-user benchmarks all pass.
+
 ## CI / deployment blockers discovered
 
 For `PR #34`, the RC16 workforce/payroll matrix failed **only** the final
