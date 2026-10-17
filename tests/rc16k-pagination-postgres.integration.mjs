@@ -154,7 +154,7 @@ const code = await new Promise((resolve,reject) => { child.on('error',reject); c
 assert.equal(code,0,output)
 // Isolated synthetic-only execution plan timings. The PL/pgSQL RPC function
 // scan is opaque to the outer EXPLAIN; this is NOT an internal operator profile.
-const explainTimes = [...output.matchAll(/Execution Time:\\s*([0-9]+(?:\\.[0-9]+)?) ms/g)].map(match => Number(match[1]))
+const explainTimes = output.split(String.fromCharCode(10)).filter(line => line.includes('Execution Time:')).map(line => Number(line.split('Execution Time:')[1].trim().split(' ')[0])).filter(Number.isFinite)
 assert.ok(explainTimes.length >= 3, 'Isolated OPS P0 fixture did not emit three SQL EXPLAIN execution times')
 console.log('P0_SYNTHETIC_TIMINGS PostgreSQL ' + major + ': ' + JSON.stringify({
   baselineRangeMs: explainTimes.at(-3),
