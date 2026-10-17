@@ -109,3 +109,29 @@ SQL on **Staging only**. Supabase migration-history bookkeeping must be
 reconciled separately; do not directly edit the migration ledger.
 
 Rollback does not modify tables, file metadata, Auth users or shifts.
+
+
+## Live read-only SQL timing observation
+
+A single role-scoped `EXPLAIN (ANALYZE, BUFFERS)` on existing Staging,
+using one active Leader's `auth.uid()` session-claim simulation, measured
+`get_shift_list_page('all',1,50,'{}')` at **386.452 ms SQL execution**,
+with **5,386 shared buffer hits**. This is **one call**, not a p95,
+an isolated synthetic load benchmark, or a Production performance estimate.
+
+## Supabase database advisors (post-apply)
+
+Security/performance advisors were queried after applying the four-RPC
+bridge. They continue to flag several existing schema areas, including
+`private.audit_action_for_change` mutable `search_path`, an anonymously
+callable `public.submit_account_request` security-definer function
+(which may be intentionally public for signup), 72 authenticated
+security-definer function notices, 30 potentially unindexed foreign keys,
+and other informational advisories.
+
+None of the four installed functions is `SECURITY DEFINER`; the verified
+execute ACL for each is authenticated-only. The advisor output does not
+establish that all other existing warnings are newly introduced or exploitable.
+Review each against its intended authorization model before remediation.
+Reference:
+https://supabase.com/docs/guides/database/database-linter
