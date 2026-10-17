@@ -129,4 +129,12 @@ begin
   raise notice 'P0_UAT_PASS: synthetic actual/review/immutability/rate/period/gross/correction/audit/lock (ROLLBACK pending)';
 end;
 $p03_uat$;
+select 'PASS — transaction-rollback-only Staging synthetic UAT' as verdict,
+ (select count(*) from public.workforce_actual_segments) as synthetic_segments,
+ (select count(*) from public.workforce_rate_cards) as synthetic_rate_cards,
+ (select count(*) from public.workforce_payroll_periods) as synthetic_payroll_periods,
+ (select count(*) from public.workforce_payroll_lines) as synthetic_payroll_lines,
+ (select count(*) from public.workforce_payroll_audit) as synthetic_payroll_audit,
+ (select count(*) from public.business_users) as staging_staff_plus_synthetic,
+ (select count(*) from public.shifts) as staging_shifts_plus_synthetic;
 rollback;
