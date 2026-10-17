@@ -200,3 +200,29 @@ Rollback, if necessary, guarded by exact function-definition fingerprints:
 **Both migration scripts are Staging-only reconciliation artifacts,
 not repository `supabase/migrations` for Production deployment.
 Never merge their SQL into a Production release migration automatically.**
+
+## Remaining structural parity, catalog-verified after both bridges
+
+App-owned relation inventory (`public` and `private`):
+**Production 29**, **Staging 22** (no extra relations in Staging).
+Exactly these seven are still missing:
+
+1. `public.operational_files`
+2. `public.workforce_actual_segments`
+3. `public.workforce_payroll_audit`
+4. `public.workforce_payroll_audit_id_seq`
+5. `public.workforce_payroll_lines`
+6. `public.workforce_payroll_periods`
+7. `public.workforce_rate_cards`
+
+In the same metadata scope, Staging functions increased from **154 to 167**
+versus **178** on Production. RLS policy count/hash remains identical
+at 30 policies. Staging still has 439 columns vs Production 544,
+100 indexes vs 122, 45 triggers vs 51, 203 constraints vs 279.
+
+This means missing schema is now concentrated heavily in **Operational
+Files and Workforce/Payroll**. It is NOT safe to equate 13/14 RC16K RPC
+parity with overall data-schema or functional app parity. Preserve both
+existing Staging storage routes when preparing the next targeted
+forward-compatible migration; avoid replaying the old RC13A
+`create_shift`/`update_shift` bodies.
