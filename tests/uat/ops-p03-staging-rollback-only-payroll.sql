@@ -11,7 +11,7 @@ declare
   v_nonce text := replace(gen_random_uuid()::text,'-','');
   v_admin text; v_reviewer text; v_staff text; v_shift text;
   v_brand text; v_platform text; v_seg text; v_rate text; v_period text; v_line text;
-  v_result jsonb;
+  v_result jsonb; v_retry jsonb; v_req uuid := gen_random_uuid();
 begin
   -- Guard Staging fingerprint and baseline, before creating a single synthetic row.
   if to_regclass('public.operational_files') is null
@@ -99,7 +99,7 @@ begin
   end;
 
   v_result := public.workforce_rc16b_correct_payroll_line(
-    v_period,v_line,1,gen_random_uuid(),'correct_line',v_admin,
+    v_period,v_line,1,v_req,'correct_line',v_admin,
     'Approved UAT minutes correction',60,30,-1000,
     'Documented synthetic adjustment',125000);
   if v_result->'line'->>'version'<>'2'
@@ -107,6 +107,32 @@ begin
      or v_result->'line'->>'net_vnd'<>'124000'
      or (select count(*) from public.workforce_payroll_audit where period_id=v_period) <> 1
   then raise exception 'P0_UAT_CORRECTION_OR_AUDIT_FAILED'; end if;
+
+  v_retry := public.workforce_rc16b_correct_payroll_line(
+    v_period,v_line,1,v_req,'correct_line',v_admin,
+    'Approved UAT minutes correction',60,30,-1000,
+    'Documented synthetic adjustment',125000);
+  if v_retry->>'replayed'<>'true'
+    or (select count(*) from public.workforce_payroll_audit where period_id=v_period) <> 1
+  then raise exception 'P0_UAT_IDEMPOTENT_REPLAY_FAILED'; end if;
+  begin
+    perform public.workforce_rc16b_correct_payroll_line(
+      v_period,v_line,1,v_req,'correct_line',v_admin,
+      'Changed retry content should be rejected',60,30,-1000,
+      'Documented synthetic adjustment',125000);
+    raise exception 'P0_UAT_CHANGED_REPLAY_ACCEPTED';
+  exception when sqlstate 'P0001' then
+    if sqlerrm <> 'WORKFORCE_PAYROLL_IDEMPOTENCY_CONFLICT' then raise; end if;
+  end;
+  begin
+    perform public.workforce_rc16b_correct_payroll_line(
+      v_period,v_line,1,gen_random_uuid(),'correct_line',v_admin,
+      'Stale version should be rejected',60,30,-1000,
+      'Documented synthetic adjustment',125000);
+    raise exception 'P0_UAT_STALE_VERSION_ACCEPTED';
+  exception when sqlstate 'P0001' then
+    if sqlerrm <> 'WORKFORCE_PAYROLL_STALE_LINE' then raise; end if;
+  end;
 
   perform public.workforce_rc16_transition_payroll(
     v_period,'draft','reviewed',v_reviewer,'Independently reviewed UAT payroll');
@@ -129,6 +155,16 @@ begin
   raise notice 'P0_UAT_PASS: synthetic actual/review/immutability/rate/period/gross/correction/audit/lock (ROLLBACK pending)';
 end;
 $p03_uat$;
+set local role service_role;
+select 'PASS' as service_role_payroll_snapshot,
+  (snapshot->>'lineCount')::integer as snapshot_line_count,
+  (snapshot->>'auditCount')::integer as snapshot_audit_count
+from (
+  select public.get_payroll_period_snapshot(
+     (select id from public.workforce_payroll_periods where status='locked' limit 1)
+  ) snapshot
+) snapshot_result;
+reset role;
 select 'PASS — transaction-rollback-only Staging synthetic UAT' as verdict,
  (select count(*) from public.workforce_actual_segments) as synthetic_segments,
  (select count(*) from public.workforce_rate_cards) as synthetic_rate_cards,
