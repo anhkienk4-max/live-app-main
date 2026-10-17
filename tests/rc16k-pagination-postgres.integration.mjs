@@ -152,4 +152,14 @@ child.stdout.on('data', part => { output += part }); child.stderr.on('data', par
 child.stdin.end(sql)
 const code = await new Promise((resolve,reject) => { child.on('error',reject); child.on('close',resolve); child.stdin.on('error',reject) })
 assert.equal(code,0,output)
+// Isolated synthetic-only execution plan timings. The PL/pgSQL RPC function
+// scan is opaque to the outer EXPLAIN; this is NOT an internal operator profile.
+const explainTimes = [...output.matchAll(/Execution Time:\\s*([0-9]+(?:\\.[0-9]+)?) ms/g)].map(match => Number(match[1]))
+assert.ok(explainTimes.length >= 3, 'Isolated OPS P0 fixture did not emit three SQL EXPLAIN execution times')
+console.log('P0_SYNTHETIC_TIMINGS PostgreSQL ' + major + ': ' + JSON.stringify({
+  baselineRangeMs: explainTimes.at(-3),
+  baselineShiftRpcMs: explainTimes.at(-2),
+  candidateShiftRpcMs: explainTimes.at(-1),
+  disclaimer: 'single-run, warmed/cached fixture context; not Production p95 or proof of speedup',
+}))
 console.log('PASS PostgreSQL ' + major + ': ' + (output.match(/RC16K_PASS:/g)?.length ?? 0) + ' bounded pagination/RLS assertions; fixture rolled back')
