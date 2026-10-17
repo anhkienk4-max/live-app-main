@@ -30,12 +30,12 @@ const sql = [
   "begin;",
   "do $$ begin if (select count(*) from information_schema.tables where table_schema='public')<>0 then raise exception 'Requires empty isolated fixture'; end if; end $$;",
   "create role anon; create role authenticated; create role service_role bypassrls; create schema private;",
-  "create table public.business_users(id text primary key,system_permission text,status text default 'active',full_name text,email text,avatar_url text); insert into public.business_users(id,system_permission) values('admin','admin'),('leader','leader'),('member','member'),('other','member');",
+  "create table public.business_users(id text primary key,system_permission text,status text default 'active',account_status text default 'active',full_name text,email text,avatar_url text); insert into public.business_users(id,system_permission) values('admin','admin'),('leader','leader'),('member','member'),('other','member'); insert into public.business_users(id,system_permission,status,account_status) values('disabled-admin','admin','inactive','active'),('suspended-leader','leader','active','suspended');",
   "create table public.brands(id text primary key,name text); create table public.platforms(id text primary key,name text); create table public.campaigns(id text primary key,name text); insert into public.brands values('b','Primary'),('large','Large'); insert into public.platforms values('p','Platform');",
   "alter table public.brands add column deleted_at timestamptz,add column archived_at timestamptz,add column deleted_by text,add column archived_by text,add column deletion_reason text; alter table public.platforms add column deleted_at timestamptz,add column archived_at timestamptz,add column deleted_by text,add column archived_by text,add column deletion_reason text; alter table public.campaigns add column deleted_at timestamptz,add column archived_at timestamptz,add column deleted_by text,add column archived_by text,add column deletion_reason text; alter table public.business_users add column deleted_at timestamptz,add column archived_at timestamptz,add column deleted_by text,add column archived_by text,add column deletion_reason text;",
   "create function private.current_business_user_id() returns text language sql stable as $$ select current_setting('rc16k.actor',true) $$;",
-  "create function private.current_system_permission() returns text language sql stable security definer set search_path='' as $$ select system_permission from public.business_users where id=private.current_business_user_id() $$;",
-  "create function private.current_business_user_is_active() returns boolean language sql stable as $$ select private.current_business_user_id() is not null $$; grant usage on schema private to authenticated;",
+  "create function private.current_system_permission() returns text language sql stable security definer set search_path='' as $$ select system_permission from public.business_users where id=private.current_business_user_id() and status='active' and account_status='active' $$;",
+  "create function private.current_business_user_is_active() returns boolean language sql stable security definer set search_path='' as $$ select exists (select 1 from public.business_users where id=private.current_business_user_id() and status='active' and account_status='active') $$; grant usage on schema private to authenticated;",
   extract(/create table public\.shifts \([\s\S]*?\n\);/),
   extract(/create table public\.shift_registrations \([\s\S]*?\n\);/),
   "alter table public.shifts add column host_names text[] default '{}', add column assistant_names text[] default '{}', add column technical_names text[] default '{}', add column execution_source text, add column status_mode text default 'manual', add column version int default 1; alter table public.shift_registrations add column imported_name text;",
@@ -114,12 +114,79 @@ const sql = [
   "select set_config('rc16k.actor','leader',true); do $$ begin begin perform public.get_archived_entity_page(); exception when insufficient_privilege then raise notice 'RC16K_PASS: Leader archive denied'; return; end; raise exception 'Expected archive denial'; end $$;",
   "select set_config('rc16k.actor','unknown',true); do $$ begin begin perform public.get_archived_entity_page(); exception when insufficient_privilege then raise notice 'RC16K_PASS: unknown role fails closed'; return; end; raise exception 'Expected unknown role denial'; end $$;",
   "reset role; set role anon; do $$ begin begin perform public.get_shift_list_page(); exception when insufficient_privilege then raise notice 'RC16K_PASS: anonymous denied'; return; end; raise exception 'Anonymous unexpectedly allowed'; end $$;",
+  // P0.2 SCALE: additional synthetic rows are inserted only in the isolated CI transaction.
+  // Keep this fixture intentionally smaller than the future 10k/100k load harness.
+  "reset role; insert into public.shifts(id,date,start_time,end_time,start_at,end_at,end_date,crosses_midnight,duration_minutes,brand_id,platform_id,registration_cutoff_at,title,studio) select 'scale-'||n, date '2099-01-01'+(n%28), '10:00','11:00', timestamptz '2099-01-01 10:00+07' + (n%28)*interval '1 day', timestamptz '2099-01-01 11:00+07' + (n%28)*interval '1 day', date '2099-01-01'+(n%28),false,60,'large','p',timestamptz '2099-01-01 10:00+07'+(n%28)*interval '1 day','Scale '||n,'Studio A' from generate_series(1001,5000)n;",
+  "analyze public.shifts;",
+  "set role authenticated; select set_config('rc16k.actor','leader',true);",
+  "select public.k_assert(public.get_shift_list_page('all',1,50,'{\"from\":\"2099-01-01\",\"to\":\"2099-01-28\"}')->>'total'='5001','5001 synthetic shifts full range and RLS');",
+  "explain (analyze,buffers,format text) select s.id from public.shifts s where s.deleted_at is null and s.archived_at is null and s.date between date '2099-01-01' and date '2099-01-28' order by s.date,s.start_time limit 50;",
+  "explain (analyze,buffers,format text) select public.get_shift_list_page('all',1,50,'{\"from\":\"2099-01-01\",\"to\":\"2099-01-28\"}');",
+  // Compare the experimental RLS role shortcut against the exact baseline visible-ID sets.
+  // These checks run exclusively against disposable test rows and are rolled back.
+  "reset role; update public.shifts set archived_at=timestamptz '2099-02-01 00:00+07' where id='0003';",
+  "create temp table ops_p0_rls_snapshot(actor text primary key,visible_ids text[]); grant select,insert on ops_p0_rls_snapshot to authenticated;",
+  "set role authenticated; select set_config('rc16k.actor','admin',true); insert into ops_p0_rls_snapshot select 'admin', coalesce(array_agg(id order by id),'{}'::text[]) from public.shifts;",
+  "select set_config('rc16k.actor','leader',true); insert into ops_p0_rls_snapshot select 'leader', coalesce(array_agg(id order by id),'{}'::text[]) from public.shifts;",
+  "select set_config('rc16k.actor','member',true); insert into ops_p0_rls_snapshot select 'member', coalesce(array_agg(id order by id),'{}'::text[]) from public.shifts;",
+  "select set_config('rc16k.actor','unknown',true); insert into ops_p0_rls_snapshot select 'unknown', coalesce(array_agg(id order by id),'{}'::text[]) from public.shifts;",
+  "select set_config('rc16k.actor','disabled-admin',true); insert into ops_p0_rls_snapshot select 'disabled-admin', coalesce(array_agg(id order by id),'{}'::text[]) from public.shifts;",
+  "select set_config('rc16k.actor','suspended-leader',true); insert into ops_p0_rls_snapshot select 'suspended-leader', coalesce(array_agg(id order by id),'{}'::text[]) from public.shifts;",
+  "reset role;",
+  read('scripts/performance/candidates/shift-rls-fast-path-EXPERIMENT.sql'),
+  "set role authenticated; select set_config('rc16k.actor','admin',true); select public.k_assert((select visible_ids from ops_p0_rls_snapshot where actor='admin') is not distinct from (select coalesce(array_agg(id order by id),'{}'::text[]) from public.shifts),'RLS shortcut admin exact visible-ID parity');",
+  "select set_config('rc16k.actor','leader',true); select public.k_assert((select visible_ids from ops_p0_rls_snapshot where actor='leader') is not distinct from (select coalesce(array_agg(id order by id),'{}'::text[]) from public.shifts),'RLS shortcut leader exact visible-ID parity');",
+  "select set_config('rc16k.actor','member',true); select public.k_assert((select visible_ids from ops_p0_rls_snapshot where actor='member') is not distinct from (select coalesce(array_agg(id order by id),'{}'::text[]) from public.shifts),'RLS shortcut member exact visible-ID parity');",
+  "select public.k_assert(not exists(select 1 from public.shifts where id in ('secret','0003')),'RLS shortcut member cannot see completed or archived private shift');",
+  "select set_config('rc16k.actor','unknown',true); select public.k_assert((select visible_ids from ops_p0_rls_snapshot where actor='unknown') is not distinct from (select coalesce(array_agg(id order by id),'{}'::text[]) from public.shifts),'RLS shortcut unknown actor exact visible-ID parity');",
+  "select set_config('rc16k.actor','disabled-admin',true); select public.k_assert((select visible_ids from ops_p0_rls_snapshot where actor='disabled-admin') is not distinct from (select coalesce(array_agg(id order by id),'{}'::text[]) from public.shifts),'RLS shortcut disabled admin ID parity'); select public.k_assert(not exists(select 1 from public.shifts),'disabled admin sees no shifts');",
+  "select set_config('rc16k.actor','suspended-leader',true); select public.k_assert((select visible_ids from ops_p0_rls_snapshot where actor='suspended-leader') is not distinct from (select coalesce(array_agg(id order by id),'{}'::text[]) from public.shifts),'RLS shortcut suspended leader ID parity'); select public.k_assert(not exists(select 1 from public.shifts),'suspended leader sees no shifts');",
+  "select set_config('rc16k.actor','admin',true); select public.k_assert(exists(select 1 from public.shifts where id='0003'),'admin archived access preserved');",
+  "select set_config('rc16k.actor','leader',true); select public.k_assert(not exists(select 1 from public.shifts where id='0003'),'leader archived denial preserved');",
+  "select set_config('rc16k.actor','leader',true); explain (analyze,buffers,format text) select public.get_shift_list_page('all',1,50,'{\"from\":\"2099-01-01\",\"to\":\"2099-01-28\"}');",
+  // Alternate policies on the same post-archive synthetic data to reduce order bias.
+  "reset role;",
+  "alter policy shifts_scoped_select on public.shifts using ((select private.can_read_shift(id)));",
+  "select set_config('rc16k.actor','leader',true); explain (analyze,buffers,format text) select public.get_shift_list_page('all',1,50,'{\"from\":\"2099-01-01\",\"to\":\"2099-01-28\"}');",
+  "reset role;",
+  read('scripts/performance/candidates/shift-rls-fast-path-EXPERIMENT.sql'),
+  "select set_config('rc16k.actor','leader',true); explain (analyze,buffers,format text) select public.get_shift_list_page('all',1,50,'{\"from\":\"2099-01-01\",\"to\":\"2099-01-28\"}');",
+  "reset role;",
+  "alter policy shifts_scoped_select on public.shifts using ((select private.can_read_shift(id)));",
+  "select set_config('rc16k.actor','leader',true); explain (analyze,buffers,format text) select public.get_shift_list_page('all',1,50,'{\"from\":\"2099-01-01\",\"to\":\"2099-01-28\"}');",
+  "reset role;",
+  read('scripts/performance/candidates/shift-rls-fast-path-EXPERIMENT.sql'),
+  "select set_config('rc16k.actor','leader',true); explain (analyze,buffers,format text) select public.get_shift_list_page('all',1,50,'{\"from\":\"2099-01-01\",\"to\":\"2099-01-28\"}');",
+  "reset role;",
+  "alter policy shifts_scoped_select on public.shifts using ((select private.can_read_shift(id)));",
+  "select set_config('rc16k.actor','leader',true); explain (analyze,buffers,format text) select public.get_shift_list_page('all',1,50,'{\"from\":\"2099-01-01\",\"to\":\"2099-01-28\"}');",
   "reset role; rollback;",
 ].join('\n')
-const child = spawn(container ? 'docker' : 'psql', [...(container ? ['exec','-i',container,'psql'] : []), '-X','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-At'], { stdio: ['pipe','pipe','pipe'], timeout: 180000 })
+const child = spawn(container ? 'docker' : 'psql', [...(container ? ['exec','-i',container,'psql'] : []), '-X','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-At'], { stdio: ['pipe','pipe','pipe'], timeout: 600000 })
 let output=''
 child.stdout.on('data', part => { output += part }); child.stderr.on('data', part => { output += part })
 child.stdin.end(sql)
-const code = await new Promise((resolve,reject) => { child.on('error',reject); child.on('close',resolve); child.stdin.on('error',reject) })
-assert.equal(code,0,output)
+const { code, signal } = await new Promise((resolve,reject) => {
+  child.on('error',reject)
+  child.on('close',(exitCode,exitSignal) => resolve({ code:exitCode, signal:exitSignal }))
+  child.stdin.on('error',reject)
+})
+assert.equal(code,0,signal ? 'Isolated PostgreSQL fixture stopped by ' + signal + ': ' + output.slice(-2500) : output)
+// Isolated synthetic-only execution plan timings. The PL/pgSQL RPC function
+// scan is opaque to the outer EXPLAIN; this is NOT an internal operator profile.
+const explainTimes = output.split(String.fromCharCode(10)).filter(line => line.includes('Execution Time:')).map(line => Number(line.split('Execution Time:')[1].trim().split(' ')[0])).filter(Number.isFinite)
+assert.ok(explainTimes.length >= 8, 'Isolated OPS P0 must emit eight SQL EXPLAIN timings')
+const abTimes = explainTimes.slice(-6)
+const baselineSamples = [abTimes[1], abTimes[3], abTimes[5]]
+const candidateSamples = [abTimes[0], abTimes[2], abTimes[4]]
+const median = values => [...values].sort((x,y) => x-y)[1]
+console.log('P0_SYNTHETIC_TIMINGS PostgreSQL ' + major + ': ' + JSON.stringify({
+  baselineRangeMs: explainTimes.at(-8),
+  preArchiveBaselineMs: explainTimes.at(-7),
+  postArchiveBaselineMs: baselineSamples,
+  postArchiveCandidateMs: candidateSamples,
+  baselineMedianMs: median(baselineSamples),
+  candidateMedianMs: median(candidateSamples),
+  disclaimer: 'three interleaved A/B runs per candidate on rollback-only fixture; not Production p95 or concurrent-user capacity',
+}))
 console.log('PASS PostgreSQL ' + major + ': ' + (output.match(/RC16K_PASS:/g)?.length ?? 0) + ' bounded pagination/RLS assertions; fixture rolled back')

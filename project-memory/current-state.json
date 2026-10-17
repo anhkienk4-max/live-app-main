@@ -9,10 +9,10 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "release/rc16l-calendar-export",
-    "head": "406b6f2489e5ec44264ae59a4ed34111a32d287f",
-    "origin_main": "4f03c0b881bcc77547e72a2d5c655b07690746d6",
-    "worktree": "C:/Users/KienNguyen/OPS_RESTORE_LAB_RC16K/rc16l-calendar-export-release"
+    "branch": "perf/ops-p0-rpc-parity",
+    "head": "dc44730d90848fee093bb638f2164b8588941a6d",
+    "origin_main": "28f904a40f361ff6863f827309c136a0c98329b0",
+    "worktree": "Connector-managed GitHub branch (no local worktree)"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -92,11 +92,11 @@
         "app": 60,
         "components": 151,
         "lib": 210,
-        "scripts": 18,
+        "scripts": 23,
         "supabase": 87,
         "tests": 198
       },
-      "total": 724
+      "total": 729
     },
     "tests": {
       "files": [
@@ -357,5 +357,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-16T20:12:34+07:00"
+  "synced_at": "2026-10-17T18:07:02Z"
 }
