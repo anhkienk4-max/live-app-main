@@ -44,6 +44,65 @@ Do not compare with Staging as a speed A/B test: it currently lacks the same
 code paths, carries different data distribution and has a different statistics
 reset horizon.
 
+## Schema-shape comparison — additional evidence
+
+Executed the read-only `scripts/performance/ops-p0-schema-shape.sql` against
+both databases (eight critical tables). Shape hashes cover column order, names,
+data types and nullability; index hashes compare the text of index definitions.
+They are a **subset catalog inventory**, not proof of full schema equality.
+
+| Table | Production | Staging |
+| --- | --- | --- |
+| `shifts` | 42 columns, 11 indexes | 42 columns, 11 indexes; hashes MATCH |
+| `shift_registrations` | 16 columns, 5 indexes | 16 columns, 5 indexes; hashes MATCH |
+| `reports` | 44 columns, 6 indexes | 44 columns, 6 indexes; hashes MATCH |
+| `swap_requests` | 30 columns, 8 indexes | 30 columns, 8 indexes; hashes MATCH |
+| `business_users` | 23 columns, 7 indexes | 23 columns, 7 indexes; hashes MATCH |
+| `operational_storage_routes` | 19 columns | **14 columns**, hash DIFFERENT |
+| `operational_files` | 24 columns | **MISSING** |
+| `workforce_payroll_lines` | 20 columns | **MISSING** |
+
+This establishes that the parity gap extends beyond four list RPCs. Staging
+does not reproduce the RC15 operational-file or RC16 payroll data path and
+cannot be a reliable **full-app UAT** target until reconciled. Do not
+treat the matching column/index hashes of five tables as sufficient to
+claim their triggers, grants, RLS policy text, constraint semantics, function
+dependencies, or row distributions are identical.
+
+## Isolated performance probe
+
+`tests/rc16k-pagination-postgres.integration.mjs` now extends the existing
+rollback-only PostgreSQL 16/17 fixture from 1,001 to 5,001 synthetic shifts,
+asserts the Leader's filtered shift-list count, and prints
+`EXPLAIN (ANALYZE, BUFFERS)` for a bounded SQL read and list RPC.
+The fixture is deliberately synthetic and must remain isolated; results
+must not be interpreted as Production p95 or concurrency capacity.
+All inserts and ANALYZE statements occur in the fixture transaction,
+which ends with `ROLLBACK`. This CI probe is **pending verification**
+until the new workflow run completes.
+
+## CI / deployment blockers discovered
+
+For `PR #34`, the RC16 workforce/payroll matrix failed **only** the final
+`npm run memory:validate` step (both Node/PostgreSQL variants). Typecheck,
+lint, full Node manifest, browser suites and builds completed successfully
+in the workflow. The failed validator reports the canonical snapshot:
+- `current-state.repository.head` is not an ancestor of the tested branch;
+- `current-state.repository.branch` differs from the CI branch;
+- `current-state.repository.origin_main` differs from live `origin/main`.
+
+The checked-in `project-memory/current-state.json` describes the historical
+`release/rc16l-calendar-export` worktree, NOT the current
+`perf/ops-p0-calendar-read-path` branch. This is a **memory provenance
+release-gate failure**, not a proven payroll regression. Do not disable or
+silently bypass the validator; prepare a separate reviewed memory snapshot
+reconciliation, including the generated projection and inventory.
+
+GitHub's `Vercel – live-app-clean` status on `PR #34` is FAILURE,
+while `Vercel – livestream-ops-demo` is SUCCESS. Direct build logs are
+currently unavailable due to Vercel connection authorization errors, so the
+cause cannot be stated. This is an independent Production NO-GO blocker.
+
 ## Critical path and hypotheses
 
 `components/features/calendar/CalendarView.tsx`
