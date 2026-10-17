@@ -81,6 +81,30 @@ All inserts and ANALYZE statements occur in the fixture transaction,
 which ends with `ROLLBACK`. This CI probe is **pending verification**
 until the new workflow run completes.
 
+## Confirmed isolated role test result — PG16/17
+
+The focused isolated GitHub Actions run
+[`39048073311`](https://github.com/anhkienk4-max/live-app-main/actions/runs/39048073311)
+**PASSED** both Node/PostgreSQL pairs after raising the harness child-process
+timeout to 600 seconds. Both ran **81** regression/authorization assertions
+with rolled-back test data. Important: no real Supabase Auth JWT was used.
+
+| Isolated fixture | Baseline date-range SELECT | Baseline shift-list RPC | Candidate RLS shift-list RPC |
+| --- | ---: | ---: | ---: |
+| PostgreSQL 16 / Node 22 | 1,826.755 ms | 4,186.173 ms | 173.817 ms |
+| PostgreSQL 17 / Node 24 | 787.759 ms | 1,566.010 ms | 78.936 ms |
+
+All values are **one-run SQL EXPLAIN execution times**, not average, p95,
+production timings, apples-to-apples steady-state measurements, or a guarantee
+of any speedup. The candidate is always measured after baseline, so warmer
+buffers may bias the difference. The synthetic actor helper is not an end-to-end
+Supabase Auth test. Do **not** state that Production has been made 20x faster.
+
+Security and rollout gate remains **HOLD** until real JWT/disabled-account
+parity, representative staging schema, replicated load test (1, 10, 50, 100
+concurrent viewers), repeated interleaved A/B measurements, no grants/RLS
+regressions, and security approval. Candidate stays outside migrations.
+
 ## RLS optimization candidate — NOT released
 
 The repository now contains
