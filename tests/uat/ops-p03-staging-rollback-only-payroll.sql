@@ -156,14 +156,19 @@ begin
 end;
 $p03_uat$;
 set local role service_role;
-select 'PASS' as service_role_payroll_snapshot,
-  (snapshot->>'lineCount')::integer as snapshot_line_count,
-  (snapshot->>'auditCount')::integer as snapshot_audit_count
-from (
-  select public.get_payroll_period_snapshot(
-     (select id from public.workforce_payroll_periods where status='locked' limit 1)
-  ) snapshot
-) snapshot_result;
+do $check_snapshot$
+declare v_snapshot jsonb;
+begin
+  select public.get_payroll_period_snapshot(id) into v_snapshot
+  from public.workforce_payroll_periods where status='locked' limit 1;
+  if current_user <> 'service_role' or v_snapshot is null
+    or (v_snapshot->>'lineCount')::integer <> 1
+    or (v_snapshot->>'auditCount')::integer <> 5
+    or jsonb_array_length(v_snapshot->'lines') <> 1
+    or jsonb_array_length(v_snapshot->'audit') <> 5
+  then raise exception 'P0_UAT_SERVICE_SNAPSHOT_NOT_COMPLETE'; end if;
+end;
+$check_snapshot$;
 reset role;
 select 'PASS — transaction-rollback-only Staging synthetic UAT' as verdict,
  (select count(*) from public.workforce_actual_segments) as synthetic_segments,
