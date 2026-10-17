@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "perf/ops-p0-rpc-parity",
-    "head": "21ab15ec5f8357b0a7cac1bdfeed51e14f46179e",
+    "head": "dc44730d90848fee093bb638f2164b8588941a6d",
     "origin_main": "28f904a40f361ff6863f827309c136a0c98329b0",
     "worktree": "Connector-managed GitHub branch (no local worktree)"
   },
@@ -92,11 +92,11 @@
         "app": 60,
         "components": 151,
         "lib": 210,
-        "scripts": 22,
+        "scripts": 23,
         "supabase": 87,
         "tests": 198
       },
-      "total": 728
+      "total": 729
     },
     "tests": {
       "files": [
@@ -357,5 +357,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-17T16:33:38Z"
+  "synced_at": "2026-10-17T18:07:02Z"
 }
