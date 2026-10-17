@@ -95,7 +95,7 @@ begin
     update public.workforce_payroll_lines set gross_vnd=999999 where id=v_line;
     raise exception 'P0_UAT_BAD_GROSS_ACCEPTED';
   exception when sqlstate 'P0001' then
-    if sqlerrm <> 'WORKFORCE_PAYROLL_GROSS_MISMATCH' then raise; end if;
+    if sqlerrm <> 'WORKFORCE_PAYROLL_CORRECTION_REQUIRES_RPC' then raise; end if;
   end;
 
   v_result := public.workforce_rc16b_correct_payroll_line(
