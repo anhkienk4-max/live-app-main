@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "uat/ops-p0-staging-rc16k-list-bridge",
-    "head": "f37f3cb1809869c7a7fbb3379babe6aec9a6ba93",
+    "head": "77543a4a5fad2a0e9d156129ad0a1fc640515208",
     "origin_main": "28f904a40f361ff6863f827309c136a0c98329b0",
     "worktree": "Connector-managed GitHub branch (no local worktree)"
   },
@@ -94,9 +94,9 @@
         "lib": 210,
         "scripts": 18,
         "supabase": 97,
-        "tests": 199
+        "tests": 200
       },
-      "total": 735
+      "total": 736
     },
     "tests": {
       "files": [
@@ -200,6 +200,7 @@
         "tests/rc15-system-export.test.ts",
         "tests/rc16-capability-sharing.test.ts",
         "tests/rc16-environment-security.test.ts",
+        "tests/rc16-p04-staging-api-contract.test.ts",
         "tests/rc16-payroll-discovery.test.ts",
         "tests/rc16-production-readiness.test.ts",
         "tests/rc16-reconciliation.test.ts",
@@ -269,7 +270,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 168
+      "count": 169
     },
     "migrations": {
       "files": [
@@ -357,5 +358,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-17T22:22:29Z"
+  "synced_at": "2026-10-17T22:45:23Z"
 }
