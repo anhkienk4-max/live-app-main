@@ -103,6 +103,7 @@
     "tests/rc15-system-export.test.ts",
     "tests/rc16-capability-sharing.test.ts",
     "tests/rc16-environment-security.test.ts",
+    "tests/rc16-p04-staging-api-contract.test.ts",
     "tests/rc16-payroll-discovery.test.ts",
     "tests/rc16-production-readiness.test.ts",
     "tests/rc16-reconciliation.test.ts",
