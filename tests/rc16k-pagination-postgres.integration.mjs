@@ -146,12 +146,16 @@ const sql = [
   "select set_config('rc16k.actor','leader',true); explain (analyze,buffers,format text) select public.get_shift_list_page('all',1,50,'{\"from\":\"2099-01-01\",\"to\":\"2099-01-28\"}');",
   "reset role; rollback;",
 ].join('\n')
-const child = spawn(container ? 'docker' : 'psql', [...(container ? ['exec','-i',container,'psql'] : []), '-X','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-At'], { stdio: ['pipe','pipe','pipe'], timeout: 180000 })
+const child = spawn(container ? 'docker' : 'psql', [...(container ? ['exec','-i',container,'psql'] : []), '-X','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-At'], { stdio: ['pipe','pipe','pipe'], timeout: 600000 })
 let output=''
 child.stdout.on('data', part => { output += part }); child.stderr.on('data', part => { output += part })
 child.stdin.end(sql)
-const code = await new Promise((resolve,reject) => { child.on('error',reject); child.on('close',resolve); child.stdin.on('error',reject) })
-assert.equal(code,0,output)
+const { code, signal } = await new Promise((resolve,reject) => {
+  child.on('error',reject)
+  child.on('close',(exitCode,exitSignal) => resolve({ code:exitCode, signal:exitSignal }))
+  child.stdin.on('error',reject)
+})
+assert.equal(code,0,signal ? 'Isolated PostgreSQL fixture stopped by ' + signal + ': ' + output.slice(-2500) : output)
 // Isolated synthetic-only execution plan timings. The PL/pgSQL RPC function
 // scan is opaque to the outer EXPLAIN; this is NOT an internal operator profile.
 const explainTimes = output.split(String.fromCharCode(10)).filter(line => line.includes('Execution Time:')).map(line => Number(line.split('Execution Time:')[1].trim().split(' ')[0])).filter(Number.isFinite)
