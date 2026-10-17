@@ -114,6 +114,14 @@ const sql = [
   "select set_config('rc16k.actor','leader',true); do $$ begin begin perform public.get_archived_entity_page(); exception when insufficient_privilege then raise notice 'RC16K_PASS: Leader archive denied'; return; end; raise exception 'Expected archive denial'; end $$;",
   "select set_config('rc16k.actor','unknown',true); do $$ begin begin perform public.get_archived_entity_page(); exception when insufficient_privilege then raise notice 'RC16K_PASS: unknown role fails closed'; return; end; raise exception 'Expected unknown role denial'; end $$;",
   "reset role; set role anon; do $$ begin begin perform public.get_shift_list_page(); exception when insufficient_privilege then raise notice 'RC16K_PASS: anonymous denied'; return; end; raise exception 'Anonymous unexpectedly allowed'; end $$;",
+  // P0.2 SCALE: additional synthetic rows are inserted only in the isolated CI transaction.
+  // Keep this fixture intentionally smaller than the future 10k/100k load harness.
+  "reset role; insert into public.shifts(id,date,start_time,end_time,start_at,end_at,end_date,crosses_midnight,duration_minutes,brand_id,platform_id,registration_cutoff_at,title,studio) select 'scale-'||n, date '2099-01-01'+(n%28), '10:00','11:00', timestamptz '2099-01-01 10:00+07' + (n%28)*interval '1 day', timestamptz '2099-01-01 11:00+07' + (n%28)*interval '1 day', date '2099-01-01'+(n%28),false,60,'large','p',timestamptz '2099-01-01 10:00+07'+(n%28)*interval '1 day','Scale '||n,'Studio A' from generate_series(1001,5000)n;",
+  "analyze public.shifts;",
+  "set role authenticated; select set_config('rc16k.actor','leader',true);",
+  "select public.k_assert(public.get_shift_list_page('all',1,50,'{\"from\":\"2099-01-01\",\"to\":\"2099-01-28\"}')->>'total'='5001','5001 synthetic shifts full range and RLS');",
+  "explain (analyze,buffers,format text) select s.id from public.shifts s where s.deleted_at is null and s.archived_at is null and s.date between date '2099-01-01' and date '2099-01-28' order by s.date,s.start_time limit 50;",
+  "explain (analyze,buffers,format text) select public.get_shift_list_page('all',1,50,'{\"from\":\"2099-01-01\",\"to\":\"2099-01-28\"}');",
   "reset role; rollback;",
 ].join('\n')
 const child = spawn(container ? 'docker' : 'psql', [...(container ? ['exec','-i',container,'psql'] : []), '-X','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-At'], { stdio: ['pipe','pipe','pipe'], timeout: 180000 })
