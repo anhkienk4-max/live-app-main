@@ -122,6 +122,22 @@ const sql = [
   "select public.k_assert(public.get_shift_list_page('all',1,50,'{\"from\":\"2099-01-01\",\"to\":\"2099-01-28\"}')->>'total'='5001','5001 synthetic shifts full range and RLS');",
   "explain (analyze,buffers,format text) select s.id from public.shifts s where s.deleted_at is null and s.archived_at is null and s.date between date '2099-01-01' and date '2099-01-28' order by s.date,s.start_time limit 50;",
   "explain (analyze,buffers,format text) select public.get_shift_list_page('all',1,50,'{\"from\":\"2099-01-01\",\"to\":\"2099-01-28\"}');",
+  // Compare the experimental RLS role shortcut against the exact baseline visible-ID sets.
+  // These checks run exclusively against disposable test rows and are rolled back.
+  "reset role; update public.shifts set archived_at=timestamptz '2099-02-01 00:00+07' where id='0003';",
+  "create temp table ops_p0_rls_snapshot(actor text primary key,visible_ids text[]); grant select,insert on ops_p0_rls_snapshot to authenticated;",
+  "set role authenticated; select set_config('rc16k.actor','admin',true); insert into ops_p0_rls_snapshot select 'admin', coalesce(array_agg(id order by id),'{}'::text[]) from public.shifts;",
+  "select set_config('rc16k.actor','leader',true); insert into ops_p0_rls_snapshot select 'leader', coalesce(array_agg(id order by id),'{}'::text[]) from public.shifts;",
+  "select set_config('rc16k.actor','member',true); insert into ops_p0_rls_snapshot select 'member', coalesce(array_agg(id order by id),'{}'::text[]) from public.shifts;",
+  "select set_config('rc16k.actor','unknown',true); insert into ops_p0_rls_snapshot select 'unknown', coalesce(array_agg(id order by id),'{}'::text[]) from public.shifts;",
+  "reset role;",
+  read('scripts/performance/candidates/shift-rls-fast-path-EXPERIMENT.sql'),
+  "set role authenticated; select set_config('rc16k.actor','admin',true); select public.k_assert((select visible_ids from ops_p0_rls_snapshot where actor='admin') is not distinct from (select coalesce(array_agg(id order by id),'{}'::text[]) from public.shifts),'RLS shortcut admin exact visible-ID parity');",
+  "select set_config('rc16k.actor','leader',true); select public.k_assert((select visible_ids from ops_p0_rls_snapshot where actor='leader') is not distinct from (select coalesce(array_agg(id order by id),'{}'::text[]) from public.shifts),'RLS shortcut leader exact visible-ID parity');",
+  "select set_config('rc16k.actor','member',true); select public.k_assert((select visible_ids from ops_p0_rls_snapshot where actor='member') is not distinct from (select coalesce(array_agg(id order by id),'{}'::text[]) from public.shifts),'RLS shortcut member exact visible-ID parity');",
+  "select public.k_assert(not exists(select 1 from public.shifts where id in ('secret','0003')),'RLS shortcut member cannot see completed or archived private shift');",
+  "select set_config('rc16k.actor','unknown',true); select public.k_assert((select visible_ids from ops_p0_rls_snapshot where actor='unknown') is not distinct from (select coalesce(array_agg(id order by id),'{}'::text[]) from public.shifts),'RLS shortcut unknown actor exact visible-ID parity');",
+  "select set_config('rc16k.actor','leader',true); explain (analyze,buffers,format text) select public.get_shift_list_page('all',1,50,'{\"from\":\"2099-01-01\",\"to\":\"2099-01-28\"}');",
   "reset role; rollback;",
 ].join('\n')
 const child = spawn(container ? 'docker' : 'psql', [...(container ? ['exec','-i',container,'psql'] : []), '-X','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-At'], { stdio: ['pipe','pipe','pipe'], timeout: 180000 })
