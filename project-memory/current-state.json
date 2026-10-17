@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "uat/ops-p0-staging-rc16k-list-bridge",
-    "head": "97cc65bbc911272014d56ba33f5e0de5bb004d32",
+    "head": "4fe21cf4f0f7498abcaff800ddfef7e0da519e38",
     "origin_main": "28f904a40f361ff6863f827309c136a0c98329b0",
     "worktree": "Connector-managed GitHub branch (no local worktree)"
   },
@@ -93,10 +93,10 @@
         "components": 151,
         "lib": 210,
         "scripts": 18,
-        "supabase": 91,
+        "supabase": 97,
         "tests": 198
       },
-      "total": 728
+      "total": 734
     },
     "tests": {
       "files": [
@@ -357,5 +357,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-17T21:53:59Z"
+  "synced_at": "2026-10-17T22:10:12Z"
 }
