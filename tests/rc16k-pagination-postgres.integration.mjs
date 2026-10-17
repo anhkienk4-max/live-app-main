@@ -144,6 +144,22 @@ const sql = [
   "select set_config('rc16k.actor','admin',true); select public.k_assert(exists(select 1 from public.shifts where id='0003'),'admin archived access preserved');",
   "select set_config('rc16k.actor','leader',true); select public.k_assert(not exists(select 1 from public.shifts where id='0003'),'leader archived denial preserved');",
   "select set_config('rc16k.actor','leader',true); explain (analyze,buffers,format text) select public.get_shift_list_page('all',1,50,'{\"from\":\"2099-01-01\",\"to\":\"2099-01-28\"}');",
+  // Alternate policies on the same post-archive synthetic data to reduce order bias.
+  "reset role;",
+  "alter policy shifts_scoped_select on public.shifts using ((select private.can_read_shift(id)));",
+  "select set_config('rc16k.actor','leader',true); explain (analyze,buffers,format text) select public.get_shift_list_page('all',1,50,'{\"from\":\"2099-01-01\",\"to\":\"2099-01-28\"}');",
+  "reset role;",
+  read('scripts/performance/candidates/shift-rls-fast-path-EXPERIMENT.sql'),
+  "select set_config('rc16k.actor','leader',true); explain (analyze,buffers,format text) select public.get_shift_list_page('all',1,50,'{\"from\":\"2099-01-01\",\"to\":\"2099-01-28\"}');",
+  "reset role;",
+  "alter policy shifts_scoped_select on public.shifts using ((select private.can_read_shift(id)));",
+  "select set_config('rc16k.actor','leader',true); explain (analyze,buffers,format text) select public.get_shift_list_page('all',1,50,'{\"from\":\"2099-01-01\",\"to\":\"2099-01-28\"}');",
+  "reset role;",
+  read('scripts/performance/candidates/shift-rls-fast-path-EXPERIMENT.sql'),
+  "select set_config('rc16k.actor','leader',true); explain (analyze,buffers,format text) select public.get_shift_list_page('all',1,50,'{\"from\":\"2099-01-01\",\"to\":\"2099-01-28\"}');",
+  "reset role;",
+  "alter policy shifts_scoped_select on public.shifts using ((select private.can_read_shift(id)));",
+  "select set_config('rc16k.actor','leader',true); explain (analyze,buffers,format text) select public.get_shift_list_page('all',1,50,'{\"from\":\"2099-01-01\",\"to\":\"2099-01-28\"}');",
   "reset role; rollback;",
 ].join('\n')
 const child = spawn(container ? 'docker' : 'psql', [...(container ? ['exec','-i',container,'psql'] : []), '-X','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-At'], { stdio: ['pipe','pipe','pipe'], timeout: 600000 })
@@ -159,11 +175,18 @@ assert.equal(code,0,signal ? 'Isolated PostgreSQL fixture stopped by ' + signal 
 // Isolated synthetic-only execution plan timings. The PL/pgSQL RPC function
 // scan is opaque to the outer EXPLAIN; this is NOT an internal operator profile.
 const explainTimes = output.split(String.fromCharCode(10)).filter(line => line.includes('Execution Time:')).map(line => Number(line.split('Execution Time:')[1].trim().split(' ')[0])).filter(Number.isFinite)
-assert.ok(explainTimes.length >= 3, 'Isolated OPS P0 fixture did not emit three SQL EXPLAIN execution times')
+assert.ok(explainTimes.length >= 8, 'Isolated OPS P0 must emit eight SQL EXPLAIN timings')
+const abTimes = explainTimes.slice(-6)
+const baselineSamples = [abTimes[1], abTimes[3], abTimes[5]]
+const candidateSamples = [abTimes[0], abTimes[2], abTimes[4]]
+const median = values => [...values].sort((x,y) => x-y)[1]
 console.log('P0_SYNTHETIC_TIMINGS PostgreSQL ' + major + ': ' + JSON.stringify({
-  baselineRangeMs: explainTimes.at(-3),
-  baselineShiftRpcMs: explainTimes.at(-2),
-  candidateShiftRpcMs: explainTimes.at(-1),
-  disclaimer: 'single-run, warmed/cached fixture context; not Production p95 or proof of speedup',
+  baselineRangeMs: explainTimes.at(-8),
+  preArchiveBaselineMs: explainTimes.at(-7),
+  postArchiveBaselineMs: baselineSamples,
+  postArchiveCandidateMs: candidateSamples,
+  baselineMedianMs: median(baselineSamples),
+  candidateMedianMs: median(candidateSamples),
+  disclaimer: 'three interleaved A/B runs per candidate on rollback-only fixture; not Production p95 or concurrent-user capacity',
 }))
 console.log('PASS PostgreSQL ' + major + ': ' + (output.match(/RC16K_PASS:/g)?.length ?? 0) + ' bounded pagination/RLS assertions; fixture rolled back')
