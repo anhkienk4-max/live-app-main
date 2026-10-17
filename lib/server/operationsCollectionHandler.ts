@@ -46,10 +46,12 @@ const schema = z.object({
 })
 export function createOperationsCollectionHandler(dependencies: { resolveUser?: ServerUserResolver; createClient?: () => Promise<SupabaseClient> } = {}) {
   return { GET: async (request: Request) => {
+    const requestStartedAt = performance.now()
     try {
       const user = await requireUser(request, dependencies.resolveUser)
+      const authorizationFinishedAt = performance.now()
       const ownerKey=user.id+':'+user.systemPermission
-      const reply=(data:object)=>Response.json({...data,ownerKey},{headers:{'Cache-Control':'private, no-store'}})
+      const reply=(data:object, serverTiming?:string)=>Response.json({...data,ownerKey},{headers:{'Cache-Control':'private, no-store',...(serverTiming?{'Server-Timing':serverTiming}:{})}})
       const params = new URL(request.url).searchParams
       const raw = params.get('filters') ?? '{}'
       if (raw.length > 16384) return Response.json({ error: { code: 'LIST_FILTER_INVALID' } }, { status: 400 })
@@ -75,11 +77,22 @@ export function createOperationsCollectionHandler(dependencies: { resolveUser?: 
       const client = dependencies.createClient ? await dependencies.createClient() : await (await import('@/lib/supabase/server')).createClient()
       const query = value as ListQuery
       if (entity === 'shifts' || entity === 'live_shifts' || entity === 'open_shifts' || entity === 'my_shifts') {
+        const rpcStartedAt = performance.now()
         const result = await client.rpc('get_shift_list_page', { p_scope: entity === 'shifts' || entity === 'live_shifts' ? 'all' : entity === 'open_shifts' ? 'open' : 'mine', p_page: query.page, p_page_size: query.pageSize, p_filters: query.filters, p_pending_page: query.pendingPage, p_include_live: entity === 'live_shifts' })
         if (result.error) throw result.error
+        const rpcFinishedAt = performance.now()
         const { rows, registrations, ...metadata } = result.data
         const items = await withShiftStaffingSummary(client, rows.map((row: Parameters<typeof shiftFromRow>[0]) => ({ ...shiftFromRow(row, 'database'), registration_conflict: row.registration_conflict === true })))
-        return reply({ ...metadata, items, registrations: registrations.map(registrationFromRow), ...(entity==='live_shifts'?{updates:(metadata.updates??[]).map(dashboardUpdateFromRow)}:{}) })
+        const finishedAt = performance.now()
+        // Timings describe server execution only: they exclude browser/network latency.
+        // No user, brand, shift identifiers or query parameters are emitted.
+        const timing = [
+          ['auth', authorizationFinishedAt - requestStartedAt],
+          ['shift_rpc', rpcFinishedAt - rpcStartedAt],
+          ['staffing', finishedAt - rpcFinishedAt],
+          ['total', finishedAt - requestStartedAt],
+        ].map(([name, duration]) => `${name};dur=${Math.max(0, Number(duration)).toFixed(1)}`).join(', ')
+        return reply({ ...metadata, items, registrations: registrations.map(registrationFromRow), ...(entity==='live_shifts'?{updates:(metadata.updates??[]).map(dashboardUpdateFromRow)}:{}) }, timing)
       }
       if(entity==='archives'){
         const result=await client.rpc('get_archived_entity_page',{p_page:query.page,p_page_size:query.pageSize})

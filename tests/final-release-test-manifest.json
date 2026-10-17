@@ -76,6 +76,7 @@
     "tests/ocr-server-route.test.ts",
     "tests/ocr-text-application.test.ts",
     "tests/one-drive-file-provider.test.ts",
+    "tests/ops-p0-calendar-performance.test.ts",
     "tests/openai-vision-ocr-provider.test.ts",
     "tests/operational-role-authority.test.ts",
     "tests/operational-storage-placement.test.ts",
