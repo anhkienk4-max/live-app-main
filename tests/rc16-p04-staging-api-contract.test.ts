@@ -160,7 +160,7 @@ test('P0.4 review denies self-review, stale evidence and write race',async()=>{
     [{evidenceVersion:2},409],
     [{reviewStatus:'approved'},409],
     [{conflict:true},409],
-  ] as const){
+  ] satisfies Array<[FakeOptions,number]>){
     const mock=fakeActualDb(options)
     const h=createWorkforceActualHandler({resolveUser:admin,isEnabled:()=>true,client:mock.db as never})
     assert.equal((await h.POST(post('/actual',review))).status,expected)
