@@ -27,9 +27,7 @@ Production's latest recorded migration is version `20261014173408`, named
 **Migration name and recorded version differ in Production**; verify the
 deployment provenance and version mapping. Do not mark a new version as applied
 or replay SQL blindly. Production also contains other newer RC15/RC16 migrations
-that are absent from Staging.
-
-## Production performance baseline (cumulative, not p95)
+that are absent from Staging. Conversely, Staging records two earlier\nmigrations, `20260919074349_rc12_report_file_provider` and\n`20260924000000_rc13a_execution_source_storage_routes`, that do **not** appear\nin Production migration history. RC15 Production includes storage prerequisites\nthat may cover some of this schema without the same version lineage. This is a\n**bidirectional migration-history divergence**, not a simple missing last patch.\nRun a complete schema and dependency comparison on a disposable clone before\nproposing any reconciliation migration; never copy Production history rows.\n\n## Production performance baseline (cumulative, not p95)
 
 Recorded by `scripts/performance/ops-p0-shift-rpc-stats.sql`.
 `pg_stat_statements_info.stats_reset`: 2026-10-05T14:21:28Z.
