@@ -65,7 +65,7 @@ SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000002',true);
 DO $$ BEGIN
   IF NOT private.can_read_shift('s_open') THEN RAISE EXCEPTION 'OPEN_BASELINE_FIXTURE_EXPECTATION'; END IF;
-  IF private.can_read_report('s_open','m_open') THEN RAISE EXCEPTION 'OPEN_REPORT_HELPER_LEAK'; END IF;
+  IF private.can_read_report('s_open','m_host') THEN RAISE EXCEPTION 'OPEN_REPORT_HELPER_LEAK'; END IF;
   IF EXISTS (SELECT 1 FROM public.reports WHERE id='r_open') THEN RAISE EXCEPTION 'OPEN_REPORT_ROW_LEAK'; END IF;
   IF EXISTS (SELECT 1 FROM public.report_revisions WHERE report_id='r_open') THEN RAISE EXCEPTION 'OPEN_REPORT_REVISION_LEAK'; END IF;
   IF EXISTS (SELECT 1 FROM public.report_images WHERE report_id='r_open') THEN RAISE EXCEPTION 'OPEN_REPORT_IMAGE_LEAK'; END IF;
@@ -79,7 +79,7 @@ SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000003',true);
 DO $$ BEGIN
   IF NOT private.can_read_shift('s_pending') THEN RAISE EXCEPTION 'PENDING_BASELINE_FIXTURE_EXPECTATION'; END IF;
-  IF private.can_read_report('s_pending','m_pending') THEN RAISE EXCEPTION 'PENDING_REPORT_HELPER_LEAK'; END IF;
+  IF private.can_read_report('s_pending','m_host') THEN RAISE EXCEPTION 'PENDING_REPORT_HELPER_LEAK'; END IF;
   IF EXISTS (SELECT 1 FROM public.reports WHERE id='r_pending') THEN RAISE EXCEPTION 'PENDING_REPORT_ROW_LEAK'; END IF;
   IF EXISTS (SELECT 1 FROM public.report_revisions WHERE report_id='r_pending') THEN RAISE EXCEPTION 'PENDING_REPORT_REVISION_LEAK'; END IF;
   IF EXISTS (SELECT 1 FROM public.report_images WHERE report_id='r_pending') THEN RAISE EXCEPTION 'PENDING_REPORT_IMAGE_LEAK'; END IF;
