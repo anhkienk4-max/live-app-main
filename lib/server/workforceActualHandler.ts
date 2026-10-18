@@ -42,6 +42,161 @@ const noStore = { 'Cache-Control': 'no-store' }
 const fail = (code: string, status: number) => Response.json({ ok: false, error: { code } },
   { status, headers: noStore })
 
+
+export interface SwapRecord {
+  id: string
+  requester_id: string
+  counterpart_id?: string | null
+  replacement_staff_id?: string | null
+  source_shift_id?: string | null
+  target_shift_id?: string | null
+  shift_id?: string | null
+  operational_role?: string | null
+  mode?: string | null
+  status: string
+  deleted_at?: string | null
+}
+
+export interface ShiftRegistrationRecord {
+  id?: string
+  user_id: string
+  operational_role?: string | null
+  status: string
+}
+
+export interface ShiftContextRecord {
+  id: string
+  host_id?: string | null
+  support_id?: string | null
+  technical_id?: string | null
+}
+
+export interface StaffAssignmentVerification {
+  assignment_verified: boolean
+  is_exception: boolean
+  requires_exception_approval: boolean
+  matched_source: 'shift_roster' | 'shift_registration' | 'swap_request' | 'unverified_exception'
+  exception_reason: string | null
+}
+
+export function resolveStaffAssignmentVerification(params: {
+  shiftId: string
+  staffId: string
+  operationalRole: 'host' | 'support' | 'technical'
+  shift: ShiftContextRecord
+  registrations: ShiftRegistrationRecord[]
+  swaps: SwapRecord[]
+}): StaffAssignmentVerification {
+  const { shiftId, staffId, operationalRole, shift, registrations, swaps } = params
+
+  // 1. Filter valid approved swaps for this shift:
+  // Must have status in ('approved', 'completed') and not soft-deleted.
+  // 'accepted' is NOT yet approved by admin/leader.
+  // 'pending', 'rejected', 'cancelled' are NOT valid assignments.
+  const validSwaps = swaps.filter(
+    (s) =>
+      ['approved', 'completed'].includes(s.status) &&
+      !s.deleted_at &&
+      (!s.operational_role || s.operational_role === operationalRole)
+  )
+
+  // 2. CHECK FOR SURRENDERED SHIFT (Task 5: Handover staff cannot override approved swap via old roster):
+  // Did staffId surrender this shiftId in an approved swap?
+  // - If source_shift_id === shiftId and requester_id === staffId: staff surrendered this shift!
+  // - If target_shift_id === shiftId and counterpart_id === staffId (in exchange): staff surrendered this target shift!
+  const surrenderedThisShift = validSwaps.some((s) => {
+    const sourceId = s.source_shift_id || s.shift_id
+    if (sourceId === shiftId && s.requester_id === staffId) {
+      return true
+    }
+    if (s.target_shift_id === shiftId && s.counterpart_id === staffId) {
+      return true
+    }
+    return false
+  })
+
+  if (surrenderedThisShift) {
+    return {
+      assignment_verified: false,
+      is_exception: true,
+      requires_exception_approval: true,
+      matched_source: 'unverified_exception',
+      exception_reason: 'Staff surrendered shift in an approved swap request',
+    }
+  }
+
+  // 3. CHECK FOR SWAP REPLACEMENT / INCOMING ASSIGNMENT:
+  // Is staffId the authorized incoming / replacement staff on this shift?
+  // - If source_shift_id === shiftId: the authorized staff is counterpart_id (or replacement_staff_id).
+  //   Requester_id CANNOT be the replacement staff on source shift.
+  // - If target_shift_id === shiftId: the authorized staff is requester_id (in an approved exchange).
+  //   Counterpart_id CANNOT be the incoming staff on target shift.
+  const isSwapReplacement = validSwaps.some((s) => {
+    const sourceId = s.source_shift_id || s.shift_id
+    if (sourceId === shiftId) {
+      const incomingId = s.counterpart_id || s.replacement_staff_id
+      return incomingId === staffId && incomingId !== s.requester_id
+    }
+    if (s.target_shift_id === shiftId && s.mode !== 'replacement') {
+      return s.requester_id === staffId && s.requester_id !== s.counterpart_id
+    }
+    return false
+  })
+
+  if (isSwapReplacement) {
+    return {
+      assignment_verified: true,
+      is_exception: false,
+      requires_exception_approval: false,
+      matched_source: 'swap_request',
+      exception_reason: null,
+    }
+  }
+
+  // 4. CHECK DIRECT ROSTER ASSIGNMENT (Only if not surrendered):
+  const isRosterAssigned =
+    (operationalRole === 'host' && shift.host_id === staffId) ||
+    (operationalRole === 'support' && shift.support_id === staffId) ||
+    (operationalRole === 'technical' && shift.technical_id === staffId)
+
+  if (isRosterAssigned) {
+    return {
+      assignment_verified: true,
+      is_exception: false,
+      requires_exception_approval: false,
+      matched_source: 'shift_roster',
+      exception_reason: null,
+    }
+  }
+
+  // 5. CHECK SHIFT REGISTRATIONS:
+  const isRegistrationAssigned = registrations.some(
+    (r) =>
+      r.user_id === staffId &&
+      ['approved', 'manually_assigned'].includes(r.status) &&
+      (!r.operational_role || r.operational_role === operationalRole)
+  )
+
+  if (isRegistrationAssigned) {
+    return {
+      assignment_verified: true,
+      is_exception: false,
+      requires_exception_approval: false,
+      matched_source: 'shift_registration',
+      exception_reason: null,
+    }
+  }
+
+  // 6. FALLBACK: UNVERIFIED EXCEPTION
+  return {
+    assignment_verified: false,
+    is_exception: true,
+    requires_exception_approval: true,
+    matched_source: 'unverified_exception',
+    exception_reason: 'No approved roster, registration, or swap assignment found',
+  }
+}
+
 export function createWorkforceActualHandler(deps: Depends = {}) {
   const db = deps.client ?? createSupabaseAdminClient
   async function guard<T extends Response>(execute: () => Promise<T>): Promise<Response> {
@@ -83,12 +238,11 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
             .select('id,user_id,operational_role,status')
             .eq('shift_id', shiftId).in('status', ['approved', 'manually_assigned']),
           client.from('swap_requests')
-            .select('id,replacement_staff_id,counterpart_id,requester_id')
-            .in('status', ['approved', 'completed'])
+            .select('id,requester_id,counterpart_id,replacement_staff_id,source_shift_id,target_shift_id,shift_id,operational_role,mode,status,deleted_at')
             .or(`source_shift_id.eq.${shiftId},target_shift_id.eq.${shiftId},shift_id.eq.${shiftId}`),
         ])
         if (segmentsRes.error) return fail('WORKFORCE_ACTUAL_READ_FAILED', 503)
-        if (swapsRes?.error) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
+        if (swapsRes?.error || regsRes?.error) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
         if (!shiftRes?.data) return fail('WORKFORCE_SHIFT_NOT_FOUND', 404)
 
         const rawGrace = process.env.WORKFORCE_LATE_GRACE_MINUTES
@@ -96,48 +250,27 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
         const safeGraceMinutes = Number.isSafeInteger(parsedGrace) && parsedGrace >= 0 && parsedGrace <= 180 ? parsedGrace : 0
 
         const enrichedSegments = (segmentsRes.data ?? []).map((seg) => {
-          const isPlannedOnShift =
-            shiftRes.data?.host_id === seg.staff_id ||
-            shiftRes.data?.support_id === seg.staff_id ||
-            shiftRes.data?.technical_id === seg.staff_id
+          const verification = resolveStaffAssignmentVerification({
+            shiftId,
+            staffId: seg.staff_id,
+            operationalRole: seg.operational_role,
+            shift: shiftRes.data!,
+            registrations: regsRes.data ?? [],
+            swaps: swapsRes.data ?? [],
+          })
 
-          const isRegistered = (regsRes?.data ?? []).some(
-            (r) => r.user_id === seg.staff_id
-          )
-
-          const isSwapMatched = (swapsRes?.data ?? []).some(
-            (s) =>
-              s.replacement_staff_id === seg.staff_id ||
-              s.counterpart_id === seg.staff_id ||
-              s.requester_id === seg.staff_id
-          )
-
-          let matchedSource: 'shift_roster' | 'shift_registration' | 'swap_request' | 'unverified_exception' = 'unverified_exception'
-          let assignmentVerified = false
-
-          if (isPlannedOnShift) {
-            matchedSource = 'shift_roster'
-            assignmentVerified = true
-          } else if (isRegistered) {
-            matchedSource = 'shift_registration'
-            assignmentVerified = true
-          } else if (isSwapMatched && (seg.coverage_kind === 'cover' || seg.coverage_kind === 'replacement')) {
-            matchedSource = 'swap_request'
-            assignmentVerified = true
-          }
-
-          const isException = !assignmentVerified || (seg.evidence_note && seg.evidence_note.includes('[EXCEPTION'))
+          const isException = !verification.assignment_verified || (seg.evidence_note && seg.evidence_note.includes('[EXCEPTION'))
           const requiresExceptionApproval = isException && seg.review_status === 'draft'
 
           return {
             ...seg,
             coverage_verification: {
               coverage_kind: seg.coverage_kind,
-              assignment_verified: assignmentVerified,
+              assignment_verified: verification.assignment_verified,
               is_exception: isException,
               requires_exception_approval: requiresExceptionApproval,
-              matched_source: matchedSource,
-              exception_reason: isException ? seg.evidence_note : null,
+              matched_source: verification.matched_source,
+              exception_reason: verification.exception_reason ?? (isException ? seg.evidence_note : null),
             },
           }
         })
@@ -187,55 +320,33 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
           if (shift.data.status !== 'completed')
             return fail('WORKFORCE_SHIFT_NOT_COMPLETED', 409)
 
-          // Coverage Kind Validation:
-          // Check roster, shift_registrations, and approved swap_requests
-          let assignmentVerified = false
-          let matchedSource: 'shift_roster' | 'shift_registration' | 'swap_request' | 'unverified_exception' = 'unverified_exception'
-
-          const isPlannedOnShift =
-            shift.data.host_id === action.staff_id ||
-            shift.data.support_id === action.staff_id ||
-            shift.data.technical_id === action.staff_id
-
-          if (isPlannedOnShift) {
-            assignmentVerified = true
-            matchedSource = 'shift_roster'
-          } else {
-            const { data: reg, error: regErr } = await client.from('shift_registrations')
-              .select('id')
+          const [regsRes, swapsRes] = await Promise.all([
+            client.from('shift_registrations')
+              .select('id,user_id,operational_role,status')
               .eq('shift_id', action.shift_id)
-              .eq('user_id', action.staff_id)
-              .in('status', ['approved', 'manually_assigned'])
-            if (regErr) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
-            if (reg && reg.length > 0) {
-              assignmentVerified = true
-              matchedSource = 'shift_registration'
-            } else if (action.coverage_kind === 'cover' || action.coverage_kind === 'replacement') {
-              // Check approved swap requests for PASS / replacement / swap.
-              // Do NOT swallow DB errors; distinguish database error from unverified staffing.
-              const { data: swaps, error: swapErr } = await client.from('swap_requests')
-                .select('id,replacement_staff_id,counterpart_id,requester_id')
-                .in('status', ['approved', 'completed'])
-                .or(`source_shift_id.eq.${action.shift_id},target_shift_id.eq.${action.shift_id},shift_id.eq.${action.shift_id}`)
-              if (swapErr) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
-              if (swaps && swaps.some(s =>
-                s.replacement_staff_id === action.staff_id ||
-                s.counterpart_id === action.staff_id ||
-                s.requester_id === action.staff_id
-              )) {
-                assignmentVerified = true
-                matchedSource = 'swap_request'
-              }
-            }
-          }
+              .in('status', ['approved', 'manually_assigned']),
+            client.from('swap_requests')
+              .select('id,requester_id,counterpart_id,replacement_staff_id,source_shift_id,target_shift_id,shift_id,operational_role,mode,status,deleted_at')
+              .or(`source_shift_id.eq.${action.shift_id},target_shift_id.eq.${action.shift_id},shift_id.eq.${action.shift_id}`),
+          ])
+          if (regsRes?.error || swapsRes?.error) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
+
+          const verification = resolveStaffAssignmentVerification({
+            shiftId: action.shift_id,
+            staffId: action.staff_id,
+            operationalRole: action.operational_role,
+            shift: shift.data,
+            registrations: regsRes.data ?? [],
+            swaps: swapsRes.data ?? [],
+          })
 
           if (action.coverage_kind === 'planned') {
-            if (!assignmentVerified) {
+            if (!verification.assignment_verified) {
               return fail('WORKFORCE_PLANNED_STAFF_UNSCHEDULED', 409)
             }
           } else {
             // cover, replacement, extra: if unverified, require explicit exception note >= 15 chars
-            if (!assignmentVerified && action.evidence_note.trim().length < 15) {
+            if (!verification.assignment_verified && action.evidence_note.trim().length < 15) {
               return fail('WORKFORCE_EXCEPTION_REASON_REQUIRED', 400)
             }
           }
@@ -268,7 +379,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
           if (contradictions && contradictions.length > 0) return fail('WORKFORCE_APPROVED_NO_SHOW_CONFLICT', 409)
 
           // Persist exception marker in evidence_note if unverified
-          const storedEvidenceNote = !assignmentVerified && !action.evidence_note.startsWith('[EXCEPTION:UNVERIFIED]')
+          const storedEvidenceNote = !verification.assignment_verified && !action.evidence_note.startsWith('[EXCEPTION:UNVERIFIED]')
             ? `[EXCEPTION:UNVERIFIED] ${action.evidence_note}`
             : action.evidence_note
 
@@ -286,11 +397,11 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
             segment: data,
             coverage_verification: {
               coverage_kind: action.coverage_kind,
-              assignment_verified: assignmentVerified,
-              is_exception: !assignmentVerified,
-              requires_exception_approval: !assignmentVerified,
-              matched_source: matchedSource,
-              exception_reason: !assignmentVerified ? action.evidence_note : null,
+              assignment_verified: verification.assignment_verified,
+              is_exception: verification.is_exception,
+              requires_exception_approval: verification.requires_exception_approval,
+              matched_source: verification.matched_source,
+              exception_reason: verification.exception_reason ?? (!verification.assignment_verified ? action.evidence_note : null),
             },
           }, { status: 201, headers: noStore })
         }
@@ -320,45 +431,33 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
           if (!shift || shift.status !== 'completed')
             return fail('WORKFORCE_SHIFT_NOT_COMPLETED', 409)
 
-          // Verification check on review approval:
-          const isPlannedOnShift =
-            shift.host_id === current.staff_id ||
-            shift.support_id === current.staff_id ||
-            shift.technical_id === current.staff_id
-
-          let assignmentVerified = isPlannedOnShift
-          if (!assignmentVerified) {
-            const { data: reg, error: regErr } = await client.from('shift_registrations')
-              .select('id')
+          const [regsRes, swapsRes] = await Promise.all([
+            client.from('shift_registrations')
+              .select('id,user_id,operational_role,status')
               .eq('shift_id', current.shift_id)
-              .eq('user_id', current.staff_id)
-              .in('status', ['approved', 'manually_assigned'])
-            if (regErr) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
-            if (reg && reg.length > 0) {
-              assignmentVerified = true
-            } else if (current.coverage_kind === 'cover' || current.coverage_kind === 'replacement') {
-              const { data: swaps, error: swapErr } = await client.from('swap_requests')
-                .select('id,replacement_staff_id,counterpart_id,requester_id')
-                .in('status', ['approved', 'completed'])
-                .or(`source_shift_id.eq.${current.shift_id},target_shift_id.eq.${current.shift_id},shift_id.eq.${current.shift_id}`)
-              if (swapErr) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
-              if (swaps && swaps.some(s =>
-                s.replacement_staff_id === current.staff_id ||
-                s.counterpart_id === current.staff_id ||
-                s.requester_id === current.staff_id
-              )) {
-                assignmentVerified = true
-              }
-            }
-          }
+              .in('status', ['approved', 'manually_assigned']),
+            client.from('swap_requests')
+              .select('id,requester_id,counterpart_id,replacement_staff_id,source_shift_id,target_shift_id,shift_id,operational_role,mode,status,deleted_at')
+              .or(`source_shift_id.eq.${current.shift_id},target_shift_id.eq.${current.shift_id},shift_id.eq.${current.shift_id}`),
+          ])
+          if (regsRes?.error || swapsRes?.error) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
+
+          const verification = resolveStaffAssignmentVerification({
+            shiftId: current.shift_id,
+            staffId: current.staff_id,
+            operationalRole: current.operational_role,
+            shift,
+            registrations: regsRes.data ?? [],
+            swaps: swapsRes.data ?? [],
+          })
 
           // Planned coverage without verified assignment CAN NEVER be approved
-          if (current.coverage_kind === 'planned' && !assignmentVerified) {
+          if (current.coverage_kind === 'planned' && !verification.assignment_verified) {
             return fail('WORKFORCE_PLANNED_STAFF_UNSCHEDULED', 409)
           }
 
           // If unverified exception, reviewer note must be >= 15 chars justifying the exception approval
-          const isException = !assignmentVerified || (current.evidence_note && current.evidence_note.includes('[EXCEPTION'))
+          const isException = !verification.assignment_verified || (current.evidence_note && current.evidence_note.includes('[EXCEPTION'))
           if (isException) {
             if (!action.review_note || action.review_note.trim().length < 15) {
               return fail('WORKFORCE_EXCEPTION_APPROVAL_NOTE_REQUIRED', 400)

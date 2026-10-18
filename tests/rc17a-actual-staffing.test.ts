@@ -19,6 +19,33 @@ const mustNotUseDb = () => { throw new Error('UNAUTHORIZED_DB_ACCESS') }
 const leaderUser = async () => ({ id: 'auth-leader', businessUserId: 'leader-1', systemPermission: 'leader' as const })
 const reviewerUser = async () => ({ id: 'auth-reviewer', businessUserId: 'leader-2', systemPermission: 'leader' as const })
 const adminUser = async () => ({ id: 'auth-admin', businessUserId: 'admin-1', systemPermission: 'admin' as const })
+
+function safeDbFallback(table: string) {
+  if (table === 'swap_requests') {
+    return {
+      select() { return this },
+      or() { return Promise.resolve({ data: [], error: null }) },
+      in() { return this },
+      eq() { return this },
+      then(resolve?: (value: { data: unknown[]; error: null }) => unknown) {
+        return Promise.resolve({ data: [], error: null }).then(resolve)
+      },
+    }
+  }
+  if (table === 'shift_registrations') {
+    return {
+      select() { return this },
+      eq() { return this },
+      in() { return Promise.resolve({ data: [], error: null }) },
+      limit() { return Promise.resolve({ data: [], error: null }) },
+      then(resolve?: (value: { data: unknown[]; error: null }) => unknown) {
+        return Promise.resolve({ data: [], error: null }).then(resolve)
+      },
+    }
+  }
+  throw new Error(`Unexpected table ${table}`)
+}
+
 const memberUser = async () => {
   throw new AuthorizationError(403, 'PERMISSION_DENIED', 'Role member is not authorized')
 }
@@ -64,6 +91,9 @@ test('RC1.7A: Actual Staffing GET returns segments, shift_context, and lateness_
         return {
           select() { return this },
           eq() { return this },
+          neq() { return this },
+          lt() { return this },
+          gt() { return this },
           order() { return this },
           limit() {
             return Promise.resolve({
@@ -139,7 +169,7 @@ test('RC1.7A: Actual Staffing GET returns segments, shift_context, and lateness_
           },
         }
       }
-      throw new Error(`Unexpected table ${table}`)
+      return safeDbFallback(table);
     },
   })
 
@@ -240,7 +270,7 @@ test('RC1.7A: Multi-Host / Co-Hosting on the same completed shift is supported',
           },
         }
       }
-      throw new Error(`Unexpected table ${table}`)
+      return safeDbFallback(table);
     },
   })
 
@@ -335,7 +365,7 @@ test('RC1.7A: Assistant (Trợ live) cross-shift overlapping hours are strictly 
           },
         }
       }
-      throw new Error(`Unexpected table ${table}`)
+      return safeDbFallback(table);
     },
   })
 
@@ -392,7 +422,7 @@ test('RC1.7A: Segregation of Duties: Creator cannot approve their own recorded e
           },
         }
       }
-      throw new Error(`Unexpected table ${table}`)
+      return safeDbFallback(table);
     },
   })
 
@@ -441,7 +471,7 @@ test('RC1.7A: Segregation of Duties: Blocks self-approval when created_by matche
           },
         }
       }
-      throw new Error(`Unexpected table ${table}`)
+      return safeDbFallback(table);
     },
   })
 
@@ -532,7 +562,7 @@ test('RC1.7A: Independent Reviewer can approve with optimistic locking version i
           },
         }
       }
-      throw new Error(`Unexpected table ${table}`)
+      return safeDbFallback(table);
     },
   })
 
@@ -586,7 +616,7 @@ test('RC1.7A: Optimistic Locking rejects stale expected_version with HTTP 409', 
           },
         }
       }
-      throw new Error(`Unexpected table ${table}`)
+      return safeDbFallback(table);
     },
   })
 
@@ -657,7 +687,7 @@ test('RC1.7A: Contradictory attendance (no_show when worked already approved) is
           },
         }
       }
-      throw new Error(`Unexpected table ${table}`)
+      return safeDbFallback(table);
     },
   })
 
@@ -866,7 +896,7 @@ test('RC1.7A: Coverage kind planned requires scheduled assignment or registratio
           },
         }
       }
-      throw new Error(`Unexpected table ${table}`)
+      return safeDbFallback(table);
     },
   })
 
@@ -958,7 +988,7 @@ test('RC1.7A: Concurrent approval race condition maps DB trigger exception to HT
           },
         }
       }
-      throw new Error(`Unexpected table ${table}`)
+      return safeDbFallback(table);
     },
   })
 
@@ -1076,9 +1106,14 @@ test('RC1.7A: Coverage kind cover/replacement is verified when approved swap_req
             return Promise.resolve({
               data: [{
                 id: 'swap-1',
+                source_shift_id: 'shift-swapped',
                 replacement_staff_id: 'host-replacing',
                 counterpart_id: null,
                 requester_id: 'host-original',
+                operational_role: 'host',
+                mode: 'replacement',
+                status: 'approved',
+                deleted_at: null,
               }],
               error: null,
             });
@@ -1108,7 +1143,7 @@ test('RC1.7A: Coverage kind cover/replacement is verified when approved swap_req
           },
         };
       }
-      throw new Error(`Unexpected table ${table}`);
+      return safeDbFallback(table);
     },
   });
 
@@ -1213,7 +1248,7 @@ test('RC1.7A: Unverified cover/replacement/extra flags requires_exception_approv
           },
         };
       }
-      throw new Error(`Unexpected table ${table}`);
+      return safeDbFallback(table);
     },
   });
 
@@ -1308,7 +1343,7 @@ test('RC1.7A: swap_requests DB error returns HTTP 503 WORKFORCE_SCOPE_LOOKUP_FAI
           },
         }
       }
-      throw new Error(`Unexpected table ${table}`)
+      return safeDbFallback(table);
     },
   })
 
@@ -1385,7 +1420,7 @@ test('RC1.7A: Unscheduled Planned segment is blocked on Review with HTTP 409', a
           in() { return Promise.resolve({ data: [], error: null }) },
         }
       }
-      throw new Error(`Unexpected table ${table}`)
+      return safeDbFallback(table);
     },
   })
 
@@ -1490,7 +1525,7 @@ test('RC1.7A: Exception approval requires reviewer note >= 15 chars', async () =
           or() { return Promise.resolve({ data: [], error: null }) },
         }
       }
-      throw new Error(`Unexpected table ${table}`)
+      return safeDbFallback(table);
     },
   })
 
@@ -1526,4 +1561,1009 @@ test('RC1.7A: Exception approval requires reviewer note >= 15 chars', async () =
   assert.equal(validBody.segment.review_status, 'approved')
   assert.equal(validBody.segment.version, 2)
   assert.equal(updatedRow?.review_status, 'approved')
+})
+
+
+// ---------------------------------------------------------------------------
+// TEST 22: Handover staff after PASS is NOT verified even if in old roster (No overwrite)
+// ---------------------------------------------------------------------------
+test('RC1.7A: Handover staff after PASS is NOT verified even if remaining in old roster', async () => {
+  const fakeDb = () => ({
+    from(table: string) {
+      if (table === 'shifts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: {
+                id: 'shift-handover',
+                status: 'completed',
+                host_id: 'host-alice', // Alice is still in old roster!
+                support_id: null,
+                technical_id: null,
+              },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'business_users') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'host-alice', status: 'active', deleted_at: null },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'swap_requests') {
+        return {
+          select() { return this },
+          in() { return this },
+          or() {
+            return Promise.resolve({
+              data: [{
+                id: 'swap-pass-1',
+                source_shift_id: 'shift-handover',
+                requester_id: 'host-alice',
+                replacement_staff_id: 'host-bob',
+                counterpart_id: null,
+                operational_role: 'host',
+                mode: 'replacement',
+                status: 'approved',
+                deleted_at: null,
+              }],
+              error: null,
+            })
+          },
+        }
+      }
+      return safeDbFallback(table)
+    },
+  })
+
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: fakeDb as never,
+    resolveUser: leaderUser,
+  })
+
+  // Alice tries to record 'planned' coverage on the shift she gave away -> 409 UNSCHEDULED
+  const plannedRes = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-handover',
+    staff_id: 'host-alice',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'planned',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Alice trying to record planned on surrendered shift',
+  }))
+  assert.equal(plannedRes.status, 409)
+  const plannedBody = await plannedRes.json()
+  assert.equal(plannedBody.error.code, 'WORKFORCE_PLANNED_STAFF_UNSCHEDULED')
+
+  // Alice tries to record 'extra' with short note -> 400 EXCEPTION_REASON_REQUIRED
+  const shortNoteRes = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-handover',
+    staff_id: 'host-alice',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'extra',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Short note',
+  }))
+  assert.equal(shortNoteRes.status, 400)
+  const shortBody = await shortNoteRes.json()
+  assert.equal(shortBody.error.code, 'WORKFORCE_EXCEPTION_REASON_REQUIRED')
+})
+
+// ---------------------------------------------------------------------------
+// TEST 23: Replacement staff is verified on source shift when approved swap exists
+// ---------------------------------------------------------------------------
+test('RC1.7A: Replacement staff is verified on source shift when approved swap exists', async () => {
+  const fakeDb = () => ({
+    from(table: string) {
+      if (table === 'shifts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: {
+                id: 'shift-pass-src',
+                status: 'completed',
+                host_id: 'host-alice',
+              },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'business_users') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'host-bob', status: 'active', deleted_at: null },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'swap_requests') {
+        return {
+          select() { return this },
+          in() { return this },
+          or() {
+            return Promise.resolve({
+              data: [{
+                id: 'swap-approved-1',
+                source_shift_id: 'shift-pass-src',
+                requester_id: 'host-alice',
+                replacement_staff_id: 'host-bob',
+                operational_role: 'host',
+                mode: 'replacement',
+                status: 'approved',
+                deleted_at: null,
+              }],
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'workforce_actual_segments') {
+        return {
+          select() { return this },
+          eq() { return this },
+          lt() { return this },
+          gt() { return this },
+          limit() { return Promise.resolve({ data: [], error: null }) },
+          insert(row: Record<string, unknown>) {
+            return {
+              select() {
+                return {
+                  single() {
+                    return Promise.resolve({
+                      data: { id: 'seg-bob-src', shift_id: row.shift_id, review_status: 'draft', version: 1 },
+                      error: null,
+                    })
+                  },
+                }
+              },
+            }
+          },
+        }
+      }
+      return safeDbFallback(table)
+    },
+  })
+
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: fakeDb as never,
+    resolveUser: leaderUser,
+  })
+
+  const res = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-pass-src',
+    staff_id: 'host-bob',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'replacement',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Bob taking over Alice shift per approved swap',
+  }))
+
+  assert.equal(res.status, 201)
+  const body = await res.json()
+  assert.equal(body.ok, true)
+  assert.equal(body.coverage_verification.assignment_verified, true)
+  assert.equal(body.coverage_verification.matched_source, 'swap_request')
+  assert.equal(body.coverage_verification.is_exception, false)
+})
+
+// ---------------------------------------------------------------------------
+// TEST 24: Exchange mode correctly verifies bidirectional staffing on source and target
+// ---------------------------------------------------------------------------
+test('RC1.7A: Exchange mode correctly verifies bidirectional staffing on source and target shifts', async () => {
+  const swapRecord = {
+    id: 'swap-ex-bidirectional',
+    source_shift_id: 'shift-A',
+    target_shift_id: 'shift-B',
+    requester_id: 'host-alice',
+    counterpart_id: 'host-bob',
+    operational_role: 'host',
+    mode: 'exchange',
+    status: 'completed', // completed status
+    deleted_at: null,
+  }
+
+  const makeDb = (currentShiftId: string, currentStaffId: string) => () => ({
+    from(table: string) {
+      if (table === 'shifts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: {
+                id: currentShiftId,
+                status: 'completed',
+                host_id: currentShiftId === 'shift-A' ? 'host-alice' : 'host-bob',
+              },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'business_users') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: currentStaffId, status: 'active', deleted_at: null },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'swap_requests') {
+        return {
+          select() { return this },
+          in() { return this },
+          or() {
+            return Promise.resolve({ data: [swapRecord], error: null })
+          },
+        }
+      }
+      if (table === 'workforce_actual_segments') {
+        return {
+          select() { return this },
+          eq() { return this },
+          lt() { return this },
+          gt() { return this },
+          limit() { return Promise.resolve({ data: [], error: null }) },
+          insert(row: Record<string, unknown>) {
+            return {
+              select() {
+                return {
+                  single() {
+                    return Promise.resolve({
+                      data: { id: `seg-${currentShiftId}-${currentStaffId}`, shift_id: row.shift_id, review_status: 'draft', version: 1 },
+                      error: null,
+                    })
+                  },
+                }
+              },
+            }
+          },
+        }
+      }
+      return safeDbFallback(table)
+    },
+  })
+
+  // Direction 1: Bob works on Shift A (source) -> Verified!
+  const handlerA = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: makeDb('shift-A', 'host-bob') as never,
+    resolveUser: leaderUser,
+  })
+  const resA = await handlerA.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-A',
+    staff_id: 'host-bob',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'cover',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Bob covering Alice shift A in exchange',
+  }))
+  assert.equal(resA.status, 201)
+  const bodyA = await resA.json()
+  assert.equal(bodyA.coverage_verification.assignment_verified, true)
+  assert.equal(bodyA.coverage_verification.matched_source, 'swap_request')
+
+  // Direction 2: Alice works on Shift B (target) -> Verified!
+  const handlerB = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: makeDb('shift-B', 'host-alice') as never,
+    resolveUser: leaderUser,
+  })
+  const resB = await handlerB.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-B',
+    staff_id: 'host-alice',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'cover',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Alice covering Bob shift B in exchange',
+  }))
+  assert.equal(resB.status, 201)
+  const bodyB = await resB.json()
+  assert.equal(bodyB.coverage_verification.assignment_verified, true)
+  assert.equal(bodyB.coverage_verification.matched_source, 'swap_request')
+
+  // Inverse: Alice on Shift A (surrendered) is NOT verified
+  const handlerASurrendered = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: makeDb('shift-A', 'host-alice') as never,
+    resolveUser: leaderUser,
+  })
+  const resASurrender = await handlerASurrendered.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-A',
+    staff_id: 'host-alice',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'planned',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Alice attempting planned on surrendered shift A',
+  }))
+  assert.equal(resASurrender.status, 409)
+
+  // Inverse: Bob on Shift B (surrendered) is NOT verified
+  const handlerBSurrendered = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: makeDb('shift-B', 'host-bob') as never,
+    resolveUser: leaderUser,
+  })
+  const resBSurrender = await handlerBSurrendered.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-B',
+    staff_id: 'host-bob',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'planned',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Bob attempting planned on surrendered shift B',
+  }))
+  assert.equal(resBSurrender.status, 409)
+})
+
+// ---------------------------------------------------------------------------
+// TEST 25: Operational role mismatch between swap request and recorded segment is rejected
+// ---------------------------------------------------------------------------
+test('RC1.7A: Operational role mismatch between swap request and segment is rejected', async () => {
+  const fakeDb = () => ({
+    from(table: string) {
+      if (table === 'shifts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'shift-mismatch', status: 'completed', host_id: 'host-orig', support_id: 'supp-orig' },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'business_users') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'staff-charlie', status: 'active', deleted_at: null },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'swap_requests') {
+        return {
+          select() { return this },
+          in() { return this },
+          or() {
+            return Promise.resolve({
+              data: [{
+                id: 'swap-host-only',
+                source_shift_id: 'shift-mismatch',
+                requester_id: 'host-orig',
+                replacement_staff_id: 'staff-charlie',
+                operational_role: 'host', // Swap is only for HOST role
+                mode: 'replacement',
+                status: 'approved',
+                deleted_at: null,
+              }],
+              error: null,
+            })
+          },
+        }
+      }
+      return safeDbFallback(table)
+    },
+  })
+
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: fakeDb as never,
+    resolveUser: leaderUser,
+  })
+
+  // Charlie records segment as 'support' (mismatch with swap's 'host' role)
+  const res = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-mismatch',
+    staff_id: 'staff-charlie',
+    operational_role: 'support', // Trying to claim support role!
+    event_kind: 'worked',
+    coverage_kind: 'planned',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Charlie claiming support role on host swap',
+  }))
+  assert.equal(res.status, 409)
+  const body = await res.json()
+  assert.equal(body.error.code, 'WORKFORCE_PLANNED_STAFF_UNSCHEDULED')
+})
+
+// ---------------------------------------------------------------------------
+// TEST 26: Swaps in pending, rejected, or cancelled status do NOT verify assignment
+// ---------------------------------------------------------------------------
+test('RC1.7A: Pending, rejected, and cancelled swaps do NOT verify assignment', async () => {
+  const invalidStatuses = ['pending', 'rejected', 'cancelled']
+
+  for (const status of invalidStatuses) {
+    const fakeDb = () => ({
+      from(table: string) {
+        if (table === 'shifts') {
+          return {
+            select() { return this },
+            eq() { return this },
+            is() { return this },
+            maybeSingle() {
+              return Promise.resolve({
+                data: { id: `shift-${status}`, status: 'completed', host_id: 'host-orig' },
+                error: null,
+              })
+            },
+          }
+        }
+        if (table === 'business_users') {
+          return {
+            select() { return this },
+            eq() { return this },
+            is() { return this },
+            maybeSingle() {
+              return Promise.resolve({
+                data: { id: 'host-sub', status: 'active', deleted_at: null },
+                error: null,
+              })
+            },
+          }
+        }
+        if (table === 'swap_requests') {
+          return {
+            select() { return this },
+            in() { return this },
+            or() {
+              return Promise.resolve({
+                data: [{
+                  id: `swap-${status}`,
+                  source_shift_id: `shift-${status}`,
+                  requester_id: 'host-orig',
+                  replacement_staff_id: 'host-sub',
+                  operational_role: 'host',
+                  mode: 'replacement',
+                  status,
+                  deleted_at: null,
+                }],
+                error: null,
+              })
+            },
+          }
+        }
+        return safeDbFallback(table)
+      },
+    })
+
+    const handler = createWorkforceActualHandler({
+      isEnabled: () => true,
+      client: fakeDb as never,
+      resolveUser: leaderUser,
+    })
+
+    const res = await handler.POST(post('https://example.test/api/workforce/actual', {
+      action: 'record',
+      shift_id: `shift-${status}`,
+      staff_id: 'host-sub',
+      operational_role: 'host',
+      event_kind: 'worked',
+      coverage_kind: 'planned',
+      actual_start_at: '2026-10-17T19:00:00+07:00',
+      actual_end_at: '2026-10-17T21:00:00+07:00',
+      evidence_note: `Sub on ${status} swap`,
+    }))
+    assert.equal(res.status, 409, `Status ${status} should not verify planned coverage`)
+  }
+})
+
+// ---------------------------------------------------------------------------
+// TEST 27: Accepted status is NOT yet admin approved; completed and approved ARE verified
+// ---------------------------------------------------------------------------
+test('RC1.7A: Accepted status is NOT yet admin approved; completed and approved ARE verified', async () => {
+  const checkStatus = async (status: string, expectedStatus: number) => {
+    const fakeDb = () => ({
+      from(table: string) {
+        if (table === 'shifts') {
+          return {
+            select() { return this },
+            eq() { return this },
+            is() { return this },
+            maybeSingle() {
+              return Promise.resolve({
+                data: { id: `shift-st-${status}`, status: 'completed', host_id: 'host-orig' },
+                error: null,
+              })
+            },
+          }
+        }
+        if (table === 'business_users') {
+          return {
+            select() { return this },
+            eq() { return this },
+            is() { return this },
+            maybeSingle() {
+              return Promise.resolve({
+                data: { id: 'host-sub', status: 'active', deleted_at: null },
+                error: null,
+              })
+            },
+          }
+        }
+        if (table === 'swap_requests') {
+          return {
+            select() { return this },
+            in() { return this },
+            or() {
+              return Promise.resolve({
+                data: [{
+                  id: `swap-${status}`,
+                  source_shift_id: `shift-st-${status}`,
+                  requester_id: 'host-orig',
+                  replacement_staff_id: 'host-sub',
+                  operational_role: 'host',
+                  mode: 'replacement',
+                  status,
+                  deleted_at: null,
+                }],
+                error: null,
+              })
+            },
+          }
+        }
+        if (table === 'workforce_actual_segments') {
+          return {
+            select() { return this },
+            eq() { return this },
+            lt() { return this },
+            gt() { return this },
+            limit() { return Promise.resolve({ data: [], error: null }) },
+            insert(row: Record<string, unknown>) {
+              return {
+                select() {
+                  return {
+                    single() {
+                      return Promise.resolve({
+                        data: { id: 'seg-test', shift_id: row.shift_id, review_status: 'draft', version: 1 },
+                        error: null,
+                      })
+                    },
+                  }
+                },
+              }
+            },
+          }
+        }
+        return safeDbFallback(table)
+      },
+    })
+
+    const handler = createWorkforceActualHandler({
+      isEnabled: () => true,
+      client: fakeDb as never,
+      resolveUser: leaderUser,
+    })
+
+    const res = await handler.POST(post('https://example.test/api/workforce/actual', {
+      action: 'record',
+      shift_id: `shift-st-${status}`,
+      staff_id: 'host-sub',
+      operational_role: 'host',
+      event_kind: 'worked',
+      coverage_kind: 'planned',
+      actual_start_at: '2026-10-17T19:00:00+07:00',
+      actual_end_at: '2026-10-17T21:00:00+07:00',
+      evidence_note: `Sub on ${status} swap`,
+    }))
+    assert.equal(res.status, expectedStatus)
+  }
+
+  // 'accepted' is only participant accepted, NOT yet admin approved -> 409
+  await checkStatus('accepted', 409)
+  // 'approved' is admin approved -> 201
+  await checkStatus('approved', 201)
+  // 'completed' is fully executed -> 201
+  await checkStatus('completed', 201)
+})
+
+// ---------------------------------------------------------------------------
+// TEST 28: Soft-deleted swap requests are ignored
+// ---------------------------------------------------------------------------
+test('RC1.7A: Soft-deleted swap requests (deleted_at NOT NULL) are ignored', async () => {
+  const fakeDb = () => ({
+    from(table: string) {
+      if (table === 'shifts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'shift-soft-del', status: 'completed', host_id: 'host-orig' },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'business_users') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'host-sub', status: 'active', deleted_at: null },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'swap_requests') {
+        return {
+          select() { return this },
+          in() { return this },
+          or() {
+            return Promise.resolve({
+              data: [{
+                id: 'swap-deleted-1',
+                source_shift_id: 'shift-soft-del',
+                requester_id: 'host-orig',
+                replacement_staff_id: 'host-sub',
+                operational_role: 'host',
+                mode: 'replacement',
+                status: 'approved',
+                deleted_at: '2026-10-18T10:00:00Z', // Soft-deleted!
+              }],
+              error: null,
+            })
+          },
+        }
+      }
+      return safeDbFallback(table)
+    },
+  })
+
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: fakeDb as never,
+    resolveUser: leaderUser,
+  })
+
+  const res = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-soft-del',
+    staff_id: 'host-sub',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'planned',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Sub trying to use soft deleted swap',
+  }))
+  assert.equal(res.status, 409)
+  const body = await res.json()
+  assert.equal(body.error.code, 'WORKFORCE_PLANNED_STAFF_UNSCHEDULED')
+})
+
+// ---------------------------------------------------------------------------
+// TEST 29: Database error on swap_requests fails closed with HTTP 503 across GET, record, and review
+// ---------------------------------------------------------------------------
+test('RC1.7A: Database error on swap_requests fails closed with HTTP 503 across GET, record, and review', async () => {
+  const dbErrorDb = () => ({
+    from(table: string) {
+      if (table === 'shifts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'shift-dberr', status: 'completed', host_id: 'host-orig' },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'business_users') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'host-sub', status: 'active', deleted_at: null },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'workforce_actual_segments') {
+        return {
+          select() { return this },
+          eq() { return this },
+          order() { return this },
+          limit() { return Promise.resolve({ data: [{ id: 'seg-dberr', shift_id: 'shift-dberr', staff_id: 'host-sub', operational_role: 'host', coverage_kind: 'planned', review_status: 'draft', version: 1 }], error: null }) },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'seg-dberr', shift_id: 'shift-dberr', staff_id: 'host-sub', operational_role: 'host', coverage_kind: 'planned', review_status: 'draft', version: 1, created_by: 'leader-1' },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'swap_requests') {
+        return {
+          select() { return this },
+          in() { return this },
+          or() {
+            return Promise.resolve({ data: null, error: { message: 'swap_requests connection failure' } })
+          },
+        }
+      }
+      return safeDbFallback(table)
+    },
+  })
+
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: dbErrorDb as never,
+    resolveUser: reviewerUser,
+  })
+
+  // 1. GET fails closed with 503
+  const getRes = await handler.GET(get('https://example.test/api/workforce/actual?shift_id=shift-dberr'))
+  assert.equal(getRes.status, 503)
+  const getBody = await getRes.json()
+  assert.equal(getBody.error.code, 'WORKFORCE_SCOPE_LOOKUP_FAILED')
+
+  // 2. POST record fails closed with 503
+  const recordRes = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-dberr',
+    staff_id: 'host-sub',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'cover',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Covering during db outage with sufficient length note',
+  }))
+  assert.equal(recordRes.status, 503)
+  const recordBody = await recordRes.json()
+  assert.equal(recordBody.error.code, 'WORKFORCE_SCOPE_LOOKUP_FAILED')
+
+  // 3. POST review fails closed with 503
+  const reviewRes = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'review',
+    segment_id: 'seg-dberr',
+    expected_version: 1,
+    decision: 'approved',
+    review_note: 'Approving segment during db outage with note >= 15 chars',
+  }))
+  assert.equal(reviewRes.status, 503)
+  const reviewBody = await reviewRes.json()
+  assert.equal(reviewBody.error.code, 'WORKFORCE_SCOPE_LOOKUP_FAILED')
+})
+
+// ---------------------------------------------------------------------------
+// TEST 30: GET, record, and review return identical verification outcomes
+// ---------------------------------------------------------------------------
+test('RC1.7A: GET, record, and review return identical verification outcomes', async () => {
+  const shiftRecord = {
+    id: 'shift-identical',
+    status: 'completed',
+    host_id: 'host-alice',
+    support_id: null,
+    technical_id: null,
+  }
+
+  const swapRecord = {
+    id: 'swap-identical',
+    source_shift_id: 'shift-identical',
+    requester_id: 'host-alice',
+    replacement_staff_id: 'host-bob',
+    operational_role: 'host',
+    mode: 'replacement',
+    status: 'approved',
+    deleted_at: null,
+  }
+
+  let segmentStore: Record<string, unknown> | null = null
+
+  const sharedDb = () => ({
+    from(table: string) {
+      if (table === 'shifts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({ data: shiftRecord, error: null })
+          },
+        }
+      }
+      if (table === 'business_users') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({ data: { id: 'host-bob', status: 'active', deleted_at: null }, error: null })
+          },
+        }
+      }
+      if (table === 'swap_requests') {
+        return {
+          select() { return this },
+          in() { return this },
+          or() {
+            return Promise.resolve({ data: [swapRecord], error: null })
+          },
+        }
+      }
+      if (table === 'workforce_actual_segments') {
+        return {
+          select() { return this },
+          eq() { return this },
+          neq() { return this },
+          lt() { return this },
+          gt() { return this },
+          order() {
+            return {
+              limit() {
+                return Promise.resolve({
+                  data: segmentStore ? [segmentStore] : [],
+                  error: null,
+                })
+              },
+            }
+          },
+          limit() {
+            return Promise.resolve({ data: [], error: null })
+          },
+          maybeSingle() {
+            return Promise.resolve({
+              data: segmentStore,
+              error: null,
+            })
+          },
+          insert(row: Record<string, unknown>) {
+            segmentStore = {
+              ...row,
+              id: 'seg-identical-1',
+              review_status: 'draft',
+              version: 1,
+              created_by: 'leader-1',
+            }
+            return {
+              select() {
+                return {
+                  single() {
+                    return Promise.resolve({
+                      data: segmentStore,
+                      error: null,
+                    })
+                  },
+                }
+              },
+            }
+          },
+          update(patch: Record<string, unknown>) {
+            segmentStore = { ...segmentStore, ...patch }
+            return {
+              eq() { return this },
+              select() {
+                return {
+                  maybeSingle() {
+                    return Promise.resolve({ data: segmentStore, error: null })
+                  },
+                }
+              },
+            }
+          },
+        }
+      }
+      return safeDbFallback(table)
+    },
+  })
+
+  const recorderHandler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: sharedDb as never,
+    resolveUser: leaderUser,
+  })
+
+  // 1. POST record: Bob records replacement
+  const recordRes = await recorderHandler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-identical',
+    staff_id: 'host-bob',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'replacement',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Bob taking over Alice shift with verified swap record',
+  }))
+  assert.equal(recordRes.status, 201)
+  const recordBody = await recordRes.json()
+  assert.equal(recordBody.coverage_verification.assignment_verified, true)
+  assert.equal(recordBody.coverage_verification.matched_source, 'swap_request')
+  assert.equal(recordBody.coverage_verification.is_exception, false)
+
+  // 2. GET: returns exact same verification for that segment
+  const getRes = await recorderHandler.GET(get('https://example.test/api/workforce/actual?shift_id=shift-identical'))
+  assert.equal(getRes.status, 200)
+  const getBody = await getRes.json()
+  assert.equal(getBody.segments.length, 1)
+  const getVerification = getBody.segments[0].coverage_verification
+  assert.equal(getVerification.assignment_verified, recordBody.coverage_verification.assignment_verified)
+  assert.equal(getVerification.matched_source, recordBody.coverage_verification.matched_source)
+  assert.equal(getVerification.is_exception, recordBody.coverage_verification.is_exception)
+
+  // 3. POST review: reviewer approves without needing exception override because assignment is verified
+  const reviewerHandler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: sharedDb as never,
+    resolveUser: reviewerUser,
+  })
+  const reviewRes = await reviewerHandler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'review',
+    segment_id: 'seg-identical-1',
+    expected_version: 1,
+    decision: 'approved',
+    review_note: 'Standard approval note for verified replacement',
+  }))
+  assert.equal(reviewRes.status, 200)
+  const reviewBody = await reviewRes.json()
+  assert.equal(reviewBody.ok, true)
+  assert.equal(reviewBody.segment.review_status, 'approved')
 })
