@@ -15,7 +15,7 @@ function Add-Summary([string]$Line) {
   }
 }
 
-function New-PsqlStartInfo([string]$Database, [int]$Port) {
+function New-PsqlStartInfo([string]$Database, [int]$Port, [string[]]$ExtraArguments = @()) {
   $info = [System.Diagnostics.ProcessStartInfo]::new($script:PsqlPath)
   $info.UseShellExecute = $false
   $info.RedirectStandardInput = $true
@@ -30,12 +30,13 @@ function New-PsqlStartInfo([string]$Database, [int]$Port) {
   )) {
     [void]$info.ArgumentList.Add($argument)
   }
+  foreach ($argument in $ExtraArguments) { [void]$info.ArgumentList.Add($argument) }
   return $info
 }
 
-function Invoke-Psql([string]$Database, [string]$Sql, [int]$TimeoutSeconds = 15, [int]$Port = 5432) {
+function Invoke-Psql([string]$Database, [string]$Sql, [int]$TimeoutSeconds = 15, [int]$Port = 5432, [string[]]$ExtraArguments = @()) {
   $process = [System.Diagnostics.Process]::new()
-  $process.StartInfo = New-PsqlStartInfo -Database $Database -Port $Port
+  $process.StartInfo = New-PsqlStartInfo -Database $Database -Port $Port -ExtraArguments $ExtraArguments
   $clock = [System.Diagnostics.Stopwatch]::StartNew()
   try {
     [void]$process.Start()
@@ -80,6 +81,18 @@ function Invoke-Psql([string]$Database, [string]$Sql, [int]$TimeoutSeconds = 15,
   }
   finally {
     $process.Dispose()
+  }
+}
+
+function Invoke-PsqlFile([string]$Database, [string]$Sql, [string]$Label) {
+  $tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
+  $filePath = Join-Path $tempRoot "$Label-$([guid]::NewGuid().ToString('N')).sql"
+  try {
+    [System.IO.File]::WriteAllText($filePath, $Sql, [System.Text.UTF8Encoding]::new($false))
+    return Invoke-Psql -Database $Database -Sql '' -TimeoutSeconds 15 -ExtraArguments @('--single-transaction', "--file=$filePath")
+  }
+  finally {
+    if (Test-Path -LiteralPath $filePath) { Remove-Item -LiteralPath $filePath -Force }
   }
 }
 
@@ -195,36 +208,30 @@ $lockTimeout = '5s'
 $statementTimeout = '30s'
 $successTable = "executor_success_$runToken"
 $successSql = @"
-\set ON_ERROR_STOP on
-BEGIN;
 SET LOCAL lock_timeout = '$lockTimeout';
 SET LOCAL statement_timeout = '$statementTimeout';
 CREATE TABLE public.$successTable(id integer PRIMARY KEY);
 INSERT INTO public.$successTable VALUES (17);
-COMMIT;
 "@
-$success = Invoke-Psql -Database $database -Sql $successSql
+$success = Invoke-PsqlFile -Database $database -Sql $successSql -Label 'm1-atomic-success'
 Assert-Exit $success $true 'successful atomic transaction'
 $successCount = Get-PsqlText -Database $database -Sql "SELECT count(*)::text FROM public.$successTable WHERE id=17;"
 Assert-Proof ($successCount -eq '1') 'committed transaction data was not present'
-Add-Summary "Transaction A commit: PASS exit=$($success.ExitCode) row_count=$successCount"
+Add-Summary "Migration 1 wrapper contract: PASS psql_args=--set=ON_ERROR_STOP=1 --single-transaction --file=<synthetic-sql> exit=$($success.ExitCode) row_count=$successCount"
 
 $failedTable = "executor_rollback_$runToken"
 $failureSql = @"
-\set ON_ERROR_STOP on
-BEGIN;
-SET LOCAL lock_timeout = '$lockTimeout';
-SET LOCAL statement_timeout = '$statementTimeout';
+SET lock_timeout = '$lockTimeout';
+SET statement_timeout = '$statementTimeout';
 CREATE TABLE public.$failedTable(id integer);
 SELECT 1 / 0;
-COMMIT;
 "@
-$failure = Invoke-Psql -Database $database -Sql $failureSql
-Assert-Exit $failure $false 'ON_ERROR_STOP SQL failure'
+$failure = Invoke-PsqlFile -Database $database -Sql $failureSql -Label 'm1-atomic-failure'
+Assert-Exit $failure $false 'ON_ERROR_STOP single-transaction SQL failure'
 Assert-Proof ($failure.Stderr -match 'division by zero') 'SQL failure stderr did not identify the injected error'
 $rollbackPresent = Get-PsqlText -Database $database -Sql "SELECT to_regclass('public.$failedTable') IS NULL;"
 Assert-Proof ($rollbackPresent -eq 't') 'failed transaction left partial DDL behind'
-Add-Summary "Transaction B failure: PASS psql_exit=$($failure.ExitCode) rollback=confirmed"
+Add-Summary "Migration 1 wrapper rollback: PASS psql_exit=$($failure.ExitCode) rollback=confirmed"
 
 $statementTable = "executor_statement_timeout_$runToken"
 $statementSql = @"
