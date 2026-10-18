@@ -102,3 +102,48 @@ as a shortcut. Avoid unnecessary no-op commits and rebuild loops.
 
 **Decision: database business UAT PASS, API contract testing under CI,
 real cloud Preview and JWT E2E BLOCKED; Production NO-GO.**
+
+## P0.5 — verified staging-negative-auth, CI and no-spend preview control
+
+**READ-ONLY actual Staging regression PASS**, SQL source
+`tests/uat/ops-p05-staging-negative-auth-readonly.sql`.
+Under `SET LOCAL ROLE authenticated` and a *simulated* linked Member
+Auth-sub claim, the database confirmed the Member role is active and has
+a narrower visible-shift scope than the full 79 records, with **no
+direct SELECT privilege** on Workforce pay rates, periods or lines,
+and no `get_payroll_period_snapshot` execute grant.
+Under an absent synthetic Auth sub (`00000000-...0000`), the
+authorization helper returns inactive/no business permission and the
+shift, report and swap list RPCs **all fail closed** with SQLSTATE 42501.
+The test runs in a read-only transaction ending in ROLLBACK and returns
+only one non-sensitive PASS/FAIL verdict. It **does not** exercise a
+Supabase-signed JWT, real HTTP session or Vercel Preview.
+
+**GitHub Release Candidate Convergence Gate at P0.4 head
+`42239a2f`: SUCCESS** (workflow `39076459845`).
+Includes TypeScript, lint, entire registered Node/TS test inventory,
+isolated PostgreSQL checks, Next.js production-equivalent build and
+mock-browser routes. The parallel Workforce/Payroll Foundation jobs
+both passed substantive build/regression but **FAILED** at
+`git diff --check` because
+`supabase/reconciliation/ops-p0-staging/rc15_operational_files_staging.sql`
+had a trailing blank line at EOF. The trailing blank was removed
+without changing SQL semantics. Re-run on the amended head remains the
+authoritative gate.
+
+**No-spend Vercel policy implemented in source**: the exact UAT branch
+`uat/ops-p0-staging-rc16k-list-bridge` was explicitly disabled from
+automatic Git-triggered Preview builds in `vercel.json`; the
+`tests/rc16-environment-security.test.ts` canonical config assertion
+was updated accordingly. All other unspecified branches retain Vercel's
+default behavior; Production `main` is not disabled. This stops
+wasting scarce free-tier previews while both linked Vercel checks fail
+with `upgradeToPro=build-rate-limit`. The project owner has
+**forbidden a paid upgrade**. Re-enable this exact branch only after
+free Preview capacity becomes available and staging-only environment
+bindings are independently verified.
+
+**Remaining NO-GO**: signed Auth JWT/HTTP and deployed browser testing,
+zero-side-effect external file-provider UAT, finance and security review,
+and Production release authorization. Neither this change nor the
+SQL smoke suite makes Production deployable.
