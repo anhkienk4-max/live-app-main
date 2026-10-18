@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "release/one-shot-20261019",
-    "head": "4fe77e58837910db08002b50de56c89fcf46aab2",
+    "head": "3441c92e9a79ab93132a82cd2724ada5c812081a",
     "origin_main": "4fe77e58837910db08002b50de56c89fcf46aab2",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-prod-integration/.codex-worktrees/one-shot-20261019"
   },
@@ -90,13 +90,13 @@
     "source_files": {
       "roots": {
         "app": 60,
-        "components": 151,
-        "lib": 211,
-        "scripts": 18,
-        "supabase": 89,
-        "tests": 201
+        "components": 152,
+        "lib": 212,
+        "scripts": 20,
+        "supabase": 92,
+        "tests": 211
       },
-      "total": 730
+      "total": 747
     },
     "tests": {
       "files": [
@@ -157,6 +157,7 @@
         "tests/h51-provider-metadata-constraint.test.ts",
         "tests/h51-rbac-negative-security.test.ts",
         "tests/h52-db-auth-integration.test.ts",
+        "tests/image-ocr-service-validation.test.ts",
         "tests/leaked-password-protection.test.ts",
         "tests/lifecycle-action-dialog.test.ts",
         "tests/live-dashboard-persistence.test.ts",
@@ -225,6 +226,7 @@
         "tests/report-null-semantics-consumers.test.ts",
         "tests/report-required-metrics.test.ts",
         "tests/report-save-draft-cas.test.ts",
+        "tests/report-snapshot-import.test.ts",
         "tests/report-storage-security.test.ts",
         "tests/report-work-queue.test.ts",
         "tests/role-lens.test.ts",
@@ -274,7 +276,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 169
+      "count": 175
     },
     "migrations": {
       "files": [
@@ -348,9 +350,9 @@
         "supabase/migrations/20261012145735_p0_audit_privilege_hardening.sql",
         "supabase/migrations/20261012171503_rc16k_bounded_shift_lists.sql",
         "supabase/migrations/20261014190429_rc16k_reports_forward_reconciliation.sql",
-        "supabase/migrations/20261014233900_rc16k_reports_summary.sql",
         "supabase/migrations/20261015154159_rc16k_member_report_read_rls.sql",
-        "supabase/migrations/20261017000000_rc17a_actual_staffing_audit.sql"
+        "supabase/migrations/20261017000000_rc17a_actual_staffing_audit.sql",
+        "supabase/migrations/20261019000000_live_dashboard_snapshot_binding.sql"
       ],
       "count": 73
     }
@@ -366,5 +368,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-18T21:53:27+07:00"
+  "synced_at": "2026-10-19T01:00:56+07:00"
 }
