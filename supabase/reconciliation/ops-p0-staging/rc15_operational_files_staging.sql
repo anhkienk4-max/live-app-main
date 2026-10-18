@@ -80,4 +80,3 @@ alter table public.operational_files enable row level security;
 revoke all on table public.operational_files from public, anon, authenticated;
 comment on table public.operational_files is
   'Metadata-only index of external operational files. No binary or base64 data.';
-
