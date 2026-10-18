@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "fix/workforce-performance-ui-and-policy",
-    "head": "4fe77e58837910db08002b50de56c89fcf46aab2",
+    "head": "7193608482eb7b3a50b952922f8c170d34f02e05",
     "origin_main": "4fe77e58837910db08002b50de56c89fcf46aab2",
     "worktree": "C:/Users/KienNguyen/OPS_RESTORE_LAB_RC16K/rc17a-actual-staffing"
   },
@@ -359,5 +359,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-18T23:36:21+07:00"
+  "synced_at": "2026-10-19T01:07:39+07:00"
 }
