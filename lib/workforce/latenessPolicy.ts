@@ -26,6 +26,65 @@ export interface ShiftIntervalResolution {
   durationMinutes: number
 }
 
+export const DEFAULT_BUSINESS_TIMEZONE = 'Asia/Ho_Chi_Minh'
+
+export function isValidIanaTimeZone(tz: unknown): tz is string {
+  if (typeof tz !== 'string' || !tz.trim()) return false
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz }).format()
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Returns YYYY-MM-DD date representation in the given IANA timezone.
+ * Pure and strictly independent of runtime OS local timezone (no Date#getDate).
+ */
+export function getBusinessDateInZone(timestampMs: number, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(timestampMs))
+
+  const year = parts.find(p => p.type === 'year')?.value
+  const month = parts.find(p => p.type === 'month')?.value
+  const day = parts.find(p => p.type === 'day')?.value
+  if (!year || !month || !day) {
+    throw new Error('FAILED_TO_FORMAT_BUSINESS_DATE')
+  }
+  return `${year}-${month}-${day}`
+}
+
+/**
+ * Returns formatted offset string e.g. "+07:00", "-04:00", "+00:00" for a timestamp in a timezone.
+ */
+export function getTimeZoneOffsetString(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    timeZoneName: 'longOffset',
+  }).formatToParts(date)
+  const tzPart = parts.find(p => p.type === 'timeZoneName')
+  if (tzPart && tzPart.value) {
+    if (tzPart.value === 'GMT') return '+00:00'
+    const m = tzPart.value.match(/GMT([+-]\d{2}:\d{2})/)
+    if (m) return m[1]
+  }
+  return '+00:00'
+}
+
+function addCalendarDays(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d + days))
+  const yStr = dt.getUTCFullYear().toString().padStart(4, '0')
+  const mStr = (dt.getUTCMonth() + 1).toString().padStart(2, '0')
+  const dStr = dt.getUTCDate().toString().padStart(2, '0')
+  return `${yStr}-${mStr}-${dStr}`
+}
+
 function parseEpoch(zonedIso: string | number): number {
   if (typeof zonedIso === 'number') return zonedIso
   const ms = Date.parse(zonedIso)
@@ -90,6 +149,8 @@ export function evaluateEndVariance(
 /**
  * Resolves full ISO zoned timestamps for a shift, properly handling overnight shifts
  * that cross midnight (e.g. 23:00 to 02:00 next day).
+ * Strictly evaluates dates in the business timezone without host runtime getDate() bias.
+ * Rejects invalid/unsupported timezones with INVALID_TIMEZONE rather than silently coercing.
  */
 export function resolveShiftPlannedInterval(shift: {
   date: string
@@ -101,13 +162,33 @@ export function resolveShiftPlannedInterval(shift: {
   crosses_midnight?: boolean | null
   timezone?: string | null
 }): ShiftIntervalResolution {
-  // If authoritative start_at and end_at already exist in DB, use them
+  // If timezone is specified explicitly, it must be a valid IANA timezone.
+  // Never silently coerce unsupported/invalid timezone to +07:00.
+  let effectiveTimezone = DEFAULT_BUSINESS_TIMEZONE
+  if (shift.timezone !== undefined && shift.timezone !== null) {
+    if (!isValidIanaTimeZone(shift.timezone)) {
+      throw new Error('INVALID_TIMEZONE')
+    }
+    effectiveTimezone = shift.timezone
+  }
+
+  // If authoritative start_at and end_at already exist in DB, evaluate interval and midnight crossing
   if (shift.start_at && shift.end_at) {
     const startMs = parseEpoch(shift.start_at)
     const endMs = parseEpoch(shift.end_at)
     if (endMs <= startMs) throw new Error('INVALID_SHIFT_INTERVAL_ORDER')
     const durationMinutes = Math.round((endMs - startMs) / 60_000)
-    const crossesMidnight = Boolean(shift.crosses_midnight ?? (new Date(endMs).getDate() !== new Date(startMs).getDate()))
+
+    // Evaluate midnight crossing strictly in the business timezone, never runtime getDate()
+    let crossesMidnight: boolean
+    if (shift.crosses_midnight !== undefined && shift.crosses_midnight !== null) {
+      crossesMidnight = Boolean(shift.crosses_midnight)
+    } else {
+      const startDateInZone = getBusinessDateInZone(startMs, effectiveTimezone)
+      const endDateInZone = getBusinessDateInZone(endMs, effectiveTimezone)
+      crossesMidnight = startDateInZone !== endDateInZone
+    }
+
     return {
       startIso: shift.start_at,
       endIso: shift.end_at,
@@ -116,30 +197,48 @@ export function resolveShiftPlannedInterval(shift: {
     }
   }
 
-  const tz = shift.timezone === 'Asia/Ho_Chi_Minh' || !shift.timezone ? '+07:00' : '+07:00'
   const startTime = shift.start_time.slice(0, 5)
   const endTime = shift.end_time.slice(0, 5)
 
   const startDate = shift.date
   let endDate = shift.end_date
 
-  // Compute midnight crossing if end_time <= start_time
   const [sH, sM] = startTime.split(':').map(Number)
   const [eH, eM] = endTime.split(':').map(Number)
+  if (
+    !Number.isInteger(sH) || !Number.isInteger(sM) ||
+    !Number.isInteger(eH) || !Number.isInteger(eM) ||
+    sH < 0 || sH > 23 || sM < 0 || sM > 59 ||
+    eH < 0 || eH > 23 || eM < 0 || eM > 59
+  ) {
+    throw new Error('INVALID_TIME_FORMAT')
+  }
+
   const crosses = Boolean(shift.crosses_midnight || (eH * 60 + eM <= sH * 60 + sM))
 
   if (!endDate) {
-    if (crosses) {
-      const d = new Date(startDate + 'T00:00:00Z')
-      d.setUTCDate(d.getUTCDate() + 1)
-      endDate = d.toISOString().slice(0, 10)
-    } else {
-      endDate = startDate
-    }
+    endDate = crosses ? addCalendarDays(startDate, 1) : startDate
   }
 
-  const startIso = `${startDate}T${startTime}:00${tz}`
-  const endIso = `${endDate}T${endTime}:00${tz}`
+  // Calculate zoned wall time and offset using the validated IANA timezone
+  const startWallUtc = new Date(Date.UTC(
+    Number(startDate.slice(0, 4)),
+    Number(startDate.slice(5, 7)) - 1,
+    Number(startDate.slice(8, 10)),
+    sH, sM
+  ))
+  const endWallUtc = new Date(Date.UTC(
+    Number(endDate.slice(0, 4)),
+    Number(endDate.slice(5, 7)) - 1,
+    Number(endDate.slice(8, 10)),
+    eH, eM
+  ))
+
+  const startOffset = getTimeZoneOffsetString(startWallUtc, effectiveTimezone)
+  const endOffset = getTimeZoneOffsetString(endWallUtc, effectiveTimezone)
+
+  const startIso = `${startDate}T${startTime}:00${startOffset}`
+  const endIso = `${endDate}T${endTime}:00${endOffset}`
 
   const startMs = parseEpoch(startIso)
   const endMs = parseEpoch(endIso)

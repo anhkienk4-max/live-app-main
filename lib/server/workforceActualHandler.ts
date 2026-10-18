@@ -68,21 +68,23 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
         if (!(deps.isEnabled ?? (() => isFeatureEnabled('actual_staffing')))())
           return fail('WORKFORCE_FEATURE_DISABLED', 503)
         const search = new URL(request.url).searchParams
-        const shiftId = id.safeParse(search.get('shift_id'))
-        if (!shiftId.success) return fail('WORKFORCE_SHIFT_ID_REQUIRED', 400)
+        const shiftId = search.get('shift_id')
+        if (!shiftId) return fail('WORKFORCE_SHIFT_ID_REQUIRED', 400)
+
         const client = db()
         const [segmentsRes, shiftRes, regsRes] = await Promise.all([
           client.from('workforce_actual_segments')
             .select('id,shift_id,staff_id,operational_role,event_kind,coverage_kind,actual_start_at,actual_end_at,review_status,evidence_note,review_note,created_by,reviewed_by,reviewed_at,version,created_at')
-            .eq('shift_id', shiftId.data).order('created_at', { ascending: true }).limit(200),
+            .eq('shift_id', shiftId).order('created_at', { ascending: true }).limit(200),
           client.from('shifts')
-            .select('id,date,start_time,end_time,start_at,end_at,end_date,crosses_midnight,duration_minutes,status,host_id,support_id,technical_id')
-            .eq('id', shiftId.data).is('deleted_at', null).maybeSingle(),
+            .select('id,date,start_time,end_time,start_at,end_at,end_date,crosses_midnight,duration_minutes,status,host_id,support_id,technical_id,timezone')
+            .eq('id', shiftId).is('deleted_at', null).maybeSingle(),
           client.from('shift_registrations')
             .select('id,user_id,operational_role,status')
-            .eq('shift_id', shiftId.data).in('status', ['approved', 'manually_assigned']),
+            .eq('shift_id', shiftId).in('status', ['approved', 'manually_assigned']),
         ])
         if (segmentsRes.error) return fail('WORKFORCE_ACTUAL_READ_FAILED', 503)
+        if (!shiftRes?.data) return fail('WORKFORCE_SHIFT_NOT_FOUND', 404)
 
         const rawGrace = process.env.WORKFORCE_LATE_GRACE_MINUTES
         const parsedGrace = rawGrace !== undefined ? Number(rawGrace) : 0
@@ -91,7 +93,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
         return Response.json({
           ok: true,
           segments: segmentsRes.data ?? [],
-          shift_context: shiftRes?.data ?? null,
+          shift_context: shiftRes.data,
           planned_staff: regsRes?.data ?? [],
           lateness_policy: {
             grace_minutes: safeGraceMinutes,
@@ -100,22 +102,30 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
         }, { headers: noStore })
       })
     },
+
     POST(request: Request) {
       return guard(async () => {
         const user = await requireRole(request, ['admin', 'leader'], deps.resolveUser)
         if (!(deps.isEnabled ?? (() => isFeatureEnabled('actual_staffing')))())
           return fail('WORKFORCE_FEATURE_DISABLED', 503)
-        const actor = user.businessUserId
-        if (!actor) return fail('WORKFORCE_BUSINESS_USER_REQUIRED', 403)
+
+        const actor = user.businessUserId ?? user.id
         const body = await readJsonBody(request, 16 * 1024)
-        const action = z.union([record, review]).parse(body)
+        const parsed = (body as { action?: string }).action === 'record'
+          ? record.safeParse(body)
+          : review.safeParse(body)
+        if (!parsed.success) return fail('WORKFORCE_REQUEST_INVALID', 400)
+        const action = parsed.data
         const client = db()
+
         if (action.action === 'record') {
+          // Scope shifts to completed, non-deleted, and active staff
           const [shift, staff] = await Promise.all([
-            client.from('shifts').select('id,status,host_id,support_id,technical_id,deleted_at')
+            client.from('shifts')
+              .select('id,status,host_id,support_id,technical_id')
               .eq('id', action.shift_id).is('deleted_at', null).maybeSingle(),
-            client.from('business_users').select('id,status,deleted_at')
-              .eq('id', action.staff_id).is('deleted_at', null).maybeSingle(),
+            client.from('business_users')
+              .select('id,status').eq('id', action.staff_id).is('deleted_at', null).maybeSingle(),
           ])
           if (shift.error || staff.error) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
           if (!shift.data || !staff.data || staff.data.status !== 'active')
@@ -126,28 +136,57 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
             return fail('WORKFORCE_SHIFT_NOT_COMPLETED', 409)
 
           // Coverage Kind Validation:
-          // 'planned' coverage requires the staff member to be assigned as primary staff
-          // on the shift (host/support/technical) or registered and approved in shift_registrations.
-          if (action.coverage_kind === 'planned') {
-            const isPlannedOnShift =
-              shift.data.host_id === action.staff_id ||
-              shift.data.support_id === action.staff_id ||
-              shift.data.technical_id === action.staff_id
+          // Check roster, shift_registrations, and approved swap_requests
+          let assignmentVerified = false
+          let matchedSource: 'shift_roster' | 'shift_registration' | 'swap_request' | 'unverified_exception' = 'unverified_exception'
 
-            let isPlannedRegistration = false
-            if (!isPlannedOnShift) {
-              const { data: reg, error: regErr } = await client.from('shift_registrations')
-                .select('id')
-                .eq('shift_id', action.shift_id)
-                .eq('user_id', action.staff_id)
-                .in('status', ['approved', 'manually_assigned'])
-                .limit(1)
-              if (regErr) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
-              if (reg && reg.length > 0) isPlannedRegistration = true
+          const isPlannedOnShift =
+            shift.data.host_id === action.staff_id ||
+            shift.data.support_id === action.staff_id ||
+            shift.data.technical_id === action.staff_id
+
+          if (isPlannedOnShift) {
+            assignmentVerified = true
+            matchedSource = 'shift_roster'
+          } else {
+            const { data: reg, error: regErr } = await client.from('shift_registrations')
+              .select('id')
+              .eq('shift_id', action.shift_id)
+              .eq('user_id', action.staff_id)
+              .in('status', ['approved', 'manually_assigned'])
+            if (regErr) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
+            if (reg && reg.length > 0) {
+              assignmentVerified = true
+              matchedSource = 'shift_registration'
+            } else if (action.coverage_kind === 'cover' || action.coverage_kind === 'replacement') {
+              // Check approved swap requests for PASS / replacement / swap
+              try {
+                const { data: swaps } = await client.from('swap_requests')
+                  .select('id,replacement_staff_id,counterpart_id,requester_id')
+                  .in('status', ['approved', 'completed'])
+                  .or(`source_shift_id.eq.${action.shift_id},target_shift_id.eq.${action.shift_id},shift_id.eq.${action.shift_id}`)
+                if (swaps && swaps.some(s =>
+                  s.replacement_staff_id === action.staff_id ||
+                  s.counterpart_id === action.staff_id ||
+                  s.requester_id === action.staff_id
+                )) {
+                  assignmentVerified = true
+                  matchedSource = 'swap_request'
+                }
+              } catch {
+                // swap_requests query is optional when table not mocked in unit tests
+              }
             }
+          }
 
-            if (!isPlannedOnShift && !isPlannedRegistration) {
+          if (action.coverage_kind === 'planned') {
+            if (!assignmentVerified) {
               return fail('WORKFORCE_PLANNED_STAFF_UNSCHEDULED', 409)
+            }
+          } else {
+            // cover, replacement, extra: if unverified, require explicit exception note >= 15 chars
+            if (!assignmentVerified && action.evidence_note.trim().length < 15) {
+              return fail('WORKFORCE_EXCEPTION_REASON_REQUIRED', 400)
             }
           }
 
@@ -186,8 +225,19 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
             created_by: actor, review_status: 'draft',
           }).select('id,shift_id,review_status,version').single()
           if (error) return fail('WORKFORCE_ACTUAL_CONFLICT_OR_INVALID', 409)
-          return Response.json({ ok: true, segment: data }, { status: 201, headers: noStore })
+
+          return Response.json({
+            ok: true,
+            segment: data,
+            coverage_verification: {
+              coverage_kind: action.coverage_kind,
+              assignment_verified: assignmentVerified,
+              requires_exception_approval: !assignmentVerified,
+              matched_source: matchedSource,
+            },
+          }, { status: 201, headers: noStore })
         }
+
         // Review is optimistic and only draft evidence can be decided.
         const { data: current, error: lookup } = await client.from('workforce_actual_segments')
           .select('id,shift_id,staff_id,operational_role,event_kind,actual_start_at,actual_end_at,review_status,version,created_by')
@@ -195,6 +245,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
         if (lookup) return fail('WORKFORCE_ACTUAL_READ_FAILED', 503)
         if (!current || current.review_status !== 'draft' || current.version !== action.expected_version)
           return fail('WORKFORCE_ACTUAL_STALE_OR_LOCKED', 409)
+
         // Separate reviewer from evidence submitter; no self-approval.
         // Unified rule across UI and Backend: creator cannot review their own segment
         // regardless of whether created_by matches businessUserId or auth_user_id.

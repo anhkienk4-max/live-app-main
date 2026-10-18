@@ -125,7 +125,7 @@ begin
     changed,
     reason_value,
     'manual',
-    null,
+    coalesce(nullif(current_setting('request.header.x-request-id', true), ''), gen_random_uuid()::text),
     metadata_value,
     tg_op <> 'DELETE'
   );

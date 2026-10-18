@@ -983,3 +983,266 @@ test('RC1.7A: Admin user has full access to record and review actual staffing', 
   const body = await res.json()
   assert.equal(body.error.code, 'WORKFORCE_SHIFT_ID_REQUIRED')
 })
+
+// ---------------------------------------------------------------------------
+// TEST 16: Strict Timezone Validation rejects invalid or unsupported timezone
+// ---------------------------------------------------------------------------
+test('RC1.7A: resolveShiftPlannedInterval throws INVALID_TIMEZONE on unsupported timezone', () => {
+  const invalidShift = {
+    date: '2026-10-17',
+    start_time: '23:00',
+    end_time: '02:00',
+    timezone: 'Invalid/Unsupported_Zone',
+  };
+  assert.throws(() => {
+    resolveShiftPlannedInterval(invalidShift);
+  }, /INVALID_TIMEZONE/);
+
+  // Valid non-default IANA timezone is accepted and computed without runtime getDate
+  const nyShift = {
+    date: '2026-10-17',
+    start_time: '23:00',
+    end_time: '02:00',
+    timezone: 'America/New_York',
+  };
+  const nyResolved = resolveShiftPlannedInterval(nyShift);
+  assert.equal(nyResolved.crossesMidnight, true);
+  assert.match(nyResolved.startIso, /2026-10-17T23:00:00-04:00/);
+  assert.match(nyResolved.endIso, /2026-10-18T02:00:00-04:00/);
+});
+
+// ---------------------------------------------------------------------------
+// TEST 17: Coverage Kind Cover / Replacement verified with approved swap_request
+// ---------------------------------------------------------------------------
+test('RC1.7A: Coverage kind cover/replacement is verified when approved swap_request exists', async () => {
+  const fakeDb = () => ({
+    from(table: string) {
+      if (table === 'shifts') {
+        return {
+          select() { return this; },
+          eq() { return this; },
+          is() { return this; },
+          maybeSingle() {
+            return Promise.resolve({
+              data: {
+                id: 'shift-swapped',
+                status: 'completed',
+                host_id: 'host-original',
+                support_id: null,
+                technical_id: null,
+              },
+              error: null,
+            });
+          },
+        };
+      }
+      if (table === 'business_users') {
+        return {
+          select() { return this; },
+          eq() { return this; },
+          is() { return this; },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'host-replacing', status: 'active', deleted_at: null },
+              error: null,
+            });
+          },
+        };
+      }
+      if (table === 'shift_registrations') {
+        return {
+          select() { return this; },
+          eq() { return this; },
+          in() { return Promise.resolve({ data: [], error: null }); },
+        };
+      }
+      if (table === 'swap_requests') {
+        return {
+          select() { return this; },
+          in() { return this; },
+          or() {
+            return Promise.resolve({
+              data: [{
+                id: 'swap-1',
+                replacement_staff_id: 'host-replacing',
+                counterpart_id: null,
+                requester_id: 'host-original',
+              }],
+              error: null,
+            });
+          },
+        };
+      }
+      if (table === 'workforce_actual_segments') {
+        return {
+          select() { return this; },
+          eq() { return this; },
+          lt() { return this; },
+          gt() { return this; },
+          limit() { return Promise.resolve({ data: [], error: null }); },
+          insert(row: Record<string, unknown>) {
+            return {
+              select() {
+                return {
+                  single() {
+                    return Promise.resolve({
+                      data: { id: 'seg-cover-verified', shift_id: row.shift_id, review_status: 'draft', version: 1 },
+                      error: null,
+                    });
+                  },
+                };
+              },
+            };
+          },
+        };
+      }
+      throw new Error(`Unexpected table ${table}`);
+    },
+  });
+
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: fakeDb as never,
+    resolveUser: leaderUser,
+  });
+
+  const res = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-swapped',
+    staff_id: 'host-replacing',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'cover',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Covering for host-original per approved swap',
+  }));
+
+  assert.equal(res.status, 201);
+  const body = await res.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.coverage_verification.assignment_verified, true);
+  assert.equal(body.coverage_verification.requires_exception_approval, false);
+  assert.equal(body.coverage_verification.matched_source, 'swap_request');
+});
+
+// ---------------------------------------------------------------------------
+// TEST 18: Unverified Coverage Exception requires note >= 15 chars and flags exception
+// ---------------------------------------------------------------------------
+test('RC1.7A: Unverified cover/replacement/extra flags requires_exception_approval', async () => {
+  const fakeDb = () => ({
+    from(table: string) {
+      if (table === 'shifts') {
+        return {
+          select() { return this; },
+          eq() { return this; },
+          is() { return this; },
+          maybeSingle() {
+            return Promise.resolve({
+              data: {
+                id: 'shift-unverified',
+                status: 'completed',
+                host_id: 'host-orig',
+                support_id: null,
+                technical_id: null,
+              },
+              error: null,
+            });
+          },
+        };
+      }
+      if (table === 'business_users') {
+        return {
+          select() { return this; },
+          eq() { return this; },
+          is() { return this; },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'host-emergency', status: 'active', deleted_at: null },
+              error: null,
+            });
+          },
+        };
+      }
+      if (table === 'shift_registrations') {
+        return {
+          select() { return this; },
+          eq() { return this; },
+          in() { return Promise.resolve({ data: [], error: null }); },
+        };
+      }
+      if (table === 'swap_requests') {
+        return {
+          select() { return this; },
+          in() { return this; },
+          or() { return Promise.resolve({ data: [], error: null }); },
+        };
+      }
+      if (table === 'workforce_actual_segments') {
+        return {
+          select() { return this; },
+          eq() { return this; },
+          lt() { return this; },
+          gt() { return this; },
+          limit() { return Promise.resolve({ data: [], error: null }); },
+          insert(row: Record<string, unknown>) {
+            return {
+              select() {
+                return {
+                  single() {
+                    return Promise.resolve({
+                      data: { id: 'seg-unverified-exc', shift_id: row.shift_id, review_status: 'draft', version: 1 },
+                      error: null,
+                    });
+                  },
+                };
+              },
+            };
+          },
+        };
+      }
+      throw new Error(`Unexpected table ${table}`);
+    },
+  });
+
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: fakeDb as never,
+    resolveUser: leaderUser,
+  });
+
+  // Short note (< 15 chars) is rejected for unverified coverage exception
+  const shortRes = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-unverified',
+    staff_id: 'host-emergency',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'replacement',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Short note',
+  }));
+  assert.equal(shortRes.status, 400);
+  const shortBody = await shortRes.json();
+  assert.equal(shortBody.error.code, 'WORKFORCE_EXCEPTION_REASON_REQUIRED');
+
+  // Detailed note (>= 15 chars) succeeds with requires_exception_approval: true
+  const validRes = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-unverified',
+    staff_id: 'host-emergency',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'replacement',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Emergency replacement without prior swap due to sudden illness of host-orig',
+  }));
+  assert.equal(validRes.status, 201);
+  const validBody = await validRes.json();
+  assert.equal(validBody.ok, true);
+  assert.equal(validBody.coverage_verification.assignment_verified, false);
+  assert.equal(validBody.coverage_verification.requires_exception_approval, true);
+  assert.equal(validBody.coverage_verification.matched_source, 'unverified_exception');
+});
