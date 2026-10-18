@@ -2,12 +2,12 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-18T16:37:25+07:00
+Generated at: 2026-10-18T17:47:00+07:00
 
 ## Repository
 
 - Branch: `feat/rc17a-actual-staffing`
-- HEAD: `c88f9744d4e051af103f0e9335ca46efe9609fe3`
+- HEAD: `fbe54faec84e030fb8ce6a86fee2306a3e478982`
 - origin/main: `28f904a40f361ff6863f827309c136a0c98329b0`
 - Worktree: `C:/Users/KienNguyen/OPS_RESTORE_LAB_RC16K/rc17a-actual-staffing`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
