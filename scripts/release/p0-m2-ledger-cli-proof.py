@@ -49,7 +49,7 @@ def migration_list(label, url, m2_applied):
             f"{label} omitted a known history difference")
     rows = {}
     for line in result.stdout.splitlines():
-        columns = [column.strip().strip("`") for column in line.split("|")]
+        columns = [column.strip().strip("`").strip() for column in line.split("|")]
         if len(columns) == 3 and (columns[0] in LOCAL_ONLY or columns[1] == REMOTE_ONLY):
             rows[columns[0] or columns[1]] = (columns[0], columns[1])
     for version in LOCAL_ONLY:
