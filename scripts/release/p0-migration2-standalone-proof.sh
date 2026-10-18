@@ -18,7 +18,7 @@ admin_psql=(psql -X --no-password --set=ON_ERROR_STOP=1 --host="$PGHOST" --port=
   '\''database'\'', current_database(), '\''port'\'', inet_server_port(), '\''user'\'', current_user,
   '\''version'\'', current_setting('\''server_version'\''), '\''version_num'\'', current_setting('\''server_version_num'\''),
   '\''data_directory'\'', current_setting('\''data_directory'\''), '\''postmaster_start'\'', pg_postmaster_start_time())::text;' > target.json
-node -e "const x=JSON.parse(require('fs').readFileSync('target.json','utf8')); if(x.database!=='postgres'||+x.port!==5432||x.user!=='postgres'||!String(x.version_num).startsWith('17')||!String(x.data_directory).startsWith('/var/lib/postgresql/')) process.exit(1); console.log('Synthetic PG17 service identity: PASS '+JSON.stringify(x))"
+node -e "const x=JSON.parse(require('fs').readFileSync('target.json','utf8')); if(x.database!=='postgres'||+x.port!==5432||x.user!=='postgres'||!String(x.version_num).startsWith('17')||!String(x.data_directory).startsWith('/var/lib/postgresql/')||!Number.isFinite(Date.parse(x.postmaster_start))) process.exit(1); console.log('Synthetic PG17 service identity: PASS '+JSON.stringify(x))"
 synthetic_db="p0_m2_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
 [[ "$synthetic_db" =~ ^p0_m2_[0-9]+_[0-9]+$ ]] || fail 'invalid synthetic database name'
 createdb --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --no-password "$synthetic_db"
@@ -27,7 +27,7 @@ psql_cmd=(psql -X --no-password --set=ON_ERROR_STOP=1 --host="$PGHOST" --port="$
   '\''database'\'', current_database(), '\''port'\'', inet_server_port(), '\''user'\'', current_user,
   '\''version'\'', current_setting('\''server_version'\''), '\''version_num'\'', current_setting('\''server_version_num'\''),
   '\''data_directory'\'', current_setting('\''data_directory'\''), '\''postmaster_start'\'', pg_postmaster_start_time())::text;' > target-synthetic.json
-EXPECTED_DB="$synthetic_db" node -e "const x=JSON.parse(require('fs').readFileSync('target-synthetic.json','utf8')); if(x.database!==process.env.EXPECTED_DB||+x.port!==5432||x.user!=='postgres'||!String(x.version_num).startsWith('17')||!String(x.data_directory).startsWith('/var/lib/postgresql/')) process.exit(1); console.log('Dedicated synthetic DB identity: PASS '+JSON.stringify(x))"
+EXPECTED_DB="$synthetic_db" node -e "const x=JSON.parse(require('fs').readFileSync('target-synthetic.json','utf8')); if(x.database!==process.env.EXPECTED_DB||+x.port!==5432||x.user!=='postgres'||!String(x.version_num).startsWith('17')||!String(x.data_directory).startsWith('/var/lib/postgresql/')||!Number.isFinite(Date.parse(x.postmaster_start))) process.exit(1); console.log('Dedicated synthetic DB identity: PASS '+JSON.stringify(x))"
 run_marker="p0_m2_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
 [[ "$run_marker" =~ ^p0_m2_[0-9]+_[0-9]+$ ]] || fail 'invalid synthetic run marker'
 "${psql_cmd[@]}" --command="CREATE TABLE public.${run_marker}(value text PRIMARY KEY); INSERT INTO public.${run_marker} VALUES ('$run_marker');"

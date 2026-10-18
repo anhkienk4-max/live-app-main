@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 8
     services:
       postgres:
-        image: postgres:17-alpine@sha256:79bd7c99e923138f136f8006d9bffa66e21e9d4fda5c0c561b00fc9c90cfe537
+        image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
         ports:
