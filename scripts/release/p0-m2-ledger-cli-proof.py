@@ -125,10 +125,18 @@ def main():
         require(all(flag in help_text for flag in flags), f"CLI help lacks required flags: {command}")
         print(f"CLI_HELP_{'_'.join(command).upper()}=PASS")
 
-    run(["supabase", "migration", "repair", *baseline, "--status", "applied", "--db-url", url],
-        timeout=240)
-    require(ledger(database) == set(baseline), "CLI failed to seed exact 67-version ledger")
-    print("SYNTHETIC_LEDGER_BASELINE=67_APPLIED")
+    # A remote-only ledger version has no local SQL file, so CLI repair cannot seed it.
+    # Recreate the observed ledger shape as a synthetic fixture, then test CLI repair on M2 only.
+    psql(database, "CREATE SCHEMA supabase_migrations; "
+                   "CREATE TABLE supabase_migrations.schema_migrations ("
+                   "version text PRIMARY KEY, statements text[], name text);")
+    local_names = {path.name[:14]: path.stem[15:] for path in Path("supabase/migrations").glob("*.sql")}
+    remote_name = "20261012171503_rc16k_bounded_shift_lists"
+    values = ",".join(f"('{version}','{remote_name if version == REMOTE_ONLY else local_names[version]}')"
+                      for version in baseline)
+    psql(database, "INSERT INTO supabase_migrations.schema_migrations(version,name) VALUES " + values + ";")
+    require(ledger(database) == set(baseline), "Fixture failed to seed exact 67-version ledger")
+    print("SYNTHETIC_LEDGER_BASELINE=67_APPLIED; REMOTE_ONLY_FIXTURE=EXPLICIT")
     migration_list("MIGRATION_LIST_BEFORE_M2", url)
     dry_run("DB_PUSH_DRY_RUN_BEFORE_M2", url, database, set(baseline))
 
