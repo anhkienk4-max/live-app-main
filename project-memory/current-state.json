@@ -9,9 +9,9 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "feat/rc17a-actual-staffing",
-    "head": "8db1a8920edc10ebf5d625ec01d2a871e1cd3d53",
-    "origin_main": "28f904a40f361ff6863f827309c136a0c98329b0",
+    "branch": "fix/workforce-performance-ui-and-policy",
+    "head": "7193608482eb7b3a50b952922f8c170d34f02e05",
+    "origin_main": "4fe77e58837910db08002b50de56c89fcf46aab2",
     "worktree": "C:/Users/KienNguyen/OPS_RESTORE_LAB_RC16K/rc17a-actual-staffing"
   },
   "hardening": {
@@ -93,10 +93,10 @@
         "components": 151,
         "lib": 211,
         "scripts": 18,
-        "supabase": 89,
+        "supabase": 90,
         "tests": 201
       },
-      "total": 730
+      "total": 731
     },
     "tests": {
       "files": [
@@ -359,5 +359,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-18T21:53:27+07:00"
+  "synced_at": "2026-10-19T01:07:39+07:00"
 }

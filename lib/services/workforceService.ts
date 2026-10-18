@@ -236,10 +236,70 @@ export function workforceErrorMessage(error: unknown): string {
   if (error instanceof WorkforceServiceError) {
     if (error.status === 401) return 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'
     if (error.status === 403) return 'Bạn không có quyền thực hiện thao tác này.'
-    if (error.status === 409) return 'Dữ liệu đã thay đổi hoặc bị xung đột. Hãy tải lại trước khi thử tiếp.'
-    if (error.status === 503) return error.code.endsWith('FEATURE_DISABLED')
-      ? 'Tính năng đang tắt. Vui lòng chờ cấu hình được phê duyệt.'
-      : 'Dịch vụ hiện chưa sẵn sàng. Vui lòng thử lại sau.'
+    if (error.status === 409) {
+      switch (error.code) {
+        case 'WORKFORCE_GRACE_POLICY_NOT_CONFIGURED':
+          return 'Chính sách ân hạn thời gian (Grace Period) chưa được cấu hình trên máy chủ. Vui lòng liên hệ quản trị viên.'
+        case 'WORKFORCE_GRACE_POLICY_REQUIRED':
+          return 'Chính sách ân hạn thời gian (Grace Period) bắt buộc và chưa hợp lệ.'
+        case 'WORKFORCE_LEADERBOARD_POLICY_INVALID':
+        case 'WORKFORCE_LEADERBOARD_POLICY_REQUIRED':
+          return 'Chính sách ngưỡng mẫu tối thiểu của bảng xếp hạng chưa hợp lệ trên máy chủ.'
+        case 'WORKFORCE_SHIFT_TIMESTAMPS_MISSING':
+          return 'Dữ liệu ca làm việc thiếu mốc thời gian bắt đầu quy định.'
+        case 'WORKFORCE_MULTIPLE_WORKED_SEGMENTS':
+          return 'Phát hiện nhiều đoạn làm việc thực tế cho cùng một ca.'
+        case 'WORKFORCE_NO_SHOW_CONTRADICTS_WORKED':
+          return 'Minh chứng vắng mặt mâu thuẫn với dữ liệu làm việc thực tế.'
+        case 'WORKFORCE_CONFLICTING_APPROVED_EVIDENCE':
+          return 'Minh chứng chấm công đã duyệt bị xung đột dữ liệu.'
+        case 'WORKFORCE_OVERLAPPING_APPROVED_SEGMENTS':
+          return 'Các đoạn làm việc thực tế đã duyệt bị trùng lặp thời gian.'
+        case 'WORKFORCE_ACTUAL_BEFORE_START':
+          return 'Thời gian bắt đầu thực tế không hợp lệ.'
+        case 'WORKFORCE_ACTUAL_TIMES_REQUIRED':
+        case 'WORKFORCE_APPROVED_WORKED_TIMES_REQUIRED':
+          return 'Thiếu mốc thời gian thực tế đã được xác nhận.'
+        case 'WORKFORCE_TIMEZONE_REQUIRED':
+        case 'WORKFORCE_TIME_INVALID':
+        case 'WORKFORCE_DURATION_INVALID':
+          return 'Thời gian hoặc thời lượng ca làm việc không hợp lệ.'
+        case 'WORKFORCE_DUPLICATE_PLANNED_ASSIGNMENT':
+          return 'Phát hiện phân công ca làm việc bị trùng lặp.'
+        case 'ACTUAL_STAFFING_SELF_APPROVAL_PROHIBITED':
+          return 'Người tự ghi nhận ca không được phép tự phê duyệt.'
+        case 'ACTUAL_STAFFING_UNASSIGNED_REQUIRES_EXCEPTION':
+          return 'Nhân sự chưa được phân công ca, cần ghi nhận ngoại lệ kèm lý do.'
+        case 'ACTUAL_STAFFING_START_AFTER_END':
+          return 'Thời gian bắt đầu ca thực tế phải trước thời gian kết thúc.'
+        case 'ACTUAL_STAFFING_CANNOT_RECORD_FUTURE_SHIFT':
+          return 'Không thể ghi nhận chấm công cho ca làm việc trong tương lai.'
+        case 'ACTUAL_STAFFING_PAST_WINDOW_EXCEEDED':
+          return 'Đã quá thời hạn cho phép ghi nhận ca làm việc trong quá khứ.'
+        case 'SEGMENT_ALREADY_REVIEWED':
+          return 'Bản ghi chấm công đã được xem xét trước đó. Vui lòng tải lại trang.'
+        case 'PAYROLL_PERIOD_ALREADY_EXISTS':
+          return 'Kỳ lương đã tồn tại.'
+        case 'PAYROLL_PERIOD_LOCKED':
+          return 'Kỳ lương đã khóa, không thể chỉnh sửa.'
+        case 'VERSION_CONFLICT':
+        case 'CONCURRENT_MODIFICATION':
+        default:
+          return 'Dữ liệu đã thay đổi hoặc bị xung đột. Hãy tải lại trước khi thử tiếp.'
+      }
+    }
+    if (error.status === 503) {
+      if (error.code.endsWith('FEATURE_DISABLED')) {
+        return 'Tính năng đang tắt. Vui lòng chờ cấu hình được phê duyệt.'
+      }
+      if (error.code === 'WORKFORCE_TEAM_EVIDENCE_INCOMPLETE') {
+        return 'Dữ liệu chứng từ chấm công đội ngũ chưa hoàn tất hoặc vượt quá giới hạn truy vấn.'
+      }
+      if (error.code === 'WORKFORCE_TEAM_SCOPE_INCOMPLETE' || error.code === 'WORKFORCE_PLANNED_SCOPE_INCOMPLETE') {
+        return 'Phạm vi dữ liệu ca làm việc vượt quá giới hạn xử lý của hệ thống.'
+      }
+      return 'Dịch vụ hiện chưa sẵn sàng. Vui lòng thử lại sau.'
+    }
     return error.code
   }
   return 'Không thể kết nối máy chủ. Vui lòng thử lại.'

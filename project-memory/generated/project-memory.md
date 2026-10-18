@@ -2,13 +2,13 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-18T21:53:27+07:00
+Generated at: 2026-10-19T01:07:39+07:00
 
 ## Repository
 
-- Branch: `feat/rc17a-actual-staffing`
-- HEAD: `8db1a8920edc10ebf5d625ec01d2a871e1cd3d53`
-- origin/main: `28f904a40f361ff6863f827309c136a0c98329b0`
+- Branch: `fix/workforce-performance-ui-and-policy`
+- HEAD: `7193608482eb7b3a50b952922f8c170d34f02e05`
+- origin/main: `4fe77e58837910db08002b50de56c89fcf46aab2`
 - Worktree: `C:/Users/KienNguyen/OPS_RESTORE_LAB_RC16K/rc17a-actual-staffing`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
@@ -22,7 +22,7 @@ Generated at: 2026-10-18T21:53:27+07:00
 ## Inventory
 
 - Routes: 56
-- Source files in tracked inventory roots: 730
+- Source files in tracked inventory roots: 731
 - Tests: 169
 - Migrations: 70
 

@@ -49,6 +49,23 @@ test('client retains backend 400, 401, 403, 409 and 503 without collapsing error
     }
     assert.notEqual(workforceErrorMessage(new WorkforceServiceError('AUTHENTICATION_REQUIRED', 401)), workforceErrorMessage(new WorkforceServiceError('FORBIDDEN', 403)))
     assert.notEqual(workforceErrorMessage(new WorkforceServiceError('WORKFORCE_FEATURE_DISABLED', 503)), workforceErrorMessage(new WorkforceServiceError('WORKFORCE_UNAVAILABLE', 503)))
+
+    // 409 differentiation: server policy vs missing timestamp vs evidence conflict vs concurrency
+    const graceErr = workforceErrorMessage(new WorkforceServiceError('WORKFORCE_GRACE_POLICY_NOT_CONFIGURED', 409))
+    const timestampErr = workforceErrorMessage(new WorkforceServiceError('WORKFORCE_SHIFT_TIMESTAMPS_MISSING', 409))
+    const evidenceErr = workforceErrorMessage(new WorkforceServiceError('WORKFORCE_CONFLICTING_APPROVED_EVIDENCE', 409))
+    const conflictErr = workforceErrorMessage(new WorkforceServiceError('VERSION_CONFLICT', 409))
+
+    assert.ok(graceErr.includes('Chính sách ân hạn'))
+    assert.ok(!graceErr.includes('tải lại')) // Must not instruct user to reload on server config error
+    assert.ok(timestampErr.includes('mốc thời gian bắt đầu'))
+    assert.ok(!timestampErr.includes('tải lại'))
+    assert.ok(evidenceErr.includes('xung đột dữ liệu') || evidenceErr.includes('chấm công'))
+    assert.ok(conflictErr.includes('xung đột') && conflictErr.includes('tải lại'))
+
+    assert.notEqual(graceErr, conflictErr)
+    assert.notEqual(timestampErr, conflictErr)
+    assert.notEqual(evidenceErr, conflictErr)
   } finally { globalThis.fetch = original }
 })
 
