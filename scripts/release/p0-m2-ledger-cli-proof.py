@@ -105,7 +105,7 @@ def main():
     require(psql(database, "SELECT marker FROM public.w14_target_marker;") == database,
             "Dedicated synthetic target marker mismatch")
     print(f"TARGET_DATABASE={database}; TARGET_MARKER=PASS")
-    url = f"postgresql://postgres@127.0.0.1:5432/{database}"
+    url = f"postgresql://postgres@127.0.0.1:5432/{database}?sslmode=disable"
 
     local = sorted(match.group(1) for path in Path("supabase/migrations").glob("*.sql")
                    if (match := re.fullmatch(r"([0-9]{14})_.+\.sql", path.name)))
