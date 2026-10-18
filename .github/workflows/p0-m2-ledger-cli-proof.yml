@@ -1,0 +1,76 @@
+name: P0 M2 CLI Ledger Rehearsal
+
+on:
+  push:
+    branches:
+      - test/rc16k-p0-m2-ledger-cli-v21210
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p0-m2-ledger-cli-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ledger-cli:
+    name: Supabase CLI v2.121.0 on synthetic PostgreSQL 17
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d postgres"
+          --health-interval=3s
+          --health-timeout=3s
+          --health-retries=20
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGDATABASE: postgres
+      POSTGRES_CONTAINER_ID: ${{ job.services.postgres.id }}
+    steps:
+      - name: Checkout exact test branch without persisted token
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Install and verify official Supabase CLI v2.121.0 asset
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          archive="$RUNNER_TEMP/supabase_2.121.0_linux_amd64.tar.gz"
+          curl --fail --location --silent --show-error --connect-timeout 10 --max-time 120 \
+            "https://github.com/supabase/cli/releases/download/v2.121.0/supabase_2.121.0_linux_amd64.tar.gz" \
+            --output "$archive"
+          printf '%s  %s\n' \
+            '4b481189efbdc57cf2d37bdee5f1a0d29574314398564b32a6dfb76c0fcf275f' "$archive" \
+            | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/w14-cli"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/w14-cli"
+          chmod +x "$RUNNER_TEMP/w14-cli/supabase"
+          echo "$RUNNER_TEMP/w14-cli" >> "$GITHUB_PATH"
+          version="$("$RUNNER_TEMP/w14-cli/supabase" --version)"
+          test "$version" = '2.121.0'
+          echo "SUPABASE_CLI_VERSION=$version"
+          echo "SUPABASE_CLI_ASSET_SHA256=4b481189efbdc57cf2d37bdee5f1a0d29574314398564b32a6dfb76c0fcf275f"
+      - name: Validate Python rehearsal syntax
+        run: python3 -c "import ast, pathlib; ast.parse(pathlib.Path('scripts/release/p0-m2-ledger-cli-proof.py').read_text())"
+      - name: Rehearse isolated migration ledger and CLI commands
+        run: python3 scripts/release/p0-m2-ledger-cli-proof.py
+      - name: Record scope
+        if: always()
+        run: |
+          {
+            echo "Target: GitHub-hosted synthetic PostgreSQL 17 only"
+            echo "Production credentials and connections: NONE"
+            echo "Migration SQL executed by this job: NONE"
+            echo "Production migration repair or db push: NONE"
+          } >> "$GITHUB_STEP_SUMMARY"
+
