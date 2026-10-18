@@ -203,9 +203,12 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, brandName, pla
   const setMetric = (key: CanonicalMetricKey, value: string) => {
     manualMetricKeysRef.current.add(key)
     setMetricValues(current => ({ ...current, [key]: parseMetricInputValue(value) }))
-    setOcrReview(current => current
-      ? markMetricManual(current, key, value, currentUser?.id || 'unknown')
-      : current)
+    setOcrReview(current => markMetricManual(
+      current ?? { status: 'unavailable', metrics: {} },
+      key,
+      value,
+      currentUser?.id || 'unknown',
+    ))
   }
 
   const confirmMetric = (key: CanonicalMetricKey) => {

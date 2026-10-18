@@ -70,9 +70,14 @@ test('live snapshot binding rejects unrelated members and invalid snapshots on P
         ('shift-tiktok','manual','manually_assigned');
     `)
     await db.exec(migration)
+    const manualReview = actor => ({ status: 'unavailable', metrics: {
+      gmv: { value: 100, status: 'manual', source: 'manual', needs_review: false,
+        manual_edit: { manual_value: 100, edited_by: actor, edited_at: '2026-10-18T11:00:00Z' } },
+    } })
     const payload = { shift_id: 'shift-tiktok', time: '2026-10-18T11:00:00Z',
       dashboard_platform: 'tiktok_shop', revenue: 100, orders: 2,
-      normalized_metrics: { gmv: 100 }, request_id: 'a3559b51-0bb7-452c-bbd4-f218fe27eaa1' }
+      normalized_metrics: { gmv: 100 }, ocr_review: manualReview('host'),
+      request_id: 'a3559b51-0bb7-452c-bbd4-f218fe27eaa1' }
     const asActor = async (actor, permission, active, action) => {
       await db.exec(`select set_config('app.actor', '${actor}', false),
         set_config('app.permission', '${permission}', false),
@@ -85,7 +90,7 @@ test('live snapshot binding rejects unrelated members and invalid snapshots on P
     }
     await assert.rejects(asActor('host', 'member', false, () => create(payload)), /AUTHENTICATION_REQUIRED/)
     for (const actor of ['host', 'support', 'tech', 'approved', 'manual']) {
-      const id = { ...payload, request_id: crypto.randomUUID() }
+      const id = { ...payload, ocr_review: manualReview(actor), request_id: crypto.randomUUID() }
       const saved = await asActor(actor, 'member', true, () => create(id))
       assert.equal(saved.rows.length, 1)
     }
@@ -100,6 +105,10 @@ test('live snapshot binding rejects unrelated members and invalid snapshots on P
       () => create({ ...payload, request_id: crypto.randomUUID(), dashboard_platform: 'shopee_live' })), /DASHBOARD_PLATFORM_MISMATCH/)
     await assert.rejects(asActor('host', 'member', true,
       () => create({ ...payload, request_id: crypto.randomUUID(), brand_id: 'other-brand' })), /DASHBOARD_UPDATE_SHIFT_MISMATCH/)
+    await assert.rejects(asActor('host', 'member', true,
+      () => create({ ...payload, request_id: crypto.randomUUID(), ocr_review: undefined })), /DASHBOARD_OCR_REVIEW_REQUIRED/)
+    await assert.rejects(asActor('host', 'member', true,
+      () => create({ ...payload, request_id: crypto.randomUUID(), ocr_review: manualReview('unrelated') })), /DASHBOARD_OCR_REVIEW_REQUIRED/)
     await assert.rejects(asActor('host', 'member', true,
       () => create({ ...payload, request_id: crypto.randomUUID(), ocr_review: { metrics: { gmv: { status: 'review_required', value: 100 } } } })), /DASHBOARD_OCR_REVIEW_REQUIRED/)
     await assert.rejects(asActor('host', 'member', true,

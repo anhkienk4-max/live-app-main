@@ -44,6 +44,7 @@ declare
   request_key uuid;
   request_hash text;
   metric record;
+  reviewed_metric jsonb;
   created_row public.dashboard_updates;
 begin
   if actor_id is null or not private.current_business_user_is_active() then
@@ -116,6 +117,22 @@ begin
     where jsonb_typeof(m.value) <> 'number'
   ) then
     raise exception using errcode = '22023', message = 'DASHBOARD_METRICS_INVALID';
+  end if;
+  if jsonb_typeof(p_data -> 'normalized_metrics') = 'object' then
+    for metric in select key, value from jsonb_each(p_data -> 'normalized_metrics') loop
+      reviewed_metric := p_data #> array['ocr_review', 'metrics', metric.key];
+      if jsonb_typeof(reviewed_metric) is distinct from 'object'
+        or reviewed_metric -> 'value' is distinct from metric.value
+        or coalesce(reviewed_metric ->> 'status', '') not in ('confirmed', 'accepted', 'manual')
+        or coalesce((reviewed_metric ->> 'needs_review')::boolean, false)
+        or (reviewed_metric ->> 'status' = 'manual' and (
+          reviewed_metric ->> 'source' is distinct from 'manual'
+          or reviewed_metric #>> '{manual_edit,edited_by}' is distinct from actor_id
+          or reviewed_metric #> '{manual_edit,manual_value}' is distinct from metric.value
+        )) then
+        raise exception using errcode = '22023', message = 'DASHBOARD_OCR_REVIEW_REQUIRED';
+      end if;
+    end loop;
   end if;
   if nullif(p_data ->> 'request_id', '') is not null then
     request_key := (p_data ->> 'request_id')::uuid;
