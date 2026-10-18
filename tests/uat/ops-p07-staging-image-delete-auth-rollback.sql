@@ -50,6 +50,49 @@ begin
 end;$deny$;
 reset role;
 
+-- Isolate the independent missing-uploader predicate:
+-- report submitted_by is the Member, but both images uploaded_by are NULL.
+update public.reports set submitted_by=private.current_business_user_id()
+ where id=current_setting('p07.report');
+set local role authenticated;
+do $uploader_missing$
+begin
+ begin
+   perform public.authorize_report_image_delete(i.id) from public.report_images i
+   where i.report_id=current_setting('p07.report');
+   raise exception 'P07_DASHBOARD_NULL_UPLOADER_WITH_OWN_REPORT_ACCEPTED';
+ exception when insufficient_privilege then null; end;
+ begin
+   perform public.authorize_live_report_image_delete(i.id) from public.live_report_images i
+   where i.report_id=current_setting('p07.report');
+   raise exception 'P07_LIVE_NULL_UPLOADER_WITH_OWN_REPORT_ACCEPTED';
+ exception when insufficient_privilege then null; end;
+end;$uploader_missing$;
+reset role;
+
+-- Isolate the independent missing-submitter predicate:
+-- both uploads belong to Member; report submitted_by is NULL.
+update public.reports set submitted_by=null where id=current_setting('p07.report');
+update public.report_images set uploaded_by=private.current_business_user_id()
+ where report_id=current_setting('p07.report');
+update public.live_report_images set uploaded_by=private.current_business_user_id()
+ where report_id=current_setting('p07.report');
+set local role authenticated;
+do $submitter_missing$
+begin
+ begin
+   perform public.authorize_report_image_delete(i.id) from public.report_images i
+   where i.report_id=current_setting('p07.report');
+   raise exception 'P07_DASHBOARD_NULL_SUBMITTER_WITH_OWN_UPLOAD_ACCEPTED';
+ exception when insufficient_privilege then null; end;
+ begin
+   perform public.authorize_live_report_image_delete(i.id) from public.live_report_images i
+   where i.report_id=current_setting('p07.report');
+   raise exception 'P07_LIVE_NULL_SUBMITTER_WITH_OWN_UPLOAD_ACCEPTED';
+ exception when insufficient_privilege then null; end;
+end;$submitter_missing$;
+reset role;
+
 -- Now make the exact same *synthetic* report/images owned by linked Member.
 -- This tests legitimate ownership was not accidentally denied by the fix.
 update public.reports set submitted_by=private.current_business_user_id()
