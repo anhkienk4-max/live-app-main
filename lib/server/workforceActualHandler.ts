@@ -93,23 +93,26 @@ export function resolveStaffAssignmentVerification(params: {
   // Must have status in ('approved', 'completed') and not soft-deleted.
   // 'accepted' is NOT yet approved by admin/leader.
   // 'pending', 'rejected', 'cancelled' are NOT valid assignments.
+  // Operational role MUST strictly match operationalRole (no NULL/undefined wildcard matching!).
+  // Mode MUST be strictly 'replacement' or 'exchange' (legacy 'move' or NULL mode fail-closed!).
   const validSwaps = swaps.filter(
     (s) =>
       ['approved', 'completed'].includes(s.status) &&
       !s.deleted_at &&
-      (!s.operational_role || s.operational_role === operationalRole)
+      s.operational_role === operationalRole &&
+      (s.mode === 'replacement' || s.mode === 'exchange')
   )
 
   // 2. CHECK FOR SURRENDERED SHIFT (Task 5: Handover staff cannot override approved swap via old roster):
   // Did staffId surrender this shiftId in an approved swap?
-  // - If source_shift_id === shiftId and requester_id === staffId: staff surrendered this shift!
-  // - If target_shift_id === shiftId and counterpart_id === staffId (in exchange): staff surrendered this target shift!
+  // - If source_shift_id === shiftId and requester_id === staffId: staff surrendered this source shift!
+  // - If target_shift_id === shiftId and counterpart_id === staffId (ONLY in exchange): staff surrendered this target shift!
   const surrenderedThisShift = validSwaps.some((s) => {
     const sourceId = s.source_shift_id || s.shift_id
     if (sourceId === shiftId && s.requester_id === staffId) {
       return true
     }
-    if (s.target_shift_id === shiftId && s.counterpart_id === staffId) {
+    if (s.mode === 'exchange' && s.target_shift_id === shiftId && s.counterpart_id === staffId) {
       return true
     }
     return false
@@ -129,15 +132,16 @@ export function resolveStaffAssignmentVerification(params: {
   // Is staffId the authorized incoming / replacement staff on this shift?
   // - If source_shift_id === shiftId: the authorized staff is counterpart_id (or replacement_staff_id).
   //   Requester_id CANNOT be the replacement staff on source shift.
-  // - If target_shift_id === shiftId: the authorized staff is requester_id (in an approved exchange).
+  // - If target_shift_id === shiftId: ONLY verified when mode === 'exchange' and staff is requester_id.
   //   Counterpart_id CANNOT be the incoming staff on target shift.
+  //   In replacement (PASS), target_shift_id is NEVER verified for incoming staff.
   const isSwapReplacement = validSwaps.some((s) => {
     const sourceId = s.source_shift_id || s.shift_id
     if (sourceId === shiftId) {
       const incomingId = s.counterpart_id || s.replacement_staff_id
       return incomingId === staffId && incomingId !== s.requester_id
     }
-    if (s.target_shift_id === shiftId && s.mode !== 'replacement') {
+    if (s.mode === 'exchange' && s.target_shift_id === shiftId) {
       return s.requester_id === staffId && s.requester_id !== s.counterpart_id
     }
     return false

@@ -2567,3 +2567,470 @@ test('RC1.7A: GET, record, and review return identical verification outcomes', a
   assert.equal(reviewBody.ok, true)
   assert.equal(reviewBody.segment.review_status, 'approved')
 })
+// ---------------------------------------------------------------------------
+// TEST 31: Swap with mode NULL fails closed (unverified exception)
+// ---------------------------------------------------------------------------
+test('RC1.7A: Swap with mode NULL fails closed (unverified exception)', async () => {
+  const fakeDb = () => ({
+    from(table: string) {
+      if (table === 'shifts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'shift-null-mode', status: 'completed', host_id: 'host-orig' },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'business_users') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'host-sub', status: 'active', deleted_at: null },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'swap_requests') {
+        return {
+          select() { return this },
+          in() { return this },
+          or() {
+            return Promise.resolve({
+              data: [{
+                id: 'swap-null-mode',
+                source_shift_id: 'shift-null-mode',
+                requester_id: 'host-orig',
+                replacement_staff_id: 'host-sub',
+                operational_role: 'host',
+                mode: null, // NULL mode
+                status: 'approved',
+                deleted_at: null,
+              }],
+              error: null,
+            })
+          },
+        }
+      }
+      return safeDbFallback(table)
+    },
+  })
+
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: fakeDb as never,
+    resolveUser: leaderUser,
+  })
+
+  const res = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-null-mode',
+    staff_id: 'host-sub',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'planned',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Sub on null mode swap',
+  }))
+  assert.equal(res.status, 409, 'Swap with mode NULL must not verify planned assignment')
+})
+
+// ---------------------------------------------------------------------------
+// TEST 32: Legacy swap with mode MOVE fails closed (unverified exception)
+// ---------------------------------------------------------------------------
+test('RC1.7A: Legacy swap with mode MOVE fails closed (unverified exception)', async () => {
+  const fakeDb = () => ({
+    from(table: string) {
+      if (table === 'shifts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'shift-legacy-move', status: 'completed', host_id: 'host-orig' },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'business_users') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'host-sub', status: 'active', deleted_at: null },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'swap_requests') {
+        return {
+          select() { return this },
+          in() { return this },
+          or() {
+            return Promise.resolve({
+              data: [{
+                id: 'swap-legacy-move',
+                source_shift_id: 'shift-legacy-move',
+                requester_id: 'host-orig',
+                replacement_staff_id: 'host-sub',
+                operational_role: 'host',
+                mode: 'move', // Legacy move mode
+                status: 'approved',
+                deleted_at: null,
+              }],
+              error: null,
+            })
+          },
+        }
+      }
+      return safeDbFallback(table)
+    },
+  })
+
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: fakeDb as never,
+    resolveUser: leaderUser,
+  })
+
+  const res = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-legacy-move',
+    staff_id: 'host-sub',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'planned',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Sub on legacy move mode swap',
+  }))
+  assert.equal(res.status, 409, 'Legacy swap with mode MOVE must not verify planned assignment')
+})
+
+// ---------------------------------------------------------------------------
+// TEST 33: Operational role mismatch (swap role host vs segment role support) is blocked
+// ---------------------------------------------------------------------------
+test('RC1.7A: Operational role mismatch (swap role host vs segment role support) is blocked', async () => {
+  const fakeDb = () => ({
+    from(table: string) {
+      if (table === 'shifts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'shift-role-mismatch', status: 'completed', host_id: 'host-orig' },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'business_users') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'host-sub', status: 'active', deleted_at: null },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'swap_requests') {
+        return {
+          select() { return this },
+          in() { return this },
+          or() {
+            return Promise.resolve({
+              data: [{
+                id: 'swap-role-host',
+                source_shift_id: 'shift-role-mismatch',
+                requester_id: 'host-orig',
+                replacement_staff_id: 'host-sub',
+                operational_role: 'host', // Swap is for HOST role
+                mode: 'replacement',
+                status: 'approved',
+                deleted_at: null,
+              }],
+              error: null,
+            })
+          },
+        }
+      }
+      return safeDbFallback(table)
+    },
+  })
+
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: fakeDb as never,
+    resolveUser: leaderUser,
+  })
+
+  // Staff records as 'support' instead of 'host'
+  const res = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-role-mismatch',
+    staff_id: 'host-sub',
+    operational_role: 'support', // Segment role is SUPPORT
+    event_kind: 'worked',
+    coverage_kind: 'planned',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Attempting to claim support with host swap',
+  }))
+  assert.equal(res.status, 409, 'Role mismatch between swap and segment must not verify planned assignment')
+})
+
+// ---------------------------------------------------------------------------
+// TEST 34: Missing operational_role (NULL/undefined) on swap fails closed (no wildcard match)
+// ---------------------------------------------------------------------------
+test('RC1.7A: Missing operational_role (NULL/undefined) on swap fails closed (no wildcard match)', async () => {
+  const fakeDb = () => ({
+    from(table: string) {
+      if (table === 'shifts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'shift-null-role', status: 'completed', host_id: 'host-orig' },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'business_users') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'host-sub', status: 'active', deleted_at: null },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'swap_requests') {
+        return {
+          select() { return this },
+          in() { return this },
+          or() {
+            return Promise.resolve({
+              data: [{
+                id: 'swap-null-role',
+                source_shift_id: 'shift-null-role',
+                requester_id: 'host-orig',
+                replacement_staff_id: 'host-sub',
+                operational_role: null, // Missing / NULL operational_role
+                mode: 'replacement',
+                status: 'approved',
+                deleted_at: null,
+              }],
+              error: null,
+            })
+          },
+        }
+      }
+      return safeDbFallback(table)
+    },
+  })
+
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: fakeDb as never,
+    resolveUser: leaderUser,
+  })
+
+  const res = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-null-role',
+    staff_id: 'host-sub',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'planned',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Sub claiming host on swap with null role',
+  }))
+  assert.equal(res.status, 409, 'Swap with NULL operational_role must not wildcard-match planned assignment')
+})
+
+// ---------------------------------------------------------------------------
+// TEST 35: Target shift in mode replacement does NOT verify incoming staff
+// ---------------------------------------------------------------------------
+test('RC1.7A: Target shift in mode replacement does NOT verify incoming staff', async () => {
+  const fakeDb = () => ({
+    from(table: string) {
+      if (table === 'shifts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'shift-target-pass', status: 'completed', host_id: 'host-counterpart' },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'business_users') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'host-alice', status: 'active', deleted_at: null },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'swap_requests') {
+        return {
+          select() { return this },
+          in() { return this },
+          or() {
+            return Promise.resolve({
+              data: [{
+                id: 'swap-pass-with-target',
+                source_shift_id: 'shift-source-pass',
+                target_shift_id: 'shift-target-pass',
+                requester_id: 'host-alice',
+                counterpart_id: 'host-bob',
+                replacement_staff_id: 'host-bob',
+                operational_role: 'host',
+                mode: 'replacement', // 1-way PASS: target shift should NOT verify Alice
+                status: 'approved',
+                deleted_at: null,
+              }],
+              error: null,
+            })
+          },
+        }
+      }
+      return safeDbFallback(table)
+    },
+  })
+
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: fakeDb as never,
+    resolveUser: leaderUser,
+  })
+
+  // Alice tries to claim work on target_shift_id in a replacement (PASS) swap
+  const res = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-target-pass',
+    staff_id: 'host-alice',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'planned',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Requester trying to claim target shift in a replacement swap',
+  }))
+  assert.equal(res.status, 409, 'Target shift in mode replacement must NOT verify incoming staff')
+})
+
+// ---------------------------------------------------------------------------
+// TEST 36: Stale roster after handover: Handover staff remaining in roster cannot override approved swap surrender
+// ---------------------------------------------------------------------------
+test('RC1.7A: Stale roster after handover: Handover staff remaining in roster cannot override approved swap surrender', async () => {
+  const fakeDb = () => ({
+    from(table: string) {
+      if (table === 'shifts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              // Stale roster: Alice is STILL listed as host_id on shift-stale-roster
+              data: { id: 'shift-stale-roster', status: 'completed', host_id: 'host-alice' },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'business_users') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'host-alice', status: 'active', deleted_at: null },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'swap_requests') {
+        return {
+          select() { return this },
+          in() { return this },
+          or() {
+            return Promise.resolve({
+              data: [{
+                id: 'swap-surrender-stale',
+                source_shift_id: 'shift-stale-roster',
+                requester_id: 'host-alice', // Alice surrendered this shift
+                replacement_staff_id: 'host-bob',
+                operational_role: 'host',
+                mode: 'replacement',
+                status: 'approved', // Approved swap
+                deleted_at: null,
+              }],
+              error: null,
+            })
+          },
+        }
+      }
+      return safeDbFallback(table)
+    },
+  })
+
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: fakeDb as never,
+    resolveUser: leaderUser,
+  })
+
+  // Alice tries to record as planned because she is still in the old shifts.host_id roster
+  const res = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-stale-roster',
+    staff_id: 'host-alice',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'planned',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Handover staff attempting to claim old roster slot after approved swap',
+  }))
+  assert.equal(res.status, 409, 'Stale roster must not override approved swap surrender')
+})
