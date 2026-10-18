@@ -84,12 +84,13 @@ function Invoke-Psql([string]$Database, [string]$Sql, [int]$TimeoutSeconds = 15,
   }
 }
 
-function Invoke-PsqlFile([string]$Database, [string]$Sql, [string]$Label) {
+function Invoke-PsqlFile([string]$Database, [string]$Sql, [string]$Label, [bool]$SingleTransaction = $true) {
   $tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
   $filePath = Join-Path $tempRoot "$Label-$([guid]::NewGuid().ToString('N')).sql"
   try {
     [System.IO.File]::WriteAllText($filePath, $Sql, [System.Text.UTF8Encoding]::new($false))
-    return Invoke-Psql -Database $Database -Sql '' -TimeoutSeconds 15 -ExtraArguments @('--single-transaction', "--file=$filePath")
+    $fileArguments = if ($SingleTransaction) { @('--single-transaction', "--file=$filePath") } else { @("--file=$filePath") }
+    return Invoke-Psql -Database $Database -Sql '' -TimeoutSeconds 15 -ExtraArguments $fileArguments
   }
   finally {
     if (Test-Path -LiteralPath $filePath) { Remove-Item -LiteralPath $filePath -Force }
@@ -218,6 +219,21 @@ Assert-Exit $success $true 'successful atomic transaction'
 $successCount = Get-PsqlText -Database $database -Sql "SELECT count(*)::text FROM public.$successTable WHERE id=17;"
 Assert-Proof ($successCount -eq '1') 'committed transaction data was not present'
 Add-Summary "Migration 1 wrapper contract: PASS psql_args=--set=ON_ERROR_STOP=1 --single-transaction --file=<synthetic-sql> exit=$($success.ExitCode) row_count=$successCount"
+
+$internalTable = "executor_internal_transaction_$runToken"
+$internalSql = @"
+BEGIN;
+SET LOCAL lock_timeout = '$lockTimeout';
+SET LOCAL statement_timeout = '$statementTimeout';
+CREATE TABLE public.$internalTable(id integer PRIMARY KEY);
+INSERT INTO public.$internalTable VALUES (23);
+COMMIT;
+"@
+$internal = Invoke-PsqlFile -Database $database -Sql $internalSql -Label 'm2-internal-transaction' -SingleTransaction $false
+Assert-Exit $internal $true 'internal migration transaction file execution'
+$internalCount = Get-PsqlText -Database $database -Sql "SELECT count(*)::text FROM public.$internalTable WHERE id=23;"
+Assert-Proof ($internalCount -eq '1') 'internally committed transaction data was not present'
+Add-Summary "Migration 2 transaction contract: PASS psql_args=--set=ON_ERROR_STOP=1 --file=<synthetic-sql> (no outer transaction) internal_BEGIN_COMMIT=True exit=$($internal.ExitCode) row_count=$internalCount"
 
 $failedTable = "executor_rollback_$runToken"
 $failureSql = @"
