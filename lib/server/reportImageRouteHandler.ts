@@ -789,7 +789,12 @@ export function createReportImageRouteHandler(dependencies: {
               ? 'authorize_report_image_delete'
               : 'authorize_live_report_image_delete'
             const authorization = await client.rpc(authorizationRpc, { p_image_id: parsed.data.image_id }).single()
-            if (authorization.error) throw authorization.error
+            if (authorization.error) {
+              // PostgreSQL RLS/ownership denial is a client authorization failure,
+              // never a provider outage. The external object must remain untouched.
+              if (authorization.error.code === '42501') throw permissionError()
+              throw authorization.error
+            }
             if ((authorization.data as unknown as boolean) !== true) return errorResponse('REPORT_IMAGE_NOT_FOUND', 'The report image was not found.', 404)
           } else {
             await authorizeCompatCloudDelete(client, row, user)

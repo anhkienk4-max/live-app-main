@@ -73,7 +73,7 @@ function fakeClient(options: {
   report?: Record<string, unknown> | null
   rpcData?: Record<string, unknown> | boolean
   rpcError?: { message: string }
-  rpcErrors?: Record<string, { message: string }>
+  rpcErrors?: Record<string, { message: string; code?: string }>
   calls?: string[]
 }) {
   const calls = options.calls || []
@@ -430,4 +430,75 @@ test('RC1.2 migration is one non-destructive provider-pair contract', () => {
   assert.match(sql, /grant execute on function public\.authorize_report_image_delete\(text\) to authenticated/i)
   assert.match(sql, /grant execute on function public\.authorize_live_report_image_delete\(text\) to authenticated/i)
   assert.doesNotMatch(sql, /\b(drop\s+table|truncate|delete\s+from)\b/i)
+})
+
+test('P0.8 database-routed Report/Live delete returns 403 for 42501 and never calls external provider', async () => {
+  for (const kind of ['report', 'live'] as const) {
+    for (const provider of ['google_drive', 'onedrive'] as const) {
+      const calls: string[] = []
+      const authorizationRpc = kind === 'report'
+        ? 'authorize_report_image_delete' : 'authorize_live_report_image_delete'
+      const metadataRpc = kind === 'report' ? 'remove_report_image' : 'remove_live_report_image'
+      const client = fakeClient({
+        calls,
+        imageRow: {
+          id: 'image-1', report_id: 'report-1', provider,
+          external_file_id: 'private-external-file-id', mime_type: 'image/png',
+        },
+        rpcErrors: {
+          [authorizationRpc]: { code: '42501', message: 'private SQL actor context must NOT leak' },
+        },
+      })
+      const handler = createReportImageRouteHandler({
+        resolveUser: async () => user,
+        createClient: async () => client as never,
+        storage: fakeStorage({ calls }),
+        routingMode: 'database',
+      })
+      const response = await handler.DELETE(new Request('https://example.invalid/api/report-images', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ kind, image_id: 'image-1' }),
+      }))
+      const body = await response.json() as { error: { code: string; message: string } }
+      assert.equal(response.status, 403, JSON.stringify({ kind, provider, calls, body }))
+      assert.equal(response.headers.get('Cache-Control'), 'no-store')
+      assert.equal(body.error.code, 'PERMISSION_DENIED')
+      assert.equal(JSON.stringify(body).includes('private SQL actor context'), false)
+      assert.equal(JSON.stringify(body).includes('private-external-file-id'), false)
+      assert.deepEqual(calls.map(call => call.split(':')[0]), [authorizationRpc])
+      assert.equal(calls.some(call => call.startsWith(metadataRpc)), false)
+      assert.equal(calls.some(call => call.includes(':delete:')), false)
+    }
+  }
+})
+
+test('P0.8 unexpected authorization RPC errors fail closed before external deletion', async () => {
+  const calls: string[] = []
+  const client = fakeClient({
+    calls,
+    imageRow: {
+      id: 'image-1', report_id: 'report-1', provider: 'google_drive',
+      external_file_id: 'private-external-id', mime_type: 'image/png',
+    },
+    rpcErrors: { authorize_report_image_delete: {
+      code: 'P0001', message: 'private provider path and database internals',
+    } },
+  })
+  const handler = createReportImageRouteHandler({
+    resolveUser: async () => user,
+    createClient: async () => client as never,
+    storage: fakeStorage({ calls }),
+    routingMode: 'database',
+  })
+  const response = await handler.DELETE(new Request('https://example.invalid/api/report-images', {
+    method: 'DELETE',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ kind: 'report', image_id: 'image-1' }),
+  }))
+  const body = await response.json() as { error: { code: string } }
+  assert.equal(response.status, 502)
+  assert.equal(body.error.code, 'REPORT_IMAGE_DELETE_FAILED')
+  assert.equal(JSON.stringify(body).includes('private provider path'), false)
+  assert.deepEqual(calls.map(call => call.split(':')[0]), ['authorize_report_image_delete'])
 })
