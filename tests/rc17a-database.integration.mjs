@@ -152,9 +152,24 @@ begin;
 ${fixture}
 ${assertionsSql}
 rollback;
-select 'RC17A_FIXTURE_ROLLED_BACK=' || (
-  (select count(*) = 0 from information_schema.tables where table_schema = 'public' and table_name in ('workforce_actual_segments', 'audit_logs'))
-)::text;
+do $$
+declare
+  v_segments_exist boolean;
+  v_audit_exist boolean;
+  v_segment_audits bigint := 0;
+begin
+  select to_regclass('public.workforce_actual_segments') is not null into v_segments_exist;
+  select to_regclass('public.audit_logs') is not null into v_audit_exist;
+  if v_audit_exist then
+    execute 'select count(*) from public.audit_logs where entity_type = ''workforce_actual_segment''' into v_segment_audits;
+  end if;
+  if not v_segments_exist and v_segment_audits = 0 then
+    raise notice 'RC17A_FIXTURE_ROLLED_BACK=true';
+  else
+    raise notice 'RC17A_FIXTURE_ROLLED_BACK=false';
+  end if;
+end;
+$$;
 `
 
 const child = spawn(container ? 'docker' : 'psql', [
