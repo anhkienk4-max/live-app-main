@@ -9,7 +9,10 @@ import {
   AlertTriangle,
   Plus,
   RefreshCw,
-  } from 'lucide-react'
+  Users,
+  ShieldAlert,
+  Info,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -39,6 +42,11 @@ import {
   type ActualSegment,
   type WorkforceRole,
 } from '@/lib/services/workforceService'
+import {
+  resolveShiftPlannedInterval,
+  evaluateLateness,
+  evaluateEndVariance,
+} from '@/lib/workforce/latenessPolicy'
 
 interface ActualStaffingPanelProps {
   shift: Shift
@@ -47,11 +55,28 @@ interface ActualStaffingPanelProps {
 
 export function ActualStaffingPanel({ shift }: ActualStaffingPanelProps) {
   const { currentUser, loading, error, capabilities, identityKey } = useWorkforceCapabilities()
-  if (loading) return <p role="status">Đang xác minh phiên đăng nhập và quyền truy cập…</p>
-  if (error) return <p role="alert">{error}</p>
-  if (currentUser && !['admin', 'leader'].includes(resolveSystemPermission(currentUser))) return <p role="alert">Bạn không có quyền truy cập chấm công thực tế (403).</p>
-  if (!capabilities?.actual_staffing) return <p role="status">Chấm công thực tế đang tắt. Vui lòng chờ cấu hình được phê duyệt.</p>
+  if (loading) return <p role="status" className="text-xs text-slate-500">Đang xác minh phiên đăng nhập và quyền truy cập...</p>
+  if (error) return <p role="alert" className="text-xs text-rose-600">{error}</p>
+  if (currentUser && !['admin', 'leader'].includes(resolveSystemPermission(currentUser))) {
+    return <p role="alert" className="text-xs text-rose-600">Bạn không có quyền truy cập chấm công thực tế (403).</p>
+  }
+  if (!capabilities?.actual_staffing) {
+    return <p role="status" className="text-xs text-slate-500">Chức năng Chấm công thực tế đang tắt. Vui lòng chờ cấu hình được phê duyệt.</p>
+  }
   return <ActualStaffingWorkspace key={identityKey + ':' + shift.id} shift={shift} currentUser={currentUser} />
+}
+
+const roleLabels: Record<WorkforceRole, string> = {
+  host: 'Host (Chính / Co-host)',
+  support: 'Trợ livestream (Assistant)',
+  technical: 'Kỹ thuật viên (Technical)',
+}
+
+const coverageLabels: Record<string, string> = {
+  planned: 'Theo lịch phân công (Planned)',
+  cover: 'Trực thay / Ca PASS (Cover)',
+  replacement: 'Thay thế đổi ca (Replacement)',
+  extra: 'Tăng cường / Co-Host (Extra)',
 }
 
 function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProps) {
@@ -63,6 +88,8 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
   const [segments, setSegments] = React.useState<ActualSegment[]>([])
   const [loadError, setLoadError] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)
+  const [latenessPolicy, setLatenessPolicy] = React.useState<{ grace_minutes: number; policy_status: string } | null>(null)
+  const [plannedStaffList, setPlannedStaffList] = React.useState<Array<{ id: string; user_id: string; operational_role: string; status: string }>>([])
 
   // Record Modal State
   const [isRecordOpen, setIsRecordOpen] = React.useState(false)
@@ -83,55 +110,64 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
   const [revSubmitting, setRevSubmitting] = React.useState(false)
   const [revError, setRevError] = React.useState<string | null>(null)
 
-  const readSequence = React.useRef(0)
-  const loadSegments = React.useCallback(async () => {
-    const sequence = ++readSequence.current
-    setSegments([])
+  const reload = React.useCallback(() => {
     setLoading(true)
     setLoadError(null)
-    try {
-      const res = await workforceService.getActualSegments(shift.id)
-      if (sequence !== readSequence.current) return
-      setSegments(res.segments)
-    } catch (err: unknown) {
-      if (sequence !== readSequence.current) return
-      setSegments([])
-      setLoadError(workforceErrorMessage(err))
-      toast({
-        title: 'Không thể tải minh chứng chấm công',
-        description: workforceErrorMessage(err),
-        variant: 'destructive',
+    void workforceService.getActualSegments(shift.id)
+      .then((res) => {
+        setSegments(res.segments || [])
+        if (res.lateness_policy) setLatenessPolicy(res.lateness_policy)
+        if (res.planned_staff) setPlannedStaffList(res.planned_staff)
       })
-    } finally {
-      if (sequence === readSequence.current) setLoading(false)
-    }
-  }, [shift.id, toast])
+      .catch((e) => setLoadError(workforceErrorMessage(e)))
+      .finally(() => setLoading(false))
+  }, [shift.id])
 
   React.useEffect(() => {
-    const generation = readSequence
-    const frame = requestAnimationFrame(() => {
-      void loadSegments()
-    })
-    return () => { cancelAnimationFrame(frame); generation.current++ }
-  }, [loadSegments])
+    let ignore = false
+    void workforceService.getActualSegments(shift.id)
+      .then((res) => {
+        if (!ignore) {
+          setSegments(res.segments || [])
+          if (res.lateness_policy) setLatenessPolicy(res.lateness_policy)
+          if (res.planned_staff) setPlannedStaffList(res.planned_staff)
+          setLoadError(null)
+        }
+      })
+      .catch((e) => {
+        if (!ignore) setLoadError(workforceErrorMessage(e))
+      })
+      .finally(() => {
+        if (!ignore) setLoading(false)
+      })
+    return () => {
+      ignore = true
+    }
+  }, [shift.id])
 
-  // Pre-fill time when opening record modal
-  const openRecordModal = () => {
-    setRecStaffId(shift.host_id || '')
-    setRecRole('host')
+  const openRecordModal = (presetStaffId?: string, presetRole?: WorkforceRole) => {
+    setRecStaffId(presetStaffId || shift.host_id || '')
+    setRecRole(presetRole || 'host')
     setRecEventKind('worked')
     setRecCoverageKind('planned')
-    // Build default times from shift date and start/end time
-    if (shift.date && shift.start_time) {
-      setRecStartTime(`${shift.date}T${shift.start_time.slice(0, 5)}:00+07:00`)
-    } else {
-      setRecStartTime('')
+
+    try {
+      const interval = resolveShiftPlannedInterval(shift)
+      setRecStartTime(interval.startIso)
+      setRecEndTime(interval.endIso)
+    } catch {
+      if (shift.date && shift.start_time) {
+        setRecStartTime(`${shift.date}T${shift.start_time.slice(0, 5)}:00+07:00`)
+      } else {
+        setRecStartTime('')
+      }
+      if (shift.date && shift.end_time) {
+        setRecEndTime(`${shift.date}T${shift.end_time.slice(0, 5)}:00+07:00`)
+      } else {
+        setRecEndTime('')
+      }
     }
-    if (shift.date && shift.end_time) {
-      setRecEndTime(`${shift.date}T${shift.end_time.slice(0, 5)}:00+07:00`)
-    } else {
-      setRecEndTime('')
-    }
+
     setRecEvidenceNote('')
     setRecError(null)
     setIsRecordOpen(true)
@@ -181,17 +217,38 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
       })
 
       setIsRecordOpen(false)
-      loadSegments()
+      reload()
     } catch (err: unknown) {
-      setRecError(
-        workforceErrorMessage(err)
-      )
+      const msg = workforceErrorMessage(err)
+      if (msg.includes('WORKFORCE_APPROVED_STAFF_OVERLAP')) {
+        setRecError('Xung đột lịch: Nhân sự này đã có ca làm việc được duyệt trùng khung giờ.')
+      } else if (msg.includes('WORKFORCE_APPROVED_NO_SHOW_CONFLICT')) {
+        setRecError('Xung đột: Đã tồn tại bản ghi mâu thuẫn (vắng mặt/có mặt) được duyệt cho ca này.')
+      } else if (msg.includes('WORKFORCE_PLANNED_STAFF_UNSCHEDULED')) {
+        setRecError('Nhân sự này không có trong lịch phân công ban đầu của ca. Vui lòng chọn hình thức "Trực thay", "Thay thế đổi ca" hoặc "Tăng cường".')
+      } else {
+        setRecError(msg)
+      }
     } finally {
       setRecSubmitting(false)
     }
   }
 
   const openReviewModal = (seg: ActualSegment) => {
+    const isCreator = Boolean(
+      currentUser && (
+        (currentUser.id && seg.created_by === currentUser.id) ||
+        (currentUser.auth_user_id && seg.created_by === currentUser.auth_user_id)
+      )
+    )
+    if (isCreator) {
+      toast({
+        title: 'Không thể tự duyệt',
+        description: 'Quy tắc phân lập trách nhiệm: Bạn không được tự duyệt biên bản do chính mình tạo.',
+        variant: 'destructive',
+      })
+      return
+    }
     setReviewingSegment(seg)
     setRevDecision('approved')
     setRevNote('')
@@ -203,8 +260,29 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
     if (!reviewingSegment) return
     setRevError(null)
 
+    const isCreator = Boolean(
+      currentUser && (
+        (currentUser.id && reviewingSegment.created_by === currentUser.id) ||
+        (currentUser.auth_user_id && reviewingSegment.created_by === currentUser.auth_user_id)
+      )
+    )
+    if (isCreator) {
+      setRevError('Quy tắc kiểm soát: Bạn không thể tự duyệt biên bản do chính mình tạo.')
+      return
+    }
+
+        const isException = Boolean(
+      reviewingSegment.coverage_verification?.is_exception ||
+      reviewingSegment.evidence_note.includes('[EXCEPTION')
+    )
+
+    if (isException && revDecision === 'approved' && revNote.trim().length < 15) {
+      setRevError('Phê duyệt hồ sơ diện ngoại lệ bắt buộc phải có ghi chú giải trình tối thiểu 15 ký tự.')
+      return
+    }
+
     if (!revNote.trim() || revNote.trim().length < 8) {
-      setRevError('Ghi chú phê duyệt phải có ít nhất 8 ký tự.')
+      setRevError('Ghi chú xét duyệt phải có ít nhất 8 ký tự.')
       return
     }
 
@@ -218,32 +296,103 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
       })
 
       toast({
-        title: revDecision === 'approved' ? 'Đã phê duyệt minh chứng' : 'Đã từ chối minh chứng',
-        description: `Phân đoạn chấm công đã được cập nhật trạng thái ${revDecision}.`,
+        title: 'Xét duyệt hoàn tất',
+        description: `Phân đoạn chấm công đã được ${revDecision === 'approved' ? 'phê duyệt' : 'từ chối'}.`,
       })
 
       setReviewingSegment(null)
-      loadSegments()
+      reload()
     } catch (err: unknown) {
-      setRevError(
-        workforceErrorMessage(err)
-      )
+      const msg = workforceErrorMessage(err)
+      if (msg.includes('WORKFORCE_ACTUAL_STALE_OR_LOCKED')) {
+        setRevError('Dữ liệu đã bị thay đổi bởi người khác hoặc đã bị khóa. Vui lòng tải lại.')
+      } else if (msg.includes('WORKFORCE_SELF_REVIEW_BLOCKED')) {
+        setRevError('Quy tắc kiểm soát nội bộ: Không thể tự phê duyệt biên bản do chính mình tạo.')
+      } else if (msg.includes('WORKFORCE_EXCEPTION_APPROVAL_NOTE_REQUIRED')) {
+        setRevError('Phê duyệt ngoại lệ yêu cầu ghi chú giải trình ít nhất 15 ký tự.')
+      } else if (msg.includes('WORKFORCE_PLANNED_STAFF_UNSCHEDULED')) {
+        setRevError('Không thể phê duyệt: Ca theo lịch (Planned) không có trong danh sách phân công chính thức.')
+      } else if (msg.includes('WORKFORCE_APPROVED_STAFF_OVERLAP')) {
+        setRevError('Không thể duyệt: Nhân sự này đã có ca làm việc được duyệt trùng khung giờ.')
+      } else if (msg.includes('WORKFORCE_APPROVED_NO_SHOW_CONFLICT')) {
+        setRevError('Không thể duyệt: Đã tồn tại bản ghi đối lập được duyệt cho nhân sự này trong ca.')
+      } else {
+        setRevError(msg)
+      }
     } finally {
       setRevSubmitting(false)
     }
   }
 
-  const roleLabels: Record<WorkforceRole, string> = {
-    host: 'Host',
-    support: 'Trợ lý',
-    technical: 'Kỹ thuật',
-  }
+  const graceMinutes = latenessPolicy?.grace_minutes ?? 0
 
-  const coverageLabels: Record<string, string> = {
-    planned: 'Theo lịch',
-    cover: 'Trực thay',
-    replacement: 'Thay thế',
-    extra: 'Tăng cường',
+  function renderVarianceBadges(seg: ActualSegment) {
+    if (seg.event_kind !== 'worked' || !seg.actual_start_at || !seg.actual_end_at) return null
+
+    let plannedStartIso: string | null = null
+    let plannedEndIso: string | null = null
+    try {
+      const planned = resolveShiftPlannedInterval(shift)
+      plannedStartIso = planned.startIso
+      plannedEndIso = planned.endIso
+    } catch {
+      if (shift.start_at && shift.end_at) {
+        plannedStartIso = shift.start_at
+        plannedEndIso = shift.end_at
+      }
+    }
+
+    const badges = []
+    if (plannedStartIso) {
+      try {
+        const lateness = evaluateLateness(seg.actual_start_at, plannedStartIso, graceMinutes)
+        if (lateness.isOnTime) {
+          badges.push(
+            <span key="ontime" className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-800">
+              Đúng giờ
+            </span>
+          )
+        } else if (lateness.isWithinGrace) {
+          badges.push(
+            <span key="grace" className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800" title={`Trễ ${lateness.actualLateMinutes} phút (trong ân hạn ${graceMinutes}p)`}>
+              Trong ân hạn (+{lateness.actualLateMinutes}p &le; {graceMinutes}p)
+            </span>
+          )
+        } else {
+          badges.push(
+            <span key="late" className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-100 text-rose-800" title={`Trễ thực tế: ${lateness.actualLateMinutes}p, vượt ân hạn: ${lateness.lateAfterGraceMinutes}p`}>
+              Đi trễ (+{lateness.actualLateMinutes}p{graceMinutes > 0 ? `, vượt ${lateness.lateAfterGraceMinutes}p` : ''})
+            </span>
+          )
+        }
+      } catch {
+        // invalid timestamps ignore
+      }
+    }
+
+    if (plannedEndIso) {
+      try {
+        const endVar = evaluateEndVariance(seg.actual_end_at, plannedEndIso)
+        if (endVar.overtimeMinutes > 0) {
+          badges.push(
+            <span key="ot" className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-800">
+              +{endVar.overtimeMinutes}p tăng ca
+            </span>
+          )
+        } else if (endVar.earlyDepartureMinutes > 0) {
+          badges.push(
+            <span key="early" className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-100 text-rose-800">
+              Sớm {endVar.earlyDepartureMinutes}p
+            </span>
+          )
+        }
+      } catch {
+        // invalid timestamps ignore
+      }
+    }
+
+    if (badges.length === 0) return null
+    return <div className="flex flex-wrap gap-1 mt-1">{badges}</div>
   }
 
   return (
@@ -252,39 +401,94 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
       {!isCompleted && (
         <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-4 text-xs text-amber-800 space-y-1">
           <div className="flex items-center gap-1.5 font-bold">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
-            <span>Ca làm việc chưa hoàn thành (Chưa thể chấm công)</span>
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+            <span>Ca livestream chưa hoàn thành (Chưa Completed)</span>
           </div>
           <p className="leading-relaxed">
-            Chỉ ca làm việc có trạng thái <strong>Hoàn thành (Completed)</strong> mới có thể ghi nhận chấm công thực tế và phê duyệt thanh toán. Trạng thái hiện tại: <span className="font-mono uppercase font-semibold">{shift.status}</span>.
+            Hệ thống tuân thủ nguyên tắc kiểm soát nội bộ: <strong>Chỉ các ca đã hoàn thành (Status = completed) mới được phép ghi nhận và đối soát chấm công thực tế.</strong> Không tự động suy diễn ca chưa bắt đầu hoặc đang diễn ra thành vắng mặt (no-show).
           </p>
         </div>
       )}
 
-      {/* Header & Record Button */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      {/* Policy and Information Banner */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-xs">
+        <div className="flex items-center gap-2 text-slate-700">
+          <Info className="h-4 w-4 text-blue-600 shrink-0" />
+          <span>
+            Chính sách ân hạn điểm danh:{' '}
+            <strong className="font-semibold">{graceMinutes} phút</strong>{' '}
+            <span className="text-slate-500">
+              ({latenessPolicy?.policy_status === 'configured' ? 'Đã cấu hình' : 'Chờ xác nhận chính sách công ty'})
+            </span>
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+          <ShieldAlert className="h-3.5 w-3.5 text-amber-600" />
+          <span>Phân lập trách nhiệm: Người ghi nhận không thể tự phê duyệt</span>
+        </div>
+      </div>
+
+      {/* Header & Quick Action Buttons */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Chấm công thực tế & Phê duyệt độc lập
-          </h4>
+          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <Users className="h-4 w-4 text-blue-600" />
+            Minh chứng & Chấm công thực tế (Actual Staffing)
+          </h3>
           <p className="text-xs text-slate-500">
-            Minh chứng thời gian làm việc thực tế, vắng mặt có lý do và phân đoạn tăng ca.
+            Ghi nhận giờ làm việc thực tế, xử lý ca qua đêm, đổi ca, ca PASS và nhiều Host.
           </p>
         </div>
 
         {isCompleted && isSupervisor && (
-          <Button
-            size="sm"
-            onClick={openRecordModal}
-            className="bg-blue-600 hover:bg-blue-700 text-xs text-white"
-          >
-            <Plus className="h-3.5 w-3.5 mr-1" />
-            Ghi nhận chấm công
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {shift.host_id && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => openRecordModal(shift.host_id, 'host')}
+                className="h-8 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"
+              >
+                + Host chính
+              </Button>
+            )}
+            {shift.support_id && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => openRecordModal(shift.support_id, 'support')}
+                className="h-8 text-xs border-purple-200 text-purple-700 hover:bg-purple-50"
+              >
+                + Trợ live
+              </Button>
+            )}
+            {plannedStaffList
+              .filter((p) => p.user_id !== shift.host_id && p.user_id !== shift.support_id && p.user_id !== shift.technical_id)
+              .map((p) => (
+                <Button
+                  key={p.id}
+                  size="sm"
+                  variant="outline"
+                  onClick={() => openRecordModal(p.user_id, p.operational_role as WorkforceRole)}
+                  className="h-8 text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                >
+                  + {p.operational_role}: {p.user_id}
+                </Button>
+              ))}
+            <Button
+              size="sm"
+              onClick={() => openRecordModal()}
+              className="h-8 bg-blue-600 hover:bg-blue-700 text-xs text-white"
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              Ghi nhận chấm công
+            </Button>
+          </div>
         )}
       </div>
 
-      {loadError && <p role="alert">{loadError}</p>}
+      {loadError && <p role="alert" className="text-xs text-rose-600">{loadError}</p>}
+
       {/* Segments Table */}
       <div className="overflow-x-auto rounded-lg border bg-white shadow-sm">
         <table className="w-full text-left text-xs">
@@ -294,15 +498,15 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
               <th className="px-3 py-2.5">Vai trò</th>
               <th className="px-3 py-2.5">Sự kiện</th>
               <th className="px-3 py-2.5">Hình thức</th>
-              <th className="px-3 py-2.5">Thời gian thực tế</th>
-              <th className="px-3 py-2.5">Ghi chú minh chứng</th>
+              <th className="px-3 py-2.5">Thời gian thực tế & Độ lệch</th>
+              <th className="px-3 py-2.5">Minh chứng</th>
               <th className="px-3 py-2.5">Trạng thái duyệt</th>
               <th className="px-3 py-2.5 text-right">Thao tác</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loadError ? (
-              <tr><td colSpan={7} className="p-4">Không thể tải minh chứng. Hãy thử lại.</td></tr>
+              <tr><td colSpan={8} className="p-4 text-center text-slate-500">Không thể tải minh chứng. Hãy thử lại.</td></tr>
             ) : loading ? (
               <tr>
                 <td colSpan={8} className="py-6 text-center text-slate-500">
@@ -313,12 +517,17 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
             ) : segments.length === 0 ? (
               <tr>
                 <td colSpan={8} className="py-6 text-center text-slate-500">
-                  Chưa có minh chứng chấm công: UNKNOWN. Không suy diễn thành no-show từ lịch ca.
+                  Chưa có minh chứng chấm công (UNKNOWN). Hệ thống không tự suy diễn thành vắng mặt từ lịch ca.
                 </td>
               </tr>
             ) : (
               segments.map((seg) => {
-                const isCreator = currentUser?.id === seg.created_by
+                const isCreator = Boolean(
+                  currentUser && (
+                    (currentUser.id && seg.created_by === currentUser.id) ||
+                    (currentUser.auth_user_id && seg.created_by === currentUser.auth_user_id)
+                  )
+                )
                 const isApproved = seg.review_status === 'approved'
                 const isRejected = seg.review_status === 'rejected'
                 const isDraftStatus = seg.review_status === 'draft'
@@ -343,7 +552,12 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-slate-600">
-                      {coverageLabels[seg.coverage_kind] || seg.coverage_kind}
+                      <div>{coverageLabels[seg.coverage_kind] || seg.coverage_kind}</div>
+                      {(seg.coverage_verification?.is_exception || seg.evidence_note.includes('[EXCEPTION')) && (
+                        <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200 mt-0.5" title={`Ngoại lệ chưa xác minh qua lịch/đổi ca (${seg.coverage_verification?.matched_source || 'unverified'})`}>
+                          Diện ngoại lệ
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 font-mono text-slate-700">
                       {seg.event_kind === 'worked' && seg.actual_start_at && seg.actual_end_at ? (
@@ -353,6 +567,7 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
                             {' → '}
                             {new Date(seg.actual_end_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                           </span>
+                          {renderVarianceBadges(seg)}
                         </div>
                       ) : (
                         <span className="text-slate-400 italic">Không có thời gian</span>
@@ -365,17 +580,17 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
                       {isApproved ? (
                         <div className="flex items-center gap-1 text-emerald-700 font-semibold text-[11px]">
                           <CheckCircle2 className="h-3.5 w-3.5" />
-                          <span>Đã duyệt</span>
+                          <span>Đã duyệt (v{seg.version})</span>
                         </div>
                       ) : isRejected ? (
                         <div className="flex items-center gap-1 text-rose-700 font-semibold text-[11px]">
                           <XCircle className="h-3.5 w-3.5" />
-                          <span>Bị từ chối</span>
+                          <span>Bị từ chối (v{seg.version})</span>
                         </div>
                       ) : (
                         <div className="flex items-center gap-1 text-amber-700 font-semibold text-[11px]">
                           <Clock className="h-3.5 w-3.5" />
-                          <span>Chờ duyệt</span>
+                          <span>Chờ duyệt (v{seg.version})</span>
                         </div>
                       )}
                       {seg.reviewed_by && (
@@ -392,9 +607,9 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
                           disabled={isCreator}
                           onClick={() => openReviewModal(seg)}
                           className={`h-7 text-xs ${
-                            isCreator ? 'opacity-50 cursor-not-allowed' : 'text-blue-600 hover:bg-blue-50'
+                            isCreator ? 'opacity-50 cursor-not-allowed text-slate-400' : 'text-blue-600 hover:bg-blue-50'
                           }`}
-                          title={isCreator ? 'Người tạo không thể tự duyệt (Self-review blocked)' : 'Phê duyệt phân đoạn'}
+                          title={isCreator ? 'Quy tắc phân lập trách nhiệm: Người tạo không thể tự duyệt' : 'Phê duyệt phân đoạn'}
                         >
                           {isCreator ? 'Không thể tự duyệt' : 'Xét duyệt'}
                         </Button>
@@ -410,13 +625,13 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
 
       {/* RECORD ATTENDANCE MODAL */}
       <Dialog open={isRecordOpen} onOpenChange={setIsRecordOpen}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto max-w-md">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-base font-bold text-slate-900">
-              Ghi nhận chấm công ca làm việc
+              Ghi nhận minh chứng chấm công thực tế
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
-              Ghi nhận thời gian có mặt thực tế hoặc xác nhận vắng mặt kèm minh chứng.
+              Tạo bản ghi chấm công (Draft) đối soát với lịch ca. Yêu cầu một quản lý khác phê duyệt.
             </DialogDescription>
           </DialogHeader>
 
@@ -430,13 +645,14 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label htmlFor="actualstaffingpanel-field-1" className="text-xs font-semibold text-slate-700">
+                <label htmlFor="actualstaffingpanel-field-staff-id" className="text-xs font-semibold text-slate-700">
                   Mã nhân sự (Staff ID) <span className="text-rose-500">*</span>
                 </label>
-                <Input id="actualstaffingpanel-field-1"
-                  type="text"
+                <Input
+                  id="actualstaffingpanel-field-staff-id"
                   required
-                  placeholder="Nhập staff_id..."
+                  aria-label="Mã nhân sự"
+                  placeholder="usr-xxx..."
                   value={recStaffId}
                   onChange={(e) => setRecStaffId(e.target.value)}
                   className="h-9 text-xs font-mono"
@@ -444,15 +660,18 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Vai trò</label>
-                <Select value={recRole} onValueChange={(val: WorkforceRole) => setRecRole(val)}>
+                <label className="text-xs font-semibold text-slate-700">Vai trò vận hành</label>
+                <Select
+                  value={recRole}
+                  onValueChange={(val: WorkforceRole) => setRecRole(val)}
+                >
                   <SelectTrigger className="h-9 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="host">Host Livestream</SelectItem>
-                    <SelectItem value="support">Trợ lý phiên Live</SelectItem>
-                    <SelectItem value="technical">Kỹ thuật viên</SelectItem>
+                    <SelectItem value="host">Host (Chính / Co-host)</SelectItem>
+                    <SelectItem value="support">Trợ livestream (Assistant)</SelectItem>
+                    <SelectItem value="technical">Kỹ thuật viên (Technical)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -460,7 +679,7 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Sự kiện chấm công</label>
+                <label className="text-xs font-semibold text-slate-700">Sự kiện tham gia</label>
                 <Select
                   value={recEventKind}
                   onValueChange={(val: 'worked' | 'no_show') => setRecEventKind(val)}
@@ -479,16 +698,16 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
                 <label className="text-xs font-semibold text-slate-700">Hình thức phân công</label>
                 <Select
                   value={recCoverageKind}
-                  onValueChange={(val: typeof recCoverageKind) => setRecCoverageKind(val)}
+                  onValueChange={(val: 'planned' | 'cover' | 'replacement' | 'extra') => setRecCoverageKind(val)}
                 >
                   <SelectTrigger className="h-9 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="planned">Theo lịch (Planned)</SelectItem>
-                    <SelectItem value="cover">Trực thay (Cover)</SelectItem>
-                    <SelectItem value="replacement">Thay thế (Replacement)</SelectItem>
-                    <SelectItem value="extra">Tăng cường (Extra)</SelectItem>
+                    <SelectItem value="planned">Theo lịch phân công (Planned)</SelectItem>
+                    <SelectItem value="cover">Trực thay / Ca PASS (Cover)</SelectItem>
+                    <SelectItem value="replacement">Thay thế đổi ca (Replacement)</SelectItem>
+                    <SelectItem value="extra">Tăng cường / Co-Host (Extra)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -497,10 +716,11 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
             {recEventKind === 'worked' && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label htmlFor="actualstaffingpanel-field-2" className="text-xs font-semibold text-slate-700">
+                  <label htmlFor="actualstaffingpanel-field-start-time" className="text-xs font-semibold text-slate-700">
                     Bắt đầu thực tế (ISO) <span className="text-rose-500">*</span>
                   </label>
-                  <Input id="actualstaffingpanel-field-2"
+                  <Input
+                    id="actualstaffingpanel-field-start-time"
                     type="text"
                     required
                     aria-label="Bắt đầu thực tế"
@@ -512,10 +732,11 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
                 </div>
 
                 <div className="space-y-1.5">
-                  <label htmlFor="actualstaffingpanel-field-3" className="text-xs font-semibold text-slate-700">
+                  <label htmlFor="actualstaffingpanel-field-end-time" className="text-xs font-semibold text-slate-700">
                     Kết thúc thực tế (ISO) <span className="text-rose-500">*</span>
                   </label>
-                  <Input id="actualstaffingpanel-field-3"
+                  <Input
+                    id="actualstaffingpanel-field-end-time"
                     type="text"
                     required
                     aria-label="Kết thúc thực tế"
@@ -529,10 +750,11 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
             )}
 
             <div className="space-y-1.5">
-              <label htmlFor="actualstaffingpanel-field-4" className="text-xs font-semibold text-slate-700">
+              <label htmlFor="actualstaffingpanel-field-evidence-note" className="text-xs font-semibold text-slate-700">
                 Ghi chú minh chứng đối soát <span className="text-rose-500">*</span>
               </label>
-              <Textarea id="actualstaffingpanel-field-4"
+              <Textarea
+                id="actualstaffingpanel-field-evidence-note"
                 required
                 rows={2}
                 placeholder="Ghi rõ nguồn kiểm tra: camera, nhật ký phiên live, biên bản ca..."
@@ -590,6 +812,21 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
                 </div>
               )}
 
+              {(reviewingSegment.coverage_verification?.is_exception || reviewingSegment.evidence_note.includes('[EXCEPTION')) && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50/90 p-2.5 text-xs text-amber-900 space-y-1">
+                  <div className="flex items-center gap-1 font-semibold text-amber-800">
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                    <span>Hồ sơ chấm công diện NGOẠI LỆ</span>
+                  </div>
+                  <p className="text-[11px] text-amber-800">
+                    Nguồn xác minh: <span className="font-mono">{reviewingSegment.coverage_verification?.matched_source || 'unverified_exception'}</span>
+                  </p>
+                  <p className="text-[11px] text-amber-900 font-medium">
+                    * Lưu ý xét duyệt: Ca ngoại lệ bắt buộc phải có giải trình lý do phê duyệt tối thiểu 15 ký tự.
+                  </p>
+                </div>
+              )}
+
               <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 text-xs space-y-1">
                 <div>
                   <span className="text-slate-500">Minh chứng ghi nhận: </span>
@@ -618,10 +855,11 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="actualstaffingpanel-field-5" className="text-xs font-semibold text-slate-700">
+                <label htmlFor="actualstaffingpanel-field-review-note" className="text-xs font-semibold text-slate-700">
                   Ghi chú của người xét duyệt <span className="text-rose-500">*</span>
                 </label>
-                <Textarea id="actualstaffingpanel-field-5"
+                <Textarea
+                  id="actualstaffingpanel-field-review-note"
                   required
                   rows={2}
                   placeholder="Ghi rõ lý do phê duyệt hoặc từ chối (tối thiểu 8 ký tự)..."
@@ -632,7 +870,11 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
               </div>
 
               <DialogFooter className="gap-2 sm:gap-0">
-              {revError && <Button type="button" variant="outline" onClick={() => { setReviewingSegment(null); void loadSegments() }}>Tải lại minh chứng</Button>}
+                {revError && (
+                  <Button type="button" variant="outline" size="sm" onClick={() => { setReviewingSegment(null); reload() }}>
+                    Tải lại minh chứng
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="outline"

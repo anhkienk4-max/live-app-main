@@ -9,10 +9,10 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "release/rc16l-calendar-export",
-    "head": "406b6f2489e5ec44264ae59a4ed34111a32d287f",
-    "origin_main": "4f03c0b881bcc77547e72a2d5c655b07690746d6",
-    "worktree": "C:/Users/KienNguyen/OPS_RESTORE_LAB_RC16K/rc16l-calendar-export-release"
+    "branch": "feat/rc17a-actual-staffing",
+    "head": "8db1a8920edc10ebf5d625ec01d2a871e1cd3d53",
+    "origin_main": "28f904a40f361ff6863f827309c136a0c98329b0",
+    "worktree": "C:/Users/KienNguyen/OPS_RESTORE_LAB_RC16K/rc17a-actual-staffing"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -91,12 +91,12 @@
       "roots": {
         "app": 60,
         "components": 151,
-        "lib": 210,
+        "lib": 211,
         "scripts": 18,
-        "supabase": 87,
-        "tests": 198
+        "supabase": 89,
+        "tests": 201
       },
-      "total": 724
+      "total": 730
     },
     "tests": {
       "files": [
@@ -214,6 +214,7 @@
         "tests/rc16k-pagination.test.ts",
         "tests/rc16l-api.test.ts",
         "tests/rc16l-calendar.test.ts",
+        "tests/rc17a-actual-staffing.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
         "tests/registration-board-performance.test.ts",
         "tests/report-history-access.test.ts",
@@ -269,7 +270,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 168
+      "count": 169
     },
     "migrations": {
       "files": [
@@ -341,9 +342,10 @@
         "supabase/migrations/20261012000000_rc16_workforce_payroll_foundation.sql",
         "supabase/migrations/20261012000001_rc16b_draft_payroll_correction.sql",
         "supabase/migrations/20261012145735_p0_audit_privilege_hardening.sql",
-        "supabase/migrations/20261012171503_rc16k_bounded_shift_lists.sql"
+        "supabase/migrations/20261012171503_rc16k_bounded_shift_lists.sql",
+        "supabase/migrations/20261017000000_rc17a_actual_staffing_audit.sql"
       ],
-      "count": 69
+      "count": 70
     }
   },
   "verification": {
@@ -357,5 +359,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-16T20:12:34+07:00"
+  "synced_at": "2026-10-18T21:53:27+07:00"
 }

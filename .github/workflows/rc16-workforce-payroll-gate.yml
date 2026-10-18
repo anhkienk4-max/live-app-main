@@ -53,6 +53,10 @@ on:
       - 'tests/auth-session-foundation.test.ts'
       - 'app/api/workforce/**'
       - 'tests/rc16-*.test.ts'
+      - 'tests/rc17a-*.test.ts'
+      - 'tests/rc17a-database.integration.mjs'
+      - 'supabase/migrations/*rc17*.sql'
+      - 'tests/fixtures/rc17a*'
       - 'supabase/migrations/*rc16*.sql'
       - 'tests/fixtures/rc16*.sql'
       - 'tests/rc16-payroll-postgres.integration.mjs'
@@ -135,6 +139,7 @@ jobs:
         run: |
           node tests/rc16k-pagination-postgres.integration.mjs
           node tests/rc16-payroll-postgres.integration.mjs
+          node tests/rc17a-database.integration.mjs
 
       - name: TypeScript type check
         run: pnpm exec tsc --noEmit --incremental false
@@ -146,7 +151,7 @@ jobs:
           TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
         run: node scripts/run-final-regression.mjs
       - name: RC16 synthetic workforce & payroll contract tests
-        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc16-*.test.ts
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc16-*.test.ts tests/rc17a-actual-staffing.test.ts
       - name: Authentication isolation regression tests
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/auth-session-foundation.test.ts
       - name: Post-main UI security and session contracts
