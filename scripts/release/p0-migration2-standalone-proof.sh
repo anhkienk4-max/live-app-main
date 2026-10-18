@@ -36,8 +36,9 @@ marker="$("${psql_cmd[@]}" --tuples-only --no-align --command="SELECT value FROM
 log "Synthetic target marker: PASS $run_marker"
 
 "${psql_cmd[@]}" --file="$fixture"
-"${psql_cmd[@]}" --tuples-only --no-align --command="SELECT private.can_read_shift('s_open') AND private.can_read_shift('s_pending');" > shift-discovery-before.txt
-[[ "$(tr -d '[:space:]' < shift-discovery-before.txt)" == 't' ]] || fail 'baseline shift-discovery fixture does not model open/pending semantics'
+shift_discovery_sql="BEGIN; SET LOCAL ROLE authenticated; SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000002',true); SELECT private.can_read_shift('s_open'); ROLLBACK; BEGIN; SET LOCAL ROLE authenticated; SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000003',true); SELECT private.can_read_shift('s_pending'); ROLLBACK;"
+"${psql_cmd[@]}" --tuples-only --no-align --command="$shift_discovery_sql" > shift-discovery-before.txt
+[[ "$(grep -c '^t$' shift-discovery-before.txt)" -eq 2 ]] || fail 'baseline shift-discovery fixture does not model open/pending member semantics'
 "${psql_cmd[@]}" --tuples-only --no-align --command="SELECT md5(pg_get_functiondef('private.can_read_shift(text)'::regprocedure));" > can-read-shift.before
 "${psql_cmd[@]}" --tuples-only --no-align --command="SELECT md5(pg_get_functiondef('public.get_report_list_page(integer,integer,jsonb,boolean)'::regprocedure));" > report-list.before
 "${psql_cmd[@]}" --tuples-only --no-align --command="SELECT proowner::text || '|' || coalesce(proacl::text,'NULL') || '|' || prosecdef || '|' || coalesce(proconfig::text,'NULL') FROM pg_proc WHERE oid='public.get_report_revisions(text)'::regprocedure;" > revisions-meta.before
@@ -65,6 +66,9 @@ log "Migration 2 injected SQL error: nonzero_exit=$injected_exit; function/polic
 
 # Apply the exact, hash-locked Migration 2 with no Migration 1 execution.
 "${psql_cmd[@]}" --file="$migration"
+"${psql_cmd[@]}" --tuples-only --no-align --command="$shift_discovery_sql" > shift-discovery-after.txt
+[[ "$(grep -c '^t$' shift-discovery-after.txt)" -eq 2 ]] || fail 'Migration 2 changed open/pending shift-discovery behavior'
+cmp -s shift-discovery-before.txt shift-discovery-after.txt || fail 'Migration 2 changed baseline shift-discovery results'
 "${psql_cmd[@]}" --tuples-only --no-align --command="SELECT md5(pg_get_functiondef('private.can_read_shift(text)'::regprocedure));" > can-read-shift.after
 "${psql_cmd[@]}" --tuples-only --no-align --command="SELECT md5(pg_get_functiondef('public.get_report_list_page(integer,integer,jsonb,boolean)'::regprocedure));" > report-list.after
 "${psql_cmd[@]}" --tuples-only --no-align --command="SELECT proowner::text || '|' || coalesce(proacl::text,'NULL') || '|' || prosecdef || '|' || coalesce(proconfig::text,'NULL') FROM pg_proc WHERE oid='public.get_report_revisions(text)'::regprocedure;" > revisions-meta.after
