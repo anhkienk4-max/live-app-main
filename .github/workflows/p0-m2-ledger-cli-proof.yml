@@ -34,7 +34,6 @@ jobs:
       PGPORT: '5432'
       PGUSER: postgres
       PGDATABASE: postgres
-      POSTGRES_CONTAINER_ID: ${{ job.services.postgres.id }}
     steps:
       - name: Checkout exact test branch without persisted token
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -63,6 +62,8 @@ jobs:
       - name: Validate Python rehearsal syntax
         run: python3 -c "import ast, pathlib; ast.parse(pathlib.Path('scripts/release/p0-m2-ledger-cli-proof.py').read_text())"
       - name: Rehearse isolated migration ledger and CLI commands
+        env:
+          POSTGRES_CONTAINER_ID: ${{ job.services.postgres.id }}
         run: python3 scripts/release/p0-m2-ledger-cli-proof.py
       - name: Record scope
         if: always()
