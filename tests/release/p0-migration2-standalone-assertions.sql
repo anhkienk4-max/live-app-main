@@ -65,13 +65,12 @@ SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000002',true);
 DO $$ BEGIN
   IF NOT private.can_read_shift('s_open') THEN RAISE EXCEPTION 'OPEN_BASELINE_FIXTURE_EXPECTATION'; END IF;
-  IF private.can_read_report('s_open','m_open') OR EXISTS (SELECT 1 FROM public.reports WHERE id='r_open')
-    OR EXISTS (SELECT 1 FROM public.report_revisions WHERE report_id='r_open')
-    OR EXISTS (SELECT 1 FROM public.report_images WHERE report_id='r_open')
-    OR EXISTS (SELECT 1 FROM public.live_report_images WHERE report_id='r_open')
-    OR EXISTS (SELECT 1 FROM public.live_report_images WHERE report_id IS NULL) THEN
-    RAISE EXCEPTION 'OPEN_REGISTRATION_REPORT_DATA_LEAK';
-  END IF;
+  IF private.can_read_report('s_open','m_open') THEN RAISE EXCEPTION 'OPEN_REPORT_HELPER_LEAK'; END IF;
+  IF EXISTS (SELECT 1 FROM public.reports WHERE id='r_open') THEN RAISE EXCEPTION 'OPEN_REPORT_ROW_LEAK'; END IF;
+  IF EXISTS (SELECT 1 FROM public.report_revisions WHERE report_id='r_open') THEN RAISE EXCEPTION 'OPEN_REPORT_REVISION_LEAK'; END IF;
+  IF EXISTS (SELECT 1 FROM public.report_images WHERE report_id='r_open') THEN RAISE EXCEPTION 'OPEN_REPORT_IMAGE_LEAK'; END IF;
+  IF EXISTS (SELECT 1 FROM public.live_report_images WHERE report_id='r_open') THEN RAISE EXCEPTION 'OPEN_LIVE_REPORT_IMAGE_LEAK'; END IF;
+  IF EXISTS (SELECT 1 FROM public.live_report_images WHERE report_id IS NULL) THEN RAISE EXCEPTION 'OPEN_UNBOUND_LIVE_IMAGE_LEAK'; END IF;
 END $$;
 ROLLBACK;
 
@@ -80,13 +79,12 @@ SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000003',true);
 DO $$ BEGIN
   IF NOT private.can_read_shift('s_pending') THEN RAISE EXCEPTION 'PENDING_BASELINE_FIXTURE_EXPECTATION'; END IF;
-  IF private.can_read_report('s_pending','m_pending') OR EXISTS (SELECT 1 FROM public.reports WHERE id='r_pending')
-    OR EXISTS (SELECT 1 FROM public.report_revisions WHERE report_id='r_pending')
-    OR EXISTS (SELECT 1 FROM public.report_images WHERE report_id='r_pending')
-    OR EXISTS (SELECT 1 FROM public.live_report_images WHERE report_id='r_pending')
-    OR EXISTS (SELECT 1 FROM public.live_report_images WHERE report_id IS NULL) THEN
-    RAISE EXCEPTION 'PENDING_REGISTRATION_REPORT_DATA_LEAK';
-  END IF;
+  IF private.can_read_report('s_pending','m_pending') THEN RAISE EXCEPTION 'PENDING_REPORT_HELPER_LEAK'; END IF;
+  IF EXISTS (SELECT 1 FROM public.reports WHERE id='r_pending') THEN RAISE EXCEPTION 'PENDING_REPORT_ROW_LEAK'; END IF;
+  IF EXISTS (SELECT 1 FROM public.report_revisions WHERE report_id='r_pending') THEN RAISE EXCEPTION 'PENDING_REPORT_REVISION_LEAK'; END IF;
+  IF EXISTS (SELECT 1 FROM public.report_images WHERE report_id='r_pending') THEN RAISE EXCEPTION 'PENDING_REPORT_IMAGE_LEAK'; END IF;
+  IF EXISTS (SELECT 1 FROM public.live_report_images WHERE report_id='r_pending') THEN RAISE EXCEPTION 'PENDING_LIVE_REPORT_IMAGE_LEAK'; END IF;
+  IF EXISTS (SELECT 1 FROM public.live_report_images WHERE report_id IS NULL) THEN RAISE EXCEPTION 'PENDING_UNBOUND_LIVE_IMAGE_LEAK'; END IF;
 END $$;
 ROLLBACK;
 
