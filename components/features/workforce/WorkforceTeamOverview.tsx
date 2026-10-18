@@ -29,6 +29,7 @@ interface WorkforceTeamOverviewProps {
   month: string
   role: WorkforceRole
   loading?: boolean
+  error?: string | null
   onSelectStaff: (staffId: string) => void
 }
 
@@ -36,6 +37,7 @@ export function WorkforceTeamOverview({
   overview,
   staffList,
   loading = false,
+  error = null,
   onSelectStaff,
 }: WorkforceTeamOverviewProps) {
   const [searchTerm, setSearchTerm] = React.useState('')
@@ -66,6 +68,18 @@ export function WorkforceTeamOverview({
           ))}
         </div>
       </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <Card className="border-rose-200 bg-rose-50/50 p-6 text-center">
+        <AlertTriangle className="mx-auto h-8 w-8 text-rose-600" />
+        <h3 className="mt-2 text-sm font-semibold text-rose-900">
+          Không thể tải tổng quan hiệu suất đội ngũ
+        </h3>
+        <p className="mt-1 text-xs text-rose-600">{error}</p>
+      </Card>
     )
   }
 

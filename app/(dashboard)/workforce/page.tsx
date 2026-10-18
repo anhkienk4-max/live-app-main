@@ -213,7 +213,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
         )}
       </div>
 
-      {overviewError && <p role="alert">{overviewError}</p>}
+      {overviewError && <div role="alert" className="sr-only">{overviewError}</div>}
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as typeof activeTab)} className="space-y-4">
         <TabsList className="grid group-data-[orientation=horizontal]/tabs:h-auto w-full grid-cols-3 bg-slate-100 p-1 rounded-lg">
@@ -239,6 +239,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
             month={month}
             role={role}
             loading={loadingOverview}
+            error={overviewError}
             onSelectStaff={handleDrilldownStaff}
           />
         </TabsContent>
@@ -262,6 +263,8 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
           <WorkforceLeaderboard
             leaderboard={overviewData?.leaderboard || []}
             isConfigured={overviewData?.leaderboard_policy_configured || false}
+            loading={loadingOverview}
+            error={overviewError}
             month={month}
             role={role}
           />
