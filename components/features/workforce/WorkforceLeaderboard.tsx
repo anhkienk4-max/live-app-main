@@ -9,6 +9,7 @@ import {
   Award,
   ShieldCheck,
   Info,
+  AlertTriangle,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -19,6 +20,8 @@ interface WorkforceLeaderboardProps {
   isConfigured: boolean
   month: string
   role: WorkforceRole
+  loading?: boolean
+  error?: string | null
 }
 
 export function WorkforceLeaderboard({
@@ -26,6 +29,8 @@ export function WorkforceLeaderboard({
   isConfigured,
   month,
   role,
+  loading = false,
+  error = null,
 }: WorkforceLeaderboardProps) {
   const pagination = useListPagination('workforce_leaderboard', 10)
   const range = pageRange(leaderboard.length, pagination.page, pagination.pageSize)
@@ -61,7 +66,23 @@ export function WorkforceLeaderboard({
       </CardHeader>
 
       <CardContent className="p-4 space-y-4">
-        {!isConfigured ? (
+        {loading ? (
+          <div className="rounded-lg border border-slate-200 bg-white p-6 text-center animate-pulse">
+            <div className="mx-auto h-8 w-8 rounded-full bg-slate-200" />
+            <div className="mx-auto mt-3 h-4 w-48 rounded bg-slate-200" />
+            <div className="mx-auto mt-2 h-3 w-64 rounded bg-slate-100" />
+          </div>
+        ) : error ? (
+          <div className="rounded-lg border border-rose-200 bg-rose-50/50 p-6 text-center">
+            <AlertTriangle className="mx-auto h-8 w-8 text-rose-600" />
+            <h4 className="mt-2 text-sm font-semibold text-rose-900">
+              Không thể tải bảng xếp hạng
+            </h4>
+            <p className="mx-auto mt-1 max-w-md text-xs text-rose-600 leading-relaxed">
+              {error}
+            </p>
+          </div>
+        ) : !isConfigured ? (
           <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-6 text-center">
             <Info className="mx-auto h-8 w-8 text-slate-400" />
             <h4 className="mt-2 text-sm font-semibold text-slate-800">
