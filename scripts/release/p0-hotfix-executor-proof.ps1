@@ -22,10 +22,11 @@ function New-PsqlStartInfo([string]$Database, [int]$Port) {
   $info.RedirectStandardOutput = $true
   $info.RedirectStandardError = $true
   $info.CreateNoWindow = $true
+  $info.Environment['PGCONNECT_TIMEOUT'] = '3'
   foreach ($argument in @(
     '-X', '--no-password', '--no-psqlrc', '--set=ON_ERROR_STOP=1',
     '--tuples-only', '--no-align', '--host=127.0.0.1', "--port=$Port",
-    '--username=postgres', "--dbname=$Database", '--connect-timeout=3'
+    '--username=postgres', "--dbname=$Database"
   )) {
     [void]$info.ArgumentList.Add($argument)
   }
