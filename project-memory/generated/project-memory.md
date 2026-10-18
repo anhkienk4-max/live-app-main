@@ -2,14 +2,14 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-16T20:12:34+07:00
+Generated at: 2026-10-18T15:50:56+07:00
 
 ## Repository
 
-- Branch: `release/rc16l-calendar-export`
-- HEAD: `406b6f2489e5ec44264ae59a4ed34111a32d287f`
-- origin/main: `4f03c0b881bcc77547e72a2d5c655b07690746d6`
-- Worktree: `C:/Users/KienNguyen/OPS_RESTORE_LAB_RC16K/rc16l-calendar-export-release`
+- Branch: `feat/rc17a-actual-staffing`
+- HEAD: `549dc240b328030c72348375f46e997e9e1347a8`
+- origin/main: `28f904a40f361ff6863f827309c136a0c98329b0`
+- Worktree: `C:/Users/KienNguyen/OPS_RESTORE_LAB_RC16K/rc17a-actual-staffing`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
 ## Hardening
@@ -22,9 +22,9 @@ Generated at: 2026-10-16T20:12:34+07:00
 ## Inventory
 
 - Routes: 56
-- Source files in tracked inventory roots: 724
-- Tests: 168
-- Migrations: 69
+- Source files in tracked inventory roots: 729
+- Tests: 169
+- Migrations: 70
 
 ## Modules
 
