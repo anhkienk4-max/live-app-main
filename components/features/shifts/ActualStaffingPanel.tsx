@@ -271,6 +271,16 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
       return
     }
 
+        const isException = Boolean(
+      reviewingSegment.coverage_verification?.is_exception ||
+      reviewingSegment.evidence_note.includes('[EXCEPTION')
+    )
+
+    if (isException && revDecision === 'approved' && revNote.trim().length < 15) {
+      setRevError('Phê duyệt hồ sơ diện ngoại lệ bắt buộc phải có ghi chú giải trình tối thiểu 15 ký tự.')
+      return
+    }
+
     if (!revNote.trim() || revNote.trim().length < 8) {
       setRevError('Ghi chú xét duyệt phải có ít nhất 8 ký tự.')
       return
@@ -298,6 +308,10 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
         setRevError('Dữ liệu đã bị thay đổi bởi người khác hoặc đã bị khóa. Vui lòng tải lại.')
       } else if (msg.includes('WORKFORCE_SELF_REVIEW_BLOCKED')) {
         setRevError('Quy tắc kiểm soát nội bộ: Không thể tự phê duyệt biên bản do chính mình tạo.')
+      } else if (msg.includes('WORKFORCE_EXCEPTION_APPROVAL_NOTE_REQUIRED')) {
+        setRevError('Phê duyệt ngoại lệ yêu cầu ghi chú giải trình ít nhất 15 ký tự.')
+      } else if (msg.includes('WORKFORCE_PLANNED_STAFF_UNSCHEDULED')) {
+        setRevError('Không thể phê duyệt: Ca theo lịch (Planned) không có trong danh sách phân công chính thức.')
       } else if (msg.includes('WORKFORCE_APPROVED_STAFF_OVERLAP')) {
         setRevError('Không thể duyệt: Nhân sự này đã có ca làm việc được duyệt trùng khung giờ.')
       } else if (msg.includes('WORKFORCE_APPROVED_NO_SHOW_CONFLICT')) {
@@ -538,7 +552,12 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-slate-600">
-                      {coverageLabels[seg.coverage_kind] || seg.coverage_kind}
+                      <div>{coverageLabels[seg.coverage_kind] || seg.coverage_kind}</div>
+                      {(seg.coverage_verification?.is_exception || seg.evidence_note.includes('[EXCEPTION')) && (
+                        <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200 mt-0.5" title={`Ngoại lệ chưa xác minh qua lịch/đổi ca (${seg.coverage_verification?.matched_source || 'unverified'})`}>
+                          Diện ngoại lệ
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 font-mono text-slate-700">
                       {seg.event_kind === 'worked' && seg.actual_start_at && seg.actual_end_at ? (
@@ -790,6 +809,21 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
                 <div className="flex items-center gap-2 rounded-md bg-rose-50 p-2.5 text-xs text-rose-700 border border-rose-200">
                   <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
                   <span>{revError}</span>
+                </div>
+              )}
+
+              {(reviewingSegment.coverage_verification?.is_exception || reviewingSegment.evidence_note.includes('[EXCEPTION')) && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50/90 p-2.5 text-xs text-amber-900 space-y-1">
+                  <div className="flex items-center gap-1 font-semibold text-amber-800">
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                    <span>Hồ sơ chấm công diện NGOẠI LỆ</span>
+                  </div>
+                  <p className="text-[11px] text-amber-800">
+                    Nguồn xác minh: <span className="font-mono">{reviewingSegment.coverage_verification?.matched_source || 'unverified_exception'}</span>
+                  </p>
+                  <p className="text-[11px] text-amber-900 font-medium">
+                    * Lưu ý xét duyệt: Ca ngoại lệ bắt buộc phải có giải trình lý do phê duyệt tối thiểu 15 ký tự.
+                  </p>
                 </div>
               )}
 

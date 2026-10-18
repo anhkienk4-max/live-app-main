@@ -130,6 +130,15 @@ test('RC1.7A: Actual Staffing GET returns segments, shift_context, and lateness_
           },
         }
       }
+      if (table === 'swap_requests') {
+        return {
+          select() { return this },
+          in() { return this },
+          or() {
+            return Promise.resolve({ data: [], error: null })
+          },
+        }
+      }
       throw new Error(`Unexpected table ${table}`)
     },
   })
@@ -148,6 +157,9 @@ test('RC1.7A: Actual Staffing GET returns segments, shift_context, and lateness_
   assert.equal(body.shift_context.id, 'shift-100')
   assert.equal(body.shift_context.duration_minutes, 120)
   assert.equal(body.planned_staff.length, 2)
+  assert.equal(body.segments[0].coverage_verification.assignment_verified, true)
+  assert.equal(body.segments[0].coverage_verification.is_exception, false)
+  assert.equal(body.segments[0].coverage_verification.matched_source, 'shift_roster')
   assert.equal(typeof body.lateness_policy.grace_minutes, 'number')
 })
 
@@ -514,7 +526,7 @@ test('RC1.7A: Independent Reviewer can approve with optimistic locking version i
           eq() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-100', status: 'completed' },
+              data: { id: 'shift-100', status: 'completed', host_id: 'host-1' },
               error: null,
             })
           },
@@ -940,7 +952,7 @@ test('RC1.7A: Concurrent approval race condition maps DB trigger exception to HT
           eq() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-race', status: 'completed' },
+              data: { id: 'shift-race', status: 'completed', host_id: 'host-raced' },
               error: null,
             })
           },
@@ -1246,3 +1258,272 @@ test('RC1.7A: Unverified cover/replacement/extra flags requires_exception_approv
   assert.equal(validBody.coverage_verification.requires_exception_approval, true);
   assert.equal(validBody.coverage_verification.matched_source, 'unverified_exception');
 });
+
+// ---------------------------------------------------------------------------
+// TEST 19: swap_requests DB Lookup Error is NOT swallowed (returns HTTP 503)
+// ---------------------------------------------------------------------------
+test('RC1.7A: swap_requests DB error returns HTTP 503 WORKFORCE_SCOPE_LOOKUP_FAILED', async () => {
+  const fakeDb = () => ({
+    from(table: string) {
+      if (table === 'shifts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'shift-swap-err', status: 'completed', host_id: 'host-diff' },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'business_users') {
+        return {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'host-cover', status: 'active', deleted_at: null },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'shift_registrations') {
+        return {
+          select() { return this },
+          eq() { return this },
+          in() { return Promise.resolve({ data: [], error: null }) },
+        }
+      }
+      if (table === 'swap_requests') {
+        return {
+          select() { return this },
+          in() { return this },
+          or() {
+            // DB returns error rather than empty data
+            return Promise.resolve({ data: null, error: { message: 'Database connection failed' } })
+          },
+        }
+      }
+      throw new Error(`Unexpected table ${table}`)
+    },
+  })
+
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: fakeDb as never,
+    resolveUser: leaderUser,
+  })
+
+  const res = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'record',
+    shift_id: 'shift-swap-err',
+    staff_id: 'host-cover',
+    operational_role: 'host',
+    event_kind: 'worked',
+    coverage_kind: 'cover',
+    actual_start_at: '2026-10-17T19:00:00+07:00',
+    actual_end_at: '2026-10-17T21:00:00+07:00',
+    evidence_note: 'Cover attendance with valid note length',
+  }))
+
+  assert.equal(res.status, 503)
+  const body = await res.json()
+  assert.equal(body.error.code, 'WORKFORCE_SCOPE_LOOKUP_FAILED')
+})
+
+// ---------------------------------------------------------------------------
+// TEST 20: Unscheduled Planned Segment CANNOT be approved on Review (returns 409)
+// ---------------------------------------------------------------------------
+test('RC1.7A: Unscheduled Planned segment is blocked on Review with HTTP 409', async () => {
+  const fakeDb = () => ({
+    from(table: string) {
+      if (table === 'workforce_actual_segments') {
+        return {
+          select() { return this },
+          eq() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: {
+                id: 'seg-unsched-planned',
+                shift_id: 'shift-planned-check',
+                staff_id: 'host-unplanned',
+                operational_role: 'host',
+                event_kind: 'worked',
+                coverage_kind: 'planned',
+                actual_start_at: '2026-10-17T19:00:00+07:00',
+                actual_end_at: '2026-10-17T21:00:00+07:00',
+                review_status: 'draft',
+                evidence_note: 'Unscheduled draft segment',
+                version: 1,
+                created_by: 'leader-creator',
+              },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'shifts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'shift-planned-check', status: 'completed', host_id: 'host-official' },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'shift_registrations') {
+        return {
+          select() { return this },
+          eq() { return this },
+          in() { return Promise.resolve({ data: [], error: null }) },
+        }
+      }
+      throw new Error(`Unexpected table ${table}`)
+    },
+  })
+
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: fakeDb as never,
+    resolveUser: reviewerUser,
+  })
+
+  const res = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'review',
+    segment_id: 'seg-unsched-planned',
+    expected_version: 1,
+    decision: 'approved',
+    review_note: 'Attempting to approve unscheduled planned staff',
+  }))
+
+  assert.equal(res.status, 409)
+  const body = await res.json()
+  assert.equal(body.error.code, 'WORKFORCE_PLANNED_STAFF_UNSCHEDULED')
+})
+
+// ---------------------------------------------------------------------------
+// TEST 21: Unverified Exception Review requires review_note >= 15 chars
+// ---------------------------------------------------------------------------
+test('RC1.7A: Exception approval requires reviewer note >= 15 chars', async () => {
+  let updatedRow: Record<string, unknown> | null = null
+  const fakeDb = () => ({
+    from(table: string) {
+      if (table === 'workforce_actual_segments') {
+        return {
+          select() { return this },
+          eq() { return this },
+          neq() { return this },
+          lt() { return this },
+          gt() { return this },
+          limit() { return Promise.resolve({ data: [], error: null }) },
+          maybeSingle() {
+            return Promise.resolve({
+              data: {
+                id: 'seg-exc-review',
+                shift_id: 'shift-exc-check',
+                staff_id: 'host-emergency-sub',
+                operational_role: 'host',
+                event_kind: 'worked',
+                coverage_kind: 'replacement',
+                actual_start_at: '2026-10-17T19:00:00+07:00',
+                actual_end_at: '2026-10-17T21:00:00+07:00',
+                review_status: 'draft',
+                evidence_note: '[EXCEPTION:UNVERIFIED] Emergency replacement for host-official',
+                version: 1,
+                created_by: 'leader-creator',
+              },
+              error: null,
+            })
+          },
+          update(patch: Record<string, unknown>) {
+            updatedRow = patch
+            return {
+              eq() { return this },
+              select() {
+                return {
+                  maybeSingle() {
+                    return Promise.resolve({
+                      data: {
+                        id: 'seg-exc-review',
+                        review_status: patch.review_status,
+                        version: patch.version,
+                      },
+                      error: null,
+                    })
+                  },
+                }
+              },
+            }
+          },
+        }
+      }
+      if (table === 'shifts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'shift-exc-check', status: 'completed', host_id: 'host-official' },
+              error: null,
+            })
+          },
+        }
+      }
+      if (table === 'shift_registrations') {
+        return {
+          select() { return this },
+          eq() { return this },
+          in() { return Promise.resolve({ data: [], error: null }) },
+        }
+      }
+      if (table === 'swap_requests') {
+        return {
+          select() { return this },
+          in() { return this },
+          or() { return Promise.resolve({ data: [], error: null }) },
+        }
+      }
+      throw new Error(`Unexpected table ${table}`)
+    },
+  })
+
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: fakeDb as never,
+    resolveUser: reviewerUser,
+  })
+
+  // Short review note (< 15 chars) is rejected for exception approval
+  const shortRes = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'review',
+    segment_id: 'seg-exc-review',
+    expected_version: 1,
+    decision: 'approved',
+    review_note: 'Approved ok',
+  }))
+  assert.equal(shortRes.status, 400)
+  const shortBody = await shortRes.json()
+  assert.equal(shortBody.error.code, 'WORKFORCE_EXCEPTION_APPROVAL_NOTE_REQUIRED')
+
+  // Detailed review note (>= 15 chars) succeeds
+  const validRes = await handler.POST(post('https://example.test/api/workforce/actual', {
+    action: 'review',
+    segment_id: 'seg-exc-review',
+    expected_version: 1,
+    decision: 'approved',
+    review_note: 'Verified exception with camera footage and stream logs; host-official sudden sick leave approved',
+  }))
+  assert.equal(validRes.status, 200)
+  const validBody = await validRes.json()
+  assert.equal(validBody.ok, true)
+  assert.equal(validBody.segment.review_status, 'approved')
+  assert.equal(validBody.segment.version, 2)
+  assert.equal(updatedRow?.review_status, 'approved')
+})

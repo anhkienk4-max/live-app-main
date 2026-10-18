@@ -76,12 +76,13 @@ select public.rc17a_assert(
   'Draft audit log actor is creator'
 );
 
--- P0 FIX ASSERTION: correlation_id is NOT NULL and is valid non-empty UUID
+-- CONTRACT ASSERTION: correlation_id is NOT NULL, non-empty, and satisfies UUID v4 format
 select public.rc17a_assert(
-  (select correlation_id is not null and btrim(correlation_id) <> ''
-          and length(correlation_id) >= 32
+  (select correlation_id is not null
+          and btrim(correlation_id) <> ''
+          and correlation_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
    from public.audit_logs where entity_id = 'seg-draft-1'),
-  'P0 FIX: correlation_id is NOT NULL and is valid UUID'
+  'correlation_id satisfies actual database contract (NOT NULL, non-empty, UUID v4 format)'
 );
 
 select public.rc17a_assert(
@@ -252,8 +253,14 @@ insert into public.workforce_actual_segments (
 
 select public.rc17a_assert(
   (select after_data is not null and jsonb_typeof(after_data) = 'object'
+          and not (after_data ? 'gross_vnd')
+          and not (after_data ? 'rate_vnd_per_hour')
+          and not (after_data ? 'net_vnd')
+          and not (after_data ? 'salary')
+          and not (after_data ? 'password')
+          and not (after_data ? 'token')
    from public.audit_logs where entity_id = 'seg-sensitive-test'),
-  'Audit log before/after data is properly sanitized'
+  'Audit log before/after data contains no financial payroll figures or sensitive credentials'
 );
 
 -- TEST 11: Leader RLS Read Permissions (module = 'calendar' readable, module = 'staff' restricted)

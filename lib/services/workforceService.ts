@@ -124,6 +124,15 @@ export interface ActualSegmentsResponse {
   }
 }
 
+export interface CoverageVerification {
+  coverage_kind: 'planned' | 'cover' | 'replacement' | 'extra'
+  assignment_verified: boolean
+  is_exception: boolean
+  requires_exception_approval: boolean
+  matched_source: 'shift_roster' | 'shift_registration' | 'swap_request' | 'unverified_exception'
+  exception_reason: string | null
+}
+
 export interface ActualSegment {
   id: string
   shift_id: string
@@ -141,6 +150,7 @@ export interface ActualSegment {
   reviewed_at: string | null
   version: number
   created_at: string
+  coverage_verification?: CoverageVerification
 }
 
 export interface WorkforcePerformanceSummary {
