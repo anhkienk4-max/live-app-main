@@ -41,12 +41,23 @@ def ledger(database):
                                          "FROM supabase_migrations.schema_migrations;")))
 
 
-def migration_list(label, url):
+def migration_list(label, url, m2_applied):
     result = run(["supabase", "migration", "list", "--db-url", url], timeout=180)
     print(f"{label}_EXIT={result.returncode}")
     print(result.stdout)
     require(all(version in result.stdout for version in LOCAL_ONLY | {REMOTE_ONLY}),
             f"{label} omitted a known history difference")
+    rows = {}
+    for line in result.stdout.splitlines():
+        columns = [column.strip().strip("`") for column in line.split("|")]
+        if len(columns) == 3 and (columns[0] in LOCAL_ONLY or columns[1] == REMOTE_ONLY):
+            rows[columns[0] or columns[1]] = (columns[0], columns[1])
+    for version in LOCAL_ONLY:
+        require(rows.get(version) == (version, version if version == M2 and m2_applied else ""),
+                f"{label} incorrect local/remote status for {version}")
+    require(rows.get(REMOTE_ONLY) == ("", REMOTE_ONLY),
+            f"{label} did not retain remote-only history")
+    print(f"{label}_HISTORY_ASSERTIONS=PASS")
 
 
 def dry_run(label, url, database, expected, include_all=False):
@@ -58,6 +69,10 @@ def dry_run(label, url, database, expected, include_all=False):
     print(f"{label}_STDOUT={result.stdout[-6000:]}")
     print(f"{label}_STDERR={result.stderr[-6000:]}")
     require(ledger(database) == expected, f"{label} changed the synthetic ledger")
+    require(result.returncode != 0 and "Remote migration versions not found" in result.stderr
+            and REMOTE_ONLY in result.stderr,
+            f"{label} did not fail closed on remote-only migration")
+    print(f"{label}_REMOTE_ONLY_FAIL_CLOSED=PASS")
 
 
 def main():
@@ -137,7 +152,7 @@ def main():
     psql(database, "INSERT INTO supabase_migrations.schema_migrations(version,name) VALUES " + values + ";")
     require(ledger(database) == set(baseline), "Fixture failed to seed exact 67-version ledger")
     print("SYNTHETIC_LEDGER_BASELINE=67_APPLIED; REMOTE_ONLY_FIXTURE=EXPLICIT")
-    migration_list("MIGRATION_LIST_BEFORE_M2", url)
+    migration_list("MIGRATION_LIST_BEFORE_M2", url, False)
     dry_run("DB_PUSH_DRY_RUN_BEFORE_M2", url, database, set(baseline))
 
     psql(database, "BEGIN; CREATE TABLE public.w14_m2_sql_commit "
@@ -148,11 +163,12 @@ def main():
     require(ledger(database) == set(baseline), "SQL commit changed ledger without repair")
     print("SYNTHETIC_M2_SQL_COMMIT_MARKER=PASS")
     run(["supabase", "migration", "repair", M2, "--status", "applied", "--db-url", url], timeout=180)
+    print("M2_MIGRATION_REPAIR_EXIT=0; TARGET=SYNTHETIC_ONLY")
     after = set(baseline) | {M2}
     require(ledger(database) == after and len(after) == 68, "CLI M2 tracking mismatch")
     require(M1 not in after and SUMMARY not in after, "Unexecuted migrations marked applied")
     print("SYNTHETIC_M2_TRACKING=APPLIED; M1=PENDING; SUMMARY=PENDING")
-    migration_list("MIGRATION_LIST_AFTER_M2", url)
+    migration_list("MIGRATION_LIST_AFTER_M2", url, True)
     dry_run("DB_PUSH_DRY_RUN_AFTER_M2", url, database, after)
     dry_run("DB_PUSH_INCLUDE_ALL_DRY_RUN_AFTER_M2", url, database, after, include_all=True)
     require(psql(database, "SELECT marker FROM public.w14_target_marker;") == database,
