@@ -2,12 +2,12 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-18T08:11:34Z
+Generated at: 2026-10-18T08:39:45Z
 
 ## Repository
 
 - Branch: `uat/ops-p0-staging-rc16k-list-bridge`
-- HEAD: `c0d79a5104c00a44f20028a30b76fa03f0dc8921`
+- HEAD: `3c6edcbd5ec7ac14f5221f55a220d88fcda6b34a`
 - origin/main: `28f904a40f361ff6863f827309c136a0c98329b0`
 - Worktree: `Connector-managed GitHub branch (no local worktree)`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
@@ -22,7 +22,7 @@ Generated at: 2026-10-18T08:11:34Z
 ## Inventory
 
 - Routes: 56
-- Source files in tracked inventory roots: 744
+- Source files in tracked inventory roots: 746
 - Tests: 169
 - Migrations: 69
 
