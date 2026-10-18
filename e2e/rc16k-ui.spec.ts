@@ -22,7 +22,9 @@ for (const [role, name] of [['1', 'Admin'], ['2', 'Leader'], ['3', 'Member']] as
         expect(params.get('page')).toBe('1')
       }
       const items = entity === 'brands' ? [{ id: 'brand-needle', name: 'Needle Brand' }] : []
-      return route.fulfill({ json: { items, total: items.length, page: 1, pageSize: Number(params.get('pageSize') || 20) } })
+      const roleMap: Record<string, string> = { '1': 'admin', '2': 'leader', '3': 'member' }
+      const ownerKey = `${role}:${roleMap[role] || 'member'}`
+      return route.fulfill({ json: { items, total: items.length, page: 1, pageSize: Number(params.get('pageSize') || 20), ownerKey } })
     })
     await page.goto('/')
     await page.getByRole('button', { name: /search|tìm/i }).first().click()

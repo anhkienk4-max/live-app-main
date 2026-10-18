@@ -1,0 +1,10 @@
+{
+  "memberAuthenticated": true,
+  "unrelatedDirectRestRows": 0,
+  "unrelatedReportRpcRows": 0,
+  "authorizedEntitlementReports": 3,
+  "authorizedEntitlementExpected": 3,
+  "directUpdateDenied": true,
+  "startReviewDenied": true,
+  "reportCollectionRpcStatus": 200
+}

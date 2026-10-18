@@ -1,0 +1,1 @@
+psql:/tmp/report-read-compensating-rollback.sql:102: NOTICE:  REPORT_RLS_COMPENSATING_ROLLBACK=PASS

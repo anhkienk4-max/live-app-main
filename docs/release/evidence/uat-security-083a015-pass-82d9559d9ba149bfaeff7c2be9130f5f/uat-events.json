@@ -1,0 +1,152 @@
+{
+  "environment": "isolated-local-supabase-auth",
+  "releaseCandidate": "083a015688676c3cb2eda94f363f26de3fd9ed5e",
+  "trace": "disabled",
+  "events": [
+    {
+      "role": "leader",
+      "action": "authenticated_reports_access",
+      "result": "pass"
+    },
+    {
+      "role": "leader",
+      "action": "sign_out",
+      "result": "pass"
+    },
+    {
+      "role": "member",
+      "action": "authenticated_reports_access",
+      "result": "pass"
+    },
+    {
+      "role": "leader",
+      "action": "identity_switch_to_member",
+      "result": "pass"
+    },
+    {
+      "role": "member",
+      "action": "sign_out",
+      "result": "pass"
+    },
+    {
+      "role": "admin",
+      "action": "authenticated_reports_access",
+      "result": "pass"
+    },
+    {
+      "role": "admin",
+      "action": "reports_pagination_search_119_records",
+      "result": "pass"
+    },
+    {
+      "role": "admin",
+      "action": "sign_out",
+      "result": "pass"
+    },
+    {
+      "role": "admin",
+      "action": "authenticated_reports_access",
+      "result": "pass"
+    },
+    {
+      "role": "member",
+      "action": "authenticated_reports_access",
+      "result": "pass"
+    },
+    {
+      "role": "member",
+      "action": "report_picker_direct_support",
+      "result": "pass"
+    },
+    {
+      "role": "member",
+      "action": "report_picker_direct_technical",
+      "result": "pass"
+    },
+    {
+      "role": "member",
+      "action": "report_picker_approved_registration",
+      "result": "pass"
+    },
+    {
+      "role": "member",
+      "action": "report_edit_deep_link",
+      "result": "pass"
+    },
+    {
+      "role": "member",
+      "action": "unrelated_shift_deep_link_denied",
+      "result": "pass"
+    },
+    {
+      "role": "member",
+      "action": "sign_out",
+      "result": "pass"
+    },
+    {
+      "role": "admin",
+      "action": "authenticated_reports_access",
+      "result": "pass"
+    },
+    {
+      "role": "admin",
+      "action": "final_report_missing_dashboard_rejected_without_write",
+      "result": "pass"
+    },
+    {
+      "role": "admin",
+      "action": "sign_out",
+      "result": "pass"
+    },
+    {
+      "role": "admin",
+      "action": "authenticated_reports_access",
+      "result": "pass"
+    },
+    {
+      "role": "admin",
+      "action": "confirmed_report_persists_when_data_report_artifact_fails",
+      "result": "pass"
+    },
+    {
+      "role": "admin",
+      "action": "sign_out",
+      "result": "pass"
+    },
+    {
+      "role": "member",
+      "action": "reports_rpc_scope_and_write_denial",
+      "result": "pass"
+    },
+    {
+      "role": "member",
+      "action": "authenticated_reports_access",
+      "result": "pass"
+    },
+    {
+      "role": "member",
+      "action": "reports_read_scope_rest_rpc_children_inactive_archives_and_api",
+      "result": "pass"
+    },
+    {
+      "role": "leader",
+      "action": "member_draft_cas_review_confirm_database_reload",
+      "result": "pass"
+    },
+    {
+      "role": "admin",
+      "action": "authenticated_reports_access",
+      "result": "pass"
+    },
+    {
+      "role": "admin",
+      "action": "reports_export_all_and_search_filter_reconciled",
+      "result": "pass"
+    },
+    {
+      "role": "admin",
+      "action": "sign_out",
+      "result": "pass"
+    }
+  ]
+}

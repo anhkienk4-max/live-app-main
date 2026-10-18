@@ -3,7 +3,7 @@ import { dashboardUpdateFromRow } from '@/lib/services/supabaseDashboardUpdateSe
 import { readDataQualityPage } from '@/lib/server/dataQualityPage'
 import { pageRange } from '@/lib/utils/pagination'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { requireUser, isAuthorizationError, authorizationErrorResponse, type ServerUserResolver } from '@/lib/server/authGuards'
+import { requireUser, isAuthorizationError, authorizationErrorResponse, type ServerUserResolver, type AuthenticatedServerUser } from '@/lib/server/authGuards'
 import { readScheduleImportBatchPage } from '@/lib/services/supabaseScheduleImportService'
 import { swapFromRow } from '@/lib/services/supabaseSwapRequestService'
 import { reportFromRow } from '@/lib/services/supabaseReportService'
@@ -16,7 +16,7 @@ import type { ListQuery } from '@/lib/services/operationsPageService'
 
 const shiftFilterKeys = ['search','from','to','brandIds','platformIds','campaignIds','studios','roles','registrationStatuses','statuses','descending','assignedUserIds','hostIds','supportIds','technicalIds','operationalRoles','staffingStates','registrationStates','hasImportedStaffing','shiftIds']
 const filterKeys: Record<string,string[]> = {
-  shifts:shiftFilterKeys,live_shifts:shiftFilterKeys,open_shifts:shiftFilterKeys,my_shifts:shiftFilterKeys,
+  shifts:shiftFilterKeys,live_shifts:shiftFilterKeys,open_shifts:shiftFilterKeys,my_shifts:[...shiftFilterKeys,'reportCandidates'],
   staff:['search','statuses','roles','systemPermissions','archived'],brands:['search','statuses'],platforms:['search','statuses'],campaigns:['search','statuses','brandIds'],
   notifications:['search','statuses','types'],reports:[...shiftFilterKeys,'reportStatuses','metricsStatuses'],analytics_reports:[...shiftFilterKeys,'reportStatuses','metricsStatuses'],registration_reviews:['search','statuses','roles'],
   archives:[],account_requests:['statuses'],live_updates:['shiftIds'],import_batches:[],schedule_changes:['from','to','actorIds','actionIds','shiftIds','brandIds','sources'],
@@ -29,6 +29,7 @@ export const listFiltersSchema = z.object({
   brandIds: choices, platformIds: choices, campaignIds: choices, studios: choices,
   roles: z.array(z.enum(['host', 'support', 'technical'])).max(3).optional(),
   registrationStatuses: z.array(z.enum(['pending', 'approved', 'manually_assigned'])).max(3).optional(),
+  reportCandidates: z.boolean().optional(),
   archived: z.boolean().optional(), systemPermissions: z.array(z.enum(['admin', 'leader', 'member'])).max(3).optional(), assignedUserIds: choices,
   hostIds: choices, supportIds: choices, technicalIds: choices, operationalRoles: z.array(z.enum(['host','support','technical'])).max(3).optional(), staffingStates: z.array(z.enum(['fully_staffed','missing_staff'])).max(2).optional(), registrationStates: z.array(z.enum(['pending','approved','manually_assigned','rejected','cancelled','removed'])).max(6).optional(), hasImportedStaffing: z.boolean().optional(),
   severity: z.enum(['all','error','warning','info']).optional(), qualitySources: z.array(z.enum(['schedule_import','report','staffing'])).max(3).optional(),
@@ -44,11 +45,17 @@ const schema = z.object({
   pendingPage: z.coerce.number().int().min(1).max(100000),
   filters: listFiltersSchema,
 })
+// The browser's business user ID is the same identity shown by currentUserService.
+// Supabase Auth's UUID can differ and must not be used for a browser response owner.
+export function operationsOwnerKey(user: Pick<AuthenticatedServerUser, 'id' | 'businessUserId' | 'systemPermission'>): string {
+  return `${user.businessUserId || user.id}:${user.systemPermission}`
+}
+
 export function createOperationsCollectionHandler(dependencies: { resolveUser?: ServerUserResolver; createClient?: () => Promise<SupabaseClient> } = {}) {
   return { GET: async (request: Request) => {
     try {
       const user = await requireUser(request, dependencies.resolveUser)
-      const ownerKey=user.id+':'+user.systemPermission
+      const ownerKey=operationsOwnerKey(user)
       const reply=(data:object)=>Response.json({...data,ownerKey},{headers:{'Cache-Control':'private, no-store'}})
       const params = new URL(request.url).searchParams
       const raw = params.get('filters') ?? '{}'

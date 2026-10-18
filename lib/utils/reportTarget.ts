@@ -34,13 +34,14 @@ export async function loadReportTarget(
     (report && (report.shift_id !== shiftId || report.deleted_at || report.archived_at))) {
     throw new Error('REPORT_TARGET_UNAVAILABLE')
   }
+  const canReview = hasPermission(user, 'reports.review')
+  const assigned = staffedShiftIds.has(shiftId) || [shift.host_id, shift.support_id, shift.technical_id].includes(user.id)
+  if (!canReview && !assigned && report?.submitted_by !== user.id) throw new Error('REPORT_TARGET_FORBIDDEN')
   const editable = report && !isFinalizedReport(report) && (!report.status || ['draft', 'reopened'].includes(report.status))
   if (report && !editable) return { mode: 'detail', shift, report }
   if (!reportableShiftStatuses.includes(shift.status as typeof reportableShiftStatuses[number])) {
     throw new Error('REPORT_TARGET_UNAVAILABLE')
   }
-  const canReview = hasPermission(user, 'reports.review')
-  const assigned = staffedShiftIds.has(shiftId) || [shift.host_id, shift.support_id, shift.technical_id].includes(user.id)
   if (!hasPermission(user, 'reports.submit') || !(canReview || (report ? report.submitted_by === user.id : assigned))) {
     throw new Error('REPORT_TARGET_FORBIDDEN')
   }

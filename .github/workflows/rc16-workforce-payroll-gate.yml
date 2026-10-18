@@ -141,6 +141,32 @@ jobs:
           node tests/rc16-payroll-postgres.integration.mjs
           node tests/rc17a-database.integration.mjs
 
+      - name: Rehearse synthetic database backup and restore in isolated PostgreSQL
+        env:
+          RC16_PG_MAJOR: ${{ matrix.postgres }}
+        run: |
+          rc16_pg_container="rc16f-pg${{ matrix.postgres }}-backup-restore"
+          docker run --detach --name "$rc16_pg_container" --network none \
+            -e POSTGRES_HOST_AUTH_METHOD=trust "postgres:${{ matrix.postgres }}-alpine"
+          rc16_pg_ready=0
+          for rc16_pg_attempt in $(seq 1 30); do
+            if docker exec "$rc16_pg_container" pg_isready -U postgres; then
+              rc16_pg_ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$rc16_pg_ready" = 1
+          node tests/rc16k-pagination-postgres.integration.mjs \
+            --container "$rc16_pg_container" --backup-restore
+      - name: Remove isolated PostgreSQL backup/restore container
+        if: always()
+        run: |
+          rc16_pg_container="rc16f-pg${{ matrix.postgres }}-backup-restore"
+          if docker inspect "$rc16_pg_container" >/dev/null 2>&1; then
+            docker rm --force --volumes "$rc16_pg_container"
+          fi
+
       - name: TypeScript type check
         run: pnpm exec tsc --noEmit --incremental false
       - name: Full repository ESLint

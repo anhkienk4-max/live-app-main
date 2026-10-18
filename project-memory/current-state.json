@@ -9,10 +9,10 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "feat/rc17a-actual-staffing",
-    "head": "8db1a8920edc10ebf5d625ec01d2a871e1cd3d53",
-    "origin_main": "28f904a40f361ff6863f827309c136a0c98329b0",
-    "worktree": "C:/Users/KienNguyen/OPS_RESTORE_LAB_RC16K/rc17a-actual-staffing"
+    "branch": "release/one-shot-20261019",
+    "head": "4fe77e58837910db08002b50de56c89fcf46aab2",
+    "origin_main": "4fe77e58837910db08002b50de56c89fcf46aab2",
+    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-prod-integration/.codex-worktrees/one-shot-20261019"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -212,6 +212,10 @@
         "tests/rc16i-postmain.test.tsx",
         "tests/rc16k-global-search.test.tsx",
         "tests/rc16k-pagination.test.ts",
+        "tests/rc16k-reports-candidate-pagination.test.ts",
+        "tests/rc16k-reports-runtime.test.ts",
+        "tests/rc16k-uxw2-reports-real-route.test.ts",
+        "tests/rc16k-uxw2-storage-rbac.test.ts",
         "tests/rc16l-api.test.ts",
         "tests/rc16l-calendar.test.ts",
         "tests/rc17a-actual-staffing.test.ts",
@@ -343,9 +347,12 @@
         "supabase/migrations/20261012000001_rc16b_draft_payroll_correction.sql",
         "supabase/migrations/20261012145735_p0_audit_privilege_hardening.sql",
         "supabase/migrations/20261012171503_rc16k_bounded_shift_lists.sql",
+        "supabase/migrations/20261014190429_rc16k_reports_forward_reconciliation.sql",
+        "supabase/migrations/20261014233900_rc16k_reports_summary.sql",
+        "supabase/migrations/20261015154159_rc16k_member_report_read_rls.sql",
         "supabase/migrations/20261017000000_rc17a_actual_staffing_audit.sql"
       ],
-      "count": 70
+      "count": 73
     }
   },
   "verification": {

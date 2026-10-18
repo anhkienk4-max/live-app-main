@@ -5,7 +5,7 @@ import { initialReportShift } from '@/lib/utils/reportTarget'
 import Image from 'next/image'
 import { format } from 'date-fns'
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Loader2, Pencil, RotateCcw, ScanText, Upload, X } from 'lucide-react'
-import { liveReportImageService, ocrService, reportArtifactService, reportImageService, reportService } from '@/lib/services/dataService'
+import { isStaffedRegistration, liveReportImageService, ocrService, reportArtifactService, reportImageService, reportService } from '@/lib/services/dataService'
 import {
   Brand,
   Campaign,
@@ -1226,9 +1226,11 @@ function roleSummary(
   labels: Record<'host' | 'support' | 'technical', string>,
 ) {
   const names = (role: 'host' | 'support' | 'technical', assigned?: string) => {
+    const safeStaff = shift.staffing_summary?.find(summary => summary.role === role)?.approved_staff
+    if (safeStaff) return safeStaff.map(person => person.name).join(', ') || '—'
     const ids = new Set([
       ...(assigned ? [assigned] : []),
-      ...registrations.filter(item => item.shift_id === shift.id && item.operational_role === role && item.status === 'approved').map(item => item.user_id),
+      ...registrations.filter(item => item.shift_id === shift.id && item.operational_role === role && isStaffedRegistration(item)).map(item => item.user_id),
     ])
     return [...ids].map(id => users.find(user => user.id === id)?.full_name).filter(Boolean).join(', ') || '—'
   }
