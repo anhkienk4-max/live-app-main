@@ -50,6 +50,9 @@ create table if not exists public.business_users (
   full_name text,
   system_permission text check (system_permission in ('admin', 'leader', 'member'))
 );
+alter table public.business_users add column if not exists full_name text;
+alter table public.business_users add column if not exists system_permission text;
+alter table public.business_users add column if not exists status text default 'active';
 
 create table if not exists public.shifts (
   id text primary key,
@@ -57,18 +60,29 @@ create table if not exists public.shifts (
   date date not null,
   start_time text not null,
   end_time text not null,
-  host_id text references public.business_users(id),
-  support_id text references public.business_users(id),
+  host_id text,
+  support_id text,
   deleted_at timestamptz
 );
+alter table public.shifts add column if not exists status text default 'completed';
+alter table public.shifts add column if not exists date date;
+alter table public.shifts add column if not exists start_time text;
+alter table public.shifts add column if not exists end_time text;
+alter table public.shifts add column if not exists host_id text;
+alter table public.shifts add column if not exists support_id text;
+alter table public.shifts add column if not exists deleted_at timestamptz;
 
 create table if not exists public.shift_registrations (
   id text primary key,
-  shift_id text references public.shifts(id),
-  user_id text references public.business_users(id),
+  shift_id text,
+  user_id text,
   operational_role text not null,
   status text not null
 );
+alter table public.shift_registrations add column if not exists shift_id text;
+alter table public.shift_registrations add column if not exists user_id text;
+alter table public.shift_registrations add column if not exists operational_role text;
+alter table public.shift_registrations add column if not exists status text;
 
 create or replace function private.current_business_user_id()
 returns text language sql stable as $$
