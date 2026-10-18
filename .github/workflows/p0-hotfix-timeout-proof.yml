@@ -1,0 +1,51 @@
+name: P0 Hotfix Timeout Configuration Proof
+
+on:
+  push:
+    branches:
+      - test/p0-timeout-proof
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p0-hotfix-timeout-proof-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  timeout-proof:
+    name: Synthetic PostgreSQL 17 PGOPTIONS timeout contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d postgres"
+          --health-interval=3s
+          --health-timeout=3s
+          --health-retries=20
+    steps:
+      - name: Checkout timeout proof branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Record isolated target boundary
+        shell: pwsh
+        run: |
+          "GITHUB_SHA=$env:GITHUB_SHA" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "GITHUB_REF=$env:GITHUB_REF" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "TARGET=GitHub-hosted synthetic PostgreSQL 17" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "PRODUCTION_CONNECTIONS=NONE" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "PRODUCTION_SECRETS=NONE" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Prove PGOPTIONS timeout settings and fail-closed behavior
+        shell: pwsh
+        run: ./scripts/release/p0-hotfix-timeout-proof.ps1
