@@ -79,6 +79,11 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # Cancel superseded PR-only runs to conserve free CI minutes. Never cancel push/manual gates.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   validate:
     name: Node ${{ matrix.node }} / PostgreSQL ${{ matrix.postgres }}
