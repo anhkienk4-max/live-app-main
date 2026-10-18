@@ -137,3 +137,40 @@ was created.
 
 **GO verdict: NO-GO for Production P0 changes and for the currently
 unremediated direct-removal risk on Production.**
+
+
+## P0.9b — additional independently confirmed Report archive bypass
+
+A follow-up **read-only Production function-catalog scan** located
+the same NULL-ownership pattern in additional publicly callable
+`SECURITY DEFINER` report/workforce RPCs. Those functions must be
+reviewed individually; do not assume the three P0.9 repairs cover all
+report mutation endpoints.
+
+One additional vulnerability was **independently reproduced on Staging**:
+`public.soft_delete_report(text,text)`, available to
+`authenticated`, accepted a Member actor for a synthetic draft report
+with `submitted_by=NULL`, returned an archived/deleted row, and
+mutated the synthetic report. Transaction was fully rolled back.
+
+Narrow Staging-only migration **successfully applied**:
+`ops_p09b_staging_soft_delete_report_owner_guard`, file
+`supabase/reconciliation/ops-p0-staging/p09b_soft_delete_report_null_owner_hotfix.sql`.
+It adds explicit `submitted_by IS NULL` denial for Member and preserves
+the rest of the existing `soft_delete_report` procedure.
+
+Staging UAT **PASS**: missing submitter yields SQLSTATE 42501;
+the same synthetic report, after setting `submitted_by` to the Member,
+can be archived normally. All synthetic changes ROLLBACK.
+Source: `tests/uat/ops-p09b-staging-soft-delete-rollback.sql`.
+Post-rollback counts remained 79 shifts, 12 users, 9 reports,
+3 Dashboard images, 1 Live image and zero Payroll lines.
+
+Production `soft_delete_report` was **NOT MODIFIED**. A second
+fingerprint-guarded **REVIEW-ONLY** production SQL candidate is
+`docs/security/p09b-production-report-soft-delete-hotfix.REVIEW_ONLY.sql`.
+Its initial Production fingerprint is
+`0814efda83fd5b89e531dfe7056ed63a`. Do not run without
+independent security/DBA approval and an authorized Production hotfix
+window. Other exposed mutators with nullable-owner comparisons need
+a broader code/role audit before GO.
