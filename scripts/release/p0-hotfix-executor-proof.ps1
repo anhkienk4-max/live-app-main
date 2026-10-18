@@ -102,10 +102,18 @@ function Get-PsqlText([string]$Database, [string]$Sql, [int]$TimeoutSeconds = 15
 function Assert-Exit([pscustomobject]$Result, [bool]$ShouldSucceed, [string]$Label) {
   Assert-Proof ($null -ne $Result.ExitCode) "$Label returned no exit code ($($Result.ErrorCode))"
   if ($ShouldSucceed) {
-    Assert-Proof ($Result.ExitCode -eq 0) "$Label expected exit 0; got $($Result.ExitCode)"
+    if ($Result.ExitCode -ne 0) {
+      $stderr = if ($Result.Stderr) { $Result.Stderr.Trim() } else { '<empty>' }
+      $stdout = if ($Result.Stdout) { $Result.Stdout.Trim() } else { '<empty>' }
+      Add-Summary "$Label diagnostic: exit=$($Result.ExitCode); stderr=$stderr; stdout=$stdout"
+      Stop-Proof "$Label expected exit 0; got $($Result.ExitCode)"
+    }
   }
   else {
-    Assert-Proof ($Result.ExitCode -ne 0) "$Label expected nonzero exit; got 0"
+    if ($Result.ExitCode -eq 0) {
+      Add-Summary "$Label diagnostic: expected failure but received exit=0; stdout=$($Result.Stdout.Trim())"
+      Stop-Proof "$Label expected nonzero exit; got 0"
+    }
   }
 }
 
