@@ -125,6 +125,42 @@ export function detectDashboardRegions({
       imageWidth,
       imageHeight,
     )
+    const cropBounds = {
+      x: requestedCrop.left * imageWidth,
+      y: requestedCrop.top * imageHeight,
+      width: requestedCrop.width * imageWidth,
+      height: requestedCrop.height * imageHeight,
+    }
+    const cropAnchors = anchors.filter(anchor =>
+      anchor.platform === requestedPlatform && pointInsideBox(anchor.point, cropBounds),
+    )
+    const calibratedCandidates = requestedPlatform === 'tiktok_shop'
+      ? detectPlatformCandidates(
+        requestedPlatform,
+        cropAnchors,
+        imageWidth,
+        imageHeight,
+        visualHints.filter(hint => hint.platform === requestedPlatform),
+      ).sort(compareCandidates)
+      : []
+    const calibrated = calibratedCandidates.find(candidate =>
+      candidate.anchor_count >= 5 && candidate.confidence >= .45,
+    )
+    if (calibrated) {
+      const selected = { ...calibrated, id: `calibrated-${requestedPlatform}-${calibrated.id}` }
+      return {
+        candidates: [selected, manual],
+        selected,
+        diagnostics: buildDiagnostics(
+          [selected, manual],
+          selected,
+          imageWidth,
+          imageHeight,
+          false,
+          'anchor_calibrated_crop',
+        ),
+      }
+    }
     const allCandidates = [manual, ...candidates.filter(candidate =>
       intersectionOverUnion(candidate.bounding_box, manual.bounding_box) < .75,
     )]

@@ -16,6 +16,7 @@ import {
   mapDashboardImageRecognition,
   parseDashboardOcrText,
   parseCompactOcrNumber,
+  parseOcrValue,
   platformMetricLayouts,
 } from '../lib/utils/ocrMetrics.ts'
 import { reviewInputValues } from '../lib/utils/ocrReview.ts'
@@ -141,6 +142,48 @@ test('TikTok compact numbers preserve K/M magnitude for dot and comma locales', 
     assert.equal(parsed.ambiguous, false)
   }
   assert.equal(parseCompactOcrNumber('8..98M')?.ambiguous, true)
+})
+
+test('TikTok metric parsing keeps exact units and rejects OCR letters as digits', () => {
+  assert.equal(parseCompactOcrNumber('13.57M')?.value, 13_570_000)
+  assert.equal(parseCompactOcrNumber('1.03K')?.value, 1_030)
+  assert.equal(parseCompactOcrNumber('176,18K')?.value, 176_180)
+  assert.equal(parseOcrValue('7A8%'), '7A8%')
+  assert.equal(parseOcrValue('1,23,456'), '1,23,456')
+  assert.equal(parseOcrValue('1.23.456'), '1.23.456')
+  assert.equal(buildOcrMetric('tiktok_shop', 'Comments', 'T4', 96, 'word_box_exact'), null)
+  const ambiguousCompact = buildOcrMetric('tiktok_shop', 'Advertising cost', '3..06M', 96, 'word_box_exact')
+  assert.equal(ambiguousCompact?.[1].value, '3..06M')
+  assert.equal(ambiguousCompact?.[1].status, 'review_required')
+
+  const review = parseDashboardOcrText('tiktok_shop', [
+    'GMV đã ghi nhận 13,566,119', 'Số món bán ra từ sự kiện 140', 'Người xem 1.82K',
+    'Lượt hiển thị 119.52K', 'Lượt xem 2.4K', 'Chi phí quảng cáo 3.06M',
+    'Tỷ lệ nhấn 2.02%', 'ROI GMV Max 5.23', 'CTOR 7.48%', 'Thời lượng xem TB 39s',
+    'Người theo dõi mới 13', 'Khách hàng 62', 'Đơn hàng SKU đã ghi nhận 124',
+    'Bình luận 114', 'Lượt nhấp vào sản phẩm 1.03K', 'AOV 176.18K',
+    'CTR của LIVE 42.74%', 'Lượt chia sẻ 8', 'GMV ước tính 12.13M',
+  ].join('\n'))
+  const values = reviewInputValues(review)
+  assert.equal(values.current_viewers, undefined)
+  assert.equal(values.gmv, 13_566_119)
+  assert.equal(values.items_sold, 140)
+  assert.equal(values.impressions, 119_520)
+  assert.equal(values.total_views, 2_400)
+  assert.equal(values.advertising_cost, 3_060_000)
+  assert.equal(values.click_rate, 2.02)
+  assert.equal(values.roi_gmv_max, 5.23)
+  assert.equal(values.ctor, 7.48)
+  assert.equal(values.average_view_duration_seconds, 39)
+  assert.equal(values.new_followers, 13)
+  assert.equal(values.buyers, 62)
+  assert.equal(values.sku_orders, 124)
+  assert.equal(values.comments, 114)
+  assert.equal(values.product_clicks, 1_030)
+  assert.equal(values.average_order_value, 176_180)
+  assert.equal(values.live_ctr, 42.74)
+  assert.equal(values.shares, 8)
+  assert.equal(values.estimated_gmv, 12_130_000)
 })
 
 test('TikTok normalized ROI text keeps traffic-card values in label order', () => {

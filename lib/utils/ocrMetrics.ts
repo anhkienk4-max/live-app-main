@@ -515,8 +515,27 @@ export function parseOcrValue(raw: string): ReportMetricValue {
 
   let numeric = original
     .replace(/[₫đ$€£¥₱]/gi, '')
-    .replace(/[^\d,.\-]/g, '')
-  if (!numeric || numeric === '-') return null
+    .replace(/[%\s]/g, '')
+  if (!/^-?\d[\d,.]*$/.test(numeric)) return original
+
+  const unsignedNumeric = numeric.replace(/^-/, '')
+  const hasComma = unsignedNumeric.includes(',')
+  const hasDot = unsignedNumeric.includes('.')
+  const validGroupedNumber = hasComma && hasDot
+    ? /^(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)$/.test(unsignedNumeric)
+      || /^(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d+)$/.test(unsignedNumeric)
+    : hasComma || hasDot
+      ? (() => {
+        const separator = hasComma ? ',' : '.'
+        const parts = unsignedNumeric.split(separator)
+        return parts.length === 2
+          ? /^\d+$/.test(parts[0]) && /^\d+$/.test(parts[1])
+          : parts.length > 2
+            && /^\d{1,3}$/.test(parts[0])
+            && parts.slice(1).every(part => /^\d{3}$/.test(part))
+      })()
+      : true
+  if (!validGroupedNumber) return original
 
   const comma = numeric.lastIndexOf(',')
   const dot = numeric.lastIndexOf('.')
@@ -614,6 +633,7 @@ function parseMetricOcrValue(
   const normalizedRaw = isPercentageMetric(key)
     ? raw.trim().replace(/([xX°ºoO])\s*$/, '%')
     : raw
+  if (parseCompactOcrNumber(normalizedRaw)?.ambiguous) return raw.trim()
   const declaredLayout = platform === 'other'
     ? undefined
     : platformMetricLayouts[platform].find(cell => cell.key === key)
@@ -638,23 +658,29 @@ export function buildOcrMetric(
   const key = normalizedKey || mapOcrLabel(platform, originalLabel)
   if (!key) return null
   const parsedValue = parseMetricOcrValue(platform, key, rawValue)
+  const ambiguousCompactFormat = parseCompactOcrNumber(rawValue)?.ambiguous === true
+  const sanityError = validateMetricCandidate(key, parsedValue, rawValue)
   if (
     parsedValue === null ||
     (typeof parsedValue === 'number' && !Number.isFinite(parsedValue)) ||
-    validateMetricCandidate(key, parsedValue, rawValue)
+    (sanityError && !ambiguousCompactFormat)
   ) return null
+  const effectiveStatus = ambiguousCompactFormat ? 'review_required' : status
   return [key, {
     value: parsedValue,
     candidate_value: parsedValue,
     normalized_value: parsedValue,
     confidence,
-    needs_review: status !== 'confirmed' && status !== 'accepted',
+    needs_review: effectiveStatus !== 'confirmed' && effectiveStatus !== 'accepted',
     original_label: originalLabel,
     raw_value: rawValue,
     normalized_key: key,
     unit: inferMetricUnit(key, rawValue),
     source,
-    status,
+    status: effectiveStatus,
+    rejection_reason: ambiguousCompactFormat
+      ? 'Compact-number punctuation is ambiguous; verify the original screenshot before entering a value.'
+      : undefined,
   }]
 }
 
@@ -1106,10 +1132,23 @@ export function mapDashboardImageRecognition(
       const layoutCell = platform === 'other'
         ? undefined
         : platformMetricLayouts[platform].find(cell => cell.key === alias.key)
+      const rawShapeValue = pairedValue.word.text.trim()
       const normalizedShapeValue = normalizeLayoutCardValue(layoutCell, pairedValue.word.text)
-      const parsedValue = layoutCell
-        ? parseOcrValue(normalizedShapeValue)
-        : parseMetricOcrValue(platform, alias.key, pairedValue.word.text)
+      const recoveredDisplayFormat = Boolean(layoutCell && (
+        /\d\s+\d/.test(rawShapeValue)
+        || layoutCell.valueKind === 'duration' && /[:;]\s*$/.test(rawShapeValue)
+        || layoutCell.displayFormat?.decimalPlaces
+          && !/[.,]/.test(rawShapeValue)
+          && rawShapeValue.replace(/\D/g, '').length > layoutCell.displayFormat.decimalPlaces
+        || layoutCell.valueKind === 'compact'
+          && layoutCell.displayFormat?.compactSuffix
+          && !/[KM]$/i.test(rawShapeValue)
+        || layoutCell.valueKind === 'count_or_compact'
+          && layoutCell.displayFormat?.compactSuffix
+          && /[.,]/.test(rawShapeValue)
+          && !/[KM]$/i.test(rawShapeValue)
+      ))
+      const parsedValue = parseMetricOcrValue(platform, alias.key, normalizedShapeValue)
       const compactMetadata = parseCompactOcrNumber(normalizedShapeValue)
       const valueShapeScore = layoutCell
         ? layoutValueShapeScore(layoutCell.valueKind, normalizedShapeValue, parsedValue)
@@ -1128,6 +1167,7 @@ export function mapDashboardImageRecognition(
       const accepted = confidence === 'high'
         && exactLabel
         && pairedValue.competingValues === 0
+        && !recoveredDisplayFormat
         && !sanityError
         && !compactMetadata?.ambiguous
       const labelBox = unionBoundingBoxes(labelWords)
@@ -1146,6 +1186,8 @@ export function mapDashboardImageRecognition(
         value_box: valueBox,
         pairing_reason: compactMetadata?.ambiguous
           ? 'Compact-number punctuation is ambiguous and requires review.'
+          : recoveredDisplayFormat
+            ? 'OCR recovered a missing or unclear display-format character; confirm it against the screenshot.'
           : accepted
           ? 'Exact label and value occupy the same platform KPI card.'
           : pairedValue.competingValues > 0
@@ -1159,6 +1201,8 @@ export function mapDashboardImageRecognition(
         rejection_reason: sanityError
           || (compactMetadata?.ambiguous
             ? 'Compact-number punctuation is ambiguous and must be reviewed.'
+            : recoveredDisplayFormat
+              ? 'OCR recovered a missing or unclear display-format character and must be reviewed.'
             : accepted
               ? undefined
               : 'Image OCR confidence or spatial pairing is below the auto-fill threshold.'),

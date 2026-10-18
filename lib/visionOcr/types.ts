@@ -137,7 +137,16 @@ export function parseVisionOcrResponse(
   ) {
     throw new Error('Vision provider output does not match the canonical platform schema.')
   }
-  return response
+  return {
+    ...response,
+    metrics: response.metrics.map(metric => {
+      if (
+        metric.state !== 'confirmed'
+        || (metric.reasoningCode === 'direct_read' && metric.confidence !== null && metric.confidence >= 0.8)
+      ) return metric
+      return { ...metric, state: 'review_required' }
+    }),
+  }
 }
 
 export function toVisionPlatform(platform: ReportDashboardPlatform): VisionOcrPlatform | null {

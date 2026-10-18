@@ -266,7 +266,7 @@ export function LiveSessionModal({
         />)
   return (<>
     {inline ? consoleContent : <Dialog open={open} onOpenChange={onOpenChange}><DialogContent size="full" className="overflow-y-auto gap-0 p-0 bg-slate-50"><DialogTitle className="sr-only">{shift.title || getBrandName(shift.brand_id)} · {t('liveMonitor')}</DialogTitle>{consoleContent}</DialogContent></Dialog>}
-    {showUpdate && <DashboardUpdateModal open shift={shift} platformName={platforms.find(platform => platform.id === shift.platform_id)?.name} onOpenChange={setShowUpdate} onSuccess={() => { void loadUpdates(); onUpdate() }} />}
+    {showUpdate && <DashboardUpdateModal open shift={shift} brandName={getBrandName(shift.brand_id)} platformName={getPlatformName(shift.platform_id)} onOpenChange={setShowUpdate} onSuccess={() => { void loadUpdates(); onUpdate() }} />}
     {showReportForm && <ReportFormModal open onOpenChange={setShowReportForm} completedShifts={[shift]} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onSuccess={() => { setShowReportForm(false); void loadReport(); onUpdate() }} />}
     {showReportDetail && report && <ReportDetailModal open report={report} shift={shift} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onOpenChange={setShowReportDetail} onUpdated={() => { setShowReportDetail(false); void loadReport(); onUpdate() }} />}
     <LifecycleActionDialog open={Boolean(removeTarget)} onOpenChange={open => !open && setRemoveTarget(null)} title="Delete live snapshot" impact={removeImpact} confirmText="Delete" onConfirm={removeSnapshot} />

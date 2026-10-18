@@ -5,10 +5,11 @@ import { initialReportShift } from '@/lib/utils/reportTarget'
 import Image from 'next/image'
 import { format } from 'date-fns'
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Loader2, Pencil, RotateCcw, ScanText, Upload, X } from 'lucide-react'
-import { isStaffedRegistration, liveReportImageService, ocrService, reportArtifactService, reportImageService, reportService } from '@/lib/services/dataService'
+import { dashboardUpdateService, isStaffedRegistration, liveReportImageService, ocrService, reportArtifactService, reportImageService, reportService } from '@/lib/services/dataService'
 import {
   Brand,
   Campaign,
+  DashboardUpdate,
   FinalReportRecap,
   OcrCropBox,
   OcrReviewData,
@@ -51,6 +52,7 @@ import {
   finalReportMetricKeysForFilter,
 } from '@/lib/utils/finalReportMetricFilter'
 import { getMissingFinalReportMetricKeys, reportMetricState, serializeFinalReportMetricState } from '@/lib/utils/ocrMetricSerialization'
+import { reportSnapshotImport } from '@/lib/utils/reportSnapshotImport'
 import { metricTranslationKeys } from '@/lib/reportMetricLabels'
 import { defaultOcrCrop } from '@/lib/utils/ocrImage'
 import { proposeTikTokKpiCrop } from '@/lib/services/imageOcrService'
@@ -145,6 +147,12 @@ export function ReportFormModal({
   const [cropBox, setCropBox] = React.useState<OcrCropBox>(defaultOcrCrop('other'))
   const [metricValues, setMetricValues] = React.useState<MetricState>({})
   const [review, setReview] = React.useState<OcrReviewData>(emptyReview)
+  const [snapshotPage, setSnapshotPage] = React.useState(1)
+  const [snapshotTotal, setSnapshotTotal] = React.useState(0)
+  const [snapshots, setSnapshots] = React.useState<DashboardUpdate[]>([])
+  const [snapshotSelection, setSnapshotSelection] = React.useState('')
+  const [snapshotLoading, setSnapshotLoading] = React.useState(false)
+  const [snapshotError, setSnapshotError] = React.useState('')
   const [ocrAcknowledged, setOcrAcknowledged] = React.useState(false)
   const [editingMetrics, setEditingMetrics] = React.useState(false)
   const [images, setImages] = React.useState<PendingImage[]>([])
@@ -176,11 +184,51 @@ export function ReportFormModal({
   const [visionRunStatus, setVisionRunStatus] = React.useState<VisionOcrRunStatus | null>(null)
 
   const explicitShiftId = initialReport?.shift_id ?? initialShiftId
+  const actorId = currentUser?.id
   const selectedShift = completedShifts.find(shift => shift.id === shiftId && (explicitShiftId === undefined || shift.id === explicitShiftId))
   const targetUnavailable = explicitShiftId !== undefined && !initialReportShift(completedShifts, initialReport, initialShiftId)
   const dashboardImage = images.find(image => image.type === 'dashboard')
   const persistedDashboardImage = persistedImages.find(image => image.image_type === 'dashboard')
   const dashboardImageUrl = dashboardImage?.url || (persistedDashboardImage ? signedUrls[persistedDashboardImage.id] || '' : '')
+
+  React.useEffect(() => {
+    if (!open || !shiftId || !actorId) return
+    let active = true
+    const frame = requestAnimationFrame(() => {
+      setSnapshotLoading(true)
+      setSnapshotError('')
+      setSnapshotSelection('')
+      setSnapshots([])
+      void dashboardUpdateService.getPage(shiftId, { page: snapshotPage, pageSize: 20 })
+        .then(result => {
+          if (!active) return
+          setSnapshots(result.items.filter(item => item.shift_id === shiftId && !item.deleted_at))
+          setSnapshotTotal(result.total)
+        })
+        .catch(() => {
+          if (active) setSnapshotError('Snapshots could not be loaded. Retry before importing metrics.')
+        })
+        .finally(() => {
+          if (active) setSnapshotLoading(false)
+        })
+    })
+    return () => { active = false; cancelAnimationFrame(frame) }
+  }, [open, shiftId, snapshotPage, actorId])
+
+  const applySnapshot = () => {
+    const snapshot = snapshots.find(item => item.id === snapshotSelection)
+    if (!snapshot || !currentUser || !selectedShift) return
+    try {
+      const imported = reportSnapshotImport(snapshot, selectedShift.id, dashboardPlatform, currentUser.id)
+      setMetricValues(values => ({ ...values, ...imported.values }))
+      setReview(imported.review)
+      setOcrAcknowledged(true)
+      for (const key of Object.keys(imported.values) as CanonicalMetricKey[]) manualMetricKeysRef.current.add(key)
+      toast({ title: 'Snapshot metrics imported for review', description: 'Verify each value before saving the report.', variant: 'success' })
+    } catch (error) {
+      toast({ title: t('validationError'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+    }
+  }
 
   React.useEffect(() => {
     completedShiftsRef.current = completedShifts
@@ -307,6 +355,7 @@ export function ReportFormModal({
     const nextShift = completedShifts.find(shift => shift.id === value)
     const nextPlatform = inferDashboardPlatform(nextShift, platforms)
     setShiftId(value)
+    setSnapshotPage(1)
     setDashboardPlatform(nextPlatform)
     setCropBox(defaultOcrCrop(nextPlatform))
     resetDraftMetrics()
@@ -894,6 +943,25 @@ export function ReportFormModal({
                 </Button>
               )}
             </div>
+          )}
+
+          {selectedShift && dashboardPlatform !== 'other' && (
+            <section className="space-y-3 rounded-lg border p-4" data-testid="report-snapshot-import">
+              <h3 className="font-semibold">Live snapshot metrics</h3>
+              <p className="text-sm text-muted-foreground">Choose one snapshot from this shift, then explicitly apply its metrics. This does not sum snapshots or change a confirmed report.</p>
+              {snapshotError && <p role="alert" className="text-sm text-destructive">{snapshotError}</p>}
+              <div className="flex flex-wrap items-center gap-2">
+                <Select value={snapshotSelection} onValueChange={setSnapshotSelection} disabled={snapshotLoading || snapshots.length === 0}>
+                  <SelectTrigger className="min-w-52 max-w-full"><SelectValue placeholder={snapshotLoading ? 'Loading snapshots...' : 'Select a snapshot'} /></SelectTrigger>
+                  <SelectContent>{snapshots.filter(item => item.dashboard_platform === dashboardPlatform).map(item => <SelectItem key={item.id} value={item.id}>{format(new Date(item.time), 'dd/MM/yyyy HH:mm')} · {item.id.slice(0, 8)}</SelectItem>)}</SelectContent>
+                </Select>
+                <Button type="button" variant="outline" disabled={!snapshotSelection || submitting} onClick={applySnapshot} data-testid="apply-report-snapshot">Apply selected metrics</Button>
+                <Button type="button" variant="ghost" disabled={snapshotPage <= 1 || snapshotLoading} onClick={() => setSnapshotPage(page => page - 1)}>Previous</Button>
+                <span className="text-xs text-muted-foreground">Page {snapshotPage} · {snapshotTotal} snapshots</span>
+                <Button type="button" variant="ghost" disabled={snapshotPage * 20 >= snapshotTotal || snapshotLoading} onClick={() => setSnapshotPage(page => page + 1)}>Next</Button>
+              </div>
+              {review.source_snapshot && <p className="text-xs text-muted-foreground">Source snapshot {review.source_snapshot.id.slice(0, 8)} · {format(new Date(review.source_snapshot.captured_at), 'dd/MM/yyyy HH:mm')}</p>}
+            </section>
           )}
 
           <section className="space-y-4 rounded-lg border p-4">

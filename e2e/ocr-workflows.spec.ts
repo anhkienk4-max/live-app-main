@@ -66,6 +66,12 @@ const tiktokIndependentMetrics = {
   estimated_gmv: 10610000,
 } as const
 
+const ownerTikTokKpiKeys = [
+  'gmv', 'items_sold', 'impressions', 'total_views', 'advertising_cost', 'click_rate',
+  'roi_gmv_max', 'ctor', 'average_view_duration_seconds', 'new_followers', 'buyers', 'sku_orders',
+  'comments', 'product_clicks', 'average_order_value', 'live_ctr', 'shares', 'estimated_gmv',
+] as const
+
 const tiktokIndependentFixture = path.join(
   process.cwd(),
   'e2e',
@@ -385,4 +391,29 @@ test('TikTok Live Dashboard Update autofills all 19 KPIs from an independent rea
     page.getByTestId('live-ocr-corrected-text'),
     page.getByTestId('live-ocr-raw-diagnostics'),
   )
+})
+
+test('owner TikTok dashboard keeps unresolved OCR values in review and shows linked shift', async ({ page }) => {
+  test.setTimeout(240_000)
+  await page.addInitScript(() => {
+    localStorage.setItem('livestream-ops-current-user', '1')
+    localStorage.setItem('livestream-ops-language', 'vi')
+  })
+  await prepareTikTokShiftForLiveUpdate(page)
+  const linkedShift = page.getByTestId('live-linked-shift')
+  await expect(linkedShift).toBeVisible()
+  await expect(linkedShift).toContainText('TikTok Shop')
+  await expect(page.getByTestId('live-snapshot-time')).toBeVisible()
+  await page.getByTestId('live-dashboard-image-upload').setInputFiles(
+    fixturePath('ocr/tiktok-layout-variants/tiktok-real-2026-06-26-evening.png'),
+  )
+  await expect(page.locator('img[src^="blob:"]').first()).toBeVisible()
+  await page.getByTestId('live-run-ocr-button').click()
+  await waitForOcrCompletion(page.getByTestId('live-ocr-completion-status'))
+  for (const key of ownerTikTokKpiKeys) {
+    await expect(page.getByTestId('ocr-metric-input-' + key)).toBeVisible()
+  }
+  await expect(page.getByTestId('live-ocr-completion-status')).toHaveAttribute('data-ocr-status', 'review_required')
+  await expect(page.getByRole('dialog').locator('button[type="submit"]')).toBeDisabled()
+  await page.screenshot({ path: 'test-results/live-ocr-owner-fixture-review.png', fullPage: true })
 })

@@ -311,6 +311,12 @@ async function recognizeMetricCards(
   })
 
   for (const cell of platformRoiMetricLayouts[platform]) {
+    await worker.setParameters({
+      tessedit_pageseg_mode: dependencies.PSM.SINGLE_LINE,
+      tessedit_char_whitelist: '0123456789.,:%KMkmsS₫đ$-/',
+      preserve_interword_spaces: '1',
+      user_defined_dpi: '300',
+    })
     if (
       platform === 'shopee_live'
       && (cell.x < 0 || cell.x > 1 || cell.y < 0 || cell.y > 1)
@@ -348,6 +354,70 @@ async function recognizeMetricCards(
         crop,
         preprocessingPass: 'fixed_threshold',
       })
+    }
+    if (platform === 'tiktok_shop') {
+      const colorImage = await dependencies.sharp(imageBytes)
+        .extract(crop)
+        .resize({
+          width: crop.width * resizeScale,
+          height: crop.height * resizeScale,
+          fit: 'fill',
+          kernel: dependencies.sharp.kernel.lanczos3,
+        })
+        .png()
+        .toBuffer()
+      await worker.setParameters({
+        tessedit_pageseg_mode: dependencies.PSM.SINGLE_LINE,
+        tessedit_char_whitelist: '0123456789.,:%KMkmsS₫đ$-/',
+        preserve_interword_spaces: '1',
+        user_defined_dpi: '300',
+      })
+      const colorResult = await withTimeout(worker.recognize(colorImage, { rotateAuto: false }, { text: true }), timeoutMs)
+      variants.push({
+        text: normalizeCardText(colorResult.data.text),
+        confidence: colorResult.data.confidence,
+        crop,
+        preprocessingPass: 'original_color',
+      })
+
+      const highThresholdImage = await basePipeline().threshold(210).png().toBuffer()
+      await worker.setParameters({
+        tessedit_pageseg_mode: dependencies.PSM.SINGLE_LINE,
+        tessedit_char_whitelist: '0123456789.,:%KMkmsS₫đ$-/',
+        preserve_interword_spaces: '1',
+        user_defined_dpi: '300',
+      })
+      const highThresholdResult = await withTimeout(worker.recognize(
+        highThresholdImage,
+        { rotateAuto: false },
+        { text: true },
+      ), timeoutMs)
+      variants.push({
+        text: normalizeCardText(highThresholdResult.data.text),
+        confidence: highThresholdResult.data.confidence,
+        crop,
+        preprocessingPass: 'high_threshold',
+      })
+
+      if (['count', 'count_or_compact', 'compact', 'percentage', 'ratio', 'duration'].includes(cell.valueKind)) {
+        await worker.setParameters({
+          tessedit_pageseg_mode: dependencies.PSM.SINGLE_WORD || dependencies.PSM.SINGLE_LINE,
+          tessedit_char_whitelist: '0123456789.,:%KMkmsS₫đ$-/',
+          preserve_interword_spaces: '0',
+          user_defined_dpi: '300',
+        })
+        const wordResult = await withTimeout(worker.recognize(
+          highThresholdImage,
+          { rotateAuto: false },
+          { text: true },
+        ), timeoutMs)
+        variants.push({
+          text: normalizeCardText(wordResult.data.text),
+          confidence: wordResult.data.confidence,
+          crop,
+          preprocessingPass: 'single_word_high_threshold',
+        })
+      }
     }
     if (
       platform === 'tiktok_shop'

@@ -126,13 +126,7 @@ export async function recognizeDashboardImage(
     throw new Error('The selected dashboard image could not be read.')
   }
   const imageBlob = await imageResponse.blob()
-  if (imageBlob.size === 0) throw new Error('The selected dashboard image is empty.')
-  if (imageBlob.size > OCR_RUNTIME_CONFIG.maxImageBytes) {
-    throw new Error('The selected dashboard image must be 10 MB or smaller.')
-  }
-  if (imageBlob.type && !isSupportedOcrMimeType(imageBlob.type)) {
-    throw new Error('Only PNG, JPEG, and WebP dashboard images can be processed.')
-  }
+  assertSupportedOcrImageBlob(imageBlob)
 
   let browserFailure: unknown
   if (typeof window !== 'undefined') {
@@ -162,8 +156,19 @@ export async function recognizeDashboardImage(
 export async function proposeTikTokKpiCrop(imageUrl: string) {
   const imageResponse = await fetch(imageUrl)
   if (!imageResponse.ok) throw new Error('The selected dashboard image could not be read.')
-  const bitmap = await createImageBitmap(await imageResponse.blob())
+  const imageBlob = await imageResponse.blob()
+  assertSupportedOcrImageBlob(imageBlob)
+  const bitmap = await createImageBitmap(imageBlob)
   try {
+    if (
+      bitmap.width < 1
+      || bitmap.height < 1
+      || bitmap.width > OCR_RUNTIME_CONFIG.maxImageDimension
+      || bitmap.height > OCR_RUNTIME_CONFIG.maxImageDimension
+      || bitmap.width * bitmap.height > OCR_RUNTIME_CONFIG.maxImagePixels
+    ) {
+      throw new Error('The dashboard image dimensions are not supported.')
+    }
     const canvas = document.createElement('canvas')
     canvas.width = bitmap.width
     canvas.height = bitmap.height
@@ -174,6 +179,16 @@ export async function proposeTikTokKpiCrop(imageUrl: string) {
     return proposeTikTokKpiPanelCrop(image.data, canvas.width, canvas.height)
   } finally {
     bitmap.close()
+  }
+}
+
+function assertSupportedOcrImageBlob(imageBlob: Blob) {
+  if (imageBlob.size === 0) throw new Error('The selected dashboard image is empty.')
+  if (imageBlob.size > OCR_RUNTIME_CONFIG.maxImageBytes) {
+    throw new Error('The selected dashboard image must be 10 MB or smaller.')
+  }
+  if (imageBlob.type && !isSupportedOcrMimeType(imageBlob.type)) {
+    throw new Error('Only PNG, JPEG, and WebP dashboard images can be processed.')
   }
 }
 

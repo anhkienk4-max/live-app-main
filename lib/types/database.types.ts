@@ -313,6 +313,7 @@ export interface Shift extends LifecycleMetadata {
 
 export interface DashboardUpdate extends LifecycleMetadata {
   id: string
+  request_id?: string
   shift_id: string
   time: string
   revenue: number
@@ -606,6 +607,7 @@ export interface OcrMetricValue {
 export interface OcrReviewData {
   status: 'waiting' | 'processing' | 'unavailable' | 'review_required' | 'confirmed' | 'failed'
   source_platform?: ReportDashboardPlatform
+  source_snapshot?: { id: string; shift_id: string; captured_at: string; applied_by: string; applied_at: string }
   engine?: 'tesseract.js'
   recognition_language?: 'eng' | 'vie' | 'eng+vie'
   overall_confidence?: number
@@ -747,7 +749,7 @@ export interface OcrRegionDiagnostics {
   perspective_correction_applied: boolean
   ambiguous: boolean
   selection_required: boolean
-  selection_reason: 'dominant_candidate' | 'manual_crop' | 'ambiguous_candidates' | 'low_confidence' | 'no_candidate' | 'legacy_fallback'
+  selection_reason: 'dominant_candidate' | 'manual_crop' | 'anchor_calibrated_crop' | 'ambiguous_candidates' | 'low_confidence' | 'no_candidate' | 'legacy_fallback'
   fallback_usage?: 'none' | 'legacy_full_image_layout'
 }
 

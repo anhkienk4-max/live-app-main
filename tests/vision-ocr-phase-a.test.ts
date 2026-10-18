@@ -171,3 +171,50 @@ test('OpenAI provider remains fail-closed while disabled or missing its server k
     (error: unknown) => error instanceof VisionProviderError && error.code === 'model_unavailable',
   )
 })
+
+test('Vision schema downgrades claimed confirmations with low confidence or ambiguous reasoning', async () => {
+  const provider = new MockVisionOcrProvider({ scenario: 'full_agreement', values: values('tiktok') })
+  const response = await provider.recognize(request('tiktok')) as { metrics: VisionMetricResult[] }
+  response.metrics[0].confidence = 0.79
+  response.metrics[1].reasoningCode = 'ambiguous_glyph'
+
+  const parsed = parseVisionOcrResponse('tiktok', response)
+  assert.equal(parsed.metrics[0].state, 'review_required')
+  assert.equal(parsed.metrics[1].state, 'review_required')
+  assert.equal(parsed.metrics[2].state, 'confirmed')
+})
+test('raw display disagreement cannot be confirmed for TikTok confusion cases', () => {
+  const cases = [
+    { key: 'roi_gmv_max', local: 5.23, ai: 3.25, rawText: '5.23' },
+    { key: 'average_view_duration_seconds', local: 39, ai: 59, rawText: '39s' },
+    { key: 'product_clicks', local: 1_030, ai: 10, rawText: '1.03K' },
+    { key: 'live_ctr', local: 42.74, ai: 4.24, rawText: '42.74%' },
+  ] as const
+  const localMetrics: OcrReviewData['metrics'] = {}
+  for (const candidate of cases) {
+    localMetrics[candidate.key] = {
+      value: candidate.local,
+      confidence: 'high',
+      needs_review: false,
+      status: 'confirmed',
+      raw_value: String(candidate.local),
+    }
+  }
+  const local: OcrReviewData = { status: 'confirmed', metrics: localMetrics }
+  const vision = aiMetrics(null)
+  for (const candidate of cases) {
+    const metric = vision.find(item => item.key === candidate.key)!
+    metric.value = candidate.ai
+    metric.rawText = candidate.rawText
+    metric.confidence = 0.99
+    metric.state = 'confirmed'
+    metric.reasoningCode = 'direct_read'
+  }
+
+  const results = compareVisionMetrics({ platform: 'tiktok', localReview: local, aiMetrics: vision })
+  for (const candidate of cases) {
+    const result = results.find(item => item.key === candidate.key)!
+    assert.equal(result.state, 'review_required', candidate.key)
+    assert.notEqual(result.selectedValue, candidate.ai, candidate.key)
+  }
+})

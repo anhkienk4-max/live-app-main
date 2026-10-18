@@ -3,7 +3,7 @@ import test from 'node:test'
 import sharp from 'sharp'
 
 import { AuthorizationError } from '../lib/server/authGuards.ts'
-import { createVisionOcrPostHandler } from '../lib/server/visionOcrRouteHandler.ts'
+import { createVisionOcrPostHandler, visionOcrServerConfig } from '../lib/server/visionOcrRouteHandler.ts'
 import {
   MockVisionOcrProvider,
   OpenAiVisionOcrProvider,
@@ -311,6 +311,24 @@ test('Vision route maps provider failures to stable safe API codes', async t => 
       assert.equal(serialized.includes('private provider body'), false)
       assert.equal(serialized.includes('secret-test-value'), false)
       assert.equal(serialized.includes('stack'), false)
+    })
+  }
+})
+
+test('Vision runtime defaults to disabled OpenAI configuration without an enabled provider', () => {
+  const keys = ['VISION_OCR_ENABLED', 'VISION_OCR_PROVIDER', 'VISION_OCR_MODEL'] as const
+  const previous = new Map(keys.map(key => [key, process.env[key]]))
+  try {
+    keys.forEach(key => { delete process.env[key] })
+    const config = visionOcrServerConfig()
+    assert.equal(config.enabled, false)
+    assert.equal(config.provider, 'openai')
+    assert.equal(config.model, 'openai-not-configured')
+  } finally {
+    keys.forEach(key => {
+      const value = previous.get(key)
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
     })
   }
 })

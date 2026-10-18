@@ -169,6 +169,31 @@ export function deriveAutomaticShiftStatus(
   return 'scheduled'
 }
 
+export function isShiftLiveAt(
+  shift: Pick<Shift, 'status' | 'date' | 'start_time' | 'end_time' | 'timezone'>,
+  now = new Date(),
+) {
+  if (shift.status !== 'live') return false
+  const interval = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
+  return Boolean(interval?.valid && now >= interval.startAt && now < interval.endAt)
+}
+
+export function suggestUniqueLiveShift<T extends Pick<Shift, 'status' | 'date' | 'start_time' | 'end_time' | 'timezone'>>(
+  shifts: readonly T[],
+  now = new Date(),
+): T | null {
+  const matches = shifts.filter(shift => isShiftLiveAt(shift, now))
+  return matches.length === 1 ? matches[0] : null
+}
+
+export function isTimestampWithinShift(
+  shift: Pick<Shift, 'date' | 'start_time' | 'end_time' | 'timezone'>,
+  timestamp: Date,
+) {
+  const interval = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
+  return Boolean(interval?.valid && timestamp >= interval.startAt && timestamp < interval.endAt)
+}
+
 export function isValidIanaTimeZone(value: unknown): value is string {
   if (typeof value !== 'string' || !value.trim()) return false
   try {
@@ -190,6 +215,17 @@ export function businessLocalDate(now = new Date(), timezone = DEFAULT_BUSINESS_
   }).formatToParts(now)
   const values = Object.fromEntries(parts.filter(part => part.type !== 'literal').map(part => [part.type, part.value]))
   return `${values.year}-${values.month}-${values.day}`
+}
+
+export function businessLocalDateTime(now = new Date(), timezone = DEFAULT_BUSINESS_TIMEZONE) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: isValidIanaTimeZone(timezone) ? timezone : DEFAULT_BUSINESS_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now)
+  const values = Object.fromEntries(parts.filter(part => part.type !== 'literal').map(part => [part.type, part.value]))
+  return `${businessLocalDate(now, timezone)}T${values.hour}:${values.minute}`
 }
 
 /**

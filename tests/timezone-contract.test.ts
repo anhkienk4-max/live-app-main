@@ -5,7 +5,11 @@ import test from 'node:test'
 import {
   DEFAULT_BUSINESS_TIMEZONE,
   businessLocalDate,
+  businessLocalDateTime,
   inspectShiftTimeConsistency,
+  isShiftLiveAt,
+  isTimestampWithinShift,
+  suggestUniqueLiveShift,
   isValidIanaTimeZone,
   resolveShiftDateTime,
   shiftDateTimeFields,
@@ -36,6 +40,24 @@ test('overnight shifts preserve business end date and deterministic duration', (
     crosses_midnight: true,
     duration_minutes: 240,
   })
+})
+
+test('live shift matching respects status, timezone, and the overnight end boundary', () => {
+  const overnight = {
+    status: 'live' as const,
+    date: '2026-08-25',
+    start_time: '22:00',
+    end_time: '02:00',
+    timezone: 'Asia/Ho_Chi_Minh',
+  }
+  assert.equal(isShiftLiveAt(overnight, new Date('2026-08-25T16:00:00.000Z')), true)
+  assert.equal(isShiftLiveAt(overnight, new Date('2026-08-25T19:00:00.000Z')), false)
+  assert.equal(isShiftLiveAt({ ...overnight, status: 'preparing' }, new Date('2026-08-25T16:00:00.000Z')), false)
+  assert.equal(suggestUniqueLiveShift([overnight], new Date('2026-08-25T16:00:00.000Z')), overnight)
+  assert.equal(suggestUniqueLiveShift([overnight, { ...overnight, date: '2026-08-25', start_time: '21:00', end_time: '01:00' }], new Date('2026-08-25T16:00:00.000Z')), null)
+  assert.equal(isTimestampWithinShift(overnight, new Date('2026-08-25T18:00:00.000Z')), true)
+  assert.equal(isTimestampWithinShift(overnight, new Date('2026-08-25T19:00:00.000Z')), false)
+  assert.equal(businessLocalDateTime(new Date('2026-08-25T16:00:00.000Z'), overnight.timezone), '2026-08-25T23:00')
 })
 
 test('IANA zones, UTC boundaries and invalid zones are handled without browser timezone leakage', () => {

@@ -61,18 +61,19 @@ import {
   type VisionOcrMode,
   type VisionOcrRunStatus,
 } from '@/components/features/reports/VisionOcrControls'
-import { AlertDialog } from '@/components/ui/alert-dialog'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
 import { getAuthMode } from '@/lib/auth/authMode'
 import { removeDashboardScreenshot, uploadDashboardScreenshot } from '@/lib/services/liveDashboardStorageService'
 import { useTranslation } from '@/lib/i18n'
+import { businessLocalDateTime, formatShiftTimeRange, isTimestampWithinShift, zonedWallTimeToUtc } from '@/lib/utils/shiftUtils'
 import { AlertTriangle, ChevronDown, ChevronUp, Loader2, RefreshCw, ScanText, Upload, X } from 'lucide-react'
 
 interface DashboardUpdateModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   shift: Shift
+  brandName: string
   platformName?: string
   onSuccess: () => void
 }
@@ -86,13 +87,15 @@ const emptyForm = (): FormData => ({
   notes: '', screenshot_url: '',
 })
 
-export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, onSuccess }: DashboardUpdateModalProps) {
+export function DashboardUpdateModal({ open, onOpenChange, shift, brandName, platformName, onSuccess }: DashboardUpdateModalProps) {
   const inferredDashboardPlatform = inferDashboardPlatform(platformName)
   const initializedShiftIdRef = React.useRef<string | null>(null)
   const manualMetricKeysRef = React.useRef(new Set<CanonicalMetricKey>())
   const ocrDerivedMetricKeysRef = React.useRef(new Set<CanonicalMetricKey>())
   const cropProposalKeyRef = React.useRef('')
+  const requestIdRef = React.useRef<string | null>(null)
   const [formData, setFormData] = React.useState<FormData>(emptyForm)
+  const [snapshotDateTime, setSnapshotDateTime] = React.useState(() => businessLocalDateTime(new Date(), shift.timezone))
   const [screenshotFile, setScreenshotFile] = React.useState<File | null>(null)
   const [submitting, setSubmitting] = React.useState(false)
   const [ocrReview, setOcrReview] = React.useState<OcrReviewData | null>(null)
@@ -105,7 +108,6 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
   const [metricsCollapsed, setMetricsCollapsed] = React.useState(false)
   const [unmappedCollapsed, setUnmappedCollapsed] = React.useState(true)
   const [rawOcrCollapsed, setRawOcrCollapsed] = React.useState(true)
-  const [showReviewWarning, setShowReviewWarning] = React.useState(false)
   const [dashboardPlatform, setDashboardPlatform] = React.useState<ReportDashboardPlatform>(inferredDashboardPlatform)
   const [cropBox, setCropBox] = React.useState<OcrCropBox>(defaultOcrCrop(inferredDashboardPlatform))
   const [visionMode, setVisionMode] = React.useState<VisionOcrMode | null>(null)
@@ -125,7 +127,9 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
     initializedShiftIdRef.current = shift.id
     manualMetricKeysRef.current.clear()
     ocrDerivedMetricKeysRef.current.clear()
+    requestIdRef.current = null
     setFormData(emptyForm())
+    setSnapshotDateTime(businessLocalDateTime(new Date(), shift.timezone))
     setScreenshotFile(null)
     setOcrReview(null)
     setMetricValues({})
@@ -134,12 +138,11 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
     setDashboardPlatform(inferredDashboardPlatform)
     setCropBox(defaultOcrCrop(inferredDashboardPlatform))
     setMetricFilter('data')
-    setShowReviewWarning(false)
     setVisionMode(null)
     setVisionResults([])
     setVisionScanning(false)
     setVisionRunStatus(null)
-  }, [inferredDashboardPlatform, open, shift.id])
+  }, [inferredDashboardPlatform, open, shift.id, shift.timezone])
 
   React.useEffect(() => {
     if (dashboardPlatform !== 'tiktok_shop' || !formData.screenshot_url) {
@@ -440,6 +443,14 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
     setVisionRunStatus(null)
   }
 
+  const removeScreenshot = () => {
+    const screenshotUrl = formData.screenshot_url
+    if (screenshotUrl.startsWith('blob:')) URL.revokeObjectURL(screenshotUrl)
+    setFormData(current => ({ ...current, screenshot_url: '' }))
+    setScreenshotFile(null)
+    resetOcrResults()
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (scanning || visionScanning || submitting) return
@@ -449,19 +460,27 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
       return
     }
     if (reviewRequiredCount(ocrReview) > 0) {
-      setShowReviewWarning(true)
       return
     }
     void persistUpdate()
   }
 
   const persistUpdate = async () => {
+    if (reviewRequiredCount(ocrReview) > 0) return
     setSubmitting(true)
     let uploadedStoragePath: string | undefined
 
     try {
       if (dashboardPlatform === 'other') throw new Error('Dashboard platform is required.')
+      const [snapshotDate, snapshotTime] = snapshotDateTime.split('T')
+      const timestamp = snapshotDate && snapshotTime
+        ? zonedWallTimeToUtc(snapshotDate, snapshotTime, shift.timezone || 'Asia/Ho_Chi_Minh')
+        : new Date(Number.NaN)
+      if (Number.isNaN(timestamp.getTime()) || !isTimestampWithinShift(shift, timestamp)) {
+        throw new Error('SNAPSHOT_OUTSIDE_SHIFT')
+      }
       const serializedMetrics = serializeLiveMetricState(dashboardPlatform, metricValues)
+      requestIdRef.current ||= crypto.randomUUID()
       let screenshotUrl = formData.screenshot_url || undefined
       if (getAuthMode() === 'supabase' && screenshotFile) {
         const uploaded = await uploadDashboardScreenshot(screenshotFile, shift.id)
@@ -470,7 +489,8 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
       }
       await dashboardUpdateService.create({
         shift_id: shift.id,
-        time: new Date().toISOString(),
+        request_id: requestIdRef.current,
+        time: timestamp.toISOString(),
         ...serializedMetrics,
         screenshot_url: screenshotUrl,
         screenshot_storage_path: uploadedStoragePath,
@@ -483,10 +503,11 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
       toast({ title: t('updateSubmitted'), description: t('updateSubmittedHelp'), variant: 'success' })
       
       onSuccess()
+      requestIdRef.current = null
       onOpenChange(false)
-    } catch {
+    } catch (error) {
       if (uploadedStoragePath) await removeDashboardScreenshot(uploadedStoragePath, shift.id).catch(() => undefined)
-      toast({ title: t('error'), description: t('validationError'), variant: 'destructive' })
+      toast({ title: t('error'), description: error instanceof Error && error.message === 'SNAPSHOT_OUTSIDE_SHIFT' ? 'Snapshot time must fall inside the selected shift.' : t('validationError'), variant: 'destructive' })
     } finally {
       setSubmitting(false)
     }
@@ -517,6 +538,13 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          <section className="rounded-lg border bg-muted/30 p-3 text-sm" data-testid="live-linked-shift">
+            <p className="font-semibold">Ca đang liên kết: {brandName} · {platformName || '—'}</p>
+            <p>{shift.date} · {formatShiftTimeRange(shift)} · {shift.timezone || 'Asia/Ho_Chi_Minh'} · {shift.status}</p>
+          </section>
+          <label className="block text-sm font-medium">Thời điểm ảnh chụp ({shift.timezone || 'Asia/Ho_Chi_Minh'})
+            <input type="datetime-local" step="60" className="mt-1 block w-full rounded-md border bg-background px-3 py-2" value={snapshotDateTime} onChange={event => setSnapshotDateTime(event.target.value)} data-testid="live-snapshot-time" />
+          </label>
           {/* Screenshot Upload */}
           <div className="grid gap-4 lg:grid-cols-2">
             <div>
@@ -529,7 +557,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
                   alt={t('dashboardScreenshot')}
                   width={1280}
                   height={720}
-                  className="w-full h-40 object-cover rounded-lg border"
+                  className="max-h-[70vh] w-full rounded-lg border bg-slate-950 object-contain"
                 />
                 <Button
                   type="button"
@@ -537,7 +565,8 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
                   aria-label={t('removeScreenshot')}
                   variant="destructive"
                   className="absolute top-2 right-2"
-                  onClick={() => { setFormData({ ...formData, screenshot_url: '' }); setScreenshotFile(null); setOcrReview(null) }}
+                  disabled={scanning || visionScanning || proposingCrop || submitting}
+                  onClick={removeScreenshot}
                 >
                   <X className="h-4 w-4" />
                 </Button>
@@ -767,7 +796,7 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
             >
               {t('cancel')}
             </Button>
-            <Button type="submit" disabled={submitting || scanning || visionScanning}>
+            <Button type="submit" disabled={submitting || scanning || visionScanning || unresolvedCount > 0}>
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {t('addUpdate')}
             </Button>
@@ -775,15 +804,6 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
         </form>
       </DialogContent>
     </Dialog>
-    <AlertDialog
-      open={showReviewWarning}
-      onOpenChange={setShowReviewWarning}
-      title={t('liveReviewWarning', { count: unresolvedCount })}
-      description={t('draftCanKeepReview')}
-      cancelText={t('backToReview')}
-      confirmText={t('saveAnyway')}
-      onConfirm={() => void persistUpdate()}
-    />
   </>)
 }
 

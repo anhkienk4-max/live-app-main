@@ -7,6 +7,7 @@ import {
   applySelectedMetricsToState,
   type CanonicalMetricKey,
   type MetricState,
+  selectBestMetricCandidates,
 } from '../lib/utils/ocrCanonical.ts'
 import { parseDashboardOcrText } from '../lib/utils/ocrMetrics.ts'
 import {
@@ -15,6 +16,7 @@ import {
   ocrCandidateMetricKeys,
   parseAndApplyOcrText,
   platformMetricBindingKeys,
+  resetMetricToOcr,
   shouldInitializeOcrSelection,
 } from '../lib/utils/ocrReview.ts'
 
@@ -125,6 +127,66 @@ test('canonical selector preserves zero and excludes rejected, invalid, and non-
   assert.deepEqual(ocrCandidateMetricKeys(review), ['comments'])
 })
 
+test('independent OCR agreement without label and value geometry remains review required', () => {
+  const candidates = ['label-pass', 'card-pass'].map(evidence_group => ({
+    key: 'comments' as const,
+    metric: {
+      value: 114,
+      confidence: 'high' as const,
+      needs_review: false,
+      source: 'word_box_exact' as const,
+      status: 'confirmed' as const,
+      evidence_group,
+    },
+  }))
+
+  const withoutGeometry = applySelectedMetricsToState({}, {
+    status: 'review_required',
+    metrics: { comments: selectBestMetricCandidates(candidates, ['comments']).selectedByKey.comments },
+  })
+  const withGeometry = selectBestMetricCandidates(candidates.map(candidate => ({
+    ...candidate,
+    metric: {
+      ...candidate.metric,
+      label_box: { x: 10, y: 10, width: 20, height: 5 },
+      value_box: { x: 10, y: 20, width: 10, height: 5 },
+    },
+  })), ['comments']).selectedByKey.comments
+
+  assert.equal(withoutGeometry.comments, 114)
+  assert.equal(selectBestMetricCandidates(candidates, ['comments']).selectedByKey.comments?.status, 'review_required')
+  assert.equal(withGeometry?.status, 'confirmed')
+
+  const manual = selectBestMetricCandidates([{
+    key: 'comments',
+    metric: {
+      value: 114,
+      confidence: 'high',
+      needs_review: false,
+      source: 'manual',
+      status: 'manual',
+    },
+  }], ['comments']).selectedByKey.comments
+  assert.equal(manual?.status, 'manual')
+})
+
+test('reset to OCR cannot accept an ambiguous non-numeric candidate', () => {
+  const review: OcrReviewData = {
+    status: 'review_required',
+    metrics: {
+      advertising_cost: {
+        value: '3..06M',
+        candidate_value: '3..06M',
+        confidence: 'high',
+        needs_review: true,
+        status: 'review_required',
+      },
+    },
+  }
+
+  assert.equal(resetMetricToOcr(review, 'advertising_cost'), review)
+})
+
 test('automatic OCR merge preserves protected edits and explicit Apply replaces them', () => {
   const review = parseDashboardOcrText(
     'shopee_live',
@@ -210,5 +272,8 @@ test('both production forms bind canonical metric state to rendered inputs', () 
   assert.match(liveSource, /setMetricValues\(current => parseAndApplyOcrText/)
   assert.match(liveSource, /setMetricValues\(current => applySelectedMetricsToState/)
   assert.match(liveSource, /values=\{metricValues\}/)
+  assert.match(liveSource, /const persistUpdate = async \(\) => \{\s*if \(reviewRequiredCount\(ocrReview\) > 0\) return/)
+  assert.match(liveSource, /const removeScreenshot = \(\) => \{[\s\S]*?resetOcrResults\(\)/)
+  assert.match(liveSource, /disabled=\{scanning \|\| visionScanning \|\| proposingCrop \|\| submitting\}[\s\S]*?onClick=\{removeScreenshot\}/)
   assert.match(boundFieldsSource, /value=\{metricValueToInput\(values\[key\]\)\}/)
 })

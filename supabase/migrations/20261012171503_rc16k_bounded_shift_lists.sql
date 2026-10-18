@@ -93,8 +93,7 @@ begin
           and r.status in ('pending','approved','manually_assigned')
           and (cardinality(roles)=0 or r.operational_role::text=any(roles))
           and (cardinality(reg_statuses)=0 or r.status::text=any(reg_statuses))
-      ) or actor in (s.host_id, s.support_id, s.technical_id)
-        or exists (select 1 from public.reports rep where rep.shift_id=s.id and rep.submitted_by=actor and rep.deleted_at is null and rep.archived_at is null))
+      ))
 ;
 end;
 $$;

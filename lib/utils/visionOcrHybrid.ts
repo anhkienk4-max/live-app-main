@@ -14,7 +14,8 @@ import {
   visionMetricKeys,
 } from '@/lib/visionOcr/types'
 
-const equalNumbers = (left: number, right: number) => Object.is(left, right)
+const equalNumbers = (left: number | null, right: number | null) =>
+  left !== null && right !== null && Object.is(left, right)
 
 const aiCandidate = (metric: VisionMetricResult): HybridMetricCandidate | null =>
   metric.value === null || metric.state === 'missing'
@@ -23,7 +24,14 @@ const aiCandidate = (metric: VisionMetricResult): HybridMetricCandidate | null =
         value: metric.value,
         rawText: metric.rawText,
         confidence: metric.confidence,
-        state: metric.state,
+        state: metric.state === 'confirmed'
+          && metric.reasoningCode === 'direct_read'
+          && metric.confidence !== null
+          && metric.confidence >= .8
+          && metric.rawText !== null
+          && equalNumbers(parseVisionDisplayValue(metric.rawText), metric.value)
+          ? 'confirmed'
+          : 'review_required',
       }
 
 export function compareVisionMetrics({
@@ -63,13 +71,20 @@ export function compareVisionMetrics({
       }
     }
     if (local?.value != null && ai?.value != null && equalNumbers(local.value, ai.value)) {
+      const independentlyConfirmed = local.state === 'confirmed'
+        && local.confidence !== null
+        && local.confidence >= .8
+        && ai.state === 'confirmed'
+        && ai.confidence !== null
+        && ai.confidence >= .8
       return {
         key,
         local,
         ai,
         selectedValue: local.value,
         selectedSource: 'agreement',
-        state: 'confirmed',
+        state: independentlyConfirmed ? 'confirmed' : 'review_required',
+        warning: independentlyConfirmed ? undefined : 'low_confidence_or_unverified_agreement',
       }
     }
     if (local?.value != null && ai?.value != null) {
@@ -183,7 +198,7 @@ export function mergeHybridResultsIntoReview(
 }
 
 export function parseVisionDisplayValue(input: string): number | null {
-  const normalized = input.trim().replace(/\s+/g, '')
+  const normalized = input.trim().replace(/\s+/g, '').replace(/[₫đ$€£¥₱]/gi, '').replace(/%$/, '')
   if (!normalized) return null
   const duration = normalized.match(/^(?:(\d+)m)?(?:(\d+)s)?$/i)
   if (duration && (duration[1] || duration[2])) {

@@ -229,13 +229,18 @@ export function confirmAllReviewMetrics(
 export function resetMetricToOcr(review: OcrReviewData, key: CanonicalMetricKey): OcrReviewData {
   const existing = review.metrics[key]
   if (!existing || existing.candidate_value == null) return review
+  const candidateValue = candidateNumericValue({
+    ...existing,
+    value: existing.candidate_value,
+  })
+  if (candidateValue === null) return review
   return {
     ...review,
     metrics: {
       ...review.metrics,
       [key]: {
         ...existing,
-        value: existing.candidate_value,
+        value: candidateValue,
         source: existing.label_source || existing.value_source_pass ? 'image_ocr' : existing.source,
         status: existing.confidence === 'high' ? 'accepted' : 'review_required',
         needs_review: existing.confidence !== 'high',

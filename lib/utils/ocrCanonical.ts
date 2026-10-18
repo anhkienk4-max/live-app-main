@@ -300,7 +300,15 @@ export function selectBestMetricCandidates(
         supportByValue.get(metricValueSignature(candidate.metric))?.size || 0,
       )
     }, 0)
-    const consensusConfirmed = selectedSupport >= 2 && selectedSupport > competingSupport
+    const consensusConfirmed = Boolean(
+      selected.metric.label_box
+      && selected.metric.value_box
+      && selectedSupport >= 2
+      && selectedSupport > competingSupport,
+    )
+    const selectedIsUserOwned = selected.metric.source === 'manual' || selected.metric.source === 'imported'
+    const selectedNeedsReview = !selectedIsUserOwned
+      && (selected.metric.status === 'confirmed' || selected.metric.status === 'accepted')
     selectedByKey[key] = consensusConfirmed
       ? {
         ...selected.metric,
@@ -311,6 +319,13 @@ export function selectBestMetricCandidates(
         rejection_reason: undefined,
         pairing_reason: `Selected because ${selectedSupport} independent OCR strategies agree.`,
       }
+      : selectedNeedsReview
+        ? {
+          ...selected.metric,
+          status: 'review_required',
+          needs_review: true,
+          pairing_reason: 'OCR agreement lacks both label and value geometry, so the candidate requires visual confirmation.',
+        }
       : selected.metric
     for (const discarded of ranked.slice(1)) {
       if (metricValuesEqual(metricValue(selected.metric), metricValue(discarded.metric))) continue

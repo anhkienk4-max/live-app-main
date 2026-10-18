@@ -4,7 +4,7 @@ import * as React from 'react'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useListPagination } from '@/lib/hooks/useListPagination'
 import { HistoryPagination } from '@/components/ui/history-pagination'
-import { format } from 'date-fns'
+import { format, parseISO, subDays } from 'date-fns'
 import { AlertCircle, Radio, DollarSign, FileText, Filter, RotateCcw, TrendingUp } from 'lucide-react'
 import {
   brandService,
@@ -16,7 +16,7 @@ import {
 import { Brand, Campaign, DashboardUpdate, Platform, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
-import { getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
+import { getCurrentBusinessDate, isShiftLiveAt, suggestUniqueLiveShift } from '@/lib/utils/shiftUtils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -52,7 +52,8 @@ export function LiveMonitoringDashboard() {
   const {page,pageSize,navigate}=pagination
   const [total,setTotal]=React.useState(0)
   const sequence=React.useRef(0)
-  const encodedFilters=JSON.stringify(filters?{from:filters.date||undefined,to:filters.date||undefined,brandIds:filters.brandIds,platformIds:filters.platformIds,campaignIds:filters.campaignIds,hostIds:filters.hostIds,supportIds:filters.supportIds,technicalIds:filters.technicalIds,statuses:filters.statuses}:{})
+  const fromDate = filters?.date === todayValue() ? format(subDays(parseISO(filters.date), 1), 'yyyy-MM-dd') : filters?.date
+  const encodedFilters=JSON.stringify(filters?{from:fromDate||undefined,to:filters.date||undefined,brandIds:filters.brandIds,platformIds:filters.platformIds,campaignIds:filters.campaignIds,hostIds:filters.hostIds,supportIds:filters.supportIds,technicalIds:filters.technicalIds,statuses:filters.statuses}:{})
   React.useEffect(()=>{const frame=requestAnimationFrame(()=>setFilters(initialFilters()));return()=>cancelAnimationFrame(frame)},[])
   const loadData = React.useCallback(async () => {
     if(!filters||!identity)return
@@ -102,7 +103,9 @@ export function LiveMonitoringDashboard() {
   const totalRevenue = revenueValues.length ? revenueValues.reduce((sum,value)=>sum+value,0) : null
   const orderValues = filtered.flatMap(shift => { const value = latestUpdate(shift.id)?.orders; return value == null ? [] : [value] })
   const totalOrders = orderValues.length ? orderValues.reduce((sum,value)=>sum+value,0) : null
-  const activeShift = filtered.find(shift=>shift.id===selectedShift?.id) ?? filtered.find(shift=>shift.status==='live') ?? filtered[0]
+  const actualLiveShifts = filtered.filter(shift => isShiftLiveAt(shift))
+  const activeShift = filtered.find(shift=>shift.id===selectedShift?.id)
+    ?? suggestUniqueLiveShift(filtered)
   const roleOptions = (role: 'host' | 'support' | 'technical') => users.filter(user => user.operational_roles?.includes(role)).map(user => ({ id: user.id, name: user.full_name }))
   const nameFor = (items: Array<{ id: string; name: string }>, id?: string) => id ? items.find(item => item.id === id)?.name || '—' : '—'
   const statusLabel = (status: Shift['status']) => status === 'live' ? t('liveStatus') : t(status)
@@ -168,7 +171,9 @@ export function LiveMonitoringDashboard() {
       <p className="text-xs text-muted-foreground">{t('currentPage')}</p>
       {/* 4. Session Cards */}
       <div className="space-y-3">
-        {filtered.length > 1 && <div className="flex flex-wrap gap-2">{filtered.map(shift => <Button key={shift.id} variant={activeShift?.id === shift.id ? 'secondary' : 'outline'} size="sm" onClick={() => setSelectedShift(shift)} data-testid={`open-live-session-${shift.id}`}>{shift.title || nameFor(brands, shift.brand_id)}<Badge variant="outline">{statusLabel(shift.status)}</Badge></Button>)}</div>}
+        {!selectedShift && actualLiveShifts.length > 1 && <p className="text-sm text-amber-800">Có nhiều ca đang LIVE. Hãy chọn đúng Brand, Platform và ca trước khi nhập snapshot.</p>}
+        {!selectedShift && actualLiveShifts.length === 0 && <p className="text-sm text-muted-foreground">Không có ca LIVE đúng thời gian hiện tại. Chọn ca theo ngày để thêm ảnh lịch sử.</p>}
+        {filtered.length > 0 && <div className="flex flex-wrap gap-2">{filtered.map(shift => <Button key={shift.id} variant={activeShift?.id === shift.id ? 'secondary' : 'outline'} size="sm" onClick={() => setSelectedShift(shift)} data-testid={`open-live-session-${shift.id}`}>{nameFor(brands, shift.brand_id)} · {nameFor(platforms, shift.platform_id)} · {shift.date}<Badge variant="outline">{statusLabel(shift.status)}</Badge></Button>)}</div>}
         <HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />
         <div className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white">{activeShift ? <LiveSessionModal key={activeShift.id} refreshVersion={refreshVersion} inline open shift={activeShift} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onOpenChange={open=>!open&&setSelectedShift(null)} onUpdate={handleShiftUpdate} /> : <p className="p-10 text-center text-sm text-slate-500">{t('noLiveShifts')}</p>}</div>
       </div>
