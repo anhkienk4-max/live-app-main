@@ -12,6 +12,7 @@ import {
   ArrowRight,
   ShieldAlert,
   RotateCcw,
+  Sparkles,
   } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -94,6 +95,7 @@ export function PayrollDraftWorkspace({
   const [voidReason, setVoidReason] = React.useState('')
   const [voidSubmitting, setVoidSubmitting] = React.useState(false)
   const [voidError, setVoidError] = React.useState<string | null>(null)
+  const [autoCalculating, setAutoCalculating] = React.useState(false)
 
   const isDraft = period.status === 'draft'
 
@@ -192,6 +194,39 @@ export function PayrollDraftWorkspace({
       )
     } finally {
       setTransitionSubmitting(false)
+    }
+  }
+
+  // --- AUTO CALCULATE DRAFT ---
+  const handleAutoCalculate = async () => {
+    try {
+      setAutoCalculating(true)
+      const res = await workforceService.autoCalculateDraft(period.id)
+      if (res.prepared_count > 0) {
+        toast({
+          title: 'Tự động tính lương thành công',
+          description: `Đã nạp ${res.prepared_count} dòng lương từ dữ liệu chấm công đã duyệt. (${res.skipped_count} phân đoạn được bỏ qua do đã có hoặc chưa hợp lệ).`,
+        })
+      } else if (res.skipped_count > 0) {
+        toast({
+          title: 'Không có dòng mới được tạo',
+          description: `${res.skipped_count} phân đoạn chấm công đã được kiểm tra nhưng bỏ qua (đã tồn tại hoặc chưa duyệt).`,
+        })
+      } else {
+        toast({
+          title: 'Không tìm thấy ca chấm công',
+          description: 'Không có phân đoạn chấm công nào được duyệt trong khoảng ngày của chu kỳ này.',
+        })
+      }
+      onRefresh()
+    } catch (err: unknown) {
+      toast({
+        title: 'Tính toán tự động thất bại',
+        description: workforceErrorMessage(err),
+        variant: 'destructive',
+      })
+    } finally {
+      setAutoCalculating(false)
     }
   }
 
@@ -415,6 +450,19 @@ export function PayrollDraftWorkspace({
             </Button>
           )}
 
+          {/* Auto Calculate button */}
+          {isDraft && (
+            <Button
+              size="sm"
+              onClick={handleAutoCalculate}
+              disabled={autoCalculating}
+              className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+            >
+              <Sparkles className={`h-3.5 w-3.5 mr-1.5 ${autoCalculating ? 'animate-spin' : ''}`} />
+              {autoCalculating ? 'Đang tính toán…' : 'Tự động tính từ chấm công'}
+            </Button>
+          )}
+
           {/* Prepare Line button */}
           {isDraft && (
             <Button
@@ -466,8 +514,26 @@ export function PayrollDraftWorkspace({
             <tbody className="divide-y divide-slate-100">
               {displayedLines.length === 0 ? (
                 <tr>
-                  <td colSpan={isDraft ? 11 : 10} className="py-8 text-center text-slate-500">
-                    Không có dòng lương nào trong chu kỳ này.
+                  <td colSpan={isDraft ? 11 : 10} className="py-12 text-center">
+                    <div className="mx-auto max-w-sm space-y-3">
+                      <p className="text-sm font-semibold text-slate-700">Chưa có dòng lương nào trong chu kỳ này</p>
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        Bạn có thể nhấn <strong>&ldquo;Tự động tính từ chấm công&rdquo;</strong> để quét các ca chấm công đã duyệt và áp khung lương tương ứng, hoặc bấm <strong>&ldquo;Chuẩn bị dòng lương&rdquo;</strong> để nạp thủ công.
+                      </p>
+                      {isDraft && (
+                        <div className="pt-2">
+                          <Button
+                            size="sm"
+                            onClick={handleAutoCalculate}
+                            disabled={autoCalculating}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-xs text-white"
+                          >
+                            <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                            Tự động tính từ chấm công ngay
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -527,7 +593,13 @@ export function PayrollDraftWorkspace({
 
                       {/* Gross */}
                       <td className="px-3 py-2.5 text-right font-mono font-medium text-slate-900">
-                        {formatCurrency(line.gross_vnd)}
+                        <div>{formatCurrency(line.gross_vnd)}</div>
+                        <div
+                          className="text-[9px] text-slate-400 font-mono cursor-help truncate max-w-[140px] ml-auto"
+                          title={`Công thức: (${line.payable_minutes - line.overtime_minutes}p chuẩn × ${formatCurrency(line.rate_vnd_per_hour)} ÷ 60) + (${line.overtime_minutes}p OT × ${formatCurrency(line.rate_vnd_per_hour)} × ${(line.overtime_multiplier_basis_points / 10000).toFixed(2)}x ÷ 60)`}
+                        >
+                          {line.payable_minutes}p @ {formatCurrency(line.rate_vnd_per_hour)}/h
+                        </div>
                       </td>
 
                       {/* Adjustment */}

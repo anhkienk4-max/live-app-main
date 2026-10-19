@@ -66,7 +66,7 @@ function validMinutes(value: number): boolean {
 function validMoney(value: number): boolean {
   return Number.isSafeInteger(value) && Math.abs(value) <= 1_000_000_000_000
 }
-function minuteDifference(start: string | null, end: string | null): number {
+export function minuteDifference(start: string | null, end: string | null): number {
   guard(start && end && Number.isFinite(Date.parse(start)) && Number.isFinite(Date.parse(end)),
     'WORKFORCE_ACTUAL_TIMES_REQUIRED')
   // ISO offset required: avoid timezone-dependent Date.parse for local text.
@@ -192,3 +192,121 @@ export function nextPayrollState(current: PayrollStatus, target: PayrollStatus):
   guard(transitions[current] === target, 'WORKFORCE_PAYROLL_INVALID_TRANSITION')
   return target
 }
+
+export interface AutoCalculateSegmentInput {
+  segment: ActualStaffingEvidence
+  shiftDate: string
+}
+
+export interface AutoCalculateResult {
+  preparedLines: PayrollLineSnapshot[]
+  skippedSegments: Array<{
+    segmentId: string
+    reason: string
+  }>
+}
+
+/**
+ * Pure auto-calculation engine for a payroll period:
+ * Scans approved worked segments, resolves approved rate cards,
+ * computes exact gross and net amounts with BigInt integer rounding,
+ * and skips unapproved attendance or unapproved rates fail-closed.
+ */
+export function autoCalculatePeriodLines(input: {
+  period: { periodStart: string; periodEnd: string }
+  segments: readonly AutoCalculateSegmentInput[]
+  rates: readonly ApprovedPayrollRate[]
+  existingSegmentIds?: ReadonlySet<string>
+}): AutoCalculateResult {
+  const preparedLines: PayrollLineSnapshot[] = []
+  const skippedSegments: Array<{ segmentId: string; reason: string }> = []
+  const existing = input.existingSegmentIds ?? new Set<string>()
+
+  for (const item of input.segments) {
+    const { segment, shiftDate } = item
+
+    if (existing.has(segment.id)) {
+      skippedSegments.push({ segmentId: segment.id, reason: 'ALREADY_EXISTS_IN_PERIOD' })
+      continue
+    }
+
+    if (segment.reviewStatus !== 'approved' || segment.eventKind !== 'worked') {
+      skippedSegments.push({ segmentId: segment.id, reason: 'ATTENDANCE_NOT_APPROVED_WORKED' })
+      continue
+    }
+
+    if (shiftDate < input.period.periodStart || shiftDate > input.period.periodEnd) {
+      skippedSegments.push({ segmentId: segment.id, reason: 'SHIFT_OUTSIDE_PERIOD' })
+      continue
+    }
+
+    try {
+      const selectedRate = selectApprovedRate(segment, shiftDate, input.rates)
+      const actualMinutes = minuteDifference(segment.startAt, segment.endAt)
+      const line = calculatePayrollLine({
+        segment,
+        shiftDate,
+        rate: selectedRate,
+        payableMinutes: actualMinutes,
+        overtimeMinutes: 0,
+      })
+      preparedLines.push(line)
+    } catch (err: unknown) {
+      const code = err instanceof WorkforceCalculationError ? err.code : 'CALCULATION_FAILED'
+      skippedSegments.push({ segmentId: segment.id, reason: code })
+    }
+  }
+
+  return { preparedLines, skippedSegments }
+}
+
+/**
+ * Live Salary Preview & Simulator for rate and shift adjustments.
+ * Allows UI to compute salary preview immediately when typing rates or hours.
+ */
+export function calculateLivePreview(input: {
+  rateVndPerHour: number
+  overtimeMultiplierBasisPoints: number
+  regularMinutes: number
+  overtimeMinutes: number
+  adjustmentVnd?: number
+}): {
+  regularVnd: number
+  overtimeVnd: number
+  grossVnd: number
+  adjustmentVnd: number
+  netVnd: number
+  formulaDescription: string
+} {
+  const payableMinutes = input.regularMinutes + input.overtimeMinutes
+  const amounts = calculatePayrollAmounts({
+    actualMinutes: payableMinutes,
+    rateVndPerHour: input.rateVndPerHour,
+    overtimeMultiplierBasisPoints: input.overtimeMultiplierBasisPoints,
+    payableMinutes,
+    overtimeMinutes: input.overtimeMinutes,
+    adjustmentVnd: input.adjustmentVnd ?? 0,
+    adjustmentReason: (input.adjustmentVnd ?? 0) !== 0 ? 'Mô phỏng lương dự kiến' : null,
+  })
+
+  const regNum = BigInt(input.rateVndPerHour) * BigInt(input.regularMinutes)
+  const regularVnd = Number((regNum + 30n) / 60n)
+  const otNum = BigInt(input.rateVndPerHour) * BigInt(input.overtimeMinutes) * BigInt(input.overtimeMultiplierBasisPoints)
+  const overtimeVnd = Number((otNum + 300_000n) / 600_000n)
+
+  const otMultiplier = (input.overtimeMultiplierBasisPoints / 10000).toFixed(2)
+  const formulaDescription =
+    `(${input.regularMinutes}p × ${input.rateVndPerHour.toLocaleString('vi-VN')} đ/h ÷ 60) + ` +
+    `(${input.overtimeMinutes}p OT × ${input.rateVndPerHour.toLocaleString('vi-VN')} đ/h × ${otMultiplier}x ÷ 60)` +
+    (input.adjustmentVnd ? ` + (${input.adjustmentVnd.toLocaleString('vi-VN')} đ)` : '')
+
+  return {
+    regularVnd,
+    overtimeVnd,
+    grossVnd: amounts.grossVnd,
+    adjustmentVnd: amounts.adjustmentVnd,
+    netVnd: amounts.netVnd,
+    formulaDescription,
+  }
+}
+

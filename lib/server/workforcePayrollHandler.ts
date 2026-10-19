@@ -6,7 +6,7 @@ import { authorizationErrorResponse, isAuthorizationError, requireRole,
   type ServerUserResolver } from '@/lib/server/authGuards'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
-import { calculatePayrollAmounts, calculatePayrollLine, selectApprovedRate, WorkforceCalculationError,
+import { autoCalculatePeriodLines, calculatePayrollAmounts, calculatePayrollLine, selectApprovedRate, WorkforceCalculationError,
   type ActualStaffingEvidence, type ApprovedPayrollRate } from '@/lib/workforce/payrollCalculation'
 
 const id = z.string().trim().min(1).max(120)
@@ -43,6 +43,7 @@ const correction = z.object({
   adjustment_vnd:line.shape.adjustment_vnd,adjustment_reason:line.shape.adjustment_reason,
 }).strict()
 const voidLine = z.object({...correctionFields,action:z.literal('void_line')}).strict()
+const autoCalculateDraft = z.object({action:z.literal('auto_calculate_draft'),period_id:id}).strict()
 const discoveryDate = z.string().date().refine(value=>!value.startsWith('0000'))
 const pageNumber = (max:number) => z.string().regex(/^[1-9]\d{0,6}$/u)
   .transform(Number).refine(value=>value<=max)
@@ -200,7 +201,7 @@ export function createWorkforcePayrollHandler(options:Options={}) {
           return failure('WORKFORCE_PAYROLL_FEATURE_DISABLED',503)
         const actor=user.businessUserId
         if(!actor)return failure('WORKFORCE_BUSINESS_USER_REQUIRED',403)
-        const input=z.union([rate,period,line,transition,correction,voidLine])
+        const input=z.union([rate,period,line,transition,correction,voidLine,autoCalculateDraft])
           .parse(await readJsonBody(request,16384))
         const db=connect()
         if(input.action==='register_rate'){
@@ -270,6 +271,89 @@ export function createWorkforcePayrollHandler(options:Options={}) {
               : failure('WORKFORCE_PAYROLL_CORRECTION_FAILED',503)
           }
           return Response.json({ok:true,...data},{headers:noStore})
+        }
+        if(input.action==='auto_calculate_draft'){
+          const p=await db.from('workforce_payroll_periods')
+            .select('id,status,period_start,period_end').eq('id',input.period_id).maybeSingle()
+          if(p.error)return failure('WORKFORCE_PERIOD_READ_FAILED',503)
+          if(!p.data||p.data.status!=='draft')return failure('WORKFORCE_PAYROLL_PERIOD_NOT_DRAFT',409)
+          const periodRecord = p.data
+          const existingLines=await db.from('workforce_payroll_lines')
+            .select('segment_id').eq('period_id',input.period_id)
+          if(existingLines.error)return failure('WORKFORCE_PAYROLL_READ_FAILED',503)
+          const existingSegmentIds=new Set((existingLines.data??[]).map(row=>row.segment_id as string))
+          const shifts=await db.from('shifts')
+            .select('id,date,deleted_at')
+            .gte('date',periodRecord.period_start)
+            .lte('date',periodRecord.period_end)
+            .is('deleted_at',null)
+            .limit(2000)
+          if(shifts.error)return failure('WORKFORCE_SHIFT_READ_FAILED',503)
+          const shiftRows=shifts.data??[]
+          if(shiftRows.length===0){
+            return Response.json({
+              ok:true,prepared_count:0,skipped_count:0,lines:[],skipped:[],
+            },{status:200,headers:noStore})
+          }
+          const shiftDateMap=new Map<string,string>()
+          shiftRows.forEach(s=>shiftDateMap.set(s.id,s.date))
+          const shiftIds=Array.from(shiftDateMap.keys())
+          const segments=await db.from('workforce_actual_segments')
+            .select('id,shift_id,staff_id,operational_role,event_kind,review_status,actual_start_at,actual_end_at')
+            .in('shift_id',shiftIds)
+            .eq('review_status','approved')
+            .eq('event_kind','worked')
+            .limit(5000)
+          if(segments.error)return failure('WORKFORCE_ACTUAL_READ_FAILED',503)
+          const cards=await db.from('workforce_rate_cards')
+            .select('id,staff_id,operational_role,effective_from,effective_through,vnd_per_hour,overtime_multiplier_basis_points,approved_by')
+            .not('approved_by','is',null)
+            .not('approved_at','is',null)
+            .limit(2000)
+          if(cards.error||(cards.data??[]).length>=2000)return failure('WORKFORCE_RATES_INCOMPLETE',503)
+          const approvedRates:ApprovedPayrollRate[]=(cards.data??[]).map(v=>({
+            id:v.id,staffId:v.staff_id,role:v.operational_role,
+            effectiveFrom:v.effective_from,effectiveThrough:v.effective_through,
+            vndPerHour:v.vnd_per_hour,
+            overtimeMultiplierBasisPoints:v.overtime_multiplier_basis_points,
+            approvedBy:v.approved_by,
+          }))
+          const segmentInputs=(segments.data??[]).map(seg=>({
+            segment:{
+              id:seg.id,shiftId:seg.shift_id,staffId:seg.staff_id,
+              role:seg.operational_role,eventKind:seg.event_kind,
+              reviewStatus:seg.review_status,startAt:seg.actual_start_at,
+              endAt:seg.actual_end_at,
+            },
+            shiftDate:shiftDateMap.get(seg.shift_id)??'',
+          }))
+          const {preparedLines,skippedSegments}=autoCalculatePeriodLines({
+            period:{periodStart:periodRecord.period_start,periodEnd:periodRecord.period_end},
+            segments:segmentInputs,
+            rates:approvedRates,
+            existingSegmentIds,
+          })
+          let insertedLines:Array<Record<string,unknown>>=[]
+          if(preparedLines.length>0){
+            const rowsToInsert=preparedLines.map(total=>({
+              period_id:periodRecord.id,segment_id:total.segmentId,rate_card_id:total.rateCardId,
+              staff_id:total.staffId,operational_role:total.role,
+              actual_minutes:total.actualMinutes,payable_minutes:total.payableMinutes,
+              overtime_minutes:total.overtimeMinutes,rate_vnd_per_hour:total.rateVndPerHour,
+              overtime_multiplier_basis_points:total.overtimeMultiplierBasisPoints,
+              gross_vnd:total.grossVnd,adjustment_vnd:total.adjustmentVnd,
+              adjustment_reason:total.adjustmentReason,calculation_version:total.calculationVersion,
+            }))
+            const {data:inserted,error:insertError}=await db.from('workforce_payroll_lines')
+              .insert(rowsToInsert)
+              .select('id,period_id,staff_id,segment_id,net_vnd,version,voided_at')
+            if(insertError)return failure('WORKFORCE_PAYROLL_AUTO_CALC_INSERT_FAILED',409)
+            insertedLines=inserted??[]
+          }
+          return Response.json({
+            ok:true,prepared_count:insertedLines.length,skipped_count:skippedSegments.length,
+            lines:insertedLines,skipped:skippedSegments,
+          },{status:201,headers:noStore})
         }
         const p=await db.from('workforce_payroll_periods')
           .select('id,status,period_start,period_end').eq('id',input.period_id).maybeSingle()

@@ -435,6 +435,22 @@ export const workforceService = {
     })
   },
 
+  async autoCalculateDraft(periodId: string): Promise<{
+    ok: true
+    prepared_count: number
+    skipped_count: number
+    lines: PayrollLine[]
+    skipped: Array<{ segmentId: string; reason: string }>
+  }> {
+    return requestJson('/api/workforce/payroll', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'auto_calculate_draft',
+        period_id: periodId,
+      }),
+    })
+  },
+
   async prepareLine(payload: {
     periodId: string
     segmentId: string
