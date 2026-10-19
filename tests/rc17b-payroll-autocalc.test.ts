@@ -308,4 +308,3 @@ test('calculateRecalculationDiffs: recalculates rates and strictly preserves acc
   assert.equal(bobDiff.netDeltaVnd, 0)
   assert.equal(bobDiff.adjustmentVnd, -10_000)
 })
-
