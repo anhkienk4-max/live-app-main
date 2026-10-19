@@ -493,6 +493,54 @@ test('TikTok advertising cost is confirmed when independent card and normalized 
   )
 })
 
+test('TikTok ratio digits without a visible decimal remain review-required across OCR passes', () => {
+  const ratioCell = platformMetricLayouts.tiktok_shop.find(cell => cell.key === 'roi_gmv_max')
+  assert.ok(ratioCell)
+  const boundingBox = {
+    x: (ratioCell.x - ratioCell.width / 2) * 1600,
+    y: (ratioCell.y - ratioCell.height / 2) * 900,
+    width: ratioCell.width * 1600,
+    height: ratioCell.height * 900,
+  }
+  const cardWord: OcrRecognizedWord = {
+    ...recognizedWord('525', boundingBox.x, boundingBox.y, boundingBox.width, boundingBox.height, 'card', 'card:roi_gmv_max:0'),
+    evidence_source_family: 'anchor_aligned_card_crop',
+    evidence_group: 'anchor_card:candidate-1:roi_gmv_max',
+  }
+  const review = mapDashboardImageRecognition('tiktok_shop', {
+    engine: 'tesseract.js',
+    language: 'eng+vie',
+    text: 'ROI GMV Max: 525',
+    pass_output: {
+      label: 'ROI GMV Max: 525',
+      numeric: '',
+      card: { roi_gmv_max: ['525'] },
+      card_labels: { roi_gmv_max: ['ROI GMV Max'] },
+      card_diagnostics: {
+        roi_gmv_max: [{
+          text: '525',
+          confidence: 92,
+          preprocessing_pass: 'ratio_grayscale_line',
+          evidence_source_family: 'anchor_aligned_card_crop',
+          evidence_group: 'anchor_card:candidate-1:roi_gmv_max',
+          bounding_box: boundingBox,
+        }],
+      },
+      strategy_text: { normalized_roi: 'ROI GMV Max: 525' },
+    },
+    confidence: 92,
+    words: [cardWord],
+    crop_box: { left: 0, top: 0, width: 1, height: 1 },
+    original_dimensions: { width: 1600, height: 900 },
+    processed_dimensions: { width: 1600, height: 900 },
+  })
+  const metric = review.metrics.roi_gmv_max
+  assert.equal(metric?.value, 5.25)
+  assert.deepEqual(new Set(metric?.strategy_candidates?.map(candidate => candidate.strategy)),
+    new Set(['anchor_card', 'normalized_roi']))
+  assert.equal(metric?.status, 'review_required')
+})
+
 test('TikTok card diagnostics recover a visually owned compact value without creating confirmation consensus', () => {
   const totalViewsCell = platformMetricLayouts.tiktok_shop
     .find(cell => cell.key === 'total_views')

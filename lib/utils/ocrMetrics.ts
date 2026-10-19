@@ -2608,7 +2608,16 @@ function assessTikTokConfirmation(
       || Boolean(candidate.metric.supporting_word_boxes?.length)
     ),
   )
+  const ratioPrecisionGroups = cell?.valueKind === 'ratio' && cell.displayFormat?.decimalPlaces
+    ? new Set(agreementCandidates.flatMap(candidate => {
+      const raw = (candidate.metric.raw_value || candidate.metric.raw_ocr_value || '').trim()
+      return new RegExp(`[.,]\\d{${cell.displayFormat!.decimalPlaces}}$`).test(raw)
+        ? [tiktokEvidenceGroup(candidate.metric)]
+        : []
+    }))
+    : null
   const formatSupported = tiktokCompactFormatIsVisuallySupported(key, agreementCandidates)
+    && (ratioPrecisionGroups === null || ratioPrecisionGroups.size >= 2)
   const preprocessingAgrees = tiktokPreprocessingEvidenceAgrees(
     winnerCandidates,
     allKeyCandidates,
@@ -3176,6 +3185,23 @@ function tiktokStrategyGroupScore(
         : 0
     })()
     : 0
+  const normalizedCountGeometrySupport = cell?.valueKind === 'count'
+    && candidates.some(candidate => {
+      if (
+        candidate.metric.strategy !== 'normalized_roi'
+        || (candidate.metric.supporting_word_boxes?.length || 0) < 2
+        || tiktokCandidateConfidence(candidate) < 90
+      ) return false
+      return allKeyCandidates.some(other =>
+        other.metric.strategy === 'anchor_card'
+        && !metricValuesEqual(
+          candidate.metric.value ?? candidate.metric.candidate_value,
+          other.metric.value ?? other.metric.candidate_value,
+        )
+        && tiktokCandidateConfidence(candidate) - tiktokCandidateConfidence(other) >= 10)
+    })
+    ? 2.5
+    : 0
   return strategyWeight
     + formatQuality
     + independentEvidenceBonus
@@ -3197,6 +3223,7 @@ function tiktokStrategyGroupScore(
     + inferredRatioFormatSupport
     + trailingZeroCompactRecovery
     + countHighConfidenceGlyphSupport
+    + normalizedCountGeometrySupport
     - normalizedCountNoisePenalty
 }
 

@@ -418,6 +418,47 @@ async function recognizeMetricCards(
           preprocessingPass: 'single_word_high_threshold',
         })
       }
+      if (cell.valueKind === 'ratio' && crop.width > 2 && crop.height > 2) {
+        // The dark KPI card can lose a decimal point in the inverted pass.
+        // Read the value alone without inversion and retain it as review evidence.
+        const inset = Math.round(crop.width * .15)
+        const ratioCrop = {
+          left: crop.left + inset,
+          top: crop.top + 1,
+          width: crop.width - inset * 2,
+          height: crop.height - 2,
+        }
+        const ratioImage = await dependencies.sharp(imageBytes)
+          .extract(ratioCrop)
+          .resize({
+            width: ratioCrop.width * 10,
+            height: ratioCrop.height * 10,
+            fit: 'fill',
+            kernel: dependencies.sharp.kernel.lanczos3,
+          })
+          .grayscale()
+          .normalize()
+          .sharpen({ sigma: .8 })
+          .png()
+          .toBuffer()
+        await worker.setParameters({
+          tessedit_pageseg_mode: dependencies.PSM.SINGLE_LINE,
+          tessedit_char_whitelist: '0123456789.,',
+          preserve_interword_spaces: '0',
+          user_defined_dpi: '300',
+        })
+        const ratioResult = await withTimeout(worker.recognize(
+          ratioImage,
+          { rotateAuto: false },
+          { text: true },
+        ), timeoutMs)
+        variants.push({
+          text: normalizeCardText(ratioResult.data.text),
+          confidence: ratioResult.data.confidence,
+          crop: ratioCrop,
+          preprocessingPass: 'ratio_grayscale_line',
+        })
+      }
     }
     if (
       platform === 'tiktok_shop'

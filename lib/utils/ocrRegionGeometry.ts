@@ -64,10 +64,23 @@ export function roiCellBoundingBox(
     && ['advertising_cost', 'average_order_value', 'live_ctr'].includes(cell.key)
     ? cell.y - .008
     : cell.y
+  const centerX = kind === 'value' && candidate.platform === 'tiktok_shop' && cell.key === 'click_rate'
+    ? cell.x - .024
+    : cell.x
   const centerY = kind === 'label' ? labelCenterY : tiktokValueCenterY
   const tiktokValueWidth = candidate.platform === 'tiktok_shop'
     ? cell.key === 'gmv'
       ? Math.min(.48, cell.width * 1.08)
+      : cell.key === 'click_rate'
+        ? cell.width * .62
+      : cell.key === 'items_sold'
+        ? cell.width * .9
+      : cell.key === 'impressions'
+        ? cell.width * .85
+      : cell.key === 'new_followers'
+        ? cell.width * .9
+      : cell.key === 'comments'
+        ? cell.width * .85
       : cell.key === 'current_viewers'
         ? Math.min(.14, cell.width * 1.2)
           : cell.key === 'average_view_duration_seconds'
@@ -76,9 +89,7 @@ export function roiCellBoundingBox(
               ? Math.min(.13, cell.width * 1.6)
           : ['advertising_cost', 'average_order_value', 'live_ctr'].includes(cell.key)
             ? cell.width
-          : Math.min(.22, cell.width * (
-            cell.key === 'items_sold' ? 1.6 : 1.35
-          ))
+          : Math.min(.22, cell.width * 1.35)
     : cell.width
   const width = kind === 'label'
     ? Math.min(.30, cell.width * (candidate.platform === 'tiktok_shop' ? 1.55 : 1.35))
@@ -91,10 +102,10 @@ export function roiCellBoundingBox(
         : Math.min(cell.height, .07)
       : Math.min(cell.height, cell.key === 'sales' ? .16 : .09)
   const corners = [
-    roiPointToImage(candidate, cell.x - width / 2, centerY - height / 2),
-    roiPointToImage(candidate, cell.x + width / 2, centerY - height / 2),
-    roiPointToImage(candidate, cell.x + width / 2, centerY + height / 2),
-    roiPointToImage(candidate, cell.x - width / 2, centerY + height / 2),
+    roiPointToImage(candidate, centerX - width / 2, centerY - height / 2),
+    roiPointToImage(candidate, centerX + width / 2, centerY - height / 2),
+    roiPointToImage(candidate, centerX + width / 2, centerY + height / 2),
+    roiPointToImage(candidate, centerX - width / 2, centerY + height / 2),
   ]
   return boundingBox(corners)
 }

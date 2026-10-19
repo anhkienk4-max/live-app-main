@@ -222,12 +222,18 @@ for (const fixture of fixtures) {
         root_cause: metric?.rejection_reason || metric?.conflict_warning || metric?.pairing_reason || null,
       }
     })
+    const spatialCorrect = expectedEntries.filter(([key, expected]) =>
+      matchesExpectedDisplay(key, values[key] as number | undefined, expected, fixture.platform)).length
+    if (fixture.platform === 'tiktok_shop' && 'fixturePath' in fixture && imagePath === fixture.fixturePath) {
+      assert.equal(spatialCorrect, expectedEntries.length, 'TikTok fixture OCR accuracy regressed')
+      assert.equal(review.metrics.roi_gmv_max?.status, 'review_required')
+    }
     console.info(JSON.stringify({
       platform: fixture.platform,
       metricDiagnostics,
       rawOnlyBaseline,
       spatialStatuses,
-      spatialCorrect: expectedEntries.filter(([key, expected]) => matchesExpectedDisplay(key, values[key] as number | undefined, expected, fixture.platform)).length,
+      spatialCorrect,
     }))
   })
 }
