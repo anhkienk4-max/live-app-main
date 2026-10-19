@@ -2,12 +2,12 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-19T13:39:15+07:00
+Generated at: 2026-10-19T14:15:46+07:00
 
 ## Repository
 
-- Branch: `release/one-shot-20261019`
-- HEAD: `4d03318f23f6e62746b286ea150e79434c4c89e6`
+- Branch: `test/one-shot-live-ocr-e2e`
+- HEAD: `0545554cd23d05dd953f2a8b4a08369429d5625a`
 - origin/main: `84b74d7ff940ec5705632dc606a3191028f5b297`
 - Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-prod-integration/.codex-worktrees/one-shot-20261019`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
