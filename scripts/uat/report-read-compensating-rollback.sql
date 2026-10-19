@@ -97,8 +97,9 @@ begin
     or has_function_privilege('anon', 'public.get_report_revisions(text)', 'EXECUTE') then
     raise exception 'REPORT_READ_COMPENSATION_POSTCONDITION_FAILED';
   end if;
-  raise notice 'REPORT_RLS_COMPENSATING_ROLLBACK=PASS';
 end;
 $rollback_assertions$;
+
+select 'REPORT_RLS_COMPENSATING_ROLLBACK=PASS';
 
 commit;

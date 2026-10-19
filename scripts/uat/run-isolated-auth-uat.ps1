@@ -266,6 +266,11 @@ select json_build_object(
   $compensatingRollbackPath = Join-Path $repoRoot 'scripts/uat/report-read-compensating-rollback.sql'
   $compensatingRollback = Invoke-IsolatedPsql $compensatingRollbackPath
   if ($compensatingRollback.ExitCode -ne 0 -or -not (($compensatingRollback.Output -join "`n") -match 'REPORT_RLS_COMPENSATING_ROLLBACK=PASS')) {
+    $rollbackDiagnostics = @($compensatingRollback.Output | ForEach-Object { [string]$_ })
+    $rollbackDiagnostics = @('PSQL_EXIT_CODE=' + $compensatingRollback.ExitCode) + $rollbackDiagnostics |
+      Where-Object { $_ -notmatch '(?i)authorization|bearer|cookie|password|access_token|refresh_token|service.role|anon.key' }
+    Set-Content -LiteralPath (Join-Path $evidenceRoot 'migration-compensating-rollback-failure.log') -Value $rollbackDiagnostics
+    foreach ($line in $rollbackDiagnostics) { Write-Host "UAT_ROLLBACK_FAILURE=$line" }
     throw 'Post-migration compensating rollback rehearsal failed.'
   }
   Set-Content -LiteralPath (Join-Path $evidenceRoot 'migration-compensating-rollback.log') -Value $compensatingRollback.Output
