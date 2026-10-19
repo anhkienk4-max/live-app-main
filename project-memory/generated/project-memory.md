@@ -2,14 +2,14 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-19T11:28:23+07:00
+Generated at: 2026-10-19T14:38:17+07:00
 
 ## Repository
 
-- Branch: `main`
-- HEAD: `91ea9cddf4322dd3ed086e52424d6ecfd8aeb4c1`
-- origin/main: `91ea9cddf4322dd3ed086e52424d6ecfd8aeb4c1`
-- Worktree: `C:/Users/KienNguyen/OPS_RESTORE_LAB_RC16K/rc17a-actual-staffing`
+- Branch: `feat/rc17b-payroll-autocalc-and-flexible-rates`
+- HEAD: `1992a4fbbef701ac339475eddb05e6f5a6a67727`
+- origin/main: `84b74d7ff940ec5705632dc606a3191028f5b297`
+- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17b-payroll`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
 ## Hardening
@@ -22,9 +22,9 @@ Generated at: 2026-10-19T11:28:23+07:00
 ## Inventory
 
 - Routes: 56
-- Source files in tracked inventory roots: 731
-- Tests: 169
-- Migrations: 70
+- Source files in tracked inventory roots: 733
+- Tests: 170
+- Migrations: 71
 
 ## Modules
 
