@@ -150,14 +150,6 @@ async function runReportOcr(
   await expect(page.locator('img[src^="blob:"]').first()).toBeVisible()
   await page.getByTestId('report-run-ocr-button').click()
   await waitForOcrCompletion(page.getByTestId('report-ocr-completion-status'))
-  const regionDiagnostics = page.getByTestId('ocr-region-diagnostics')
-  if (await regionDiagnostics.count()) {
-    console.info(`[report-region] ${await regionDiagnostics.locator('pre').textContent()}`)
-  }
-  const rawDiagnostics = page.getByTestId('report-ocr-raw-diagnostics')
-  if (await rawDiagnostics.count()) {
-    console.info(`[report-ocr] ${await rawDiagnostics.locator('pre').textContent()}`)
-  }
 
   await assertRenderedMetrics(page, expected)
   if ('advertising_cost' in expected) {
@@ -248,7 +240,7 @@ async function assertShopeeCorrectedText(
     expect(value).not.toContain(noisy)
   }
   await expect(rawDiagnostics).toBeVisible()
-  await rawDiagnostics.locator('summary').click()
+  await rawDiagnostics.getByRole('button').click()
   await expect(rawDiagnostics.locator('pre')).toBeVisible()
 }
 
@@ -261,7 +253,7 @@ async function assertTikTokCorrectedText(
   expect(value).not.toContain('[label pass]')
   expect(value).not.toContain('[card pass]')
   await expect(rawDiagnostics).toBeVisible()
-  await rawDiagnostics.locator('summary').click()
+  await rawDiagnostics.getByRole('button').click()
   await expect(rawDiagnostics.locator('pre')).toBeVisible()
 }
 
@@ -274,9 +266,10 @@ async function openTikTokFinalReport(page: Page) {
 }
 
 async function prepareTikTokShiftForLiveUpdate(page: Page) {
-  await gotoAppRoute(page, '/calendar')
-  await expect(page.getByTestId('calendar-event-s1')).toBeVisible()
-  await page.getByTestId('calendar-event-s1').click()
+  await gotoAppRoute(page, '/calendar?calendar_view=list')
+  const shift = page.getByTestId('list-shift-s1')
+  await expect(shift).toBeVisible()
+  await shift.getByRole('button').click()
   await page.getByTestId('edit-shift-detail').click()
 
   const editDialog = page.getByRole('dialog').filter({
@@ -299,6 +292,8 @@ test('Shopee Final Report uploads a real dashboard and autofills all 16 main KPI
   await gotoAppRoute(page, '/reports')
   await expect(page.getByTestId('open-final-report-modal')).toBeVisible()
   await page.getByTestId('open-final-report-modal').click()
+  const shopeeShift = page.getByTestId('report-shift-candidate-list').locator(':scope > div').filter({ hasText: 'Fashion launch live' })
+  await shopeeShift.getByTestId('report-shift-choose').click()
   await expectSelectedPlatform(page.getByTestId('report-platform-selector'), 'Shopee Live')
   await runReportOcr(
     page,
@@ -314,6 +309,7 @@ test('Shopee Final Report uploads a real dashboard and autofills all 16 main KPI
 
 test('Shopee Live Dashboard Update uploads a real dashboard and autofills all 16 main KPIs', async ({ page }) => {
   await gotoAppRoute(page, '/live')
+  await page.getByTestId('open-live-session-s2').click()
   await expect(page.getByTestId('open-live-dashboard-update-s2')).toBeVisible()
   await page.getByTestId('open-live-dashboard-update-s2').click()
   await expectSelectedPlatform(page.getByTestId('live-platform-selector'), 'Shopee Live')
