@@ -1,0 +1,42 @@
+name: Focused Live OCR snapshot to Reports
+
+on:
+  push:
+    branches: [test/one-shot-live-ocr-e2e]
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - name: Install pinned dependencies and browser OCR runtime
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+          pnpm install --frozen-lockfile
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-vie
+          pnpm exec playwright install --with-deps chromium
+      - name: Validate focused test
+        run: pnpm exec eslint e2e/ocr-workflows.spec.ts
+      - name: Live OCR review, save, shift binding and Reports import
+        run: pnpm exec playwright test --config playwright.one-shot.config.ts --grep 'owner TikTok dashboard'
+      - name: Preserve browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: focused-live-ocr-${{ github.sha }}
+          path: |
+            test-results
+            one-shot-browser-report
+          if-no-files-found: error

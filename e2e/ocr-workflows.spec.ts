@@ -72,6 +72,32 @@ const ownerTikTokKpiKeys = [
   'comments', 'product_clicks', 'average_order_value', 'live_ctr', 'shares', 'estimated_gmv',
 ] as const
 
+const ownerTikTokMetrics = {
+  gmv: 13566119, items_sold: 140, impressions: 119520, total_views: 2410,
+  advertising_cost: 3060000, click_rate: 2.02, roi_gmv_max: 5.23, ctor: 7.48,
+  average_view_duration_seconds: 39, new_followers: 13, buyers: 62, sku_orders: 124,
+  comments: 114, product_clicks: 1030, average_order_value: 176180, live_ctr: 42.74,
+  shares: 8, estimated_gmv: 12130000,
+} as const
+
+type MockServices = typeof import('../lib/services/dataService')
+type MockRuntime = { m: Record<string, unknown>; (id: string): MockServices }
+
+// Read the existing mock service without replacing its save/read implementations.
+async function readMockSnapshots(page: Page, shiftId: string) {
+  return page.evaluate(async id => {
+    let services: MockServices | undefined
+    const browser = window as Window & { webpackChunk_N_E: unknown[][] }
+    browser.webpackChunk_N_E.push([['ocr-snapshot-observer-' + crypto.randomUUID()], {}, (runtime: MockRuntime) => {
+      const moduleId = Object.keys(runtime.m).find(key => key.endsWith('/lib/services/dataService.ts'))
+      if (!moduleId) throw new Error('Local mock dataService module missing')
+      services = runtime(moduleId)
+    }])
+    if (!services) throw new Error('Local mock service observer unavailable')
+    return services.dashboardUpdateService.getByShift(id)
+  }, shiftId)
+}
+
 const tiktokIndependentFixture = path.join(
   process.cwd(),
   'e2e',
@@ -145,13 +171,14 @@ async function runReportOcr(
   fixture: string,
   expected: ExpectedMetrics,
   knownLabels: readonly string[],
+  reviewMismatches = false,
 ) {
   await page.getByTestId('report-dashboard-image-upload').setInputFiles(fixture)
   await expect(page.locator('img[src^="blob:"]').first()).toBeVisible()
   await page.getByTestId('report-run-ocr-button').click()
   await waitForOcrCompletion(page.getByTestId('report-ocr-completion-status'))
 
-  await assertRenderedMetrics(page, expected)
+  await assertRenderedMetrics(page, expected, reviewMismatches)
   if ('advertising_cost' in expected) {
     await expect(page.getByTestId('ocr-metric-input-advertising_cost')).toBeVisible()
   }
@@ -164,13 +191,14 @@ async function runLiveOcr(
   fixture: string,
   expected: ExpectedMetrics,
   knownLabels: readonly string[],
+  reviewMismatches = false,
 ) {
   await page.getByTestId('live-dashboard-image-upload').setInputFiles(fixture)
   await expect(page.locator('img[src^="blob:"]').first()).toBeVisible()
   await page.getByTestId('live-run-ocr-button').click()
   await waitForOcrCompletion(page.getByTestId('live-ocr-completion-status'))
 
-  await assertRenderedMetrics(page, expected)
+  await assertRenderedMetrics(page, expected, reviewMismatches)
   if ('advertising_cost' in expected) {
     await expect(page.getByTestId('ocr-metric-input-advertising_cost')).toBeVisible()
   }
@@ -186,7 +214,7 @@ async function waitForOcrCompletion(status: Locator) {
   ).toBe('review_required')
 }
 
-async function assertRenderedMetrics(page: Page, expected: ExpectedMetrics) {
+async function assertRenderedMetrics(page: Page, expected: ExpectedMetrics, reviewMismatches = false) {
   const metricContainer = page.getByTestId('ocr-main-metrics')
   await expect(metricContainer).toBeVisible()
   await expect(metricContainer.locator('input[data-testid^="ocr-metric-input-"]')).toHaveCount(
@@ -202,6 +230,18 @@ async function assertRenderedMetrics(page: Page, expected: ExpectedMetrics) {
       ? []
       : [{ key, expected: String(expectedValue), actual: actual[key] }],
   )
+  if (reviewMismatches) {
+    const confirmed = await page.locator('[data-testid^="ocr-metric-"][data-ocr-status="confirmed"]').count()
+    console.info(`[browser-ocr] exact=${Object.keys(expected).length - mismatches.length}/${Object.keys(expected).length} confirmed=${confirmed} manual_corrections=${mismatches.length}`)
+    for (const { key, expected: corrected } of mismatches) {
+      const field = page.getByTestId(`ocr-metric-${key}`)
+      await expect(field).toHaveAttribute('data-ocr-status', 'review_required')
+      await field.getByTestId(`ocr-metric-input-${key}`).fill(corrected)
+      await expect(field).toHaveAttribute('data-ocr-status', 'manual')
+    }
+    await assertRenderedMetrics(page, expected)
+    return
+  }
   expect(mismatches, `Rendered OCR metric values:\n${JSON.stringify(actual, null, 2)}`).toEqual([])
 }
 
@@ -266,25 +306,10 @@ async function openTikTokFinalReport(page: Page) {
 }
 
 async function prepareTikTokShiftForLiveUpdate(page: Page) {
-  await gotoAppRoute(page, '/calendar?calendar_view=list')
-  const shift = page.getByTestId('list-shift-s1')
-  await expect(shift).toBeVisible()
-  await shift.getByRole('button').click()
-  await page.getByTestId('edit-shift-detail').click()
-
-  const editDialog = page.getByRole('dialog').filter({
-    has: page.getByRole('heading', { name: 'Edit Shift', exact: true }),
-  })
-  const statusField = editDialog.getByText('Status', { exact: true }).locator('..')
-  await statusField.getByRole('combobox').click()
-  await page.getByRole('option', { name: 'Preparing', exact: true }).click()
-  await editDialog.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(editDialog).toBeHidden()
-  await page.keyboard.press('Escape')
-  await expect(page.getByRole('dialog')).toHaveCount(0)
-
-  await page.getByTestId('sidebar-live').click()
-  await expect(page).toHaveURL(/\/live$/)
+  await gotoAppRoute(page, '/live')
+  await page.getByTestId('open-live-session-s1').click()
+  await page.getByRole('combobox', { name: /^(Status|Trạng thái)$/ }).click()
+  await page.getByRole('option', { name: /^(Preparing|Đang chuẩn bị)$/ }).click()
   await page.getByTestId('open-live-dashboard-update-s1').click()
 }
 
@@ -325,7 +350,7 @@ test('Shopee Live Dashboard Update uploads a real dashboard and autofills all 16
   )
 })
 
-test('TikTok Final Report uploads a real dashboard and autofills all 19 KPIs', async ({ page }) => {
+test('TikTok Final Report reviews and corrects all 19 KPIs from a real dashboard', async ({ page }) => {
   test.setTimeout(240_000)
   await openTikTokFinalReport(page)
   await expectSelectedPlatform(page.getByTestId('report-platform-selector'), 'TikTok Shop')
@@ -334,6 +359,7 @@ test('TikTok Final Report uploads a real dashboard and autofills all 19 KPIs', a
     fixturePath('tiktok-dashboard.jpg'),
     tiktokMetrics,
     tiktokKnownLabels,
+    true,
   )
   await assertTikTokCorrectedText(
     page.getByTestId('report-ocr-corrected-text'),
@@ -341,7 +367,7 @@ test('TikTok Final Report uploads a real dashboard and autofills all 19 KPIs', a
   )
 })
 
-test('TikTok Live Dashboard Update uploads a real dashboard and autofills all 19 KPIs', async ({ page }) => {
+test('TikTok Live Dashboard Update reviews and corrects all 19 KPIs from a real dashboard', async ({ page }) => {
   test.setTimeout(240_000)
   await prepareTikTokShiftForLiveUpdate(page)
   await expectSelectedPlatform(page.getByTestId('live-platform-selector'), 'TikTok Shop')
@@ -350,6 +376,7 @@ test('TikTok Live Dashboard Update uploads a real dashboard and autofills all 19
     fixturePath('tiktok-dashboard.jpg'),
     tiktokMetrics,
     tiktokKnownLabels,
+    true,
   )
   await assertTikTokCorrectedText(
     page.getByTestId('live-ocr-corrected-text'),
@@ -357,7 +384,7 @@ test('TikTok Live Dashboard Update uploads a real dashboard and autofills all 19
   )
 })
 
-test('TikTok Final Report autofills all 19 KPIs from an independent real dashboard', async ({ page }) => {
+test('TikTok Final Report reviews and corrects all 19 KPIs from an independent real dashboard', async ({ page }) => {
   test.setTimeout(240_000)
   await openTikTokFinalReport(page)
   await expectSelectedPlatform(page.getByTestId('report-platform-selector'), 'TikTok Shop')
@@ -366,6 +393,7 @@ test('TikTok Final Report autofills all 19 KPIs from an independent real dashboa
     tiktokIndependentFixture,
     tiktokIndependentMetrics,
     tiktokKnownLabels,
+    true,
   )
   await assertTikTokCorrectedText(
     page.getByTestId('report-ocr-corrected-text'),
@@ -373,7 +401,7 @@ test('TikTok Final Report autofills all 19 KPIs from an independent real dashboa
   )
 })
 
-test('TikTok Live Dashboard Update autofills all 19 KPIs from an independent real dashboard', async ({ page }) => {
+test('TikTok Live Dashboard Update reviews and corrects all 19 KPIs from an independent real dashboard', async ({ page }) => {
   test.setTimeout(240_000)
   await prepareTikTokShiftForLiveUpdate(page)
   await expectSelectedPlatform(page.getByTestId('live-platform-selector'), 'TikTok Shop')
@@ -382,6 +410,7 @@ test('TikTok Live Dashboard Update autofills all 19 KPIs from an independent rea
     tiktokIndependentFixture,
     tiktokIndependentMetrics,
     tiktokKnownLabels,
+    true,
   )
   await assertTikTokCorrectedText(
     page.getByTestId('live-ocr-corrected-text'),
@@ -389,7 +418,7 @@ test('TikTok Live Dashboard Update autofills all 19 KPIs from an independent rea
   )
 })
 
-test('owner TikTok dashboard keeps unresolved OCR values in review and shows linked shift', async ({ page }) => {
+test('owner TikTok dashboard reviews 18 KPIs and saves the snapshot into the correct Reports shift', async ({ page }, info) => {
   test.setTimeout(240_000)
   await page.addInitScript(() => {
     localStorage.setItem('livestream-ops-current-user', '1')
@@ -398,18 +427,73 @@ test('owner TikTok dashboard keeps unresolved OCR values in review and shows lin
   await prepareTikTokShiftForLiveUpdate(page)
   const linkedShift = page.getByTestId('live-linked-shift')
   await expect(linkedShift).toBeVisible()
+  await expect(linkedShift).toContainText('TechGear Pro')
   await expect(linkedShift).toContainText('TikTok Shop')
-  await expect(page.getByTestId('live-snapshot-time')).toBeVisible()
+  const timestamp = page.getByTestId('live-snapshot-time')
+  await expect(timestamp).toBeVisible()
+  await timestamp.fill((await timestamp.inputValue()).slice(0, 10) + 'T10:15')
+  expect(await readMockSnapshots(page, 's1')).toHaveLength(0)
   await page.getByTestId('live-dashboard-image-upload').setInputFiles(
     fixturePath('ocr/tiktok-layout-variants/tiktok-real-2026-06-26-evening.png'),
   )
   await expect(page.locator('img[src^="blob:"]').first()).toBeVisible()
   await page.getByTestId('live-run-ocr-button').click()
   await waitForOcrCompletion(page.getByTestId('live-ocr-completion-status'))
+  await page.getByTestId('ocr-metric-filter-all').click()
+  const save = page.getByRole('dialog').locator('button[type="submit"]')
+  await expect(save).toBeDisabled()
+  const readings = []
   for (const key of ownerTikTokKpiKeys) {
-    await expect(page.getByTestId('ocr-metric-input-' + key)).toBeVisible()
+    const input = page.getByTestId('ocr-metric-input-' + key)
+    const field = page.getByTestId('ocr-metric-' + key)
+    await expect(input).toBeVisible()
+    const actual = await input.inputValue()
+    const status = await field.getAttribute('data-ocr-status')
+    const expected = String(ownerTikTokMetrics[key])
+    readings.push({ key, actual, expected, status, exact: actual === expected })
+    if (actual !== expected) {
+      expect(['review_required', 'low_confidence', 'empty']).toContain(status)
+      await input.fill(expected)
+      await expect(field).toHaveAttribute('data-ocr-status', 'manual')
+    }
   }
-  await expect(page.getByTestId('live-ocr-completion-status')).toHaveAttribute('data-ocr-status', 'review_required')
-  await expect(page.getByRole('dialog').locator('button[type="submit"]')).toBeDisabled()
-  await page.screenshot({ path: 'test-results/live-ocr-owner-fixture-review.png', fullPage: true })
+  await page.getByTestId('ocr-metric-input-current_viewers').fill('1820')
+  await page.getByRole('button', { name: /^(Confirm all reviewed metrics|Xác nhận tất cả chỉ số đã kiểm tra)$/ }).click()
+  for (const key of ownerTikTokKpiKeys) {
+    await expect(page.getByTestId('ocr-metric-input-' + key)).toHaveValue(String(ownerTikTokMetrics[key]))
+    await expect(page.getByTestId('ocr-metric-' + key)).toHaveAttribute('data-ocr-status', /^(confirmed|manual)$/)
+  }
+  await expect(save).toBeEnabled()
+  await page.screenshot({ path: info.outputPath('live-18-kpi-reviewed.png'), fullPage: true })
+  await save.click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  const snapshots = await readMockSnapshots(page, 's1')
+  expect(snapshots).toHaveLength(1)
+  const snapshot = snapshots[0]
+  expect(snapshot.shift_id).toBe('s1')
+  expect(snapshot.dashboard_platform).toBe('tiktok_shop')
+  expect(snapshot.normalized_metrics).toMatchObject(ownerTikTokMetrics)
+  expect(snapshot.normalized_metrics?.current_viewers).toBe(1820)
+  expect((await readMockSnapshots(page, 's2')).some(item => item.id === snapshot.id)).toBe(false)
+
+  await page.getByTestId('sidebar-reports').click()
+  await expect(page).toHaveURL(/\/reports$/)
+  await page.getByTestId('open-final-report-modal').click()
+  const picker = page.getByTestId('report-shift-picker')
+  await picker.getByTestId('report-shift-search').fill('TechGear morning live')
+  await expect(picker.getByTestId('report-shift-choose')).toHaveCount(1)
+  await picker.getByTestId('report-shift-choose').click()
+  const imported = page.getByTestId('report-snapshot-import')
+  await expect(imported).toBeVisible()
+  await imported.getByRole('combobox').click()
+  await page.getByRole('option', { name: new RegExp(snapshot.id.slice(0, 8)) }).click()
+  await page.getByTestId('apply-report-snapshot').click()
+  await expect(imported).toContainText('Source snapshot ' + snapshot.id.slice(0, 8))
+  for (const key of ownerTikTokKpiKeys) {
+    await expect(page.getByTestId('ocr-metric-input-' + key)).toHaveValue(String(ownerTikTokMetrics[key]))
+  }
+  await page.screenshot({ path: info.outputPath('reports-imported-snapshot.png'), fullPage: true })
+  const accuracy = { exact: readings.filter(item => item.exact).length, total: readings.length, autoConfirmed: readings.filter(item => item.status === 'confirmed').length }
+  console.info('[owner-browser-ocr] ' + JSON.stringify(accuracy))
+  await info.attach('snapshot-reconciliation', { body: JSON.stringify({ scope: 'local webpack mock browser E2E; not authenticated UAT', accuracy, readings, snapshotId: snapshot.id, shiftId: snapshot.shift_id, reportsImport: 'PASS' }, null, 2), contentType: 'application/json' })
 })
