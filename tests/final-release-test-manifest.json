@@ -118,6 +118,7 @@
     "tests/rc16l-api.test.ts",
     "tests/rc16l-calendar.test.ts",
     "tests/rc17a-actual-staffing.test.ts",
+    "tests/rc17b-payroll-autocalc.test.ts",
     "tests/real-dashboard-ocr-smoke.test.ts",
     "tests/registration-board-performance.test.ts",
     "tests/report-history-access.test.ts",

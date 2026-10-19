@@ -309,4 +309,3 @@ export function calculateLivePreview(input: {
     formulaDescription,
   }
 }
-
