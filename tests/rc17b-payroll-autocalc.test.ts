@@ -440,4 +440,3 @@ test('autoCalculatePeriodLines: flags unapproved OT claims as exceptions while c
   assert.equal(result.unapprovedOtExceptions[0].staffId, 'staff-carol')
   assert.equal(result.unapprovedOtExceptions[0].reason, 'STAFF_CLAIMED_OT_WITHOUT_SUPERVISOR_APPROVAL')
 })
-
