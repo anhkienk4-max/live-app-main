@@ -1,0 +1,125 @@
+name: One-shot Production Release Candidate Gate
+
+on:
+  push:
+    branches:
+      - release/one-shot-20261019
+
+permissions:
+  contents: read
+
+concurrency:
+  group: one-shot-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source-browser:
+    name: Source, build, OCR and browser regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - name: Install pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install native OCR and browser runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-vie
+          pnpm exec playwright install --with-deps chromium
+      - name: Validate canonical memory
+        run: pnpm run memory:validate
+      - name: TypeScript
+        run: pnpm run type-check
+      - name: ESLint
+        run: pnpm exec eslint .
+      - name: Production build without Production secrets
+        run: pnpm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          NEXT_PUBLIC_USE_MOCK_DATA: 'false'
+          FEATURE_ACTUAL_STAFFING: 'false'
+          FEATURE_PAYROLL: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+      - name: Full release regression inventory
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node scripts/run-final-regression.mjs
+      - name: Exact real-dashboard OCR regression
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/real-dashboard-ocr-smoke.test.ts tests/tiktok-layout-independent-ocr.test.ts tests/spatial-ocr-geometry.test.ts
+      - name: OCR desktop workflows
+        run: pnpm exec playwright test --config playwright.one-shot.config.ts --project desktop
+      - name: OCR mobile review and shift-binding workflow
+        run: pnpm exec playwright test --config playwright.one-shot.config.ts --project mobile --grep "owner TikTok dashboard"
+      - name: Reports, pagination and three-role browser workflows
+        run: pnpm exec playwright test --config playwright.rc16k.config.ts --reporter=line
+      - name: Payroll and Workforce desktop/mobile workflows
+        run: pnpm exec playwright test --config playwright.rc16i-postmain.config.ts
+      - name: Preserve browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: one-shot-browser-${{ github.sha }}
+          path: |
+            test-results
+            one-shot-browser-report
+            rc16k-route-evidence
+            rc16k-browser-report
+            rc16i-postmain-report
+          if-no-files-found: warn
+
+  database-rehearsal:
+    name: PostgreSQL 17.6 integrated migration manifest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d postgres"
+          --health-interval=3s
+          --health-timeout=3s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Validate runner syntax
+        run: bash -n scripts/release/one-shot-release-postgres.sh
+      - name: Rehearse exact M1, M2 and Live Snapshot manifest
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGDATABASE: postgres
+        run: bash scripts/release/one-shot-release-postgres.sh
+      - name: Record isolated scope
+        if: always()
+        run: |
+          {
+            echo "Target: GitHub-hosted synthetic PostgreSQL 17.6 only"
+            echo "Production credentials/connections/data: NONE"
+            echo "Manifest: M1 -> M2 -> Live Snapshot"
+            echo "Production ledger baseline modeled: 68; expected synthetic post-release: 71"
+          } >> "$GITHUB_STEP_SUMMARY"
