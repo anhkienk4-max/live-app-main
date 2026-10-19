@@ -1,0 +1,60 @@
+name: One-shot G07 G08 UI Parity Focused
+
+on:
+  push:
+    branches:
+      - fix/one-shot-g07-g08-ui-identity-20261019
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ui-parity:
+    name: G07 G08 contract, build and responsive browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - name: Install pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: TypeScript check
+        run: pnpm run type-check
+      - name: Targeted ESLint
+        run: pnpm exec eslint components/features/live/LiveMonitoringDashboard.tsx components/features/analytics/DashboardAnalytics.tsx lib/server/analyticsSnapshotHandler.ts tests/rc16k-pagination.test.ts e2e/one-shot-ui-parity.spec.ts
+      - name: Analytics owner identity and list regression
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc16k-pagination.test.ts
+      - name: Production build without credentials
+        run: pnpm run build
+        env:
+          CI: 'true'
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          NEXT_PUBLIC_USE_MOCK_DATA: 'false'
+          FEATURE_ACTUAL_STAFFING: 'false'
+          FEATURE_PAYROLL: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+      - name: Install Playwright
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Responsive G07 G08 screenshots
+        run: pnpm exec playwright test --config playwright.ui-parity.config.ts
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ui-parity-${{ github.sha }}
+          path: |
+            test-results
+            ui-parity-browser-report
+          if-no-files-found: warn
