@@ -2,13 +2,15 @@ $ErrorActionPreference = 'Stop'
 $previousTelemetrySetting = $env:SUPABASE_TELEMETRY_DISABLED
 $env:SUPABASE_TELEMETRY_DISABLED = '1'
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $releaseSha = (& git -C $repoRoot rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve the local release candidate SHA.' }
+$pnpmExecutable = if ($env:OS -eq 'Windows_NT') { 'pnpm.cmd' } else { 'pnpm' }
+$tempRoot = [IO.Path]::GetTempPath()
 
 $runId = [Guid]::NewGuid().ToString('N')
 $projectId = "ada-uat-$($runId.Substring(0, 12))"
-$runRoot = Join-Path $env:TEMP "ada-ops-auth-uat-$runId"
+$runRoot = Join-Path $tempRoot "ada-ops-auth-uat-$runId"
 $supabaseRoot = Join-Path $runRoot 'supabase'
 $migrationsRoot = Join-Path $supabaseRoot 'migrations'
 $credentialFile = Join-Path $runRoot 'credentials.json'
@@ -84,25 +86,32 @@ try {
   New-Item -ItemType Directory -Path $evidenceRoot -Force | Out-Null
   Copy-Item -LiteralPath (Join-Path $repoRoot 'next-env.d.ts') -Destination $nextEnvBackup
   $nextEnvBefore = (Get-FileHash -LiteralPath (Join-Path $repoRoot 'next-env.d.ts') -Algorithm SHA256).Hash
-  Get-ChildItem -LiteralPath (Join-Path $repoRoot 'supabase\migrations') -Filter '*.sql' |
-    Where-Object Name -ne '20261015154159_rc16k_member_report_read_rls.sql' |
+  Get-ChildItem -LiteralPath (Join-Path $repoRoot 'supabase/migrations') -Filter '*.sql' |
+    Where-Object Name -notin @('20261015154159_rc16k_member_report_read_rls.sql', '20261019000000_live_dashboard_snapshot_binding.sql') |
     Copy-Item -Destination $migrationsRoot
   Add-Content -LiteralPath (Join-Path $evidenceRoot 'uat-run.log') -Value "RELEASE_SHA=$releaseSha"
   Add-Content -LiteralPath (Join-Path $evidenceRoot 'uat-run.log') -Value "MIGRATION_COPY_COUNT=$((Get-ChildItem -LiteralPath $migrationsRoot -Filter '*.sql').Count)"
   Add-Content -LiteralPath (Join-Path $evidenceRoot 'uat-run.log') -Value 'MIGRATION_TEMP_PATCH=20261011092015_rc15_shift_rpc_compatibility.sql production-definition guard bypassed only for empty local database; source file unchanged'
-  $overlayMigration = Join-Path $repoRoot 'supabase\migrations\20261015154159_rc16k_member_report_read_rls.sql'
+  $overlayMigration = Join-Path $repoRoot 'supabase/migrations/20261015154159_rc16k_member_report_read_rls.sql'
   $overlayHash = (Get-FileHash -LiteralPath $overlayMigration -Algorithm SHA256).Hash
 
   $basePort = $null
   foreach ($candidate in 55420..55820 | Where-Object { $_ % 20 -eq 0 }) {
     $ports = @($candidate..($candidate + 9))
-    $listening = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
-      Where-Object { $ports -contains $_.LocalPort }
+    if ($env:OS -eq 'Windows_NT') {
+      $listening = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+        Where-Object { $ports -contains $_.LocalPort }
+    } else {
+      $listening = @($ports | Where-Object {
+        $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $_)
+        try { $listener.Start(); $false } catch { $true } finally { $listener.Stop() }
+      })
+    }
     if (-not $listening) { $basePort = $candidate; break }
   }
   if (-not $basePort) { throw 'No free loopback port block is available for isolated Supabase.' }
 
-  $config = Get-Content (Join-Path $repoRoot 'supabase\config.toml') -Raw
+  $config = Get-Content (Join-Path $repoRoot 'supabase/config.toml') -Raw
   $config = $config.Replace('project_id = "live-app-main"', "project_id = `"$projectId`"")
   foreach ($mapping in @(
     @{ From = 'port = 54321'; To = "port = $($basePort + 1)" },
@@ -129,11 +138,18 @@ try {
 
   $stackStarted = $true
   Write-Host 'UAT_STAGE=starting_local_supabase'
-  $start = Invoke-NativeCaptured 'pnpm.cmd' @('dlx', 'supabase@2.120.0', '--workdir', $runRoot, 'start', '--exclude', 'studio,edge-runtime,logflare,vector,supavisor')
-  if ($start.ExitCode -ne 0) { throw 'Supabase Local failed to start or apply its isolated migration copy.' }
+  $start = Invoke-NativeCaptured $pnpmExecutable @('dlx', 'supabase@2.120.0', '--workdir', $runRoot, 'start', '--exclude', 'studio,edge-runtime,logflare,vector,supavisor')
+  if ($start.ExitCode -ne 0) {
+    $diagnostics = @($start.Output | ForEach-Object { [string]$_ } |
+      Where-Object { $_ -match '(?i)error|failed|migration|postgres|container|port' -and $_ -notmatch '(?i)key|token|secret|password|authorization|bearer|cookie' } |
+      Select-Object -Last 20)
+    Set-Content -LiteralPath (Join-Path $evidenceRoot 'supabase-start-failure.log') -Value $diagnostics
+    $diagnostics | ForEach-Object { Write-Host "UAT_START_FAILURE=$_" }
+    throw "Supabase Local failed to start or apply its isolated migration copy (exit $($start.ExitCode))."
+  }
 
   Write-Host 'UAT_STAGE=seeding_synthetic_auth_and_data'
-  $statusResult = Invoke-NativeCaptured 'pnpm.cmd' @('dlx', 'supabase@2.120.0', '--workdir', $runRoot, 'status', '-o', 'json')
+  $statusResult = Invoke-NativeCaptured $pnpmExecutable @('dlx', 'supabase@2.120.0', '--workdir', $runRoot, 'status', '-o', 'json')
   if ($statusResult.ExitCode -ne 0) { throw 'Unable to read isolated Supabase Local status.' }
   $statusLines = @($statusResult.Output | ForEach-Object { [string]$_ })
   $jsonStart = -1
@@ -162,7 +178,7 @@ try {
   $env:SUPABASE_URL = $status.API_URL
   $env:SUPABASE_SECRET_KEY = $status.SERVICE_ROLE_KEY
 
-  Invoke-Checked 'node' @((Join-Path $repoRoot 'scripts\uat\seed-isolated-auth.mjs')) 'Synthetic local UAT seeding failed.'
+  Invoke-Checked 'node' @((Join-Path $repoRoot 'scripts/uat/seed-isolated-auth.mjs')) 'Synthetic local UAT seeding failed.'
   Add-Content -LiteralPath (Join-Path $evidenceRoot 'uat-run.log') -Value "BASELINE_READ_REPRODUCTION=baseline-report-read-reproduction.json; migration excluded before this probe"
 
   $migrationBody = Get-Content -LiteralPath $overlayMigration -Raw
@@ -186,8 +202,11 @@ try {
 
   Copy-Item -LiteralPath $overlayMigration -Destination $migrationsRoot
   Add-Content -LiteralPath (Join-Path $evidenceRoot 'uat-run.log') -Value "FORWARD_MIGRATION_SHA256=$overlayHash"
-  Invoke-Checked 'pnpm.cmd' @('dlx', 'supabase@2.120.0', '--workdir', $runRoot, 'migration', 'up', '--local', '--yes') 'Forward-only report read migration rehearsal failed.'
+  Invoke-Checked $pnpmExecutable @('dlx', 'supabase@2.120.0', '--workdir', $runRoot, 'migration', 'up', '--local', '--include-all', '--yes') 'Forward-only report read migration rehearsal failed.'
   Add-Content -LiteralPath (Join-Path $evidenceRoot 'uat-run.log') -Value 'FORWARD_MIGRATION_REHEARSAL=applied through Supabase CLI migration history on isolated local database'
+  Copy-Item -LiteralPath (Join-Path $repoRoot 'supabase/migrations/20261019000000_live_dashboard_snapshot_binding.sql') -Destination $migrationsRoot
+  Invoke-Checked $pnpmExecutable @('dlx', 'supabase@2.120.0', '--workdir', $runRoot, 'migration', 'up', '--local', '--yes') 'Live snapshot migration rehearsal failed.'
+  Add-Content -LiteralPath (Join-Path $evidenceRoot 'uat-run.log') -Value 'LIVE_SNAPSHOT_MIGRATION=applied after report read-RLS on isolated local database'
 
   $postconditionsSql = @'
 do $report_read_assert$
@@ -242,9 +261,9 @@ select json_build_object(
   Invoke-Checked 'node' @('--import', './tests/typescript-alias-loader.mjs', 'scripts/check-runtime-environment.ts', 'development') 'Local Supabase environment validation failed.'
   $playwrightArguments = @('exec', 'playwright', 'test', '--config=playwright.isolated-auth-uat.config.ts')
   if ($env:UAT_TEST_GREP) { $playwrightArguments += @('--grep', $env:UAT_TEST_GREP) }
-  Invoke-Checked 'pnpm.cmd' $playwrightArguments 'Authenticated isolated Playwright UAT failed.'
+  Invoke-Checked $pnpmExecutable $playwrightArguments 'Authenticated isolated Playwright UAT failed.'
 
-  $compensatingRollbackPath = Join-Path $repoRoot 'scripts\uat\report-read-compensating-rollback.sql'
+  $compensatingRollbackPath = Join-Path $repoRoot 'scripts/uat/report-read-compensating-rollback.sql'
   $compensatingRollback = Invoke-IsolatedPsql $compensatingRollbackPath
   if ($compensatingRollback.ExitCode -ne 0 -or -not (($compensatingRollback.Output -join "`n") -match 'REPORT_RLS_COMPENSATING_ROLLBACK=PASS')) {
     throw 'Post-migration compensating rollback rehearsal failed.'
@@ -261,7 +280,7 @@ select json_build_object(
   }
   if (Test-Path -LiteralPath $credentialFile) { Remove-Item -LiteralPath $credentialFile -Force }
   if ($stackStarted) {
-    $null = Invoke-NativeCaptured 'pnpm.cmd' @('dlx', 'supabase@2.120.0', '--workdir', $runRoot, 'stop', '--no-backup')
+    $null = Invoke-NativeCaptured $pnpmExecutable @('dlx', 'supabase@2.120.0', '--workdir', $runRoot, 'stop', '--no-backup')
   }
   $containerQuery = Invoke-NativeCaptured 'docker' @('ps', '-aq', '--filter', "label=com.docker.compose.project=$projectId")
   $stackContainers = if ($containerQuery.ExitCode -eq 0) { @($containerQuery.Output | Where-Object { $_ }) } else { @() }
@@ -298,7 +317,7 @@ select json_build_object(
   }
   if (Test-Path -LiteralPath $evidenceRoot) {
     $evidenceState = if ($testsPassed) { 'pass' } else { 'failed' }
-    $durableEvidence = Join-Path $repoRoot "docs\release\evidence\uat-security-$($releaseSha.Substring(0, 7))-$evidenceState-$runId"
+    $durableEvidence = Join-Path $repoRoot "docs/release/evidence/uat-security-$($releaseSha.Substring(0, 7))-$evidenceState-$runId"
     New-Item -ItemType Directory -Path $durableEvidence -Force | Out-Null
     Copy-Item -Path (Join-Path $evidenceRoot '*') -Destination $durableEvidence -Recurse
     $manifest = Get-ChildItem -LiteralPath $durableEvidence -File |
@@ -309,7 +328,7 @@ select json_build_object(
   }
   if (Test-Path -LiteralPath $runRoot) {
     $resolvedRunRoot = (Resolve-Path -LiteralPath $runRoot).Path
-    $resolvedTemp = (Resolve-Path -LiteralPath $env:TEMP).Path
+    $resolvedTemp = (Resolve-Path -LiteralPath $tempRoot).Path
     if (-not $resolvedRunRoot.StartsWith($resolvedTemp, [StringComparison]::OrdinalIgnoreCase)) { throw 'Refusing to remove UAT temporary files outside the Temp directory.' }
     Remove-Item -LiteralPath $resolvedRunRoot -Recurse -Force
   }

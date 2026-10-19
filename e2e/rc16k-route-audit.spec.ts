@@ -6,6 +6,7 @@ const routes=['/','/calendar','/registration','/shifts','/staffing','/swaps','/l
 const widths=[1440,1024,768,390]
 async function configureLocalReadScope(page:import('@playwright/test').Page,role:string){
     await page.addInitScript(id=>{
+      if (location.origin !== 'http://127.0.0.1:3108') return
       localStorage.setItem('livestream-ops-current-user',id)
       localStorage.setItem('livestream-ops-language','vi')
     },role)

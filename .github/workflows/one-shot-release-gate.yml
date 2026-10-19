@@ -123,3 +123,35 @@ jobs:
             echo "Manifest: M1 -> M2 -> Live Snapshot"
             echo "Production ledger baseline modeled: 68; expected synthetic post-release: 71"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  isolated-authenticated-uat:
+    name: Isolated Supabase Auth and Reports UAT
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - name: Install pinned pnpm and dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+      - name: Run isolated authenticated UAT
+        shell: pwsh
+        run: ./scripts/uat/run-isolated-auth-uat.ps1
+      - name: Preserve synthetic UAT evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: one-shot-isolated-auth-uat-${{ github.sha }}
+          path: |
+            docs/release/evidence/uat-security-*/*.json
+            docs/release/evidence/uat-security-*/*.png
+            docs/release/evidence/uat-security-*/uat-run.log
+            docs/release/evidence/uat-security-*/manifest.sha256
+          if-no-files-found: warn

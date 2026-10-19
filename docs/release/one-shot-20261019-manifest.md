@@ -1,6 +1,6 @@
 # ADA OPS one-shot release candidate: technical manifest
 
-Status: **NO-GO**. This is a source integration manifest, not authorization to write Production. The final Git SHA must be filled from the committed release branch and then verified against the deployed SHA. PR #30 stays Draft; no main merge or Production deploy has occurred.
+Status: **NO-GO**. This is a source integration manifest, not authorization to write Production. Freeze the final Git SHA only after its exact-SHA gates pass, then verify it against the deployed SHA. PR #30 stays Draft; no main merge or Production deploy has occurred.
 
 ## Baselines and scope
 
@@ -25,9 +25,9 @@ Status: **NO-GO**. This is a source integration manifest, not authorization to w
 
 ## Required integrated validation
 
-1. Run source checks and PostgreSQL 17.6 rehearsal against a **Production-equivalent** schema, preserving owner/ACL/RLS. Verify M1, M2, RC1.7A compatibility and live snapshot migration in sequence. The current PGlite test is synthetic PostgreSQL 17.5 evidence, not equivalent restore proof.
-2. Run focused hosted browser E2E for OCR upload/review, direct shift binding, snapshot persistence/reload, snapshot selection into Reports, report confirmation, cross-shift denial, responsive desktop/mobile, and stale identity changes. The server route now reads the real TikTok fixture 18/18 correctly (3 confirmed, 15 review, 0 missing); ROI GMV Max is recovered from ambiguous glyphs and remains review-required. Browser OCR accuracy is not yet verified. A credential-free local Next build passed outside the Windows process sandbox; a hosted final-SHA build is still required.
-3. Run one integrated final CI matrix on the final Git SHA. Previously green CI on `084b693` and W10–W14 is not final-SHA proof.
+1. PostgreSQL 17.6 **synthetic** rehearsal at `df796ca` passed M1, M2 and Live Snapshot in order, with 68-to-71 ledger assertions and M2 failure rollback. Production-equivalent data restore, including Supabase-managed owner/ACL/RLS parity, remains unverified.
+2. Focused hosted OCR browser E2E at `df796ca` passed desktop/mobile and shift binding. The server fixture reads 18/18 display values (3 confirmed, 15 review); browser raw OCR reads 13/18 and auto-confirms 0/18. The working browser flow requires human review of all 18 KPI before saving; it is **manual-assisted**, not full automatic OCR. The 390px Reports modal clipping fix passed focused browser geometry checks.
+3. The full release gate at `df796ca` passed TypeScript, ESLint, build, regression, OCR and the integrated database rehearsal, but its Reports route audit failed 1/44 cases because the local-only init script attempted `localStorage` on an inaccessible document during dev reload. The test fixture is being corrected; the next committed SHA needs the affected browser gate and final release gate. Previously green CI on `084b693` and W10-W14 is not final-SHA proof.
 4. Run isolated authenticated Admin/Leader/Member UAT for Reports create/draft/review/confirm, RLS negative reads, revisions/images/RPC, Calendar registration/swap, Storage Google Drive/OneDrive physical I/O, Payroll and Workforce if enabled, search/filter/pagination/export over 100 records, 390/768/1440/1920px, and concurrent users. Record screenshots/traces without credentials or customer data.
 5. Reconfirm Preview database project reference before any write UAT. The existing staging project contains operational data and is not a test-write target.
 

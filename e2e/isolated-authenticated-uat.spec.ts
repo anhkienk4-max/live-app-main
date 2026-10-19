@@ -181,7 +181,16 @@ test('Member creates and edits an assigned-shift draft, then deep-links to it', 
   ] as const) {
     await page.getByTestId('open-final-report-modal').click()
     const picker = page.getByTestId('report-shift-picker')
+    const candidateResponse = page.waitForResponse(response => {
+      const url = new URL(response.url())
+      if (url.pathname !== '/api/operations/collection' || url.searchParams.get('entity') !== 'my_shifts') return false
+      return (JSON.parse(url.searchParams.get('filters') ?? '{}') as { search?: string }).search === title
+    })
     await picker.getByTestId('report-shift-search').fill(title)
+    const response = await candidateResponse
+    const candidatePage = await response.json() as { items?: Array<{ title: string }>; total?: number }
+    expect(response.ok(), `Picker collection returned HTTP ${response.status()} for ${evidenceCase}`).toBeTruthy()
+    expect(candidatePage.items?.some(item => item.title === title), `Picker collection omitted ${evidenceCase}; total=${candidatePage.total ?? 'unknown'}`).toBeTruthy()
     await expect(picker.getByTestId('report-shift-choose')).toHaveCount(1)
     await picker.getByTestId('report-shift-choose').click()
     const form = page.getByRole('dialog')
