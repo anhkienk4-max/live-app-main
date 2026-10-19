@@ -530,6 +530,7 @@ export const workforceService = {
     prepared_count: number
     recalculated_count?: number
     skipped_count: number
+    unapproved_ot_exceptions?: Array<{ segmentId: string; staffId: string; shiftDate: string; reason: string }>
     reconciliation?: PayrollReconciliationSummary
     lines: PayrollLine[]
     recalculated_lines?: PayrollLine[]

@@ -5,6 +5,8 @@ import {
   calculateLivePreview,
   minuteDifference,
   parseApprovedOvertimeMinutes,
+  evaluateApprovedOtEvidence,
+  selectApprovedRate,
   calculateRecalculationDiffs,
   type ApprovedPayrollRate,
   type PayrollLineRecalcTarget,
@@ -199,19 +201,43 @@ test('minuteDifference: accurately calculates cross-midnight shifts with ISO tim
   assert.equal(diff, 210) // 3.5 hours = 210 minutes
 })
 
-test('parseApprovedOvertimeMinutes: requires explicit approved OT evidence, never defaulting excess hours to OT', () => {
+test('parseApprovedOvertimeMinutes: requires explicit supervisor approved OT evidence, never defaulting excess hours to OT', () => {
   // Case 1: No evidence or notes -> 0 OT even if actual is long
   assert.equal(parseApprovedOvertimeMinutes(null, null, 180), 0)
   assert.equal(parseApprovedOvertimeMinutes('Đã duyệt ca làm việc', 'Hoàn thành tốt', 180), 0)
 
-  // Case 2: Explicit OT notes in review_note or note
+  // Case 2: Explicit supervisor OT approval in review_note
   assert.equal(parseApprovedOvertimeMinutes('Duyệt OT: 30p hỗ trợ dọn dẹp', null, 180), 30)
-  assert.equal(parseApprovedOvertimeMinutes(null, 'tăng ca: 45 phút', 180), 45)
   assert.equal(parseApprovedOvertimeMinutes('Xác nhận tăng ca 1.5h', null, 180), 90)
   assert.equal(parseApprovedOvertimeMinutes('OT: 1h', null, 180), 60)
-  assert.equal(parseApprovedOvertimeMinutes(null, 'overtime 20m', 180), 20)
+  assert.equal(parseApprovedOvertimeMinutes('Duyệt ca + overtime 20m', null, 180), 20)
 
-  // Case 3: Caps at actual minutes
+  // Case 3: Staff self-reported OT claim in evidence_note without supervisor approval yields 0 OT
+  assert.equal(parseApprovedOvertimeMinutes(null, 'tăng ca: 45 phút', 180), 0)
+  assert.equal(parseApprovedOvertimeMinutes('Đã duyệt ca chuẩn', 'tăng ca: 45 phút', 180), 0)
+  assert.equal(parseApprovedOvertimeMinutes(null, 'overtime 20m', 180), 0)
+
+  const unapprovedStaffContract = evaluateApprovedOtEvidence({
+    reviewNote: 'Đã duyệt ca chuẩn',
+    evidenceNote: 'tăng ca: 45 phút',
+    actualMinutes: 180,
+  })
+  assert.equal(unapprovedStaffContract.approvedOvertimeMinutes, 0)
+  assert.equal(unapprovedStaffContract.hasUnapprovedOtClaim, true)
+  assert.equal(unapprovedStaffContract.unapprovedClaimReason, 'STAFF_CLAIMED_OT_WITHOUT_SUPERVISOR_APPROVAL')
+
+  // Case 4: Explicit supervisor rejection yields 0 OT and flags exception
+  assert.equal(parseApprovedOvertimeMinutes('Từ chối OT', 'OT: 30p', 180), 0)
+  const rejectedContract = evaluateApprovedOtEvidence({
+    reviewNote: 'Không duyệt tăng ca do không có lệnh điều động',
+    evidenceNote: 'OT: 30p',
+    actualMinutes: 180,
+  })
+  assert.equal(rejectedContract.approvedOvertimeMinutes, 0)
+  assert.equal(rejectedContract.hasUnapprovedOtClaim, true)
+  assert.equal(rejectedContract.unapprovedClaimReason, 'SUPERVISOR_REJECTED_OT')
+
+  // Case 5: Caps at actual minutes
   assert.equal(parseApprovedOvertimeMinutes('OT: 300p', null, 120), 120)
 })
 
@@ -308,3 +334,110 @@ test('calculateRecalculationDiffs: recalculates rates and strictly preserves acc
   assert.equal(bobDiff.netDeltaVnd, 0)
   assert.equal(bobDiff.adjustmentVnd, -10_000)
 })
+
+test('Business Date Correction: rates effective from 15/10 only apply to shifts on or after 15/10', () => {
+  const rates: ApprovedPayrollRate[] = [
+    {
+      id: 'rate-host-old',
+      staffId: null,
+      role: 'host',
+      effectiveFrom: '2026-10-01',
+      effectiveThrough: '2026-10-14',
+      vndPerHour: 100_000,
+      overtimeMultiplierBasisPoints: 15_000,
+      approvedBy: 'admin-1',
+    },
+    {
+      id: 'rate-host-new',
+      staffId: null,
+      role: 'host',
+      effectiveFrom: '2026-10-15',
+      effectiveThrough: null,
+      vndPerHour: 150_000,
+      overtimeMultiplierBasisPoints: 15_000,
+      approvedBy: 'admin-1',
+    },
+    {
+      id: 'rate-host-alice-vip',
+      staffId: 'staff-alice',
+      role: 'host',
+      effectiveFrom: '2026-10-15',
+      effectiveThrough: null,
+      vndPerHour: 200_000,
+      overtimeMultiplierBasisPoints: 20_000,
+      approvedBy: 'admin-1',
+    },
+  ]
+
+  // Shift on 14/10 (before rate cutover) -> uses old rate 100k
+  const bob14 = selectApprovedRate({ staffId: 'staff-bob', role: 'host' }, '2026-10-14', rates)
+  assert.equal(bob14.id, 'rate-host-old')
+  assert.equal(bob14.vndPerHour, 100_000)
+
+  // Shift on 15/10 (cutover day) -> uses new rate 150k
+  const bob15 = selectApprovedRate({ staffId: 'staff-bob', role: 'host' }, '2026-10-15', rates)
+  assert.equal(bob15.id, 'rate-host-new')
+  assert.equal(bob15.vndPerHour, 150_000)
+
+  // Alice shift on 15/10 -> staff-specific takes precedence over role-default
+  const alice15 = selectApprovedRate({ staffId: 'staff-alice', role: 'host' }, '2026-10-15', rates)
+  assert.equal(alice15.id, 'rate-host-alice-vip')
+  assert.equal(alice15.vndPerHour, 200_000)
+
+  // Alice shift on 14/10 -> her specific rate is not yet effective, falls back to role default old
+  const alice14 = selectApprovedRate({ staffId: 'staff-alice', role: 'host' }, '2026-10-14', rates)
+  assert.equal(alice14.id, 'rate-host-old')
+  assert.equal(alice14.vndPerHour, 100_000)
+})
+
+test('autoCalculatePeriodLines: flags unapproved OT claims as exceptions while calculating OT=0', () => {
+  const period = { periodStart: '2026-10-01', periodEnd: '2026-10-31' }
+  const rates: ApprovedPayrollRate[] = [
+    {
+      id: 'rate-host-default',
+      staffId: null,
+      role: 'host',
+      effectiveFrom: '2026-10-01',
+      effectiveThrough: null,
+      vndPerHour: 100_000,
+      overtimeMultiplierBasisPoints: 15_000,
+      approvedBy: 'admin-1',
+    },
+  ]
+
+  const segments = [
+    {
+      segment: {
+        id: 'seg-unapproved-ot',
+        shiftId: 'shift-1',
+        staffId: 'staff-carol',
+        role: 'host' as const,
+        eventKind: 'worked' as const,
+        reviewStatus: 'approved' as const,
+        startAt: '2026-10-10T10:00:00+07:00',
+        endAt: '2026-10-10T13:00:00+07:00', // 180 mins
+        reviewNote: 'Đã duyệt ca chuẩn', // Supervisor did NOT approve OT
+        evidenceNote: 'Em có làm thêm tăng ca: 60 phút', // Staff claim
+      },
+      shiftDate: '2026-10-10',
+    },
+  ]
+
+  const result = autoCalculatePeriodLines({
+    period,
+    segments,
+    rates,
+  })
+
+  assert.equal(result.preparedLines.length, 1)
+  const line = result.preparedLines[0]
+  assert.equal(line.actualMinutes, 180)
+  assert.equal(line.payableMinutes, 180)
+  assert.equal(line.overtimeMinutes, 0) // Strictly 0 OT paid
+  assert.equal(line.grossVnd, 300_000) // 180 mins * 100k / 60 = 300k, no OT multiplier
+
+  assert.equal(result.unapprovedOtExceptions.length, 1)
+  assert.equal(result.unapprovedOtExceptions[0].staffId, 'staff-carol')
+  assert.equal(result.unapprovedOtExceptions[0].reason, 'STAFF_CLAIMED_OT_WITHOUT_SUPERVISOR_APPROVAL')
+})
+

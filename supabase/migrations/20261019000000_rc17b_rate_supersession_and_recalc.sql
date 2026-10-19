@@ -11,7 +11,7 @@ alter table public.workforce_payroll_audit
 alter table public.workforce_payroll_audit
   drop constraint if exists workforce_payroll_audit_action_check,
   add constraint workforce_payroll_audit_action_check check (
-    action in ('review','confirm','mark_ready','lock','reopen','adjustment','correct_line','void_line','supersede_rate_card','recalculate_line')
+    action in ('review','confirm','mark_ready','lock','reopen','adjustment','correct_line','void_line','supersede_rate_card','recalculate_line','recalculate_batch')
   );
 
 alter table public.workforce_payroll_audit
@@ -32,12 +32,17 @@ begin
     raise exception 'WORKFORCE_APPROVED_RATE_IMMUTABLE';
   end if;
   if tg_op = 'UPDATE' then
-    -- Only effective_through is allowed to be closed to a bounded date. All financial and identity fields are strictly immutable.
+    -- Updates are only permitted via the authorized supersession RPC
+    if coalesce(current_setting('workforce.rc17b_supersede_call', true), '') <> '1' then
+      raise exception 'WORKFORCE_APPROVED_RATE_IMMUTABLE';
+    end if;
+
+    -- Only effective_through is allowed to be closed to a bounded date. All financial, identity, and approval fields are strictly immutable.
     if (new.id, new.staff_id, new.operational_role, new.effective_from, new.vnd_per_hour,
-        new.overtime_multiplier_basis_points, new.approved_by, new.approved_at, new.created_at)
+        new.overtime_multiplier_basis_points, new.approved_by, new.approval_note, new.approved_at, new.created_at)
       is distinct from
        (old.id, old.staff_id, old.operational_role, old.effective_from, old.vnd_per_hour,
-        old.overtime_multiplier_basis_points, old.approved_by, old.approved_at, old.created_at) then
+        old.overtime_multiplier_basis_points, old.approved_by, old.approval_note, old.approved_at, old.created_at) then
       raise exception 'WORKFORCE_APPROVED_RATE_IMMUTABLE';
     end if;
     if new.effective_through is null or new.effective_through < old.effective_from
@@ -123,6 +128,7 @@ begin
     end if;
 
     -- Close out the old rate card to the day before the new rate begins
+    perform set_config('workforce.rc17b_supersede_call', '1', true);
     update public.workforce_rate_cards
       set effective_through = (p_effective_from - interval '1 day')::date
       where id = v_old_rate.id;
@@ -131,9 +137,9 @@ begin
 
     -- Record audit of supersession
     insert into public.workforce_payroll_audit(
-      period_id, line_id, action, actor_id, reason, previous_values, updated_values
+      period_id, line_id, rate_card_id, action, actor_id, reason, previous_values, updated_values
     ) values (
-      null, null, 'supersede_rate_card', p_approved_by,
+      null, null, v_old_rate.id, 'supersede_rate_card', p_approved_by,
       'Khung lương cũ được tự động giới hạn hiệu lực trước đơn giá mới bắt đầu ngày ' || p_effective_from::text,
       jsonb_build_object('rate_card_id', v_old_rate.id, 'effective_from', v_old_rate.effective_from, 'effective_through', v_old_rate.effective_through),
       jsonb_build_object('rate_card_id', v_old_rate.id, 'effective_from', v_old_rate.effective_from, 'effective_through', (p_effective_from - interval '1 day')::date)
@@ -287,6 +293,18 @@ begin
     raise exception 'WORKFORCE_PAYROLL_RATE_UNVERIFIED';
   end if;
 
+  -- Staff-specific precedence: cannot use role-default if a valid staff-specific rate exists
+  if v_rate.staff_id is null and exists (
+    select 1 from public.workforce_rate_cards specific
+    where specific.staff_id = v_line.staff_id
+      and specific.operational_role = v_line.operational_role
+      and specific.approved_by is not null
+      and specific.effective_from <= v_shift_date
+      and (specific.effective_through is null or specific.effective_through >= v_shift_date)
+  ) then
+    raise exception 'WORKFORCE_PAYROLL_RATE_UNVERIFIED';
+  end if;
+
   v_previous := to_jsonb(v_line);
 
   -- Calculate new gross
@@ -323,6 +341,154 @@ begin
   return jsonb_build_object('line', to_jsonb(v_line), 'audit', to_jsonb(v_audit), 'replayed', false);
 end $$;
 
+-- 5b. Atomic RPC to recalculate draft payroll lines in bulk batch with all-or-nothing atomicity and idempotency
+create or replace function public.workforce_rc17b_recalculate_draft_batch(
+  p_period_id text,
+  p_request_id uuid,
+  p_actor_id text,
+  p_reason text,
+  p_items jsonb
+) returns jsonb language plpgsql security invoker set search_path='' as $$
+declare
+  v_period public.workforce_payroll_periods%rowtype;
+  v_line public.workforce_payroll_lines%rowtype;
+  v_rate public.workforce_rate_cards%rowtype;
+  v_audit public.workforce_payroll_audit%rowtype;
+  v_item jsonb;
+  v_item_line_id text;
+  v_item_version integer;
+  v_item_rate_id text;
+  v_payload jsonb;
+  v_previous_lines jsonb := '[]'::jsonb;
+  v_updated_lines jsonb := '[]'::jsonb;
+  v_shift_date date;
+  v_new_gross bigint;
+  v_new_net bigint;
+  v_seen_lines text[] := array[]::text[];
+begin
+  if not exists (select 1 from public.business_users where id=p_actor_id
+    and system_permission='admin' and status='active' and account_status='active'
+    and deleted_at is null) then
+    raise exception 'WORKFORCE_PAYROLL_ACTOR_FORBIDDEN' using errcode='42501';
+  end if;
+  if p_request_id is null or char_length(trim(coalesce(p_reason,''))) not between 8 and 2000
+    or p_items is null or jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) = 0 then
+    raise exception 'WORKFORCE_PAYROLL_CORRECTION_INVALID';
+  end if;
+
+  v_payload := jsonb_build_object(
+    'period_id', p_period_id,
+    'action', 'recalculate_batch',
+    'reason', p_reason,
+    'items', p_items
+  );
+
+  -- Serialize request idempotency per actor + request_id
+  perform pg_advisory_xact_lock(hashtextextended(p_actor_id||':'||p_request_id::text, 0));
+  select * into v_audit from public.workforce_payroll_audit
+    where actor_id=p_actor_id and request_id=p_request_id;
+  if found then
+    if v_audit.request_payload is distinct from v_payload then
+      raise exception 'WORKFORCE_PAYROLL_IDEMPOTENCY_CONFLICT';
+    end if;
+    return jsonb_build_object('lines', v_audit.updated_values, 'audit', to_jsonb(v_audit), 'replayed', true);
+  end if;
+
+  -- Lock period for update and ensure it is still draft
+  select * into v_period from public.workforce_payroll_periods where id=p_period_id for update;
+  if not found or v_period.status <> 'draft' then
+    raise exception 'WORKFORCE_PAYROLL_PERIOD_NOT_DRAFT';
+  end if;
+
+  -- Set recalculation config for line_change_guard
+  perform set_config('workforce.rc17b_recalc_call', '1', true);
+
+  -- Iterate through items and update each line atomically
+  for v_item in select * from jsonb_array_elements(p_items) loop
+    v_item_line_id := v_item->>'line_id';
+    v_item_version := (v_item->>'expected_version')::integer;
+    v_item_rate_id := v_item->>'new_rate_card_id';
+
+    if v_item_line_id is null or v_item_version is null or v_item_version < 1 or v_item_rate_id is null then
+      raise exception 'WORKFORCE_PAYROLL_CORRECTION_INVALID';
+    end if;
+
+    -- Duplicate line in same batch check
+    if v_item_line_id = any(v_seen_lines) then
+      raise exception 'WORKFORCE_PAYROLL_DUPLICATE_LINE_IN_BATCH';
+    end if;
+    v_seen_lines := array_append(v_seen_lines, v_item_line_id);
+
+    -- Lock and verify line
+    select * into v_line from public.workforce_payroll_lines
+      where id=v_item_line_id and period_id=p_period_id for update;
+    if not found then raise exception 'WORKFORCE_PAYROLL_LINE_NOT_FOUND'; end if;
+    if v_line.version <> v_item_version then raise exception 'WORKFORCE_PAYROLL_STALE_LINE'; end if;
+    if v_line.voided_at is not null then raise exception 'WORKFORCE_PAYROLL_LINE_VOIDED'; end if;
+
+    -- Get shift date
+    select s.date into v_shift_date from public.workforce_actual_segments a
+      join public.shifts s on s.id=a.shift_id where a.id=v_line.segment_id;
+
+    -- Verify new rate card exists and is valid for this staff/role/date
+    select * into v_rate from public.workforce_rate_cards where id=v_item_rate_id;
+    if not found or v_rate.approved_by is null or v_rate.operational_role <> v_line.operational_role
+      or (v_rate.staff_id is not null and v_rate.staff_id <> v_line.staff_id)
+      or v_rate.effective_from > v_shift_date
+      or (v_rate.effective_through is not null and v_rate.effective_through < v_shift_date) then
+      raise exception 'WORKFORCE_PAYROLL_RATE_UNVERIFIED';
+    end if;
+
+    -- Staff-specific precedence: cannot use role-default if a valid staff-specific rate exists
+    if v_rate.staff_id is null and exists (
+      select 1 from public.workforce_rate_cards specific
+      where specific.staff_id = v_line.staff_id
+        and specific.operational_role = v_line.operational_role
+        and specific.approved_by is not null
+        and specific.effective_from <= v_shift_date
+        and (specific.effective_through is null or specific.effective_through >= v_shift_date)
+    ) then
+      raise exception 'WORKFORCE_PAYROLL_RATE_UNVERIFIED';
+    end if;
+
+    v_previous_lines := v_previous_lines || jsonb_build_array(to_jsonb(v_line));
+
+    -- Calculate new gross
+    v_new_gross := round(v_rate.vnd_per_hour::numeric *
+      ((v_line.payable_minutes - v_line.overtime_minutes)::numeric
+        + v_line.overtime_minutes::numeric * v_rate.overtime_multiplier_basis_points / 10000) / 60)::bigint;
+
+    -- Preserve existing adjustment_vnd exactly
+    v_new_net := v_new_gross + v_line.adjustment_vnd;
+    if v_new_net < 0 or v_new_net > 1000000000000 then
+      raise exception 'WORKFORCE_PAYROLL_CORRECTION_INVALID';
+    end if;
+
+    update public.workforce_payroll_lines
+      set rate_card_id = v_rate.id,
+          rate_vnd_per_hour = v_rate.vnd_per_hour,
+          overtime_multiplier_basis_points = v_rate.overtime_multiplier_basis_points,
+          gross_vnd = v_new_gross,
+          version = v_line.version + 1,
+          updated_at = statement_timestamp()
+      where id = v_line.id
+      returning * into v_line;
+
+    v_updated_lines := v_updated_lines || jsonb_build_array(to_jsonb(v_line));
+  end loop;
+
+  -- Record batch audit
+  insert into public.workforce_payroll_audit(
+    period_id, line_id, line_version, action, actor_id, reason,
+    request_id, request_payload, previous_values, updated_values
+  ) values (
+    p_period_id, null, null, 'recalculate_batch', p_actor_id, p_reason,
+    p_request_id, v_payload, v_previous_lines, v_updated_lines
+  ) returning * into v_audit;
+
+  return jsonb_build_object('lines', v_updated_lines, 'audit', to_jsonb(v_audit), 'replayed', false);
+end $$;
+
 -- 6. Unreconciled Segment Guard on Period Review/Confirm
 -- Ensure no approved worked segments in period range are omitted before period can advance to reviewed/confirmed
 create or replace function public.workforce_rc16b_period_review_guard()
@@ -357,3 +523,4 @@ end $$;
 
 grant execute on function public.workforce_rc17b_register_rate_card(text,text,date,date,integer,integer,text,text) to service_role;
 grant execute on function public.workforce_rc17b_recalculate_draft_line(text,text,integer,uuid,text,text,text) to service_role;
+grant execute on function public.workforce_rc17b_recalculate_draft_batch(text,uuid,text,text,jsonb) to service_role;

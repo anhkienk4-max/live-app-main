@@ -194,43 +194,86 @@ export function nextPayrollState(current: PayrollStatus, target: PayrollStatus):
 }
 
 /**
- * Extract approved overtime minutes from supervisor's review note or evidence note.
+ * Approved Overtime Evidence Contract
  * Overtime is NEVER inferred simply because actual time exceeded scheduled shift.
- * Must match an explicit supervisor approval pattern, e.g.:
- * - "OT: 30p", "OT: 45 phút", "OT: 1.5h", "OT: 60m"
- * - "tăng ca: 30p", "tang ca: 60 phut", "tăng ca 1 giờ"
- * - "overtime: 45 min", "OT 60 minutes"
- * If no approved OT pattern is found, returns 0.
- * The returned overtime minutes is capped at total actual minutes.
+ * Staff-submitted notes (evidenceNote) alone CANNOT grant overtime pay.
+ * Overtime must be explicitly approved by an authorized supervisor via reviewNote.
+ * If evidenceNote claims OT but reviewNote does not approve it, OT is 0 and flagged as an unapproved exception.
  */
+export interface ApprovedOtEvidenceContract {
+  approvedOvertimeMinutes: number
+  hasUnapprovedOtClaim: boolean
+  unapprovedClaimReason?: string
+}
+
+export function evaluateApprovedOtEvidence(input: {
+  reviewNote?: string | null
+  evidenceNote?: string | null
+  actualMinutes?: number
+}): ApprovedOtEvidenceContract {
+  const review = (input.reviewNote ?? '').trim()
+  const evidence = (input.evidenceNote ?? '').trim()
+
+  // 1. Explicit supervisor rejection check
+  const rejectionPattern = /(?:không\s+duyệt\s+(?:ot|tăng\s+ca|tang\s+ca)|khong\s+duyet\s+(?:ot|tăng\s+ca|tang\s+ca)|từ\s+chối\s+(?:ot|tăng\s+ca)|tu\s+choi\s+(?:ot|tang\s+ca)|no\s+ot|chưa\s+duyệt\s+(?:ot|tăng\s+ca|tang\s+ca))/i
+  if (rejectionPattern.test(review)) {
+    return {
+      approvedOvertimeMinutes: 0,
+      hasUnapprovedOtClaim: true,
+      unapprovedClaimReason: 'SUPERVISOR_REJECTED_OT',
+    }
+  }
+
+  // 2. Extract approved OT from supervisor's review note ONLY
+  let supervisorApprovedMins = 0
+  if (review) {
+    const hourMatch = review.match(/(?:duyệt\s+ot|approved\s+ot|xác\s+nhận\s+tăng\s+ca|xac\s+nhan\s+tang\s+ca|ot\s+approved|duyet\s+ot|ot|tăng\s+ca|tang\s+ca|overtime)[:\s]+(\d+(?:\.\d+)?)\s*(?:h|gio|giờ|hours?)(?:\b|$)/i)
+    if (hourMatch && hourMatch[1]) {
+      const hours = parseFloat(hourMatch[1])
+      if (Number.isFinite(hours) && hours > 0) {
+        supervisorApprovedMins = Math.round(hours * 60)
+      }
+    } else {
+      const minMatch = review.match(/(?:duyệt\s+ot|approved\s+ot|xác\s+nhận\s+tăng\s+ca|xac\s+nhan\s+tang\s+ca|ot\s+approved|duyet\s+ot|ot|tăng\s+ca|tang\s+ca|overtime)[:\s]+(\d+)\s*(?:p|phut|phút|m|min|mins|minutes?)?(?:\b|$)/i)
+      if (minMatch && minMatch[1]) {
+        const mins = parseInt(minMatch[1], 10)
+        if (Number.isFinite(mins) && mins > 0) {
+          supervisorApprovedMins = mins
+        }
+      }
+    }
+  }
+
+  if (supervisorApprovedMins > 0) {
+    const capped = input.actualMinutes !== undefined ? Math.min(supervisorApprovedMins, input.actualMinutes) : supervisorApprovedMins
+    return {
+      approvedOvertimeMinutes: capped,
+      hasUnapprovedOtClaim: false,
+    }
+  }
+
+  // 3. Supervisor did not approve OT. Check if staff claimed OT in evidenceNote
+  const staffOtClaim = /(?:ot|tăng\s+ca|tang\s+ca|overtime)[:\s]+(\d+)/i.test(evidence)
+  if (staffOtClaim) {
+    return {
+      approvedOvertimeMinutes: 0,
+      hasUnapprovedOtClaim: true,
+      unapprovedClaimReason: 'STAFF_CLAIMED_OT_WITHOUT_SUPERVISOR_APPROVAL',
+    }
+  }
+
+  return {
+    approvedOvertimeMinutes: 0,
+    hasUnapprovedOtClaim: false,
+  }
+}
+
 export function parseApprovedOvertimeMinutes(
   reviewNote?: string | null,
   evidenceNote?: string | null,
   actualMinutes?: number,
 ): number {
-  const combined = [reviewNote ?? '', evidenceNote ?? ''].join(' ')
-  if (!combined.trim()) return 0
-
-  // 1. Hours: (?:ot|tăng ca|tang ca|overtime)[:\s]+(\d+(?:\.\d+)?)\s*(?:h|gio|giờ|hours?)
-  const hourMatch = combined.match(/(?:ot|tăng ca|tang ca|overtime)[:\s]+(\d+(?:\.\d+)?)\s*(?:h|gio|giờ|hours?)(?:\b|$)/i)
-  if (hourMatch && hourMatch[1]) {
-    const hours = parseFloat(hourMatch[1])
-    if (Number.isFinite(hours) && hours > 0) {
-      const mins = Math.round(hours * 60)
-      return actualMinutes !== undefined ? Math.min(mins, actualMinutes) : mins
-    }
-  }
-
-  // 2. Minutes: (?:ot|tăng ca|tang ca|overtime)[:\s]+(\d+)\s*(?:p|phut|phút|m|min|mins|minutes?)?
-  const minMatch = combined.match(/(?:ot|tăng ca|tang ca|overtime)[:\s]+(\d+)\s*(?:p|phut|phút|m|min|mins|minutes?)?(?:\b|$)/i)
-  if (minMatch && minMatch[1]) {
-    const mins = parseInt(minMatch[1], 10)
-    if (Number.isFinite(mins) && mins > 0) {
-      return actualMinutes !== undefined ? Math.min(mins, actualMinutes) : mins
-    }
-  }
-
-  return 0
+  return evaluateApprovedOtEvidence({ reviewNote, evidenceNote, actualMinutes }).approvedOvertimeMinutes
 }
 
 export interface AutoCalculateSegmentInput {
@@ -247,13 +290,19 @@ export interface AutoCalculateResult {
     segmentId: string
     reason: string
   }>
+  unapprovedOtExceptions: Array<{
+    segmentId: string
+    staffId: string
+    shiftDate: string
+    reason: string
+  }>
 }
 
 /**
  * Pure auto-calculation engine for a payroll period:
  * Scans approved worked segments, resolves approved rate cards,
  * computes exact gross and net amounts with BigInt integer rounding,
- * extracts approved overtime minutes from supervisor review notes,
+ * extracts approved overtime minutes strictly from supervisor review notes,
  * and skips unapproved attendance or unapproved rates fail-closed.
  */
 export function autoCalculatePeriodLines(input: {
@@ -264,6 +313,7 @@ export function autoCalculatePeriodLines(input: {
 }): AutoCalculateResult {
   const preparedLines: PayrollLineSnapshot[] = []
   const skippedSegments: Array<{ segmentId: string; reason: string }> = []
+  const unapprovedOtExceptions: Array<{ segmentId: string; staffId: string; shiftDate: string; reason: string }> = []
   const existing = input.existingSegmentIds ?? new Set<string>()
 
   for (const item of input.segments) {
@@ -287,17 +337,27 @@ export function autoCalculatePeriodLines(input: {
     try {
       const selectedRate = selectApprovedRate(segment, shiftDate, input.rates)
       const actualMinutes = minuteDifference(segment.startAt, segment.endAt)
-      const approvedOtMinutes = parseApprovedOvertimeMinutes(
-        segment.reviewNote,
-        segment.evidenceNote,
+      const otContract = evaluateApprovedOtEvidence({
+        reviewNote: segment.reviewNote,
+        evidenceNote: segment.evidenceNote,
         actualMinutes,
-      )
+      })
+
+      if (otContract.hasUnapprovedOtClaim) {
+        unapprovedOtExceptions.push({
+          segmentId: segment.id,
+          staffId: segment.staffId,
+          shiftDate,
+          reason: otContract.unapprovedClaimReason ?? 'STAFF_CLAIMED_OT_WITHOUT_SUPERVISOR_APPROVAL',
+        })
+      }
+
       const line = calculatePayrollLine({
         segment,
         shiftDate,
         rate: selectedRate,
         payableMinutes: actualMinutes,
-        overtimeMinutes: approvedOtMinutes,
+        overtimeMinutes: otContract.approvedOvertimeMinutes,
       })
       preparedLines.push(line)
     } catch (err: unknown) {
@@ -306,7 +366,7 @@ export function autoCalculatePeriodLines(input: {
     }
   }
 
-  return { preparedLines, skippedSegments }
+  return { preparedLines, skippedSegments, unapprovedOtExceptions }
 }
 
 export interface ExistingPayrollLineForRecalc {

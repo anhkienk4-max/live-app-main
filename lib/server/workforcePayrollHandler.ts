@@ -153,15 +153,41 @@ async function fetchAllSegmentsForShifts(db: SupabaseClient, shiftIds: string[])
 
   for (let i = 0; i < shiftIds.length; i += chunkSize) {
     const chunk = shiftIds.slice(i, i + chunkSize)
-    const { data, error } = await db.from('workforce_actual_segments')
-      .select('id,shift_id,staff_id,operational_role,event_kind,review_status,actual_start_at,actual_end_at,review_note,evidence_note')
-      .in('shift_id', chunk)
-      .eq('review_status', 'approved')
-      .eq('event_kind', 'worked')
-      .order('id', { ascending: true })
+    const pageSize = 1000
+    let page = 0
+    let hasMore = true
+    let chunkFetched = 0
+    let chunkTotalCount: number | null = null
 
-    if (error) throw new WorkforceCalculationError('WORKFORCE_ACTUAL_READ_FAILED')
-    if (data) allSegments.push(...data)
+    while (hasMore) {
+      const { data, count, error } = await db.from('workforce_actual_segments')
+        .select('id,shift_id,staff_id,operational_role,event_kind,review_status,actual_start_at,actual_end_at,review_note,evidence_note', { count: 'exact' })
+        .in('shift_id', chunk)
+        .eq('review_status', 'approved')
+        .eq('event_kind', 'worked')
+        .order('id', { ascending: true })
+        .range(page * pageSize, (page + 1) * pageSize - 1)
+
+      if (error) throw new WorkforceCalculationError('WORKFORCE_ACTUAL_READ_FAILED')
+      if (!data) break
+      allSegments.push(...data)
+      chunkFetched += data.length
+      if (count !== null) {
+        chunkTotalCount = count
+      }
+
+      if (chunkTotalCount !== null && chunkFetched >= chunkTotalCount) {
+        hasMore = false
+      } else if (data.length < pageSize) {
+        hasMore = false
+      } else {
+        page++
+      }
+    }
+
+    if (chunkTotalCount !== null && chunkFetched !== chunkTotalCount) {
+      throw new WorkforceCalculationError('WORKFORCE_ACTUAL_READ_FAILED')
+    }
   }
   return allSegments
 }
@@ -583,24 +609,28 @@ export function createWorkforcePayrollHandler(options:Options={}) {
           })
 
           const changedDiffs = diffs.filter(d => d.rateChanged && d.newRateCardId)
-          const recalculatedLines: Array<Record<string, unknown>> = []
+          let recalculatedLines: Array<Record<string, unknown>> = []
 
-          for (const diff of changedDiffs) {
-            const { data: recalcData, error: recalcError } = await db.rpc('workforce_rc17b_recalculate_draft_line', {
+          if (changedDiffs.length > 0) {
+            const items = changedDiffs.map(d => ({
+              line_id: d.lineId,
+              expected_version: d.version,
+              new_rate_card_id: d.newRateCardId,
+            }))
+
+            const { data: recalcData, error: recalcError } = await db.rpc('workforce_rc17b_recalculate_draft_batch', {
               p_period_id: input.period_id,
-              p_line_id: diff.lineId,
-              p_expected_version: diff.version,
               p_request_id: input.request_id,
               p_actor_id: actor,
               p_reason: input.reason,
-              p_new_rate_card_id: diff.newRateCardId,
+              p_items: items,
             })
 
             if (recalcError) {
               return failure(recalcError.message ?? 'WORKFORCE_PAYROLL_RECALCULATION_FAILED', 409)
             }
-            if (recalcData?.line) {
-              recalculatedLines.push(recalcData.line)
+            if (recalcData?.lines) {
+              recalculatedLines = recalcData.lines as Array<Record<string, unknown>>
             }
           }
 
@@ -666,7 +696,7 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             shiftDate: shiftDateMap.get(seg.shift_id) ?? '',
           }))
 
-          const { preparedLines, skippedSegments } = autoCalculatePeriodLines({
+          const { preparedLines, skippedSegments, unapprovedOtExceptions } = autoCalculatePeriodLines({
             period: { periodStart: periodRecord.period_start, periodEnd: periodRecord.period_end },
             segments: segmentInputs,
             rates: approvedRates,
@@ -691,7 +721,7 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             insertedLines = inserted ?? []
           }
 
-          const recalculatedLines: Array<Record<string, unknown>> = []
+          let recalculatedLines: Array<Record<string, unknown>> = []
           if (input.recalculate_existing && input.reason && input.request_id && existingLines.length > 0) {
             const activeLines = existingLines.filter(l => !l.voided_at)
             const linesForRecalc: ExistingPayrollLineForRecalc[] = activeLines.map(l => ({
@@ -719,18 +749,21 @@ export function createWorkforcePayrollHandler(options:Options={}) {
               rates: approvedRates,
             })
             const changedDiffs = diffs.filter(d => d.rateChanged && d.newRateCardId)
-            for (const diff of changedDiffs) {
-              const { data: recalcData, error: recalcError } = await db.rpc('workforce_rc17b_recalculate_draft_line', {
+            if (changedDiffs.length > 0) {
+              const items = changedDiffs.map(d => ({
+                line_id: d.lineId,
+                expected_version: d.version,
+                new_rate_card_id: d.newRateCardId,
+              }))
+              const { data: recalcData, error: recalcError } = await db.rpc('workforce_rc17b_recalculate_draft_batch', {
                 p_period_id: periodRecord.id,
-                p_line_id: diff.lineId,
-                p_expected_version: diff.version,
                 p_request_id: input.request_id,
                 p_actor_id: actor,
                 p_reason: input.reason,
-                p_new_rate_card_id: diff.newRateCardId,
+                p_items: items,
               })
               if (recalcError) return failure(recalcError.message ?? 'WORKFORCE_PAYROLL_RECALCULATION_FAILED', 409)
-              if (recalcData?.line) recalculatedLines.push(recalcData.line)
+              if (recalcData?.lines) recalculatedLines = recalcData.lines as Array<Record<string, unknown>>
             }
           }
 
@@ -761,6 +794,7 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             prepared_count: insertedLines.length,
             recalculated_count: recalculatedLines.length,
             skipped_count: skippedSegments.length,
+            unapproved_ot_exceptions: unapprovedOtExceptions,
             reconciliation: {
               total_approved_segments: totalApprovedSegments,
               reconciled_count: reconciledCount,

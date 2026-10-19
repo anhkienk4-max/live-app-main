@@ -111,6 +111,9 @@ export function PayrollDraftWorkspace({
   const [recalcReason, setRecalcReason] = React.useState('')
   const [recalculating, setRecalculating] = React.useState(false)
   const [recalcError, setRecalcError] = React.useState<string | null>(null)
+  const [unapprovedOtExceptions, setUnapprovedOtExceptions] = React.useState<
+    Array<{ segmentId: string; staffId: string; shiftDate: string; reason: string }>
+  >([])
 
   const isDraft = period.status === 'draft'
 
@@ -219,6 +222,9 @@ export function PayrollDraftWorkspace({
       const res = await workforceService.autoCalculateDraft(period.id)
       if (res.reconciliation) {
         setReconciliation(res.reconciliation)
+      }
+      if (res.unapproved_ot_exceptions) {
+        setUnapprovedOtExceptions(res.unapproved_ot_exceptions)
       }
       if (res.prepared_count > 0) {
         toast({
@@ -626,6 +632,28 @@ export function PayrollDraftWorkspace({
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Unapproved OT Exceptions Warning */}
+        {unapprovedOtExceptions.length > 0 && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50/80 p-3.5 text-xs text-amber-900 shadow-sm">
+            <div className="flex items-center gap-2 font-semibold text-amber-900">
+              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+              <span>
+                Cảnh báo tăng ca: Có {unapprovedOtExceptions.length} ca làm việc có ghi chú tăng ca nhưng chưa được quản lý phê duyệt OT (đã tính OT = 0 theo quy định)
+              </span>
+            </div>
+            <div className="mt-2 text-[11px] text-amber-800">
+              <p className="mb-1 font-medium text-slate-700">Chi tiết các ca cần kế toán đối soát trước khi duyệt:</p>
+              <ul className="list-disc pl-4 space-y-0.5 text-slate-600">
+                {unapprovedOtExceptions.map((ex) => (
+                  <li key={ex.segmentId}>
+                    <strong>{ex.staffId}</strong> ({ex.shiftDate}): Ghi nhận tăng ca trong chứng từ nhưng chưa có phê duyệt OT chính thức của quản lý ca.
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         )}
 
