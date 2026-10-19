@@ -2,13 +2,13 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-19T01:07:39+07:00
+Generated at: 2026-10-19T01:09:07+07:00
 
 ## Repository
 
-- Branch: `fix/workforce-performance-ui-and-policy`
-- HEAD: `7193608482eb7b3a50b952922f8c170d34f02e05`
-- origin/main: `4fe77e58837910db08002b50de56c89fcf46aab2`
+- Branch: `main`
+- HEAD: `804f84c3a6b69e5b35755feee0855eb89a29b3bb`
+- origin/main: `804f84c3a6b69e5b35755feee0855eb89a29b3bb`
 - Worktree: `C:/Users/KienNguyen/OPS_RESTORE_LAB_RC16K/rc17a-actual-staffing`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
