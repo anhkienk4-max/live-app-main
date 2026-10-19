@@ -2,13 +2,13 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-19T11:24:35+07:00
+Generated at: 2026-10-19T11:36:41+07:00
 
 ## Repository
 
 - Branch: `release/one-shot-20261019`
-- HEAD: `cc33a014b8c3d8639b06a1dbd3b454feb4bbec9b`
-- origin/main: `804f84c3a6b69e5b35755feee0855eb89a29b3bb`
+- HEAD: `3188092c133a24fe299cef0f48ffeede30141225`
+- origin/main: `84b74d7ff940ec5705632dc606a3191028f5b297`
 - Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc16-prod-integration/.codex-worktrees/one-shot-20261019`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
@@ -22,7 +22,7 @@ Generated at: 2026-10-19T11:24:35+07:00
 ## Inventory
 
 - Routes: 56
-- Source files in tracked inventory roots: 747
+- Source files in tracked inventory roots: 750
 - Tests: 175
 - Migrations: 73
 
