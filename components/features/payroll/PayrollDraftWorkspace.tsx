@@ -13,6 +13,8 @@ import {
   ShieldAlert,
   RotateCcw,
   Sparkles,
+  CheckCircle2,
+  AlertTriangle,
   } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -37,6 +39,9 @@ import {
   type PayrollAudit,
   type PayrollPeriodStatus,
   type WorkforceRole,
+  type RecalculationLineDiff,
+  type RecalculationDiffSummary,
+  type PayrollReconciliationSummary,
   WorkforceServiceError,
 } from '@/lib/services/workforceService'
 
@@ -96,6 +101,16 @@ export function PayrollDraftWorkspace({
   const [voidSubmitting, setVoidSubmitting] = React.useState(false)
   const [voidError, setVoidError] = React.useState<string | null>(null)
   const [autoCalculating, setAutoCalculating] = React.useState(false)
+
+  // Recalculation & Reconciliation State
+  const [reconciliation, setReconciliation] = React.useState<PayrollReconciliationSummary | null>(null)
+  const [isRecalcOpen, setIsRecalcOpen] = React.useState(false)
+  const [loadingPreview, setLoadingPreview] = React.useState(false)
+  const [recalcDiffs, setRecalcDiffs] = React.useState<RecalculationLineDiff[]>([])
+  const [recalcSummary, setRecalcSummary] = React.useState<RecalculationDiffSummary | null>(null)
+  const [recalcReason, setRecalcReason] = React.useState('')
+  const [recalculating, setRecalculating] = React.useState(false)
+  const [recalcError, setRecalcError] = React.useState<string | null>(null)
 
   const isDraft = period.status === 'draft'
 
@@ -202,15 +217,24 @@ export function PayrollDraftWorkspace({
     try {
       setAutoCalculating(true)
       const res = await workforceService.autoCalculateDraft(period.id)
+      if (res.reconciliation) {
+        setReconciliation(res.reconciliation)
+      }
       if (res.prepared_count > 0) {
         toast({
           title: 'Tự động tính lương thành công',
-          description: `Đã nạp ${res.prepared_count} dòng lương từ dữ liệu chấm công đã duyệt. (${res.skipped_count} phân đoạn được bỏ qua do đã có hoặc chưa hợp lệ).`,
+          description: `Đã tính ${res.prepared_count} dòng lương mới từ dữ liệu chấm công đã duyệt. ${res.reconciliation ? `(Đối soát: ${res.reconciliation.reconciled_count}/${res.reconciliation.total_approved_segments} ca)` : ''}`,
+        })
+      } else if (res.reconciliation && !res.reconciliation.is_fully_reconciled) {
+        toast({
+          title: 'Còn ca chưa được đối soát',
+          description: `Có ${res.reconciliation.unreconciled_count} ca làm việc chưa thể tính lương do thiếu đơn giá được duyệt.`,
+          variant: 'destructive',
         })
       } else if (res.skipped_count > 0) {
         toast({
-          title: 'Không có dòng mới được tạo',
-          description: `${res.skipped_count} phân đoạn chấm công đã được kiểm tra nhưng bỏ qua (đã tồn tại hoặc chưa duyệt).`,
+          title: 'Không có dòng mới cần nạp',
+          description: `Tất cả ${res.reconciliation?.total_approved_segments ?? res.skipped_count} phân đoạn chấm công đã được tính toán đầy đủ trong chu kỳ.`,
         })
       } else {
         toast({
@@ -227,6 +251,55 @@ export function PayrollDraftWorkspace({
       })
     } finally {
       setAutoCalculating(false)
+    }
+  }
+
+  // --- RECALCULATE DRAFT (PREVIEW & EXECUTE) ---
+  const handleOpenRecalculateModal = async () => {
+    try {
+      setLoadingPreview(true)
+      setRecalcError(null)
+      setRecalcReason('')
+      const res = await workforceService.previewRecalculation(period.id)
+      setRecalcDiffs(res.diffs)
+      setRecalcSummary(res.summary)
+      setIsRecalcOpen(true)
+    } catch (err: unknown) {
+      toast({
+        title: 'Không thể xem trước tính lại',
+        description: workforceErrorMessage(err),
+        variant: 'destructive',
+      })
+    } finally {
+      setLoadingPreview(false)
+    }
+  }
+
+  const handleRecalculateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!recalcReason.trim() || recalcReason.trim().length < 8) {
+      setRecalcError('Lý do tính lại là bắt buộc (tối thiểu 8 ký tự).')
+      return
+    }
+
+    try {
+      setRecalculating(true)
+      setRecalcError(null)
+      const res = await workforceService.recalculateDraft({
+        periodId: period.id,
+        reason: recalcReason.trim(),
+        requestId: crypto.randomUUID(),
+      })
+      toast({
+        title: 'Tính lại lương theo giá mới thành công',
+        description: `Đã cập nhật ${res.recalculated_count} dòng lương. Khoản điều chỉnh của kế toán được giữ nguyên.`,
+      })
+      setIsRecalcOpen(false)
+      onRefresh()
+    } catch (err: unknown) {
+      setRecalcError(workforceErrorMessage(err))
+    } finally {
+      setRecalculating(false)
     }
   }
 
@@ -463,6 +536,20 @@ export function PayrollDraftWorkspace({
             </Button>
           )}
 
+          {/* Recalculate button */}
+          {isDraft && activeLines.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleOpenRecalculateModal}
+              disabled={loadingPreview || recalculating}
+              className="text-xs border-indigo-300 text-indigo-700 hover:bg-indigo-50 shadow-sm"
+            >
+              <RotateCcw className={`h-3.5 w-3.5 mr-1.5 ${loadingPreview ? 'animate-spin' : ''}`} />
+              {loadingPreview ? 'Đang kiểm tra…' : 'Tính lại theo giá mới'}
+            </Button>
+          )}
+
           {/* Prepare Line button */}
           {isDraft && (
             <Button
@@ -493,6 +580,55 @@ export function PayrollDraftWorkspace({
 
       {!canTransition && currentTransition && <p className="px-4 text-xs text-amber-700" role="status">Cần một Admin độc lập để phê duyệt bước này.</p>}
       <CardContent className="p-4 space-y-4">
+        {/* Reconciliation Summary Alert */}
+        {reconciliation && (
+          <div
+            className={`rounded-lg border p-3.5 text-xs ${
+              reconciliation.is_fully_reconciled
+                ? 'border-emerald-200 bg-emerald-50/70 text-emerald-900'
+                : 'border-amber-200 bg-amber-50/70 text-amber-900'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 font-semibold">
+                {reconciliation.is_fully_reconciled ? (
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                )}
+                <span>
+                  {reconciliation.is_fully_reconciled
+                    ? `Đối soát hoàn tất: 100% (${reconciliation.reconciled_count}/${reconciliation.total_approved_segments} ca làm việc đã được tính lương)`
+                    : `Cảnh báo đối soát: Có ${reconciliation.unreconciled_count}/${reconciliation.total_approved_segments} ca làm việc chưa thể tính lương`}
+                </span>
+              </div>
+              <span className="text-[11px] font-mono text-slate-500">
+                Tỷ lệ đối soát: {reconciliation.total_approved_segments > 0 ? Math.round((reconciliation.reconciled_count / reconciliation.total_approved_segments) * 100) : 100}%
+              </span>
+            </div>
+
+            {!reconciliation.is_fully_reconciled && (
+              <div className="mt-2.5 pt-2 border-t border-amber-200/60 text-[11px] space-y-1">
+                <p className="font-medium text-amber-800">
+                  ⚠️ Lưu ý: Theo chính sách chốt lương, bạn sẽ không thể chuyển bảng lương sang trạng thái &ldquo;Reviewed&rdquo; hoặc &ldquo;Locked&rdquo; nếu còn ca chấm công chưa có đơn giá hợp lệ.
+                </p>
+                {reconciliation.unreconciled_segments.length > 0 && (
+                  <div className="mt-1 max-h-28 overflow-y-auto space-y-1 bg-white/70 rounded p-2 border border-amber-200/80">
+                    <p className="font-semibold text-slate-700">Danh sách ca chưa đối soát:</p>
+                    <ul className="list-disc pl-4 space-y-0.5 text-slate-600">
+                      {reconciliation.unreconciled_segments.map((seg) => (
+                        <li key={seg.segmentId}>
+                          <strong>{seg.staffId}</strong> ({seg.role}, {seg.shiftDate}): {seg.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Lines Table */}
         <div className="overflow-x-auto rounded-md border border-slate-200">
           <table className="w-full text-left text-xs">
@@ -1102,6 +1238,189 @@ export function PayrollDraftWorkspace({
               </DialogFooter>
             </form>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* RECALCULATE DRAFT MODAL WITH PREVIEW DIFF */}
+      <Dialog open={isRecalcOpen} onOpenChange={(open) => !open && !recalculating && setIsRecalcOpen(false)}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
+              <RotateCcw className="h-5 w-5 text-indigo-600" />
+              Tính lại lương theo khung giá mới (Rate Recalculation)
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-600">
+              Xem trước sự thay đổi đơn giá và chênh lệch tiền lương trước khi cập nhật.
+              Các khoản điều chỉnh và lý do của kế toán sẽ được giữ nguyên 100%.
+            </DialogDescription>
+          </DialogHeader>
+
+          {recalcError && (
+            <div className="flex items-center gap-2 rounded-md bg-rose-50 p-2.5 text-xs text-rose-700 border border-rose-200">
+              <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
+              <span>{recalcError}</span>
+            </div>
+          )}
+
+          {recalcSummary && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 py-1">
+              <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-2.5 text-center">
+                <p className="text-[11px] text-slate-500">Dòng thay đổi</p>
+                <p className="text-sm font-bold text-slate-800 mt-0.5">
+                  {recalcSummary.changedLinesCount} / {recalcSummary.totalLines}
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-2.5 text-center">
+                <p className="text-[11px] text-slate-500">Chênh lệch gộp</p>
+                <p
+                  className={`text-sm font-bold mt-0.5 ${
+                    recalcSummary.totalGrossDeltaVnd > 0
+                      ? 'text-emerald-600'
+                      : recalcSummary.totalGrossDeltaVnd < 0
+                      ? 'text-rose-600'
+                      : 'text-slate-700'
+                  }`}
+                >
+                  {recalcSummary.totalGrossDeltaVnd > 0 ? '+' : ''}
+                  {formatCurrency(recalcSummary.totalGrossDeltaVnd)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-2.5 text-center">
+                <p className="text-[11px] text-slate-500">Chênh lệch thực lĩnh</p>
+                <p
+                  className={`text-sm font-bold mt-0.5 ${
+                    recalcSummary.totalNetDeltaVnd > 0
+                      ? 'text-emerald-600'
+                      : recalcSummary.totalNetDeltaVnd < 0
+                      ? 'text-rose-600'
+                      : 'text-slate-700'
+                  }`}
+                >
+                  {recalcSummary.totalNetDeltaVnd > 0 ? '+' : ''}
+                  {formatCurrency(recalcSummary.totalNetDeltaVnd)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-2.5 text-center">
+                <p className="text-[11px] text-blue-600 font-medium">Bảo toàn điều chỉnh</p>
+                <p className="text-sm font-bold text-blue-700 mt-0.5">
+                  {recalcSummary.preservedAdjustmentsCount} dòng
+                </p>
+              </div>
+            </div>
+          )}
+
+          {recalcDiffs.length === 0 ? (
+            <div className="text-center py-6 text-xs text-slate-500">
+              Không có dữ liệu dòng lương nào để so sánh.
+            </div>
+          ) : recalcSummary?.changedLinesCount === 0 ? (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-4 text-center text-xs text-emerald-800 space-y-1">
+              <CheckCircle2 className="h-6 w-6 text-emerald-600 mx-auto" />
+              <p className="font-semibold text-emerald-900">Khung giá đã đồng bộ</p>
+              <p>Tất cả các dòng lương hiện tại đều đã khớp với khung giá mới nhất có hiệu lực. Không có chênh lệch nào cần cập nhật.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-slate-700">Chi tiết chênh lệch các dòng lương thay đổi:</p>
+              <div className="max-h-60 overflow-y-auto rounded-md border border-slate-200">
+                <table className="w-full text-left text-[11px]">
+                  <thead className="border-b bg-slate-50 font-semibold text-slate-600 sticky top-0">
+                    <tr>
+                      <th className="px-3 py-2">Nhân sự & Vai trò</th>
+                      <th className="px-3 py-2 text-right">Đơn giá cũ → mới</th>
+                      <th className="px-3 py-2 text-right">Lương gộp cũ → mới</th>
+                      <th className="px-3 py-2 text-right">Điều chỉnh giữ nguyên</th>
+                      <th className="px-3 py-2 text-right font-bold">Chênh lệch thực lĩnh</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {recalcDiffs
+                      .filter((d) => d.rateChanged)
+                      .map((d) => (
+                        <tr key={d.lineId} className="hover:bg-slate-50/80">
+                          <td className="px-3 py-2">
+                            <span className="font-medium text-slate-800">{d.staffId}</span>
+                            <span className="ml-1.5 text-[10px] text-slate-500 font-mono">({d.role})</span>
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono">
+                            <span className="text-slate-500 line-through mr-1">
+                              {formatCurrency(d.oldRateVndPerHour)}
+                            </span>
+                            <span className="font-bold text-indigo-700">
+                              {formatCurrency(d.newRateVndPerHour ?? 0)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono">
+                            <span className="text-slate-500 mr-1">
+                              {formatCurrency(d.oldGrossVnd)}
+                            </span>
+                            →
+                            <span className="font-semibold text-slate-800 ml-1">
+                              {formatCurrency(d.newGrossVnd ?? 0)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-blue-600">
+                            {formatCurrency(d.adjustmentVnd)}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono font-bold">
+                            <span
+                              className={
+                                d.netDeltaVnd > 0
+                                  ? 'text-emerald-600'
+                                  : d.netDeltaVnd < 0
+                                  ? 'text-rose-600'
+                                  : 'text-slate-600'
+                              }
+                            >
+                              {d.netDeltaVnd > 0 ? '+' : ''}
+                              {formatCurrency(d.netDeltaVnd)}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={handleRecalculateSubmit} className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <label htmlFor="recalc-reason-input" className="text-xs font-semibold text-slate-700">
+                Lý do tính lại bảng lương <span className="text-rose-500">*</span>
+              </label>
+              <Textarea
+                id="recalc-reason-input"
+                required
+                rows={2}
+                placeholder="Nhập lý do tính lại theo khung giá mới (tối thiểu 8 ký tự, ví dụ: Cập nhật đơn giá Host tháng 10)..."
+                value={recalcReason}
+                onChange={(e) => setRecalcReason(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsRecalcOpen(false)}
+                disabled={recalculating}
+                className="text-xs"
+              >
+                Đóng
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={recalculating || (recalcSummary?.changedLinesCount === 0)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-xs text-white"
+              >
+                {recalculating ? 'Đang tính lại…' : 'Xác nhận tính lại theo giá mới'}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </Card>

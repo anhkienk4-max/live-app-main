@@ -193,8 +193,51 @@ export function nextPayrollState(current: PayrollStatus, target: PayrollStatus):
   return target
 }
 
+/**
+ * Extract approved overtime minutes from supervisor's review note or evidence note.
+ * Overtime is NEVER inferred simply because actual time exceeded scheduled shift.
+ * Must match an explicit supervisor approval pattern, e.g.:
+ * - "OT: 30p", "OT: 45 phút", "OT: 1.5h", "OT: 60m"
+ * - "tăng ca: 30p", "tang ca: 60 phut", "tăng ca 1 giờ"
+ * - "overtime: 45 min", "OT 60 minutes"
+ * If no approved OT pattern is found, returns 0.
+ * The returned overtime minutes is capped at total actual minutes.
+ */
+export function parseApprovedOvertimeMinutes(
+  reviewNote?: string | null,
+  evidenceNote?: string | null,
+  actualMinutes?: number,
+): number {
+  const combined = [reviewNote ?? '', evidenceNote ?? ''].join(' ')
+  if (!combined.trim()) return 0
+
+  // 1. Hours: (?:ot|tăng ca|tang ca|overtime)[:\s]+(\d+(?:\.\d+)?)\s*(?:h|gio|giờ|hours?)
+  const hourMatch = combined.match(/(?:ot|tăng ca|tang ca|overtime)[:\s]+(\d+(?:\.\d+)?)\s*(?:h|gio|giờ|hours?)(?:\b|$)/i)
+  if (hourMatch && hourMatch[1]) {
+    const hours = parseFloat(hourMatch[1])
+    if (Number.isFinite(hours) && hours > 0) {
+      const mins = Math.round(hours * 60)
+      return actualMinutes !== undefined ? Math.min(mins, actualMinutes) : mins
+    }
+  }
+
+  // 2. Minutes: (?:ot|tăng ca|tang ca|overtime)[:\s]+(\d+)\s*(?:p|phut|phút|m|min|mins|minutes?)?
+  const minMatch = combined.match(/(?:ot|tăng ca|tang ca|overtime)[:\s]+(\d+)\s*(?:p|phut|phút|m|min|mins|minutes?)?(?:\b|$)/i)
+  if (minMatch && minMatch[1]) {
+    const mins = parseInt(minMatch[1], 10)
+    if (Number.isFinite(mins) && mins > 0) {
+      return actualMinutes !== undefined ? Math.min(mins, actualMinutes) : mins
+    }
+  }
+
+  return 0
+}
+
 export interface AutoCalculateSegmentInput {
-  segment: ActualStaffingEvidence
+  segment: ActualStaffingEvidence & {
+    reviewNote?: string | null
+    evidenceNote?: string | null
+  }
   shiftDate: string
 }
 
@@ -210,6 +253,7 @@ export interface AutoCalculateResult {
  * Pure auto-calculation engine for a payroll period:
  * Scans approved worked segments, resolves approved rate cards,
  * computes exact gross and net amounts with BigInt integer rounding,
+ * extracts approved overtime minutes from supervisor review notes,
  * and skips unapproved attendance or unapproved rates fail-closed.
  */
 export function autoCalculatePeriodLines(input: {
@@ -243,12 +287,17 @@ export function autoCalculatePeriodLines(input: {
     try {
       const selectedRate = selectApprovedRate(segment, shiftDate, input.rates)
       const actualMinutes = minuteDifference(segment.startAt, segment.endAt)
+      const approvedOtMinutes = parseApprovedOvertimeMinutes(
+        segment.reviewNote,
+        segment.evidenceNote,
+        actualMinutes,
+      )
       const line = calculatePayrollLine({
         segment,
         shiftDate,
         rate: selectedRate,
         payableMinutes: actualMinutes,
-        overtimeMinutes: 0,
+        overtimeMinutes: approvedOtMinutes,
       })
       preparedLines.push(line)
     } catch (err: unknown) {
@@ -258,6 +307,219 @@ export function autoCalculatePeriodLines(input: {
   }
 
   return { preparedLines, skippedSegments }
+}
+
+export interface ExistingPayrollLineForRecalc {
+  id: string
+  periodId: string
+  segmentId: string
+  rateCardId: string
+  staffId: string
+  role: WorkforceRole
+  version: number
+  shiftDate: string
+  actualMinutes: number
+  payableMinutes: number
+  overtimeMinutes: number
+  rateVndPerHour: number
+  overtimeMultiplierBasisPoints: number
+  grossVnd: number
+  adjustmentVnd: number
+  netVnd: number
+  adjustmentReason: string | null
+}
+
+export interface RecalculationLineDiff {
+  lineId: string
+  segmentId: string
+  staffId: string
+  role: WorkforceRole
+  version: number
+  shiftDate: string
+  actualMinutes: number
+  payableMinutes: number
+  overtimeMinutes: number
+  oldRateCardId: string
+  oldRateVndPerHour: number
+  newRateCardId: string | null
+  newRateVndPerHour: number | null
+  oldGrossVnd: number
+  newGrossVnd: number | null
+  grossDeltaVnd: number
+  adjustmentVnd: number
+  adjustmentReason: string | null
+  oldNetVnd: number
+  newNetVnd: number | null
+  netDeltaVnd: number
+  rateChanged: boolean
+  errorReason: string | null
+}
+
+export interface RecalculationDiffSummary {
+  totalLines: number
+  changedLinesCount: number
+  totalGrossDeltaVnd: number
+  totalNetDeltaVnd: number
+  preservedAdjustmentsCount: number
+  unresolvedCount: number
+}
+
+/**
+ * Calculates preview diffs for draft lines before applying recalculation.
+ * Preserves accountant adjustments (adjustmentVnd, adjustmentReason) exactly.
+ */
+export function calculateRecalculationDiffs(input: {
+  lines: readonly ExistingPayrollLineForRecalc[]
+  rates: readonly ApprovedPayrollRate[]
+}): {
+  diffs: RecalculationLineDiff[]
+  summary: RecalculationDiffSummary
+} {
+  const diffs: RecalculationLineDiff[] = []
+  let changedLinesCount = 0
+  let totalGrossDeltaVnd = 0
+  let totalNetDeltaVnd = 0
+  let preservedAdjustmentsCount = 0
+  let unresolvedCount = 0
+
+  for (const line of input.lines) {
+    let newRate: ApprovedPayrollRate | null = null
+    let errorReason: string | null = null
+
+    try {
+      newRate = selectApprovedRate(
+        { staffId: line.staffId, role: line.role },
+        line.shiftDate,
+        input.rates,
+      )
+    } catch (err: unknown) {
+      errorReason = err instanceof WorkforceCalculationError ? err.code : 'RATE_RESOLUTION_FAILED'
+      unresolvedCount++
+    }
+
+    if (line.adjustmentVnd !== 0) {
+      preservedAdjustmentsCount++
+    }
+
+    if (!newRate) {
+      diffs.push({
+        lineId: line.id,
+        segmentId: line.segmentId,
+        staffId: line.staffId,
+        role: line.role,
+        version: line.version,
+        shiftDate: line.shiftDate,
+        actualMinutes: line.actualMinutes,
+        payableMinutes: line.payableMinutes,
+        overtimeMinutes: line.overtimeMinutes,
+        oldRateCardId: line.rateCardId,
+        oldRateVndPerHour: line.rateVndPerHour,
+        newRateCardId: null,
+        newRateVndPerHour: null,
+        oldGrossVnd: line.grossVnd,
+        newGrossVnd: null,
+        grossDeltaVnd: 0,
+        adjustmentVnd: line.adjustmentVnd,
+        adjustmentReason: line.adjustmentReason,
+        oldNetVnd: line.netVnd,
+        newNetVnd: null,
+        netDeltaVnd: 0,
+        rateChanged: false,
+        errorReason,
+      })
+      continue
+    }
+
+    const rateChanged =
+      newRate.id !== line.rateCardId ||
+      newRate.vndPerHour !== line.rateVndPerHour ||
+      newRate.overtimeMultiplierBasisPoints !== line.overtimeMultiplierBasisPoints
+
+    if (!rateChanged) {
+      diffs.push({
+        lineId: line.id,
+        segmentId: line.segmentId,
+        staffId: line.staffId,
+        role: line.role,
+        version: line.version,
+        shiftDate: line.shiftDate,
+        actualMinutes: line.actualMinutes,
+        payableMinutes: line.payableMinutes,
+        overtimeMinutes: line.overtimeMinutes,
+        oldRateCardId: line.rateCardId,
+        oldRateVndPerHour: line.rateVndPerHour,
+        newRateCardId: newRate.id,
+        newRateVndPerHour: newRate.vndPerHour,
+        oldGrossVnd: line.grossVnd,
+        newGrossVnd: line.grossVnd,
+        grossDeltaVnd: 0,
+        adjustmentVnd: line.adjustmentVnd,
+        adjustmentReason: line.adjustmentReason,
+        oldNetVnd: line.netVnd,
+        newNetVnd: line.netVnd,
+        netDeltaVnd: 0,
+        rateChanged: false,
+        errorReason: null,
+      })
+      continue
+    }
+
+    // Recompute amounts with new rate card while preserving exact adjustments
+    const amounts = calculatePayrollAmounts({
+      actualMinutes: line.actualMinutes,
+      rateVndPerHour: newRate.vndPerHour,
+      overtimeMultiplierBasisPoints: newRate.overtimeMultiplierBasisPoints,
+      payableMinutes: line.payableMinutes,
+      overtimeMinutes: line.overtimeMinutes,
+      adjustmentVnd: line.adjustmentVnd,
+      adjustmentReason: line.adjustmentReason,
+    })
+
+    const grossDelta = amounts.grossVnd - line.grossVnd
+    const netDelta = amounts.netVnd - line.netVnd
+
+    changedLinesCount++
+    totalGrossDeltaVnd += grossDelta
+    totalNetDeltaVnd += netDelta
+
+    diffs.push({
+      lineId: line.id,
+      segmentId: line.segmentId,
+      staffId: line.staffId,
+      role: line.role,
+      version: line.version,
+      shiftDate: line.shiftDate,
+      actualMinutes: line.actualMinutes,
+      payableMinutes: line.payableMinutes,
+      overtimeMinutes: line.overtimeMinutes,
+      oldRateCardId: line.rateCardId,
+      oldRateVndPerHour: line.rateVndPerHour,
+      newRateCardId: newRate.id,
+      newRateVndPerHour: newRate.vndPerHour,
+      oldGrossVnd: line.grossVnd,
+      newGrossVnd: amounts.grossVnd,
+      grossDeltaVnd: grossDelta,
+      adjustmentVnd: line.adjustmentVnd,
+      adjustmentReason: line.adjustmentReason,
+      oldNetVnd: line.netVnd,
+      newNetVnd: amounts.netVnd,
+      netDeltaVnd: netDelta,
+      rateChanged: true,
+      errorReason: null,
+    })
+  }
+
+  return {
+    diffs,
+    summary: {
+      totalLines: input.lines.length,
+      changedLinesCount,
+      totalGrossDeltaVnd,
+      totalNetDeltaVnd,
+      preservedAdjustmentsCount,
+      unresolvedCount,
+    },
+  }
 }
 
 /**

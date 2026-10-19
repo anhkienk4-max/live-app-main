@@ -171,7 +171,7 @@ export function PayrollRateManager() {
 
     try {
       setRegSubmitting(true)
-      await workforceService.registerRate({
+      const res = await workforceService.registerRate({
         staffId: regScope === 'staff_specific' ? regStaffId.trim() : null,
         operationalRole: regRole,
         effectiveFrom: regEffectiveFrom,
@@ -183,7 +183,9 @@ export function PayrollRateManager() {
 
       toast({
         title: 'Phê duyệt khung lương thành công',
-        description: `Khung lương vai trò ${regRole.toUpperCase()} đã được đăng ký và có hiệu lực từ ${regEffectiveFrom}.`,
+        description: res.superseded_rate_id
+          ? `Khung lương vai trò ${regRole.toUpperCase()} đã được cập nhật từ ${regEffectiveFrom}. Đơn giá cũ đang mở đã được giới hạn kết thúc tự động (Superseded).`
+          : `Khung lương vai trò ${regRole.toUpperCase()} đã được đăng ký và có hiệu lực từ ${regEffectiveFrom}.`,
       })
 
       setIsRegisterOpen(false)
@@ -412,6 +414,9 @@ export function PayrollRateManager() {
             <DialogDescription className="text-xs text-slate-500">
               Thiết lập đơn giá chuẩn và hệ số tăng ca. Quản trị viên không thể tự phê duyệt mức lương cho chính mình.
             </DialogDescription>
+            <div className="mt-2 rounded-md border border-indigo-100 bg-indigo-50/70 p-2.5 text-[11px] text-indigo-900 leading-relaxed text-left">
+              <strong>💡 Cơ chế Phiên bản (Rate Versioning):</strong> Đơn giá cũ đang mở (không có ngày kết thúc) cho cùng vai trò/nhân sự sẽ tự động được giới hạn đến ngày trước ngày hiệu lực mới. Không sửa đè lịch sử hay hồi tố các kỳ lương đã khóa sổ.
+            </div>
           </DialogHeader>
 
           <form onSubmit={handleRegister} className="space-y-4 pt-2">

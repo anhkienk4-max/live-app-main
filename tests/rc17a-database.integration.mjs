@@ -16,7 +16,7 @@ if (container) {
   assertIsolatedCI(process.env)
 }
 
-const read = path => readFileSync(path, 'utf8')
+const read = path => readFileSync(path, 'utf8').replace(/\r\n/g, '\n')
 function extract(source, pattern) {
   const match = source.match(pattern)
   assert.ok(match, `Fixture source object missing: ${pattern}`)

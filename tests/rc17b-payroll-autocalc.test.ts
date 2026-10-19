@@ -4,7 +4,10 @@ import {
   autoCalculatePeriodLines,
   calculateLivePreview,
   minuteDifference,
+  parseApprovedOvertimeMinutes,
+  calculateRecalculationDiffs,
   type ApprovedPayrollRate,
+  type PayrollLineRecalcTarget,
 } from '@/lib/workforce/payrollCalculation'
 
 test('autoCalculatePeriodLines: scans approved worked segments and generates draft snapshots', () => {
@@ -195,3 +198,114 @@ test('minuteDifference: accurately calculates cross-midnight shifts with ISO tim
   const diff = minuteDifference(start, end)
   assert.equal(diff, 210) // 3.5 hours = 210 minutes
 })
+
+test('parseApprovedOvertimeMinutes: requires explicit approved OT evidence, never defaulting excess hours to OT', () => {
+  // Case 1: No evidence or notes -> 0 OT even if actual is long
+  assert.equal(parseApprovedOvertimeMinutes(null, null, 180), 0)
+  assert.equal(parseApprovedOvertimeMinutes('Đã duyệt ca làm việc', 'Hoàn thành tốt', 180), 0)
+
+  // Case 2: Explicit OT notes in review_note or note
+  assert.equal(parseApprovedOvertimeMinutes('Duyệt OT: 30p hỗ trợ dọn dẹp', null, 180), 30)
+  assert.equal(parseApprovedOvertimeMinutes(null, 'tăng ca: 45 phút', 180), 45)
+  assert.equal(parseApprovedOvertimeMinutes('Xác nhận tăng ca 1.5h', null, 180), 90)
+  assert.equal(parseApprovedOvertimeMinutes('OT: 1h', null, 180), 60)
+  assert.equal(parseApprovedOvertimeMinutes(null, 'overtime 20m', 180), 20)
+
+  // Case 3: Caps at actual minutes
+  assert.equal(parseApprovedOvertimeMinutes('OT: 300p', null, 120), 120)
+})
+
+test('calculateRecalculationDiffs: recalculates rates and strictly preserves accountant adjustments', () => {
+  const lines: PayrollLineRecalcTarget[] = [
+    {
+      id: 'line-1',
+      segmentId: 'seg-1',
+      staffId: 'staff-alice',
+      role: 'host',
+      shiftDate: '2026-10-10',
+      actualMinutes: 120,
+      payableMinutes: 120,
+      overtimeMinutes: 0,
+      rateCardId: 'rate-host-old',
+      rateVndPerHour: 100_000,
+      overtimeMultiplierBasisPoints: 15_000,
+      grossVnd: 200_000,
+      adjustmentVnd: 50_000, // Manual bonus added by accountant
+      adjustmentReason: 'Thưởng KPI phiên Live',
+      netVnd: 250_000,
+      version: 1,
+    },
+    {
+      id: 'line-2',
+      segmentId: 'seg-2',
+      staffId: 'staff-bob',
+      role: 'support',
+      shiftDate: '2026-10-10',
+      actualMinutes: 60,
+      payableMinutes: 60,
+      overtimeMinutes: 0,
+      rateCardId: 'rate-support-unchanged',
+      rateVndPerHour: 80_000,
+      overtimeMultiplierBasisPoints: 15_000,
+      grossVnd: 80_000,
+      adjustmentVnd: -10_000,
+      adjustmentReason: 'Phạt đi trễ',
+      netVnd: 70_000,
+      version: 1,
+    },
+  ]
+
+  const newRates: ApprovedPayrollRate[] = [
+    // Alice rate increased from 100k to 120k
+    {
+      id: 'rate-host-new',
+      staffId: null,
+      role: 'host',
+      effectiveFrom: '2026-10-01',
+      effectiveThrough: null,
+      vndPerHour: 120_000,
+      overtimeMultiplierBasisPoints: 15_000,
+      approvedBy: 'admin-2',
+    },
+    // Bob rate remains 80k
+    {
+      id: 'rate-support-unchanged',
+      staffId: null,
+      role: 'support',
+      effectiveFrom: '2026-10-01',
+      effectiveThrough: null,
+      vndPerHour: 80_000,
+      overtimeMultiplierBasisPoints: 15_000,
+      approvedBy: 'admin-2',
+    },
+  ]
+
+  const { diffs, summary } = calculateRecalculationDiffs({ lines, rates: newRates })
+
+  assert.equal(summary.totalLines, 2)
+  assert.equal(summary.changedLinesCount, 1) // Only Alice changed
+  assert.equal(summary.totalGrossDeltaVnd, 40_000) // 120m @ 120k (240k) - 200k = +40k
+  assert.equal(summary.totalNetDeltaVnd, 40_000)
+  assert.equal(summary.preservedAdjustmentsCount, 2) // Both lines preserved adjustments
+
+  const aliceDiff = diffs.find(d => d.lineId === 'line-1')
+  assert.ok(aliceDiff)
+  assert.equal(aliceDiff.rateChanged, true)
+  assert.equal(aliceDiff.oldRateVndPerHour, 100_000)
+  assert.equal(aliceDiff.newRateVndPerHour, 120_000)
+  assert.equal(aliceDiff.oldGrossVnd, 200_000)
+  assert.equal(aliceDiff.newGrossVnd, 240_000)
+  assert.equal(aliceDiff.grossDeltaVnd, 40_000)
+  assert.equal(aliceDiff.adjustmentVnd, 50_000) // Preserved
+  assert.equal(aliceDiff.adjustmentReason, 'Thưởng KPI phiên Live') // Preserved
+  assert.equal(aliceDiff.oldNetVnd, 250_000)
+  assert.equal(aliceDiff.newNetVnd, 290_000)
+  assert.equal(aliceDiff.netDeltaVnd, 40_000)
+
+  const bobDiff = diffs.find(d => d.lineId === 'line-2')
+  assert.ok(bobDiff)
+  assert.equal(bobDiff.rateChanged, false)
+  assert.equal(bobDiff.netDeltaVnd, 0)
+  assert.equal(bobDiff.adjustmentVnd, -10_000)
+})
+
