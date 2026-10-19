@@ -94,6 +94,7 @@ const platforms = [...mockPlatforms]
 const campaigns = [...mockCampaigns]
 let shifts: Shift[] = mockShifts.map(shift => ({
   ...shift,
+  version: shift.version ?? 1,
   status_mode: 'manual',
   ...shiftDateTimeFields(shift.date, shift.start_time, shift.end_time),
 }))

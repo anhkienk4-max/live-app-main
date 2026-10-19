@@ -28,7 +28,9 @@ jobs:
           sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-vie
           pnpm exec playwright install --with-deps chromium
       - name: Validate focused test
-        run: pnpm exec eslint e2e/ocr-workflows.spec.ts
+        run: |
+          pnpm exec eslint e2e/ocr-workflows.spec.ts lib/services/dataService.ts tests/shift-lifecycle.test.ts
+          node --import ./tests/typescript-alias-loader.mjs --test tests/shift-lifecycle.test.ts
       - name: Live OCR review, save, shift binding and Reports import
         run: pnpm exec playwright test --config playwright.one-shot.config.ts --grep 'owner TikTok dashboard'
       - name: Preserve browser evidence

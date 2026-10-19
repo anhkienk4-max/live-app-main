@@ -19,6 +19,19 @@ describe('Shift Lifecycle UI State Flow', () => {
     process.env.NEXT_PUBLIC_USE_MOCK_DATA = 'true'
   })
 
+  test('seeded Live shifts expose a positive revision for lifecycle updates', async () => {
+    const page = await shiftService.getLivePage({ page: 1, pageSize: 10 })
+    const shift = page.items.find(item => item.id === 's1')!
+    assert.ok(shift)
+    assert.ok(Number.isInteger(shift.version) && shift.version! > 0)
+    const updated = await shiftService.update(shift.id, { status: 'preparing', version: shift.version })
+    assert.strictEqual(updated?.status, 'preparing')
+    await assert.rejects(
+      shiftService.update(shift.id, { status: 'scheduled', version: shift.version }),
+      /STALE_WRITE/,
+    )
+  })
+
   test('A scheduled → preparing', async () => {
     const shift = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-10-10', start_time: '10:00', end_time: '12:00',

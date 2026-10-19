@@ -310,6 +310,7 @@ async function prepareTikTokShiftForLiveUpdate(page: Page) {
   await page.getByTestId('open-live-session-s1').click()
   await page.getByRole('combobox', { name: /^(Status|Trạng thái)$/ }).click()
   await page.getByRole('option', { name: /^(Preparing|Đang chuẩn bị)$/ }).click()
+  await expect(page.getByTestId('open-live-dashboard-update-s1')).toBeVisible()
   await page.getByTestId('open-live-dashboard-update-s1').click()
 }
 
@@ -476,7 +477,12 @@ test('owner TikTok dashboard reviews 18 KPIs and saves the snapshot into the cor
   expect(snapshot.normalized_metrics?.current_viewers).toBe(1820)
   expect((await readMockSnapshots(page, 's2')).some(item => item.id === snapshot.id)).toBe(false)
 
-  await page.getByTestId('sidebar-reports').click()
+  if (await page.getByTestId('sidebar-reports').isVisible()) {
+    await page.getByTestId('sidebar-reports').click()
+  } else {
+    await page.getByTestId('nav-menu-more').click()
+    await page.getByRole('menuitem', { name: /^(Reports|Báo cáo)$/ }).click()
+  }
   await expect(page).toHaveURL(/\/reports$/)
   await page.getByTestId('open-final-report-modal').click()
   const picker = page.getByTestId('report-shift-picker')
