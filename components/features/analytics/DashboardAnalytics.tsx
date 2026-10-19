@@ -169,6 +169,13 @@ export function DashboardAnalytics() {
   const visibleReports = pageResult?.items ?? []
   const selectedShift = selectedReport ? shiftById.get(selectedReport.shift_id) : undefined
   const platformData = dimensionData('platform')
+  const openReport = (report: Report) => {
+    void Promise.all([reportService.getById(report.id), shiftRegistrationService.getForShift(report.shift_id)])
+      .then(([full, related]) => {
+        if (full) { setRegistrations(related); setSelectedReport(full) }
+      })
+      .catch(setLoadError)
+  }
   return <div className="min-w-0 space-y-3 text-slate-900">
     {/* G08 hierarchy: report overview, active period, primary export/filter actions. */}
     <header className="rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm sm:px-5 sm:py-5" data-testid="analytics-visual-header">
@@ -235,7 +242,73 @@ export function DashboardAnalytics() {
     ) : <>
       <div className="grid gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"><LineChartCard title={t('revenueTrend')} data={trend} fields={[{key:'revenue',name:t('revenue'),color:'#4f46e5',currency:true}]} /><Card><CardHeader className="px-3 py-2"><CardTitle className="text-sm">{t('platform')}</CardTitle></CardHeader><CardContent className="space-y-3 px-3 pb-3">{platformData.length ? platformData.map(item => { const share = totals.revenue !== null && totals.revenue > 0 && item.revenue !== null ? Math.min(100, Math.max(0, item.revenue / totals.revenue * 100)) : null; return <div key={item.name} className="space-y-1.5"><div className="flex items-center justify-between gap-2 text-xs"><span className="truncate font-medium">{item.name}</span><span className="shrink-0 text-right">{display(item.revenue, 'currency')}{share !== null ? ` (${share.toFixed(1)}%)` : ''}</span></div>{share !== null && <div className="h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-indigo-600" style={{ width: `${share}%` }} /></div>}<p className="text-[10px] text-slate-500">{item.count} {t('reportCount')}</p></div> }) : <p className="py-6 text-center text-sm text-slate-500">{t('noConfirmedData')}</p>}</CardContent></Card></div>
       <div className="grid gap-3 xl:grid-cols-2"><BarChartCard title={t('revenueByBrand')} data={dimensionData('brand')} fields={[{key:'revenue',name:t('revenue'),color:'#4f46e5',currency:true}]} /><BarChartCard title={t('revenueByCampaign')} data={dimensionData('campaign')} fields={[{key:'revenue',name:t('revenue'),color:'#2563eb',currency:true}]} /></div>
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white"><h3 className="border-b px-4 py-3 text-sm font-semibold">{t('viewDetails')} · {currentCount}</h3><div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="bg-slate-50 text-slate-500"><tr>{(['finalReport','brand','platform','date','revenue','orders','ctr','actions'] as const).map(key=><th key={key} className="px-3 py-2 font-medium">{t(key)}</th>)}</tr></thead><tbody className="divide-y">{visibleReports.map(report=>{const shift=shiftById.get(report.shift_id); return <tr key={report.id}><td className="px-3 py-3"><strong>{shift?.title ?? report.id}</strong><p className="mt-1 text-slate-400">{report.id}</p></td><td className="px-3 py-3">{brands.find(b=>b.id===shift?.brand_id)?.name ?? '—'}</td><td className="px-3 py-3">{platforms.find(p=>p.id===shift?.platform_id)?.name ?? '—'}</td><td className="px-3 py-3">{shift?.date ?? '—'}</td><td className="px-3 py-3 font-semibold">{display(reportMetricValue(report,'revenue'),'currency')}</td><td className="px-3 py-3">{display(reportMetricValue(report,'orders'))}</td><td className="px-3 py-3">{display(reportMetricValue(report,'ctr'),'%')}</td><td className="px-3 py-3"><Button size="icon-sm" variant="ghost" title={t('viewDetails')} onClick={()=>{void Promise.all([reportService.getById(report.id),shiftRegistrationService.getForShift(report.shift_id)]).then(([full,related])=>{if(full){setRegistrations(related);setSelectedReport(full)}}).catch(setLoadError)}}><Eye className="h-4 w-4" /></Button></td></tr>})}</tbody></table></div><HistoryPagination page={safePage} pageSize={pageSize} total={pageResult?.total ?? 0} onPageChange={setPage} onPageSizeChange={list.setPageSize} /></section>
+      <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="analytics-report-list">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">{t('viewDetails')}</h2>
+            <p className="mt-0.5 text-xs text-slate-500">{currentCount} {t('reportCount')} · Báo cáo đã xác nhận</p>
+          </div>
+          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{visibleReports.length} bản ghi trang này</span>
+        </div>
+        {/* G08 mobile-first: use cards rather than a clipped desktop table at 390px. */}
+        <div className="divide-y divide-slate-100 md:hidden" data-testid="analytics-mobile-report-cards">
+          {visibleReports.map(report => {
+            const shift = shiftById.get(report.shift_id)
+            return (
+              <article key={report.id} className="space-y-3 px-4 py-4">
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="break-words text-sm font-semibold text-slate-900">{shift?.title || report.id}</p>
+                    <p className="mt-1 text-xs text-slate-500">{shift?.date || '—'} · {brands.find(b => b.id === shift?.brand_id)?.name || '—'}</p>
+                    <p className="mt-1 text-xs text-slate-500">{platforms.find(p => p.id === shift?.platform_id)?.name || '—'}</p>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => openReport(report)} aria-label={t('viewDetails')}>
+                    <Eye className="mr-1.5 h-4 w-4" />{t('viewDetails')}
+                  </Button>
+                </div>
+                <dl className="grid grid-cols-3 gap-2 rounded-lg bg-slate-50 p-3 text-xs">
+                  <div className="min-w-0"><dt className="text-slate-500">{t('revenue')}</dt><dd className="mt-1 break-words font-semibold text-slate-900">{display(reportMetricValue(report,'revenue'),'currency')}</dd></div>
+                  <div className="min-w-0"><dt className="text-slate-500">{t('orders')}</dt><dd className="mt-1 break-words font-semibold text-slate-900">{display(reportMetricValue(report,'orders'))}</dd></div>
+                  <div className="min-w-0"><dt className="text-slate-500">{t('ctr')}</dt><dd className="mt-1 break-words font-semibold text-slate-900">{display(reportMetricValue(report,'ctr'),'%')}</dd></div>
+                </dl>
+              </article>
+            )
+          })}
+        </div>
+        <div className="hidden min-w-0 overflow-x-auto md:block">
+          <table className="w-full min-w-[900px] text-left text-xs">
+            <thead className="bg-slate-50 text-slate-600">
+              <tr>{(['finalReport','brand','platform','date','revenue','orders','ctr','actions'] as const).map(key => (
+                <th key={key} className="px-3 py-3 font-semibold">{t(key)}</th>
+              ))}</tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {visibleReports.map(report => {
+                const shift = shiftById.get(report.shift_id)
+                return (
+                  <tr key={report.id} className="hover:bg-slate-50">
+                    <td className="max-w-[220px] px-3 py-3"><strong className="block truncate" title={shift?.title || report.id}>{shift?.title || report.id}</strong><p className="mt-1 truncate text-slate-400">{report.id}</p></td>
+                    <td className="px-3 py-3">{brands.find(b => b.id === shift?.brand_id)?.name || '—'}</td>
+                    <td className="px-3 py-3">{platforms.find(p => p.id === shift?.platform_id)?.name || '—'}</td>
+                    <td className="whitespace-nowrap px-3 py-3">{shift?.date || '—'}</td>
+                    <td className="px-3 py-3 font-semibold">{display(reportMetricValue(report,'revenue'),'currency')}</td>
+                    <td className="px-3 py-3">{display(reportMetricValue(report,'orders'))}</td>
+                    <td className="px-3 py-3">{display(reportMetricValue(report,'ctr'),'%')}</td>
+                    <td className="px-3 py-3">
+                      <Button size="icon-sm" variant="ghost" title={t('viewDetails')} aria-label={t('viewDetails')}
+                        onClick={() => openReport(report)}><Eye className="h-4 w-4" /></Button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="border-t border-slate-100 px-3 py-2">
+          <HistoryPagination page={safePage} pageSize={pageSize} total={pageResult?.total ?? 0}
+            onPageChange={setPage} onPageSizeChange={list.setPageSize} />
+        </div>
+      </section>
       <details className="rounded-lg border bg-white p-3"><summary className="cursor-pointer text-sm font-semibold">{t('staffWorkload')} · {t('hostPerformance')}</summary><div className="mt-3 grid gap-3 xl:grid-cols-2"><BarChartCard title={t('staffWorkload')} data={workload} fields={[{key:'host',name:t('host'),color:'#2563eb'},{key:'support',name:t('support'),color:'#10b981'},{key:'technical',name:t('technical'),color:'#7c3aed'}]} /><BarChartCard title={t('hostPerformance')} data={hostPerformance} fields={[{key:'revenue',name:t('revenue'),color:'#4f46e5',currency:true}]} /></div></details>
       <details className="rounded-lg border bg-white p-3"><summary className="cursor-pointer text-sm font-semibold">{t('ordersTrend')} · {t('viewersTrend')} · {t('conversionTrend')}</summary><div className="mt-3 grid gap-3 xl:grid-cols-3"><LineChartCard title={t('ordersTrend')} data={trend} fields={[{key:'orders',name:t('orders'),color:'#2563eb'}]} /><LineChartCard title={t('viewersTrend')} data={trend} fields={[{key:'viewers',name:t('viewers'),color:'#7c3aed'}]} /><LineChartCard title={t('conversionTrend')} data={trend} fields={[{key:'ctr',name:t('ctr'),color:'#ea580c'},{key:'cvr',name:t('cvr'),color:'#0891b2'}]} /></div></details>
     </>}
