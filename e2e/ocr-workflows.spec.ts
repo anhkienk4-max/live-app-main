@@ -98,6 +98,25 @@ async function readMockSnapshots(page: Page, shiftId: string) {
   }, shiftId)
 }
 
+async function assertMobileReportDialogFits(page: Page) {
+  const layout = await page.getByRole('dialog').evaluate(dialog => {
+    const bounds = dialog.getBoundingClientRect()
+    const controls = dialog.querySelectorAll('form, [data-testid="report-snapshot-import"], [data-testid="report-snapshot-import"] [data-slot="select-trigger"], [data-testid^="ocr-metric-input-"], [data-slot="dialog-footer"] button')
+    return {
+      viewport: document.documentElement.clientWidth,
+      document: document.documentElement.scrollWidth,
+      dialog: { left: bounds.left, right: bounds.right, width: dialog.clientWidth, scrollWidth: dialog.scrollWidth },
+      clipped: [...controls].filter(element => {
+        const rect = element.getBoundingClientRect()
+        return rect.left < bounds.left - 1 || rect.right > bounds.right + 1
+      }).map(element => element.getAttribute('data-testid') || element.tagName.toLowerCase()),
+    }
+  })
+  expect(layout.document, JSON.stringify(layout)).toBeLessThanOrEqual(layout.viewport + 1)
+  expect(layout.dialog.scrollWidth, JSON.stringify(layout)).toBeLessThanOrEqual(layout.dialog.width + 1)
+  expect(layout.clipped, JSON.stringify(layout)).toEqual([])
+}
+
 const tiktokIndependentFixture = path.join(
   process.cwd(),
   'e2e',
@@ -484,8 +503,10 @@ test('owner TikTok dashboard reviews 18 KPIs and saves the snapshot into the cor
     await page.getByRole('menuitem', { name: /^(Reports|Báo cáo)$/ }).click()
   }
   await expect(page).toHaveURL(/\/reports$/)
+  if (info.project.name === 'mobile') await expect(page.getByTestId('mobile-report-card').first()).toBeVisible()
   await page.getByTestId('open-final-report-modal').click()
   const picker = page.getByTestId('report-shift-picker')
+  if (info.project.name === 'mobile') await assertMobileReportDialogFits(page)
   await picker.getByTestId('report-shift-search').fill('TechGear morning live')
   await expect(picker.getByTestId('report-shift-choose')).toHaveCount(1)
   await picker.getByTestId('report-shift-choose').click()
@@ -498,7 +519,10 @@ test('owner TikTok dashboard reviews 18 KPIs and saves the snapshot into the cor
   for (const key of ownerTikTokKpiKeys) {
     await expect(page.getByTestId('ocr-metric-input-' + key)).toHaveValue(String(ownerTikTokMetrics[key]))
   }
+  if (info.project.name === 'mobile') await assertMobileReportDialogFits(page)
   await page.screenshot({ path: info.outputPath('reports-imported-snapshot.png'), fullPage: true })
+  await page.getByTestId('ocr-metric-input-estimated_gmv').scrollIntoViewIfNeeded()
+  await page.screenshot({ path: info.outputPath('reports-kpi-fields.png'), fullPage: true })
   const accuracy = { exact: readings.filter(item => item.exact).length, total: readings.length, autoConfirmed: readings.filter(item => item.status === 'confirmed').length }
   console.info('[owner-browser-ocr] ' + JSON.stringify(accuracy))
   await info.attach('snapshot-reconciliation', { body: JSON.stringify({ scope: 'local webpack mock browser E2E; not authenticated UAT', accuracy, readings, snapshotId: snapshot.id, shiftId: snapshot.shift_id, reportsImport: 'PASS' }, null, 2), contentType: 'application/json' })

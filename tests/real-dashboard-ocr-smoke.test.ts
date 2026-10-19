@@ -46,7 +46,7 @@ const fixtures = [
       gmv: '13566119',
       items_sold: '140',
       impressions: '119520',
-      total_views: '2400',
+      total_views: '2410',
       advertising_cost: '3060000',
       click_rate: '2.02',
       roi_gmv_max: '5.23',
@@ -66,7 +66,7 @@ const fixtures = [
 ]
 
 const tiktokExpectedDisplay: Partial<Record<ReportMetricKey, string>> = {
-  gmv: '13,566,119', items_sold: '140', impressions: '119.52K', total_views: '2.4K',
+  gmv: '13,566,119', items_sold: '140', impressions: '119.52K', total_views: '2.41K',
   advertising_cost: '3.06M', click_rate: '2.02%', roi_gmv_max: '5.23', ctor: '7.48%',
   average_view_duration_seconds: '39s', new_followers: '13', buyers: '62', sku_orders: '124',
   comments: '114', product_clicks: '1.03K', average_order_value: '176.18K', live_ctr: '42.74%',
@@ -224,6 +224,7 @@ for (const fixture of fixtures) {
     })
     const spatialCorrect = expectedEntries.filter(([key, expected]) =>
       matchesExpectedDisplay(key, values[key] as number | undefined, expected, fixture.platform)).length
+    const spatialExact = expectedEntries.filter(([key, expected]) => values[key] === Number(expected)).length
     if (fixture.platform === 'tiktok_shop' && 'fixturePath' in fixture && imagePath === fixture.fixturePath) {
       assert.equal(spatialCorrect, expectedEntries.length, 'TikTok fixture OCR accuracy regressed')
       assert.equal(review.metrics.roi_gmv_max?.status, 'review_required')
@@ -234,6 +235,7 @@ for (const fixture of fixtures) {
       rawOnlyBaseline,
       spatialStatuses,
       spatialCorrect,
+      spatialExact,
     }))
   })
 }

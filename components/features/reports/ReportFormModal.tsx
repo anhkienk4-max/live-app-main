@@ -918,15 +918,15 @@ export function ReportFormModal({
 
   return (<>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="full" className="h-[calc(100vh-1rem)] overflow-y-auto sm:h-[92vh]">
+      <DialogContent size="full" className="h-[calc(100vh-1rem)] min-w-0 grid-cols-[minmax(0,1fr)] overflow-y-auto sm:h-[92vh]">
         <DialogHeader>
           <DialogTitle>{initialReport ? t('continueReport') : t('createFinalReport')}</DialogTitle>
           <DialogDescription>{t('createFinalReportDescription')}</DialogDescription>
         </DialogHeader>
         {targetUnavailable && <p role="alert" className="text-sm text-destructive">{t('reportTargetUnavailable')}</p>}
-        <form onSubmit={submit} className="space-y-6">
+        <form onSubmit={submit} className="min-w-0 space-y-6">
           <div className="grid gap-4 lg:grid-cols-2">
-            <label className="text-sm font-medium">{t('liveOrCompletedShift')} *<Select value={shiftId} disabled={explicitShiftId !== undefined} onValueChange={changeShift}><SelectTrigger className="mt-1 w-full"><SelectValue placeholder={t('chooseLiveOrCompletedShift')} /></SelectTrigger><SelectContent>{completedShifts.map(shift => <SelectItem key={shift.id} value={shift.id}>{entityName(brands, shift.brand_id)} · {entityName(platforms, shift.platform_id)} · {format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} {shift.start_time} · {t(shift.status)}</SelectItem>)}</SelectContent></Select></label>
+            <label className="min-w-0 text-sm font-medium">{t('liveOrCompletedShift')} *<Select value={shiftId} disabled={explicitShiftId !== undefined} onValueChange={changeShift}><SelectTrigger className="mt-1 w-full min-w-0"><SelectValue placeholder={t('chooseLiveOrCompletedShift')} /></SelectTrigger><SelectContent>{completedShifts.map(shift => <SelectItem key={shift.id} value={shift.id}>{entityName(brands, shift.brand_id)} · {entityName(platforms, shift.platform_id)} · {format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} {shift.start_time} · {t(shift.status)}</SelectItem>)}</SelectContent></Select></label>
             <label className="text-sm font-medium">{t('platformDashboardType')} *<Select value={dashboardPlatform} disabled={inferredPlatform !== 'other'} onValueChange={value => { const next = value as ReportDashboardPlatform; setDashboardPlatform(next); setCropBox(defaultOcrCrop(next)); resetExtracted() }}><SelectTrigger className="mt-1 w-full" data-testid="report-platform-selector"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="tiktok_shop">TikTok Shop</SelectItem><SelectItem value="shopee_live">Shopee Live</SelectItem>{inferredPlatform === 'other' && <SelectItem value="other">{t('selectDashboardPlatform')}</SelectItem>}</SelectContent></Select></label>
           </div>
 
