@@ -3,7 +3,7 @@ import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { requireRole, isAuthorizationError, authorizationErrorResponse, type ServerUserResolver } from './authGuards'
 import { readJsonBody, RequestBodyError } from './apiSecurity'
-import { createOperationsCollectionHandler, listFiltersSchema } from './operationsCollectionHandler'
+import { createOperationsCollectionHandler, listFiltersSchema, operationsOwnerKey } from './operationsCollectionHandler'
 import { buildScheduleExportRows } from '@/lib/utils/scheduleExportUtils'
 import { selectExportFields, type ExportRecord, type ExportSheet } from '@/lib/utils/calendarExport'
 import { registrationFromRow } from '@/lib/services/supabaseShiftRegistrationService'
@@ -38,11 +38,12 @@ export function createCalendarExportHandler(deps: Depends = {}) {
       const shifts: Shift[] = []
       let total: number | undefined
       const ids = new Set<string>()
+      const ownerKey = operationsOwnerKey(user)
       for (let page = 1; ; page++) {
         request.signal.throwIfAborted()
         const result = await readPage(page)
         total ??= result.total
-        if (!Number.isSafeInteger(total) || total < 0 || result.total !== total || result.page !== page || result.ownerKey !== user.id + ':' + user.systemPermission) return fail('EXPORT_COLLECTION_CHANGED', 409)
+        if (!Number.isSafeInteger(total) || total < 0 || result.total !== total || result.page !== page || result.ownerKey !== ownerKey) return fail('EXPORT_COLLECTION_CHANGED', 409)
         for (const shift of result.items) {
           if (ids.has(shift.id)) return fail('EXPORT_COLLECTION_CHANGED', 409)
           ids.add(shift.id); shifts.push(shift)

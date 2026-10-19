@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 const route = readFileSync('lib/utils/lazyComponents.tsx', 'utf8')
 const container = readFileSync('components/features/reports/ReportsContainer.tsx', 'utf8')
 const view = readFileSync('components/features/reports/ReportsView.tsx', 'utf8')
-const migration = readFileSync('supabase/migrations/20261014233900_rc16k_reports_summary.sql', 'utf8')
+const migration = readFileSync('supabase/migrations/20261014190429_rc16k_reports_forward_reconciliation.sql', 'utf8')
 
 test('real /reports entrypoint fetches bounded pages', () => {
   assert.match(route, /import\('@\/components\/features\/reports\/ReportsContainer'\)/)

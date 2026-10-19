@@ -516,7 +516,7 @@ export function parseOcrValue(raw: string): ReportMetricValue {
   let numeric = original
     .replace(/[₫đ$€£¥₱]/gi, '')
     .replace(/[%\s]/g, '')
-  if (!/^-?\d[\d,.]*$/.test(numeric)) return original
+  if (!/^-?\d[\d,.]*$/.test(numeric)) return /\d/.test(numeric) ? original : null
 
   const unsignedNumeric = numeric.replace(/^-/, '')
   const hasComma = unsignedNumeric.includes(',')
@@ -555,7 +555,7 @@ export function parseOcrValue(raw: string): ReportMetricValue {
   }
 
   const parsed = Number(numeric)
-  return Number.isFinite(parsed) ? parsed : original
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 export interface CompactOcrNumber {
@@ -1619,7 +1619,7 @@ function parseStandaloneOcrValue(
   line: string,
 ): ReportMetricValue {
   if (!/\d/.test(line) || splitTrustedTextLine(platform, line)) return null
-  const parsed = parseOcrValue(line)
+  const parsed = parseOcrValue(line.trim().replace(/([xXÂ°ÂºoO])\s*$/, '%'))
   return typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : null
 }
 

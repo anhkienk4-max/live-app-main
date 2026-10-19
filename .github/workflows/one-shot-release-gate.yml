@@ -56,12 +56,12 @@ jobs:
       - name: Full release regression inventory
         env:
           SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
-          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/ocr/tiktok-layout-variants/tiktok-real-2026-06-26-evening.png
         run: node scripts/run-final-regression.mjs
       - name: Exact real-dashboard OCR regression
         env:
           SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
-          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/ocr/tiktok-layout-variants/tiktok-real-2026-06-26-evening.png
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/real-dashboard-ocr-smoke.test.ts tests/tiktok-layout-independent-ocr.test.ts tests/spatial-ocr-geometry.test.ts
       - name: OCR desktop workflows
         run: pnpm exec playwright test --config playwright.one-shot.config.ts --project desktop
