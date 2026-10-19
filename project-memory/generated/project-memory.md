@@ -2,12 +2,12 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-19T21:29:50+07:00
+Generated at: 2026-10-19T21:38:44+07:00
 
 ## Repository
 
 - Branch: `feat/rc17b-payroll-autocalc-and-flexible-rates`
-- HEAD: `e28cf0b6e97ac5e7099bd53b628ada6486a066f1`
+- HEAD: `c31d18fe71c69cf12cb04369beb84f16c2807b93`
 - origin/main: `84b74d7ff940ec5705632dc606a3191028f5b297`
 - Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17b-payroll`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
