@@ -41,7 +41,7 @@ interface LiveSessionModalProps {
   campaigns: Campaign[]
   users: User[]
   registrations: ShiftRegistration[]
-  onUpdate: () => void
+  onUpdate: (updatedShift?: Shift) => void | Promise<void>
 }
 
 export function LiveSessionModal({
@@ -141,7 +141,7 @@ export function LiveSessionModal({
   }
 
   const consoleContent = (loadError ? <PageLoadError error={loadError} onRetry={() => void loadUpdates()} /> : <LiveOperationsConsole shift={shift} updates={updates} snapshotSummary={snapshotSummary} report={report} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations}
-          loading={loading||identity!==loadedIdentity} onRefresh={() => void loadUpdates()}
+          loading={loading||identity!==loadedIdentity} onRefresh={() => void loadUpdates()} onStreamLinkSaved={saved => onUpdate(saved)}
           actions={<>
             <ShiftLifecycleActions shift={shift} onSuccess={onUpdate} />
             {['preparing', 'live', 'paused'].includes(shift.status) && currentUser && hasPermission(currentUser, 'shifts.edit') && <>

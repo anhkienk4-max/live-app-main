@@ -12,10 +12,10 @@ import { formatCurrency } from '@/lib/utils/currency'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
-export function LiveOperationsConsole({ shift, updates, snapshotSummary, report, brands, platforms, campaigns, users, registrations, loading, actions, snapshots, details, timeline, onRefresh }: {
+export function LiveOperationsConsole({ shift, updates, snapshotSummary, report, brands, platforms, campaigns, users, registrations, loading, actions, snapshots, details, timeline, onRefresh, onStreamLinkSaved }: {
   shift: Shift; updates: DashboardUpdate[]; report: Report | null; brands: Brand[]; platforms: Platform[]; campaigns: Campaign[]; users: User[]; registrations: ShiftRegistration[]
   snapshotSummary?:{total:number;peakViewers:number|null;recent:DashboardUpdate[]}
-  loading: boolean; actions: ReactNode; snapshots: ReactNode; details: ReactNode; timeline: ReactNode; onRefresh: () => void
+  loading: boolean; actions: ReactNode; snapshots: ReactNode; details: ReactNode; timeline: ReactNode; onRefresh: () => void; onStreamLinkSaved?: (shift: Shift) => void | Promise<void>
 }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<'updates' | 'details' | 'timeline'>('updates')
@@ -43,7 +43,7 @@ export function LiveOperationsConsole({ shift, updates, snapshotSummary, report,
       <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="flex items-center gap-2 text-sm font-semibold"><Radio className="h-5 w-5 text-blue-600" />{shift.title || name(brands, shift.brand_id)}<Badge variant="secondary">{t(shift.status === 'live' ? 'liveStatus' : shift.status)}</Badge></h2><p className="mt-1 text-xs text-slate-500">{shift.date} · {formatShiftTimeRange(shift)} · {duration?.valid ? duration.durationMinutes + ' ' + t('minuteShort') : '—'}</p></div><div className="flex flex-wrap gap-2">{actions}<Button size="icon-sm" variant="outline" onClick={onRefresh} disabled={loading} title={t('refresh')}><RefreshCw className="h-4 w-4" /></Button></div></div>
       <p className="mt-2 text-xs text-slate-500">{name(brands, shift.brand_id)} · {name(platforms, shift.platform_id)} · {name(campaigns, shift.campaign_id)} · {shift.studio ?? '—'} · {shift.timezone ?? duration?.timezone ?? '—'}</p>
     </header>
-    <LiveStreamPanel key={shift.id + ':' + (shift.live_link ?? '')} shift={shift} />
+    <LiveStreamPanel key={shift.id + ':' + (shift.live_link ?? '')} shift={shift} onSaved={onStreamLinkSaved} />
     <section className="grid grid-cols-2 gap-2 border-b bg-white p-3 lg:grid-cols-6">{metrics.map(metric => <div key={metric.label} className="rounded-md border border-slate-200 bg-slate-50 p-2.5"><p className="text-[11px] font-medium text-slate-500">{metric.label}</p><p className="mt-1 text-sm font-semibold">{typeof metric.value === 'number' && Number.isFinite(metric.value) ? display(metric.value, metric.currency) : '—'}</p></div>)}</section>
     <div className="flex flex-wrap border-b bg-white" role="tablist" aria-label={t('liveMonitor')}>{(['updates','details','timeline'] as const).map(key => <button key={key} role="tab" aria-selected={tab === key} className={`px-4 py-3 text-xs font-semibold border-b-2 ${tab === key ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`} onClick={() => setTab(key)}>{key === 'updates' ? t('liveMonitor') : key === 'details' ? t('viewDetails') : 'Timeline'}{key === 'updates' && ' (' + (snapshotSummary?.total??updates.length) + ')'}</button>)}</div>
     <div className="grid items-start gap-3 bg-slate-50 p-3 xl:grid-cols-[210px_minmax(0,1fr)_250px]">
