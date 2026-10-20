@@ -214,8 +214,8 @@ export function evaluateApprovedOtEvidence(input: {
   const review = (input.reviewNote ?? '').trim()
   const evidence = (input.evidenceNote ?? '').trim()
 
-  // 1. Explicit supervisor rejection check
-  const rejectionPattern = /(?:không\s+duyệt\s+(?:ot|tăng\s+ca|tang\s+ca)|khong\s+duyet\s+(?:ot|tăng\s+ca|tang\s+ca)|từ\s+chối\s+(?:ot|tăng\s+ca)|tu\s+choi\s+(?:ot|tang\s+ca)|no\s+ot|chưa\s+duyệt\s+(?:ot|tăng\s+ca|tang\s+ca))/i
+  // 1. Explicit supervisor rejection or negative phrasing check
+  const rejectionPattern = /(?:không\s+duyệt|khong\s+duyet|từ\s+chối|tu\s+choi|chưa\s+duyệt|chua\s+duyet|chưa\s+được|chua\s+duoc|không\s+được|khong\s+duoc|không\s+cho|khong\s+cho|bác\s+bỏ|bac\s+bo|no\s+ot|not\s+approved|rejected)/i
   if (rejectionPattern.test(review)) {
     return {
       approvedOvertimeMinutes: 0,
@@ -224,22 +224,42 @@ export function evaluateApprovedOtEvidence(input: {
     }
   }
 
-  // 2. Extract approved OT from supervisor's review note ONLY
+  // 2. Explicit reviewer approval verification
+  // Overtime requires an explicit approval keyword from the authorized reviewer (e.g. duyệt, approved, xác nhận, đồng ý).
+  // Notes merely stating "OT 30p" or "tăng ca" without an approval keyword are ambiguous and strictly non-authoritative.
+  const explicitApprovalPattern = /(?:duyệt|duyet|phê\s+duyệt|phe\s+duyet|approved?|xác\s+nhận|xac\s+nhan|đồng\s+ý|dong\s+y|chấp\s+thuận|chap\s+thuan)/i
+  const otMentionPattern = /(?:ot|tăng\s+ca|tang\s+ca|overtime|làm\s+thêm|lam\s+them)/i
+
   let supervisorApprovedMins = 0
   if (review) {
-    const hourMatch = review.match(/(?:duyệt\s+ot|approved\s+ot|xác\s+nhận\s+tăng\s+ca|xac\s+nhan\s+tang\s+ca|ot\s+approved|duyet\s+ot|ot|tăng\s+ca|tang\s+ca|overtime)[:\s]+(\d+(?:\.\d+)?)\s*(?:h|gio|giờ|hours?)(?:\b|$)/i)
-    if (hourMatch && hourMatch[1]) {
-      const hours = parseFloat(hourMatch[1])
-      if (Number.isFinite(hours) && hours > 0) {
-        supervisorApprovedMins = Math.round(hours * 60)
-      }
-    } else {
-      const minMatch = review.match(/(?:duyệt\s+ot|approved\s+ot|xác\s+nhận\s+tăng\s+ca|xac\s+nhan\s+tang\s+ca|ot\s+approved|duyet\s+ot|ot|tăng\s+ca|tang\s+ca|overtime)[:\s]+(\d+)\s*(?:p|phut|phút|m|min|mins|minutes?)?(?:\b|$)/i)
-      if (minMatch && minMatch[1]) {
-        const mins = parseInt(minMatch[1], 10)
-        if (Number.isFinite(mins) && mins > 0) {
-          supervisorApprovedMins = mins
+    if (explicitApprovalPattern.test(review) && otMentionPattern.test(review)) {
+      // Reviewer explicitly approved OT - extract hours or minutes
+      const hourMatch = review.match(/(?:ot|tăng\s+ca|tang\s+ca|overtime|làm\s+thêm|lam\s+them)[^\d]*?(\d+(?:\.\d+)?)\s*(?:h|gio|giờ|hours?)(?:\b|$)/i)
+        || review.match(/(\d+(?:\.\d+)?)\s*(?:h|gio|giờ|hours?)[^\d]*?(?:ot|tăng\s+ca|tang\s+ca|overtime|làm\s+thêm|lam\s+them)/i)
+
+      if (hourMatch && hourMatch[1]) {
+        const hours = parseFloat(hourMatch[1])
+        if (Number.isFinite(hours) && hours > 0) {
+          supervisorApprovedMins = Math.round(hours * 60)
         }
+      } else {
+        const minMatch = review.match(/(?:ot|tăng\s+ca|tang\s+ca|overtime|làm\s+thêm|lam\s+them)[^\d]*?(\d+)\s*(?:p|phut|phút|m|min|mins|minutes?)(?:\b|$)/i)
+          || review.match(/(\d+)\s*(?:p|phut|phút|m|min|mins|minutes?)[^\d]*?(?:ot|tăng\s+ca|tang\s+ca|overtime|làm\s+thêm|lam\s+them)/i)
+          || review.match(/(?:ot|tăng\s+ca|tang\s+ca|overtime|làm\s+thêm|lam\s+them)[:\s]+(\d+)(?:\b|$)/i)
+
+        if (minMatch && minMatch[1]) {
+          const mins = parseInt(minMatch[1], 10)
+          if (Number.isFinite(mins) && mins > 0) {
+            supervisorApprovedMins = mins
+          }
+        }
+      }
+    } else if (otMentionPattern.test(review)) {
+      // Supervisor note mentions OT or extra hours without an explicit approval keyword (e.g. "OT 30p", "tăng ca")
+      return {
+        approvedOvertimeMinutes: 0,
+        hasUnapprovedOtClaim: true,
+        unapprovedClaimReason: 'AMBIGUOUS_SUPERVISOR_NOTE',
       }
     }
   }
@@ -252,8 +272,8 @@ export function evaluateApprovedOtEvidence(input: {
     }
   }
 
-  // 3. Supervisor did not approve OT. Check if staff claimed OT in evidenceNote
-  const staffOtClaim = /(?:ot|tăng\s+ca|tang\s+ca|overtime)[:\s]+(\d+)/i.test(evidence)
+  // 3. Supervisor did not explicitly approve OT. Check if staff claimed OT in evidenceNote
+  const staffOtClaim = otMentionPattern.test(evidence)
   if (staffOtClaim) {
     return {
       approvedOvertimeMinutes: 0,

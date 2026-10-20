@@ -20,8 +20,12 @@ const runId = Math.floor(Date.now() / 1000)
 const staffAlice = `stf_alice_${runId}`
 const staffBob = `stf_bob_${runId}`
 const staffCharlie = `stf_charlie_${runId}`
+const staffDavid = `stf_david_${runId}`
+const staffEve = `stf_eve_${runId}`
+const staffFrank = `stf_frank_${runId}`
 const adminId = `adm_${runId}`
 const adminBId = `adm_b_${runId}`
+const adminCId = `adm_c_${runId}`
 const periodId = `prd_${runId}`
 const shift1Id = `shf_${runId}_1`
 const shift2Id = `shf_${runId}_2`
@@ -41,6 +45,8 @@ console.log(`=== STARTING RC17B INTEGRATION TEST SUITE (Run ID: ${runId}) ===\n`
 
 // SETUP USERS AND BRAND
 psql(`
+UPDATE public.shifts SET deleted_at = now() WHERE brand_id LIKE 'brd_%' AND deleted_at IS NULL;
+
 INSERT INTO public.brands(id, name, status)
 VALUES ('${brandId}', 'Test Brand ${runId}', 'active')
 ON CONFLICT (id) DO NOTHING;
@@ -49,9 +55,13 @@ INSERT INTO public.business_users(id, email, full_name, system_permission, statu
 VALUES
   ('${adminId}', '${adminId}@test.local', 'Admin Primary', 'admin', 'active', 'active'),
   ('${adminBId}', '${adminBId}@test.local', 'Admin Secondary', 'admin', 'active', 'active'),
+  ('${adminCId}', '${adminCId}@test.local', 'Admin Tertiary', 'admin', 'active', 'active'),
   ('${staffAlice}', '${staffAlice}@test.local', 'Alice Host', 'member', 'active', 'active'),
   ('${staffBob}', '${staffBob}@test.local', 'Bob Support', 'member', 'active', 'active'),
-  ('${staffCharlie}', '${staffCharlie}@test.local', 'Charlie Tech', 'member', 'active', 'active')
+  ('${staffCharlie}', '${staffCharlie}@test.local', 'Charlie Tech', 'member', 'active', 'active'),
+  ('${staffDavid}', '${staffDavid}@test.local', 'David Host', 'member', 'active', 'active'),
+  ('${staffEve}', '${staffEve}@test.local', 'Eve Host', 'member', 'active', 'active'),
+  ('${staffFrank}', '${staffFrank}@test.local', 'Frank Support', 'member', 'active', 'active')
 ON CONFLICT (id) DO UPDATE SET system_permission = EXCLUDED.system_permission, status = 'active', account_status = 'active';
 `)
 
@@ -378,6 +388,448 @@ try {
 }
 assert.ok(reviewBlockErr.includes('WORKFORCE_PAYROLL_UNRECONCILED_SEGMENTS_REMAIN'), 'Transition to reviewed blocked by unreconciled segment')
 console.log('✓ Unreconciled segment guard blocked transition to reviewed.\n')
+
+console.log('--- TEST 8: Independent Payroll Review After Wage Calculation ---')
+// 8a. Reconcile the remaining segment so period has all segments reconciled
+const lineUnrecId = `lin_${runId}_unrec`
+psql(`
+INSERT INTO public.workforce_payroll_lines(
+  id, period_id, segment_id, rate_card_id, staff_id, operational_role,
+  actual_minutes, payable_minutes, overtime_minutes, rate_vnd_per_hour,
+  overtime_multiplier_basis_points, gross_vnd, adjustment_vnd, version
+) VALUES (
+  '${lineUnrecId}', '${periodId}', '${segUnrecId}', '${rateCharlieNewId}', '${staffCharlie}', 'technical',
+  120, 120, 0, 120000, 15000, 240000, 0, 1
+) ON CONFLICT DO NOTHING;
+`)
+
+// 8b. Admin A (who created the period AND recalculated batch in Test 4) attempts to review
+let selfReviewErr1 = ''
+try {
+  psql(`
+  SELECT public.workforce_rc16_transition_payroll(
+    '${periodId}',
+    'draft',
+    'reviewed',
+    '${adminId}',
+    'Admin A tu review sau khi tinh lai luong'
+  );
+  `)
+} catch (e) {
+  selfReviewErr1 = e.message
+}
+assert.ok(selfReviewErr1.includes('WORKFORCE_PAYROLL_SELF_REVIEW'), 'Admin A who recalculated payroll is blocked from reviewing')
+
+// 8c. Independent Admin B (who did not recalculate or create the period) reviews successfully
+psql(`
+SELECT public.workforce_rc16_transition_payroll(
+  '${periodId}',
+  'draft',
+  'reviewed',
+  '${adminBId}',
+  'Admin B doc lap phe duyet bang luong hop le'
+);
+`)
+const checkPeriod1Status = psql(`SELECT status, reviewed_by FROM public.workforce_payroll_periods WHERE id = '${periodId}';`)
+assert.ok(checkPeriod1Status.includes('reviewed'), 'Period status transitioned to reviewed')
+console.log('✓ Admin A blocked by recalculate_batch guard, independent Admin B successfully reviewed.\n')
+
+// 8d. Test recalculate_line anti-self-review on a fresh period
+const period2Id = `prd_${runId}_recalcline`
+const shiftP2Id = `shf_${runId}_p2`
+const segP2Id = `seg_${runId}_p2`
+const lineP2Id = `lin_${runId}_p2`
+const rateDavidV1Id = `rate_david_v1_${runId}`
+
+psql(`
+INSERT INTO public.workforce_rate_cards(
+  id, staff_id, operational_role, effective_from, effective_through,
+  vnd_per_hour, overtime_multiplier_basis_points, approved_by, approved_at, approval_note
+) VALUES (
+  '${rateDavidV1Id}', '${staffDavid}', 'host', '2026-11-01', NULL,
+  100000, 15000, '${adminId}', now(), 'Don gia khoi diem David 100k'
+);
+
+INSERT INTO public.workforce_payroll_periods(id, period_start, period_end, revision, status, created_by)
+VALUES ('${period2Id}', '2026-11-10', '2026-11-25', ${(runId % 100000) + 11}, 'draft', '${adminBId}');
+
+INSERT INTO public.shifts(id, brand_id, platform_id, date, start_time, end_time, status)
+VALUES ('${shiftP2Id}', '${brandId}', 'h-platform', '2026-11-18', '09:00:00', '12:00:00', 'completed');
+
+INSERT INTO public.workforce_actual_segments(
+  id, shift_id, staff_id, operational_role, event_kind, coverage_kind,
+  actual_start_at, actual_end_at, evidence_note, created_by, review_status, version
+) VALUES (
+  '${segP2Id}', '${shiftP2Id}', '${staffDavid}', 'host', 'worked', 'planned',
+  '2026-11-18T09:00:00+07:00', '2026-11-18T12:00:00+07:00', 'Diem danh P2', '${adminId}', 'draft', 1
+);
+
+UPDATE public.workforce_actual_segments
+SET review_status = 'approved',
+    reviewed_by = '${adminBId}',
+    reviewed_at = now(),
+    review_note = 'Duyet P2',
+    version = version + 1
+WHERE id = '${segP2Id}';
+
+INSERT INTO public.workforce_payroll_lines(
+  id, period_id, segment_id, rate_card_id, staff_id, operational_role,
+  actual_minutes, payable_minutes, overtime_minutes, rate_vnd_per_hour,
+  overtime_multiplier_basis_points, gross_vnd, adjustment_vnd, version
+) VALUES (
+  '${lineP2Id}', '${period2Id}', '${segP2Id}', '${rateDavidV1Id}', '${staffDavid}', 'host',
+  180, 180, 0, 100000, 15000, 300000, 0, 1
+);
+`)
+
+// Register David new rate (120k) starting from 2026-11-15 via supersession RPC
+psql(`
+SELECT public.workforce_rc17b_register_rate_card(
+  '${staffDavid}',
+  'host',
+  '2026-11-15'::date,
+  NULL,
+  120000,
+  15000,
+  '${adminId}',
+  'Tang don gia cho David tu giua thang 11'
+);
+`)
+const newDavidRateRow = psql(`SELECT id FROM public.workforce_rate_cards WHERE staff_id = '${staffDavid}' AND vnd_per_hour = 120000;`)
+const newDavidRateId = newDavidRateRow.trim().split('\n')[2]?.trim()
+
+// Admin A (not creator Admin B) performs recalculate_line on lineP2Id
+const recalcLineReqId = 'c0000000-0000-4000-a000-000000000001'
+psql(`
+SELECT public.workforce_rc17b_recalculate_draft_line(
+  '${period2Id}',
+  '${lineP2Id}',
+  1,
+  '${recalcLineReqId}'::uuid,
+  '${adminId}',
+  'Cap nhat lai don gia moi cho David',
+  '${newDavidRateId}'
+);
+`)
+
+// Admin A now attempts to review period2Id -> MUST BE BLOCKED
+let selfReviewErr2 = ''
+try {
+  psql(`
+  SELECT public.workforce_rc16_transition_payroll(
+    '${period2Id}',
+    'draft',
+    'reviewed',
+    '${adminId}',
+    'Admin A co tinh review sau khi recalculate_line'
+  );
+  `)
+} catch (e) {
+  selfReviewErr2 = e.message
+}
+assert.ok(selfReviewErr2.includes('WORKFORCE_PAYROLL_SELF_REVIEW'), 'Admin A who called recalculate_line is blocked from reviewing')
+
+// Admin C (completely independent) can review
+psql(`
+SELECT public.workforce_rc16_transition_payroll(
+  '${period2Id}',
+  'draft',
+  'reviewed',
+  '${adminCId}',
+  'Admin C doc lap phe duyet'
+);
+`)
+const checkPeriod2Status = psql(`SELECT status, reviewed_by FROM public.workforce_payroll_periods WHERE id = '${period2Id}';`)
+assert.ok(checkPeriod2Status.includes('reviewed'), 'Period 2 status transitioned to reviewed')
+assert.ok(checkPeriod2Status.includes(adminCId), 'Period 2 reviewed_by set to independent Admin C')
+console.log('✓ Admin A blocked by recalculate_line guard, independent Admin C successfully reviewed.\n')
+
+console.log('--- TEST 9: Auto-Calculate Atomicity & Batch RPC ---')
+const period3Id = `prd_${runId}_p3`
+const shiftP3Eve = `shf_${runId}_p3_eve`
+const shiftP3Frank = `shf_${runId}_p3_frank`
+const shiftP3Charlie = `shf_${runId}_p3_charlie`
+const segP3Eve = `seg_${runId}_p3_eve`
+const segP3Frank = `seg_${runId}_p3_frank`
+const segP3Charlie = `seg_${runId}_p3_charlie`
+const lineP3Eve = `lin_${runId}_p3_eve`
+const rateEveV1Id = `rate_eve_v1_${runId}`
+const rateFrankId = `rate_frank_${runId}`
+
+psql(`
+INSERT INTO public.workforce_rate_cards(
+  id, staff_id, operational_role, effective_from, effective_through,
+  vnd_per_hour, overtime_multiplier_basis_points, approved_by, approved_at, approval_note
+) VALUES
+  ('${rateEveV1Id}', '${staffEve}', 'host', '2026-12-01', NULL, 100000, 15000, '${adminId}', now(), 'Gia Eve goc 100k'),
+  ('${rateFrankId}', '${staffFrank}', 'support', '2026-12-01', NULL, 80000, 15000, '${adminId}', now(), 'Gia Frank 80k');
+
+INSERT INTO public.workforce_payroll_periods(id, period_start, period_end, revision, status, created_by)
+VALUES ('${period3Id}', '2026-12-01', '2026-12-31', ${(runId % 100000) + 12}, 'draft', '${adminBId}');
+
+INSERT INTO public.shifts(id, brand_id, platform_id, date, start_time, end_time, status)
+VALUES
+  ('${shiftP3Eve}', '${brandId}', 'h-platform', '2026-12-18', '09:00:00', '12:00:00', 'completed'),
+  ('${shiftP3Frank}', '${brandId}', 'h-platform', '2026-12-19', '14:00:00', '18:00:00', 'completed'),
+  ('${shiftP3Charlie}', '${brandId}', 'h-platform', '2026-12-20', '09:00:00', '12:00:00', 'completed');
+
+INSERT INTO public.workforce_actual_segments(
+  id, shift_id, staff_id, operational_role, event_kind, coverage_kind,
+  actual_start_at, actual_end_at, evidence_note, created_by, review_status, version
+) VALUES
+  ('${segP3Eve}', '${shiftP3Eve}', '${staffEve}', 'host', 'worked', 'planned',
+   '2026-12-18T09:00:00+07:00', '2026-12-18T12:00:00+07:00', 'Diem danh ca Eve', '${adminId}', 'draft', 1),
+  ('${segP3Frank}', '${shiftP3Frank}', '${staffFrank}', 'support', 'worked', 'planned',
+   '2026-12-19T14:00:00+07:00', '2026-12-19T18:00:00+07:00', 'Diem danh ca Frank', '${adminId}', 'draft', 1),
+  ('${segP3Charlie}', '${shiftP3Charlie}', '${staffCharlie}', 'technical', 'worked', 'planned',
+   '2026-12-20T09:00:00+07:00', '2026-12-20T12:00:00+07:00', 'Diem danh ca Charlie', '${adminId}', 'draft', 1);
+
+UPDATE public.workforce_actual_segments
+SET review_status = 'approved',
+    reviewed_by = '${adminBId}',
+    reviewed_at = now(),
+    review_note = 'Duyet P3',
+    version = version + 1
+WHERE id IN ('${segP3Eve}', '${segP3Frank}', '${segP3Charlie}');
+
+-- Insert initial line for Eve with rateEveV1Id so we can recalculate it
+INSERT INTO public.workforce_payroll_lines(
+  id, period_id, segment_id, rate_card_id, staff_id, operational_role,
+  actual_minutes, payable_minutes, overtime_minutes, rate_vnd_per_hour,
+  overtime_multiplier_basis_points, gross_vnd, adjustment_vnd, adjustment_reason, version
+) VALUES (
+  '${lineP3Eve}', '${period3Id}', '${segP3Eve}', '${rateEveV1Id}', '${staffEve}', 'host',
+  180, 180, 0, 100000, 15000, 300000, 25000, 'Thuong KPI Eve', 1
+);
+`)
+
+// Supersede Eve's rate from 2026-12-15 to 130,000 VND
+psql(`
+SELECT public.workforce_rc17b_register_rate_card(
+  '${staffEve}',
+  'host',
+  '2026-12-15'::date,
+  NULL,
+  130000,
+  15000,
+  '${adminId}',
+  'Tang don gia cho Eve thang 12'
+);
+`)
+const newEveRateRow = psql(`SELECT id FROM public.workforce_rate_cards WHERE staff_id = '${staffEve}' AND vnd_per_hour = 130000;`)
+const newEveRateId = newEveRateRow.trim().split('\n')[2]?.trim()
+
+// 9a: Atomic insert of Frank's line AND recalculation of Eve's line
+const autoCalcBatchReqId = 'd0000000-0000-4000-a000-000000000001'
+const insertLinesPayload = JSON.stringify([
+  {
+    segment_id: segP3Frank,
+    rate_card_id: rateFrankId,
+    staff_id: staffFrank,
+    operational_role: 'support',
+    actual_minutes: 240,
+    payable_minutes: 240,
+    overtime_minutes: 0,
+    rate_vnd_per_hour: 80000,
+    overtime_multiplier_basis_points: 15000,
+    gross_vnd: 320000,
+    adjustment_vnd: 0,
+    adjustment_reason: null,
+    calculation_version: 'rc17b-v1',
+  }
+])
+const recalcItemsPayload = JSON.stringify([
+  {
+    line_id: lineP3Eve,
+    expected_version: 1,
+    new_rate_card_id: newEveRateId,
+  }
+])
+
+const autoCalcBatchRes = psql(`
+SELECT public.workforce_rc17b_auto_calculate_draft_batch(
+  '${period3Id}',
+  '${autoCalcBatchReqId}'::uuid,
+  '${adminId}',
+  'Tu dong tinh toan va ap dung don gia moi',
+  '${insertLinesPayload}'::jsonb,
+  '${recalcItemsPayload}'::jsonb
+);
+`)
+assert.ok(autoCalcBatchRes.includes(segP3Frank), 'Inserted line contains Frank segment')
+assert.ok(autoCalcBatchRes.includes(lineP3Eve), 'Recalculated line contains Eve line')
+
+// Check DB state: Frank line inserted, Eve line updated to version 2 with adjustment preserved (25000)
+const checkEveP3 = psql(`SELECT gross_vnd, adjustment_vnd, net_vnd, version FROM public.workforce_payroll_lines WHERE id = '${lineP3Eve}';`)
+assert.ok(checkEveP3.includes('390000'), 'Eve new gross is 390,000 (130k * 3h)')
+assert.ok(checkEveP3.includes('25000'), 'Eve adjustment of 25,000 preserved')
+assert.ok(checkEveP3.includes('415000'), 'Eve net is 415,000')
+assert.ok(checkEveP3.includes('2'), 'Eve line version incremented to 2')
+console.log('✓ 9a: Atomic insert + recalc successfully committed in single transaction.')
+
+// 9b: Idempotency replay with identical payload
+const autoCalcReplayRes = psql(`
+SELECT public.workforce_rc17b_auto_calculate_draft_batch(
+  '${period3Id}',
+  '${autoCalcBatchReqId}'::uuid,
+  '${adminId}',
+  'Tu dong tinh toan va ap dung don gia moi',
+  '${insertLinesPayload}'::jsonb,
+  '${recalcItemsPayload}'::jsonb
+);
+`)
+assert.ok(autoCalcReplayRes.includes('"replayed": true'), 'Idempotency replay detected and returned cached result')
+
+// 9c: Idempotency conflict with modified payload
+let autoCalcConflictErr = ''
+try {
+  psql(`
+  SELECT public.workforce_rc17b_auto_calculate_draft_batch(
+    '${period3Id}',
+    '${autoCalcBatchReqId}'::uuid,
+    '${adminId}',
+    'Ly do da bi sua doi khac',
+    '${insertLinesPayload}'::jsonb,
+    '${recalcItemsPayload}'::jsonb
+  );
+  `)
+} catch (e) {
+  autoCalcConflictErr = e.message
+}
+assert.ok(autoCalcConflictErr.includes('WORKFORCE_PAYROLL_IDEMPOTENCY_CONFLICT'), 'Idempotency conflict raised on altered payload')
+console.log('✓ 9b & 9c: Batch idempotency replay and conflict detection verified.')
+
+// 9d: Mid-step failure rollback (All-or-Nothing atomicity)
+// Attempt to insert Charlie's line AND recalculate Eve's line with a STALE version (expected 1, but it is now 2)
+const failBatchReqId = 'd0000000-0000-4000-a000-000000000002'
+const failInsertPayload = JSON.stringify([
+  {
+    segment_id: segP3Charlie,
+    rate_card_id: rateCharlieNewId,
+    staff_id: staffCharlie,
+    operational_role: 'technical',
+    actual_minutes: 180,
+    payable_minutes: 180,
+    overtime_minutes: 0,
+    rate_vnd_per_hour: 120000,
+    overtime_multiplier_basis_points: 15000,
+    gross_vnd: 360000,
+    adjustment_vnd: 0,
+    adjustment_reason: null,
+    calculation_version: 'rc17b-v1',
+  }
+])
+const failRecalcPayload = JSON.stringify([
+  {
+    line_id: lineP3Eve,
+    expected_version: 1, // STALE! (current version is 2)
+    new_rate_card_id: newEveRateId,
+  }
+])
+
+let failErr = ''
+try {
+  psql(`
+  SELECT public.workforce_rc17b_auto_calculate_draft_batch(
+    '${period3Id}',
+    '${failBatchReqId}'::uuid,
+    '${adminId}',
+    'Thu batch bi loi phien ban cu',
+    '${failInsertPayload}'::jsonb,
+    '${failRecalcPayload}'::jsonb
+  );
+  `)
+} catch (e) {
+  failErr = e.message
+}
+assert.ok(failErr.includes('WORKFORCE_PAYROLL_STALE_LINE'), 'Mid-step stale version throws WORKFORCE_PAYROLL_STALE_LINE')
+
+// Verify Charlie's line was NOT inserted (rolled back)
+const checkCharlieLine = psql(`SELECT count(*) FROM public.workforce_payroll_lines WHERE segment_id = '${segP3Charlie}';`)
+assert.ok(checkCharlieLine.includes('0'), 'Charlie line was NOT inserted due to transactional rollback')
+console.log('✓ 9d: Mid-batch failure rolled back insert (zero partial state committed).')
+
+// 9e: Duplicate segment prevention
+const dupSegReqId = 'd0000000-0000-4000-a000-000000000003'
+let dupErr1 = ''
+try {
+  psql(`
+  SELECT public.workforce_rc17b_auto_calculate_draft_batch(
+    '${period3Id}',
+    '${dupSegReqId}'::uuid,
+    '${adminId}',
+    'Thu trung lap segment Frank da co san',
+    '${insertLinesPayload}'::jsonb,
+    '[]'::jsonb
+  );
+  `)
+} catch (e) {
+  dupErr1 = e.message
+}
+assert.ok(dupErr1.includes('WORKFORCE_PAYROLL_DUPLICATE_SEGMENT'), 'Duplicate segment in table blocked by WORKFORCE_PAYROLL_DUPLICATE_SEGMENT')
+
+let dupErr2 = ''
+try {
+  psql(`
+  SELECT public.workforce_rc17b_auto_calculate_draft_batch(
+    '${period3Id}',
+    '${dupSegReqId}'::uuid,
+    '${adminId}',
+    'Thu trung lap segment trong cung mot mang',
+    '${JSON.stringify([JSON.parse(failInsertPayload)[0], JSON.parse(failInsertPayload)[0]])}'::jsonb,
+    '[]'::jsonb
+  );
+  `)
+} catch (e) {
+  dupErr2 = e.message
+}
+assert.ok(dupErr2.includes('WORKFORCE_PAYROLL_DUPLICATE_SEGMENT'), 'Duplicate segment within batch blocked by WORKFORCE_PAYROLL_DUPLICATE_SEGMENT')
+console.log('✓ 9e: Duplicate segment prevention verified.')
+
+// 9f: Anti-self-review on auto_calculate_batch
+// Admin A who ran auto_calculate_draft_batch cannot review period3Id
+let selfReviewErr3 = ''
+try {
+  psql(`
+  SELECT public.workforce_rc16_transition_payroll(
+    '${period3Id}',
+    'draft',
+    'reviewed',
+    '${adminId}',
+    'Admin A tu review sau khi auto calculate batch'
+  );
+  `)
+} catch (e) {
+  selfReviewErr3 = e.message
+}
+assert.ok(selfReviewErr3.includes('WORKFORCE_PAYROLL_SELF_REVIEW'), 'Admin A who ran auto_calculate_batch is blocked from reviewing')
+
+// Insert line for Charlie so period 3 is fully reconciled
+psql(`
+INSERT INTO public.workforce_payroll_lines(
+  id, period_id, segment_id, rate_card_id, staff_id, operational_role,
+  actual_minutes, payable_minutes, overtime_minutes, rate_vnd_per_hour,
+  overtime_multiplier_basis_points, gross_vnd, adjustment_vnd, version
+) VALUES (
+  'lin_p3_charlie_${runId}', '${period3Id}', '${segP3Charlie}', '${rateCharlieNewId}', '${staffCharlie}', 'technical',
+  180, 180, 0, 120000, 15000, 360000, 0, 1
+);
+`)
+
+// Independent Admin C reviews period 3 successfully
+psql(`
+SELECT public.workforce_rc16_transition_payroll(
+  '${period3Id}',
+  'draft',
+  'reviewed',
+  '${adminCId}',
+  'Admin C doc lap phe duyet hop le'
+);
+`)
+const checkPeriod3Status = psql(`SELECT status, reviewed_by FROM public.workforce_payroll_periods WHERE id = '${period3Id}';`)
+assert.ok(checkPeriod3Status.includes('reviewed'), 'Period 3 status transitioned to reviewed')
+assert.ok(checkPeriod3Status.includes(adminCId), 'Period 3 reviewed_by set to independent Admin C')
+console.log('✓ 9f: auto_calculate_batch anti-self-review enforced; independent Admin C successfully reviewed.\n')
 
 console.log('======================================================')
 console.log('ALL RC17B DATABASE INTEGRATION TESTS PASSED CLEANLY!')

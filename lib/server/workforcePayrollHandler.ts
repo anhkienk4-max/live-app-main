@@ -704,25 +704,20 @@ export function createWorkforcePayrollHandler(options:Options={}) {
           })
 
           let insertedLines: Array<Record<string, unknown>> = []
-          if (preparedLines.length > 0) {
-            const rowsToInsert = preparedLines.map(total => ({
-              period_id: periodRecord.id, segment_id: total.segmentId, rate_card_id: total.rateCardId,
-              staff_id: total.staffId, operational_role: total.role,
-              actual_minutes: total.actualMinutes, payable_minutes: total.payableMinutes,
-              overtime_minutes: total.overtimeMinutes, rate_vnd_per_hour: total.rateVndPerHour,
-              overtime_multiplier_basis_points: total.overtimeMultiplierBasisPoints,
-              gross_vnd: total.grossVnd, adjustment_vnd: total.adjustmentVnd,
-              adjustment_reason: total.adjustmentReason, calculation_version: total.calculationVersion,
-            }))
-            const { data: inserted, error: insertError } = await db.from('workforce_payroll_lines')
-              .insert(rowsToInsert)
-              .select('id,period_id,staff_id,segment_id,net_vnd,version,voided_at')
-            if (insertError) return failure('WORKFORCE_PAYROLL_AUTO_CALC_INSERT_FAILED', 409)
-            insertedLines = inserted ?? []
-          }
-
           let recalculatedLines: Array<Record<string, unknown>> = []
-          if (input.recalculate_existing && input.reason && input.request_id && existingLines.length > 0) {
+
+          const rowsToInsert = preparedLines.map(total => ({
+            period_id: periodRecord.id, segment_id: total.segmentId, rate_card_id: total.rateCardId,
+            staff_id: total.staffId, operational_role: total.role,
+            actual_minutes: total.actualMinutes, payable_minutes: total.payableMinutes,
+            overtime_minutes: total.overtimeMinutes, rate_vnd_per_hour: total.rateVndPerHour,
+            overtime_multiplier_basis_points: total.overtimeMultiplierBasisPoints,
+            gross_vnd: total.grossVnd, adjustment_vnd: total.adjustmentVnd,
+            adjustment_reason: total.adjustmentReason, calculation_version: total.calculationVersion,
+          }))
+
+          let recalcItems: Array<{ line_id: string; expected_version: number; new_rate_card_id: string }> = []
+          if (input.recalculate_existing && existingLines.length > 0) {
             const activeLines = existingLines.filter(l => !l.voided_at)
             const linesForRecalc: ExistingPayrollLineForRecalc[] = activeLines.map(l => ({
               id: l.id as string,
@@ -750,20 +745,34 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             })
             const changedDiffs = diffs.filter(d => d.rateChanged && d.newRateCardId)
             if (changedDiffs.length > 0) {
-              const items = changedDiffs.map(d => ({
+              recalcItems = changedDiffs.map(d => ({
                 line_id: d.lineId,
                 expected_version: d.version,
-                new_rate_card_id: d.newRateCardId,
+                new_rate_card_id: d.newRateCardId as string,
               }))
-              const { data: recalcData, error: recalcError } = await db.rpc('workforce_rc17b_recalculate_draft_batch', {
-                p_period_id: periodRecord.id,
-                p_request_id: input.request_id,
-                p_actor_id: actor,
-                p_reason: input.reason,
-                p_items: items,
-              })
-              if (recalcError) return failure(recalcError.message ?? 'WORKFORCE_PAYROLL_RECALCULATION_FAILED', 409)
-              if (recalcData?.lines) recalculatedLines = recalcData.lines as Array<Record<string, unknown>>
+            }
+          }
+
+          if (rowsToInsert.length > 0 || recalcItems.length > 0) {
+            const batchRequestId = input.request_id || crypto.randomUUID()
+            const { data: batchData, error: batchError } = await db.rpc('workforce_rc17b_auto_calculate_draft_batch', {
+              p_period_id: periodRecord.id,
+              p_request_id: batchRequestId,
+              p_actor_id: actor,
+              p_reason: input.reason ?? null,
+              p_insert_lines: rowsToInsert,
+              p_recalc_items: recalcItems,
+            })
+            if (batchError) {
+              return failure(batchError.message ?? 'WORKFORCE_PAYROLL_AUTO_CALC_FAILED', 409)
+            }
+            if (batchData) {
+              const res = batchData as {
+                inserted_lines?: Array<Record<string, unknown>>
+                recalculated_lines?: Array<Record<string, unknown>>
+              }
+              insertedLines = res.inserted_lines ?? []
+              recalculatedLines = res.recalculated_lines ?? []
             }
           }
 

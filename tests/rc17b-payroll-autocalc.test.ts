@@ -206,13 +206,39 @@ test('parseApprovedOvertimeMinutes: requires explicit supervisor approved OT evi
   assert.equal(parseApprovedOvertimeMinutes(null, null, 180), 0)
   assert.equal(parseApprovedOvertimeMinutes('Đã duyệt ca làm việc', 'Hoàn thành tốt', 180), 0)
 
-  // Case 2: Explicit supervisor OT approval in review_note
+  // Case 2: Explicit reviewer OT approval in review_note
   assert.equal(parseApprovedOvertimeMinutes('Duyệt OT: 30p hỗ trợ dọn dẹp', null, 180), 30)
   assert.equal(parseApprovedOvertimeMinutes('Xác nhận tăng ca 1.5h', null, 180), 90)
-  assert.equal(parseApprovedOvertimeMinutes('OT: 1h', null, 180), 60)
   assert.equal(parseApprovedOvertimeMinutes('Duyệt ca + overtime 20m', null, 180), 20)
+  assert.equal(parseApprovedOvertimeMinutes('Đồng ý duyệt OT 45p', null, 180), 45)
+  // Caps at actual minutes
+  assert.equal(parseApprovedOvertimeMinutes('Duyệt OT: 300p', null, 120), 120)
 
-  // Case 3: Staff self-reported OT claim in evidence_note without supervisor approval yields 0 OT
+  // Case 3: Ambiguous notes without explicit reviewer approval keyword (e.g. "OT 30p", "tăng ca 1h") MUST yield OT = 0 and flag exception
+  assert.equal(parseApprovedOvertimeMinutes('OT: 1h', null, 180), 0)
+  assert.equal(parseApprovedOvertimeMinutes('OT 30p', null, 180), 0)
+  assert.equal(parseApprovedOvertimeMinutes('tăng ca 45 phút', null, 180), 0)
+  assert.equal(parseApprovedOvertimeMinutes('về trễ 30 phút có làm thêm', null, 180), 0)
+
+  const ambiguousContract1 = evaluateApprovedOtEvidence({
+    reviewNote: 'OT 30p',
+    evidenceNote: null,
+    actualMinutes: 180,
+  })
+  assert.equal(ambiguousContract1.approvedOvertimeMinutes, 0)
+  assert.equal(ambiguousContract1.hasUnapprovedOtClaim, true)
+  assert.equal(ambiguousContract1.unapprovedClaimReason, 'AMBIGUOUS_SUPERVISOR_NOTE')
+
+  const ambiguousContract2 = evaluateApprovedOtEvidence({
+    reviewNote: 'tăng ca 1h',
+    evidenceNote: null,
+    actualMinutes: 180,
+  })
+  assert.equal(ambiguousContract2.approvedOvertimeMinutes, 0)
+  assert.equal(ambiguousContract2.hasUnapprovedOtClaim, true)
+  assert.equal(ambiguousContract2.unapprovedClaimReason, 'AMBIGUOUS_SUPERVISOR_NOTE')
+
+  // Case 4: Staff self-reported OT claim in evidence_note without supervisor approval yields 0 OT
   assert.equal(parseApprovedOvertimeMinutes(null, 'tăng ca: 45 phút', 180), 0)
   assert.equal(parseApprovedOvertimeMinutes('Đã duyệt ca chuẩn', 'tăng ca: 45 phút', 180), 0)
   assert.equal(parseApprovedOvertimeMinutes(null, 'overtime 20m', 180), 0)
@@ -226,19 +252,38 @@ test('parseApprovedOvertimeMinutes: requires explicit supervisor approved OT evi
   assert.equal(unapprovedStaffContract.hasUnapprovedOtClaim, true)
   assert.equal(unapprovedStaffContract.unapprovedClaimReason, 'STAFF_CLAIMED_OT_WITHOUT_SUPERVISOR_APPROVAL')
 
-  // Case 4: Explicit supervisor rejection yields 0 OT and flags exception
+  // Case 5: Explicit negative / rejection phrases yield 0 OT and flag rejection exception
   assert.equal(parseApprovedOvertimeMinutes('Từ chối OT', 'OT: 30p', 180), 0)
-  const rejectedContract = evaluateApprovedOtEvidence({
+  assert.equal(parseApprovedOvertimeMinutes('Không duyệt OT', null, 180), 0)
+  assert.equal(parseApprovedOvertimeMinutes('OT 30p chưa được sếp ký', null, 180), 0)
+  assert.equal(parseApprovedOvertimeMinutes('tự làm thêm không được duyệt', null, 180), 0)
+
+  const rejectedContract1 = evaluateApprovedOtEvidence({
     reviewNote: 'Không duyệt tăng ca do không có lệnh điều động',
     evidenceNote: 'OT: 30p',
     actualMinutes: 180,
   })
-  assert.equal(rejectedContract.approvedOvertimeMinutes, 0)
-  assert.equal(rejectedContract.hasUnapprovedOtClaim, true)
-  assert.equal(rejectedContract.unapprovedClaimReason, 'SUPERVISOR_REJECTED_OT')
+  assert.equal(rejectedContract1.approvedOvertimeMinutes, 0)
+  assert.equal(rejectedContract1.hasUnapprovedOtClaim, true)
+  assert.equal(rejectedContract1.unapprovedClaimReason, 'SUPERVISOR_REJECTED_OT')
 
-  // Case 5: Caps at actual minutes
-  assert.equal(parseApprovedOvertimeMinutes('OT: 300p', null, 120), 120)
+  const rejectedContract2 = evaluateApprovedOtEvidence({
+    reviewNote: 'OT 30p chưa được sếp ký',
+    evidenceNote: null,
+    actualMinutes: 180,
+  })
+  assert.equal(rejectedContract2.approvedOvertimeMinutes, 0)
+  assert.equal(rejectedContract2.hasUnapprovedOtClaim, true)
+  assert.equal(rejectedContract2.unapprovedClaimReason, 'SUPERVISOR_REJECTED_OT')
+
+  const rejectedContract3 = evaluateApprovedOtEvidence({
+    reviewNote: 'tự làm thêm không được duyệt',
+    evidenceNote: null,
+    actualMinutes: 180,
+  })
+  assert.equal(rejectedContract3.approvedOvertimeMinutes, 0)
+  assert.equal(rejectedContract3.hasUnapprovedOtClaim, true)
+  assert.equal(rejectedContract3.unapprovedClaimReason, 'SUPERVISOR_REJECTED_OT')
 })
 
 test('calculateRecalculationDiffs: recalculates rates and strictly preserves accountant adjustments', () => {
