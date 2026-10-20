@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/rc18a-operations-workflow",
-    "head": "324e0345995871c4901efd2f27269c1d18ff0553",
+    "head": "ff5cd6bd22f27d0abf12204ef5231a3f4390126d",
     "origin_main": "b96dcb6e1842e59f43170a1a8b15da712ee8a8e0",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-rc18a"
   },
@@ -91,12 +91,12 @@
       "roots": {
         "app": 60,
         "components": 153,
-        "lib": 219,
+        "lib": 220,
         "scripts": 18,
-        "supabase": 90,
-        "tests": 208
+        "supabase": 91,
+        "tests": 209
       },
-      "total": 748
+      "total": 751
     },
     "tests": {
       "files": [
@@ -221,6 +221,7 @@
         "tests/rc17b-payroll-autocalc.test.ts",
         "tests/rc18a-shift-change-subscription.test.ts",
         "tests/rc18a-shift-date-window.test.ts",
+        "tests/rc18a-shift-list-url-state.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
         "tests/registration-board-performance.test.ts",
         "tests/report-history-access.test.ts",
@@ -276,7 +277,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 175
+      "count": 176
     },
     "migrations": {
       "files": [
@@ -350,9 +351,10 @@
         "supabase/migrations/20261012145735_p0_audit_privilege_hardening.sql",
         "supabase/migrations/20261012171503_rc16k_bounded_shift_lists.sql",
         "supabase/migrations/20261017000000_rc17a_actual_staffing_audit.sql",
-        "supabase/migrations/20261019000000_rc17b_rate_supersession_and_recalc.sql"
+        "supabase/migrations/20261019000000_rc17b_rate_supersession_and_recalc.sql",
+        "supabase/migrations/20261020164351_rc18a_publish_shifts_realtime.sql"
       ],
-      "count": 71
+      "count": 72
     }
   },
   "verification": {
@@ -366,5 +368,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-20T23:24:18+07:00"
+  "synced_at": "2026-10-20T23:47:43+07:00"
 }
