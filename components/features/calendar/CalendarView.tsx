@@ -6,6 +6,8 @@ import { HistoryPagination } from '@/components/ui/history-pagination'
 import { shiftRegistrationService, shiftService, reportService } from '@/lib/services/dataService'
 import { getCalendarReferences } from '@/lib/services/calendarReferenceData'
 import { readCalendarWindow } from '@/lib/services/calendarWindow'
+import { invalidatePageCache, pageCacheKey, readPageCache, writePageCache } from '@/lib/services/operationsPageCache'
+import type { ShiftListPage } from '@/lib/services/operationsPageService'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import { Shift, Brand, Platform, Campaign, User, OperationalRole, ShiftRegistration, Report } from '@/lib/types/database.types'
 import { Button } from '@/components/ui/button'
@@ -187,6 +189,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const [reports, setReports] = React.useState<Report[]>([])
   const [reportsReady, setReportsReady] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
+  const [loadingMore, setLoadingMore] = React.useState(false)
   const [loadError, setLoadError] = React.useState<unknown>(null)
   const [exportOpen, setExportOpen] = React.useState(false)
   const [showForm, setShowForm] = React.useState(false)
@@ -267,7 +270,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     if (view === 'list') listNavigate({ calendar_list_page: null }, true)
   }, [listNavigate, listQuery, view])
 
-  const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role):''
+  const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role)+':'+currentUser.updated_at:''
   const [loadedIdentity,setLoadedIdentity]=React.useState('')
   const requestKey = identity + ':' + view + ':' + listPage + ':' + listSize + ':' + operationalQuery
   const [loadedKey, setLoadedKey] = React.useState('')
@@ -281,37 +284,67 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     })
   }, [currentUser])
 
-  const loadData = React.useCallback(async () => {
+  const loadData = React.useCallback(async (reuseCache = false) => {
     if (!identity) return
     requestController.current?.abort()
     const controller = new AbortController()
     requestController.current = controller
     const version = ++requestVersion.current
+    const filters = JSON.parse(operationalQuery)
+    const cacheKey = pageCacheKey(identity, 'calendar_window', { view, page: listPage, pageSize: listSize, filters })
+    if (!reuseCache) invalidatePageCache(identity, 'calendar_window')
+    else {
+      const cached = readPageCache<ShiftListPage>(cacheKey)
+      if (cached) {
+        setLoadError(null)
+        setLoading(false)
+        setLoadingMore(false)
+        setListTotal(cached.total)
+        setShifts(cached.items)
+        setRegistrations(cached.registrations)
+        setLoadedIdentity(identity)
+        setLoadedKey(requestKey)
+        return
+      }
+    }
     setLoading(true)
+    setLoadingMore(false)
     setLoadError(null)
     try {
-      const result = view === 'list' ? await shiftService.getCalendarPage({ page: listPage, pageSize: listSize, filters: JSON.parse(operationalQuery) }, controller.signal)
-        : await readCalendarWindow(JSON.parse(operationalQuery), controller.signal)
+      const result = view === 'list'
+        ? await shiftService.getCalendarPage({ page: listPage, pageSize: listSize, filters }, controller.signal)
+        : await readCalendarWindow(filters, controller.signal, first => {
+            // First 50 shifts are available before the remaining pages in this window.
+            // Incomplete windows are never persisted or used for bulk approval.
+            if (version !== requestVersion.current || controller.signal.aborted) return
+            setShifts(first.items)
+            setRegistrations(first.registrations)
+            setLoadedIdentity(identity)
+            setLoadedKey(requestKey)
+            setLoading(false)
+            setLoadingMore(true)
+          })
       if (version !== requestVersion.current || controller.signal.aborted) return
-      const shiftsData = result.items
-      if (view === 'list') {
-        setListTotal(result.total)
-        if (result.page !== listPage) listNavigate({ calendar_list_page: String(result.page) }, true)
-      }
+      if (view === 'list' && result.page !== listPage) listNavigate({ calendar_list_page: String(result.page) }, true)
+      writePageCache(cacheKey, result)
+      setListTotal(result.total)
+      setShifts(result.items)
+      setRegistrations(result.registrations)
       setLoadedIdentity(identity)
       setLoadedKey(requestKey)
-      setShifts(shiftsData)
-      setRegistrations(result.registrations)
     } catch (error: unknown) {
       if (version === requestVersion.current && !controller.signal.aborted) setLoadError(error)
     } finally {
-      if (version === requestVersion.current) setLoading(false)
+      if (version === requestVersion.current) {
+        setLoading(false)
+        setLoadingMore(false)
+      }
     }
   }, [identity, listNavigate, listPage, operationalQuery, listSize, requestKey, view])
 
   React.useEffect(() => {
     const generation = requestVersion
-    const frame = window.requestAnimationFrame(() => { void loadData() })
+    const frame = window.requestAnimationFrame(() => { void loadData(true) })
     return () => { window.cancelAnimationFrame(frame); requestController.current?.abort(); ++generation.current }
   }, [loadData])
 
@@ -410,7 +443,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   )
   const pendingStaffingCount = calendarScopeShifts.reduce((count, shift) => count + (shift.staffing_summary?.reduce((total, role) => total + role.pending, 0) ?? pendingStaffingRegistrations.filter(row => row.shift_id === shift.id).length), 0)
   const openBulkStaffingApproval = async () => {
-    if (bulkApprovalLoading) return
+    if (bulkApprovalLoading || loadingMore) return
     const version = requestVersion.current
     setBulkApprovalLoading(true)
     try {
@@ -610,7 +643,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                   size="sm"
                   className="h-9"
                   onClick={() => void openBulkStaffingApproval()}
-                  disabled={bulkApprovalLoading}
+                  disabled={bulkApprovalLoading || loadingMore}
                   data-testid="open-bulk-staffing-approval"
                 >
                   <UserCheck className="mr-2 h-4 w-4" />
@@ -683,6 +716,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       <Card className="min-w-0 overflow-hidden gap-0 py-0" aria-busy={loading}>
         {loadedKey !== requestKey && <ContentSkeleton />}
         {loading && loadedKey === requestKey && <div role="status" className="px-3 py-1 text-xs text-muted-foreground">{t('loading')}</div>}
+         {loadingMore && loadedKey === requestKey && <div role="status" data-testid="calendar-progressive-loading" className="px-3 py-1 text-xs text-muted-foreground">Đang tải thêm ca trong khoảng thời gian đang xem…</div>}
         {loadedKey === requestKey && <>
         {view === 'month' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onShiftClick={setPreviewShift} onDayClick={setSelectedDay} /></div></div>}
         {view === 'week' && <div className="w-full"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms}  registrations={registrations} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} currentUser={currentUser} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} /></div>}
