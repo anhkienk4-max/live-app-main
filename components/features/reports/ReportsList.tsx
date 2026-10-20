@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { useListPagination } from '@/lib/hooks/useListPagination'
+import { getAuthMode } from '@/lib/auth/authMode'
 import { getOperationalReferences, operationalReferenceIdentity } from '@/lib/services/operationalReferences'
 import { readTransientData } from '@/lib/services/transientDataCache'
 import { invalidatePageCache } from '@/lib/services/operationsPageCache'
@@ -9,14 +10,11 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { DollarSign, Download, FileImage, FileSpreadsheet, FileText, Filter, Plus, RotateCcw, Search, TrendingUp, Trash2 } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import {
-  brandService,
-  campaignService,
-  platformService,
   reportImageService,
   reportService,
   shiftRegistrationService,
   shiftService,
-  userService,
+  currentUserService,
   isStaffedRegistration,
 } from '@/lib/services/dataService'
 import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Report, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
@@ -148,8 +146,9 @@ export function ReportsList() {
         const loadedRegistrations = await shiftRegistrationService.getForShifts(allLoadedShifts.map(shift => shift.id))
         return {reportPageResult, loadedCandidates, refs, loadedCandidateReports, allLoadedShifts, loadedRegistrations}
       }, async () => {
-        const actor = await import('@/lib/services/dataService').then(mod=>mod.currentUserService.getCurrent())
-        return !!actor && (process.env.NEXT_PUBLIC_ENABLE_MOCK_USER_SWITCHER === 'true' || operationalReferenceIdentity(actor)===operationalReferenceIdentity(currentUser))
+        if (getAuthMode() !== 'supabase') return true
+        const actor = await currentUserService.getCurrent()
+        return !!actor && operationalReferenceIdentity(actor)===operationalReferenceIdentity(currentUser)
       })
       if (version !== requestVersion.current) return
       const {reportPageResult,loadedCandidates,refs,loadedCandidateReports,allLoadedShifts,loadedRegistrations} = result

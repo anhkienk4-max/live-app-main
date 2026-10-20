@@ -2,7 +2,8 @@
 
 import * as React from 'react'
 import { addDays, endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
-import { brandService, campaignService, platformService, reportService, shiftRegistrationService, shiftService, swapRequestService, userService } from '@/lib/services/dataService'
+import { reportService, shiftRegistrationService, shiftService, swapRequestService, currentUserService } from '@/lib/services/dataService'
+import { getAuthMode } from '@/lib/auth/authMode'
 import { Brand, Campaign, Platform, Report, Shift, ShiftRegistration, SwapRequest, User } from '@/lib/types/database.types'
 import { useTranslation } from '@/lib/i18n'
 import { getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
@@ -86,8 +87,9 @@ export function DashboardOverview() {
         const registrations=await shiftRegistrationService.getForShifts(shifts.map(shift=>shift.id))
         return {shifts,reports,...refs,registrations,swapRequests:[...new Map([...scopeSwaps,...swapPage.items].map(swap=>[swap.id,swap])).values()]} satisfies DashboardDataset
       }, async () => {
-        const actor=await import('@/lib/services/dataService').then(mod=>mod.currentUserService.getCurrent())
-        return !!actor && (process.env.NEXT_PUBLIC_ENABLE_MOCK_USER_SWITCHER === 'true' || operationalReferenceIdentity(actor)===identity)
+        if (getAuthMode() !== 'supabase') return true
+        const actor=await currentUserService.getCurrent()
+        return !!actor && operationalReferenceIdentity(actor)===identity
       })
       if (request !== sequence.current) return
       setData(result)
