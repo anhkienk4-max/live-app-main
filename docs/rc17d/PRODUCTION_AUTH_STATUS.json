@@ -25,5 +25,6 @@
     "Connected Vercel team returned no projects; served-SHA cannot be established"
   ],
   "production_mutations": [],
-  "release": "NO-GO"
+  "release": "NO-GO",
+  "integrated_main_sha": "371426bc53b6fac2fcef97433c02b45c3c6b4e9e"
 }

@@ -1,6 +1,6 @@
 # Actual Playwright screenshots
 
-Before application captures use baseline 7f5efbf local fixtures; after application captures use the candidate local fixtures. The same calendar date/empty fixture is used for comparable pairs. Dense agenda is a separate imported local fixture. Public auth before is the live unauthenticated Production site; after is local Supabase mode with no credentials and provider unavailable. Captures are first viewport views of the scrolling application shell; they do not prove every row is visually audited. Next dev indicator may be visible on local captures.
+Before application captures use baseline 7f5efbf local fixtures; after application captures use the final RC1.7D candidate integrated with main 371426b and local fixtures. The same calendar date/empty fixture is used for comparable pairs. Dense agenda is a separate imported local fixture. Public auth before is the live unauthenticated Production site; after is local Supabase mode with no credentials and provider unavailable. Captures are first viewport views of the scrolling application shell; they do not prove every row is visually audited. Next dev indicator may be visible on local captures.
 
 | Screen | Width | Before | After |
 |---|---|---|---|

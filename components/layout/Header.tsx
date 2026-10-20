@@ -144,7 +144,7 @@ export function Header({ user }: HeaderProps) {
               size="sm"
               onClick={() => setLanguage(language === 'en' ? 'vi' : 'en')}
               aria-label={t('language')}
-              className="h-8 w-8 px-0 text-xs font-medium text-muted-foreground"
+              className="h-11 w-11 px-0 text-xs font-medium text-muted-foreground"
             >
               {language === 'en' ? 'VI' : 'EN'}
             </Button>
@@ -152,7 +152,7 @@ export function Header({ user }: HeaderProps) {
             {/* User menu */}
             <DropdownMenu>
               <DropdownMenuTrigger
-                render={<Button variant="ghost" className="h-9 max-w-48 gap-2 rounded-md px-1.5" data-testid="user-menu-btn" />}
+                render={<Button variant="ghost" className="h-11 min-w-11 max-w-48 gap-2 rounded-md px-1.5" data-testid="user-menu-btn" />}
               >
                 <Avatar className="h-7 w-7">
                   {avatarUrl && <AvatarImage src={avatarUrl} alt={displayUser?.user_metadata?.full_name || displayUser?.email || 'User'} />}
