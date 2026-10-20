@@ -39,7 +39,7 @@ test('logout or mutation invalidates shared reference values and stale in-flight
   invalidatePageCache()
   assert.equal(currentPageCacheGeneration(),start+1)
   release(['stale'])
-  await delayed
+  await assert.rejects(delayed,/CACHE_INVALIDATED/)
   const fresh=await readTransientData('actor','revalidate',async()=>['fresh'])
   assert.deepEqual(fresh,['fresh'])
 })

@@ -26,9 +26,9 @@ export function readTransientData<T>(
     generation,
     promise: Promise.resolve().then(loader).then(async value => {
       // No stale response may enter the cache following logout/mutation.
-      if (generation !== currentPageCacheGeneration()) return value
       if (!(await verifyActor())) throw new Error('CACHE_IDENTITY_CHANGED')
-      if (generation === currentPageCacheGeneration()) writePageCache(key, value)
+      if (generation !== currentPageCacheGeneration()) throw new Error('CACHE_INVALIDATED')
+      writePageCache(key, value)
       return value
     }),
   }
