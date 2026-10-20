@@ -181,7 +181,9 @@ test('F6 retains E/F architecture integration points', () => {
   assert.match(panel, /FileSpreadsheet/)
   assert.match(panel, /ImportHistoryPanel/)
   assert.match(reports, /useTranslation|hasPermission/)
-  assert.match(live, /live-session-attention|Promise\.all/)
+  assert.match(live, /shiftService\.getLivePage\(/)
+  assert.match(live, /getOperationalReferences\(currentUser\)/)
+  assert.match(live, /document\.visibilityState!=='visible'/)
 })
 
 test('F6 mock confirmation persists one shift, history, and is repeat-safe', async () => {
