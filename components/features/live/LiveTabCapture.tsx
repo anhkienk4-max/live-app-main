@@ -15,6 +15,7 @@ export function LiveTabCapture() {
   const mountedRef = React.useRef(true)
   const [starting, setStarting] = React.useState(false)
   const [active, setActive] = React.useState(false)
+  const [audioAvailable, setAudioAvailable] = React.useState(false)
   const [playAudio, setPlayAudio] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -25,6 +26,7 @@ export function LiveTabCapture() {
     stream?.getTracks().forEach(track => track.stop())
     if (mountedRef.current) {
       setActive(false)
+      setAudioAvailable(false)
       setPlayAudio(false)
     }
   }, [])
@@ -71,6 +73,7 @@ export function LiveTabCapture() {
       }
       streamRef.current = stream
       videoTrack.addEventListener('ended', stopCapture, { once: true })
+      setAudioAvailable(stream.getAudioTracks().length > 0)
       setActive(true)
     } catch (cause) {
       if (!mountedRef.current) return
@@ -97,7 +100,7 @@ export function LiveTabCapture() {
           disabled={starting} data-testid="start-live-tab-capture">
           <ScreenShare className="mr-2 h-4 w-4" />{starting ? 'Đang chờ chọn tab…' : 'Chia sẻ tab LIVE vào Monitor'}
         </Button> : <>
-          {Boolean(streamRef.current?.getAudioTracks().length) && <Button type="button" size="sm" variant="outline"
+          {audioAvailable && <Button type="button" size="sm" variant="outline"
             onClick={() => setPlayAudio(value => !value)} data-testid="toggle-live-tab-audio">
             {playAudio ? <Volume2 className="mr-2 h-4 w-4" /> : <VolumeX className="mr-2 h-4 w-4" />}
             {playAudio ? 'Tắt tiếng bản xem' : 'Bật tiếng bản xem'}
