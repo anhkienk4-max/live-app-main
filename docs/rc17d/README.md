@@ -2,7 +2,7 @@
 
 ## Release decision: NO-GO for Production
 
-Implementation is isolated on `feat/rc17d-responsive-auth`, based on freshly fetched main `7f5efbfec23db84ad1d74024b08a591523aa4217`. Remote main advanced during validation to `371426bc53b6fac2fcef97433c02b45c3c6b4e9e`; its Dashboard/Reports shared-cache changes were merged into this feature branch, with code merging cleanly and generated memory conflicts regenerated. Final validation is rerun on the integrated candidate. The original dirty checkout was preserved. Main SHA is not proof of the version served by ops5729.top.
+Implementation is isolated on `feat/rc17d-responsive-auth`, based on main `7f5efbfec23db84ad1d74024b08a591523aa4217`. Dashboard/Reports cache changes from `371426bc53b6fac2fcef97433c02b45c3c6b4e9e` were integrated before the browser captures and full regression. Main later advanced to `b96dcb6e1842e59f43170a1a8b15da712ee8a8e0`; its Live changes were merged with URL validation and RC1.7D touch targets preserved. Focused tests, typecheck, scoped lint and production build passed after that merge. Browser captures and full regression were not rerun on `b96dcb6`. The original dirty checkout was preserved. Main SHA is not proof of the version served by ops5729.top.
 
 **Evidence boundary:** authenticated application captures and interactions use the repository's local mock identities and explicit API fixtures. These are real Chromium/Playwright captures, not generated screenshots. Public before auth captures are unauthenticated reads of https://ops5729.top. After auth captures run locally with mock authentication disabled and no Supabase credentials. None of these establishes authenticated Production UAT or database RLS behavior.
 

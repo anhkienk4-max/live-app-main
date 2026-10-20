@@ -10,8 +10,8 @@
   },
   "repository": {
     "branch": "feat/rc17d-responsive-auth",
-    "head": "7b6f6a9a2de172a1fefbe86acf6445a6b57eefe7",
-    "origin_main": "371426bc53b6fac2fcef97433c02b45c3c6b4e9e",
+    "head": "8f01864dec9c473add4414e24b46622336eee5fa",
+    "origin_main": "b96dcb6e1842e59f43170a1a8b15da712ee8a8e0",
     "worktree": "C:/Users/KienNguyen/.codex/worktrees/a2f2/live-app-main"
   },
   "hardening": {
@@ -91,13 +91,13 @@
     "source_files": {
       "roots": {
         "app": 61,
-        "components": 152,
-        "lib": 216,
+        "components": 153,
+        "lib": 217,
         "scripts": 18,
         "supabase": 90,
-        "tests": 206
+        "tests": 207
       },
-      "total": 743
+      "total": 746
     },
     "tests": {
       "files": [
@@ -276,7 +276,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 173
+      "count": 174
     },
     "migrations": {
       "files": [
@@ -366,5 +366,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-20T18:17:02+07:00"
+  "synced_at": "2026-10-20T23:20:12+07:00"
 }
