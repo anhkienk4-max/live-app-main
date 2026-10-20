@@ -27,6 +27,7 @@ import { AlertCircle, Sparkles } from 'lucide-react'
 import { format } from 'date-fns'
 import { useTranslation } from '@/lib/i18n'
 import { getAuthMode } from '@/lib/auth/authMode'
+import { verifyLiveStreamLink } from '@/lib/utils/liveStreamLink'
 import { resolveStaffingLabelsForRole } from '@/lib/utils/staffingResolver'
 
 interface ShiftFormDialogProps {
@@ -310,6 +311,10 @@ export function ShiftFormDialog({
       return
     }
     
+    if (formData.live_link.trim() && !verifyLiveStreamLink(formData.live_link.trim())) {
+      toast({ title: 'Link livestream không hợp lệ', description: 'Dán đường dẫn HTTPS chính thức của TikTok hoặc Shopee.', variant: 'destructive' })
+      return
+    }
     if (conflicts.length > 0 && !confirm('Conflicts detected. Continue anyway?')) {
       return
     }
@@ -318,7 +323,8 @@ export function ShiftFormDialog({
 
     try {
       if (showRecurring && recurrenceRule.frequency !== 'none') {
-        const baseShift = { ...formData, execution_source: formData.execution_source || undefined }
+        // Recurring shifts require separate actual broadcast URLs per occurrence.
+        const baseShift = { ...formData, live_link: '', execution_source: formData.execution_source || undefined }
         const generated = generateRecurringShifts(baseShift, recurrenceRule)
         const { successCount, errors } = await createRecurringShiftBatch(generated)
         if (successCount === generated.length) {
@@ -334,12 +340,12 @@ export function ShiftFormDialog({
         }
         await onSuccess()
       } else if (shift) {
-        const updatedShift = await shiftService.update(shift.id, { ...formData, execution_source: formData.execution_source || undefined, version: shift.version })
+        const updatedShift = await shiftService.update(shift.id, { ...formData, live_link: formData.live_link.trim(), execution_source: formData.execution_source || undefined, version: shift.version })
         if (!updatedShift) throw new Error('Shift was not found.')
         toast({ title: 'Success', description: 'Shift updated', variant: 'success' })
         await onSuccess(updatedShift)
       } else {
-        const createdShift = await shiftService.create({ ...formData, execution_source: formData.execution_source || undefined })
+        const createdShift = await shiftService.create({ ...formData, live_link: formData.live_link.trim(), execution_source: formData.execution_source || undefined })
         if (!createdShift) throw new Error('Shift creation returned no persisted shift.')
         toast({ title: 'Success', description: 'Shift created', variant: 'success' })
         await onSuccess(createdShift)
@@ -479,6 +485,15 @@ export function ShiftFormDialog({
           </div>
 
 <label className="block text-sm font-medium">{t('timezone')}<Input value={formData.timezone} onChange={event=>updateFormData({...formData,timezone:event.target.value})} required className="mt-1" /></label>
+          <div className="space-y-1.5">
+            <label htmlFor="shift-live-link" className="block text-sm font-medium">Link phiên livestream TikTok / Shopee</label>
+            <Input id="shift-live-link" type="url" inputMode="url" value={formData.live_link}
+              onChange={event=>updateFormData({...formData,live_link:event.target.value})}
+              placeholder="https://www.tiktok.com/@shop/live hoặc https://live.shopee.vn/..."
+              disabled={showRecurring && recurrenceRule.frequency !== 'none'} data-testid="shift-live-link-input" />
+            <p className="text-xs text-muted-foreground">Dán link phiên LIVE thật, sau đó mở Live Monitoring để xem. Mỗi ca phải dùng link riêng; không tự sao chép cho lịch lặp.</p>
+            {formData.live_link.trim() && !verifyLiveStreamLink(formData.live_link.trim()) && <p role="alert" className="text-xs text-destructive">Chỉ chấp nhận link HTTPS TikTok hoặc Shopee hợp lệ.</p>}
+          </div>
           {/* Recurring Options */}
           {!shift && (
             <div className="border-t pt-4">
