@@ -3,13 +3,14 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 
 import * as React from 'react'
+import { useSearchParams } from 'next/navigation'
 import { usePagedList } from '@/lib/hooks/usePagedList'
 import { getOperationalReferences } from '@/lib/services/operationalReferences'
 import { shiftService, shiftRegistrationService, getShiftRoleCapacities } from '@/lib/services/dataService'
 import { templateService } from '@/lib/services/templateService'
 import { Shift, Brand, Platform, Campaign, User, DeletionImpact, ShiftRegistration } from '@/lib/types/database.types'
 import { formatShiftTimeRange, ShiftTemplate } from '@/lib/utils/shiftUtils'
-import { shiftDateWindowFilters, type ShiftDateWindow } from '@/lib/utils/shiftDateWindow'
+import { shiftDateWindowFilters } from '@/lib/utils/shiftDateWindow'
 import { ActionBar } from '@/components/ui/action-bar'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { buildShiftActions } from '@/lib/ui/action-priority'
@@ -33,6 +34,7 @@ import { hasPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { resolveStaffingLabelsForRole } from '@/lib/utils/staffingResolver'
+import { readShiftListUrlState, shiftListUrlValues } from '@/lib/utils/shiftListUrlState'
 
 const statusVariants: Record<string, 'default' | 'secondary' | 'destructive'> = {
   scheduled: 'secondary',
@@ -64,10 +66,6 @@ export function ShiftList() {
   
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
   const [showBulkActions, setShowBulkActions] = React.useState(false)
-  const [statusFilter, setStatusFilter] = React.useState<Shift['status'] | 'all'>('all')
-  const [searchQuery, setSearchQuery] = React.useState('')
-  const [sortDescending, setSortDescending] = React.useState(true)
-  const [dateWindow, setDateWindow] = React.useState<ShiftDateWindow>('recent')
   const [visibleShifts, setVisibleShifts] = React.useState<Shift[]>([])
   const [filteredTableShifts, setFilteredTableShifts] = React.useState<Shift[]>([])
   const [tableFilterInitialized, setTableFilterInitialized] = React.useState(false)
@@ -91,18 +89,6 @@ export function ShiftList() {
     })
   }, [])
 
-  const handleStatusFilterChange = React.useCallback((status: Shift['status'] | 'all') => {
-    setStatusFilter(status)
-    setSelectedIds(new Set())
-    setShowBulkActions(false)
-  }, [])
-
-  const handleSearchQueryChange = React.useCallback((query: string) => {
-    setSearchQuery(query)
-    setSelectedIds(new Set())
-    setShowBulkActions(false)
-  }, [])
-  
   const { toast } = useToast()
   const { t, translate } = useTranslation()
   const { currentUser } = useCurrentUser()
@@ -117,6 +103,9 @@ export function ShiftList() {
   const canMutate = canEdit || canDelete
 
   const statusValues = ['scheduled', 'preparing', 'live', 'paused', 'completed', 'cancelled'] as const
+  const searchParams = useSearchParams()
+  const urlState = readShiftListUrlState(searchParams)
+  const { dateWindow, status: statusFilter, search: searchQuery, descending: sortDescending } = urlState
   const listFilters = { ...shiftDateWindowFilters(dateWindow), search: searchQuery, statuses: statusFilter === 'all' ? [] : [statusFilter], descending: sortDescending }
   const list = usePagedList(shiftService, 'shifts', listFilters)
   useShiftChangeRefresh(list.reload)
@@ -172,6 +161,12 @@ export function ShiftList() {
     return () => { active = false }
   }, [pageIds])
   const clearSelection = () => { setSelectedIds(new Set()); setShowBulkActions(false) }
+  const updateFilters = (next: typeof urlState, replace = false) => {
+    list.navigate(shiftListUrlValues(next), replace)
+    clearSelection()
+  }
+  const handleStatusFilterChange = (status: Shift['status'] | 'all') => updateFilters({ ...urlState, status })
+  const handleSearchQueryChange = (search: string) => updateFilters({ ...urlState, search }, true)
 
   const requestDelete = async (ids: string[]) => {
     if (!canDelete) return
@@ -448,7 +443,7 @@ export function ShiftList() {
           data={sortedShifts}
           columns={columns}
           search={searchQuery}
-          onSearch={value => { handleSearchQueryChange(value); list.reset() }}
+          onSearch={handleSearchQueryChange}
           pagination={{ loading: list.refreshing, page: list.page, pageSize: list.pageSize, total: list.total,
             onPageChange: value => { clearSelection(); list.setPage(value) },
             onPageSizeChange: value => { clearSelection(); list.setPageSize(value) } }}
@@ -460,7 +455,7 @@ export function ShiftList() {
               <label className="flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600">
                 <span>{t('dateRange')}</span>
                 <select aria-label={t('dateRange')} value={dateWindow}
-                  onChange={event => { setDateWindow(event.target.value as ShiftDateWindow); clearSelection(); list.reset() }}
+                  onChange={event => updateFilters({ ...urlState, dateWindow: event.target.value as typeof dateWindow })}
                   className="max-w-40 bg-transparent font-medium text-slate-800 outline-none">
                   <option value="recent">{t('last30Days')}</option>
                   <option value="upcoming">{t('upcoming')}</option>
@@ -472,7 +467,7 @@ export function ShiftList() {
                 <select
                   aria-label={t('status')}
                   value={statusFilter}
-                  onChange={event => { handleStatusFilterChange(event.target.value as Shift['status'] | 'all'); list.reset() }}
+                  onChange={event => handleStatusFilterChange(event.target.value as Shift['status'] | 'all')}
                   className="max-w-40 bg-transparent font-medium text-slate-800 outline-none"
                 >
                   <option value="all">{t('all')}</option>
@@ -486,7 +481,7 @@ export function ShiftList() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => { setSortDescending(value => !value); clearSelection(); list.reset() }}
+                onClick={() => updateFilters({ ...urlState, descending: !sortDescending })}
                 aria-label={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`}
                 title={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`}
               >
@@ -509,14 +504,14 @@ export function ShiftList() {
               type="text"
               placeholder={t('search')}
               value={searchQuery}
-              onChange={e => { handleSearchQueryChange(e.target.value); list.reset() }}
+              onChange={e => handleSearchQueryChange(e.target.value)}
               className="pl-8 h-9 text-xs"
               data-testid="shifts-mobile-search"
             />
           </div>
           <div className="flex items-center gap-2">
             <select aria-label={t('dateRange')} value={dateWindow}
-              onChange={event => { setDateWindow(event.target.value as ShiftDateWindow); clearSelection(); list.reset() }}
+              onChange={event => updateFilters({ ...urlState, dateWindow: event.target.value as typeof dateWindow })}
               className="flex-1 h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none">
               <option value="recent">{t('last30Days')}</option>
               <option value="upcoming">{t('upcoming')}</option>
@@ -525,7 +520,7 @@ export function ShiftList() {
             <select
               aria-label={t('status')}
               value={statusFilter}
-              onChange={event => { handleStatusFilterChange(event.target.value as Shift['status'] | 'all'); list.reset() }}
+              onChange={event => handleStatusFilterChange(event.target.value as Shift['status'] | 'all')}
               className="flex-1 h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none"
               data-testid="shifts-mobile-status-filter"
             >
@@ -540,7 +535,7 @@ export function ShiftList() {
               variant="outline"
               size="sm"
               className="h-9 px-2.5 text-xs shrink-0"
-              onClick={() => { setSortDescending(value => !value); clearSelection(); list.reset() }}
+              onClick={() => updateFilters({ ...urlState, descending: !sortDescending })}
               aria-label={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`}
             >
               <ArrowDownUp className="mr-1 h-3.5 w-3.5" />

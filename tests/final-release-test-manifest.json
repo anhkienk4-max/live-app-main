@@ -124,6 +124,7 @@
     "tests/rc17b-payroll-autocalc.test.ts",
     "tests/rc18a-shift-change-subscription.test.ts",
     "tests/rc18a-shift-date-window.test.ts",
+    "tests/rc18a-shift-list-url-state.test.ts",
     "tests/real-dashboard-ocr-smoke.test.ts",
     "tests/registration-board-performance.test.ts",
     "tests/report-history-access.test.ts",
