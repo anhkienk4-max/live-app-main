@@ -2,18 +2,19 @@
 
 import * as React from 'react'
 import { useListPagination } from '@/lib/hooks/useListPagination'
+import { getAuthMode } from '@/lib/auth/authMode'
+import { getOperationalReferences, operationalReferenceIdentity } from '@/lib/services/operationalReferences'
+import { readTransientData } from '@/lib/services/transientDataCache'
+import { invalidatePageCache } from '@/lib/services/operationsPageCache'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { DollarSign, Download, FileImage, FileSpreadsheet, FileText, Filter, Plus, RotateCcw, Search, TrendingUp, Trash2 } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import {
-  brandService,
-  campaignService,
-  platformService,
   reportImageService,
   reportService,
   shiftRegistrationService,
   shiftService,
-  userService,
+  currentUserService,
   isStaffedRegistration,
 } from '@/lib/services/dataService'
 import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Report, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
@@ -109,6 +110,7 @@ export function ReportsList() {
   const [removeTarget, setRemoveTarget] = React.useState<Report | null>(null)
   const [removeImpact, setRemoveImpact] = React.useState<DeletionImpact | null>(null)
   const [loading, setLoading] = React.useState(true)
+  const [firstRows, setFirstRows] = React.useState<{key:string; rows:Report[]; shifts:Shift[]; total:number} | null>(null)
   const [loadError, setLoadError] = React.useState<unknown>(null)
 
   const encodedFilters = JSON.stringify({ search: filters.search, from: filters.start || undefined, to: filters.end || undefined,
@@ -118,24 +120,38 @@ export function ReportsList() {
   const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role):''
   const [loadedIdentity,setLoadedIdentity]=React.useState('')
   const requestVersion = React.useRef(0)
-  const loadData = React.useCallback(async () => {
+  const pageKey = identity + ':' + reportPage + ':' + reportPageSize + ':' + encodedFilters
+  const loadData = React.useCallback(async (reuseCache = false) => {
+    if (!currentUser || !identity) return
     const version = ++requestVersion.current
+    if (!reuseCache) invalidatePageCache()
+    setLoading(true)
     setLoadError(null)
     try {
-      const [reportPageResult, loadedCandidates, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers] = await Promise.all([
-        reportService.getFilteredPage({ page: reportPage, pageSize: reportPageSize, filters: JSON.parse(encodedFilters) }),
-        shiftService.getReportCandidates(30),
-        brandService.getAll(),
-        platformService.getAll(),
-        campaignService.getAll(),
-        userService.getAll(),
-      ])
-      const candidateIds = loadedCandidates.map(shift => shift.id)
-      const loadedCandidateReports = await reportService.getForShifts(candidateIds)
-      const loadedReportShifts = await shiftService.getByIds(reportPageResult.items.map(report => report.shift_id))
-      const allLoadedShifts = [...loadedCandidates, ...loadedReportShifts.filter(shift => !candidateIds.includes(shift.id))]
-      const loadedRegistrations=await shiftRegistrationService.getForShifts(allLoadedShifts.map(shift=>shift.id))
+      const result = await readTransientData(operationalReferenceIdentity(currentUser), 'reports:' + pageKey, async () => {
+        const pagePromise = reportService.getFilteredPage({ page: reportPage, pageSize: reportPageSize, filters: JSON.parse(encodedFilters) })
+        const pageShifts = pagePromise.then(page => shiftService.getByIds(page.items.map(report => report.shift_id)))
+        void Promise.all([pagePromise, pageShifts]).then(([page, related]) => {
+          if (version === requestVersion.current) setFirstRows({key:pageKey,rows:page.items,shifts:related,total:page.total})
+        }).catch(() => { /* The complete loader reports failures. */ })
+        const [reportPageResult, loadedCandidates, refs, loadedReportShifts] = await Promise.all([
+          pagePromise,
+          shiftService.getReportCandidates(30),
+          getOperationalReferences(currentUser),
+          pageShifts,
+        ])
+        const candidateIds = loadedCandidates.map(shift => shift.id)
+        const loadedCandidateReports = await reportService.getForShifts(candidateIds)
+        const allLoadedShifts = [...loadedCandidates, ...loadedReportShifts.filter(shift => !candidateIds.includes(shift.id))]
+        const loadedRegistrations = await shiftRegistrationService.getForShifts(allLoadedShifts.map(shift => shift.id))
+        return {reportPageResult, loadedCandidates, refs, loadedCandidateReports, allLoadedShifts, loadedRegistrations}
+      }, async () => {
+        if (getAuthMode() !== 'supabase') return true
+        const actor = await currentUserService.getCurrent()
+        return !!actor && operationalReferenceIdentity(actor)===operationalReferenceIdentity(currentUser)
+      })
       if (version !== requestVersion.current) return
+      const {reportPageResult,loadedCandidates,refs,loadedCandidateReports,allLoadedShifts,loadedRegistrations} = result
       setLoadedIdentity(identity)
       if (reportPageResult.page !== reportPage) navigate({ reports_page: String(reportPageResult.page) }, true)
       setReports(reportPageResult.items)
@@ -143,25 +159,25 @@ export function ReportsList() {
       setCandidateShifts(loadedCandidates)
       setCandidateReports(loadedCandidateReports)
       setShifts(allLoadedShifts)
-      setBrands(loadedBrands)
-      setPlatforms(loadedPlatforms)
-      setCampaigns(loadedCampaigns)
-      setUsers(loadedUsers)
+      setBrands(refs.brands)
+      setPlatforms(refs.platforms)
+      setCampaigns(refs.campaigns)
+      setUsers(refs.users)
       setRegistrations(loadedRegistrations)
     } catch (error) {
       if (version === requestVersion.current) setLoadError(error)
     } finally {
       if (version === requestVersion.current) setLoading(false)
     }
-  }, [encodedFilters, navigate, reportPage, reportPageSize,identity])
+  }, [encodedFilters,navigate,reportPage,reportPageSize,identity,currentUser,pageKey])
 
   React.useEffect(() => {
     const versionRef = requestVersion
-    const frame = requestAnimationFrame(() => { void loadData() })
+    const frame = requestAnimationFrame(() => { void loadData(true) })
     return () => { cancelAnimationFrame(frame);versionRef.current++ }
   }, [loadData])
 
-  const myShiftIds = React.useMemo(() => new Set(registrations
+    const myShiftIds = React.useMemo(() => new Set(registrations
     .filter(registration => registration.user_id === currentUser?.id && isStaffedRegistration(registration))
     .map(registration => registration.shift_id)), [currentUser?.id, registrations])
 
@@ -332,7 +348,7 @@ export function ReportsList() {
     toast({ title: t('success'), description: t('exportImageMetadata'), variant: 'success' })
   }
 
-  if (loading || userLoading || identity!==loadedIdentity) return <div className="py-12 text-center">{t('loading')}</div>
+  if (loading || userLoading || identity!==loadedIdentity) return <div className="space-y-3 py-3" data-testid="reports-progressive-shell">{firstRows?.key===pageKey && <section className="rounded-lg border bg-card p-4" data-testid="reports-visible-first"><h2 className="text-sm font-semibold">Báo cáo gần đây</h2><p className="my-2 text-xs text-muted-foreground">Đang tải hàng đợi và chi tiết. Thao tác chỉnh sửa chỉ khả dụng sau khi đồng bộ đầy đủ.</p><ul className="divide-y text-sm">{firstRows.rows.slice(0,10).map(report=>{const shift=firstRows.shifts.find(item=>item.id===report.shift_id);return <li key={report.id} className="flex justify-between gap-3 py-2"><span>{shift?.title || 'Báo cáo livestream'}</span><span className="text-muted-foreground">{shift?.date || '—'}</span></li>})}</ul></section>}<div role="status" className="py-8 text-center">{t('loading')}</div></div>
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
 
   return (

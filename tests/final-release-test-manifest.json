@@ -85,6 +85,7 @@
     "tests/perf-p0-scoped-refresh.test.ts",
     "tests/perf-p0-skeleton.test.ts",
     "tests/persistent-audit.test.ts",
+    "tests/phase2-shared-reference-cache.test.ts",
     "tests/platform-metric-dom-binding.test.tsx",
     "tests/preview-loading-performance.test.tsx",
     "tests/production-shell-convergence.test.ts",
