@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/rc17b-payroll-autocalc-and-flexible-rates",
-    "head": "c31d18fe71c69cf12cb04369beb84f16c2807b93",
+    "head": "30b139912df259df33c8fe3c95d53ffe2b3d7670",
     "origin_main": "84b74d7ff940ec5705632dc606a3191028f5b297",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17b-payroll"
   },
@@ -361,5 +361,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-19T21:38:44+07:00"
+  "synced_at": "2026-10-20T11:48:04+07:00"
 }
