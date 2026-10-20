@@ -2,12 +2,12 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-20T09:55:41+00:00
+Generated at: 2026-10-20T09:58:36+00:00
 
 ## Repository
 
 - Branch: `perf/phase2-visible-first-dashboard-reports-20261020`
-- HEAD: `dfb99740a6e8b12c063b3875397f87a273dcdb09`
+- HEAD: `ef57c295af45362460ef5ac6c465e863a7e88b2e`
 - origin/main: `7f5efbfec23db84ad1d74024b08a591523aa4217`
 - Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17b-payroll`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
