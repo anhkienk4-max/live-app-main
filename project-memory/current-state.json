@@ -9,9 +9,9 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "feat/rc17b-payroll-autocalc-and-flexible-rates",
-    "head": "30b139912df259df33c8fe3c95d53ffe2b3d7670",
-    "origin_main": "84b74d7ff940ec5705632dc606a3191028f5b297",
+    "branch": "perf/navigation-visible-first-cache-20261020",
+    "head": "7ef3a2f3cc31f1161392972bb8bd8ae76046ea59",
+    "origin_main": "ef9b6d0f8a2d754865400c98192fb2c92ed96d0e",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17b-payroll"
   },
   "hardening": {
@@ -91,12 +91,12 @@
       "roots": {
         "app": 60,
         "components": 151,
-        "lib": 211,
+        "lib": 212,
         "scripts": 18,
         "supabase": 90,
-        "tests": 203
+        "tests": 204
       },
-      "total": 733
+      "total": 735
     },
     "tests": {
       "files": [
@@ -176,6 +176,7 @@
         "tests/openai-vision-ocr-provider.test.ts",
         "tests/operational-role-authority.test.ts",
         "tests/operational-storage-placement.test.ts",
+        "tests/operations-page-cache.test.ts",
         "tests/p1c-import-idempotency.test.ts",
         "tests/p3-uat-export-collapse.test.tsx",
         "tests/perf-p0-scoped-refresh.test.ts",
@@ -271,7 +272,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 170
+      "count": 171
     },
     "migrations": {
       "files": [
@@ -361,5 +362,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-20T11:48:04+07:00"
+  "synced_at": "2026-10-20T08:32:40+00:00"
 }
