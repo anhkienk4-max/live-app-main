@@ -50,9 +50,10 @@ export function usePagedList<T>(service: { getPage(query: ListQuery, signal?: Ab
     return () => { window.clearTimeout(timer); if (prefetchTimer !== undefined) window.clearTimeout(prefetchTimer); controller.abort() }
   }, [encodedFilters, identity, key, navigate, page, pageSize, prefix, service])
   const reload = useCallback(async () => {
-    invalidatePageCache(identity, prefix)
+    // An authorized write can affect Calendar, Reports or other filtered lists.
+    invalidatePageCache()
     setRevision(value => value + 1)
-  }, [identity, prefix])
+  }, [setRevision])
   const active = state.key === key
   const result = (active ? state.result : undefined) ?? cached
   return { ...pagination, reload, refreshing: !!result && !active && !cached,

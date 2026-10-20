@@ -292,7 +292,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     const version = ++requestVersion.current
     const filters = JSON.parse(operationalQuery)
     const cacheKey = pageCacheKey(identity, 'calendar_window', { view, page: listPage, pageSize: listSize, filters })
-    if (!reuseCache) invalidatePageCache(identity, 'calendar_window')
+    if (!reuseCache) invalidatePageCache()
     else {
       const cached = readPageCache<ShiftListPage>(cacheKey)
       if (cached) {
