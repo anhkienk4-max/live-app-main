@@ -14,14 +14,13 @@ import { useTranslation } from "@/lib/i18n";
 import { useCurrentUser } from "@/lib/hooks/useCurrentUser";
 import { hasPermission } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
-import { clearCalendarReferences } from "@/lib/services/calendarReferenceData";
 import { resolveSystemPermission } from "@/lib/permissions";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 
 export function CalendarWorkspace() {
   const { currentUser } = useCurrentUser();
   const identity = currentUser ? currentUser.id + ':' + resolveSystemPermission(currentUser) + ':' + currentUser.updated_at : '';
-  React.useEffect(() => () => clearCalendarReferences(), [identity]);
+  // Retain TTL-bound identity-scoped reference data when navigating away and back.
   return <CalendarIdentityWorkspace key={identity} />;
 }
 

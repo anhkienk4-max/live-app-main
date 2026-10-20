@@ -1,7 +1,7 @@
 import { shiftService } from './dataService'
 import type { ListFilters, ShiftListPage } from './operationsPageService'
 
-export async function readCalendarWindow(filters: ListFilters, signal?: AbortSignal): Promise<ShiftListPage> {
+export async function readCalendarWindow(filters: ListFilters, signal?: AbortSignal, onFirstPage?: (first: ShiftListPage) => void): Promise<ShiftListPage> {
   if (!filters.from || !filters.to) throw new Error('CALENDAR_RANGE_REQUIRED')
   let first: ShiftListPage | undefined
   const items: ShiftListPage['items'] = []
@@ -11,6 +11,7 @@ export async function readCalendarWindow(filters: ListFilters, signal?: AbortSig
     signal?.throwIfAborted()
     const result = await shiftService.getCalendarPage({ page, pageSize: 50, filters }, signal)
     first ??= result
+    if (page === 1 && result.items.length < result.total && !signal?.aborted) onFirstPage?.(result)
     if (result.page !== page || result.total !== first.total || result.ownerKey !== first.ownerKey) throw new Error('CALENDAR_COLLECTION_CHANGED')
     for (const item of result.items) {
       if (ids.has(item.id)) throw new Error('CALENDAR_COLLECTION_CHANGED')

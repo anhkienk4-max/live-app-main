@@ -52,7 +52,7 @@ export function usePagedList<T>(service: { getPage(query: ListQuery, signal?: Ab
   }, [identity, prefix])
   const active = state.key === key
   const result = (active ? state.result : undefined) ?? cached
-  return { ...pagination, reload, refreshing: !!result && !active,
+  return { ...pagination, reload, refreshing: !!result && !active && !cached,
     result, items: result?.items ?? [], total: result?.total ?? 0,
     loading: !result && (!active || !state.error), error: active ? state.error : null }
 }

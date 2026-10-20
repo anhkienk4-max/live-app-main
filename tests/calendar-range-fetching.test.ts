@@ -37,9 +37,11 @@ test('explicit list All Time and custom ranges retain their semantics', () => {
 
 test('Calendar uses bounded windows, on-demand reports and abort guards', () => {
   const source = readFileSync('components/features/calendar/CalendarView.tsx', 'utf8')
-  assert.match(source, /readCalendarWindow\(JSON\.parse\(operationalQuery\), controller\.signal\)/)
+  assert.match(source, /readCalendarWindow\(query, controller\.signal, first =>/)
   assert.match(source, /if \(version !== requestVersion\.current \|\| controller\.signal\.aborted\) return/)
   assert.match(source, /if \(!dayReportIds\) return/)
+  assert.match(source, /setLoadingMore\(true\)/)
+  assert.match(source, /disabled=\{bulkApprovalLoading \|\| loadingMore\}/)
   assert.doesNotMatch(source, /shiftService\.getAllComplete\(\)|shiftRegistrationService\.getAll\(\)/)
 })
 
