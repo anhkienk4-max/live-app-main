@@ -63,6 +63,10 @@ export function LiveSessionModal({
   const [updates, setUpdates] = React.useState<DashboardUpdate[]>([])
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
+  const [reportLoadError,setReportLoadError]=React.useState(false)
+  const [loadedSnapshotKey,setLoadedSnapshotKey]=React.useState('')
+  const loadedSnapshotKeyRef=React.useRef('')
+  const snapshotController=React.useRef<AbortController|null>(null)
   const [showUpdate, setShowUpdate] = React.useState(false)
   const [removeTarget, setRemoveTarget] = React.useState<DashboardUpdate | null>(null)
   const [report, setReport] = React.useState<Report | null>(null)
@@ -77,19 +81,42 @@ export function LiveSessionModal({
   const [loadedIdentity,setLoadedIdentity]=React.useState('')
   const [snapshotTotal,setSnapshotTotal]=React.useState(0)
   const [snapshotSummary,setSnapshotSummary]=React.useState<{total:number;peakViewers:number|null;recent:DashboardUpdate[]}>({total:0,peakViewers:null,recent:[]})
+  const snapshotKey=identity+':'+shift.id+':'+snapshotPage+':'+snapshotPageSize
   const loadUpdates = React.useCallback(async () => {
     const request=next()
-    setLoading(true)
+    snapshotController.current?.abort()
+    const controller=new AbortController()
+    snapshotController.current=controller
+    // Keep the last valid snapshot cards on screen during a background refresh.
+    if(loadedSnapshotKeyRef.current!==snapshotKey)setLoading(true)
     setLoadError(null)
+    setReportLoadError(false)
+
+    // Report permissions and latency must not block authorized snapshot metrics.
+    void reportService.getByShift(shift.id)
+      .then(loadedReport=>{
+        if(isCurrent(request)&&!controller.signal.aborted)setReport(loadedReport)
+      })
+      .catch(()=>{
+        if(isCurrent(request)&&!controller.signal.aborted)setReportLoadError(true)
+      })
+
+    const timeout=window.setTimeout(()=>controller.abort(),20000)
     try {
-      const [data, loadedReport] = await Promise.all([dashboardUpdateService.getPage(shift.id,{page:snapshotPage,pageSize:snapshotPageSize}), reportService.getByShift(shift.id)])
-      if(!isCurrent(request))return
+      const data=await dashboardUpdateService.getPage(shift.id,{page:snapshotPage,pageSize:snapshotPageSize},controller.signal)
+      if(!isCurrent(request)||controller.signal.aborted)return
       setLoadedIdentity(identity)
       setUpdates(data.items);setSnapshotTotal(data.total);setSnapshotPage(data.page)
       setSnapshotSummary({total:data.total,peakViewers:data.peakViewers,recent:data.recent})
-      setReport(loadedReport)
-    } catch (error) { if(isCurrent(request))setLoadError(error) } finally { if(isCurrent(request))setLoading(false) }
-  }, [shift.id,snapshotPage,snapshotPageSize,identity,next,isCurrent])
+      loadedSnapshotKeyRef.current=snapshotKey
+      setLoadedSnapshotKey(snapshotKey)
+    } catch (error) {
+      if(isCurrent(request))setLoadError(controller.signal.aborted?new Error('LIVE_SNAPSHOT_REQUEST_TIMEOUT'):error)
+    } finally {
+      window.clearTimeout(timeout)
+      if(isCurrent(request))setLoading(false)
+    }
+  }, [shift.id,snapshotPage,snapshotPageSize,identity,snapshotKey,next,isCurrent])
   const loadReport = loadUpdates
 
   React.useEffect(() => {
@@ -97,7 +124,7 @@ export function LiveSessionModal({
     const frame = requestAnimationFrame(() => {
       void loadUpdates()
     })
-    return () => { cancelAnimationFrame(frame);invalidate() }
+    return () => { cancelAnimationFrame(frame);invalidate();snapshotController.current?.abort() }
   }, [loadReport, loadUpdates, open, refreshVersion,invalidate])
 
   const getBrandName = (id: string) => brands.find((b: Brand) => b.id === id)?.name || 'Unknown'
@@ -141,7 +168,7 @@ export function LiveSessionModal({
   }
 
   const consoleContent = (loadError ? <PageLoadError error={loadError} onRetry={() => void loadUpdates()} /> : <LiveOperationsConsole shift={shift} updates={updates} snapshotSummary={snapshotSummary} report={report} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations}
-          loading={loading||identity!==loadedIdentity} onRefresh={() => void loadUpdates()} onStreamLinkSaved={saved => onUpdate(saved)}
+          loading={loading||identity!==loadedIdentity||loadedSnapshotKey!==snapshotKey} reportLoadError={reportLoadError} onRefresh={() => void loadUpdates()} onStreamLinkSaved={saved => onUpdate(saved)}
           actions={<>
             <ShiftLifecycleActions shift={shift} onSuccess={onUpdate} />
             {['preparing', 'live', 'paused'].includes(shift.status) && currentUser && hasPermission(currentUser, 'shifts.edit') && <>
@@ -151,7 +178,7 @@ export function LiveSessionModal({
             {currentUser && hasPermission(currentUser, 'reports.submit') && <Button size="sm" variant="outline" data-testid="open-final-report-modal" onClick={() => report ? setShowReportDetail(true) : setShowReportForm(true)}>{report ? t('viewDetails') : t('createFinalReport')}</Button>}
           </>}
           snapshots={<div className="space-y-3">            <div className="flex justify-end"><div className="inline-flex rounded-lg border p-1"><Button size="sm" variant={!showAllSnapshotMetrics ? 'secondary' : 'ghost'} onClick={() => setShowAllSnapshotMetrics(false)}>Chỉ số có dữ liệu</Button><Button size="sm" variant={showAllSnapshotMetrics ? 'secondary' : 'ghost'} onClick={() => setShowAllSnapshotMetrics(true)}>Tất cả chỉ số</Button></div></div>
-            {loading||identity!==loadedIdentity ? (
+            {loading||identity!==loadedIdentity||loadedSnapshotKey!==snapshotKey ? (
               <div className="text-center py-12 text-gray-600">Loading updates...</div>
             ) : updates.length === 0 ? (
               <Card className="p-12">
