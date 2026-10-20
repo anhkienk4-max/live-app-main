@@ -221,7 +221,7 @@ try {
     '  if not exists (select 1 from pg_policies where schemaname = ''public'' and tablename = ''reports'' and policyname = ''reports_active_select'' and qual like ''%can_read_report%'') then raise exception ''REPORT_SCOPED_READ_NOT_RESTORED''; end if;'
     '  if not pg_get_functiondef(''public.get_report_revisions(text)''::regprocedure) like ''%can_read_report%'' then raise exception ''REVISION_RPC_SCOPE_NOT_RESTORED''; end if;'
     '  if not has_function_privilege(''authenticated'', ''private.can_read_report(text,text)'', ''EXECUTE'') or has_function_privilege(''anon'', ''private.can_read_report(text,text)'', ''EXECUTE'') or has_function_privilege(''service_role'', ''private.can_read_report(text,text)'', ''EXECUTE'') then raise exception ''REPORT_HELPER_ACL_NOT_RESTORED''; end if;'
-    '  if exists (select 1 from pg_policies where schemaname = ''public'' and tablename = ''dashboard_updates'' and policyname = ''dashboard_updates_scoped_read'') then raise exception ''LIVE_SNAPSHOT_APPLIED_BEFORE_COMPENSATION''; end if;'
+    '  if exists (select 1 from pg_policies where schemaname = ''public'' and tablename = ''dashboard_updates'' and policyname = ''dashboard_updates_scoped_read'' and qual like ''%can_read_report%'') then raise exception ''LIVE_SNAPSHOT_POLICY_DEPENDENCY_BEFORE_M3''; end if;'
     '  raise notice ''REPORT_RLS_COMPENSATION_RESTORED=PASS'';'
     'end;'
     '$compensation_restored$;'
