@@ -7,7 +7,9 @@ import {
   AlertCircle,
   Calendar,
   ShieldCheck,
+  Calculator,
   } from 'lucide-react'
+import { calculateLivePreview } from '@/lib/workforce/payrollCalculation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -72,6 +74,25 @@ export function PayrollRateManager() {
   const [regApprovalNote, setRegApprovalNote] = React.useState<string>('')
   const [regSubmitting, setRegSubmitting] = React.useState(false)
   const [regError, setRegError] = React.useState<string | null>(null)
+
+  const previewCalculation = React.useMemo(() => {
+    const rate = Number(regVndPerHour)
+    const otMult = Number(regOtMultiplier)
+    const otBasisPoints = Math.round(otMult * 10000)
+    if (!Number.isSafeInteger(rate) || rate <= 0 || !Number.isSafeInteger(otBasisPoints) || otBasisPoints < 10000 || otBasisPoints > 50000) {
+      return null
+    }
+    try {
+      return calculateLivePreview({
+        rateVndPerHour: rate,
+        overtimeMultiplierBasisPoints: otBasisPoints,
+        regularMinutes: 120,
+        overtimeMinutes: 30,
+      })
+    } catch {
+      return null
+    }
+  }, [regVndPerHour, regOtMultiplier])
 
   const readSequence = React.useRef(0)
   const loadRates = React.useCallback(async () => {
@@ -150,7 +171,7 @@ export function PayrollRateManager() {
 
     try {
       setRegSubmitting(true)
-      await workforceService.registerRate({
+      const res = await workforceService.registerRate({
         staffId: regScope === 'staff_specific' ? regStaffId.trim() : null,
         operationalRole: regRole,
         effectiveFrom: regEffectiveFrom,
@@ -162,7 +183,9 @@ export function PayrollRateManager() {
 
       toast({
         title: 'Phê duyệt khung lương thành công',
-        description: `Khung lương vai trò ${regRole.toUpperCase()} đã được đăng ký và có hiệu lực từ ${regEffectiveFrom}.`,
+        description: res.superseded_rate_id
+          ? `Khung lương vai trò ${regRole.toUpperCase()} đã được cập nhật từ ${regEffectiveFrom}. Đơn giá cũ đang mở đã được giới hạn kết thúc tự động (Superseded).`
+          : `Khung lương vai trò ${regRole.toUpperCase()} đã được đăng ký và có hiệu lực từ ${regEffectiveFrom}.`,
       })
 
       setIsRegisterOpen(false)
@@ -391,6 +414,9 @@ export function PayrollRateManager() {
             <DialogDescription className="text-xs text-slate-500">
               Thiết lập đơn giá chuẩn và hệ số tăng ca. Quản trị viên không thể tự phê duyệt mức lương cho chính mình.
             </DialogDescription>
+            <div className="mt-2 rounded-md border border-indigo-100 bg-indigo-50/70 p-2.5 text-[11px] text-indigo-900 leading-relaxed text-left">
+              <strong>💡 Cơ chế Phiên bản (Rate Versioning):</strong> Đơn giá cũ đang mở (không có ngày kết thúc) cho cùng vai trò/nhân sự sẽ tự động được giới hạn đến ngày trước ngày hiệu lực mới. Không sửa đè lịch sử hay hồi tố các kỳ lương đã khóa sổ.
+            </div>
           </DialogHeader>
 
           <form onSubmit={handleRegister} className="space-y-4 pt-2">
@@ -487,6 +513,27 @@ export function PayrollRateManager() {
                 </span>
               </div>
             </div>
+
+            {previewCalculation && (
+              <div className="rounded-md border border-blue-200 bg-blue-50/60 p-3 space-y-1.5">
+                <div className="flex items-center justify-between text-xs font-semibold text-blue-900">
+                  <span className="flex items-center gap-1.5">
+                    <Calculator className="h-3.5 w-3.5 text-blue-600" />
+                    Mô phỏng lương trực tiếp (Ca mẫu 2h + 30p OT)
+                  </span>
+                  <span className="font-mono text-sm text-blue-700">
+                    {formatCurrency(previewCalculation.netVnd)}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 font-mono">
+                  <div>Lương cơ bản (120p): {formatCurrency(previewCalculation.regularVnd)}</div>
+                  <div>Tăng ca (30p OT): {formatCurrency(previewCalculation.overtimeVnd)}</div>
+                </div>
+                <div className="text-[10px] text-slate-500 font-mono border-t border-blue-100 pt-1">
+                  Công thức: {previewCalculation.formulaDescription}
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">

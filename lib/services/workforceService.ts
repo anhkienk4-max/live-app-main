@@ -87,6 +87,56 @@ export interface Pagination {
   has_previous: boolean
 }
 
+export interface RecalculationLineDiff {
+  lineId: string
+  segmentId: string
+  staffId: string
+  role: WorkforceRole
+  version: number
+  shiftDate: string
+  actualMinutes: number
+  payableMinutes: number
+  overtimeMinutes: number
+  oldRateCardId: string
+  oldRateVndPerHour: number
+  newRateCardId: string | null
+  newRateVndPerHour: number | null
+  oldGrossVnd: number
+  newGrossVnd: number | null
+  grossDeltaVnd: number
+  adjustmentVnd: number
+  adjustmentReason: string | null
+  oldNetVnd: number
+  newNetVnd: number | null
+  netDeltaVnd: number
+  rateChanged: boolean
+  errorReason: string | null
+}
+
+export interface RecalculationDiffSummary {
+  totalLines: number
+  changedLinesCount: number
+  totalGrossDeltaVnd: number
+  totalNetDeltaVnd: number
+  preservedAdjustmentsCount: number
+  unresolvedCount: number
+}
+
+export interface PayrollReconciliationSummary {
+  total_approved_segments: number
+  reconciled_count: number
+  unreconciled_count: number
+  is_fully_reconciled: boolean
+  unreconciled_segments: Array<{
+    segmentId: string
+    shiftId: string
+    staffId: string
+    role: string
+    shiftDate: string
+    reason: string
+  }>
+}
+
 export interface PeriodDetailResponse {
   ok: boolean
   period: PayrollPeriod
@@ -419,8 +469,8 @@ export const workforceService = {
     vndPerHour: number
     overtimeMultiplierBasisPoints: number
     approvalNote: string
-  }): Promise<{ ok: true; rate: RateCard }> {
-    return requestJson<{ ok: true; rate: RateCard }>('/api/workforce/payroll', {
+  }): Promise<{ ok: true; rate: RateCard; superseded_rate_id?: string | null }> {
+    return requestJson<{ ok: true; rate: RateCard; superseded_rate_id?: string | null }>('/api/workforce/payroll', {
       method: 'POST',
       body: JSON.stringify({
         action: 'register_rate',
@@ -432,6 +482,72 @@ export const workforceService = {
         overtime_multiplier_basis_points: payload.overtimeMultiplierBasisPoints,
         approval_note: payload.approvalNote,
       }),
+    })
+  },
+
+  async previewRecalculation(periodId: string): Promise<{
+    ok: true
+    diffs: RecalculationLineDiff[]
+    summary: RecalculationDiffSummary
+  }> {
+    return requestJson('/api/workforce/payroll', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'preview_recalculation',
+        period_id: periodId,
+      }),
+    })
+  },
+
+  async recalculateDraft(payload: {
+    periodId: string
+    reason: string
+    requestId: string
+  }): Promise<{
+    ok: true
+    recalculated_count: number
+    lines: PayrollLine[]
+    summary: RecalculationDiffSummary
+  }> {
+    return requestJson('/api/workforce/payroll', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'recalculate_draft',
+        period_id: payload.periodId,
+        reason: payload.reason,
+        request_id: payload.requestId,
+      }),
+    })
+  },
+
+  async autoCalculateDraft(payload: {
+    periodId: string
+    recalculateExisting?: boolean
+    reason?: string
+    requestId?: string
+  } | string): Promise<{
+    ok: true
+    prepared_count: number
+    recalculated_count?: number
+    skipped_count: number
+    unapproved_ot_exceptions?: Array<{ segmentId: string; staffId: string; shiftDate: string; reason: string }>
+    reconciliation?: PayrollReconciliationSummary
+    lines: PayrollLine[]
+    recalculated_lines?: PayrollLine[]
+    skipped: Array<{ segmentId: string; reason: string }>
+  }> {
+    const body = typeof payload === 'string'
+      ? { action: 'auto_calculate_draft', period_id: payload }
+      : {
+          action: 'auto_calculate_draft',
+          period_id: payload.periodId,
+          recalculate_existing: payload.recalculateExisting,
+          reason: payload.reason,
+          request_id: payload.requestId,
+        }
+    return requestJson('/api/workforce/payroll', {
+      method: 'POST',
+      body: JSON.stringify(body),
     })
   },
 

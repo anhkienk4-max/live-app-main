@@ -9,10 +9,10 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "main",
-    "head": "91ea9cddf4322dd3ed086e52424d6ecfd8aeb4c1",
-    "origin_main": "91ea9cddf4322dd3ed086e52424d6ecfd8aeb4c1",
-    "worktree": "C:/Users/KienNguyen/OPS_RESTORE_LAB_RC16K/rc17a-actual-staffing"
+    "branch": "feat/rc17b-payroll-autocalc-and-flexible-rates",
+    "head": "30b139912df259df33c8fe3c95d53ffe2b3d7670",
+    "origin_main": "84b74d7ff940ec5705632dc606a3191028f5b297",
+    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17b-payroll"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -94,9 +94,9 @@
         "lib": 211,
         "scripts": 18,
         "supabase": 90,
-        "tests": 201
+        "tests": 203
       },
-      "total": 731
+      "total": 733
     },
     "tests": {
       "files": [
@@ -215,6 +215,7 @@
         "tests/rc16l-api.test.ts",
         "tests/rc16l-calendar.test.ts",
         "tests/rc17a-actual-staffing.test.ts",
+        "tests/rc17b-payroll-autocalc.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
         "tests/registration-board-performance.test.ts",
         "tests/report-history-access.test.ts",
@@ -270,7 +271,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 169
+      "count": 170
     },
     "migrations": {
       "files": [
@@ -343,9 +344,10 @@
         "supabase/migrations/20261012000001_rc16b_draft_payroll_correction.sql",
         "supabase/migrations/20261012145735_p0_audit_privilege_hardening.sql",
         "supabase/migrations/20261012171503_rc16k_bounded_shift_lists.sql",
-        "supabase/migrations/20261017000000_rc17a_actual_staffing_audit.sql"
+        "supabase/migrations/20261017000000_rc17a_actual_staffing_audit.sql",
+        "supabase/migrations/20261019000000_rc17b_rate_supersession_and_recalc.sql"
       ],
-      "count": 70
+      "count": 71
     }
   },
   "verification": {
@@ -359,5 +361,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-19T11:28:23+07:00"
+  "synced_at": "2026-10-20T11:48:04+07:00"
 }
