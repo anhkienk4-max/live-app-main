@@ -116,7 +116,7 @@ export function DashboardOverview() {
       <ContentSkeleton />
     </div>
   }
-  return <DashboardWorkspace data={data} currentUser={currentUser} onUpdate={loadData} filterState={filters} onFilterChange={setFilters} />
+  return <DashboardWorkspace data={data} currentUser={currentUser} onUpdate={() => loadData(false)} filterState={filters} onFilterChange={setFilters} />
 }
 
 // Presentation accepts typed data; only the visual-QA route supplies fixture data.
