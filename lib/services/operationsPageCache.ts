@@ -11,6 +11,7 @@ const MAX_ENTRIES = 48
 type Entry = { expires: number; value: unknown }
 const entries = new Map<string, Entry>()
 let invalidationEpoch = 0
+export function currentPageCacheGeneration(): number { return invalidationEpoch }
 
 export function pageCacheKey(identity: string, namespace: string, query: unknown): string {
   return JSON.stringify([identity, namespace, query])

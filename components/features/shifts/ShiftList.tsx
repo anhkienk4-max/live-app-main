@@ -4,7 +4,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 
 import * as React from 'react'
 import { usePagedList } from '@/lib/hooks/usePagedList'
-import { shiftService, brandService, platformService, campaignService, userService, shiftRegistrationService, getShiftRoleCapacities } from '@/lib/services/dataService'
+import { getOperationalReferences } from '@/lib/services/operationalReferences'
+import { shiftService, shiftRegistrationService, getShiftRoleCapacities } from '@/lib/services/dataService'
 import { templateService } from '@/lib/services/templateService'
 import { Shift, Brand, Platform, Campaign, User, DeletionImpact, ShiftRegistration } from '@/lib/types/database.types'
 import { formatShiftTimeRange, ShiftTemplate } from '@/lib/utils/shiftUtils'
@@ -140,22 +141,18 @@ export function ShiftList() {
   const mobileEndIndex = Math.min(safeMobilePage * list.pageSize, list.total)
 
   const loadReferences = React.useCallback(async () => {
+    if (!currentUser) return
     setLoadError(null)
     try {
-      const [brandsData, platformsData, campaignsData, usersData, templatesData] = await Promise.all([
-        brandService.getAll(),
-        platformService.getAll(),
-        campaignService.getAll(),
-        userService.getAll(),
-        templateService.getAll(),
-      ])
+      const [refs, templatesData] = await Promise.all([getOperationalReferences(currentUser), templateService.getAll()])
+      const { brands: brandsData, platforms: platformsData, campaigns: campaignsData, users: usersData } = refs
       setBrands(brandsData)
       setPlatforms(platformsData)
       setCampaigns(campaignsData)
       setUsers(usersData)
       setTemplates(templatesData)
     } catch (error) { setLoadError(error) }
-  }, [])
+  }, [currentUser])
 
   React.useEffect(() => {
     const frame = window.requestAnimationFrame(() => { void loadReferences() })

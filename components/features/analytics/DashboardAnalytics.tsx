@@ -14,7 +14,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { brandService, campaignService, platformService, reportService, shiftRegistrationService, shiftService, userService, type AnalyticsSnapshot } from '@/lib/services/dataService'
+import { reportService, shiftRegistrationService, shiftService, type AnalyticsSnapshot } from '@/lib/services/dataService'
 import { Brand, Campaign, OperationalRole, Platform, Report, ShiftRegistration, User } from '@/lib/types/database.types'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
@@ -33,6 +33,7 @@ import { PageLoadError } from '@/components/ui/page-load-error'
 import { reportMetricValue, resolveAnalyticsDateRange } from '@/lib/utils/analytics'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import { usePagedList } from '@/lib/hooks/usePagedList'
+import { getOperationalReferences } from '@/lib/services/operationalReferences'
 
 type RangeKey = 'today' | 'yesterday' | '7d' | '30d' | 'thisMonth' | 'lastMonth' | 'custom'
 type Filters = { range: RangeKey; start: string; end: string; brandIds: string[]; platformIds: string[]; campaignIds: string[]; hostIds: string[]; supportIds: string[]; technicalIds: string[] }
@@ -84,18 +85,19 @@ export function DashboardAnalytics() {
     const version=++requestVersion.current
     setLoadError(null)
     try {
-      const [loadedSnapshot, loadedBrands, loadedPlatforms, loadedCampaigns, loadedUsers] = await Promise.all([
-        reportService.getAnalyticsSnapshot(JSON.parse(filtersKey)), brandService.getAll(), platformService.getAll(), campaignService.getAll(), userService.getAll(),
+      if (!currentUser) return
+      const [loadedSnapshot, refs] = await Promise.all([
+        reportService.getAnalyticsSnapshot(JSON.parse(filtersKey)), getOperationalReferences(currentUser),
       ])
       if(version!==requestVersion.current)return
       setLoadedKey(identity+':'+filtersKey)
-      setSnapshot(loadedSnapshot); setBrands(loadedBrands); setPlatforms(loadedPlatforms); setCampaigns(loadedCampaigns); setUsers(loadedUsers)
+      setSnapshot(loadedSnapshot); setBrands(refs.brands); setPlatforms(refs.platforms); setCampaigns(refs.campaigns); setUsers(refs.users)
     } catch (error) {
       setLoadError(error)
     } finally {
       setLoading(false)
     }
-  }, [identity,filtersKey])
+  }, [identity,filtersKey,currentUser])
 
   React.useEffect(() => {
     // Initial data hydration intentionally updates the loading/data state from the async callback.

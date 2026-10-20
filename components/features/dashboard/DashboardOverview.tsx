@@ -6,6 +6,9 @@ import { brandService, campaignService, platformService, reportService, shiftReg
 import { Brand, Campaign, Platform, Report, Shift, ShiftRegistration, SwapRequest, User } from '@/lib/types/database.types'
 import { useTranslation } from '@/lib/i18n'
 import { getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
+import { getOperationalReferences, operationalReferenceIdentity } from '@/lib/services/operationalReferences'
+import { readTransientData } from '@/lib/services/transientDataCache'
+import { invalidatePageCache } from '@/lib/services/operationsPageCache'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
@@ -46,38 +49,71 @@ export function DashboardOverview() {
   const {currentUser} = useCurrentUser()
   const [data,setData] = React.useState<DashboardDataset | null>(null)
   const [loading,setLoading] = React.useState(true)
+  const [early,setEarly] = React.useState<{key:string; items:Shift[]} | null>(null)
   const [loadError,setLoadError] = React.useState<unknown>(null)
   const [filters,setFilters]=React.useState<Filters|null>(()=>initialFilters())
   const sequence=React.useRef(0)
-  const loadData = React.useCallback(async () => {
-    if(!currentUser||!filters)return
-    const request=++sequence.current
+  const identity = currentUser ? operationalReferenceIdentity(currentUser) : ''
+  const filterKey = JSON.stringify(filters)
+  const viewKey = identity + ':' + filterKey
+  const loadData = React.useCallback(async (reuseCache = false) => {
+    if (!currentUser || !filters || !identity) return
+    const request = ++sequence.current
+    if (!reuseCache) invalidatePageCache()
     setLoading(true)
     setLoadError(null)
     try {
-      const today=getCurrentBusinessDate()
-      const from=filters.start<today?filters.start:today
-      const to=filters.end>today?filters.end:today
-      const [rangeShifts,reports,brands,platforms,campaigns,users,future,swapPage,scopeSwaps]=await Promise.all([
-        shiftService.getAllFiltered({from,to}),reportService.getAllFiltered({from,to}),
-        brandService.getAll(),platformService.getAll(),campaignService.getAll(),userService.getAll(),
-        resolveSystemPermission(currentUser)==='member'
+      const result = await readTransientData(identity, 'dashboard:' + filterKey, async () => {
+        const today = getCurrentBusinessDate()
+        const from = filters.start < today ? filters.start : today
+        const to = filters.end > today ? filters.end : today
+        const upcoming = resolveSystemPermission(currentUser)==='member'
           ? shiftService.getRegistrationPage('mine',{page:1,pageSize:10,filters:{from:today,registrationStatuses:['approved','manually_assigned']}})
-          : shiftService.getCalendarPage({page:1,pageSize:10,filters:{from:today,statuses:['scheduled','preparing','live','paused']}}),
-        swapRequestService.getPage({page:1,pageSize:10,filters:{statuses:['pending','accepted']}}),
-        swapRequestService.getAllFiltered({from,to}),
-      ])
-      const previewIds=[...new Set(swapPage.items.flatMap(swap=>[swap.shift_id,swap.target_shift_id].filter((id):id is string=>!!id)))]
-      const related=previewIds.length?await shiftService.getAllFiltered({shiftIds:previewIds}):[]
-      const shifts=[...new Map([...rangeShifts,...future.items,...related].map(shift=>[shift.id,shift])).values()]
-      const registrations=await shiftRegistrationService.getForShifts(shifts.map(shift=>shift.id))
-      if(request!==sequence.current)return
-      setData({shifts,reports,brands,platforms,campaigns,users,registrations,swapRequests:[...new Map([...scopeSwaps,...swapPage.items].map(swap=>[swap.id,swap])).values()]})
-    } catch(error) {setLoadError(error)} finally {setLoading(false)}
-  },[currentUser,filters])
-  React.useEffect(()=>{const frame=requestAnimationFrame(()=>{if(currentUser) void loadData()});return ()=>cancelAnimationFrame(frame)},[currentUser,loadData])
+          : shiftService.getCalendarPage({page:1,pageSize:10,filters:{from:today,statuses:['scheduled','preparing','live','paused']}})
+        void upcoming.then(visible => {
+          if (request === sequence.current) setEarly({key:viewKey, items:visible.items})
+        }).catch(() => { /* The full read handles errors authoritatively. */ })
+        const [rangeShifts,reports,refs,future,swapPage,scopeSwaps]=await Promise.all([
+          shiftService.getAllFiltered({from,to}),reportService.getAllFiltered({from,to}),
+          getOperationalReferences(currentUser),
+          upcoming,
+          swapRequestService.getPage({page:1,pageSize:10,filters:{statuses:['pending','accepted']}}),
+          swapRequestService.getAllFiltered({from,to}),
+        ])
+        const previewIds=[...new Set(swapPage.items.flatMap(swap=>[swap.shift_id,swap.target_shift_id].filter((id):id is string=>!!id)))]
+        const related=previewIds.length?await shiftService.getAllFiltered({shiftIds:previewIds}):[]
+        const shifts=[...new Map([...rangeShifts,...future.items,...related].map(shift=>[shift.id,shift])).values()]
+        const registrations=await shiftRegistrationService.getForShifts(shifts.map(shift=>shift.id))
+        return {shifts,reports,...refs,registrations,swapRequests:[...new Map([...scopeSwaps,...swapPage.items].map(swap=>[swap.id,swap])).values()]} satisfies DashboardDataset
+      }, async () => {
+        const actor=await import('@/lib/services/dataService').then(mod=>mod.currentUserService.getCurrent())
+        return !!actor && (process.env.NEXT_PUBLIC_ENABLE_MOCK_USER_SWITCHER === 'true' || operationalReferenceIdentity(actor)===identity)
+      })
+      if (request !== sequence.current) return
+      setData(result)
+    } catch(error) {
+      if (request === sequence.current) setLoadError(error)
+    } finally {
+      if (request === sequence.current) setLoading(false)
+    }
+  },[currentUser,filters,identity,filterKey,viewKey])
+  React.useEffect(()=>{
+    const frame=requestAnimationFrame(()=>{if(currentUser) void loadData(true)})
+    return ()=>{cancelAnimationFrame(frame);sequence.current++}
+  },[currentUser,loadData])
   if (loadError) return <PageLoadError error={loadError} onRetry={()=>void loadData()} />
-  if (loading || !data || !currentUser) return <ContentSkeleton />
+  if (loading || !data || !currentUser) {
+    return <div className="space-y-3" data-testid="dashboard-progressive-shell">
+      {early?.key===viewKey && <section className="rounded-lg border bg-card p-4" data-testid="dashboard-visible-first">
+        <h2 className="text-sm font-semibold">Ca livestream sắp tới</h2>
+        <p className="mt-1 text-xs text-muted-foreground">Đang tải số liệu tổng hợp. Danh sách ca được xác nhận từ server.</p>
+        {early.items.length ? <ul className="mt-3 divide-y text-sm">
+          {early.items.slice(0,10).map(shift=><li key={shift.id} className="flex flex-wrap justify-between gap-2 py-2"><span className="font-medium">{shift.title}</span><span className="text-muted-foreground">{shift.date} · {shift.start_time}–{shift.end_time}</span></li>)}
+        </ul> : <p className="mt-3 text-sm text-muted-foreground">Không có ca sắp tới trong trang đầu.</p>}
+      </section>}
+      <ContentSkeleton />
+    </div>
+  }
   return <DashboardWorkspace data={data} currentUser={currentUser} onUpdate={loadData} filterState={filters} onFilterChange={setFilters} />
 }
 
