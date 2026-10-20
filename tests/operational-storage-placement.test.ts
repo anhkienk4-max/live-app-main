@@ -112,6 +112,17 @@ test('LEGACY_CATEGORY_PERIOD builds category then configured period', () => {
   assert.deepEqual(result.folderSegments, ['DASHBOARD', 'Tháng 10 - 2026'])
 })
 
+test('Drive uppercase period label matches existing Mars internal folders without altering lower-case legacy support', () => {
+  const configured = { period_naming_style: 'THANG_UPPER_M_DASH_YEAR' }
+  const dashboard = resolve('LEGACY_CATEGORY_PERIOD', { logicalCategory: 'dashboard', shiftDate: '2026-10-20' }, configured)
+  const visibility = resolve('LEGACY_CATEGORY_PERIOD', { logicalCategory: 'live_visual', shiftDate: '2026-10-20' }, configured)
+  const september = resolve('LEGACY_CATEGORY_PERIOD', { logicalCategory: 'dashboard', shiftDate: '2026-09-15' }, configured)
+  assert.deepEqual(dashboard.folderSegments, ['DASHBOARD', 'THÁNG 10 - 2026'])
+  assert.deepEqual(visibility.folderSegments, ['VISIBILITY', 'THÁNG 10 - 2026'])
+  assert.deepEqual(september.folderSegments, ['DASHBOARD', 'THÁNG 9 - 2026'])
+  assert.equal(resolve('LEGACY_CATEGORY_PERIOD').periodLabel, 'Tháng 10 - 2026')
+})
+
 test('LEGACY_PLATFORM_CATEGORY_PERIOD includes the resolved platform label', () => {
   const result = resolve('LEGACY_PLATFORM_CATEGORY_PERIOD', { platformLabel: 'OPELLA (TikTok)' }, {
     root_folder_id: 'R', base_folder_id: 'opella-ls-report-id',
