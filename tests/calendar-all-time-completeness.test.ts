@@ -239,7 +239,8 @@ test('All Time report reads complete bounded shift-ID batches without duplicates
 
 test('Calendar uses bounded windows, on-demand reports and abort guards', () => {
   const source = readFileSync('components/features/calendar/CalendarView.tsx', 'utf8')
-  assert.match(source, /readCalendarWindow\(JSON\.parse\(operationalQuery\), controller\.signal\)/)
+  assert.match(source, /const filters = JSON\.parse\(operationalQuery\)/)
+  assert.match(source, /readCalendarWindow\(filters, controller\.signal, first =>/)
   assert.match(source, /if \(version !== requestVersion\.current \|\| controller\.signal\.aborted\) return/)
   assert.match(source, /if \(!dayReportIds\) return/)
   assert.doesNotMatch(source, /shiftService\.getAllComplete\(\)|shiftRegistrationService\.getAll\(\)/)

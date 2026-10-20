@@ -5,6 +5,7 @@ import type { AuthMode } from '@/lib/auth/authMode'
 import type { AuthIdentity } from '@/lib/auth/authIdentity'
 import { currentUserService } from '@/lib/services/dataService'
 import type { User } from '@/lib/types/database.types'
+import { invalidatePageCache } from '@/lib/services/operationsPageCache'
 
 interface AuthIdentityContextValue {
   mode: AuthMode
@@ -44,6 +45,7 @@ export function AuthIdentityProvider({
 
   const clearIdentity = React.useCallback(() => {
     if (businessUser) currentUserService.clearAuthenticatedUser(businessUser.id)
+    invalidatePageCache()
     setIdentity(null)
     setBusinessUser(null)
   }, [businessUser])

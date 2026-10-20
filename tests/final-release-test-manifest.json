@@ -79,6 +79,7 @@
     "tests/openai-vision-ocr-provider.test.ts",
     "tests/operational-role-authority.test.ts",
     "tests/operational-storage-placement.test.ts",
+    "tests/operations-page-cache.test.ts",
     "tests/p1c-import-idempotency.test.ts",
     "tests/p3-uat-export-collapse.test.tsx",
     "tests/perf-p0-scoped-refresh.test.ts",
