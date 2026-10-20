@@ -2,14 +2,14 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-20T08:47:21+00:00
+Generated at: 2026-10-20T16:32:37+07:00
 
 ## Repository
 
-- Branch: `perf/navigation-visible-first-cache-20261020`
-- HEAD: `5b599e373a69d6c54a49737075d4003821ab8410`
-- origin/main: `ef9b6d0f8a2d754865400c98192fb2c92ed96d0e`
-- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17b-payroll`
+- Branch: `feat/rc17d-responsive-auth`
+- HEAD: `7f5efbfec23db84ad1d74024b08a591523aa4217`
+- origin/main: `7f5efbfec23db84ad1d74024b08a591523aa4217`
+- Worktree: `C:/Users/KienNguyen/.codex/worktrees/a2f2/live-app-main`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
 ## Hardening
@@ -21,9 +21,9 @@ Generated at: 2026-10-20T08:47:21+00:00
 
 ## Inventory
 
-- Routes: 56
-- Source files in tracked inventory roots: 735
-- Tests: 171
+- Routes: 57
+- Source files in tracked inventory roots: 740
+- Tests: 172
 - Migrations: 71
 
 ## Modules

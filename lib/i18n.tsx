@@ -7,6 +7,14 @@ export type TranslationKey = keyof typeof en
 type Variables = Record<string, string | number>
 
 const en = {
+  navGroupOverview: 'Overview',
+  navGroupOperations: 'Livestream Operations',
+  navGroupData: 'Data & Reports',
+  navGroupPeople: 'People & Finance',
+  navGroupSystem: 'System Administration',
+  googleUnavailable: 'Google sign-in is not available yet. Use email or request access.',
+  googleLoginFailed: 'Google sign-in could not be completed. Please try again or use email.',
+  googleApprovalRequired: 'This account does not have approved access. Please request access or contact an Admin.',
 
   // Role Lens
   roleAdmin: 'Admin',
@@ -1161,6 +1169,14 @@ const en = {
 } as const
 
 const vi: Record<keyof typeof en, string> = {
+  navGroupOverview: 'Tổng quan',
+  navGroupOperations: 'Vận hành Livestream',
+  navGroupData: 'Dữ liệu & Báo cáo',
+  navGroupPeople: 'Nhân sự & Tài chính',
+  navGroupSystem: 'Quản trị hệ thống',
+  googleUnavailable: 'Đăng nhập Google chưa khả dụng. Vui lòng dùng email hoặc yêu cầu cấp tài khoản.',
+  googleLoginFailed: 'Chưa thể hoàn tất đăng nhập Google. Vui lòng thử lại hoặc dùng email.',
+  googleApprovalRequired: 'Tài khoản chưa được cấp quyền truy cập. Vui lòng gửi yêu cầu hoặc liên hệ Admin.',
 
   // Role Lens
   roleAdmin: 'Quản trị viên',

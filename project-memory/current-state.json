@@ -9,10 +9,10 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "perf/navigation-visible-first-cache-20261020",
-    "head": "5b599e373a69d6c54a49737075d4003821ab8410",
-    "origin_main": "ef9b6d0f8a2d754865400c98192fb2c92ed96d0e",
-    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17b-payroll"
+    "branch": "feat/rc17d-responsive-auth",
+    "head": "7f5efbfec23db84ad1d74024b08a591523aa4217",
+    "origin_main": "7f5efbfec23db84ad1d74024b08a591523aa4217",
+    "worktree": "C:/Users/KienNguyen/.codex/worktrees/a2f2/live-app-main"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -61,6 +61,7 @@
       "app/api/account-requests/route.ts",
       "app/api/ai/chat/route.ts",
       "app/api/auth/callback/route.ts",
+      "app/api/auth/providers/route.ts",
       "app/api/file-sources/ingest/route.ts",
       "app/api/internal/file-provider-diagnostics/route.ts",
       "app/api/ocr/route.ts",
@@ -89,14 +90,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 60,
-        "components": 151,
-        "lib": 212,
+        "app": 61,
+        "components": 152,
+        "lib": 214,
         "scripts": 18,
         "supabase": 90,
-        "tests": 204
+        "tests": 205
       },
-      "total": 735
+      "total": 740
     },
     "tests": {
       "files": [
@@ -217,6 +218,7 @@
         "tests/rc16l-calendar.test.ts",
         "tests/rc17a-actual-staffing.test.ts",
         "tests/rc17b-payroll-autocalc.test.ts",
+        "tests/rc17d-responsive-auth.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
         "tests/registration-board-performance.test.ts",
         "tests/report-history-access.test.ts",
@@ -272,7 +274,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 171
+      "count": 172
     },
     "migrations": {
       "files": [
@@ -362,5 +364,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-20T08:47:21+00:00"
+  "synced_at": "2026-10-20T16:32:37+07:00"
 }

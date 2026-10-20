@@ -27,7 +27,7 @@ interface DayViewProps {
   onCreateShift?: () => void
 }
 
-export function DayView({ currentDate, shifts, allShifts = shifts, onRegister, brands, platforms, registrations = [], currentUser = null, onShiftClick, hasActiveFilters = false, onClearFilters, onCreateShift }: DayViewProps) {
+export function DayView({ currentDate, shifts, allShifts = shifts, onRegister, brands, platforms, users, registrations = [], currentUser = null, onShiftClick, hasActiveFilters = false, onClearFilters, onCreateShift }: DayViewProps) {
   const { t, language } = useTranslation()
   const dayShifts = shiftsForGridDate(shifts, format(currentDate, 'yyyy-MM-dd'))
   const context = { currentDate, brands, platforms, registrations }
@@ -38,12 +38,12 @@ export function DayView({ currentDate, shifts, allShifts = shifts, onRegister, b
       {hasActiveFilters ? <Button variant="outline" onClick={onClearFilters}>{t('resetFilters')}</Button>
         : hasPermission(currentUser, 'shifts.edit') && <Button onClick={onCreateShift}>{t('newShift')}</Button>}
     </div>}
-    {dayShifts.map(({ shift, start_time, continuation }) => <div key={shift.id} className="grid min-w-0 grid-cols-[3rem_minmax(0,1fr)] items-start gap-2" data-testid={`day-shift-${shift.id}`}>
-      <time className="pt-3 text-xs font-medium text-muted-foreground">{start_time.slice(0, 5)}</time>
+    {dayShifts.map(({ shift, start_time, continuation }) => <div key={shift.id} className="min-w-0 space-y-1" data-testid={`day-shift-${shift.id}`}>
+      <time className="text-xs font-medium text-muted-foreground">{start_time.slice(0, 5)}</time>
       <div className="min-w-0 space-y-1">
         <p className="text-xs font-medium">{formatShiftTimeRange(shift)}</p>
         {continuation && <p className="text-xs text-muted-foreground">{language === 'vi' ? 'Tiếp từ ngày' : 'Continues from'} {shift.date}</p>}
-        <ShiftCard shift={shift} variant="compact" context={context} onClick={() => onShiftClick?.(shift)} />
+        <ShiftCard shift={shift} users={users} showDate variant="expanded" context={context} onClick={() => onShiftClick?.(shift)} />
         {currentUser && onRegister && <ShiftRegistrationActions shift={shift} currentUser={currentUser} allShifts={allShifts} registrations={registrations} onRegister={role => onRegister(shift.id, role)} />}
       </div>
     </div>)}

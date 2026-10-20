@@ -34,6 +34,7 @@ export interface AttentionItem {
   context: string
   time: string
   action: string
+  href?: string
 }
 
 export interface PerformanceData {
@@ -86,8 +87,8 @@ function KpiCard({ icon, iconBg, title, value, subtitle }: KpiCardProps) {
   )
 }
 
-interface AttentionRowProps { severity: AttentionItem['severity']; title: string; context: string; time: string; action: string }
-function AttentionRow({ severity, title, context, time, action }: AttentionRowProps) {
+interface AttentionRowProps { severity: AttentionItem['severity']; title: string; context: string; time: string; action: string; href?: string }
+function AttentionRow({ severity, title, context, time, action, href }: AttentionRowProps) {
   const map: Record<AttentionItem['severity'], { icon: React.ReactNode; bg: string; border: string }> = {
     critical: { icon: <ShieldAlert className="w-5 h-5 text-red-600" />, bg: 'bg-red-50', border: 'border-red-100' },
     high:     { icon: <AlertTriangle className="w-5 h-5 text-orange-500" />, bg: 'bg-orange-50', border: 'border-orange-100' },
@@ -96,7 +97,7 @@ function AttentionRow({ severity, title, context, time, action }: AttentionRowPr
   }
   const s = map[severity]
   return (
-    <div className={`flex items-center justify-between px-4 py-3.5 rounded-lg border hover:border-slate-300 hover:bg-slate-50 transition-colors ${severity === 'critical' ? 'bg-red-50/30 border-red-100' : 'border-transparent'}`}>
+    <div className={`flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 rounded-lg border hover:border-slate-300 hover:bg-slate-50 transition-colors ${severity === 'critical' ? 'bg-red-50/30 border-red-100' : 'border-transparent'}`}>
       <div className="flex items-center gap-4">
         <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border ${s.bg} ${s.border}`}>{s.icon}</div>
         <div className="flex flex-col">
@@ -106,7 +107,7 @@ function AttentionRow({ severity, title, context, time, action }: AttentionRowPr
       </div>
       <div className="flex items-center gap-5">
         <span className={`text-[12px] font-bold whitespace-nowrap ${severity === 'critical' ? 'text-red-500' : 'text-slate-500'}`}>{time}</span>
-        <button className={`px-4 py-1.5 border hover:bg-slate-50 text-[12px] font-bold rounded-md shadow-sm shrink-0 transition-colors ${severity === 'critical' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-white border-slate-300 text-slate-700'}`}>{action}</button>
+        <a href={href ?? '/data-quality'} className={`inline-flex min-h-11 items-center px-4 py-1.5 border hover:bg-slate-50 text-[12px] font-bold rounded-md shadow-sm shrink-0 transition-colors ${severity === 'critical' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-white border-slate-300 text-slate-700'}`}>{action}</a>
       </div>
     </div>
   )
@@ -216,33 +217,33 @@ export function AdminDashboardView({
   dqAttention, liveShifts, todaysOperations, performance, activityLog,
 }: AdminDashboardViewModel) {
   return (
-    <main className="p-8 flex flex-col gap-6 overflow-y-auto">
+    <main className="p-4 sm:p-8 min-w-0 flex flex-col gap-6 overflow-y-auto">
       <div className="flex flex-col gap-1 mb-1">
         <h1 className="text-[26px] font-bold tracking-tight text-slate-900 leading-tight">Operations Dashboard</h1>
         <p className="text-[14px] text-slate-500 font-medium">Real-time operations overview and team performance</p>
       </div>
 
-      <div className="grid grid-cols-4 gap-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-5">
         <KpiCard icon={<Radio className="w-5 h-5 text-red-600" />} iconBg="bg-red-50" title="LIVE NOW" value={liveCount.toString()} subtitle="Active sessions" />
         <KpiCard icon={<Calendar className="w-5 h-5 text-blue-600" />} iconBg="bg-blue-50" title="TODAY'S SHIFTS" value={todaysShiftsCount.toString()} subtitle="Scheduled today" />
         <KpiCard icon={<Users className="w-5 h-5 text-amber-500" />} iconBg="bg-amber-50" title="MISSING STAFF" value={missingStaffCount !== null ? missingStaffCount.toString() : '—'} subtitle="Needs resolution" />
         <KpiCard icon={<FileText className="w-5 h-5 text-purple-600" />} iconBg="bg-purple-50" title="PENDING" value={pendingCount.toString()} subtitle="Need review" />
       </div>
 
-      <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-8 flex flex-col">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-6">
+        <div className="min-w-0 xl:col-span-8 flex flex-col">
           <h2 className="text-[16px] font-bold text-slate-900 mb-3">Operational Attention</h2>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm flex flex-col flex-1 p-2">
             <div className="flex flex-col divide-y divide-slate-50 flex-1 justify-center">
               {dqAttention.length > 0 ? dqAttention.slice(0, 6).map((item) => (
-                <AttentionRow key={item.key} severity={item.severity} title={item.title} context={item.context} time={item.time} action={item.action} />
+                <AttentionRow key={item.key} severity={item.severity} title={item.title} context={item.context} time={item.time} action={item.action} href={item.href} />
               )) : (
                 <div className="text-center py-8 text-sm text-slate-500">Không có mục cần chú ý</div>
               )}
             </div>
           </div>
         </div>
-        <div className="col-span-4 flex flex-col">
+        <div className="min-w-0 xl:col-span-4 flex flex-col">
           <h2 className="text-[16px] font-bold text-slate-900 mb-3">Live Now</h2>
           <div className="flex flex-col gap-3 flex-1">
             {liveShifts.length > 0 ? liveShifts.slice(0, 6).map((item, i) => (
@@ -256,7 +257,7 @@ export function AdminDashboardView({
 
       <div className="flex flex-col">
         <h2 className="text-[16px] font-bold text-slate-900 mb-3">{"Today's Operations"}</h2>
-        <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm overflow-hidden">
+        <div role="region" aria-label="Hoạt động trong ngày, cuộn ngang / Scroll horizontally" tabIndex={0} className="bg-white rounded-[12px] border border-slate-200 shadow-sm min-w-0 overflow-x-auto">
           {todaysOperations.length > 0 ? (
             <table className="w-full">
               <thead>
@@ -281,8 +282,8 @@ export function AdminDashboardView({
         </div>
       </div>
 
-      <div className="grid grid-cols-12 gap-6 pb-6">
-        <div className="col-span-5 flex flex-col">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-6 pb-6">
+        <div className="min-w-0 xl:col-span-5 flex flex-col">
           <h2 className="text-[16px] font-bold text-slate-900 mb-3">Performance</h2>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm p-5 flex-1">
             {performance !== null ? (
@@ -296,7 +297,7 @@ export function AdminDashboardView({
             )}
           </div>
         </div>
-        <div className="col-span-7 flex flex-col">
+        <div className="min-w-0 xl:col-span-7 flex flex-col">
           <h2 className="text-[16px] font-bold text-slate-900 mb-3">Activity Log</h2>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm flex flex-col flex-1 p-2">
             <div className="flex flex-col divide-y divide-slate-50 flex-1 justify-center">
@@ -311,7 +312,7 @@ export function AdminDashboardView({
           </div>
         </div>
       </div>
-    <nav aria-label="Xem tất cả" className="flex flex-wrap gap-4 text-sm"><a className="underline underline-offset-4" href="/calendar">Xem tất cả: Lịch</a><a className="underline underline-offset-4" href="/reports">Xem tất cả: Báo cáo</a><a className="underline underline-offset-4" href="/notifications">Xem tất cả: Thông báo</a><a className="underline underline-offset-4" href="/data-quality">Xem tất cả: Chất lượng dữ liệu</a></nav>
+    <nav aria-label="Xem tất cả" className="flex flex-wrap gap-4 text-sm"><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/calendar">Xem tất cả: Lịch</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/reports">Xem tất cả: Báo cáo</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/notifications">Xem tất cả: Thông báo</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/data-quality">Xem tất cả: Chất lượng dữ liệu</a></nav>
     </main>
   )
 }

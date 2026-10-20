@@ -1,0 +1,29 @@
+{
+  "target": "https://ops5729.top",
+  "baseline_sha": "7f5efbfec23db84ad1d74024b08a591523aa4217",
+  "production_served_sha": "NOT_VERIFIED",
+  "production_supabase_project": "egdjnpmoasarrttvhgds",
+  "read_only_checks": {
+    "public_login_status": 200,
+    "auth_settings_status": 200,
+    "google": false,
+    "email": true,
+    "disable_signup": true,
+    "public_auth_playwright_captures": 12
+  },
+  "not_verified": [
+    "Google OAuth client credentials",
+    "Supabase Site URL",
+    "Supabase Redirect URLs",
+    "Before User Created hook runtime binding",
+    "Google callback with an approved account",
+    "Authenticated Admin/Leader/Member Production workflows"
+  ],
+  "blockers": [
+    "Google Provider is disabled in Production",
+    "Connected browser discovery returned []",
+    "Connected Vercel team returned no projects; served-SHA cannot be established"
+  ],
+  "production_mutations": [],
+  "release": "NO-GO"
+}
