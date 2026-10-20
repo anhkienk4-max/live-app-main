@@ -41,7 +41,9 @@ test('Calendar uses bounded windows, on-demand reports and abort guards', () => 
   assert.match(source, /if \(version !== requestVersion\.current \|\| controller\.signal\.aborted\) return/)
   assert.match(source, /if \(!dayReportIds\) return/)
   assert.match(source, /setLoadingMore\(true\)/)
-  assert.match(source, /disabled=\{bulkApprovalLoading \|\| loadingMore\}/)
+  assert.match(source, /setWindowComplete\(false\)/)
+  assert.match(source, /setWindowComplete\(true\)/)
+  assert.match(source, /disabled=\{bulkApprovalLoading \|\| loadingMore \|\| !windowComplete\}/)
   assert.doesNotMatch(source, /shiftService\.getAllComplete\(\)|shiftRegistrationService\.getAll\(\)/)
 })
 

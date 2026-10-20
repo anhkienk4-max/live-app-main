@@ -190,6 +190,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const [reportsReady, setReportsReady] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [loadingMore, setLoadingMore] = React.useState(false)
+  const [windowComplete, setWindowComplete] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
   const [exportOpen, setExportOpen] = React.useState(false)
   const [showForm, setShowForm] = React.useState(false)
@@ -299,6 +300,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         setLoadError(null)
         setLoading(false)
         setLoadingMore(false)
+        setWindowComplete(true)
         setListTotal(cached.total)
         setShifts(cached.items)
         setRegistrations(cached.registrations)
@@ -309,6 +311,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     }
     setLoading(true)
     setLoadingMore(false)
+    setWindowComplete(false)
     setLoadError(null)
     try {
       const result = view === 'list'
@@ -323,10 +326,12 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
             setLoadedKey(requestKey)
             setLoading(false)
             setLoadingMore(true)
+            setWindowComplete(false)
           })
       if (version !== requestVersion.current || controller.signal.aborted) return
       if (view === 'list' && result.page !== listPage) listNavigate({ calendar_list_page: String(result.page) }, true)
       writePageCache(cacheKey, result)
+      setWindowComplete(true)
       setListTotal(result.total)
       setShifts(result.items)
       setRegistrations(result.registrations)
@@ -443,7 +448,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   )
   const pendingStaffingCount = calendarScopeShifts.reduce((count, shift) => count + (shift.staffing_summary?.reduce((total, role) => total + role.pending, 0) ?? pendingStaffingRegistrations.filter(row => row.shift_id === shift.id).length), 0)
   const openBulkStaffingApproval = async () => {
-    if (bulkApprovalLoading || loadingMore) return
+    if (bulkApprovalLoading || loadingMore || !windowComplete) return
     const version = requestVersion.current
     setBulkApprovalLoading(true)
     try {
@@ -643,7 +648,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                   size="sm"
                   className="h-9"
                   onClick={() => void openBulkStaffingApproval()}
-                  disabled={bulkApprovalLoading || loadingMore}
+                  disabled={bulkApprovalLoading || loadingMore || !windowComplete}
                   data-testid="open-bulk-staffing-approval"
                 >
                   <UserCheck className="mr-2 h-4 w-4" />
