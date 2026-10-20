@@ -4,7 +4,7 @@ import * as React from 'react'
 import { ExternalLink, MonitorPlay, Radio, X } from 'lucide-react'
 import type { Shift } from '@/lib/types/database.types'
 import { verifyLiveStreamLink } from '@/lib/utils/liveStreamLink'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 
 /**
  * Always displays the official session URL. LIVE iframe playback is a user-
@@ -30,11 +30,10 @@ export function LiveStreamPanel({ shift }: { shift: Shift }) {
           {preview ? <X className="mr-2 h-4 w-4" /> : <MonitorPlay className="mr-2 h-4 w-4" />}
           {preview ? 'Đóng khung xem' : 'Thử xem trong Monitor'}
         </Button>
-        <Button type="button" size="sm" asChild>
-          <a href={link.href} target="_blank" rel="noopener noreferrer" data-testid="open-official-live">
-            <ExternalLink className="mr-2 h-4 w-4" />Mở LIVE trên {link.platform}
-          </a>
-        </Button>
+        <a href={link.href} target="_blank" rel="noopener noreferrer"
+          className={buttonVariants({variant:'default',size:'sm'})} data-testid="open-official-live">
+          <ExternalLink className="mr-2 h-4 w-4" />Mở LIVE trên {link.platform}
+        </a>
       </div>}
     </div>
     {link && <p className="mt-2 break-all text-xs text-slate-500" data-testid="live-platform-link">{link.href}</p>}
