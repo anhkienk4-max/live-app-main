@@ -1,14 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { PGlite } from 'file:///C:/Users/KienNguyen/.gemini/antigravity-ide/brain/880f22af-577e-49c1-85de-b9f809e7099f/scratch/node_modules/@electric-sql/pglite/dist/index.js'
+import { PGlite } from '@electric-sql/pglite'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createHistoricalAttendanceHandler } from '../lib/server/historicalAttendanceHandler'
-import { AuthenticatedServerUser, AuthorizationError } from '../lib/server/authGuards'
 import {
   selectApprovedRate,
   calculatePayrollLine,
-  calculatePayrollAmounts,
 } from '../lib/workforce/payrollCalculation'
-import { createSourceFingerprint } from '../lib/workforce/historicalAttendanceMatcher'
 
 // -----------------------------------------------------------------------------
 // POSTGRESQL DB FIXTURE SETUP WITH PGLITE
@@ -185,24 +183,23 @@ async function setupIsolatedPostgresDb() {
 // -----------------------------------------------------------------------------
 // POSTGRESQL SUPABASE CLIENT ADAPTER
 // -----------------------------------------------------------------------------
-function createPgLiteSupabaseAdapter(db: PGlite) {
+function createPgLiteSupabaseAdapter(db: PGlite): SupabaseClient {
   return {
     from: (table: string) => {
-      let selectedCols = '*'
       const filters: string[] = []
-      const params: any[] = []
+      const params: unknown[] = []
 
       const queryBuilder = {
-        select: (cols: string = '*') => {
-          selectedCols = cols
+        select: (..._args: unknown[]) => {
+          void _args
           return queryBuilder
         },
-        eq: (col: string, val: any) => {
+        eq: (col: string, val: unknown) => {
           params.push(val)
           filters.push(`${col} = $${params.length}`)
           return queryBuilder
         },
-        is: (col: string, val: any) => {
+        is: (col: string, val: unknown) => {
           if (val === null) {
             filters.push(`${col} is null`)
           } else {
@@ -211,10 +208,12 @@ function createPgLiteSupabaseAdapter(db: PGlite) {
           }
           return queryBuilder
         },
-        order: (col: string, _opts?: any) => {
+        order: (..._args: unknown[]) => {
+          void _args
           return queryBuilder
         },
-        limit: (_n: number) => {
+        limit: (..._args: unknown[]) => {
+          void _args
           return queryBuilder
         },
         maybeSingle: async () => {
@@ -222,7 +221,10 @@ function createPgLiteSupabaseAdapter(db: PGlite) {
           const res = await db.query(sql, params)
           return { data: res.rows[0] || null, error: null }
         },
-        then: async (resolve: (val: any) => any, reject?: (err: any) => any) => {
+        then: async (
+          resolve: (val: { data: unknown; error: unknown }) => void,
+          reject?: (err: unknown) => void
+        ) => {
           try {
             let sql: string
             if (table === 'shifts') {
@@ -238,12 +240,12 @@ function createPgLiteSupabaseAdapter(db: PGlite) {
             }
             const res = await db.query(sql, params)
             resolve({ data: res.rows, error: null })
-          } catch (err: any) {
+          } catch (err: unknown) {
             if (reject) reject(err)
             else resolve({ data: null, error: err })
           }
         },
-        insert: (rows: any[]) => {
+        insert: (rows: Record<string, unknown>[] | Record<string, unknown>) => {
           const items = Array.isArray(rows) ? rows : [rows]
           return {
             select: async () => {
@@ -258,7 +260,8 @@ function createPgLiteSupabaseAdapter(db: PGlite) {
                   returning id
                 `
                 const insRes = await db.query(insertSql, vals)
-                insertedIds.push({ id: (insRes.rows[0] as any).id })
+                const rowId = (insRes.rows[0] as { id: string }).id
+                insertedIds.push({ id: rowId })
               }
               return { data: insertedIds, error: null }
             },
@@ -267,7 +270,7 @@ function createPgLiteSupabaseAdapter(db: PGlite) {
       }
       return queryBuilder
     },
-  } as any
+  } as unknown as SupabaseClient
 }
 
 // -----------------------------------------------------------------------------
@@ -647,7 +650,7 @@ test('DB/API Integration Suite: Full Attendance Import, DB Guards & Payroll Flow
         body: JSON.stringify({
           action: 'confirm_drafts',
           batchId: previewJson.batchId,
-          matchedResults: previewJson.results.filter((r: any) => r.status === 'matched'),
+          matchedResults: previewJson.results.filter((r: { status: string }) => r.status === 'matched'),
         }),
       })
     )
@@ -660,7 +663,7 @@ test('DB/API Integration Suite: Full Attendance Import, DB Guards & Payroll Flow
       `select id, shift_id, staff_id, operational_role, review_status, created_by, reviewed_by from public.workforce_actual_segments where staff_id = 'usr-member-huong'`
     )
     assert.equal(pgSegments.rows.length, 1)
-    const row = pgSegments.rows[0] as any
+    const row = pgSegments.rows[0] as { id: string; review_status: string; created_by: string; reviewed_by: string | null }
     createdSegmentId = row.id
     assert.equal(row.review_status, 'draft', 'MUST BE DRAFT')
     assert.equal(row.created_by, 'usr-admin-alice')
@@ -695,22 +698,23 @@ test('DB/API Integration Suite: Full Attendance Import, DB Guards & Payroll Flow
       `select review_status, reviewed_by from public.workforce_actual_segments where id = $1`,
       [createdSegmentId]
     )
-    assert.equal((approvedRow.rows[0] as any).review_status, 'approved')
-    assert.equal((approvedRow.rows[0] as any).reviewed_by, 'usr-lead-reviewer')
+    const approvedData = approvedRow.rows[0] as { review_status: string; reviewed_by: string }
+    assert.equal(approvedData.review_status, 'approved')
+    assert.equal(approvedData.reviewed_by, 'usr-lead-reviewer')
   })
 
   // 11. Connect Approved Actual Segment to Payroll Line
   await t.test('12. Payroll Connector: Approved Actual Segment feeds into Payroll Line calculation', async () => {
     const rateCards = await db.query(`select * from public.workforce_rate_cards`)
-    const rateCardList = rateCards.rows.map((r: any) => ({
-      id: r.id,
-      staffId: r.staff_id,
-      role: r.operational_role,
+    const rateCardList = rateCards.rows.map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      staffId: r.staff_id ? String(r.staff_id) : null,
+      role: r.operational_role as 'host' | 'support' | 'technical',
       effectiveFrom: '2026-10-01',
       effectiveThrough: null,
-      vndPerHour: r.vnd_per_hour,
-      overtimeMultiplierBasisPoints: r.overtime_multiplier_basis_points || 15000,
-      approvedBy: r.approved_by,
+      vndPerHour: Number(r.vnd_per_hour),
+      overtimeMultiplierBasisPoints: Number(r.overtime_multiplier_basis_points) || 15000,
+      approvedBy: String(r.approved_by),
     }))
 
     const selectedRate = selectApprovedRate(
@@ -763,7 +767,8 @@ test('DB/API Integration Suite: Full Attendance Import, DB Guards & Payroll Flow
 
     const dbLine = await db.query(`select * from public.workforce_payroll_lines where id = 'line-e2e-01'`)
     assert.equal(dbLine.rows.length, 1)
-    assert.equal(Number((dbLine.rows[0] as any).net_vnd), 480000)
+    const lineData = dbLine.rows[0] as { net_vnd: number | string }
+    assert.equal(Number(lineData.net_vnd), 480000)
   })
 
   // 12. Locked Payroll Period Immutability
@@ -771,7 +776,8 @@ test('DB/API Integration Suite: Full Attendance Import, DB Guards & Payroll Flow
     const lockedPeriod = await db.query(
       `select status from public.workforce_payroll_periods where id = 'period-sep-locked'`
     )
-    assert.equal((lockedPeriod.rows[0] as any).status, 'locked')
+    const periodData = lockedPeriod.rows[0] as { status: string }
+    assert.equal(periodData.status, 'locked')
     // A locked period cannot be mutated
   })
 })

@@ -10,7 +10,6 @@ import {
 } from '../lib/workforce/historicalAttendanceParser'
 import {
   createSourceFingerprint,
-  matchStaffIdentity,
   matchSegmentToShift,
   ShiftReference,
   StaffReference,
