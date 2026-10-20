@@ -9,6 +9,7 @@ import { summarizeWorkforcePerformance, type ScheduledStaffing } from '@/lib/wor
 import { aggregateWorkforceTeam,rankVerifiedWorkforce } from '@/lib/workforce/workforceOverview'
 import { WorkforceCalculationError,type ActualStaffingEvidence,
   type WorkforceRole } from '@/lib/workforce/payrollCalculation'
+import { WORKFORCE_LATE_GRACE_MINUTES } from '@/lib/workforce/workforcePolicy'
 
 const query=z.object({
   month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/u),
@@ -31,7 +32,7 @@ export function createWorkforceOverviewHandler(options:Options={}) {
       if(!(options.isEnabled??(()=>isFeatureEnabled('actual_staffing')))())
         return fail('WORKFORCE_FEATURE_DISABLED',503)
       const input=query.parse(Object.fromEntries(new URL(request.url).searchParams.entries()))
-      const grace=(options.grace??(()=>envInt('WORKFORCE_LATE_GRACE_MINUTES')))()
+      const grace=(options.grace??(()=>WORKFORCE_LATE_GRACE_MINUTES))()
       if(grace===null||!Number.isSafeInteger(grace)||grace<0||grace>120)
         return fail('WORKFORCE_GRACE_POLICY_NOT_CONFIGURED',409)
       const y=Number(input.month.slice(0,4)),m=Number(input.month.slice(5))

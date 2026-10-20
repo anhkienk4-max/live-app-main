@@ -6,6 +6,7 @@ import type { AuthIdentity } from '@/lib/auth/authIdentity'
 import { currentUserService } from '@/lib/services/dataService'
 import type { User } from '@/lib/types/database.types'
 import { invalidatePageCache } from '@/lib/services/operationsPageCache'
+import { ShiftChangeBridge } from '@/components/providers/ShiftChangeBridge'
 
 interface AuthIdentityContextValue {
   mode: AuthMode
@@ -59,6 +60,7 @@ export function AuthIdentityProvider({
 
   return (
     <AuthIdentityContext.Provider value={value}>
+      <ShiftChangeBridge userId={businessUser?.id ?? null} enabled={mode === 'supabase'} />
       {children}
     </AuthIdentityContext.Provider>
   )

@@ -16,6 +16,7 @@ import {
 import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Shift, SwapRequest, SwapStatus, User, UserDirectoryEntry } from '@/lib/types/database.types'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { useTranslation, type TranslationKey } from '@/lib/i18n'
 import { downloadSwapRequestTemplate, exportSwapsToExcel } from '@/lib/utils/excelUtils'
 import { getSwapUiActions, getSwapStatusPresentation } from '@/lib/utils/swapUi'
@@ -88,6 +89,7 @@ export function SwapRequestList() {
     setShifts(loadedShifts);setUsers(loadedUsers);setBrands(loadedBrands);setPlatforms(loadedPlatforms);setCampaigns(loadedCampaigns);setDirectory(loadedDirectory)
     } catch(error) {if(isCurrent(request))setLoadError(error instanceof Error ? error.message : 'Không thể tải yêu cầu đổi ca')} finally {if(isCurrent(request))setLoading(false)}
   }, [encodedFilters,navigate,page,pageSize,identity,next,isCurrent])
+  useShiftChangeRefresh(loadData)
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => { void loadData() })
     return () => { cancelAnimationFrame(frame); invalidate() }

@@ -13,6 +13,7 @@ import { invalidatePageCache } from '@/lib/services/operationsPageCache'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { resolveSystemPermission } from '@/lib/permissions'
 import { getSwapUiActions } from '@/lib/utils/swapUi'
 import { getMemberAssignedShifts, getLeaderPendingRegistrations, getLeaderPendingReports, getLeaderPendingSwaps } from '@/lib/ui/dashboard-role-data'
@@ -99,6 +100,7 @@ export function DashboardOverview() {
       if (request === sequence.current) setLoading(false)
     }
   },[currentUser,filters,identity,filterKey,viewKey])
+  useShiftChangeRefresh(() => loadData(false))
   React.useEffect(()=>{
     const frame=requestAnimationFrame(()=>{if(currentUser) void loadData(true)})
     return ()=>{cancelAnimationFrame(frame);sequence.current++}

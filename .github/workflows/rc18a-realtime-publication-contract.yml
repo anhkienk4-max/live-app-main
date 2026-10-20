@@ -1,0 +1,54 @@
+name: RC18A Realtime Publication Contract
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261020164351_rc18a_publish_shifts_realtime.sql'
+      - '.github/workflows/rc18a-realtime-publication-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shifts-publication:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=2s
+          --health-timeout=3s
+          --health-retries=20
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify isolated target and apply publication migration twice
+        run: |
+          set -euo pipefail
+          target="$(psql -Atqc "select current_database() || ':' || inet_server_port()")"
+          test "$target" = "postgres:5432"
+          psql -v ON_ERROR_STOP=1 -c 'create publication supabase_realtime; create table public.shifts (id uuid primary key);'
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261020164351_rc18a_publish_shifts_realtime.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261020164351_rc18a_publish_shifts_realtime.sql
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          do $assert$
+          begin
+            if (select count(*) from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'shifts') <> 1 then
+              raise exception 'public.shifts must occur exactly once in supabase_realtime';
+            end if;
+          end;
+          $assert$;
+          SQL

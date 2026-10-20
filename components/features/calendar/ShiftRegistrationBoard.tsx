@@ -24,6 +24,7 @@ import {
 } from '@/lib/types/database.types'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { useTranslation } from '@/lib/i18n'
 import { useListPagination } from '@/lib/hooks/useListPagination'
 import { HistoryPagination } from '@/components/ui/history-pagination'
@@ -238,6 +239,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
     setLoading(true)
     await Promise.all([loadReferenceData(), loadRegistrationOperationalData(signal)])
   }, [loadReferenceData, loadRegistrationOperationalData])
+  useShiftChangeRefresh(() => loadData())
 
   React.useEffect(() => {
     const controller = new AbortController()
