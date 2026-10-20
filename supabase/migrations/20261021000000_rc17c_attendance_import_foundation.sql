@@ -22,7 +22,7 @@ create table if not exists public.workforce_attendance_import_batches (
   version integer not null default 1 check (version >= 1)
 );
 
-create index if not exists idx_attendance_import_batches_fingerprint 
+create index if not exists idx_attendance_import_batches_fingerprint
   on public.workforce_attendance_import_batches (source_fingerprint);
 
 -- 2. Create table for Attendance Import Rows (Row-level Provenance)
@@ -65,13 +65,13 @@ create table if not exists public.workforce_attendance_import_rows (
   constraint attendance_import_row_unique unique (batch_id, source_row_number)
 );
 
-create index if not exists idx_attendance_import_rows_batch_status 
+create index if not exists idx_attendance_import_rows_batch_status
   on public.workforce_attendance_import_rows (batch_id, status);
 
-create index if not exists idx_attendance_import_rows_shift 
+create index if not exists idx_attendance_import_rows_shift
   on public.workforce_attendance_import_rows (matched_shift_id);
 
-create index if not exists idx_attendance_import_rows_staff 
+create index if not exists idx_attendance_import_rows_staff
   on public.workforce_attendance_import_rows (matched_staff_id);
 
 -- 3. Row Level Security & RBAC
