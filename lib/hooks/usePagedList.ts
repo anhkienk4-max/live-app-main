@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { currentUserService } from '@/lib/services/dataService'
 import { useListPagination } from '@/lib/hooks/useListPagination'
 import type { ListFilters, ListPage, ListQuery } from '@/lib/services/operationsPageService'
 import type { PageSize } from '@/lib/utils/pagination'
@@ -30,18 +31,22 @@ export function usePagedList<T>(service: { getPage(query: ListQuery, signal?: Ab
     let prefetchTimer: number | undefined
     if (!identity) return () => { controller.abort() }
     const currentQuery: ListQuery = { page, pageSize, filters: JSON.parse(encodedFilters) }
+    const stillSameActor = async () => {
+      const actor = await currentUserService.getCurrent()
+      return !!actor && identity === actor.id + ':' + (actor.system_permission ?? actor.role) + ':' + actor.updated_at
+    }
     // A cached, role-scoped page can render immediately without opening a new request.
     if (readPageCache<ListPage<T>>(pageCacheKey(identity, prefix, currentQuery))) {
       return () => { controller.abort() }
     }
     const timer = window.setTimeout(async () => {
       try {
-        const result = await readCachedListPage(service, identity, prefix, currentQuery, controller.signal)
+        const result = await readCachedListPage(service, identity, prefix, currentQuery, controller.signal, stillSameActor)
         if (request !== version.current || controller.signal.aborted) return
         if (result.page !== page) navigate({ [prefix + '_page']: String(result.page) }, true)
         setState({ key, identity, result })
         prefetchTimer = window.setTimeout(() => {
-          if (!controller.signal.aborted) prefetchNextListPage(service, identity, prefix, currentQuery, result, controller.signal)
+          if (!controller.signal.aborted) prefetchNextListPage(service, identity, prefix, currentQuery, result, controller.signal, stillSameActor)
         }, 250)
       } catch (error) {
         if (request === version.current && !controller.signal.aborted) setState({ key, identity, error })

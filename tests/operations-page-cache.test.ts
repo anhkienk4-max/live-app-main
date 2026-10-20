@@ -58,6 +58,19 @@ test('next-page prefetch is bounded and does not load all pages', async () => {
   assert.equal(readPageCache(pageCacheKey('a', 'shifts', { ...query, page: 3 })), undefined)
 })
 
+test('auth context changing during an in-flight load cannot populate another actor cache', async () => {
+  invalidatePageCache()
+  const key = pageCacheKey('old:admin:v1', 'shifts', query)
+  await assert.rejects(
+    readCachedListPage(
+      { getPage: async () => ({ items: [{ id: 'private' }], page: 1, pageSize: 10, total: 1 }) },
+      'old:admin:v1', 'shifts', query, undefined, async () => false,
+    ),
+    /LIST_IDENTITY_CHANGED/,
+  )
+  assert.equal(readPageCache(key), undefined)
+})
+
 test('aborted requests and failed queries must not poison the cache', async () => {
   invalidatePageCache()
   const key = pageCacheKey('actor', 'shifts', query)

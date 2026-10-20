@@ -57,12 +57,14 @@ export async function readCachedListPage<T>(
   namespace: string,
   query: ListQuery,
   signal?: AbortSignal,
+  stillSameActor?: () => Promise<boolean>,
 ): Promise<ListPage<T>> {
   const key = pageCacheKey(identity, namespace, query)
   const previous = readPageCache<ListPage<T>>(key)
   if (previous) return previous
   const epoch = invalidationEpoch
   const result = await service.getPage(query, signal)
+  if (stillSameActor && !(await stillSameActor())) throw new Error('LIST_IDENTITY_CHANGED')
   if (!signal?.aborted && epoch === invalidationEpoch) writePageCache(key, result)
   return result
 }
@@ -75,13 +77,14 @@ export function prefetchNextListPage<T>(
   query: ListQuery,
   visible: ListPage<T>,
   signal?: AbortSignal,
+  stillSameActor?: () => Promise<boolean>,
 ): void {
   if (signal?.aborted || visible.total <= visible.page * visible.pageSize || visible.page !== query.page) return
   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
   const next = { ...query, page: visible.page + 1 }
   const key = pageCacheKey(identity, namespace, next)
   if (readPageCache(key)) return
-  void readCachedListPage(service, identity, namespace, next, signal).catch(() => {
+  void readCachedListPage(service, identity, namespace, next, signal, stillSameActor).catch(() => {
     // Background prefetch is optional. The next page remains retryable on demand.
   })
 }
