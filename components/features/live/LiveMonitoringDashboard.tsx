@@ -110,24 +110,51 @@ export function LiveMonitoringDashboard() {
   const nameFor = (items: Array<{ id: string; name: string }>, id?: string) => id ? items.find(item => item.id === id)?.name || '—' : '—'
   const statusLabel = (status: Shift['status']) => status === 'live' ? t('liveStatus') : t(status)
 
-  return <>
-    <div className="space-y-3">
+  const liveCount = filtered.filter(shift => shift.status === 'live').length
+  const missingUpdateCount = filtered.filter(shift => shift.status === 'live' && !latestUpdate(shift.id)).length
+  const completedCount = filtered.filter(shift => shift.status === 'completed').length
 
-      {/* 1. Header / Control Strip */}
-      <div className="flex flex-col gap-2 border-b pb-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h2 className="text-base font-semibold">{t('liveMonitor')}</h2>
-          <p className="text-sm text-muted-foreground">{t('todaysDate')}: {format(new Date(), 'dd/MM/yyyy')}</p>
+  return (
+    <main className="mx-auto w-full min-w-0 max-w-[1680px] space-y-5 pb-8" data-testid="live-operations-workspace">
+      {/* G07-inspired command header: role/workflow structure, not a static screen copy. */}
+      <header className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm sm:px-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-blue-700">
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50"><Radio className="h-4 w-4" /></span>
+            Live operations / Control center
+          </div>
+          <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">{t('liveMonitor')}</h1>
+          <p className="mt-1 text-sm text-slate-500">{t('todaysDate')}: {format(new Date(), 'dd/MM/yyyy')} · {total} ca theo bộ lọc hiện tại</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="live-filter-panel">
+        <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto">
+          <span className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" /> {liveCount} {t('liveStatus')}
+          </span>
+          <Button variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)}
+            aria-expanded={showFilters} aria-controls="live-filter-panel">
             <Filter className="mr-2 h-4 w-4" />{t('filters')}
           </Button>
           <Button variant="outline" onClick={() => setFilters(initialFilters())}>
             <RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}
           </Button>
         </div>
-      </div>
+      </header>
+
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5" aria-label="Tình trạng vận hành livestream" data-testid="live-kpi-overview">
+        <Metric title={t('liveInProgress')} value={String(liveCount)} description="Ca đang vận hành"
+          icon={<Radio className="h-5 w-5 text-rose-600" />} intent="danger" />
+        <Metric title={t('updatesMissing')} value={String(missingUpdateCount)}
+          description={missingUpdateCount ? 'Cần bổ sung snapshot' : 'Đã cập nhật đủ'}
+          icon={<AlertCircle className="h-5 w-5 text-amber-600" />} intent="warning" />
+        <Metric title={t('revenue')} value={totalRevenue === null ? '—' : formatCurrency(totalRevenue)}
+          description={totalRevenue === null ? 'Chưa có số liệu snapshot' : 'Theo cập nhật gần nhất'}
+          icon={<DollarSign className="h-5 w-5 text-emerald-600" />} />
+        <Metric title={t('orders')} value={totalOrders === null ? '—' : totalOrders.toLocaleString()}
+          description={totalOrders === null ? 'Chưa có số liệu snapshot' : 'Theo cập nhật gần nhất'}
+          icon={<TrendingUp className="h-5 w-5 text-blue-600" />} />
+        <Metric title={t('needsReview')} value={String(completedCount)} description="Ca đã hoàn thành trong bộ lọc"
+          icon={<FileText className="h-5 w-5 text-slate-600" />} />
+      </section>
 
       {/* 2. Filter Experience */}
       {showFilters && (
@@ -149,47 +176,111 @@ export function LiveMonitoringDashboard() {
         </div>
       )}
 
-      {/* 3. Metric / Status Strip */}
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-5">
-        <Metric
-          title={t('liveInProgress')}
-          value={filtered.filter(shift => shift.status === 'live').length.toString()}
-          icon={<Radio className="h-5 w-5 text-red-600" />}
-          intent="danger"
-        />
-        <Metric
-          title={t('updatesMissing')}
-          value={filtered.filter(shift => shift.status === 'live' && !latestUpdate(shift.id)).length.toString()}
-          icon={<AlertCircle className="h-5 w-5 text-amber-600" />}
-          intent="warning"
-        />
-        <Metric title={t('revenue')} value={totalRevenue === null ? '—' : formatCurrency(totalRevenue)} icon={<DollarSign className="h-5 w-5 text-green-600" />} />
-        <Metric title={t('orders')} value={totalOrders === null ? '—' : totalOrders.toLocaleString()} icon={<TrendingUp className="h-5 w-5 text-blue-600" />} />
-        <Metric title={t('needsReview')} value={filtered.filter(shift => shift.status === 'completed').length.toString()} icon={<FileText className="h-5 w-5 text-muted-foreground" />} />
-      </div>
 
-      <p className="text-xs text-muted-foreground">{t('currentPage')}</p>
-      {/* 4. Session Cards */}
-      <div className="space-y-3">
-        {!selectedShift && actualLiveShifts.length > 1 && <p className="text-sm text-amber-800">Có nhiều ca đang LIVE. Hãy chọn đúng Brand, Platform và ca trước khi nhập snapshot.</p>}
-        {!selectedShift && actualLiveShifts.length === 0 && <p className="text-sm text-muted-foreground">Không có ca LIVE đúng thời gian hiện tại. Chọn ca theo ngày để thêm ảnh lịch sử.</p>}
-        {filtered.length > 0 && <div className="flex flex-wrap gap-2">{filtered.map(shift => <Button key={shift.id} variant={activeShift?.id === shift.id ? 'secondary' : 'outline'} size="sm" onClick={() => setSelectedShift(shift)} data-testid={`open-live-session-${shift.id}`}>{nameFor(brands, shift.brand_id)} · {nameFor(platforms, shift.platform_id)} · {shift.date}<Badge variant="outline">{statusLabel(shift.status)}</Badge></Button>)}</div>}
-        <HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />
-        <div className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white">{activeShift ? <LiveSessionModal key={activeShift.id} refreshVersion={refreshVersion} inline open shift={activeShift} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onOpenChange={open=>!open&&setSelectedShift(null)} onUpdate={handleShiftUpdate} /> : <p className="p-10 text-center text-sm text-slate-500">{t('noLiveShifts')}</p>}</div>
+      {/* G07 operational layout: discover a shift on the left, act on it on the right. */}
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(260px,0.28fr)_minmax(0,1fr)]">
+        <section className="min-w-0 self-start overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" aria-label="Chọn ca livestream">
+          <div className="flex items-start justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-4 py-4">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Danh sách ca livestream</h2>
+              <p className="mt-1 text-xs text-slate-500">Chọn ca để xem và cập nhật đúng dữ liệu</p>
+            </div>
+            <span className="shrink-0 rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700">{total} ca</span>
+          </div>
+          {actualLiveShifts.length > 1 && !selectedShift && (
+            <p className="mx-3 mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              Có nhiều ca đang LIVE. Chọn đúng Brand, Platform và khung giờ trước khi gửi snapshot.
+            </p>
+          )}
+          {filtered.length ? (
+            <div className="max-h-[560px] divide-y divide-slate-100 overflow-y-auto" data-testid="live-shift-selector">
+              {filtered.map(shift => {
+                const selected = activeShift?.id === shift.id
+                const brand = nameFor(brands, shift.brand_id)
+                const platform = nameFor(platforms, shift.platform_id)
+                const count = updates[shift.id]?.length ?? 0
+                return (
+                  <button key={shift.id} type="button" onClick={() => setSelectedShift(shift)}
+                    data-testid={`open-live-session-${shift.id}`}
+                    aria-pressed={selected}
+                    className={`flex w-full min-w-0 flex-col gap-2 border-l-[3px] px-4 py-3 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500 ${selected ? 'border-l-blue-600 bg-blue-50/70' : 'border-l-transparent bg-white hover:bg-slate-50'}`}>
+                    <span className="flex w-full items-center justify-between gap-2">
+                      <span className="min-w-0 truncate text-sm font-semibold text-slate-900">{shift.title || brand}</span>
+                      <Badge variant={shift.status === 'live' ? 'destructive' : 'outline'}>{statusLabel(shift.status)}</Badge>
+                    </span>
+                    <span className="text-xs text-slate-500">{brand} · {platform}</span>
+                    <span className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                      <span>{shift.date} · {shift.start_time.slice(0,5)}–{shift.end_time.slice(0,5)}</span>
+                      <span className={count ? 'font-medium text-emerald-700' : 'text-amber-700'}>{count ? `${count} snapshot` : 'Chưa có snapshot'}</span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="space-y-2 px-4 py-10 text-center">
+              <FileText className="mx-auto h-7 w-7 text-slate-400" />
+              <p className="text-sm font-semibold text-slate-700">Không có ca phù hợp</p>
+              <p className="text-xs text-slate-500">Thử thay đổi ngày hoặc bộ lọc</p>
+            </div>
+          )}
+          <div className="border-t border-slate-100 px-3 py-2">
+            <HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />
+          </div>
+        </section>
+
+        <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" aria-label="Chi tiết ca đang chọn">
+          {activeShift ? (
+            <>
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 bg-gradient-to-r from-blue-50/80 to-white px-4 py-4 sm:px-5">
+                <div className="min-w-0">
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-blue-700">Shift workspace / {activeShift.date}</p>
+                  <h2 className="break-words text-lg font-bold text-slate-900">{activeShift.title || nameFor(brands, activeShift.brand_id)}</h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {nameFor(brands, activeShift.brand_id)} · {nameFor(platforms, activeShift.platform_id)} · {activeShift.start_time.slice(0,5)}–{activeShift.end_time.slice(0,5)}
+                  </p>
+                </div>
+                <Badge variant={activeShift.status === 'live' ? 'destructive' : 'outline'}>{statusLabel(activeShift.status)}</Badge>
+              </div>
+              <div className="min-w-0">
+                <LiveSessionModal key={activeShift.id} refreshVersion={refreshVersion} inline open shift={activeShift}
+                  brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations}
+                  onOpenChange={open => !open && setSelectedShift(null)} onUpdate={handleShiftUpdate} />
+              </div>
+            </>
+          ) : (
+            <div className="flex min-h-[360px] flex-col items-center justify-center gap-3 px-5 py-12 text-center">
+              <span className="rounded-2xl bg-blue-50 p-4"><Radio className="h-8 w-8 text-blue-600" /></span>
+              <h2 className="text-base font-bold text-slate-800">Chọn ca để bắt đầu giám sát</h2>
+              <p className="max-w-sm text-sm leading-6 text-slate-500">
+                {filtered.length ? 'Xác nhận đúng ca đang LIVE hoặc chọn ca lịch sử từ danh sách để cập nhật dashboard.' : 'Không có ca nào trong bộ lọc. Vui lòng chọn ngày khác.'}
+              </p>
+            </div>
+          )}
+        </section>
       </div>
-    </div>
-  </>
+    </main>
+  )
 }
 
 function FilterSelect({ label, value, options, onChange }: { label: string; value: string[]; options: Array<{ id: string; name: string }>; onChange: (value: string[]) => void }) {
   return <MultiSelectFilter label={label} value={value} onChange={onChange} options={options.map(option => ({ value: option.id, label: option.name }))} />
 }
 
-function Metric({ title, value, icon, intent = 'default' }: { title: string; value: string; icon: React.ReactNode; intent?: 'default' | 'danger' | 'warning' }) {
+function Metric({ title, value, description, icon, intent = 'default' }: { title: string; value: string; description: string; icon: React.ReactNode; intent?: 'default' | 'danger' | 'warning' }) {
   const intentStyles = {
-    default: 'bg-card',
-    danger: 'bg-red-50/50 border-red-200 dark:bg-red-950/20 dark:border-red-900',
-    warning: 'bg-amber-50/50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900',
+    default: 'border-slate-200 bg-white',
+    danger: 'border-rose-200 bg-rose-50/50',
+    warning: 'border-amber-200 bg-amber-50/50',
   }
-  return <div className={`flex items-center justify-between gap-2 rounded-md border px-3 py-2 ${intentStyles[intent]}`}><p className="text-[10px] font-semibold uppercase text-muted-foreground">{title}</p><div className="flex items-center gap-2"><span className="text-sm font-bold">{value}</span>{icon}</div></div>
+  return (
+    <div className={`min-w-0 rounded-xl border px-3.5 py-3 shadow-sm sm:px-4 ${intentStyles[intent]}`}>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-xs font-semibold text-slate-600">{title}</p>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/80">{icon}</span>
+      </div>
+      <p className="mt-1 break-words text-xl font-bold tracking-tight text-slate-900">{value}</p>
+      <p className="mt-1 text-[11px] text-slate-500">{description}</p>
+    </div>
+  )
 }

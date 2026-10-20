@@ -67,8 +67,20 @@ jobs:
         run: pnpm exec playwright test --config playwright.one-shot.config.ts --project desktop
       - name: OCR mobile review and shift-binding workflow
         run: pnpm exec playwright test --config playwright.one-shot.config.ts --project mobile --grep "owner TikTok dashboard"
-      - name: Reports, pagination and three-role browser workflows
-        run: pnpm exec playwright test --config playwright.rc16k.config.ts --reporter=line
+      - name: Reports browser workflows
+        run: pnpm exec playwright test --config playwright.rc16k.config.ts e2e/rc16k-reports.spec.ts --output=test-results/rc16k-reports --reporter=line
+      - name: Role-scoped route audit (fresh dev server per role)
+        run: |
+          set -euo pipefail
+          for role in 1 2 3; do
+            pnpm exec playwright test --config playwright.rc16k.config.ts e2e/rc16k-route-audit.spec.ts \
+              --grep "Local route audit role ${role} width|Storage localized hydration and role boundary ${role}" \
+              --output="test-results/rc16k-route-role-${role}" --reporter=line
+          done
+      - name: Registration, Analytics and Calendar browser workflows
+        run: pnpm exec playwright test --config playwright.rc16k.config.ts e2e/rc16k-ui.spec.ts --output=test-results/rc16k-ui --reporter=line
+      - name: Integrated G07 and G08 responsive UI parity
+        run: pnpm exec playwright test --config playwright.ui-parity.config.ts --output=test-results/g07-g08 --reporter=line
       - name: Payroll and Workforce desktop/mobile workflows
         run: pnpm exec playwright test --config playwright.rc16i-postmain.config.ts
       - name: Preserve browser evidence

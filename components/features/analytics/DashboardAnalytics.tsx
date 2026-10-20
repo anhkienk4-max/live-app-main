@@ -169,27 +169,146 @@ export function DashboardAnalytics() {
   const visibleReports = pageResult?.items ?? []
   const selectedShift = selectedReport ? shiftById.get(selectedReport.shift_id) : undefined
   const platformData = dimensionData('platform')
+  const openReport = (report: Report) => {
+    void Promise.all([reportService.getById(report.id), shiftRegistrationService.getForShift(report.shift_id)])
+      .then(([full, related]) => {
+        if (full) { setRegistrations(related); setSelectedReport(full) }
+      })
+      .catch(setLoadError)
+  }
   return <div className="min-w-0 space-y-3 text-slate-900">
-    <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-3">
-      <div><h1 className="text-xl font-semibold tracking-tight">{t('analyticsTitle')}</h1><p className="mt-1 text-xs text-slate-500">{t('analyticsSubtitle')}</p></div>
-      <div className="flex flex-wrap gap-2"><Button size="sm" variant={compare ? 'default' : 'outline'} onClick={() => setCompare(!compare)}>{t('previousPeriod')}</Button>{currentUser && hasPermission(currentUser,'reports.export') && <Button size="sm" variant="outline" onClick={()=>void exportComplete()}><Download className="mr-2 h-4 w-4" />{t('exportExcel')}</Button>}<Button size="sm" variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="analytics-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button></div>
+    {/* G08 hierarchy: report overview, active period, primary export/filter actions. */}
+    <header className="rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm sm:px-5 sm:py-5" data-testid="analytics-visual-header">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-blue-700">Performance / Reporting</p>
+          <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">{t('analyticsTitle')}</h1>
+          <p className="mt-1 text-sm text-slate-500">{t('analyticsSubtitle')}</p>
+          <p className="mt-2 text-xs font-medium text-slate-600">
+            {filters.start} — {filters.end} · {currentCount} {t('reportCount')}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant={compare ? 'default' : 'outline'} onClick={() => setCompare(!compare)}>{t('previousPeriod')}</Button>
+          <Button size="sm" variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)}
+            aria-expanded={showFilters} aria-controls="analytics-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button>
+          {currentUser && hasPermission(currentUser,'reports.export') && (
+            <Button size="sm" onClick={() => void exportComplete()}><Download className="mr-2 h-4 w-4" />{t('exportExcel')}</Button>
+          )}
+        </div>
+      </div>
     </header>
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="flex flex-wrap gap-1">{(['today', 'yesterday', '7d', '30d', 'thisMonth'] as const).map(range => <Button key={range} size="sm" variant={filters.range === range ? 'secondary' : 'ghost'} onClick={() => updateRange(range)}>{t(range === '7d' ? 'last7Days' : range === '30d' ? 'last30Days' : range)}</Button>)}</div>
-      <div className="flex min-w-0 flex-wrap items-center gap-2"><FilterSelect label={t('brand')} value={filters.brandIds} options={brands} onChange={value => setFilters(current => current ? { ...current, brandIds: value } : current)} /><FilterSelect label={t('platform')} value={filters.platformIds} options={platforms} onChange={value => setFilters(current => current ? { ...current, platformIds: value } : current)} /></div>
-    </div>
+    <nav className="flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4 lg:flex-row lg:items-center lg:justify-between" aria-label="Analytics period controls">
+      <div className="flex min-w-0 flex-wrap gap-1" data-testid="analytics-period-tabs">
+        {(['today', 'yesterday', '7d', '30d', 'thisMonth'] as const).map(range => (
+          <Button key={range} size="sm" variant={filters.range === range ? 'default' : 'ghost'}
+            onClick={() => updateRange(range)}>
+            {t(range === '7d' ? 'last7Days' : range === '30d' ? 'last30Days' : range)}
+          </Button>
+        ))}
+      </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <FilterSelect label={t('brand')} value={filters.brandIds} options={brands} onChange={value => setFilters(current => current ? { ...current, brandIds: value } : current)} />
+        <FilterSelect label={t('platform')} value={filters.platformIds} options={platforms} onChange={value => setFilters(current => current ? { ...current, platformIds: value } : current)} />
+      </div>
+    </nav>
     <div className="flex flex-wrap items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800"><ShieldCheck className="h-4 w-4 shrink-0" /><span><strong>{t('confirmedOnly')}.</strong> Only confirmed reports with confirmed metrics contribute to these totals.</span><span className="ml-auto whitespace-nowrap font-medium">{currentCount} {t('reportCount')}</span></div>
     {showFilters && <section id="analytics-filter-panel" className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
       <div className="grid gap-3 md:grid-cols-4"><label className="text-xs font-medium">{t('dateRange')}<Select value={filters.range} onValueChange={value => updateRange(value as RangeKey)}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="today">{t('today')}</SelectItem><SelectItem value="yesterday">{t('yesterday')}</SelectItem><SelectItem value="7d">{t('last7Days')}</SelectItem><SelectItem value="30d">{t('last30Days')}</SelectItem><SelectItem value="thisMonth">{t('thisMonth')}</SelectItem><SelectItem value="lastMonth">{t('lastMonth')}</SelectItem><SelectItem value="custom">{t('customRange')}</SelectItem></SelectContent></Select></label>{filters.range === 'custom' && <><label className="text-xs font-medium">{t('startDate')}<Input className="mt-1" type="date" value={filters.start} onChange={event => setFilters(current => current ? { ...current, start: event.target.value } : current)} /></label><label className="text-xs font-medium">{t('endDate')}<Input className="mt-1" type="date" value={filters.end} onChange={event => setFilters(current => current ? { ...current, end: event.target.value } : current)} /></label></>}</div>
       <div className="grid gap-3 md:grid-cols-3"><FilterSelect label={t('campaign')} value={filters.campaignIds} options={campaigns} onChange={value => setFilters(current => current ? { ...current, campaignIds: value } : current)} /><FilterSelect label={t('host')} value={filters.hostIds} options={roleOptions('host')} onChange={value => setFilters(current => current ? { ...current, hostIds: value } : current)} /><FilterSelect label={t('support')} value={filters.supportIds} options={roleOptions('support')} onChange={value => setFilters(current => current ? { ...current, supportIds: value } : current)} /><FilterSelect label={t('technical')} value={filters.technicalIds} options={roleOptions('technical')} onChange={value => setFilters(current => current ? { ...current, technicalIds: value } : current)} /></div>
       <Button variant="outline" onClick={() => setFilters(initialFilters())}><RotateCcw className="mr-2 h-4 w-4" />{t('resetFilters')}</Button>
     </section>}
-    <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-slate-200 bg-white sm:grid-cols-3 xl:grid-cols-6">{primaryMetrics.map(metric => <Metric key={metric.key} title={t(metric.key === 'revenue' ? 'confirmedRevenue' : metric.key)} value={display(totals[metric.key],metric.unit)} note={compare ? delta(metric.key)+' '+t('previousPeriod') : metric.source} />)}</div>
-    {secondaryMetrics.length > 0 && <section className="rounded-lg border border-slate-200 bg-white p-3"><div className="mb-2 text-xs font-semibold text-slate-700">{t('additionalMetricsAndFormulas')}</div><div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">{secondaryMetrics.map(metric => <Metric key={metric.key} title={t(metric.key)} value={display(totals[metric.key],metric.unit)} note={compare ? delta(metric.key)+' '+t('previousPeriod') : metric.source} />)}</div><details className="mt-2 border-t pt-2 text-xs"><summary className="cursor-pointer font-medium">KPI definitions</summary><div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">{metricDefinitions.map(metric => <div key={metric.key}><strong>{t(metric.key)}</strong><p className="text-slate-500">{metric.source}</p></div>)}</div><p className="mt-2 text-slate-500">Missing metrics are shown as —; explicit zero values are preserved.</p></details></section>}
-    {!currentCount ? <div className="rounded-lg border bg-white p-10 text-center text-sm text-slate-500">{t('noConfirmedData')}</div> : <>
+    <section className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6" aria-label="Analytics KPI overview" data-testid="analytics-kpi-overview">
+      {primaryMetrics.map(metric => (
+        <Metric key={metric.key} title={t(metric.key === 'revenue' ? 'confirmedRevenue' : metric.key)}
+          value={display(totals[metric.key],metric.unit)}
+          note={compare ? delta(metric.key) + ' ' + t('previousPeriod') : metric.source} />
+      ))}
+    </section>
+    {secondaryMetrics.length > 0 && <details className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+      <summary className="cursor-pointer text-sm font-semibold text-slate-700">{t('additionalMetricsAndFormulas')} · {secondaryMetrics.length} KPI</summary>
+      <div className="mt-3"><div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">{secondaryMetrics.map(metric => <Metric key={metric.key} title={t(metric.key)} value={display(totals[metric.key],metric.unit)} note={compare ? delta(metric.key)+' '+t('previousPeriod') : metric.source} />)}</div><details className="mt-2 border-t pt-2 text-xs"><summary className="cursor-pointer font-medium">KPI definitions</summary><div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">{metricDefinitions.map(metric => <div key={metric.key}><strong>{t(metric.key)}</strong><p className="text-slate-500">{metric.source}</p></div>)}</div><p className="mt-2 text-slate-500">Missing metrics are shown as —; explicit zero values are preserved.</p></details></div></details>}
+    {!currentCount ? (
+      <section className="rounded-xl border border-slate-200 bg-white px-5 py-12 text-center shadow-sm" data-testid="analytics-empty-state">
+        <ShieldCheck className="mx-auto mb-3 h-9 w-9 text-blue-600" />
+        <h2 className="text-base font-bold text-slate-800">{t('noConfirmedData')}</h2>
+        <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">
+          Chỉ số chỉ tổng hợp từ báo cáo đã xác nhận. Hãy chọn khoảng thời gian khác hoặc xác nhận báo cáo phù hợp.
+        </p>
+        <Button className="mt-4" variant="outline" onClick={() => setShowFilters(true)}>
+          <Filter className="mr-2 h-4 w-4" />{t('filters')}
+        </Button>
+      </section>
+    ) : <>
       <div className="grid gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"><LineChartCard title={t('revenueTrend')} data={trend} fields={[{key:'revenue',name:t('revenue'),color:'#4f46e5',currency:true}]} /><Card><CardHeader className="px-3 py-2"><CardTitle className="text-sm">{t('platform')}</CardTitle></CardHeader><CardContent className="space-y-3 px-3 pb-3">{platformData.length ? platformData.map(item => { const share = totals.revenue !== null && totals.revenue > 0 && item.revenue !== null ? Math.min(100, Math.max(0, item.revenue / totals.revenue * 100)) : null; return <div key={item.name} className="space-y-1.5"><div className="flex items-center justify-between gap-2 text-xs"><span className="truncate font-medium">{item.name}</span><span className="shrink-0 text-right">{display(item.revenue, 'currency')}{share !== null ? ` (${share.toFixed(1)}%)` : ''}</span></div>{share !== null && <div className="h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-indigo-600" style={{ width: `${share}%` }} /></div>}<p className="text-[10px] text-slate-500">{item.count} {t('reportCount')}</p></div> }) : <p className="py-6 text-center text-sm text-slate-500">{t('noConfirmedData')}</p>}</CardContent></Card></div>
       <div className="grid gap-3 xl:grid-cols-2"><BarChartCard title={t('revenueByBrand')} data={dimensionData('brand')} fields={[{key:'revenue',name:t('revenue'),color:'#4f46e5',currency:true}]} /><BarChartCard title={t('revenueByCampaign')} data={dimensionData('campaign')} fields={[{key:'revenue',name:t('revenue'),color:'#2563eb',currency:true}]} /></div>
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white"><h3 className="border-b px-4 py-3 text-sm font-semibold">{t('viewDetails')} · {currentCount}</h3><div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="bg-slate-50 text-slate-500"><tr>{(['finalReport','brand','platform','date','revenue','orders','ctr','actions'] as const).map(key=><th key={key} className="px-3 py-2 font-medium">{t(key)}</th>)}</tr></thead><tbody className="divide-y">{visibleReports.map(report=>{const shift=shiftById.get(report.shift_id); return <tr key={report.id}><td className="px-3 py-3"><strong>{shift?.title ?? report.id}</strong><p className="mt-1 text-slate-400">{report.id}</p></td><td className="px-3 py-3">{brands.find(b=>b.id===shift?.brand_id)?.name ?? '—'}</td><td className="px-3 py-3">{platforms.find(p=>p.id===shift?.platform_id)?.name ?? '—'}</td><td className="px-3 py-3">{shift?.date ?? '—'}</td><td className="px-3 py-3 font-semibold">{display(reportMetricValue(report,'revenue'),'currency')}</td><td className="px-3 py-3">{display(reportMetricValue(report,'orders'))}</td><td className="px-3 py-3">{display(reportMetricValue(report,'ctr'),'%')}</td><td className="px-3 py-3"><Button size="icon-sm" variant="ghost" title={t('viewDetails')} onClick={()=>{void Promise.all([reportService.getById(report.id),shiftRegistrationService.getForShift(report.shift_id)]).then(([full,related])=>{if(full){setRegistrations(related);setSelectedReport(full)}}).catch(setLoadError)}}><Eye className="h-4 w-4" /></Button></td></tr>})}</tbody></table></div><HistoryPagination page={safePage} pageSize={pageSize} total={pageResult?.total ?? 0} onPageChange={setPage} onPageSizeChange={list.setPageSize} /></section>
+      <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="analytics-report-list">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">{t('viewDetails')}</h2>
+            <p className="mt-0.5 text-xs text-slate-500">{currentCount} {t('reportCount')} · Báo cáo đã xác nhận</p>
+          </div>
+          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{visibleReports.length} bản ghi trang này</span>
+        </div>
+        {/* G08 mobile-first: use cards rather than a clipped desktop table at 390px. */}
+        <div className="divide-y divide-slate-100 md:hidden" data-testid="analytics-mobile-report-cards">
+          {visibleReports.map(report => {
+            const shift = shiftById.get(report.shift_id)
+            return (
+              <article key={report.id} className="space-y-3 px-4 py-4">
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="break-words text-sm font-semibold text-slate-900">{shift?.title || report.id}</p>
+                    <p className="mt-1 text-xs text-slate-500">{shift?.date || '—'} · {brands.find(b => b.id === shift?.brand_id)?.name || '—'}</p>
+                    <p className="mt-1 text-xs text-slate-500">{platforms.find(p => p.id === shift?.platform_id)?.name || '—'}</p>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => openReport(report)} aria-label={t('viewDetails')}>
+                    <Eye className="mr-1.5 h-4 w-4" />{t('viewDetails')}
+                  </Button>
+                </div>
+                <dl className="grid grid-cols-3 gap-2 rounded-lg bg-slate-50 p-3 text-xs">
+                  <div className="min-w-0"><dt className="text-slate-500">{t('revenue')}</dt><dd className="mt-1 break-words font-semibold text-slate-900">{display(reportMetricValue(report,'revenue'),'currency')}</dd></div>
+                  <div className="min-w-0"><dt className="text-slate-500">{t('orders')}</dt><dd className="mt-1 break-words font-semibold text-slate-900">{display(reportMetricValue(report,'orders'))}</dd></div>
+                  <div className="min-w-0"><dt className="text-slate-500">{t('ctr')}</dt><dd className="mt-1 break-words font-semibold text-slate-900">{display(reportMetricValue(report,'ctr'),'%')}</dd></div>
+                </dl>
+              </article>
+            )
+          })}
+        </div>
+        <div className="hidden min-w-0 overflow-x-auto md:block">
+          <table className="w-full min-w-[900px] text-left text-xs">
+            <thead className="bg-slate-50 text-slate-600">
+              <tr>{(['finalReport','brand','platform','date','revenue','orders','ctr','actions'] as const).map(key => (
+                <th key={key} className="px-3 py-3 font-semibold">{t(key)}</th>
+              ))}</tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {visibleReports.map(report => {
+                const shift = shiftById.get(report.shift_id)
+                return (
+                  <tr key={report.id} className="hover:bg-slate-50">
+                    <td className="max-w-[220px] px-3 py-3"><strong className="block truncate" title={shift?.title || report.id}>{shift?.title || report.id}</strong><p className="mt-1 truncate text-slate-400">{report.id}</p></td>
+                    <td className="px-3 py-3">{brands.find(b => b.id === shift?.brand_id)?.name || '—'}</td>
+                    <td className="px-3 py-3">{platforms.find(p => p.id === shift?.platform_id)?.name || '—'}</td>
+                    <td className="whitespace-nowrap px-3 py-3">{shift?.date || '—'}</td>
+                    <td className="px-3 py-3 font-semibold">{display(reportMetricValue(report,'revenue'),'currency')}</td>
+                    <td className="px-3 py-3">{display(reportMetricValue(report,'orders'))}</td>
+                    <td className="px-3 py-3">{display(reportMetricValue(report,'ctr'),'%')}</td>
+                    <td className="px-3 py-3">
+                      <Button size="icon-sm" variant="ghost" title={t('viewDetails')} aria-label={t('viewDetails')}
+                        onClick={() => openReport(report)}><Eye className="h-4 w-4" /></Button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="border-t border-slate-100 px-3 py-2">
+          <HistoryPagination page={safePage} pageSize={pageSize} total={pageResult?.total ?? 0}
+            onPageChange={setPage} onPageSizeChange={list.setPageSize} />
+        </div>
+      </section>
       <details className="rounded-lg border bg-white p-3"><summary className="cursor-pointer text-sm font-semibold">{t('staffWorkload')} · {t('hostPerformance')}</summary><div className="mt-3 grid gap-3 xl:grid-cols-2"><BarChartCard title={t('staffWorkload')} data={workload} fields={[{key:'host',name:t('host'),color:'#2563eb'},{key:'support',name:t('support'),color:'#10b981'},{key:'technical',name:t('technical'),color:'#7c3aed'}]} /><BarChartCard title={t('hostPerformance')} data={hostPerformance} fields={[{key:'revenue',name:t('revenue'),color:'#4f46e5',currency:true}]} /></div></details>
       <details className="rounded-lg border bg-white p-3"><summary className="cursor-pointer text-sm font-semibold">{t('ordersTrend')} · {t('viewersTrend')} · {t('conversionTrend')}</summary><div className="mt-3 grid gap-3 xl:grid-cols-3"><LineChartCard title={t('ordersTrend')} data={trend} fields={[{key:'orders',name:t('orders'),color:'#2563eb'}]} /><LineChartCard title={t('viewersTrend')} data={trend} fields={[{key:'viewers',name:t('viewers'),color:'#7c3aed'}]} /><LineChartCard title={t('conversionTrend')} data={trend} fields={[{key:'ctr',name:t('ctr'),color:'#ea580c'},{key:'cvr',name:t('cvr'),color:'#0891b2'}]} /></div></details>
     </>}
@@ -200,7 +319,15 @@ export function DashboardAnalytics() {
 function FilterSelect({ label, value, options, onChange }: { label: string; value: string[]; options: Array<{ id: string; name: string }>; onChange: (value: string[]) => void }) {
   return <MultiSelectFilter label={label} value={value} onChange={onChange} options={options.map(option => ({ value: option.id, label: option.name }))} />
 }
-function Metric({ title, value, note }: { title: string; value: string; note: string }) { return <div className="min-w-0 border-r border-slate-200 px-3 py-2 last:border-r-0"><p className="truncate text-[11px] font-medium text-slate-500">{title}</p><p className="mt-0.5 truncate text-base font-semibold">{value}</p><p className="mt-0.5 truncate text-[10px] text-slate-400">{note}</p></div> }
+function Metric({ title, value, note }: { title: string; value: string; note: string }) {
+  return (
+    <div className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm sm:px-4 sm:py-4">
+      <p className="text-xs font-semibold leading-5 text-slate-600">{title}</p>
+      <p className="mt-2 break-words text-xl font-bold tracking-tight text-slate-900">{value}</p>
+      <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-slate-500" title={note}>{note}</p>
+    </div>
+  )
+}
 type ChartField = { key: string; name: string; color: string; currency?: boolean }
 const chartValue = (value: number | string, key: string, fields: ChartField[]) =>
   fields.find(field => field.key === key)?.currency ? formatCurrency(Number(value)) : value

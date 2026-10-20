@@ -204,6 +204,42 @@ try {
   Add-Content -LiteralPath (Join-Path $evidenceRoot 'uat-run.log') -Value "FORWARD_MIGRATION_SHA256=$overlayHash"
   Invoke-Checked $pnpmExecutable @('dlx', 'supabase@2.120.0', '--workdir', $runRoot, 'migration', 'up', '--local', '--include-all', '--yes') 'Forward-only report read migration rehearsal failed.'
   Add-Content -LiteralPath (Join-Path $evidenceRoot 'uat-run.log') -Value 'FORWARD_MIGRATION_REHEARSAL=applied through Supabase CLI migration history on isolated local database'
+  # Rehearse M2 compensation before M3 depends on its read helper.
+  # A savepoint restores scoped M2 security before applying M3 and running UAT.
+  $compensatingRollbackPath = Join-Path $repoRoot 'scripts/uat/report-read-compensating-rollback.sql'
+  $compensatingBody = Get-Content -LiteralPath $compensatingRollbackPath -Raw
+  $compensatingBody = [regex]::Replace($compensatingBody, '(?im)^\s*begin;\s*', '', 1)
+  $compensatingBody = [regex]::Replace($compensatingBody, '(?im)^\s*commit;\s*$', '', 1)
+  $compensatingSql = @(
+    'begin;'
+    'savepoint rc16k_compensating_read;'
+    $compensatingBody
+    'rollback to savepoint rc16k_compensating_read;'
+    'do $compensation_restored$'
+    'begin'
+    '  if to_regprocedure(''private.can_read_report(text,text)'') is null then raise exception ''REPORT_HELPER_NOT_RESTORED''; end if;'
+    '  if not exists (select 1 from pg_policies where schemaname = ''public'' and tablename = ''reports'' and policyname = ''reports_active_select'' and qual like ''%can_read_report%'') then raise exception ''REPORT_SCOPED_READ_NOT_RESTORED''; end if;'
+    '  if not pg_get_functiondef(''public.get_report_revisions(text)''::regprocedure) like ''%can_read_report%'' then raise exception ''REVISION_RPC_SCOPE_NOT_RESTORED''; end if;'
+    '  if not has_function_privilege(''authenticated'', ''private.can_read_report(text,text)'', ''EXECUTE'') or has_function_privilege(''anon'', ''private.can_read_report(text,text)'', ''EXECUTE'') or has_function_privilege(''service_role'', ''private.can_read_report(text,text)'', ''EXECUTE'') then raise exception ''REPORT_HELPER_ACL_NOT_RESTORED''; end if;'
+    '  if exists (select 1 from pg_policies where schemaname = ''public'' and tablename = ''dashboard_updates'' and policyname = ''dashboard_updates_scoped_read'') then raise exception ''LIVE_SNAPSHOT_APPLIED_BEFORE_COMPENSATION''; end if;'
+    '  raise notice ''REPORT_RLS_COMPENSATION_RESTORED=PASS'';'
+    'end;'
+    '$compensation_restored$;'
+    'commit;'
+  ) -join [Environment]::NewLine
+  $compensatingPath = Join-Path $runRoot 'report-read-compensation-rehearsal.sql'
+  Set-Content -LiteralPath $compensatingPath -Value $compensatingSql -NoNewline
+  $compensatingRollback = Invoke-IsolatedPsql $compensatingPath
+  $compensatingText = $compensatingRollback.Output -join [Environment]::NewLine
+  if ($compensatingRollback.ExitCode -ne 0 -or $compensatingText -notmatch 'REPORT_RLS_COMPENSATING_ROLLBACK=PASS' -or $compensatingText -notmatch 'REPORT_RLS_COMPENSATION_RESTORED=PASS') {
+    $rollbackDiagnostics = @('PSQL_EXIT_CODE=' + $compensatingRollback.ExitCode) + @($compensatingRollback.Output | ForEach-Object { [string]$_ }) |
+      Where-Object { $_ -notmatch '(?i)authorization|bearer|cookie|password|access_token|refresh_token|service.role|anon.key' }
+    Set-Content -LiteralPath (Join-Path $evidenceRoot 'migration-compensating-rollback-failure.log') -Value $rollbackDiagnostics
+    foreach ($line in $rollbackDiagnostics) { Write-Host "UAT_ROLLBACK_FAILURE=$line" }
+    throw 'Pre-Live-Snapshot M2 compensating rollback rehearsal failed.'
+  }
+  Set-Content -LiteralPath (Join-Path $evidenceRoot 'migration-compensating-rollback.log') -Value $compensatingRollback.Output
+  Add-Content -LiteralPath (Join-Path $evidenceRoot 'uat-run.log') -Value 'M2_COMPENSATION=PASS; pre-M3 compensation verified then reverted in savepoint; scoped M2 RLS retained for M3 and UAT'
   Copy-Item -LiteralPath (Join-Path $repoRoot 'supabase/migrations/20261019000000_live_dashboard_snapshot_binding.sql') -Destination $migrationsRoot
   Invoke-Checked $pnpmExecutable @('dlx', 'supabase@2.120.0', '--workdir', $runRoot, 'migration', 'up', '--local', '--yes') 'Live snapshot migration rehearsal failed.'
   Add-Content -LiteralPath (Join-Path $evidenceRoot 'uat-run.log') -Value 'LIVE_SNAPSHOT_MIGRATION=applied after report read-RLS on isolated local database'
@@ -263,18 +299,6 @@ select json_build_object(
   if ($env:UAT_TEST_GREP) { $playwrightArguments += @('--grep', $env:UAT_TEST_GREP) }
   Invoke-Checked $pnpmExecutable $playwrightArguments 'Authenticated isolated Playwright UAT failed.'
 
-  $compensatingRollbackPath = Join-Path $repoRoot 'scripts/uat/report-read-compensating-rollback.sql'
-  $compensatingRollback = Invoke-IsolatedPsql $compensatingRollbackPath
-  if ($compensatingRollback.ExitCode -ne 0 -or -not (($compensatingRollback.Output -join "`n") -match 'REPORT_RLS_COMPENSATING_ROLLBACK=PASS')) {
-    $rollbackDiagnostics = @($compensatingRollback.Output | ForEach-Object { [string]$_ })
-    $rollbackDiagnostics = @('PSQL_EXIT_CODE=' + $compensatingRollback.ExitCode) + $rollbackDiagnostics |
-      Where-Object { $_ -notmatch '(?i)authorization|bearer|cookie|password|access_token|refresh_token|service.role|anon.key' }
-    Set-Content -LiteralPath (Join-Path $evidenceRoot 'migration-compensating-rollback-failure.log') -Value $rollbackDiagnostics
-    foreach ($line in $rollbackDiagnostics) { Write-Host "UAT_ROLLBACK_FAILURE=$line" }
-    throw 'Post-migration compensating rollback rehearsal failed.'
-  }
-  Set-Content -LiteralPath (Join-Path $evidenceRoot 'migration-compensating-rollback.log') -Value $compensatingRollback.Output
-  Add-Content -LiteralPath (Join-Path $evidenceRoot 'uat-run.log') -Value 'MIGRATION_COMPENSATING_ROLLBACK=PASS; restored prior report policies and revision RPC on the disposable local database; migration ledger retained'
   $testsPassed = $true
 
   Write-Host "UAT_SHA=$releaseSha"

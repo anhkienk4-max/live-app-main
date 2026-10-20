@@ -87,6 +87,23 @@ test('Endpoint cannot trust forged client identity and denies Member staff recor
   assert.equal((await context(new Request('http://local.test/api/operations/registration-context?id=own-1'))).status, 403)
 })
 
+test('Analytics response owner matches the business user identity for all roles', async () => {
+  const filters = encodeURIComponent(JSON.stringify({ from: '2099-01-01', to: '2099-01-02' }))
+  for (const systemPermission of ['admin', 'leader', 'member'] as const) {
+    const GET = createAnalyticsSnapshotHandler({
+      resolveUser: async () => ({ id: 'auth-uuid-different', businessUserId: 'business-17', systemPermission }),
+      createClient: async () => ({
+        rpc: async () => ({ data: { totals: { reportCount: 0 } }, error: null }),
+      }) as never,
+    }).GET
+    const response = await GET(new Request('http://local.test/api?filters=' + filters))
+    assert.equal(response.status, 200)
+    const body = await response.json()
+    assert.equal(body.ownerKey, 'business-17:' + systemPermission)
+    assert.notEqual(body.ownerKey, 'auth-uuid-different:' + systemPermission)
+  }
+})
+
 test('Analytics aggregate accepts valid date filters for each role and rejects extra filters before SQL', async () => {
   for (const systemPermission of ['admin', 'leader', 'member'] as const) {
     const calls: unknown[] = []
