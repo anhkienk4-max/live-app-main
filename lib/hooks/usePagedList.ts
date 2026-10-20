@@ -27,6 +27,7 @@ export function usePagedList<T>(service: { getPage(query: ListQuery, signal?: Ab
   useEffect(() => {
     const controller = new AbortController()
     const request = ++version.current
+    let prefetchTimer: number | undefined
     if (!identity) return () => { controller.abort() }
     const currentQuery: ListQuery = { page, pageSize, filters: JSON.parse(encodedFilters) }
     // A cached, role-scoped page can render immediately without opening a new request.
@@ -39,12 +40,14 @@ export function usePagedList<T>(service: { getPage(query: ListQuery, signal?: Ab
         if (request !== version.current || controller.signal.aborted) return
         if (result.page !== page) navigate({ [prefix + '_page']: String(result.page) }, true)
         setState({ key, identity, result })
-        window.setTimeout(() => prefetchNextListPage(service, identity, prefix, currentQuery, result), 250)
+        prefetchTimer = window.setTimeout(() => {
+          if (!controller.signal.aborted) prefetchNextListPage(service, identity, prefix, currentQuery, result, controller.signal)
+        }, 250)
       } catch (error) {
         if (request === version.current && !controller.signal.aborted) setState({ key, identity, error })
       }
     }, 30)
-    return () => { window.clearTimeout(timer); controller.abort() }
+    return () => { window.clearTimeout(timer); if (prefetchTimer !== undefined) window.clearTimeout(prefetchTimer); controller.abort() }
   }, [encodedFilters, identity, key, navigate, page, pageSize, prefix, service])
   const reload = useCallback(async () => {
     invalidatePageCache(identity, prefix)

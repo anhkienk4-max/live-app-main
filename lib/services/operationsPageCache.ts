@@ -10,6 +10,7 @@ const MAX_ENTRIES = 48
 
 type Entry = { expires: number; value: unknown }
 const entries = new Map<string, Entry>()
+let invalidationEpoch = 0
 
 export function pageCacheKey(identity: string, namespace: string, query: unknown): string {
   return JSON.stringify([identity, namespace, query])
@@ -39,6 +40,8 @@ export function writePageCache<T>(key: string, value: T): void {
 }
 
 export function invalidatePageCache(identity?: string, namespace?: string): void {
+  // In-flight reads from before a mutation must never repopulate stale rows.
+  invalidationEpoch++
   if (!identity) { entries.clear(); return }
   for (const key of entries.keys()) {
     try {
@@ -58,8 +61,9 @@ export async function readCachedListPage<T>(
   const key = pageCacheKey(identity, namespace, query)
   const previous = readPageCache<ListPage<T>>(key)
   if (previous) return previous
+  const epoch = invalidationEpoch
   const result = await service.getPage(query, signal)
-  if (!signal?.aborted) writePageCache(key, result)
+  if (!signal?.aborted && epoch === invalidationEpoch) writePageCache(key, result)
   return result
 }
 
@@ -70,13 +74,14 @@ export function prefetchNextListPage<T>(
   namespace: string,
   query: ListQuery,
   visible: ListPage<T>,
+  signal?: AbortSignal,
 ): void {
-  if (visible.total <= visible.page * visible.pageSize || visible.page !== query.page) return
+  if (signal?.aborted || visible.total <= visible.page * visible.pageSize || visible.page !== query.page) return
   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
   const next = { ...query, page: visible.page + 1 }
   const key = pageCacheKey(identity, namespace, next)
   if (readPageCache(key)) return
-  void readCachedListPage(service, identity, namespace, next).catch(() => {
+  void readCachedListPage(service, identity, namespace, next, signal).catch(() => {
     // Background prefetch is optional. The next page remains retryable on demand.
   })
 }
