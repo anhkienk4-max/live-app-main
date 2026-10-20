@@ -40,8 +40,10 @@ async function setupIsolatedPostgresDb() {
     create table if not exists public.shifts (
       id text primary key,
       brand_id text references public.brands(id),
-      start_time timestamptz not null,
-      end_time timestamptz not null,
+      platform_id text,
+      date date not null,
+      start_time time not null,
+      end_time time not null,
       status text not null check (status in ('preparing', 'scheduled', 'live', 'completed', 'cancelled')),
       host_id text references public.business_users(id),
       support_id text references public.business_users(id),
@@ -127,7 +129,9 @@ async function setupIsolatedPostgresDb() {
       drafted_segments integer not null default 0,
       metadata jsonb not null default '{}'::jsonb,
       created_by text not null references public.business_users(id),
-      created_at timestamptz not null default statement_timestamp()
+      created_at timestamptz not null default statement_timestamp(),
+      updated_at timestamptz not null default statement_timestamp(),
+      version integer not null default 1
     );
 
     create table if not exists public.workforce_attendance_import_rows (
@@ -135,12 +139,25 @@ async function setupIsolatedPostgresDb() {
       batch_id text not null references public.workforce_attendance_import_batches(id) on delete cascade,
       source_row_number integer not null,
       raw_payload jsonb not null,
+      parsed_date date,
+      parsed_start_time text,
+      parsed_end_time text,
+      parsed_start_at timestamptz,
+      parsed_end_at timestamptz,
+      raw_staff_name text,
+      raw_role text,
+      raw_notes text,
       matched_shift_id text references public.shifts(id),
       matched_staff_id text references public.business_users(id),
+      operational_role text,
+      coverage_kind text default 'planned',
+      evidence_kind text not null default 'missing_evidence',
       status text not null default 'pending',
       exception_code text,
       exception_detail text,
-      resulting_segment_id text references public.workforce_actual_segments(id)
+      resulting_segment_id text references public.workforce_actual_segments(id),
+      created_at timestamptz not null default statement_timestamp(),
+      updated_at timestamptz not null default statement_timestamp()
     );
   `)
 
@@ -161,11 +178,15 @@ async function setupIsolatedPostgresDb() {
       ('usr-dup-1', 'auth-8', 'trungten1@livestream.com', 'Hoàng Minh Đức', 'member', 'active'),
       ('usr-dup-2', 'auth-9', 'trungten2@livestream.com', 'Hoàng Minh Đức', 'member', 'active');
 
-    insert into public.shifts (id, brand_id, start_time, end_time, status, host_id, support_id, technical_id) values
-      ('shf-opella-oct10', 'brand-opella', '2026-10-10 09:00:00+07', '2026-10-10 13:00:00+07', 'completed', 'usr-member-huong', 'usr-member-an', 'usr-member-tuan'),
-      ('shf-pepsico-night', 'brand-pepsico', '2026-10-10 22:00:00+07', '2026-10-11 02:00:00+07', 'completed', 'usr-member-an', 'usr-member-binh', null),
-      ('shf-opella-future', 'brand-opella', '2026-10-25 14:00:00+07', '2026-10-25 18:00:00+07', 'scheduled', 'usr-member-huong', null, null),
-      ('shf-control-101', 'brand-opella', '2026-10-15 10:00:00+07', '2026-10-15 14:00:00+07', 'completed', 'usr-member-huong', null, null);
+    insert into public.shifts (id, brand_id, date, start_time, end_time, status, host_id, support_id, technical_id) values
+      ('shf-opella-oct10', 'brand-opella', '2026-10-10', '09:00:00', '13:00:00', 'completed', 'usr-member-huong', 'usr-member-an', 'usr-member-tuan'),
+      ('shf-pepsico-night', 'brand-pepsico', '2026-10-10', '22:00:00', '02:00:00', 'completed', 'usr-member-an', 'usr-member-binh', null),
+      ('shf-opella-oct11', 'brand-opella', '2026-10-11', '09:00:00', '13:00:00', 'completed', 'usr-member-huong', null, null),
+      ('shf-opella-oct12', 'brand-opella', '2026-10-12', '09:00:00', '13:00:00', 'completed', 'usr-member-huong', null, null),
+      ('shf-opella-oct13', 'brand-opella', '2026-10-13', '09:00:00', '13:00:00', 'completed', 'usr-member-huong', null, null),
+      ('shf-opella-oct14', 'brand-opella', '2026-10-14', '09:00:00', '13:00:00', 'completed', 'usr-member-huong', null, null),
+      ('shf-opella-future', 'brand-opella', '2026-10-25', '14:00:00', '18:00:00', 'scheduled', 'usr-member-huong', null, null),
+      ('shf-control-101', 'brand-opella', '2026-10-15', '10:00:00', '14:00:00', 'completed', 'usr-member-huong', null, null);
 
     insert into public.workforce_rate_cards (id, staff_id, operational_role, effective_from, effective_through, vnd_per_hour, approved_by) values
       ('rate-host-general', null, 'host', '2026-10-01', null, 120000, 'usr-admin-alice'),
@@ -195,27 +216,42 @@ function createPgLiteSupabaseAdapter(db: PGlite): SupabaseClient {
           return queryBuilder
         },
         eq: (col: string, val: unknown) => {
+          const colRef = table === 'shifts' ? `s.${col}` : col
           params.push(val)
-          filters.push(`${col} = $${params.length}`)
+          filters.push(`${colRef} = $${params.length}`)
+          return queryBuilder
+        },
+        neq: (col: string, val: unknown) => {
+          const colRef = table === 'shifts' ? `s.${col}` : col
+          params.push(val)
+          filters.push(`${colRef} <> $${params.length}`)
+          return queryBuilder
+        },
+        in: (col: string, values: unknown[]) => {
+          if (!values || values.length === 0) {
+            filters.push('false')
+            return queryBuilder
+          }
+          const colRef = table === 'shifts' ? `s.${col}` : col
+          const placeholders = values.map(v => {
+            params.push(v)
+            return `$${params.length}`
+          }).join(', ')
+          filters.push(`${colRef} in (${placeholders})`)
           return queryBuilder
         },
         is: (col: string, val: unknown) => {
+          const colRef = table === 'shifts' ? `s.${col}` : col
           if (val === null) {
-            filters.push(`${col} is null`)
+            filters.push(`${colRef} is null`)
           } else {
             params.push(val)
-            filters.push(`${col} is $${params.length}`)
+            filters.push(`${colRef} is $${params.length}`)
           }
           return queryBuilder
         },
-        order: (..._args: unknown[]) => {
-          void _args
-          return queryBuilder
-        },
-        limit: (..._args: unknown[]) => {
-          void _args
-          return queryBuilder
-        },
+        order: (..._args: unknown[]) => queryBuilder,
+        limit: (..._args: unknown[]) => queryBuilder,
         maybeSingle: async () => {
           const sql = `select * from public.${table} ${filters.length ? 'where ' + filters.join(' and ') : ''} limit 1`
           const res = await db.query(sql, params)
@@ -229,8 +265,9 @@ function createPgLiteSupabaseAdapter(db: PGlite): SupabaseClient {
             let sql: string
             if (table === 'shifts') {
               sql = `
-                select s.id, s.brand_id, s.start_time, s.end_time, s.status, s.host_id, s.support_id, s.technical_id,
-                       json_build_object('name', b.name) as brands
+                select s.id, s.brand_id, s.platform_id, s.date, s.start_time, s.end_time, s.status, s.host_id, s.support_id, s.technical_id,
+                       json_build_object('name', b.name) as brands,
+                       null as platforms
                 from public.shifts s
                 left join public.brands b on s.brand_id = b.id
                 ${filters.length ? 'where ' + filters.join(' and ') : ''}
@@ -247,25 +284,99 @@ function createPgLiteSupabaseAdapter(db: PGlite): SupabaseClient {
         },
         insert: (rows: Record<string, unknown>[] | Record<string, unknown>) => {
           const items = Array.isArray(rows) ? rows : [rows]
+          const execInsert = async () => {
+            const insertedRows: unknown[] = []
+            for (const r of items) {
+              const cols = Object.keys(r)
+              const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ')
+              const vals = cols.map(c => {
+                const v = r[c]
+                if (typeof v === 'object' && v !== null && !(v instanceof Date)) {
+                  return JSON.stringify(v)
+                }
+                return v
+              })
+              const insertSql = `
+                insert into public.${table} (${cols.join(', ')})
+                values (${placeholders})
+                returning *
+              `
+              const insRes = await db.query(insertSql, vals)
+              insertedRows.push(insRes.rows[0])
+            }
+            return { data: insertedRows, error: null }
+          }
+
           return {
-            select: async () => {
-              const insertedIds: { id: string }[] = []
-              for (const r of items) {
-                const cols = Object.keys(r)
-                const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ')
-                const vals = cols.map(c => r[c])
-                const insertSql = `
-                  insert into public.${table} (${cols.join(', ')})
-                  values (${placeholders})
-                  returning id
-                `
-                const insRes = await db.query(insertSql, vals)
-                const rowId = (insRes.rows[0] as { id: string }).id
-                insertedIds.push({ id: rowId })
-              }
-              return { data: insertedIds, error: null }
+            select: async () => execInsert(),
+            then: (resolve: (v: unknown) => void, reject?: (e: unknown) => void) => {
+              execInsert().then(resolve, reject)
             },
           }
+        },
+        update: (fields: Record<string, unknown>) => {
+          const updateFilters: string[] = []
+          const updateParams: unknown[] = []
+
+          const updater = {
+            eq: (col: string, val: unknown) => {
+              updateParams.push(val)
+              updateFilters.push(`${col} = $${updateParams.length + Object.keys(fields).length}`)
+              return updater
+            },
+            then: async (resolve: (val: { data: unknown; error: unknown }) => void, reject?: (err: unknown) => void) => {
+              try {
+                const cols = Object.keys(fields)
+                const setClauses = cols.map((c, i) => `${c} = $${i + 1}`)
+                const vals = cols.map(c => {
+                  const v = fields[c]
+                  if (typeof v === 'object' && v !== null && !(v instanceof Date)) {
+                    return JSON.stringify(v)
+                  }
+                  return v
+                })
+                const allParams = [...vals, ...updateParams]
+                const sql = `
+                  update public.${table}
+                  set ${setClauses.join(', ')}
+                  ${updateFilters.length ? 'where ' + updateFilters.join(' and ') : ''}
+                  returning *
+                `
+                const res = await db.query(sql, allParams)
+                resolve({ data: res.rows, error: null })
+              } catch (err) {
+                if (reject) reject(err)
+                else resolve({ data: null, error: err })
+              }
+            },
+          }
+          return updater
+        },
+        delete: () => {
+          const deleteFilters: string[] = []
+          const deleteParams: unknown[] = []
+
+          const deleter = {
+            eq: (col: string, val: unknown) => {
+              deleteParams.push(val)
+              deleteFilters.push(`${col} = $${deleteParams.length}`)
+              return deleter
+            },
+            then: async (resolve: (val: { data: unknown; error: unknown }) => void, reject?: (err: unknown) => void) => {
+              try {
+                const sql = `
+                  delete from public.${table}
+                  ${deleteFilters.length ? 'where ' + deleteFilters.join(' and ') : ''}
+                `
+                await db.query(sql, deleteParams)
+                resolve({ data: null, error: null })
+              } catch (err) {
+                if (reject) reject(err)
+                else resolve({ data: null, error: err })
+              }
+            },
+          }
+          return deleter
         },
       }
       return queryBuilder
@@ -397,9 +508,11 @@ test('DB/API Integration Suite: Full Attendance Import, DB Guards & Payroll Flow
     assert.equal(json.ok, true)
     assert.equal(json.summary.matchedRows, 2)
     const hostSegment = json.results[0].segment
-    assert.equal(hostSegment.startAtIso, '2026-10-10T22:00:00+07:00')
-    assert.equal(hostSegment.endAtIso, '2026-10-11T02:00:00+07:00')
-    assert.equal(hostSegment.durationMinutes, 240)
+    assert.equal(hostSegment.startAtIso, '2026-10-10T21:55:00+07:00', 'Actual start is physical check-in')
+    assert.equal(hostSegment.endAtIso, '2026-10-11T02:05:00+07:00', 'Actual end is physical check-out')
+    assert.equal(hostSegment.durationMinutes, 250, 'Actual duration is 250 mins (21:55 - 02:05)')
+    assert.equal(hostSegment.plannedStartAtIso, '2026-10-10T22:00:00+07:00', 'Planned start is schedule')
+    assert.equal(hostSegment.plannedEndAtIso, '2026-10-11T02:00:00+07:00', 'Planned end is schedule')
   })
 
   // 4. CONTROL TIMESHEETS Exact Columns
@@ -642,7 +755,7 @@ test('DB/API Integration Suite: Full Attendance Import, DB Guards & Payroll Flow
     const previewJson = await previewRes.json()
     assert.equal(previewJson.summary.matchedRows, 1)
 
-    // Step B: Confirm Drafts
+    // Step B: Confirm Drafts (Client only sends batchId; Server loads immutable staged rows from DB)
     const confirmRes = await handler.POST(
       new Request('http://localhost/api/workforce/attendance-import', {
         method: 'POST',
@@ -650,7 +763,6 @@ test('DB/API Integration Suite: Full Attendance Import, DB Guards & Payroll Flow
         body: JSON.stringify({
           action: 'confirm_drafts',
           batchId: previewJson.batchId,
-          matchedResults: previewJson.results.filter((r: { status: string }) => r.status === 'matched'),
         }),
       })
     )
@@ -668,6 +780,24 @@ test('DB/API Integration Suite: Full Attendance Import, DB Guards & Payroll Flow
     assert.equal(row.review_status, 'draft', 'MUST BE DRAFT')
     assert.equal(row.created_by, 'usr-admin-alice')
     assert.equal(row.reviewed_by, null, 'Must have no reviewer initially')
+
+    // Verify Row Provenance in workforce_attendance_import_rows: status=drafted, resulting_segment_id set!
+    const stagedRowDb = await db.query(
+      `select status, resulting_segment_id from public.workforce_attendance_import_rows where batch_id = $1`,
+      [previewJson.batchId]
+    )
+    assert.equal(stagedRowDb.rows.length, 1)
+    assert.equal((stagedRowDb.rows[0] as { status: string }).status, 'drafted')
+    assert.equal((stagedRowDb.rows[0] as { resulting_segment_id: string }).resulting_segment_id, createdSegmentId)
+
+    // Verify Batch in workforce_attendance_import_batches: status=confirmed, drafted_segments=1
+    const batchDb = await db.query(
+      `select status, drafted_segments from public.workforce_attendance_import_batches where id = $1`,
+      [previewJson.batchId]
+    )
+    assert.equal(batchDb.rows.length, 1)
+    assert.equal((batchDb.rows[0] as { status: string }).status, 'confirmed')
+    assert.equal((batchDb.rows[0] as { drafted_segments: number }).drafted_segments, 1)
   })
 
   // 10. Independent Approval & 4-Eyes Principle
@@ -779,5 +909,319 @@ test('DB/API Integration Suite: Full Attendance Import, DB Guards & Payroll Flow
     const periodData = lockedPeriod.rows[0] as { status: string }
     assert.equal(periodData.status, 'locked')
     // A locked period cannot be mutated
+  })
+
+  // 13. P0-1 Forged Payload Protection: Client sends modified matchedResults; Server ignores client and uses DB staged row
+  await t.test('14. P0-1: Forged client matchedResults payload is ignored; Server uses only staged DB records', async () => {
+    const handler = createHistoricalAttendanceHandler({
+      client: () => dbClient,
+      resolveUser: async () => ({
+        id: 'usr-admin-alice',
+        email: 'admin.alice@livestream.com',
+        systemPermission: 'admin',
+      }),
+    })
+
+    // Create a new preview batch
+    const pRes = await handler.POST(
+      new Request('http://localhost/api/workforce/attendance-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'preview',
+          sourceProfileId: 'opella_t10',
+          sourceName: 'Opella_Batch_Forged_Test.xlsx',
+          brandName: 'Opella',
+          rawRows: [
+            {
+              rowNumber: 1,
+              date: '10/11/2026',
+              timeRange: '09:00 - 13:00',
+              hostName: 'Nguyễn Thị Hương',
+              checkIn: '09:00',
+              checkOut: '13:00',
+              notes: 'Ca chuẩn 1',
+            },
+          ],
+        }),
+      })
+    )
+    const pJson = await pRes.json()
+    assert.equal(pJson.ok, true)
+
+    // Attacker sends forged matchedResults claiming a fake shift or altered times
+    const forgedConfirmRes = await handler.POST(
+      new Request('http://localhost/api/workforce/attendance-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'confirm_drafts',
+          batchId: pJson.batchId,
+          matchedResults: [
+            {
+              rowNumber: 1,
+              status: 'matched',
+              matchedShiftId: 'FORGED_SHIFT_ID_NOT_IN_DB',
+              matchedStaffId: 'FORGED_STAFF_ID',
+              segment: {
+                startAtIso: '2026-10-11T00:00:00+07:00',
+                endAtIso: '2026-10-11T23:59:00+07:00',
+              },
+            },
+          ],
+        }),
+      })
+    )
+    const forgedJson = await forgedConfirmRes.json()
+    assert.equal(forgedJson.ok, true)
+
+    // Server must have created the segment from the STAGED row (shf-opella-oct11 / usr-member-huong), NOT the forged client data!
+    const createdSegs = await db.query(
+      `select shift_id, staff_id from public.workforce_actual_segments where evidence_note like $1`,
+      [`%${pJson.batchId}%`]
+    )
+    assert.equal(createdSegs.rows.length, 1)
+    assert.equal((createdSegs.rows[0] as { shift_id: string }).shift_id, 'shf-opella-oct11', 'Used authentic staged shift, not forged shift')
+    assert.equal((createdSegs.rows[0] as { staff_id: string }).staff_id, 'usr-member-huong', 'Used authentic staged staff, not forged staff')
+  })
+
+  // 14. P0-1 & P0-2 Replay Attack Protection: Second confirm fails with BATCH_ALREADY_CONFIRMED
+  await t.test('15. P0-1 & P0-2: Replay confirmation fails with 409 BATCH_ALREADY_CONFIRMED', async () => {
+    const handler = createHistoricalAttendanceHandler({
+      client: () => dbClient,
+      resolveUser: async () => ({
+        id: 'usr-admin-alice',
+        email: 'admin.alice@livestream.com',
+        systemPermission: 'admin',
+      }),
+    })
+
+    // Setup fresh staged batch
+    const pRes = await handler.POST(
+      new Request('http://localhost/api/workforce/attendance-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'preview',
+          sourceProfileId: 'opella_t10',
+          sourceName: 'Opella_Replay_Test.xlsx',
+          brandName: 'Opella',
+          rawRows: [
+            {
+              rowNumber: 1,
+              date: '10/12/2026',
+              timeRange: '09:00 - 13:00',
+              hostName: 'Nguyễn Thị Hương',
+              checkIn: '09:00',
+              checkOut: '13:00',
+              notes: 'Ca replay',
+            },
+          ],
+        }),
+      })
+    )
+    const pJson = await pRes.json()
+
+    // First confirmation -> SUCCESS
+    const c1 = await handler.POST(
+      new Request('http://localhost/api/workforce/attendance-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'confirm_drafts', batchId: pJson.batchId }),
+      })
+    )
+    assert.equal((await c1.json()).ok, true)
+
+    // Replay confirmation -> 409 BATCH_ALREADY_CONFIRMED
+    const c2 = await handler.POST(
+      new Request('http://localhost/api/workforce/attendance-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'confirm_drafts', batchId: pJson.batchId }),
+      })
+    )
+    assert.equal(c2.status, 409)
+    const c2Json = await c2.json()
+    assert.equal(c2Json.error.code, 'BATCH_ALREADY_CONFIRMED')
+  })
+
+  // 15. P0-3 Shift Candidate Ambiguity (Fail Closed)
+  await t.test('16. P0-3: Multiple candidates with equivalent proximity fail closed to ROLE_AMBIGUOUS', async () => {
+    // Seed two competing unassigned completed shifts at the same time for PepsiCo
+    await db.exec(`
+      insert into public.shifts (id, brand_id, date, start_time, end_time, status, host_id, support_id, technical_id) values
+        ('shf-pepsi-studio-1', 'brand-pepsico', '2026-10-18', '14:00:00', '18:00:00', 'completed', null, null, null),
+        ('shf-pepsi-studio-2', 'brand-pepsico', '2026-10-18', '14:00:00', '18:00:00', 'completed', null, null, null);
+    `)
+
+    const handler = createHistoricalAttendanceHandler({
+      client: () => dbClient,
+      resolveUser: async () => ({
+        id: 'usr-admin-alice',
+        email: 'admin.alice@livestream.com',
+        systemPermission: 'admin',
+      }),
+    })
+
+    const pRes = await handler.POST(
+      new Request('http://localhost/api/workforce/attendance-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'preview',
+          sourceProfileId: 'pepsico_t10',
+          sourceName: 'PEPSICO_AMBIGUOUS.xlsx',
+          brandName: 'PepsiCo',
+          rawRows: [
+            {
+              rowNumber: 1,
+              date: '10/18/2026',
+              timeRange: '14:00 - 18:00',
+              hostName: 'Trần Văn An',
+              checkIn: '14:00',
+              checkOut: '18:00',
+              notes: 'Ca live trùng giờ cả 2 studio',
+            },
+          ],
+        }),
+      })
+    )
+    const pJson = await pRes.json()
+    assert.equal(pJson.ok, true)
+    assert.equal(pJson.summary.matchedRows, 0, 'Must NOT pick arbitrarily')
+    assert.equal(pJson.summary.exceptionRows, 1)
+    assert.equal(pJson.results[0].exceptionCode, 'ROLE_AMBIGUOUS')
+    assert.match(pJson.results[0].exceptionDetail, /độ tin cậy tương đương/)
+  })
+
+  // 16. P0-4 Actual Times vs Planned Times (Check-in 09:15, Check-out 12:50 on 09:00-13:00 schedule)
+  await t.test('17. P0-4: Planned 09:00-13:00 with Actual 09:15-12:50 produces Actual Segment 09:15-12:50 (215 mins)', async () => {
+    const handler = createHistoricalAttendanceHandler({
+      client: () => dbClient,
+      resolveUser: async () => ({
+        id: 'usr-admin-alice',
+        email: 'admin.alice@livestream.com',
+        systemPermission: 'admin',
+      }),
+    })
+
+    const pRes = await handler.POST(
+      new Request('http://localhost/api/workforce/attendance-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'preview',
+          sourceProfileId: 'opella_t10',
+          sourceName: 'Opella_Variance_Test.xlsx',
+          brandName: 'Opella',
+          rawRows: [
+            {
+              rowNumber: 1,
+              date: '10/13/2026',
+              timeRange: '09:00 - 13:00', // Planned schedule
+              hostName: 'Nguyễn Thị Hương',
+              checkIn: '09:15',          // Actual punch in
+              checkOut: '12:50',         // Actual punch out
+              notes: 'Đi muộn 15p, về sớm 10p',
+            },
+          ],
+        }),
+      })
+    )
+    const pJson = await pRes.json()
+    assert.equal(pJson.ok, true)
+    assert.equal(pJson.summary.matchedRows, 1)
+
+    const seg = pJson.results[0].segment
+    assert.equal(seg.startAtIso, '2026-10-13T09:15:00+07:00', 'Actual start must be 09:15')
+    assert.equal(seg.endAtIso, '2026-10-13T12:50:00+07:00', 'Actual end must be 12:50')
+    assert.equal(seg.durationMinutes, 215, 'Duration must be 215 minutes (3h35m)')
+    assert.equal(seg.plannedStartAtIso, '2026-10-13T09:00:00+07:00', 'Planned start is 09:00')
+    assert.equal(seg.plannedEndAtIso, '2026-10-13T13:00:00+07:00', 'Planned end is 13:00')
+
+    // Confirm and verify DB segment timestamps
+    const cRes = await handler.POST(
+      new Request('http://localhost/api/workforce/attendance-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'confirm_drafts', batchId: pJson.batchId }),
+      })
+    )
+    assert.equal((await cRes.json()).ok, true)
+
+    const dbSeg = await db.query(
+      `select actual_start_at, actual_end_at from public.workforce_actual_segments where evidence_note like $1`,
+      [`%${pJson.batchId}%`]
+    )
+    assert.equal(dbSeg.rows.length, 1)
+    const segRow = dbSeg.rows[0] as { actual_start_at: string; actual_end_at: string }
+    assert.match(new Date(segRow.actual_start_at).toISOString(), /02:15:00/, 'UTC equivalent of 09:15 (+07:00)')
+    assert.match(new Date(segRow.actual_end_at).toISOString(), /05:50:00/, 'UTC equivalent of 12:50 (+07:00)')
+  })
+
+  // 17. P0-2 Staging API: GET get_batch and list_exceptions return staged database records
+  await t.test('18. P0-2: GET get_batch and list_exceptions return persisted rows from database', async () => {
+    const handler = createHistoricalAttendanceHandler({
+      client: () => dbClient,
+      resolveUser: async () => ({
+        id: 'usr-admin-alice',
+        email: 'admin.alice@livestream.com',
+        systemPermission: 'admin',
+      }),
+    })
+
+    // Preview creates staged batch with 1 matched and 1 exception
+    const pRes = await handler.POST(
+      new Request('http://localhost/api/workforce/attendance-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'preview',
+          sourceProfileId: 'opella_t10',
+          sourceName: 'GET_BATCH_TEST.xlsx',
+          brandName: 'Opella',
+          rawRows: [
+            {
+              rowNumber: 1,
+              date: '10/14/2026',
+              timeRange: '09:00 - 13:00',
+              hostName: 'Nguyễn Thị Hương',
+              checkIn: '09:00',
+              checkOut: '13:00',
+            },
+            {
+              rowNumber: 2,
+              date: '10/14/2026',
+              timeRange: '09:00 - 13:00',
+              hostName: 'Nhân Sự Không Xác Định',
+              checkIn: '09:00',
+              checkOut: '13:00',
+            },
+          ],
+        }),
+      })
+    )
+    const pJson = await pRes.json()
+    const testBatchId = pJson.batchId
+
+    // GET get_batch
+    const getBatchRes = await handler.GET(
+      new Request(`http://localhost/api/workforce/attendance-import?action=get_batch&batch_id=${testBatchId}`)
+    )
+    assert.equal(getBatchRes.status, 200)
+    const getBatchJson = await getBatchRes.json()
+    assert.equal(getBatchJson.ok, true)
+    assert.equal(getBatchJson.batch.id, testBatchId)
+    assert.equal(getBatchJson.rows.length, 2, 'Returns both staged rows from database')
+
+    // GET list_exceptions
+    const getExRes = await handler.GET(
+      new Request(`http://localhost/api/workforce/attendance-import?action=list_exceptions&batch_id=${testBatchId}`)
+    )
+    assert.equal(getExRes.status, 200)
+    const getExJson = await getExRes.json()
+    assert.equal(getExJson.ok, true)
+    assert.equal(getExJson.exceptions.length, 1, 'Returns exactly 1 exception row from database')
+    assert.equal(getExJson.exceptions[0].exception_code, 'STAFF_NOT_FOUND')
   })
 })

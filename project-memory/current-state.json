@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/rc17c-both-source-attendance-import",
-    "head": "a9f0d1e4d73be02d9c0be20ee91927b4f3a1a232",
+    "head": "54c9c1843920f8d3abf09f57297d940655cd7d20",
     "origin_main": "b96dcb6e1842e59f43170a1a8b15da712ee8a8e0",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17c-attendance"
   },
@@ -368,5 +368,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-20T19:07:03+07:00"
+  "synced_at": "2026-10-20T23:45:25+07:00"
 }

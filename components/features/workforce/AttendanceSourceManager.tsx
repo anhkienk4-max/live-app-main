@@ -14,6 +14,7 @@ import {
   Layers,
   FileCheck,
 } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -29,6 +30,80 @@ import {
 } from '@/lib/workforce/historicalAttendanceTypes'
 import { SOURCE_PROFILES } from '@/lib/workforce/historicalAttendanceParser'
 
+function mapJsonRowsToRawRows(
+  jsonRows: Array<Record<string, unknown>>,
+  mapping: {
+    shiftIdCol: string
+    dateCol: string
+    timeCol: string
+    hostCol: string
+    supportCol: string
+    techCol: string
+    checkInCol: string
+    checkOutCol: string
+    notesCol: string
+  },
+  defaultBrand: string
+): RawAttendanceInputRow[] {
+  return jsonRows.map((row, idx) => {
+    const findVal = (primary: string, fallbacks: string[] = []): string => {
+      if (row[primary] !== undefined && row[primary] !== null && String(row[primary]).trim() !== '') {
+        return String(row[primary]).trim()
+      }
+      const candidates = [primary, ...fallbacks].map(s => s.toLowerCase().trim())
+      for (const [k, v] of Object.entries(row)) {
+        if (candidates.includes(k.toLowerCase().trim()) && v !== undefined && v !== null && String(v).trim() !== '') {
+          return String(v).trim()
+        }
+      }
+      return ''
+    }
+
+    return {
+      rowNumber: idx + 1,
+      date: findVal(mapping.dateCol, ['ngày', 'date', 'ngay']),
+      timeRange: findVal(mapping.timeCol, ['khung giờ', 'khung gio', 'time', 'ca live', 'gio']),
+      brand: findVal('Thương hiệu', ['nhãn hàng', 'brand', 'brand_name']) || defaultBrand,
+      hostName: findVal(mapping.hostCol, ['host', 'mc']),
+      assistantName: findVal(mapping.supportCol, ['trợ live', 'tro live', 'support', 'tro_live']),
+      technicalName: findVal(mapping.techCol, ['kỹ thuật', 'ky thuat', 'tech', 'ky_thuat']),
+      checkIn: findVal(mapping.checkInCol, ['check-in', 'check in', 'checkin', 'giờ vào']),
+      checkOut: findVal(mapping.checkOutCol, ['check-out', 'check out', 'checkout', 'giờ ra']),
+      notes: findVal(mapping.notesCol, ['ghi chú', 'ghi chu', 'note', 'notes', 'pass ca']),
+      shiftCode: findVal(mapping.shiftIdCol, ['mã ca', 'ma ca', 'shiftid', 'shift_id']),
+    }
+  }).filter(r => r.date || r.timeRange || r.hostName || r.shiftCode)
+}
+
+function mapJsonRowsToControlRows(
+  jsonRows: Array<Record<string, unknown>>
+): ControlTimesheetRow[] {
+  return jsonRows.map((row, idx) => {
+    const findVal = (keys: string[]): string => {
+      const candidates = keys.map(k => k.toLowerCase().trim())
+      for (const [k, v] of Object.entries(row)) {
+        if (candidates.includes(k.toLowerCase().trim()) && v !== undefined && v !== null && String(v).trim() !== '') {
+          return String(v).trim()
+        }
+      }
+      return ''
+    }
+
+    return {
+      rowNumber: idx + 1,
+      ShiftID: findVal(['shiftid', 'shift_id', 'mã ca', 'ma ca']),
+      StaffEmail: findVal(['staffemail', 'staff_email', 'email', 'nhân sự']),
+      WorkRole: findVal(['workrole', 'work_role', 'vai trò', 'role']),
+      ActualStartLocal: findVal(['actualstartlocal', 'actual_start_local', 'checkin', 'check-in', 'start']),
+      ActualEndLocal: findVal(['actualendlocal', 'actual_end_local', 'checkout', 'check-out', 'end']),
+      Status: findVal(['status', 'trạng thái']) || 'Done',
+      ConfirmedBy: findVal(['confirmedby', 'confirmed_by', 'người duyệt']),
+      ConfirmedAt: findVal(['confirmedat', 'confirmed_at', 'ngày duyệt']),
+      Note: findVal(['note', 'notes', 'ghi chú']),
+    }
+  }).filter(r => r.ShiftID || r.StaffEmail)
+}
+
 export function AttendanceSourceManager() {
   const { toast } = useToast()
 
@@ -40,6 +115,12 @@ export function AttendanceSourceManager() {
   const [brandName, setBrandName] = React.useState('Opella')
   const [validateWeekday, setValidateWeekday] = React.useState(true)
 
+  // Real data state
+  const [parsedRawRows, setParsedRawRows] = React.useState<RawAttendanceInputRow[]>([])
+  const [parsedControlRows, setParsedControlRows] = React.useState<ControlTimesheetRow[]>([])
+  const [pasteText, setPasteText] = React.useState('')
+  const [importMethod, setImportMethod] = React.useState<'upload' | 'paste'>('upload')
+
   // Simulation / Data state
   const [loading, setLoading] = React.useState(false)
   const [previewSummary, setPreviewSummary] = React.useState<AttendanceImportBatchSummary | null>(null)
@@ -49,16 +130,26 @@ export function AttendanceSourceManager() {
 
   // Column mapping profile state
   const [showMapping, setShowMapping] = React.useState(false)
-  const [columnMapping, setColumnMapping] = React.useState({
-    shiftIdCol: 'ShiftID',
-    dateCol: 'Ngày',
-    timeCol: 'Khung giờ',
-    hostCol: 'Host',
-    supportCol: 'Trợ live',
-    techCol: 'Kỹ thuật',
-    checkInCol: 'Giờ check-in',
-    checkOutCol: 'Giờ check-out',
-    notesCol: 'Ghi chú',
+  const [columnMapping, setColumnMapping] = React.useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('attendance_mapping_opella_t10')
+        if (saved) return JSON.parse(saved)
+      } catch {
+        // Ignore
+      }
+    }
+    return {
+      shiftIdCol: 'Mã ca',
+      dateCol: 'Ngày (MM/DD/YYYY)',
+      timeCol: 'Khung giờ',
+      hostCol: 'Host',
+      supportCol: 'Trợ live',
+      techCol: 'Kỹ thuật',
+      checkInCol: 'Check-in',
+      checkOutCol: 'Check-out',
+      notesCol: 'Ghi chú / PASS ca',
+    }
   })
   const [uploadedFileName, setUploadedFileName] = React.useState<string | null>(null)
 
@@ -113,104 +204,157 @@ export function AttendanceSourceManager() {
           notesCol: 'Note',
         })
       }
+
+      try {
+        const saved = localStorage.getItem(`attendance_mapping_${profileId}`)
+        if (saved) {
+          setColumnMapping(JSON.parse(saved))
+        }
+      } catch {
+        // Ignore
+      }
     }
   }
 
   const handleSaveMappingProfile = () => {
-    toast({
-      title: 'Đã lưu cấu hình ánh xạ cột',
-      description: `Cấu hình ánh xạ cho nguồn '${sourceName}' đã được ghi nhận.`,
-    })
+    try {
+      localStorage.setItem(`attendance_mapping_${selectedProfile}`, JSON.stringify(columnMapping))
+      toast({
+        title: 'Đã lưu cấu hình ánh xạ cột',
+        description: `Cấu hình ánh xạ cho nguồn '${sourceName}' đã được lưu thành công.`,
+      })
+    } catch {
+      toast({
+        title: 'Không thể lưu vào bộ nhớ cục bộ',
+        variant: 'destructive',
+      })
+    }
     setShowMapping(false)
   }
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Real Excel / CSV File Parsing via XLSX
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      setUploadedFileName(file.name)
-      setSourceName(file.name)
-      setSelectedProfile('custom')
-      setSourceType(file.name.endsWith('.csv') ? 'csv_upload' : 'excel_upload')
+    if (!file) return
+
+    setUploadedFileName(file.name)
+    setSourceName(file.name)
+    setSelectedProfile('custom')
+    setSourceType(file.name.endsWith('.csv') ? 'csv_upload' : 'excel_upload')
+
+    try {
+      const arrayBuffer = await file.arrayBuffer()
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+      const firstSheetName = workbook.SheetNames[0]
+      const worksheet = workbook.Sheets[firstSheetName]
+      const jsonRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: '' })
+
+      if (jsonRows.length === 0) {
+        toast({
+          title: 'Tệp không có dữ liệu',
+          description: 'Bảng tính tải lên trống hoặc không tìm thấy dòng dữ liệu.',
+          variant: 'destructive',
+        })
+        return
+      }
+
+      if (selectedProfile === 'control_timesheets') {
+        const ctrlRows = mapJsonRowsToControlRows(jsonRows)
+        setParsedControlRows(ctrlRows)
+        setParsedRawRows([])
+        toast({
+          title: 'Đã nạp tệp CONTROL TIMESHEETS',
+          description: `Tệp: ${file.name}. Đã phân tích ${ctrlRows.length} dòng chấm công kiểm soát.`,
+        })
+      } else {
+        const rows = mapJsonRowsToRawRows(jsonRows, columnMapping, brandName)
+        setParsedRawRows(rows)
+        setParsedControlRows([])
+        toast({
+          title: 'Đã nạp tệp chấm công',
+          description: `Tệp: ${file.name}. Đã phân tích thành công ${rows.length} dòng dữ liệu thực tế.`,
+        })
+      }
+    } catch (err: unknown) {
       toast({
-        title: 'Đã tải lên tệp chấm công',
-        description: `Tệp: ${file.name} (${Math.round(file.size / 1024)} KB). Sẵn sàng phân tích.`,
+        title: 'Lỗi đọc tệp Excel/CSV',
+        description: err instanceof Error ? err.message : 'Không thể đọc tệp dữ liệu',
+        variant: 'destructive',
       })
     }
   }
 
-  // Run Preview via API
+  // Real Google Sheets Paste Table Parser (TSV format from clipboard)
+  const handleParsePastedData = () => {
+    if (!pasteText.trim()) {
+      toast({
+        title: 'Chưa có nội dung dán',
+        description: 'Vui lòng dán dữ liệu bảng từ Google Sheets vào ô bên dưới.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const lines = pasteText.trim().split(/\r?\n/)
+    if (lines.length < 2) {
+      toast({
+        title: 'Dữ liệu quá ngắn',
+        description: 'Cần ít nhất 1 dòng tiêu đề cột và 1 dòng dữ liệu.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const firstLine = lines[0]
+    const delimiter = firstLine.includes('\t') ? '\t' : firstLine.includes(';') ? ';' : ','
+    const headers = firstLine.split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, ''))
+
+    const jsonRows: Array<Record<string, unknown>> = []
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(delimiter).map(c => c.trim().replace(/^["']|["']$/g, ''))
+      if (cols.every(c => !c)) continue
+      const rowObj: Record<string, unknown> = {}
+      headers.forEach((h, idx) => {
+        rowObj[h] = cols[idx] || ''
+      })
+      jsonRows.push(rowObj)
+    }
+
+    if (selectedProfile === 'control_timesheets') {
+      const ctrlRows = mapJsonRowsToControlRows(jsonRows)
+      setParsedControlRows(ctrlRows)
+      setParsedRawRows([])
+      toast({
+        title: 'Đã phân tích bảng Google Sheets',
+        description: `Đã nạp ${ctrlRows.length} dòng CONTROL TIMESHEETS thực tế.`,
+      })
+    } else {
+      const rows = mapJsonRowsToRawRows(jsonRows, columnMapping, brandName)
+      setParsedRawRows(rows)
+      setParsedControlRows([])
+      toast({
+        title: 'Đã phân tích bảng Google Sheets',
+        description: `Đã nạp ${rows.length} dòng chấm công thực tế từ Google Sheets.`,
+      })
+    }
+  }
+
+  // Run Preview via API (Zero Fake Fallbacks)
   const handleRunPreview = async () => {
+    if (parsedRawRows.length === 0 && parsedControlRows.length === 0) {
+      toast({
+        title: 'Chưa có dữ liệu chấm công',
+        description: 'Vui lòng tải lên tệp Excel/CSV hoặc dán dữ liệu từ Google Sheets trước khi phân tích.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setLoading(true)
     setPreviewSummary(null)
     setPreviewResults([])
 
     try {
-      // Build sample payload based on profile
-      let rawRows: RawAttendanceInputRow[] = []
-      let controlRows: ControlTimesheetRow[] = []
-
-      if (selectedProfile === 'control_timesheets') {
-        controlRows = [
-          {
-            rowNumber: 1,
-            ShiftID: 'shf_1001',
-            StaffEmail: 'alice@livestream.com',
-            WorkRole: 'host',
-            ActualStartLocal: '2026-10-10T09:00:00+07:00',
-            ActualEndLocal: '2026-10-10T13:00:00+07:00',
-            Status: 'Done',
-            ConfirmedBy: 'lead_1',
-            ConfirmedAt: '2026-10-10T13:30:00+07:00',
-            Note: 'Ca live chuẩn sáng',
-          },
-          {
-            rowNumber: 2,
-            ShiftID: 'shf_1002',
-            StaffEmail: 'bob@livestream.com',
-            WorkRole: 'support',
-            ActualStartLocal: '', // Missing actual punch!
-            ActualEndLocal: '',
-            Status: 'Done',
-            Note: 'Thiếu giờ check-in thực tế',
-          },
-        ]
-      } else {
-        // Opella / PepsiCo standard
-        rawRows = [
-          {
-            rowNumber: 1,
-            date: selectedProfile === 'opella_t10' ? '10/01/2026' : '10/17/2026', // MM/DD/YYYY
-            timeRange: '09:00 - 13:00',
-            brand: brandName,
-            hostName: 'Nguyễn Thị Hương',
-            assistantName: 'Trần Văn An',
-            technicalName: 'Phạm Minh Tuấn',
-            checkIn: '09:02',
-            checkOut: '13:00',
-            notes: 'Ca live nghiệm thu đủ giờ',
-          },
-          {
-            rowNumber: 2,
-            date: selectedProfile === 'opella_t10' ? '10/02/2026' : '10/18/2026',
-            timeRange: '22:00 - 02:00', // Cross midnight!
-            brand: brandName,
-            hostName: 'Trần Văn An\nVũ Thảo Linh',
-            assistantName: 'Lê Văn Bình',
-            checkIn: '21:55',
-            checkOut: '02:05',
-            notes: 'An PASS cho Bình 30 phút đầu; ca hoàn thành tốt',
-          },
-          {
-            rowNumber: 3,
-            date: selectedProfile === 'opella_t10' ? '10/03/2026' : '10/19/2026',
-            timeRange: '14:00 - 18:00',
-            brand: brandName,
-            hostName: 'Nhân Sự Không Xác Định',
-            notes: 'Chưa có thông tin check-in thực tế', // Missing evidence!
-          },
-        ]
-      }
-
       const res = await fetch('/api/workforce/attendance-import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -220,124 +364,24 @@ export function AttendanceSourceManager() {
           sourceName,
           sourceType,
           brandName,
-          rawRows,
-          controlRows,
+          rawRows: parsedRawRows,
+          controlRows: parsedControlRows,
           validateWeekday,
         }),
       })
 
       const data = await res.json().catch(() => ({}))
-      let summaryData = data.summary
-      let resultsData = data.results
 
       if (!res.ok || !data.ok) {
-        if (data.error?.code === 'AUTHENTICATION_REQUIRED') {
-          // Fixture fallback for visual QA and local UI evaluation
-          summaryData = {
-            batchId: 'demo-batch-opella-10',
-            totalRows: 3,
-            matchedRows: 2,
-            exceptionRows: 1,
-            ambiguousRows: 0,
-            missingEvidenceRows: 1,
-            duplicateRows: 0,
-            status: 'preview',
-            importedAt: new Date().toISOString(),
-            exceptionsSummary: {
-              AMBIGUOUS_DATE_ORDER: 0,
-              ROLE_AMBIGUOUS: 0,
-              MISSING_EVIDENCE: 1,
-              OVERLAP_CONFLICT: 0,
-              TIME_RANGE_INVALID: 0,
-              WEEKDAY_MISMATCH: 0,
-              INVALID_CONTROL_STRUCTURE: 0,
-              SHIFT_NOT_FOUND: 0,
-              STAFF_NOT_FOUND: 0,
-              SHIFT_NOT_COMPLETED: 0,
-              DATE_INVALID: 0,
-            },
-          }
-          resultsData = [
-            {
-              rowNumber: 1,
-              status: 'matched',
-              matchedShiftId: 'shf_opella_01',
-              matchedStaffId: 'usr_huong',
-              confidence: 'exact',
-              segment: {
-                rowNumber: 1,
-                parsedDate: '2026-10-01',
-                startTime: '09:00',
-                endTime: '13:00',
-                startAtIso: '2026-10-01T09:00:00+07:00',
-                endAtIso: '2026-10-01T13:00:00+07:00',
-                durationMinutes: 240,
-                rawStaffName: 'Nguyễn Thị Hương',
-                normalizedStaffName: 'nguyen thi huong',
-                staffEmail: 'huong.nguyen@livestream.com',
-                operationalRole: 'host',
-                coverageKind: 'planned',
-                evidenceKind: 'actual_punch',
-                rawNotes: 'Ca live nghiệm thu đủ giờ',
-              },
-            },
-            {
-              rowNumber: 2,
-              status: 'matched',
-              matchedShiftId: 'shf_opella_02',
-              matchedStaffId: 'usr_an',
-              confidence: 'high',
-              segment: {
-                rowNumber: 2,
-                parsedDate: '2026-10-02',
-                startTime: '22:00',
-                endTime: '02:00',
-                startAtIso: '2026-10-02T22:00:00+07:00',
-                endAtIso: '2026-10-03T02:00:00+07:00',
-                durationMinutes: 240,
-                rawStaffName: 'Trần Văn An',
-                normalizedStaffName: 'tran van an',
-                staffEmail: 'an.tran@livestream.com',
-                operationalRole: 'host',
-                coverageKind: 'cover',
-                passTargetStaffName: 'Vũ Thảo Linh',
-                evidenceKind: 'actual_punch',
-                rawNotes: 'An PASS cho Linh 30 phút đầu; ca hoàn thành tốt',
-              },
-            },
-            {
-              rowNumber: 3,
-              status: 'exception',
-              confidence: 'none',
-              exceptionCode: 'MISSING_EVIDENCE',
-              exceptionDetail: 'Không tìm thấy mốc giờ check-in / check-out thực tế trên nguồn bảng tính',
-              segment: {
-                rowNumber: 3,
-                parsedDate: '2026-10-03',
-                startTime: '14:00',
-                endTime: '18:00',
-                startAtIso: '2026-10-03T14:00:00+07:00',
-                endAtIso: '2026-10-03T18:00:00+07:00',
-                durationMinutes: 240,
-                rawStaffName: 'Nhân Sự Không Xác Định',
-                normalizedStaffName: 'nhan su khong xac dinh',
-                operationalRole: 'host',
-                coverageKind: 'planned',
-                evidenceKind: 'scheduled_only',
-                rawNotes: 'Chưa có thông tin check-in thực tế',
-              },
-            },
-          ]
-        } else {
-          throw new Error(data.error?.code || 'PREVIEW_FAILED')
-        }
+        const errMsg = data.error?.detail || data.error?.code || `Lỗi máy chủ (${res.status})`
+        throw new Error(errMsg)
       }
 
-      setPreviewSummary(summaryData)
-      setPreviewResults(resultsData || [])
+      setPreviewSummary(data.summary)
+      setPreviewResults(data.results || [])
       toast({
         title: 'Phân tích & Khớp nối hoàn tất',
-        description: `Đã phân tích ${summaryData?.totalRows || 0} dòng: ${summaryData?.matchedRows || 0} hợp lệ, ${summaryData?.exceptionRows || 0} cần xử lý ngoại lệ.`,
+        description: `Đã phân tích ${data.summary?.totalRows || 0} dòng: ${data.summary?.matchedRows || 0} hợp lệ, ${data.summary?.exceptionRows || 0} cần xử lý ngoại lệ.`,
       })
     } catch (err: unknown) {
       toast({
@@ -350,7 +394,7 @@ export function AttendanceSourceManager() {
     }
   }
 
-  // Confirm Drafts
+  // Confirm Drafts (Client only sends batchId; Server loads immutable staged rows)
   const handleConfirmDrafts = async () => {
     if (!previewSummary?.batchId) return
     setConfirming(true)
@@ -361,16 +405,18 @@ export function AttendanceSourceManager() {
         body: JSON.stringify({
           action: 'confirm_drafts',
           batchId: previewSummary.batchId,
-          matchedResults: previewResults.filter(r => r.status === 'matched'),
         }),
       })
-      const data = await res.json()
-      if (!res.ok || !data.ok) throw new Error(data.error?.code || 'CONFIRM_FAILED')
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error?.detail || data.error?.code || 'CONFIRM_FAILED')
+      }
 
       toast({
         title: 'Đã tạo bản ghi Actual Staffing (DRAFT)',
         description: `Thành công tạo ${data.createdCount} ca chấm công nháp. Vui lòng chuyển Reviewer độc lập để kiểm duyệt.`,
       })
+      setPreviewSummary(prev => prev ? { ...prev, status: 'confirmed', draftedSegments: data.createdCount } : null)
     } catch (err: unknown) {
       toast({
         title: 'Lỗi xác nhận bảng chấm công',
@@ -482,23 +528,74 @@ export function AttendanceSourceManager() {
 
           {/* File Upload / Source Name */}
           <div className="space-y-1.5">
-            <label className="text-slate-300 font-medium flex items-center gap-1.5">
-              <Upload className="h-3.5 w-3.5 text-slate-400" />
-              Tải tệp Excel / CSV
-            </label>
-            <input
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              onChange={handleFileUpload}
-              className="w-full text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-[11px] file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer"
-            />
-            {uploadedFileName && (
-              <span className="text-[10px] text-indigo-400 block truncate font-medium">
-                Đã nạp: {uploadedFileName}
-              </span>
+            <div className="flex items-center justify-between">
+              <label className="text-slate-300 font-medium flex items-center gap-1.5">
+                <Upload className="h-3.5 w-3.5 text-slate-400" />
+                Phương thức nạp
+              </label>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setImportMethod('upload')}
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${importMethod === 'upload' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                  File
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImportMethod('paste')}
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${importMethod === 'paste' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                  Dán Sheets
+                </button>
+              </div>
+            </div>
+
+            {importMethod === 'upload' ? (
+              <>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={handleFileUpload}
+                  className="w-full text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-[11px] file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer"
+                />
+                {uploadedFileName && (
+                  <span className="text-[10px] text-indigo-400 block truncate font-medium">
+                    Đã nạp: {uploadedFileName} ({parsedRawRows.length || parsedControlRows.length} dòng)
+                  </span>
+                )}
+              </>
+            ) : (
+              <div className="space-y-1">
+                <textarea
+                  value={pasteText}
+                  onChange={e => setPasteText(e.target.value)}
+                  placeholder="Dán các hàng copy từ Google Sheets vào đây (Ctrl+V)..."
+                  rows={2}
+                  className="w-full rounded border border-slate-700 bg-slate-950 p-1.5 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleParsePastedData}
+                  className="w-full h-6 text-[10px] bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700"
+                >
+                  Đọc dữ liệu dán ({parsedRawRows.length || parsedControlRows.length} dòng đã nạp)
+                </Button>
+              </div>
             )}
           </div>
         </CardContent>
+
+        {/* GOOGLE SHEETS API STATUS BANNER */}
+        {importMethod === 'paste' && (
+          <div className="border-t border-slate-800/60 bg-amber-950/20 px-4 py-2 text-[11px] text-amber-300 flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0 text-amber-400" />
+            <span>
+              Tính năng tự động đọc trực tiếp từ Google Sheets API yêu cầu cấu hình Service Account đã cấp quyền. Hiện tại bạn có thể copy-paste toàn bộ bảng dữ liệu vào đây hoặc tải lên file Excel xuất từ Google Sheets.
+            </span>
+          </div>
+        )}
 
         {/* EXPANDABLE COLUMN MAPPING PROFILE */}
         {showMapping && (

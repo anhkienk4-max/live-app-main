@@ -7,10 +7,15 @@ import { stripVietnameseAccents } from './historicalAttendanceParser'
 
 export interface ShiftReference {
   id: string
+  date?: string | Date // YYYY-MM-DD or Date object from PostgreSQL driver
+  startTime: string // TIME WITHOUT TIME ZONE (HH:mm:ss / HH:mm) or ISO timestamptz
+  endTime: string   // TIME WITHOUT TIME ZONE (HH:mm:ss / HH:mm) or ISO timestamptz
+  startAtIso?: string // Precomputed ISO timestamptz in Asia/Ho_Chi_Minh
+  endAtIso?: string   // Precomputed ISO timestamptz in Asia/Ho_Chi_Minh
   brandId?: string | null
   brandName?: string | null
-  startTime: string // ISO timestamptz
-  endTime: string   // ISO timestamptz
+  platformId?: string | null
+  platformName?: string | null
   status: 'preparing' | 'scheduled' | 'live' | 'completed' | 'cancelled'
   hostId?: string | null
   supportId?: string | null
@@ -23,6 +28,83 @@ export interface StaffReference {
   email?: string
   systemPermission: string
   status: 'active' | 'inactive'
+}
+
+/**
+ * Combines a date string/Date (YYYY-MM-DD) and time string (HH:mm or HH:mm:ss) into an ISO timestamptz in Asia/Ho_Chi_Minh (+07:00).
+ */
+export function combineDateAndTime(dateInput: string | Date, timeStr: string): string {
+  let dateStr: string
+  if (dateInput instanceof Date) {
+    const y = dateInput.getFullYear()
+    const m = String(dateInput.getMonth() + 1).padStart(2, '0')
+    const d = String(dateInput.getDate()).padStart(2, '0')
+    dateStr = `${y}-${m}-${d}`
+  } else {
+    dateStr = String(dateInput || '').trim().slice(0, 10)
+  }
+  const cleanTime = (timeStr || '00:00').trim()
+  const parts = cleanTime.split(':')
+  const hh = (parts[0] || '00').padStart(2, '0')
+  const mm = (parts[1] || '00').padStart(2, '0')
+  const ss = (parts[2] || '00').padStart(2, '0')
+  return `${dateStr}T${hh}:${mm}:${ss}+07:00`
+}
+
+/**
+ * Resolves start and end ISO timestamps for a shift using date, start_time, end_time in Asia/Ho_Chi_Minh (+07:00).
+ * Supports overnight shifts (where end_time <= start_time -> crosses midnight to next day).
+ */
+export function computeShiftTimestamps(sh: ShiftReference): {
+  startAtIso: string
+  endAtIso: string
+  isOvernight: boolean
+} {
+  if (sh.startAtIso && sh.endAtIso) {
+    const isOver = Date.parse(sh.endAtIso) - Date.parse(sh.startAtIso) > 86400000 || sh.endAtIso.slice(0, 10) !== sh.startAtIso.slice(0, 10)
+    return { startAtIso: sh.startAtIso, endAtIso: sh.endAtIso, isOvernight: isOver }
+  }
+
+  // If startTime is already an ISO timestamptz (e.g. from legacy tests)
+  if (sh.startTime && sh.startTime.includes('T')) {
+    return {
+      startAtIso: sh.startTime,
+      endAtIso: sh.endTime,
+      isOvernight: sh.endTime.slice(0, 10) !== sh.startTime.slice(0, 10),
+    }
+  }
+
+  let shiftDate: string
+  if (sh.date instanceof Date) {
+    const y = sh.date.getFullYear()
+    const m = String(sh.date.getMonth() + 1).padStart(2, '0')
+    const d = String(sh.date.getDate()).padStart(2, '0')
+    shiftDate = `${y}-${m}-${d}`
+  } else if (typeof sh.date === 'string' && sh.date.trim()) {
+    shiftDate = sh.date.trim().slice(0, 10)
+  } else {
+    shiftDate = new Date().toISOString().slice(0, 10)
+  }
+
+  const startAtIso = combineDateAndTime(shiftDate, sh.startTime)
+
+  const sParts = (sh.startTime || '00:00').split(':').map(Number)
+  const eParts = (sh.endTime || '00:00').split(':').map(Number)
+  const sMins = (sParts[0] || 0) * 60 + (sParts[1] || 0)
+  const eMins = (eParts[0] || 0) * 60 + (eParts[1] || 0)
+
+  let endDateStr = shiftDate
+  let isOvernight = false
+
+  if (eMins <= sMins) {
+    isOvernight = true
+    const d = new Date(`${shiftDate}T12:00:00Z`)
+    d.setUTCDate(d.getUTCDate() + 1)
+    endDateStr = d.toISOString().slice(0, 10)
+  }
+
+  const endAtIso = combineDateAndTime(endDateStr, sh.endTime)
+  return { startAtIso, endAtIso, isOvernight }
 }
 
 /**
@@ -154,16 +236,54 @@ export function matchSegmentToShift(params: {
       }
     }
   } else {
-    // 3b. Time and Brand Proximity Match
-    const segmentStartMs = Date.parse(segment.startAtIso)
-    const candidateShifts = shifts.filter(sh => {
-      const shStartMs = Date.parse(sh.startTime)
-      if (brandName && sh.brandName && !sh.brandName.toLowerCase().includes(brandName.toLowerCase()) && !brandName.toLowerCase().includes(sh.brandName.toLowerCase())) {
-        return false
+    // 3b. Time and Brand Proximity Match using planned time (P0-3, P0-4)
+    const matchTimeIso = segment.plannedStartAtIso || segment.startAtIso
+    const segmentStartMs = Date.parse(matchTimeIso)
+
+    interface ScoredCandidate {
+      shift: ShiftReference
+      diffStartMins: number
+      hasStaffRoleMatch: boolean
+      score: number
+    }
+
+    const candidateShifts: ScoredCandidate[] = []
+
+    for (const sh of shifts) {
+      // Check Brand filter
+      const targetBrand = brandName || ''
+      if (targetBrand && sh.brandName && !sh.brandName.toLowerCase().includes(targetBrand.toLowerCase()) && !targetBrand.toLowerCase().includes(sh.brandName.toLowerCase())) {
+        continue
       }
+
+      const { startAtIso: shStartIso } = computeShiftTimestamps(sh)
+      const shStartMs = Date.parse(shStartIso)
       const diffStartMins = Math.abs(shStartMs - segmentStartMs) / 60000
-      return diffStartMins <= 90
-    })
+
+      if (diffStartMins <= 90) {
+        // Check if assigned staff matches
+        let hasStaffRoleMatch = false
+        if (segment.operationalRole === 'host' && sh.hostId === staffMatch.staffId) {
+          hasStaffRoleMatch = true
+        } else if (segment.operationalRole === 'support' && sh.supportId === staffMatch.staffId) {
+          hasStaffRoleMatch = true
+        } else if (segment.operationalRole === 'technical' && sh.technicalId === staffMatch.staffId) {
+          hasStaffRoleMatch = true
+        }
+
+        // Score: higher is better
+        // Exact staff assigned: +1000 points
+        // Closer time: minus diffStartMins
+        const score = (hasStaffRoleMatch ? 1000 : 0) - diffStartMins
+
+        candidateShifts.push({
+          shift: sh,
+          diffStartMins,
+          hasStaffRoleMatch,
+          score,
+        })
+      }
+    }
 
     if (candidateShifts.length === 0) {
       return {
@@ -177,11 +297,32 @@ export function matchSegmentToShift(params: {
       }
     }
 
-    matchedShift = candidateShifts.sort((a, b) => {
-      const diffA = Math.abs(Date.parse(a.startTime) - segmentStartMs)
-      const diffB = Math.abs(Date.parse(b.startTime) - segmentStartMs)
-      return diffA - diffB
-    })[0]
+    // Sort descending by score
+    candidateShifts.sort((a, b) => b.score - a.score)
+
+    // Ambiguity Check: If multiple candidates have equivalent confidence, fail to ROLE_AMBIGUOUS
+    if (candidateShifts.length > 1) {
+      const top1 = candidateShifts[0]
+      const top2 = candidateShifts[1]
+
+      // Equal score or virtually identical proximity without staff distinction
+      const isAmbiguous = (top1.score === top2.score) ||
+        (top1.hasStaffRoleMatch === top2.hasStaffRoleMatch && Math.abs(top1.diffStartMins - top2.diffStartMins) < 5)
+
+      if (isAmbiguous) {
+        return {
+          rowNumber: segment.rowNumber,
+          segment,
+          status: 'exception',
+          matchedStaffId: staffMatch.staffId,
+          confidence: 'none',
+          exceptionCode: 'ROLE_AMBIGUOUS',
+          exceptionDetail: `Tìm thấy ${candidateShifts.length} ca trực trùng khớp cùng khung giờ (độ tin cậy tương đương: #${top1.shift.id}, #${top2.shift.id}); cần chỉ định cụ thể`,
+        }
+      }
+    }
+
+    matchedShift = candidateShifts[0].shift
   }
 
   // Enforce contract: Shift MUST be completed

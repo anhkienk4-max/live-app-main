@@ -319,30 +319,58 @@ export function parseRawAttendanceRow(
     }
   }
 
-  // Build timestamps in Asia/Ho_Chi_Minh (+07:00)
-  const startAtIso = `${parsedDate}T${startTime}:00+07:00`
-  let endAtDate = parsedDate
+  // 1. Compute Planned Schedule Timestamps (for matching and variance)
+  const plannedStartTime = startTime
+  const plannedEndTime = endTime
+  const plannedStartAtIso = `${parsedDate}T${plannedStartTime}:00+07:00`
+  let plannedEndDate = parsedDate
 
-  const [sH, sM] = startTime.split(':').map(Number)
-  const [eH, eM] = endTime.split(':').map(Number)
-  let durationMinutes = (eH * 60 + eM) - (sH * 60 + sM)
-  if (durationMinutes <= 0) {
-    // Cross midnight
-    durationMinutes += 1440
+  const [psH, psM] = plannedStartTime.split(':').map(Number)
+  const [peH, peM] = plannedEndTime.split(':').map(Number)
+  let plannedDurationMinutes = (peH * 60 + peM) - (psH * 60 + psM)
+  if (plannedDurationMinutes <= 0) {
+    plannedDurationMinutes += 1440
     const d = new Date(`${parsedDate}T12:00:00Z`)
     d.setUTCDate(d.getUTCDate() + 1)
-    endAtDate = d.toISOString().slice(0, 10)
+    plannedEndDate = d.toISOString().slice(0, 10)
   }
-  const endAtIso = `${endAtDate}T${endTime}:00+07:00`
+  const plannedEndAtIso = `${plannedEndDate}T${plannedEndTime}:00+07:00`
 
-  // Evidence kind classification:
+  // 2. Compute Actual Attendance Timestamps (P0-4 requirement)
   // Strict rule: "Done", "FINAL", "Đã live" is NOT actual punch proof!
-  // ONLY real physical check-in/out timestamps count as actual_punch,
-  // or explicit supervisor sign-off with confirmedBy/confirmedAt counts as supervisor_verified.
+  // ONLY real physical check-in/out timestamps count as actual_punch.
   let evidenceKind: AttendanceEvidenceKind = 'missing_evidence'
-  if (row.checkIn && row.checkOut) {
+  let startAtIso = plannedStartAtIso
+  let endAtIso = plannedEndAtIso
+  let durationMinutes = plannedDurationMinutes
+  let actualStartTime: string | undefined
+  let actualEndTime: string | undefined
+
+  const normCheckIn = normalizeTimeString(row.checkIn ?? '')
+  const normCheckOut = normalizeTimeString(row.checkOut ?? '')
+
+  if (normCheckIn && normCheckOut) {
+    actualStartTime = normCheckIn
+    actualEndTime = normCheckOut
     evidenceKind = 'actual_punch'
-  } else if (row.confirmedBy && row.confirmedAt) {
+
+    startAtIso = `${parsedDate}T${actualStartTime}:00+07:00`
+    let actualEndDate = parsedDate
+    const [asH, asM] = actualStartTime.split(':').map(Number)
+    const [aeH, aeM] = actualEndTime.split(':').map(Number)
+    let actualDur = (aeH * 60 + aeM) - (asH * 60 + asM)
+    if (actualDur <= 0) {
+      actualDur += 1440
+      const d = new Date(`${parsedDate}T12:00:00Z`)
+      d.setUTCDate(d.getUTCDate() + 1)
+      actualEndDate = d.toISOString().slice(0, 10)
+    }
+    endAtIso = `${actualEndDate}T${actualEndTime}:00+07:00`
+    durationMinutes = actualDur
+  } else if (row.confirmedBy && row.confirmedAt && (
+    !row.notes || /xác nhận|duyệt|chứng từ|hoàn thành|nghiệm thu|giám sát/i.test(row.notes)
+  )) {
+    // Certified supervisor exception with explicit reason
     evidenceKind = 'supervisor_verified'
   }
 
@@ -356,8 +384,14 @@ export function parseRawAttendanceRow(
     segments.push({
       rowNumber: row.rowNumber,
       parsedDate,
-      startTime,
-      endTime,
+      startTime: plannedStartTime,
+      endTime: plannedEndTime,
+      plannedStartTime,
+      plannedEndTime,
+      plannedStartAtIso,
+      plannedEndAtIso,
+      actualStartTime,
+      actualEndTime,
       startAtIso,
       endAtIso,
       durationMinutes,
@@ -382,8 +416,14 @@ export function parseRawAttendanceRow(
     segments.push({
       rowNumber: row.rowNumber,
       parsedDate,
-      startTime,
-      endTime,
+      startTime: plannedStartTime,
+      endTime: plannedEndTime,
+      plannedStartTime,
+      plannedEndTime,
+      plannedStartAtIso,
+      plannedEndAtIso,
+      actualStartTime,
+      actualEndTime,
       startAtIso,
       endAtIso,
       durationMinutes,
@@ -407,8 +447,14 @@ export function parseRawAttendanceRow(
     segments.push({
       rowNumber: row.rowNumber,
       parsedDate,
-      startTime,
-      endTime,
+      startTime: plannedStartTime,
+      endTime: plannedEndTime,
+      plannedStartTime,
+      plannedEndTime,
+      plannedStartAtIso,
+      plannedEndAtIso,
+      actualStartTime,
+      actualEndTime,
       startAtIso,
       endAtIso,
       durationMinutes,

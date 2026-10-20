@@ -248,7 +248,7 @@ test('RC1.7C: End-to-End Import Preview -> Draft Actual Segments -> Payroll Line
         timeRange: '09:00 - 13:00',
         brand: 'Opella',
         hostName: 'Nguyễn Thị Hương',
-        checkIn: '09:02',
+        checkIn: '09:00',
         checkOut: '13:00',
         notes: 'Đã hoàn thành ca live sáng',
       },

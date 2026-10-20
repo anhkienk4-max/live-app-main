@@ -98,11 +98,17 @@ export interface ControlTimesheetRow {
 export interface ParsedAttendanceSegment {
   rowNumber: number
   parsedDate: string // YYYY-MM-DD
-  startTime: string  // HH:mm
-  endTime: string    // HH:mm
-  startAtIso: string // timestamptz ISO in Asia/Ho_Chi_Minh
-  endAtIso: string   // timestamptz ISO in Asia/Ho_Chi_Minh
-  durationMinutes: number
+  startTime: string  // Planned or primary start time (HH:mm)
+  endTime: string    // Planned or primary end time (HH:mm)
+  plannedStartTime?: string // Planned start time (HH:mm)
+  plannedEndTime?: string   // Planned end time (HH:mm)
+  plannedStartAtIso?: string // Planned start timestamp ISO in Asia/Ho_Chi_Minh
+  plannedEndAtIso?: string   // Planned end timestamp ISO in Asia/Ho_Chi_Minh
+  actualStartTime?: string   // Actual check-in time (HH:mm)
+  actualEndTime?: string     // Actual check-out time (HH:mm)
+  startAtIso: string // ACTUAL punch start timestamptz ISO in Asia/Ho_Chi_Minh
+  endAtIso: string   // ACTUAL punch end timestamptz ISO in Asia/Ho_Chi_Minh
+  durationMinutes: number // ACTUAL duration in minutes
   rawStaffName: string
   normalizedStaffName: string
   staffEmail?: string
