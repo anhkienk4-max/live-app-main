@@ -10,8 +10,8 @@
   },
   "repository": {
     "branch": "feat/rc17c-both-source-attendance-import",
-    "head": "6bb81ec149e8cfde3db1e1983b1d2150f86db5f7",
-    "origin_main": "7f5efbfec23db84ad1d74024b08a591523aa4217",
+    "head": "a05eb455096c2a50731f4941cd8db3cdee72b3c9",
+    "origin_main": "371426bc53b6fac2fcef97433c02b45c3c6b4e9e",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17c-attendance"
   },
   "hardening": {
@@ -92,12 +92,12 @@
       "roots": {
         "app": 61,
         "components": 152,
-        "lib": 217,
+        "lib": 219,
         "scripts": 19,
         "supabase": 91,
-        "tests": 206
+        "tests": 207
       },
-      "total": 746
+      "total": 749
     },
     "tests": {
       "files": [
@@ -183,6 +183,7 @@
         "tests/perf-p0-scoped-refresh.test.ts",
         "tests/perf-p0-skeleton.test.ts",
         "tests/persistent-audit.test.ts",
+        "tests/phase2-shared-reference-cache.test.ts",
         "tests/platform-metric-dom-binding.test.tsx",
         "tests/preview-loading-performance.test.tsx",
         "tests/production-shell-convergence.test.ts",
@@ -275,7 +276,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 173
+      "count": 174
     },
     "migrations": {
       "files": [
@@ -366,5 +367,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-20T18:36:43+07:00"
+  "synced_at": "2026-10-20T18:42:21+07:00"
 }
