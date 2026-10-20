@@ -6,13 +6,9 @@ import { useListPagination } from '@/lib/hooks/useListPagination'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 import { format } from 'date-fns'
 import { AlertCircle, Radio, DollarSign, FileText, Filter, RotateCcw, TrendingUp } from 'lucide-react'
-import {
-  brandService,
-  campaignService,
-  platformService,
-  shiftService,
-  userService,
-} from '@/lib/services/dataService'
+import { shiftService } from '@/lib/services/dataService'
+import { getOperationalReferences, operationalReferenceIdentity } from '@/lib/services/operationalReferences'
+import { invalidatePageCache } from '@/lib/services/operationsPageCache'
 import { Brand, Campaign, DashboardUpdate, Platform, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
@@ -32,8 +28,9 @@ const initialFilters = (): Filters => ({ date: todayValue(), brandIds: [], platf
 export function LiveMonitoringDashboard() {
   const { t } = useTranslation()
   const {currentUser}=useCurrentUser()
-  const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role):''
+  const identity=currentUser?operationalReferenceIdentity(currentUser):''
   const [loadedIdentity,setLoadedIdentity]=React.useState('')
+  const [loadedQuery,setLoadedQuery]=React.useState('')
   const [shifts, setShifts] = React.useState<Shift[]>([])
   const [refreshVersion,setRefreshVersion] = React.useState(0)
   const [updates, setUpdates] = React.useState<Record<string, DashboardUpdate[]>>({})
@@ -52,49 +49,89 @@ export function LiveMonitoringDashboard() {
   const {page,pageSize,navigate}=pagination
   const [total,setTotal]=React.useState(0)
   const sequence=React.useRef(0)
+  const liveController=React.useRef<AbortController|null>(null)
+  const focusRefreshAt=React.useRef(0)
   const encodedFilters=JSON.stringify(filters?{from:filters.date||undefined,to:filters.date||undefined,brandIds:filters.brandIds,platformIds:filters.platformIds,campaignIds:filters.campaignIds,hostIds:filters.hostIds,supportIds:filters.supportIds,technicalIds:filters.technicalIds,statuses:filters.statuses}:{})
   React.useEffect(()=>{const frame=requestAnimationFrame(()=>setFilters(initialFilters()));return()=>cancelAnimationFrame(frame)},[])
+  const queryKey=identity+':'+encodedFilters+':'+page+':'+pageSize
+
+  // Static directories are fetched once per identity. They are no longer part
+  // of each 30-second live polling request.
+  React.useEffect(() => {
+    let active=true
+    if (!currentUser || !identity) return
+    void getOperationalReferences(currentUser).then(refs => {
+      if (!active) return
+      setBrands(refs.brands);setPlatforms(refs.platforms);setCampaigns(refs.campaigns);setUsers(refs.users)
+    }).catch(error => { if (active) setLoadError(error) })
+    return () => { active=false }
+  },[currentUser,identity])
+
   const loadData = React.useCallback(async () => {
-    if(!filters||!identity)return
+    if(!filters||!identity || (typeof document !== 'undefined' && document.visibilityState === 'hidden'))return
+    liveController.current?.abort()
+    const controller=new AbortController()
+    liveController.current=controller
     const request=++sequence.current
     setLoadError(null)
     try {
-      const [result,loadedBrands,loadedPlatforms,loadedCampaigns,loadedUsers]=await Promise.all([
-        shiftService.getLivePage({page,pageSize,filters:JSON.parse(encodedFilters)}),
-        brandService.getAll(),platformService.getAll(),campaignService.getAll(),userService.getAll(),
-      ])
-      if(request!==sequence.current)return
+      const result=await shiftService.getLivePage({page,pageSize,filters:JSON.parse(encodedFilters)},controller.signal)
+      if(request!==sequence.current||controller.signal.aborted)return
       setLoadedIdentity(identity)
+      setLoadedQuery(queryKey)
       setShifts(result.items);setTotal(result.total)
       if(result.page!==page)navigate({live_page:String(result.page)},true)
-      setBrands(loadedBrands);setPlatforms(loadedPlatforms);setCampaigns(loadedCampaigns);setUsers(loadedUsers)
       setRegistrations(result.registrations)
       setUpdates(Object.fromEntries(result.items.map(shift=>[shift.id,result.updates.filter(update=>update.shift_id===shift.id)])))
       setRefreshVersion(version=>version+1)
     } catch (error) {
-      setLoadError(error)
+      if(request===sequence.current&&!controller.signal.aborted)setLoadError(error)
     } finally {
-      setLoading(false)
+      if(request===sequence.current&&!controller.signal.aborted)setLoading(false)
     }
-  }, [encodedFilters,filters,identity,navigate,page,pageSize])
+  }, [encodedFilters,filters,identity,navigate,page,pageSize,queryKey])
 
   React.useEffect(() => {
-    const frame = requestAnimationFrame(() => { void loadData() })
-    return () => cancelAnimationFrame(frame)
+    const frame=requestAnimationFrame(() => { void loadData() })
+    const thisSequence=sequence
+    return () => {
+      cancelAnimationFrame(frame)
+      liveController.current?.abort()
+      ++thisSequence.current
+    }
   }, [loadData])
-  const handleShiftUpdate = React.useCallback(async (updatedShift?: Shift) => {
+
+  const handleShiftUpdate=React.useCallback(async (updatedShift?:Shift)=>{
+    // Shift mutations must invalidate the cross-page cache immediately.
+    invalidatePageCache()
     await loadData()
-    if (updatedShift) {
-      setSelectedShift(prev => prev?.id === updatedShift.id ? updatedShift : prev)
-    }
-  }, [loadData])
-  React.useEffect(() => {
-    const interval = window.setInterval(() => void loadData(), 30000)
-    return () => window.clearInterval(interval)
-  }, [loadData])
+    if(updatedShift)setSelectedShift(prev=>prev?.id===updatedShift.id?updatedShift:prev)
+  },[loadData])
 
-  if (loading || !filters || loadedIdentity!==identity) return <div className="py-12 text-center">{t('loading')}</div>
+  React.useEffect(() => {
+    const tick=()=>{
+      if(document.visibilityState!=='visible')return
+      void loadData()
+    }
+    const resume=()=>{
+      if(document.visibilityState!=='visible')return
+      const now=Date.now()
+      if(now-focusRefreshAt.current<1000)return
+      focusRefreshAt.current=now
+      void loadData()
+    }
+    const interval=window.setInterval(tick,30000)
+    document.addEventListener('visibilitychange',resume)
+    window.addEventListener('focus',resume)
+    return ()=>{
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange',resume)
+      window.removeEventListener('focus',resume)
+    }
+  },[loadData])
+
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
+  if (loading || !filters || loadedIdentity!==identity || loadedQuery!==queryKey) return <div className="py-12 text-center">{t('loading')}</div>
 
   const filtered=shifts
   const latestUpdate = (shiftId: string) => [...(updates[shiftId] || [])].sort((a, b) => b.time.localeCompare(a.time))[0]

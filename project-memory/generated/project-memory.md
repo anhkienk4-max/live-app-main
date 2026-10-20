@@ -2,13 +2,13 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-20T10:01:59+00:00
+Generated at: 2026-10-20T12:37:23+00:00
 
 ## Repository
 
-- Branch: `perf/phase2-visible-first-dashboard-reports-20261020`
-- HEAD: `c25b47de4befc546f9506873db33174c43fbf99a`
-- origin/main: `7f5efbfec23db84ad1d74024b08a591523aa4217`
+- Branch: `perf/phase2b-live-monitor-stream-link-20261020`
+- HEAD: `fe3150c122426008f06e4a5281d42699cf6b9792`
+- origin/main: `371426bc53b6fac2fcef97433c02b45c3c6b4e9e`
 - Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17b-payroll`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
@@ -22,8 +22,8 @@ Generated at: 2026-10-20T10:01:59+00:00
 ## Inventory
 
 - Routes: 56
-- Source files in tracked inventory roots: 738
-- Tests: 172
+- Source files in tracked inventory roots: 741
+- Tests: 173
 - Migrations: 71
 
 ## Modules
