@@ -9,10 +9,10 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "perf/navigation-visible-first-cache-20261020",
-    "head": "5b599e373a69d6c54a49737075d4003821ab8410",
-    "origin_main": "ef9b6d0f8a2d754865400c98192fb2c92ed96d0e",
-    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17b-payroll"
+    "branch": "feat/rc17c-both-source-attendance-import",
+    "head": "6bb81ec149e8cfde3db1e1983b1d2150f86db5f7",
+    "origin_main": "7f5efbfec23db84ad1d74024b08a591523aa4217",
+    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17c-attendance"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -75,6 +75,7 @@
       "app/api/report-images/route.ts",
       "app/api/staff/invite/route.ts",
       "app/api/workforce/actual/route.ts",
+      "app/api/workforce/attendance-import/route.ts",
       "app/api/workforce/capabilities/route.ts",
       "app/api/workforce/overview/route.ts",
       "app/api/workforce/payroll/route.ts",
@@ -89,14 +90,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 60,
-        "components": 151,
-        "lib": 212,
-        "scripts": 18,
-        "supabase": 90,
-        "tests": 204
+        "app": 61,
+        "components": 152,
+        "lib": 217,
+        "scripts": 19,
+        "supabase": 91,
+        "tests": 206
       },
-      "total": 735
+      "total": 746
     },
     "tests": {
       "files": [
@@ -217,6 +218,8 @@
         "tests/rc16l-calendar.test.ts",
         "tests/rc17a-actual-staffing.test.ts",
         "tests/rc17b-payroll-autocalc.test.ts",
+        "tests/rc17c-attendance-api-integration.test.ts",
+        "tests/rc17c-historical-attendance-importer.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
         "tests/registration-board-performance.test.ts",
         "tests/report-history-access.test.ts",
@@ -272,7 +275,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 171
+      "count": 173
     },
     "migrations": {
       "files": [
@@ -346,9 +349,10 @@
         "supabase/migrations/20261012145735_p0_audit_privilege_hardening.sql",
         "supabase/migrations/20261012171503_rc16k_bounded_shift_lists.sql",
         "supabase/migrations/20261017000000_rc17a_actual_staffing_audit.sql",
-        "supabase/migrations/20261019000000_rc17b_rate_supersession_and_recalc.sql"
+        "supabase/migrations/20261019000000_rc17b_rate_supersession_and_recalc.sql",
+        "supabase/migrations/20261021000000_rc17c_attendance_import_foundation.sql"
       ],
-      "count": 71
+      "count": 72
     }
   },
   "verification": {
@@ -362,5 +366,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-20T08:47:21+00:00"
+  "synced_at": "2026-10-20T18:36:43+07:00"
 }
