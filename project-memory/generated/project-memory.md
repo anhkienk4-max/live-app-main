@@ -2,12 +2,12 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-20T16:52:29+00:00
+Generated at: 2026-10-20T16:56:31+00:00
 
 ## Repository
 
 - Branch: `fix/live-monitor-iframe-blocked-20261020`
-- HEAD: `126721a049be367d443306be0d8d0071e54bd77e`
+- HEAD: `3b75c03b77609307ad3eff4c58c642c22b46f0ef`
 - origin/main: `b96dcb6e1842e59f43170a1a8b15da712ee8a8e0`
 - Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17b-payroll`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`

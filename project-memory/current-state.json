@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "fix/live-monitor-iframe-blocked-20261020",
-    "head": "126721a049be367d443306be0d8d0071e54bd77e",
+    "head": "3b75c03b77609307ad3eff4c58c642c22b46f0ef",
     "origin_main": "b96dcb6e1842e59f43170a1a8b15da712ee8a8e0",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17b-payroll"
   },
@@ -364,5 +364,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-20T16:52:29+00:00"
+  "synced_at": "2026-10-20T16:56:31+00:00"
 }
