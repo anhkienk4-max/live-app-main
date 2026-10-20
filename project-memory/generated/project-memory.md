@@ -2,13 +2,13 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-20T19:06:37+07:00
+Generated at: 2026-10-20T19:07:03+07:00
 
 ## Repository
 
 - Branch: `feat/rc17c-both-source-attendance-import`
-- HEAD: `1d91ae9248247ce6cc091aeb75d60f567b9509b9`
-- origin/main: `371426bc53b6fac2fcef97433c02b45c3c6b4e9e`
+- HEAD: `a9f0d1e4d73be02d9c0be20ee91927b4f3a1a232`
+- origin/main: `b96dcb6e1842e59f43170a1a8b15da712ee8a8e0`
 - Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17c-attendance`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
@@ -22,8 +22,8 @@ Generated at: 2026-10-20T19:06:37+07:00
 ## Inventory
 
 - Routes: 57
-- Source files in tracked inventory roots: 749
-- Tests: 174
+- Source files in tracked inventory roots: 752
+- Tests: 175
 - Migrations: 72
 
 ## Modules
