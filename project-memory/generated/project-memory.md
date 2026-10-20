@@ -2,12 +2,12 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-20T18:45:33+07:00
+Generated at: 2026-10-20T18:59:36+07:00
 
 ## Repository
 
 - Branch: `feat/rc17c-both-source-attendance-import`
-- HEAD: `723eb71f1dc951bb47f27cedb9aaa630557fda64`
+- HEAD: `c3696e9f81b6c9a400b12b357bd90e412a20a002`
 - origin/main: `371426bc53b6fac2fcef97433c02b45c3c6b4e9e`
 - Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17c-attendance`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
