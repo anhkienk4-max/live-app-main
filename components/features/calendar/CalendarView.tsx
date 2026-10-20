@@ -44,6 +44,7 @@ import { DaySessionsDialog } from './DaySessionsDialog'
 import { BulkStaffingApprovalDialog } from './BulkStaffingApprovalDialog'
 import { BulkDeleteShiftsDialog } from './BulkDeleteShiftsDialog'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { hasPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
 import { useToast } from '@/components/ui/toast'
@@ -346,6 +347,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       }
     }
   }, [identity, listNavigate, listPage, operationalQuery, listSize, requestKey, view])
+  useShiftChangeRefresh(() => loadData(false))
 
   React.useEffect(() => {
     const generation = requestVersion

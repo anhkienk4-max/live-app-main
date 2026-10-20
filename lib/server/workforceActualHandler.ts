@@ -7,6 +7,7 @@ import { authorizationErrorResponse, isAuthorizationError,
   requireRole, type ServerUserResolver } from '@/lib/server/authGuards'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
+import { WORKFORCE_LATE_GRACE_MINUTES } from '@/lib/workforce/workforcePolicy'
 
 const id = z.string().trim().min(1).max(120)
 const time = z.string().datetime({ offset: true })
@@ -249,9 +250,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
         if (swapsRes?.error || regsRes?.error) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
         if (!shiftRes?.data) return fail('WORKFORCE_SHIFT_NOT_FOUND', 404)
 
-        const rawGrace = process.env.WORKFORCE_LATE_GRACE_MINUTES
-        const parsedGrace = rawGrace !== undefined ? Number(rawGrace) : 0
-        const safeGraceMinutes = Number.isSafeInteger(parsedGrace) && parsedGrace >= 0 && parsedGrace <= 180 ? parsedGrace : 0
+        const safeGraceMinutes = WORKFORCE_LATE_GRACE_MINUTES
 
         const enrichedSegments = (segmentsRes.data ?? []).map((seg) => {
           const verification = resolveStaffAssignmentVerification({
@@ -286,7 +285,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
           planned_staff: regsRes?.data ?? [],
           lateness_policy: {
             grace_minutes: safeGraceMinutes,
-            policy_status: rawGrace !== undefined ? 'configured' : 'pending_company_policy',
+            policy_status: 'configured',
           },
         }, { headers: noStore })
       })

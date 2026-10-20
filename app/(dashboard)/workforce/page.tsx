@@ -33,6 +33,7 @@ import {
 import { WorkforceTeamOverview } from '@/components/features/workforce/WorkforceTeamOverview'
 import { WorkforceIndividualView } from '@/components/features/workforce/WorkforceIndividualView'
 import { WorkforceLeaderboard } from '@/components/features/workforce/WorkforceLeaderboard'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 
 export default function WorkforcePage() {
   const { translate } = useTranslation()
@@ -104,6 +105,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
       if (sequence === readSequence.current) setLoadingOverview(false)
     }
   }, [isSupervisor, month, role, toast])
+  useShiftChangeRefresh(loadOverview)
 
   React.useEffect(() => {
     const generation = readSequence

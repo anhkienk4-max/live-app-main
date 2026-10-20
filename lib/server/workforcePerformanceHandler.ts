@@ -8,6 +8,7 @@ import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { summarizeWorkforcePerformance, type ScheduledStaffing } from '@/lib/workforce/workforcePerformance'
 import { WorkforceCalculationError, type ActualStaffingEvidence,
   type WorkforceRole } from '@/lib/workforce/payrollCalculation'
+import { WORKFORCE_LATE_GRACE_MINUTES } from '@/lib/workforce/workforcePolicy'
 
 const noStore={'Cache-Control':'no-store'}
 const fail=(code:string,status:number)=>Response.json({ok:false,error:{code}},{status,headers:noStore})
@@ -24,10 +25,7 @@ type Depends={
 }
 export function createWorkforcePerformanceHandler(deps:Depends={}) {
   const db=deps.createClient??createSupabaseAdminClient
-  const readGrace=deps.lateGraceMinutes??(()=>{
-    const raw=process.env.WORKFORCE_LATE_GRACE_MINUTES
-    return raw?.trim() && /^\d{1,3}$/u.test(raw) ? Number(raw) : null
-  })
+  const readGrace=deps.lateGraceMinutes??(()=>WORKFORCE_LATE_GRACE_MINUTES)
   return {
     async GET(request:Request):Promise<Response>{
       try{

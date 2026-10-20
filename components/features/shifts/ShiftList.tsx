@@ -9,6 +9,7 @@ import { shiftService, shiftRegistrationService, getShiftRoleCapacities } from '
 import { templateService } from '@/lib/services/templateService'
 import { Shift, Brand, Platform, Campaign, User, DeletionImpact, ShiftRegistration } from '@/lib/types/database.types'
 import { formatShiftTimeRange, ShiftTemplate } from '@/lib/utils/shiftUtils'
+import { shiftDateWindowFilters, type ShiftDateWindow } from '@/lib/utils/shiftDateWindow'
 import { ActionBar } from '@/components/ui/action-bar'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { buildShiftActions } from '@/lib/ui/action-priority'
@@ -27,6 +28,7 @@ import { BulkActionsToolbar } from './BulkActionsToolbar'
 import { ImportExportDialog } from './ImportExportDialog'
 import { format } from 'date-fns'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { hasPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
 import { PageLoadError } from '@/components/ui/page-load-error'
@@ -64,7 +66,8 @@ export function ShiftList() {
   const [showBulkActions, setShowBulkActions] = React.useState(false)
   const [statusFilter, setStatusFilter] = React.useState<Shift['status'] | 'all'>('all')
   const [searchQuery, setSearchQuery] = React.useState('')
-  const [sortDescending, setSortDescending] = React.useState(false)
+  const [sortDescending, setSortDescending] = React.useState(true)
+  const [dateWindow, setDateWindow] = React.useState<ShiftDateWindow>('recent')
   const [visibleShifts, setVisibleShifts] = React.useState<Shift[]>([])
   const [filteredTableShifts, setFilteredTableShifts] = React.useState<Shift[]>([])
   const [tableFilterInitialized, setTableFilterInitialized] = React.useState(false)
@@ -114,8 +117,9 @@ export function ShiftList() {
   const canMutate = canEdit || canDelete
 
   const statusValues = ['scheduled', 'preparing', 'live', 'paused', 'completed', 'cancelled'] as const
-  const listFilters = { search: searchQuery, statuses: statusFilter === 'all' ? [] : [statusFilter], descending: sortDescending }
+  const listFilters = { ...shiftDateWindowFilters(dateWindow), search: searchQuery, statuses: statusFilter === 'all' ? [] : [statusFilter], descending: sortDescending }
   const list = usePagedList(shiftService, 'shifts', listFilters)
+  useShiftChangeRefresh(list.reload)
   const { items: shifts, loading } = list
   const sortedShifts = shifts
 
@@ -454,6 +458,16 @@ export function ShiftList() {
           filterComponent={
             <div className="flex flex-wrap items-center gap-2">
               <label className="flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600">
+                <span>{t('dateRange')}</span>
+                <select aria-label={t('dateRange')} value={dateWindow}
+                  onChange={event => { setDateWindow(event.target.value as ShiftDateWindow); clearSelection(); list.reset() }}
+                  className="max-w-40 bg-transparent font-medium text-slate-800 outline-none">
+                  <option value="recent">{t('last30Days')}</option>
+                  <option value="upcoming">{t('upcoming')}</option>
+                  <option value="all">{t('all')}</option>
+                </select>
+              </label>
+              <label className="flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600">
                 <span>{t('status')}</span>
                 <select
                   aria-label={t('status')}
@@ -501,6 +515,13 @@ export function ShiftList() {
             />
           </div>
           <div className="flex items-center gap-2">
+            <select aria-label={t('dateRange')} value={dateWindow}
+              onChange={event => { setDateWindow(event.target.value as ShiftDateWindow); clearSelection(); list.reset() }}
+              className="flex-1 h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none">
+              <option value="recent">{t('last30Days')}</option>
+              <option value="upcoming">{t('upcoming')}</option>
+              <option value="all">{t('all')}</option>
+            </select>
             <select
               aria-label={t('status')}
               value={statusFilter}
