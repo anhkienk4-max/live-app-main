@@ -88,7 +88,7 @@ export function OperationalStorageSetupWorkspace() {
   const [existingPeriodFolderId, setExistingPeriodFolderId] = React.useState('')
   const [existingPlatformFolderId, setExistingPlatformFolderId] = React.useState('')
   const [existingRouteDate, setExistingRouteDate] = React.useState('')
-  const [legacyPeriodStyle, setLegacyPeriodStyle] = React.useState('THANG_M_DASH_YEAR')
+  const [legacyPeriodStyle, setLegacyPeriodStyle] = React.useState('THANG_UPPER_M_DASH_YEAR')
   const [periodOverridesText, setPeriodOverridesText] = React.useState('')
   const [periodRangesText, setPeriodRangesText] = React.useState('')
   const [previewDate, setPreviewDate] = React.useState('')
@@ -323,11 +323,11 @@ export function OperationalStorageSetupWorkspace() {
             <span>Quy tắc đặt tên tháng legacy</span>
             <select className={control} value={legacyPeriodStyle}
               onChange={e => setLegacyPeriodStyle(e.target.value)}>
+              <option value="THANG_UPPER_M_DASH_YEAR">THÁNG 9 - 2026</option>
               <option value="THANG_M_DASH_YEAR">Tháng 9 - 2026</option>
               <option value="THANG_M_DOT_YEAR">THÁNG 9.2026</option>
               <option value="THANG_M_DOT_SPACE_YEAR">THÁNG 9. 2026</option>
               <option value="T_M_DOT_YEAR">T9.2026</option>
-              <option value="THANG_UPPER_M_DASH_YEAR">THÁNG 9 - 2026</option>
             </select>
           </label>
           <label className="block space-y-1 text-sm">
