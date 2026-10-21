@@ -10,6 +10,8 @@ import { autoCalculatePeriodLines, calculatePayrollAmounts, calculatePayrollLine
   calculateRecalculationDiffs, selectApprovedRate, WorkforceCalculationError,
   type ActualStaffingEvidence, type ApprovedPayrollRate, type ExistingPayrollLineForRecalc,
   type WorkforceRole } from '@/lib/workforce/payrollCalculation'
+import { readCompleteWorkforceRows, readWorkforceRowsForShifts,
+  WorkforceScopeReadError } from '@/lib/server/workforceScopePagination'
 
 const id = z.string().trim().min(1).max(120)
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u)
@@ -115,153 +117,48 @@ function csvNumber(input:unknown):string {
   return '"'+value+'"'
 }
 
+// All four payroll input sources must be complete before a draft mutation.
+// Reuse the same exact-count, stable-ID and bounded fail-closed contract as
+// Workforce KPI reads. Never interpret null / partial PostgREST pages as empty.
 async function fetchAllShifts(db: SupabaseClient, periodStart: string, periodEnd: string) {
-  const pageSize = 1000
-  let page = 0
-  const allShifts: Array<{ id: string; date: string }> = []
-  let hasMore = true
-
-  while (hasMore) {
-    const { data, count, error } = await db.from('shifts')
-      .select('id,date,deleted_at', { count: 'exact' })
-      .gte('date', periodStart)
-      .lte('date', periodEnd)
-      .is('deleted_at', null)
-      .order('id', { ascending: true })
-      .range(page * pageSize, (page + 1) * pageSize - 1)
-
-    if (error) throw new WorkforceCalculationError('WORKFORCE_SHIFT_READ_FAILED')
-    if (!data) break
-    allShifts.push(...data)
-    if (count !== null && allShifts.length >= count) {
-      hasMore = false
-    } else if (data.length < pageSize) {
-      hasMore = false
-    } else {
-      page++
-    }
-  }
-  return allShifts
+  return readCompleteWorkforceRows(
+    (from,to)=>db.from('shifts')
+      .select('id,date,deleted_at', { count:'exact' })
+      .gte('date',periodStart).lte('date',periodEnd).is('deleted_at',null)
+      .order('id',{ascending:true}).range(from,to),
+    'WORKFORCE_SHIFT_READ_FAILED',
+  )
 }
 
 async function fetchAllSegmentsForShifts(db: SupabaseClient, shiftIds: string[]) {
-  const chunkSize = 200
-  const allSegments: Array<{
-    id: string
-    shift_id: string
-    staff_id: string
-    operational_role: string
-    event_kind: string
-    review_status: string
-    actual_start_at: string | null
-    actual_end_at: string | null
-    review_note: string | null
-    evidence_note: string | null
-  }> = []
-
-  for (let i = 0; i < shiftIds.length; i += chunkSize) {
-    const chunk = shiftIds.slice(i, i + chunkSize)
-    const pageSize = 1000
-    let page = 0
-    let hasMore = true
-    let chunkFetched = 0
-    let chunkTotalCount: number | null = null
-
-    while (hasMore) {
-      const { data, count, error } = await db.from('workforce_actual_segments')
-        .select('id,shift_id,staff_id,operational_role,event_kind,review_status,actual_start_at,actual_end_at,review_note,evidence_note', { count: 'exact' })
-        .in('shift_id', chunk)
-        .eq('review_status', 'approved')
-        .eq('event_kind', 'worked')
-        .order('id', { ascending: true })
-        .range(page * pageSize, (page + 1) * pageSize - 1)
-
-      if (error) throw new WorkforceCalculationError('WORKFORCE_ACTUAL_READ_FAILED')
-      if (!data) break
-      allSegments.push(...data)
-      chunkFetched += data.length
-      if (count !== null) {
-        chunkTotalCount = count
-      }
-
-      if (chunkTotalCount !== null && chunkFetched >= chunkTotalCount) {
-        hasMore = false
-      } else if (data.length < pageSize) {
-        hasMore = false
-      } else {
-        page++
-      }
-    }
-
-    if (chunkTotalCount !== null && chunkFetched !== chunkTotalCount) {
-      throw new WorkforceCalculationError('WORKFORCE_ACTUAL_READ_FAILED')
-    }
-  }
-  return allSegments
+  return readWorkforceRowsForShifts(
+    shiftIds,
+    (chunk,from,to)=>db.from('workforce_actual_segments')
+      .select('id,shift_id,staff_id,operational_role,event_kind,review_status,actual_start_at,actual_end_at,review_note,evidence_note',{count:'exact'})
+      .in('shift_id',chunk).eq('review_status','approved').eq('event_kind','worked')
+      .order('id',{ascending:true}).range(from,to),
+    'WORKFORCE_ACTUAL_READ_FAILED',
+  )
 }
 
 async function fetchAllApprovedRateCards(db: SupabaseClient) {
-  const pageSize = 1000
-  let page = 0
-  const allCards: Array<{
-    id: string
-    staff_id: string | null
-    operational_role: string
-    effective_from: string
-    effective_through: string | null
-    vnd_per_hour: number
-    overtime_multiplier_basis_points: number
-    approved_by: string
-  }> = []
-  let hasMore = true
-
-  while (hasMore) {
-    const { data, count, error } = await db.from('workforce_rate_cards')
-      .select('id,staff_id,operational_role,effective_from,effective_through,vnd_per_hour,overtime_multiplier_basis_points,approved_by', { count: 'exact' })
-      .not('approved_by', 'is', null)
-      .not('approved_at', 'is', null)
-      .order('id', { ascending: true })
-      .range(page * pageSize, (page + 1) * pageSize - 1)
-
-    if (error) throw new WorkforceCalculationError('WORKFORCE_RATES_INCOMPLETE')
-    if (!data) break
-    allCards.push(...data)
-    if (count !== null && allCards.length >= count) {
-      hasMore = false
-    } else if (data.length < pageSize) {
-      hasMore = false
-    } else {
-      page++
-    }
-  }
-  return allCards
+  return readCompleteWorkforceRows(
+    (from,to)=>db.from('workforce_rate_cards')
+      .select('id,staff_id,operational_role,effective_from,effective_through,vnd_per_hour,overtime_multiplier_basis_points,approved_by',{count:'exact'})
+      .not('approved_by','is',null).not('approved_at','is',null)
+      .order('id',{ascending:true}).range(from,to),
+    'WORKFORCE_RATES_INCOMPLETE',
+  )
 }
 
 async function fetchAllPeriodLines(db: SupabaseClient, periodId: string) {
-  const pageSize = 1000
-  let page = 0
-  const allLines: Array<Record<string, unknown>> = []
-  let hasMore = true
-
-  while (hasMore) {
-    const { data, count, error } = await db.from('workforce_payroll_lines')
-      .select('id,period_id,segment_id,rate_card_id,staff_id,operational_role,actual_minutes,payable_minutes,overtime_minutes,rate_vnd_per_hour,overtime_multiplier_basis_points,gross_vnd,adjustment_vnd,net_vnd,adjustment_reason,calculation_version,version,voided_at', { count: 'exact' })
-      .eq('period_id', periodId)
-      .order('id', { ascending: true })
-      .range(page * pageSize, (page + 1) * pageSize - 1)
-
-    if (error) throw new WorkforceCalculationError('WORKFORCE_PAYROLL_READ_FAILED')
-    if (!data) break
-    allLines.push(...data)
-    if (count !== null && allLines.length >= count) {
-      hasMore = false
-    } else if (data.length < pageSize) {
-      hasMore = false
-    } else {
-      page++
-    }
-  }
-  return allLines
+  return readCompleteWorkforceRows(
+    (from,to)=>db.from('workforce_payroll_lines')
+      .select('id,period_id,segment_id,rate_card_id,staff_id,operational_role,actual_minutes,payable_minutes,overtime_minutes,rate_vnd_per_hour,overtime_multiplier_basis_points,gross_vnd,adjustment_vnd,net_vnd,adjustment_reason,calculation_version,version,voided_at',{count:'exact'})
+      .eq('period_id',periodId)
+      .order('id',{ascending:true}).range(from,to),
+    'WORKFORCE_PAYROLL_READ_FAILED',
+  )
 }
 
 export function createWorkforcePayrollHandler(options:Options={}) {
@@ -273,6 +170,7 @@ export function createWorkforcePayrollHandler(options:Options={}) {
       if(e instanceof RequestBodyError)return failure(e.code,e.status)
       if(e instanceof z.ZodError)return failure('WORKFORCE_REQUEST_INVALID',400)
       if(e instanceof WorkforceCalculationError)return failure(e.code,409)
+      if(e instanceof WorkforceScopeReadError)return failure(e.code,503)
       return failure('WORKFORCE_PAYROLL_FAILED',500)
     }
   }
