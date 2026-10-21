@@ -43,18 +43,23 @@ export function createWorkforcePerformanceHandler(deps:Depends={}) {
         const first=input.month+'-01'
         const last=input.month+'-'+String(new Date(Date.UTC(year,month,0)).getUTCDate()).padStart(2,'0')
         const client=db()
-        const [shiftRes,regRes]=await Promise.all([
-          client.from('shifts')
-            .select('id,date,start_at,status,host_id,support_id,technical_id')
-            .gte('date',first).lte('date',last).is('deleted_at',null).limit(1000),
-          client.from('shift_registrations')
-            .select('shift_id,user_id,operational_role,status')
-            .eq('user_id',input.staff_id)
-            .in('status',['approved','manually_assigned']).limit(1000),
-        ])
-        if(shiftRes.error||regRes.error||(shiftRes.data??[]).length>=1000
-          ||(regRes.data??[]).length>=1000)return fail('WORKFORCE_PLANNED_SCOPE_INCOMPLETE',503)
-        const approvedIds=new Set((regRes.data??[])
+        const shiftRes=await client.from('shifts')
+          .select('id,date,start_at,status,host_id,support_id,technical_id')
+          .gte('date',first).lte('date',last).is('deleted_at',null).limit(1000)
+        if(shiftRes.error||(shiftRes.data??[]).length>=1000)
+          return fail('WORKFORCE_PLANNED_SCOPE_INCOMPLETE',503)
+        const monthShiftIds=(shiftRes.data??[]).map(shift=>shift.id)
+        const regRes=monthShiftIds.length?await client.from('shift_registrations')
+          .select('shift_id,user_id,operational_role,status')
+          .eq('user_id',input.staff_id)
+          .in('status',['approved','manually_assigned'])
+          .in('shift_id',monthShiftIds).limit(1000):{data:[],error:null}
+        if(regRes.error||(regRes.data??[]).length>=1000)
+          return fail('WORKFORCE_PLANNED_SCOPE_INCOMPLETE',503)
+        const registrationRows=(regRes.data??[]) as Array<{
+          shift_id:string;operational_role:string
+        }>
+        const approvedIds=new Set(registrationRows
           .filter(r=>r.operational_role===input.role).map(r=>r.shift_id))
         const roleField={
           host:'host_id',support:'support_id',technical:'technical_id',
