@@ -313,84 +313,41 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
             resulting_segment_id: null,
           }))
 
-          // P0-2: Stage batch and rows to database atomically via PostgreSQL RPC if supported
-          if (typeof client.rpc === 'function') {
-            const { data: stageResult, error: stageErr } = await client.rpc('stage_attendance_import_batch', {
-              p_batch_id: batchId,
-              p_source_type: sourceType,
-              p_source_name: sourceName,
-              p_source_fingerprint: sourceFingerprint,
-              p_timezone: 'Asia/Ho_Chi_Minh',
-              p_brand_id: null,
-              p_metadata: {
-                sourceProfileId,
-                revision: body.revision || 1,
-                exceptionsSummary: preview.summary.exceptionsSummary,
-              },
-              p_actor_id: user.id,
-              p_total_rows: preview.summary.totalRows,
-              p_matched_rows: preview.summary.matchedRows,
-              p_exception_rows: preview.summary.exceptionRows,
-              p_rows: rowInserts,
-            })
+          // Transaction boundaries must stay inside the database. There is no safe multi-request fallback.
+          if (typeof client.rpc !== 'function') {
+            return fail('ATOMIC_IMPORT_RPC_UNAVAILABLE', 503)
+          }
 
-            if (stageErr) {
-              return fail('DATABASE_ERROR', 500, stageErr.message)
-            }
+          const { data: stageResult, error: stageErr } = await client.rpc('stage_attendance_import_batch', {
+            p_batch_id: batchId,
+            p_source_type: sourceType,
+            p_source_name: sourceName,
+            p_source_fingerprint: sourceFingerprint,
+            p_timezone: 'Asia/Ho_Chi_Minh',
+            p_brand_id: null,
+            p_metadata: {
+              sourceProfileId,
+              revision: body.revision || 1,
+              exceptionsSummary: preview.summary.exceptionsSummary,
+            },
+            p_actor_id: user.id,
+            p_total_rows: preview.summary.totalRows,
+            p_matched_rows: preview.summary.matchedRows,
+            p_exception_rows: preview.summary.exceptionRows,
+            p_rows: rowInserts,
+          })
 
-            if (stageResult && typeof stageResult === 'object') {
-              const sRes = stageResult as { ok: boolean; code?: string; message?: string }
-              if (sRes.ok === false) {
-                if (sRes.code === 'BATCH_ALREADY_CONFIRMED') {
-                  return fail('BATCH_ALREADY_CONFIRMED', 409, sRes.message || 'Nguồn dữ liệu này đã được xác nhận trước đó')
-                }
-                return fail(sRes.code || 'STAGE_FAILED', 400, sRes.message)
-              }
+          if (stageErr) return fail('DATABASE_ERROR', 500, stageErr.message)
+          if (!stageResult || typeof stageResult !== 'object' || Array.isArray(stageResult)
+            || !('ok' in stageResult) || typeof stageResult.ok !== 'boolean') {
+            return fail('INVALID_ATOMIC_IMPORT_RESPONSE', 502)
+          }
+          const staged = stageResult as { ok: boolean; code?: string; message?: string }
+          if (!staged.ok) {
+            if (staged.code === 'BATCH_ALREADY_CONFIRMED') {
+              return fail('BATCH_ALREADY_CONFIRMED', 409, staged.message || 'Nguồn dữ liệu này đã được xác nhận trước đó')
             }
-          } else {
-            // Fallback for non-RPC clients
-            if (existingBatch && existingBatch.status === 'staged') {
-              await client.from('workforce_attendance_import_rows').delete().eq('batch_id', batchId)
-              await client.from('workforce_attendance_import_batches').update({
-                total_rows: preview.summary.totalRows,
-                matched_rows: preview.summary.matchedRows,
-                exception_rows: preview.summary.exceptionRows,
-                metadata: {
-                  sourceProfileId,
-                  revision: body.revision || 1,
-                  exceptionsSummary: preview.summary.exceptionsSummary,
-                },
-                updated_at: new Date().toISOString(),
-              }).eq('id', batchId)
-            } else {
-              const { error: batchInsertErr } = await client.from('workforce_attendance_import_batches').insert({
-                id: batchId,
-                source_type: sourceType,
-                source_name: sourceName,
-                source_fingerprint: sourceFingerprint,
-                timezone: 'Asia/Ho_Chi_Minh',
-                status: 'staged',
-                total_rows: preview.summary.totalRows,
-                matched_rows: preview.summary.matchedRows,
-                exception_rows: preview.summary.exceptionRows,
-                drafted_segments: 0,
-                metadata: {
-                  sourceProfileId,
-                  revision: body.revision || 1,
-                  exceptionsSummary: preview.summary.exceptionsSummary,
-                },
-                created_by: user.id,
-                version: 1,
-              })
-              if (batchInsertErr) return fail('DATABASE_ERROR', 500, batchInsertErr.message)
-            }
-
-            if (rowInserts.length > 0) {
-              const { error: rowInsertErr } = await client
-                .from('workforce_attendance_import_rows')
-                .insert(rowInserts)
-              if (rowInsertErr) return fail('DATABASE_ERROR', 500, rowInsertErr.message)
-            }
+            return fail(staged.code || 'STAGE_FAILED', 400, staged.message)
           }
 
           return Response.json(
@@ -415,224 +372,66 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
 
           const expectedVersion = typeof version === 'number' ? version : null
 
-          // P0-1 & P0-2: Execute atomic PostgreSQL confirmation RPC if available
-          if (typeof client.rpc === 'function') {
-            const { data: rpcResult, error: rpcErr } = await client.rpc('confirm_attendance_import_batch', {
-              p_batch_id: batchId,
-              p_actor_id: user.id,
-              p_expected_version: expectedVersion,
-            })
-
-            if (rpcErr) {
-              const msg = rpcErr.message || ''
-              if (msg.includes('IMPORT_BATCH_NOT_FOUND')) {
-                return fail('BATCH_NOT_FOUND', 404, `Không tìm thấy batch staged #${batchId}`)
-              }
-              if (msg.includes('BATCH_ALREADY_CONFIRMED')) {
-                return fail('BATCH_ALREADY_CONFIRMED', 409, `Batch #${batchId} đã được xác nhận trước đó`)
-              }
-              if (msg.includes('BATCH_VERSION_MISMATCH')) {
-                return fail('STALE_BATCH_VERSION', 409, 'Phiên bản batch đã thay đổi do thao tác khác, vui lòng kiểm tra lại')
-              }
-              if (msg.includes('IMPORT_BATCH_NOT_STAGED')) {
-                return fail('INVALID_BATCH_STATUS', 400, `Trạng thái batch không hợp lệ. Chỉ batch 'staged' mới được xác nhận.`)
-              }
-              if (msg.includes('FORBIDDEN_ATTENDANCE_ACTION')) {
-                return fail('FORBIDDEN', 403, 'Bạn không có quyền xác nhận bản ghi chấm công')
-              }
-              return fail('DATABASE_ERROR', 500, msg)
-            }
-
-            if (rpcResult && typeof rpcResult === 'object') {
-              const res = rpcResult as {
-                ok: boolean
-                code?: string
-                message?: string
-                batch_id?: string
-                created_count?: number
-                reconciled_count?: number
-                skipped_count?: number
-                version?: number
-              }
-
-              if (res.ok === false) {
-                if (res.code === 'BATCH_ALREADY_CONFIRMED') {
-                  return fail('BATCH_ALREADY_CONFIRMED', 409, res.message || `Batch #${batchId} đã được xác nhận trước đó`)
-                }
-                return fail(res.code || 'CONFIRM_FAILED', 400, res.message)
-              }
-
-              return Response.json(
-                {
-                  ok: true,
-                  batchId: res.batch_id || batchId,
-                  createdCount: res.created_count ?? 0,
-                  reconciledCount: res.reconciled_count ?? 0,
-                  skippedCount: res.skipped_count ?? 0,
-                  version: res.version,
-                  message: res.message || `Đã tạo ${res.created_count ?? 0} bản ghi Actual Staffing (DRAFT) từ batch #${batchId} chờ kiểm duyệt độc lập`,
-                },
-                { headers: noStore }
-              )
-            }
+          // Only the database RPC can provide a row-locked, atomic confirmation.
+          if (typeof client.rpc !== 'function') {
+            return fail('ATOMIC_IMPORT_RPC_UNAVAILABLE', 503)
           }
-
-          // Fallback if client.rpc is not a function
-          const { data: batch, error: batchErr } = await client
-            .from('workforce_attendance_import_batches')
-            .select('*')
-            .eq('id', batchId)
-            .maybeSingle()
-
-          if (batchErr || !batch) {
-            return fail('BATCH_NOT_FOUND', 404, `Không tìm thấy batch staged #${batchId}`)
-          }
-
-          if (batch.status === 'confirmed') {
-            return fail('BATCH_ALREADY_CONFIRMED', 409, `Batch #${batchId} đã được xác nhận trước đó`)
-          }
-
-          if (batch.status !== 'staged') {
-            return fail('INVALID_BATCH_STATUS', 400, `Trạng thái batch không hợp lệ (${batch.status}). Chỉ batch 'staged' mới được xác nhận.`)
-          }
-
-          if (expectedVersion !== null && batch.version !== expectedVersion) {
-            return fail('STALE_BATCH_VERSION', 409, 'Phiên bản batch đã thay đổi do thao tác khác, vui lòng kiểm tra lại')
-          }
-
-          const { data: stagedRows, error: rowsErr } = await client
-            .from('workforce_attendance_import_rows')
-            .select('*')
-            .eq('batch_id', batchId)
-            .eq('status', 'matched')
-            .order('source_row_number', { ascending: true })
-
-          if (rowsErr) return fail('DATABASE_ERROR', 500, rowsErr.message)
-
-          if (!stagedRows || stagedRows.length === 0) {
-            return Response.json(
-              { ok: true, batchId, createdCount: 0, message: 'Không có dòng hợp lệ nào để tạo bản ghi chấm công' },
-              { headers: noStore }
-            )
-          }
-
-          const shiftIds = [...new Set(stagedRows.map(r => r.matched_shift_id).filter(Boolean))] as string[]
-          const staffIds = [...new Set(stagedRows.map(r => r.matched_staff_id).filter(Boolean))] as string[]
-
-          const { data: verifiedShifts } = await client
-            .from('shifts')
-            .select('id, status, deleted_at')
-            .in('id', shiftIds)
-
-          const completedShiftIds = new Set(
-            (verifiedShifts || [])
-              .filter(s => s.status === 'completed' && !s.deleted_at)
-              .map(s => s.id)
-          )
-
-          const { data: verifiedStaff } = await client
-            .from('business_users')
-            .select('id, status, deleted_at')
-            .in('id', staffIds)
-
-          const activeStaffIds = new Set(
-            (verifiedStaff || [])
-              .filter(s => s.status === 'active' && !s.deleted_at)
-              .map(s => s.id)
-          )
-
-          const { data: currentActuals } = await client
-            .from('workforce_actual_segments')
-            .select('staff_id, actual_start_at, actual_end_at')
-            .in('staff_id', staffIds)
-            .neq('review_status', 'rejected')
-
-          const eligibleRows: typeof stagedRows = []
-          for (const r of stagedRows) {
-            if (!completedShiftIds.has(r.matched_shift_id)) continue
-            if (!activeStaffIds.has(r.matched_staff_id)) continue
-            if (!['actual_punch', 'supervisor_verified'].includes(r.evidence_kind)) continue
-
-            const rStart = Date.parse(r.parsed_start_at)
-            const rEnd = Date.parse(r.parsed_end_at)
-            const hasOverlap = (currentActuals || []).some(ca => {
-              if (ca.staff_id !== r.matched_staff_id) return false
-              const caStart = Date.parse(ca.actual_start_at)
-              const caEnd = Date.parse(ca.actual_end_at)
-              return Math.max(rStart, caStart) < Math.min(rEnd, caEnd)
-            })
-            if (hasOverlap) continue
-
-            eligibleRows.push(r)
-          }
-
-          if (eligibleRows.length === 0) {
-            return Response.json(
-              { ok: true, batchId, createdCount: 0, message: 'Các dòng staged không vượt qua bước kiểm tra lại độc lập trên máy chủ' },
-              { headers: noStore }
-            )
-          }
-
-          const draftSegments = eligibleRows.map(r => {
-            const note = `Imported from staged batch #${batchId} row ${r.source_row_number}: ${r.raw_notes || 'Xác nhận chấm công hợp lệ'}`
-            return {
-              shift_id: r.matched_shift_id,
-              staff_id: r.matched_staff_id,
-              operational_role: r.operational_role,
-              event_kind: 'worked' as const,
-              coverage_kind: r.coverage_kind || 'planned',
-              actual_start_at: r.parsed_start_at,
-              actual_end_at: r.parsed_end_at,
-              review_status: 'draft' as const,
-              evidence_note: note.slice(0, 2000),
-              created_by: user.id,
-              reviewed_by: null,
-              reviewed_at: null,
-              review_note: null,
-            }
+          const { data: rpcResult, error: rpcErr } = await client.rpc('confirm_attendance_import_batch', {
+            p_batch_id: batchId,
+            p_actor_id: user.id,
+            p_expected_version: expectedVersion,
           })
 
-          const { data: inserted, error: insertErr } = await client
-            .from('workforce_actual_segments')
-            .insert(draftSegments)
-            .select('id')
-
-          if (insertErr) return fail('DATABASE_ERROR', 500, insertErr.message)
-
-          for (let i = 0; i < eligibleRows.length; i++) {
-            const row = eligibleRows[i]
-            const seg = inserted?.[i]
-            if (seg) {
-              await client
-                .from('workforce_attendance_import_rows')
-                .update({
-                  status: 'drafted',
-                  resulting_segment_id: seg.id,
-                  updated_at: new Date().toISOString(),
-                })
-                .eq('id', row.id)
+          if (rpcErr) {
+            const msg = rpcErr.message || ''
+            if (msg.includes('IMPORT_BATCH_NOT_FOUND')) {
+              return fail('BATCH_NOT_FOUND', 404, `Không tìm thấy batch staged #${batchId}`)
             }
+            if (msg.includes('BATCH_ALREADY_CONFIRMED')) {
+              return fail('BATCH_ALREADY_CONFIRMED', 409, `Batch #${batchId} đã được xác nhận trước đó`)
+            }
+            if (msg.includes('BATCH_VERSION_MISMATCH')) {
+              return fail('STALE_BATCH_VERSION', 409, 'Phiên bản batch đã thay đổi do thao tác khác, vui lòng kiểm tra lại')
+            }
+            if (msg.includes('IMPORT_BATCH_NOT_STAGED')) {
+              return fail('INVALID_BATCH_STATUS', 400, `Trạng thái batch không hợp lệ. Chỉ batch 'staged' mới được xác nhận.`)
+            }
+            if (msg.includes('FORBIDDEN_ATTENDANCE_ACTION')) {
+              return fail('FORBIDDEN', 403, 'Bạn không có quyền xác nhận bản ghi chấm công')
+            }
+            return fail('DATABASE_ERROR', 500, msg)
           }
 
-          await client
-            .from('workforce_attendance_import_batches')
-            .update({
-              status: 'confirmed',
-              drafted_segments: inserted?.length || 0,
-              version: (batch.version || 1) + 1,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', batchId)
+          if (!rpcResult || typeof rpcResult !== 'object' || Array.isArray(rpcResult)
+            || !('ok' in rpcResult) || typeof rpcResult.ok !== 'boolean') {
+            return fail('INVALID_ATOMIC_IMPORT_RESPONSE', 502)
+          }
+          const res = rpcResult as {
+            ok: boolean
+            code?: string
+            message?: string
+            batch_id?: string
+            created_count?: number
+            reconciled_count?: number
+            skipped_count?: number
+            version?: number
+          }
+          if (!res.ok) {
+            if (res.code === 'BATCH_ALREADY_CONFIRMED') {
+              return fail('BATCH_ALREADY_CONFIRMED', 409, res.message || `Batch #${batchId} đã được xác nhận trước đó`)
+            }
+            return fail(res.code || 'CONFIRM_FAILED', 400, res.message)
+          }
+          return Response.json({
+            ok: true,
+            batchId: res.batch_id || batchId,
+            createdCount: res.created_count ?? 0,
+            reconciledCount: res.reconciled_count ?? 0,
+            skippedCount: res.skipped_count ?? 0,
+            version: res.version,
+            message: res.message || `Đã tạo ${res.created_count ?? 0} bản ghi Actual Staffing (DRAFT) từ batch #${batchId} chờ kiểm duyệt độc lập`,
+          }, { headers: noStore })
 
-          return Response.json(
-            {
-              ok: true,
-              batchId,
-              createdCount: inserted?.length || 0,
-              message: `Đã tạo ${inserted?.length || 0} bản ghi Actual Staffing (DRAFT) từ batch #${batchId} chờ kiểm duyệt độc lập`,
-            },
-            { headers: noStore }
-          )
         }
 
         return fail('UNKNOWN_ACTION', 400)
