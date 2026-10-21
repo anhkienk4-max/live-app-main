@@ -169,11 +169,24 @@ try{
     const ctx=await browser.newContext({ignoreHTTPSErrors:true})
     contexts.push(ctx)
     const page=await ctx.newPage()
+    page.on('response',async response=>{
+      if(!response.url().includes('media.ops5729.top:8886'))return
+      if(response.status()===302||response.status()===404){
+        const h=await response.allHeaders()
+        console.log('MEDIA_REDIRECT_DIAG',JSON.stringify({viewer:i,status:response.status(),
+          location:h.location??null,setCookiePresent:Boolean(h['set-cookie']),
+          allowCredentials:h['access-control-allow-credentials']??null,
+          resource:new URL(response.url()).pathname+new URL(response.url()).search}))
+      }
+    })
     page.on('request',async request=>{
       if(!request.url().includes('media.ops5729.top:8886'))return
       try{
         const headers=await request.allHeaders()
         const pathname=new URL(request.url()).pathname
+        if(request.url().includes('cookieCheck=1'))console.log('MEDIA_COOKIE_DIAG',JSON.stringify({viewer:i,
+          cookiePresent:Boolean(headers.cookie),bearerPresent:Boolean(headers.authorization),
+          requestOrigin:headers.origin??null}))
         if(request.method()!=='OPTIONS'){
           mediaRequests.push({viewer:i,pathname,
             bearer:(headers.authorization??'').startsWith('Bearer ')})
@@ -194,6 +207,10 @@ try{
       width:document.querySelector('video').videoWidth,
       currentTime:document.querySelector('video').currentTime
     }))
+    if(!result.stats.manifest){
+      const cookieNames=(await contexts[index].cookies(mediaOrigin)).map(c=>c.name)
+      console.log('MEDIA_COOKIE_JAR',JSON.stringify({viewer:index,cookieNames}))
+    }
     assert.ok(result.stats.manifest,'viewer '+index+' HLS manifest: '+JSON.stringify(result))
     assert.ok(result.stats.segments>=2,'viewer '+index+' media segments: '+JSON.stringify(result))
     console.log('PASS independent viewer '+(index+1)+' manifest+segments; decodedWidth='+result.width
