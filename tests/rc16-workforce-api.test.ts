@@ -235,7 +235,8 @@ test('Workforce Performance scopes approved registrations to shifts in the selec
       gte(_key:string,value:string){shiftDateFilters.push(['gte',value]);return query},
       lte(_key:string,value:string){shiftDateFilters.push(['lte',value]);return query},
       is(){return query},
-      eq(){return query},limit(){return query},
+      eq(){return query},limit(){return query},order(){return query},
+      range(first:number,last:number){const data=(rows[name]??[]).slice(first,last+1);return Promise.resolve({data,error:null,count:(rows[name]??[]).length})},
       in(key:string,value:unknown){
         if(name==='shift_registrations'&&key==='shift_id')registrationShiftFilters.push(value)
         return query
@@ -277,7 +278,8 @@ test('team overview accepts a year period and queries its full business-date ran
   const dateFilters:Array<[string,string]>=[]
   const createClient=()=>({from(){
     const query={
-      select(){return query},eq(){return query},is(){return query},limit(){return query},
+      select(){return query},eq(){return query},is(){return query},limit(){return query},order(){return query},
+      range(){return Promise.resolve({data:[],error:null,count:0})},
       gte(_key:string,value:string){dateFilters.push(['gte',value]);return query},
       lte(_key:string,value:string){dateFilters.push(['lte',value]);return query},
       then(resolve:(value:{data:unknown[];error:null})=>unknown){
