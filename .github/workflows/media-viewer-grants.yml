@@ -38,7 +38,7 @@ jobs:
       - name: Install exact frozen dependency lock
         run: pnpm install --frozen-lockfile
       - name: Test explicit shift/brand/studio media authorization
-        run: node --import ./tests/typescript-alias-loader.mjs --test tests/media-viewer-authorization.test.ts
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/media-viewer-authorization.test.ts tests/media-viewer-handler.test.ts
       - name: TypeScript
         run: pnpm exec tsc --noEmit --incremental false
       - name: ESLint
