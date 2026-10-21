@@ -10,6 +10,8 @@ import { WorkforceCalculationError, type ActualStaffingEvidence,
   type WorkforceRole } from '@/lib/workforce/payrollCalculation'
 import { WORKFORCE_LATE_GRACE_MINUTES } from '@/lib/workforce/workforcePolicy'
 import { workforcePeriodRange } from '@/lib/workforce/workforcePeriod'
+import { readCompleteWorkforceRows, readWorkforceRowsForShifts,
+  WorkforceScopeReadError } from '@/lib/server/workforceScopePagination'
 
 const noStore={'Cache-Control':'no-store'}
 const fail=(code:string,status:number)=>Response.json({ok:false,error:{code}},{status,headers:noStore})
@@ -44,29 +46,31 @@ export function createWorkforcePerformanceHandler(deps:Depends={}) {
         const period=input.period??input.month!
         const {from:first,to:last}=workforcePeriodRange(period)
         const client=db()
-        const shiftRes=await client.from('shifts')
-          .select('id,date,start_at,status,host_id,support_id,technical_id')
-          .gte('date',first).lte('date',last).is('deleted_at',null).limit(1000)
-        if(shiftRes.error||(shiftRes.data??[]).length>=1000)
-          return fail('WORKFORCE_PLANNED_SCOPE_INCOMPLETE',503)
-        const monthShiftIds=(shiftRes.data??[]).map(shift=>shift.id)
-        const regRes=monthShiftIds.length?await client.from('shift_registrations')
-          .select('shift_id,user_id,operational_role,status')
-          .eq('user_id',input.staff_id)
-          .in('status',['approved','manually_assigned'])
-          .in('shift_id',monthShiftIds).limit(1000):{data:[],error:null}
-        if(regRes.error||(regRes.data??[]).length>=1000)
-          return fail('WORKFORCE_PLANNED_SCOPE_INCOMPLETE',503)
-        const registrationRows=(regRes.data??[]) as Array<{
-          shift_id:string;operational_role:string
-        }>
+        const shiftRows=await readCompleteWorkforceRows(
+          (from,to)=>client.from('shifts')
+            .select('id,date,start_at,status,host_id,support_id,technical_id',{count:'exact'})
+            .gte('date',first).lte('date',last).is('deleted_at',null)
+            .order('id',{ascending:true}).range(from,to),
+          'WORKFORCE_PLANNED_SCOPE_INCOMPLETE',
+        )
+        const monthShiftIds=shiftRows.map(shift=>shift.id)
+        const registrationRows=await readWorkforceRowsForShifts(
+          monthShiftIds,
+          (chunk,from,to)=>client.from('shift_registrations')
+            .select('id,shift_id,user_id,operational_role,status',{count:'exact'})
+            .eq('user_id',input.staff_id)
+            .in('status',['approved','manually_assigned'])
+            .in('shift_id',chunk)
+            .order('id',{ascending:true}).range(from,to),
+          'WORKFORCE_PLANNED_SCOPE_INCOMPLETE',
+        )
         const approvedIds=new Set(registrationRows
           .filter(r=>r.operational_role===input.role).map(r=>r.shift_id))
         const roleField={
           host:'host_id',support:'support_id',technical:'technical_id',
-        }[input.role] as keyof NonNullable<typeof shiftRes.data>[number]
+        }[input.role] as 'host_id'|'support_id'|'technical_id'
         const planned:ScheduledStaffing[]=[]
-        for(const shift of shiftRes.data??[]){
+        for(const shift of shiftRows){
           if(shift.status==='cancelled')continue
           if(shift[roleField]!==input.staff_id&&!approvedIds.has(shift.id))continue
           // A missing timezone-normalized shift start must be repaired at the
@@ -87,13 +91,16 @@ export function createWorkforcePerformanceHandler(deps:Depends={}) {
             metrics_note:'No planned staffing matches this scope; no GMV attribution is inferred'},
             {headers:noStore})
         }
-        const evidenceRes=await client.from('workforce_actual_segments')
-          .select('id,shift_id,staff_id,operational_role,event_kind,review_status,actual_start_at,actual_end_at')
-          .eq('staff_id',input.staff_id).eq('operational_role',input.role)
-          .eq('review_status','approved').in('shift_id',shiftIds).limit(1000)
-        if(evidenceRes.error||(evidenceRes.data??[]).length>=1000)
-          return fail('WORKFORCE_ACTUAL_SCOPE_INCOMPLETE',503)
-        const evidence:ActualStaffingEvidence[]=(evidenceRes.data??[]).map(row=>({
+        const evidenceRows=await readWorkforceRowsForShifts(
+          shiftIds,
+          (chunk,from,to)=>client.from('workforce_actual_segments')
+            .select('id,shift_id,staff_id,operational_role,event_kind,review_status,actual_start_at,actual_end_at',{count:'exact'})
+            .eq('staff_id',input.staff_id).eq('operational_role',input.role)
+            .eq('review_status','approved').in('shift_id',chunk)
+            .order('id',{ascending:true}).range(from,to),
+          'WORKFORCE_ACTUAL_SCOPE_INCOMPLETE',
+        )
+        const evidence:ActualStaffingEvidence[]=evidenceRows.map(row=>({
           id:row.id,shiftId:row.shift_id,staffId:row.staff_id,role:row.operational_role,
           eventKind:row.event_kind,reviewStatus:row.review_status,
           startAt:row.actual_start_at,endAt:row.actual_end_at,
@@ -109,6 +116,7 @@ export function createWorkforcePerformanceHandler(deps:Depends={}) {
         if(isAuthorizationError(e))return authorizationErrorResponse(e)
         if(e instanceof z.ZodError)return fail('WORKFORCE_QUERY_INVALID',400)
         if(e instanceof WorkforceCalculationError)return fail(e.code,409)
+        if(e instanceof WorkforceScopeReadError)return fail(e.code,503)
         return fail('WORKFORCE_PERFORMANCE_FAILED',503)
       }
     },
