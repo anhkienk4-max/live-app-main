@@ -3,6 +3,8 @@ name: Resolve ADA player hls.js pinned dependency
 on:
   push:
     branches: ['feat/ada-hls-player-20261021']
+  pull_request:
+    branches: ['feat/media-viewer-grants-20261021']
   workflow_dispatch:
 
 permissions:
