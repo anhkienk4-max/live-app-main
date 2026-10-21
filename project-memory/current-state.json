@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "integration/global-stabilization-20261021",
-    "head": "febb6e91d1ef5c5153e33a26e16ef8d1cb9303b4",
+    "head": "d92a2b8a50fd3022f8433b1bc34b923a86ec89e8",
     "origin_main": "b96dcb6e1842e59f43170a1a8b15da712ee8a8e0",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-global-stabilization"
   },
@@ -96,9 +96,9 @@
         "lib": 227,
         "scripts": 19,
         "supabase": 93,
-        "tests": 213
+        "tests": 215
       },
-      "total": 769
+      "total": 771
     },
     "tests": {
       "files": [
@@ -376,5 +376,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-21T11:26:01+07:00"
+  "synced_at": "2026-10-21T11:37:06+07:00"
 }
