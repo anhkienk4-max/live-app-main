@@ -103,7 +103,7 @@ export function WorkforceLeaderboard({
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-md border border-slate-200">
+          <div role="region" aria-label="Bảng dữ liệu, cuộn ngang / Scroll horizontally" tabIndex={0} className="max-w-full overflow-x-auto rounded-md border border-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <table className="w-full text-left text-xs">
               <thead className="border-b bg-slate-50 font-semibold text-slate-600">
                 <tr>

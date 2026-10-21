@@ -12,6 +12,7 @@ import { LanguageProvider } from '../lib/i18n.tsx'
 import type { LiveReportImage } from '../lib/types/database.types.ts'
 import {
   createLiveReportImageDrafts,
+  filterLiveReportImagesByCategories,
   liveReportImageCategories,
   maximumLiveReportImageBytes,
   maximumLiveReportImages,
@@ -44,6 +45,20 @@ const makeImage = (
   uploaded_by: 'member-1',
   created_at: '2026-07-26T10:00:00.000Z',
   ...patch,
+})
+
+test('live image category filters use OR within the selected category dimension', () => {
+  const images = [
+    makeImage('session', 0, { category: 'live_session' }),
+    makeImage('visual', 1, { category: 'key_visual' }),
+    makeImage('other', 2, { category: 'other' }),
+  ]
+
+  assert.deepEqual(filterLiveReportImagesByCategories(images, ['live_session', 'key_visual'])
+    .map(image => image.id), ['session', 'visual'])
+  assert.deepEqual(filterLiveReportImagesByCategories(images, []).map(image => image.id), [
+    'session', 'visual', 'other',
+  ])
 })
 
 test('multiple valid images become typed drafts in the selected category', () => {

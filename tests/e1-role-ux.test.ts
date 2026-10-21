@@ -37,7 +37,7 @@ test('E1: Leader Navigation includes all requested routes', () => {
   assert.ok(paths.includes('/notifications'))
 })
 
-test('E1: Member Navigation preserves G03 routes and includes RC16 personal workforce', () => {
+test('E1: Member Navigation preserves destinations and includes the authorized Shifts workflow', () => {
   const memberNav = getNavigationForRole('member')
   const paths = memberNav.map(n => n.href)
   
@@ -45,6 +45,7 @@ test('E1: Member Navigation preserves G03 routes and includes RC16 personal work
     '/',
     '/calendar?tab=mine',
     '/calendar?tab=open',
+    '/shifts',
     '/swaps',
     '/live',
     '/reports',

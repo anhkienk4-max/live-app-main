@@ -9,10 +9,10 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "perf/phase2b-live-monitor-stream-link-20261020",
-    "head": "fe3150c122426008f06e4a5281d42699cf6b9792",
-    "origin_main": "371426bc53b6fac2fcef97433c02b45c3c6b4e9e",
-    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17b-payroll"
+    "branch": "feat/rc17d-responsive-auth",
+    "head": "0f2f74cfa116f0d2a157b8eea6884216eed1363e",
+    "origin_main": "b96dcb6e1842e59f43170a1a8b15da712ee8a8e0",
+    "worktree": "C:/Users/KienNguyen/.codex/worktrees/a2f2/live-app-main"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -61,6 +61,7 @@
       "app/api/account-requests/route.ts",
       "app/api/ai/chat/route.ts",
       "app/api/auth/callback/route.ts",
+      "app/api/auth/providers/route.ts",
       "app/api/file-sources/ingest/route.ts",
       "app/api/internal/file-provider-diagnostics/route.ts",
       "app/api/ocr/route.ts",
@@ -89,14 +90,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 60,
-        "components": 152,
-        "lib": 215,
+        "app": 61,
+        "components": 153,
+        "lib": 217,
         "scripts": 18,
         "supabase": 90,
-        "tests": 206
+        "tests": 209
       },
-      "total": 741
+      "total": 748
     },
     "tests": {
       "files": [
@@ -130,6 +131,7 @@
         "tests/dashboard-aggregate.test.ts",
         "tests/dashboard-fixtures.test.ts",
         "tests/dashboard-region-detection.test.ts",
+        "tests/data-quality-multiselect.test.ts",
         "tests/dual-file-provider.test.ts",
         "tests/e1-role-ux.test.ts",
         "tests/e3-dashboard-domain.test.ts",
@@ -185,6 +187,7 @@
         "tests/phase2-shared-reference-cache.test.ts",
         "tests/phase2b-live-stream-link.test.ts",
         "tests/platform-metric-dom-binding.test.tsx",
+        "tests/preview-auth-uat-contract.test.ts",
         "tests/preview-loading-performance.test.tsx",
         "tests/production-shell-convergence.test.ts",
         "tests/profile-avatar-storage.test.ts",
@@ -219,6 +222,7 @@
         "tests/rc16l-calendar.test.ts",
         "tests/rc17a-actual-staffing.test.ts",
         "tests/rc17b-payroll-autocalc.test.ts",
+        "tests/rc17d-responsive-auth.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
         "tests/registration-board-performance.test.ts",
         "tests/report-history-access.test.ts",
@@ -274,7 +278,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 173
+      "count": 176
     },
     "migrations": {
       "files": [
@@ -364,5 +368,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-20T12:37:23+00:00"
+  "synced_at": "2026-10-21T12:50:52+07:00"
 }

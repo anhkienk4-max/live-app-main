@@ -203,6 +203,7 @@ function AdminDashboard(props: CommonProps) {
     context: a.description ?? a.label,
     time: a.count != null ? `${a.count} mục` : '',
     action: 'Xem chi tiết',
+    href: a.href,
   }))
 
   const todaysOperations = todaysShifts.map(s => ({
@@ -328,6 +329,7 @@ function LeaderDashboard(props: CommonProps) {
   }
 
   const todaysSchedule = todaysShifts.map(s => ({
+    onView: () => props.setSelectedShift(s),
     time: `${s.start_time} - ${s.end_time}`,
     brand: nameFor(brands, s.brand_id),
     platform: nameFor(platforms, s.platform_id),
@@ -396,6 +398,7 @@ function MemberDashboard(props: CommonProps) {
   }
 
   const mySchedule = myAssignedShifts.map(s => ({
+    onView: () => props.setSelectedShift(s),
     date: s.date,
     time: `${s.start_time} – ${s.end_time}`,
     brand: nameFor(brands, s.brand_id),
@@ -432,6 +435,7 @@ function MemberDashboard(props: CommonProps) {
 
   return (
     <MemberDashboardView
+      onOpenNextShift={nextUp ? () => props.setSelectedShift(nextUp) : undefined}
       nextShift={nextShift}
       mySchedule={mySchedule}
       myActions={myActions}

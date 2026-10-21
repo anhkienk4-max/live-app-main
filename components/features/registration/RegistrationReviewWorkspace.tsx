@@ -202,7 +202,7 @@ export function RegistrationReviewWorkspace() {
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200/60">
           <div className="flex flex-wrap items-center gap-2">
             {/* Search */}
-            <div className="relative w-56">
+            <div className="relative w-full sm:w-56">
               <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
               <Input
                 type="text"
@@ -305,7 +305,7 @@ export function RegistrationReviewWorkspace() {
           </div>
 
           {/* Quick Actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Link href="/calendar?tab=mine">
               <Button variant="outline" size="sm" className="h-8 text-xs bg-white">
                 <UserPlus className="h-3.5 w-3.5 mr-1.5 text-blue-600" />
@@ -326,7 +326,7 @@ export function RegistrationReviewWorkspace() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 text-xs text-slate-600"
+              aria-label="Làm mới" className="h-8 text-xs text-slate-600"
               disabled={refreshing}
               onClick={() => void loadData()}
             >
@@ -339,7 +339,7 @@ export function RegistrationReviewWorkspace() {
       {/* 4. MAIN SPLIT VIEW (LEFT: QUEUE, RIGHT: DETAIL) */}
       <div className="flex flex-1 overflow-hidden relative">
         {/* LEFT PANE: QUEUE */}
-        <div className={`flex-1 overflow-y-auto ${showMobileDetail ? 'hidden lg:block' : 'block'}`}>
+        <div role="region" aria-label="Hàng đợi đăng ký, cuộn ngang / Scroll horizontally" tabIndex={0} className={`min-w-0 flex-1 overflow-auto ${showMobileDetail ? 'hidden lg:block' : 'block'}`}>
           {filteredRegistrations.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-12 text-center h-full">
               {searchQuery.trim() || statusFilter !== 'all' || roleFilter !== 'all' ? (

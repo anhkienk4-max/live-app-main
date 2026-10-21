@@ -286,7 +286,7 @@ export function OperationalFileWorkspace() {
         </div>
       </div>
       {catalog?.categories.some(item => item.id === 'system_export') &&
-        <Link href="/storage/setup" className="inline-flex items-center rounded-md border px-3 py-2 text-sm hover:bg-muted">{translate("Admin: Kiểm tra và cấu hình Storage Routes")}</Link>}
+        <Link href="/storage/setup" className="inline-flex min-h-11 items-center rounded-md border px-3 py-2 text-sm hover:bg-muted">{translate("Admin: Kiểm tra và cấu hình Storage Routes")}</Link>}
 
       <section className="space-y-4 rounded-xl border p-4" aria-label={translate("Ngữ cảnh lưu file")}>
         <h2 className="font-semibold">{translate("Ngữ cảnh lưu trữ")}</h2>
@@ -385,7 +385,7 @@ export function OperationalFileWorkspace() {
         <p className="text-sm text-muted-foreground">{translate("Tạo đúng thư mục, upload trực tiếp file lên Drive/OneDrive, sau đó dán ID để app xác thực file thuộc chính thư mục này và lưu metadata. Không tải binary lớn qua Vercel hoặc Supabase.")}</p>
         <button className={buttonClass} type="button" disabled={busy || !catalog || confidentialBlocked}
           onClick={() => void providerAction('prepare_folder')}>{translate("Tạo / mở folder lưu trữ")}</button>
-        {folderUrl && <p className="text-sm break-all">{translate("Folder:")}<a className="text-primary underline" href={folderUrl} target="_blank" rel="noopener noreferrer">{folderPath || folderUrl}</a>
+        {folderUrl && <p className="text-sm break-all">{translate("Folder:")}<a className="inline-flex min-h-11 items-center break-all text-primary underline" href={folderUrl} target="_blank" rel="noopener noreferrer">{folderPath || folderUrl}</a>
         </p>}
         <label className="block text-sm">
           <span className="mb-1 block">{translate("File ID hoặc link Google Drive của file trong folder trên")}</span>
