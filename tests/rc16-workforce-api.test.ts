@@ -225,7 +225,7 @@ test('Workforce Performance scopes approved registrations to shifts in the selec
   const rows:Record<string,unknown[]>={
     shifts:[{id:'shift-september',date:'2026-09-12',start_at:'2026-09-12T02:00:00Z',
       status:'completed',host_id:null,support_id:null,technical_id:null}],
-    shift_registrations:[{shift_id:'shift-september',user_id:'staff-1',
+    shift_registrations:[{id:'registration-september',shift_id:'shift-september',user_id:'staff-1',
       operational_role:'host',status:'approved'}],
     workforce_actual_segments:[],
   }
