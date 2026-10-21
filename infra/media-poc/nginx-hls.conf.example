@@ -1,0 +1,22 @@
+# HOST nginx site example; requires real DNS, trusted TLS cert and owner approval.
+# Use a dedicated hostname, never configure a broad untrusted Host/catchall.
+server {
+    listen 443 ssl;
+    server_name media.ops5729.top;
+    ssl_certificate /etc/letsencrypt/live/media.ops5729.top/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/media.ops5729.top/privkey.pem;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Cache-Control "private, no-store" always;
+
+    location / {
+        limit_except GET HEAD OPTIONS { deny all; }
+        proxy_pass http://127.0.0.1:8888;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header Origin $http_origin;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_buffering off;
+        proxy_cache off;
+    }
+}
