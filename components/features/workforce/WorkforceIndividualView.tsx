@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
 import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
+import { parseWorkforceYearDraft } from '@/lib/workforce/workforcePeriod'
 import {
   workforceService,
   workforceErrorMessage,
@@ -52,6 +53,7 @@ export function WorkforceIndividualView({
   onPeriodChange,
 }: WorkforceIndividualViewProps) {
   const { toast } = useToast()
+  const [yearDraft, setYearDraft] = React.useState(period.slice(0, 4))
   const [summary, setSummary] = React.useState<WorkforcePerformanceSummary | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
@@ -164,12 +166,21 @@ export function WorkforceIndividualView({
                 min={period.length === 4 ? 1900 : undefined}
                 max={period.length === 4 ? 9999 : undefined}
                 step={period.length === 4 ? 1 : undefined}
-                value={period}
+                value={period.length === 4 ? yearDraft : period}
                 onChange={(e) => {
                   const value = e.target.value
-                  if (period.length === 4 ? /^\d{4}$/u.test(value) : /^\d{4}-\d{2}$/u.test(value)) {
+                  if (period.length === 4) {
+                    const parsed = parseWorkforceYearDraft(value)
+                    if (parsed) {
+                      setYearDraft(parsed.draft)
+                      if (parsed.period) onPeriodChange?.(parsed.period)
+                    }
+                  } else if (/^\d{4}-\d{2}$/u.test(value)) {
                     onPeriodChange?.(value)
                   }
+                }}
+                onBlur={() => {
+                  if (!/^\d{4}$/u.test(yearDraft)) setYearDraft(period.slice(0, 4))
                 }}
                 className="h-8 min-w-0 text-xs"
               />

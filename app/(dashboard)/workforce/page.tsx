@@ -34,6 +34,7 @@ import { WorkforceTeamOverview } from '@/components/features/workforce/Workforce
 import { WorkforceIndividualView } from '@/components/features/workforce/WorkforceIndividualView'
 import { WorkforceLeaderboard } from '@/components/features/workforce/WorkforceLeaderboard'
 import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
+import { parseWorkforceYearDraft } from '@/lib/workforce/workforcePeriod'
 
 export default function WorkforcePage() {
   const { translate } = useTranslation()
@@ -56,6 +57,11 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
   }, [])
 
   const [period, setPeriod] = React.useState<string>(currentMonthStr)
+  const [yearDraft, setYearDraft] = React.useState(currentMonthStr.slice(0, 4))
+  const updatePeriod = (value: string) => {
+    setPeriod(value)
+    setYearDraft(value.slice(0, 4))
+  }
   const [role, setRole] = React.useState<WorkforceRole>('host')
   const [activeTab, setActiveTab] = React.useState<'team' | 'individual' | 'leaderboard'>('team')
 
@@ -146,6 +152,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
         </div>
 
         <WorkforceIndividualView
+          key={`${myStaffId}:${role}:${period}`}
           staffId={myStaffId}
           role={role}
           period={period}
@@ -194,7 +201,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
 
             <div className="w-36">
               <Select value={period.length === 4 ? 'year' : 'month'} onValueChange={(mode) =>
-                setPeriod(mode === 'year' ? period.slice(0, 4) : `${period.slice(0, 4)}-01`)
+                updatePeriod(mode === 'year' ? period.slice(0, 4) : `${period.slice(0, 4)}-01`)
               }>
                 <SelectTrigger className="h-8 text-xs bg-white">
                   <SelectValue />
@@ -212,12 +219,21 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
                 min={period.length === 4 ? 1900 : undefined}
                 max={period.length === 4 ? 9999 : undefined}
                 step={period.length === 4 ? 1 : undefined}
-                value={period}
+                value={period.length === 4 ? yearDraft : period}
                 onChange={(e) => {
                   const value = e.target.value
-                  if (period.length === 4 ? /^\d{4}$/u.test(value) : /^\d{4}-\d{2}$/u.test(value)) {
-                    setPeriod(value)
+                  if (period.length === 4) {
+                    const parsed = parseWorkforceYearDraft(value)
+                    if (parsed) {
+                      setYearDraft(parsed.draft)
+                      if (parsed.period) updatePeriod(parsed.period)
+                    }
+                  } else if (/^\d{4}-\d{2}$/u.test(value)) {
+                    updatePeriod(value)
                   }
+                }}
+                onBlur={() => {
+                  if (!/^\d{4}$/u.test(yearDraft)) setYearDraft(period.slice(0, 4))
                 }}
                 className="h-8 text-xs bg-white"
               />

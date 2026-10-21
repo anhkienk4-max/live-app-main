@@ -6,3 +6,8 @@ export function workforcePeriodRange(period: string) {
     to: `${period}-${String(new Date(Date.UTC(year, month, 0)).getUTCDate()).padStart(2, '0')}`,
   }
 }
+
+export function parseWorkforceYearDraft(value: string): { draft: string; period?: string } | null {
+  if (!/^\d{0,4}$/u.test(value)) return null
+  return /^\d{4}$/u.test(value) ? { draft: value, period: value } : { draft: value }
+}
