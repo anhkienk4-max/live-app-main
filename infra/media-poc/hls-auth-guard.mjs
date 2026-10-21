@@ -4,6 +4,7 @@
 import { createServer } from 'node:http'
 import { createPublicKey, verify } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 
 const allowedPath=/^[a-z][a-z0-9_]{0,63}$/
 const encodedPart=/^[A-Za-z0-9_-]+$/
@@ -33,7 +34,7 @@ export function authorizeMediaRequest({authorization,originalUri,method,publicJw
   try{
     const [h,p,s]=match[1].split('.')
     const header=decode(h),claims=decode(p)
-    if(!header||header.alg!=='ES256'||header.typ!=='JWT'||!equalText(header.kid,header.kid)
+    if(!header||header.alg!=='ES256'||header.typ!=='JWT'
       ||typeof header.kid!=='string'||header.kid.length>100||!claims)return false
     if(!equalText(claims.iss,issuer)||claims.aud!==audience
       ||!isValidTime(claims.exp)||!isValidTime(claims.nbf)
@@ -117,7 +118,7 @@ export function createMediaAuthGuard({
   })
 }
 
-if(process.argv[1]&&fileURLToPath(import.meta.url)===fileURLToPath(new URL('file://'+process.argv[1]))){
+if(process.argv[1]&&fileURLToPath(import.meta.url)===resolve(process.argv[1])){
   const paths=new Set((process.env.MEDIA_AUTH_PATHS??'').split(',').filter(Boolean))
   const port=Number(process.env.MEDIA_AUTH_PORT??9191)
   const server=createMediaAuthGuard({

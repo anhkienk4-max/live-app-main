@@ -29,7 +29,7 @@ const server=createServer((req,res)=>{
   if(req.url!=='/jwks'){res.writeHead(404).end();return}
   res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'}).end(JSON.stringify({keys:[jwk]}))
 })
-let media,encoder,medialog='',encodelog=''
+let media,encoder,nginx,guard,medialog='',encodelog='',nginxlog='',guardlog=''
 const sleep=ms=>new Promise(r=>setTimeout(r,ms))
 const connectable=port=>new Promise(resolve=>{
   const c=connect({host:'127.0.0.1',port})
@@ -76,6 +76,26 @@ try{
     ['rtmpServerCert: /etc/letsencrypt/live/media.ops5729.top/fullchain.pem','rtmpServerCert: '+cert],
   ]){assert.equal(text.split(old).length,2,'Changed config anchor '+old);text=text.replace(old,newValue)}
   writeFileSync(config,text)
+  guard=spawn(process.execPath,['infra/media-poc/hls-auth-guard.mjs'],{
+    env:{...process.env,MEDIA_AUTH_JWKS_URL:'http://127.0.0.1:'+jwksPort+'/jwks',
+      MEDIA_AUTH_ISSUER:iss,MEDIA_AUTH_AUDIENCE:aud,MEDIA_AUTH_PATHS:path,
+      MEDIA_AUTH_PORT:'9191',MEDIA_POC_LOCAL_ONLY:'true'},
+  })
+  guard.stdout.on('data',x=>guardlog+=x.toString())
+  guard.stderr.on('data',x=>guardlog+=x.toString())
+  await retry(async()=>await connectable(9191),8000)
+  let nginxConfig=readFileSync('infra/media-poc/nginx-hls.conf.example','utf8')
+  nginxConfig=nginxConfig.replace('listen 443 ssl;','listen 127.0.0.1:8887;')
+    .replace('server_name media.ops5729.top;','server_name localhost;')
+    .replace(/^\s*ssl_certificate .*;\n/gm,'')
+    .replace(/^\s*ssl_certificate_key .*;\n/gm,'')
+  const testProxyConfig=join(dir,'nginx.conf')
+  writeFileSync(testProxyConfig,nginxConfig)
+  nginx=spawn('docker',['run','--rm','--network','host','-v',testProxyConfig+':/etc/nginx/conf.d/default.conf:ro',
+    'nginx:1.28.0-alpine'])
+  nginx.stdout.on('data',x=>nginxlog+=x.toString())
+  nginx.stderr.on('data',x=>nginxlog+=x.toString())
+  await retry(async()=>await connectable(8887),35000)
   media=spawn('docker',['run','--rm','--network','host','--read-only','--name','ada-media-smoke-'+process.pid,'-v',dir+':'+dir+':ro','bluenviron/mediamtx:1.20.0',config])
   media.stdout.on('data',x=>medialog+=x.toString())
   media.stderr.on('data',x=>medialog+=x.toString())
@@ -89,7 +109,7 @@ try{
     'rtmps://127.0.0.1:1936/'+path+'?token='+encodeURIComponent(jwt('publish'))
   ])
   encoder.stderr.on('data',x=>encodelog+=x.toString())
-  const origin='http://127.0.0.1:8888/'+path+'/'
+  const origin='http://127.0.0.1:8887/'+path+'/'
   const manifest=origin+'index.m3u8',reader=jwt('read')
   let playlistProbe='none'
   const playlist=await retry(async()=>{
@@ -130,10 +150,14 @@ try{
   console.error('FAIL MediaMTX synthetic smoke: '+(err?.message??err))
   console.error('Gateway diagnostic tail: '+medialog.slice(-1900))
   console.error('Encoder diagnostic tail: '+encodelog.slice(-1000))
+  console.error('Nginx diagnostic tail: '+nginxlog.slice(-2000))
+  console.error('Auth guard diagnostic tail: '+guardlog.slice(-1500))
   process.exitCode=1
 }finally{
   encoder?.kill('SIGTERM')
   media?.kill('SIGTERM')
+  nginx?.kill('SIGTERM')
+  guard?.kill('SIGTERM')
   server.close()
   rmSync(dir,{recursive:true,force:true})
 }

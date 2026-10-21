@@ -26,6 +26,10 @@ test('MediaMTX PoC enforces RTMPS and keeps HLS private behind reverse proxy', (
   assert.match(nginx, /proxy_pass http:\/\/127\.0\.0\.1:8888;/)
   assert.match(nginx, /proxy_set_header Authorization \$http_authorization;/)
   assert.match(nginx, /proxy_cache off;/)
+  assert.match(nginx, /auth_request \/__ada_media_auth;/)
+  assert.match(nginx, /proxy_pass http:\/\/127\.0\.0\.1:9191\/verify;/)
+  assert.match(nginx, /proxy_set_header X-Original-URI \$request_uri;/)
+  assert.match(nginx, /proxy_set_header X-Request-Method \$request_method;/)
 })
 
 test('MediaMTX PoC does not record media or expose remote control/protocol ports', () => {

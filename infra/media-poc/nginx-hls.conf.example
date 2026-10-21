@@ -12,6 +12,9 @@ server {
 
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy no-referrer always;
+    proxy_hide_header Access-Control-Allow-Origin;
+    proxy_hide_header Access-Control-Allow-Headers;
+    proxy_hide_header Access-Control-Allow-Methods;
     add_header Cache-Control "private, no-store" always;
     add_header Access-Control-Allow-Origin "https://ops5729.top" always;
     add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
