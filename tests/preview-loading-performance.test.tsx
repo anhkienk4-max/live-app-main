@@ -110,4 +110,5 @@ test('Analytics snapshot stays visible while its authorized report page is still
   assert.doesNotMatch(shell, /list\.(?:loading|refreshing)/)
   assert.match(source, /data-testid="analytics-report-list-loading"/)
   assert.match(source, /const pageResult = list\.result/)
+  assert.match(source, /if\(version===requestVersion\.current\) setLoading\(false\)/)
 })

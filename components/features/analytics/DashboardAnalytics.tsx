@@ -95,7 +95,7 @@ export function DashboardAnalytics() {
     } catch (error) {
       if(version===requestVersion.current) setLoadError(error)
     } finally {
-      setLoading(false)
+      if(version===requestVersion.current) setLoading(false)
     }
   }, [identity,filtersKey,currentUser])
 
