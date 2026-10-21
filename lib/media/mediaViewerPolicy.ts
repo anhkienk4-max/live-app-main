@@ -15,7 +15,7 @@ export type MediaRoute = {
   media_path:string;active:boolean
 }
 const MEDIA_PATH=/^[a-z][a-z0-9_]{0,63}$/
-const time=value=>{
+const time=(value:string)=>{
   const parsed=Date.parse(value)
   return Number.isFinite(parsed)?parsed:NaN
 }
