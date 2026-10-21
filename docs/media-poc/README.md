@@ -45,7 +45,7 @@ Expected HLS URL (not publicly readable): `https://media.ops5729.top/studio_poc_
 
 ## Cost sizing & limitations
 
-Initial sizing proposal: dedicated/isolated **2 vCPU, 2–4 GB RAM**, Ubuntu LTS, Singapore or Vietnam based on latency and routing; **no transcoding**. Confirm concurrent video bitrates, CPU, egress, connection limits, ingress resilience and provider billing. Approx egress formula `GiB ≈ bitrate_Mbps × 3600 × viewer_hours / (8 × 1024)` using Mbps decimal; plus overhead. A 2 Mbps video feed ≈ 0.9 GB per viewer-hour before overhead. 10 viewers × 8 h/day × 30 days ≈ **2.16 TB outbound/month** before overhead, not counting the single studio upload. Add headroom and alerts; do not scale by raw shift count alone.
+Initial sizing proposal: dedicated/isolated **2 vCPU, 2–4 GB RAM**, Ubuntu LTS, Singapore or Vietnam based on latency and routing; **no transcoding**. Confirm concurrent video bitrates, CPU, egress, connection limits, ingress resilience and provider billing. Approx decimal egress formula `GB ≈ bitrate_Mbps × 3600 × viewer_hours / 8000`, or binary `GiB ≈ bitrate_Mbps × 1,000,000 × 3600 × viewer_hours / (8 × 1024³)`; add audio/HTTP/TLS overhead. `viewer_hours` sums concurrent viewers' watched hours. A 2 Mbps video feed ≈ 0.9 GB per viewer-hour before overhead. 10 viewers × 8 h/day × 30 days ≈ **2.16 TB outbound/month** before overhead, not counting the single studio upload. Add headroom and alerts; do not scale by raw shift count alone.
 
 DigitalOcean official regular Droplet example at research time: 1 vCPU/2GiB **$12/mo** (2,000 GiB transfer) or 2 vCPU/2GiB **$18/mo** (3,000 GiB transfer), excluding ancillary fees/overages. Region and final price must be verified before purchase. No VPS purchased by this change.
 
