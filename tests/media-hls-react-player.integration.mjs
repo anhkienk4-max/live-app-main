@@ -183,6 +183,10 @@ try{
           token:jwt('read'),expiresAt:new Date(Date.now()+90_000).toISOString()})})
     })
     const page=await ctx.newPage()
+    page.on('pageerror',error=>console.error('REACT_PAGE_ERROR',i,error.message.slice(0,400)))
+    page.on('requestfailed',request=>{
+      if(request.url().includes('media.ops5729.top:8886'))console.error('REACT_MEDIA_REQUEST_FAILED',i,new URL(request.url()).pathname,request.failure()?.errorText)
+    })
     page.on('request',async request=>{
       if(!request.url().includes('media.ops5729.top:8886'))return
       const headers=await request.allHeaders()
@@ -201,10 +205,23 @@ try{
   }
   console.log('PASS two independent HTTPS browser contexts reached isolated ADA fixture')
   for(const [index,page] of pages.entries()){
-    await page.waitForFunction(()=>{
-      const video=document.querySelector('[data-testid="protected-hls-video"]')
-      return video&&video.videoWidth>0&&video.currentTime>0.8&&!video.paused
-    },null,{timeout:60000})
+    try{
+      await page.waitForFunction(()=>{
+        const video=document.querySelector('[data-testid="protected-hls-video"]')
+        return video&&video.videoWidth>0&&video.currentTime>0.8&&!video.paused
+      },null,{timeout:24000})
+    }catch(error){
+      const info=await page.evaluate(()=>{
+        const v=document.querySelector('[data-testid="protected-hls-video"]')
+        return {status:document.querySelector('[data-testid="protected-hls-status"]')?.textContent,
+          paused:v?.paused,readyState:v?.readyState,currentTime:v?.currentTime,
+          networkState:v?.networkState,videoWidth:v?.videoWidth,srcPresent:Boolean(v?.src),
+          mediaRequests:performance.getEntriesByType('resource').filter(r=>r.name.includes('media.ops5729.top')).length}
+      }).catch(e=>({error:String(e)}))
+      console.error('REACT_VIEWER_FAILURE_DIAGNOSTIC',JSON.stringify({index,info,
+        observedMediaRequests:mediaRequests.filter(m=>m.viewer===index).length}))
+      throw error
+    }
     const result=await page.evaluate(()=>{
       const video=document.querySelector('[data-testid="protected-hls-video"]')
       return {width:video.videoWidth,currentTime:video.currentTime,muted:video.muted,
