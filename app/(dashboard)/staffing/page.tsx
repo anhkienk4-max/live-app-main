@@ -49,42 +49,42 @@ function StaffingContent() {
 
             {/* TAB SELECTOR */}
             {canReview && (
-              <div className="flex rounded-lg border border-slate-200 bg-slate-100 p-1 text-xs">
+              <div className="grid w-full min-w-0 grid-cols-1 gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1 text-xs sm:w-auto sm:grid-cols-3">
                 <button
                   type="button"
                   onClick={() => handleTabChange('staffing')}
-                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-all ${
+                  className={`flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-md px-3 py-2 font-medium transition-all ${
                     activeTab === 'staffing'
                       ? 'bg-white text-slate-900 shadow-2xs font-semibold'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   <Users className="h-3.5 w-3.5" />
-                  <span>Định biên ca trực (Staffing)</span>
+                  <span className="min-w-0 text-center leading-tight">Định biên ca trực (Staffing)</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => handleTabChange('registration')}
-                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-all ${
+                  className={`flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-md px-3 py-2 font-medium transition-all ${
                     activeTab === 'registration'
                       ? 'bg-blue-600 text-white shadow-2xs font-semibold'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   <UserCheck className="h-3.5 w-3.5" />
-                  <span>Xét duyệt đăng ký (Registration)</span>
+                  <span className="min-w-0 text-center leading-tight">Xét duyệt đăng ký (Registration)</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => handleTabChange('attendance')}
-                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-all ${
+                  className={`flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-md px-3 py-2 font-medium transition-all ${
                     activeTab === 'attendance'
                       ? 'bg-indigo-600 text-white shadow-2xs font-semibold'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   <FileSpreadsheet className="h-3.5 w-3.5" />
-                  <span>Nhập chấm công (Attendance)</span>
+                  <span className="min-w-0 text-center leading-tight">Nhập chấm công (Attendance)</span>
                 </button>
               </div>
             )}

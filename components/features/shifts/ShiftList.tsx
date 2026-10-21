@@ -509,10 +509,10 @@ export function ShiftList() {
               data-testid="shifts-mobile-search"
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="grid min-w-0 grid-cols-2 gap-2">
             <select aria-label={t('dateRange')} value={dateWindow}
               onChange={event => updateFilters({ ...urlState, dateWindow: event.target.value as typeof dateWindow })}
-              className="flex-1 h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none">
+              className="h-11 min-w-0 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none">
               <option value="recent">{t('last30Days')}</option>
               <option value="upcoming">{t('upcoming')}</option>
               <option value="all">{t('all')}</option>
@@ -521,7 +521,7 @@ export function ShiftList() {
               aria-label={t('status')}
               value={statusFilter}
               onChange={event => handleStatusFilterChange(event.target.value as Shift['status'] | 'all')}
-              className="flex-1 h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none"
+              className="h-11 min-w-0 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none"
               data-testid="shifts-mobile-status-filter"
             >
               <option value="all">{t('all')}</option>
@@ -534,7 +534,7 @@ export function ShiftList() {
             <Button
               variant="outline"
               size="sm"
-              className="h-9 px-2.5 text-xs shrink-0"
+              className="col-span-2 min-h-11 w-full px-2.5 text-xs"
               onClick={() => updateFilters({ ...urlState, descending: !sortDescending })}
               aria-label={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`}
             >
