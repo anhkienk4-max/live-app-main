@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import {readFileSync} from 'node:fs'
 import {isMediaPath,mayReadMediaShift} from '../lib/media/mediaViewerPolicy.ts'
 
 const now=Date.parse('2026-10-21T05:00:00Z')
@@ -35,7 +36,6 @@ test('media path cannot be chosen arbitrarily by user-supplied URL',()=>{
     assert.equal(isMediaPath(bad),false)
 })
 test('viewer API routes require authenticated SSR and do not bypass missing ACL',()=>{
-  const {readFileSync}=require('node:fs')
   const handler=readFileSync('lib/server/mediaViewerGrantHandler.ts','utf8')
   assert.match(handler,/requireUser\(request/)
   assert.match(handler,/media_viewer_grants/)
