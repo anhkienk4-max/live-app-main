@@ -6,6 +6,10 @@ const migration = readFileSync(
   'supabase/migrations/20260903110000_f10_report_active_business_user_rls.sql',
   'utf8',
 )
+const reportReadHardening = readFileSync(
+  'supabase/migrations/20261021114127_reports_member_read_scope.sql',
+  'utf8',
+)
 const originalReportMigration = readFileSync(
   'supabase/migrations/20260823000000_p3_report_persistence.sql',
   'utf8',
@@ -54,6 +58,20 @@ test('active Admin, Leader and Member role scope is preserved', () => {
   assert.match(policyBody('reports_archived_select'), /current_system_permission\(\)\s*\)\s*=\s*'admin'/i)
   assert.doesNotMatch(migration, /system_permission\(\)\s+in\s*\(\s*'admin'\s*,\s*'leader'/i)
   assert.doesNotMatch(migration, /system_permission\(\)\s*=\s*'admin'[\s\S]*?reports_active_select/i)
+})
+
+test('report hardening narrows Member reads without changing shift discovery or revision RPC security metadata', () => {
+  assert.match(reportReadHardening, /create or replace function private\.can_read_report\(p_shift_id text, p_submitted_by text\)/i)
+  assert.match(reportReadHardening, /current_business_user_is_active\(\)[\s\S]*?current_system_permission\(\)\) = 'member'/i)
+  assert.match(reportReadHardening, /shift\.host_id[\s\S]*?shift\.support_id[\s\S]*?shift\.technical_id/i)
+  assert.match(reportReadHardening, /status in \('approved', 'manually_assigned'\)/i)
+  assert.match(reportReadHardening, /p_submitted_by = \(select private\.current_business_user_id\(\)\)/i)
+  assert.match(reportReadHardening, /create policy reports_active_select[\s\S]*?in \('admin', 'leader'\)[\s\S]*?can_read_report/i)
+  assert.match(reportReadHardening, /revoke all on function private\.can_read_report\(text, text\) from public, anon, service_role/i)
+  assert.match(reportReadHardening, /create or replace function public\.get_report_revisions\(p_report_id text\)[\s\S]*?can_read_report/i)
+  assert.match(reportReadHardening, /set search_path = ''/i)
+  assert.doesNotMatch(reportReadHardening, /drop policy if exists report_revisions_read/i)
+  assert.doesNotMatch(reportReadHardening, /update private\.can_read_shift/i)
 })
 
 test('Analytics still reads the existing report-backed source and audit is untouched', () => {
