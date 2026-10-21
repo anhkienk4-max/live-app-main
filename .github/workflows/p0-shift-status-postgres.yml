@@ -25,6 +25,11 @@ on:
       - 'lib/server/operationsCollectionHandler.ts'
       - 'lib/services/dataService.ts'
       - 'lib/services/operationsPageService.ts'
+      - 'lib/server/workforceScopePagination.ts'
+      - 'lib/server/workforcePerformanceHandler.ts'
+      - 'lib/server/workforceOverviewHandler.ts'
+      - 'tests/workforce-scope-pagination.test.ts'
+      - 'tests/rc16-workforce-api.test.ts'
       - 'components/features/reports/ReportsList.tsx'
       - '.github/p0-postgres/Dockerfile'
       - '.github/workflows/p0-shift-status-postgres.yml'
@@ -51,6 +56,11 @@ on:
       - 'lib/server/operationsCollectionHandler.ts'
       - 'lib/services/dataService.ts'
       - 'lib/services/operationsPageService.ts'
+      - 'lib/server/workforceScopePagination.ts'
+      - 'lib/server/workforcePerformanceHandler.ts'
+      - 'lib/server/workforceOverviewHandler.ts'
+      - 'tests/workforce-scope-pagination.test.ts'
+      - 'tests/rc16-workforce-api.test.ts'
       - 'components/features/reports/ReportsList.tsx'
       - '.github/p0-postgres/Dockerfile'
       - '.github/workflows/p0-shift-status-postgres.yml'
@@ -106,6 +116,11 @@ jobs:
           corepack prepare pnpm@10.26.0 --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Verify scalable Workforce period reads and compile contracts
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test tests/workforce-scope-pagination.test.ts tests/workforce-period.test.ts tests/rc16-workforce-api.test.ts
+          pnpm exec tsc --noEmit --incremental false
+          pnpm exec eslint lib/server/workforceScopePagination.ts lib/server/workforcePerformanceHandler.ts lib/server/workforceOverviewHandler.ts tests/workforce-scope-pagination.test.ts
       - name: Verify read paths and shift lifecycle application contracts
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/shift-lifecycle.test.ts tests/supabase-shift-runtime.test.ts
       - name: Assert historical import cannot fall back to non-atomic writes
