@@ -58,7 +58,7 @@ async function deny(url,token,what){
 }
 try{
   for(const bin of ['docker','ffmpeg','openssl']){
-    const p=spawnSync(bin,['-version'],{encoding:'utf8'})
+    const p=spawnSync(bin,[bin==='docker'?'--version':'-version'],{encoding:'utf8'})
     if(p.error||p.status!==0)throw new Error('Missing '+bin)
   }
   server.listen(0,'127.0.0.1')
