@@ -1,0 +1,35 @@
+name: Resolve ADA player hls.js pinned dependency
+
+on:
+  push:
+    branches: ['feat/ada-hls-player-20261021']
+  pull_request:
+    branches: ['feat/media-viewer-grants-20261021']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolution:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout source, no write token
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.18.0'
+      - name: Install pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Resolve official hls.js package metadata and print exact lock patch
+        run: |
+          set -euo pipefail
+          pnpm add -w hls.js@1.7.3 --save-exact --lockfile-only --ignore-scripts
+          git diff -- package.json pnpm-lock.yaml
+          echo "Dependency resolution only. No automatic Git pushes or deployments."

@@ -1,0 +1,45 @@
+name: OBS MediaMTX isolated synthetic smoke
+
+on:
+  pull_request:
+    paths:
+      - 'infra/media-poc/**'
+      - 'docs/media-poc/**'
+      - 'scripts/media-poc-smoke.mjs'
+      - 'scripts/render-media-staging-config.mjs'
+      - 'tests/media-staging-config.test.mjs'
+      - '.github/workflows/media-poc-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  simulated-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout reviewed PR
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Set up Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Verify media test prerequisites
+        run: |
+          set -euo pipefail
+          docker version
+          openssl version
+          if ! command -v ffmpeg >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version | head -1
+      - name: Verify staging config isolation and fail-closed JWT/CORS
+        run: node --test tests/media-staging-config.test.mjs
+      - name: Per-request HLS JWT guard unit and negative tests
+        run: node --test tests/media-poc-auth-guard.test.mjs
+      - name: Smoke isolated RTMPS publisher and Nginx-protected HLS viewer
+        run: node scripts/media-poc-smoke.mjs

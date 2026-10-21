@@ -52,6 +52,7 @@ export function LiveMonitoringDashboard() {
   const sequence=React.useRef(0)
   const liveController=React.useRef<AbortController|null>(null)
   const focusRefreshAt=React.useRef(0)
+  const snapshotFingerprint=React.useRef<string | null>(null)
   const encodedFilters=JSON.stringify(filters?{from:filters.date||undefined,to:filters.date||undefined,brandIds:filters.brandIds,platformIds:filters.platformIds,campaignIds:filters.campaignIds,hostIds:filters.hostIds,supportIds:filters.supportIds,technicalIds:filters.technicalIds,statuses:filters.statuses}:{})
   React.useEffect(()=>{const frame=requestAnimationFrame(()=>setFilters(initialFilters()));return()=>cancelAnimationFrame(frame)},[])
   const queryKey=identity+':'+encodedFilters+':'+page+':'+pageSize
@@ -84,7 +85,12 @@ export function LiveMonitoringDashboard() {
       if(result.page!==page)navigate({live_page:String(result.page)},true)
       setRegistrations(result.registrations)
       setUpdates(Object.fromEntries(result.items.map(shift=>[shift.id,result.updates.filter(update=>update.shift_id===shift.id)])))
-      setRefreshVersion(version=>version+1)
+      // A 30-second poll without new snapshots must not restart the modal loader.
+      const fingerprint=JSON.stringify(result.updates.map(update=>[update.id,update.updated_at,update.time]).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))))
+      if(snapshotFingerprint.current!==fingerprint){
+        snapshotFingerprint.current=fingerprint
+        setRefreshVersion(version=>version+1)
+      }
     } catch (error) {
       if(request===sequence.current&&!controller.signal.aborted)setLoadError(error)
     } finally {

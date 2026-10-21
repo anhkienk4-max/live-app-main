@@ -1,0 +1,45 @@
+name: ADA Media Viewer grant isolated gate
+
+on:
+  push:
+    branches: ['feat/media-viewer-grants-20261021']
+  pull_request:
+    branches: ['fix/live-monitor-iframe-blocked-20261020', 'main']
+    paths:
+      - 'lib/media/**'
+      - 'lib/server/mediaViewer*'
+      - 'lib/server/mediaJwksHandler.ts'
+      - 'app/api/media/**'
+      - 'tests/media-viewer-authorization.test.ts'
+      - 'tests/final-release-test-manifest.json'
+      - '.github/workflows/media-viewer-grants.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact reviewed commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.18.0'
+      - name: Install pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Install exact frozen dependency lock
+        run: pnpm install --frozen-lockfile
+      - name: Test explicit shift/brand/studio media authorization
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/media-viewer-authorization.test.ts tests/media-viewer-handler.test.ts
+      - name: TypeScript
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: ESLint
+        run: pnpm run lint
