@@ -65,7 +65,7 @@ export function DashboardOverview() {
     setLoading(true)
     setLoadError(null)
     try {
-      const result = await readTransientData(identity, 'dashboard:' + filterKey, async () => {
+      const readDashboard = () => readTransientData(identity, 'dashboard:' + filterKey, async () => {
         const today = getCurrentBusinessDate()
         const from = filters.start < today ? filters.start : today
         const to = filters.end > today ? filters.end : today
@@ -92,6 +92,15 @@ export function DashboardOverview() {
         const actor=await currentUserService.getCurrent()
         return !!actor && operationalReferenceIdentity(actor)===identity
       })
+      let result: DashboardDataset
+      try {
+        result = await readDashboard()
+      } catch (error) {
+        // A simultaneous shift mutation can invalidate an in-flight cache read.
+        // Retry only this recoverable generation change, never identity/permission errors.
+        if (!(error instanceof Error && error.message === 'CACHE_INVALIDATED' && request === sequence.current)) throw error
+        result = await readDashboard()
+      }
       if (request !== sequence.current) return
       setData(result)
     } catch(error) {

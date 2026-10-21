@@ -174,6 +174,11 @@ export function createOperationsCollectionHandler(dependencies: { resolveUser?: 
     } catch (error) {
       if (isAuthorizationError(error)) return authorizationErrorResponse(error)
       const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : ''
+      if (code === '42501') {
+        // Distinguish an actual database ACL failure from an application RBAC rejection.
+        // Never log user identifiers, filter values, request cookies or SQL details.
+        console.warn('OPS_COLLECTION_DATABASE_ACL_DENIED', { entity: new URL(request.url).searchParams.get('entity') })
+      }
       return Response.json({ error: { code: code === '42501' ? 'PERMISSION_DENIED' : 'LIST_READ_FAILED' } }, { status: code === '42501' ? 403 : code.startsWith('22') ? 400 : 500, headers: { 'Cache-Control': 'no-store' } })
     }
   } }
