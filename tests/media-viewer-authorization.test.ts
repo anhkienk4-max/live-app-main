@@ -41,5 +41,5 @@ test('viewer API routes require authenticated SSR and do not bypass missing ACL'
   assert.match(handler,/media_viewer_grants/)
   assert.match(handler,/media_stream_routes/)
   assert.match(handler,/mayReadMediaShift/)
-  assert.doesNotMatch(handler,/service_role/)
+  assert.doesNotMatch(handler,/createSupabaseAdminClient|SUPABASE_SERVICE_ROLE_KEY/)
 })
