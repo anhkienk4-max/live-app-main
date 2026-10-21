@@ -6,20 +6,20 @@ import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import type { DataQualityIssue, DataQualitySeverity, DataQualitySource } from '@/lib/types/dataQuality'
 import { recoveryActionFor } from '@/lib/utils/dataQuality'
 import { useTranslation } from '@/lib/i18n'
 
-export function DataQualityPanel({ issues,remote,filters,onFiltersChange }: { issues: DataQualityIssue[]; remote?:{total:number;totalIssues:number;counts:{error:number;warning:number;info:number};page:number;pageSize:number;setPage:(page:number)=>void;setPageSize:(size:number)=>void};filters?:{severity:'all'|'error'|'warning'|'info';source:string};onFiltersChange?:(filters:{severity:'all'|'error'|'warning'|'info';source:string})=>void }) {
+export function DataQualityPanel({ issues,remote,filters,onFiltersChange }: { issues: DataQualityIssue[]; remote?:{total:number;totalIssues:number;counts:{error:number;warning:number;info:number};page:number;pageSize:number;setPage:(page:number)=>void;setPageSize:(size:number)=>void};filters?:{severity:DataQualitySeverity[];source:DataQualitySource[]};onFiltersChange?:(filters:{severity:DataQualitySeverity[];source:DataQualitySource[]})=>void }) {
   const { t } = useTranslation()
-  const [localSeverity, setSeverity] = React.useState<DataQualitySeverity | 'all'>('all')
-  const [localSource, setSource] = React.useState<DataQualitySource | 'all'>('all')
+  const [localSeverity, setSeverity] = React.useState<DataQualitySeverity[]>([])
+  const [localSource, setSource] = React.useState<DataQualitySource[]>([])
   const severity=filters?.severity??localSeverity
   const source=filters?.source??localSource
   const [page,setPage]=React.useState(1)
   const [pageSize,setPageSize]=React.useState(10)
-  const filtered = issues.filter(i=> (severity==='all' || i.severity===severity) && (source==='all' || i.source===source))
+  const filtered = issues.filter(i=> (!severity.length || severity.includes(i.severity)) && (!source.length || source.includes(i.source)))
   const counts = remote?.counts ?? {
     error: issues.filter(i=> i.severity==='error').length,
     warning: issues.filter(i=> i.severity==='warning').length,
@@ -39,8 +39,8 @@ export function DataQualityPanel({ issues,remote,filters,onFiltersChange }: { is
         <CardHeader className="flex flex-col gap-3 space-y-0 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-base">Issues</CardTitle>
           <div className="flex min-w-0 flex-wrap gap-2">
-            <Select value={severity} onValueChange={v=> {setSeverity(v as never);setPage(1);onFiltersChange?.({severity:v as 'all'|'error'|'warning'|'info',source})}}><SelectTrigger className="w-32"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem><SelectItem value="error">error</SelectItem><SelectItem value="warning">warning</SelectItem><SelectItem value="info">info</SelectItem></SelectContent></Select>
-            <Select value={source} onValueChange={v=> {setSource(v as never);setPage(1);onFiltersChange?.({severity,source:v})}}><SelectTrigger className="w-40"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem><SelectItem value="schedule_import">import</SelectItem><SelectItem value="report">report</SelectItem><SelectItem value="staffing">staffing</SelectItem></SelectContent></Select>
+            <MultiSelectFilter label="Severity" value={severity} onChange={value=> {const next=value.filter(item=>['error','warning','info'].includes(item)) as DataQualitySeverity[];setSeverity(next);setPage(1);onFiltersChange?.({severity:next,source})}} options={(['error','warning','info'] as DataQualitySeverity[]).map(value=>({value,label:value}))} placeholder={t('all')} testId="data-quality-severity-filter" />
+            <MultiSelectFilter label="Source" value={source} onChange={value=> {const next=value.filter(item=>['schedule_import','report','staffing'].includes(item)) as DataQualitySource[];setSource(next);setPage(1);onFiltersChange?.({severity,source:next})}} options={(['schedule_import','report','staffing'] as DataQualitySource[]).map(value=>({value,label:value==='schedule_import'?'import':value}))} placeholder={t('all')} testId="data-quality-source-filter" />
           </div>
         </CardHeader>
         <CardContent className="space-y-3 max-h-[60vh] overflow-y-auto">

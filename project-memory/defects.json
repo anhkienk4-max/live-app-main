@@ -3,8 +3,8 @@
   "record_type": "defects",
   "defects": [
     {"id": "RW-001", "title": "Calendar operational-role row filtering", "status": "FIXED", "resolution": "merged PR #20", "source": "GL-03 requirement"},
-    {"id": "RW-002", "title": "Global categorical filters are single-select", "status": "OPEN", "priority": "UNSPECIFIED", "note": "In progress on PR #50: LiveReportImageGallery and BulkStaffingApprovalDialog categorical filters now use the shared multi-select; remaining scope stays OPEN.", "source": "GL-03 requirement"},
-    {"id": "RW-003", "title": "Imported Excel staffing display inconsistent across Shift surfaces", "status": "OPEN", "priority": "P1", "note": "Implementation currently happening on another branch", "source": "GL-03 requirement"},
-    {"id": "RW-004", "title": "Admin self operational_roles false-success", "status": "OPEN", "priority": "P1", "source": "GL-03 requirement"}
+    {"id": "RW-002", "title": "Global categorical filters are single-select", "status": "OPEN", "priority": "UNSPECIFIED", "note": "In progress on PR #50: Calendar bulk staffing, LiveReportImageGallery, and Data Quality severity/source filters now use the shared multi-select with OR within dimensions and AND across dimensions; remaining scope stays OPEN.", "source": "GL-03 requirement"},
+    {"id": "RW-003", "title": "Imported Excel staffing display inconsistent across Shift surfaces", "status": "OPEN", "priority": "P1", "note": "Existing shared resolver is used across Calendar and Shift surfaces; 66 focused resolver, display, identity, and runtime tests passed on PR #50. Staging/Production rollout remains unverified.", "source": "GL-03 requirement"},
+    {"id": "RW-004", "title": "Admin self operational_roles false-success", "status": "OPEN", "priority": "P1", "note": "Existing allowlisted self-update persists through the authoritative RPC, rejects null/error results before success feedback, and refreshes current-user state; 12 focused tests passed on PR #50. Staging/Production rollout remains unverified.", "source": "GL-03 requirement"}
   ]
 }

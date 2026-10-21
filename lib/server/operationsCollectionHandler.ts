@@ -31,7 +31,7 @@ export const listFiltersSchema = z.object({
   registrationStatuses: z.array(z.enum(['pending', 'approved', 'manually_assigned'])).max(3).optional(),
   archived: z.boolean().optional(), systemPermissions: z.array(z.enum(['admin', 'leader', 'member'])).max(3).optional(), assignedUserIds: choices,
   hostIds: choices, supportIds: choices, technicalIds: choices, operationalRoles: z.array(z.enum(['host','support','technical'])).max(3).optional(), staffingStates: z.array(z.enum(['fully_staffed','missing_staff'])).max(2).optional(), registrationStates: z.array(z.enum(['pending','approved','manually_assigned','rejected','cancelled','removed'])).max(6).optional(), hasImportedStaffing: z.boolean().optional(),
-  severity: z.enum(['all','error','warning','info']).optional(), qualitySources: z.array(z.enum(['schedule_import','report','staffing'])).max(3).optional(),
+  severity: z.array(z.enum(['error','warning','info'])).max(3).optional(), qualitySources: z.array(z.enum(['schedule_import','report','staffing'])).max(3).optional(),
   scope: z.enum(['all', 'mine', 'forMe']).optional(), requesterIds: choices,
   actorIds: choices, actionIds: choices, shiftIds: choices, sources: choices,
   reportStatuses: choices, metricsStatuses: z.array(z.enum(['confirmed', 'unconfirmed'])).max(2).optional(),

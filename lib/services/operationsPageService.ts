@@ -29,7 +29,7 @@ export interface ListFilters {
   actionIds?: string[]
   shiftIds?: string[]
   sources?: string[]
-  severity?: 'all' | 'error' | 'warning' | 'info'
+  severity?: string[]
   qualitySources?: string[]
   requesterIds?: string[]
   scope?: 'all' | 'mine' | 'forMe'
