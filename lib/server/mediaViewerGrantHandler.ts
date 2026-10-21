@@ -42,9 +42,10 @@ export function createMediaViewerGrantHandler(options:Dependencies={}){
       const shift=s.data[0] as MediaShift, grant=g.data[0] as MediaGrant
       if(!shift.studio?.trim())return response('MEDIA_ROUTE_NOT_CONFIGURED',403)
       const r=await db.from('media_stream_routes')
-        .select('brand_id,platform_id,studio,media_path,active')
+        .select('brand_id,platform_id,studio,active_shift_id,media_path,active')
         .eq('brand_id',shift.brand_id).eq('platform_id',shift.platform_id)
-        .eq('studio',shift.studio).eq('active',true).limit(2)
+        .eq('studio',shift.studio).eq('active_shift_id',shiftId)
+        .eq('active',true).limit(2)
       if(r.error)return response('MEDIA_ACL_UNAVAILABLE',503)
       if(r.data?.length!==1)return response('MEDIA_ROUTE_NOT_CONFIGURED',403)
       const route=r.data[0] as MediaRoute

@@ -7,6 +7,7 @@ create table if not exists public.media_stream_routes (
  brand_id text not null references public.brands(id) on delete restrict,
  platform_id text not null references public.platforms(id) on delete restrict,
  studio text not null check (length(trim(studio)) between 1 and 128),
+ active_shift_id text not null unique references public.shifts(id) on delete restrict,
  media_path text not null unique
    check (media_path ~ '^[a-z][a-z0-9_]{0,63}$'),
  active boolean not null default false,
@@ -44,6 +45,7 @@ create policy media_route_select_granted_shift on public.media_stream_routes
      and s.brand_id=media_stream_routes.brand_id
      and s.platform_id=media_stream_routes.platform_id
      and s.studio=media_stream_routes.studio
+     and s.id=media_stream_routes.active_shift_id
      and s.status='live' and s.deleted_at is null
   )
  );

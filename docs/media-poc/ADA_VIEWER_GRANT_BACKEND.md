@@ -5,7 +5,7 @@
 ## Existing contracts used
 - SSR user identity: \`requireUser()\` → verifies Supabase Auth user; no mock or service-role fallback.
 - \`shifts.id / brand_id / platform_id / studio / status / start_at / end_at\`, with a strict live-state, explicit studio and scheduled interval.
-- New **proposed only** \`media_stream_routes\` maps exact brand+platform+studio to private path.
+- New **proposed only** \`media_stream_routes\` maps exact brand+platform+studio+**active shift** to private path. This active_shift_id binding must be atomically updated when changing studio broadcast; do not infer live feed solely from status or label.
 - New **proposed only** \`media_viewer_grants\` grants exact \`auth_user_id + shift_id\` inside a validity window. Neither leader nor admin is an implicit media viewer.
 - Two strictly unique checks fail closed: grant row must be exactly one, route row must be exactly one. Missing/ambiguous/error → 403/503. All queries use session-owned Supabase client with RLS.
 

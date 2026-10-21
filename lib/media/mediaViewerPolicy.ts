@@ -11,7 +11,7 @@ export type MediaGrant = {
   valid_from:string; valid_until:string
 }
 export type MediaRoute = {
-  brand_id:string;platform_id:string;studio:string;
+  brand_id:string;platform_id:string;studio:string;active_shift_id:string;
   media_path:string;active:boolean
 }
 const MEDIA_PATH=/^[a-z][a-z0-9_]{0,63}$/
@@ -29,7 +29,8 @@ export function mayReadMediaShift(input:{
     ||!MEDIA_PATH.test(route.media_path)
     ||grant.auth_user_id!==viewerId||grant.shift_id!==shift.id
     ||route.brand_id!==shift.brand_id
-    ||route.platform_id!==shift.platform_id||route.studio!==shift.studio)return false
+    ||route.platform_id!==shift.platform_id||route.studio!==shift.studio
+    ||route.active_shift_id!==shift.id)return false
   const start=time(shift.start_at),end=time(shift.end_at)
   const validFrom=time(grant.valid_from),validUntil=time(grant.valid_until)
   if(![start,end,validFrom,validUntil].every(Number.isFinite)

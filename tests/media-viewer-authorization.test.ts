@@ -10,7 +10,7 @@ const view={
    status:'live',start_at:'2026-10-21T04:00:00Z',end_at:'2026-10-21T06:00:00Z',deleted_at:null},
  grant:{auth_user_id:'auth-1',shift_id:'shift-1',active:true,
    valid_from:'2026-10-21T04:30:00Z',valid_until:'2026-10-21T05:30:00Z'},
- route:{brand_id:'brand-1',platform_id:'tiktok',studio:'ADA HCM',media_path:'studio_poc_01',active:true}
+ route:{brand_id:'brand-1',platform_id:'tiktok',studio:'ADA HCM',active_shift_id:'shift-1',media_path:'studio_poc_01',active:true}
 }
 test('viewer grant requires exact authenticated user, shift and studio media binding',()=>{
   assert.equal(mayReadMediaShift(view),true)
@@ -19,6 +19,7 @@ test('viewer grant requires exact authenticated user, shift and studio media bin
   assert.equal(mayReadMediaShift({...view,shift:{...view.shift,brand_id:'other'}}),false)
   assert.equal(mayReadMediaShift({...view,shift:{...view.shift,platform_id:'shopee'}}),false)
   assert.equal(mayReadMediaShift({...view,route:{...view.route,studio:'Hanoi'}}),false)
+  assert.equal(mayReadMediaShift({...view,route:{...view.route,active_shift_id:'shift-2'}}),false)
   assert.equal(mayReadMediaShift({...view,grant:{...view.grant,active:false}}),false)
   assert.equal(mayReadMediaShift({...view,route:{...view.route,active:false}}),false)
   assert.equal(mayReadMediaShift({...view,shift:{...view.shift,status:'completed'}}),false)
