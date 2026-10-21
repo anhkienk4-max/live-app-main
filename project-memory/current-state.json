@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "integration/global-stabilization-20261021",
-    "head": "175b5ca6d3a0b3355a8c6e400921e2be12b63963",
+    "head": "58f5bb4aca84e1dfbf6a3813e515755631c2bb34",
     "origin_main": "b96dcb6e1842e59f43170a1a8b15da712ee8a8e0",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-global-stabilization"
   },
@@ -95,10 +95,10 @@
         "components": 155,
         "lib": 227,
         "scripts": 19,
-        "supabase": 93,
-        "tests": 216
+        "supabase": 94,
+        "tests": 218
       },
-      "total": 772
+      "total": 775
     },
     "tests": {
       "files": [
@@ -361,9 +361,10 @@
         "supabase/migrations/20261019000000_rc17b_rate_supersession_and_recalc.sql",
         "supabase/migrations/20261020164351_rc18a_publish_shifts_realtime.sql",
         "supabase/migrations/20261021000000_rc17c_attendance_import_foundation.sql",
-        "supabase/migrations/20261021034515_shift_automatic_status_scheduling_and_read_safety.sql"
+        "supabase/migrations/20261021034515_shift_automatic_status_scheduling_and_read_safety.sql",
+        "supabase/migrations/20261021120000_global_report_obligation_page.sql"
       ],
-      "count": 74
+      "count": 75
     }
   },
   "verification": {
@@ -377,5 +378,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-21T11:44:13+07:00"
+  "synced_at": "2026-10-21T12:04:54+07:00"
 }
