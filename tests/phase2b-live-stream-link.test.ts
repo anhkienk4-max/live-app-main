@@ -78,6 +78,7 @@ test('live polling does not reload static directories and pauses while document 
   assert.match(source,/invalidatePageCache\(\)/)
   assert.match(source,/snapshotFingerprint\.current!==fingerprint/)
   const modal=readFileSync('components/features/live/LiveSessionModal.tsx','utf8')
+  const consoleCode=readFileSync('components/features/live/LiveOperationsConsole.tsx','utf8')
   assert.match(modal,/loadedSnapshotKeyRef\.current!==snapshotKey/)
   assert.match(modal,/snapshotController\.current\?\.abort\(\)/)
   assert.match(modal,/dashboardUpdateService\.getPage\(shift\.id,\{page:snapshotPage,pageSize:snapshotPageSize\},controller\.signal\)/)
