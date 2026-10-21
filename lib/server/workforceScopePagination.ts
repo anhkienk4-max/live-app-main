@@ -26,7 +26,7 @@ export async function readCompleteWorkforceRows<T extends { id: string }>(
   maxRows = WORKFORCE_SCOPE_MAX_ROWS,
 ): Promise<T[]> {
   const fail = () => { throw new WorkforceScopeReadError(failureCode) }
-  if (!Number.isSafeInteger(maxRows) || maxRows < 1) return fail()
+  if (!Number.isSafeInteger(maxRows) || maxRows < 0) return fail()
   const rows: T[] = []
   const ids = new Set<string>()
   let expectedTotal: number | null = null
