@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/rc17d-responsive-auth",
-    "head": "6b235ec678683ce529edd45b04240c993eec6277",
+    "head": "6e1b01f0d93444955dada3dc2aedc405ee0ef1fe",
     "origin_main": "b96dcb6e1842e59f43170a1a8b15da712ee8a8e0",
     "worktree": "C:/Users/KienNguyen/.codex/worktrees/a2f2/live-app-main"
   },
@@ -95,9 +95,9 @@
         "lib": 217,
         "scripts": 18,
         "supabase": 90,
-        "tests": 208
+        "tests": 209
       },
-      "total": 747
+      "total": 748
     },
     "tests": {
       "files": [
@@ -131,6 +131,7 @@
         "tests/dashboard-aggregate.test.ts",
         "tests/dashboard-fixtures.test.ts",
         "tests/dashboard-region-detection.test.ts",
+        "tests/data-quality-multiselect.test.ts",
         "tests/dual-file-provider.test.ts",
         "tests/e1-role-ux.test.ts",
         "tests/e3-dashboard-domain.test.ts",
@@ -277,7 +278,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 175
+      "count": 176
     },
     "migrations": {
       "files": [
@@ -367,5 +368,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-21T11:18:09+07:00"
+  "synced_at": "2026-10-21T11:25:43+07:00"
 }
