@@ -9,9 +9,9 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "perf/phase2b-live-monitor-stream-link-20261020",
-    "head": "fe3150c122426008f06e4a5281d42699cf6b9792",
-    "origin_main": "371426bc53b6fac2fcef97433c02b45c3c6b4e9e",
+    "branch": "fix/live-monitor-iframe-blocked-20261020",
+    "head": "3b75c03b77609307ad3eff4c58c642c22b46f0ef",
+    "origin_main": "b96dcb6e1842e59f43170a1a8b15da712ee8a8e0",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17b-payroll"
   },
   "hardening": {
@@ -90,13 +90,13 @@
     "source_files": {
       "roots": {
         "app": 60,
-        "components": 152,
+        "components": 153,
         "lib": 215,
         "scripts": 18,
         "supabase": 90,
         "tests": 206
       },
-      "total": 741
+      "total": 742
     },
     "tests": {
       "files": [
@@ -364,5 +364,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-20T12:37:23+00:00"
+  "synced_at": "2026-10-20T16:56:31+00:00"
 }
