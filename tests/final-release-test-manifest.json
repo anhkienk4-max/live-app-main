@@ -122,6 +122,8 @@
     "tests/rc16l-calendar.test.ts",
     "tests/rc17a-actual-staffing.test.ts",
     "tests/rc17b-payroll-autocalc.test.ts",
+    "tests/rc17c-attendance-api-integration.test.ts",
+    "tests/rc17c-historical-attendance-importer.test.ts",
     "tests/rc17d-responsive-auth.test.ts",
     "tests/rc18a-shift-change-subscription.test.ts",
     "tests/rc18a-shift-date-window.test.ts",
