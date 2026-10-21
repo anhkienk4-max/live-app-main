@@ -22,87 +22,109 @@ export type NavItem = {
    *   C = intentional UX omission for role simplification (not a permission denial)
    */
   requiredPermissions?: Permission[]
-  group?: string
+  group?: NavigationGroupId
+}
+
+export const NAVIGATION_GROUPS = [
+  { id: 'overview', labelKey: 'navGroupOverview' },
+  { id: 'operations', labelKey: 'navGroupOperations' },
+  { id: 'data', labelKey: 'navGroupData' },
+  { id: 'people', labelKey: 'navGroupPeople' },
+  { id: 'system', labelKey: 'navGroupSystem' },
+] as const
+export type NavigationGroupId = typeof NAVIGATION_GROUPS[number]['id']
+
+export function groupNavigation(items: NavItem[]) {
+  return NAVIGATION_GROUPS.map(group => ({ ...group, items: items.filter(item => (item.group ?? 'overview') === group.id) }))
+    .filter(group => group.items.length > 0)
+}
+
+export function mobilePrimaryNavigation(items: NavItem[]) {
+  return ['/', '/calendar', '/shifts', '/live'].flatMap(path => {
+    const item = items.find(item => item.href.split('?')[0] === path)
+    return item ? [item] : []
+  })
 }
 
 // Full catalogue of all application destinations
 const navCatalogue: Record<string, NavItem> = {
-  dashboard:     { name: 'Dashboard',     href: '/',              icon: Home, labelKey: 'dashboard', shortLabelKey: 'myWorkspaceShort' },
-  calendar:      { name: 'Calendar',      href: '/calendar',      icon: Calendar, labelKey: 'calendar', shortLabelKey: 'myScheduleShort' },
-  live:          { name: 'Live',          href: '/live',          icon: Radio, labelKey: 'live', shortLabelKey: 'live' },
-  reports:       { name: 'Reports',       href: '/reports',       icon: FileText },
-  storage:       { name: 'Storage',       href: '/storage',       icon: FolderArchive, labelKey: 'storage', requiredPermissions: ['reports.review'] },
-  swaps:         { name: 'Swaps',         href: '/swaps',         icon: RefreshCw },
-  analytics:     { name: 'Analytics',     href: '/analytics',     icon: BarChart3 },
-  staff:         { name: 'Staff',         href: '/staff',         icon: Users },
-  brands:        { name: 'Brands',        href: '/brands',        icon: Package },
-  platforms:     { name: 'Platforms',     href: '/platforms',     icon: Megaphone },
-  campaigns:     { name: 'Campaigns',     href: '/campaigns',     icon: Megaphone },
-  audit:         { name: 'Audit',         href: '/audit',         icon: History,  labelKey: 'auditHistory', requiredPermissions: ['audit.view', 'audit.view_team'] },
-  settings:      { name: 'Settings',      href: '/settings',      icon: Settings },
-  profile:       { name: 'Profile',       href: '/profile',       icon: User },
-  notifications: { name: 'Notifications', href: '/notifications', icon: Bell,     labelKey: 'navNotifications' },
-  payroll:       { name: 'Bảng lương',    href: '/payroll',       icon: Banknote, labelKey: 'payroll' },
-  workforce:     { name: 'Hiệu suất',     href: '/workforce',     icon: Activity, labelKey: 'workforce' },
+  dashboard:     { name: 'Dashboard',     href: '/',              icon: Home, labelKey: 'dashboard', shortLabelKey: 'myWorkspaceShort', group: 'overview' },
+  calendar:      { name: 'Calendar',      href: '/calendar',      icon: Calendar, labelKey: 'calendar', shortLabelKey: 'myScheduleShort', group: 'operations' },
+  live:          { name: 'Live',          href: '/live',          icon: Radio, labelKey: 'live', shortLabelKey: 'live', group: 'operations' },
+  reports:       { name: 'Reports',       href: '/reports',       icon: FileText, group: 'data' },
+  storage:       { name: 'Storage',       href: '/storage',       icon: FolderArchive, labelKey: 'storage', requiredPermissions: ['reports.review'], group: 'data' },
+  swaps:         { name: 'Swaps',         href: '/swaps',         icon: RefreshCw, group: 'operations' },
+  analytics:     { name: 'Analytics',     href: '/analytics',     icon: BarChart3, group: 'data' },
+  staff:         { name: 'Staff',         href: '/staff',         icon: Users, group: 'people' },
+  brands:        { name: 'Brands',        href: '/brands',        icon: Package, group: 'system' },
+  platforms:     { name: 'Platforms',     href: '/platforms',     icon: Megaphone, group: 'system' },
+  campaigns:     { name: 'Campaigns',     href: '/campaigns',     icon: Megaphone, group: 'system' },
+  audit:         { name: 'Audit',         href: '/audit',         icon: History,  labelKey: 'auditHistory', requiredPermissions: ['audit.view', 'audit.view_team'], group: 'system' },
+  settings:      { name: 'Settings',      href: '/settings',      icon: Settings, group: 'system' },
+  profile:       { name: 'Profile',       href: '/profile',       icon: User, group: 'overview' },
+  notifications: { name: 'Notifications', href: '/notifications', icon: Bell,     labelKey: 'navNotifications', group: 'overview' },
+  payroll:       { name: 'Bảng lương',    href: '/payroll',       icon: Banknote, labelKey: 'payroll', group: 'people' },
+  workforce:     { name: 'Hiệu suất',     href: '/workforce',     icon: Activity, labelKey: 'workforce', group: 'data' },
 
   // Additional parity placeholders
-  shifts:        { name: 'Shifts',        href: '/shifts',        icon: Calendar, labelKey: 'shifts' },
-  staffing:      { name: 'Staffing',      href: '/staffing',      icon: Users, labelKey: 'staffing' },
-  registration:  { name: 'Registration',  href: '/staffing?tab=registration', icon: UserCheck, labelKey: 'registration', requiredPermissions: ['shifts.approve_registration'] },
-  staffDirectory:{ name: 'Staff Directory',href: '/staff',        icon: Users, labelKey: 'staffDirectory' },
-  myWorkspace:   { name: 'My Workspace',  href: '/',              icon: Home, labelKey: 'myWorkspace', shortLabelKey: 'myWorkspaceShort' },
-  mySchedule:    { name: 'My Schedule',   href: '/calendar?tab=mine', icon: Calendar, labelKey: 'mySchedule', shortLabelKey: 'myScheduleShort' },
-  openShifts:    { name: 'Open Shifts',   href: '/calendar?tab=open', icon: Calendar, labelKey: 'openShifts', shortLabelKey: 'openShiftsShort' },
-  mySwaps:       { name: 'My Swaps',      href: '/swaps',         icon: RefreshCw, labelKey: 'mySwaps', shortLabelKey: 'mySwapsShort' },
+  shifts:        { name: 'Shifts',        href: '/shifts',        icon: Calendar, labelKey: 'shifts', group: 'operations' },
+  staffing:      { name: 'Staffing',      href: '/staffing',      icon: Users, labelKey: 'staffing', group: 'operations' },
+  registration:  { name: 'Registration',  href: '/staffing?tab=registration', icon: UserCheck, labelKey: 'registration', requiredPermissions: ['shifts.approve_registration'], group: 'operations' },
+  staffDirectory:{ name: 'Staff Directory',href: '/staff',        icon: Users, labelKey: 'staffDirectory', group: 'people' },
+  myWorkspace:   { name: 'My Workspace',  href: '/',              icon: Home, labelKey: 'myWorkspace', shortLabelKey: 'myWorkspaceShort', group: 'overview' },
+  mySchedule:    { name: 'My Schedule',   href: '/calendar?tab=mine', icon: Calendar, labelKey: 'mySchedule', shortLabelKey: 'myScheduleShort', group: 'operations' },
+  openShifts:    { name: 'Open Shifts',   href: '/calendar?tab=open', icon: Calendar, labelKey: 'openShifts', shortLabelKey: 'openShiftsShort', group: 'operations' },
+  mySwaps:       { name: 'My Swaps',      href: '/swaps',         icon: RefreshCw, labelKey: 'mySwaps', shortLabelKey: 'mySwapsShort', group: 'operations' },
 }
 
 // ADMIN priority
 const adminNav: NavItem[] = [
-  { ...navCatalogue.dashboard, group: 'APP OPS' },
-  { ...navCatalogue.calendar, group: 'OPERATIONS' },
-  { ...navCatalogue.live, group: 'OPERATIONS' },
-  { ...navCatalogue.shifts, group: 'OPERATIONS' },
-  { ...navCatalogue.staffing, group: 'OPERATIONS' },
-  { ...navCatalogue.registration, group: 'OPERATIONS' },
-  { ...navCatalogue.storage, group: 'OPERATIONS' },
-  { ...navCatalogue.swaps, group: 'OPERATIONS' },
-  { ...navCatalogue.reports, group: 'PERFORMANCE' },
-  { ...navCatalogue.workforce, group: 'PERFORMANCE' },
-  { ...navCatalogue.analytics, group: 'PERFORMANCE' },
-  { ...navCatalogue.payroll, group: 'MANAGEMENT' },
-  { ...navCatalogue.brands, group: 'MANAGEMENT' },
-  { ...navCatalogue.platforms, group: 'MANAGEMENT' },
-  { ...navCatalogue.campaigns, group: 'MANAGEMENT' },
-  { ...navCatalogue.staff, group: 'MANAGEMENT' },
-  { ...navCatalogue.audit, group: 'SYSTEM' },
-  { ...navCatalogue.settings, group: 'SYSTEM' },
+  { ...navCatalogue.dashboard },
+  { ...navCatalogue.calendar },
+  { ...navCatalogue.live },
+  { ...navCatalogue.shifts },
+  { ...navCatalogue.staffing },
+  { ...navCatalogue.registration },
+  { ...navCatalogue.storage },
+  { ...navCatalogue.swaps },
+  { ...navCatalogue.reports },
+  { ...navCatalogue.workforce },
+  { ...navCatalogue.analytics },
+  { ...navCatalogue.payroll },
+  { ...navCatalogue.brands },
+  { ...navCatalogue.platforms },
+  { ...navCatalogue.campaigns },
+  { ...navCatalogue.staff },
+  { ...navCatalogue.audit },
+  { ...navCatalogue.settings },
 ]
 
 // LEADER priority
 const leaderNav: NavItem[] = [
-  { ...navCatalogue.dashboard, name: 'Team Operations', labelKey: 'teamOperations', shortLabelKey: 'teamOperationsShort', group: 'APP OPS' },
-  { ...navCatalogue.calendar, group: 'OPERATIONS' },
-  { ...navCatalogue.live, group: 'OPERATIONS' },
-  { ...navCatalogue.shifts, group: 'OPERATIONS' },
-  { ...navCatalogue.staffing, group: 'OPERATIONS' },
-  { ...navCatalogue.registration, group: 'OPERATIONS' },
-  { ...navCatalogue.swaps, group: 'OPERATIONS' },
-  { ...navCatalogue.reports, group: 'PERFORMANCE' },
-  { ...navCatalogue.workforce, group: 'PERFORMANCE' },
-  { ...navCatalogue.staffDirectory, group: 'TEAM' },
-  { ...navCatalogue.notifications, group: 'TEAM' },
+  { ...navCatalogue.dashboard, name: 'Team Operations', labelKey: 'teamOperations', shortLabelKey: 'teamOperationsShort' },
+  { ...navCatalogue.calendar },
+  { ...navCatalogue.live },
+  { ...navCatalogue.shifts },
+  { ...navCatalogue.staffing },
+  { ...navCatalogue.registration },
+  { ...navCatalogue.swaps },
+  { ...navCatalogue.reports },
+  { ...navCatalogue.workforce },
+  { ...navCatalogue.staffDirectory },
+  { ...navCatalogue.notifications },
 ]
 
 // MEMBER priority
 const memberNav: NavItem[] = [
-  { ...navCatalogue.myWorkspace, group: 'APP OPS' },
-  { ...navCatalogue.mySchedule, group: 'APP OPS' },
-  { ...navCatalogue.openShifts, group: 'APP OPS' },
-  { ...navCatalogue.mySwaps, group: 'APP OPS' },
-  { ...navCatalogue.live, group: 'APP OPS' },
-  { ...navCatalogue.reports, group: 'APP OPS' },
-  { ...navCatalogue.workforce, name: 'Hiệu suất cá nhân', labelKey: 'myWorkforce', group: 'APP OPS' },
-  { ...navCatalogue.notifications, group: 'APP OPS' },
+  { ...navCatalogue.myWorkspace },
+  { ...navCatalogue.mySchedule },
+  { ...navCatalogue.openShifts },
+  { ...navCatalogue.shifts },
+  { ...navCatalogue.mySwaps },
+  { ...navCatalogue.live },
+  { ...navCatalogue.reports },
+  { ...navCatalogue.workforce, name: 'Hiệu suất cá nhân', labelKey: 'myWorkforce' },
+  { ...navCatalogue.notifications },
 ]
 
 /**

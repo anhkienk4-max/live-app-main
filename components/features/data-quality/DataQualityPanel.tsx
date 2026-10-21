@@ -36,9 +36,9 @@ export function DataQualityPanel({ issues,remote,filters,onFiltersChange }: { is
         <Card className="border-blue-200"><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Info</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-blue-600">{counts.info}</p></CardContent></Card>
       </div>
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardHeader className="flex flex-col gap-3 space-y-0 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-base">Issues</CardTitle>
-          <div className="flex gap-2">
+          <div className="flex min-w-0 flex-wrap gap-2">
             <Select value={severity} onValueChange={v=> {setSeverity(v as never);setPage(1);onFiltersChange?.({severity:v as 'all'|'error'|'warning'|'info',source})}}><SelectTrigger className="w-32"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem><SelectItem value="error">error</SelectItem><SelectItem value="warning">warning</SelectItem><SelectItem value="info">info</SelectItem></SelectContent></Select>
             <Select value={source} onValueChange={v=> {setSource(v as never);setPage(1);onFiltersChange?.({severity,source:v})}}><SelectTrigger className="w-40"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('all')}</SelectItem><SelectItem value="schedule_import">import</SelectItem><SelectItem value="report">report</SelectItem><SelectItem value="staffing">staffing</SelectItem></SelectContent></Select>
           </div>

@@ -1,0 +1,49 @@
+name: RC17D responsive and approved auth gate
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  responsive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.18.0'
+      - run: corepack enable && corepack prepare pnpm@10.26.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsc --noEmit --incremental false
+      - run: pnpm exec eslint .
+      - name: Navigation auth Calendar regressions
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc17d-responsive-auth.test.ts tests/e1-role-ux.test.ts tests/rc16-ui-navigation-rbac.test.ts tests/auth-session-foundation.test.ts tests/auth-confirm-route.test.ts tests/calendar-filters.test.ts tests/rc16l-calendar.test.ts tests/production-shell-convergence.test.ts
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Nine-width three-role local responsive and interaction evidence
+        run: pnpm exec playwright test --config playwright.rc17d.config.ts
+      - name: Supabase-mode public auth evidence without external credentials
+        run: pnpm exec playwright test --config playwright.rc17d.config.ts
+        env:
+          RC17D_AUTH: '1'
+          RC17D_SUITE: auth
+      - name: Credential-free production build
+        run: pnpm run build
+        env:
+          CI: 'true'
+          NEXT_PUBLIC_USE_MOCK_DATA: 'false'
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+      - name: Preserve responsive evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: rc17d-responsive-browser-evidence
+          path: test-results/rc17d-*/
+          retention-days: 14

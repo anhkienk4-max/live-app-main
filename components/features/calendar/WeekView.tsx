@@ -28,6 +28,7 @@ interface WeekViewProps {
   brands: Brand[];
   platforms: Platform[];
   registrations: ShiftRegistration[];
+  users?: User[];
   onShiftClick?: (shift: Shift) => void;
   hasActiveFilters?: boolean;
   currentUser?: User | null;
@@ -43,6 +44,7 @@ export function WeekView({
   brands,
   platforms,
   registrations,
+  users = [],
   onShiftClick,
   hasActiveFilters = false,
   currentUser = null,
@@ -231,7 +233,9 @@ export function WeekView({
                             title={[shift.title, formatShiftTimeRange(shift)].filter(Boolean).join(" · ")}
                             aria-label={[shift.title || shift.id, formatShiftTimeRange(shift), t("viewDetails")].join(" · ")}
                             shift={shift}
-                            variant="compact"
+                            variant="expanded"
+                          users={users}
+                          showDate
                             onClick={() => onShiftClick?.(shift)}
                             context={context}
                             isToday={isToday}

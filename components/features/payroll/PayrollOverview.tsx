@@ -129,9 +129,9 @@ export function PayrollOverview({ period, lines, loading = false }: PayrollOverv
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white font-semibold">
             <Banknote className="h-5 w-5" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-slate-900">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="w-full text-base font-bold text-slate-900 sm:w-auto">
                 Chu kỳ: {period.period_start} → {period.period_end}
               </h2>
               <Badge variant="outline" className={currentStatus.badgeClass}>
@@ -144,7 +144,7 @@ export function PayrollOverview({ period, lines, loading = false }: PayrollOverv
                 Rev #{period.revision}
               </Badge>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-slate-500 mt-0.5 [overflow-wrap:anywhere]">
               Mã chu kỳ: <span className="font-mono text-slate-700">{period.id}</span>
               {period.created_by && (
                 <span className="ml-2">

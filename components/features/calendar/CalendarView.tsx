@@ -12,6 +12,7 @@ import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import { Shift, Brand, Platform, Campaign, User, OperationalRole, ShiftRegistration, Report } from '@/lib/types/database.types'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -81,6 +82,13 @@ const DEFAULT_CALENDAR_FILTERS: CalendarFilterState = {
   customTo: '',
 }
 const EMPTY_SHIFTS: Shift[] = []
+const subscribeMobileFilters = (notify: () => void) => {
+  const query = window.matchMedia('(max-width: 767px)')
+  query.addEventListener('change', notify)
+  return () => query.removeEventListener('change', notify)
+}
+const mobileFiltersSnapshot = () => window.matchMedia('(max-width: 767px)').matches
+const desktopFiltersSnapshot = () => false
 
 
 function ActiveFilterChips({ filters, setFilters, onClearAll, t, brands, platforms, campaigns, users }: { filters: CalendarFilterState, setFilters: (f: CalendarFilterState) => void, onClearAll: () => void, t: (key: string) => string, brands: Brand[], platforms: Platform[], campaigns: Campaign[], users: User[] }) {
@@ -198,6 +206,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const [previewShift, setPreviewShift] = React.useState<Shift | null>(null)
   const [selectedDay, setSelectedDay] = React.useState<Date | null>(null)
   const [editingShift, setEditingShift] = React.useState<Shift | null>(null)
+  const mobileFilters = React.useSyncExternalStore(subscribeMobileFilters, mobileFiltersSnapshot, desktopFiltersSnapshot)
   const [showFilters, setShowFilters] = React.useState(false)
   const [showBulkStaffingApproval, setShowBulkStaffingApproval] = React.useState(false)
   const [bulkApprovalLoading, setBulkApprovalLoading] = React.useState(false)
@@ -537,6 +546,65 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     }
   }
 
+  const filterFields = <>
+            <div className="grid grid-cols-2 gap-2 pt-2 xl:grid-cols-4 [&>div>span]:sr-only">
+<MultiSelectFilter label={t('brand')} value={filters.brandIds} onChange={brandIds => setFilters({ ...filters, brandIds })} options={brands.map(brand => ({ value: brand.id, label: brand.name }))} placeholder={`${t('all')} ${t('brands')}`} testId="calendar-brand-filter" />
+<MultiSelectFilter label={t('platform')} value={filters.platformIds} onChange={platformIds => setFilters({ ...filters, platformIds })} options={platforms.map(platform => ({ value: platform.id, label: platform.name }))} placeholder={`${t('all')} ${t('platforms')}`} testId="calendar-platform-filter" />
+<MultiSelectFilter label={t('studio')} value={filters.studios} onChange={studios => setFilters({ ...filters, studios })} options={studioOptions.map(option => ({ value: option.value, label: option.value === UNASSIGNED_STUDIO_FILTER ? timeFilterLabels.unassigned : option.label }))} placeholder={timeFilterLabels.studios} testId="calendar-studio-filter" />
+<MultiSelectFilter label={t('status')} value={filters.statuses} onChange={statuses => setFilters({ ...filters, statuses: statuses as CalendarFilterState['statuses'] })} options={['scheduled','preparing','live','paused','completed','cancelled'].map(status => ({ value: status, label: status === 'live' ? t('liveStatus') : (t as (key: string) => string)(status) }))} placeholder={t('all')} testId="calendar-status-filter" />
+            </div>
+
+            {(showFilters || mobileFilters) && (
+              <div className="grid grid-cols-1 gap-4 border-t pt-4 sm:grid-cols-2 lg:grid-cols-4">
+                 <MultiSelectFilter label={t('campaign')} value={filters.campaignIds} onChange={campaignIds => setFilters({ ...filters, campaignIds })} options={campaigns.map(campaign => ({ value: campaign.id, label: campaign.name }))} placeholder={`${t('all')} ${t('campaigns')}`} testId="calendar-campaign-filter" />
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('time')}</label>
+                  <Select value={view === 'list' ? listTimeFilter : filters.time} onValueChange={(value) => changeTimeFilter(value as CalendarFilterState['time'])}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{timeFilterLabels.all}</SelectItem>
+                      <SelectItem value="today">{t('today')}</SelectItem>
+                    <SelectItem value="current_week">{timeFilterLabels.week}</SelectItem>
+                    <SelectItem value="current_month">{timeFilterLabels.month}</SelectItem>
+                    <SelectItem value="custom">{t('customRange')}</SelectItem>
+                  </SelectContent>
+                </Select>
+                {!timeScope.valid && <p className="mt-1 text-xs text-red-600" role="alert">{timeScope.error}</p>}
+              </div>
+              {(view === 'list' ? listTimeFilter : filters.time) === 'custom' && <>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('startDate')}</label>
+                  <Input type="date" value={filters.customFrom} onChange={(event) => setFilters({ ...filters, customFrom: event.target.value })} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('endDate')}</label>
+                  <Input type="date" value={filters.customTo} onChange={(event) => setFilters({ ...filters, customTo: event.target.value })} />
+                </div>
+              </>}
+              <MultiSelectFilter label={t('host')} value={filters.hostIds} onChange={hostIds => setFilters({ ...filters, hostIds })} options={users.filter(u => u.operational_roles?.includes('host')).map(u => ({ value: u.id, label: u.full_name }))} placeholder={`${t('all')} ${t('host')}`} testId="calendar-host-filter" />
+              <MultiSelectFilter label={t('support')} value={filters.supportIds} onChange={supportIds => setFilters({ ...filters, supportIds })} options={users.filter(u => u.operational_roles?.includes('support')).map(u => ({ value: u.id, label: u.full_name }))} placeholder={`${t('all')} ${t('support')}`} testId="calendar-support-filter" />
+              <MultiSelectFilter label={t('technical')} value={filters.technicalIds} onChange={technicalIds => setFilters({ ...filters, technicalIds })} options={users.filter(u => u.operational_roles?.includes('technical')).map(u => ({ value: u.id, label: u.full_name }))} placeholder={`${t('all')} ${t('technical')}`} testId="calendar-technical-filter" />
+              <MultiSelectFilter label={t('role')} value={filters.operationalRoles} onChange={operationalRoles => setFilters({ ...filters, operationalRoles })} options={[{ value: 'host', label: t('host') }, { value: 'support', label: t('support') }, { value: 'technical', label: t('technical') }]} placeholder={t('all')} testId="calendar-role-filter" />
+              <MultiSelectFilter label="Staffing State" value={filters.staffingStates} onChange={staffingStates => setFilters({ ...filters, staffingStates })} options={[{ value: 'fully_staffed', label: 'Fully Staffed' }, { value: 'missing_staff', label: 'Missing Staff' }]} placeholder={t('all')} testId="calendar-staffing-state-filter" />
+              <MultiSelectFilter label="Registration State" value={filters.registrationStates} onChange={registrationStates => setFilters({ ...filters, registrationStates })} options={[{ value: 'approved', label: t('approved') }, { value: 'pending', label: t('pending') }, { value: 'rejected', label: t('rejected') }, { value: 'manually_assigned', label: 'Manually Assigned' }]} placeholder={t('all')} testId="calendar-registration-state-filter" />
+              <div className="flex items-center space-x-2 pt-2">
+                <Checkbox id="imported-staffing" checked={filters.hasImportedStaffing} onCheckedChange={(checked: boolean | 'indeterminate') => setFilters({ ...filters, hasImportedStaffing: !!checked })} />
+                <label htmlFor="imported-staffing" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                  Has Imported Staffing
+                </label>
+              </div>
+              {hasActiveFilters && (
+                <div className="sm:col-span-2 lg:col-span-3">
+                  <Button variant="outline" size="sm" onClick={clearFilters}>
+                    <X className="h-3 w-3 mr-2" />
+                    {t('resetFilters')}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+  </>
+
   if (loadedIdentity && loadedIdentity !== identity) return <ContentSkeleton />
 
   return (
@@ -566,20 +634,20 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
 
           {/* Right: View Toggles & Primary Actions */}
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-            <div className="flex w-fit overflow-hidden rounded-md border bg-muted/20 p-1">
-              <Button variant={view === 'month' ? 'secondary' : 'ghost'} size="sm" onClick={() => changeView('month')} className="h-7 text-xs">
-                <LayoutGrid className="h-3.5 w-3.5 mr-1.5" />
+            <div className="grid w-full min-w-0 grid-cols-4 rounded-md border bg-muted/20 p-1 sm:flex sm:w-fit">
+              <Button variant={view === 'month' ? 'secondary' : 'ghost'} size="sm" onClick={() => changeView('month')} className="min-w-0 px-1 text-xs sm:h-7 sm:px-2.5">
+                <LayoutGrid className="hidden h-3.5 w-3.5 mr-1.5 sm:block" />
                 {t('month')}
               </Button>
-              <Button variant={view === 'week' ? 'secondary' : 'ghost'} size="sm" onClick={() => changeView('week')} className="h-7 text-xs">
+              <Button variant={view === 'week' ? 'secondary' : 'ghost'} size="sm" onClick={() => changeView('week')} className="min-w-0 px-1 text-xs sm:h-7 sm:px-2.5">
                 {t('week')}
               </Button>
-              <Button variant={view === 'day' ? 'secondary' : 'ghost'} size="sm" onClick={() => changeView('day')} className="h-7 text-xs">
-                <Clock className="h-3.5 w-3.5 mr-1.5" />
+              <Button variant={view === 'day' ? 'secondary' : 'ghost'} size="sm" onClick={() => changeView('day')} className="min-w-0 px-1 text-xs sm:h-7 sm:px-2.5">
+                <Clock className="hidden h-3.5 w-3.5 mr-1.5 sm:block" />
                 {t('day')}
               </Button>
-              <Button variant={view === 'list' ? 'secondary' : 'ghost'} size="sm" onClick={() => changeView('list')} className="h-7 text-xs">
-                <List className="h-3.5 w-3.5 mr-1.5" />
+              <Button variant={view === 'list' ? 'secondary' : 'ghost'} size="sm" onClick={() => changeView('list')} className="min-w-0 px-1 text-xs sm:h-7 sm:px-2.5">
+                <List className="hidden h-3.5 w-3.5 mr-1.5 sm:block" />
                 {t('list')}
               </Button>
             </div>
@@ -590,7 +658,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         {/* Search + Secondary Actions */}
         <div className="pt-2">
           <div className="flex flex-wrap items-center gap-2">
-              <div className="relative min-w-[200px] flex-1 shrink-0 sm:min-w-56">
+              <div className="relative min-w-0 basis-full flex-1 sm:min-w-56 sm:basis-auto">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   aria-label={t('searchShifts')}
@@ -604,6 +672,8 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
               <Button
                 variant={showFilters ? 'secondary' : 'outline'}
                 size="sm"
+                data-testid="calendar-filter-toggle"
+                aria-expanded={showFilters}
                 onClick={() => setShowFilters(!showFilters)}
                 className="shrink-0 h-9"
               >
@@ -657,62 +727,13 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-2 pt-2 xl:grid-cols-4 [&>div>span]:sr-only">
-<MultiSelectFilter label={t('brand')} value={filters.brandIds} onChange={brandIds => setFilters({ ...filters, brandIds })} options={brands.map(brand => ({ value: brand.id, label: brand.name }))} placeholder={`${t('all')} ${t('brands')}`} testId="calendar-brand-filter" />
-<MultiSelectFilter label={t('platform')} value={filters.platformIds} onChange={platformIds => setFilters({ ...filters, platformIds })} options={platforms.map(platform => ({ value: platform.id, label: platform.name }))} placeholder={`${t('all')} ${t('platforms')}`} testId="calendar-platform-filter" />
-<MultiSelectFilter label={t('studio')} value={filters.studios} onChange={studios => setFilters({ ...filters, studios })} options={studioOptions.map(option => ({ value: option.value, label: option.value === UNASSIGNED_STUDIO_FILTER ? timeFilterLabels.unassigned : option.label }))} placeholder={timeFilterLabels.studios} testId="calendar-studio-filter" />
-<MultiSelectFilter label={t('status')} value={filters.statuses} onChange={statuses => setFilters({ ...filters, statuses: statuses as CalendarFilterState['statuses'] })} options={['scheduled','preparing','live','paused','completed','cancelled'].map(status => ({ value: status, label: status === 'live' ? t('liveStatus') : (t as (key: string) => string)(status) }))} placeholder={t('all')} testId="calendar-status-filter" />
-            </div>
-
-            {showFilters && (
-              <div className="grid grid-cols-1 gap-4 border-t pt-4 sm:grid-cols-2 lg:grid-cols-4">
-                 <MultiSelectFilter label={t('campaign')} value={filters.campaignIds} onChange={campaignIds => setFilters({ ...filters, campaignIds })} options={campaigns.map(campaign => ({ value: campaign.id, label: campaign.name }))} placeholder={`${t('all')} ${t('campaigns')}`} testId="calendar-campaign-filter" />
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('time')}</label>
-                  <Select value={view === 'list' ? listTimeFilter : filters.time} onValueChange={(value) => changeTimeFilter(value as CalendarFilterState['time'])}>
-                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{timeFilterLabels.all}</SelectItem>
-                      <SelectItem value="today">{t('today')}</SelectItem>
-                    <SelectItem value="current_week">{timeFilterLabels.week}</SelectItem>
-                    <SelectItem value="current_month">{timeFilterLabels.month}</SelectItem>
-                    <SelectItem value="custom">{t('customRange')}</SelectItem>
-                  </SelectContent>
-                </Select>
-                {!timeScope.valid && <p className="mt-1 text-xs text-red-600" role="alert">{timeScope.error}</p>}
-              </div>
-              {(view === 'list' ? listTimeFilter : filters.time) === 'custom' && <>
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('startDate')}</label>
-                  <Input type="date" value={filters.customFrom} onChange={(event) => setFilters({ ...filters, customFrom: event.target.value })} />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('endDate')}</label>
-                  <Input type="date" value={filters.customTo} onChange={(event) => setFilters({ ...filters, customTo: event.target.value })} />
-                </div>
-              </>}
-              <MultiSelectFilter label={t('host')} value={filters.hostIds} onChange={hostIds => setFilters({ ...filters, hostIds })} options={users.filter(u => u.operational_roles?.includes('host')).map(u => ({ value: u.id, label: u.full_name }))} placeholder={`${t('all')} ${t('host')}`} testId="calendar-host-filter" />
-              <MultiSelectFilter label={t('support')} value={filters.supportIds} onChange={supportIds => setFilters({ ...filters, supportIds })} options={users.filter(u => u.operational_roles?.includes('support')).map(u => ({ value: u.id, label: u.full_name }))} placeholder={`${t('all')} ${t('support')}`} testId="calendar-support-filter" />
-              <MultiSelectFilter label={t('technical')} value={filters.technicalIds} onChange={technicalIds => setFilters({ ...filters, technicalIds })} options={users.filter(u => u.operational_roles?.includes('technical')).map(u => ({ value: u.id, label: u.full_name }))} placeholder={`${t('all')} ${t('technical')}`} testId="calendar-technical-filter" />
-              <MultiSelectFilter label={t('role')} value={filters.operationalRoles} onChange={operationalRoles => setFilters({ ...filters, operationalRoles })} options={[{ value: 'host', label: t('host') }, { value: 'support', label: t('support') }, { value: 'technical', label: t('technical') }]} placeholder={t('all')} testId="calendar-role-filter" />
-              <MultiSelectFilter label="Staffing State" value={filters.staffingStates} onChange={staffingStates => setFilters({ ...filters, staffingStates })} options={[{ value: 'fully_staffed', label: 'Fully Staffed' }, { value: 'missing_staff', label: 'Missing Staff' }]} placeholder={t('all')} testId="calendar-staffing-state-filter" />
-              <MultiSelectFilter label="Registration State" value={filters.registrationStates} onChange={registrationStates => setFilters({ ...filters, registrationStates })} options={[{ value: 'approved', label: t('approved') }, { value: 'pending', label: t('pending') }, { value: 'rejected', label: t('rejected') }, { value: 'manually_assigned', label: 'Manually Assigned' }]} placeholder={t('all')} testId="calendar-registration-state-filter" />
-              <div className="flex items-center space-x-2 pt-2">
-                <Checkbox id="imported-staffing" checked={filters.hasImportedStaffing} onCheckedChange={(checked: boolean | 'indeterminate') => setFilters({ ...filters, hasImportedStaffing: !!checked })} />
-                <label htmlFor="imported-staffing" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                  Has Imported Staffing
-                </label>
-              </div>
-              {hasActiveFilters && (
-                <div className="sm:col-span-2 lg:col-span-3">
-                  <Button variant="outline" size="sm" onClick={clearFilters}>
-                    <X className="h-3 w-3 mr-2" />
-                    {t('resetFilters')}
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
+            {mobileFilters ? <Dialog open={showFilters} onOpenChange={setShowFilters}>
+              <DialogContent data-testid="calendar-filter-drawer" className="top-0 right-0 bottom-0 left-auto flex h-dvh max-h-dvh w-full max-w-full translate-x-0 translate-y-0 flex-col overflow-y-auto rounded-none">
+                <DialogHeader><DialogTitle>{t('filters')} ({activeFilterCount})</DialogTitle></DialogHeader>
+                {filterFields}
+                <Button variant="outline" disabled={!hasActiveFilters} onClick={clearFilters}>{t('resetFilters')}</Button>
+              </DialogContent>
+            </Dialog> : filterFields}
         </div>
       </div>
 
@@ -723,8 +744,20 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         {loading && loadedKey === requestKey && <div role="status" className="px-3 py-1 text-xs text-muted-foreground">{t('loading')}</div>}
          {loadingMore && loadedKey === requestKey && <div role="status" data-testid="calendar-progressive-loading" className="px-3 py-1 text-xs text-muted-foreground">Đang tải thêm ca trong khoảng thời gian đang xem…</div>}
         {loadedKey === requestKey && <>
-        {view === 'month' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onShiftClick={setPreviewShift} onDayClick={setSelectedDay} /></div></div>}
-        {view === 'week' && <div className="w-full"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms}  registrations={registrations} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} currentUser={currentUser} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} /></div>}
+        {view === 'month' && <>
+          <div className="hidden max-w-full overflow-x-auto lg:block" role="region" aria-label={t('month')} tabIndex={0}><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onShiftClick={setPreviewShift} onDayClick={setSelectedDay} /></div></div>
+          <section className="min-w-0 lg:hidden" data-testid="calendar-mobile-agenda">
+            <label className="block p-3 text-sm font-medium">{t('date')}
+              <Input type="date" data-testid="calendar-agenda-date" value={format(currentDate, 'yyyy-MM-dd')} onChange={event => {
+                const value = event.target.value
+                const parsed = new Date(value + 'T12:00:00')
+                if (Number.isFinite(parsed.getTime()) && format(parsed, 'yyyy-MM-dd') === value) setCurrentDate(parsed)
+              }} className="mt-2" />
+            </label>
+            <DayView currentDate={currentDate} shifts={filteredShifts} allShifts={shifts} onRegister={registerForShift} registrations={registrations} currentUser={currentUser} brands={brands} platforms={platforms} users={users} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} />
+          </section>
+        </>}
+        {view === 'week' && <div className="w-full"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} users={users} registrations={registrations} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} currentUser={currentUser} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} /></div>}
         {view === 'day' && <DayView currentDate={currentDate} shifts={filteredShifts} allShifts={shifts} onRegister={registerForShift} registrations={registrations} currentUser={currentUser} brands={brands} platforms={platforms} users={users} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} />}
         {view === 'list' && (
           <ListView

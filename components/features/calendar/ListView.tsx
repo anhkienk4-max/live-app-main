@@ -91,11 +91,12 @@ export function ListView({
             )}
             <div className="min-w-0 flex-1">
               <p className="px-1.5 text-xs text-muted-foreground">{shift.date.split('-').reverse().join('/')} · {formatShiftTimeRange(shift)}</p>
-              <ShiftCard shift={(shift)} variant="compact" users={users} onClick={() => onShiftClick?.((shift))} context={context} className="min-h-10" showDate={true} />
-              <div className="flex flex-wrap gap-x-3 gap-y-1 px-1.5 text-xs text-muted-foreground">{staffing.filter(row => row.names).map(row => <p key={row.role}><span>{t(row.role === 'host' ? 'importHostNames' : row.role === 'support' ? 'importAssistantNames' : 'importTechnicalNames')}:</span> {row.names}</p>)}</div>
+              <ShiftCard shift={(shift)} variant="compact" users={users} onClick={() => onShiftClick?.((shift))} context={context} className="hidden min-h-10 sm:flex" showDate={true} />
+              <ShiftCard shift={shift} variant="expanded" users={users} onClick={() => onShiftClick?.(shift)} context={context} showDate className="sm:hidden" />
+              <div className="hidden flex-wrap gap-x-3 gap-y-1 px-1.5 text-xs text-muted-foreground sm:flex">{staffing.filter(row => row.names).map(row => <p key={row.role}><span>{t(row.role === 'host' ? 'importHostNames' : row.role === 'support' ? 'importAssistantNames' : 'importTechnicalNames')}:</span> {row.names}</p>)}</div>
             </div>
             {onRegister && (
-              <div className="shrink-0 sm:border-l sm:pl-2">
+              <div className="w-full shrink-0 sm:w-auto sm:border-l sm:pl-2">
                 <ShiftRegistrationActions
                   allShifts={allShifts}
                   compact
