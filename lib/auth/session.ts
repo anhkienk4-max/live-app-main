@@ -1,7 +1,7 @@
 import {
-  AuthApiError,
-  AuthRetryableFetchError,
-  AuthSessionMissingError,
+  isAuthApiError,
+  isAuthRetryableFetchError,
+  isAuthSessionMissingError,
 } from '@supabase/supabase-js'
 
 export interface PasswordSessionClient {
@@ -29,9 +29,9 @@ export type PasswordSessionResult =
   | { ok: false; reason: PasswordSessionFailure }
 
 export function classifyPasswordSessionError(error: unknown): PasswordSessionFailure {
-  if (error instanceof AuthRetryableFetchError) return 'AUTH_NETWORK_ERROR'
-  if (error instanceof AuthSessionMissingError) return 'AUTH_SESSION_FAILURE'
-  if (error instanceof AuthApiError) {
+  if (isAuthRetryableFetchError(error)) return 'AUTH_NETWORK_ERROR'
+  if (isAuthSessionMissingError(error)) return 'AUTH_SESSION_FAILURE'
+  if (isAuthApiError(error)) {
     if (error.code === 'invalid_credentials') return 'INVALID_CREDENTIALS'
     if (error.code === 'email_provider_disabled' || error.code === 'provider_disabled') {
       return 'AUTH_PROVIDER_UNAVAILABLE'

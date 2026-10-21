@@ -8,7 +8,7 @@ async function fillLogin(page: import('@playwright/test').Page) {
 }
 
 async function mockAuthError(page: import('@playwright/test').Page, code: string) {
- await page.route('**/auth/v1/token*', route => route.fulfill({status:400,contentType:'application/json',json:{code,msg:'private provider response detail'}}))
+ await page.route('**/auth/v1/token*', route => route.fulfill({status:400,contentType:'application/json',json:{code,error_code:code,msg:'private provider response detail'}}))
 }
 async function useEnglish(page: import('@playwright/test').Page) {
  const toggle=page.getByRole('button',{name:'English',exact:true})
