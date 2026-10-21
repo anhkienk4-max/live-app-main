@@ -12,10 +12,10 @@ import { formatCurrency } from '@/lib/utils/currency'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
-export function LiveOperationsConsole({ shift, updates, snapshotSummary, report, brands, platforms, campaigns, users, registrations, loading, actions, snapshots, details, timeline, onRefresh, onStreamLinkSaved }: {
+export function LiveOperationsConsole({ shift, updates, snapshotSummary, report, brands, platforms, campaigns, users, registrations, loading, reportLoadError, reportLoading, actions, snapshots, details, timeline, onRefresh, onStreamLinkSaved }: {
   shift: Shift; updates: DashboardUpdate[]; report: Report | null; brands: Brand[]; platforms: Platform[]; campaigns: Campaign[]; users: User[]; registrations: ShiftRegistration[]
   snapshotSummary?:{total:number;peakViewers:number|null;recent:DashboardUpdate[]}
-  loading: boolean; actions: ReactNode; snapshots: ReactNode; details: ReactNode; timeline: ReactNode; onRefresh: () => void; onStreamLinkSaved?: (shift: Shift) => void | Promise<void>
+  loading: boolean; reportLoadError?: boolean; reportLoading?: boolean; actions: ReactNode; snapshots: ReactNode; details: ReactNode; timeline: ReactNode; onRefresh: () => void; onStreamLinkSaved?: (shift: Shift) => void | Promise<void>
 }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<'updates' | 'details' | 'timeline'>('updates')
@@ -63,7 +63,7 @@ export function LiveOperationsConsole({ shift, updates, snapshotSummary, report,
       <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-3" role="tabpanel">{tab === 'updates' ? snapshots : tab === 'details' ? details : timeline}</section>
       <aside className="space-y-3"><section className="rounded-lg border bg-white p-3"><h3 className="mb-3 text-xs font-semibold uppercase text-slate-500">{t('staffing')}</h3>{roles.map(role => <div key={role} className="border-t py-2 text-xs"><p className="text-slate-500">{t(role)}</p><p className="mt-1 font-medium">{staffFor(role)}</p></div>)}</section>
         <section className="rounded-lg border bg-white p-3"><h3 className="mb-2 text-xs font-semibold uppercase text-slate-500">{'Timeline'}</h3>{recent.map(update => <div key={update.id} className="border-t py-2 text-xs"><p className="text-slate-500">{new Date(update.time).toLocaleString()}</p><p className="mt-1">{update.notes || t('dashboardScreenshot')}</p></div>)}{!updates.length && <p className="text-xs text-slate-500">{t('updatesMissing')}</p>}</section>
-        <section className="rounded-lg border bg-white p-3"><h3 className="mb-2 text-xs font-semibold uppercase text-slate-500">{t('reports')}</h3><p className="text-xs text-slate-500">{report ? report.status === 'in_review' ? t('inReview') : t(report.status ?? (report.metrics_confirmed ? 'confirmed' : 'draft')) : t('noReports')}</p></section>
+        <section className="rounded-lg border bg-white p-3"><h3 className="mb-2 text-xs font-semibold uppercase text-slate-500">{t('reports')}</h3><p className="text-xs text-slate-500">{reportLoading ? 'Đang tải báo cáo…' : reportLoadError ? 'Chưa tải được báo cáo · kiểm tra quyền truy cập' : report ? report.status === 'in_review' ? t('inReview') : t(report.status ?? (report.metrics_confirmed ? 'confirmed' : 'draft')) : t('noReports')}</p></section>
       </aside>
     </div>
   </div>

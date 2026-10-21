@@ -1,0 +1,17 @@
+# Run ONLY after approval, cert provisioning, JWKS implementation and network preflight.
+# Host: Ubuntu Linux VM. Nginx on host terminates HTTPS for HLS at port 443.
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:1.20.0
+    restart: unless-stopped
+    ports:
+      - "1936:1936/tcp"             # RTMPS ingest; allow-list studio IP if possible
+      - "127.0.0.1:8888:8888/tcp"   # HLS; local nginx ONLY, never directly public
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
