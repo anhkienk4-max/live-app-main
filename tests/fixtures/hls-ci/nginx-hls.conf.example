@@ -1,0 +1,57 @@
+# Proposed HOST nginx site. NOT DEPLOYED.
+# Required topology: public HTTPS 443 -> this proxy -> MediaMTX loopback 8888.
+# Security finding CI 39542834836: MediaMTX v1.20.0 JWT protects playlists,
+# but anonymous requests obtained an HLS init segment (HTTP 200). Do NOT expose
+# HLS directly. Require local JWT verification on EVERY playlist/part/segment.
+# Start the Node sidecar infra/media-poc/hls-auth-guard.mjs bound to 127.0.0.1:9191.
+server {
+    listen 443 ssl;
+    server_name media.ops5729.top;
+    ssl_certificate /etc/letsencrypt/live/media.ops5729.top/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/media.ops5729.top/privkey.pem;
+
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    proxy_hide_header Access-Control-Allow-Origin;
+    proxy_hide_header Access-Control-Allow-Headers;
+    proxy_hide_header Access-Control-Allow-Methods;
+    add_header Cache-Control "private, no-store" always;
+    add_header Access-Control-Allow-Origin "https://ops5729.top" always;
+    add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
+    add_header Access-Control-Allow-Headers "Authorization" always;
+    add_header Vary Origin always;
+    
+    # Never let clients invoke the internal verifier endpoint.
+    location = /__ada_media_auth {
+        internal;
+        proxy_pass http://127.0.0.1:9191/verify;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Original-URI $request_uri;
+        proxy_set_header X-Request-Method $request_method;
+        proxy_set_header Host 127.0.0.1;
+        proxy_set_header Connection "";
+        proxy_http_version 1.1;
+        proxy_cache off;
+    }
+
+    location / {
+        # Preflight carries no playable media data; allow only configured ADA origin.
+        if ($request_method = OPTIONS) { return 204; }
+        limit_except GET HEAD OPTIONS { deny all; }
+
+        # Every request, including all .m3u8, init.mp4, .m4s, .ts, parts.
+        # This verifies the viewer JWT independently of MediaMTX's HLS session.
+        auth_request /__ada_media_auth;
+        proxy_pass http://127.0.0.1:8888;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header Origin $http_origin;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 35s;
+    }
+}

@@ -1,0 +1,53 @@
+# ADA OPS Media PoC / MediaMTX 1.20.0
+# PROPOSED CONFIG ONLY - fails closed until ADA JWKS endpoint + valid certs exist.
+# Never run against production or change OBS without a signed-off controlled studio test.
+logLevel: info
+logDestinations: [stdout]
+logStructured: true
+
+# No public anonymous users. ADA must issue short-lived path/action-scoped tokens.
+authMethod: jwt
+authJWTJWKS: https://ops5729.top/api/media/jwks
+authJWTIssuer: https://ops5729.top
+authJWTAudience: ada-media-monitor
+authJWTClaimKey: mediamtx_permissions
+authJWTExclude: []
+
+# RTMPS OBS publish. Never use TikTok keys or expose publisher JWT to the browser.
+rtsp: false
+rtmp: true
+rtmpEncryption: strict
+rtmpsAddress: :1936
+rtmpServerKey: /etc/letsencrypt/live/media.ops5729.top/privkey.pem
+rtmpServerCert: /etc/letsencrypt/live/media.ops5729.top/fullchain.pem
+
+# HLS is HTTP only on container's port 8888 -> host loopback -> nginx HTTPS.
+# The host firewall MUST NOT expose 8888. Do not enable wildcard CORS.
+hls: true
+hlsAddress: :8888
+hlsEncryption: false
+hlsAllowOrigins: ["https://ops5729.top"]
+hlsVariant: fmp4
+hlsSegmentCount: 7
+hlsSegmentDuration: 2s
+hlsAlwaysRemux: false
+hlsDirectory: ""
+
+# Unused protocols and administrative endpoints remain off for PoC.
+webrtc: false
+srt: false
+moq: false
+api: false
+metrics: false
+pprof: false
+playback: false
+
+pathDefaults:
+  record: false
+  overridePublisher: false
+
+# One deliberately fixed path; no all_others entry.
+# Path name is an identifier, NOT a secret or substitute for authorization.
+paths:
+  studio_poc_01:
+    source: publisher
