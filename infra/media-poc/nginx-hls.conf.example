@@ -14,11 +14,13 @@ server {
     add_header Referrer-Policy no-referrer always;
     proxy_hide_header Access-Control-Allow-Origin;
     proxy_hide_header Access-Control-Allow-Headers;
+    proxy_hide_header Access-Control-Allow-Credentials;
     proxy_hide_header Access-Control-Allow-Methods;
     add_header Cache-Control "private, no-store" always;
     add_header Access-Control-Allow-Origin "https://ops5729.top" always;
     add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
     add_header Access-Control-Allow-Headers "Authorization" always;
+    add_header Access-Control-Allow-Credentials "true" always;
     add_header Vary Origin always;
     
     # Never let clients invoke the internal verifier endpoint.
