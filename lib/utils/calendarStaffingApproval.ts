@@ -1,5 +1,5 @@
 import { endOfWeek, format, startOfWeek } from 'date-fns'
-import type { OperationalRole, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
+import type { Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 
 export type CalendarStaffingScope = 'month' | 'week' | 'day' | 'list'
 
@@ -11,12 +11,12 @@ export interface StaffingReviewRow {
 
 export interface StaffingReviewFilters {
   date: string
-  role: 'all' | OperationalRole
-  shiftId: string
-  campaign?: string
-  host?: string
-  support?: string
-  technical?: string
+  role: readonly string[]
+  shiftId: readonly string[]
+  campaign?: readonly string[]
+  host?: readonly string[]
+  support?: readonly string[]
+  technical?: readonly string[]
 }
 
 export function shiftsInCalendarScope(
@@ -71,12 +71,12 @@ export function filterStaffingReviewRows(
 ): StaffingReviewRow[] {
   return rows.filter(row => {
     if (filters.date && row.shift.date !== filters.date) return false
-    if (filters.role !== 'all' && row.registration.operational_role !== filters.role) return false
-    if (filters.shiftId !== 'all' && row.shift.id !== filters.shiftId) return false
-    if (filters.campaign && filters.campaign !== 'all' && (row.shift.campaign_id ?? 'none') !== filters.campaign) return false
-    if (filters.host && filters.host !== 'all' && row.shift.host_id !== filters.host) return false
-    if (filters.support && filters.support !== 'all' && row.shift.support_id !== filters.support) return false
-    if (filters.technical && filters.technical !== 'all' && row.shift.technical_id !== filters.technical) return false
+    if (filters.role.length && !filters.role.includes(row.registration.operational_role)) return false
+    if (filters.shiftId.length && !filters.shiftId.includes(row.shift.id)) return false
+    if (filters.campaign?.length && !filters.campaign.includes(row.shift.campaign_id ?? 'none')) return false
+    if (filters.host?.length && !filters.host.includes(row.shift.host_id ?? '')) return false
+    if (filters.support?.length && !filters.support.includes(row.shift.support_id ?? '')) return false
+    if (filters.technical?.length && !filters.technical.includes(row.shift.technical_id ?? '')) return false
     return true
   })
 }

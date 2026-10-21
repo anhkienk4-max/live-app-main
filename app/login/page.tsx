@@ -8,16 +8,25 @@ import { AuthLayout } from '@/components/layouts/AuthLayout'
 import { Separator } from '@/components/ui/separator'
 import { Eye, EyeOff, Globe, Loader2 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useTranslation } from '@/lib/i18n'
+import { useTranslation, type TranslationKey } from '@/lib/i18n'
 import { mockAuthService } from '@/lib/services/mockAuthService'
 import { getAuthMode, getSupabasePublicConfig, safeLocalRedirect } from '@/lib/auth/authMode'
 import {
   clearLocalSession,
   establishPasswordSession,
+  type PasswordSessionFailure,
   shouldClearLocalSessionForLoginReason,
 } from '@/lib/auth/session'
 import { startGoogleOAuth } from '@/lib/auth/googleOAuth'
 import { createClient } from '@/lib/supabase/client'
+
+const passwordFailureMessages: Record<PasswordSessionFailure, TranslationKey> = {
+  INVALID_CREDENTIALS: 'invalidEmailOrPassword',
+  AUTH_NETWORK_ERROR: 'authNetworkError',
+  AUTH_PROVIDER_UNAVAILABLE: 'authProviderUnavailable',
+  AUTH_SESSION_FAILURE: 'authSessionFailure',
+  UNKNOWN_AUTH_ERROR: 'authUnknownError',
+}
 
 function LoginPageContent() {
   const [email, setEmail] = useState('')
@@ -61,7 +70,7 @@ function LoginPageContent() {
       && getSupabasePublicConfig()
       && shouldClearLocalSessionForLoginReason(recoveryReason)
     ) {
-      void clearLocalSession(createClient())
+      try { void clearLocalSession(createClient()) } catch { /* Local session cleanup is best effort. */ }
     }
   }, [mockMode, recoveryReason])
 
@@ -85,31 +94,33 @@ function LoginPageContent() {
     setError(null)
     setNotice(null)
 
-    if (mockMode) {
-      const result = await mockAuthService.signInEmail(email, password)
+    try {
+      if (mockMode) {
+        const result = await mockAuthService.signInEmail(email, password)
+        if (result.ok) {
+          redirectAfterLogin()
+          return
+        }
+        setError(authStatusMessage(result.status))
+        return
+      }
+
+      if (!getSupabasePublicConfig()) {
+        setError(t('authProviderUnavailable'))
+        return
+      }
+
+      const result = await establishPasswordSession(createClient, email, password)
       if (result.ok) {
         redirectAfterLogin()
         return
       }
-      setError(authStatusMessage(result.status))
+      setError(t(passwordFailureMessages[result.reason]))
+    } catch {
+      setError(t('authUnknownError'))
+    } finally {
       setLoading(false)
-      return
     }
-
-    if (!getSupabasePublicConfig()) {
-      setError(t('authServiceUnavailable'))
-      setLoading(false)
-      return
-    }
-
-    const authenticated = await establishPasswordSession(createClient(), email, password)
-    if (authenticated) {
-      redirectAfterLogin()
-      return
-    }
-
-    setError(t('invalidEmailOrPassword'))
-    setLoading(false)
   }
 
   const handleGoogleLogin = async () => {
