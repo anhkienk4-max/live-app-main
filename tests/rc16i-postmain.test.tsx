@@ -35,12 +35,16 @@ test('Client sends no-store, exact bounded discovery queries and server-authorit
     globalThis.fetch=async(url,init)=>{calls.push({url:String(url),init});return Response.json({ok:true,performance:{staffId:'employee'}})}
     await workforceService.listPeriods({page:2,pageSize:10,dateFrom:'2026-09-01',status:'locked'})
     await workforceService.listRates({scope:'role_default',role:'host',effectiveDate:'2026-09-30'})
+    await workforceService.listRates({roles:['host','support'],scopes:['role_default','staff_specific']})
     const intent={periodId:'p',lineId:'l',expectedVersion:2,requestId:'10000000-0000-4000-8000-000000000001',reason:'Independent correction',payableMinutes:60,overtimeMinutes:30,adjustmentVnd:-1000,adjustmentReason:'Approved reduction'}
     await workforceService.correctLine(intent);await workforceService.correctLine(intent)
     assert.equal(calls[0].url,'/api/workforce/payroll?action=list_periods&page=2&page_size=10&date_from=2026-09-01&status=locked')
     assert.match(calls[1].url,/scope=role_default/)
-    assert.equal(calls[2].init?.body,calls[3].init?.body)
-    const body=JSON.parse(String(calls[2].init?.body))
+    const multiQuery=new URL(calls[2].url,'https://local.invalid').searchParams
+    assert.deepEqual(multiQuery.getAll('roles'),['host','support'])
+    assert.deepEqual(multiQuery.getAll('scopes'),['role_default','staff_specific'])
+    assert.equal(calls[3].init?.body,calls[4].init?.body)
+    const body=JSON.parse(String(calls[3].init?.body))
     assert.equal(body.adjustment_vnd,-1000);assert.equal(body.expected_version,2)
     assert.equal(body.gross_vnd,undefined);assert.equal(body.net_vnd,undefined)
     for(const call of calls){assert.equal(call.init?.cache,'no-store');assert.equal(call.init?.credentials,'same-origin')}

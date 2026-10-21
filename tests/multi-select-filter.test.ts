@@ -59,6 +59,7 @@ test('requested operational surfaces use the shared categorical filter foundatio
     'components/features/calendar/BulkStaffingApprovalDialog.tsx',
     'components/features/reports/LiveReportImageGallery.tsx',
     'components/features/data-quality/DataQualityPanel.tsx',
+    'components/features/payroll/PayrollRateManager.tsx',
   ]
   for (const path of surfaces) {
     const surface = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
