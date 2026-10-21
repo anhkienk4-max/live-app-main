@@ -381,7 +381,11 @@ async function requestResponse(url: string, init?: RequestInit): Promise<Respons
     }
     const failure = new WorkforceServiceError(errorCode, res.status, errorCode, details)
     if (typeof window !== 'undefined' && (res.status === 401 || res.status === 403 || errorCode.endsWith('FEATURE_DISABLED'))) {
-      window.dispatchEvent(new CustomEvent('workforce-access-invalidated', { detail: { message: workforceErrorMessage(failure) } }))
+      // A forbidden operation does not prove the current user's entire Workforce
+      // capability set is revoked. Revalidate it rather than making a local
+      // action-level 403 permanently replace the authorized workspace.
+      const revalidate = res.status === 403 && url !== '/api/workforce/capabilities'
+      window.dispatchEvent(new CustomEvent('workforce-access-invalidated', { detail: { message: workforceErrorMessage(failure), revalidate } }))
     }
     throw failure
   }

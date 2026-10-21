@@ -38,7 +38,9 @@ export function AuthIdentityProvider({
     setIdentity(initialIdentity); setBusinessUser(initialBusinessUser)
   }, [initialBusinessUser, initialIdentity])
 
-  React.useEffect(() => {
+  // Service reads from descendants begin in passive effects. Bind verified identity
+  // during layout commit first, so navigation/initial mount cannot race the actor.
+  React.useLayoutEffect(() => {
     if (mode !== 'supabase' || !businessUser) return
     currentUserService.bindAuthenticatedUser(businessUser)
     return () => currentUserService.clearAuthenticatedUser(businessUser.id)

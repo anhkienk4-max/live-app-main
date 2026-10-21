@@ -103,6 +103,7 @@ export async function requirePermission(
 ): Promise<AuthenticatedServerUser> {
   const user = await requireUser(request, resolveUser)
   if (!permissionMatrix[user.systemPermission].has(permission)) {
+    console.warn('OPS_PERMISSION_DENIED', { route: new URL(request.url).pathname, requiredPermission: permission, actorPermission: user.systemPermission })
     throw new AuthorizationError(
       403,
       'PERMISSION_DENIED',
@@ -120,6 +121,7 @@ export async function requireRole(
   const user = await requireUser(request, resolveUser)
   const allowedRoles = Array.isArray(roles) ? roles : [roles]
   if (!allowedRoles.includes(user.systemPermission)) {
+    console.warn('OPS_ROLE_DENIED', { route: new URL(request.url).pathname, requiredRoles: allowedRoles, actorPermission: user.systemPermission })
     throw new AuthorizationError(
       403,
       'PERMISSION_DENIED',

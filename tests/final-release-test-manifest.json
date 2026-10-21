@@ -22,6 +22,7 @@
     "tests/bulk-staffing-approval.test.ts",
     "tests/calendar-all-time-completeness.test.ts",
     "tests/calendar-bulk-delete.test.ts",
+    "tests/calendar-business-month-contract.test.ts",
     "tests/calendar-filters.test.ts",
     "tests/calendar-range-fetching.test.ts",
     "tests/calendar-role-filter.test.ts",
