@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "integration/global-stabilization-20261021",
-    "head": "7b6f919220ac2450dfbfa5578c9bdf7fe22988f6",
+    "head": "c2b7b56626266523be2f2ca4a4c17d888558233a",
     "origin_main": "b96dcb6e1842e59f43170a1a8b15da712ee8a8e0",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-global-stabilization"
   },
@@ -93,12 +93,12 @@
       "roots": {
         "app": 62,
         "components": 155,
-        "lib": 228,
+        "lib": 229,
         "scripts": 19,
-        "supabase": 94,
-        "tests": 219
+        "supabase": 95,
+        "tests": 225
       },
-      "total": 777
+      "total": 785
     },
     "tests": {
       "files": [
@@ -155,6 +155,8 @@
         "tests/gl19c-authoritative-operational-settings.test.ts",
         "tests/gl19d-bulk-shift-behavior.test.ts",
         "tests/gl19d-bulk-shift-version.test.ts",
+        "tests/global-report-notification-routing.test.ts",
+        "tests/global-unbounded-read-completeness.test.ts",
         "tests/google-drive-file-provider.test.ts",
         "tests/h4-storage-route-security.test.ts",
         "tests/h51-provider-metadata-constraint.test.ts",
@@ -224,6 +226,7 @@
         "tests/rc17a-actual-staffing.test.ts",
         "tests/rc17b-payroll-autocalc.test.ts",
         "tests/rc17c-attendance-api-integration.test.ts",
+        "tests/rc17c-attendance-atomic-rpc-boundary.test.ts",
         "tests/rc17c-historical-attendance-importer.test.ts",
         "tests/rc17d-responsive-auth.test.ts",
         "tests/rc18a-shift-change-subscription.test.ts",
@@ -283,9 +286,10 @@
         "tests/vision-ocr-phase-a.test.ts",
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts",
-        "tests/workforce-period.test.ts"
+        "tests/workforce-period.test.ts",
+        "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 182
+      "count": 186
     },
     "migrations": {
       "files": [
@@ -363,9 +367,10 @@
         "supabase/migrations/20261020164351_rc18a_publish_shifts_realtime.sql",
         "supabase/migrations/20261021000000_rc17c_attendance_import_foundation.sql",
         "supabase/migrations/20261021034515_shift_automatic_status_scheduling_and_read_safety.sql",
-        "supabase/migrations/20261021120000_global_report_obligation_page.sql"
+        "supabase/migrations/20261021120000_global_report_obligation_page.sql",
+        "supabase/migrations/20261021190000_global_report_notification_transition_keys.sql"
       ],
-      "count": 75
+      "count": 76
     }
   },
   "verification": {
@@ -379,5 +384,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-21T13:52:20+07:00"
+  "synced_at": "2026-10-21T15:14:09+07:00"
 }
