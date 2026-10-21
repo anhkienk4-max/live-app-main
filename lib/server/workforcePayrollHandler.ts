@@ -261,9 +261,19 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             'payable_minutes','overtime_minutes','rate_vnd_per_hour',
             'overtime_multiplier_basis_points','gross_vnd','adjustment_vnd','net_vnd',
             'adjustment_reason','calculation_version']
+          // A snapshot with duplicate/blank active evidence cannot be
+          // exported as a misleading locked payroll statement.
+          const activeLines=lines.data.filter(row=>!row.voided_at)
+          const uniqueSegments=new Set<string>()
+          for(const row of activeLines){
+            const segmentId=row.segment_id
+            if(typeof segmentId!=='string'||!segmentId.trim()||uniqueSegments.has(segmentId))
+              return failure('WORKFORCE_PAYROLL_EXPORT_INCOMPLETE',503)
+            uniqueSegments.add(segmentId)
+          }
           const csv='\ufeff'+[columns.map(csvEscape).join(','),
-            ...(lines.data??[]).filter(row=>!row.voided_at).map(row=>columns.map(k=>
-               csvNumericColumns.has(k)?csvNumber(row[k]):csvEscape(row[k])).join(','))].join('\r\n')+'\r\n'
+            ...activeLines.map(row=>columns.map(k=>
+              csvNumericColumns.has(k)?csvNumber(row[k]):csvEscape(row[k])).join(','))].join('\r\n')+'\r\n'
           const filename='payroll-'+r.data.period_start+'-'+r.data.period_end+'.csv'
           return new Response(csv,{headers:{'Content-Type':'text/csv; charset=utf-8',
             'Content-Disposition':'attachment; filename="'+filename+'"',
@@ -301,32 +311,29 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             p_approval_note: input.approval_note,
           })
 
-          if (!rpcRes.error && rpcRes.data?.rate) {
-            return Response.json({
-              ok: true,
-              rate: rpcRes.data.rate,
-              superseded_rate_id: rpcRes.data.superseded_rate_id,
-            }, { status: 201, headers: noStore })
+          // Rate supersession, concurrency and audit must be one transaction.
+          // Never fall back to direct table INSERT if the RPC was not installed.
+          if (rpcRes.error) {
+            const msg = rpcRes.error.message ?? ''
+            if (rpcRes.error.code === 'PGRST202' || rpcRes.error.code === '42883'
+              || /function.*does not exist/iu.test(msg))
+              return failure('WORKFORCE_RATE_RPC_UNAVAILABLE',503)
+            if (msg === 'WORKFORCE_RATE_SELF_APPROVAL_BLOCKED'
+              || msg === 'WORKFORCE_RATE_ACTOR_FORBIDDEN') return failure(msg,403)
+            if (msg === 'WORKFORCE_RATE_DATES_INVALID'
+              || msg === 'WORKFORCE_RATE_INVALID') return failure(msg,400)
+            if (msg === 'WORKFORCE_RATE_RETROACTIVE_LOCKED_PERIOD'
+              || msg === 'WORKFORCE_APPROVED_RATE_OVERLAP') return failure(msg,409)
+            return failure('WORKFORCE_RATE_DUPLICATE_OR_INVALID',409)
           }
-
-          if (rpcRes.error && rpcRes.error.message && !rpcRes.error.message.includes('does not exist')) {
-            const msg = rpcRes.error.message
-            if (msg === 'WORKFORCE_RATE_SELF_APPROVAL_BLOCKED' || msg === 'WORKFORCE_RATE_ACTOR_FORBIDDEN') return failure(msg, 403)
-            if (msg === 'WORKFORCE_RATE_DATES_INVALID' || msg === 'WORKFORCE_RATE_INVALID') return failure(msg, 400)
-            if (msg === 'WORKFORCE_RATE_RETROACTIVE_LOCKED_PERIOD' || msg === 'WORKFORCE_APPROVED_RATE_OVERLAP') return failure(msg, 409)
-            return failure('WORKFORCE_RATE_DUPLICATE_OR_INVALID', 409)
-          }
-
-          // Fallback direct insert if RPC not in environment
-          const {data,error}=await db.from('workforce_rate_cards').insert({
-            staff_id:input.staff_id,operational_role:input.operational_role,
-            effective_from:input.effective_from,effective_through:input.effective_through,
-            vnd_per_hour:input.vnd_per_hour,
-            overtime_multiplier_basis_points:input.overtime_multiplier_basis_points,
-            approved_by:actor,approved_at:new Date().toISOString(),approval_note:input.approval_note,
-          }).select('id,staff_id,operational_role,effective_from,effective_through').single()
-          return error ? failure('WORKFORCE_RATE_DUPLICATE_OR_INVALID',409)
-            : Response.json({ok:true,rate:data},{status:201,headers:noStore})
+          if (!rpcRes.data?.rate || typeof rpcRes.data.rate.id !== 'string'
+            || !rpcRes.data.rate.id.trim())
+            return failure('WORKFORCE_RATE_RPC_RESPONSE_INVALID',503)
+          return Response.json({
+            ok: true,
+            rate: rpcRes.data.rate,
+            superseded_rate_id: rpcRes.data.superseded_rate_id,
+          }, { status: 201, headers: noStore })
         }
 
         if(input.action==='create_period'){
