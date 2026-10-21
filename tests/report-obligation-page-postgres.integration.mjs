@@ -95,7 +95,9 @@ for (const [role,uuid] of [['leader','00000000-0000-0000-0000-000000000002'],['a
   const lifecycle=asUser(uuid,`select public.get_report_obligation_page(1,50,'{}'::jsonb)`)
   const lifecyclePage=pageResult(lifecycle)
   const lifecycleIds=lifecyclePage.rows.map(row=>row.shift.id)
-  assert.equal(lifecyclePage.total,36,`${role} queue should retain pending eligible work but omit deleted/archived/finalized shifts`)
+  const expectedReviewerIds=[...Array.from({length:31},(_,index)=>`page-${String(index+1).padStart(2,'0')}`),'direct','direct-support','direct-technical','unrelated','approved','manual','pending','submitted'].sort()
+  assert.equal(lifecyclePage.total,39,`${role} queue should retain eligible reviewer work but omit deleted/archived/finalized/open shifts`)
+  assert.deepEqual(lifecycleIds.sort(),expectedReviewerIds,`${role} queue must include every eligible fixture and no excluded shift`)
   for(const excluded of ['deleted','archived','finalized','open']) assert.ok(!lifecycleIds.includes(excluded),`${role} must not see ${excluded} in report obligations`)
   assert.ok(lifecycleIds.includes('pending'),`${role} retains elevated scope over pending Member registrations`)
 }
