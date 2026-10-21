@@ -8,6 +8,8 @@ on:
       - 'lib/services/supabaseShiftService.ts'
       - 'tests/shift-lifecycle.test.ts'
       - 'tests/supabase-shift-runtime.test.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
       - 'tests/fixtures/p0_shift_status_supabase_base.sql'
       - 'tests/p0-shift-status-postgres.integration.mjs'
       - '.github/p0-postgres/Dockerfile'
@@ -18,6 +20,8 @@ on:
       - 'lib/services/supabaseShiftService.ts'
       - 'tests/shift-lifecycle.test.ts'
       - 'tests/supabase-shift-runtime.test.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
       - 'tests/fixtures/p0_shift_status_supabase_base.sql'
       - 'tests/p0-shift-status-postgres.integration.mjs'
       - '.github/p0-postgres/Dockerfile'
@@ -68,6 +72,12 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24.18.0'
+      - name: Install pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
       - name: Verify read paths and shift lifecycle application contracts
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/shift-lifecycle.test.ts tests/supabase-shift-runtime.test.ts
       - name: Apply real P0 migration and assert PostgreSQL invariants
