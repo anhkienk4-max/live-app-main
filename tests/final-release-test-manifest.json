@@ -65,6 +65,7 @@
     "tests/live-dashboard-persistence.test.ts",
     "tests/live-report-images.test.tsx",
     "tests/media-viewer-authorization.test.ts",
+    "tests/media-viewer-handler.test.ts",
     "tests/memory-validator-contract.test.ts",
     "tests/mock-auth-and-staffing.test.ts",
     "tests/multi-platform-ocr-pipeline.test.ts",
