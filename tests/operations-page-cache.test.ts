@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
   invalidatePageCache, pageCacheKey, readCachedListPage, readPageCache,
@@ -69,6 +70,13 @@ test('auth context changing during an in-flight load cannot populate another act
     /LIST_IDENTITY_CHANGED/,
   )
   assert.equal(readPageCache(key), undefined)
+})
+
+test('paged refresh retains rows only for the same actor, page, size and filters', () => {
+  const source = readFileSync('lib/hooks/usePagedList.ts', 'utf8')
+  assert.match(source, /const scopeKey = identity \+ ':' \+ page \+ ':' \+ pageSize \+ ':' \+ encodedFilters/)
+  assert.match(source, /state\.scopeKey === scopeKey \? state\.result : undefined/)
+  assert.match(source, /refreshing: !!result && !active && !cached/)
 })
 
 test('aborted requests and failed queries must not poison the cache', async () => {

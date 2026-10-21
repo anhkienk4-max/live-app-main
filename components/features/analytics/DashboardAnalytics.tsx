@@ -63,7 +63,7 @@ export function DashboardAnalytics() {
   const snapshotFilters = filters ? { from: filters.start, to: filters.end, brandIds: filters.brandIds, platformIds: filters.platformIds, campaignIds: filters.campaignIds, hostIds: filters.hostIds, supportIds: filters.supportIds, technicalIds: filters.technicalIds } : {}
   const filtersKey = JSON.stringify(snapshotFilters)
   const list = usePagedList<Report>(analyticsList, 'analytics_reports', { ...snapshotFilters, reportStatuses: ['confirmed'], metricsStatuses: ['confirmed'] })
-  const pageResult = (list.refreshing ? undefined : list.result) as Awaited<ReturnType<typeof reportService.getAnalyticsPage>> | undefined
+  const pageResult = list.result as Awaited<ReturnType<typeof reportService.getAnalyticsPage>> | undefined
   const setFilters: typeof setFiltersRaw = action => { setFiltersRaw(action); list.reset() }
   const setPage = list.setPage
   const pageSize = list.pageSize
@@ -93,9 +93,9 @@ export function DashboardAnalytics() {
       setLoadedKey(identity+':'+filtersKey)
       setSnapshot(loadedSnapshot); setBrands(refs.brands); setPlatforms(refs.platforms); setCampaigns(refs.campaigns); setUsers(refs.users)
     } catch (error) {
-      setLoadError(error)
+      if(version===requestVersion.current) setLoadError(error)
     } finally {
-      setLoading(false)
+      if(version===requestVersion.current) setLoading(false)
     }
   }, [identity,filtersKey,currentUser])
 
@@ -107,7 +107,7 @@ export function DashboardAnalytics() {
 
   if (loadError || list.error) return <PageLoadError error={loadError ?? list.error} onRetry={() => { setLoading(true); void loadData(); void list.reload() }} />
 
-  if (loading || !filters || !snapshot || loadedKey!==identity+':'+filtersKey || list.loading || list.refreshing) {
+  if (loading || !filters || !snapshot || loadedKey!==identity+':'+filtersKey) {
     return (
       <div className="space-y-4" data-testid="analytics-loading-shell">
         <div className="flex flex-col gap-2 rounded-lg border bg-white px-4 py-3 md:flex-row md:items-center md:justify-between">
@@ -172,6 +172,7 @@ export function DashboardAnalytics() {
   const selectedShift = selectedReport ? shiftById.get(selectedReport.shift_id) : undefined
   const platformData = dimensionData('platform')
   return <div className="min-w-0 space-y-3 text-slate-900">
+    {(list.loading || list.refreshing) && <div role="status" data-testid="analytics-report-list-loading" className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">{t('loading')}</div>}
     <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-3">
       <div><h1 className="text-xl font-semibold tracking-tight">{t('analyticsTitle')}</h1><p className="mt-1 text-xs text-slate-500">{t('analyticsSubtitle')}</p></div>
       <div className="flex flex-wrap gap-2"><Button size="sm" variant={compare ? 'default' : 'outline'} onClick={() => setCompare(!compare)}>{t('previousPeriod')}</Button>{currentUser && hasPermission(currentUser,'reports.export') && <Button size="sm" variant="outline" onClick={()=>void exportComplete()}><Download className="mr-2 h-4 w-4" />{t('exportExcel')}</Button>}<Button size="sm" variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="analytics-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button></div>
