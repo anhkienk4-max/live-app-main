@@ -104,6 +104,15 @@ class FakeQuery {
     return this
   }
 
+  private rangeFrom: number | null = null
+  private rangeTo: number | null = null
+
+  range(from: number, to: number) {
+    this.rangeFrom = from
+    this.rangeTo = to
+    return this
+  }
+
   maybeSingle() {
     return this.execute(true)
   }
@@ -139,7 +148,11 @@ class FakeQuery {
       ordered.sort((left, right) =>
         String(left[column] ?? '').localeCompare(String(right[column] ?? '')) * (ascending ? 1 : -1))
     }
-    return { data: single ? ordered[0] ?? null : ordered, error: null }
+    let data = single ? ordered[0] ?? null : ordered
+    if (!single && Array.isArray(data) && this.rangeFrom !== null && this.rangeTo !== null) {
+      data = data.slice(this.rangeFrom, this.rangeTo + 1)
+    }
+    return { data, error: null }
   }
 }
 

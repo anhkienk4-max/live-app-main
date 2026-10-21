@@ -324,6 +324,23 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
   const bucket = 'report-images'
 
   const selectReports = () => client.from('reports').select('*')
+  // Reads every page in a stable (updated_at desc, id) order. A single un-ranged query
+  // is capped by PostgREST max-rows and would silently drop reports from lists and exports.
+  const readAllReportRows = async (
+    operation: string,
+    scope: (query: ReturnType<typeof selectReports>) => ReturnType<typeof selectReports>,
+  ): Promise<ReportRow[]> => {
+    const rows = new Map<string, ReportRow>()
+    for (let offset = 0; ; offset += SUPABASE_PAGE_SIZE) {
+      const page = optionalRows(operation, await scope(selectReports())
+        .order('updated_at', { ascending: false })
+        .order('id', { ascending: true })
+        .range(offset, offset + SUPABASE_PAGE_SIZE - 1))
+      page.forEach(row => rows.set(String((row as ReportRow).id), row as ReportRow))
+      if (page.length < SUPABASE_PAGE_SIZE) break
+    }
+    return [...rows.values()]
+  }
   const selectReportImages = () => client.from('report_images').select('id,report_id,image_url,storage_path,original_name,mime_type,size_bytes,image_type,uploaded_by,created_at,deleted_at')
   const selectLiveReportImages = () => client.from('live_report_images').select('id,report_id,category,title,description,captured_at,file_url,thumbnail_url,file_name,mime_type,size_bytes,sort_order,is_cover,uploaded_by,created_at')
   const cleanupUploadedObject = async (storagePath: string, uploadedThisAttempt: boolean) => {
@@ -338,12 +355,10 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
 
   return {
     async getAll() {
-      const result = await selectReports()
+      const rows = await readAllReportRows('report read', query => query
         .is('deleted_at', null)
-        .is('archived_at', null)
-        .order('updated_at', { ascending: false })
-      return optionalRows('report read', result)
-        .map(row => reportFromRow(row as ReportRow))
+        .is('archived_at', null))
+      return rows.map(row => reportFromRow(row))
     },
 
     async getPage({ page, pageSize, statuses }) {
@@ -365,9 +380,8 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
     },
 
     async getAllIncludingArchived() {
-      const result = await selectReports().order('updated_at', { ascending: false })
-      return optionalRows('report archived read', result)
-        .map(row => reportFromRow(row as ReportRow))
+      const rows = await readAllReportRows('report archived read', query => query)
+      return rows.map(row => reportFromRow(row))
     },
 
     async getById(id) {
@@ -409,13 +423,11 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
     },
 
     async getConfirmed() {
-      const result = await selectReports()
+      const rows = await readAllReportRows('report confirmed read', query => query
         .eq('metrics_confirmed', true)
         .is('deleted_at', null)
-        .is('archived_at', null)
-        .order('updated_at', { ascending: false })
-      return optionalRows('report confirmed read', result)
-        .map(row => reportFromRow(row as ReportRow))
+        .is('archived_at', null))
+      return rows.map(row => reportFromRow(row))
     },
 
     async getReportRevisions(reportId) {

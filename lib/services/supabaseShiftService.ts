@@ -305,29 +305,33 @@ export function createSupabaseShiftRepository(
   const routingMode = options.routingMode ?? 'database'
   const selectShifts = () => client.from('shifts').select(selectedShiftColumns(routingMode))
 
+  // Reads every page in a stable (date, start_time, id) order. A single un-ranged
+  // query is capped by PostgREST max-rows and would silently drop the newest shifts.
+  const readAllShiftRows = async (includeDeleted: boolean, operation: string) => {
+    const rows = new Map<string, Row>()
+    for (let offset = 0; ; offset += SUPABASE_PAGE_SIZE) {
+      let query = selectShifts()
+      if (!includeDeleted) query = query.is('deleted_at', null).is('archived_at', null)
+      const page = optionalRows(operation, await query
+        .order('date', { ascending: true })
+        .order('start_time', { ascending: true })
+        .order('id', { ascending: true })
+        .range(offset, offset + SUPABASE_PAGE_SIZE - 1))
+      page.forEach(row => rows.set(String((row as unknown as Row).id), row as unknown as Row))
+      if (page.length < SUPABASE_PAGE_SIZE) break
+    }
+    return [...rows.values()]
+  }
+
   return {
     async getAll(includeDeleted = false) {
-      let query = selectShifts().order('date', { ascending: true }).order('start_time', { ascending: true })
-      if (!includeDeleted) query = query.is('deleted_at', null).is('archived_at', null)
-      const result = await query
-      return withShiftStaffingSummary(client, optionalRows('shift read', result).map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)))
+      const rows = await readAllShiftRows(includeDeleted, 'shift read')
+      return withShiftStaffingSummary(client, rows.map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)))
     },
 
     async getAllComplete() {
-      const rows = new Map<string, Row>()
-      for (let offset = 0; ; offset += SUPABASE_PAGE_SIZE) {
-        const query = selectShifts()
-          .is('deleted_at', null)
-          .is('archived_at', null)
-          .order('date', { ascending: true })
-          .order('start_time', { ascending: true })
-          .order('id', { ascending: true })
-          .range(offset, offset + SUPABASE_PAGE_SIZE - 1)
-        const page = optionalRows('complete shift read', await query)
-        page.forEach(row => rows.set(String((row as unknown as Row).id), row as unknown as Row))
-        if (page.length < SUPABASE_PAGE_SIZE) break
-      }
-      return withShiftStaffingSummary(client, [...rows.values()].map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)))
+      const rows = await readAllShiftRows(false, 'complete shift read')
+      return withShiftStaffingSummary(client, rows.map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)))
     },
 
     async getReportCandidates(limit) {
