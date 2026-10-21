@@ -85,6 +85,7 @@
     "tests/operations-page-cache.test.ts",
     "tests/p1c-import-idempotency.test.ts",
     "tests/p3-uat-export-collapse.test.tsx",
+    "tests/payroll-scope-completeness.test.ts",
     "tests/perf-p0-scoped-refresh.test.ts",
     "tests/perf-p0-skeleton.test.ts",
     "tests/persistent-audit.test.ts",

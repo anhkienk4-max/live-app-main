@@ -84,7 +84,7 @@ test('Payroll auto-calc reads all 1,205 shifts, detects last shift evidence and 
   const handler=createWorkforcePayrollHandler({createClient:(()=>fixture.db) as never,
     resolveUser:admin,isEnabled:()=>true})
   const response=await handler.POST(request())
-  assert.equal(response.status,200,JSON.stringify(await response.clone().json()))
+  assert.equal(response.status,201,JSON.stringify(await response.clone().json()))
   const result=await response.json() as {
     ok:boolean;prepared_count:number;reconciliation:{total_approved_segments:number}
   }
