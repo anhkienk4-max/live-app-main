@@ -91,12 +91,22 @@ try{
   encoder.stderr.on('data',x=>encodelog+=x.toString())
   const origin='http://127.0.0.1:8888/'+path+'/'
   const manifest=origin+'index.m3u8',reader=jwt('read')
+  let playlistProbe='none'
   const playlist=await retry(async()=>{
     if(encoder.exitCode!==null)throw new Error('FFmpeg stopped: '+encodelog.slice(-700))
     const res=await request(manifest,reader)
-    if(res.ok){const s=await res.text();if(s.includes('#EXTINF'))return s}
-    return null
-  },50000)
+    const body=await res.text()
+    playlistProbe='master '+res.status+' '+body.slice(0,180)
+    if(!res.ok)return null
+    if(body.includes('#EXTINF'))return body
+    // fMP4 HLS may expose a master index.m3u8 and separate media/stream.m3u8.
+    const next=body.split('\n').map(s=>s.trim()).find(s=>s&&!s.startsWith('#')&&s.includes('.m3u8'))
+    if(!next)return null
+    const variant=await request(new URL(next,manifest).toString(),reader)
+    const subbody=await variant.text()
+    playlistProbe='master '+res.status+' variant '+variant.status+' '+subbody.slice(0,180)
+    return variant.ok&&subbody.includes('#EXTINF')?subbody:null
+  },50000).catch(e=>{throw new Error(e.message+'; last HLS probe '+playlistProbe)})
   assert.match(playlist,/#EXTM3U/)
   console.log('PASS synthetic video+audio publishes over RTMPS and HLS playlist loads with a viewer JWT')
   await deny(manifest,null,'anonymous playlist')
