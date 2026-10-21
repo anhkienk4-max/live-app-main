@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "integration/global-stabilization-20261021",
-    "head": "af88e30541029b0832bf7d9e6efd160677334665",
+    "head": "febb6e91d1ef5c5153e33a26e16ef8d1cb9303b4",
     "origin_main": "b96dcb6e1842e59f43170a1a8b15da712ee8a8e0",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-global-stabilization"
   },
@@ -96,9 +96,9 @@
         "lib": 227,
         "scripts": 19,
         "supabase": 93,
-        "tests": 212
+        "tests": 213
       },
-      "total": 768
+      "total": 769
     },
     "tests": {
       "files": [
@@ -187,6 +187,7 @@
         "tests/phase2-shared-reference-cache.test.ts",
         "tests/phase2b-live-stream-link.test.ts",
         "tests/platform-metric-dom-binding.test.tsx",
+        "tests/preview-auth-uat-contract.test.ts",
         "tests/preview-loading-performance.test.tsx",
         "tests/production-shell-convergence.test.ts",
         "tests/profile-avatar-storage.test.ts",
@@ -282,7 +283,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 179
+      "count": 180
     },
     "migrations": {
       "files": [
@@ -375,5 +376,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-21T11:23:43+07:00"
+  "synced_at": "2026-10-21T11:26:01+07:00"
 }
