@@ -1,0 +1,58 @@
+name: P0 Migration 2 Standalone Security Proof
+
+on:
+  push:
+    branches:
+      - fix/p0-reports-rls-scope-20261021
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p0-migration2-standalone-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  migration2-standalone:
+    name: Synthetic PostgreSQL 17 standalone Migration 2 rehearsal
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d postgres"
+          --health-interval=3s
+          --health-timeout=3s
+          --health-retries=20
+    steps:
+      - name: Checkout isolated proof branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify PostgreSQL client
+        run: psql --version
+      - name: Validate rehearsal shell syntax
+        run: bash -n scripts/release/p0-migration2-standalone-proof.sh
+      - name: Run standalone Migration 2 proof on synthetic data
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGDATABASE: postgres
+        run: bash scripts/release/p0-migration2-standalone-proof.sh
+      - name: Record scope
+        if: always()
+        run: |
+          {
+            echo "Target: GitHub-hosted synthetic PostgreSQL 17 only"
+            echo "Migration 1 applied: NO"
+            echo "Production connections or credentials: NONE"
+            echo "Production SQL / data: NONE"
+            echo "PR #30 or deployment changes: NONE"
+          } >> "$GITHUB_STEP_SUMMARY"
