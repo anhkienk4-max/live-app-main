@@ -2,11 +2,12 @@
 
 import * as React from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Users, UserCheck } from 'lucide-react'
+import { Users, UserCheck, FileSpreadsheet } from 'lucide-react'
 import { PageShell, PageHeader, PageHeaderContent } from '@/components/ui/archetypes'
 import { StaffingWorkspace } from '@/components/features/calendar/StaffingWorkspace'
 import { ShiftRegistrationBoard } from '@/components/features/calendar/ShiftRegistrationBoard'
 import { RegistrationReviewWorkspace } from '@/components/features/registration'
+import { AttendanceSourceManager } from '@/components/features/workforce/AttendanceSourceManager'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
@@ -19,11 +20,18 @@ function StaffingContent() {
   const tabParam = searchParams.get('tab')
 
   const canReview = currentUser ? hasPermission(currentUser, 'shifts.approve_registration') : false
-  const activeTab = tabParam === 'registration' && canReview ? 'registration' : 'staffing'
+  const activeTab =
+    tabParam === 'registration' && canReview
+      ? 'registration'
+      : tabParam === 'attendance' && canReview
+      ? 'attendance'
+      : 'staffing'
 
-  const handleTabChange = (nextTab: 'staffing' | 'registration') => {
+  const handleTabChange = (nextTab: 'staffing' | 'registration' | 'attendance') => {
     if (nextTab === 'registration') {
       router.push('/staffing?tab=registration')
+    } else if (nextTab === 'attendance') {
+      router.push('/staffing?tab=attendance')
     } else {
       router.push('/staffing')
     }
@@ -66,6 +74,18 @@ function StaffingContent() {
                   <UserCheck className="h-3.5 w-3.5" />
                   <span>Xét duyệt đăng ký (Registration)</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => handleTabChange('attendance')}
+                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-all ${
+                    activeTab === 'attendance'
+                      ? 'bg-indigo-600 text-white shadow-2xs font-semibold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5" />
+                  <span>Nhập chấm công (Attendance)</span>
+                </button>
               </div>
             )}
           </div>
@@ -74,6 +94,8 @@ function StaffingContent() {
 
       {activeTab === 'registration' ? (
         <RegistrationReviewWorkspace />
+      ) : activeTab === 'attendance' ? (
+        <AttendanceSourceManager />
       ) : (
         canReview ? <StaffingWorkspace /> : <ShiftRegistrationBoard mode="open" />
       )}
