@@ -37,7 +37,7 @@ export function parseProtectedMediaGrant(
   if(!match)throw new Error('MEDIA_PATH_INVALID')
   const exp=Date.parse(grant.expiresAt)
   if(!Number.isFinite(now)||!Number.isFinite(exp)
-    ||exp<=now+10_000||exp>now+120_000)throw new Error('MEDIA_GRANT_EXPIRED')
+    ||exp<=now+30_000||exp>now+120_000)throw new Error('MEDIA_GRANT_EXPIRED')
   return {shiftId,mediaUrl:url.href,token:grant.token,
     expiresAtMs:exp,mediaOrigin:allowed.origin,pathPrefix:'/'+match[1]+'/'}
 }

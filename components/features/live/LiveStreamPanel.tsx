@@ -11,6 +11,7 @@ import { hasPermission } from '@/lib/permissions'
 import { shiftService } from '@/lib/services/dataService'
 import { invalidatePageCache } from '@/lib/services/operationsPageCache'
 import { LiveTabCapture } from './LiveTabCapture'
+import { AdaHlsPlayer } from './AdaHlsPlayer'
 
 /**
  * Official TikTok/Shopee LIVE pages refuse cross-origin iframe embedding.
@@ -91,6 +92,7 @@ export function LiveStreamPanel({ shift, onSaved }: { shift: Shift; onSaved?: (s
       <span className="min-w-0 max-w-full truncate" title={link.href}>{displayLink?.hostname}{displayLink?.pathname}</span>
       {displayLink?.search && <span className="shrink-0 text-slate-400">(đã ẩn tham số theo dõi dài)</span>}
     </div>}
+    <AdaHlsPlayer key={shift.id + ':' + shift.status} shiftId={shift.id} isLive={shift.status === 'live'} />
     {link && <LiveTabCapture key={shift.id + ':' + link.href} />}
     {link && <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="live-embed-unavailable">
       {link.platform} không cung cấp trình phát LIVE nhúng được xác nhận cho website này.
