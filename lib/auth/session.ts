@@ -28,12 +28,18 @@ export type PasswordSessionResult =
   | { ok: true }
   | { ok: false; reason: PasswordSessionFailure }
 
+function supabaseErrorShape(error: unknown): { name: string; code?: string } | null {
+  if (typeof error !== 'object' || error === null || !('name' in error) || typeof error.name !== 'string') return null
+  return { name: error.name, code: 'code' in error && typeof error.code === 'string' ? error.code : undefined }
+}
+
 export function classifyPasswordSessionError(error: unknown): PasswordSessionFailure {
-  if (isAuthRetryableFetchError(error)) return 'AUTH_NETWORK_ERROR'
-  if (isAuthSessionMissingError(error)) return 'AUTH_SESSION_FAILURE'
-  if (isAuthApiError(error)) {
-    if (error.code === 'invalid_credentials') return 'INVALID_CREDENTIALS'
-    if (error.code === 'email_provider_disabled' || error.code === 'provider_disabled') {
+  const typedError = supabaseErrorShape(error)
+  if (isAuthRetryableFetchError(error) || typedError?.name === 'AuthRetryableFetchError') return 'AUTH_NETWORK_ERROR'
+  if (isAuthSessionMissingError(error) || typedError?.name === 'AuthSessionMissingError') return 'AUTH_SESSION_FAILURE'
+  if (isAuthApiError(error) || typedError?.name === 'AuthApiError') {
+    if (typedError?.code === 'invalid_credentials') return 'INVALID_CREDENTIALS'
+    if (typedError?.code === 'email_provider_disabled' || typedError?.code === 'provider_disabled') {
       return 'AUTH_PROVIDER_UNAVAILABLE'
     }
   }
