@@ -44,7 +44,7 @@ async function waitUntil(predicate,ms,description){
   throw new Error('TIMEOUT: '+description)
 }
 let jwks,guard,nginx,media,encoder,browser,nextServer
-let blockRenewal=false,grantCount=0
+let blockRenewal=false,grantCount=0,grantAttempts=0
 const fixturePage='app/visual-qa/media-react-ci/page.tsx'
 const configPath='next.config.ts'
 let originalNextConfig=null
@@ -170,6 +170,7 @@ try{
       const req=route.request()
       let data=null
       try{data=req.postDataJSON()}catch{/* malformed request denied */}
+      grantAttempts++
       const valid=!blockRenewal&&req.method()==='POST'&&data?.shiftId==='shift-browser-ci'
       if(!valid){
         return route.fulfill({status:403,contentType:'application/json',
@@ -254,7 +255,8 @@ try{
       'React player did not fail closed: '+JSON.stringify(stopped))
     console.log('PASS real React viewer '+(index+1)+' revoked and cleared video')
   }
-  assert.ok(grantCount>=4,'React grant revalidation not observed')
+  assert.equal(grantCount,2,'unexpected approved grants after revocation')
+  assert.ok(grantAttempts>=4,'React grant revalidation was not attempted')
   // Switching a shift after a revoked session must not leak old requests.
   await pages[0].getByTestId('switch-shift').click()
   await pages[0].getByTestId('protected-hls-status').getByText(
