@@ -28,7 +28,7 @@ jobs:
       - name: Typecheck
         run: pnpm exec tsc --noEmit --incremental false
       - name: Lint changed modules
-        run: pnpm exec eslint lib/auth/AuthIdentityProvider.tsx components/features/dashboard/DashboardOverview.tsx lib/server/authGuards.ts lib/server/operationsCollectionHandler.ts tests/calendar-business-month-contract.test.ts
+        run: pnpm exec eslint lib/auth/AuthIdentityProvider.tsx components/features/dashboard/DashboardOverview.tsx lib/server/authGuards.ts lib/server/operationsCollectionHandler.ts lib/services/workforceService.ts lib/hooks/useWorkforceCapabilities.ts tests/calendar-business-month-contract.test.ts
       - name: Authentication, page cache and calendar month contract
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/auth-identity-bridge.test.tsx tests/operations-page-cache.test.ts tests/calendar-business-month-contract.test.ts
       - name: Full source regression inventory
