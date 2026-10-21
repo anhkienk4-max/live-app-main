@@ -7,6 +7,7 @@
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isIP } from 'node:net'
 
 export const STAGING_SUPABASE_URL='https://amagnzebmmuqiptmrjmc.supabase.co'
 const PRODUCTION_APP='https://ops5729.top'
@@ -20,7 +21,8 @@ function strictOrigin(raw, code){
   let url
   try{url=new URL(raw)}catch{fail(code)}
   if(url.protocol!=='https:'||url.username||url.password||url.port||url.pathname!=='/'
-    ||url.search||url.hash||url.origin!==raw||!DNS.test(url.hostname))fail(code)
+    ||url.search||url.hash||url.origin!==raw||!DNS.test(url.hostname)
+    ||isIP(url.hostname)!==0)fail(code)
   return url
 }
 function exactlyOnce(text,from,to,code){
