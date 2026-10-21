@@ -30,6 +30,6 @@ jobs:
       - name: Resolve official hls.js package metadata and print exact lock patch
         run: |
           set -euo pipefail
-          pnpm add hls.js@1.7.3 --save-exact --lockfile-only --ignore-scripts
+          pnpm add -w hls.js@1.7.3 --save-exact --lockfile-only --ignore-scripts
           git diff -- package.json pnpm-lock.yaml
           echo "Dependency resolution only. No automatic Git pushes or deployments."
