@@ -2,14 +2,14 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-21T12:21:07+07:00
+Generated at: 2026-10-21T12:26:51+07:00
 
 ## Repository
 
 - Branch: `integration/global-stabilization-20261021`
-- HEAD: `c9ed7bbbbe32b1f57e7aca80f9c30907171b3bc4`
+- HEAD: `0c3ded99fa0eb50d178e80820239c252fe1623f7`
 - origin/main: `b96dcb6e1842e59f43170a1a8b15da712ee8a8e0`
-- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-global-stabilization`
+- Worktree: `C:/Users/KienNguyen/.codex/worktrees/a2f2/live-app-main/.worktrees/integration-global-stabilization-20261021`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
 ## Hardening
