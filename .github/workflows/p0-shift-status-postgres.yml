@@ -28,6 +28,7 @@ on:
       - 'lib/server/workforceScopePagination.ts'
       - 'lib/server/workforcePayrollHandler.ts'
       - 'tests/payroll-scope-completeness.test.ts'
+      - 'tests/payroll-rate-locked-export.test.ts'
       - 'lib/server/workforcePerformanceHandler.ts'
       - 'lib/server/workforceOverviewHandler.ts'
       - 'tests/workforce-scope-pagination.test.ts'
@@ -61,6 +62,7 @@ on:
       - 'lib/server/workforceScopePagination.ts'
       - 'lib/server/workforcePayrollHandler.ts'
       - 'tests/payroll-scope-completeness.test.ts'
+      - 'tests/payroll-rate-locked-export.test.ts'
       - 'lib/server/workforcePerformanceHandler.ts'
       - 'lib/server/workforceOverviewHandler.ts'
       - 'tests/workforce-scope-pagination.test.ts'
@@ -121,7 +123,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Verify Payroll scope completeness and mutation safety
-        run: node --import ./tests/typescript-alias-loader.mjs --test tests/payroll-scope-completeness.test.ts tests/rc16-payroll-discovery.test.ts tests/rc16-workforce-payroll.test.ts tests/rc17b-payroll-autocalc.test.ts
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test tests/payroll-scope-completeness.test.ts tests/payroll-rate-locked-export.test.ts tests/rc16-payroll-discovery.test.ts tests/rc16-workforce-payroll.test.ts tests/rc17b-payroll-autocalc.test.ts
+          pnpm exec eslint lib/server/workforcePayrollHandler.ts tests/payroll-scope-completeness.test.ts tests/payroll-rate-locked-export.test.ts
       - name: Verify scalable Workforce period reads and compile contracts
         run: |
           node --import ./tests/typescript-alias-loader.mjs --test tests/workforce-scope-pagination.test.ts tests/workforce-period.test.ts tests/rc16-workforce-api.test.ts
