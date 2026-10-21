@@ -114,9 +114,15 @@ export function createWorkforceOverviewHandler(options:Options={}) {
         .map(e=>({id:e.id,shiftId:e.shift_id,staffId:e.staff_id,
           role:e.operational_role,eventKind:e.event_kind,reviewStatus:e.review_status,
           startAt:e.actual_start_at,endAt:e.actual_end_at}))
+      const evidenceByStaff=new Map<string,ActualStaffingEvidence[]>()
+      for(const row of evidence){
+        const rows=evidenceByStaff.get(row.staffId)??[]
+        rows.push(row)
+        evidenceByStaff.set(row.staffId,rows)
+      }
       const results=[...plannedByStaff].map(([staffId,planned])=>({
-        ...summarizeWorkforcePerformance(staffId,input.role,planned,evidence,
-          {lateGraceMinutes:grace}),
+        ...summarizeWorkforcePerformance(staffId,input.role,planned,
+          evidenceByStaff.get(staffId)??[],{lateGraceMinutes:grace}),
         name:known.get(staffId)?.full_name??null,
         department:known.get(staffId)?.department??null,
       }))
