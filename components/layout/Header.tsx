@@ -152,7 +152,7 @@ export function Header({ user }: HeaderProps) {
             {/* User menu */}
             <DropdownMenu>
               <DropdownMenuTrigger
-                render={<Button variant="ghost" className="h-11 min-w-11 max-w-48 gap-2 rounded-md px-1.5" data-testid="user-menu-btn" />}
+                render={<Button variant="ghost" className="h-11 min-w-11 max-w-48 gap-2 rounded-md px-1.5 max-md:!h-11 max-md:!min-w-11" data-testid="user-menu-btn" />}
               >
                 <Avatar className="h-7 w-7">
                   {avatarUrl && <AvatarImage src={avatarUrl} alt={displayUser?.user_metadata?.full_name || displayUser?.email || 'User'} />}
