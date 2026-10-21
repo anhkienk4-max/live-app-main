@@ -208,6 +208,10 @@ try{
       const s=window.__stats
       return s?.manifest&&s.segments>=2||['failed','fatal','gateway-denied','denied'].includes(s?.state)
     },null,{timeout:60000})
+    await page.waitForFunction(()=>{
+      const v=document.querySelector('video')
+      return v&&v.videoWidth>0&&v.currentTime>0.8&&!v.paused
+    },null,{timeout:18000})
     const result=await page.evaluate(()=>({
       stats:window.__stats,
       width:document.querySelector('video').videoWidth,
