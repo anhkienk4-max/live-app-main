@@ -10,9 +10,9 @@
   },
   "repository": {
     "branch": "integration/global-stabilization-20261021",
-    "head": "aa06eef121b8ed036e1c4d1b533a5e0ee1d1067e",
+    "head": "7539fabec127d933cd11693b98bd94d0e45068ac",
     "origin_main": "b96dcb6e1842e59f43170a1a8b15da712ee8a8e0",
-    "worktree": "C:/Users/KienNguyen/.codex/worktrees/a2f2/live-app-main/.worktrees/integration-global-stabilization-20261021"
+    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-global-stabilization"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -93,12 +93,12 @@
       "roots": {
         "app": 62,
         "components": 155,
-        "lib": 227,
+        "lib": 228,
         "scripts": 19,
         "supabase": 94,
-        "tests": 218
+        "tests": 219
       },
-      "total": 775
+      "total": 777
     },
     "tests": {
       "files": [
@@ -282,9 +282,10 @@
         "tests/ux-w1-shifts-and-nav-capability.test.ts",
         "tests/vision-ocr-phase-a.test.ts",
         "tests/vision-ocr-route.test.ts",
-        "tests/workflow-restoration.test.ts"
+        "tests/workflow-restoration.test.ts",
+        "tests/workforce-period.test.ts"
       ],
-      "count": 181
+      "count": 182
     },
     "migrations": {
       "files": [
@@ -378,5 +379,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-21T12:51:24+07:00"
+  "synced_at": "2026-10-21T13:45:30+07:00"
 }
