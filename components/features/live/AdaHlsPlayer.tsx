@@ -129,7 +129,9 @@ export function AdaHlsPlayer({shiftId,isLive}:{shiftId:string;isLive:boolean}){
           const grant=grantRef.current
           if(!current()||!grant)throw new Error('MEDIA_GRANT_EXPIRED')
           const bearer=mediaAuthorizationHeader(url,grant)
-          xhr.withCredentials=false
+          // MediaMTX v1.18+ HLS session tracking uses a Partitioned cookie.
+          // Only the validated, exact HTTPS media origin receives credentials.
+          xhr.withCredentials=true
           xhr.setRequestHeader('Authorization',bearer)
         },
       })

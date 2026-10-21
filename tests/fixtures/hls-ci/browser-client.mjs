@@ -34,7 +34,8 @@ try{
     lowLatencyMode:false,liveSyncDurationCount:3,maxBufferLength:12,
     xhrSetup:(xhr,url)=>{
       if(!activeGrant)throw new Error('MEDIA_GRANT_EXPIRED')
-      xhr.withCredentials=false
+      // Keep MediaMTX's session cookie across its cookieCheck redirect.
+      xhr.withCredentials=true
       xhr.setRequestHeader('Authorization',mediaAuthorizationHeader(url,activeGrant))
     }
   })
