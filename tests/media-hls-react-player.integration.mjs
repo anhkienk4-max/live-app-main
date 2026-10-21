@@ -137,6 +137,7 @@ try{
     "export default function TestView(){\n"+
     " const [id,setId]=React.useState('shift-browser-ci')\n"+
     " const [live,setLive]=React.useState(true)\n"+
+    " React.useEffect(()=>{document.documentElement.dataset.adaCiHydrated='true'},[])\n"+
     " return <main><h1>ADA CI React media viewer</h1>\n"+
     " <button data-testid='switch-shift' onClick={()=>setId('another-shift')}>Switch shift</button>\n"+
     " <button data-testid='end-shift' onClick={()=>setLive(false)}>End shift</button>\n"+
@@ -200,6 +201,8 @@ try{
     await page.goto('https://ops5729.top:8899/visual-qa/media-react-ci',
       {waitUntil:'domcontentloaded',timeout:60000})
     await page.getByTestId('start-protected-hls').waitFor({timeout:35000})
+    // Do not click the server-rendered button until React's event handlers are hydrated.
+    await page.waitForFunction(()=>document.documentElement.dataset.adaCiHydrated==='true',null,{timeout:35000})
     assert.equal(mediaRequests.filter(x=>x.viewer===i).length,0,
       'Media requested before explicit start click')
     await page.getByTestId('start-protected-hls').click()
