@@ -39,7 +39,7 @@ const connectable=port=>new Promise(resolve=>{
 })
 const request=async (url,token)=>{
   const ctl=new AbortController(),tid=setTimeout(()=>ctl.abort(),3500)
-  try{return await fetch(url,{headers:token?{Authorization:'Bearer '+token}:{},redirect:'manual',signal:ctl.signal})}
+  try{return await fetch(url,{headers:token?{Authorization:'Bearer '+token}:{},redirect:'follow',signal:ctl.signal})}
   finally{clearTimeout(tid)}
 }
 async function retry(fn,ms){
@@ -96,7 +96,7 @@ try{
     if(encoder.exitCode!==null)throw new Error('FFmpeg stopped: '+encodelog.slice(-700))
     const res=await request(manifest,reader)
     const body=await res.text()
-    playlistProbe='master '+res.status+' '+body.slice(0,180)
+    playlistProbe='master '+res.status+' URL '+res.url+' '+body.slice(0,180)
     if(!res.ok)return null
     if(body.includes('#EXTINF'))return body
     // fMP4 HLS may expose a master index.m3u8 and separate media/stream.m3u8.
