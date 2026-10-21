@@ -444,8 +444,10 @@ export const workforceService = {
     pageSize?: number
     staffId?: string
     role?: WorkforceRole
+    roles?: WorkforceRole[]
     effectiveDate?: string
     scope?: RateScope
+    scopes?: RateScope[]
   } = {}): Promise<{ ok: true; rates: RateCard[]; pagination: Pagination }> {
     const q = new URLSearchParams()
     q.set('action', 'list_rates')
@@ -453,8 +455,10 @@ export const workforceService = {
     if (params.pageSize) q.set('page_size', String(params.pageSize))
     if (params.staffId) q.set('staff_id', params.staffId)
     if (params.role) q.set('role', params.role)
+    params.roles?.forEach(role => q.append('roles', role))
     if (params.effectiveDate) q.set('effective_date', params.effectiveDate)
     if (params.scope) q.set('scope', params.scope)
+    params.scopes?.forEach(scope => q.append('scopes', scope))
 
     return requestJson<{ ok: true; rates: RateCard[]; pagination: Pagination }>(
       `/api/workforce/payroll?${q.toString()}`

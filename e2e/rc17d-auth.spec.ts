@@ -10,39 +10,43 @@ async function fillLogin(page: import('@playwright/test').Page) {
 async function mockAuthError(page: import('@playwright/test').Page, code: string) {
  await page.route('**/auth/v1/token*', route => route.fulfill({status:400,contentType:'application/json',json:{code,msg:'private provider response detail'}}))
 }
+async function useEnglish(page: import('@playwright/test').Page) {
+ const toggle=page.getByRole('button',{name:'English',exact:true})
+ if(await toggle.isVisible())await toggle.click()
+}
 
 test('Supabase-mode public auth is responsive and Google stays disabled without a provider',async({page},info)=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))
+ await page.goto('/login',{waitUntil:'domcontentloaded'});await useEnglish(page)
  for(const route of ['/login','/register','/forgot-password','/reset-password']){
-  await page.goto(route,{waitUntil:'networkidle'})
+  await page.goto(route,{waitUntil:'domcontentloaded'})
   for(const width of widths){await page.setViewportSize({width,height:width===375?811:1000});await page.waitForTimeout(150);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);if([375,768,1440].includes(width))await page.screenshot({path:info.outputPath(route.slice(1)+'-'+width+'.png'),fullPage:true})}
  }
  await page.goto('/login');await expect(page.getByTestId('google-unavailable')).toBeVisible();await expect(page.getByTestId('google-login-btn')).toHaveCount(0)
  await mockAuthError(page,'invalid_credentials');await fillLogin(page);await expect(page.getByTestId('login-error')).toContainText('Email or password is incorrect.');await expect(page.getByTestId('email-login-btn')).toBeEnabled()
  await page.goto('/login?reason=session_expired&next=%2Fcalendar');await expect(page.getByTestId('login-error')).toBeVisible()
- await page.goto('/login?reason=approval_required');await expect(page.getByTestId('login-error')).toContainText('chưa được cấp quyền')
+ await page.goto('/login?reason=approval_required');await expect(page.getByTestId('login-error')).toContainText('This account does not have approved access.')
  await page.goto('/login?reason=oauth_failed');await expect(page.getByTestId('login-error')).toBeVisible()
  expect(errors).toEqual([])
 })
 
 test('Password login distinguishes unavailable provider in Vietnamese and always re-enables retry',async({page})=>{
  await mockAuthError(page,'email_provider_disabled');await page.goto('/login')
- await page.getByRole('button',{name:'Tiếng Việt'}).click()
  await fillLogin(page)
- await expect(page.getByTestId('login-error')).toContainText('Đăng nhập bằng email hiện không khả dụng.')
+ await expect(page.getByTestId('login-error')).toContainText('\u0110\u0103ng nh\u1eadp b\u1eb1ng email hi\u1ec7n kh\u00f4ng kh\u1ea3 d\u1ee5ng.')
  await expect(page.getByTestId('email-login-btn')).toBeEnabled()
  await expect(page.getByTestId('login-error')).not.toContainText('private provider response detail')
 })
 
 test('Password login reports network failures without leaking request details and allows retry',async({page})=>{
- await page.route('**/auth/v1/token*',route=>route.abort('failed'));await page.goto('/login');await fillLogin(page)
+ await page.route('**/auth/v1/token*',route=>route.abort('failed'));await page.goto('/login');await useEnglish(page);await fillLogin(page)
  await expect(page.getByTestId('login-error')).toContainText('The sign-in service could not be reached.')
  await expect(page.getByTestId('email-login-btn')).toBeEnabled()
  await expect(page.getByTestId('login-error')).not.toContainText('fixture-password')
 })
 
 test('Unknown Auth errors stay generic and never expose provider details',async({page})=>{
- await mockAuthError(page,'unrecognized_code');await page.goto('/login');await fillLogin(page)
+ await mockAuthError(page,'unrecognized_code');await page.goto('/login');await useEnglish(page);await fillLogin(page)
  await expect(page.getByTestId('login-error')).toContainText('We could not sign you in.')
  await expect(page.getByTestId('email-login-btn')).toBeEnabled()
  await expect(page.getByTestId('login-error')).not.toContainText('private provider response detail')

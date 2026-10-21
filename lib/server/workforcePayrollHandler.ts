@@ -76,9 +76,17 @@ const periodDiscovery = z.object({
 const rateDiscovery = z.object({
   ...discoveryPage,action:z.literal('list_rates'),staff_id:id.optional(),
   role:z.enum(['host','support','technical']).optional(),
+  roles:z.array(z.enum(['host','support','technical'])).max(3).optional(),
   effective_date:discoveryDate.optional(),
   scope:z.enum(['staff_specific','role_default']).optional(),
-}).strict().refine(value=>value.scope!=='role_default'||!value.staff_id)
+  scopes:z.array(z.enum(['staff_specific','role_default'])).max(2).optional(),
+}).strict()
+  .refine(value=>!value.role||!value.roles)
+  .refine(value=>!value.scope||!value.scopes)
+  .refine(value=>!value.roles||new Set(value.roles).size===value.roles.length)
+  .refine(value=>!value.scopes||new Set(value.scopes).size===value.scopes.length)
+  .refine(value=>!(value.scope==='role_default'
+    ||(value.scopes?.length===1&&value.scopes[0]==='role_default'))||!value.staff_id)
 const discoveryQuery = z.union([periodDiscovery,rateDiscovery])
 const correctionErrors = new Set([
   'WORKFORCE_PAYROLL_STALE_LINE','WORKFORCE_PAYROLL_PERIOD_NOT_DRAFT',
@@ -276,9 +284,12 @@ export function createWorkforcePayrollHandler(options:Options={}) {
           return failure('WORKFORCE_PAYROLL_FEATURE_DISABLED',503)
         const q=new URL(request.url).searchParams
         if(q.has('action')){
-          if([...q.keys()].some(key=>q.getAll(key).length!==1))
+          if([...q.keys()].some(key=>q.getAll(key).length!==1&&!['roles','scopes'].includes(key)))
             return failure('WORKFORCE_PAYROLL_DISCOVERY_QUERY_INVALID',400)
-          const parsed=discoveryQuery.safeParse(Object.fromEntries(q.entries()))
+          const query:Record<string,unknown>=Object.fromEntries(q.entries())
+          if(q.has('roles'))query.roles=q.getAll('roles')
+          if(q.has('scopes'))query.scopes=q.getAll('scopes')
+          const parsed=discoveryQuery.safeParse(query)
           if(!parsed.success)return failure('WORKFORCE_PAYROLL_DISCOVERY_QUERY_INVALID',400)
           const input=parsed.data
           const isPeriods=input.action==='list_periods'
@@ -299,9 +310,12 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             }else{
               query=query.not('approved_by','is',null).not('approved_at','is',null)
               if(input.staff_id)query=query.eq('staff_id',input.staff_id)
-              if(input.role)query=query.eq('operational_role',input.role)
-              if(input.scope==='role_default')query=query.is('staff_id',null)
-              if(input.scope==='staff_specific')query=query.not('staff_id','is',null)
+              const roles=input.roles??(input.role?[input.role]:[])
+              const scopes=input.scopes??(input.scope?[input.scope]:[])
+              if(roles.length===1)query=query.eq('operational_role',roles[0])
+              else if(roles.length>1)query=query.in('operational_role',roles)
+              if(scopes.length===1&&scopes[0]==='role_default')query=query.is('staff_id',null)
+              else if(scopes.length===1)query=query.not('staff_id','is',null)
               if(input.effective_date)query=query.lte('effective_from',input.effective_date)
                 .or('effective_through.is.null,effective_through.gte.'+input.effective_date)
               query=query.order('effective_from',{ascending:false})
