@@ -224,7 +224,7 @@ test('A delayed overview response cannot restore data from the previous month', 
   const summary = {staffId:'Latest evidence',role:'host',assignedShifts:0,verifiedShifts:0,unknownAttendanceShifts:0,approvedNoShows:0,approvedWorkedShifts:0,approvedActualMinutes:0,lateShifts:0,onTimeShifts:0,attendanceCoveragePct:null,punctualityPct:null,knownReliabilityPct:null,isComplete:false}
   const response = (staffId: string) => ({ok:true,team:{...summary,staffCount:1,workedShifts:0,actualMinutes:0,incompleteStaffCount:1},staff:[{...summary,staffId}],leaderboard:[],leaderboard_policy_configured:false})
   await page.route('**/api/workforce/overview*', async route => {
-    if(new URL(route.request().url()).searchParams.get('month') !== '2026-08') { delayed = route; return }
+    if(new URL(route.request().url()).searchParams.get('period') !== '2026-08') { delayed = route; return }
     await route.fulfill({json:response('Latest evidence')})
   })
   await page.goto('/workforce')
