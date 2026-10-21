@@ -44,3 +44,14 @@ test('viewer API routes require authenticated SSR and do not bypass missing ACL'
   assert.match(handler,/mayReadMediaShift/)
   assert.doesNotMatch(handler,/createSupabaseAdminClient|SUPABASE_SERVICE_ROLE_KEY/)
 })
+
+test('migration codifies default-deny media grants, exact shift routes and no unauthorized write rights',()=>{
+  const sql=readFileSync('supabase/migrations/20261021064611_media_viewer_acl_exact_shift_v1.sql','utf8')
+  assert.match(sql,/active_shift_id text not null unique/)
+  assert.match(sql,/auth_user_id=\(select auth\.uid\(\)\)/)
+  assert.match(sql,/private\.can_read_shift/)
+  assert.match(sql,/revoke all on table public\.media_viewer_grants from PUBLIC,anon,authenticated/)
+  assert.match(sql,/revoke all on table public\.media_stream_routes from PUBLIC,anon,authenticated/)
+  assert.match(sql,/create policy media_route_select_granted_shift/)
+  assert.doesNotMatch(sql,/grant (?:insert|update|delete|all) on table .* to authenticated/i)
+})
