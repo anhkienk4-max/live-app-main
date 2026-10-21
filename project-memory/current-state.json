@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "integration/global-stabilization-20261021",
-    "head": "d92a2b8a50fd3022f8433b1bc34b923a86ec89e8",
+    "head": "559f24988ea0b29a7f57fe1ab287b8ae98f2621e",
     "origin_main": "b96dcb6e1842e59f43170a1a8b15da712ee8a8e0",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-global-stabilization"
   },
@@ -96,9 +96,9 @@
         "lib": 227,
         "scripts": 19,
         "supabase": 93,
-        "tests": 215
+        "tests": 216
       },
-      "total": 771
+      "total": 772
     },
     "tests": {
       "files": [
@@ -132,6 +132,7 @@
         "tests/dashboard-aggregate.test.ts",
         "tests/dashboard-fixtures.test.ts",
         "tests/dashboard-region-detection.test.ts",
+        "tests/data-quality-multiselect.test.ts",
         "tests/dual-file-provider.test.ts",
         "tests/e1-role-ux.test.ts",
         "tests/e3-dashboard-domain.test.ts",
@@ -283,7 +284,7 @@
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts"
       ],
-      "count": 180
+      "count": 181
     },
     "migrations": {
       "files": [
@@ -376,5 +377,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-21T11:37:06+07:00"
+  "synced_at": "2026-10-21T11:38:25+07:00"
 }
