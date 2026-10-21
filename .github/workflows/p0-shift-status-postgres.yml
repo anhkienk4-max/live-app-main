@@ -8,6 +8,11 @@ on:
       - 'lib/services/supabaseShiftService.ts'
       - 'lib/server/historicalAttendanceHandler.ts'
       - 'tests/rc17c-attendance-atomic-rpc-boundary.test.ts'
+      - 'supabase/migrations/20261021190000_global_report_notification_transition_keys.sql'
+      - 'tests/fixtures/report_notification_supabase_base.sql'
+      - 'tests/report-notification-postgres.integration.mjs'
+      - 'tests/global-report-notification-routing.test.ts'
+      - 'lib/services/notificationRoutes.ts'
       - 'tests/shift-lifecycle.test.ts'
       - 'tests/supabase-shift-runtime.test.ts'
       - 'package.json'
@@ -29,6 +34,11 @@ on:
       - 'lib/services/supabaseShiftService.ts'
       - 'lib/server/historicalAttendanceHandler.ts'
       - 'tests/rc17c-attendance-atomic-rpc-boundary.test.ts'
+      - 'supabase/migrations/20261021190000_global_report_notification_transition_keys.sql'
+      - 'tests/fixtures/report_notification_supabase_base.sql'
+      - 'tests/report-notification-postgres.integration.mjs'
+      - 'tests/global-report-notification-routing.test.ts'
+      - 'lib/services/notificationRoutes.ts'
       - 'tests/shift-lifecycle.test.ts'
       - 'tests/supabase-shift-runtime.test.ts'
       - 'package.json'
@@ -100,6 +110,8 @@ jobs:
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/shift-lifecycle.test.ts tests/supabase-shift-runtime.test.ts
       - name: Assert historical import cannot fall back to non-atomic writes
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc17c-attendance-atomic-rpc-boundary.test.ts tests/rc17c-attendance-api-integration.test.ts
+      - name: Assert report notification routing and lifecycle contracts
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/global-report-notification-routing.test.ts
       - name: Apply real P0 migration and assert PostgreSQL invariants
         env:
           P0_PG_CONTAINER: ada-p0-pg${{ matrix.major }}
@@ -112,6 +124,12 @@ jobs:
           P0_PG_MAJOR: ${{ matrix.major }}
           REPORT_QUEUE_MIGRATION_SHA256: 0500BB489F5B8A44F64AC52CAE1E6CD2157E058B2BCA95465D54A5E58A644E58
         run: node tests/report-obligation-page-postgres.integration.mjs
+      - name: Apply report notification transition migration and verify idempotency
+        env:
+          P0_PG_CONTAINER: ada-p0-pg${{ matrix.major }}
+          P0_PG_MAJOR: ${{ matrix.major }}
+          REPORT_NOTIFICATION_MIGRATION_SHA256: 697976550B9E913116C372DF226E7E31D215FEA3FF4457D0797A0F8956EA4744
+        run: node tests/report-notification-postgres.integration.mjs
       - name: Stop disposable database
         if: always()
         env:
