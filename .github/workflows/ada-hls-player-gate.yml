@@ -30,7 +30,7 @@ jobs:
       - name: Frozen dependency install
         run: pnpm install --frozen-lockfile
       - name: HLS security and backend grant tests
-        run: node --import ./tests/typescript-alias-loader.mjs --test tests/ada-hls-player.test.ts tests/ada-hls-security.test.ts tests/media-viewer-handler.test.ts tests/media-viewer-authorization.test.ts
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/ada-hls-player.test.ts tests/ada-hls-security.test.ts tests/media-viewer-handler.test.ts tests/media-viewer-authorization.test.ts tests/media-preview-isolation.test.ts
       - name: TypeScript
         run: pnpm exec tsc --noEmit --incremental false
       - name: ESLint
