@@ -20,6 +20,7 @@ import {
 import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Report, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
 import {
@@ -170,6 +171,7 @@ export function ReportsList() {
       if (version === requestVersion.current) setLoading(false)
     }
   }, [encodedFilters,navigate,reportPage,reportPageSize,identity,currentUser,pageKey])
+  useShiftChangeRefresh(() => loadData(false))
 
   React.useEffect(() => {
     const versionRef = requestVersion

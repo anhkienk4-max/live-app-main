@@ -4,6 +4,7 @@ import { createWorkforceActualHandler } from '@/lib/server/workforceActualHandle
 import { createWorkforcePayrollHandler } from '@/lib/server/workforcePayrollHandler'
 import { createWorkforcePerformanceHandler } from '@/lib/server/workforcePerformanceHandler'
 import { createWorkforceOverviewHandler } from '@/lib/server/workforceOverviewHandler'
+import { WORKFORCE_LATE_GRACE_MINUTES } from '@/lib/workforce/workforcePolicy'
 
 const get=(url:string)=>new Request(url)
 const post=(url:string,body:object)=>new Request(url,{
@@ -20,6 +21,10 @@ const correctionRequest={
   payable_minutes:60,overtime_minutes:30,adjustment_vnd:-1000,
   adjustment_reason:'Independent adjustment approved',
 }
+
+test('RC1.8A uses the approved 10-minute Workforce grace independently from Payroll',()=>{
+  assert.equal(WORKFORCE_LATE_GRACE_MINUTES,10)
+})
 function correctionClient(rpc: (name:string,args:Record<string,unknown>)=>unknown) {
   return ()=>({
     from(){

@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { useListPagination } from '@/lib/hooks/useListPagination'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 import { format } from 'date-fns'
@@ -90,6 +91,7 @@ export function LiveMonitoringDashboard() {
       if(request===sequence.current&&!controller.signal.aborted)setLoading(false)
     }
   }, [encodedFilters,filters,identity,navigate,page,pageSize,queryKey])
+  useShiftChangeRefresh(loadData)
 
   React.useEffect(() => {
     const frame=requestAnimationFrame(() => { void loadData() })

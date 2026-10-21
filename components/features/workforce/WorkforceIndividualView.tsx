@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import {
   workforceService,
   workforceErrorMessage,
@@ -84,6 +85,7 @@ export function WorkforceIndividualView({
       if (sequence === readSequence.current) setLoading(false)
     }
   }, [staffId, role, month, toast])
+  useShiftChangeRefresh(loadPerformance)
 
   React.useEffect(() => {
     const generation = readSequence
