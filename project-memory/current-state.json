@@ -10,9 +10,9 @@
   },
   "repository": {
     "branch": "integration/global-stabilization-20261021",
-    "head": "175b5ca6d3a0b3355a8c6e400921e2be12b63963",
+    "head": "60a83faba9afe54301e92f38ed0e0b9a4cef03e6",
     "origin_main": "b96dcb6e1842e59f43170a1a8b15da712ee8a8e0",
-    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-global-stabilization"
+    "worktree": "C:/Users/KienNguyen/.codex/worktrees/a2f2/live-app-main/.worktrees/integration-global-stabilization-20261021"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -377,5 +377,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-21T11:44:13+07:00"
+  "synced_at": "2026-10-21T11:59:50+07:00"
 }
