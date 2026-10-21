@@ -50,7 +50,8 @@ assert.equal(acl,'1|0|0','RPC must remain SECURITY INVOKER and authenticated-onl
 const seed=[]
 for(let i=1;i<=31;i++) {
   const id=`page-${String(i).padStart(2,'0')}`
-  seed.push(`('${id}','2026-01-01','12:00','13:00','2026-01-01 ${String(31-i).padStart(2,'0')}:00:00+00','completed','page-brand','platform','campaign','Historical ${id}',null,null,null,null,null)`)
+  const startAt=new Date(Date.UTC(2026,0,2,0,0)-(i-1)*60_000).toISOString()
+  seed.push(`('${id}','2026-01-01','12:00','13:00','${startAt}','completed','page-brand','platform','campaign','Historical ${id}',null,null,null,null,null)`)
 }
 seed.push(
   "('direct','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Direct assignment','member',null,null,null,null)",
