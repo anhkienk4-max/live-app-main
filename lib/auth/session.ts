@@ -1,3 +1,9 @@
+import {
+  AuthApiError,
+  AuthRetryableFetchError,
+  AuthSessionMissingError,
+} from '@supabase/supabase-js'
+
 export interface PasswordSessionClient {
   auth: {
     signInWithPassword(credentials: {
@@ -9,6 +15,29 @@ export interface PasswordSessionClient {
     }>
     signOut(options: { scope: 'local' }): Promise<{ error: unknown | null }>
   }
+}
+
+export type PasswordSessionFailure =
+  | 'INVALID_CREDENTIALS'
+  | 'AUTH_NETWORK_ERROR'
+  | 'AUTH_PROVIDER_UNAVAILABLE'
+  | 'AUTH_SESSION_FAILURE'
+  | 'UNKNOWN_AUTH_ERROR'
+
+export type PasswordSessionResult =
+  | { ok: true }
+  | { ok: false; reason: PasswordSessionFailure }
+
+export function classifyPasswordSessionError(error: unknown): PasswordSessionFailure {
+  if (error instanceof AuthRetryableFetchError) return 'AUTH_NETWORK_ERROR'
+  if (error instanceof AuthSessionMissingError) return 'AUTH_SESSION_FAILURE'
+  if (error instanceof AuthApiError) {
+    if (error.code === 'invalid_credentials') return 'INVALID_CREDENTIALS'
+    if (error.code === 'email_provider_disabled' || error.code === 'provider_disabled') {
+      return 'AUTH_PROVIDER_UNAVAILABLE'
+    }
+  }
+  return 'UNKNOWN_AUTH_ERROR'
 }
 
 const sessionResetReasons = new Set([
@@ -24,18 +53,21 @@ export function shouldClearLocalSessionForLoginReason(
 }
 
 export async function establishPasswordSession(
-  client: PasswordSessionClient,
+  createClient: () => PasswordSessionClient,
   email: string,
   password: string,
-): Promise<boolean> {
+): Promise<PasswordSessionResult> {
   try {
+    const client = createClient()
     const { data, error } = await client.auth.signInWithPassword({
       email: email.trim().toLowerCase(),
       password,
     })
-    return !error && Boolean(data.session) && Boolean(data.user)
-  } catch {
-    return false
+    if (error) return { ok: false, reason: classifyPasswordSessionError(error) }
+    if (!data.session || !data.user) return { ok: false, reason: 'AUTH_SESSION_FAILURE' }
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, reason: classifyPasswordSessionError(error) }
   }
 }
 

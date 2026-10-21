@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createSupabaseMasterDataRepository } from '@/lib/services/supabaseMasterDataService'
-import { createAuthIdentity, mapAuthIdentityToBusinessUser, type AuthIdentity, type AuthUserSource } from './authIdentity'
+import { createAuthIdentity, isAuthBusinessIdentityConsistent, mapAuthIdentityToBusinessUser, type AuthIdentity, type AuthUserSource } from './authIdentity'
 import { getVerifiedUser } from './session'
 import { safeLocalRedirect } from './authMode'
 import type { User } from '@/lib/types/database.types'
@@ -38,7 +38,7 @@ export function createOAuthCallbackHandler(createContext: () => Promise<OAuthCon
       const verified = await getVerifiedUser(() => context.auth.getUser())
       const identity = createAuthIdentity(verified)
       const persisted = identity ? await context.readBusinessUser(identity) : null
-      if (!identity || !persisted || !mapAuthIdentityToBusinessUser(identity, [persisted])) {
+      if (!identity || !persisted || !isAuthBusinessIdentityConsistent(identity, persisted) || !mapAuthIdentityToBusinessUser(identity, [persisted])) {
         await context.auth.signOut({ scope: 'local' })
         return redirect('/login?reason=approval_required')
       }

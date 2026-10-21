@@ -20,7 +20,7 @@ test('Core V1 migration links an existing Auth UUID and cannot be called anonymo
   assert.match(sql, /grant execute on function public\.sync_staff_auth_metadata\(text\) to authenticated/i)
 })
 
-test('identity reconciliation fails closed when Auth and business email differ', () => {
+test('identity reconciliation requires matching business ID, email and system permission', () => {
   const identity = {
     auth_user_id: 'auth-1',
     email: 'person@example.com',
@@ -29,6 +29,7 @@ test('identity reconciliation fails closed when Auth and business email differ',
   }
   const businessUser = {
     id: 'business-1',
+    auth_user_id: 'auth-1',
     email: 'different@example.com',
     full_name: 'Person',
     role: 'staff' as const,
@@ -41,6 +42,22 @@ test('identity reconciliation fails closed when Auth and business email differ',
     updated_at: '',
   }
   assert.equal(isAuthBusinessIdentityConsistent(identity, businessUser), false)
+  assert.equal(isAuthBusinessIdentityConsistent(identity, {
+    ...businessUser,
+    email: identity.email,
+  }), true)
+  assert.equal(isAuthBusinessIdentityConsistent({ ...identity, system_permission: 'admin' }, {
+    ...businessUser,
+    email: identity.email,
+  }), false)
+  assert.equal(isAuthBusinessIdentityConsistent({ ...identity, business_user_id: 'other-business' }, {
+    ...businessUser,
+    email: identity.email,
+  }), false)
+  assert.equal(isAuthBusinessIdentityConsistent({ ...identity, auth_user_id: 'other-auth' }, {
+    ...businessUser,
+    email: identity.email,
+  }), false)
 })
 
 test('password recovery uses Supabase APIs and never stores a password', async () => {

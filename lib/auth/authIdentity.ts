@@ -101,8 +101,10 @@ export function mapAuthIdentityToBusinessUser(
 /** Server callers use this explicit check before accepting the mapping. */
 export function isAuthBusinessIdentityConsistent(
   identity: AuthIdentity,
-  businessUser: Pick<User, 'id' | 'email'>,
+  businessUser: Pick<User, 'id' | 'auth_user_id' | 'email' | 'system_permission'>,
 ): boolean {
   return identity.business_user_id === businessUser.id
+    && identity.auth_user_id === businessUser.auth_user_id
+    && identity.system_permission === businessUser.system_permission
     && (!identity.email || normalizeAccountEmail(identity.email) === normalizeAccountEmail(businessUser.email))
 }
