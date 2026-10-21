@@ -1,13 +1,14 @@
 # ADA OBS Media PoC — Security contract / proposed
 
-**NOT IMPLEMENTED OR SECURITY-VERIFIED.** No gateway, new API, JWKS, player, storage schema or DNS provisioned by these docs.
+**NOT DEPLOYED OR PHYSICALLY SECURITY-VERIFIED.** No gateway VPS, ADA API/JWKS issuer, player, storage schema or DNS provisioned. MediaMTX synthetic CI actually demonstrated anonymous HLS init segment exposure (200); playlist authorization alone is NOT sufficient. Proposed fix is a separate localhost JWT sidecar and nginx auth_request on every public HLS fetch, pending CI validation.
 
 ## Trust boundaries
 - Studio PC holds its own publish credential. **Never** ship it to frontend, network logs, Google Drive, Issue/PR or Vercel environment with `NEXT_PUBLIC_`.
 - Browser authenticates to ADA using existing account session. ADA **server** must resolve an authorized `shift_id`, allowed brand, studio/feed binding, and active shift temporal constraints through the existing permission/RLS model. No unconditional admin bypass or UI-only check.
 - ADA signs a short-lived JWT for path-exact `read` only. MediaMTX verifies signature through JWKS with pinning of `iss`/`aud`; no anonymous `read`/ `publish` users.
 - The publisher receives a different `publish`-only credential for that path. Scope to studio/feed, rotate on personnel or PC changes. A path name alone is not authorization.
-- Private media HLS never passes through Vercel Functions, Supabase Storage, Drive or public CDN. No default recording.
+- Private media HLS never passes through Vercel Functions, Supabase Storage, Drive or public CDN. No default recording. Public HTTPS reverse proxy MUST execute `auth_request` for **each** HLS resource, regardless of whether an earlier playlist request was authorized. MediaMTX 1.20 itself exposed an anonymous init segment after an authorized playlist: CI 39542834836.
+- Node guard binds to 127.0.0.1:9191, loads read-only public JWKS over HTTPS, and denies absent/invalid/expired tokens, wrong path and publish-only credentials. Non-TLS local JWKS is for isolated tests only. No proxy cache, do not publicly bind guard, no bearer token logging. Deny if guard/JWKS is down.
 - CORS prevents unintended script reads, **not** direct URL access. Bearer permission is necessary even if CORS is configured.
 - Single active shift can be shown for a studio/feed at a time unless explicit multiplexing. Deny unknown, ambiguous, expired, cross-brand or cross-studio mapping. Do not derive binding from `shifts.live_link`.
 - HLS playlist, init segments, media segments and parts MUST all fail for missing/wrong/expired viewer JWT; verify at HTTP level in UAT. If upstream does not enforce one of them, block public exposure until reverse proxy enforces it.

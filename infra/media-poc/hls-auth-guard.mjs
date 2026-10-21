@@ -46,7 +46,7 @@ export function authorizeMediaRequest({authorization,originalUri,method,publicJw
     const keys=publicJwks?.keys
     if(!Array.isArray(keys)||keys.length>20)return false
     const key=keys.find(k=>k?.kid===header.kid&&k?.kty==='EC'&&k?.crv==='P-256'
-      &&k?.alg==='ES256'&&k?.use!=='enc'
+      &&k?.alg==='ES256'&&k?.use==='sig'
       &&typeof k.x==='string'&&typeof k.y==='string'
       &&!('d' in k))
     if(!key)return false

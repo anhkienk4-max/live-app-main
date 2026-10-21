@@ -41,7 +41,10 @@ test('JWT scope and signature fail closed on every media resource',()=>{
   assert.equal(verify(uri,token('read',path,{iss:'https://evil.example'})),false)
   assert.equal(verify(uri,token('read',path,{mediamtx_permissions:[
     {action:'read',path},{action:'read',path:'other_studio'}]})),false)
-  assert.equal(verify(uri,token().replace(/.$/,'Z')),false)
+  const original=token(),parts=original.split('.')
+  const signature=parts[2]
+  const tampered=parts[0]+'.'+parts[1]+'.'+(signature[0]==='A'?'B':'A')+signature.slice(1)
+  assert.equal(verify(uri,tampered),false)
   assert.equal(verify(uri,token(),'POST'),false)
   assert.equal(verify('/other_studio/index.m3u8',token()),false)
   for(const bad of ['/studio_poc_01/%2e%2e/x','/studio_poc_01//x',

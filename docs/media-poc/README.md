@@ -1,6 +1,6 @@
 # Issue #51 — one-studio OBS → MediaMTX → ADA OPS PoC
 
-**Status: SCAFFOLD / NOT DEPLOYED / NOT UAT.** Separate from PR #49, issues #41/#44, DB migrations and current TikTok LIVE Studio publishing. Checked against MediaMTX 1.20.0 documentation (2026-10-21).
+**Status: SCAFFOLD / NOT DEPLOYED / NOT UAT.** Critical synthetic security finding (2026-10-21): MediaMTX 1.20.0 returned HTTP 200 for an HLS init segment without any JWT even though anonymous playlist returned 401; do NOT expose raw HLS. PR draft now includes an Nginx `auth_request` + local Node JWT verifier for **every** HLS HTTP request; gateway-protected segment CI remains pending. Separate from PR #49, issues #41/#44, DB migrations and current TikTok LIVE Studio publishing. Checked against MediaMTX 1.20.0 documentation (2026-10-21).
 
 ## Confirmed workflow
 
@@ -11,7 +11,9 @@ The same public media hostname serves LAN and remote. Studio-to-gateway upload a
 ## Files
 - `infra/media-poc/mediamtx.yml`: deny-by-default JWT auth; RTMPS ingest, HLS-only playback, one fixed path, recording disabled.
 - `infra/media-poc/compose.yaml`: pinned MediaMTX 1.20.0, restricted HLS loopback, certificate mount.
-- `infra/media-poc/nginx-hls.conf.example`: external TLS/HLS proxy reference, **not deployed**.
+- `infra/media-poc/nginx-hls.conf.example`: external TLS/HLS proxy reference with fail-closed auth_request for ALL HLS requests, **not deployed**.
+- `infra/media-poc/hls-auth-guard.mjs`: standalone Node 24 JWT verifier on 127.0.0.1:9191; checks ES256, issuer/audience, expiry, read action and exact path each time; never transports video.
+- `scripts/media-poc-smoke.mjs` and `.github/workflows/media-poc-smoke.yml`: synthetic FFmpeg → RTMPS MediaMTX → Nginx + guard → HLS with per-segment authorization negatives.
 - `docs/media-poc/SECURITY_CONTRACT.md`: issuer, viewer RBAC, route mapping and limitations.
 - `docs/media-poc/UAT_MATRIX.md`: per-role, per-network and A/V test gates.
 
@@ -21,8 +23,8 @@ The same public media hostname serves LAN and remote. Studio-to-gateway upload a
 2. Approved media VPS/host and monthly egress cap; DNS `media.ops5729.top` is a **proposal** only, not an existing hostname. Acquire a trusted TLS certificate through approved ACME procedure, mount it read-only; automate renewal and controlled MediaMTX reload/restart for RTMPS cert rollover.
 3. ADA backend endpoint `GET /api/media/jwks` **does not exist in this scaffold**. Implement asymmetric signature key management, publish/read short-lived token issuer and exact shift/brand/studio authorization. Until this is present this config is intentionally **NON-RUNNABLE for authorized playback/publishing**.
 4. Bind `studio_poc_01` to an **owner-verified unique studio/feed** and exactly one allowed shift or explicit feed identity. Never infer from display-text `shifts.studio`, URL `live_link`, or client-provided brand_id; reject overlapping/ambiguous schedules.
-5. External nginx must use a valid certificate and forward `Authorization` **unchanged** to MediaMTX. Browser `hls.js` fetches playlists, parts AND segments with Bearer header; verify real negative tests on each kind. Do not expose 8888 or enable a caching CDN that bypasses auth.
-6. Firewall: public TCP 443 and TCP 1936 only (prefer studio IP allowlist); SSH from admin IP/VPN only; restrict Docker/host firewalls (published ports can bypass ufw depending on Docker). No public 1935/8888/9997/9998/8889/8189.
+5. **Mandatory:** use nginx `auth_request /__ada_media_auth` backed by the loopback Node sidecar (environment variables `MEDIA_AUTH_JWKS_URL`, `MEDIA_AUTH_ISSUER`, `MEDIA_AUTH_AUDIENCE`, `MEDIA_AUTH_PATHS`). A valid TLS certificate and a properly isolated auth guard are required. The sidecar verifies **every** playlist/init/segment/part request; forwarding `Authorization` alone to MediaMTX is insufficient. Browser `hls.js` must attach Bearer on every fetch. Verify negative requests at the PUBLIC proxy path. Do not expose 8888, 9191 or enable caching CDN that bypasses auth. Ensure reverse proxy and guard restart automatically after failure, and fail closed if unavailable.
+6. Firewall: public TCP 443 and TCP 1936 only (prefer studio IP allowlist); SSH from admin IP/VPN only; restrict Docker/host firewalls (published ports can bypass ufw depending on Docker). No public 1935/8888/**9191**/9997/9998/8889/8189. Never let viewers access MediaMTX directly by IP.
 7. The `/api/media/*` web API must never relay video bytes via Vercel. Do not serve, store, or log raw JWT or publisher credentials. Secrets remain off-repo.
 8. Video player: `hls.js` in ADA Edge/Chrome uses `xhrSetup` or `fetchSetup` Authorization on **every request**. Native iOS Safari HLS cannot reliably attach that header; treat mobile Safari as unsupported until authenticated signed-cookie reverse-proxy design passes segment-level checks.
 
