@@ -17,6 +17,7 @@ import {
 import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Report, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
 import { reportMetricValue, calculateNullableAnalyticsMetrics } from '@/lib/utils/analytics'
@@ -111,6 +112,7 @@ export function ReportsContainer() {
       setLoading(false)
     }
   }, [])
+  useShiftChangeRefresh(loadData)
 
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => { void loadData() })

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRequestSequence } from '@/lib/hooks/useRequestSequence'
 import { useListPagination } from '@/lib/hooks/useListPagination'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { RefreshCw, Search, Users } from 'lucide-react'
 import { brandService, campaignService, platformService, shiftService, userService, getShiftRoleCapacities } from '@/lib/services/dataService'
 import type { Brand, Campaign, Platform, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
@@ -67,6 +68,7 @@ export function StaffingWorkspace() {
       if (result.page !== page) navigate({ staffing_page: String(result.page) }, true)
     } catch(failure) {if(isCurrent(request))setError(failure)} finally {if(isCurrent(request))setLoading(false)}
   },[encodedFilters,navigate,page,pageSize,identity,next,isCurrent])
+  useShiftChangeRefresh(load)
   useEffect(()=>{const frame=requestAnimationFrame(()=>void load());return()=>{cancelAnimationFrame(frame);invalidate()}},[load,invalidate])
   const baseFiltered=data.shifts
   const filtered=baseFiltered

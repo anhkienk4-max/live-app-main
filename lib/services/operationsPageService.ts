@@ -1,7 +1,7 @@
 import type { Shift, ShiftRegistration } from '@/lib/types/database.types'
 import { pageRange, type PageSize } from '@/lib/utils/pagination'
 
-export type OperationsList = 'shifts' | 'open_shifts' | 'my_shifts' | 'brands' | 'platforms' | 'campaigns' | 'staff' | 'notifications' | 'reports' | 'registration_reviews' | 'import_batches' | 'schedule_changes' | 'swaps' | 'quality' | 'live_shifts' | 'analytics_reports' | 'live_updates' | 'archives' | 'account_requests'
+export type OperationsList = 'shifts' | 'open_shifts' | 'my_shifts' | 'brands' | 'platforms' | 'campaigns' | 'staff' | 'notifications' | 'reports' | 'report_queue' | 'registration_reviews' | 'import_batches' | 'schedule_changes' | 'swaps' | 'quality' | 'live_shifts' | 'analytics_reports' | 'live_updates' | 'archives' | 'account_requests'
 export interface ListFilters {
   search?: string
   from?: string
@@ -29,7 +29,7 @@ export interface ListFilters {
   actionIds?: string[]
   shiftIds?: string[]
   sources?: string[]
-  severity?: 'all' | 'error' | 'warning' | 'info'
+  severity?: string[]
   qualitySources?: string[]
   requesterIds?: string[]
   scope?: 'all' | 'mine' | 'forMe'

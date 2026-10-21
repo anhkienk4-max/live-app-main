@@ -211,3 +211,21 @@
     -moz-osx-font-smoothing: grayscale;
   }
 }
+
+/* Keep touch controls usable without changing desktop density. */
+@media (max-width: 767px) {
+  button:not([role="switch"]):not([role="checkbox"]),
+  [role="menuitem"], [role="menuitemcheckbox"], [role="option"],
+  [data-slot="button"], [data-slot="select-trigger"],
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([tabindex="-1"]), select, textarea {
+    min-height: 44px;
+  }
+  button:not([role="switch"]):not([role="checkbox"]), [data-slot="button"] { min-width: 44px; }
+  [data-slot="tabs-list"] { height: auto; min-height: 44px; max-width: 100%; flex-wrap: wrap; }
+  [data-slot="tabs-trigger"] { min-height: 44px; }
+  label:has(input[type="checkbox"]), label:has(input[type="radio"]) { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; }
+}
+
+@media (max-width: 767px) {
+  [role="region"] table:has(tr > th:nth-child(5)) { min-width: 640px; }
+}

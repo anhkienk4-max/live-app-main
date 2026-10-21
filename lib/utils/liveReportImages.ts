@@ -189,6 +189,15 @@ export function sortedLiveReportImages(images: readonly LiveReportImage[]) {
   )
 }
 
+export function filterLiveReportImagesByCategories(
+  images: readonly LiveReportImage[],
+  categories: readonly string[],
+) {
+  return categories.length === 0
+    ? [...images]
+    : images.filter(image => categories.includes(image.category))
+}
+
 export function revokeLiveReportImageObjectUrl(
   image: Pick<LiveReportImage, 'file_url'>,
   revokeObjectUrl = (url: string) => URL.revokeObjectURL(url),

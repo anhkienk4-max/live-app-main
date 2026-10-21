@@ -20,6 +20,7 @@ import type {
 } from '@/lib/types/database.types'
 import {
   createLiveReportImageDrafts,
+  filterLiveReportImagesByCategories,
   liveReportImageCategories,
   maximumLiveReportImageDescriptionLength,
   maximumLiveReportImages,
@@ -34,6 +35,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import { Textarea } from '@/components/ui/textarea'
 
 export const liveReportImageCategoryTranslationKeys: Record<LiveReportImageCategory, TranslationKey> = {
@@ -322,12 +324,10 @@ export function LiveReportImageGallery({
   signedUrls?: Record<string, string>
 }) {
   const { t } = useTranslation()
-  const [filter, setFilter] = React.useState<'all' | LiveReportImageCategory>('all')
+  const [selectedCategories, setSelectedCategories] = React.useState<string[]>([])
   const [viewerId, setViewerId] = React.useState<string | null>(null)
   const ordered = sortedLiveReportImages(images)
-  const filtered = filter === 'all'
-    ? ordered
-    : ordered.filter(image => image.category === filter)
+  const filtered = filterLiveReportImagesByCategories(ordered, selectedCategories)
   const cover = ordered.find(image => image.is_cover)
   const viewerIndex = filtered.findIndex(image => image.id === viewerId)
   const viewerImage = viewerIndex >= 0 ? filtered[viewerIndex] : null
@@ -353,15 +353,15 @@ export function LiveReportImageGallery({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="font-semibold">{t('liveSessionImages')}</h3>
         {images.length > 0 && (
-          <Select value={filter} onValueChange={value => setFilter(value as 'all' | LiveReportImageCategory)}>
-            <SelectTrigger className="w-64" data-testid="live-image-category-filter"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t('allImageCategories')}</SelectItem>
-              {liveReportImageCategories.map(category => (
-                <SelectItem value={category} key={category}>{t(liveReportImageCategoryTranslationKeys[category])}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <MultiSelectFilter
+            label={t('category')}
+            value={selectedCategories}
+            onChange={setSelectedCategories}
+            options={liveReportImageCategories.map(category => ({ value: category, label: t(liveReportImageCategoryTranslationKeys[category]) }))}
+            placeholder={t('allImageCategories')}
+            className="w-64"
+            testId="live-image-category-filter"
+          />
         )}
       </div>
 

@@ -33,6 +33,8 @@ import {
 import { WorkforceTeamOverview } from '@/components/features/workforce/WorkforceTeamOverview'
 import { WorkforceIndividualView } from '@/components/features/workforce/WorkforceIndividualView'
 import { WorkforceLeaderboard } from '@/components/features/workforce/WorkforceLeaderboard'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
+import { parseWorkforceYearDraft } from '@/lib/workforce/workforcePeriod'
 
 export default function WorkforcePage() {
   const { translate } = useTranslation()
@@ -48,13 +50,18 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
   const isSupervisor = canViewTeam && (permission === 'admin' || permission === 'leader')
   const { toast } = useToast()
 
-  // Default month: current month YYYY-MM
+  // Workforce periods use the shift's business calendar date.
   const currentMonthStr = React.useMemo(() => {
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   }, [])
 
-  const [month, setMonth] = React.useState<string>(currentMonthStr)
+  const [period, setPeriod] = React.useState<string>(currentMonthStr)
+  const [yearDraft, setYearDraft] = React.useState(currentMonthStr.slice(0, 4))
+  const updatePeriod = (value: string) => {
+    setPeriod(value)
+    setYearDraft(value.slice(0, 4))
+  }
   const [role, setRole] = React.useState<WorkforceRole>('host')
   const [activeTab, setActiveTab] = React.useState<'team' | 'individual' | 'leaderboard'>('team')
 
@@ -88,7 +95,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
     setLoadingOverview(true)
     setOverviewError(null)
     try {
-      const res = await workforceService.getWorkforceOverview({ month, role })
+      const res = await workforceService.getWorkforceOverview({ period, role })
       if (sequence !== readSequence.current) return
       setOverviewData(res)
     } catch (err: unknown) {
@@ -103,7 +110,8 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
     } finally {
       if (sequence === readSequence.current) setLoadingOverview(false)
     }
-  }, [isSupervisor, month, role, toast])
+  }, [isSupervisor, period, role, toast])
+  useShiftChangeRefresh(loadOverview)
 
   React.useEffect(() => {
     const generation = readSequence
@@ -144,12 +152,13 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
         </div>
 
         <WorkforceIndividualView
+          key={`${myStaffId}:${role}:${period}`}
           staffId={myStaffId}
           role={role}
-          month={month}
+          period={period}
           canSelectOtherStaff={false}
           onRoleChange={setRole}
-          onMonthChange={setMonth}
+          onPeriodChange={setPeriod}
         />
       </PageShell>
     )
@@ -174,7 +183,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
           </p>
         </div>
 
-        {/* Global Month & Role controls for Team tab */}
+        {/* Global period and role controls for Team/Leaderboard */}
         {activeTab !== 'individual' && (
           <div className="flex flex-wrap items-center gap-2">
             <div className="w-36">
@@ -191,10 +200,41 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
             </div>
 
             <div className="w-36">
+              <Select value={period.length === 4 ? 'year' : 'month'} onValueChange={(mode) =>
+                updatePeriod(mode === 'year' ? period.slice(0, 4) : `${period.slice(0, 4)}-01`)
+              }>
+                <SelectTrigger className="h-8 text-xs bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="month">Theo tháng</SelectItem>
+                  <SelectItem value="year">Theo năm</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="w-36">
               <Input
-                type="month"
-                value={month}
-                onChange={(e) => setMonth(e.target.value)}
+                type={period.length === 4 ? 'number' : 'month'}
+                min={period.length === 4 ? 1900 : undefined}
+                max={period.length === 4 ? 9999 : undefined}
+                step={period.length === 4 ? 1 : undefined}
+                value={period.length === 4 ? yearDraft : period}
+                onChange={(e) => {
+                  const value = e.target.value
+                  if (period.length === 4) {
+                    const parsed = parseWorkforceYearDraft(value)
+                    if (parsed) {
+                      setYearDraft(parsed.draft)
+                      if (parsed.period) updatePeriod(parsed.period)
+                    }
+                  } else if (/^\d{4}-\d{2}$/u.test(value)) {
+                    updatePeriod(value)
+                  }
+                }}
+                onBlur={() => {
+                  if (!/^\d{4}$/u.test(yearDraft)) setYearDraft(period.slice(0, 4))
+                }}
                 className="h-8 text-xs bg-white"
               />
             </div>
@@ -236,7 +276,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
           <WorkforceTeamOverview
             overview={overviewData?.team || null}
             staffList={overviewData?.staff || []}
-            month={month}
+            period={period}
             role={role}
             loading={loadingOverview}
             error={overviewError}
@@ -247,14 +287,14 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
         {/* INDIVIDUAL PERFORMANCE TAB */}
         <TabsContent value="individual" className="mt-0">
           <WorkforceIndividualView
-            key={`${selectedStaffId}:${role}:${month}`}
+            key={`${selectedStaffId}:${role}:${period}`}
             staffId={selectedStaffId || currentUser?.id || ''}
             role={role}
-            month={month}
+            period={period}
             canSelectOtherStaff={isSupervisor}
             onStaffChange={setSelectedStaffId}
             onRoleChange={setRole}
-            onMonthChange={setMonth}
+            onPeriodChange={setPeriod}
           />
         </TabsContent>
 
@@ -265,7 +305,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
             isConfigured={overviewData?.leaderboard_policy_configured || false}
             loading={loadingOverview}
             error={overviewError}
-            month={month}
+            period={period}
             role={role}
           />
         </TabsContent>

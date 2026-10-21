@@ -9,11 +9,16 @@ import { summarizeWorkforcePerformance, type ScheduledStaffing } from '@/lib/wor
 import { aggregateWorkforceTeam,rankVerifiedWorkforce } from '@/lib/workforce/workforceOverview'
 import { WorkforceCalculationError,type ActualStaffingEvidence,
   type WorkforceRole } from '@/lib/workforce/payrollCalculation'
+import { WORKFORCE_LATE_GRACE_MINUTES } from '@/lib/workforce/workforcePolicy'
+import { workforcePeriodRange } from '@/lib/workforce/workforcePeriod'
+import { readCompleteWorkforceRows, readWorkforceRowsForShifts,
+  WorkforceScopeReadError } from '@/lib/server/workforceScopePagination'
 
 const query=z.object({
-  month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/u),
+  period:z.string().regex(/^\d{4}(?:-(0[1-9]|1[0-2]))?$/u).optional(),
+  month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/u).optional(),
   role:z.enum(['host','support','technical']),
-}).strict()
+}).strict().refine(input=>Boolean(input.period||input.month)&&!(input.period&&input.month))
 const fail=(code:string,status:number)=>Response.json({ok:false,error:{code}},
   {status,headers:{'Cache-Control':'no-store'}})
 type Options={createClient?:()=>SupabaseClient;resolveUser?:ServerUserResolver,
@@ -31,43 +36,56 @@ export function createWorkforceOverviewHandler(options:Options={}) {
       if(!(options.isEnabled??(()=>isFeatureEnabled('actual_staffing')))())
         return fail('WORKFORCE_FEATURE_DISABLED',503)
       const input=query.parse(Object.fromEntries(new URL(request.url).searchParams.entries()))
-      const grace=(options.grace??(()=>envInt('WORKFORCE_LATE_GRACE_MINUTES')))()
+      const grace=(options.grace??(()=>WORKFORCE_LATE_GRACE_MINUTES))()
       if(grace===null||!Number.isSafeInteger(grace)||grace<0||grace>120)
         return fail('WORKFORCE_GRACE_POLICY_NOT_CONFIGURED',409)
-      const y=Number(input.month.slice(0,4)),m=Number(input.month.slice(5))
-      const first=input.month+'-01'
-      const last=input.month+'-'+String(new Date(Date.UTC(y,m,0)).getUTCDate()).padStart(2,'0')
+      const period=input.period??input.month!
+      const {from:first,to:last}=workforcePeriodRange(period)
       const db=(options.createClient??createSupabaseAdminClient)()
-      const [staffRes,shiftRes]=await Promise.all([
-        db.from('business_users').select('id,full_name,department')
-          .eq('status','active').is('deleted_at',null).limit(1000),
-        db.from('shifts').select('id,date,start_at,status,host_id,support_id,technical_id')
-          .gte('date',first).lte('date',last).is('deleted_at',null).limit(1000),
+      const [staffRows,shiftRows]=await Promise.all([
+        readCompleteWorkforceRows(
+          (from,to)=>db.from('business_users')
+            .select('id,full_name,department',{count:'exact'})
+            .eq('status','active').is('deleted_at',null)
+            .order('id',{ascending:true}).range(from,to),
+          'WORKFORCE_TEAM_SCOPE_INCOMPLETE',
+        ),
+        readCompleteWorkforceRows(
+          (from,to)=>db.from('shifts')
+            .select('id,date,start_at,status,host_id,support_id,technical_id',{count:'exact'})
+            .gte('date',first).lte('date',last).is('deleted_at',null)
+            .order('id',{ascending:true}).range(from,to),
+          'WORKFORCE_TEAM_SCOPE_INCOMPLETE',
+        ),
       ])
-      if(staffRes.error||shiftRes.error||(staffRes.data??[]).length>=1000
-        ||(shiftRes.data??[]).length>=1000)
-        return fail('WORKFORCE_TEAM_SCOPE_INCOMPLETE',503)
-      const shifts=(shiftRes.data??[]).filter(s=>s.status!=='cancelled')
+      const shifts=shiftRows.filter(s=>s.status!=='cancelled')
       const shiftIds=shifts.map(s=>s.id)
-      const [regs,actual]=shiftIds.length?await Promise.all([
-        db.from('shift_registrations').select('shift_id,user_id,operational_role,status')
-          .in('shift_id',shiftIds).in('status',['approved','manually_assigned']).limit(1000),
-        db.from('workforce_actual_segments')
-          .select('id,shift_id,staff_id,operational_role,event_kind,review_status,actual_start_at,actual_end_at')
-          .in('shift_id',shiftIds).eq('review_status','approved').limit(1000),
-      ]):[{data:[],error:null},{data:[],error:null}]
-      if(regs.error||actual.error||(regs.data??[]).length>=1000
-        ||(actual.data??[]).length>=1000)
-        return fail('WORKFORCE_TEAM_EVIDENCE_INCOMPLETE',503)
-      const registrations=(regs.data??[]) as Array<{
-        shift_id:string; user_id:string; operational_role:string; status:string
-      }>
-      const actualRows=(actual.data??[]) as Array<{
-        id:string; shift_id:string; staff_id:string; operational_role:WorkforceRole;
-        event_kind:'worked'|'no_show'; review_status:'approved';
-        actual_start_at:string|null; actual_end_at:string|null
-      }>
-      const known=new Map((staffRes.data??[]).map(s=>[s.id,s]))
+      const [registrationRows,actualRows]=await Promise.all([
+        readWorkforceRowsForShifts(
+          shiftIds,
+          (chunk,from,to)=>db.from('shift_registrations')
+            .select('id,shift_id,user_id,operational_role,status',{count:'exact'})
+            .in('shift_id',chunk).in('status',['approved','manually_assigned'])
+            .order('id',{ascending:true}).range(from,to),
+          'WORKFORCE_TEAM_EVIDENCE_INCOMPLETE',
+        ),
+        readWorkforceRowsForShifts(
+          shiftIds,
+          (chunk,from,to)=>db.from('workforce_actual_segments')
+            .select('id,shift_id,staff_id,operational_role,event_kind,review_status,actual_start_at,actual_end_at',{count:'exact'})
+            .in('shift_id',chunk).eq('review_status','approved')
+            .order('id',{ascending:true}).range(from,to),
+          'WORKFORCE_TEAM_EVIDENCE_INCOMPLETE',
+        ),
+      ])
+      const registrations=registrationRows
+      const known=new Map(staffRows.map(s=>[s.id,s]))
+      const registrationsByShift=new Map<string,typeof registrations>()
+      for(const registration of registrations){
+        const rows=registrationsByShift.get(registration.shift_id)??[]
+        rows.push(registration)
+        registrationsByShift.set(registration.shift_id,rows)
+      }
       const plannedByStaff=new Map<string,ScheduledStaffing[]>()
       const pairKeys=new Set<string>()
       const roleField={
@@ -76,8 +94,8 @@ export function createWorkforceOverviewHandler(options:Options={}) {
       for(const shift of shifts){
         const members=new Set<string>()
         if(shift[roleField])members.add(shift[roleField] as string)
-        for(const r of registrations){
-          if(r.shift_id===shift.id&&r.operational_role===input.role)members.add(r.user_id)
+        for(const r of registrationsByShift.get(shift.id)??[]){
+          if(r.operational_role===input.role)members.add(r.user_id)
         }
         for(const staffId of members){
           if(!known.has(staffId))continue
@@ -96,9 +114,15 @@ export function createWorkforceOverviewHandler(options:Options={}) {
         .map(e=>({id:e.id,shiftId:e.shift_id,staffId:e.staff_id,
           role:e.operational_role,eventKind:e.event_kind,reviewStatus:e.review_status,
           startAt:e.actual_start_at,endAt:e.actual_end_at}))
+      const evidenceByStaff=new Map<string,ActualStaffingEvidence[]>()
+      for(const row of evidence){
+        const rows=evidenceByStaff.get(row.staffId)??[]
+        rows.push(row)
+        evidenceByStaff.set(row.staffId,rows)
+      }
       const results=[...plannedByStaff].map(([staffId,planned])=>({
-        ...summarizeWorkforcePerformance(staffId,input.role,planned,evidence,
-          {lateGraceMinutes:grace}),
+        ...summarizeWorkforcePerformance(staffId,input.role,planned,
+          evidenceByStaff.get(staffId)??[],{lateGraceMinutes:grace}),
         name:known.get(staffId)?.full_name??null,
         department:known.get(staffId)?.department??null,
       }))
@@ -114,7 +138,7 @@ export function createWorkforceOverviewHandler(options:Options={}) {
       const unmatched=evidence.filter(e=>!knownPairs.has(
         e.shiftId+':'+e.staffId+':'+e.role)).length
       return Response.json({
-        ok:true,month:input.month,role:input.role,team:aggregateWorkforceTeam(results),
+        ok:true,period,...(period.includes('-')?{month:period}:{year:period}),role:input.role,team:aggregateWorkforceTeam(results),
         staff:results,leaderboard,
         leaderboard_policy_configured:leaderboardPolicy!==null,
         unmatched_approved_segments:unmatched,
@@ -125,6 +149,7 @@ export function createWorkforceOverviewHandler(options:Options={}) {
       if(isAuthorizationError(e))return authorizationErrorResponse(e)
       if(e instanceof z.ZodError)return fail('WORKFORCE_TEAM_QUERY_INVALID',400)
       if(e instanceof WorkforceCalculationError)return fail(e.code,409)
+      if(e instanceof WorkforceScopeReadError)return fail(e.code,503)
       if(e instanceof Error&&e.message==='WORKFORCE_LEADERBOARD_POLICY_REQUIRED')
         return fail('WORKFORCE_LEADERBOARD_POLICY_INVALID',409)
       return fail('WORKFORCE_TEAM_FAILED',503)

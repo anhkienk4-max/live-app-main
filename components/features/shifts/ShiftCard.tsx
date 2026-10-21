@@ -97,14 +97,15 @@ export const ShiftCard = React.forwardRef<HTMLButtonElement, ShiftCardProps>(
         <button
           ref={ref}
           className={cn(
-            'w-full text-left block p-4 border rounded-lg transition-colors hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            'w-full min-w-0 text-left block p-4 [overflow-wrap:anywhere] border rounded-lg transition-colors hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             selected ? 'border-primary bg-primary/[0.02]' : 'bg-card',
             className
           )}
           {...props}
         >
-          <div className='flex items-center justify-between mb-2'>
-            <div className='flex flex-wrap items-center gap-x-6 gap-y-2 flex-1'>
+          {shift.title && <p className="mb-3 text-sm font-semibold">{shift.title}</p>}
+          <div className='flex flex-wrap items-start justify-between gap-3 mb-2'>
+            <div className='flex flex-wrap items-center gap-x-6 gap-y-2 min-w-0 flex-1'>
               {showDate && (
                 <div className='text-sm font-semibold min-w-[110px] text-foreground'>
                   {shift.date}
@@ -128,10 +129,15 @@ export const ShiftCard = React.forwardRef<HTMLButtonElement, ShiftCardProps>(
                 <span className='font-medium mr-1'>{t('importTechnicalNames')}:</span> {techName}
               </div>
             </div>
-            <div className='ml-4 shrink-0'>
+            <div className='shrink-0'>
               <ShiftStatusBadge status={shift.status} />
             </div>
           </div>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs" data-testid={'shift-staffing-' + shift.id}>
+            <span className="font-medium">{t('staffing')}: {t(capacities.some(capacity => capacity.remaining > 0) ? 'needsStaffing' : 'fullyStaffed')}</span>
+            {capacities.map(capacity => <span key={capacity.role}>{t(capacity.role)}: {capacity.approved}/{capacity.required}</span>)}
+          </div>
+          <span className="mt-3 block text-xs font-semibold text-primary">{t('viewDetails')} →</span>
           {attention.length > 0 && (
             <div className='mt-3 pr-4'>
               <OperationalStatusStrip items={attention} compact />

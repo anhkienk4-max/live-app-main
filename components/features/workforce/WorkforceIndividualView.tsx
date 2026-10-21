@@ -23,6 +23,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
+import { parseWorkforceYearDraft } from '@/lib/workforce/workforcePeriod'
 import {
   workforceService,
   workforceErrorMessage,
@@ -33,24 +35,25 @@ import {
 interface WorkforceIndividualViewProps {
   staffId: string
   role: WorkforceRole
-  month: string
+  period: string
   canSelectOtherStaff?: boolean
   availableStaff?: Array<{ id: string; name: string | null }>
   onStaffChange?: (newStaffId: string) => void
   onRoleChange?: (newRole: WorkforceRole) => void
-  onMonthChange?: (newMonth: string) => void
+  onPeriodChange?: (newPeriod: string) => void
 }
 
 export function WorkforceIndividualView({
   staffId,
   role,
-  month,
+  period,
   canSelectOtherStaff = false,
   onStaffChange,
   onRoleChange,
-  onMonthChange,
+  onPeriodChange,
 }: WorkforceIndividualViewProps) {
   const { toast } = useToast()
+  const [yearDraft, setYearDraft] = React.useState(period.slice(0, 4))
   const [summary, setSummary] = React.useState<WorkforcePerformanceSummary | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
@@ -66,7 +69,7 @@ export function WorkforceIndividualView({
       const res = await workforceService.getWorkforcePerformance({
         staffId,
         role,
-        month,
+        period,
       })
       if (sequence !== readSequence.current) return
       setSummary(res.performance)
@@ -83,7 +86,8 @@ export function WorkforceIndividualView({
     } finally {
       if (sequence === readSequence.current) setLoading(false)
     }
-  }, [staffId, role, month, toast])
+  }, [staffId, role, period, toast])
+  useShiftChangeRefresh(loadPerformance)
 
   React.useEffect(() => {
     const generation = readSequence
@@ -145,14 +149,42 @@ export function WorkforceIndividualView({
 
           <div>
             <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              Tháng đánh giá
+              Kỳ đánh giá
             </label>
-            <Input
-              type="month"
-              value={month}
-              onChange={(e) => onMonthChange?.(e.target.value)}
-              className="mt-1 h-8 text-xs"
-            />
+            <div className="mt-1 flex gap-1">
+              <Select value={period.length === 4 ? 'year' : 'month'} onValueChange={(mode) =>
+                onPeriodChange?.(mode === 'year' ? period.slice(0, 4) : `${period.slice(0, 4)}-01`)
+              }>
+                <SelectTrigger className="h-8 w-24 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="month">Tháng</SelectItem>
+                  <SelectItem value="year">Năm</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                type={period.length === 4 ? 'number' : 'month'}
+                min={period.length === 4 ? 1900 : undefined}
+                max={period.length === 4 ? 9999 : undefined}
+                step={period.length === 4 ? 1 : undefined}
+                value={period.length === 4 ? yearDraft : period}
+                onChange={(e) => {
+                  const value = e.target.value
+                  if (period.length === 4) {
+                    const parsed = parseWorkforceYearDraft(value)
+                    if (parsed) {
+                      setYearDraft(parsed.draft)
+                      if (parsed.period) onPeriodChange?.(parsed.period)
+                    }
+                  } else if (/^\d{4}-\d{2}$/u.test(value)) {
+                    onPeriodChange?.(value)
+                  }
+                }}
+                onBlur={() => {
+                  if (!/^\d{4}$/u.test(yearDraft)) setYearDraft(period.slice(0, 4))
+                }}
+                className="h-8 min-w-0 text-xs"
+              />
+            </div>
           </div>
 
           <div>
@@ -205,7 +237,7 @@ export function WorkforceIndividualView({
                   <span>•</span>
                   <span>Vai trò: <strong className="text-slate-700">{roleLabels[summary.role]}</strong></span>
                   <span>•</span>
-                  <span>Tháng: <strong className="text-slate-700">{month}</strong></span>
+                  <span>Kỳ: <strong className="text-slate-700">{period}</strong></span>
                 </div>
               </div>
             </div>

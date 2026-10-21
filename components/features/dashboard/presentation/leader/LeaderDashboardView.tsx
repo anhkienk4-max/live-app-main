@@ -16,6 +16,7 @@ export interface ScheduleItem {
   statusColor: ScheduleStatusColor
   /** null = staffing truth unavailable */
   staffing: string | null
+  onView?: () => void
 }
 
 export interface DecisionItem {
@@ -90,8 +91,8 @@ function KpiCard({ icon, iconBg, title, value, subtitle }: KpiCardProps) {
   )
 }
 
-interface ScheduleRowProps { time: string; brand: string; platform: string; status: string; statusColor: ScheduleStatusColor; staffing: string | null }
-function ScheduleRow({ time, brand, platform, status, statusColor, staffing }: ScheduleRowProps) {
+interface ScheduleRowProps { time: string; brand: string; platform: string; status: string; statusColor: ScheduleStatusColor; staffing: string | null; onView?: () => void }
+function ScheduleRow({ time, brand, platform, status, statusColor, staffing, onView }: ScheduleRowProps) {
   const pill: Record<ScheduleStatusColor, string> = {
     blue:   'bg-blue-50 text-blue-700 border-blue-200',
     green:  'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -109,7 +110,7 @@ function ScheduleRow({ time, brand, platform, status, statusColor, staffing }: S
       </td>
       <td className="px-5 py-3 text-[13px] text-slate-600">{staffing ?? '—'}</td>
       <td className="px-5 py-3 text-[13px] whitespace-nowrap">
-        <a href="#" className="font-semibold text-blue-600 hover:underline">Xem chi tiết</a>
+        <button type="button" disabled={!onView} onClick={onView} className="inline-flex min-h-11 items-center font-semibold text-blue-600 hover:underline">Xem chi tiết</button>
       </td>
     </tr>
   )
@@ -124,7 +125,7 @@ function DecisionRow({ type, title, subtitle, time, action, iconBg }: DecisionRo
     dq:           <AlertTriangle className="w-4 h-4 text-red-500" />,
   }
   return (
-    <div className="flex items-center justify-between px-3 py-3 rounded-lg border border-transparent hover:border-slate-200 hover:bg-slate-50 transition-colors">
+    <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3 rounded-lg border border-transparent hover:border-slate-200 hover:bg-slate-50 transition-colors">
       <div className="flex items-center gap-3">
         <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${iconBg}`}>{icons[type]}</div>
         <div className="flex flex-col">
@@ -134,7 +135,7 @@ function DecisionRow({ type, title, subtitle, time, action, iconBg }: DecisionRo
       </div>
       <div className="flex items-center gap-4">
         <span className="text-[12px] font-medium text-red-500 whitespace-nowrap">{time}</span>
-        <button className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-[12px] font-bold rounded-md shadow-sm shrink-0 transition-colors">{action}</button>
+        <a href={type === 'registration' ? '/staffing?tab=registration' : type === 'swap' ? '/swaps' : type === 'report' ? '/reports' : '/data-quality'} className="inline-flex min-h-11 items-center px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-[12px] font-bold rounded-md shadow-sm shrink-0 transition-colors">{action}</a>
       </div>
     </div>
   )
@@ -147,20 +148,20 @@ export function LeaderDashboardView({
   decisions, todaysSchedule, staffingHealth, upcomingLive, activityLog,
 }: LeaderDashboardViewModel) {
   return (
-    <main className="p-8 flex flex-col gap-6 overflow-y-auto">
-      <div className="flex items-start justify-between mb-1">
+    <main className="p-4 sm:p-8 min-w-0 flex flex-col gap-6 overflow-y-auto">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
         <div className="flex flex-col gap-1">
           <h1 className="text-[26px] font-bold tracking-tight text-slate-900 leading-tight">Leader Dashboard</h1>
           <p className="text-[14px] text-slate-500 font-medium">Team schedule, staffing and action queue</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-[13px] font-bold text-slate-700 rounded-lg shadow-sm transition-colors">
+        <a href="#leader-decisions" className="flex min-h-11 items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-[13px] font-bold text-slate-700 rounded-lg shadow-sm transition-colors">
           <FolderCheck className="w-4 h-4" />
           Review Attention
-        </button>
+        </a>
       </div>
 
       {/* ROW 1: KPIs */}
-      <div className="grid grid-cols-4 gap-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-5">
         <KpiCard icon={<Calendar className="w-5 h-5 text-blue-600" />} iconBg="bg-blue-50" title="TEAM SHIFTS" value={todaysShiftsCount.toString()} subtitle="Today" />
         <KpiCard icon={<Radio className="w-5 h-5 text-red-600" />} iconBg="bg-red-50" title="LIVE" value={liveCount.toString()} subtitle="Active now" />
         <KpiCard icon={<Users className="w-5 h-5 text-amber-500" />} iconBg="bg-amber-50" title="MISSING STAFF" value={missingStaffCount !== null ? missingStaffCount.toString() : '—'} subtitle="Resolve today" />
@@ -168,15 +169,15 @@ export function LeaderDashboardView({
       </div>
 
       {/* ROW 2: SCHEDULE (7/12) + DECISIONS (5/12) */}
-      <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-7 flex flex-col">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-6">
+        <div className="min-w-0 xl:col-span-7 flex flex-col">
           <div className="flex justify-between items-center mb-3">
             <h2 className="text-[16px] font-bold text-slate-900">{"Today's Team Schedule"}</h2>
-            <a href="#" className="text-[13px] font-semibold text-blue-600 hover:underline flex items-center gap-1">
+            <a href="/calendar" className="text-[13px] font-semibold text-blue-600 hover:underline flex min-h-11 items-center gap-1">
               Xem tất cả <ArrowRight className="w-3.5 h-3.5" />
             </a>
           </div>
-          <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm flex flex-col flex-1 overflow-hidden">
+          <div role="region" aria-label="Lịch đội ngũ, cuộn ngang / Scroll horizontally" tabIndex={0} className="bg-white rounded-[12px] border border-slate-200 shadow-sm min-w-0 flex flex-col flex-1 overflow-x-auto">
             {todaysSchedule.length > 0 ? (
               <table className="w-full">
                 <thead>
@@ -191,7 +192,7 @@ export function LeaderDashboardView({
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {todaysSchedule.slice(0, 6).map((s, i) => (
-                    <ScheduleRow key={i} time={s.time} brand={s.brand} platform={s.platform} status={s.status} statusColor={s.statusColor} staffing={s.staffing} />
+                    <ScheduleRow key={i} time={s.time} brand={s.brand} platform={s.platform} status={s.status} statusColor={s.statusColor} staffing={s.staffing} onView={s.onView} />
                   ))}
                 </tbody>
               </table>
@@ -201,7 +202,7 @@ export function LeaderDashboardView({
           </div>
         </div>
 
-        <div className="col-span-5 flex flex-col">
+        <div id="leader-decisions" tabIndex={-1} className="min-w-0 xl:col-span-5 flex flex-col">
           <h2 className="text-[16px] font-bold text-slate-900 mb-3">Decision Queue</h2>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm flex flex-col flex-1 p-2">
             {decisions === null ? (
@@ -220,8 +221,8 @@ export function LeaderDashboardView({
       </div>
 
       {/* ROW 3: UPCOMING LIVE + STAFFING HEALTH */}
-      <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-7 flex flex-col">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-6">
+        <div className="min-w-0 xl:col-span-7 flex flex-col">
           <h2 className="text-[16px] font-bold text-slate-900 mb-3">Upcoming Live</h2>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm p-5 flex-1">
             {upcomingLive ? (
@@ -253,7 +254,7 @@ export function LeaderDashboardView({
           </div>
         </div>
 
-        <div className="col-span-5 flex flex-col">
+        <div className="min-w-0 xl:col-span-5 flex flex-col">
           <h2 className="text-[16px] font-bold text-slate-900 mb-3">Staffing Health</h2>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm p-5 flex-1">
             {staffingHealth ? (
@@ -306,7 +307,7 @@ export function LeaderDashboardView({
           )}
         </div>
       </div>
-    <nav aria-label="Xem tất cả" className="flex flex-wrap gap-4 text-sm"><a className="underline underline-offset-4" href="/calendar">Xem tất cả: Lịch</a><a className="underline underline-offset-4" href="/reports">Xem tất cả: Báo cáo</a><a className="underline underline-offset-4" href="/notifications">Xem tất cả: Thông báo</a><a className="underline underline-offset-4" href="/data-quality">Xem tất cả: Chất lượng dữ liệu</a></nav>
+    <nav aria-label="Xem tất cả" className="flex flex-wrap gap-4 text-sm"><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/calendar">Xem tất cả: Lịch</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/reports">Xem tất cả: Báo cáo</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/notifications">Xem tất cả: Thông báo</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/data-quality">Xem tất cả: Chất lượng dữ liệu</a></nav>
     </main>
   )
 }

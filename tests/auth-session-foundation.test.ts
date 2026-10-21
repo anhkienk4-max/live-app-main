@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { NextRequest, NextResponse } from 'next/server'
+import {
+  AuthApiError,
+  AuthRetryableFetchError,
+  AuthSessionMissingError,
+} from '@supabase/supabase-js'
 
 import {
   resolveAuthMode,
@@ -91,11 +96,11 @@ test('password login, reload verification and logout use one Supabase session', 
     },
   }
 
-  assert.equal(await establishPasswordSession(
-    client,
+  assert.deepEqual(await establishPasswordSession(
+    () => client,
     ' Member@Example.Test ',
     'correct-password',
-  ), true)
+  ), { ok: true })
   assert.equal(signedInEmail, 'member@example.test')
   assert.deepEqual(await getVerifiedUser(async () => ({
     data: { user: active ? user : null },
@@ -108,6 +113,53 @@ test('password login, reload verification and logout use one Supabase session', 
     data: { user: active ? user : null },
     error: null,
   })), null)
+})
+
+test('password sign-in classifies only typed Supabase errors and codes without exposing them', async () => {
+  const resultFor = (error: unknown) => establishPasswordSession(() => ({
+    auth: {
+      async signInWithPassword() {
+        return { data: { session: null, user: null }, error }
+      },
+      async signOut() { return { error: null } },
+    },
+  }), 'private@example.test', 'private-password')
+
+  assert.deepEqual(await resultFor(new AuthApiError('private response', 503, 'invalid_credentials')),
+    { ok: false, reason: 'INVALID_CREDENTIALS' })
+  assert.deepEqual(await resultFor(new AuthRetryableFetchError('private transport detail', 503)),
+    { ok: false, reason: 'AUTH_NETWORK_ERROR' })
+  assert.deepEqual(await resultFor(new AuthApiError('private response', 400, 'email_provider_disabled')),
+    { ok: false, reason: 'AUTH_PROVIDER_UNAVAILABLE' })
+  assert.deepEqual(await resultFor(new AuthApiError('private response', 400, 'provider_disabled')),
+    { ok: false, reason: 'AUTH_PROVIDER_UNAVAILABLE' })
+  assert.deepEqual(await resultFor({ name: 'AuthApiError', code: 'invalid_credentials' }),
+    { ok: false, reason: 'INVALID_CREDENTIALS' })
+  assert.deepEqual(await resultFor({ name: 'AuthRetryableFetchError' }),
+    { ok: false, reason: 'AUTH_NETWORK_ERROR' })
+  assert.deepEqual(await resultFor(new AuthSessionMissingError()),
+    { ok: false, reason: 'AUTH_SESSION_FAILURE' })
+  assert.deepEqual(await resultFor(new AuthApiError('invalid credentials text', 401, 'unrecognized_code')),
+    { ok: false, reason: 'UNKNOWN_AUTH_ERROR' })
+
+  const initializationFailure = await establishPasswordSession(() => {
+    throw new Error('private initialization detail')
+  }, 'private@example.test', 'private-password')
+  assert.deepEqual(initializationFailure, { ok: false, reason: 'UNKNOWN_AUTH_ERROR' })
+  assert.doesNotMatch(JSON.stringify(initializationFailure), /private|password|example\.test/i)
+})
+
+test('password sign-in reports a missing session as a session failure', async () => {
+  const result = await establishPasswordSession(() => ({
+    auth: {
+      async signInWithPassword() {
+        return { data: { session: null, user: { id: 'auth-user' } }, error: null }
+      },
+      async signOut() { return { error: null } },
+    },
+  }), 'member@example.test', 'password')
+
+  assert.deepEqual(result, { ok: false, reason: 'AUTH_SESSION_FAILURE' })
 })
 
 test('login recovery reasons use the supported local Supabase sign-out boundary', () => {
@@ -146,7 +198,7 @@ test('sequential account switching clears each local session before the next log
     'leader@livestream.com',
     'host1@livestream.com',
   ]) {
-    assert.equal(await establishPasswordSession(client, email, 'valid-password'), true)
+    assert.deepEqual(await establishPasswordSession(() => client, email, 'valid-password'), { ok: true })
     assert.equal(activeEmail, email)
     assert.equal(await clearLocalSession(client), true)
     assert.equal(activeEmail, null)

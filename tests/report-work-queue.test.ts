@@ -81,7 +81,9 @@ test('draft continuation hydration preserves NULL versus explicit zero', () => {
 test('Reports UI uses bounded queue/page services and exposes draft/final actions', () => {
   const listSource = readFileSync(new URL('../components/features/reports/ReportsList.tsx', import.meta.url), 'utf8')
   const formSource = readFileSync(new URL('../components/features/reports/ReportFormModal.tsx', import.meta.url), 'utf8')
-  assert.match(listSource, /shiftService\.getReportCandidates\(30\)/)
+  assert.match(listSource, /getReportObligationPage\(\{ page: queuePage, pageSize: queuePageSize/)
+  assert.doesNotMatch(listSource, /shiftService\.getReportCandidates\(30\)/)
+  assert.match(listSource, /total=\{queueTotal\}/)
   assert.doesNotMatch(listSource, /reportService\.getAll\(\)/)
   assert.doesNotMatch(listSource, /shiftService\.getAll\(\)/)
   assert.match(listSource, /<HistoryPagination/)

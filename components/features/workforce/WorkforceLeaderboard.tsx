@@ -18,7 +18,7 @@ import type { LeaderboardEntry, WorkforceRole } from '@/lib/services/workforceSe
 interface WorkforceLeaderboardProps {
   leaderboard: LeaderboardEntry[]
   isConfigured: boolean
-  month: string
+  period: string
   role: WorkforceRole
   loading?: boolean
   error?: string | null
@@ -27,7 +27,7 @@ interface WorkforceLeaderboardProps {
 export function WorkforceLeaderboard({
   leaderboard,
   isConfigured,
-  month,
+  period,
   role,
   loading = false,
   error = null,
@@ -59,7 +59,7 @@ export function WorkforceLeaderboard({
               Bảng xếp hạng hiệu suất & Kỷ luật ({roleLabels[role]})
             </CardTitle>
             <p className="mt-0.5 text-xs text-slate-500">
-              Tháng {month} • Xếp hạng minh bạch dựa trên tỷ lệ đúng giờ và khối lượng công việc được xác thực.
+              Kỳ {period} • Xếp hạng minh bạch dựa trên tỷ lệ đúng giờ và khối lượng công việc được xác thực.
             </p>
           </div>
         </div>
@@ -99,11 +99,11 @@ export function WorkforceLeaderboard({
               Chưa có nhân sự đủ điều kiện xếp hạng
             </h4>
             <p className="mx-auto mt-1 max-w-md text-xs text-slate-500 leading-relaxed">
-              Để xuất hiện trên bảng xếp hạng, nhân sự cần có <strong>100% hồ sơ chấm công hoàn tất</strong> trong tháng và đạt số ca làm việc tối thiểu theo quy định.
+              Để xuất hiện trên bảng xếp hạng, nhân sự cần có <strong>100% hồ sơ chấm công hoàn tất</strong> trong kỳ và đạt số ca làm việc tối thiểu theo quy định.
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-md border border-slate-200">
+          <div role="region" aria-label="Bảng dữ liệu, cuộn ngang / Scroll horizontally" tabIndex={0} className="max-w-full overflow-x-auto rounded-md border border-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <table className="w-full text-left text-xs">
               <thead className="border-b bg-slate-50 font-semibold text-slate-600">
                 <tr>

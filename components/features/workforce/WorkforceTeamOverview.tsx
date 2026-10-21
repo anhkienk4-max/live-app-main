@@ -26,7 +26,7 @@ import type {
 interface WorkforceTeamOverviewProps {
   overview: TeamOverviewType | null
   staffList: WorkforcePerformanceSummary[]
-  month: string
+  period: string
   role: WorkforceRole
   loading?: boolean
   error?: string | null
@@ -36,6 +36,7 @@ interface WorkforceTeamOverviewProps {
 export function WorkforceTeamOverview({
   overview,
   staffList,
+  period,
   loading = false,
   error = null,
   onSelectStaff,
@@ -87,7 +88,7 @@ export function WorkforceTeamOverview({
     return (
       <Card className="border-dashed border-slate-300 bg-slate-50/50 p-8 text-center">
         <p className="text-sm text-slate-500">
-          Chưa có dữ liệu hiệu suất đội ngũ cho tháng và vai trò được chọn.
+          Chưa có dữ liệu hiệu suất đội ngũ cho kỳ {period} và vai trò được chọn.
         </p>
       </Card>
     )
@@ -221,7 +222,7 @@ export function WorkforceTeamOverview({
         </CardHeader>
 
         <CardContent className="p-4">
-          <div className="overflow-x-auto rounded-md border border-slate-200">
+          <div role="region" aria-label="Bảng dữ liệu, cuộn ngang / Scroll horizontally" tabIndex={0} className="max-w-full overflow-x-auto rounded-md border border-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <table className="w-full text-left text-xs">
               <thead className="border-b bg-slate-50 font-semibold text-slate-600">
                 <tr>

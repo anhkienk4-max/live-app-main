@@ -44,6 +44,7 @@ function discoveryClient(tables:Record<string,Row[]>={
       },
       overrideTypes(){return q},
       eq(field:string,value:unknown){rows=rows.filter(row=>row[field]===value);return q},
+      in(field:string,values:unknown[]){rows=rows.filter(row=>values.includes(row[field]));return q},
       is(field:string,value:unknown){rows=rows.filter(row=>row[field]===value);return q},
       not(field:string,operator:string,value:unknown){
         assert.equal(operator,'is');rows=rows.filter(row=>row[field]!==value);return q
@@ -139,6 +140,10 @@ test('rate discovery returns approved salary/identity and distinguishes exact st
   assert.deepEqual(expired.rates.map((row:Row)=>row.id),['expired'])
   const support=await (await h.GET(request('action=list_rates&role=support'))).json()
   assert.deepEqual(support.rates.map((row:Row)=>row.id),['support'])
+  const multi=await (await h.GET(request('action=list_rates&roles=host&roles=support&scopes=role_default&scopes=staff_specific'))).json()
+  assert.deepEqual(multi.rates.map((row:Row)=>row.id),['future','default','specific','support','expired'])
+  const combined=await (await h.GET(request('action=list_rates&roles=host&roles=support&scopes=staff_specific&effective_date=2026-09-30'))).json()
+  assert.deepEqual(combined.rates.map((row:Row)=>row.id),['specific','support'])
 })
 
 test('empty datasets and out-of-range pages expose exact metadata including PostgREST 416 recovery',async()=>{
@@ -172,6 +177,8 @@ test('discovery strictly rejects unknown/duplicate/conflicting parameters and ma
     'action=list_rates&effective_date=2026-09-01%2Cstaff_id.is.null',
     'action=list_rates&role=admin','action=list_rates&scope=default',
     'action=list_rates&scope=role_default&staff_id=staff-1','action=list_rates&staff_id=',
+    'action=list_rates&role=host&roles=support','action=list_rates&scope=role_default&scopes=staff_specific',
+    'action=list_rates&roles=admin','action=list_rates&roles=','action=list_rates&roles=host&roles=host',
     'action=list_rates&staff_id='+('a'.repeat(121)),
     'action=list_rates&staff_id=staff-1&staff_id=staff-2',
   ]
@@ -211,6 +218,22 @@ test('large period and rate datasets are completely traversable beyond former re
   }
 })
 
+test('multi-select rate filters preserve exact counts and page boundaries on large datasets',async()=>{
+  const fixture=Array.from({length:305},(_,index)=>({...rates[index%rates.length],
+    id:String(index).padStart(4,'0'),operational_role:index%2?'host':'support',
+    staff_id:index%3?null:'staff-1',approved_by:'admin-2',approved_at:'2026-08-31T00:00:00Z'}))
+  const h=handler(discoveryClient({workforce_rate_cards:fixture,workforce_payroll_periods:[]}))
+  const first=await (await h.GET(request('action=list_rates&roles=host&roles=support&scopes=role_default&page_size=100&page=1'))).json()
+  assert.equal(first.pagination.total_count,203)
+  assert.equal(first.pagination.total_pages,3)
+  assert.equal(first.rates.length,100)
+  const middle=await (await h.GET(request('action=list_rates&roles=host&roles=support&scopes=role_default&page_size=100&page=2'))).json()
+  const last=await (await h.GET(request('action=list_rates&roles=host&roles=support&scopes=role_default&page_size=100&page=3'))).json()
+  assert.equal(last.rates.length,3)
+  assert.equal(last.pagination.has_next,false)
+  assert.equal(new Set([...first.rates,...middle.rates,...last.rates].map((row:Row)=>row.id)).size,203)
+})
+
 test('discovery rejects missing counts, truncation and database failures without exposing partial rows',async()=>{
   for(const action of ['list_periods','list_rates']){
     for(const options of [{cap:2},{missingCount:true},{error:'DATABASE_UNAVAILABLE'},{error:'PGRST103'}]){
@@ -240,12 +263,15 @@ test('installed Supabase client emits bounded exact-count discovery filters and 
   const h=createWorkforcePayrollHandler({isEnabled:()=>true,resolveUser:admin,createClient:()=>db})
   assert.equal((await h.GET(request('action=list_periods&status=locked&date_from=2026-09-01'))).status,200)
   assert.equal((await h.GET(request('action=list_rates&scope=role_default&effective_date=2026-09-30'))).status,200)
+  assert.equal((await h.GET(request('action=list_rates&roles=host&roles=support&scopes=role_default&scopes=staff_specific'))).status,200)
   assert.equal(calls[0].searchParams.get('order'),'period_start.desc,period_end.desc,revision.desc,id.asc')
   assert.equal(calls[0].searchParams.get('period_end'),'gte.2026-09-01')
   assert.equal(calls[0].searchParams.get('status'),'eq.locked')
   assert.equal(calls[1].searchParams.get('order'),'effective_from.desc,id.asc')
   assert.equal(calls[1].searchParams.get('staff_id'),'is.null')
   assert.equal(calls[1].searchParams.get('or'),'(effective_through.is.null,effective_through.gte.2026-09-30)')
+  assert.equal(calls[2].searchParams.get('operational_role'),'in.(host,support)')
+  assert.equal(calls[2].searchParams.get('staff_id'),null)
   for(const url of calls){assert.equal(url.searchParams.get('limit'),'50');assert.equal(url.searchParams.get('offset'),'0')}
 })
 

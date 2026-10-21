@@ -7,6 +7,14 @@ export type TranslationKey = keyof typeof en
 type Variables = Record<string, string | number>
 
 const en = {
+  navGroupOverview: 'Overview',
+  navGroupOperations: 'Livestream Operations',
+  navGroupData: 'Data & Reports',
+  navGroupPeople: 'People & Finance',
+  navGroupSystem: 'System Administration',
+  googleUnavailable: 'Google sign-in is not available yet. Use email or request access.',
+  googleLoginFailed: 'Google sign-in could not be completed. Please try again or use email.',
+  googleApprovalRequired: 'This account does not have approved access. Please request access or contact an Admin.',
 
   // Role Lens
   roleAdmin: 'Admin',
@@ -126,6 +134,7 @@ const en = {
   yesterday: 'Yesterday',
   last7Days: 'Last 7 days',
   last30Days: 'Last 30 days',
+  upcoming: 'Upcoming',
   thisMonth: 'This month',
   lastMonth: 'Last month',
   customRange: 'Custom range',
@@ -838,6 +847,10 @@ const en = {
   accountRejected: 'This account was rejected and cannot sign in. Contact an administrator.',
   accountActive: 'Account is active.',
   invalidEmailOrPassword: 'Email or password is incorrect.',
+  authNetworkError: 'The sign-in service could not be reached. Check your connection and try again.',
+  authProviderUnavailable: 'Email sign-in is currently unavailable. Try again later or contact an administrator.',
+  authSessionFailure: 'Sign-in did not create a valid session. Please try again.',
+  authUnknownError: 'We could not sign you in. Please try again or contact an administrator.',
   showPassword: 'Show password',
   hidePassword: 'Hide password',
   forgotPassword: 'Forgot password?',
@@ -1161,6 +1174,14 @@ const en = {
 } as const
 
 const vi: Record<keyof typeof en, string> = {
+  navGroupOverview: 'Tổng quan',
+  navGroupOperations: 'Vận hành Livestream',
+  navGroupData: 'Dữ liệu & Báo cáo',
+  navGroupPeople: 'Nhân sự & Tài chính',
+  navGroupSystem: 'Quản trị hệ thống',
+  googleUnavailable: 'Đăng nhập Google chưa khả dụng. Vui lòng dùng email hoặc yêu cầu cấp tài khoản.',
+  googleLoginFailed: 'Chưa thể hoàn tất đăng nhập Google. Vui lòng thử lại hoặc dùng email.',
+  googleApprovalRequired: 'Tài khoản chưa được cấp quyền truy cập. Vui lòng gửi yêu cầu hoặc liên hệ Admin.',
 
   // Role Lens
   roleAdmin: 'Quản trị viên',
@@ -1342,6 +1363,7 @@ const vi: Record<keyof typeof en, string> = {
   yesterday: 'Hôm qua',
   last7Days: '7 ngày qua',
   last30Days: '30 ngày qua',
+  upcoming: 'Sắp tới',
   thisMonth: 'Tháng này',
   lastMonth: 'Tháng trước',
   customRange: 'Khoảng tùy chỉnh',
@@ -2199,6 +2221,10 @@ const vi: Record<keyof typeof en, string> = {
   accountRejected: 'Tài khoản đã bị từ chối và không thể đăng nhập. Hãy liên hệ quản trị viên.',
   accountActive: 'Tài khoản đã được kích hoạt.',
   invalidEmailOrPassword: 'Email hoặc mật khẩu không đúng.',
+  authNetworkError: 'Không thể kết nối dịch vụ đăng nhập. Hãy kiểm tra kết nối rồi thử lại.',
+  authProviderUnavailable: 'Đăng nhập bằng email hiện không khả dụng. Hãy thử lại sau hoặc liên hệ quản trị viên.',
+  authSessionFailure: 'Đăng nhập chưa tạo được phiên hợp lệ. Vui lòng thử lại.',
+  authUnknownError: 'Không thể đăng nhập lúc này. Vui lòng thử lại hoặc liên hệ quản trị viên.',
   showPassword: 'Hiện mật khẩu',
   hidePassword: 'Ẩn mật khẩu',
   forgotPassword: 'Quên mật khẩu?',

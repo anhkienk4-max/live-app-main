@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { HistoryPagination } from '@/components/ui/history-pagination'
+import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import { useToast } from '@/components/ui/toast'
 import { formatCurrency } from '@/lib/utils/currency'
 import {
@@ -49,8 +50,8 @@ export function PayrollRateManager() {
   const [loading, setLoading] = React.useState(true)
   const [page, setPage] = React.useState(1)
   const [pageSize, setPageSize] = React.useState(20)
-  const [roleFilter, setRoleFilter] = React.useState<string>('all')
-  const [scopeFilter, setScopeFilter] = React.useState<string>('all')
+  const [roleFilter, setRoleFilter] = React.useState<WorkforceRole[]>([])
+  const [scopeFilter, setScopeFilter] = React.useState<RateScope[]>([])
   const [staffIdFilter, setStaffIdFilter] = React.useState('')
   const [effectiveDateFilter, setEffectiveDateFilter] = React.useState('')
   const [pagination, setPagination] = React.useState<Pagination>({
@@ -104,8 +105,8 @@ export function PayrollRateManager() {
       const res = await workforceService.listRates({
         page,
         pageSize,
-        role: roleFilter === 'all' ? undefined : (roleFilter as WorkforceRole),
-        scope: scopeFilter === 'all' ? undefined : (scopeFilter as RateScope),
+        roles: roleFilter,
+        scopes: scopeFilter,
         staffId: staffIdFilter.trim() || undefined,
         effectiveDate: effectiveDateFilter || undefined,
       })
@@ -244,36 +245,17 @@ export function PayrollRateManager() {
         {/* Filters */}
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
           <div>
-            <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              Vai trò
-            </label>
-            <Select value={roleFilter} onValueChange={(val) => { setRoleFilter(val); setPage(1); }}>
-              <SelectTrigger className="mt-1 h-8 text-xs">
-                <SelectValue placeholder="Tất cả vai trò" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả vai trò</SelectItem>
-                <SelectItem value="host">Host Livestream</SelectItem>
-                <SelectItem value="support">Trợ lý phiên Live</SelectItem>
-                <SelectItem value="technical">Kỹ thuật viên</SelectItem>
-              </SelectContent>
-            </Select>
+            <MultiSelectFilter label="Vai trò" placeholder="Tất cả vai trò" testId="payroll-rate-role-filter"
+              value={roleFilter} onChange={value => { setRoleFilter(value as WorkforceRole[]); setPage(1) }}
+              options={[{value:'host',label:'Host Livestream'}, {value:'support',label:'Trợ lý phiên Live'},
+                {value:'technical',label:'Kỹ thuật viên'}]} />
           </div>
 
           <div>
-            <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              Phạm vi áp dụng
-            </label>
-            <Select value={scopeFilter} onValueChange={(val) => { setScopeFilter(val); setPage(1); }}>
-              <SelectTrigger className="mt-1 h-8 text-xs">
-                <SelectValue placeholder="Tất cả phạm vi" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả phạm vi</SelectItem>
-                <SelectItem value="role_default">Mặc định vai trò</SelectItem>
-                <SelectItem value="staff_specific">Nhân sự cụ thể</SelectItem>
-              </SelectContent>
-            </Select>
+            <MultiSelectFilter label="Phạm vi áp dụng" placeholder="Tất cả phạm vi" testId="payroll-rate-scope-filter"
+              value={scopeFilter} onChange={value => { setScopeFilter(value as RateScope[]); setPage(1) }}
+              options={[{value:'role_default',label:'Mặc định vai trò'},
+                {value:'staff_specific',label:'Nhân sự cụ thể'}]} />
           </div>
 
           <div>
@@ -303,7 +285,7 @@ export function PayrollRateManager() {
         </div>
 
         {/* Rates Table */}
-        <div className="overflow-x-auto rounded-md border border-slate-200">
+        <div role="region" aria-label="Bảng dữ liệu, cuộn ngang / Scroll horizontally" tabIndex={0} className="max-w-full overflow-x-auto rounded-md border border-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <table className="w-full text-left text-xs">
             <thead className="border-b bg-slate-50 font-semibold text-slate-600">
               <tr>

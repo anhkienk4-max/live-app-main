@@ -8,15 +8,25 @@ import { AuthLayout } from '@/components/layouts/AuthLayout'
 import { Separator } from '@/components/ui/separator'
 import { Eye, EyeOff, Globe, Loader2 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useTranslation } from '@/lib/i18n'
+import { useTranslation, type TranslationKey } from '@/lib/i18n'
 import { mockAuthService } from '@/lib/services/mockAuthService'
 import { getAuthMode, getSupabasePublicConfig, safeLocalRedirect } from '@/lib/auth/authMode'
 import {
   clearLocalSession,
   establishPasswordSession,
+  type PasswordSessionFailure,
   shouldClearLocalSessionForLoginReason,
 } from '@/lib/auth/session'
+import { startGoogleOAuth } from '@/lib/auth/googleOAuth'
 import { createClient } from '@/lib/supabase/client'
+
+const passwordFailureMessages: Record<PasswordSessionFailure, TranslationKey> = {
+  INVALID_CREDENTIALS: 'invalidEmailOrPassword',
+  AUTH_NETWORK_ERROR: 'authNetworkError',
+  AUTH_PROVIDER_UNAVAILABLE: 'authProviderUnavailable',
+  AUTH_SESSION_FAILURE: 'authSessionFailure',
+  UNKNOWN_AUTH_ERROR: 'authUnknownError',
+}
 
 function LoginPageContent() {
   const [email, setEmail] = useState('')
@@ -30,6 +40,16 @@ function LoginPageContent() {
   const searchParams = useSearchParams()
   const { language, setLanguage, t } = useTranslation()
   const mockMode = getAuthMode() === 'mock'
+  const [googleEnabled, setGoogleEnabled] = useState(false)
+  useEffect(() => {
+    if (mockMode) return
+    const controller = new AbortController()
+    void fetch('/api/auth/providers', { cache: 'no-store', signal: controller.signal })
+      .then(async response => response.ok ? response.json() : null)
+      .then(data => { if (!controller.signal.aborted) setGoogleEnabled(data?.google === true) })
+      .catch(() => { /* Email and request access remain available. */ })
+    return () => controller.abort()
+  }, [mockMode])
   const recoveryReason = searchParams.get('reason')
   const recoveryMessage = recoveryReason === 'session_expired' || recoveryReason === 'authentication_required'
     ? t('sessionExpired')
@@ -37,7 +57,9 @@ function LoginPageContent() {
       ? t('authServiceUnavailable')
         : recoveryReason === 'identity_unavailable'
           ? t('authIdentityUnavailable')
-          : null
+          : recoveryReason === 'approval_required'
+            ? t('googleApprovalRequired')
+            : recoveryReason === 'oauth_failed' ? t('googleLoginFailed') : null
   const recoveryNotice = recoveryReason === 'signed_out' && !hasSubmitted
     ? t('signedOutMessage')
     : null
@@ -48,7 +70,7 @@ function LoginPageContent() {
       && getSupabasePublicConfig()
       && shouldClearLocalSessionForLoginReason(recoveryReason)
     ) {
-      void clearLocalSession(createClient())
+      try { void clearLocalSession(createClient()) } catch { /* Local session cleanup is best effort. */ }
     }
   }, [mockMode, recoveryReason])
 
@@ -72,31 +94,33 @@ function LoginPageContent() {
     setError(null)
     setNotice(null)
 
-    if (mockMode) {
-      const result = await mockAuthService.signInEmail(email, password)
+    try {
+      if (mockMode) {
+        const result = await mockAuthService.signInEmail(email, password)
+        if (result.ok) {
+          redirectAfterLogin()
+          return
+        }
+        setError(authStatusMessage(result.status))
+        return
+      }
+
+      if (!getSupabasePublicConfig()) {
+        setError(t('authProviderUnavailable'))
+        return
+      }
+
+      const result = await establishPasswordSession(createClient, email, password)
       if (result.ok) {
         redirectAfterLogin()
         return
       }
-      setError(authStatusMessage(result.status))
+      setError(t(passwordFailureMessages[result.reason]))
+    } catch {
+      setError(t('authUnknownError'))
+    } finally {
       setLoading(false)
-      return
     }
-
-    if (!getSupabasePublicConfig()) {
-      setError(t('authServiceUnavailable'))
-      setLoading(false)
-      return
-    }
-
-    const authenticated = await establishPasswordSession(createClient(), email, password)
-    if (authenticated) {
-      redirectAfterLogin()
-      return
-    }
-
-    setError(t('invalidEmailOrPassword'))
-    setLoading(false)
   }
 
   const handleGoogleLogin = async () => {
@@ -114,7 +138,16 @@ function LoginPageContent() {
       return
     }
 
-    setError(t('authServiceUnavailable'))
+    if (!googleEnabled || !getSupabasePublicConfig()) {
+      setError(t('googleUnavailable'))
+      setLoading(false)
+      return
+    }
+    try {
+      const { error } = await startGoogleOAuth(createClient(), window.location.origin, searchParams.get('next'))
+      if (!error) return
+    } catch { /* Show a safe error without provider details. */ }
+    setError(t('googleLoginFailed'))
     setLoading(false)
   }
 
@@ -122,7 +155,7 @@ function LoginPageContent() {
     <AuthLayout title={t('signIn')} subtitle={t('loginSubtitle')}>
       <div className="space-y-5">
         {mockMode && <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700">{t('demoModeHelp')}</p>}
-          {mockMode && (
+          {(mockMode || googleEnabled) && (
             <>
               <Button
                 onClick={handleGoogleLogin}
@@ -148,6 +181,7 @@ function LoginPageContent() {
             </>
           )}
 
+          {!mockMode && !googleEnabled && <p role="status" className="text-sm leading-relaxed text-slate-500" data-testid="google-unavailable">{t('googleUnavailable')}</p>}
           {(notice || recoveryNotice) && (
             <div className="text-sm text-green-700 bg-green-50 p-3 rounded-lg border border-green-100" data-testid="login-notice">
               {notice || recoveryNotice}
@@ -161,6 +195,7 @@ function LoginPageContent() {
               </label>
               <Input
                 id="email"
+                autoComplete="username"
                 type="email"
                 placeholder="name@company.com"
                 value={email}
@@ -177,6 +212,7 @@ function LoginPageContent() {
               <div className="relative">
                 <Input
                   id="password"
+                  autoComplete="current-password"
                   type={showPassword ? 'text' : 'password'}
                   placeholder="••••••••"
                   value={password}
@@ -185,13 +221,13 @@ function LoginPageContent() {
                   className="h-11 pr-11"
                   data-testid="password-input"
                 />
-                <Button type="button" variant="ghost" size="icon-sm" className="absolute right-1 top-1.5" aria-label={showPassword ? t('hidePassword') : t('showPassword')} onClick={() => setShowPassword(value => !value)}>
+                <Button type="button" variant="ghost" size="icon-sm" className="absolute right-0 top-0 h-11 w-11" aria-label={showPassword ? t('hidePassword') : t('showPassword')} onClick={() => setShowPassword(value => !value)}>
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
               </div>
             </div>
             {(error || (!hasSubmitted && recoveryMessage)) && (
-              <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg border border-red-100" data-testid="login-error">
+              <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg border border-red-100" data-testid="login-error" role="alert">
                 {error || recoveryMessage}
               </div>
             )}
@@ -205,13 +241,13 @@ function LoginPageContent() {
             </Button>
           </form>
           <div className="space-y-3 text-center text-sm">
-            <Link className="text-blue-700 hover:underline" href="/forgot-password">{t('forgotPassword')}</Link>
-            <p className="text-muted-foreground">{t('noAccount')} <Link className="font-semibold text-blue-700 hover:underline" href="/register">{t(mockMode ? 'signUp' : 'accountRequestTitle')}</Link></p>
+            <Link className="inline-flex min-h-11 items-center text-blue-700 hover:underline" href="/forgot-password">{t('forgotPassword')}</Link>
+            <p className="text-muted-foreground">{t('noAccount')} <Link className="inline-flex min-h-11 items-center font-semibold text-blue-700 hover:underline" href="/register">{t(mockMode ? 'signUp' : 'accountRequestTitle')}</Link></p>
           </div>
           <Button
             type="button"
             variant="ghost"
-            className="w-full"
+            className="h-11 w-full"
             onClick={() => setLanguage(language === 'en' ? 'vi' : 'en')}
           >
             <Globe className="mr-2 h-4 w-4" />

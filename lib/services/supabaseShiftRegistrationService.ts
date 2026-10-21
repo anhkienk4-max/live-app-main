@@ -289,10 +289,19 @@ export function createSupabaseShiftRegistrationRepository(
     },
 
     async getAll() {
-      const result = await selectRegistrations()
-        .order('requested_at', { ascending: true })
-      return optionalRows('registration read', result)
-        .map(row => registrationFromRow(row as unknown as RegistrationRow))
+      // Reads every page; one un-ranged query is capped by PostgREST max-rows and would
+      // silently drop the newest registrations.
+      const rows = new Map<string, RegistrationRow>()
+      for (let offset = 0; ; offset += SUPABASE_PAGE_SIZE) {
+        const result = await selectRegistrations()
+          .order('requested_at', { ascending: true })
+          .order('id', { ascending: true })
+          .range(offset, offset + SUPABASE_PAGE_SIZE - 1)
+        const page = optionalRows('registration read', result)
+        page.forEach(row => rows.set(String((row as unknown as RegistrationRow).id), row as unknown as RegistrationRow))
+        if (page.length < SUPABASE_PAGE_SIZE) break
+      }
+      return [...rows.values()].map(row => registrationFromRow(row))
     },
 
     async getForShift(shiftId) {

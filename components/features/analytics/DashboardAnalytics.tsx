@@ -80,22 +80,38 @@ export function DashboardAnalytics() {
     } catch(error) {toast({title:t('error'),description:error instanceof Error?error.message:t('validationError'),variant:'destructive'})}
   }
   const requestVersion=React.useRef(0)
+  const activeRequest=React.useRef<AbortController|null>(null)
   const loadData = React.useCallback(async () => {
-    if(!identity)return
     const version=++requestVersion.current
+    activeRequest.current?.abort()
+    const controller=new AbortController()
+    activeRequest.current=controller
+    if(!identity||!currentUser) {
+      activeRequest.current=null
+      setLoadedKey('')
+      setSnapshot(null)
+      setBrands([]); setPlatforms([]); setCampaigns([]); setUsers([]); setRegistrations([])
+      setSelectedReport(null)
+      setLoadError(null)
+      setLoading(false)
+      return
+    }
+    setLoading(true)
     setLoadError(null)
     try {
-      if (!currentUser) return
       const [loadedSnapshot, refs] = await Promise.all([
-        reportService.getAnalyticsSnapshot(JSON.parse(filtersKey)), getOperationalReferences(currentUser),
+        reportService.getAnalyticsSnapshot(JSON.parse(filtersKey),controller.signal), getOperationalReferences(currentUser),
       ])
-      if(version!==requestVersion.current)return
+      if(version!==requestVersion.current||controller.signal.aborted)return
       setLoadedKey(identity+':'+filtersKey)
       setSnapshot(loadedSnapshot); setBrands(refs.brands); setPlatforms(refs.platforms); setCampaigns(refs.campaigns); setUsers(refs.users)
     } catch (error) {
-      setLoadError(error)
+      if(version===requestVersion.current&&!controller.signal.aborted)setLoadError(error)
     } finally {
-      setLoading(false)
+      if(version===requestVersion.current) {
+        activeRequest.current=null
+        setLoading(false)
+      }
     }
   }, [identity,filtersKey,currentUser])
 
@@ -103,6 +119,11 @@ export function DashboardAnalytics() {
     // Initial data hydration intentionally updates the loading/data state from the async callback.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadData()
+    return () => {
+      requestVersion.current+=1
+      activeRequest.current?.abort()
+      activeRequest.current=null
+    }
   }, [loadData])
 
   if (loadError || list.error) return <PageLoadError error={loadError ?? list.error} onRetry={() => { setLoading(true); void loadData(); void list.reload() }} />

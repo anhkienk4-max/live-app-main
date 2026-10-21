@@ -251,7 +251,9 @@ export interface LeaderboardEntry {
 
 export interface WorkforceOverviewResponse {
   ok: boolean
-  month: string
+  period: string
+  month?: string
+  year?: string
   role: WorkforceRole
   team: WorkforceTeamOverview
   staff: WorkforcePerformanceSummary[]
@@ -444,8 +446,10 @@ export const workforceService = {
     pageSize?: number
     staffId?: string
     role?: WorkforceRole
+    roles?: WorkforceRole[]
     effectiveDate?: string
     scope?: RateScope
+    scopes?: RateScope[]
   } = {}): Promise<{ ok: true; rates: RateCard[]; pagination: Pagination }> {
     const q = new URLSearchParams()
     q.set('action', 'list_rates')
@@ -453,8 +457,10 @@ export const workforceService = {
     if (params.pageSize) q.set('page_size', String(params.pageSize))
     if (params.staffId) q.set('staff_id', params.staffId)
     if (params.role) q.set('role', params.role)
+    params.roles?.forEach(role => q.append('roles', role))
     if (params.effectiveDate) q.set('effective_date', params.effectiveDate)
     if (params.scope) q.set('scope', params.scope)
+    params.scopes?.forEach(scope => q.append('scopes', scope))
 
     return requestJson<{ ok: true; rates: RateCard[]; pagination: Pagination }>(
       `/api/workforce/payroll?${q.toString()}`
@@ -720,12 +726,12 @@ export const workforceService = {
   async getWorkforcePerformance(params: {
     staffId: string
     role: WorkforceRole
-    month: string
+    period: string
   }): Promise<{ ok: true; performance: WorkforcePerformanceSummary }> {
     const q = new URLSearchParams()
     q.set('staff_id', params.staffId)
     q.set('role', params.role)
-    q.set('month', params.month)
+    q.set('period', params.period)
 
     return requestJson<{ ok: true; performance: WorkforcePerformanceSummary }>(
       `/api/workforce/performance?${q.toString()}`
@@ -733,11 +739,11 @@ export const workforceService = {
   },
 
   async getWorkforceOverview(params: {
-    month: string
+    period: string
     role: WorkforceRole
   }): Promise<WorkforceOverviewResponse> {
     const q = new URLSearchParams()
-    q.set('month', params.month)
+    q.set('period', params.period)
     q.set('role', params.role)
 
     return requestJson<WorkforceOverviewResponse>(

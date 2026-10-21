@@ -214,7 +214,7 @@ export function OperationalStorageSetupWorkspace() {
         <p className="text-sm text-muted-foreground">{translate('Kiểm tra cấu hình, phân loại có phê duyệt; không tự tạo route hay backfill ca.')}</p>
       </div>
     </div>
-    <Link href="/storage" className="text-sm underline">← Kho file</Link>
+    <Link href="/storage" className="inline-flex min-h-11 items-center text-sm underline">← Kho file</Link>
     {error && <p role="alert" className="rounded-md border border-red-300 p-3 text-sm text-red-700">{error}</p>}
     {notice && <p role="status" className="rounded-md border p-3 text-sm">{notice}</p>}
     <section className="rounded-xl border p-4 space-y-3" aria-label="Storage readiness">

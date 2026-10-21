@@ -18,7 +18,7 @@ const shiftFilterKeys = ['search','from','to','brandIds','platformIds','campaign
 const filterKeys: Record<string,string[]> = {
   shifts:shiftFilterKeys,live_shifts:shiftFilterKeys,open_shifts:shiftFilterKeys,my_shifts:shiftFilterKeys,
   staff:['search','statuses','roles','systemPermissions','archived'],brands:['search','statuses'],platforms:['search','statuses'],campaigns:['search','statuses','brandIds'],
-  notifications:['search','statuses','types'],reports:[...shiftFilterKeys,'reportStatuses','metricsStatuses'],analytics_reports:[...shiftFilterKeys,'reportStatuses','metricsStatuses'],registration_reviews:['search','statuses','roles'],
+  notifications:['search','statuses','types'],reports:[...shiftFilterKeys,'reportStatuses','metricsStatuses'],report_queue:['search','from','to','brandIds','platformIds','campaignIds','hostIds','supportIds','technicalIds','reportStatuses','metricsStatuses'],analytics_reports:[...shiftFilterKeys,'reportStatuses','metricsStatuses'],registration_reviews:['search','statuses','roles'],
   archives:[],account_requests:['statuses'],live_updates:['shiftIds'],import_batches:[],schedule_changes:['from','to','actorIds','actionIds','shiftIds','brandIds','sources'],
   swaps:['search','from','to','brandIds','platformIds','campaignIds','scope','requesterIds','roles','statuses'],quality:['severity','qualitySources'],
 }
@@ -31,14 +31,14 @@ export const listFiltersSchema = z.object({
   registrationStatuses: z.array(z.enum(['pending', 'approved', 'manually_assigned'])).max(3).optional(),
   archived: z.boolean().optional(), systemPermissions: z.array(z.enum(['admin', 'leader', 'member'])).max(3).optional(), assignedUserIds: choices,
   hostIds: choices, supportIds: choices, technicalIds: choices, operationalRoles: z.array(z.enum(['host','support','technical'])).max(3).optional(), staffingStates: z.array(z.enum(['fully_staffed','missing_staff'])).max(2).optional(), registrationStates: z.array(z.enum(['pending','approved','manually_assigned','rejected','cancelled','removed'])).max(6).optional(), hasImportedStaffing: z.boolean().optional(),
-  severity: z.enum(['all','error','warning','info']).optional(), qualitySources: z.array(z.enum(['schedule_import','report','staffing'])).max(3).optional(),
+  severity: z.array(z.enum(['error','warning','info'])).max(3).optional(), qualitySources: z.array(z.enum(['schedule_import','report','staffing'])).max(3).optional(),
   scope: z.enum(['all', 'mine', 'forMe']).optional(), requesterIds: choices,
   actorIds: choices, actionIds: choices, shiftIds: choices, sources: choices,
   reportStatuses: choices, metricsStatuses: z.array(z.enum(['confirmed', 'unconfirmed'])).max(2).optional(),
   types: choices, statuses: choices, descending: z.boolean().optional(),
 }).strict().refine(value => !value.from || !value.to || value.from <= value.to)
 const schema = z.object({
-  entity: z.enum(['shifts', 'open_shifts', 'my_shifts', 'brands', 'platforms', 'campaigns', 'staff', 'notifications', 'reports', 'registration_reviews', 'import_batches', 'schedule_changes', 'swaps', 'quality', 'live_shifts', 'analytics_reports', 'live_updates', 'archives', 'account_requests']),
+  entity: z.enum(['shifts', 'open_shifts', 'my_shifts', 'brands', 'platforms', 'campaigns', 'staff', 'notifications', 'reports', 'report_queue', 'registration_reviews', 'import_batches', 'schedule_changes', 'swaps', 'quality', 'live_shifts', 'analytics_reports', 'live_updates', 'archives', 'account_requests']),
   page: z.coerce.number().int().min(1).max(100000),
   pageSize: z.coerce.number().refine(value => [10, 20, 50].includes(value)),
   pendingPage: z.coerce.number().int().min(1).max(100000),
@@ -129,6 +129,15 @@ export function createOperationsCollectionHandler(dependencies: { resolveUser?: 
         const shifts = ids.length ? await client.from('shifts').select('*').in('id', ids) : { data: [], error: null }
         if (shifts.error) throw shifts.error
         return reply({ ...metadata, items: rows.map(reportFromRow), shifts: (shifts.data ?? []).map(row => shiftFromRow(row, 'database')) })
+      }
+      if (entity === 'report_queue') {
+        const result = await client.rpc('get_report_obligation_page', { p_page: query.page, p_page_size: query.pageSize, p_filters: query.filters })
+        if (result.error) throw result.error
+        const { rows, ...metadata } = result.data
+        const entries = rows as Array<{ shift: Parameters<typeof shiftFromRow>[0]; report: Parameters<typeof reportFromRow>[0] | null }>
+        const shifts = await withShiftStaffingSummary(client, entries.map(entry => shiftFromRow(entry.shift, 'database')))
+        const shiftById = new Map(shifts.map(shift => [shift.id, shift]))
+        return reply({ ...metadata, items: entries.map(entry => ({ shift: shiftById.get(entry.shift.id)!, report: entry.report ? reportFromRow(entry.report) : null })) })
       }
       if (entity === 'registration_reviews') {
         const result = await client.rpc('get_registration_review_page', { p_page: query.page, p_page_size: query.pageSize, p_filters: query.filters })

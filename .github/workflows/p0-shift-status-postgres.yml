@@ -1,0 +1,162 @@
+name: P0 shift status migration PostgreSQL proof
+
+on:
+  push:
+    branches: [integration/global-stabilization-20261021]
+    paths:
+      - 'supabase/migrations/20261021034515_shift_automatic_status_scheduling_and_read_safety.sql'
+      - 'lib/services/supabaseShiftService.ts'
+      - 'lib/server/historicalAttendanceHandler.ts'
+      - 'tests/rc17c-attendance-atomic-rpc-boundary.test.ts'
+      - 'supabase/migrations/20261021190000_global_report_notification_transition_keys.sql'
+      - 'tests/fixtures/report_notification_supabase_base.sql'
+      - 'tests/report-notification-postgres.integration.mjs'
+      - 'tests/global-report-notification-routing.test.ts'
+      - 'lib/services/notificationRoutes.ts'
+      - 'tests/shift-lifecycle.test.ts'
+      - 'tests/supabase-shift-runtime.test.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'tests/fixtures/p0_shift_status_supabase_base.sql'
+      - 'tests/p0-shift-status-postgres.integration.mjs'
+      - 'supabase/migrations/20261021120000_global_report_obligation_page.sql'
+      - 'tests/fixtures/report_obligation_supabase_base.sql'
+      - 'tests/report-obligation-page-postgres.integration.mjs'
+      - 'lib/server/operationsCollectionHandler.ts'
+      - 'lib/services/dataService.ts'
+      - 'lib/services/operationsPageService.ts'
+      - 'lib/server/workforceScopePagination.ts'
+      - 'lib/server/workforcePayrollHandler.ts'
+      - 'tests/payroll-scope-completeness.test.ts'
+      - 'tests/payroll-rate-locked-export.test.ts'
+      - 'lib/server/workforcePerformanceHandler.ts'
+      - 'lib/server/workforceOverviewHandler.ts'
+      - 'tests/workforce-scope-pagination.test.ts'
+      - 'tests/rc16-workforce-api.test.ts'
+      - 'components/features/reports/ReportsList.tsx'
+      - '.github/p0-postgres/Dockerfile'
+      - '.github/workflows/p0-shift-status-postgres.yml'
+  pull_request:
+    paths:
+      - 'supabase/migrations/20261021034515_shift_automatic_status_scheduling_and_read_safety.sql'
+      - 'lib/services/supabaseShiftService.ts'
+      - 'lib/server/historicalAttendanceHandler.ts'
+      - 'tests/rc17c-attendance-atomic-rpc-boundary.test.ts'
+      - 'supabase/migrations/20261021190000_global_report_notification_transition_keys.sql'
+      - 'tests/fixtures/report_notification_supabase_base.sql'
+      - 'tests/report-notification-postgres.integration.mjs'
+      - 'tests/global-report-notification-routing.test.ts'
+      - 'lib/services/notificationRoutes.ts'
+      - 'tests/shift-lifecycle.test.ts'
+      - 'tests/supabase-shift-runtime.test.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'tests/fixtures/p0_shift_status_supabase_base.sql'
+      - 'tests/p0-shift-status-postgres.integration.mjs'
+      - 'supabase/migrations/20261021120000_global_report_obligation_page.sql'
+      - 'tests/fixtures/report_obligation_supabase_base.sql'
+      - 'tests/report-obligation-page-postgres.integration.mjs'
+      - 'lib/server/operationsCollectionHandler.ts'
+      - 'lib/services/dataService.ts'
+      - 'lib/services/operationsPageService.ts'
+      - 'lib/server/workforceScopePagination.ts'
+      - 'lib/server/workforcePayrollHandler.ts'
+      - 'tests/payroll-scope-completeness.test.ts'
+      - 'tests/payroll-rate-locked-export.test.ts'
+      - 'lib/server/workforcePerformanceHandler.ts'
+      - 'lib/server/workforceOverviewHandler.ts'
+      - 'tests/workforce-scope-pagination.test.ts'
+      - 'tests/rc16-workforce-api.test.ts'
+      - 'components/features/reports/ReportsList.tsx'
+      - '.github/p0-postgres/Dockerfile'
+      - '.github/workflows/p0-shift-status-postgres.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  p0-migration:
+    name: PostgreSQL ${{ matrix.major }} targeted Supabase contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - major: '16'
+            image: postgres:16.15-bookworm
+          - major: '17'
+            image: postgres:17.11-bookworm
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Build disposable PostgreSQL with pg_cron
+        run: >-
+          docker build
+          --build-arg POSTGRES_IMAGE=${{ matrix.image }}
+          --build-arg PG_MAJOR=${{ matrix.major }}
+          -f .github/p0-postgres/Dockerfile
+          -t ada-p0-postgres:${{ matrix.major }} .
+      - name: Start isolated database
+        env:
+          PG_MAJOR: ${{ matrix.major }}
+        run: |
+          docker run --detach --rm --name "ada-p0-pg${PG_MAJOR}" \
+            --network none \
+            -e POSTGRES_PASSWORD=synthetic-only \
+            "ada-p0-postgres:${PG_MAJOR}"
+          for attempt in $(seq 1 30); do
+            if docker exec "ada-p0-pg${PG_MAJOR}" pg_isready -U postgres -d postgres >/dev/null 2>&1; then exit 0; fi
+            sleep 2
+          done
+          docker logs "ada-p0-pg${PG_MAJOR}"
+          exit 1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - name: Install pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify Payroll scope completeness and mutation safety
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test tests/payroll-scope-completeness.test.ts tests/payroll-rate-locked-export.test.ts tests/rc16-payroll-discovery.test.ts tests/rc16-workforce-payroll.test.ts tests/rc17b-payroll-autocalc.test.ts
+          pnpm exec eslint lib/server/workforcePayrollHandler.ts tests/payroll-scope-completeness.test.ts tests/payroll-rate-locked-export.test.ts
+      - name: Verify scalable Workforce period reads and compile contracts
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test tests/workforce-scope-pagination.test.ts tests/workforce-period.test.ts tests/rc16-workforce-api.test.ts
+          pnpm exec tsc --noEmit --incremental false
+          pnpm exec eslint lib/server/workforceScopePagination.ts lib/server/workforcePerformanceHandler.ts lib/server/workforceOverviewHandler.ts tests/workforce-scope-pagination.test.ts
+      - name: Verify read paths and shift lifecycle application contracts
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/shift-lifecycle.test.ts tests/supabase-shift-runtime.test.ts
+      - name: Assert historical import cannot fall back to non-atomic writes
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc17c-attendance-atomic-rpc-boundary.test.ts tests/rc17c-attendance-api-integration.test.ts
+      - name: Assert report notification routing and lifecycle contracts
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/global-report-notification-routing.test.ts
+      - name: Apply real P0 migration and assert PostgreSQL invariants
+        env:
+          P0_PG_CONTAINER: ada-p0-pg${{ matrix.major }}
+          P0_PG_MAJOR: ${{ matrix.major }}
+          P0_MIGRATION_SHA256: 91497C94264FEB66C5D046565CB1744BFC90E8D499E458EB3119F5C8D0A4418D
+        run: node tests/p0-shift-status-postgres.integration.mjs
+      - name: Apply bounded Reports Inbox page contract and assert PostgreSQL RLS
+        env:
+          P0_PG_CONTAINER: ada-p0-pg${{ matrix.major }}
+          P0_PG_MAJOR: ${{ matrix.major }}
+          REPORT_QUEUE_MIGRATION_SHA256: 0500BB489F5B8A44F64AC52CAE1E6CD2157E058B2BCA95465D54A5E58A644E58
+        run: node tests/report-obligation-page-postgres.integration.mjs
+      - name: Apply report notification transition migration and verify idempotency
+        env:
+          P0_PG_CONTAINER: ada-p0-pg${{ matrix.major }}
+          P0_PG_MAJOR: ${{ matrix.major }}
+          REPORT_NOTIFICATION_MIGRATION_SHA256: 697976550B9E913116C372DF226E7E31D215FEA3FF4457D0797A0F8956EA4744
+        run: node tests/report-notification-postgres.integration.mjs
+      - name: Stop disposable database
+        if: always()
+        env:
+          PG_MAJOR: ${{ matrix.major }}
+        run: docker stop "ada-p0-pg${PG_MAJOR}" || true
