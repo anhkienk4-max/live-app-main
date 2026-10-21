@@ -1,0 +1,5 @@
+-- Historical initial design proposal only. SUPERSEDED by the reviewed migration:
+-- supabase/migrations/20261021064611_media_viewer_acl_exact_shift_v1.sql
+-- Migration applied to STAGING project amagnzebmmuqiptmrjmc only on 2026-10-21.
+-- Production MUST NOT apply without independent approval/UAT. No grant/route seeds.
+-- Keep this pointer to prevent accidentally applying outdated weaker RLS rules.
