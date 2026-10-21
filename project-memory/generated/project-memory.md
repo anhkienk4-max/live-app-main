@@ -2,12 +2,12 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-21T11:02:49+07:00
+Generated at: 2026-10-21T11:11:37+07:00
 
 ## Repository
 
 - Branch: `integration/global-stabilization-20261021`
-- HEAD: `3a8cbce88d1767b2743069b8e1a93bec86516006`
+- HEAD: `e5de665e7efdecfbe471888b587535068e26f770`
 - origin/main: `b96dcb6e1842e59f43170a1a8b15da712ee8a8e0`
 - Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-global-stabilization`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
@@ -21,10 +21,10 @@ Generated at: 2026-10-21T11:02:49+07:00
 
 ## Inventory
 
-- Routes: 56
-- Source files in tracked inventory roots: 742
-- Tests: 173
-- Migrations: 72
+- Routes: 58
+- Source files in tracked inventory roots: 768
+- Tests: 179
+- Migrations: 74
 
 ## Modules
 
