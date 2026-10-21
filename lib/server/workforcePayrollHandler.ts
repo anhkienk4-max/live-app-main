@@ -261,9 +261,19 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             'payable_minutes','overtime_minutes','rate_vnd_per_hour',
             'overtime_multiplier_basis_points','gross_vnd','adjustment_vnd','net_vnd',
             'adjustment_reason','calculation_version']
+          // A snapshot with duplicate/blank active evidence cannot be
+          // exported as a misleading locked payroll statement.
+          const activeLines=lines.data.filter(row=>!row.voided_at)
+          const uniqueSegments=new Set<string>()
+          for(const row of activeLines){
+            const segmentId=row.segment_id
+            if(typeof segmentId!=='string'||!segmentId.trim()||uniqueSegments.has(segmentId))
+              return failure('WORKFORCE_PAYROLL_EXPORT_INCOMPLETE',503)
+            uniqueSegments.add(segmentId)
+          }
           const csv='\ufeff'+[columns.map(csvEscape).join(','),
-            ...(lines.data??[]).filter(row=>!row.voided_at).map(row=>columns.map(k=>
-               csvNumericColumns.has(k)?csvNumber(row[k]):csvEscape(row[k])).join(','))].join('\r\n')+'\r\n'
+            ...activeLines.map(row=>columns.map(k=>
+              csvNumericColumns.has(k)?csvNumber(row[k]):csvEscape(row[k])).join(','))].join('\r\n')+'\r\n'
           const filename='payroll-'+r.data.period_start+'-'+r.data.period_end+'.csv'
           return new Response(csv,{headers:{'Content-Type':'text/csv; charset=utf-8',
             'Content-Disposition':'attachment; filename="'+filename+'"',
