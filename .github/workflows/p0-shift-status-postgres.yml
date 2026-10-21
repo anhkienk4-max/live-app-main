@@ -12,6 +12,13 @@ on:
       - 'pnpm-lock.yaml'
       - 'tests/fixtures/p0_shift_status_supabase_base.sql'
       - 'tests/p0-shift-status-postgres.integration.mjs'
+      - 'supabase/migrations/20261021120000_global_report_obligation_page.sql'
+      - 'tests/fixtures/report_obligation_supabase_base.sql'
+      - 'tests/report-obligation-page-postgres.integration.mjs'
+      - 'lib/server/operationsCollectionHandler.ts'
+      - 'lib/services/dataService.ts'
+      - 'lib/services/operationsPageService.ts'
+      - 'components/features/reports/ReportsList.tsx'
       - '.github/p0-postgres/Dockerfile'
       - '.github/workflows/p0-shift-status-postgres.yml'
   pull_request:
@@ -24,6 +31,13 @@ on:
       - 'pnpm-lock.yaml'
       - 'tests/fixtures/p0_shift_status_supabase_base.sql'
       - 'tests/p0-shift-status-postgres.integration.mjs'
+      - 'supabase/migrations/20261021120000_global_report_obligation_page.sql'
+      - 'tests/fixtures/report_obligation_supabase_base.sql'
+      - 'tests/report-obligation-page-postgres.integration.mjs'
+      - 'lib/server/operationsCollectionHandler.ts'
+      - 'lib/services/dataService.ts'
+      - 'lib/services/operationsPageService.ts'
+      - 'components/features/reports/ReportsList.tsx'
       - '.github/p0-postgres/Dockerfile'
       - '.github/workflows/p0-shift-status-postgres.yml'
   workflow_dispatch:
@@ -86,6 +100,12 @@ jobs:
           P0_PG_MAJOR: ${{ matrix.major }}
           P0_MIGRATION_SHA256: 91497C94264FEB66C5D046565CB1744BFC90E8D499E458EB3119F5C8D0A4418D
         run: node tests/p0-shift-status-postgres.integration.mjs
+      - name: Apply bounded Reports Inbox page contract and assert PostgreSQL RLS
+        env:
+          P0_PG_CONTAINER: ada-p0-pg${{ matrix.major }}
+          P0_PG_MAJOR: ${{ matrix.major }}
+          REPORT_QUEUE_MIGRATION_SHA256: 0500BB489F5B8A44F64AC52CAE1E6CD2157E058B2BCA95465D54A5E58A644E58
+        run: node tests/report-obligation-page-postgres.integration.mjs
       - name: Stop disposable database
         if: always()
         env:

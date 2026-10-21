@@ -69,6 +69,30 @@ test('Endpoint cannot trust forged client identity and denies Member staff recor
   assert.equal((await context(new Request('http://local.test/api/operations/registration-context?id=own-1'))).status, 403)
 })
 
+test('Reports Inbox endpoint returns the bounded authenticated obligation page and enriches its shifts', async () => {
+  const calls: Array<{ name: string; args: unknown }> = []
+  const GET = createOperationsCollectionHandler({
+    resolveUser: async () => ({ id: 'auth-member', businessUserId: 'member', systemPermission: 'member' }),
+    createClient: async () => ({ rpc: async (name: string, args: unknown) => {
+      calls.push({ name, args })
+      if (name === 'get_shift_staffing_summary') return { data: [], error: null }
+      return { data: { rows: [{ shift: {
+        id: 'shift-older', date: '2026-01-01', start_time: '21:00:00', end_time: '22:00:00', start_at: '2026-01-02T05:00:00Z',
+        status: 'completed', brand_id: 'brand', platform_id: 'platform', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      }, report: null }], total: 1, page: 2, pageSize: 10 }, error: null }
+    } }) as never,
+  }).GET
+  const filters = encodeURIComponent(JSON.stringify({ from: '2026-01-01', reportStatuses: ['draft'] }))
+  const response = await GET(new Request(`http://local.test/api/operations/collection?entity=report_queue&page=2&pageSize=10&filters=${filters}`))
+  assert.equal(response.status, 200)
+  const result = await response.json()
+  assert.equal(result.total, 1)
+  assert.equal(result.items[0].shift.id, 'shift-older')
+  assert.equal(result.items[0].report, null)
+  assert.deepEqual(calls.map(call => call.name), ['get_report_obligation_page', 'get_shift_staffing_summary'])
+  assert.deepEqual(calls[0].args, { p_page: 2, p_page_size: 10, p_filters: { from: '2026-01-01', reportStatuses: ['draft'] } })
+})
+
 test('Analytics aggregate accepts valid date filters for each role and rejects extra filters before SQL', async () => {
   for (const systemPermission of ['admin', 'leader', 'member'] as const) {
     const calls: unknown[] = []

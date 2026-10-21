@@ -67,6 +67,7 @@ import { getSupabaseSettingsRepository } from '@/lib/services/supabaseSettingsSe
 import { getSupabaseDashboardUpdateRepository } from '@/lib/services/supabaseDashboardUpdateService'
 import { getMissingFinalReportMetricKeys } from '@/lib/utils/ocrMetricSerialization'
 import type { MetricState } from '@/lib/utils/ocrCanonical'
+import { reportQueueState } from '@/lib/utils/reportQueue'
 import {
   liveReportImageCategories,
   maximumLiveReportImages,
@@ -1928,6 +1929,41 @@ export const shiftService = {
     if (!shift || shift.status !== 'scheduled' || shiftEndAt(shift) <= new Date()) return null
     return this.update(id, { registration_locked: false, version: expectedVersion }, actorId, { reason: 'Registration reopened' })
   },
+}
+
+export type ReportObligation = { shift: Shift; report: Report | null }
+
+export async function getReportObligationPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<ReportObligation>> {
+  if (getAuthMode() === 'supabase') return getCollectionPage<ReportObligation>('report_queue', query, signal)
+  const actor = actorFor()
+  if (!actor || actor.status !== 'active' || (actor.account_status && actor.account_status !== 'active') || actor.archived_at || actor.deleted_at || !hasPermission(actor, 'reports.submit')) {
+    return localListPage([], query)
+  }
+  const elevated = hasPermission(actor, 'reports.review')
+  const filters = query.filters ?? {}
+  const rows = shifts.flatMap(shift => {
+    if (shift.deleted_at || shift.archived_at || !['preparing', 'live', 'paused', 'completed'].includes(shift.status)) return []
+    const report = reports.find(item => item.shift_id === shift.id && !item.deleted_at && !item.archived_at) ?? null
+    if (reportQueueState(report ?? undefined) === 'finalized') return []
+    const related = shiftRegistrations.filter(item => item.shift_id === shift.id && item.user_id === actor.id && isStaffedRegistration(item))
+    if (!elevated && shift.host_id !== actor.id && shift.support_id !== actor.id && shift.technical_id !== actor.id && related.length === 0 && report?.submitted_by !== actor.id) return []
+    if (filters.from && shift.date < filters.from || filters.to && shift.date > filters.to) return []
+    if (filters.brandIds?.length && !filters.brandIds.includes(shift.brand_id)) return []
+    if (filters.platformIds?.length && !filters.platformIds.includes(shift.platform_id)) return []
+    if (filters.campaignIds?.length && !filters.campaignIds.includes(shift.campaign_id ?? '')) return []
+    if (filters.hostIds?.length && !filters.hostIds.some(id => shift.host_id === id || shiftRegistrations.some(item => item.shift_id === shift.id && item.operational_role === 'host' && item.user_id === id && isStaffedRegistration(item)))) return []
+    if (filters.supportIds?.length && !filters.supportIds.some(id => shift.support_id === id || shiftRegistrations.some(item => item.shift_id === shift.id && item.operational_role === 'support' && item.user_id === id && isStaffedRegistration(item)))) return []
+    if (filters.technicalIds?.length && !filters.technicalIds.some(id => shift.technical_id === id || shiftRegistrations.some(item => item.shift_id === shift.id && item.operational_role === 'technical' && item.user_id === id && isStaffedRegistration(item)))) return []
+    if (filters.reportStatuses?.length && !filters.reportStatuses.includes(report?.status ?? 'draft')) return []
+    if (filters.metricsStatuses?.length && !filters.metricsStatuses.includes(report?.metrics_confirmed ? 'confirmed' : 'unconfirmed')) return []
+    if (filters.search) {
+      const search = filters.search.toLocaleLowerCase()
+      const names = [brands.find(item => item.id === shift.brand_id)?.name, platforms.find(item => item.id === shift.platform_id)?.name, campaigns.find(item => item.id === shift.campaign_id)?.name]
+      if (![shift.id, shift.title, ...names].filter(Boolean).join(' ').toLocaleLowerCase().includes(search)) return []
+    }
+    return [{ shift, report }]
+  }).sort((left, right) => (right.shift.start_at ?? '').localeCompare(left.shift.start_at ?? '') || right.shift.date.localeCompare(left.shift.date) || right.shift.start_time.localeCompare(left.shift.start_time) || right.shift.id.localeCompare(left.shift.id))
+  return localListPage(rows, query)
 }
 
 export interface ShiftRoleCapacity {
