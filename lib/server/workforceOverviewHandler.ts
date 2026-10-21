@@ -10,11 +10,13 @@ import { aggregateWorkforceTeam,rankVerifiedWorkforce } from '@/lib/workforce/wo
 import { WorkforceCalculationError,type ActualStaffingEvidence,
   type WorkforceRole } from '@/lib/workforce/payrollCalculation'
 import { WORKFORCE_LATE_GRACE_MINUTES } from '@/lib/workforce/workforcePolicy'
+import { workforcePeriodRange } from '@/lib/workforce/workforcePeriod'
 
 const query=z.object({
-  month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/u),
+  period:z.string().regex(/^\d{4}(?:-(0[1-9]|1[0-2]))?$/u).optional(),
+  month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/u).optional(),
   role:z.enum(['host','support','technical']),
-}).strict()
+}).strict().refine(input=>Boolean(input.period||input.month)&&!(input.period&&input.month))
 const fail=(code:string,status:number)=>Response.json({ok:false,error:{code}},
   {status,headers:{'Cache-Control':'no-store'}})
 type Options={createClient?:()=>SupabaseClient;resolveUser?:ServerUserResolver,
@@ -35,9 +37,8 @@ export function createWorkforceOverviewHandler(options:Options={}) {
       const grace=(options.grace??(()=>WORKFORCE_LATE_GRACE_MINUTES))()
       if(grace===null||!Number.isSafeInteger(grace)||grace<0||grace>120)
         return fail('WORKFORCE_GRACE_POLICY_NOT_CONFIGURED',409)
-      const y=Number(input.month.slice(0,4)),m=Number(input.month.slice(5))
-      const first=input.month+'-01'
-      const last=input.month+'-'+String(new Date(Date.UTC(y,m,0)).getUTCDate()).padStart(2,'0')
+      const period=input.period??input.month!
+      const {from:first,to:last}=workforcePeriodRange(period)
       const db=(options.createClient??createSupabaseAdminClient)()
       const [staffRes,shiftRes]=await Promise.all([
         db.from('business_users').select('id,full_name,department')
@@ -115,7 +116,7 @@ export function createWorkforceOverviewHandler(options:Options={}) {
       const unmatched=evidence.filter(e=>!knownPairs.has(
         e.shiftId+':'+e.staffId+':'+e.role)).length
       return Response.json({
-        ok:true,month:input.month,role:input.role,team:aggregateWorkforceTeam(results),
+        ok:true,period,...(period.includes('-')?{month:period}:{year:period}),role:input.role,team:aggregateWorkforceTeam(results),
         staff:results,leaderboard,
         leaderboard_policy_configured:leaderboardPolicy!==null,
         unmatched_approved_segments:unmatched,

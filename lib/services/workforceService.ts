@@ -251,7 +251,9 @@ export interface LeaderboardEntry {
 
 export interface WorkforceOverviewResponse {
   ok: boolean
-  month: string
+  period: string
+  month?: string
+  year?: string
   role: WorkforceRole
   team: WorkforceTeamOverview
   staff: WorkforcePerformanceSummary[]
@@ -724,12 +726,12 @@ export const workforceService = {
   async getWorkforcePerformance(params: {
     staffId: string
     role: WorkforceRole
-    month: string
+    period: string
   }): Promise<{ ok: true; performance: WorkforcePerformanceSummary }> {
     const q = new URLSearchParams()
     q.set('staff_id', params.staffId)
     q.set('role', params.role)
-    q.set('month', params.month)
+    q.set('period', params.period)
 
     return requestJson<{ ok: true; performance: WorkforcePerformanceSummary }>(
       `/api/workforce/performance?${q.toString()}`
@@ -737,11 +739,11 @@ export const workforceService = {
   },
 
   async getWorkforceOverview(params: {
-    month: string
+    period: string
     role: WorkforceRole
   }): Promise<WorkforceOverviewResponse> {
     const q = new URLSearchParams()
-    q.set('month', params.month)
+    q.set('period', params.period)
     q.set('role', params.role)
 
     return requestJson<WorkforceOverviewResponse>(

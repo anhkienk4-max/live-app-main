@@ -9,14 +9,16 @@ import { summarizeWorkforcePerformance, type ScheduledStaffing } from '@/lib/wor
 import { WorkforceCalculationError, type ActualStaffingEvidence,
   type WorkforceRole } from '@/lib/workforce/payrollCalculation'
 import { WORKFORCE_LATE_GRACE_MINUTES } from '@/lib/workforce/workforcePolicy'
+import { workforcePeriodRange } from '@/lib/workforce/workforcePeriod'
 
 const noStore={'Cache-Control':'no-store'}
 const fail=(code:string,status:number)=>Response.json({ok:false,error:{code}},{status,headers:noStore})
 const params=z.object({
-  month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/u),
+  period:z.string().regex(/^\d{4}(?:-(0[1-9]|1[0-2]))?$/u).optional(),
+  month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/u).optional(),
   staff_id:z.string().min(1).max(120),
   role:z.enum(['host','support','technical']),
-}).strict()
+}).strict().refine(input=>Boolean(input.period||input.month)&&!(input.period&&input.month))
 type Depends={
   createClient?:()=>SupabaseClient
   resolveUser?:ServerUserResolver
@@ -39,9 +41,8 @@ export function createWorkforcePerformanceHandler(deps:Depends={}) {
         const grace=readGrace()
         if(!Number.isSafeInteger(grace)||grace===null||grace<0||grace>120)
           return fail('WORKFORCE_GRACE_POLICY_NOT_CONFIGURED',409)
-        const year=Number(input.month.slice(0,4)),month=Number(input.month.slice(5))
-        const first=input.month+'-01'
-        const last=input.month+'-'+String(new Date(Date.UTC(year,month,0)).getUTCDate()).padStart(2,'0')
+        const period=input.period??input.month!
+        const {from:first,to:last}=workforcePeriodRange(period)
         const client=db()
         const shiftRes=await client.from('shifts')
           .select('id,date,start_at,status,host_id,support_id,technical_id')
@@ -81,7 +82,7 @@ export function createWorkforcePerformanceHandler(deps:Depends={}) {
           const empty=summarizeWorkforcePerformance(input.staff_id,input.role,[],[],{
             lateGraceMinutes:grace,
           })
-          return Response.json({ok:true,month:input.month,performance:empty,
+          return Response.json({ok:true,period,...(period.includes('-')?{month:period}:{year:period}),performance:empty,
             gmv_per_hour:null,orders_per_hour:null,
             metrics_note:'No planned staffing matches this scope; no GMV attribution is inferred'},
             {headers:noStore})
@@ -100,7 +101,7 @@ export function createWorkforcePerformanceHandler(deps:Depends={}) {
         const performance=summarizeWorkforcePerformance(input.staff_id,input.role,
           planned,evidence,{lateGraceMinutes:grace})
         return Response.json({
-          ok:true,month:input.month,performance,
+          ok:true,period,...(period.includes('-')?{month:period}:{year:period}),performance,
           gmv_per_hour:null,orders_per_hour:null,
           metrics_note:'Performance is evidence-based; no shift-level GMV attribution is approved',
         },{headers:noStore})

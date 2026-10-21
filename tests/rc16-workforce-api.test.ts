@@ -221,6 +221,7 @@ test('Workforce Performance has no unapproved default lateness/grace period',asy
 
 test('Workforce Performance scopes approved registrations to shifts in the selected month',async()=>{
   const registrationShiftFilters:unknown[]=[]
+  const shiftDateFilters:Array<[string,string]>=[]
   const rows:Record<string,unknown[]>={
     shifts:[{id:'shift-september',date:'2026-09-12',start_at:'2026-09-12T02:00:00Z',
       status:'completed',host_id:null,support_id:null,technical_id:null}],
@@ -230,7 +231,10 @@ test('Workforce Performance scopes approved registrations to shifts in the selec
   }
   const createClient=()=>({from(name:string){
     const query={
-      select(){return query},gte(){return query},lte(){return query},is(){return query},
+      select(){return query},
+      gte(_key:string,value:string){shiftDateFilters.push(['gte',value]);return query},
+      lte(_key:string,value:string){shiftDateFilters.push(['lte',value]);return query},
+      is(){return query},
       eq(){return query},limit(){return query},
       in(key:string,value:unknown){
         if(name==='shift_registrations'&&key==='shift_id')registrationShiftFilters.push(value)
@@ -250,6 +254,15 @@ test('Workforce Performance scopes approved registrations to shifts in the selec
   ))
   assert.equal(response.status,200)
   assert.deepEqual(registrationShiftFilters,[['shift-september']])
+  assert.deepEqual(shiftDateFilters,[['gte','2026-09-01'],['lte','2026-09-30']])
+
+  shiftDateFilters.length=0
+  const annualResponse=await handler.GET(get(
+    'https://example.test/api/workforce/performance?staff_id=staff-1&role=host&period=2026',
+  ))
+  assert.equal(annualResponse.status,200)
+  assert.deepEqual(shiftDateFilters,[['gte','2026-01-01'],['lte','2026-12-31']])
+  assert.equal((await annualResponse.json() as {year:string}).year,'2026')
 })
 
 test('team overview requires Leader/Admin; a member cannot enumerate colleagues',async()=>{
@@ -258,6 +271,30 @@ test('team overview requires Leader/Admin; a member cannot enumerate colleagues'
   })
   const response=await handler.GET(get('https://example.test/api/workforce/overview?month=2026-09&role=host'))
   assert.equal(response.status,403)
+})
+
+test('team overview accepts a year period and queries its full business-date range',async()=>{
+  const dateFilters:Array<[string,string]>=[]
+  const createClient=()=>({from(){
+    const query={
+      select(){return query},eq(){return query},is(){return query},limit(){return query},
+      gte(_key:string,value:string){dateFilters.push(['gte',value]);return query},
+      lte(_key:string,value:string){dateFilters.push(['lte',value]);return query},
+      then(resolve:(value:{data:unknown[];error:null})=>unknown){
+        return Promise.resolve({data:[],error:null}).then(resolve)
+      },
+    }
+    return query
+  }})
+  const handler=createWorkforceOverviewHandler({isEnabled:()=>true,
+    createClient:createClient as never,resolveUser:admin,grace:()=>5,leaderboardMin:()=>null,
+  })
+  const response=await handler.GET(get(
+    'https://example.test/api/workforce/overview?period=2026&role=host',
+  ))
+  assert.equal(response.status,200)
+  assert.deepEqual(dateFilters,[['gte','2026-01-01'],['lte','2026-12-31']])
+  assert.equal((await response.json() as {year:string}).year,'2026')
 })
 
 

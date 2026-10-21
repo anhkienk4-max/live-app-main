@@ -48,8 +48,13 @@ test('Client sends no-store, exact bounded discovery queries and server-authorit
     assert.equal(body.adjustment_vnd,-1000);assert.equal(body.expected_version,2)
     assert.equal(body.gross_vnd,undefined);assert.equal(body.net_vnd,undefined)
     for(const call of calls){assert.equal(call.init?.cache,'no-store');assert.equal(call.init?.credentials,'same-origin')}
-    const performance=await workforceService.getWorkforcePerformance({staffId:'employee',role:'host',month:'2026-09'})
+    const performance=await workforceService.getWorkforcePerformance({staffId:'employee',role:'host',period:'2026-09'})
     assert.equal(performance.performance.staffId,'employee')
+    assert.equal(new URL(calls.at(-1)!.url,'https://local.invalid').searchParams.get('period'),'2026-09')
+    await workforceService.getWorkforcePerformance({staffId:'employee',role:'host',period:'2026'})
+    assert.equal(new URL(calls.at(-1)!.url,'https://local.invalid').searchParams.get('period'),'2026')
+    await workforceService.getWorkforceOverview({period:'2026',role:'host'})
+    assert.equal(new URL(calls.at(-1)!.url,'https://local.invalid').searchParams.get('period'),'2026')
   }finally{globalThis.fetch=previous}
 })
 
@@ -65,11 +70,11 @@ test('Client preserves typed 401/403/409/503 failures; never promotes partial re
 
 test('Real components show UNKNOWN evidence and do not fabricate punctuality or rankings',()=>{
   const summary=summarizeWorkforcePerformance('employee','host',[{shiftId:'s',staffId:'employee',role:'host',scheduledStartAt:'2026-09-01T00:00:00Z',shiftDate:'2026-09-01'}],[],{lateGraceMinutes:0})
-  const html=render(<WorkforceTeamOverview overview={aggregateWorkforceTeam([summary])} staffList={[summary]} month="2026-09" role="host" onSelectStaff={()=>{}} />)
+  const html=render(<WorkforceTeamOverview overview={aggregateWorkforceTeam([summary])} staffList={[summary]} period="2026-09" role="host" onSelectStaff={()=>{}} />)
   assert.equal(summary.approvedNoShows,0);assert.equal(summary.unknownAttendanceShifts,1)
   assert.equal(summary.punctualityPct,null)
   assert.match(html,/employee/)
-  const leaderboard=render(<WorkforceLeaderboard leaderboard={[]} isConfigured={false} month="2026-09" role="host" />)
+  const leaderboard=render(<WorkforceLeaderboard leaderboard={[]} isConfigured={false} period="2026-09" role="host" />)
   assert.match(leaderboard,/Chưa kích hoạt/)
 })
 
