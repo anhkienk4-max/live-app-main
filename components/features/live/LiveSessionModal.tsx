@@ -64,6 +64,8 @@ export function LiveSessionModal({
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
   const [reportLoadError,setReportLoadError]=React.useState(false)
+  const [reportLoading,setReportLoading]=React.useState(true)
+  const [loadedReportKey,setLoadedReportKey]=React.useState('')
   const [loadedSnapshotKey,setLoadedSnapshotKey]=React.useState('')
   const loadedSnapshotKeyRef=React.useRef('')
   const snapshotController=React.useRef<AbortController|null>(null)
@@ -82,6 +84,8 @@ export function LiveSessionModal({
   const [snapshotTotal,setSnapshotTotal]=React.useState(0)
   const [snapshotSummary,setSnapshotSummary]=React.useState<{total:number;peakViewers:number|null;recent:DashboardUpdate[]}>({total:0,peakViewers:null,recent:[]})
   const snapshotKey=identity+':'+shift.id+':'+snapshotPage+':'+snapshotPageSize
+  const reportKey=identity+':'+shift.id
+  const reportPending=reportLoading||loadedReportKey!==reportKey
   const loadUpdates = React.useCallback(async () => {
     const request=next()
     snapshotController.current?.abort()
@@ -91,14 +95,23 @@ export function LiveSessionModal({
     if(loadedSnapshotKeyRef.current!==snapshotKey)setLoading(true)
     setLoadError(null)
     setReportLoadError(false)
+    setReportLoading(true)
 
     // Report permissions and latency must not block authorized snapshot metrics.
     void reportService.getByShift(shift.id)
       .then(loadedReport=>{
-        if(isCurrent(request)&&!controller.signal.aborted)setReport(loadedReport)
+        if(isCurrent(request)&&!controller.signal.aborted){
+          setReport(loadedReport)
+          setLoadedReportKey(reportKey)
+          setReportLoading(false)
+        }
       })
       .catch(()=>{
-        if(isCurrent(request)&&!controller.signal.aborted)setReportLoadError(true)
+        if(isCurrent(request)&&!controller.signal.aborted){
+          setReportLoadError(true)
+          setLoadedReportKey(reportKey)
+          setReportLoading(false)
+        }
       })
 
     const timeout=window.setTimeout(()=>controller.abort(),20000)
@@ -116,7 +129,7 @@ export function LiveSessionModal({
       window.clearTimeout(timeout)
       if(isCurrent(request))setLoading(false)
     }
-  }, [shift.id,snapshotPage,snapshotPageSize,identity,snapshotKey,next,isCurrent])
+  }, [shift.id,snapshotPage,snapshotPageSize,identity,snapshotKey,reportKey,next,isCurrent])
   const loadReport = loadUpdates
 
   React.useEffect(() => {
@@ -168,14 +181,14 @@ export function LiveSessionModal({
   }
 
   const consoleContent = (loadError ? <PageLoadError error={loadError} onRetry={() => void loadUpdates()} /> : <LiveOperationsConsole shift={shift} updates={updates} snapshotSummary={snapshotSummary} report={report} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations}
-          loading={loading||identity!==loadedIdentity||loadedSnapshotKey!==snapshotKey} reportLoadError={reportLoadError} onRefresh={() => void loadUpdates()} onStreamLinkSaved={saved => onUpdate(saved)}
+          loading={loading||identity!==loadedIdentity||loadedSnapshotKey!==snapshotKey} reportLoadError={reportLoadError} reportLoading={reportPending} onRefresh={() => void loadUpdates()} onStreamLinkSaved={saved => onUpdate(saved)}
           actions={<>
             <ShiftLifecycleActions shift={shift} onSuccess={onUpdate} />
             {['preparing', 'live', 'paused'].includes(shift.status) && currentUser && hasPermission(currentUser, 'shifts.edit') && <>
               <Button size="sm" onClick={() => setShowUpdate(true)} data-testid={`open-live-dashboard-update-${shift.id}`}><Plus className="mr-2 h-4 w-4" />{t('submitDashboardUpdate')}</Button>
               <Button size="sm" variant="outline" onClick={() => setShowUpdate(true)}><Upload className="mr-2 h-4 w-4" />{t('uploadScreenshot')}</Button>
             </>}
-            {currentUser && hasPermission(currentUser, 'reports.submit') && <Button size="sm" variant="outline" data-testid="open-final-report-modal" onClick={() => report ? setShowReportDetail(true) : setShowReportForm(true)}>{report ? t('viewDetails') : t('createFinalReport')}</Button>}
+            {currentUser && hasPermission(currentUser, 'reports.submit') && <Button size="sm" variant="outline" data-testid="open-final-report-modal" disabled={reportPending||reportLoadError} onClick={() => { if(reportPending||reportLoadError)return; report ? setShowReportDetail(true) : setShowReportForm(true) }}>{reportPending ? 'Đang tải báo cáo…' : reportLoadError ? 'Không thể tải báo cáo' : report ? t('viewDetails') : t('createFinalReport')}</Button>}
           </>}
           snapshots={<div className="space-y-3">            <div className="flex justify-end"><div className="inline-flex rounded-lg border p-1"><Button size="sm" variant={!showAllSnapshotMetrics ? 'secondary' : 'ghost'} onClick={() => setShowAllSnapshotMetrics(false)}>Chỉ số có dữ liệu</Button><Button size="sm" variant={showAllSnapshotMetrics ? 'secondary' : 'ghost'} onClick={() => setShowAllSnapshotMetrics(true)}>Tất cả chỉ số</Button></div></div>
             {loading||identity!==loadedIdentity||loadedSnapshotKey!==snapshotKey ? (

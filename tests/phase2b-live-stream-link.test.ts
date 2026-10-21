@@ -82,6 +82,11 @@ test('live polling does not reload static directories and pauses while document 
   assert.match(modal,/snapshotController\.current\?\.abort\(\)/)
   assert.match(modal,/dashboardUpdateService\.getPage\(shift\.id,\{page:snapshotPage,pageSize:snapshotPageSize\},controller\.signal\)/)
   assert.match(modal,/void reportService\.getByShift\(shift\.id\)/)
+  assert.match(modal,/const reportPending=reportLoading\|\|loadedReportKey!==reportKey/)
+  assert.match(modal,/setLoadedReportKey\(reportKey\)/)
+  assert.match(modal,/disabled=\{reportPending\|\|reportLoadError\}/)
+  assert.match(modal,/reportLoading=\{reportPending\}/)
+  assert.match(consoleCode,/reportLoading \? 'Đang tải báo cáo…'/)
   assert.doesNotMatch(modal,/await Promise\.all\(\[dashboardUpdateService\.getPage/)
 })
 
