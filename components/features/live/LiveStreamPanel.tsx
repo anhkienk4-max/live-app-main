@@ -83,12 +83,14 @@ export function LiveStreamPanel({ shift, onSaved }: { shift: Shift; onSaved?: (s
       <p className="text-xs text-slate-500">Link lưu theo từng ca, cập nhật đồng thời cho Monitor và lịch ca. Để trống rồi lưu để xóa link.</p>
     </form>}
     {link && <p className="mt-2 break-all text-xs text-slate-500" data-testid="live-platform-link">{link.href}</p>}
-    {link && preview && <div id="live-platform-preview" className="mt-3 space-y-2">
+    {link && preview && <div id="live-platform-preview" className="mx-auto mt-3 w-full max-w-[360px] space-y-2">
       <p className="text-xs text-amber-700">TikTok/Shopee có thể chặn phát LIVE trong website khác. Nếu không xem được, dùng nút “Mở LIVE” phía trên. Link không xác nhận phiên đang phát.</p>
-      <iframe key={link.href} src={link.href} title={`Xem trực tiếp ${link.platform} · ${shift.title}`}
-        data-testid="live-platform-frame" loading="lazy" className="h-[440px] w-full rounded-lg border bg-white md:h-[540px]"
-        allow="autoplay; fullscreen; picture-in-picture" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-presentation"
-        referrerPolicy="strict-origin-when-cross-origin" />
+      <div className="aspect-[9/16] w-full overflow-hidden rounded-lg border bg-white">
+        <iframe key={link.href} src={link.href} title={`Xem trực tiếp ${link.platform} · ${shift.title}`}
+          data-testid="live-platform-frame" loading="lazy" className="h-full w-full"
+          allow="autoplay; fullscreen; picture-in-picture" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-presentation"
+          referrerPolicy="strict-origin-when-cross-origin" />
+      </div>
     </div>}
   </section>
 }

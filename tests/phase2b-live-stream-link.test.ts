@@ -53,6 +53,8 @@ test('link captured via editable shift form, rendered per shift in monitor with 
   assert.match(panel,/data-testid="open-official-live"/)
   assert.match(panel,/rel="noopener noreferrer"/)
   assert.match(panel,/data-testid="live-platform-frame"/)
+  assert.match(panel,/aspect-\[9\/16\]/)
+  assert.match(panel,/max-w-\[360px\]/)
   assert.match(panel,/sandbox="allow-scripts/)
   assert.match(panel,/preview &&/)
   assert.doesNotMatch(panel, /dangerouslySetInnerHTML/)
@@ -61,7 +63,7 @@ test('link captured via editable shift form, rendered per shift in monitor with 
 test('live polling does not reload static directories and pauses while document is hidden', () => {
   const source=readFileSync('components/features/live/LiveMonitoringDashboard.tsx','utf8')
   const start=source.indexOf('  const loadData = React.useCallback')
-  const end=source.indexOf('  React.useEffect(() => {\n    const frame',start)
+  const end=source.indexOf('\n  useShiftChangeRefresh(loadData)',start)
   assert.ok(start>0&&end>start)
   const polling=source.slice(start,end)
   assert.match(polling,/shiftService\.getLivePage\(/)
