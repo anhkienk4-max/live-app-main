@@ -1,7 +1,7 @@
 import 'server-only'
 import {createPrivateKey,createPublicKey,sign, type KeyObject} from 'node:crypto'
 import {isMediaPath} from '@/lib/media/mediaViewerPolicy'
-import {resolveSupabaseTarget,STAGING_SUPABASE_REF,PRODUCTION_SUPABASE_REF} from '@/lib/supabase/environmentIdentity'
+import {resolveSupabaseTarget,STAGING_SUPABASE_REF} from '@/lib/supabase/environmentIdentity'
 
 type MediaKeySettings={
   appOrigin:string;issuer:string;mediaOrigin:string;audience:'ada-media-monitor';
@@ -47,8 +47,7 @@ export function loadMediaKeySettings(env:NodeJS.ProcessEnv=process.env):MediaKey
       throw new Error('MEDIA_STAGING_SUPABASE_REQUIRED')
     const clientRef=resolveSupabaseTarget(clientUrl).projectRef
     const serverRef=resolveSupabaseTarget(serverUrl).projectRef
-    if(clientRef!==STAGING_SUPABASE_REF||serverRef!==STAGING_SUPABASE_REF
-      ||clientRef===PRODUCTION_SUPABASE_REF)
+    if(clientRef!==STAGING_SUPABASE_REF||serverRef!==STAGING_SUPABASE_REF)
       throw new Error('MEDIA_STAGING_SUPABASE_MISMATCH')
     if(env.NEXT_PUBLIC_MEDIA_GATEWAY_ORIGIN!==mediaOrigin)
       throw new Error('MEDIA_STAGING_GATEWAY_MISMATCH')
