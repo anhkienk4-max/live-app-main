@@ -39,7 +39,7 @@ test('Google entry uses the real SDK and same-origin callback with a safe next',
  await startGoogleOAuth({auth:{async signInWithOAuth(args){observed=args;return{error:null}}}},'https://ops.example','//attacker.test')
  assert.deepEqual(observed,{provider:'google',options:{redirectTo:'https://ops.example/api/auth/callback?next=%2F'}})
 })
-const user={id:'staff-1',auth_user_id:'auth-1',email:'approved@example.test',status:'active',role:'staff',system_permission:'member',archived_at:null,deleted_at:null} as User
+const user={id:'staff-1',auth_user_id:'auth-1',email:'approved@example.test',status:'active',account_status:'active',role:'staff',system_permission:'member',archived_at:null,deleted_at:null} as User
 function context(options:{approved?:boolean;verified?:boolean;exchangeError?:boolean;metadata?:boolean;persisted?:User}={}){
  let signsOut=0,reads=0,exchanges=0
  return {get counts(){return{signsOut,reads,exchanges}}, factory:async()=>({
@@ -52,7 +52,7 @@ test('OAuth callback requires verified active approval and ignores forwarded-hos
  const r=await handler(new Request('https://ops.example/api/auth/callback?code=private&next=%2Fcalendar',{headers:{'x-forwarded-host':'attacker.test'}}))
  assert.equal(r.headers.get('location'),'https://ops.example/calendar');assert.equal(r.headers.get('cache-control'),'no-store');assert.equal(c.counts.signsOut,0)
 })
-for(const options of [{approved:false},{verified:false},{metadata:false},{persisted:{...user,status:'pending_approval'} as User},{persisted:{...user,archived_at:'2026-10-20'}},{persisted:{...user,deleted_at:'2026-10-20'}},{persisted:{...user,system_permission:'admin'}},{persisted:{...user,auth_user_id:'other-auth'}}]) test('OAuth callback denies missing, unverified, pending, archived or mismatched identity approval '+JSON.stringify(options),async()=>{
+for(const options of [{approved:false},{verified:false},{metadata:false},{persisted:{...user,status:'pending_approval'} as User},{persisted:{...user,account_status:'pending_approval'} as User},{persisted:{...user,archived_at:'2026-10-20'}},{persisted:{...user,deleted_at:'2026-10-20'}},{persisted:{...user,system_permission:'admin'}},{persisted:{...user,auth_user_id:'other-auth'}}]) test('OAuth callback denies missing, unverified, pending, archived or mismatched identity approval '+JSON.stringify(options),async()=>{
  const c=context(options);const r=await createOAuthCallbackHandler(c.factory)(new Request('https://ops.example/api/auth/callback?code=private'))
  assert.equal(r.headers.get('location'),'https://ops.example/login?reason=approval_required');assert.equal(c.counts.signsOut,1)
 })

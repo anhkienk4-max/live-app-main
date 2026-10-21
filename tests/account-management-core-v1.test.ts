@@ -58,6 +58,16 @@ test('identity reconciliation requires matching business ID, email and system pe
     ...businessUser,
     email: identity.email,
   }), false)
+  assert.equal(isAuthBusinessIdentityConsistent(identity, {
+    ...businessUser,
+    email: identity.email,
+    status: 'inactive',
+  }), false)
+  assert.equal(isAuthBusinessIdentityConsistent(identity, {
+    ...businessUser,
+    email: identity.email,
+    account_status: 'pending_approval',
+  }), false)
 })
 
 test('password recovery uses Supabase APIs and never stores a password', async () => {
