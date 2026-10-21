@@ -102,3 +102,12 @@ test('operational page loaders settle and expose a retryable error state', () =>
   assert.match(markup, /role="alert"/)
   assert.match(markup, /network unavailable/)
 })
+
+test('Analytics snapshot stays visible while its authorized report page is still loading', () => {
+  const source = readFileSync('components/features/analytics/DashboardAnalytics.tsx', 'utf8')
+  const shell = source.match(/if \(loading[^\r\n]+/)?.[0]
+  assert.ok(shell, 'only identity/filter-matched snapshot data gates the Analytics page')
+  assert.doesNotMatch(shell, /list\.(?:loading|refreshing)/)
+  assert.match(source, /data-testid="analytics-report-list-loading"/)
+  assert.match(source, /const pageResult = list\.result/)
+})
