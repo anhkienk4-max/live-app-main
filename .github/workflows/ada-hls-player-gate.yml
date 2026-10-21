@@ -1,0 +1,49 @@
+name: ADA secure HLS player gate
+
+on:
+  push:
+    branches: ['feat/ada-hls-player-20261021']
+  pull_request:
+    branches: ['feat/media-viewer-grants-20261021', 'main']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.18.0'
+      - name: Exact pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Frozen dependency install
+        run: pnpm install --frozen-lockfile
+      - name: HLS security and backend grant tests
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/ada-hls-player.test.ts tests/ada-hls-security.test.ts tests/media-viewer-handler.test.ts tests/media-viewer-authorization.test.ts
+      - name: TypeScript
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: ESLint
+        run: pnpm run lint
+      - name: Production-equivalent Next build with Media OFF
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          NEXT_PUBLIC_MEDIA_PLAYER_UI_ENABLED: 'false'
+          MEDIA_VIEWER_ENABLED: 'false'
+          FEATURE_ACTUAL_STAFFING: 'false'
+          FEATURE_PAYROLL: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm run build
