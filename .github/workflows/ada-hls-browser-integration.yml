@@ -1,0 +1,60 @@
+name: ADA real browser protected HLS integration
+
+on:
+  push:
+    branches: ['feat/ada-hls-player-20261021']
+    paths:
+      - 'tests/media-hls-real-browser.integration.mjs'
+      - 'tests/fixtures/hls-ci/**'
+      - 'lib/media/hlsPlayerSecurity.ts'
+      - '.github/workflows/ada-hls-browser-integration.yml'
+  pull_request:
+    branches: ['feat/media-viewer-grants-20261021', 'main']
+    paths:
+      - 'tests/media-hls-real-browser.integration.mjs'
+      - 'tests/fixtures/hls-ci/**'
+      - 'lib/media/hlsPlayerSecurity.ts'
+      - '.github/workflows/ada-hls-browser-integration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-hls:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact reviewed source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.18.0'
+      - name: Pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Frozen install
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium and ffmpeg
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          if ! command -v ffmpeg >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y ffmpeg
+          fi
+          docker version
+          openssl version
+          ffmpeg -version | head -1
+      - name: Two browser contexts against real authenticated gateway
+        env:
+          CI: 'true'
+        run: node tests/media-hls-real-browser.integration.mjs
+      - name: Release gate disclaimer
+        if: always()
+        run: |
+          echo 'Chromium contexts simulate two viewers, NOT two real networks.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No studio OBS, signed staging user entitlement, WAN gateway or Production deploy tested here.' >> "$GITHUB_STEP_SUMMARY"

@@ -1,6 +1,7 @@
 import 'server-only'
 import {createPrivateKey,createPublicKey,sign, type KeyObject} from 'node:crypto'
 import {isMediaPath} from '@/lib/media/mediaViewerPolicy'
+import {resolveSupabaseTarget,STAGING_SUPABASE_REF} from '@/lib/supabase/environmentIdentity'
 
 type MediaKeySettings={
   appOrigin:string;issuer:string;mediaOrigin:string;audience:'ada-media-monitor';
@@ -30,10 +31,27 @@ export function loadMediaKeySettings(env:NodeJS.ProcessEnv=process.env):MediaKey
   if(issuer!==appOrigin)throw new Error('MEDIA_ISSUER_MISMATCH')
   const mediaOrigin=httpsOrigin(env.MEDIA_PUBLIC_HLS_ORIGIN??'')
   if(mediaOrigin===appOrigin)throw new Error('MEDIA_ORIGIN_COLLISION')
-  // Preview must have isolated signing trust. Production credentials are never
-  // accepted on arbitrary preview deployments.
-  if(env.VERCEL_ENV==='preview'&&appOrigin==='https://ops5729.top')
-    throw new Error('MEDIA_PREVIEW_PROD_ISSUER_BLOCKED')
+  // A Preview issuer must never operate against the Production database,
+  // even if a shared Vercel Preview configuration inherited Production vars.
+  if(env.VERCEL_ENV==='preview'){
+    if(appOrigin==='https://ops5729.top'
+      ||mediaOrigin==='https://media.ops5729.top'
+      ||env.MEDIA_JWT_KID?.toLowerCase().startsWith('prod'))
+      throw new Error('MEDIA_PREVIEW_PROD_ISSUER_BLOCKED')
+    if(env.VERCEL!=='1'||env.VERCEL_TARGET_ENV&&env.VERCEL_TARGET_ENV!=='preview'
+      ||env.NEXT_PUBLIC_USE_MOCK_DATA==='true')
+      throw new Error('MEDIA_PREVIEW_ENV_INVALID')
+    const clientUrl=env.NEXT_PUBLIC_SUPABASE_URL
+    const serverUrl=env.SUPABASE_URL
+    if(!clientUrl||!serverUrl)
+      throw new Error('MEDIA_STAGING_SUPABASE_REQUIRED')
+    const clientRef=resolveSupabaseTarget(clientUrl).projectRef
+    const serverRef=resolveSupabaseTarget(serverUrl).projectRef
+    if(clientRef!==STAGING_SUPABASE_REF||serverRef!==STAGING_SUPABASE_REF)
+      throw new Error('MEDIA_STAGING_SUPABASE_MISMATCH')
+    if(env.NEXT_PUBLIC_MEDIA_GATEWAY_ORIGIN!==mediaOrigin)
+      throw new Error('MEDIA_STAGING_GATEWAY_MISMATCH')
+  }
   return {appOrigin,issuer,mediaOrigin,audience:'ada-media-monitor',kid,privateKey}
 }
 const encode=(value:unknown)=>Buffer.from(JSON.stringify(value)).toString('base64url')

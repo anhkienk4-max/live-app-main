@@ -1,0 +1,59 @@
+name: ADA actual React HLS player browser UAT (isolated)
+
+on:
+  push:
+    branches: ['feat/ada-hls-player-20261021']
+    paths:
+      - 'tests/media-hls-react-player.integration.mjs'
+      - 'components/features/live/AdaHlsPlayer.tsx'
+      - 'lib/media/hlsPlayerSecurity.ts'
+      - '.github/workflows/ada-hls-react-component.yml'
+  pull_request:
+    branches: ['feat/media-viewer-grants-20261021', 'main']
+    paths:
+      - 'tests/media-hls-react-player.integration.mjs'
+      - 'components/features/live/AdaHlsPlayer.tsx'
+      - 'lib/media/hlsPlayerSecurity.ts'
+      - '.github/workflows/ada-hls-react-component.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  react-hls:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout locked candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.18.0'
+      - name: Pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Frozen install
+        run: pnpm install --frozen-lockfile
+      - name: Chromium and RTMPS dependencies
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          command -v ffmpeg >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y ffmpeg)
+          docker version
+          openssl version
+      - name: Mount real React player inside ephemeral Next HTTPS route
+        env:
+          CI: 'true'
+          NEXT_TELEMETRY_DISABLED: '1'
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+        run: node tests/media-hls-react-player.integration.mjs
+      - name: Scope disclaimer
+        if: always()
+        run: |
+          echo 'This runs the real React component in an ephemeral Next dev fixture with synthetic grant responses.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'It does NOT validate logged-in business user, persistent staging grants, Studio OBS or two physical networks.' >> "$GITHUB_STEP_SUMMARY"
