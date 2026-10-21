@@ -1290,24 +1290,6 @@ const assertShiftLifecycleTransition = (
   }
 }
 
-const refreshMockAutomaticStatuses = () => {
-  const now = new Date()
-  shifts = shifts.map(shift => {
-    if ((shift.status_mode ?? 'auto') !== 'auto' || shift.status === 'cancelled') return shift
-    const status = deriveAutomaticShiftStatus(shift, now)
-    if (!status || status === shift.status) return shift
-    const before = { ...shift }
-    const updated = { ...shift, status, updated_at: now.toISOString(), version: nextVersion(shift.version) }
-    recordScheduleChange('update', shift.id, before, { ...updated }, { source: 'system' })
-    audit('calendar', 'update', 'shift', shift.id, shift.title || `${shift.date} ${shift.start_time}`, {
-      before,
-      after: { ...updated },
-      source: 'system',
-    })
-    return updated
-  })
-}
-
 export const shiftService = {
   async getLivePage(query: ListQuery,signal?:AbortSignal):Promise<ShiftListPage & {updates:DashboardUpdate[]}> {
     if(getAuthMode()==='supabase')return await getCollectionPage<Shift>('live_shifts',query,signal) as ShiftListPage & {updates:DashboardUpdate[]}
@@ -1336,7 +1318,6 @@ export const shiftService = {
 
   async getRegistrationPage(mode: 'open' | 'mine', query: ListQuery, signal?: AbortSignal): Promise<ShiftListPage> {
     if (getAuthMode() === 'supabase') return await getCollectionPage<Shift>(mode === 'open' ? 'open_shifts' : 'my_shifts', query, signal) as ShiftListPage
-    refreshMockAutomaticStatuses()
     const actor = actorFor()
     const owned = shiftRegistrations.filter(r => r.user_id === actor.id && ['pending', 'approved', 'manually_assigned'].includes(r.status))
     const filtered = filterMockList(shifts, query.filters).filter(shift=>canReadMockPagedShift(shift,actor)).filter(shift => mode === 'open'
@@ -1362,7 +1343,6 @@ export const shiftService = {
 
   async getPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<Shift>> {
     if (getAuthMode() === 'supabase') return getCollectionPage<Shift>('shifts', query, signal)
-    refreshMockAutomaticStatuses()
     return localListPage(filterMockList(shifts, query.filters).filter(shift=>canReadMockPagedShift(shift,actorFor())), query)
   },
   async getAllFiltered(filters: ListFilters = {}): Promise<Shift[]> {
@@ -1374,7 +1354,6 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getAll()
     }
-    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts.filter(shift => !shift.deleted_at))
   },
 
@@ -1382,7 +1361,6 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getAllComplete()
     }
-    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts.filter(shift => !shift.deleted_at && !shift.archived_at))
   },
 
@@ -1392,7 +1370,6 @@ export const shiftService = {
       if (repository.getReportCandidates) return repository.getReportCandidates(limit)
       return (await repository.getAllComplete()).filter(shift => ['preparing', 'live', 'paused', 'completed'].includes(shift.status)).slice(0, limit)
     }
-    refreshMockAutomaticStatuses()
     const reportable = shifts.filter(shift =>
       !shift.deleted_at && !shift.archived_at &&
       ['preparing', 'live', 'paused', 'completed'].includes(shift.status),
@@ -1406,7 +1383,6 @@ export const shiftService = {
       if (repository.getByIds) return repository.getByIds(ids)
       return (await Promise.all(ids.map(id => repository.getById(id)))).filter((shift): shift is Shift => Boolean(shift))
     }
-    refreshMockAutomaticStatuses()
     const wanted = new Set(ids)
     return Promise.resolve(shifts.filter(shift => wanted.has(shift.id) && !shift.deleted_at && !shift.archived_at))
   },
@@ -1415,7 +1391,6 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getByDateRange(startDate, endDate)
     }
-    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts
       .filter(shift => !shift.deleted_at && !shift.archived_at && shift.date >= startDate && shift.date <= endDate)
       .sort((left, right) => left.date.localeCompare(right.date) || left.start_time.localeCompare(right.start_time) || left.id.localeCompare(right.id)))
@@ -1433,7 +1408,6 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getById(id)
     }
-    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts.find(s => s.id === id) || null)
   },
 
@@ -1881,7 +1855,6 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getByDate(date)
     }
-    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts.filter(s => s.date === date && !s.deleted_at))
   },
 
@@ -1889,7 +1862,6 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getByDateRange(startDate, endDate)
     }
-    refreshMockAutomaticStatuses()
     return Promise.resolve(
       shifts.filter(s => s.date >= startDate && s.date <= endDate && !s.deleted_at)
     )
@@ -1899,7 +1871,6 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getByStatus(status)
     }
-    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts.filter(s => s.status === status && !s.deleted_at))
   },
 
@@ -1912,7 +1883,6 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getOpen()
     }
-    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts.filter(shift =>
       !shift.deleted_at &&
       shift.status === 'scheduled' &&

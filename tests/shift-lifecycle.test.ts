@@ -160,10 +160,8 @@ describe('Shift Lifecycle UI State Flow', () => {
     const shift = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-01-10', start_time: '10:00', end_time: '12:00',
     } as Parameters<typeof shiftService.create>[0])
-    const completed = await shiftService.getById(shift.id)
-    assert.strictEqual(completed?.status, 'completed')
-    assert.strictEqual(completed?.status_mode, 'auto')
-    const live = await shiftService.update(shift.id, { status: 'live', version: completed?.version })
+    const preparing = await shiftService.update(shift.id, { status: 'preparing', version: shift.version })
+    const live = await shiftService.update(shift.id, { status: 'live', version: preparing?.version })
     assert.strictEqual(live?.status, 'live')
     assert.strictEqual(live?.status_mode, 'manual')
     const persistedManual = await shiftService.getById(shift.id)
@@ -172,6 +170,32 @@ describe('Shift Lifecycle UI State Flow', () => {
     const automatic = await shiftService.returnToAutomatic(shift.id, undefined, persistedManual?.version)
     assert.strictEqual(automatic?.status, 'completed')
     assert.strictEqual(automatic?.status_mode, 'auto')
+  })
+
+  test('shift read paths never apply automatic status transitions', async () => {
+    const shift = await shiftService.create({
+      brand_id: 'b1', platform_id: 'p1', date: '2026-01-12', start_time: '10:00', end_time: '12:00',
+    } as Parameters<typeof shiftService.create>[0])
+    const query = { page: 1, pageSize: 50 }
+
+    await shiftService.getById(shift.id)
+    await shiftService.getByIds([shift.id])
+    await shiftService.getByDate(shift.date)
+    await shiftService.getByDateRange(shift.date, shift.date)
+    await shiftService.getByStatus('scheduled')
+    await shiftService.getOpen()
+    await shiftService.getReportCandidates()
+    await shiftService.getPage(query)
+    await shiftService.getCalendarPage(query)
+    await shiftService.getRegistrationPage('mine', query)
+    await shiftService.getAll()
+    await shiftService.getAllComplete()
+
+    const afterReads = await shiftService.getById(shift.id)
+    assert.strictEqual(afterReads?.status, 'scheduled')
+    assert.strictEqual(afterReads?.status_mode, 'auto')
+    assert.strictEqual(afterReads?.version, shift.version)
+    assert.strictEqual(afterReads?.updated_at, shift.updated_at)
   })
 
   test('cancelled and manual completed shifts are not time-overwritten', async () => {
