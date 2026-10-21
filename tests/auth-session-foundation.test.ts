@@ -133,6 +133,10 @@ test('password sign-in classifies only typed Supabase errors and codes without e
     { ok: false, reason: 'AUTH_PROVIDER_UNAVAILABLE' })
   assert.deepEqual(await resultFor(new AuthApiError('private response', 400, 'provider_disabled')),
     { ok: false, reason: 'AUTH_PROVIDER_UNAVAILABLE' })
+  assert.deepEqual(await resultFor({ name: 'AuthApiError', code: 'invalid_credentials' }),
+    { ok: false, reason: 'INVALID_CREDENTIALS' })
+  assert.deepEqual(await resultFor({ name: 'AuthRetryableFetchError' }),
+    { ok: false, reason: 'AUTH_NETWORK_ERROR' })
   assert.deepEqual(await resultFor(new AuthSessionMissingError()),
     { ok: false, reason: 'AUTH_SESSION_FAILURE' })
   assert.deepEqual(await resultFor(new AuthApiError('invalid credentials text', 401, 'unrecognized_code')),
