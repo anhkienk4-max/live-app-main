@@ -459,7 +459,8 @@ test('Supabase mode shift reads use the repository and never fall back to mock r
   await withEnvironment(async () => {
     setAuthMode('supabase')
     const db = database()
-    setSupabaseShiftRepositoryForTests(createSupabaseShiftRepository(fakeClient(db)))
+    const client = fakeClient(db)
+    setSupabaseShiftRepositoryForTests(createSupabaseShiftRepository(client))
     currentUserService.bindAuthenticatedUser(adminUser())
 
     const all = await shiftService.getAll()
@@ -479,6 +480,7 @@ test('Supabase mode shift reads use the repository and never fall back to mock r
 
     const open = await shiftService.getOpen()
     assert.ok(open.some(shift => shift.id === 'shift-1'))
+    assert.equal(client.rpcCalls.some(call => call.name === 'refresh_automatic_shift_statuses'), false)
   })
 })
 

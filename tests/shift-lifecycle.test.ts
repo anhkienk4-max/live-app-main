@@ -12,6 +12,10 @@ const statusModeMigration = readFileSync(
   'supabase/migrations/20260913120000_shift_status_mode_and_auto_completion.sql',
   'utf8',
 )
+const automaticStatusSafetyMigration = readFileSync(
+  'supabase/migrations/20261021034515_shift_automatic_status_scheduling_and_read_safety.sql',
+  'utf8',
+)
 
 describe('Shift Lifecycle UI State Flow', () => {
   beforeEach(() => {
@@ -239,5 +243,15 @@ describe('Shift Lifecycle UI State Flow', () => {
     assert.match(statusModeMigration, /after_row \? 'status_mode'[\s\S]*jsonb_build_object\('status_mode'/i)
     assert.match(statusModeMigration, /existing_shift\.status_mode = 'auto'/i)
     assert.match(statusModeMigration, /and shift\.status_mode = 'auto'[\s\S]*and shift\.version = desired\.version/i)
+  })
+
+  test('automatic status refresh is scheduled and explicit refresh is leader/admin-only', () => {
+    assert.match(automaticStatusSafetyMigration, /current_user <> 'postgres'[\s\S]*SHIFT_STATUS_MIGRATION_REQUIRES_POSTGRES_ROLE/i)
+    assert.match(automaticStatusSafetyMigration, /create extension if not exists pg_cron/i)
+    assert.match(automaticStatusSafetyMigration, /perform private\.require_shift_actor\(true\)/i)
+    assert.match(automaticStatusSafetyMigration, /revoke all on function private\.refresh_automatic_shift_statuses_scheduled\(\) from public, anon, authenticated, service_role/i)
+    assert.match(automaticStatusSafetyMigration, /cron\.schedule\([\s\S]*'refresh-automatic-shift-statuses'[\s\S]*'\* \* \* \* \*'/i)
+    assert.match(automaticStatusSafetyMigration, /set_config\('app\.audit_source', 'system', true\)/i)
+    assert.match(automaticStatusSafetyMigration, /and shift\.status_mode = 'auto'[\s\S]*and shift\.version = desired\.version/i)
   })
 })

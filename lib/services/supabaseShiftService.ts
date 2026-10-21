@@ -304,14 +304,9 @@ export function createSupabaseShiftRepository(
 ): SupabaseShiftRepository {
   const routingMode = options.routingMode ?? 'database'
   const selectShifts = () => client.from('shifts').select(selectedShiftColumns(routingMode))
-  const refreshAutomaticStatuses = async () => {
-    const result = await client.rpc('refresh_automatic_shift_statuses', {}).single()
-    if (result.error) throw requestError('automatic shift status refresh', result.error)
-  }
 
   return {
     async getAll(includeDeleted = false) {
-      if (!includeDeleted) await refreshAutomaticStatuses()
       let query = selectShifts().order('date', { ascending: true }).order('start_time', { ascending: true })
       if (!includeDeleted) query = query.is('deleted_at', null).is('archived_at', null)
       const result = await query
@@ -319,7 +314,6 @@ export function createSupabaseShiftRepository(
     },
 
     async getAllComplete() {
-      await refreshAutomaticStatuses()
       const rows = new Map<string, Row>()
       for (let offset = 0; ; offset += SUPABASE_PAGE_SIZE) {
         const query = selectShifts()
@@ -337,7 +331,6 @@ export function createSupabaseShiftRepository(
     },
 
     async getReportCandidates(limit) {
-      await refreshAutomaticStatuses()
       const result = await selectShifts()
         .in('status', ['preparing', 'live', 'paused', 'completed'])
         .is('deleted_at', null)
@@ -353,7 +346,6 @@ export function createSupabaseShiftRepository(
 
     async getByIds(ids) {
       if (ids.length === 0) return []
-      await refreshAutomaticStatuses()
       const rows: Shift[] = []
       const unique=[...new Set(ids)]
       for(let offset=0;offset<unique.length;offset+=50) {
@@ -372,14 +364,12 @@ export function createSupabaseShiftRepository(
     },
 
     async getById(id) {
-      await refreshAutomaticStatuses()
       const result = await selectShifts().eq('id', id).maybeSingle()
       if (result.error) throw requestError('shift lookup', result.error)
       return result.data ? (await withShiftStaffingSummary(client, [shiftFromRow(result.data as unknown as ShiftRow, routingMode)]))[0] : null
     },
 
     async getByDate(date) {
-      await refreshAutomaticStatuses()
       const result = await selectShifts()
         .eq('date', date)
         .is('deleted_at', null)
@@ -390,7 +380,6 @@ export function createSupabaseShiftRepository(
     },
 
     async getByDateRange(startDate, endDate) {
-      await refreshAutomaticStatuses()
       const result = await selectShifts()
         .gte('date', startDate)
         .lte('date', endDate)
@@ -404,7 +393,6 @@ export function createSupabaseShiftRepository(
     },
 
     async getByStatus(status) {
-      await refreshAutomaticStatuses()
       const result = await selectShifts()
         .eq('status', status)
         .is('deleted_at', null)
@@ -415,7 +403,6 @@ export function createSupabaseShiftRepository(
     },
 
     async getOpen() {
-      await refreshAutomaticStatuses()
       const result = await selectShifts()
         .eq('status', 'scheduled')
         .eq('registration_locked', false)

@@ -2,14 +2,14 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-20T12:37:23+00:00
+Generated at: 2026-10-20T22:46:16+07:00
 
 ## Repository
 
-- Branch: `perf/phase2b-live-monitor-stream-link-20261020`
-- HEAD: `fe3150c122426008f06e4a5281d42699cf6b9792`
-- origin/main: `371426bc53b6fac2fcef97433c02b45c3c6b4e9e`
-- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17b-payroll`
+- Branch: `integration/global-stabilization-20261021`
+- HEAD: `b96dcb6e1842e59f43170a1a8b15da712ee8a8e0`
+- origin/main: `b96dcb6e1842e59f43170a1a8b15da712ee8a8e0`
+- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-global-stabilization`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
 ## Hardening
@@ -22,9 +22,9 @@ Generated at: 2026-10-20T12:37:23+00:00
 ## Inventory
 
 - Routes: 56
-- Source files in tracked inventory roots: 741
+- Source files in tracked inventory roots: 742
 - Tests: 173
-- Migrations: 71
+- Migrations: 72
 
 ## Modules
 

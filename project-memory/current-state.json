@@ -9,10 +9,10 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "perf/phase2b-live-monitor-stream-link-20261020",
-    "head": "fe3150c122426008f06e4a5281d42699cf6b9792",
-    "origin_main": "371426bc53b6fac2fcef97433c02b45c3c6b4e9e",
-    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17b-payroll"
+    "branch": "integration/global-stabilization-20261021",
+    "head": "b96dcb6e1842e59f43170a1a8b15da712ee8a8e0",
+    "origin_main": "b96dcb6e1842e59f43170a1a8b15da712ee8a8e0",
+    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-global-stabilization"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -93,10 +93,10 @@
         "components": 152,
         "lib": 215,
         "scripts": 18,
-        "supabase": 90,
+        "supabase": 91,
         "tests": 206
       },
-      "total": 741
+      "total": 742
     },
     "tests": {
       "files": [
@@ -348,9 +348,10 @@
         "supabase/migrations/20261012145735_p0_audit_privilege_hardening.sql",
         "supabase/migrations/20261012171503_rc16k_bounded_shift_lists.sql",
         "supabase/migrations/20261017000000_rc17a_actual_staffing_audit.sql",
-        "supabase/migrations/20261019000000_rc17b_rate_supersession_and_recalc.sql"
+        "supabase/migrations/20261019000000_rc17b_rate_supersession_and_recalc.sql",
+        "supabase/migrations/20261021034515_shift_automatic_status_scheduling_and_read_safety.sql"
       ],
-      "count": 71
+      "count": 72
     }
   },
   "verification": {
@@ -364,5 +365,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-20T12:37:23+00:00"
+  "synced_at": "2026-10-20T22:46:16+07:00"
 }
