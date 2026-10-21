@@ -68,9 +68,13 @@ export interface RawAttendanceInputRow {
   notes?: string
   checkIn?: string
   checkOut?: string
+  overrideCheckIn?: string
+  overrideCheckOut?: string
+  supervisorReason?: string
   approvedOtMinutes?: number
   confirmedBy?: string
   confirmedAt?: string
+  revision?: number | string
 }
 
 /**
@@ -93,6 +97,16 @@ export interface ControlTimesheetRow {
   CreatedBy?: string
   CreatedAt?: string
   UpdatedAt?: string
+  revision?: number | string
+}
+
+export interface SourceFingerprintInput {
+  sourceType: string
+  sourceName: string
+  sourceProfileId?: string
+  mappingVersion?: number | string
+  revision?: number | string
+  payload: unknown
 }
 
 export interface ParsedAttendanceSegment {
@@ -116,6 +130,7 @@ export interface ParsedAttendanceSegment {
   coverageKind: 'planned' | 'cover' | 'replacement' | 'extra'
   passTargetStaffName?: string
   evidenceKind: AttendanceEvidenceKind
+  supervisorOverrideReason?: string
   approvedOtMinutes?: number
   rawNotes: string
   shiftIdHint?: string

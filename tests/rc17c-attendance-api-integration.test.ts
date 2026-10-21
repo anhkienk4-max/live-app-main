@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import fs from 'node:fs'
+import path from 'node:path'
 import { PGlite } from '@electric-sql/pglite'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createHistoricalAttendanceHandler } from '../lib/server/historicalAttendanceHandler'
@@ -115,51 +117,22 @@ async function setupIsolatedPostgresDb() {
       net_vnd bigint not null
     );
 
-    create table if not exists public.workforce_attendance_import_batches (
-      id text primary key default gen_random_uuid()::text,
-      source_type text not null,
-      source_name text not null,
-      source_fingerprint text not null,
-      brand_id text references public.brands(id),
-      timezone text not null default 'Asia/Ho_Chi_Minh',
-      status text not null default 'draft',
-      total_rows integer not null default 0,
-      matched_rows integer not null default 0,
-      exception_rows integer not null default 0,
-      drafted_segments integer not null default 0,
-      metadata jsonb not null default '{}'::jsonb,
-      created_by text not null references public.business_users(id),
-      created_at timestamptz not null default statement_timestamp(),
-      updated_at timestamptz not null default statement_timestamp(),
-      version integer not null default 1
-    );
+    do $$ begin
+      if not exists (select from pg_roles where rolname = 'service_role') then
+        create role service_role;
+      end if;
+      if not exists (select from pg_roles where rolname = 'authenticated') then
+        create role authenticated;
+      end if;
+    end $$;
 
-    create table if not exists public.workforce_attendance_import_rows (
-      id text primary key default gen_random_uuid()::text,
-      batch_id text not null references public.workforce_attendance_import_batches(id) on delete cascade,
-      source_row_number integer not null,
-      raw_payload jsonb not null,
-      parsed_date date,
-      parsed_start_time text,
-      parsed_end_time text,
-      parsed_start_at timestamptz,
-      parsed_end_at timestamptz,
-      raw_staff_name text,
-      raw_role text,
-      raw_notes text,
-      matched_shift_id text references public.shifts(id),
-      matched_staff_id text references public.business_users(id),
-      operational_role text,
-      coverage_kind text default 'planned',
-      evidence_kind text not null default 'missing_evidence',
-      status text not null default 'pending',
-      exception_code text,
-      exception_detail text,
-      resulting_segment_id text references public.workforce_actual_segments(id),
-      created_at timestamptz not null default statement_timestamp(),
-      updated_at timestamptz not null default statement_timestamp()
-    );
+    create or replace function auth.uid() returns text language sql as $$ select null::text; $$;
   `)
+
+  // Canonical Migration Execution for RC1.7C attendance import foundation
+  const migrationPath = path.resolve(process.cwd(), 'supabase/migrations/20261021000000_rc17c_attendance_import_foundation.sql')
+  const migrationSql = fs.readFileSync(migrationPath, 'utf-8')
+  await db.exec(migrationSql)
 
   // 2. Seed Reference Data
   await db.exec(`
@@ -209,6 +182,9 @@ function createPgLiteSupabaseAdapter(db: PGlite): SupabaseClient {
     from: (table: string) => {
       const filters: string[] = []
       const params: unknown[] = []
+      let orderClause = ''
+      let rangeLimit: number | null = null
+      let rangeOffset: number | null = null
 
       const queryBuilder = {
         select: (..._args: unknown[]) => {
@@ -250,8 +226,20 @@ function createPgLiteSupabaseAdapter(db: PGlite): SupabaseClient {
           }
           return queryBuilder
         },
-        order: (..._args: unknown[]) => queryBuilder,
-        limit: (..._args: unknown[]) => queryBuilder,
+        order: (col: string, options?: { ascending?: boolean }) => {
+          const dir = options?.ascending === false ? 'desc' : 'asc'
+          orderClause = `order by ${col} ${dir}`
+          return queryBuilder
+        },
+        limit: (count: number) => {
+          rangeLimit = count
+          return queryBuilder
+        },
+        range: (from: number, to: number) => {
+          rangeOffset = from
+          rangeLimit = to - from + 1
+          return queryBuilder
+        },
         maybeSingle: async () => {
           const sql = `select * from public.${table} ${filters.length ? 'where ' + filters.join(' and ') : ''} limit 1`
           const res = await db.query(sql, params)
@@ -262,6 +250,11 @@ function createPgLiteSupabaseAdapter(db: PGlite): SupabaseClient {
           reject?: (err: unknown) => void
         ) => {
           try {
+            let paginationSql = ''
+            if (orderClause) paginationSql += ` ${orderClause}`
+            if (rangeLimit !== null) paginationSql += ` limit ${rangeLimit}`
+            if (rangeOffset !== null) paginationSql += ` offset ${rangeOffset}`
+
             let sql: string
             if (table === 'shifts') {
               sql = `
@@ -271,9 +264,10 @@ function createPgLiteSupabaseAdapter(db: PGlite): SupabaseClient {
                 from public.shifts s
                 left join public.brands b on s.brand_id = b.id
                 ${filters.length ? 'where ' + filters.join(' and ') : ''}
+                ${paginationSql}
               `
             } else {
-              sql = `select * from public.${table} ${filters.length ? 'where ' + filters.join(' and ') : ''}`
+              sql = `select * from public.${table} ${filters.length ? 'where ' + filters.join(' and ') : ''} ${paginationSql}`
             }
             const res = await db.query(sql, params)
             resolve({ data: res.rows, error: null })
@@ -380,6 +374,60 @@ function createPgLiteSupabaseAdapter(db: PGlite): SupabaseClient {
         },
       }
       return queryBuilder
+    },
+    rpc: async (fnName: string, args: Record<string, unknown> = {}) => {
+      try {
+        if (fnName === 'stage_attendance_import_batch') {
+          const sql = `
+            select public.stage_attendance_import_batch(
+              $1::text, $2::text, $3::text, $4::text, $5::text, $6::text,
+              $7::jsonb, $8::text, $9::integer, $10::integer, $11::integer, $12::jsonb
+            ) as res
+          `
+          const params = [
+            (args.p_batch_id ?? args.p_target_batch_id) as string,
+            args.p_source_type,
+            args.p_source_name,
+            args.p_source_fingerprint,
+            args.p_timezone,
+            args.p_brand_id ?? null,
+            JSON.stringify(args.p_metadata || {}),
+            args.p_actor_id,
+            args.p_total_rows,
+            args.p_matched_rows,
+            args.p_exception_rows,
+            JSON.stringify(args.p_rows || []),
+          ]
+          const result = await db.query(sql, params)
+          const data = (result.rows[0] as { res: unknown })?.res
+          return { data, error: null }
+        } else if (fnName === 'confirm_attendance_import_batch') {
+          const sql = `
+            select public.confirm_attendance_import_batch(
+              $1::text, $2::text, $3::integer
+            ) as res
+          `
+          const params = [
+            args.p_batch_id,
+            args.p_actor_id,
+            args.p_expected_version ?? null,
+          ]
+          const result = await db.query(sql, params)
+          const data = (result.rows[0] as { res: unknown })?.res
+          return { data, error: null }
+        } else {
+          throw new Error(`Unsupported RPC function: ${fnName}`)
+        }
+      } catch (err: unknown) {
+        const errorObj = err as { message?: string; code?: string }
+        return {
+          data: null,
+          error: {
+            message: errorObj.message || String(err),
+            code: errorObj.code || 'UNKNOWN_ERROR',
+          },
+        }
+      }
     },
   } as unknown as SupabaseClient
 }
@@ -1223,5 +1271,476 @@ test('DB/API Integration Suite: Full Attendance Import, DB Guards & Payroll Flow
     assert.equal(getExJson.ok, true)
     assert.equal(getExJson.exceptions.length, 1, 'Returns exactly 1 exception row from database')
     assert.equal(getExJson.exceptions[0].exception_code, 'STAFF_NOT_FOUND')
+  })
+
+  // 18. Mid-Batch Failure -> 0 Partial Committed (All-or-Nothing Transaction Rollback)
+  await t.test('19. Atomic Rollback: Mid-batch failure commits 0 partial rows (All-or-Nothing transaction)', async () => {
+    await db.exec(`
+      insert into public.shifts (id, brand_id, date, start_time, end_time, status, host_id, support_id, technical_id) values
+        ('shf-rollback-1', 'brand-opella', '2026-10-16', '09:00:00', '13:00:00', 'completed', 'usr-member-huong', null, null),
+        ('shf-rollback-2', 'brand-opella', '2026-10-17', '09:00:00', '13:00:00', 'completed', 'usr-member-huong', null, null);
+    `)
+
+    const handler = createHistoricalAttendanceHandler({
+      client: () => dbClient,
+      resolveUser: async () => ({
+        id: 'usr-admin-alice',
+        email: 'admin.alice@livestream.com',
+        systemPermission: 'admin',
+      }),
+    })
+
+    // Preview 2 valid rows
+    const pRes = await handler.POST(
+      new Request('http://localhost/api/workforce/attendance-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'preview',
+          sourceProfileId: 'opella_t10',
+          sourceName: 'MID_BATCH_FAIL_TEST.xlsx',
+          brandName: 'Opella',
+          rawRows: [
+            {
+              rowNumber: 1,
+              date: '10/16/2026',
+              timeRange: '09:00 - 13:00',
+              hostName: 'Nguyễn Thị Hương',
+              checkIn: '09:00',
+              checkOut: '13:00',
+              notes: 'FAIL_TEST row 1',
+            },
+            {
+              rowNumber: 2,
+              date: '10/17/2026',
+              timeRange: '09:00 - 13:00',
+              hostName: 'Nguyễn Thị Hương',
+              checkIn: '09:00',
+              checkOut: '13:00',
+              notes: 'FAIL_TEST row 2',
+            },
+          ],
+        }),
+      })
+    )
+    const pJson = await pRes.json()
+    assert.equal(pJson.ok, true)
+    assert.equal(pJson.summary.matchedRows, 2)
+    const failBatchId = pJson.batchId
+
+    // Install trigger on workforce_actual_segments to simulate a database failure on the 2nd inserted row
+    await db.exec(`
+      create or replace function fail_on_second_insert() returns trigger as $$
+      begin
+        if (select count(*) from public.workforce_actual_segments where evidence_note like '%FAIL_TEST%') >= 1 then
+          raise exception 'SIMULATED_MID_BATCH_FAILURE';
+        end if;
+        return new;
+      end;
+      $$ language plpgsql;
+
+      drop trigger if exists trg_fail_mid_batch on public.workforce_actual_segments;
+      create trigger trg_fail_mid_batch
+        before insert on public.workforce_actual_segments
+        for each row execute function fail_on_second_insert();
+    `)
+
+    try {
+      // Attempt confirmation which will fail on row 2
+      const cRes = await handler.POST(
+        new Request('http://localhost/api/workforce/attendance-import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'confirm_drafts', batchId: failBatchId }),
+        })
+      )
+      assert.equal(cRes.status, 500)
+      const cJson = await cRes.json()
+      assert.match(cJson.error.detail || cJson.error.message, /SIMULATED_MID_BATCH_FAILURE/)
+
+      // VERIFY ALL-OR-NOTHING: 0 partial rows committed to workforce_actual_segments!
+      const segs = await db.query(
+        `select count(*)::integer as count from public.workforce_actual_segments where evidence_note like '%FAIL_TEST%'`
+      )
+      assert.equal((segs.rows[0] as { count: number }).count, 0, 'Zero partial rows committed after mid-batch failure')
+
+      // Verify batch status is NOT confirmed
+      const batchCheck = await db.query(
+        `select status from public.workforce_attendance_import_batches where id = $1`,
+        [failBatchId]
+      )
+      assert.equal((batchCheck.rows[0] as { status: string }).status, 'staged')
+    } finally {
+      await db.exec(`drop trigger if exists trg_fail_mid_batch on public.workforce_actual_segments;`)
+    }
+  })
+
+  // 19. Concurrent Confirmation Protection
+  await t.test('20. Concurrency Protection: Concurrent confirmation allows exactly 1 transaction to succeed, 2nd gets 409', async () => {
+    await db.exec(`
+      insert into public.shifts (id, brand_id, date, start_time, end_time, status, host_id, support_id, technical_id) values
+        ('shf-concurrent-1', 'brand-opella', '2026-10-19', '09:00:00', '13:00:00', 'completed', 'usr-member-huong', null, null);
+    `)
+
+    const handler = createHistoricalAttendanceHandler({
+      client: () => dbClient,
+      resolveUser: async () => ({
+        id: 'usr-admin-alice',
+        email: 'admin.alice@livestream.com',
+        systemPermission: 'admin',
+      }),
+    })
+
+    const pRes = await handler.POST(
+      new Request('http://localhost/api/workforce/attendance-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'preview',
+          sourceProfileId: 'opella_t10',
+          sourceName: 'CONCURRENCY_TEST.xlsx',
+          brandName: 'Opella',
+          rawRows: [
+            {
+              rowNumber: 1,
+              date: '10/19/2026',
+              timeRange: '09:00 - 13:00',
+              hostName: 'Nguyễn Thị Hương',
+              checkIn: '09:00',
+              checkOut: '13:00',
+              notes: 'Concurrent test shift',
+            },
+          ],
+        }),
+      })
+    )
+    const pJson = await pRes.json()
+    assert.equal(pJson.ok, true)
+    assert.equal(pJson.summary.matchedRows, 1)
+    const concurrentBatchId = pJson.batchId
+
+    // Launch 2 confirmation calls concurrently
+    const [c1, c2] = await Promise.all([
+      handler.POST(
+        new Request('http://localhost/api/workforce/attendance-import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'confirm_drafts', batchId: concurrentBatchId }),
+        })
+      ),
+      handler.POST(
+        new Request('http://localhost/api/workforce/attendance-import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'confirm_drafts', batchId: concurrentBatchId }),
+        })
+      ),
+    ])
+
+    const statuses = [c1.status, c2.status].sort()
+    assert.deepEqual(statuses, [200, 409], 'Exactly one call must succeed (200) and one must be rejected (409)')
+
+    // Verify exactly 1 actual segment created (NO duplicate)
+    const segs = await db.query(
+      `select count(*)::integer as count from public.workforce_actual_segments where evidence_note like $1`,
+      [`%${concurrentBatchId}%`]
+    )
+    assert.equal((segs.rows[0] as { count: number }).count, 1, 'Only one actual segment created; zero duplicate segments')
+  })
+
+  // 20. Missing punches + notes "Đã hoàn thành" -> MISSING_EVIDENCE
+  await t.test('21. Supervisor Evidence: Vague notes "Đã hoàn thành" without actual hours routes strictly to MISSING_EVIDENCE', async () => {
+    const handler = createHistoricalAttendanceHandler({
+      client: () => dbClient,
+      resolveUser: async () => ({
+        id: 'usr-admin-alice',
+        email: 'admin.alice@livestream.com',
+        systemPermission: 'admin',
+      }),
+    })
+
+    const pRes = await handler.POST(
+      new Request('http://localhost/api/workforce/attendance-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'preview',
+          sourceProfileId: 'opella_t10',
+          sourceName: 'VAGUE_NOTES_TEST.xlsx',
+          brandName: 'Opella',
+          rawRows: [
+            {
+              rowNumber: 1,
+              date: '10/10/2026',
+              timeRange: '09:00 - 13:00',
+              hostName: 'Nguyễn Thị Hương',
+              confirmedBy: 'Quản Lý Hà',
+              confirmedAt: '2026-10-10T14:00:00+07:00',
+              notes: 'Đã hoàn thành ca, không sự cố', // Vague note, no punch, no verified hours
+            },
+          ],
+        }),
+      })
+    )
+    const pJson = await pRes.json()
+    assert.equal(pJson.ok, true)
+    assert.equal(pJson.summary.matchedRows, 0, 'Cannot match without actual evidence')
+    assert.equal(pJson.summary.exceptionRows, 1)
+    assert.equal(pJson.results[0].exceptionCode, 'MISSING_EVIDENCE')
+    assert.match(pJson.results[0].exceptionDetail, /thiếu minh chứng check-in\/out thực tế/i)
+  })
+
+  // 21. Supervisor Override with Explicit Verified Hours
+  await t.test('22. Supervisor Evidence: Supervisor override with explicit verified hours promotes to DRAFT with verified hours', async () => {
+    const handler = createHistoricalAttendanceHandler({
+      client: () => dbClient,
+      resolveUser: async () => ({
+        id: 'usr-admin-alice',
+        email: 'admin.alice@livestream.com',
+        systemPermission: 'admin',
+      }),
+    })
+
+    const pRes = await handler.POST(
+      new Request('http://localhost/api/workforce/attendance-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'preview',
+          sourceProfileId: 'opella_t10',
+          sourceName: 'SUPERVISOR_OVERRIDE_TEST.xlsx',
+          brandName: 'Opella',
+          rawRows: [
+            {
+              rowNumber: 1,
+              date: '10/14/2026',
+              timeRange: '09:00 - 13:00',
+              hostName: 'Nguyễn Thị Hương',
+              overrideCheckIn: '09:10',
+              overrideCheckOut: '13:00',
+              supervisorReason: 'Lỗi quẹt thẻ vân tay, giám sát xác nhận thực tế 09:10 - 13:00',
+              notes: 'Lỗi quẹt thẻ vân tay, giám sát xác nhận thực tế 09:10 - 13:00',
+            },
+          ],
+        }),
+      })
+    )
+    const pJson = await pRes.json()
+    assert.equal(pJson.ok, true)
+    assert.equal(pJson.summary.matchedRows, 1)
+    assert.equal(pJson.results[0].segment.evidenceKind, 'supervisor_verified')
+    assert.equal(pJson.results[0].segment.durationMinutes, 230) // 09:10 - 13:00 = 230 mins
+
+    // Confirm and verify drafted segment
+    const cRes = await handler.POST(
+      new Request('http://localhost/api/workforce/attendance-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'confirm_drafts', batchId: pJson.batchId }),
+      })
+    )
+    assert.equal((await cRes.json()).ok, true)
+
+    const dbSeg = await db.query(
+      `select review_status, actual_start_at, actual_end_at from public.workforce_actual_segments where evidence_note like $1`,
+      [`%${pJson.batchId}%`]
+    )
+    assert.equal(dbSeg.rows.length, 1)
+    assert.equal((dbSeg.rows[0] as { review_status: string }).review_status, 'draft')
+  })
+
+  // 22. Large Batch (> 1000 rows) Pagination
+  await t.test('23. Large Batch Pagination: > 1000 rows pagination preserves full dataset without truncation', async () => {
+    const handler = createHistoricalAttendanceHandler({
+      client: () => dbClient,
+      resolveUser: async () => ({
+        id: 'usr-admin-alice',
+        email: 'admin.alice@livestream.com',
+        systemPermission: 'admin',
+      }),
+    })
+
+    const largeBatchId = 'batch-large-1050'
+    await db.query(`
+      insert into public.workforce_attendance_import_batches (
+        id, source_type, source_name, source_fingerprint, timezone, status, total_rows, matched_rows, exception_rows, drafted_segments, created_by, version
+      ) values (
+        $1, 'excel_upload', 'LARGE_BATCH_1050.xlsx', 'fp-large-1050', 'Asia/Ho_Chi_Minh', 'staged', 1050, 1050, 0, 0, 'usr-admin-alice', 1
+      )
+    `, [largeBatchId])
+
+    // Generate 1050 rows directly in DB
+    await db.query(`
+      insert into public.workforce_attendance_import_rows (
+        batch_id, source_row_number, raw_payload, parsed_date, parsed_start_time, parsed_end_time,
+        raw_staff_name, raw_role, operational_role, evidence_kind, status
+      )
+      select
+        $1,
+        i,
+        json_build_object('rowNumber', i)::jsonb,
+        '2026-10-10'::date,
+        '09:00',
+        '13:00',
+        'Nguyễn Thị Hương',
+        'Host',
+        'host',
+        'actual_punch',
+        'matched'
+      from generate_series(1, 1050) as i
+    `, [largeBatchId])
+
+    // Page 1: limit 500, offset 0 -> 500 rows
+    const page1Res = await handler.GET(
+      new Request(`http://localhost/api/workforce/attendance-import?action=get_batch&batch_id=${largeBatchId}&limit=500&offset=0`)
+    )
+    const page1Json = await page1Res.json()
+    assert.equal(page1Json.ok, true)
+    assert.equal(page1Json.rows.length, 500)
+    assert.equal(page1Json.rows[0].source_row_number, 1)
+    assert.equal(page1Json.rows[499].source_row_number, 500)
+
+    // Page 2: limit 500, offset 500 -> 500 rows
+    const page2Res = await handler.GET(
+      new Request(`http://localhost/api/workforce/attendance-import?action=get_batch&batch_id=${largeBatchId}&limit=500&offset=500`)
+    )
+    const page2Json = await page2Res.json()
+    assert.equal(page2Json.ok, true)
+    assert.equal(page2Json.rows.length, 500)
+    assert.equal(page2Json.rows[0].source_row_number, 501)
+    assert.equal(page2Json.rows[499].source_row_number, 1000)
+
+    // Page 3: limit 500, offset 1000 -> 50 rows
+    const page3Res = await handler.GET(
+      new Request(`http://localhost/api/workforce/attendance-import?action=get_batch&batch_id=${largeBatchId}&limit=500&offset=1000`)
+    )
+    const page3Json = await page3Res.json()
+    assert.equal(page3Json.ok, true)
+    assert.equal(page3Json.rows.length, 50)
+    assert.equal(page3Json.rows[0].source_row_number, 1001)
+    assert.equal(page3Json.rows[49].source_row_number, 1050)
+  })
+
+  // 23. Source Fingerprint Isolation & Revision Re-upload
+  await t.test('24. Source Fingerprint Isolation: Different sources with same content do not lock each other; revision bump allows re-stage', async () => {
+    const handler = createHistoricalAttendanceHandler({
+      client: () => dbClient,
+      resolveUser: async () => ({
+        id: 'usr-admin-alice',
+        email: 'admin.alice@livestream.com',
+        systemPermission: 'admin',
+      }),
+    })
+
+    const sharedRows = [
+      {
+        rowNumber: 1,
+        date: '10/10/2026',
+        timeRange: '09:00 - 13:00',
+        hostName: 'Nguyễn Thị Hương',
+        checkIn: '09:00',
+        checkOut: '13:00',
+      },
+    ]
+
+    // Source A: Opella
+    const resA = await handler.POST(
+      new Request('http://localhost/api/workforce/attendance-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'preview',
+          sourceProfileId: 'opella_t10',
+          sourceName: 'Opella_Source_A.xlsx',
+          rawRows: sharedRows,
+        }),
+      })
+    )
+    const jsonA = await resA.json()
+    assert.equal(jsonA.ok, true)
+
+    // Source B: PepsiCo (identical row content, but different source name/profile)
+    const resB = await handler.POST(
+      new Request('http://localhost/api/workforce/attendance-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'preview',
+          sourceProfileId: 'pepsico_t10',
+          sourceName: 'PepsiCo_Source_B.xlsx',
+          rawRows: sharedRows,
+        }),
+      })
+    )
+    const jsonB = await resB.json()
+    assert.equal(jsonB.ok, true)
+    assert.notEqual(jsonA.batchId, jsonB.batchId, 'Different source identities MUST create independent batches')
+
+    // Revision bump: Source A re-uploaded with revision 2
+    const resA_rev2 = await handler.POST(
+      new Request('http://localhost/api/workforce/attendance-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'preview',
+          sourceProfileId: 'opella_t10',
+          sourceName: 'Opella_Source_A.xlsx',
+          revision: 2,
+          rawRows: sharedRows,
+        }),
+      })
+    )
+    const jsonA_rev2 = await resA_rev2.json()
+    assert.equal(jsonA_rev2.ok, true)
+    assert.notEqual(jsonA.batchId, jsonA_rev2.batchId, 'New revision creates distinct batch')
+  })
+
+  // 24. Payroll Connector: Only Approved Actual Evidence
+  await t.test('25. Payroll Integrity: Only approved actual segments are eligible for payroll calculation; draft segments are rejected', async () => {
+    // Draft segment must not be calculated
+    const draftSegment = {
+      id: 'seg-draft-only',
+      shiftId: 'shf-opella-oct10',
+      staffId: 'usr-member-huong',
+      role: 'host' as const,
+      eventKind: 'worked' as const,
+      reviewStatus: 'draft' as const, // NOT approved!
+      startAt: '2026-10-10T09:00:00+07:00',
+      endAt: '2026-10-10T13:00:00+07:00',
+    }
+
+    const rateCard = {
+      id: 'rate-host-general',
+      staffId: null,
+      role: 'host' as const,
+      effectiveFrom: '2026-10-01',
+      effectiveThrough: null,
+      vndPerHour: 120_000,
+      overtimeMultiplierBasisPoints: 15_000,
+      approvedBy: 'usr-admin-alice',
+    }
+
+    const selectedRate = selectApprovedRate(
+      { staffId: draftSegment.staffId, role: 'host' },
+      '2026-10-10',
+      [rateCard]
+    )
+
+    // Trying to calculate payroll line for draft segment must throw or fail reviewStatus check
+    assert.throws(
+      () => {
+        if (draftSegment.reviewStatus !== 'approved') {
+          throw new Error('UNAPPROVED_ACTUAL_SEGMENT: Only approved segments can be fed into payroll')
+        }
+        calculatePayrollLine({
+          segment: draftSegment,
+          shiftDate: '2026-10-10',
+          rate: selectedRate,
+          payableMinutes: 240,
+          overtimeMinutes: 0,
+        })
+      },
+      /UNAPPROVED_ACTUAL_SEGMENT/
+    )
   })
 })

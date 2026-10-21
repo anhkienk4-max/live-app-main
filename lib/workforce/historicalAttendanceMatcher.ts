@@ -107,11 +107,37 @@ export function computeShiftTimestamps(sh: ShiftReference): {
   return { startAtIso, endAtIso, isOvernight }
 }
 
+import type { SourceFingerprintInput } from './historicalAttendanceTypes'
+
+/**
+ * Creates deterministic SHA-256 fingerprint for idempotency with source identity and revision.
+ */
+export function computeCompositeFingerprint(input: SourceFingerprintInput): string {
+  const normalizedPayload = typeof input.payload === 'string'
+    ? input.payload.trim()
+    : JSON.stringify(input.payload)
+
+  const compositeKey = [
+    input.sourceType || 'unknown',
+    input.sourceName || 'unnamed',
+    input.sourceProfileId || 'default',
+    String(input.mappingVersion || 'v1'),
+    String(input.revision || 'r1'),
+    normalizedPayload,
+  ].join(':')
+
+  return createHash('sha256').update(compositeKey).digest('hex')
+}
+
 /**
  * Creates deterministic SHA-256 fingerprint for idempotency.
+ * Accepts string/Buffer or SourceFingerprintInput.
  */
-export function createSourceFingerprint(content: string | Buffer): string {
-  return createHash('sha256').update(content).digest('hex')
+export function createSourceFingerprint(content: string | Buffer | SourceFingerprintInput): string {
+  if (typeof content === 'object' && !(content instanceof Buffer) && 'sourceType' in content) {
+    return computeCompositeFingerprint(content as SourceFingerprintInput)
+  }
+  return createHash('sha256').update(content as string | Buffer).digest('hex')
 }
 
 /**
@@ -206,8 +232,8 @@ export function matchSegmentToShift(params: {
     }
   }
 
-  // 2. Validate time duration
-  if (segment.durationMinutes <= 0 || segment.durationMinutes > 1440) {
+  // 2. Validate time duration (only when actual evidence is present; missing_evidence handled in step 5)
+  if (segment.evidenceKind !== 'missing_evidence' && (segment.durationMinutes <= 0 || segment.durationMinutes > 1440)) {
     return {
       rowNumber: segment.rowNumber,
       segment,

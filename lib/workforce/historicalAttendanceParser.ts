@@ -260,6 +260,75 @@ export function detectPassCoverage(notes?: string): {
 }
 
 /**
+ * Evaluates supervisor override evidence when physical check-in/out timestamps are missing.
+ * Strict rules:
+ * 1. Never assume planned times as actual times.
+ * 2. Words like "Đã hoàn thành", "Done", "FINAL", "Đã live" without explicit verified actual hours MUST NOT be accepted.
+ * 3. ConfirmedBy/ConfirmedAt typed into spreadsheet cells alone do NOT prove supervisor authority.
+ * 4. Requires explicit actual hours verified (e.g., in notes or override fields) AND valid justification.
+ */
+export function extractSupervisorOverrideEvidence(
+  row: RawAttendanceInputRow,
+  parsedDate: string
+): {
+  actualStartTime?: string
+  actualEndTime?: string
+  startAtIso?: string
+  endAtIso?: string
+  durationMinutes?: number
+  supervisorOverrideReason?: string
+} | null {
+  // Check override fields first
+  let startTime = normalizeTimeString(row.overrideCheckIn ?? '')
+  let endTime = normalizeTimeString(row.overrideCheckOut ?? '')
+  let reason = row.supervisorReason || ''
+
+  // If not in dedicated fields, check notes for verified time range with explicit justification
+  if ((!startTime || !endTime) && row.notes) {
+    const cleanNotes = row.notes.trim()
+
+    // Must contain explicit justification keywords:
+    // e.g. "lỗi quẹt thẻ", "quên chấm công", "giám sát xác nhận", "camera đối soát", "xác nhận thực tế", "biên bản xác nhận"
+    const hasJustification = /lỗi quẹt thẻ|loi quet the|quên chấm công|quen cham cong|giám sát xác nhận|giam sat xac nhan|camera đối soát|camera doi soat|xác nhận thực tế|xac nhan thuc te|biên bản xác nhận|bien ban xac nhan/i.test(cleanNotes)
+
+    if (hasJustification) {
+      // Must extract explicit actual hours (e.g. "09:15 - 12:45" or "09h15 đến 12h45" or "thực tế 09:20 - 13:00")
+      const timePattern = /(?:thực tế|xác nhận|thời gian|giờ)?\s*(\d{1,2}[:h]\d{2})\s*(?:[-–—đếnto]|\s+đến\s+)\s*(\d{1,2}[:h]\d{2})/i
+      const match = cleanNotes.match(timePattern)
+      if (match) {
+        startTime = normalizeTimeString(match[1])
+        endTime = normalizeTimeString(match[2])
+        reason = cleanNotes
+      }
+    }
+  }
+
+  if (!startTime || !endTime) {
+    return null
+  }
+
+  const [asH, asM] = startTime.split(':').map(Number)
+  const [aeH, aeM] = endTime.split(':').map(Number)
+  let actualDur = (aeH * 60 + aeM) - (asH * 60 + asM)
+  let actualEndDate = parsedDate
+  if (actualDur <= 0) {
+    actualDur += 1440
+    const d = new Date(`${parsedDate}T12:00:00Z`)
+    d.setUTCDate(d.getUTCDate() + 1)
+    actualEndDate = d.toISOString().slice(0, 10)
+  }
+
+  return {
+    actualStartTime: startTime,
+    actualEndTime: endTime,
+    startAtIso: `${parsedDate}T${startTime}:00+07:00`,
+    endAtIso: `${actualEndDate}T${endTime}:00+07:00`,
+    durationMinutes: actualDur,
+    supervisorOverrideReason: reason || 'Giám sát xác nhận giờ làm việc thực tế với chứng từ hợp lệ',
+  }
+}
+
+/**
  * Parses raw attendance row with source profile awareness.
  */
 export function parseRawAttendanceRow(
@@ -337,14 +406,15 @@ export function parseRawAttendanceRow(
   const plannedEndAtIso = `${plannedEndDate}T${plannedEndTime}:00+07:00`
 
   // 2. Compute Actual Attendance Timestamps (P0-4 requirement)
-  // Strict rule: "Done", "FINAL", "Đã live" is NOT actual punch proof!
+  // Strict rule: "Done", "FINAL", "Đã live", "Đã hoàn thành" is NOT actual punch proof!
   // ONLY real physical check-in/out timestamps count as actual_punch.
   let evidenceKind: AttendanceEvidenceKind = 'missing_evidence'
-  let startAtIso = plannedStartAtIso
-  let endAtIso = plannedEndAtIso
-  let durationMinutes = plannedDurationMinutes
+  let startAtIso = ''
+  let endAtIso = ''
+  let durationMinutes = 0
   let actualStartTime: string | undefined
   let actualEndTime: string | undefined
+  let supervisorOverrideReason: string | undefined
 
   const normCheckIn = normalizeTimeString(row.checkIn ?? '')
   const normCheckOut = normalizeTimeString(row.checkOut ?? '')
@@ -367,11 +437,25 @@ export function parseRawAttendanceRow(
     }
     endAtIso = `${actualEndDate}T${actualEndTime}:00+07:00`
     durationMinutes = actualDur
-  } else if (row.confirmedBy && row.confirmedAt && (
-    !row.notes || /xác nhận|duyệt|chứng từ|hoàn thành|nghiệm thu|giám sát/i.test(row.notes)
-  )) {
-    // Certified supervisor exception with explicit reason
-    evidenceKind = 'supervisor_verified'
+  } else {
+    // Check if there is valid supervisor override evidence with explicit verified actual hours
+    const supervisorEvidence = extractSupervisorOverrideEvidence(row, parsedDate)
+    if (supervisorEvidence) {
+      actualStartTime = supervisorEvidence.actualStartTime
+      actualEndTime = supervisorEvidence.actualEndTime
+      startAtIso = supervisorEvidence.startAtIso || ''
+      endAtIso = supervisorEvidence.endAtIso || ''
+      durationMinutes = supervisorEvidence.durationMinutes || 0
+      supervisorOverrideReason = supervisorEvidence.supervisorOverrideReason
+      evidenceKind = 'supervisor_verified'
+    } else {
+      // Vague text ("Đã hoàn thành", "Done", "FINAL") or missing actual punches without verified hours
+      // NEVER fall back to planned start/end times!
+      evidenceKind = 'missing_evidence'
+      startAtIso = ''
+      endAtIso = ''
+      durationMinutes = 0
+    }
   }
 
   const passInfo = detectPassCoverage(row.notes)
@@ -402,6 +486,7 @@ export function parseRawAttendanceRow(
       coverageKind: isPassTarget ? 'cover' : (row.coverageKind === 'cover' || row.coverageKind === 'replacement' || row.coverageKind === 'extra' ? row.coverageKind : 'planned'),
       passTargetStaffName: isPassTarget ? passInfo.originalStaff : undefined,
       evidenceKind,
+      supervisorOverrideReason,
       approvedOtMinutes: row.approvedOtMinutes ?? 0,
       rawNotes: row.notes ?? '',
       shiftIdHint: row.shiftCode,
@@ -433,6 +518,7 @@ export function parseRawAttendanceRow(
       operationalRole: 'support',
       coverageKind: row.coverageKind === 'cover' || row.coverageKind === 'replacement' || row.coverageKind === 'extra' ? row.coverageKind : 'planned',
       evidenceKind,
+      supervisorOverrideReason,
       approvedOtMinutes: row.approvedOtMinutes ?? 0,
       rawNotes: row.notes ?? '',
       shiftIdHint: row.shiftCode,
@@ -464,6 +550,7 @@ export function parseRawAttendanceRow(
       operationalRole: 'technical',
       coverageKind: row.coverageKind === 'cover' || row.coverageKind === 'replacement' || row.coverageKind === 'extra' ? row.coverageKind : 'planned',
       evidenceKind,
+      supervisorOverrideReason,
       approvedOtMinutes: row.approvedOtMinutes ?? 0,
       rawNotes: row.notes ?? '',
       shiftIdHint: row.shiftCode,

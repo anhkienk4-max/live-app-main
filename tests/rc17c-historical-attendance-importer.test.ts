@@ -112,9 +112,12 @@ test('RC1.7C: Opella row explodes into Host, Support, Technical segments with su
     hostName: 'Nguyễn Thị Hương',
     assistantName: 'Trần Văn An',
     technicalName: 'Phạm Minh Tuấn',
+    overrideCheckIn: '09:00',
+    overrideCheckOut: '13:00',
+    supervisorReason: 'Lỗi quẹt thẻ, giám sát xác nhận thực tế 09:00 - 13:00',
     confirmedBy: 'supervisor-hoa',
     confirmedAt: '2026-10-10T14:00:00+07:00',
-    notes: 'Đã hoàn thành ca livestream sáng, không có sự cố',
+    notes: 'Đã hoàn thành ca livestream sáng, giám sát xác nhận thực tế 09:00 - 13:00',
   }
 
   const { segments, errors } = parseRawAttendanceRow(row)
@@ -126,14 +129,41 @@ test('RC1.7C: Opella row explodes into Host, Support, Technical segments with su
   assert.equal(segments[0].normalizedStaffName, 'Nguyễn Thị Hương')
   assert.equal(segments[0].durationMinutes, 240)
   assert.equal(segments[0].evidenceKind, 'supervisor_verified')
+  assert.equal(segments[0].startAtIso, '2026-10-10T09:00:00+07:00')
+  assert.equal(segments[0].endAtIso, '2026-10-10T13:00:00+07:00')
 
   // Support
   assert.equal(segments[1].operationalRole, 'support')
   assert.equal(segments[1].normalizedStaffName, 'Trần Văn An')
+  assert.equal(segments[1].durationMinutes, 240)
+  assert.equal(segments[1].evidenceKind, 'supervisor_verified')
 
   // Tech
   assert.equal(segments[2].operationalRole, 'technical')
   assert.equal(segments[2].normalizedStaffName, 'Phạm Minh Tuấn')
+  assert.equal(segments[2].durationMinutes, 240)
+  assert.equal(segments[2].evidenceKind, 'supervisor_verified')
+})
+
+test('RC1.7C: Missing actual punches + vague notes "Đã hoàn thành" routes strictly to MISSING_EVIDENCE', () => {
+  const row = {
+    rowNumber: 10,
+    date: '10/10/2026',
+    timeRange: '09:00 - 13:00',
+    brand: 'Opella',
+    hostName: 'Nguyễn Thị Hương',
+    confirmedBy: 'supervisor-hoa',
+    confirmedAt: '2026-10-10T14:00:00+07:00',
+    notes: 'Đã hoàn thành ca livestream sáng, không có sự cố', // Vague note, no actual hours
+  }
+
+  const { segments, errors } = parseRawAttendanceRow(row)
+  assert.equal(errors.length, 0)
+  assert.equal(segments.length, 1)
+  assert.equal(segments[0].evidenceKind, 'missing_evidence')
+  assert.equal(segments[0].durationMinutes, 0)
+  assert.equal(segments[0].startAtIso, '')
+  assert.equal(segments[0].endAtIso, '')
 })
 
 // -------------------------------------------------------------
@@ -145,9 +175,11 @@ test('RC1.7C: PepsiCo row handles overnight shift across midnight and multi-host
     date: '2026-10-10',
     startTime: '22:00',
     endTime: '02:00',
+    checkIn: '22:00',
+    checkOut: '02:00',
     brand: 'PepsiCo',
     hostName: 'Trần Văn An\nVũ Thảo Linh',
-    notes: 'Ca live đêm mega sale, supervisor duyệt hoàn thành ca',
+    notes: 'Ca live đêm mega sale',
   }
 
   const { segments, errors } = parseRawAttendanceRow(row)
@@ -158,10 +190,13 @@ test('RC1.7C: PepsiCo row handles overnight shift across midnight and multi-host
   assert.equal(segments[0].startAtIso, '2026-10-10T22:00:00+07:00')
   assert.equal(segments[0].endAtIso, '2026-10-11T02:00:00+07:00')
   assert.equal(segments[0].durationMinutes, 240) // 4 hours
+  assert.equal(segments[0].evidenceKind, 'actual_punch')
 
   // Segment 2 (Emma / Linh)
   assert.equal(segments[1].startAtIso, '2026-10-10T22:00:00+07:00')
   assert.equal(segments[1].endAtIso, '2026-10-11T02:00:00+07:00')
+  assert.equal(segments[1].durationMinutes, 240)
+  assert.equal(segments[1].evidenceKind, 'actual_punch')
 })
 
 // -------------------------------------------------------------

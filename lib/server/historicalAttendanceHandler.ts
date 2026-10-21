@@ -17,7 +17,7 @@ import {
 import {
   ShiftReference,
   StaffReference,
-  createSourceFingerprint,
+  computeCompositeFingerprint,
 } from '@/lib/workforce/historicalAttendanceMatcher'
 import {
   SourceProfileId,
@@ -66,6 +66,9 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
           const batchId = url.searchParams.get('batch_id')
           if (!batchId) return fail('BATCH_ID_REQUIRED', 400)
 
+          const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '500', 10), 1), 5000)
+          const offset = Math.max(parseInt(url.searchParams.get('offset') || '0', 10), 0)
+
           const { data: batch, error: batchErr } = await client
             .from('workforce_attendance_import_batches')
             .select('*')
@@ -74,29 +77,56 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
 
           if (batchErr || !batch) return fail('BATCH_NOT_FOUND', 404)
 
-          const { data: rows, error: rowsErr } = await client
+          const query = client
             .from('workforce_attendance_import_rows')
             .select('*')
             .eq('batch_id', batchId)
             .order('source_row_number', { ascending: true })
 
+          if (url.searchParams.has('limit') || url.searchParams.has('offset')) {
+            query.range(offset, offset + limit - 1)
+          }
+
+          const { data: rows, error: rowsErr } = await query
+
           if (rowsErr) return fail('DATABASE_ERROR', 500, rowsErr.message)
-          return Response.json({ ok: true, batch, rows: rows || [] }, { headers: noStore })
+          return Response.json({
+            ok: true,
+            batch,
+            total: batch.total_rows,
+            offset,
+            limit,
+            rows: rows || [],
+          }, { headers: noStore })
         }
 
         if (action === 'list_exceptions') {
           const batchId = url.searchParams.get('batch_id')
           if (!batchId) return fail('BATCH_ID_REQUIRED', 400)
 
-          const { data, error } = await client
+          const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '500', 10), 1), 5000)
+          const offset = Math.max(parseInt(url.searchParams.get('offset') || '0', 10), 0)
+
+          const query = client
             .from('workforce_attendance_import_rows')
             .select('*')
             .eq('batch_id', batchId)
             .eq('status', 'exception')
             .order('source_row_number', { ascending: true })
 
+          if (url.searchParams.has('limit') || url.searchParams.has('offset')) {
+            query.range(offset, offset + limit - 1)
+          }
+
+          const { data, error } = await query
+
           if (error) return fail('DATABASE_ERROR', 500, error.message)
-          return Response.json({ ok: true, exceptions: data || [] }, { headers: noStore })
+          return Response.json({
+            ok: true,
+            offset,
+            limit,
+            exceptions: data || [],
+          }, { headers: noStore })
         }
 
         return fail('UNKNOWN_ACTION', 400)
@@ -122,6 +152,7 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
           brandName?: string
           batchId?: string
           version?: number
+          revision?: number
           matchedResults?: AttendanceMatchResult[]
         }
         const action = body.action
@@ -223,9 +254,15 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
             status: st.status,
           }))
 
-          // Compute deterministic SHA-256 fingerprint of the input
-          const payloadString = JSON.stringify(controlRows.length > 0 ? controlRows : rawRows)
-          const sourceFingerprint = createSourceFingerprint(payloadString)
+          // Compute deterministic composite fingerprint with source identity and revision
+          const sourceFingerprint = computeCompositeFingerprint({
+            sourceType,
+            sourceName,
+            sourceProfileId: sourceProfileId || 'default',
+            mappingVersion: 1,
+            revision: body.revision || 1,
+            payload: controlRows.length > 0 ? controlRows : rawRows,
+          })
 
           // Check for existing batch with this fingerprint (Idempotency check)
           const { data: existingBatch } = await client
@@ -253,46 +290,9 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
             existingSegments,
           })
 
-          // P0-2: Stage batch and rows to database
-          if (existingBatch && existingBatch.status === 'staged') {
-            // Delete old staged rows for this batch before re-staging
-            await client.from('workforce_attendance_import_rows').delete().eq('batch_id', batchId)
-            await client.from('workforce_attendance_import_batches').update({
-              total_rows: preview.summary.totalRows,
-              matched_rows: preview.summary.matchedRows,
-              exception_rows: preview.summary.exceptionRows,
-              metadata: {
-                sourceProfileId,
-                exceptionsSummary: preview.summary.exceptionsSummary,
-              },
-              updated_at: new Date().toISOString(),
-            }).eq('id', batchId)
-          } else {
-            const { error: batchInsertErr } = await client.from('workforce_attendance_import_batches').insert({
-              id: batchId,
-              source_type: sourceType,
-              source_name: sourceName,
-              source_fingerprint: sourceFingerprint,
-              timezone: 'Asia/Ho_Chi_Minh',
-              status: 'staged',
-              total_rows: preview.summary.totalRows,
-              matched_rows: preview.summary.matchedRows,
-              exception_rows: preview.summary.exceptionRows,
-              drafted_segments: 0,
-              metadata: {
-                sourceProfileId,
-                exceptionsSummary: preview.summary.exceptionsSummary,
-              },
-              created_by: user.id,
-              version: 1,
-            })
-            if (batchInsertErr) return fail('DATABASE_ERROR', 500, batchInsertErr.message)
-          }
-
-          // Insert staged rows in bulk
           const rowInserts = preview.results.map((r, idx) => ({
             batch_id: batchId,
-            source_row_number: r.rowNumber || idx + 1,
+            source_row_number: idx + 1,
             raw_payload: r.segment as unknown as Record<string, unknown>,
             parsed_date: r.segment.parsedDate || null,
             parsed_start_time: r.segment.startTime || null,
@@ -313,11 +313,84 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
             resulting_segment_id: null,
           }))
 
-          if (rowInserts.length > 0) {
-            const { error: rowInsertErr } = await client
-              .from('workforce_attendance_import_rows')
-              .insert(rowInserts)
-            if (rowInsertErr) return fail('DATABASE_ERROR', 500, rowInsertErr.message)
+          // P0-2: Stage batch and rows to database atomically via PostgreSQL RPC if supported
+          if (typeof client.rpc === 'function') {
+            const { data: stageResult, error: stageErr } = await client.rpc('stage_attendance_import_batch', {
+              p_batch_id: batchId,
+              p_source_type: sourceType,
+              p_source_name: sourceName,
+              p_source_fingerprint: sourceFingerprint,
+              p_timezone: 'Asia/Ho_Chi_Minh',
+              p_brand_id: null,
+              p_metadata: {
+                sourceProfileId,
+                revision: body.revision || 1,
+                exceptionsSummary: preview.summary.exceptionsSummary,
+              },
+              p_actor_id: user.id,
+              p_total_rows: preview.summary.totalRows,
+              p_matched_rows: preview.summary.matchedRows,
+              p_exception_rows: preview.summary.exceptionRows,
+              p_rows: rowInserts,
+            })
+
+            if (stageErr) {
+              return fail('DATABASE_ERROR', 500, stageErr.message)
+            }
+
+            if (stageResult && typeof stageResult === 'object') {
+              const sRes = stageResult as { ok: boolean; code?: string; message?: string }
+              if (sRes.ok === false) {
+                if (sRes.code === 'BATCH_ALREADY_CONFIRMED') {
+                  return fail('BATCH_ALREADY_CONFIRMED', 409, sRes.message || 'Nguồn dữ liệu này đã được xác nhận trước đó')
+                }
+                return fail(sRes.code || 'STAGE_FAILED', 400, sRes.message)
+              }
+            }
+          } else {
+            // Fallback for non-RPC clients
+            if (existingBatch && existingBatch.status === 'staged') {
+              await client.from('workforce_attendance_import_rows').delete().eq('batch_id', batchId)
+              await client.from('workforce_attendance_import_batches').update({
+                total_rows: preview.summary.totalRows,
+                matched_rows: preview.summary.matchedRows,
+                exception_rows: preview.summary.exceptionRows,
+                metadata: {
+                  sourceProfileId,
+                  revision: body.revision || 1,
+                  exceptionsSummary: preview.summary.exceptionsSummary,
+                },
+                updated_at: new Date().toISOString(),
+              }).eq('id', batchId)
+            } else {
+              const { error: batchInsertErr } = await client.from('workforce_attendance_import_batches').insert({
+                id: batchId,
+                source_type: sourceType,
+                source_name: sourceName,
+                source_fingerprint: sourceFingerprint,
+                timezone: 'Asia/Ho_Chi_Minh',
+                status: 'staged',
+                total_rows: preview.summary.totalRows,
+                matched_rows: preview.summary.matchedRows,
+                exception_rows: preview.summary.exceptionRows,
+                drafted_segments: 0,
+                metadata: {
+                  sourceProfileId,
+                  revision: body.revision || 1,
+                  exceptionsSummary: preview.summary.exceptionsSummary,
+                },
+                created_by: user.id,
+                version: 1,
+              })
+              if (batchInsertErr) return fail('DATABASE_ERROR', 500, batchInsertErr.message)
+            }
+
+            if (rowInserts.length > 0) {
+              const { error: rowInsertErr } = await client
+                .from('workforce_attendance_import_rows')
+                .insert(rowInserts)
+              if (rowInsertErr) return fail('DATABASE_ERROR', 500, rowInsertErr.message)
+            }
           }
 
           return Response.json(
@@ -340,7 +413,71 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
             return fail('INVALID_REQUEST_PARAMETERS', 400, 'batchId is required')
           }
 
-          // 1. Fetch staged batch from database
+          const expectedVersion = typeof version === 'number' ? version : null
+
+          // P0-1 & P0-2: Execute atomic PostgreSQL confirmation RPC if available
+          if (typeof client.rpc === 'function') {
+            const { data: rpcResult, error: rpcErr } = await client.rpc('confirm_attendance_import_batch', {
+              p_batch_id: batchId,
+              p_actor_id: user.id,
+              p_expected_version: expectedVersion,
+            })
+
+            if (rpcErr) {
+              const msg = rpcErr.message || ''
+              if (msg.includes('IMPORT_BATCH_NOT_FOUND')) {
+                return fail('BATCH_NOT_FOUND', 404, `Không tìm thấy batch staged #${batchId}`)
+              }
+              if (msg.includes('BATCH_ALREADY_CONFIRMED')) {
+                return fail('BATCH_ALREADY_CONFIRMED', 409, `Batch #${batchId} đã được xác nhận trước đó`)
+              }
+              if (msg.includes('BATCH_VERSION_MISMATCH')) {
+                return fail('STALE_BATCH_VERSION', 409, 'Phiên bản batch đã thay đổi do thao tác khác, vui lòng kiểm tra lại')
+              }
+              if (msg.includes('IMPORT_BATCH_NOT_STAGED')) {
+                return fail('INVALID_BATCH_STATUS', 400, `Trạng thái batch không hợp lệ. Chỉ batch 'staged' mới được xác nhận.`)
+              }
+              if (msg.includes('FORBIDDEN_ATTENDANCE_ACTION')) {
+                return fail('FORBIDDEN', 403, 'Bạn không có quyền xác nhận bản ghi chấm công')
+              }
+              return fail('DATABASE_ERROR', 500, msg)
+            }
+
+            if (rpcResult && typeof rpcResult === 'object') {
+              const res = rpcResult as {
+                ok: boolean
+                code?: string
+                message?: string
+                batch_id?: string
+                created_count?: number
+                reconciled_count?: number
+                skipped_count?: number
+                version?: number
+              }
+
+              if (res.ok === false) {
+                if (res.code === 'BATCH_ALREADY_CONFIRMED') {
+                  return fail('BATCH_ALREADY_CONFIRMED', 409, res.message || `Batch #${batchId} đã được xác nhận trước đó`)
+                }
+                return fail(res.code || 'CONFIRM_FAILED', 400, res.message)
+              }
+
+              return Response.json(
+                {
+                  ok: true,
+                  batchId: res.batch_id || batchId,
+                  createdCount: res.created_count ?? 0,
+                  reconciledCount: res.reconciled_count ?? 0,
+                  skippedCount: res.skipped_count ?? 0,
+                  version: res.version,
+                  message: res.message || `Đã tạo ${res.created_count ?? 0} bản ghi Actual Staffing (DRAFT) từ batch #${batchId} chờ kiểm duyệt độc lập`,
+                },
+                { headers: noStore }
+              )
+            }
+          }
+
+          // Fallback if client.rpc is not a function
           const { data: batch, error: batchErr } = await client
             .from('workforce_attendance_import_batches')
             .select('*')
@@ -351,7 +488,6 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
             return fail('BATCH_NOT_FOUND', 404, `Không tìm thấy batch staged #${batchId}`)
           }
 
-          // Replay protection
           if (batch.status === 'confirmed') {
             return fail('BATCH_ALREADY_CONFIRMED', 409, `Batch #${batchId} đã được xác nhận trước đó`)
           }
@@ -360,12 +496,10 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
             return fail('INVALID_BATCH_STATUS', 400, `Trạng thái batch không hợp lệ (${batch.status}). Chỉ batch 'staged' mới được xác nhận.`)
           }
 
-          // Optimistic locking
-          if (version !== undefined && batch.version !== version) {
+          if (expectedVersion !== null && batch.version !== expectedVersion) {
             return fail('STALE_BATCH_VERSION', 409, 'Phiên bản batch đã thay đổi do thao tác khác, vui lòng kiểm tra lại')
           }
 
-          // 2. Fetch staged rows from database
           const { data: stagedRows, error: rowsErr } = await client
             .from('workforce_attendance_import_rows')
             .select('*')
@@ -382,7 +516,6 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
             )
           }
 
-          // 3. Independent Server Re-Verification (Shifts completed, Staff active, No overlaps)
           const shiftIds = [...new Set(stagedRows.map(r => r.matched_shift_id).filter(Boolean))] as string[]
           const staffIds = [...new Set(stagedRows.map(r => r.matched_staff_id).filter(Boolean))] as string[]
 
@@ -440,7 +573,6 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
             )
           }
 
-          // 4. Build draft actual segments (Strict 4-eyes: review_status='draft', reviewed_by=null)
           const draftSegments = eligibleRows.map(r => {
             const note = `Imported from staged batch #${batchId} row ${r.source_row_number}: ${r.raw_notes || 'Xác nhận chấm công hợp lệ'}`
             return {
@@ -460,7 +592,6 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
             }
           })
 
-          // 5. Insert drafts into workforce_actual_segments
           const { data: inserted, error: insertErr } = await client
             .from('workforce_actual_segments')
             .insert(draftSegments)
@@ -468,7 +599,6 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
 
           if (insertErr) return fail('DATABASE_ERROR', 500, insertErr.message)
 
-          // 6. Update row provenance with resulting_segment_id
           for (let i = 0; i < eligibleRows.length; i++) {
             const row = eligibleRows[i]
             const seg = inserted?.[i]
@@ -484,7 +614,6 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
             }
           }
 
-          // 7. Update batch status to confirmed
           await client
             .from('workforce_attendance_import_batches')
             .update({
