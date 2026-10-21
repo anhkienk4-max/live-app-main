@@ -66,6 +66,7 @@
     "tests/lifecycle-action-dialog.test.ts",
     "tests/live-dashboard-persistence.test.ts",
     "tests/live-report-images.test.tsx",
+    "tests/media-preview-isolation.test.ts",
     "tests/media-viewer-authorization.test.ts",
     "tests/media-viewer-handler.test.ts",
     "tests/memory-validator-contract.test.ts",
