@@ -6,6 +6,8 @@ on:
     paths:
       - 'supabase/migrations/20261021034515_shift_automatic_status_scheduling_and_read_safety.sql'
       - 'lib/services/supabaseShiftService.ts'
+      - 'lib/server/historicalAttendanceHandler.ts'
+      - 'tests/rc17c-attendance-atomic-rpc-boundary.test.ts'
       - 'tests/shift-lifecycle.test.ts'
       - 'tests/supabase-shift-runtime.test.ts'
       - 'package.json'
@@ -25,6 +27,8 @@ on:
     paths:
       - 'supabase/migrations/20261021034515_shift_automatic_status_scheduling_and_read_safety.sql'
       - 'lib/services/supabaseShiftService.ts'
+      - 'lib/server/historicalAttendanceHandler.ts'
+      - 'tests/rc17c-attendance-atomic-rpc-boundary.test.ts'
       - 'tests/shift-lifecycle.test.ts'
       - 'tests/supabase-shift-runtime.test.ts'
       - 'package.json'
@@ -94,6 +98,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Verify read paths and shift lifecycle application contracts
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/shift-lifecycle.test.ts tests/supabase-shift-runtime.test.ts
+      - name: Assert historical import cannot fall back to non-atomic writes
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc17c-attendance-atomic-rpc-boundary.test.ts tests/rc17c-attendance-api-integration.test.ts
       - name: Apply real P0 migration and assert PostgreSQL invariants
         env:
           P0_PG_CONTAINER: ada-p0-pg${{ matrix.major }}
