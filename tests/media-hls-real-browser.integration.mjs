@@ -121,6 +121,12 @@ try{
     '-c:v','libx264','-preset','ultrafast','-tune','zerolatency','-g','30',
     '-pix_fmt','yuv420p','-b:v','350k','-c:a','aac','-b:a','64k','-f','flv',
     'rtmps://127.0.0.1:1936/'+path+'?token='+encodeURIComponent(jwt('publish'))])
+  // Do not confuse an HLS startup 404 with a cookie/auth error: MediaMTX
+  // may accept the RTMPS connection before FFmpeg publishes the first keyframe.
+  await waitUntil(()=>logs.mediamtx.includes('stream is available and online'),35000,
+    'FFmpeg published tracks to MediaMTX path')
+  await pause(4500) // allow the HLS muxer to produce multiple fMP4 segments.
+  console.log('PASS RTMPS path online and HLS initial media segments warmed')
   const policy=readFileSync('lib/media/hlsPlayerSecurity.ts','utf8')
   const compiled=ts.transpileModule(policy,{compilerOptions:{
     module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022
