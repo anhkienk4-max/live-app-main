@@ -467,5 +467,12 @@ begin
 end;
 $$;
 
-grant execute on function public.stage_attendance_import_batch to authenticated, service_role;
-grant execute on function public.confirm_attendance_import_batch to authenticated, service_role;
+-- These SECURITY DEFINER RPCs accept p_actor_id and must never be callable
+-- with a user-controlled authenticated token. The only production caller is
+-- the server-side attendance-import API, after requireRole(admin/leader),
+-- using createSupabaseAdminClient (service_role). Direct PostgREST calls
+-- from anon/authenticated users must be denied independently of table RLS.
+revoke all on function public.stage_attendance_import_batch(text,text,text,text,text,text,jsonb,text,integer,integer,integer,jsonb) from public, anon, authenticated;
+revoke all on function public.confirm_attendance_import_batch(text,text,integer) from public, anon, authenticated;
+grant execute on function public.stage_attendance_import_batch(text,text,text,text,text,text,jsonb,text,integer,integer,integer,jsonb) to service_role;
+grant execute on function public.confirm_attendance_import_batch(text,text,integer) to service_role;

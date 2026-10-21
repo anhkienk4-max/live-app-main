@@ -124,6 +124,9 @@ async function setupIsolatedPostgresDb() {
       if not exists (select from pg_roles where rolname = 'authenticated') then
         create role authenticated;
       end if;
+      if not exists (select from pg_roles where rolname = 'anon') then
+        create role anon;
+      end if;
     end $$;
 
     create or replace function auth.uid() returns text language sql as $$ select null::text; $$;
@@ -133,6 +136,26 @@ async function setupIsolatedPostgresDb() {
   const migrationPath = path.resolve(process.cwd(), 'supabase/migrations/20261021000000_rc17c_attendance_import_foundation.sql')
   const migrationSql = fs.readFileSync(migrationPath, 'utf-8')
   await db.exec(migrationSql)
+
+  // SECURITY DEFINER boundary: browser roles must not invoke RPCs that trust
+  // the server-provided p_actor_id; only the server's service_role may call.
+  const grants = await db.query(`
+    select
+      has_function_privilege('anon', 'public.stage_attendance_import_batch(text,text,text,text,text,text,jsonb,text,integer,integer,integer,jsonb)', 'EXECUTE') as anon_stage,
+      has_function_privilege('authenticated', 'public.stage_attendance_import_batch(text,text,text,text,text,text,jsonb,text,integer,integer,integer,jsonb)', 'EXECUTE') as auth_stage,
+      has_function_privilege('service_role', 'public.stage_attendance_import_batch(text,text,text,text,text,text,jsonb,text,integer,integer,integer,jsonb)', 'EXECUTE') as service_stage,
+      has_function_privilege('anon', 'public.confirm_attendance_import_batch(text,text,integer)', 'EXECUTE') as anon_confirm,
+      has_function_privilege('authenticated', 'public.confirm_attendance_import_batch(text,text,integer)', 'EXECUTE') as auth_confirm,
+      has_function_privilege('service_role', 'public.confirm_attendance_import_batch(text,text,integer)', 'EXECUTE') as service_confirm
+  `)
+  assert.deepEqual(grants.rows[0], {
+    anon_stage: false,
+    auth_stage: false,
+    service_stage: true,
+    anon_confirm: false,
+    auth_confirm: false,
+    service_confirm: true,
+  }, 'RC17C RPC EXECUTE privileges must be service_role-only')
 
   // 2. Seed Reference Data
   await db.exec(`
