@@ -40,3 +40,22 @@ for (const width of [390, 1440]) {
     await page.keyboard.press('Escape')
   })
 }
+
+test('Calendar deep-link opens missing-staff queue and Clear removes URL intent without hydration errors', async ({page}) => {
+  await page.setViewportSize({width:1440,height:900})
+  await page.addInitScript(()=>{
+    localStorage.setItem('livestream-ops-current-user','1')
+    localStorage.setItem('livestream-ops-language','vi')
+  })
+  const hydrationErrors: string[]=[]
+  page.on('pageerror', error=>hydrationErrors.push(error.message))
+  await page.goto('/staffing?gap=missing')
+  const workspace=page.getByTestId('staffing-production-workspace')
+  await expect(workspace).toBeVisible({timeout:30_000})
+  await expect(page.getByTestId('staffing-open-gaps')).toHaveAttribute('aria-pressed','true')
+  await expect(page.getByTestId('staffing-filter-toggle')).toContainText('(1)')
+  await page.getByTestId('staffing-clear-filters').click()
+  await expect(page).not.toHaveURL(/gap=missing/)
+  await expect(page.getByTestId('staffing-open-gaps')).toHaveAttribute('aria-pressed','false')
+  expect(hydrationErrors.filter(message=>/hydration|mismatch/i.test(message))).toEqual([])
+})
