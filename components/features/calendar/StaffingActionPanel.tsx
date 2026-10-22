@@ -85,13 +85,24 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
   const searchSettled = normalizedSearch === search.trim()
   const candidateKey = `${scope}:${shift.version ?? 'no-version'}:${role}:${normalizedSearch}:${candidatePage}`
   const hasCurrentSnapshot = snapshot?.scope === scope && snapshot.version === shift.version
-  const rows = hasCurrentSnapshot ? snapshot!.rows : []
+  const rows = React.useMemo(() => hasCurrentSnapshot ? snapshot!.rows : [], [hasCurrentSnapshot, snapshot])
+
+  // Mock eligibility is pure derived data. Never synchronously set React state in
+  // an effect for this path; real availability comes from the server RPC.
+  const mockCandidateSnapshot = React.useMemo(() => {
+    if (getAuthMode() !== 'mock' || !ownerKey || !canAssign || !hasCurrentSnapshot) return null
+    const candidates = staffingCandidates(shift, role, users, rows)
+      .filter(user => (user.full_name + ' ' + user.email).toLocaleLowerCase('vi').includes(normalizedSearch.toLocaleLowerCase('vi')))
+    const items = candidates.slice((candidatePage - 1) * candidatePageSize, candidatePage * candidatePageSize)
+      .map(user => ({ user_id: user.id, full_name: user.full_name, availability: 'unchecked' as const,
+        availableForAssignment: true }))
+    return { key: candidateKey, items, total: candidates.length }
+  }, [ownerKey, canAssign, hasCurrentSnapshot, shift, role, users, rows, normalizedSearch, candidatePage, candidateKey])
 
   React.useEffect(() => {
-    if (!ownerKey || !canAssign || !hasCurrentSnapshot) return
+    if (!ownerKey || !canAssign || !hasCurrentSnapshot || getAuthMode() !== 'supabase') return
     let active = true
-    if (getAuthMode() === 'supabase') {
-      void readStaffingCandidates({ shiftId: shift.id, role, search: normalizedSearch, page: candidatePage, pageSize: candidatePageSize })
+    void readStaffingCandidates({ shiftId: shift.id, role, search: normalizedSearch, page: candidatePage, pageSize: candidatePageSize })
         .then(result => {
           if (!active) return
           setCandidateSnapshot({ key: candidateKey, total: result.total,
@@ -111,15 +122,6 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
             setCandidateError({ key: candidateKey, message: failure instanceof Error ? failure.message : 'Không thể kiểm tra lịch ứng viên.' })
           }
         })
-    } else {
-      // Mock test mode: this is not server-verified availability.
-      const candidates = staffingCandidates(shift, role, users, rows)
-        .filter(user => (user.full_name + ' ' + user.email).toLocaleLowerCase('vi').includes(normalizedSearch.toLocaleLowerCase('vi')))
-      const items = candidates.slice((candidatePage - 1) * candidatePageSize, candidatePage * candidatePageSize)
-        .map(user => ({ user_id: user.id, full_name: user.full_name, availability: 'unchecked' as const,
-          total_count: candidates.length, availableForAssignment: true }))
-      if (active) { setCandidateSnapshot({ key: candidateKey, items, total: candidates.length }); setCandidateError(null) }
-    }
     return () => { active = false }
   }, [ownerKey, canAssign, hasCurrentSnapshot, shift, rows, role, users, normalizedSearch, candidatePage, candidateKey])
 
@@ -128,7 +130,7 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
   const capacities = getShiftRoleCapacities(shift, rows)
   const currentCapacity = capacities.find(item => item.role === role)
   const pending = rows.filter(reg => reg.status === 'pending')
-  const candidateData = candidateSnapshot?.key === candidateKey ? candidateSnapshot : null
+  const candidateData = getAuthMode() === 'mock' ? mockCandidateSnapshot : (candidateSnapshot?.key === candidateKey ? candidateSnapshot : null)
   const candidate = candidateData?.items.find(item => item.user_id === userId && item.availableForAssignment)
   const canStartAssignment = canAssign && searchSettled && hasCurrentSnapshot && candidateData && versionReady &&
     !shift.registration_locked && shift.status === 'scheduled' &&
