@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { operationsResponseOwnerKey } from '@/lib/server/operationsResponseOwnerKey'
 import { dashboardUpdateFromRow } from '@/lib/services/supabaseDashboardUpdateService'
 import { readDataQualityPage } from '@/lib/server/dataQualityPage'
 import { pageRange } from '@/lib/utils/pagination'
@@ -48,7 +49,7 @@ export function createOperationsCollectionHandler(dependencies: { resolveUser?: 
   return { GET: async (request: Request) => {
     try {
       const user = await requireUser(request, dependencies.resolveUser)
-      const ownerKey=user.id+':'+user.systemPermission
+      const ownerKey=operationsResponseOwnerKey(user)
       const reply=(data:object)=>Response.json({...data,ownerKey},{headers:{'Cache-Control':'private, no-store'}})
       const params = new URL(request.url).searchParams
       const raw = params.get('filters') ?? '{}'
