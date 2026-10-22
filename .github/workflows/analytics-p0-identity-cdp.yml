@@ -12,7 +12,7 @@ permissions:
 jobs:
   source-and-unit-gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -32,6 +32,11 @@ jobs:
         run: pnpm exec eslint lib/auth/operationsActorKey.ts lib/hooks/usePagedList.ts lib/server/operationsResponseOwnerKey.ts lib/server/operationsCollectionHandler.ts lib/server/analyticsSnapshotHandler.ts lib/server/calendarExportHandler.ts lib/services/operationsPageService.ts tests/analytics-actor-key.test.ts tests/rc18-owner-contract-server.test.ts tests/rc18-browser-owner-contract.test.ts
       - name: Actor isolation and page cache tests
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/analytics-actor-key.test.ts tests/operations-page-cache.test.ts tests/auth-identity-bridge.test.tsx tests/rc18-owner-contract-server.test.ts tests/rc16k-pagination.test.ts tests/report-null-semantics-consumers.test.ts
+      - name: Full isolated source regression inventory
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node scripts/run-final-regression.mjs
       - name: Production-equivalent build without DB writes
         env:
           NEXT_PUBLIC_SUPABASE_URL: ''
