@@ -107,6 +107,10 @@ let swapRequests = [...mockSwapRequests]
 const scheduleImports: ScheduleImportBatch[] = []
 const scheduleChangeLogs: ScheduleChangeLog[] = []
 let authenticatedBusinessUser: User | null = null
+// The identity provider can briefly have overlapping layout-effect lifetimes
+// during app-router transitions. An older provider must not clear a newer bind,
+// including when both bindings represent the SAME business-user ID.
+let authenticatedBindingRevision = 0
 
 const currentBusinessUserFor = (actorId: string): User | null => {
   if (getAuthMode() === 'supabase') {
@@ -797,17 +801,23 @@ export const currentUserService = {
     return user
   },
 
-  bindAuthenticatedUser(user: User): void {
-    if (getAuthMode() !== 'supabase') return
+  bindAuthenticatedUser(user: User): number {
+    if (getAuthMode() !== 'supabase') return 0
+    const revision = ++authenticatedBindingRevision
     authenticatedBusinessUser = {
       ...user,
       operational_roles: user.operational_roles ? [...user.operational_roles] : [],
     }
+    return revision
   },
 
-  clearAuthenticatedUser(expectedBusinessUserId?: string): void {
+  clearAuthenticatedUser(expectedBusinessUserId?: string, expectedBindingRevision?: number): void {
+    // Only the effect that installed this binding is allowed to release it.
+    // A same-user React remount must not lose its actor to an older cleanup.
+    if (expectedBindingRevision !== undefined && expectedBindingRevision !== authenticatedBindingRevision) return
     if (expectedBusinessUserId && authenticatedBusinessUser?.id !== expectedBusinessUserId) return
     authenticatedBusinessUser = null
+    authenticatedBindingRevision++
   },
 }
 
