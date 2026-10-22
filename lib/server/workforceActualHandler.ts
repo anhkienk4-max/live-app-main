@@ -232,7 +232,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
         if (!shiftId) return fail('WORKFORCE_SHIFT_ID_REQUIRED', 400)
 
         const client = db()
-        const [segmentsRes, shiftRes, regsRes, swapsRes] = await Promise.all([
+        const [segmentsRes, shiftRes, regsRes, swapsRes, attendanceRes] = await Promise.all([
           client.from('workforce_actual_segments')
             .select('id,shift_id,staff_id,operational_role,event_kind,coverage_kind,actual_start_at,actual_end_at,review_status,evidence_note,review_note,created_by,reviewed_by,reviewed_at,version,created_at')
             .eq('shift_id', shiftId).order('created_at', { ascending: true }).limit(200),
@@ -245,8 +245,11 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
           client.from('swap_requests')
             .select('id,requester_id,counterpart_id,replacement_staff_id,source_shift_id,target_shift_id,shift_id,operational_role,mode,status,deleted_at')
             .or(`source_shift_id.eq.${shiftId},target_shift_id.eq.${shiftId},shift_id.eq.${shiftId}`),
+          client.from('self_attendance_events')
+            .select('id,shift_id,staff_id,operational_role,event_kind,recorded_at,verification_status')
+            .eq('shift_id',shiftId).order('recorded_at',{ascending:true}).limit(200),
         ])
-        if (segmentsRes.error) return fail('WORKFORCE_ACTUAL_READ_FAILED', 503)
+        if (segmentsRes.error || attendanceRes.error) return fail('WORKFORCE_ACTUAL_READ_FAILED', 503)
         if (swapsRes?.error || regsRes?.error) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
         if (!shiftRes?.data) return fail('WORKFORCE_SHIFT_NOT_FOUND', 404)
 
@@ -281,6 +284,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
         return Response.json({
           ok: true,
           segments: enrichedSegments,
+          attendance_events: attendanceRes.data ?? [],
           shift_context: shiftRes.data,
           planned_staff: regsRes?.data ?? [],
           lateness_policy: {

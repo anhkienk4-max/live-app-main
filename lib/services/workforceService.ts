@@ -144,9 +144,21 @@ export interface PeriodDetailResponse {
   audit: PayrollAudit[]
 }
 
+export interface RawSelfAttendanceReviewEvent {
+  id: string
+  shift_id: string
+  staff_id: string
+  operational_role: WorkforceRole
+  event_kind: 'check_in' | 'check_out'
+  recorded_at: string
+  verification_status: 'pending_verification'
+}
+
 export interface ActualSegmentsResponse {
   ok: true
   segments: ActualSegment[]
+  /** Independent app evidence, NOT approved actual minutes or group-message timestamps. */
+  attendance_events?: RawSelfAttendanceReviewEvent[]
   shift_context?: {
     id: string
     date: string

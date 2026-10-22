@@ -25,3 +25,13 @@ test('attendance UI is opt-in and bound to the current approved registration',()
   assert.match(modal,/NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE === 'true' && myRegistration/)
   assert.match(modal,/role=\{myRegistration\.operational_role\}/)
 })
+
+test('manager actual staffing read presents raw check-in evidence independently from approved segments',()=>{
+  const source=readFileSync(new URL('../lib/server/workforceActualHandler.ts',import.meta.url),'utf8')
+  const ui=readFileSync(new URL('../components/features/payroll/PayrollAttendanceLink.tsx',import.meta.url),'utf8')
+  assert.match(source,/await requireRole\(request, \['admin', 'leader'\]/)
+  assert.match(source,/client\.from\('self_attendance_events'\)/)
+  assert.match(source,/attendance_events: attendanceRes\.data/)
+  assert.match(ui,/app-attendance-review/)
+  assert.match(ui,/Chờ đối chiếu/)
+})
