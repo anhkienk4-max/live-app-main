@@ -54,3 +54,55 @@ for(const width of [390,1440]){
     await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
   })
 }
+
+test('approved Workforce actual segment links to Payroll WITHOUT inventing group check-in or payroll writes',async({page})=>{
+  await page.addInitScript(()=>{
+    localStorage.setItem('livestream-ops-current-user','1')
+    localStorage.setItem('livestream-ops-language','vi')
+  })
+  await page.route('**/api/workforce/capabilities',route=>route.fulfill({
+    json:{ok:true,capabilities:enabled},
+  }))
+  let writes=0
+  page.on('request',request=>{
+    if(request.url().includes('/api/workforce/') && request.method()!=='GET') writes++
+  })
+  await page.route('**/api/operations/collection?**',route=>{
+    const url=new URL(route.request().url())
+    if(url.searchParams.get('entity')!=='shifts')return route.continue()
+    return route.fulfill({json:{
+      ownerKey:'1:admin',items:[{
+        id:'shift-rc18',date:'2026-10-22',start_time:'10:00:00',end_time:'12:00:00',
+        start_at:'2026-10-22T10:00:00+07:00',end_at:'2026-10-22T12:00:00+07:00',
+        brand_id:'brand',platform_id:'platform',status:'completed',title:'Demo shift',
+        created_at:'2026-10-22T00:00:00Z',updated_at:'2026-10-22T00:00:00Z',
+      }],total:1,page:1,pageSize:20,
+    }})
+  })
+  await page.route('**/api/workforce/actual?**',route=>route.fulfill({
+    json:{ok:true,shift_context:{
+      id:'shift-rc18',date:'2026-10-22',start_time:'10:00:00',end_time:'12:00:00',
+      start_at:'2026-10-22T10:00:00+07:00',end_at:'2026-10-22T12:00:00+07:00',status:'completed',
+    },planned_staff:[],lateness_policy:{grace_minutes:10,policy_status:'configured'},
+    segments:[{
+      id:'segment-rc18',shift_id:'shift-rc18',staff_id:'host-1',operational_role:'host',
+      event_kind:'worked',review_status:'approved',coverage_kind:'planned',
+      actual_start_at:'2026-10-22T09:50:00+07:00',actual_end_at:'2026-10-22T12:00:00+07:00',
+      evidence_note:'independently approved actual shift evidence',created_by:'admin',version:1,
+      created_at:'2026-10-22T14:00:00+07:00',
+    }],
+  }}))
+  await page.goto('/payroll')
+  await page.getByRole('tab',{name:'Nội quy & Case vi phạm'}).click()
+  await page.getByLabel('Ngày ca chấm công').fill('2026-10-22')
+  await page.getByRole('button',{name:'Lấy ca theo ngày'}).click()
+  await page.getByLabel('Chọn ca chấm công').selectOption('shift-rc18')
+  await expect(page.getByTestId('attendance-segment')).toContainText('Đã duyệt')
+  await expect(page.getByTestId('attendance-segment')).toContainText('Chưa có dữ liệu tích hợp')
+  await page.getByRole('button',{name:'Chuyển ca sang bộ tính đề xuất'}).click()
+  await expect(page.getByTestId('room-rule-linked-context')).toBeVisible()
+  await expect(page.getByLabel('Ngày ca',{exact:true})).toHaveValue('2026-10-22')
+  await expect(page.getByLabel('Giờ live')).toHaveValue('2026-10-22T10:00')
+  await expect(page.getByLabel('Giờ check-in group')).toHaveValue('')
+  expect(writes).toBe(0)
+})
