@@ -715,6 +715,14 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                 </Button>
               )}
               {currentUser && hasPermission(currentUser, 'shifts.approve_registration') && (
+                <Button type="button" variant="outline" size="sm" className="h-9"
+                  data-testid="calendar-open-staffing-gaps"
+                  onClick={() => window.location.assign('/staffing?gap=missing')}>
+                  <UserCheck className="mr-2 h-4 w-4" />
+                  Ca cần bổ sung nhân sự
+                </Button>
+              )}
+              {currentUser && hasPermission(currentUser, 'shifts.approve_registration') && (
                 <Button
                   variant="outline"
                   size="sm"
