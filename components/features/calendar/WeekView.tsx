@@ -92,6 +92,8 @@ export function WeekView({
       </div>
       {/* DESKTOP: Horizontally scrollable true-time grid */}
       <div
+        data-testid="calendar-week-scroller"
+        aria-label={language === 'vi' ? 'Lịch tuần, cuộn ngang để xem đủ bảy ngày' : 'Week calendar, scroll horizontally to see all seven days'}
         className="relative hidden max-w-full min-w-0 overflow-x-auto overscroll-x-contain rounded-md border bg-background sm:block"
         style={{ scrollbarWidth: "thin" }}
       >
