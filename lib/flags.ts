@@ -12,6 +12,7 @@ export type FeatureFlag =
   | 'actual_staffing'
   | 'self_attendance_review'
   | 'payroll'
+  | 'my_payslip'
   | 'notifications'
   | 'reports_v2'
   | 'platform_ingestion'
@@ -22,6 +23,7 @@ const FLAG_ENV: Record<FeatureFlag, string> = {
   actual_staffing: 'FEATURE_ACTUAL_STAFFING',
   self_attendance_review: 'FEATURE_SELF_ATTENDANCE_REVIEW',
   payroll: 'FEATURE_PAYROLL',
+  my_payslip: 'FEATURE_MY_PAYSLIP',
   notifications: 'FEATURE_NOTIFICATIONS',
   reports_v2: 'FEATURE_REPORTS_V2',
   platform_ingestion: 'FEATURE_PLATFORM_INGESTION',
@@ -33,6 +35,7 @@ const DEFAULT_FLAGS: Record<FeatureFlag, boolean> = {
   actual_staffing: false,
   self_attendance_review: false,
   payroll: false,
+  my_payslip: false,
   notifications: false,
   reports_v2: false,
   platform_ingestion: false,
