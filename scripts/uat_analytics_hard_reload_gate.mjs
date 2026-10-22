@@ -86,8 +86,7 @@ async function inspect(label) {
       const body = document.body?.innerText || ''
       return body.includes('LIST_IDENTITY_CHANGED')
         || body.includes('AUTHENTICATION_REQUIRED')
-        || (!document.querySelector('[data-testid="analytics-loading-shell"]')
-          && document.readyState === 'complete')
+        || !!document.querySelector('[data-testid="analytics-ready"]')
     }, null, { timeout: 15000 })
   } catch { /* Record loading timeout as a failure below. */ }
   await page.waitForTimeout(450)
@@ -95,11 +94,12 @@ async function inspect(label) {
     identityChanged: document.body?.innerText?.includes('LIST_IDENTITY_CHANGED') || false,
     authRequired: document.body?.innerText?.includes('AUTHENTICATION_REQUIRED') || false,
     loading: !!document.querySelector('[data-testid="analytics-loading-shell"]'),
+    ready: !!document.querySelector('[data-testid="analytics-ready"]'),
     route: location.pathname,
   }))
   const relevant = events.filter(e => e.phase === phase && e.phaseIndex === phaseIndex)
   const errors = [...new Set(relevant.filter(e => e.code).map(e => e.code))]
-  const failed = view.identityChanged || view.authRequired || view.loading ||
+  const failed = view.identityChanged || view.authRequired || view.loading || !view.ready ||
     view.route !== '/analytics' || errors.includes('REACT_321') ||
     errors.includes('REACT_INVALID_HOOK_CALL') || errors.includes('UNCLASSIFIED_PAGE_ERROR') ||
     relevant.some(e => e.source === 'http' && (e.status >= 500 || e.status === 401 || e.status === 403))
@@ -130,12 +130,16 @@ try {
   }
   const failureCount = checks.filter(c => c.failed).length
   const ownerAliases = [...new Set(events.filter(e => e.ownerAlias).map(e => e.ownerAlias))]
+  // One pre-authenticated Admin UAT profile must not silently switch the
+  // business owner across reloads. No raw user identifiers are persisted.
+  const ownerIsolationFailed = ownerAliases.length !== 1
   const report = {
     target: base.origin,
     runAt: new Date().toISOString(),
     requestedIterations: repeat,
     checks: checks.length,
-    failed: failureCount,
+    failed: failureCount + Number(ownerIsolationFailed),
+    ownerIsolationFailed,
     distinctResponseOwners: ownerAliases.length,
     // No usernames, emails, auth tokens, cookies, request query parameters,
     // report rows, user IDs, or response bodies are written.
@@ -144,10 +148,10 @@ try {
   const folder = await mkdtemp(join(tmpdir(), 'ada-analytics-cdp-'))
   const resultPath = join(folder, 'sanitized-results.json')
   await writeFile(resultPath, JSON.stringify(report, null, 2), { mode: 0o600 })
-  console.log(JSON.stringify({ verdict: failureCount ? 'FAIL' : 'PASS',
-    checks: checks.length, failed: failureCount, distinctResponseOwners: ownerAliases.length,
+  console.log(JSON.stringify({ verdict: failureCount || ownerIsolationFailed ? 'FAIL' : 'PASS',
+    checks: checks.length, failed: failureCount + Number(ownerIsolationFailed), distinctResponseOwners: ownerAliases.length,
     localEvidence: resultPath }, null, 2))
-  if (failureCount) process.exitCode = 1
+  if (failureCount || ownerIsolationFailed) process.exitCode = 1
 } finally {
   // Close only the CDP connection. Do not sign out or close the user's Edge profile.
   await browser.close()
