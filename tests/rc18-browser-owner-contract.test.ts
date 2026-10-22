@@ -53,3 +53,46 @@ test('browser collection fail-closed owner contract, across missing/foreign/chan
     else Reflect.deleteProperty(globalThis, 'window')
   }
 })
+
+
+test('member list ignores stale same-user provider cleanup but rejects a foreign actor', async () => {
+  const previousFetch = globalThis.fetch
+  const windowBefore = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  const previousNodeEnv = process.env.NODE_ENV
+  const previousMockFlag = process.env.NEXT_PUBLIC_USE_MOCK_DATA
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: {} })
+  process.env.NODE_ENV = 'production'
+  process.env.NEXT_PUBLIC_USE_MOCK_DATA = 'true'
+  const member = { ...actor, id: 'business-member', role: 'staff', system_permission: 'member' } as User
+  try {
+    const oldLease = currentUserService.bindAuthenticatedUser(member)
+    globalThis.fetch = async () => {
+      const newLease = currentUserService.bindAuthenticatedUser(member)
+      assert.ok(newLease > oldLease)
+      currentUserService.clearAuthenticatedUser(member.id, oldLease)
+      return new Response(JSON.stringify({
+        items: [], total: 0, page: 1, pageSize: 10,
+        ownerKey: 'business-member:member',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+    const result = await getCollectionPage('my_shifts', query)
+    assert.equal(result.ownerKey, 'business-member:member')
+
+    globalThis.fetch = async () => {
+      currentUserService.bindAuthenticatedUser({ ...member, id: 'another-member' })
+      return new Response(JSON.stringify({
+        items: [], total: 0, page: 1, pageSize: 10,
+        ownerKey: 'business-member:member',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+    await assert.rejects(getCollectionPage('my_shifts', query), (error: unknown) =>
+      error instanceof OperationsListError && error.code === 'LIST_IDENTITY_CHANGED')
+  } finally {
+    currentUserService.clearAuthenticatedUser()
+    globalThis.fetch = previousFetch
+    process.env.NODE_ENV = previousNodeEnv
+    process.env.NEXT_PUBLIC_USE_MOCK_DATA = previousMockFlag
+    if (windowBefore) Object.defineProperty(globalThis, 'window', windowBefore)
+    else Reflect.deleteProperty(globalThis, 'window')
+  }
+})

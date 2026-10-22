@@ -1,0 +1,56 @@
+name: RC19 P0 Member Identity Stabilization (no deploy)
+
+on:
+  push:
+    branches:
+      - fix/rc19-p0-member-list-identity-20261022
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  member-identity-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: TypeScript full repository
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: ESLint full repository
+        run: pnpm run lint
+      - name: Focused auth, Member actor and owner contract tests
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/auth-identity-bridge.test.tsx tests/rc18-browser-owner-contract.test.ts tests/rc18-owner-contract-server.test.ts tests/operations-page-cache.test.ts
+      - name: Full regression inventory
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node scripts/run-final-regression.mjs
+      - name: Install isolated Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Existing RC16 operational browser smoke (mock only)
+        run: pnpm exec playwright test --config playwright.rc16.config.ts --reporter=line
+      - name: Production-equivalent build (no live credentials)
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_ACTUAL_STAFFING: 'false'
+          FEATURE_PAYROLL: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm run build
+      - name: Provenance and UAT limitation
+        if: always()
+        run: |
+          echo "RC19 P0 candidate source SHA $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Mock/isolated tests only. This does NOT prove authenticated Member recovery and does NOT deploy." >> "$GITHUB_STEP_SUMMARY"
