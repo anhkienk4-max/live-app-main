@@ -39,8 +39,9 @@ test('large directories are bounded and missing owner assignments return empty',
 test('swap request opens immediately and failed source fetch is retried inside modal rather than failing whole page', () => {
   const parent = readFileSync(fileURLToPath(new URL('../components/features/swaps/SwapRequestList.tsx', import.meta.url)), 'utf8')
   const modal = readFileSync(fileURLToPath(new URL('../components/features/swaps/SwapRequestFormModal.tsx', import.meta.url)), 'utf8')
-  const before = parent.indexOf('setShowForm(true)\\n    loadFormShifts(currentUser.id)')
-  assert.ok(before >= 0, 'opening the modal must not wait for shift API response')
+  const before = parent.indexOf('setShowForm(true)')
+  const after = parent.indexOf('loadFormShifts(currentUser.id)', before)
+  assert.ok(before >= 0 && after > before, 'opening the modal must not wait for shift API response')
   assert.match(parent, /sourceShiftsReady=\{formFetchState/)
   assert.match(parent, /onRetrySourceShifts=/)
   assert.match(modal, /disabled=\{submitting \|\| !formReady\}/)

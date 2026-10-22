@@ -312,8 +312,8 @@ export function SwapRequestList() {
 
 
     {showForm && currentUser && <SwapRequestFormModal open={showForm} onOpenChange={onFormOpenChange} shifts={formShifts} users={directory} brands={brands} platforms={platforms}
-      sourceShiftsReady={formFetchState?.ownerId === currentUser.id && formFetchState.status === 'ready'}
-      sourceShiftsError={formFetchState?.ownerId === currentUser.id && formFetchState.status === 'error' ? formFetchState.error ?? 'Không thể tải ca được phân công' : null}
+      sourceShiftsReady={Boolean(formFetchState && formFetchState.ownerId === currentUser.id && formFetchState.status === 'ready')}
+      sourceShiftsError={formFetchState && formFetchState.ownerId === currentUser.id && formFetchState.status === 'error' ? formFetchState.error ?? 'Không thể tải ca được phân công' : null}
       onRetrySourceShifts={() => loadFormShifts(currentUser.id)}
       onSuccess={() => { void loadData(); onFormOpenChange(false) }} />}
     {selectedSwap && <SwapDetailModal open swap={selectedSwap} shift={shiftById.get(selectedSwap.shift_id)!} requester={displayUsers.find(user => user.id === selectedSwap.requester_id)!} newHost={displayUsers.find(user => user.id === replacementFor(selectedSwap))} brands={brands} platforms={platforms} showParticipantActions={getSwapUiActions(selectedSwap, currentUser).showAccept} showReviewerActions={getSwapUiActions(selectedSwap, currentUser).showReviewerReject} onAccept={() => runReview(selectedSwap, 'accept')} onParticipantReject={() => runReview(selectedSwap, 'counterpart_reject')} onOpenChange={open => !open && setSelectedSwap(null)} onApprove={() => runReview(selectedSwap, 'approve')} onReject={() => runReview(selectedSwap, 'reject')} />}
