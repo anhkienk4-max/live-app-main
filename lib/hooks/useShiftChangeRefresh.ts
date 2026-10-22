@@ -8,7 +8,14 @@ export function useShiftChangeRefresh(onRefresh: () => void | Promise<void>) {
   React.useEffect(() => { refreshRef.current = onRefresh }, [onRefresh])
   React.useEffect(() => {
     const listener = () => { void refreshRef.current() }
+    const storageListener = (event: StorageEvent) => {
+      if (event.key === `${SHIFT_DATA_CHANGED_EVENT}:storage` && event.newValue) void refreshRef.current()
+    }
+    window.addEventListener('storage', storageListener)
     window.addEventListener(SHIFT_DATA_CHANGED_EVENT, listener)
-    return () => window.removeEventListener(SHIFT_DATA_CHANGED_EVENT, listener)
+    return () => {
+      window.removeEventListener(SHIFT_DATA_CHANGED_EVENT, listener)
+      window.removeEventListener('storage', storageListener)
+    }
   }, [])
 }

@@ -1,0 +1,57 @@
+name: RC19 Consolidated Release Candidate Quality Gate (NO DEPLOY)
+on:
+  push:
+    branches:
+      - integration/rc19-one-preview-release-20261023
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  no-deploy-quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Full TypeScript
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: Full ESLint
+        run: pnpm run lint
+      - name: Staffing focused regression
+        run: node --experimental-strip-types --test tests/rc19-staffing-*.test.ts
+      - name: Full canonical regression
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node scripts/run-final-regression.mjs
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Member core mock browser smoke
+        run: pnpm exec playwright test --config playwright.rc16.config.ts --reporter=line
+      - name: Calendar responsive mock browser smoke
+        run: pnpm exec playwright test --config playwright.rc19-calendar.config.ts --reporter=line
+      - name: Staffing mock browser smoke
+        run: pnpm exec playwright test --config playwright.rc19-staffing.config.ts --reporter=line
+      - name: Production-equivalent build without secrets
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_ACTUAL_STAFFING: 'false'
+          FEATURE_PAYROLL: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm run build
+      - name: Provenance
+        if: always()
+        run: |
+          echo "RC19 integrated candidate source SHA $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "NO Preview, Production deploy or database write in this workflow. Authenticated UAT remains separate." >> "$GITHUB_STEP_SUMMARY"
