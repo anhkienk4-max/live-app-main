@@ -29,9 +29,9 @@ jobs:
       - name: TypeScript check
         run: pnpm exec tsc --noEmit --incremental false
       - name: Focused ESLint
-        run: pnpm exec eslint lib/auth/operationsActorKey.ts lib/hooks/usePagedList.ts tests/analytics-actor-key.test.ts
+        run: pnpm exec eslint lib/auth/operationsActorKey.ts lib/hooks/usePagedList.ts lib/server/operationsResponseOwnerKey.ts lib/server/operationsCollectionHandler.ts lib/server/analyticsSnapshotHandler.ts lib/server/calendarExportHandler.ts lib/services/operationsPageService.ts tests/analytics-actor-key.test.ts tests/rc18-owner-contract-server.test.ts
       - name: Actor isolation and page cache tests
-        run: node --import ./tests/typescript-alias-loader.mjs --test tests/analytics-actor-key.test.ts tests/operations-page-cache.test.ts tests/auth-identity-bridge.test.tsx
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/analytics-actor-key.test.ts tests/operations-page-cache.test.ts tests/auth-identity-bridge.test.tsx tests/rc18-owner-contract-server.test.ts tests/rc16k-pagination.test.ts tests/report-null-semantics-consumers.test.ts
       - name: Production-equivalent build without DB writes
         env:
           NEXT_PUBLIC_SUPABASE_URL: ''
