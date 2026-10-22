@@ -95,7 +95,7 @@ export function SwapRequestFormModal({
 
   const currentUserId = currentUser?.id;
   // A response for an earlier actor must never authorize the new actor's form.
-  const registrationReady = Boolean(open && currentUserId && registrationLoad?.ownerId === currentUserId && registrationLoad.error === null);
+  const registrationReady = Boolean(open && currentUserId && registrationLoad && registrationLoad.ownerId === currentUserId && registrationLoad.error === null);
   const registeredRoles = registrationReady && registrationLoad ? registrationLoad.roles : EMPTY_REGISTERED_ROLES;
   const registrationIds = registrationReady && registrationLoad ? registrationLoad.ids : EMPTY_REGISTRATION_IDS;
   const registrationError = open && registrationLoad?.ownerId === currentUserId ? registrationLoad.error : null;
