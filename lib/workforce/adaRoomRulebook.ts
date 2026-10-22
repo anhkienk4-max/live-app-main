@@ -85,7 +85,7 @@ export function proposeAdaRoomRule(input: RoomRuleProposalInput): RoomRulePropos
   const warnings: string[] = []
   const requiredEvidence: string[] = ['Mã ca, nhân sự, vai trò và phân loại Daily/Campaign', 'Bằng chứng, thời điểm và xác nhận của người rà soát độc lập']
   const base = {
-    version: ADA_ROOM_RULES_VERSION, rule: input.rule, label: labelFor[input.rule],
+    version: ADA_ROOM_RULES_VERSION as typeof ADA_ROOM_RULES_VERSION, rule: input.rule, label: labelFor[input.rule],
     payrollApplied: false as const, warnings, requiredEvidence,
   }
   const result = (state: RoomRuleProposal['state'], amount: number | null,
