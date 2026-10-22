@@ -27,9 +27,8 @@ const statusLabels: Record<RoomRuleProposal['state'],string> = {
   needs_evidence:'Thiếu bằng chứng', outside_policy:'Ngoài thời hạn hiệu lực',
   manual_review:'Cần xử lý thủ công',
 }
-const localStamp = (input: string) => input
-  ? input.replace(/:\d\d$/,'').replace(/^(.*T\d\d:\d\d)$/,'$1:00') + '+07:00'
-  : undefined
+const localStamp = (input: string): string | undefined =>
+  input ? (/:\\d{2}:\\d{2}$/.test(input) ? input : input + ':00') + '+07:00' : undefined
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-slate-700">
