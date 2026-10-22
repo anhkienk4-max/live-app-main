@@ -142,6 +142,7 @@
     "tests/rc17d-responsive-auth.test.ts",
     "tests/rc18-browser-owner-contract.test.ts",
     "tests/rc18-owner-contract-server.test.ts",
+    "tests/rc18-payroll-ada-rulebook.test.ts",
     "tests/rc18a-shift-change-subscription.test.ts",
     "tests/rc18a-shift-date-window.test.ts",
     "tests/rc18a-shift-list-url-state.test.ts",
