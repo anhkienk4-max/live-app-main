@@ -36,6 +36,16 @@ export function StaffingWorkspace() {
   const [draftDate,setDraftDate]=useState(date)
   const [draftGapsOnly,setDraftGapsOnly]=useState(false)
   const [showFilters,setShowFilters]=useState(false)
+  // Calendar "Ca cần bổ sung nhân sự" links here with a URL-scoped gap intent.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('gap') === 'missing') {
+      setGapsOnly(true)
+      setDraftGapsOnly(true)
+      setPage(1)
+    }
+  // Apply once on mount; page navigation retains the user-selected filters thereafter.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [selectedId,setSelectedId]=useState<string|null>(null)
   const [detailOpen,setDetailOpen]=useState(false)
   const { currentUser } = useCurrentUser()
@@ -66,6 +76,11 @@ export function StaffingWorkspace() {
     setDraftFilters({brandIds:[],platformIds:[],campaignIds:[],roles:[],statuses:[]})
     setDate('');setDraftDate('');setGapsOnly(false);setDraftGapsOnly(false)
     setQuery('');setPage(1);setSelectedId(null);setShowFilters(false)
+    const url = new URL(window.location.href)
+    if (url.searchParams.has('gap')) {
+      url.searchParams.delete('gap')
+      window.history.replaceState(null, '', url.pathname + url.search)
+    }
   }
   const encodedFilters = JSON.stringify({ search: query, from: date || undefined, to: date || undefined,
     brandIds: filters.brandIds, platformIds: filters.platformIds, campaignIds: filters.campaignIds,
