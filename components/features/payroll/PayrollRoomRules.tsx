@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { formatCurrency } from '@/lib/utils/currency'
+import { PayrollRoomRulesCatalog } from './PayrollRoomRulesCatalog'
+import { PayrollAttendanceLink, type LinkedRoomAttendance } from './PayrollAttendanceLink'
 import type { PayrollPeriod } from '@/lib/services/workforceService'
 import {
   ADA_ROOM_RULES_EFFECTIVE_DATE, ADA_ROOM_RULES_VERSION, proposeAdaRoomRule,
@@ -63,8 +65,15 @@ export function PayrollRoomRules({ period }: { period: PayrollPeriod | null }) {
   const [noShows,setNoShows] = React.useState('0')
   const [proposal,setProposal] = React.useState<RoomRuleProposal | null>(null)
   const [recurrence,setRecurrence] = React.useState<string[] | null>(null)
+  const [linked,setLinked] = React.useState<LinkedRoomAttendance | null>(null)
 
   const resetProposal = () => setProposal(null)
+  const useAttendance = (value: LinkedRoomAttendance) => {
+    setLinked(value)
+    setRole(value.role);setDate(value.date);setLiveStart(value.liveStartLocal)
+    // Never copy actual_start_at into the group check-in field.
+    setCheckin('');setAirDelayed(false);setRule('lateness');setProposal(null)
+  }
   const input = (value: string, setter: (value:string)=>void) => ({
     value, onChange: (e:React.ChangeEvent<HTMLInputElement>) => { setter(e.target.value); resetProposal() },
   })
@@ -119,9 +128,19 @@ export function PayrollRoomRules({ period }: { period: PayrollPeriod | null }) {
       </div>
     </div>
 
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+    <PayrollRoomRulesCatalog />
+    <PayrollAttendanceLink onUse={useAttendance} />
+
+    <div id="room-rule-calculator" className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
       <Card className="border-slate-200">
         <CardHeader><CardTitle className="text-sm">Đánh giá một case</CardTitle></CardHeader>
+        {linked && <div className="mx-5 mb-2 rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900"
+          data-testid="room-rule-linked-context">
+          Ca đã liên kết: {linked.shiftId.slice(0,8)}… · Nhân sự {linked.staffId.slice(0,8)}… ·
+          {linked.date}. Đã điền lịch và vai trò, <strong>chưa có giờ check-in group hoặc xác nhận loại Campaign</strong>.
+          Cần đối chiếu người, bằng chứng và mức tiền ca trước khi tính đề xuất.
+          <button type="button" className="ml-2 underline" onClick={() => setLinked(null)}>Bỏ liên kết</button>
+        </div>}
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Loại vi phạm / thưởng">

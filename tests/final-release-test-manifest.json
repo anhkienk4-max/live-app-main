@@ -140,6 +140,7 @@
     "tests/rc17c-attendance-atomic-rpc-boundary.test.ts",
     "tests/rc17c-historical-attendance-importer.test.ts",
     "tests/rc17d-responsive-auth.test.ts",
+    "tests/rc18-ada-attendance-link.test.ts",
     "tests/rc18-browser-owner-contract.test.ts",
     "tests/rc18-owner-contract-server.test.ts",
     "tests/rc18-payroll-ada-rulebook.test.ts",
