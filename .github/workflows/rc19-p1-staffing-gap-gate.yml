@@ -33,7 +33,7 @@ jobs:
           TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
         run: node scripts/run-final-regression.mjs
       - name: Install Chromium
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm exec playwright install chromium
       - name: Staffing interaction test on 390 and 1440
         run: pnpm exec playwright test --config playwright.rc19-staffing.config.ts --reporter=line
       - name: Next production-equivalent build
