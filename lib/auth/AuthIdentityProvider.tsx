@@ -42,8 +42,8 @@ export function AuthIdentityProvider({
   // during layout commit first, so navigation/initial mount cannot race the actor.
   React.useLayoutEffect(() => {
     if (mode !== 'supabase' || !businessUser) return
-    currentUserService.bindAuthenticatedUser(businessUser)
-    return () => currentUserService.clearAuthenticatedUser(businessUser.id)
+    const bindingRevision = currentUserService.bindAuthenticatedUser(businessUser)
+    return () => currentUserService.clearAuthenticatedUser(businessUser.id, bindingRevision)
   }, [businessUser, mode])
 
   const clearIdentity = React.useCallback(() => {
