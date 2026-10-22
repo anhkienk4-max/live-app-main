@@ -10,6 +10,8 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { useTranslation } from '@/lib/i18n'
 
+const EMPTY_SHIFT_ROWS: Shift[] = []
+
 type CreatableSwapMode = 'replacement' | 'exchange'
 
 export function SwapRequestDialog({
@@ -53,14 +55,24 @@ export function SwapRequestDialog({
   const targetRegistrations = currentCandidate?.rows ?? []
   const targetCandidatesLoading = mode === 'exchange' && Boolean(targetShiftId) && !currentCandidate
 
-  const [directory, setDirectory] = React.useState<UserDirectoryEntry[]>([])
+  const [directorySnapshot, setDirectorySnapshot] = React.useState<{ownerId: string; users: UserDirectoryEntry[]; error: string | null} | null>(null)
+  const [staffSearch, setStaffSearch] = React.useState('')
+  const directory = open && directorySnapshot?.ownerId === currentUser.id && !directorySnapshot.error
+    ? directorySnapshot.users : []
+  const directoryError = open && directorySnapshot?.ownerId === currentUser.id ? directorySnapshot.error : null
+  const directoryLoading = open && directorySnapshot?.ownerId !== currentUser.id
   React.useEffect(() => {
     if (!open) return
-    let cancelled = false
-    void userService.getDirectory().then(next => { if (!cancelled) setDirectory(next) })
-      .catch(() => { if (!cancelled) setDirectory([]) })
-    return () => { cancelled = true }
-  }, [open])
+    let active = true
+    void userService.getDirectory().then(users => {
+      if (active) setDirectorySnapshot({ownerId: currentUser.id, users, error: null})
+    }).catch(error => {
+      if (active) setDirectorySnapshot({
+        ownerId: currentUser.id, users: [], error: error instanceof Error ? error.message : 'STAFF_DIRECTORY_LOAD_FAILED',
+      })
+    })
+    return () => { active = false }
+  }, [open, currentUser.id])
   // The Shift Detail entry point passes shifts=[]; never enumerate all shifts.
   // Query an explicitly bounded, identity-scoped page instead.
   React.useEffect(() => {
@@ -82,13 +94,13 @@ export function SwapRequestDialog({
   const currentTarget = shifts.length > 0 || targetSnapshot?.key === targetKey
   const targetLoading = open && mode === 'exchange' && shifts.length === 0 && !currentTarget
   const targetError = shifts.length === 0 && targetSnapshot?.key === targetKey ? targetSnapshot.error : null
-  const sourceRows = shifts.length > 0 ? shifts : targetSnapshot?.key === targetKey ? targetSnapshot.items : []
+  const sourceRows = shifts.length > 0 ? shifts : targetSnapshot?.key === targetKey ? targetSnapshot.items : EMPTY_SHIFT_ROWS
   const targetShifts = React.useMemo(
     () => sourceRows.filter(shift => shift.id !== sourceShift.id && shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at)
-      .filter(shift => !targetSearch || [shift.id, shift.title ?? '', shift.date, shift.studio ?? ''].some(field => field.toLowerCase().includes(targetSearch.trim().toLowerCase())))
+      .filter(shift => shifts.length === 0 || !targetSearch || [shift.id, shift.title ?? '', shift.date, shift.studio ?? ''].some(field => field.toLowerCase().includes(targetSearch.trim().toLowerCase())))
       .sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time) || a.id.localeCompare(b.id))
       .slice(0, pageSize),
-    [sourceRows, sourceShift.id, targetSearch],
+    [sourceRows, sourceShift.id, targetSearch, shifts.length],
   )
   const targetTotal = shifts.length > 0 ? targetShifts.length : targetSnapshot?.key === targetKey ? targetSnapshot.total : 0
   const maxPage = Math.max(1, Math.ceil(targetTotal / pageSize))
@@ -112,7 +124,9 @@ export function SwapRequestDialog({
     setBusy(true)
     try {
       if (mode === 'replacement') {
-        if (!replacementId) throw new Error('Replacement required')
+        if (!replacementId || directoryError || directoryLoading || !directory.some(user =>
+          user.id === replacementId && user.id !== currentUser.id && user.operational_roles?.includes(sourceRegistration.operational_role)
+        )) throw new Error('Chưa xác minh nhân sự thay thế phù hợp')
         await swapRequestService.create({
           shift_id: sourceShift.id,
           requester_id: currentUser.id,
@@ -164,14 +178,26 @@ export function SwapRequestDialog({
             </Select>
           </label>
           {mode === 'replacement' ? (
-            <label className="text-xs font-medium">Replacement
-              <Select value={replacementId} onValueChange={setReplacementId}>
+            <div className="space-y-2">
+              <label className="text-xs font-medium">Tìm nhân sự thay thế
+                <Input className="mt-1" aria-label="Tìm nhân sự thay thế"
+                  value={staffSearch} onChange={event => { setStaffSearch(event.target.value); setReplacementId('') }}
+                  placeholder="Tên nhân sự..." />
+              </label>
+              {directoryLoading && <p role="status" className="text-xs text-muted-foreground">Đang tải danh bạ nhân sự...</p>}
+              {directoryError && <p role="alert" className="text-xs text-red-600">Không tải được nhân sự: {directoryError}</p>}
+              <label className="text-xs font-medium">Nhân sự thay thế
+              <Select value={replacementId} disabled={busy || directoryLoading || Boolean(directoryError)} onValueChange={setReplacementId}>
                 <SelectTrigger className="mt-1"><SelectValue placeholder="Select staff" /></SelectTrigger>
                 <SelectContent className="max-h-64 overflow-y-auto">
-                  {directory.filter(u=>u.id !== currentUser.id && u.operational_roles?.includes(sourceRegistration.operational_role)).map(u=> <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>)}
+                  {directory.filter(u => u.id !== currentUser.id &&
+                    u.operational_roles?.includes(sourceRegistration.operational_role) &&
+                    (!staffSearch.trim() || u.full_name.toLowerCase().includes(staffSearch.trim().toLowerCase())))
+                    .slice(0,50).map(u => <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>)}
                 </SelectContent>
               </Select>
-            </label>
+              </label>
+            </div>
           ) : (
             <>
               <label className="text-xs font-medium">Tìm ca muốn đổi chéo
@@ -220,7 +246,8 @@ export function SwapRequestDialog({
           <label className="text-xs font-medium">Reason
             <Textarea value={reason} onChange={e=>setReason(e.target.value)} placeholder="Reason" />
           </label>
-          <Button onClick={submit} disabled={busy || (mode === 'exchange' && (!targetIsOnPage || !currentCandidate || Boolean(currentCandidate.error) || !counterpartId))} className="w-full">{busy ? 'Submitting...' : 'Submit'}</Button>
+          <Button onClick={submit} disabled={busy || (mode === 'replacement' && (directoryLoading || Boolean(directoryError) || !replacementId)) ||
+            (mode === 'exchange' && (!targetIsOnPage || !currentCandidate || Boolean(currentCandidate.error) || !counterpartId))} className="w-full">{busy ? 'Submitting...' : 'Submit'}</Button>
         </DialogBody>
       </DialogContent>
     </Dialog>
