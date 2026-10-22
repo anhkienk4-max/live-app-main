@@ -1,0 +1,41 @@
+name: RC18 Production Anonymous Route Smoke (read-only)
+
+on:
+  push:
+    branches:
+      - integration/rc18-analytics-payroll-prod-candidate-20261022
+    paths:
+      - .github/workflows/rc18-production-anonymous-smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-and-auth-boundary-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Public route HTTP and protected API denial (no credentials, read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          origin="https://ops5729.top"
+          for route in "/" "/login" "/analytics" "/payroll"; do
+            code="$(curl --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' "$origin$route")"
+            echo "$route: HTTP $code" >> "$GITHUB_STEP_SUMMARY"
+            case "$code" in
+              200|301|302|303|307|308) ;;
+              *) echo "Unexpected route status $code at $route" >&2; exit 1;;
+            esac
+          done
+          for route in "/api/workforce/payroll?action=list_periods&page=1&page_size=1" "/api/operations/analytics-snapshot?filters=%7B%7D"; do
+            code="$(curl --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' "$origin$route")"
+            safe_route="${route%%\?*}"
+            echo "$safe_route (anonymous): HTTP $code" >> "$GITHUB_STEP_SUMMARY"
+            case "$code" in
+              401|403) ;;
+              *) echo "Security boundary unexpected anonymous HTTP $code for $safe_route" >&2; exit 1;;
+            esac
+          done
+          echo "Anonymous HTTP smoke PASS. No login, DB writes, payroll mutations, browser flows or cross-user QA performed." >> "$GITHUB_STEP_SUMMARY"
