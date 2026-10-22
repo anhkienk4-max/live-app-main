@@ -82,7 +82,9 @@ test('existing Workforce GET never queries the journal when review flag is OFF',
     isAttendanceReviewEnabled:()=>false,resolveUser:manager})
   const response=await handler.GET(request())
   assert.equal(response.status,200)
-  assert.equal((await response.json()).attendance_events.length,0)
+  const body=await response.json()
+  assert.equal(body.attendance_events.length,0)
+  assert.equal(body.attendance_review_enabled,false)
   assert.equal(db.calls.includes('self_attendance_events'),false)
 })
 test('enabled manager review reads raw evidence without marking it as approved wages',async()=>{
@@ -92,6 +94,7 @@ test('enabled manager review reads raw evidence without marking it as approved w
   const response=await handler.GET(request())
   assert.equal(response.status,200)
   const body=await response.json()
+  assert.equal(body.attendance_review_enabled,true)
   assert.equal(body.attendance_events.length,2)
   assert.equal(body.attendance_events[0].verification_status,'pending_verification')
   assert.equal(body.segments.length,0)
@@ -105,4 +108,9 @@ test('enabled reviewer fails closed when journal missing or response is truncate
     const response=await handler.GET(request())
     assert.ok(response.status===503||response.status===409)
   }
+})
+
+test('the reviewer UI does not render a misleading empty journal when the flag is OFF',()=>{
+  const ui=readFileSync(new URL('../components/features/payroll/PayrollAttendanceLink.tsx',import.meta.url),'utf8')
+  assert.match(ui,/attendance\.attendance_review_enabled === true/)
 })

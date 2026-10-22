@@ -159,6 +159,8 @@ export interface ActualSegmentsResponse {
   segments: ActualSegment[]
   /** Independent app evidence, NOT approved actual minutes or group-message timestamps. */
   attendance_events?: RawSelfAttendanceReviewEvent[]
+  /** False or missing means raw journal was not queried. Never interpret as zero check-ins. */
+  attendance_review_enabled?: boolean
   shift_context?: {
     id: string
     date: string

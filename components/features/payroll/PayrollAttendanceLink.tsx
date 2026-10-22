@@ -160,14 +160,14 @@ export function PayrollAttendanceLink({
       {segments.length===0&&<p data-testid="attendance-empty" className="text-sm text-slate-600">
         Chưa có bản ghi chấm công. Không đồng nghĩa vắng mặt hoặc vi phạm; cần bổ sung bằng chứng.
       </p>}
-      <div className="space-y-2 rounded-md border border-slate-200 p-3 text-xs" data-testid="app-attendance-review">
+      {attendance.attendance_review_enabled === true && <div className="space-y-2 rounded-md border border-slate-200 p-3 text-xs" data-testid="app-attendance-review">
         <strong>Check-in / Check-out trong ứng dụng · Chờ đối chiếu</strong>
         <p className="text-slate-600">Nhật ký server, chưa phải giờ công đã duyệt. Không dùng làm căn cứ trừ lương tự động.</p>
         {pendingAppAttendance.length===0?<p>Chưa có bản ghi check-in ứng dụng, không kết luận vắng mặt.</p>:null}
         {pendingAppAttendance.map(item=><div key={item.staffId+':'+item.role} className="border-t pt-2">
           {item.role} · {item.staffId.slice(0,8)}… · Check-in: {fmt(item.checkin)} · Check-out: {fmt(item.checkout)}
         </div>)}
-      </div>
+      </div>}
       <div className="grid gap-2 lg:grid-cols-2">
         {segments.map(seg=>{
           const result=review(seg)

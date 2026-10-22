@@ -232,6 +232,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
         if (!shiftId) return fail('WORKFORCE_SHIFT_ID_REQUIRED', 400)
 
         const client = db()
+        const attendanceReviewEnabled = (deps.isAttendanceReviewEnabled ?? (() => isFeatureEnabled('self_attendance_review')))()
         const [segmentsRes, shiftRes, regsRes, swapsRes, attendanceRes] = await Promise.all([
           client.from('workforce_actual_segments')
             .select('id,shift_id,staff_id,operational_role,event_kind,coverage_kind,actual_start_at,actual_end_at,review_status,evidence_note,review_note,created_by,reviewed_by,reviewed_at,version,created_at')
@@ -247,7 +248,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
             .or(`source_shift_id.eq.${shiftId},target_shift_id.eq.${shiftId},shift_id.eq.${shiftId}`),
           // Production may not have the staging-only attendance journal migration.
           // Leave existing Workforce reads fully functional unless explicitly enabled.
-          (deps.isAttendanceReviewEnabled ?? (() => isFeatureEnabled('self_attendance_review')))()
+          attendanceReviewEnabled
             ? client.from('self_attendance_events')
               .select('id,shift_id,staff_id,operational_role,event_kind,recorded_at,verification_status')
               .eq('shift_id', shiftId).order('recorded_at', {ascending: true}).limit(201)
@@ -292,6 +293,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
           ok: true,
           segments: enrichedSegments,
           attendance_events: attendanceRes.data ?? [],
+          attendance_review_enabled: attendanceReviewEnabled,
           shift_context: shiftRes.data,
           planned_staff: regsRes?.data ?? [],
           lateness_policy: {
