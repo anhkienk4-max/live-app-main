@@ -1,4 +1,5 @@
 import 'server-only'
+import { operationsResponseOwnerKey } from '@/lib/server/operationsResponseOwnerKey'
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { requireRole, isAuthorizationError, authorizationErrorResponse, type ServerUserResolver } from './authGuards'
@@ -42,7 +43,7 @@ export function createCalendarExportHandler(deps: Depends = {}) {
         request.signal.throwIfAborted()
         const result = await readPage(page)
         total ??= result.total
-        if (!Number.isSafeInteger(total) || total < 0 || result.total !== total || result.page !== page || result.ownerKey !== user.id + ':' + user.systemPermission) return fail('EXPORT_COLLECTION_CHANGED', 409)
+        if (!Number.isSafeInteger(total) || total < 0 || result.total !== total || result.page !== page || result.ownerKey !== operationsResponseOwnerKey(user)) return fail('EXPORT_COLLECTION_CHANGED', 409)
         for (const shift of result.items) {
           if (ids.has(shift.id)) return fail('EXPORT_COLLECTION_CHANGED', 409)
           ids.add(shift.id); shifts.push(shift)
@@ -87,7 +88,7 @@ export function createCalendarExportHandler(deps: Depends = {}) {
       data.registrations = registrations.map(row => ({ id: row.id, shift_id: row.shift_id, staff_name: names.get(row.user_id) ?? row.imported_name ?? '', operational_role: row.operational_role, status: row.status, source: row.source }))
       const finalPage = await readPage(1)
       const latestUser = await requireRole(request, ['admin', 'leader'], deps.resolveUser)
-      if (latestUser.id !== user.id || latestUser.systemPermission !== user.systemPermission || finalPage.total !== total) return fail('EXPORT_COLLECTION_CHANGED', 409)
+      if (latestUser.id !== user.id || operationsResponseOwnerKey(latestUser) !== operationsResponseOwnerKey(user) || finalPage.total !== total || finalPage.ownerKey !== operationsResponseOwnerKey(user)) return fail('EXPORT_COLLECTION_CHANGED', 409)
       const body = buildCalendarExport(data, fields, input.format)
       return new Response(body, { headers: { 'Content-Type': input.format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv; charset=utf-8',
         'Content-Disposition': `attachment; filename="calendar.${input.format}"`, 'Cache-Control': 'private, no-store', 'X-Export-Record-Count': String(total) } })

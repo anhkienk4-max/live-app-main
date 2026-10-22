@@ -1,0 +1,54 @@
+name: RC18 ADA Payroll Room Rules - legal-review-only candidate
+
+on:
+  push:
+    branches:
+      - feat/rc18-payroll-ada-rulebook-20261022
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rulebook-source-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: TypeScript
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: Focused eslint for policy and payroll
+        run: pnpm exec eslint lib/workforce/adaRoomRulebook.ts components/features/payroll/PayrollRoomRules.tsx 'app/(dashboard)/payroll/page.tsx' tests/rc18-payroll-ada-rulebook.test.ts e2e/rc18-payroll-room-rules.spec.ts playwright.rc18-payroll-rules.config.ts
+      - name: ADA policy 2026 effective date and penalty review regression
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc18-payroll-ada-rulebook.test.ts tests/rc16-workforce-payroll.test.ts tests/rc17b-payroll-autocalc.test.ts
+      - name: Full existing regression inventory (no unlisted TS/TSX tests)
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node scripts/run-final-regression.mjs
+      - name: Isolated Chromium browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Admin room rule calculator browser (mock-only, no real payout)
+        run: pnpm exec playwright test --config playwright.rc18-payroll-rules.config.ts --reporter=line
+      - name: Production-equivalent code build (credential-free)
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_ACTUAL_STAFFING: 'false'
+          FEATURE_PAYROLL: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm run build
+
+# A successful code/mock-browser pipeline does not authorize Production payouts,
+# policy deductions, or migration/deployment. Human legal approval still required.

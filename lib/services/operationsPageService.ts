@@ -62,6 +62,7 @@ export async function getCollectionPage<T>(entity: OperationsList, query: ListQu
   const body = await response.json()
   if(owner!==await browserOwner())throw new OperationsListError('LIST_IDENTITY_CHANGED',409)
   if (!response.ok) throw new OperationsListError(body.error?.code ?? 'LIST_READ_FAILED', response.status)
+  if (typeof window !== 'undefined' && body.ownerKey !== owner) throw new OperationsListError('LIST_IDENTITY_CHANGED', 409)
   if ((body.ownerKey !== undefined && typeof body.ownerKey !== 'string') || !Array.isArray(body.items) || body.items.length > query.pageSize || !Number.isSafeInteger(body.total) || body.total < body.items.length || body.pageSize !== query.pageSize || !Number.isSafeInteger(body.page) || body.page < 1) {
     throw new OperationsListError('LIST_RESPONSE_INVALID', 502)
   }
