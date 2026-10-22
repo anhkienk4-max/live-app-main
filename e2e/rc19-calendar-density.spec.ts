@@ -13,7 +13,7 @@ for (const width of [390, 768, 1440]) {
 
     // Visual regression of a grid containing many real-world ca labels.
     await page.getByRole('button', { name: 'Tháng', exact: true }).click()
-    const monthEvent = page.locator('[data-testid^="calendar-event-"]').first()
+    const monthEvent = page.locator('[data-testid^="calendar-event-"]:visible').first()
     await expect(monthEvent).toBeVisible({ timeout: 30_000 })
     await expect(monthEvent).toHaveClass(/h-7/)
     await expect.poll(() => page.evaluate(() =>
