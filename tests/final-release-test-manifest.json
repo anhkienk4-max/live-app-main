@@ -152,6 +152,7 @@
     "tests/rc19-staffing-candidates.test.ts",
     "tests/rc19-staffing-failclosed.test.ts",
     "tests/rc19-staffing-refresh-contract.test.ts",
+    "tests/rc19-swap-exchange-page.test.ts",
     "tests/rc19-swap-source-picker.test.ts",
     "tests/real-dashboard-ocr-smoke.test.ts",
     "tests/registration-board-performance.test.ts",
