@@ -30,6 +30,7 @@ import { PayrollPeriodManager } from '@/components/features/payroll/PayrollPerio
 import { PayrollRateManager } from '@/components/features/payroll/PayrollRateManager'
 import { PayrollDraftWorkspace } from '@/components/features/payroll/PayrollDraftWorkspace'
 import { PayrollAuditTimeline } from '@/components/features/payroll/PayrollAuditTimeline'
+import { PayrollRoomRules } from '@/components/features/payroll/PayrollRoomRules'
 
 export default function PayrollPage() {
   const { translate } = useTranslation()
@@ -45,7 +46,7 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
   const permission = resolveSystemPermission(currentUser)
   const { toast } = useToast()
 
-  const [activeTab, setActiveTab] = React.useState<'workspace' | 'periods' | 'rates'>('periods')
+  const [activeTab, setActiveTab] = React.useState<'workspace' | 'periods' | 'rates' | 'room_rules'>('periods')
   const [selectedPeriod, setSelectedPeriod] = React.useState<PayrollPeriod | null>(null)
   const [lines, setLines] = React.useState<PayrollLine[]>([])
   const [audit, setAudit] = React.useState<PayrollAudit[]>([])
@@ -170,7 +171,7 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
       {readError && <p role="alert">{readError}</p>}
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as typeof activeTab)} className="space-y-4">
-        <TabsList className="grid group-data-[orientation=horizontal]/tabs:h-auto w-full grid-cols-3 bg-slate-100 p-1 rounded-lg">
+        <TabsList className="grid group-data-[orientation=horizontal]/tabs:h-auto w-full grid-cols-2 sm:grid-cols-4 bg-slate-100 p-1 rounded-lg">
           <TabsTrigger value="workspace" className="min-h-11 min-w-0 whitespace-normal px-2 py-1.5 text-xs font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
             Không gian đối soát
           </TabsTrigger>
@@ -179,6 +180,9 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
           </TabsTrigger>
           <TabsTrigger value="rates" className="min-h-11 min-w-0 whitespace-normal px-2 py-1.5 text-xs font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
             Khung lương & Đơn giá
+          </TabsTrigger>
+          <TabsTrigger value="room_rules" className="min-h-11 min-w-0 whitespace-normal px-2 py-1.5 text-xs font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            Nội quy & Case vi phạm
           </TabsTrigger>
         </TabsList>
 
@@ -235,6 +239,11 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
         {/* RATES TAB */}
         <TabsContent value="rates" className="mt-0">
           <PayrollRateManager />
+        </TabsContent>
+
+        {/* READ-ONLY POLICY CASE REVIEW: NO AUTOMATIC PAYROLL DEDUCTIONS */}
+        <TabsContent value="room_rules" className="mt-0">
+          <PayrollRoomRules period={selectedPeriod} />
         </TabsContent>
       </Tabs>
     </PageShell>
