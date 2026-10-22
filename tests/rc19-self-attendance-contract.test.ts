@@ -20,3 +20,8 @@ test('staff id is absent from RPC write arguments, retries keep their token',()=
   assert.match(panel,/requestIds\.current\[kind\]\?\?=crypto\.randomUUID\(\)/)
   assert.match(panel,/Asia\/Ho_Chi_Minh/)
 })
+test('attendance UI is opt-in and bound to the current approved registration',()=>{
+  const modal=readFileSync(new URL('../components/features/shifts/ShiftDetailModal.tsx',import.meta.url),'utf8')
+  assert.match(modal,/NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE === 'true' && myRegistration/)
+  assert.match(modal,/role=\{myRegistration\.operational_role\}/)
+})

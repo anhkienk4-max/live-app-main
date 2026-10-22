@@ -57,6 +57,7 @@ import { useToast } from '@/components/ui/toast'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
 import { CalendarExportDialog } from './CalendarExportDialog'
+import { SelfAttendancePanel } from '@/components/features/attendance/SelfAttendancePanel'
 import type { ListFilters } from '@/lib/services/operationsPageService'
 import { useTranslation, type Language, type TranslationKey } from '@/lib/i18n'
 import { getCurrentBusinessDate, resolveShiftDateTime } from '@/lib/utils/shiftUtils'
@@ -940,6 +941,10 @@ export function ShiftDetailModal({
                       shift={shift}
                     />
 
+                    {process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE === 'true' && myRegistration && (
+                      <SelfAttendancePanel key={shift.id + ':' + currentUser?.id + ':' + myRegistration.operational_role}
+                        shiftId={shift.id} role={myRegistration.operational_role} />
+                    )}
                     {canRequestSwap && myRegistration && (
                       <Card><CardContent className="pt-5 flex justify-end"><Button variant="outline" onClick={() => setShowSwapDialog(true)}>Đổi ca</Button></CardContent></Card>
                     )}
