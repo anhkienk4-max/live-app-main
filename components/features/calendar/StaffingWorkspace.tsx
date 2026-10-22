@@ -48,10 +48,10 @@ export function StaffingWorkspace() {
       if (new URLSearchParams(window.location.search).get('gap') !== 'missing') return
       setGapsOnly(true)
       setDraftGapsOnly(true)
-      setPage(1)
+      navigate({ staffing_page: null }, true)
     })
     return () => cancelAnimationFrame(frame)
-  }, [setPage])
+  }, [navigate])
   const [total, setTotal] = useState(0)
   const {next,isCurrent,invalidate}=useRequestSequence()
   const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role):''
