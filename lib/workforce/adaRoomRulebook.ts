@@ -67,7 +67,7 @@ const dateValid = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date)
   && !Number.isNaN(Date.parse(date))
   && new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) === date
 const timestamp = (value?: string): number | null =>
-  value && /(?:Z|[+-]\\d{2}:\\d{2})$/.test(value) && Number.isFinite(Date.parse(value))
+  value && /(?:Z|[+-]\d{2}:\d{2})$/.test(value) && Number.isFinite(Date.parse(value))
     ? Date.parse(value) : null
 const percent = (basis: number, rate: number) => Math.round(basis * rate / 100)
 const labelFor: Record<RoomRuleCode,string> = {
