@@ -109,8 +109,8 @@ export function MonthView({
                       <ShiftCard
                         key={shift.id}
                         shift={shift}
-                        variant="standard"
-                        className={visibility + ' bg-background border-l-[3px] shadow-sm hover:shadow border-y border-r border-y-border border-r-border'}
+                        variant="compact"
+                        className={visibility + ' min-w-0 h-7 bg-background border-l-[3px] shadow-sm hover:shadow border-y border-r border-y-border border-r-border'}
                         style={{ borderLeftColor: brandColor(shift.brand_id) }}
                         onClick={event => {
                           event.stopPropagation()

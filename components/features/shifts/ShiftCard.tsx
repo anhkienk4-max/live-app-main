@@ -38,6 +38,9 @@ export const ShiftCard = React.forwardRef<HTMLButtonElement, ShiftCardProps>(
     const displayTitle = shift.title || (brandName + ' · ' + platformName)
 
     if (variant === 'compact') {
+      const missingStaff = getShiftRoleCapacities(
+        shift, registrations.filter(registration => registration.shift_id === shift.id),
+      ).some(capacity => capacity.remaining > 0)
       return (
         <button
           ref={ref}
@@ -55,6 +58,7 @@ export const ShiftCard = React.forwardRef<HTMLButtonElement, ShiftCardProps>(
           <span className='min-w-0 flex-1 truncate whitespace-nowrap text-foreground'>
             {displayTitle}
           </span>
+          {missingStaff && <span role="img" aria-label={t('needsStaffing')} title={t('needsStaffing')} className='flex h-4 w-4 shrink-0 items-center justify-center rounded bg-amber-100 text-[10px] font-bold text-amber-900 dark:bg-amber-900/30 dark:text-amber-300'>!</span>}
           <ShiftStatusBadge status={shift.status} className='shrink-0 text-micro h-4 px-1 py-0 border-none scale-90 origin-right' />
         </button>
       )
