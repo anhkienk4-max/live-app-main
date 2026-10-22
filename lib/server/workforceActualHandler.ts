@@ -38,7 +38,7 @@ const review = z.object({
   review_note: z.string().trim().min(8).max(2000),
 }).strict()
 
-type Depends = { client?: () => SupabaseClient; resolveUser?: ServerUserResolver; isEnabled?: () => boolean }
+type Depends = { client?: () => SupabaseClient; resolveUser?: ServerUserResolver; isEnabled?: () => boolean; isAttendanceReviewEnabled?: () => boolean }
 const noStore = { 'Cache-Control': 'no-store' }
 const fail = (code: string, status: number) => Response.json({ ok: false, error: { code } },
   { status, headers: noStore })
@@ -247,7 +247,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
             .or(`source_shift_id.eq.${shiftId},target_shift_id.eq.${shiftId},shift_id.eq.${shiftId}`),
           // Production may not have the staging-only attendance journal migration.
           // Leave existing Workforce reads fully functional unless explicitly enabled.
-          isFeatureEnabled('self_attendance_review')
+          (deps.isAttendanceReviewEnabled ?? (() => isFeatureEnabled('self_attendance_review')))()
             ? client.from('self_attendance_events')
               .select('id,shift_id,staff_id,operational_role,event_kind,recorded_at,verification_status')
               .eq('shift_id', shiftId).order('recorded_at', {ascending: true}).limit(201)
