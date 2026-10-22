@@ -98,7 +98,7 @@ export function SwapRequestFormModal({
   const registrationReady = Boolean(open && currentUserId && registrationLoad && registrationLoad.ownerId === currentUserId && registrationLoad.error === null);
   const registeredRoles = registrationReady && registrationLoad ? registrationLoad.roles : EMPTY_REGISTERED_ROLES;
   const registrationIds = registrationReady && registrationLoad ? registrationLoad.ids : EMPTY_REGISTRATION_IDS;
-  const registrationError = open && registrationLoad?.ownerId === currentUserId ? registrationLoad.error : null;
+  const registrationError = open && registrationLoad && registrationLoad.ownerId === currentUserId ? registrationLoad.error : null;
 
   // A. Form initialization
   React.useEffect(() => {
