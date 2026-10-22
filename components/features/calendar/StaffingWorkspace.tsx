@@ -31,21 +31,11 @@ export function StaffingWorkspace() {
   const [query,setQuery]=useState('')
   const [date,setDate]=useState('')
   const [filters,setFilters]=useState({brandIds:[] as string[],platformIds:[] as string[],campaignIds:[] as string[],roles:[] as string[],statuses:[] as string[]})
-  const [gapsOnly,setGapsOnly]=useState(false)
+  const [gapsOnly,setGapsOnly]=useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('gap') === 'missing')
   const [draftFilters,setDraftFilters]=useState(filters)
   const [draftDate,setDraftDate]=useState(date)
-  const [draftGapsOnly,setDraftGapsOnly]=useState(false)
+  const [draftGapsOnly,setDraftGapsOnly]=useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('gap') === 'missing')
   const [showFilters,setShowFilters]=useState(false)
-  // Calendar "Ca cần bổ sung nhân sự" links here with a URL-scoped gap intent.
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('gap') === 'missing') {
-      setGapsOnly(true)
-      setDraftGapsOnly(true)
-      setPage(1)
-    }
-  // Apply once on mount; page navigation retains the user-selected filters thereafter.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
   const [selectedId,setSelectedId]=useState<string|null>(null)
   const [detailOpen,setDetailOpen]=useState(false)
   const { currentUser } = useCurrentUser()
