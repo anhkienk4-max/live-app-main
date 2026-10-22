@@ -31,16 +31,27 @@ export function StaffingWorkspace() {
   const [query,setQuery]=useState('')
   const [date,setDate]=useState('')
   const [filters,setFilters]=useState({brandIds:[] as string[],platformIds:[] as string[],campaignIds:[] as string[],roles:[] as string[],statuses:[] as string[]})
-  const [gapsOnly,setGapsOnly]=useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('gap') === 'missing')
+  const [gapsOnly,setGapsOnly]=useState(false)
   const [draftFilters,setDraftFilters]=useState(filters)
   const [draftDate,setDraftDate]=useState(date)
-  const [draftGapsOnly,setDraftGapsOnly]=useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('gap') === 'missing')
+  const [draftGapsOnly,setDraftGapsOnly]=useState(false)
   const [showFilters,setShowFilters]=useState(false)
   const [selectedId,setSelectedId]=useState<string|null>(null)
   const [detailOpen,setDetailOpen]=useState(false)
   const { currentUser } = useCurrentUser()
   const pagination = useListPagination('staffing', 20)
   const { page, pageSize, setPage, setPageSize, navigate } = pagination
+  // Read the deep-link only after hydration: window-dependent state during SSR
+  // would otherwise render different markup on the server vs the browser.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      if (new URLSearchParams(window.location.search).get('gap') !== 'missing') return
+      setGapsOnly(true)
+      setDraftGapsOnly(true)
+      setPage(1)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [setPage])
   const [total, setTotal] = useState(0)
   const {next,isCurrent,invalidate}=useRequestSequence()
   const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role):''
@@ -69,7 +80,7 @@ export function StaffingWorkspace() {
     const url = new URL(window.location.href)
     if (url.searchParams.has('gap')) {
       url.searchParams.delete('gap')
-      window.history.replaceState(null, '', url.pathname + url.search)
+      window.history.replaceState(window.history.state, '', url.pathname + url.search)
     }
   }
   const encodedFilters = JSON.stringify({ search: query, from: date || undefined, to: date || undefined,
