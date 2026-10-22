@@ -10,6 +10,7 @@ export type FeatureFlag =
   | 'import_batch_management'
   | 'staff_management_writes'
   | 'actual_staffing'
+  | 'self_attendance_review'
   | 'payroll'
   | 'notifications'
   | 'reports_v2'
@@ -19,6 +20,7 @@ const FLAG_ENV: Record<FeatureFlag, string> = {
   import_batch_management: 'FEATURE_IMPORT_BATCH',
   staff_management_writes: 'FEATURE_STAFF_MANAGEMENT_WRITES',
   actual_staffing: 'FEATURE_ACTUAL_STAFFING',
+  self_attendance_review: 'FEATURE_SELF_ATTENDANCE_REVIEW',
   payroll: 'FEATURE_PAYROLL',
   notifications: 'FEATURE_NOTIFICATIONS',
   reports_v2: 'FEATURE_REPORTS_V2',
@@ -29,6 +31,7 @@ const DEFAULT_FLAGS: Record<FeatureFlag, boolean> = {
   import_batch_management: false,
   staff_management_writes: false,
   actual_staffing: false,
+  self_attendance_review: false,
   payroll: false,
   notifications: false,
   reports_v2: false,

@@ -35,3 +35,15 @@ test('manager actual staffing read presents raw check-in evidence independently 
   assert.match(ui,/app-attendance-review/)
   assert.match(ui,/Chờ đối chiếu/)
 })
+
+test('server-side attendance evidence flag defaults OFF and refuses truncated evidence',()=>{
+  const flags=readFileSync(new URL('../lib/flags.ts',import.meta.url),'utf8')
+  const handler=readFileSync(new URL('../lib/server/workforceActualHandler.ts',import.meta.url),'utf8')
+  assert.match(flags,/self_attendance_review: 'FEATURE_SELF_ATTENDANCE_REVIEW'/)
+  assert.match(flags,/self_attendance_review: false/)
+  assert.match(handler,/isFeatureEnabled\('self_attendance_review'\)/)
+  assert.match(handler,/Promise\.resolve\(\{data: \[\], error: null\}\)/)
+  assert.match(handler,/SELF_ATTENDANCE_REVIEW_UNAVAILABLE/)
+  assert.match(handler,/SELF_ATTENDANCE_REVIEW_LIMIT_EXCEEDED/)
+  assert.match(handler,/\.limit\(201\)/)
+})

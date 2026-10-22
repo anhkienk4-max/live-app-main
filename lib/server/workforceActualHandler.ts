@@ -245,11 +245,18 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
           client.from('swap_requests')
             .select('id,requester_id,counterpart_id,replacement_staff_id,source_shift_id,target_shift_id,shift_id,operational_role,mode,status,deleted_at')
             .or(`source_shift_id.eq.${shiftId},target_shift_id.eq.${shiftId},shift_id.eq.${shiftId}`),
-          client.from('self_attendance_events')
-            .select('id,shift_id,staff_id,operational_role,event_kind,recorded_at,verification_status')
-            .eq('shift_id',shiftId).order('recorded_at',{ascending:true}).limit(200),
+          // Production may not have the staging-only attendance journal migration.
+          // Leave existing Workforce reads fully functional unless explicitly enabled.
+          isFeatureEnabled('self_attendance_review')
+            ? client.from('self_attendance_events')
+              .select('id,shift_id,staff_id,operational_role,event_kind,recorded_at,verification_status')
+              .eq('shift_id', shiftId).order('recorded_at', {ascending: true}).limit(201)
+            : Promise.resolve({data: [], error: null}),
         ])
-        if (segmentsRes.error || attendanceRes.error) return fail('WORKFORCE_ACTUAL_READ_FAILED', 503)
+        if (segmentsRes.error) return fail('WORKFORCE_ACTUAL_READ_FAILED', 503)
+        if (attendanceRes.error) return fail('SELF_ATTENDANCE_REVIEW_UNAVAILABLE', 503)
+        // A truncated source must never be represented as a complete evidence set.
+        if ((attendanceRes.data?.length ?? 0) > 200) return fail('SELF_ATTENDANCE_REVIEW_LIMIT_EXCEEDED', 409)
         if (swapsRes?.error || regsRes?.error) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
         if (!shiftRes?.data) return fail('WORKFORCE_SHIFT_NOT_FOUND', 404)
 
