@@ -29,7 +29,7 @@ jobs:
       - name: TypeScript check
         run: pnpm exec tsc --noEmit --incremental false
       - name: Focused ESLint
-        run: pnpm exec eslint lib/auth/operationsActorKey.ts lib/hooks/usePagedList.ts lib/server/operationsResponseOwnerKey.ts lib/server/operationsCollectionHandler.ts lib/server/analyticsSnapshotHandler.ts lib/server/calendarExportHandler.ts lib/services/operationsPageService.ts tests/analytics-actor-key.test.ts tests/rc18-owner-contract-server.test.ts tests/rc18-browser-owner-contract.test.ts
+        run: pnpm exec eslint lib/auth/operationsActorKey.ts lib/hooks/usePagedList.ts components/features/analytics/DashboardAnalytics.tsx playwright.rc18-analytics.config.ts e2e/rc18-analytics-browser.spec.ts lib/server/operationsResponseOwnerKey.ts lib/server/operationsCollectionHandler.ts lib/server/analyticsSnapshotHandler.ts lib/server/calendarExportHandler.ts lib/services/operationsPageService.ts tests/analytics-actor-key.test.ts tests/rc18-owner-contract-server.test.ts tests/rc18-browser-owner-contract.test.ts
       - name: Actor isolation and page cache tests
         run: node --import ./tests/typescript-alias-loader.mjs --test tests/analytics-actor-key.test.ts tests/operations-page-cache.test.ts tests/auth-identity-bridge.test.tsx tests/rc18-owner-contract-server.test.ts tests/rc16k-pagination.test.ts tests/report-null-semantics-consumers.test.ts
       - name: Full isolated source regression inventory
@@ -37,6 +37,10 @@ jobs:
           SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
           TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
         run: node scripts/run-final-regression.mjs
+      - name: Install Chromium for isolated RC18 browser smoke
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Analytics Chromium render/reload/filter/mobile smoke (mock-only)
+        run: pnpm exec playwright test --config playwright.rc18-analytics.config.ts --reporter=line
       - name: Production-equivalent build without DB writes
         env:
           NEXT_PUBLIC_SUPABASE_URL: ''
