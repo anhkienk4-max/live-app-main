@@ -23,6 +23,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { searchEligibleSwapShifts } from "@/lib/utils/swapEligibleShiftPicker";
 import {
   Select,
   SelectContent,
@@ -36,6 +38,9 @@ import { format } from "date-fns";
 import { useCurrentUser } from "@/lib/hooks/useCurrentUser";
 import { useTranslation } from "@/lib/i18n";
 import { formatShiftTimeRange } from "@/lib/utils/shiftUtils";
+
+const EMPTY_REGISTERED_ROLES: Record<string, OperationalRole[]> = {};
+const EMPTY_REGISTRATION_IDS: Record<string, string> = {};
 
 interface SwapRequestFormModalProps {
   open: boolean;
@@ -75,18 +80,25 @@ export function SwapRequestFormModal({
   const [errors, setErrors] = React.useState<
     Partial<Record<keyof FormData, string>>
   >({});
-  const [registeredRoles, setRegisteredRoles] = React.useState<
-    Record<string, OperationalRole[]>
-  >({});
-  const [registrationIds, setRegistrationIds] = React.useState<
-    Record<string, string>
-  >({});
+  const [registrationLoad, setRegistrationLoad] = React.useState<{
+    ownerId: string;
+    roles: Record<string, OperationalRole[]>;
+    ids: Record<string, string>;
+    error: string | null;
+  } | null>(null);
+  const [shiftSearch, setShiftSearch] = React.useState("");
+  const submitLock = React.useRef(false);
   const { toast } = useToast();
   const { currentUser } = useCurrentUser();
   const { t } = useTranslation();
   const tr = t as unknown as (key: string) => string;
 
   const currentUserId = currentUser?.id;
+  // A response for an earlier actor must never authorize the new actor's form.
+  const registrationReady = Boolean(open && currentUserId && registrationLoad?.ownerId === currentUserId && registrationLoad.error === null);
+  const registeredRoles = registrationReady && registrationLoad ? registrationLoad.roles : EMPTY_REGISTERED_ROLES;
+  const registrationIds = registrationReady && registrationLoad ? registrationLoad.ids : EMPTY_REGISTRATION_IDS;
+  const registrationError = open && registrationLoad?.ownerId === currentUserId ? registrationLoad.error : null;
 
   // A. Form initialization
   React.useEffect(() => {
@@ -100,31 +112,35 @@ export function SwapRequestFormModal({
         reason: "",
       });
       setErrors({});
+      setShiftSearch("");
     });
     return () => cancelAnimationFrame(frame);
   }, [open, currentUserId]);
 
-  // B. Canonical registration loading
+  // B. Canonical registration loading: fail closed on fetch error or identity switch.
   React.useEffect(() => {
-    if (open && currentUserId) {
-      void shiftRegistrationService
-        .getForUser(currentUserId)
-        .then((registrations) => {
-          const next: Record<string, OperationalRole[]> = {};
-          const ids: Record<string, string> = {};
-          registrations
-            .filter(isStaffedRegistration)
-            .forEach((registration) => {
-              (next[registration.shift_id] ??= []).push(
-                registration.operational_role,
-              );
-              ids[`${registration.shift_id}:${registration.operational_role}`] =
-                registration.id;
-            });
-          setRegisteredRoles(next);
-          setRegistrationIds(ids);
-        });
-    }
+    if (!open || !currentUserId) return;
+    let active = true;
+    void shiftRegistrationService.getForUser(currentUserId).then((registrations) => {
+      if (!active) return;
+      if (!Array.isArray(registrations)) throw new Error("REGISTRATION_RESPONSE_INVALID");
+      const roles: Record<string, OperationalRole[]> = {};
+      const ids: Record<string, string> = {};
+      for (const registration of registrations.filter(isStaffedRegistration)) {
+        (roles[registration.shift_id] ??= []).push(registration.operational_role);
+        ids[`${registration.shift_id}:${registration.operational_role}`] = registration.id;
+      }
+      setRegistrationLoad({ ownerId: currentUserId, roles, ids, error: null });
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setRegistrationLoad({
+        ownerId: currentUserId,
+        roles: {},
+        ids: {},
+        error: error instanceof Error ? error.message : "REGISTRATION_LOAD_FAILED",
+      });
+    });
+    return () => { active = false };
   }, [open, currentUserId]);
 
   const byRole = (role: "host" | "support" | "technical") =>
@@ -136,7 +152,9 @@ export function SwapRequestFormModal({
   const validateForm = (): boolean => {
     const newErrors: Partial<Record<keyof FormData, string>> = {};
 
-    if (!formData.shift_id)
+    if (!registrationReady || formData.requester_id !== currentUserId)
+      newErrors.shift_id = "Không thể xác minh ca được phân công. Hãy tải lại danh sách.";
+    if (!formData.shift_id || !registeredRoles[formData.shift_id]?.length)
       newErrors.shift_id =
         tr("selectAssignedShift") || "Select one of your assigned shifts";
     if (!formData.operational_role)
@@ -176,10 +194,10 @@ export function SwapRequestFormModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!validateForm()) {
-      return;
-    }
+    if (submitLock.current || !registrationReady) return;
+    if (!validateForm()) return;
 
+    submitLock.current = true;
     setSubmitting(true);
 
     try {
@@ -240,6 +258,7 @@ export function SwapRequestFormModal({
         variant: "destructive",
       });
     } finally {
+      submitLock.current = false;
       setSubmitting(false);
     }
   };
@@ -254,8 +273,8 @@ export function SwapRequestFormModal({
     "Unknown";
 
   const eligibleShifts = React.useMemo(
-    () => shifts.filter((s) => (registeredRoles[s.id] || []).length > 0),
-    [shifts, registeredRoles],
+    () => searchEligibleSwapShifts(shifts, registeredRoles, shiftSearch, brands, platforms),
+    [shifts, registeredRoles, shiftSearch, brands, platforms],
   );
   const selectedShift = shifts.find((s) => s.id === formData.shift_id);
 
@@ -284,8 +303,26 @@ export function SwapRequestFormModal({
               {tr("selectYourShift") || "Select Your Shift"}{" "}
               <span className="text-red-500">*</span>
             </label>
+            <Input
+              aria-label="Tìm ca được phân công"
+              value={shiftSearch}
+              onChange={(event) => setShiftSearch(event.target.value)}
+              placeholder="Tìm theo ngày, giờ, brand, nền tảng..."
+              className="mb-2"
+              disabled={!registrationReady}
+            />
+            {registrationError && <p role="alert" className="mb-2 text-xs text-red-600">
+              Không tải được ca đã phân công: {registrationError}
+            </p>}
+            {!registrationReady && !registrationError && <p role="status" className="mb-2 text-xs text-slate-500">
+              Đang kiểm tra các ca bạn được phân công...
+            </p>}
+            {registrationReady && eligibleShifts.length === 0 && <p role="status" className="mb-2 text-xs text-slate-500">
+              Không có ca phù hợp. Hãy thử từ khóa khác.
+            </p>}
             <Select
               value={formData.shift_id}
+              disabled={!registrationReady || eligibleShifts.length === 0}
               onValueChange={(value) => {
                 const roles = registeredRoles[value] || [];
                 setFormData({
@@ -507,7 +544,7 @@ export function SwapRequestFormModal({
             >
               {tr("cancel") || "Cancel"}
             </Button>
-            <Button type="submit" disabled={submitting}>
+            <Button type="submit" disabled={submitting || !registrationReady}>
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {tr("submitRequest") || "Submit Request"}
             </Button>
