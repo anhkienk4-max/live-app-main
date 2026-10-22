@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { currentUserService } from '@/lib/services/dataService'
+import { operationsActorCacheKey } from '@/lib/auth/operationsActorKey'
 import { useListPagination } from '@/lib/hooks/useListPagination'
 import type { ListFilters, ListPage, ListQuery } from '@/lib/services/operationsPageService'
 import type { PageSize } from '@/lib/utils/pagination'
@@ -14,7 +15,7 @@ import {
 export function usePagedList<T>(service: { getPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<T>> }, prefix: string, filters: ListFilters = {}, defaultSize: PageSize = 20) {
   const pagination = useListPagination(prefix, defaultSize)
   const { currentUser } = useCurrentUser()
-  const identity = currentUser ? currentUser.id + ':' + currentUser.system_permission + ':' + currentUser.updated_at : ''
+  const identity = currentUser ? operationsActorCacheKey(currentUser) : ''
   const { page, pageSize, navigate } = pagination
   const encodedFilters = JSON.stringify(filters)
   const [revision, setRevision] = useState(0)
@@ -33,7 +34,7 @@ export function usePagedList<T>(service: { getPage(query: ListQuery, signal?: Ab
     const currentQuery: ListQuery = { page, pageSize, filters: JSON.parse(encodedFilters) }
     const stillSameActor = async () => {
       const actor = await currentUserService.getCurrent()
-      return !!actor && identity === actor.id + ':' + (actor.system_permission ?? actor.role) + ':' + actor.updated_at
+      return !!actor && identity === operationsActorCacheKey(actor)
     }
     // A cached, role-scoped page can render immediately without opening a new request.
     if (readPageCache<ListPage<T>>(pageCacheKey(identity, prefix, currentQuery))) {

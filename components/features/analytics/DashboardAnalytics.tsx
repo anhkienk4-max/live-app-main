@@ -192,7 +192,7 @@ export function DashboardAnalytics() {
   const visibleReports = pageResult?.items ?? []
   const selectedShift = selectedReport ? shiftById.get(selectedReport.shift_id) : undefined
   const platformData = dimensionData('platform')
-  return <div className="min-w-0 space-y-3 text-slate-900">
+  return <div className="min-w-0 space-y-3 text-slate-900" data-testid="analytics-ready">
     <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-3">
       <div><h1 className="text-xl font-semibold tracking-tight">{t('analyticsTitle')}</h1><p className="mt-1 text-xs text-slate-500">{t('analyticsSubtitle')}</p></div>
       <div className="flex flex-wrap gap-2"><Button size="sm" variant={compare ? 'default' : 'outline'} onClick={() => setCompare(!compare)}>{t('previousPeriod')}</Button>{currentUser && hasPermission(currentUser,'reports.export') && <Button size="sm" variant="outline" onClick={()=>void exportComplete()}><Download className="mr-2 h-4 w-4" />{t('exportExcel')}</Button>}<Button size="sm" variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="analytics-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button></div>
