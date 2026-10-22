@@ -68,7 +68,7 @@ export function StaffingWorkspace() {
     setFilters(draftFilters)
     setDate(draftDate)
     setGapsOnly(draftGapsOnly)
-    setPage(1)
+    navigate({ staffing_page: null, gap: draftGapsOnly ? 'missing' : null }, true)
     setSelectedId(null)
     setShowFilters(false)
   }
@@ -76,12 +76,10 @@ export function StaffingWorkspace() {
     setFilters({brandIds:[],platformIds:[],campaignIds:[],roles:[],statuses:[]})
     setDraftFilters({brandIds:[],platformIds:[],campaignIds:[],roles:[],statuses:[]})
     setDate('');setDraftDate('');setGapsOnly(false);setDraftGapsOnly(false)
-    setQuery('');setPage(1);setSelectedId(null);setShowFilters(false)
-    const url = new URL(window.location.href)
-    if (url.searchParams.has('gap')) {
-      url.searchParams.delete('gap')
-      window.history.replaceState(window.history.state, '', url.pathname + url.search)
-    }
+    setQuery('')
+    navigate({ staffing_page: null, gap: null }, true)
+    setSelectedId(null)
+    setShowFilters(false)
   }
   const encodedFilters = JSON.stringify({ search: query, from: date || undefined, to: date || undefined,
     brandIds: filters.brandIds, platformIds: filters.platformIds, campaignIds: filters.campaignIds,
