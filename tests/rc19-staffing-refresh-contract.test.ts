@@ -5,7 +5,7 @@ import test from 'node:test'
 
 const root = path.resolve(import.meta.dirname, '..')
 const panel = fs.readFileSync(path.join(root, 'components/features/calendar/StaffingActionPanel.tsx'), 'utf8')
-const patcher = fs.readFileSync(path.join(root, 'apply_rc19_1b.py'), 'utf8')
+const hook = fs.readFileSync(path.join(root, 'lib/hooks/useShiftChangeRefresh.ts'), 'utf8')
 
 test('after a committed write the current tab refreshes and other tabs receive a storage notification', () => {
   assert.match(panel, /if \(writeCommitted\) \{/)
@@ -14,10 +14,10 @@ test('after a committed write the current tab refreshes and other tabs receive a
   assert.match(panel, /catch \{ \/\* Same-tab event and reconciliation remain active\. \*\/ \}/)
 })
 
-test('the patcher installs and removes a cross-tab listener without overwriting unrelated source', () => {
-  assert.match(patcher, /hook_path = REPO \/ REFRESH_HOOK_NAME/)
-  assert.match(patcher, /window\.addEventListener\('storage', storageListener\)/)
-  assert.match(patcher, /window\.removeEventListener\('storage', storageListener\)/)
-  assert.match(patcher, /hook_path\.read_bytes\(\) != hook_before/)
-  assert.match(patcher, /if hook_wrote and hook_path\.read_bytes\(\) == hook_updated_bytes/)
+test('the installed hook receives cross-tab changes and cleans up the listener', () => {
+  assert.match(hook, /const storageListener = \(event: StorageEvent\)/)
+  assert.match(hook, /event\.key === `\$\{SHIFT_DATA_CHANGED_EVENT\}:storage`/)
+  assert.match(hook, /window\.addEventListener\('storage', storageListener\)/)
+  assert.match(hook, /window\.removeEventListener\('storage', storageListener\)/)
+  assert.match(hook, /window\.removeEventListener\(SHIFT_DATA_CHANGED_EVENT, listener\)/)
 })
