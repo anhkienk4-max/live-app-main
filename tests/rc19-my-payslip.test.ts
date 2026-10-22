@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createMyPayslipHandler } from '../lib/server/myPayslipHandler.ts'
+import { readFileSync } from 'node:fs'
 
 const person=(id:string)=>async()=>({id:'auth-'+id,businessUserId:id,systemPermission:'member' as const})
 const locked={id:'period-1',period_start:'2026-10-01',period_end:'2026-10-31',status:'locked',locked_at:'2026-11-05T10:00:00Z',revision:1}
@@ -100,4 +101,16 @@ test('DB failure never returns partial income, cap overflow is rejected',async()
   const over=fakeDb({periods:Array.from({length:13},(_,i)=>({...locked,id:'p-'+i}))})
   const handler=createMyPayslipHandler({createClient:over.client as never,resolveUser:person('staff-one'),isEnabled:()=>true})
   assert.equal((await handler.GET(request())).status,409)
+})
+
+test('Member payroll screen is segregated from Admin management and disabled by default',()=>{
+  const page=readFileSync(new URL('../app/(dashboard)/payroll/page.tsx',import.meta.url),'utf8')
+  const ui=readFileSync(new URL('../components/features/payroll/MyPayslipPanel.tsx',import.meta.url),'utf8')
+  assert.match(page,/resolveSystemPermission\(currentUser\)==='admin'/)
+  assert.match(page,/NEXT_PUBLIC_FEATURE_MY_PAYSLIP==='true'/)
+  assert.match(page,/MyPayslipPanel key=/)
+  assert.match(ui,/credentials:'same-origin',cache:'no-store'/)
+  assert.match(ui,/scope/)
+  assert.doesNotMatch(ui,/staff_id=/)
+  assert.match(ui,/Chưa có kỳ lương đã khóa/)
 })

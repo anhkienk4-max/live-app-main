@@ -14,6 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
+import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { MyPayslipPanel } from '@/components/features/payroll/MyPayslipPanel'
 import { useTranslation } from '@/lib/i18n'
 import type { User as BusinessUser } from '@/lib/types/database.types'
 import { resolveSystemPermission } from '@/lib/permissions'
@@ -33,6 +35,17 @@ import { PayrollAuditTimeline } from '@/components/features/payroll/PayrollAudit
 import { PayrollRoomRules } from '@/components/features/payroll/PayrollRoomRules'
 
 export default function PayrollPage() {
+  const { translate } = useTranslation()
+  const { currentUser, loading, authIdentity } = useCurrentUser()
+  if(loading)return <PageShell archetype="command" className="p-4 md:p-6"><p role="status">Đang xác minh phiên đăng nhập…</p></PageShell>
+  if(!currentUser)return <PageShell archetype="command" className="p-4 md:p-6"><p role="alert">Vui lòng đăng nhập.</p></PageShell>
+  if(resolveSystemPermission(currentUser)==='admin')return <AdminPayrollPage />
+  if(process.env.NEXT_PUBLIC_FEATURE_MY_PAYSLIP==='true')
+    return <MyPayslipPanel key={(authIdentity?.auth_user_id??'')+':'+currentUser.id}/>
+  return <PageShell archetype="command" className="p-4 md:p-6"><p role="status">{translate('Phiếu lương cá nhân chưa được bật.')}</p></PageShell>
+}
+
+function AdminPayrollPage() {
   const { translate } = useTranslation()
   const { currentUser, loading, error, capabilities, identityKey } = useWorkforceCapabilities()
   if (loading) return <PageShell archetype="command" className="p-4 md:p-6"><p role="status">{translate('Đang xác minh phiên đăng nhập và quyền truy cập…')}</p></PageShell>
