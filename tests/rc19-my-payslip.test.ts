@@ -12,7 +12,7 @@ const actual={id:'seg-1',staff_id:'staff-one',shift_id:'shift-1',operational_rol
   review_status:'approved',actual_start_at:'2026-10-20T10:00:00Z',actual_end_at:'2026-10-20T12:00:00Z'}
 const shift={id:'shift-1',date:'2026-10-20',title:'Livestream shift',brand_id:'b1',platform_id:'p1'}
 type DBName='workforce_payroll_periods'|'workforce_payroll_lines'|'workforce_actual_segments'|'shifts'
-function fakeDb(options:{periods?:object[],lines?:object[],actuals?:object[],shifts?:object[],errors?:string[]}={}){
+function fakeDb(options:{periods?:object[],lines?:object[],actuals?:object[],shifts?:object[],errors?:string[],ignoreStaffScope?:boolean}={}){
   const calls:Array<{table:string;method:string;field?:string;value?:unknown}>=[]
   const pools:Record<DBName,object[]>={
     workforce_payroll_periods: options.periods??[locked],
@@ -34,7 +34,7 @@ function fakeDb(options:{periods?:object[],lines?:object[],actuals?:object[],shi
         order(){return builder},
         limit(n:number){calls.push({table,method:'limit',value:n});rows=rows.slice(0,n);return builder},
         then(resolve:(x:unknown)=>unknown,reject?:(e:unknown)=>unknown){
-          for(const f of filters){rows=rows.filter(r=>(r as Record<string,unknown>)[f.field]===f.value)}
+          for(const f of filters){if(f.field==='staff_id'&&options.ignoreStaffScope)continue;rows=rows.filter(r=>(r as Record<string,unknown>)[f.field]===f.value)}
           const error=options.errors?.includes(table)?{message:'unavailable'}:null
           return Promise.resolve({data:rows,error}).then(resolve,reject)
         }
@@ -79,7 +79,7 @@ test('cross-user leakage and unapproved actual evidence fail closed even if DB f
     {actuals:[{...actual,staff_id:'other-user'}]},
     {lines:[{...line,net_vnd:10}]}]
   for(const opt of cases){
-    const db=fakeDb(opt)
+    const db=fakeDb({...opt,ignoreStaffScope:true})
     const handler=createMyPayslipHandler({createClient:db.client as never,resolveUser:person('staff-one'),isEnabled:()=>true})
     assert.equal((await handler.GET(request())).status,409)
   }
