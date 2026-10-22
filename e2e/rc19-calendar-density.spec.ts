@@ -13,17 +13,23 @@ for (const width of [390, 768, 1440]) {
 
     // Visual regression of a grid containing many real-world ca labels.
     await page.getByRole('button', { name: 'Tháng', exact: true }).click()
-    const monthEvent = page.locator('[data-testid^="calendar-event-"]:visible').first()
-    await expect(monthEvent).toBeVisible({ timeout: 30_000 })
-    await expect(monthEvent).toHaveClass(/h-7/)
+    if (width >= 1024) {
+      // A real 7-column MonthView is desktop-only.
+      const monthEvent = page.locator('[data-testid^="calendar-event-"]:visible').first()
+      await expect(monthEvent).toBeVisible({ timeout: 30_000 })
+      await expect(monthEvent).toHaveClass(/h-7/)
+      await expect(monthEvent).toHaveAttribute('title', /.+/)
+      await monthEvent.click()
+      await expect(page.getByRole('dialog')).toBeVisible()
+      await page.keyboard.press('Escape')
+    } else {
+      // CalendarView intentionally uses a DayView agenda at tablet and mobile.
+      await expect(page.getByTestId('calendar-mobile-agenda')).toBeVisible({timeout:30_000})
+      await expect(page.getByTestId('calendar-agenda-date')).toBeVisible()
+      await expect(page.locator('[data-testid^="calendar-event-"]:visible')).toHaveCount(0)
+    }
     await expect.poll(() => page.evaluate(() =>
       document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
-
-    // Event information remains reachable; compact cards are not inert pixels.
-    await expect(monthEvent).toHaveAttribute('title', /.+/)
-    await monthEvent.click()
-    await expect(page.getByRole('dialog')).toBeVisible()
-    await page.keyboard.press('Escape')
 
     await page.getByRole('button', { name: 'Tuần', exact: true }).click()
     await expect.poll(() => page.evaluate(() =>
