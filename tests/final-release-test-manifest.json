@@ -147,6 +147,7 @@
     "tests/rc18a-shift-change-subscription.test.ts",
     "tests/rc18a-shift-date-window.test.ts",
     "tests/rc18a-shift-list-url-state.test.ts",
+    "tests/rc19-self-attendance-contract.test.ts",
     "tests/rc19-staffing-availability-sql.test.ts",
     "tests/rc19-staffing-candidate-contract.test.ts",
     "tests/rc19-staffing-candidates.test.ts",
