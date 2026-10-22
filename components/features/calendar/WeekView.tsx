@@ -92,7 +92,7 @@ export function WeekView({
       </div>
       {/* DESKTOP: Horizontally scrollable true-time grid */}
       <div
-        className="hidden sm:block overflow-x-auto relative bg-background"
+        className="relative hidden max-w-full min-w-0 overflow-x-auto overscroll-x-contain rounded-md border bg-background sm:block"
         style={{ scrollbarWidth: "thin" }}
       >
         {shifts.length === 0 && (
@@ -121,8 +121,8 @@ export function WeekView({
           </div>
         )}
         <div
-          className="grid min-w-[700px]"
-          style={{ gridTemplateColumns: `${TIME_COLUMN_WIDTH}px repeat(7, minmax(90px, 1fr))` }}
+          className="grid min-w-[1080px]"
+          style={{ gridTemplateColumns: `${TIME_COLUMN_WIDTH}px repeat(7, minmax(140px, 1fr))` }}
         >
           {/* Header Row */}
           <div className="sticky top-0 z-30 bg-background border-b border-border border-r"></div>
@@ -193,7 +193,7 @@ export function WeekView({
                 return (
                   <div
                     key={`col-${day.toString()}`}
-                    className={`flex-1 relative border-r last:border-r-0 border-border/40 ${isToday ? "bg-primary/[0.02]" : ""}`}
+                    className={`min-w-0 flex-1 relative border-r last:border-r-0 border-border/40 ${isToday ? "bg-primary/[0.02]" : ""}`}
                   >
                     {isToday && today.getHours() >= firstHour && (
                       <div
@@ -233,13 +233,13 @@ export function WeekView({
                             title={[shift.title, formatShiftTimeRange(shift)].filter(Boolean).join(" · ")}
                             aria-label={[shift.title || shift.id, formatShiftTimeRange(shift), t("viewDetails")].join(" · ")}
                             shift={shift}
-                            variant="expanded"
+                            variant="embedded"
                           users={users}
                           showDate
                             onClick={() => onShiftClick?.(shift)}
                             context={context}
                             isToday={isToday}
-                            className="h-full items-start border bg-card"
+                            className="h-full min-w-0 border bg-card"
                           />}
                         </div>
                       );
