@@ -16,10 +16,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { strict as assert } from 'node:assert'
 
-const base = new URL(process.env.ADA_OPS_BASE_URL || 'https://ops5729.top')
+const configuredTarget = process.env.ADA_OPS_BASE_URL
+assert(configuredTarget, 'ADA_OPS_BASE_URL must explicitly select an authorized Preview/Staging target')
+const base = new URL(configuredTarget)
 const cdp = process.env.ADA_CDP_URL || 'http://127.0.0.1:9222'
 const repeat = Number(process.env.ADA_UAT_ITERATIONS || '20')
 assert(base.protocol === 'https:' || base.hostname === 'localhost', 'Use an HTTPS test target')
+// Route cycling may trigger status refresh writes. Never run this harness on Production.
+assert(!['ops5729.top', 'www.ops5729.top'].includes(base.hostname),
+  'PRODUCTION_ROUTE_CYCLE_FORBIDDEN: use an authorized Preview/Staging deployment')
 assert(Number.isInteger(repeat) && repeat >= 1 && repeat <= 100, 'Invalid iteration count')
 if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(cdp)) {
   throw new Error('CDP must be bound to localhost (127.0.0.1)')
@@ -55,15 +60,15 @@ page.on('console', message => {
   if (code) events.push({ phase, phaseIndex, source: 'console', code })
 })
 page.on('pageerror', error => {
-  const code = safeCode(error.message)
-  if (code) events.push({ phase, phaseIndex, source: 'pageerror', code })
+  const code = safeCode(error.message) || safeCode(error.stack || '') || 'UNCLASSIFIED_PAGE_ERROR'
+  events.push({ phase, phaseIndex, source: 'pageerror', code })
 })
 page.on('response', response => {
   const url = new URL(response.url())
   if (url.origin !== base.origin || !url.pathname.startsWith('/api/operations/')) return
   const record = { phase, phaseIndex, source: 'http', path: url.pathname, status: response.status() }
   events.push(record)
-  if (!url.pathname.endsWith('/collection')) return
+  if (!url.pathname.endsWith('/collection') && !url.pathname.endsWith('/analytics-snapshot')) return
   // A response owner may be compared across requests, but is never saved raw.
   void response.json().then(body => {
     if (typeof body?.ownerKey !== 'string') return
@@ -96,8 +101,8 @@ async function inspect(label) {
   const errors = [...new Set(relevant.filter(e => e.code).map(e => e.code))]
   const failed = view.identityChanged || view.authRequired || view.loading ||
     view.route !== '/analytics' || errors.includes('REACT_321') ||
-    errors.includes('REACT_INVALID_HOOK_CALL') ||
-    relevant.some(e => e.source === 'http' && e.status >= 500)
+    errors.includes('REACT_INVALID_HOOK_CALL') || errors.includes('UNCLASSIFIED_PAGE_ERROR') ||
+    relevant.some(e => e.source === 'http' && (e.status >= 500 || e.status === 401 || e.status === 403))
   checks.push({ label, ...view, errors, failed,
     collectionStatus: relevant.filter(e => e.path?.endsWith('/collection'))
       .map(e => ({ status: e.status, ownerAlias: e.ownerAlias || 'not-reported', code: e.code || null })),
