@@ -29,6 +29,16 @@ for(const width of [390,1440]){
     await page.goto('/payroll')
     await page.getByRole('tab',{name:'Nội quy & Case vi phạm'}).click()
     await expect(page.getByTestId('payroll-room-rules')).toBeVisible()
+    await expect(page.getByTestId('ada-full-rulebook')).toBeVisible()
+    await expect(page.getByTestId('payroll-attendance-link')).toBeVisible()
+    for (const section of ['I','II','III','IV','V','VI']) {
+      await expect(page.getByTestId('room-rule-section-'+section)).toHaveCount(1)
+    }
+    await page.getByLabel('Tìm nội quy').fill('nước mía')
+    await expect(page.getByTestId('room-rule-section-I')).toContainText('nước mía')
+    await page.getByLabel('Tìm nội quy').fill('')
+    // No payroll writes or inferred violations when attendance has not been explicitly loaded.
+    await expect(page.getByTestId('payroll-attendance-link')).toContainText('Dữ liệu đọc trực tiếp')
     await page.getByLabel('Ngày ca').fill('2026-10-22')
     await page.getByLabel('Tiền ca').fill('200000')
     await page.getByLabel('Giờ live').fill('2026-10-22T10:00')
