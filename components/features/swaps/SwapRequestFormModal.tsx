@@ -46,6 +46,9 @@ interface SwapRequestFormModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   shifts: Shift[];
+  sourceShiftsReady: boolean;
+  sourceShiftsError: string | null;
+  onRetrySourceShifts: () => void;
   users: UserDirectoryEntry[];
   brands: Brand[];
   platforms: Platform[];
@@ -64,6 +67,9 @@ export function SwapRequestFormModal({
   open,
   onOpenChange,
   shifts,
+  sourceShiftsReady,
+  sourceShiftsError,
+  onRetrySourceShifts,
   users,
   brands,
   platforms,
@@ -99,6 +105,7 @@ export function SwapRequestFormModal({
   const registeredRoles = registrationReady && registrationLoad ? registrationLoad.roles : EMPTY_REGISTERED_ROLES;
   const registrationIds = registrationReady && registrationLoad ? registrationLoad.ids : EMPTY_REGISTRATION_IDS;
   const registrationError = open && registrationLoad && registrationLoad.ownerId === currentUserId ? registrationLoad.error : null;
+  const formReady = registrationReady && sourceShiftsReady;
 
   // A. Form initialization
   React.useEffect(() => {
@@ -152,7 +159,7 @@ export function SwapRequestFormModal({
   const validateForm = (): boolean => {
     const newErrors: Partial<Record<keyof FormData, string>> = {};
 
-    if (!registrationReady || formData.requester_id !== currentUserId)
+    if (!formReady || formData.requester_id !== currentUserId)
       newErrors.shift_id = "Không thể xác minh ca được phân công. Hãy tải lại danh sách.";
     if (!formData.shift_id || !registeredRoles[formData.shift_id]?.length)
       newErrors.shift_id =
@@ -194,7 +201,7 @@ export function SwapRequestFormModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (submitLock.current || !registrationReady) return;
+    if (submitLock.current || !formReady) return;
     if (!validateForm()) return;
 
     submitLock.current = true;
@@ -309,8 +316,13 @@ export function SwapRequestFormModal({
               onChange={(event) => setShiftSearch(event.target.value)}
               placeholder="Tìm theo ngày, giờ, brand, nền tảng..."
               className="mb-2"
-              disabled={!registrationReady}
+              disabled={!formReady}
             />
+            {!sourceShiftsReady && !sourceShiftsError && <p role="status" className="mb-2 text-xs text-slate-500">Đang tải ca được phân công...</p>}
+            {sourceShiftsError && <div role="alert" className="mb-2 flex items-center gap-2 text-xs text-red-600">
+              <span>Không tải được ca: {sourceShiftsError}</span>
+              <Button type="button" variant="outline" size="sm" onClick={onRetrySourceShifts}>Thử lại</Button>
+            </div>}
             {registrationError && <p role="alert" className="mb-2 text-xs text-red-600">
               Không tải được ca đã phân công: {registrationError}
             </p>}
@@ -322,7 +334,7 @@ export function SwapRequestFormModal({
             </p>}
             <Select
               value={formData.shift_id}
-              disabled={!registrationReady || eligibleShifts.length === 0}
+              disabled={!formReady || eligibleShifts.length === 0}
               onValueChange={(value) => {
                 const roles = registeredRoles[value] || [];
                 setFormData({
@@ -544,7 +556,7 @@ export function SwapRequestFormModal({
             >
               {tr("cancel") || "Cancel"}
             </Button>
-            <Button type="submit" disabled={submitting || !registrationReady}>
+            <Button type="submit" disabled={submitting || !formReady}>
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {tr("submitRequest") || "Submit Request"}
             </Button>

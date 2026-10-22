@@ -71,6 +71,36 @@ export function SwapRequestList() {
   const identity = currentUser ? currentUser.id + ':' + (currentUser.system_permission ?? currentUser.role) : ''
   const [loadedIdentity, setLoadedIdentity] = React.useState('')
   const [formShifts, setFormShifts] = React.useState<Shift[]>([])
+  const [formFetchState, setFormFetchState] = React.useState<{
+    ownerId: string
+    status: 'loading' | 'ready' | 'error'
+    error?: string
+  } | null>(null)
+  const formRequestRef = React.useRef(0)
+  const loadFormShifts = React.useCallback((ownerId: string) => {
+    const request = ++formRequestRef.current
+    setFormShifts([])
+    setFormFetchState({ ownerId, status: 'loading' })
+    void shiftService.getAllFiltered({ assignedUserIds: [ownerId], statuses: ['scheduled'] })
+      .then(items => {
+        if (request !== formRequestRef.current) return
+        setFormShifts(items)
+        setFormFetchState({ ownerId, status: 'ready' })
+      })
+      .catch(error => {
+        if (request !== formRequestRef.current) return
+        setFormFetchState({ ownerId, status: 'error', error: error instanceof Error ? error.message : 'Không thể tải ca được phân công' })
+      })
+  }, [])
+  const openForm = () => {
+    if (!currentUser) return
+    setShowForm(true)
+    loadFormShifts(currentUser.id)
+  }
+  const onFormOpenChange = (next: boolean) => {
+    if (!next) formRequestRef.current += 1
+    setShowForm(next)
+  }
 
   const loadData = React.useCallback(async () => {
     const request=next()
@@ -197,12 +227,7 @@ export function SwapRequestList() {
         <button type="button" aria-pressed={scope === 'mine'} onClick={() => selectScope('mine')} className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-xs ${scope === 'mine' ? 'border-violet-600 font-semibold text-violet-700' : 'border-transparent text-slate-500'}`}>My requests <strong>{counts.mine??0}</strong></button>
         <button type="button" aria-pressed={scope === 'forMe'} onClick={() => selectScope('forMe')} className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-xs ${scope === 'forMe' ? 'border-emerald-600 font-semibold text-emerald-700' : 'border-transparent text-slate-500'}`}>For me <strong>{counts.forMe??0}</strong></button>
       </nav>
-      {currentUser && hasPermission(currentUser, 'swaps.request') && <Button size="sm" className="mr-1 shrink-0" onClick={() => {
-        if (!currentUser) return
-        void shiftService.getAllFiltered({assignedUserIds:[currentUser.id],statuses:['scheduled']})
-          .then(items => {setFormShifts(items);setShowForm(true)})
-          .catch(error => setLoadError(error instanceof Error ? error.message : t('error')))
-      }}><Plus className="mr-1.5 h-4 w-4" />{t('swapsTitle')}</Button>}
+      {currentUser && hasPermission(currentUser, 'swaps.request') && <Button size="sm" className="mr-1 shrink-0" onClick={openForm}><Plus className="mr-1.5 h-4 w-4" />{t('swapsTitle')}</Button>}
     </div>
 
     <section className="rounded-lg border border-slate-200 bg-white p-3">
@@ -286,7 +311,11 @@ export function SwapRequestList() {
     })}</tbody></table></div><HistoryPagination page={safePage} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} /></CardContent></Card>}
 
 
-    {showForm && currentUser && <SwapRequestFormModal open={showForm} onOpenChange={setShowForm} shifts={formShifts} users={directory} brands={brands} platforms={platforms} onSuccess={() => { void loadData(); setShowForm(false) }} />}
+    {showForm && currentUser && <SwapRequestFormModal open={showForm} onOpenChange={onFormOpenChange} shifts={formShifts} users={directory} brands={brands} platforms={platforms}
+      sourceShiftsReady={formFetchState?.ownerId === currentUser.id && formFetchState.status === 'ready'}
+      sourceShiftsError={formFetchState?.ownerId === currentUser.id && formFetchState.status === 'error' ? formFetchState.error ?? 'Không thể tải ca được phân công' : null}
+      onRetrySourceShifts={() => loadFormShifts(currentUser.id)}
+      onSuccess={() => { void loadData(); onFormOpenChange(false) }} />}
     {selectedSwap && <SwapDetailModal open swap={selectedSwap} shift={shiftById.get(selectedSwap.shift_id)!} requester={displayUsers.find(user => user.id === selectedSwap.requester_id)!} newHost={displayUsers.find(user => user.id === replacementFor(selectedSwap))} brands={brands} platforms={platforms} showParticipantActions={getSwapUiActions(selectedSwap, currentUser).showAccept} showReviewerActions={getSwapUiActions(selectedSwap, currentUser).showReviewerReject} onAccept={() => runReview(selectedSwap, 'accept')} onParticipantReject={() => runReview(selectedSwap, 'counterpart_reject')} onOpenChange={open => !open && setSelectedSwap(null)} onApprove={() => runReview(selectedSwap, 'approve')} onReject={() => runReview(selectedSwap, 'reject')} />}
     <LifecycleActionDialog open={Boolean(cancelTarget)} onOpenChange={open => !open && setCancelTarget(null)} title="Cancel swap request" impact={cancelImpact} confirmText="Cancel request" onConfirm={cancelSwap} />
   </div>

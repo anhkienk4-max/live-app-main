@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { searchEligibleSwapShifts } from '../lib/utils/swapEligibleShiftPicker.ts'
 import type { Shift, OperationalRole } from '../lib/types/database.types.ts'
 
@@ -32,4 +34,14 @@ test('large directories are bounded and missing owner assignments return empty',
   assert.equal(searchEligibleSwapShifts(many,all,'',brands,platforms).length,50)
   assert.equal(searchEligibleSwapShifts(shifts,{},'',brands,platforms).length,0)
   assert.equal(searchEligibleSwapShifts(many,all,'',brands,platforms,3).length,3)
+})
+
+test('swap request opens immediately and failed source fetch is retried inside modal rather than failing whole page', () => {
+  const parent = readFileSync(fileURLToPath(new URL('../components/features/swaps/SwapRequestList.tsx', import.meta.url)), 'utf8')
+  const modal = readFileSync(fileURLToPath(new URL('../components/features/swaps/SwapRequestFormModal.tsx', import.meta.url)), 'utf8')
+  const before = parent.indexOf('setShowForm(true)\\n    loadFormShifts(currentUser.id)')
+  assert.ok(before >= 0, 'opening the modal must not wait for shift API response')
+  assert.match(parent, /sourceShiftsReady=\{formFetchState/)
+  assert.match(parent, /onRetrySourceShifts=/)
+  assert.match(modal, /disabled=\{submitting \|\| !formReady\}/)
 })
