@@ -233,7 +233,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
 
         const client = db()
         const attendanceReviewEnabled = (deps.isAttendanceReviewEnabled ?? (() => isFeatureEnabled('self_attendance_review')))()
-        const [segmentsRes, shiftRes, regsRes, swapsRes, attendanceRes] = await Promise.all([
+        const [segmentsRes, shiftRes, regsRes, swapsRes, attendanceRes, photoEvidenceRes] = await Promise.all([
           client.from('workforce_actual_segments')
             .select('id,shift_id,staff_id,operational_role,event_kind,coverage_kind,actual_start_at,actual_end_at,review_status,evidence_note,review_note,created_by,reviewed_by,reviewed_at,version,created_at')
             .eq('shift_id', shiftId).order('created_at', { ascending: true }).limit(200),
@@ -250,14 +250,21 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
           // Leave existing Workforce reads fully functional unless explicitly enabled.
           attendanceReviewEnabled
             ? client.from('self_attendance_events')
-              .select('id,shift_id,staff_id,operational_role,event_kind,recorded_at,verification_status')
+              .select('id,request_id,shift_id,staff_id,operational_role,event_kind,recorded_at,verification_status')
               .eq('shift_id', shiftId).order('recorded_at', {ascending: true}).limit(201)
+            : Promise.resolve({data: [], error: null}),
+          attendanceReviewEnabled
+            ? client.from('self_attendance_photo_evidence')
+              .select('request_id').eq('shift_id', shiftId).limit(201)
             : Promise.resolve({data: [], error: null}),
         ])
         if (segmentsRes.error) return fail('WORKFORCE_ACTUAL_READ_FAILED', 503)
-        if (attendanceRes.error) return fail('SELF_ATTENDANCE_REVIEW_UNAVAILABLE', 503)
+        if (attendanceRes.error || photoEvidenceRes.error)
+          return fail('SELF_ATTENDANCE_REVIEW_UNAVAILABLE', 503)
         // A truncated source must never be represented as a complete evidence set.
-        if ((attendanceRes.data?.length ?? 0) > 200) return fail('SELF_ATTENDANCE_REVIEW_LIMIT_EXCEEDED', 409)
+        if ((attendanceRes.data?.length ?? 0) > 200 ||
+          (photoEvidenceRes.data?.length ?? 0) > 200)
+          return fail('SELF_ATTENDANCE_REVIEW_LIMIT_EXCEEDED', 409)
         if (swapsRes?.error || regsRes?.error) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
         if (!shiftRes?.data) return fail('WORKFORCE_SHIFT_NOT_FOUND', 404)
 
@@ -292,7 +299,13 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
         return Response.json({
           ok: true,
           segments: enrichedSegments,
-          attendance_events: attendanceRes.data ?? [],
+          // Raw request UUID is a private linkage key, never an API response.
+          attendance_events: (attendanceRes.data ?? []).map(ev=>({
+            id:ev.id,shift_id:ev.shift_id,staff_id:ev.staff_id,
+            operational_role:ev.operational_role,event_kind:ev.event_kind,
+            recorded_at:ev.recorded_at,verification_status:ev.verification_status,
+            photo_available:(photoEvidenceRes.data??[]).some(photo=>photo.request_id===ev.request_id),
+          })),
           attendance_review_enabled: attendanceReviewEnabled,
           shift_context: shiftRes.data,
           planned_staff: regsRes?.data ?? [],
