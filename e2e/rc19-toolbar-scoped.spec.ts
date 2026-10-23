@@ -1,14 +1,27 @@
 import { expect, test } from '@playwright/test'
 
 test('Reports Apply/Reset has a labelled toolbar, committed chips and no mobile overflow',async({page})=>{
+  test.setTimeout(160_000) // Next cold-compiles the lazily loaded Reports module on first navigation.
+  const pageErrors:string[]=[]
+  page.on('pageerror',error=>pageErrors.push(error.message))
   await page.setViewportSize({width:390,height:850})
   await page.addInitScript(()=>{
     localStorage.setItem('livestream-ops-current-user','1')
     localStorage.setItem('livestream-ops-language','vi')
   })
-  await page.goto('/reports')
+  await page.goto('/reports',{waitUntil:'domcontentloaded'})
   const toolbar=page.getByTestId('command-toolbar')
-  await expect(toolbar).toBeVisible({timeout:35_000})
+  try {
+    await expect(toolbar).toBeVisible({timeout:90_000})
+  } catch (error) {
+    const body=(await page.locator('body').innerText().catch(()=>'' )).slice(0,2500)
+    const progress=await page.getByTestId('reports-progressive-shell').count()
+    const alert=await page.getByRole('alert').allInnerTexts().catch(()=>[])
+    throw new Error('REPORT_TOOLBAR_NOT_READY; url='+page.url()+
+      '; progressive_shell='+progress+'; alerts='+JSON.stringify(alert)+
+      '; pageErrors='+JSON.stringify(pageErrors)+'; body='+body+
+      '; original='+String(error).slice(0,500))
+  }
   await expect(toolbar).toHaveAttribute('aria-label',/.+/)
   const search=toolbar.locator('input').first()
   await search.fill('Brand sample')
