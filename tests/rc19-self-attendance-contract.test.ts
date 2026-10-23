@@ -239,3 +239,22 @@ test('recovery after page reload requires existing actor-scoped Drive proof and 
   assert.match(panel,/Khôi phục check-in đã gửi ảnh/)
   assert.match(panel,/if\(lock\.current\|\|!ready\|\|nextAction!=='check_in'\|\|!photoFeatureReady\)return/)
 })
+
+
+test('admin-only attendance Drive preflight is read-only and hides provider identity',()=>{
+  const source=readFileSync(new URL('../lib/server/selfAttendancePhotoHandler.ts',import.meta.url),'utf8')
+  const route=readFileSync(new URL('../app/api/workforce/self-attendance-photo/preflight/route.ts',import.meta.url),'utf8')
+  const preflight=source.slice(source.indexOf('export async function GET_PREFLIGHT'))
+  assert.ok(preflight.startsWith('export async function GET_PREFLIGHT'))
+  assert.match(preflight,/await requireRole\(request,'admin'\)/)
+  assert.match(preflight,/actor\.businessUserId/)
+  assert.match(preflight,/get_my_self_attendance/)
+  assert.match(preflight,/limit:6,windowMs:60\*60\*1000/)
+  assert.match(preflight,/await drive\.healthCheck\(\)/)
+  assert.match(preflight,/health\.root_readable!==true/)
+  assert.match(preflight,/health\.root_can_add_children!==true/)
+  assert.match(preflight,/feature_enabled:process\.env\.FEATURE_SELF_ATTENDANCE_PHOTO==='true'/)
+  assert.doesNotMatch(preflight,/\.upload\(|\.ensureFolder\(|\.delete\(|external_file_id|root_folder_id|refresh_token|private_key/i)
+  assert.match(route,/export const GET = GET_PREFLIGHT/)
+  assert.doesNotMatch(route,/export const POST|export const PUT|export const DELETE/)
+})
