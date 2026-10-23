@@ -180,6 +180,7 @@ test('self attendance photo handler gates evidence by session, Drive root and or
   assert.match(route,/export const GET = readPhoto/)
   assert.match(panel,/type="file"[^\n]*capture="environment"/)
   assert.match(panel,/attendance-live-shift-context/)
+  assert.match(panel,/NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_PHOTO==='true'/)
   assert.match(panel,/writeSelfAttendancePhotoCheckIn/)
   assert.match(modal,/shiftContext=\{\{/)
   assert.doesNotMatch(handler,/storage\.from\(|data:image\/|service_role.*NEXT_PUBLIC_/i)
