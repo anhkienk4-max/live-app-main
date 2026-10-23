@@ -133,3 +133,66 @@ test('RC19 role switch during in-flight Member request rejects the stale owner',
     else Reflect.deleteProperty(globalThis, 'window')
   }
 })
+
+test('RC19 #71 browser owner diagnostics identify mismatch stage without emitting identity values', async () => {
+  const previousFetch = globalThis.fetch
+  const previousWarning = console.warn
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  const previousNodeEnv = process.env.NODE_ENV
+  const previousMockFlag = process.env.NEXT_PUBLIC_USE_MOCK_DATA
+  const warnings: unknown[][] = []
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: {} })
+  process.env.NODE_ENV = 'production'
+  process.env.NEXT_PUBLIC_USE_MOCK_DATA = 'true'
+  console.warn = (...args: unknown[]) => { warnings.push(args) }
+  const own = { ...actor, id: 'private-business-id', role: 'staff', system_permission: 'member' } as User
+  const payload = (ownerKey: string | undefined) =>
+    new Response(JSON.stringify({
+      items: [], total: 0, page: 1, pageSize: 10,
+      ...(ownerKey === undefined ? {} : { ownerKey }),
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+
+  try {
+    currentUserService.bindAuthenticatedUser(own)
+    globalThis.fetch = async () => payload('private-business-id:member')
+    assert.equal((await getCollectionPage('my_shifts', query)).total, 0)
+    assert.equal(warnings.length, 0, 'valid owner produces no diagnostic')
+
+    globalThis.fetch = async () => payload(undefined)
+    await assert.rejects(getCollectionPage('my_shifts', query), (error: unknown) =>
+      error instanceof OperationsListError && error.code === 'LIST_IDENTITY_CHANGED')
+    assert.deepEqual(warnings.at(-1), ['OPS_LIST_IDENTITY_DIAGNOSTIC', {
+      entity: 'my_shifts', stage: 'server_owner_missing', httpStatus: 200,
+    }])
+
+    globalThis.fetch = async () => payload('foreign-sensitive-id:member')
+    await assert.rejects(getCollectionPage('my_shifts', query), (error: unknown) =>
+      error instanceof OperationsListError && error.code === 'LIST_IDENTITY_CHANGED')
+    assert.deepEqual(warnings.at(-1), ['OPS_LIST_IDENTITY_DIAGNOSTIC', {
+      entity: 'my_shifts', stage: 'server_owner_mismatch', httpStatus: 200,
+    }])
+
+    globalThis.fetch = async () => {
+      currentUserService.bindAuthenticatedUser({ ...own, id: 'changed-private-id' })
+      return payload('private-business-id:member')
+    }
+    await assert.rejects(getCollectionPage('my_shifts', query), (error: unknown) =>
+      error instanceof OperationsListError && error.code === 'LIST_IDENTITY_CHANGED')
+    assert.deepEqual(warnings.at(-1), ['OPS_LIST_IDENTITY_DIAGNOSTIC', {
+      entity: 'my_shifts', stage: 'actor_changed_during_request', httpStatus: 200,
+    }])
+    const recorded = JSON.stringify(warnings)
+    for(const privateValue of ['private-business-id', 'changed-private-id',
+      'foreign-sensitive-id', 'member:member', 'Bearer ', 'access_token']) {
+      assert.equal(recorded.includes(privateValue), false, 'diagnostic must not contain private actor state')
+    }
+  } finally {
+    console.warn = previousWarning
+    currentUserService.clearAuthenticatedUser()
+    globalThis.fetch = previousFetch
+    process.env.NODE_ENV = previousNodeEnv
+    process.env.NEXT_PUBLIC_USE_MOCK_DATA = previousMockFlag
+    if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow)
+    else Reflect.deleteProperty(globalThis, 'window')
+  }
+})
