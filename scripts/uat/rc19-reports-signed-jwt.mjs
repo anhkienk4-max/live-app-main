@@ -71,8 +71,12 @@ async function probeMember(client,adminReports,memberIndex) {
     const query=table==='reports'
       ?{select:'id',id:'eq.'+foreign.id,limit:'10'}
       :{select:'report_id',report_id:'eq.'+foreign.id,limit:'10'}
-    const rows=await readList(client,table,query)
-    check(rows.length===0,'RC19_FOREIGN_TABLE_LEAK_'+table.toUpperCase())
+    const probe=await listRequest(client,table,query)
+    // A scoped SELECT may be explicitly revoked (401/403) or hidden by RLS ([]).
+    // Both are safe denials. A 200 containing any foreign row is an exposure.
+    if(probe.status===401||probe.status===403)continue
+    check(probe.status===200&&Array.isArray(probe.payload),'RC19_FOREIGN_TABLE_PROBE_INVALID_'+table.toUpperCase())
+    check(probe.payload.length===0,'RC19_FOREIGN_TABLE_LEAK_'+table.toUpperCase())
   }
   const negative=await client('/rest/v1/rpc/get_report_revisions',{
     method:'POST',body:{p_report_id:foreign.id},
