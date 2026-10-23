@@ -943,7 +943,12 @@ export function ShiftDetailModal({
 
                     {process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE === 'true' && myRegistration && (
                       <SelfAttendancePanel key={shift.id + ':' + currentUser?.id + ':' + myRegistration.operational_role}
-                        shiftId={shift.id} role={myRegistration.operational_role} />
+                        shiftId={shift.id} role={myRegistration.operational_role}
+                        shiftContext={{
+                          date:shift.date,start_time:shift.start_time,end_time:shift.end_time,
+                          brand:brand?.name??shift.brand_id,platform:platform?.name??shift.platform_id,
+                          title:shift.title,studio:shift.studio,
+                        }} />
                     )}
                     {canRequestSwap && myRegistration && (
                       <Card><CardContent className="pt-5 flex justify-end"><Button variant="outline" onClick={() => setShowSwapDialog(true)}>Đổi ca</Button></CardContent></Card>
