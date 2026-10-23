@@ -46,3 +46,11 @@ test('swap request opens immediately and failed source fetch is retried inside m
   assert.match(parent, /onRetrySourceShifts=/)
   assert.match(modal, /disabled=\{submitting \|\| !formReady\}/)
 })
+
+test('RC19 source shift query excludes historical business dates without broadening actor scope', () => {
+  const parent = readFileSync(fileURLToPath(new URL('../components/features/swaps/SwapRequestList.tsx', import.meta.url)), 'utf8')
+  assert.match(parent, /import \{ formatShiftTimeRange, getCurrentBusinessDate \} from '@\/lib\/utils\/shiftUtils'/)
+  assert.match(parent, /shiftService\.getAllFiltered\(\{[\s\S]*?assignedUserIds: \[ownerId\],[\s\S]*?statuses: \['scheduled'\],[\s\S]*?from: getCurrentBusinessDate\(\),[\s\S]*?\}\)/)
+  assert.match(parent, /if \(request !== formRequestRef\.current\) return/)
+  assert.match(parent, /sourceShiftsReady=\{Boolean\(formFetchState/)
+})
