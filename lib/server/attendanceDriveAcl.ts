@@ -3,7 +3,7 @@ import 'server-only'
 import { google } from 'googleapis'
 import { createGoogleDriveAuth, type GoogleDriveEnvironment } from '@/lib/server/googleDriveAuth'
 import { assertPrivateAttendanceDrivePermissions, AttendanceDriveAclError,
-  type AttendanceDrivePermission } from '@/lib/utils/attendanceDriveAcl'
+  type AttendanceDrivePermission, type AttendanceDriveAclStatus } from '@/lib/utils/attendanceDriveAcl'
 
 type PermissionPage = {
   permissions?: AttendanceDrivePermission[] | null
@@ -29,7 +29,7 @@ export async function assertPrivateAttendanceDriveRoot(
   rootId:string,
   env:GoogleDriveEnvironment=process.env,
   client?:DrivePermissionsClient,
-):Promise<void> {
+):Promise<AttendanceDriveAclStatus> {
   if(!/^[A-Za-z0-9_-]{12,120}$/.test(rootId))
     throw new AttendanceDriveAclError('ATTENDANCE_DRIVE_ACL_UNVERIFIED')
   const drive=client??(google.drive({
@@ -60,5 +60,8 @@ export async function assertPrivateAttendanceDriveRoot(
     visited.add(data.nextPageToken)
     pageToken=data.nextPageToken
   }
-  assertPrivateAttendanceDrivePermissions(all,complete)
+  // Exact opt-in, OFF by default. An explicitly accepted public ACL is
+  // reported to the Admin UI, never mislabeled as private or safe by default.
+  const publicGrantApproved=env.ATTENDANCE_DRIVE_ALLOW_PUBLIC_ACCESS==='true'
+  return assertPrivateAttendanceDrivePermissions(all,complete,publicGrantApproved)
 }
