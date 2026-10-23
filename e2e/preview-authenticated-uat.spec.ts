@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import * as XLSX from 'xlsx'
 import { resolve } from 'node:path'
 
 const roles = ['admin', 'leader', 'member'] as const
@@ -107,6 +108,81 @@ async function verifyReportsReadOnly(page: Page, role: Role, trace: Array<{ at: 
   }
   trace.push({ at: new Date().toISOString(), action: 'reports_authenticated_responsive_pass', role })
   await page.setViewportSize({ width: 1440, height: 1024 })
+  await verifyReportsExportAndDetail(page, role, trace)
+}
+
+
+async function verifyReportsExportAndDetail(page: Page, role: Role, trace: Array<{ at: string; action: string; role?: Role; detail?: string }>) {
+  const source = await page.evaluate(async () => {
+    const ids: string[] = []
+    let expectedTotal: number | null = null
+    let ownerKey: string | null = null
+    let firstPage: Array<{ status?: string; metrics_confirmed?: boolean }> = []
+    for (let pageNumber = 1; pageNumber <= 5; pageNumber++) {
+      const query = new URLSearchParams({ entity: 'reports', page: String(pageNumber), pageSize: '50', filters: '{}', pendingPage: '1' })
+      const response = await fetch('/api/operations/collection?' + query, { credentials: 'same-origin', cache: 'no-store' })
+      if (!response.ok()) throw new Error('REPORTS_UAT_COLLECTION_HTTP_' + response.status)
+      const result = await response.json() as { items?: Array<{ id: string; status?: string; metrics_confirmed?: boolean }>; total?: number; page?: number; ownerKey?: string }
+      if (!Array.isArray(result.items) || typeof result.total !== 'number' || typeof result.ownerKey !== 'string' || result.page !== pageNumber) {
+        throw new Error('REPORTS_UAT_COLLECTION_ENVELOPE_INVALID')
+      }
+      if (expectedTotal === null) { expectedTotal = result.total; ownerKey = result.ownerKey; firstPage = result.items.slice(0, 10) }
+      if (expectedTotal !== result.total || ownerKey !== result.ownerKey) throw new Error('REPORTS_UAT_COLLECTION_CHANGED')
+      for (const item of result.items) {
+        if (!item.id || ids.includes(item.id)) throw new Error('REPORTS_UAT_COLLECTION_DUPLICATE')
+        ids.push(item.id)
+      }
+      if (ids.length >= result.total) break
+    }
+    if (expectedTotal === null) throw new Error('REPORTS_UAT_COLLECTION_MISSING')
+    return { total: expectedTotal, ids, firstPage, truncated: ids.length !== expectedTotal }
+  })
+  const section = page.locator('section[aria-labelledby="created-reports-heading"]')
+  const cards = section.getByTestId('action-bar')
+  await expect(cards).toHaveCount(source.firstPage.length, { timeout: 30_000 })
+  trace.push({ at: new Date().toISOString(), action: 'reports_visible_card_count_verified', role })
+
+  const exportMenu = page.getByTestId('command-toolbar').getByRole('button', { name: /Xuất báo cáo đã lọc|Export filtered reports/i })
+  if (role === 'member') {
+    await expect(exportMenu).toHaveCount(0)
+    await expect(section.getByTestId('action-export-report')).toHaveCount(0)
+    trace.push({ at: new Date().toISOString(), action: 'reports_member_bulk_export_hidden', role })
+  } else if (source.total === 0 || source.truncated) {
+    trace.push({ at: new Date().toISOString(), action: 'reports_export_coverage_incomplete', role, detail: source.truncated ? 'Dataset exceeds 250 rows' : 'No report rows' })
+  } else {
+    await exportMenu.click()
+    const downloadPromise = page.waitForEvent('download', { timeout: 30_000 })
+    await page.getByRole('menuitem', { name: /Xuất báo cáo đã lọc|Export filtered reports/i }).click()
+    const download = await downloadPromise
+    if (!/^reports_filtered_\d{4}-\d{2}-\d{2}\.xlsx$/.test(download.suggestedFilename())) {
+      throw new Error('REPORTS_UAT_EXPORT_FILENAME_INVALID')
+    }
+    const bytes = await readFile(await download.path())
+    const workbook = XLSX.read(bytes, { type: 'buffer' })
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+    if (!worksheet) throw new Error('REPORTS_UAT_EXPORT_MISSING_SHEET')
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: '' })
+    const ids = rows.map(row => String(row['Report ID'] ?? ''))
+    if (ids.length !== source.total || new Set(ids).size !== source.total || ids.some(id => !source.ids.includes(id))) {
+      throw new Error('REPORTS_UAT_EXPORT_ROWS_MISMATCH')
+    }
+    trace.push({ at: new Date().toISOString(), action: 'reports_xlsx_export_verified', role })
+  }
+
+  const index = source.firstPage.findIndex(row => {
+    const status = row.status ?? (row.metrics_confirmed ? 'confirmed' : 'draft')
+    return status !== 'draft' && status !== 'reopened'
+  })
+  if (index < 0) {
+    trace.push({ at: new Date().toISOString(), action: 'reports_detail_candidate_unavailable', role })
+    return
+  }
+  await cards.nth(index).getByTestId('action-view-report').click()
+  await expect(page.getByRole('dialog')).toBeVisible({ timeout: 15_000 })
+  if (role !== 'member') await expect(page.getByTestId('export-report-detail')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  trace.push({ at: new Date().toISOString(), action: 'reports_readonly_detail_verified', role })
 }
 
 test('manual authenticated Preview UAT for Admin, Leader, and Member', async ({ page }, testInfo) => {
