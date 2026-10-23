@@ -290,6 +290,8 @@ test('Admin Payroll shows one explicit, non-mutating Drive readiness action',()=
   assert.match(ui,/Giữ khóa check-in ảnh/)
   assert.match(ui,/ATTENDANCE_DRIVE_NOT_CONFIGURED/)
   assert.match(ui,/ATTENDANCE_DRIVE_PERMISSION_DENIED/)
+  assert.match(ui,/ATTENDANCE_DRIVE_ACL_PUBLIC/)
+  assert.match(ui,/Không được lưu ảnh nhân sự vào đây/)
   assert.match(ui,/setBlockedReason/)
   assert.match(ui,/Cần cấu hình bảo mật trên Vercel/)
   assert.doesNotMatch(ui,/method:'POST'|\.upload\(|\.delete\(|new FormData\(/)
