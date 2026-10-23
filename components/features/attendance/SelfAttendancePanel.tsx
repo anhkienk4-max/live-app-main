@@ -45,10 +45,13 @@ export function SelfAttendancePanel({
     return()=>{active=false}
   },[shiftId,key,nonce])
   React.useEffect(()=>{
-    if(!photo){setPhotoPreview(null);return}
-    const url=URL.createObjectURL(photo)
-    setPhotoPreview(url)
-    return()=>URL.revokeObjectURL(url)
+    if(!photo)return
+    const reader=new FileReader()
+    reader.onload=()=>{
+      if(typeof reader.result==='string')setPhotoPreview(reader.result)
+    }
+    reader.readAsDataURL(photo)
+    return()=>{reader.onload=null;reader.abort()}
   },[photo])
 
   const ready=snapshot?.key===key && !snapshot.error
@@ -63,9 +66,11 @@ export function SelfAttendancePanel({
     if(file.size<1||file.size>4*1024*1024||
       !['image/jpeg','image/png','image/webp'].includes(file.type)) {
       setPhoto(null)
+      setPhotoPreview(null)
       setWriteError('Ảnh JPG, PNG hoặc WebP, tối đa 4 MB. Vui lòng chụp/chọn lại.')
       return
     }
+    setPhotoPreview(null)
     setPhoto(file)
     setPhotoSource(source)
   }
@@ -83,6 +88,7 @@ export function SelfAttendancePanel({
       }
       requestIds.current[kind]=undefined
       setPhoto(null)
+      setPhotoPreview(null)
       setSnapshot(null)
       setNonce(v=>v+1)
     } catch(error){
