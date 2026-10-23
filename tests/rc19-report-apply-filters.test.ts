@@ -25,6 +25,8 @@ test('date and multi-select editors change only drafts, not applied server filte
   for (const field of ['start','end','brandIds','platformIds','campaignIds','hostIds','supportIds','technicalIds','reportStatuses','metricsStatuses']) {
     assert.match(source, new RegExp('value=\\{draftFilters\\.' + field + '\\}'))
   }
-  assert.match(source, /hasUnappliedChanges && <p role="status"/)
+  assert.match(source, /hasUnappliedChanges && !invalidDraftDates && <p role="status"/)
+  assert.match(source, /invalidDraftDates && <p role="alert"/)
+  assert.match(source, /disabled=\{!hasUnappliedChanges \|\| invalidDraftDates\}/)
   assert.match(source, /event\.key === 'Enter'/)
 })

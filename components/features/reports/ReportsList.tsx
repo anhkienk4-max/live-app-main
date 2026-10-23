@@ -129,6 +129,7 @@ export function ReportsList() {
     setDraftFilters(next)
   }, [])
   const applyFilters = React.useCallback(() => {
+    if (draftFilters.start && draftFilters.end && draftFilters.start > draftFilters.end) return
     setFilters(draftFilters)
     setReportPage(1)
     setQueuePage(1)
@@ -140,6 +141,7 @@ export function ReportsList() {
     setQueuePage(1)
   }, [setReportPage])
   const hasUnappliedChanges = JSON.stringify(draftFilters) !== JSON.stringify(filters)
+  const invalidDraftDates = Boolean(draftFilters.start && draftFilters.end && draftFilters.start > draftFilters.end)
   const appliedFilterChips = React.useMemo(() => {
     const labels: Record<keyof Filters, string> = {
       search:'Tìm kiếm', start:'Từ ngày', end:'Đến ngày', brandIds:'Brand',
@@ -411,7 +413,7 @@ export function ReportsList() {
             <Button variant={showFilters ? 'secondary' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="reports-filter-panel" className="shrink-0"><Filter className="mr-2 h-4 w-4" />{t('filters')}{appliedFilterChips.length > 0 ? <span aria-label="Số bộ lọc đang áp dụng" className="ml-1.5 rounded-full bg-muted px-1.5 text-xs">{appliedFilterChips.length}</span> : null}</Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="default" size="sm" onClick={applyFilters} disabled={!hasUnappliedChanges} data-testid="reports-apply-filters">Áp dụng</Button>
+            <Button variant="default" size="sm" onClick={applyFilters} disabled={!hasUnappliedChanges || invalidDraftDates} data-testid="reports-apply-filters">Áp dụng</Button>
             <Button variant="outline" size="icon" onClick={resetFilters} title={t('resetFilters')} aria-label={t('resetFilters')}><RotateCcw className="h-4 w-4" /></Button>
             {currentUser && hasPermission(currentUser, 'reports.export') && (
               <>
@@ -449,7 +451,8 @@ export function ReportsList() {
           </div>
         </div>
 
-        {hasUnappliedChanges && <p role="status" className="text-xs text-amber-700">Bộ lọc đang chỉnh chưa được áp dụng. Kết quả và xuất Excel vẫn theo bộ lọc đang hiệu lực.</p>}
+        {invalidDraftDates && <p role="alert" className="text-xs text-red-600">Ngày bắt đầu không được sau ngày kết thúc.</p>}
+        {hasUnappliedChanges && !invalidDraftDates && <p role="status" className="text-xs text-amber-700">Bộ lọc đang chỉnh chưa được áp dụng. Kết quả và xuất Excel vẫn theo bộ lọc đang hiệu lực.</p>}
         {appliedFilterChips.length > 0 && <div className="flex flex-wrap gap-2" aria-label="Bộ lọc đang áp dụng" data-testid="reports-applied-filter-chips">
           {appliedFilterChips.map(chip => <Button key={chip.key} type="button" size="sm" variant="outline" onClick={() => removeAppliedFilter(chip.key)}
             aria-label={'Bỏ lọc ' + chip.label}>{chip.label}: {chip.summary} ×</Button>)}
