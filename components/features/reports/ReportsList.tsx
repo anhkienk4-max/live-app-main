@@ -33,6 +33,7 @@ import {
 } from '@/lib/utils/excelUtils'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { ActionBar } from '@/components/ui/action-bar'
+import { CommandToolbar } from '@/components/ui/command-toolbar'
 import { deriveReportAttention } from '@/lib/ui/operational-attention'
 import { AttentionItem } from '@/components/ui/operational-status'
 import { buildReportActions } from '@/lib/ui/action-priority'
@@ -400,7 +401,7 @@ export function ReportsList() {
 
       {completedShifts.length > 0 && <Card className="border-orange-200 bg-orange-50"><CardContent className="pt-5"><p className="font-semibold text-orange-900">{t('reportDraftCandidates', { count: completedShifts.length })}</p><p className="text-sm text-orange-700">{t('reportDraftPolicy')}</p></CardContent></Card>}
 
-      <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 shadow-none">
+      <CommandToolbar label={t('filters')} className="flex flex-col gap-3 rounded-lg border bg-card p-3 shadow-none">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-1 items-center gap-2">
             <div className="relative max-w-sm flex-1">
@@ -471,7 +472,7 @@ export function ReportsList() {
             <StatusFilter label={t('metricsStatus')} value={draftFilters.metricsStatuses} values={['confirmed', 'unconfirmed']} onChange={value => updateFilters(current => ({ ...current, metricsStatuses: value }))} />
           </div>
         )}
-      </div>
+      </CommandToolbar>
 
       <section aria-labelledby="needs-report-heading" className="space-y-3">
         <div className="flex items-center justify-between gap-3">

@@ -6,6 +6,7 @@ import { resolveSystemPermission } from '@/lib/permissions'
 import { useListPagination } from '@/lib/hooks/useListPagination'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 import { ListFeedback } from '@/components/ui/list-feedback'
+import { CommandToolbar } from '@/components/ui/command-toolbar'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useTranslation } from '@/lib/i18n'
@@ -440,6 +441,7 @@ export function OperationalFileWorkspace() {
       {notice && <p role="status" className="rounded-md border px-3 py-2 text-sm">{translate(notice)}</p>}
 
       <section className="space-y-3 rounded-xl border p-4" aria-label={translate("File đã lưu")}>
+        <CommandToolbar label="Tìm và lọc file" className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-semibold">{translate('File đã lưu')} ({listReady ? total : '…'})</h2>
           <div className="flex flex-wrap items-center gap-2">
@@ -468,6 +470,7 @@ export function OperationalFileWorkspace() {
           <button type="button" className={buttonClass} onClick={applySearch} disabled={busy || searchDraft.trim()===appliedSearch}>Tìm file</button>
           <button type="button" className={buttonClass} onClick={resetSearch} disabled={busy || (!appliedSearch&&!searchDraft)}>Xóa tìm kiếm</button>
         </div>
+        </CommandToolbar>
         {searchDraft.trim()!==appliedSearch&&<p role="status" className="text-xs text-muted-foreground">Từ khóa chưa áp dụng; kết quả đang hiển thị theo tìm kiếm trước đó.</p>}
         {appliedSearch&&<p className="text-xs text-muted-foreground">Đang tìm trong tên file: {appliedSearch}</p>}
         {!hasCompleteScope ? <ListFeedback kind="empty" title="Chưa đủ ngữ cảnh"
