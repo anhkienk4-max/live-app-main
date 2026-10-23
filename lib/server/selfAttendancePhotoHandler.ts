@@ -164,7 +164,8 @@ export async function POST(request:Request) {
         parentId=(await drive.ensureFolder(parentId,segment)).id
       }
       const fileName=attendancePhotoName({
-        shiftDate:prepared.date,brand:prepared.brand,platform:prepared.platform,
+        shiftDate:prepared.date,shiftId:prepared.shift_id,studio:prepared.studio,
+        brand:prepared.brand,platform:prepared.platform,
         startTime:prepared.start_time,endTime:prepared.end_time,
         staffName:prepared.staff_name,role:kind,
         recordedAt:new Date().toISOString(),requestId,extension:'jpg',
