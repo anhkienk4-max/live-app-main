@@ -102,6 +102,7 @@ export function ReportsList() {
   const [candidateReports, setCandidateReports] = React.useState<Report[]>([])
   const [queueTotal, setQueueTotal] = React.useState(0)
   const [filters, setFilters] = React.useState<Filters>(emptyFilters)
+  const [draftFilters, setDraftFilters] = React.useState<Filters>(emptyFilters)
   const [showFilters, setShowFilters] = React.useState(false)
   const [selectedReport, setSelectedReport] = React.useState<Report | null>(null)
   const [showForm, setShowForm] = React.useState(false)
@@ -125,9 +126,41 @@ export function ReportsList() {
     hostIds: filters.hostIds, supportIds: filters.supportIds, technicalIds: filters.technicalIds,
     reportStatuses: filters.reportStatuses, metricsStatuses: filters.metricsStatuses })
   const updateFilters = React.useCallback((next: React.SetStateAction<Filters>) => {
-    setFilters(next)
-    setQueuePage(1)
+    setDraftFilters(next)
   }, [])
+  const applyFilters = React.useCallback(() => {
+    setFilters(draftFilters)
+    setReportPage(1)
+    setQueuePage(1)
+  }, [draftFilters, setReportPage])
+  const resetFilters = React.useCallback(() => {
+    setDraftFilters(emptyFilters)
+    setFilters(emptyFilters)
+    setReportPage(1)
+    setQueuePage(1)
+  }, [setReportPage])
+  const hasUnappliedChanges = JSON.stringify(draftFilters) !== JSON.stringify(filters)
+  const appliedFilterChips = React.useMemo(() => {
+    const labels: Record<keyof Filters, string> = {
+      search:'Tìm kiếm', start:'Từ ngày', end:'Đến ngày', brandIds:'Brand',
+      platformIds:'Nền tảng', campaignIds:'Campaign', hostIds:'Host',
+      supportIds:'Trợ live', technicalIds:'Kỹ thuật',
+      reportStatuses:'Trạng thái báo cáo', metricsStatuses:'Trạng thái số liệu',
+    }
+    return (Object.keys(filters) as (keyof Filters)[])
+      .filter(key => Array.isArray(filters[key]) ? filters[key].length > 0 : Boolean(filters[key]))
+      .map(key => {
+        const value = filters[key]
+        return { key, label: labels[key], summary: Array.isArray(value) ? value.length + ' lựa chọn' : value }
+      })
+  }, [filters])
+  const removeAppliedFilter = (key: keyof Filters) => {
+    const next = { ...filters, [key]: Array.isArray(filters[key]) ? [] : '' } as Filters
+    setDraftFilters(next)
+    setFilters(next)
+    setReportPage(1)
+    setQueuePage(1)
+  }
   const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role):''
   const [loadedIdentity,setLoadedIdentity]=React.useState('')
   const requestVersion = React.useRef(0)
@@ -370,12 +403,16 @@ export function ReportsList() {
           <div className="flex flex-1 items-center gap-2">
             <div className="relative max-w-sm flex-1">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input className="pl-9 bg-background" value={filters.search} onChange={event => updateFilters(current => ({ ...current, search: event.target.value }))} placeholder={t('reportSearchPlaceholder')} />
+              <Input className="pl-9 bg-background" value={draftFilters.search}
+                onChange={event => updateFilters(current => ({ ...current, search: event.target.value }))}
+                onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); applyFilters() } }}
+                placeholder={t('reportSearchPlaceholder')} />
             </div>
-            <Button variant={showFilters ? 'secondary' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="reports-filter-panel" className="shrink-0"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button>
+            <Button variant={showFilters ? 'secondary' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="reports-filter-panel" className="shrink-0"><Filter className="mr-2 h-4 w-4" />{t('filters')}{appliedFilterChips.length > 0 ? <span aria-label="Số bộ lọc đang áp dụng" className="ml-1.5 rounded-full bg-muted px-1.5 text-xs">{appliedFilterChips.length}</span> : null}</Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" onClick={() => updateFilters(emptyFilters)} title={t('resetFilters')}><RotateCcw className="h-4 w-4" /></Button>
+            <Button variant="default" size="sm" onClick={applyFilters} disabled={!hasUnappliedChanges} data-testid="reports-apply-filters">Áp dụng</Button>
+            <Button variant="outline" size="icon" onClick={resetFilters} title={t('resetFilters')} aria-label={t('resetFilters')}><RotateCcw className="h-4 w-4" /></Button>
             {currentUser && hasPermission(currentUser, 'reports.export') && (
               <>
                 <div className="hidden md:block">
@@ -412,18 +449,23 @@ export function ReportsList() {
           </div>
         </div>
 
+        {hasUnappliedChanges && <p role="status" className="text-xs text-amber-700">Bộ lọc đang chỉnh chưa được áp dụng. Kết quả và xuất Excel vẫn theo bộ lọc đang hiệu lực.</p>}
+        {appliedFilterChips.length > 0 && <div className="flex flex-wrap gap-2" aria-label="Bộ lọc đang áp dụng" data-testid="reports-applied-filter-chips">
+          {appliedFilterChips.map(chip => <Button key={chip.key} type="button" size="sm" variant="outline" onClick={() => removeAppliedFilter(chip.key)}
+            aria-label={'Bỏ lọc ' + chip.label}>{chip.label}: {chip.summary} ×</Button>)}
+        </div>}
         {showFilters && (
           <div id="reports-filter-panel" className="grid gap-4 rounded-md bg-muted/40 p-4 md:grid-cols-4 lg:grid-cols-5">
-            <label className="text-xs font-medium text-foreground">{t('startDate')}<Input className="mt-1.5 bg-background" type="date" value={filters.start} onChange={event => updateFilters(current => ({ ...current, start: event.target.value }))} /></label>
-            <label className="text-xs font-medium text-foreground">{t('endDate')}<Input className="mt-1.5 bg-background" type="date" value={filters.end} onChange={event => updateFilters(current => ({ ...current, end: event.target.value }))} /></label>
-            <EntityFilter label={t('brand')} value={filters.brandIds} options={brands} onChange={value => updateFilters(current => ({ ...current, brandIds: value }))} />
-            <EntityFilter label={t('platform')} value={filters.platformIds} options={platforms} onChange={value => updateFilters(current => ({ ...current, platformIds: value }))} />
-            <EntityFilter label={t('campaign')} value={filters.campaignIds} options={campaigns} onChange={value => updateFilters(current => ({ ...current, campaignIds: value }))} />
-            <EntityFilter label={t('host')} value={filters.hostIds} options={users.filter(user => user.operational_roles?.includes('host')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => updateFilters(current => ({ ...current, hostIds: value }))} />
-            <EntityFilter label={t('support')} value={filters.supportIds} options={users.filter(user => user.operational_roles?.includes('support')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => updateFilters(current => ({ ...current, supportIds: value }))} />
-            <EntityFilter label={t('technical')} value={filters.technicalIds} options={users.filter(user => user.operational_roles?.includes('technical')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => updateFilters(current => ({ ...current, technicalIds: value }))} />
-            <StatusFilter label={t('reportStatus')} value={filters.reportStatuses} values={['draft', 'in_review', 'confirmed', 'reopened', 'archived']} onChange={value => updateFilters(current => ({ ...current, reportStatuses: value }))} />
-            <StatusFilter label={t('metricsStatus')} value={filters.metricsStatuses} values={['confirmed', 'unconfirmed']} onChange={value => updateFilters(current => ({ ...current, metricsStatuses: value }))} />
+            <label className="text-xs font-medium text-foreground">{t('startDate')}<Input className="mt-1.5 bg-background" type="date" value={draftFilters.start} onChange={event => updateFilters(current => ({ ...current, start: event.target.value }))} /></label>
+            <label className="text-xs font-medium text-foreground">{t('endDate')}<Input className="mt-1.5 bg-background" type="date" value={draftFilters.end} onChange={event => updateFilters(current => ({ ...current, end: event.target.value }))} /></label>
+            <EntityFilter label={t('brand')} value={draftFilters.brandIds} options={brands} onChange={value => updateFilters(current => ({ ...current, brandIds: value }))} />
+            <EntityFilter label={t('platform')} value={draftFilters.platformIds} options={platforms} onChange={value => updateFilters(current => ({ ...current, platformIds: value }))} />
+            <EntityFilter label={t('campaign')} value={draftFilters.campaignIds} options={campaigns} onChange={value => updateFilters(current => ({ ...current, campaignIds: value }))} />
+            <EntityFilter label={t('host')} value={draftFilters.hostIds} options={users.filter(user => user.operational_roles?.includes('host')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => updateFilters(current => ({ ...current, hostIds: value }))} />
+            <EntityFilter label={t('support')} value={draftFilters.supportIds} options={users.filter(user => user.operational_roles?.includes('support')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => updateFilters(current => ({ ...current, supportIds: value }))} />
+            <EntityFilter label={t('technical')} value={draftFilters.technicalIds} options={users.filter(user => user.operational_roles?.includes('technical')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => updateFilters(current => ({ ...current, technicalIds: value }))} />
+            <StatusFilter label={t('reportStatus')} value={draftFilters.reportStatuses} values={['draft', 'in_review', 'confirmed', 'reopened', 'archived']} onChange={value => updateFilters(current => ({ ...current, reportStatuses: value }))} />
+            <StatusFilter label={t('metricsStatus')} value={draftFilters.metricsStatuses} values={['confirmed', 'unconfirmed']} onChange={value => updateFilters(current => ({ ...current, metricsStatuses: value }))} />
           </div>
         )}
       </div>
@@ -440,7 +482,7 @@ export function ReportsList() {
           {pagedQueue.length === 0 ? (
             <CardContent className="space-y-3 py-8 text-center text-muted-foreground">
               <p>{queueTotal === 0 && hasQueueFilters ? t('noReportsMatchFilters') : t('noReportsNeeded')}</p>
-              {hasQueueFilters && <Button type="button" variant="outline" onClick={() => updateFilters(emptyFilters)}>{t('clearFilters')}</Button>}
+              {hasQueueFilters && <Button type="button" variant="outline" onClick={resetFilters}>{t('clearFilters')}</Button>}
             </CardContent>
           ) : (
             <>
