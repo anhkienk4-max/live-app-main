@@ -121,11 +121,29 @@ export function createOperationsCollectionHandler(dependencies: { resolveUser?: 
         const { rows, ...metadata } = result.data
         return reply({ ...metadata, items: rows.map(swapFromRow) })
       }
-      if (entity === 'reports' || entity === 'analytics_reports') {
-        const result = await client.rpc('get_report_list_page', { p_page: query.page, p_page_size: query.pageSize, p_filters: query.filters, p_summary:entity==='analytics_reports' })
+      if (entity === 'reports') {
+        // Historical report access is based on report RLS, not broader shift
+        // visibility. The RPC returns only the separately authorized six-field
+        // display context for an RLS-hidden linked shift.
+        const result = await client.rpc('get_report_list_with_history', {
+          p_page: query.page, p_page_size: query.pageSize, p_filters: query.filters,
+        })
+        if (result.error) throw result.error
+        const { rows, historicalShiftContexts, ...metadata } = result.data
+        if (!Array.isArray(rows) || !historicalShiftContexts ||
+          typeof historicalShiftContexts !== 'object' || Array.isArray(historicalShiftContexts)) {
+          throw new Error('REPORT_HISTORY_RESPONSE_INVALID')
+        }
+        const reportIds = new Set(rows.map((row:{ id:string })=>row.id))
+        if (Object.keys(historicalShiftContexts).some(id=>!reportIds.has(id))) {
+          throw new Error('REPORT_HISTORY_RESPONSE_INVALID')
+        }
+        return reply({ ...metadata, items: rows.map(reportFromRow), historicalShiftContexts })
+      }
+      if (entity === 'analytics_reports') {
+        const result = await client.rpc('get_report_list_page', { p_page: query.page, p_page_size: query.pageSize, p_filters: query.filters, p_summary:true })
         if (result.error) throw result.error
         const { rows, ...metadata } = result.data
-        if (entity === 'reports') return reply({ ...metadata, items: rows.map(reportFromRow) })
         const ids = [...new Set((rows as Array<{ shift_id: string }>).map(row => row.shift_id))]
         const shifts = ids.length ? await client.from('shifts').select('*').in('id', ids) : { data: [], error: null }
         if (shifts.error) throw shifts.error
