@@ -10,6 +10,7 @@ type Result = 'idle'|'checking'|'ready'|'blocked'
 export function AttendanceDrivePreflight() {
   const [status,setStatus] = React.useState<Result>('idle')
   const [enabled,setEnabled] = React.useState(false)
+  const [blockedReason,setBlockedReason] = React.useState<'credentials'|'permission'|'unknown'>('unknown')
   const lock = React.useRef(false)
 
   async function verify() {
@@ -20,7 +21,24 @@ export function AttendanceDrivePreflight() {
       const response=await fetch('/api/workforce/self-attendance-photo/preflight',{
         method:'GET',credentials:'same-origin',cache:'no-store',
       })
-      if(!response.ok) { setStatus('blocked');return }
+      if(!response.ok) {
+        // Only classify documented, non-sensitive error codes. Do not show
+        // provider IDs, access tokens, OAuth secrets or arbitrary server text.
+        let code:unknown
+        try {
+          const errorPayload:unknown=await response.json()
+          if(errorPayload && typeof errorPayload==='object' &&
+            !Array.isArray(errorPayload) && 'error' in errorPayload) {
+            const error=(errorPayload as {error?:unknown}).error
+            if(error && typeof error==='object' && !Array.isArray(error) &&
+              'code' in error) code=(error as {code?:unknown}).code
+          }
+        } catch {/* Return generic safe status for invalid payloads. */}
+        setBlockedReason(code==='ATTENDANCE_DRIVE_NOT_CONFIGURED'?'credentials':
+          code==='ATTENDANCE_DRIVE_PERMISSION_DENIED'?'permission':'unknown')
+        setStatus('blocked')
+        return
+      }
       const body:unknown=await response.json()
       if(!body||typeof body!=='object'||Array.isArray(body)) {
         setStatus('blocked');return
@@ -54,7 +72,11 @@ export function AttendanceDrivePreflight() {
         Đã xác nhận quyền đọc/ghi thư mục. Tính năng check-in ảnh {enabled?'đang bật':'đang tắt'}.
       </span>}
       {status==='blocked'&&<span role="alert" className="text-xs text-rose-800">
-        Chưa xác nhận được quyền Drive của ứng dụng. Giữ khóa check-in ảnh và kiểm tra cấu hình Admin.
+        {blockedReason==='credentials'
+          ? 'Ứng dụng thiếu kết nối OAuth Google Drive trên môi trường này. Cần cấu hình bảo mật trên Vercel trước khi bật check-in ảnh.'
+          : blockedReason==='permission'
+            ? 'OAuth chưa có quyền tạo file trong thư mục CHECK IN/OUT. Kiểm tra quyền Writer của tài khoản ứng dụng.'
+            : 'Chưa xác nhận được quyền Drive của ứng dụng. Giữ khóa check-in ảnh và kiểm tra cấu hình Admin.'}
       </span>}
     </div>
   </div>
