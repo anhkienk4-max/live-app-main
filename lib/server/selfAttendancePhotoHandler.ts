@@ -8,6 +8,8 @@ import { createClient as createSessionClient } from '@/lib/supabase/server'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { createGoogleDriveFileProvider } from '@/lib/server/googleDriveFileProvider'
 import { resolveGoogleDriveAuthMode } from '@/lib/server/googleDriveAuth'
+import { assertPrivateAttendanceDriveRoot } from '@/lib/server/attendanceDriveAcl'
+import { AttendanceDriveAclError } from '@/lib/utils/attendanceDriveAcl'
 import { createFileStorageService } from '@/lib/services/fileStorageService'
 import { readFormDataBody, RequestBodyError, consumeRateLimit, rateLimitResponse } from '@/lib/server/apiSecurity'
 import { attendancePhotoFolder, attendancePhotoName, type PhotoRole } from '@/lib/utils/attendancePhotoNaming'
@@ -181,6 +183,17 @@ export async function POST(request:Request) {
       if(!health.ok||health.root_readable!==true||
         health.root_can_add_children!==true)
         return failed('ATTENDANCE_DRIVE_PERMISSION_DENIED',503)
+      // Staff evidence must NEVER be written to a link-public or domain-wide
+      // folder. canAddChildren is not a privacy guarantee.
+      try {
+        await assertPrivateAttendanceDriveRoot(root,{
+          ...process.env,GOOGLE_DRIVE_ROOT_FOLDER_ID:root,
+        })
+      } catch(error) {
+        if(error instanceof AttendanceDriveAclError)
+          return failed(error.code,error.code==='ATTENDANCE_DRIVE_ACL_PUBLIC'?409:503)
+        return failed('ATTENDANCE_DRIVE_ACL_UNVERIFIED',503)
+      }
       let parentId=root
       const folderSegments=attendancePhotoFolder(kind,prepared.date)
       for(const segment of folderSegments) {
@@ -318,8 +331,9 @@ export async function GET_PREFLIGHT(request:Request) {
     if(active.error)return failed('PERMISSION_DENIED',403)
 
     let drive:ReturnType<typeof createGoogleDriveFileProvider>
+    let root:string
     try {
-      drive=photoProvider().drive
+      ({root,drive}=photoProvider())
     } catch {
       return failed('ATTENDANCE_DRIVE_NOT_CONFIGURED',503)
     }
@@ -331,6 +345,15 @@ export async function GET_PREFLIGHT(request:Request) {
         return failed('ATTENDANCE_DRIVE_PERMISSION_DENIED',503)
     } catch {
       return failed('ATTENDANCE_DRIVE_PERMISSION_DENIED',503)
+    }
+    try {
+      await assertPrivateAttendanceDriveRoot(root,{
+        ...process.env,GOOGLE_DRIVE_ROOT_FOLDER_ID:root,
+      })
+    } catch(error) {
+      if(error instanceof AttendanceDriveAclError)
+        return failed(error.code,error.code==='ATTENDANCE_DRIVE_ACL_PUBLIC'?409:503)
+      return failed('ATTENDANCE_DRIVE_ACL_UNVERIFIED',503)
     }
     return Response.json({
       ok:true,
