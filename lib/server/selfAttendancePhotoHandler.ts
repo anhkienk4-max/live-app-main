@@ -3,7 +3,7 @@ import 'server-only'
 import { createHash } from 'node:crypto'
 import sharp from 'sharp'
 import { z } from 'zod'
-import { requireUser, authorizationErrorResponse, isAuthorizationError } from '@/lib/server/authGuards'
+import { requireUser, requireRole, authorizationErrorResponse, isAuthorizationError } from '@/lib/server/authGuards'
 import { createClient as createSessionClient } from '@/lib/supabase/server'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { createGoogleDriveFileProvider } from '@/lib/server/googleDriveFileProvider'
@@ -267,5 +267,52 @@ export async function GET(request:Request) {
     if(isAuthorizationError(e))return authorizationErrorResponse(e)
     if(e instanceof z.ZodError)return failed('ATTENDANCE_PHOTO_REQUEST_INVALID',400)
     return failed('ATTENDANCE_PHOTO_READ_FAILED',503)
+  }
+}
+
+
+/** GET_PREFLIGHT: Admin-only, read-only runtime identity and Drive ACL check.
+ * No folder creation, no upload, no raw folder identifiers or credentials in
+ * response. Safe to call while the photo feature is OFF during preparation.
+ */
+export async function GET_PREFLIGHT(request:Request) {
+  try {
+    if(request.method!=='GET')return failed('METHOD_NOT_ALLOWED',405)
+    const actor=await requireRole(request,'admin')
+    if(!actor.businessUserId)return failed('PERMISSION_DENIED',403)
+    const rate=consumeRateLimit({
+      key:'attendance-photo-preflight:'+actor.businessUserId,
+      limit:6,windowMs:60*60*1000,
+    })
+    if(!rate.allowed)return rateLimitResponse(rate.resetAt)
+    const session=await createSessionClient()
+    const active=await session.rpc('get_my_self_attendance',{p_shift_id:null,p_limit:1})
+    if(active.error)return failed('PERMISSION_DENIED',403)
+
+    let drive:ReturnType<typeof createGoogleDriveFileProvider>
+    try {
+      drive=photoProvider().drive
+    } catch {
+      return failed('ATTENDANCE_DRIVE_NOT_CONFIGURED',503)
+    }
+
+    try {
+      const health=await drive.healthCheck()
+      if(health.provider!=='google_drive'||health.root_readable!==true||
+        health.root_can_add_children!==true||health.ok!==true)
+        return failed('ATTENDANCE_DRIVE_PERMISSION_DENIED',503)
+    } catch {
+      return failed('ATTENDANCE_DRIVE_PERMISSION_DENIED',503)
+    }
+    return Response.json({
+      ok:true,
+      provider:'google_drive',
+      root_readable:true,
+      root_can_add_children:true,
+      feature_enabled:process.env.FEATURE_SELF_ATTENDANCE_PHOTO==='true',
+    },{headers:ERROR_HEADERS})
+  }catch(error) {
+    if(isAuthorizationError(error))return authorizationErrorResponse(error)
+    return failed('ATTENDANCE_DRIVE_PREFLIGHT_FAILED',503)
   }
 }
