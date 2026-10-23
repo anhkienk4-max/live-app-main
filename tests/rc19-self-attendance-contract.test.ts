@@ -129,6 +129,19 @@ test('Drive attendance image names retain shift date, brand, platform, live wind
     requestId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',extension:'jpg',
   })
   assert.equal(name,'20261023_OPELLA_TikTok_PHONG_Phong_Live_A_2345-0145_TRO_Tro_Live_CA_shift_ADA_12_CHECKIN_20261023_132031Z_aaaaaaaa.jpg')
+  assert.ok(name.length<=255)
+  assert.throws(()=>attendancePhotoName({
+    shiftDate:'2026-10-23',shiftId:'',studio:'Phòng A',
+    brand:'OPELLA',platform:'TikTok',startTime:'09:00',endTime:'11:00',
+    role:'host',staffName:'Staff',recordedAt:'2026-10-23T02:00:00Z',
+    requestId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',extension:'jpg',
+  }),/SHIFT_ID_INVALID/)
+  assert.ok(attendancePhotoName({
+    shiftDate:'2026-10-23',shiftId:'id-1',studio:null,
+    brand:'OPELLA',platform:'TikTok',startTime:'09:00',endTime:'11:00',
+    role:'host',staffName:'Staff',recordedAt:'2026-10-23T02:00:00Z',
+    requestId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',extension:'jpg',
+  }).includes('PHONG_CHUA_XEP'))
   assert.throws(()=>attendancePhotoFolder('host','2026-02-30'),/DATE_INVALID/)
   assert.throws(()=>attendancePhotoName({
     shiftDate:'2026-10-23',shiftId:'shift-123',studio:null,brand:'Brand',platform:'TikTok',
@@ -166,6 +179,9 @@ test('self attendance photo handler gates evidence by session, Drive root and or
   assert.match(handler,/get_self_attendance_photo_context/)
   assert.match(handler,/GOOGLE_DRIVE_ATTENDANCE_FOLDER_ID/)
   assert.match(handler,/createGoogleDriveFileProvider/)
+  assert.match(handler,/health\.root_can_add_children!==true/)
+  assert.match(handler,/health\.root_readable!==true/)
+  assert.match(handler,/shiftId:prepared\.shift_id,studio:prepared\.studio/)
   assert.match(handler,/mimeFromBytes\(bytes\)/)
   assert.match(handler,/sharp\(bytes,\{limitInputPixels:24_000_000,failOn:'error'\}\)/)
   assert.match(handler,/\.rotate\(\)\.resize\(/)
