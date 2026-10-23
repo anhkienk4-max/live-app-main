@@ -196,3 +196,52 @@ test('RC19 #71 browser owner diagnostics identify mismatch stage without emittin
     else Reflect.deleteProperty(globalThis, 'window')
   }
 })
+
+test('RC19 #71 stable Member Leader Admin across 20 mock navigation cycles never falsely changes owner', async () => {
+  // This is an isolated mocked-list contract, NOT authenticated Playwright UAT.
+  const originalFetch = globalThis.fetch
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  const oldNodeEnv = process.env.NODE_ENV
+  const oldMock = process.env.NEXT_PUBLIC_USE_MOCK_DATA
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: {} })
+  process.env.NODE_ENV = 'production'
+  process.env.NEXT_PUBLIC_USE_MOCK_DATA = 'true'
+  const entities = ['my_shifts', 'open_shifts', 'shifts', 'live_shifts',
+    'notifications', 'swaps', 'reports'] as const
+  let totalReads = 0
+  try {
+    for (const role of ['member', 'leader', 'admin'] as const) {
+      const businessId = 'stable-' + role
+      currentUserService.bindAuthenticatedUser({
+        ...actor, id: businessId, role: role === 'member' ? 'staff' : role,
+        system_permission: role,
+      } as User)
+      const expectedOwner = businessId + ':' + role
+      globalThis.fetch = async input => {
+        const url = new URL(String(input), 'https://example.test')
+        const entity = url.searchParams.get('entity')
+        assert.ok(entity && entities.some(candidate => candidate === entity))
+        totalReads++
+        return new Response(JSON.stringify({
+          items: [], total: 0, page: 1, pageSize: 10,
+          ownerKey: expectedOwner,
+          ...(entity === 'reports' ? { historicalShiftContexts: {} } : {}),
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      for (let cycle = 0; cycle < 20; cycle++) {
+        const pages = await Promise.all(entities.map(entity => getCollectionPage(entity, query)))
+        assert.equal(pages.length, entities.length)
+        assert.ok(pages.every(page => page.ownerKey === expectedOwner && page.total === 0))
+      }
+      currentUserService.clearAuthenticatedUser(businessId)
+    }
+    assert.equal(totalReads, 3 * 20 * entities.length)
+  } finally {
+    currentUserService.clearAuthenticatedUser()
+    globalThis.fetch = originalFetch
+    process.env.NODE_ENV = oldNodeEnv
+    process.env.NEXT_PUBLIC_USE_MOCK_DATA = oldMock
+    if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow)
+    else Reflect.deleteProperty(globalThis, 'window')
+  }
+})
