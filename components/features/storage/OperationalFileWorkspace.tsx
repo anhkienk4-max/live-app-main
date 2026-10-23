@@ -5,6 +5,7 @@ import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { resolveSystemPermission } from '@/lib/permissions'
 import { useListPagination } from '@/lib/hooks/useListPagination'
 import { HistoryPagination } from '@/components/ui/history-pagination'
+import { ListFeedback } from '@/components/ui/list-feedback'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useTranslation } from '@/lib/i18n'
@@ -76,6 +77,7 @@ export function OperationalFileWorkspace() {
   const [file, setFile] = React.useState<File | null>(null)
   const [files, setFiles] = React.useState<Stored[]>([])
   const [loadedKey,setLoadedKey]=React.useState('')
+  const [listError,setListError]=React.useState<{key:string;message:string}|null>(null)
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
   const [notice, setNotice] = React.useState('')
@@ -133,7 +135,8 @@ export function OperationalFileWorkspace() {
     if (!canView)return
     if (!shiftId.trim() && (!brandId || !platformId || !periodDate)) return
     setBusy(true)
-    setError('')
+    setLoadedKey('')
+    setListError(null)
     try {
       const response = await fetch('/api/operational-files?' + requestKey + '&' + new URLSearchParams({
         page: String(page), pageSize: String(pageSize), category: filter,
@@ -147,7 +150,9 @@ export function OperationalFileWorkspace() {
       setTotal(data.total)
       if (data.page !== page) navigate({ storage_page: String(data.page) }, true)
     } catch (err) {
-      if(version===requestVersion.current)setError(err instanceof Error ? err.message : 'Không tải được file')
+      if(version===requestVersion.current)setListError({
+        key:listKey,message:err instanceof Error ? err.message : 'Không tải được file',
+      })
     } finally { if(version===requestVersion.current)setBusy(false) }
   }, [requestKey, shiftId, brandId, platformId, periodDate, page, pageSize, filter, providerFilter, appliedSearch, listKey, navigate, actorKey, canView])
 
@@ -283,6 +288,8 @@ export function OperationalFileWorkspace() {
   }
 
   const listReady = loadedKey===listKey
+  const listFailure = listError?.key===listKey ? listError.message : null
+  const hasCompleteScope = Boolean(shiftId.trim() || (brandId && platformId && periodDate))
   const filtered = listReady?files:[]
   const applySearch = () => {setAppliedSearch(searchDraft.trim());pagination.reset()}
   const resetSearch = () => {setSearchDraft('');setAppliedSearch('');pagination.reset()}
@@ -434,7 +441,7 @@ export function OperationalFileWorkspace() {
 
       <section className="space-y-3 rounded-xl border p-4" aria-label={translate("File đã lưu")}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-semibold">{translate('File đã lưu')} ({total})</h2>
+          <h2 className="font-semibold">{translate('File đã lưu')} ({listReady ? total : '…'})</h2>
           <div className="flex flex-wrap items-center gap-2">
             <select aria-label={translate('Lọc loại file')} className={fieldClass} value={filter}
               onChange={event => { setFilter(event.target.value); pagination.reset() }}>
@@ -463,8 +470,14 @@ export function OperationalFileWorkspace() {
         </div>
         {searchDraft.trim()!==appliedSearch&&<p role="status" className="text-xs text-muted-foreground">Từ khóa chưa áp dụng; kết quả đang hiển thị theo tìm kiếm trước đó.</p>}
         {appliedSearch&&<p className="text-xs text-muted-foreground">Đang tìm trong tên file: {appliedSearch}</p>}
-        {!listReady ? <p role="status" className="text-sm">Đang xác minh và tải danh sách file theo ngữ cảnh...</p> :
-          filtered.length === 0 ? <p className="text-sm text-muted-foreground">{translate("Chưa có file phù hợp với ngữ cảnh và bộ lọc.")}</p> : (
+        {!hasCompleteScope ? <ListFeedback kind="empty" title="Chưa đủ ngữ cảnh"
+            description="Chọn Brand, nền tảng và ngày vận hành hoặc nhập Shift ID để tìm file." /> :
+          listFailure ? <ListFeedback kind="error" title="Không tải được danh sách file"
+            description={listFailure} onRetry={() => void refresh()} /> :
+          !listReady ? <ListFeedback kind="loading" title="Đang xác minh danh sách file"
+            description="Chỉ hiển thị file thuộc tài khoản, ngữ cảnh và bộ lọc đã chọn." /> :
+          filtered.length === 0 ? <ListFeedback kind="empty" title="Không tìm thấy file"
+            description="Chưa có metadata file phù hợp. Bạn có thể thay đổi từ khóa hoặc chọn nguồn lưu khác; điều này không có nghĩa file Drive đã bị xóa." /> : (
           <div className="divide-y">
             {filtered.map(item => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
               <div className="min-w-0 flex-1">
@@ -482,7 +495,7 @@ export function OperationalFileWorkspace() {
             </div>)}
           </div>
         )}
-        <HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />
+        {listReady && <HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />}
       </section>
     </div>
   )

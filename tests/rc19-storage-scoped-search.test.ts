@@ -32,3 +32,17 @@ test('Catalog exposes only active Storage Route count, not provider parent-folde
  assert.match(view,/catalog\?\.active_route_count === 0/)
  assert.match(view,/Không tự tạo folder thay thế/)
 })
+
+test('UX feedback distinguishes incomplete scope, actual fetch error and empty page',()=>{
+  const feedback=readFileSync(new URL('../components/ui/list-feedback.tsx',import.meta.url),'utf8')
+  assert.match(view,/const \[listError,setListError\]/)
+  assert.match(view,/setLoadedKey\(''\)/)
+  assert.match(view,/setListError\(\{[\s\S]*?key:listKey/)
+  assert.match(view,/listError\?\.key===listKey/)
+  assert.match(view,/hasCompleteScope \? <ListFeedback kind="empty"/)
+  assert.match(view,/listFailure \? <ListFeedback kind="error"/)
+  assert.match(view,/!listReady \? <ListFeedback kind="loading"/)
+  assert.match(view,/listReady && <HistoryPagination/)
+  assert.match(feedback,/role=\{kind==='error'\?'alert':'status'\}/)
+  assert.match(feedback,/onClick=\{onRetry\}>Thử lại/)
+})
