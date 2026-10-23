@@ -94,14 +94,25 @@ export async function POST(request:Request) {
       return failed('ATTENDANCE_PHOTO_TOO_LARGE',413)
 
     const admin=createSupabaseAdminClient()
-    const existing=await admin.from('self_attendance_photo_evidence')
-      .select('request_id,shift_id,staff_id,operational_role,external_file_id,external_parent_id,file_name,mime_type,size_bytes,checksum_sha256')
-      .eq('request_id',requestId).maybeSingle()
-    if(existing.error) return failed('ATTENDANCE_PHOTO_STORAGE_UNAVAILABLE',503)
-    if(existing.data&&
-      (existing.data.staff_id!==actor.businessUserId||
-       existing.data.shift_id!==shiftId||existing.data.operational_role!==kind))
+    const evidenceColumns='request_id,shift_id,staff_id,operational_role,external_file_id,external_parent_id,file_name,mime_type,size_bytes,checksum_sha256'
+    const [byRequest,byAssignment]=await Promise.all([
+      admin.from('self_attendance_photo_evidence')
+        .select(evidenceColumns).eq('request_id',requestId).maybeSingle(),
+      admin.from('self_attendance_photo_evidence')
+        .select(evidenceColumns).eq('shift_id',shiftId)
+        .eq('staff_id',actor.businessUserId).eq('operational_role',kind).maybeSingle(),
+    ])
+    if(byRequest.error||byAssignment.error)
+      return failed('ATTENDANCE_PHOTO_STORAGE_UNAVAILABLE',503)
+    if(byRequest.data&&
+      (byRequest.data.staff_id!==actor.businessUserId||
+       byRequest.data.shift_id!==shiftId||byRequest.data.operational_role!==kind))
       return failed('ATTENDANCE_PHOTO_REQUEST_REUSED',409)
+    // Recover a reserved photo after a page reload/network timeout. The server
+    // reuses the original request UUID without accepting a client-supplied
+    // foreign staff or photo ID, and verifies the Drive bytes below.
+    const existing={data:byAssignment.data??byRequest.data}
+    const committedRequestId=existing.data?.request_id??requestId
 
     // A retry must not finalize check-in if the previously reserved Drive
     // image was removed, replaced or moved after the first upload.
@@ -181,7 +192,7 @@ export async function POST(request:Request) {
 
     const recorded=await session.rpc('self_attendance_record',{
       p_shift_id:shiftId,p_operational_role:kind,p_event_kind:'check_in',
-      p_request_id:requestId,p_evidence_note:null,
+      p_request_id:committedRequestId,p_evidence_note:null,
     })
     if(recorded.error)return failed('ATTENDANCE_PHOTO_CHECKIN_PENDING_RECONCILIATION',409)
     const event=decodeSelfAttendanceEvent(recorded.data)
