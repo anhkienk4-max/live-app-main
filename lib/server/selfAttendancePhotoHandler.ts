@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createHash } from 'node:crypto'
+import sharp from 'sharp'
 import { z } from 'zod'
 import { requireUser, authorizationErrorResponse, isAuthorizationError } from '@/lib/server/authGuards'
 import { createClient as createSessionClient } from '@/lib/supabase/server'
@@ -79,6 +80,18 @@ export async function POST(request:Request) {
     const type=mimeFromBytes(bytes)
     if(!type || (file.type && file.type!==type.mime && file.type!=='application/octet-stream'))
       return failed('ATTENDANCE_PHOTO_TYPE_INVALID',415)
+    // Strip EXIF/GPS/device metadata, normalize orientation and fit inside a
+    // 1600px image. Only the server-normalized evidence reaches Google Drive.
+    let cleanBytes:Uint8Array
+    try {
+      cleanBytes=new Uint8Array(await sharp(bytes,{limitInputPixels:24_000_000,failOn:'error'})
+        .rotate().resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true})
+        .flatten({background:'#ffffff'}).jpeg({quality:82,mozjpeg:true}).toBuffer())
+    } catch {
+      return failed('ATTENDANCE_PHOTO_IMAGE_INVALID',415)
+    }
+    if(cleanBytes.byteLength<1||cleanBytes.byteLength>LIMIT)
+      return failed('ATTENDANCE_PHOTO_TOO_LARGE',413)
 
     const admin=createSupabaseAdminClient()
     const existing=await admin.from('self_attendance_photo_evidence')
@@ -133,25 +146,25 @@ export async function POST(request:Request) {
         shiftDate:prepared.date,brand:prepared.brand,platform:prepared.platform,
         startTime:prepared.start_time,endTime:prepared.end_time,
         staffName:prepared.staff_name,role:kind,
-        recordedAt:new Date().toISOString(),requestId,extension:type.ext,
+        recordedAt:new Date().toISOString(),requestId,extension:'jpg',
       })
-      const hash=createHash('sha256').update(bytes).digest('hex')
+      const hash=createHash('sha256').update(cleanBytes).digest('hex')
       const uploaded=await drive.upload({
-        name:fileName,mime_type:type.mime,size_bytes:bytes.byteLength,
-        content:bytes,checksum_sha256:hash,
+        name:fileName,mime_type:'image/jpeg',size_bytes:cleanBytes.byteLength,
+        content:cleanBytes,checksum_sha256:hash,
         entity_type:'shift',entity_id:shiftId,created_by:actor.businessUserId,
         logical_path:'',external_parent_id:parentId,
         destination:{provider:'google_drive',external_folder_id:parentId},
       })
       uploadedId=uploaded.asset.external_file_id
       if(uploaded.asset.provider!=='google_drive'||uploaded.asset.external_parent_id!==parentId
-        ||uploaded.asset.size_bytes!==bytes.length||!uploadedId)
+        ||uploaded.asset.size_bytes!==cleanBytes.length||!uploadedId)
         throw new Error('ATTENDANCE_PHOTO_PROVIDER_MISMATCH')
       const saved=await admin.from('self_attendance_photo_evidence').insert({
         request_id:requestId,shift_id:shiftId,staff_id:actor.businessUserId,
         operational_role:kind,provider:'google_drive',external_file_id:uploadedId,
-        external_parent_id:parentId,file_name:fileName,mime_type:type.mime,
-        size_bytes:bytes.byteLength,checksum_sha256:hash,
+        external_parent_id:parentId,file_name:fileName,mime_type:'image/jpeg',
+        size_bytes:cleanBytes.byteLength,checksum_sha256:hash,
         shift_context:contextSnapshot(prepared),capture_source:captureSource,
       }).select('request_id').single()
       if(saved.error || saved.data?.request_id!==requestId)
