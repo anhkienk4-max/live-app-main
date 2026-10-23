@@ -2,7 +2,32 @@
 
 **Release verdict: HOLD for one consolidated Preview / Production.** This document does not mutate any database or provider folder.
 
-## Read-only cross-environment observations
+## Post-migration addendum: 2026-10-23, verified after staging apply
+
+**Updated result: the Staging Reports RPC is now installed.** The older "Read-only cross-environment observations" below are historical pre-migration snapshots and must NOT be used to describe the current Staging RPC state.
+
+| Current verification | Result |
+|---|---|
+| Target | Staging `amagnzebmmuqiptmrjmc` ONLY |
+| Canonical source | `supabase/migrations/20261021120000_global_report_obligation_page.sql`, commit `822ba9702b541bd989cc9dfb46228896ebfcd94e` |
+| Managed Supabase migration applied | `20261023080409_rc19_staging_global_report_obligation_page_from_20261021120000` |
+| Live Staging function | PRESENT, body exactly equal to canonical source and Production (7,178 characters) |
+| Security | `STABLE SECURITY INVOKER`, fixed empty `search_path`, EXECUTE to authenticated only; denied to anon/service_role |
+| Auth/scope SQL verification | All nine active Staging business actors: 5 Member, 2 Leader, 2 Admin simulated via transaction-local JWT claims and PostgreSQL `authenticated` role; pagination/counts/unique shift IDs, impossible brand, Member ownership passed |
+| Persistent test-data mutation | None; each role-scoped verification used `BEGIN READ ONLY` / `ROLLBACK` |
+| Vercel deployment | NONE; Production still at `7c35d784...` in post-apply audit |
+
+**Important ledger caveat:** The managed connector generated **Staging version `20261023080409`**, not canonical source version `20261021120000`. Production equivalent was installed under `20261021100953`. All three map to equivalent Reports RPC source/function but not to the same migration-history version. **Never execute blanket `db push`** and do not mark `20261021120000` as applied merely to silence the mismatch. Review actual state and migration repair provenance before future CLI push.
+
+**Release gate after migration:**
+- Staging RPC presence, function/grants comparison, and transaction-scoped SQL Member/Leader/Admin tests: **PASS**.
+- Full signed-token, authenticated browser Reports workflow, Excel export fidelity, report detail, role isolation in the UI: **NOT RUN**.
+- Storage provider principal ACL and controlled Production route configuration: **HOLD**.
+- Only a single, explicitly approved consolidated Preview is permitted. The new authenticated read-only workflow source in `e2e/preview-authenticated-uat.spec.ts` prepares those checks but does not substitute for execution.
+
+---
+
+## Read-only cross-environment observations (historical, before migration)
 | Signal | Staging `amagnzebmmuqiptmrjmc` | Production `egdjnpmoasarrttvhgds` |
 |---|---|---|
 | `public.get_report_obligation_page` exists | **NO** | **YES** |
