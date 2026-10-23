@@ -223,13 +223,24 @@ test('manual authenticated Preview UAT for Admin, Leader, and Member', async ({ 
     const request = route.request()
     const url = new URL(request.url())
     const method = request.method().toUpperCase()
-    const authHost = url.hostname.endsWith('.supabase.co')
+    // Never allow a supposedly Staging-only UAT to contact another Supabase project.
+    const stagingHost = url.hostname === 'amagnzebmmuqiptmrjmc.supabase.co'
+    if (url.hostname.endsWith('.supabase.co') && !stagingHost) {
+      blockedWrites += 1
+      events.push({ kind: 'blocked_nonstaging_supabase', route: url.pathname, detail: 'Supabase host not authorized for this UAT' })
+      await route.abort('blockedbyclient')
+      return
+    }
     const grantType = url.searchParams.get('grant_type')
-    const authPath = authHost && (
+    const authPath = stagingHost && (
       (url.pathname === '/auth/v1/token' && (grantType === 'password' || grantType === 'refresh_token'))
       || url.pathname === '/auth/v1/logout'
     )
-    if (['GET', 'HEAD', 'OPTIONS'].includes(method) || authPath) {
+    // Verified directly on Staging: get_report_revisions performs actor check and
+    // SELECT only. Its Supabase JS invocation is POST despite having no mutations.
+    const readOnlyReportRevisionRpc = stagingHost && method === 'POST'
+      && url.pathname === '/rest/v1/rpc/get_report_revisions'
+    if (['GET', 'HEAD', 'OPTIONS'].includes(method) || authPath || readOnlyReportRevisionRpc) {
       await route.continue()
       return
     }
