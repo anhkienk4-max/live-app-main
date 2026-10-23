@@ -187,3 +187,14 @@ test('RC19 #84 revision SECURITY DEFINER independently checks report ownership',
   assert.match(sql, /grant execute on function public\.get_report_revisions\(text\) to authenticated/i)
   assert.doesNotMatch(sql, /delete from|truncate|drop table|drop column/i)
 })
+
+
+test('RC19 #84 follow-up: revision RPC invokes table RLS rather than bypassing as definer', () => {
+  const sql = readFileSync(
+    new URL('../supabase/migrations/20261023102000_rc19_p0_report_revision_rpc_invoker.sql', import.meta.url), 'utf8',
+  )
+  assert.match(sql, /alter function public\.get_report_revisions\(text\) security invoker/i)
+  assert.match(sql, /revoke all on function public\.get_report_revisions\(text\) from public, anon, authenticated, service_role/i)
+  assert.match(sql, /grant execute on function public\.get_report_revisions\(text\) to authenticated/i)
+  assert.doesNotMatch(sql, /create table|drop policy|truncate|update public\.reports|delete from/i)
+})
