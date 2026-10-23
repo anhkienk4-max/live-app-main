@@ -62,10 +62,22 @@ export async function readCachedListPage<T>(
 ): Promise<ListPage<T>> {
   const key = pageCacheKey(identity, namespace, query)
   const previous = readPageCache<ListPage<T>>(key)
-  if (previous) return previous
+  // A cache hit is still a data read. The React identity may have changed
+  // while an older render retained the prior key; never return those rows
+  // without revalidating the verified actor.
+  if (previous) {
+    if (stillSameActor && !(await stillSameActor())) {
+      console.warn('OPS_LIST_IDENTITY_DIAGNOSTIC', { stage: 'cache_actor_changed_on_hit' })
+      throw new Error('LIST_IDENTITY_CHANGED')
+    }
+    return previous
+  }
   const epoch = invalidationEpoch
   const result = await service.getPage(query, signal)
-  if (stillSameActor && !(await stillSameActor())) throw new Error('LIST_IDENTITY_CHANGED')
+  if (stillSameActor && !(await stillSameActor())) {
+    console.warn('OPS_LIST_IDENTITY_DIAGNOSTIC', { stage: 'cache_actor_changed_after_read' })
+    throw new Error('LIST_IDENTITY_CHANGED')
+  }
   if (!signal?.aborted && epoch === invalidationEpoch) writePageCache(key, result)
   return result
 }
