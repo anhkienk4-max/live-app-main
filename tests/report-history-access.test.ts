@@ -198,3 +198,21 @@ test('RC19 #84 follow-up: revision RPC invokes table RLS rather than bypassing a
   assert.match(sql, /grant execute on function public\.get_report_revisions\(text\) to authenticated/i)
   assert.doesNotMatch(sql, /create table|drop policy|truncate|update public\.reports|delete from/i)
 })
+
+
+test('RC19 #84 invoker RPC resolves authenticated actor without privileged helper grant', () => {
+  const sql = readFileSync(
+    new URL('../supabase/migrations/20261023103500_rc19_p0_report_revision_invoker_identity_fix.sql', import.meta.url), 'utf8',
+  )
+  assert.match(sql, /create or replace function public\.get_report_revisions\(p_report_id text\)/i)
+  assert.match(sql, /security invoker[\s\S]*?set search_path = ''/i)
+  assert.match(sql, /actor_id := private\.current_business_user_id\(\)/i)
+  assert.match(sql, /not private\.current_business_user_is_active\(\)/i)
+  assert.match(sql, /if not private\.can_read_report\(p_report_id\) then/i)
+  assert.match(sql, /message = 'REPORT_NOT_FOUND'/i)
+  assert.match(sql, /revoke all on function public\.get_report_revisions\(text\) from public, anon, authenticated, service_role/i)
+  assert.match(sql, /grant execute on function public\.get_report_revisions\(text\) to authenticated/i)
+  assert.doesNotMatch(sql, /private\.require_report_actor\(false\)/i)
+  assert.doesNotMatch(sql, /grant execute on function private\.require_report_actor/i)
+  assert.doesNotMatch(sql, /update public\.|delete from public\.|truncate|drop table/i)
+})
