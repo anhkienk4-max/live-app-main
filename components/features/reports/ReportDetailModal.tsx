@@ -13,7 +13,7 @@ import { ReportImage } from '@/lib/types/database.types'
 import { format } from 'date-fns'
 import { AlertTriangle, ChevronDown, ChevronUp, DollarSign, TrendingUp, Users, ThumbsUp, MessageCircle, Share2, ExternalLink, Star, Download, Check, X, Pencil, RotateCcw, ScanText, Trash2, History, LockOpen, Upload } from 'lucide-react'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
-import { hasPermission } from '@/lib/permissions'
+import { hasPermission, canExportReportDetail } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
@@ -501,7 +501,7 @@ export function ReportDetailModal({
 
   // Fail closed without an actor. Members may export only reports they submitted;
   // Leader/Admin use their explicit reports.export permission.
-  const canExport = Boolean(currentUser && (hasPermission(currentUser, 'reports.export') || report.submitted_by === currentUser.id))
+  const canExport = canExportReportDetail(currentUser, report.submitted_by)
 
   const rerunOcr = async () => {
     const platform = report.dashboard_platform || 'other'
