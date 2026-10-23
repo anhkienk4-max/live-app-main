@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
-import { readMySelfAttendance,writeSelfAttendance,writeSelfAttendancePhotoCheckIn } from '@/lib/services/supabaseSelfAttendanceService'
+import { readMySelfAttendance,writeSelfAttendance,writeSelfAttendancePhotoCheckIn,recoverSelfAttendancePhotoCheckIn } from '@/lib/services/supabaseSelfAttendanceService'
 import type { AttendanceRole,AttendanceEventKind,SelfAttendanceEvent } from '@/lib/utils/selfAttendanceContract'
 
 export interface SelfAttendanceShiftContext {
@@ -101,6 +101,26 @@ export function SelfAttendancePanel({
       // If the server stored evidence before a timeout, do not upload another object.
     } finally {lock.current=false;setBusy(false)}
   }
+  /** Recovers only a server-side pending proof for this authenticated worker.
+   * No photo/Drive ID is persisted in local storage or sent for recovery. */
+  async function recoverPendingPhoto(){
+    if(lock.current||!ready||nextAction!=='check_in'||!photoFeatureReady)return
+    lock.current=true;setBusy(true);setWriteError(null)
+    const requestId=requestIds.current.check_in??crypto.randomUUID()
+    requestIds.current.check_in=requestId
+    try{
+      await recoverSelfAttendancePhotoCheckIn(shiftId,role,requestId)
+      requestIds.current.check_in=undefined
+      setPhoto(null)
+      setPhotoPreview(null)
+      setSnapshot(null)
+      setNonce(v=>v+1)
+    }catch(error){
+      setWriteError(error instanceof Error&&error.message==='ATTENDANCE_PHOTO_RECOVERY_UNAVAILABLE'
+        ? 'Không có ảnh đã lưu cần khôi phục. Hãy chụp ảnh để check-in.'
+        : error instanceof Error?error.message:'Không khôi phục được, vui lòng thử lại.')
+    }finally{lock.current=false;setBusy(false)}
+  }
   const roleNames:Record<AttendanceRole,string>={host:'Host',support:'Trợ live',technical:'Kỹ thuật'}
 
   return <section aria-label="Chấm công cá nhân" className="space-y-3 rounded-md border p-3" data-testid="self-attendance-panel">
@@ -150,6 +170,8 @@ export function SelfAttendancePanel({
           onClick={()=>cameraRef.current?.click()}>Chụp ảnh</Button>
         <Button type="button" variant="outline" size="sm" disabled={busy}
           onClick={()=>pickerRef.current?.click()}>Chọn ảnh</Button>
+        <Button type="button" variant="outline" size="sm" disabled={busy}
+          onClick={()=>void recoverPendingPhoto()}>Khôi phục check-in đã gửi ảnh</Button>
       </div>
       {photoPreview? <div className="space-y-1">
         {/* eslint-disable-next-line @next/next/no-img-element */}
