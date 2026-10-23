@@ -1,4 +1,4 @@
-import { getCollectionPage, getCompleteCollection, localListPage, type ListQuery, type ListFilters, type ListPage, type ShiftListPage, OperationsListError } from '@/lib/services/operationsPageService'
+import { getCollectionPage, getCompleteCollection, localListPage, type ListQuery, type ListFilters, type ListPage, type ShiftListPage, type HistoricalReportShiftContext, OperationsListError } from '@/lib/services/operationsPageService'
 import {
   User,
   UserDirectoryEntry,
@@ -2766,6 +2766,34 @@ export const reportService = {
         return [report.id, brands.find(b => b.id === shift?.brand_id)?.name, platforms.find(p => p.id === shift?.platform_id)?.name, campaigns.find(c => c.id === shift?.campaign_id)?.name].join(' ').toLowerCase().includes(search.toLowerCase())
       })())).sort((a, b) => b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id))
     return localListPage(filtered, query)
+  },
+  /** Bounded, actor-stable report export including only the six-field
+   * authorized historical context. Never fabricate complete Shift objects. */
+  async getAllFilteredWithHistoricalContext(filters: ListFilters = {}) {
+    if (getAuthMode() !== 'supabase') {
+      return { items: await this.getAllFiltered(filters),
+        historicalShiftContexts: {} as Record<string, HistoricalReportShiftContext> }
+    }
+    const rows = new Map<string, Report>()
+    const contexts: Record<string, HistoricalReportShiftContext> = {}
+    let total: number | undefined
+    let ownerKey: string | undefined
+    for (let page = 1; ; page++) {
+      const result = await getCollectionPage<Report>('reports', { page, pageSize: 50, filters })
+      if (page === 1) ownerKey = result.ownerKey
+      else if (result.ownerKey !== ownerKey) throw new OperationsListError('EXPORT_IDENTITY_CHANGED',409)
+      total ??= result.total
+      if (result.total !== total || result.page !== page ||
+        result.items.some(item => rows.has(item.id)) ||
+        !result.historicalShiftContexts) {
+        throw new OperationsListError('EXPORT_COLLECTION_CHANGED',409)
+      }
+      for (const item of result.items) rows.set(item.id,item)
+      Object.assign(contexts,result.historicalShiftContexts)
+      if (page * 50 >= total) break
+    }
+    if (rows.size !== total) throw new OperationsListError('EXPORT_COLLECTION_CHANGED',409)
+    return { items:[...rows.values()], historicalShiftContexts:contexts }
   },
   async getAllFiltered(filters: ListFilters = {}): Promise<Report[]> {
     if (getAuthMode() === 'supabase') return getCompleteCollection<Report>('reports', filters)
