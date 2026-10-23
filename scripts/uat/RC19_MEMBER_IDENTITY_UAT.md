@@ -20,9 +20,10 @@
 
 Console event `OPS_LIST_IDENTITY_DIAGNOSTIC` has only:
 - `entity`: enumerated collection name, not URL/query.
-- `stage`: `actor_changed_during_request`, `server_owner_missing` or `server_owner_mismatch`.
-- `httpStatus`: integer.
+- `stage`: `actor_changed_during_request`, `server_owner_missing`, `server_owner_mismatch`, `cache_actor_changed_on_hit` or `cache_actor_changed_after_read`.
+- API mismatches include `entity` (fixed collection name) and `httpStatus` (integer). Cache-stage warnings intentionally contain **only** the `stage` field.
 
+An actor mismatch in the cache must also evict the previous actor's scoped pages.
 No actual actor ID or `ownerKey` is logged. Record **counts by stage and entity**, not raw values. A stable-session warning is a P0 blocker. A deliberate account switch warning may be expected but **must never expose rows**.
 
 ## Required gate
