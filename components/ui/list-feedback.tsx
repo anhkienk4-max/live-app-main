@@ -1,7 +1,5 @@
 'use client'
 
-import * as React from 'react'
-
 type ListFeedbackProps = {
   kind: 'loading' | 'empty' | 'error'
   title: string
