@@ -76,9 +76,23 @@ export async function getCollectionPage<T>(entity: OperationsList, query: ListQu
   const owner=await browserOwner()
   const response = await fetch('/api/operations/collection?' + params, { credentials: 'same-origin', cache: 'no-store', signal })
   const body = await response.json()
-  if(owner!==await browserOwner())throw new OperationsListError('LIST_IDENTITY_CHANGED',409)
-  if (!response.ok) throw new OperationsListError(body.error?.code ?? 'LIST_READ_FAILED', response.status)
-  if (typeof window !== 'undefined' && body.ownerKey !== owner) throw new OperationsListError('LIST_IDENTITY_CHANGED', 409)
+  const ownerAfterResponse = await browserOwner()
+  if (owner !== ownerAfterResponse) {
+    // Diagnostics intentionally exclude actor IDs, ownerKeys, tokens, response
+    // payloads and query parameters. Never weaken the fail-closed boundary.
+    console.warn('OPS_LIST_IDENTITY_DIAGNOSTIC', {
+      entity, stage: 'actor_changed_during_request', httpStatus: response.status,
+    })
+    throw new OperationsListError('LIST_IDENTITY_CHANGED', 409)
+  }
+  if (!response.ok) throw new OperationsListError(body?.error?.code ?? 'LIST_READ_FAILED', response.status)
+  if (typeof window !== 'undefined' && body?.ownerKey !== owner) {
+    console.warn('OPS_LIST_IDENTITY_DIAGNOSTIC', {
+      entity, stage: body?.ownerKey === undefined ? 'server_owner_missing' : 'server_owner_mismatch',
+      httpStatus: response.status,
+    })
+    throw new OperationsListError('LIST_IDENTITY_CHANGED', 409)
+  }
   if ((body.ownerKey !== undefined && typeof body.ownerKey !== 'string') || !Array.isArray(body.items) || body.items.length > query.pageSize || !Number.isSafeInteger(body.total) || body.total < body.items.length || body.pageSize !== query.pageSize || !Number.isSafeInteger(body.page) || body.page < 1) {
     throw new OperationsListError('LIST_RESPONSE_INVALID', 502)
   }
