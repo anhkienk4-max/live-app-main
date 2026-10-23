@@ -68,6 +68,7 @@ export async function readCachedListPage<T>(
   if (previous) {
     if (stillSameActor && !(await stillSameActor())) {
       console.warn('OPS_LIST_IDENTITY_DIAGNOSTIC', { stage: 'cache_actor_changed_on_hit' })
+      invalidatePageCache(identity, namespace)
       throw new Error('LIST_IDENTITY_CHANGED')
     }
     return previous
@@ -76,6 +77,7 @@ export async function readCachedListPage<T>(
   const result = await service.getPage(query, signal)
   if (stillSameActor && !(await stillSameActor())) {
     console.warn('OPS_LIST_IDENTITY_DIAGNOSTIC', { stage: 'cache_actor_changed_after_read' })
+    invalidatePageCache(identity, namespace)
     throw new Error('LIST_IDENTITY_CHANGED')
   }
   if (!signal?.aborted && epoch === invalidationEpoch) writePageCache(key, result)
