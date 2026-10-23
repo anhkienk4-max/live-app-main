@@ -32,7 +32,7 @@ test('manager actual staffing read presents raw check-in evidence independently 
   const ui=readFileSync(new URL('../components/features/payroll/PayrollAttendanceLink.tsx',import.meta.url),'utf8')
   assert.match(source,/await requireRole\(request, \['admin', 'leader'\]/)
   assert.match(source,/client\.from\('self_attendance_events'\)/)
-  assert.match(source,/attendance_events: attendanceRes\.data/)
+  assert.match(source,/attendance_events: \(attendanceRes\.data \?\? \[\]\)\.map/)
   assert.match(ui,/app-attendance-review/)
   assert.match(ui,/Chờ đối chiếu/)
 })
@@ -49,7 +49,7 @@ test('server-side attendance evidence flag defaults OFF and refuses truncated ev
   assert.match(handler,/\.limit\(201\)/)
 })
 
-function managerQueryClient(params: {rows?: number; journalError?: boolean}) {
+function managerQueryClient(params: {rows?: number; journalError?: boolean; photo?: boolean}) {
   const calls:string[]=[]
   const client=()=>({
     from(name:string) {
@@ -57,10 +57,10 @@ function managerQueryClient(params: {rows?: number; journalError?: boolean}) {
       const dataFor=()=>name==='shifts'?{id:'shift-1',status:'completed',host_id:'staff-1'}:
         name==='self_attendance_events'?
           Array.from({length:params.rows??0},(_,i)=>({
-            id:'evt-'+i,shift_id:'shift-1',staff_id:'staff-1',operational_role:'host',
+            id:'evt-'+i,request_id:'req-'+i,shift_id:'shift-1',staff_id:'staff-1',operational_role:'host',
             event_kind:i%2?'check_out':'check_in',recorded_at:'2026-10-23T02:00:00Z',
             verification_status:'pending_verification'
-          })):[]
+          })):name==='self_attendance_photo_evidence'&&params.photo?[{request_id:'req-0'}]:[]
       const q={
         select(){return q}, eq(){return q}, order(){return q},
         is(){return q}, in(){return q}, or(){return q}, limit(){return q},
@@ -184,4 +184,20 @@ test('self attendance photo handler gates evidence by session, Drive root and or
   assert.match(panel,/writeSelfAttendancePhotoCheckIn/)
   assert.match(modal,/shiftContext=\{\{/)
   assert.doesNotMatch(handler,/storage\.from\(|data:image\/|service_role.*NEXT_PUBLIC_/i)
+})
+
+test('leader attendance reviewer exposes only an authenticated photo flag, never the Drive ID or upload token',async()=>{
+  const db=managerQueryClient({rows:2,photo:true})
+  const handler=createWorkforceActualHandler({client:db.client as never,isEnabled:()=>true,
+    isAttendanceReviewEnabled:()=>true,resolveUser:manager})
+  const response=await handler.GET(request())
+  assert.equal(response.status,200)
+  const payload=await response.json()
+  assert.equal(payload.attendance_events[0].photo_available,true)
+  assert.equal(payload.attendance_events[1].photo_available,false)
+  assert.equal(payload.attendance_events[0].request_id,undefined)
+  assert.equal(JSON.stringify(payload).includes('external_file_id'),false)
+  assert.ok(db.calls.includes('self_attendance_photo_evidence'))
+  const ui=readFileSync(new URL('../components/features/payroll/PayrollAttendanceLink.tsx',import.meta.url),'utf8')
+  assert.match(ui,/Xem ảnh check-in Drive \(chờ xác minh\)/)
 })
