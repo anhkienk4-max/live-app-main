@@ -43,6 +43,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { ReportDetailModal } from './ReportDetailModal'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import type { HistoricalReportShiftContext } from '@/lib/services/operationsPageService'
 import { ReportFormModal } from './ReportFormModal'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { PageLoadError } from '@/components/ui/page-load-error'
@@ -89,6 +91,8 @@ export function ReportsList() {
   const { toast } = useToast()
   const [reports, setReports] = React.useState<Report[]>([])
   const [shifts, setShifts] = React.useState<Shift[]>([])
+  const [historicalContexts,setHistoricalContexts]=React.useState<Record<string,HistoricalReportShiftContext>>({})
+  const [selectedHistoricalReport,setSelectedHistoricalReport]=React.useState<Report|null>(null)
   const [reportTotal, setReportTotal] = React.useState(0)
   const reportPagination = useListPagination('reports', 10)
   const { page: reportPage, pageSize: reportPageSize, setPage: setReportPage, setPageSize: setReportPageSize, navigate } = reportPagination
@@ -200,6 +204,7 @@ export function ReportsList() {
       })
       if (version !== requestVersion.current) return
       const {reportPageResult,loadedCandidates,loadedCandidateShifts,refs,loadedCandidateReports,allLoadedShifts,loadedRegistrations} = result
+      setHistoricalContexts(reportPageResult.historicalShiftContexts??{})
       setLoadedIdentity(identity)
       if (reportPageResult.page !== reportPage) navigate({ reports_page: String(reportPageResult.page) }, true)
       setReports(reportPageResult.items)
@@ -352,6 +357,7 @@ export function ReportsList() {
   const confirmed = filteredReports.filter(report => report.metrics_confirmed)
   const totalRevenue = confirmed.reduce((sum, report) => sum + (reportRevenue(report) ?? 0), 0)
   const exportContext = {
+    historicalShiftContexts:historicalContexts,
     shifts,
     campaigns,
     users,
@@ -362,10 +368,11 @@ export function ReportsList() {
 
   const exportAllReports = async () => {
     try {
-      const complete = await reportService.getAllFiltered(JSON.parse(encodedFilters))
-      const exportShifts = await shiftService.getByIds(complete.map(report => report.shift_id))
+      const complete = await reportService.getAllFilteredWithHistoricalContext(JSON.parse(encodedFilters))
+      const exportShifts = await shiftService.getByIds(complete.items.map(report => report.shift_id))
       const registrations = await shiftRegistrationService.getForShifts(exportShifts.map(shift => shift.id))
-      exportReportsToExcel(complete, { ...exportContext, shifts: exportShifts, registrations })
+      exportReportsToExcel(complete.items, { ...exportContext, shifts: exportShifts,
+        historicalShiftContexts:complete.historicalShiftContexts, registrations })
     } catch (error) { toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' }) }
   }
   const exportImages = async () => {
