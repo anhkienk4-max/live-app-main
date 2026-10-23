@@ -258,3 +258,18 @@ test('admin-only attendance Drive preflight is read-only and hides provider iden
   assert.match(route,/export const GET = GET_PREFLIGHT/)
   assert.doesNotMatch(route,/export const POST|export const PUT|export const DELETE/)
 })
+
+
+test('Admin Payroll shows one explicit, non-mutating Drive readiness action',()=>{
+  const ui=readFileSync(new URL('../components/features/payroll/AttendanceDrivePreflight.tsx',import.meta.url),'utf8')
+  const parent=readFileSync(new URL('../components/features/payroll/PayrollAttendanceLink.tsx',import.meta.url),'utf8')
+  assert.match(parent,/import \{ AttendanceDrivePreflight \} from '\.\/AttendanceDrivePreflight'/)
+  assert.match(parent,/<AttendanceDrivePreflight \/>/)
+  assert.match(ui,/data-testid="attendance-drive-readiness"/)
+  assert.match(ui,/method:'GET'/)
+  assert.match(ui,/cache:'no-store'/)
+  assert.match(ui,/root_can_add_children!==true/)
+  assert.match(ui,/typeof result\.feature_enabled!=='boolean'/)
+  assert.match(ui,/Giữ khóa check-in ảnh/)
+  assert.doesNotMatch(ui,/method:'POST'|\.upload\(|\.delete\(|new FormData\(/)
+})
