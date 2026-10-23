@@ -114,3 +114,69 @@ test('the reviewer UI does not render a misleading empty journal when the flag i
   const ui=readFileSync(new URL('../components/features/payroll/PayrollAttendanceLink.tsx',import.meta.url),'utf8')
   assert.match(ui,/attendance\.attendance_review_enabled === true/)
 })
+
+
+test('Drive attendance image names retain shift date, brand, platform, live window, role and unique server timestamp',async()=>{
+  const {attendancePhotoFolder,attendancePhotoName}=await import('../lib/utils/attendancePhotoNaming.ts')
+  assert.deepEqual(attendancePhotoFolder('host','2026-10-23'),['HOST','THÁNG 10 - 2026'])
+  assert.deepEqual(attendancePhotoFolder('support','2026-11-01'),['TRỢ','THÁNG 11 - 2026'])
+  assert.deepEqual(attendancePhotoFolder('technical','2026-10-23'),['KỸ THUẬT','THÁNG 10 - 2026'])
+  const name=attendancePhotoName({
+    shiftDate:'2026-10-23',brand:'OPELLA',platform:'TikTok',
+    startTime:'23:45:00',endTime:'01:45:00',role:'support',staffName:'Trợ Live',
+    recordedAt:'2026-10-23T13:20:31Z',
+    requestId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',extension:'jpg',
+  })
+  assert.equal(name,'20261023_OPELLA_TikTok_2345-0145_TRO_Tro_Live_CHECKIN_20261023_132031Z_aaaaaaaa.jpg')
+  assert.throws(()=>attendancePhotoFolder('host','2026-02-30'),/DATE_INVALID/)
+  assert.throws(()=>attendancePhotoName({
+    shiftDate:'2026-10-23',brand:'Brand',platform:'TikTok',
+    startTime:'99:99',endTime:'10:00',role:'host',staffName:'Staff',
+    recordedAt:'2026-10-23T13:20:31Z',
+    requestId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',extension:'jpg',
+  }),/TIME_INVALID/)
+})
+
+test('check-in photo SQL is immutable, private, matched to actor and excludes binary',()=>{
+  const sql=readFileSync(new URL('../supabase/migrations/20261023144000_rc19_p2_04b_drive_photo_checkin.sql',import.meta.url),'utf8')
+  assert.match(sql,/create table if not exists public\.self_attendance_photo_evidence/i)
+  assert.match(sql,/enable row level security/i)
+  assert.match(sql,/revoke all on public\.self_attendance_photo_evidence from public,anon,authenticated/i)
+  assert.match(sql,/unique \(shift_id,staff_id,operational_role\)/i)
+  assert.match(sql,/before update or delete on public\.self_attendance_photo_evidence/i)
+  assert.match(sql,/before insert on public\.self_attendance_events/i)
+  assert.match(sql,/ATTENDANCE_PHOTO_REQUIRED/i)
+  assert.match(sql,/p\.request_id=new\.request_id and p\.shift_id=new\.shift_id[\s\S]*?p\.staff_id=new\.staff_id/i)
+  assert.match(sql,/private\.require_shift_actor\(false\)/i)
+  assert.match(sql,/ATTENDANCE_ASSIGNMENT_SURRENDERED/i)
+  assert.match(sql,/photo_available/i)
+  assert.doesNotMatch(sql,/bytea|create policy.*using \(true\)/i)
+})
+
+test('self attendance photo handler gates evidence by session, Drive root and original shift',()=>{
+  const handler=readFileSync(new URL('../lib/server/selfAttendancePhotoHandler.ts',import.meta.url),'utf8')
+  const route=readFileSync(new URL('../app/api/workforce/self-attendance-photo/route.ts',import.meta.url),'utf8')
+  const panel=readFileSync(new URL('../components/features/attendance/SelfAttendancePanel.tsx',import.meta.url),'utf8')
+  const modal=readFileSync(new URL('../components/features/shifts/ShiftDetailModal.tsx',import.meta.url),'utf8')
+  assert.match(handler,/FEATURE_SELF_ATTENDANCE_PHOTO!=='true'/)
+  assert.match(handler,/hasExactOrigin\(request\)/)
+  assert.match(handler,/await requireUser\(request\)/)
+  assert.match(handler,/actor\.businessUserId/)
+  assert.match(handler,/get_self_attendance_photo_context/)
+  assert.match(handler,/GOOGLE_DRIVE_ATTENDANCE_FOLDER_ID/)
+  assert.match(handler,/createGoogleDriveFileProvider/)
+  assert.match(handler,/mimeFromBytes\(bytes\)/)
+  assert.match(handler,/self_attendance_photo_evidence/)
+  assert.match(handler,/self_attendance_record/)
+  assert.match(handler,/existing\.data/)
+  assert.match(handler,/await drive\.delete\(uploadedId\)/)
+  assert.match(handler,/event\.data\.staff_id!==actor\.businessUserId/)
+  assert.match(handler,/session\.from\('shifts'\)/)
+  assert.match(route,/export const POST = checkInPhoto/)
+  assert.match(route,/export const GET = readPhoto/)
+  assert.match(panel,/type="file"[^\n]*capture="environment"/)
+  assert.match(panel,/attendance-live-shift-context/)
+  assert.match(panel,/writeSelfAttendancePhotoCheckIn/)
+  assert.match(modal,/shiftContext=\{\{/)
+  assert.doesNotMatch(handler,/storage\.from\(|data:image\/|service_role.*NEXT_PUBLIC_/i)
+})
