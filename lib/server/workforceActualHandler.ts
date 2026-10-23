@@ -304,7 +304,8 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
             id:ev.id,shift_id:ev.shift_id,staff_id:ev.staff_id,
             operational_role:ev.operational_role,event_kind:ev.event_kind,
             recorded_at:ev.recorded_at,verification_status:ev.verification_status,
-            photo_available:(photoEvidenceRes.data??[]).some(photo=>photo.request_id===ev.request_id),
+            photo_available:((photoEvidenceRes.data??[]) as Array<{request_id:string}>)
+              .some(photo=>photo.request_id===ev.request_id),
           })),
           attendance_review_enabled: attendanceReviewEnabled,
           shift_context: shiftRes.data,
