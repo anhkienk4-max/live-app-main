@@ -10,6 +10,7 @@ type Result = 'idle'|'checking'|'ready'|'blocked'
 export function AttendanceDrivePreflight() {
   const [status,setStatus] = React.useState<Result>('idle')
   const [enabled,setEnabled] = React.useState(false)
+  const [publicAccess,setPublicAccess] = React.useState(false)
   const [blockedReason,setBlockedReason] = React.useState<'credentials'|'permission'|'public'|'unknown'>('unknown')
   const lock = React.useRef(false)
 
@@ -47,10 +48,14 @@ export function AttendanceDrivePreflight() {
       const result=body as Record<string,unknown>
       if(result.ok!==true||result.provider!=='google_drive'||
         result.root_readable!==true||result.root_can_add_children!==true||
-        typeof result.feature_enabled!=='boolean'){
+        typeof result.feature_enabled!=='boolean'||
+        typeof result.public_access!=='boolean'||
+        typeof result.public_access_approved!=='boolean'||
+        (result.public_access===true&&result.public_access_approved!==true)){
         setStatus('blocked');return
       }
       setEnabled(result.feature_enabled)
+      setPublicAccess(result.public_access)
       setStatus('ready')
     }catch{
       setStatus('blocked')
@@ -69,8 +74,13 @@ export function AttendanceDrivePreflight() {
         {status==='checking'?'Đang kiểm tra…':'Kiểm tra quyền Drive'}
       </Button>
       {status==='idle'&&<span role="status" className="text-xs text-slate-600">Chưa kiểm tra</span>}
-      {status==='ready'&&<span role="status" className="text-xs text-green-800">
-        Đã xác nhận quyền đọc/ghi thư mục. Tính năng check-in ảnh {enabled?'đang bật':'đang tắt'}.
+      {status==='ready'&&!publicAccess&&<span role="status" className="text-xs text-green-800">
+        Đã xác nhận quyền đọc/ghi thư mục riêng tư. Tính năng check-in ảnh {enabled?'đang bật':'đang tắt'}.
+      </span>}
+      {status==='ready'&&publicAccess&&<span role="alert" className="text-xs text-amber-800">
+        Quyền ghi Drive đã xác nhận. Admin đã chấp thuận thư mục chia sẻ công khai;
+        ảnh check-in và thông tin nhân sự trong file vẫn có thể bị người có liên kết Drive truy cập.
+        Tính năng check-in ảnh {enabled?'đang bật':'đang tắt'}.
       </span>}
       {status==='blocked'&&<span role="alert" className="text-xs text-rose-800">
         {blockedReason==='credentials'
@@ -78,7 +88,7 @@ export function AttendanceDrivePreflight() {
           : blockedReason==='permission'
             ? 'OAuth chưa có quyền tạo file trong thư mục CHECK IN/OUT. Kiểm tra quyền Writer của tài khoản ứng dụng.'
             : blockedReason==='public'
-              ? 'Cảnh báo riêng tư: thư mục CHECK IN/OUT đang cho phép truy cập công khai hoặc trên toàn domain. Không được lưu ảnh nhân sự vào đây. Admin cần thu hẹp quyền chia sẻ hoặc chọn một thư mục riêng tư trước khi kích hoạt.'
+              ? 'Quyền chia sẻ công khai đang tồn tại. Admin chỉ có thể tiếp tục nếu đã cấu hình chấp thuận riêng ATTENDANCE_DRIVE_ALLOW_PUBLIC_ACCESS trên đúng môi trường; đây không phải thư mục riêng tư.'
               : 'Chưa xác nhận được quyền Drive của ứng dụng. Giữ khóa check-in ảnh và kiểm tra cấu hình Admin.'}
       </span>}
     </div>
