@@ -54,3 +54,26 @@ The vulnerable RLS policy predicates are identical in Production, and Production
 4. Security reviewer approves Production hotfix change window and rollback/verification; Production must not inherit staging aliases or unrelated migrations automatically.
 
 See [#84](https://github.com/anhkienk4-max/live-app-main/issues/84), [#77](https://github.com/anhkienk4-max/live-app-main/issues/77), [#80](https://github.com/anhkienk4-max/live-app-main/issues/80).
+
+
+## Follow-up: revision RPC switched to SECURITY INVOKER (Staging only, 2026-10-23)
+
+**This section supersedes the older SECURITY DEFINER status of `public.get_report_revisions` above.** The parent `private.can_read_report` remains a boolean-only fixed-search-path SECURITY DEFINER, not directly exposed through PostgREST.
+
+| Source | Applied managed Staging ledger |
+|---|---|
+| `20261023102000_rc19_p0_report_revision_rpc_invoker.sql` | `20261023100211_rc19_p0_report_revision_invoker_from_20261023102000` |
+| `20261023103500_rc19_p0_report_revision_invoker_identity_fix.sql` | `20261023100318_rc19_p0_report_revision_invoker_identity_fix_from_20261023103500` |
+
+Initial `ALTER FUNCTION ... SECURITY INVOKER` uncovered a real permissions blocker: existing RPC called `private.require_report_actor(false)` which is intentionally NOT executable by `authenticated`. That intermediate state denied valid invoker reads. The second migration replaced the RPC body with a caller-executable `private.current_business_user_id()` + `private.current_business_user_is_active()` identity check, and an explicit per-report `private.can_read_report` check. **The privileged helper's EXECUTE grant was not expanded.**
+
+After applying both migrations, `public.get_report_revisions(text)` has:
+- `SECURITY INVOKER`, fixed empty `search_path`, `authenticated` EXECUTE true, `anon` EXECUTE false.
+- SELECTs on `public.reports` and `public.report_revisions` now honor the caller's RLS, as well as the explicit `can_read_report` defense-in-depth check.
+- A fresh 9-actor role-simulated transaction-only test: 5 Members, 2 Leaders, 2 Admins, **35 successful authorized RPC calls**, including Admin archived history, **7/7 forbidden foreign-report calls denied** with `P0001`. All 35 returned populated revision history.
+- Supabase Security Advisor no longer emitted an exact warning for authenticated-callable **`public.get_report_revisions` as a SECURITY DEFINER**. Other functions may still have independent warnings. This is NOT proof of the entire Supabase security posture.
+- All runtime SQL tests used `BEGIN READ ONLY` / `ROLLBACK`; only controlled migration DDL was persisted on Staging.
+
+**Newly characterized report-list gap (no broadening applied):** For the Member who can directly read 3 authorized reports, only 2 have related shifts readable via current `shifts` RLS; the filtered list RPC also returns 2. Two other Members each have one authorized report linked to a shift not readable under current `shifts` RLS, and list RPC returns 0. Fixing reports list without considering linked shift RLS and UI shift hydration would be an incomplete/unsafe change. Keep this as #77 work requiring explicit historical shift visibility model, not an unrestricted RLS grant.
+
+**Remaining release gates:** signed-JWT Data API/real browser tests for foreign report IDs, UI list/detail/export parity and archived histories, owner-approved single Preview, Storage provider ACL, and separate Production security migration sign-off. No Production SQL/deploy change, no automatic Preview, and no blanket `supabase db push` for mismatched source/managed ledger versions.
