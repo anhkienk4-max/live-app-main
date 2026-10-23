@@ -157,7 +157,10 @@ export async function POST(request:Request) {
       drive=provider
       // No writes outside the explicitly configured attendance root.
       const health=await drive.healthCheck()
-      if(!health.ok||health.root_can_add_children===false)
+      // Unknown write capability is not proof of permission. Never create
+      // subfolders or upload staff photos without confirmed provider ACL.
+      if(!health.ok||health.root_readable!==true||
+        health.root_can_add_children!==true)
         return failed('ATTENDANCE_DRIVE_PERMISSION_DENIED',503)
       let parentId=root
       for(const segment of attendancePhotoFolder(kind,prepared.date)) {
