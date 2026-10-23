@@ -29,6 +29,7 @@ type Stored = {
   created_at: string
   scope_key: string
   provider: string
+  integrity_status?: 'sha256_verified' | 'provider_reference'
   access_url: string
 }
 type CatalogResponse = {
@@ -73,11 +74,14 @@ export function OperationalFileWorkspace() {
   const [provider, setProvider] = React.useState<'google_drive' | 'onedrive'>('google_drive')
   const [file, setFile] = React.useState<File | null>(null)
   const [files, setFiles] = React.useState<Stored[]>([])
-  const [loadedOwner,setLoadedOwner]=React.useState('')
+  const [loadedKey,setLoadedKey]=React.useState('')
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
   const [notice, setNotice] = React.useState('')
   const [filter, setFilter] = React.useState('all')
+  const [providerFilter, setProviderFilter] = React.useState<'all'|'google_drive'|'onedrive'>('all')
+  const [searchDraft, setSearchDraft] = React.useState('')
+  const [appliedSearch, setAppliedSearch] = React.useState('')
   const pagination = useListPagination('storage', 10)
   const { page, pageSize, navigate } = pagination
   const [total, setTotal] = React.useState(0)
@@ -94,6 +98,7 @@ export function OperationalFileWorkspace() {
       period_date: periodDate, execution_source: executionSource,
     }).toString()
 
+  const listKey = [actorKey,requestKey,filter,providerFilter,appliedSearch,page,pageSize].join(':')
   React.useEffect(() => {
     if(!canView)return
     let active = true
@@ -129,18 +134,21 @@ export function OperationalFileWorkspace() {
     setBusy(true)
     setError('')
     try {
-      const response = await fetch('/api/operational-files?' + requestKey + '&' + new URLSearchParams({ page: String(page), pageSize: String(pageSize), category: filter }), { cache: 'no-store' })
+      const response = await fetch('/api/operational-files?' + requestKey + '&' + new URLSearchParams({
+        page: String(page), pageSize: String(pageSize), category: filter,
+        provider_filter: providerFilter, search: appliedSearch,
+      }), { cache: 'no-store' })
       const data = await response.json() as ListResponse
       if (!response.ok || !data.ok) throw new Error(data.error?.code || 'Không tải được file')
       if (version !== requestVersion.current) return
-      setLoadedOwner(actorKey)
+      setLoadedKey(listKey)
       setFiles(data.files || [])
       setTotal(data.total)
       if (data.page !== page) navigate({ storage_page: String(data.page) }, true)
     } catch (err) {
       if(version===requestVersion.current)setError(err instanceof Error ? err.message : 'Không tải được file')
     } finally { if(version===requestVersion.current)setBusy(false) }
-  }, [requestKey, shiftId, brandId, platformId, periodDate, page, pageSize, filter, navigate, actorKey, canView])
+  }, [requestKey, shiftId, brandId, platformId, periodDate, page, pageSize, filter, providerFilter, appliedSearch, listKey, navigate, actorKey, canView])
 
   React.useEffect(() => {
     const versionRef = requestVersion
@@ -273,7 +281,10 @@ export function OperationalFileWorkspace() {
     finally { setBusy(false) }
   }
 
-  const filtered = loadedOwner===actorKey?files:[]
+  const listReady = loadedKey===listKey
+  const filtered = listReady?files:[]
+  const applySearch = () => {setAppliedSearch(searchDraft.trim());pagination.reset()}
+  const resetSearch = () => {setSearchDraft('');setAppliedSearch('');pagination.reset()}
   if(userLoading||!currentUser)return <p className="p-4">{t('loading')}</p>
   if(currentUser&&!canView)return <p className="p-4 text-sm" role="alert">Bạn không có quyền truy cập kho file.</p>
   return (
@@ -417,23 +428,43 @@ export function OperationalFileWorkspace() {
       <section className="space-y-3 rounded-xl border p-4" aria-label={translate("File đã lưu")}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-semibold">{translate('File đã lưu')} ({total})</h2>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <select aria-label={translate('Lọc loại file')} className={fieldClass} value={filter}
               onChange={event => { setFilter(event.target.value); pagination.reset() }}>
               <option value="all">{t('all')}</option>
               {(catalog?.categories || []).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
             </select>
+            <select aria-label="Lọc nhà cung cấp file" className={fieldClass} value={providerFilter}
+              onChange={event => {setProviderFilter(event.target.value as 'all'|'google_drive'|'onedrive');pagination.reset()}}>
+              <option value="all">Mọi nguồn lưu</option>
+              <option value="google_drive">Google Drive</option>
+              <option value="onedrive">OneDrive</option>
+            </select>
             <button className={buttonClass} type="button" disabled={busy} onClick={() => void refresh()}
               aria-label={t('refresh')}><RefreshCw className="h-4 w-4" /></button>
           </div>
         </div>
-        {filtered.length === 0 ? <p className="text-sm text-muted-foreground">{translate("Chưa có file cho ngữ cảnh được chọn.")}</p> : (
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="min-w-48 flex-1 text-sm">Tìm file trong ngữ cảnh
+            <input className={fieldClass} type="search" value={searchDraft} maxLength={128}
+              placeholder="Tên file..."
+              onChange={event => setSearchDraft(event.target.value)}
+              onKeyDown={event => {if(event.key==='Enter'){event.preventDefault();applySearch()}}} />
+          </label>
+          <button type="button" className={buttonClass} onClick={applySearch} disabled={busy || searchDraft.trim()===appliedSearch}>Tìm file</button>
+          <button type="button" className={buttonClass} onClick={resetSearch} disabled={busy || (!appliedSearch&&!searchDraft)}>Xóa tìm kiếm</button>
+        </div>
+        {searchDraft.trim()!==appliedSearch&&<p role="status" className="text-xs text-muted-foreground">Từ khóa chưa áp dụng; kết quả đang hiển thị theo tìm kiếm trước đó.</p>}
+        {appliedSearch&&<p className="text-xs text-muted-foreground">Đang tìm trong tên file: {appliedSearch}</p>}
+        {!listReady ? <p role="status" className="text-sm">Đang xác minh và tải danh sách file theo ngữ cảnh...</p> :
+          filtered.length === 0 ? <p className="text-sm text-muted-foreground">{translate("Chưa có file phù hợp với ngữ cảnh và bộ lọc.")}</p> : (
           <div className="divide-y">
             {filtered.map(item => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
               <div className="min-w-0 flex-1">
                 <p className="break-all text-sm font-medium">{item.file_name}</p>
                 <p className="break-all text-xs text-muted-foreground">{item.folder_path}</p>
-                <p className="text-xs text-muted-foreground">{item.category} · {formatBytes(item.size_bytes)} · {item.provider}</p>
+                <p className="text-xs text-muted-foreground">{item.category} · {formatBytes(item.size_bytes)} · {item.provider==='google_drive'?'Google Drive':'OneDrive'}</p>
+                <p className="text-xs text-muted-foreground">Lưu ngày {new Date(item.created_at).toLocaleDateString('vi-VN')} · {item.integrity_status==='sha256_verified'?'Đã xác minh SHA-256':'Tham chiếu provider, chưa xác minh checksum nội dung'}</p>
               </div>
               <div className="flex gap-2">
                 <a className={buttonClass} href={item.access_url} target="_blank" rel="noopener noreferrer"
