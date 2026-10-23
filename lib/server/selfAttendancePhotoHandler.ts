@@ -7,6 +7,7 @@ import { requireUser, requireRole, authorizationErrorResponse, isAuthorizationEr
 import { createClient as createSessionClient } from '@/lib/supabase/server'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { createGoogleDriveFileProvider } from '@/lib/server/googleDriveFileProvider'
+import { createFileStorageService } from '@/lib/services/fileStorageService'
 import { readFormDataBody, RequestBodyError, consumeRateLimit, rateLimitResponse } from '@/lib/server/apiSecurity'
 import { attendancePhotoFolder, attendancePhotoName, type PhotoRole } from '@/lib/utils/attendancePhotoNaming'
 import { decodeSelfAttendanceEvent } from '@/lib/utils/selfAttendanceContract'
@@ -163,7 +164,8 @@ export async function POST(request:Request) {
         health.root_can_add_children!==true)
         return failed('ATTENDANCE_DRIVE_PERMISSION_DENIED',503)
       let parentId=root
-      for(const segment of attendancePhotoFolder(kind,prepared.date)) {
+      const folderSegments=attendancePhotoFolder(kind,prepared.date)
+      for(const segment of folderSegments) {
         parentId=(await drive.ensureFolder(parentId,segment)).id
       }
       const fileName=attendancePhotoName({
@@ -174,16 +176,27 @@ export async function POST(request:Request) {
         recordedAt:new Date().toISOString(),requestId,extension:'jpg',
       })
       const hash=createHash('sha256').update(cleanBytes).digest('hex')
-      const uploaded=await drive.upload({
+      // Use the SAME checked file-storage gateway used by operational report
+      // images and data files. Its metadata/MIME/size contract applies even
+      // though attendance has a separate authorized Drive root and photo flag.
+      // The exact provider parent prevents accidental logical-path traversal.
+      const storage=createFileStorageService({
+        env:{...process.env,FILE_STORAGE_ENABLED:'true',FILE_PROVIDER:'google_drive'},
+        provider:drive,
+      })
+      const uploaded=await storage.upload({
         name:fileName,mime_type:'image/jpeg',size_bytes:cleanBytes.byteLength,
         content:cleanBytes,checksum_sha256:hash,
         entity_type:'shift',entity_id:shiftId,created_by:actor.businessUserId,
-        logical_path:'',external_parent_id:parentId,
+        logical_path:folderSegments.join('/'),external_parent_id:parentId,
         destination:{provider:'google_drive',external_folder_id:parentId},
       })
       uploadedId=uploaded.asset.external_file_id
-      if(uploaded.asset.provider!=='google_drive'||uploaded.asset.external_parent_id!==parentId
-        ||uploaded.asset.size_bytes!==cleanBytes.length||!uploadedId)
+      if(uploaded.asset.provider!=='google_drive'||
+        uploaded.asset.external_parent_id!==parentId||
+        uploaded.asset.name!==fileName||
+        uploaded.asset.mime_type!=='image/jpeg'||
+        uploaded.asset.size_bytes!==cleanBytes.length||!uploadedId)
         throw new Error('ATTENDANCE_PHOTO_PROVIDER_MISMATCH')
       // Verify a real, readable provider object before accepting any metadata
       // as check-in proof. Provider upload ACK alone is insufficient evidence.
