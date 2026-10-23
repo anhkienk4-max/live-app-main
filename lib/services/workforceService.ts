@@ -152,6 +152,8 @@ export interface RawSelfAttendanceReviewEvent {
   event_kind: 'check_in' | 'check_out'
   recorded_at: string
   verification_status: 'pending_verification'
+  /** Does not expose private Drive file IDs or proof request UUIDs. */
+  photo_available?: boolean
 }
 
 export interface ActualSegmentsResponse {
