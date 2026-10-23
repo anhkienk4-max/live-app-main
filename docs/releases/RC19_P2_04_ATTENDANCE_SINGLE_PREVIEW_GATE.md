@@ -68,3 +68,15 @@
 - Vercel environment inventory shows **no RC19 Preview-scoped Drive service identity**; an unrelated legacy branch has a separate OAuth refresh-token setting, **not** authorization to copy credentials or write this private attendance folder. The new photo flags stay `false` until the runtime provider identity and folder ACL are explicitly validated. Folder configuration alone does not establish upload availability.
 - As requested by the owner, **finish all RC19 code fixes before QC**. The existing single Preview is still pinned to prior SHA `ae0fe7d0` and **does not include these attendance-photo changes**. Source/CI advancement must not silently create a second Preview or promote Production.
 
+
+
+### Google Drive root provenance: My Drive, not Shared Drive
+
+Read-only Google Drive metadata inspection of the operator-approved existing `CHECK IN/OUT` folder (`GOOGLE_DRIVE_ATTENDANCE_FOLDER_ID`), **using the owner's connected Google Drive**, returned `mimeType=application/vnd.google-apps.folder` and **no Shared Drive `driveId`**. Consequently this existing parent belongs to a regular **My Drive** folder tree. This observation says nothing about the app's independent Vercel runtime identity.
+
+Current source `createGoogleDriveFileProvider.healthCheck()` deliberately fails if `authMode==='service_account' && !file.driveId`. Therefore **service-account mode is incompatible with the approved, unmoved parent folder under current provider design**; trying to grant a service account access to a personal folder cannot bypass this source safeguard. Keep existing root and all subfolders intact. An authorized, least-privileged *OAuth* identity with access to that existing root is the recommended deployment route, and requires explicit approved credential connection/configuration, refresh-token management and revoked-token failure tests. **Do not reuse existing credentials from an unrelated legacy Preview branch without explicit authorization**.
+
+An Admin-only, no-write runtime provider preflight was added:
+`GET /api/workforce/self-attendance-photo/preflight`, callable via a button in `Payroll → Chấm công`. It checks active Admin business role, rate limits, calls provider `healthCheck()`, and returns only readiness booleans and enabled state. It cannot upload files, create folders or expose the raw Drive ID or keys. This enables verifying actual runtime OAuth/ACL without altering private folders or writing employee photos. While credentials are unconfigured, the feature flags remain OFF and preflight reports not ready; do not claim a successful live upload.
+
+**Owner gate:** Existing My Drive folder remains preserved. No migration/rename/move/deletion of that folder, no Preview redeploy and no Production write in this change.
