@@ -8,8 +8,8 @@ import { useListPagination } from '@/lib/hooks/useListPagination'
 import type { ListFilters, ListPage, ListQuery } from '@/lib/services/operationsPageService'
 import type { PageSize } from '@/lib/utils/pagination'
 import {
-  invalidatePageCache, pageCacheKey, prefetchNextListPage,
-  readCachedListPage, readPageCache,
+  invalidatePageCache, prefetchNextListPage,
+  readCachedListPage,
 } from '@/lib/services/operationsPageCache'
 
 export function usePagedList<T>(service: { getPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<T>> }, prefix: string, filters: ListFilters = {}, defaultSize: PageSize = 20) {
@@ -22,9 +22,6 @@ export function usePagedList<T>(service: { getPage(query: ListQuery, signal?: Ab
   const key = identity + ':' + page + ':' + pageSize + ':' + encodedFilters + ':' + revision
   const [state, setState] = useState<{ key: string; identity: string; result?: ListPage<T>; error?: unknown }>({ key: '', identity: '' })
   const version = useRef(0)
-  const query: ListQuery = { page, pageSize, filters: JSON.parse(encodedFilters) }
-  const cacheKey = identity ? pageCacheKey(identity, prefix, query) : ''
-  const cached = cacheKey ? readPageCache<ListPage<T>>(cacheKey) : undefined
 
   useEffect(() => {
     const controller = new AbortController()
@@ -36,10 +33,8 @@ export function usePagedList<T>(service: { getPage(query: ListQuery, signal?: Ab
       const actor = await currentUserService.getCurrent()
       return !!actor && identity === operationsActorCacheKey(actor)
     }
-    // A cached, role-scoped page can render immediately without opening a new request.
-    if (readPageCache<ListPage<T>>(pageCacheKey(identity, prefix, currentQuery))) {
-      return () => { controller.abort() }
-    }
+    // Even cached rows must pass stillSameActor before any state update.
+    // Never take a synchronous shortcut around readCachedListPage's actor gate.
     const timer = window.setTimeout(async () => {
       try {
         const result = await readCachedListPage(service, identity, prefix, currentQuery, controller.signal, stillSameActor)
@@ -61,8 +56,8 @@ export function usePagedList<T>(service: { getPage(query: ListQuery, signal?: Ab
     setRevision(value => value + 1)
   }, [setRevision])
   const active = state.key === key
-  const result = (active ? state.result : undefined) ?? cached
-  return { ...pagination, reload, refreshing: !!result && !active && !cached,
+  const result = active ? state.result : undefined
+  return { ...pagination, reload, refreshing: Boolean(state.result && state.identity === identity && !active),
     result, items: result?.items ?? [], total: result?.total ?? 0,
     loading: !result && (!active || !state.error), error: active ? state.error : null }
 }
