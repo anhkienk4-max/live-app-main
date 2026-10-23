@@ -110,3 +110,17 @@ On 2026-10-23 the owner explicitly authorized storing check-in photos on Google 
 **Operator remediation (requires separate explicit decision):** Either restrict the current `CHECK IN/OUT` folder's `General access` from anyone-with-link to named authorized collaborators, after identifying dependent workflows, **or** provision a separate private attendance root outside any public ancestor and update only `GOOGLE_DRIVE_ATTENDANCE_FOLDER_ID` accordingly. A child folder under the publicly shared root is not an assumed privacy fix because inherited permissions may remain. Do not overwrite existing report attachments.
 
 **Release state:** Current Production deploy stays the old commit, attendance flags explicitly OFF, no actual sensitive upload and no Drive ACL mutation. One preexisting Preview remains pinned to older SHA. Owner requires all source fixes before consolidated QC. No claim of live app principal permission before authenticated Admin preflight and approved private destination.
+
+
+### Operator decision: continue with existing publicly shared check-in folder (supersedes default privacy block)
+
+On 2026-10-23 the owner explicitly instructed **"CỨ MỞ TIẾP TỤC ĐI"** after being shown the existing `CHECK IN/OUT` root permission `type=anyone, role=writer`. This is an explicit acceptance of current Drive-folder sharing for the project. It does **not** mean the folder is private, authorize bypassing shift/member/RLS controls, or independently authorize untested Production code/schema rollouts.
+
+**Implementation on source branch**:
+- Added opt-in `ATTENDANCE_DRIVE_ALLOW_PUBLIC_ACCESS=true`. The permission audit still queries the **full** root ACL via app OAuth and rejects unreadable/unknown permissions. An `anyone` or `domain` grant only ceases to be a write blocker **when the exact environment flag is explicitly true**. No blanket bypass or folder ACL mutation.
+- If public sharing is accepted, the Admin preflight returns `public_access:true` and `public_access_approved:true` together with verified provider/root permission booleans; the Admin panel remains conspicuously amber, warning that a person with the Drive link may access staff images or personal/shift information. It must **never** render as a private folder.
+- Existing secure request/auth boundaries stay: authenticated owner+assignment, server-derived shift/brand/platform/room metadata, per-shift unique proof, MIME/image normalization, Drive hash read-after-write, privately queried metadata, immutable journal and human verification before Payroll.
+- `ATTENDANCE_DRIVE_ALLOW_PUBLIC_ACCESS=true` is configured **only for the exact RC19 integration Preview branch** at this checkpoint. Upload and browser flags stay OFF, and the old single Preview is not redeployed. Production environment override was **not** enabled; the existing Production code/schema/feature switches remain unchanged.
+- No file was uploaded, renamed, moved or deleted. Existing permissions were not changed. This is a **source/config gate change**, not QC evidence or a claim that Production check-in works. Signed-in user UAT and the remaining RC19 issue/security gates still precede any Production promotion.
+
+**Privacy tradeoff explicitly recorded:** Google Drive folder sharing may expose names, photos and shift details outside the application's own authenticated file-view API. Server-level RLS cannot undo a public Drive ACL. Treat the decision as an accepted operational risk, not a technical guarantee of confidentiality.
