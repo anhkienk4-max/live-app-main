@@ -156,3 +156,58 @@ test('RC19 #71 every usePagedList render goes through verified actor cache reads
   assert.match(hook, /const result = active \? state\.result : undefined/)
   assert.match(hook, /if \(request !== version\.current \|\| controller\.signal\.aborted\) return/)
 })
+
+test('RC19 #71 cached page invalidated while actor proof awaits fetches a fresh page', async () => {
+  invalidatePageCache()
+  const identity = 'member:member:2026-10-24'
+  const namespace = 'my_shifts'
+  const key = pageCacheKey(identity, namespace, query)
+  writePageCache(key, {
+    items: [{ id: 'old-cache-row' }], page: 1, pageSize: 10, total: 1,
+  } satisfies ListPage<Item>)
+  let signalReady!: (valid: boolean) => void
+  const pending = new Promise<boolean>(resolve => { signalReady = resolve })
+  let reads = 0
+  const read = readCachedListPage({
+    async getPage(): Promise<ListPage<Item>> {
+      reads++
+      return { items: [{ id: 'fresh-row' }], page: 1, pageSize: 10, total: 1 }
+    },
+  }, identity, namespace, query, undefined, async () => pending)
+  invalidatePageCache(identity, namespace)
+  signalReady(true)
+  const result = await read
+  assert.deepEqual(result.items.map(item => item.id), ['fresh-row'])
+  assert.equal(reads, 1, 'stale cache hit must not be returned after invalidation')
+  assert.deepEqual(readPageCache<ListPage<Item>>(key)?.items.map(row => row.id), ['fresh-row'])
+  invalidatePageCache()
+})
+
+test('RC19 #71 logout during actor verification rejects cached rows without leaking identity', async () => {
+  invalidatePageCache()
+  const identity = 'private-member:member:2026-10-24'
+  const namespace = 'reports'
+  const key = pageCacheKey(identity, namespace, query)
+  const previousWarning = console.warn
+  const warnings: unknown[][] = []
+  console.warn = (...args: unknown[]) => warnings.push(args)
+  const service = { async getPage(): Promise<ListPage<Item>> {
+    return { items: [{ id: 'server-old' }], page: 1, pageSize: 10, total: 1 }
+  } }
+  try {
+    writePageCache(key, { items: [{ id: 'cache-old' }], page: 1, pageSize: 10, total: 1 })
+    await assert.rejects(
+      readCachedListPage(service, identity, namespace, query, undefined,
+        async () => { throw new Error('authenticated business user unavailable') }),
+      /LIST_IDENTITY_CHANGED/,
+    )
+    assert.equal(readPageCache(key), undefined)
+    assert.deepEqual(warnings, [['OPS_LIST_IDENTITY_DIAGNOSTIC', {
+      stage: 'cache_actor_changed_on_hit',
+    }]])
+    assert.equal(JSON.stringify(warnings).includes('private-member'), false)
+  } finally {
+    console.warn = previousWarning
+    invalidatePageCache()
+  }
+})
