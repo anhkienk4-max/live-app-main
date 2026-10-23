@@ -25,6 +25,8 @@ jobs:
         run: pnpm exec tsc --noEmit --incremental false
       - name: Full ESLint
         run: pnpm run lint
+      - name: Reports P0 signed-JWT HTTP harness contract (offline mocks, no credentials)
+        run: node --test scripts/uat/rc19-reports-signed-jwt.test.mjs
       - name: Staffing focused regression
         run: node --experimental-strip-types --test tests/rc19-staffing-*.test.ts
       - name: Full canonical regression
