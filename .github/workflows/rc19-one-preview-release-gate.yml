@@ -40,6 +40,8 @@ jobs:
         run: pnpm exec playwright test --config playwright.rc19-calendar.config.ts --reporter=line
       - name: Staffing mock browser smoke
         run: pnpm exec playwright test --config playwright.rc19-staffing.config.ts --reporter=line
+      - name: Auth responsive and zoom keyboard smoke
+        run: pnpm exec playwright test --config playwright.rc19-auth.config.ts --reporter=line
       - name: Production-equivalent build without secrets
         env:
           NEXT_PUBLIC_SUPABASE_URL: ''
