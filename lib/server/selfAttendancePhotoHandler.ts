@@ -64,6 +64,10 @@ export async function POST(request:Request) {
   try {
     if(process.env.FEATURE_SELF_ATTENDANCE_PHOTO!=='true')
       return failed('ATTENDANCE_PHOTO_FEATURE_DISABLED',503)
+    // Respect the global operational file-storage kill switch as well as the
+    // separate sensitive photo-evidence flag. One must not bypass the other.
+    if(process.env.FILE_STORAGE_ENABLED==='false')
+      return failed('ATTENDANCE_FILE_STORAGE_DISABLED',503)
     if(!hasExactOrigin(request))return failed('ATTENDANCE_PHOTO_ORIGIN_INVALID',403)
     const actor=await requireUser(request)
     if(!actor.businessUserId) return failed('ATTENDANCE_BUSINESS_ACTOR_REQUIRED',403)
@@ -180,10 +184,7 @@ export async function POST(request:Request) {
       // images and data files. Its metadata/MIME/size contract applies even
       // though attendance has a separate authorized Drive root and photo flag.
       // The exact provider parent prevents accidental logical-path traversal.
-      const storage=createFileStorageService({
-        env:{...process.env,FILE_STORAGE_ENABLED:'true',FILE_PROVIDER:'google_drive'},
-        provider:drive,
-      })
+      const storage=createFileStorageService({provider:drive})
       const uploaded=await storage.upload({
         name:fileName,mime_type:'image/jpeg',size_bytes:cleanBytes.byteLength,
         content:cleanBytes,checksum_sha256:hash,
