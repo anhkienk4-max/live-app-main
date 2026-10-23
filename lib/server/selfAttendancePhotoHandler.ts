@@ -72,26 +72,17 @@ export async function POST(request:Request) {
     const shiftId=id.parse(form.get('shift_id'))
     const kind=role.parse(form.get('role'))
     const requestId=UUID.parse(form.get('request_id'))
-    const captureSource=z.enum(['camera','file_picker']).parse(form.get('capture_source'))
+    const recoverOnly=form.get('recover_only')==='true'
+    // The client may retry after a browser reload with no original image in
+    // memory. Recovery is only permitted when the same actor already owns an
+    // immutable provider object for the exact shift and role.
+    if(form.has('recover_only')&&form.get('recover_only')!=='true')
+      return failed('ATTENDANCE_PHOTO_REQUEST_INVALID',400)
+    const captureSource=recoverOnly?null:
+      z.enum(['camera','file_picker']).parse(form.get('capture_source'))
     const file=form.get('file')
-    if(!(file instanceof File)||file.size<1||file.size>LIMIT)
+    if(!recoverOnly&&(!(file instanceof File)||file.size<1||file.size>LIMIT))
       return failed('ATTENDANCE_PHOTO_REQUIRED',file instanceof File?413:400)
-    const bytes=new Uint8Array(await file.arrayBuffer())
-    const type=mimeFromBytes(bytes)
-    if(!type || (file.type && file.type!==type.mime && file.type!=='application/octet-stream'))
-      return failed('ATTENDANCE_PHOTO_TYPE_INVALID',415)
-    // Strip EXIF/GPS/device metadata, normalize orientation and fit inside a
-    // 1600px image. Only the server-normalized evidence reaches Google Drive.
-    let cleanBytes:Uint8Array
-    try {
-      cleanBytes=new Uint8Array(await sharp(bytes,{limitInputPixels:24_000_000,failOn:'error'})
-        .rotate().resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true})
-        .flatten({background:'#ffffff'}).jpeg({quality:82,mozjpeg:true}).toBuffer())
-    } catch {
-      return failed('ATTENDANCE_PHOTO_IMAGE_INVALID',415)
-    }
-    if(cleanBytes.byteLength<1||cleanBytes.byteLength>LIMIT)
-      return failed('ATTENDANCE_PHOTO_TOO_LARGE',413)
 
     const admin=createSupabaseAdminClient()
     const evidenceColumns='request_id,shift_id,staff_id,operational_role,external_file_id,external_parent_id,file_name,mime_type,size_bytes,checksum_sha256'
@@ -113,6 +104,8 @@ export async function POST(request:Request) {
     // foreign staff or photo ID, and verifies the Drive bytes below.
     const existing={data:byAssignment.data??byRequest.data}
     const committedRequestId=existing.data?.request_id??requestId
+    if(recoverOnly&&!existing.data)
+      return failed('ATTENDANCE_PHOTO_RECOVERY_UNAVAILABLE',404)
 
     // A retry must not finalize check-in if the previously reserved Drive
     // image was removed, replaced or moved after the first upload.
@@ -134,6 +127,23 @@ export async function POST(request:Request) {
     const session=await createSessionClient()
     let prepared: z.infer<typeof contextSchema>|null=null
     if(!existing.data) {
+      if(!(file instanceof File)||!captureSource)
+        return failed('ATTENDANCE_PHOTO_REQUIRED',400)
+      const bytes=new Uint8Array(await file.arrayBuffer())
+      const type=mimeFromBytes(bytes)
+      if(!type||(file.type&&file.type!==type.mime&&file.type!=='application/octet-stream'))
+        return failed('ATTENDANCE_PHOTO_TYPE_INVALID',415)
+      // Normalize photo and strip EXIF/GPS/device metadata before Drive upload.
+      let cleanBytes:Uint8Array
+      try{
+        cleanBytes=new Uint8Array(await sharp(bytes,{limitInputPixels:24_000_000,failOn:'error'})
+          .rotate().resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true})
+          .flatten({background:'#ffffff'}).jpeg({quality:82,mozjpeg:true}).toBuffer())
+      }catch{
+        return failed('ATTENDANCE_PHOTO_IMAGE_INVALID',415)
+      }
+      if(cleanBytes.byteLength<1||cleanBytes.byteLength>LIMIT)
+        return failed('ATTENDANCE_PHOTO_TOO_LARGE',413)
       const preflight=await session.rpc('get_self_attendance_photo_context',{
         p_shift_id:shiftId,p_operational_role:kind,
       })
