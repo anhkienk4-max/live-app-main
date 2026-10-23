@@ -151,6 +151,7 @@
     "tests/rc19-command-toolbar.test.tsx",
     "tests/rc19-my-payslip.test.ts",
     "tests/rc19-report-apply-filters.test.ts",
+    "tests/rc19-reports-app-router-wiring.test.ts",
     "tests/rc19-self-attendance-contract.test.ts",
     "tests/rc19-staffing-availability-sql.test.ts",
     "tests/rc19-staffing-candidate-contract.test.ts",
