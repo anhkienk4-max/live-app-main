@@ -117,3 +117,12 @@ No Production schema changes.
 - Tests added to `tests/report-history-access.test.ts` (existing canonical test file). No unmanifested test path was added.
 
 **Status:** Staging role+filter SQL PASS; final HEAD CI and real authenticated Preview UI/XLSX QC still pending. As owner directed, do not QC before the remaining RC19 source issues are finished. The one already-created Preview remains pinned to old SHA `ae0fe7d0` and does **not** contain these changes. Never create per-module Preview; Production **NO-GO**.
+
+
+### Further privacy and export integrity repairs
+
+- `20261023160500_rc19_reports_history_staff_filter_privacy.sql` was applied **Staging only**, managed alias `rc19_reports_history_staff_filter_privacy_from_20261023160500`. It removes the possibility of using guessed Host/Support/Technical filter IDs to infer staffing on an RLS-hidden historical shift. Historical rows fail closed under any selected personnel filter; RLS-visible shifts continue using canonical `private.filtered_shift_ids`.
+- Read-only nine-actor Staging repeat: **27/27 hidden-history staff-ID filter probes denied; 9/9 unfiltered direct report RLS count parity preserved**. This is an intentional privacy tradeoff, not a claim that personnel filters match hidden shifts. No archived/deleted Shift ACL widening.
+- CI regression test for historical Excel uncovered a real mismatch: SQL `time` may serialize as `HH:mm:ss`, whereas `resolveShiftDateTime` expects `HH:mm`. Source export now normalizes to five clock characters before computing overnight end date. New regression expects 2026-10-23 23:45 to 2026-10-24 01:45 with personnel columns empty, never filled from hidden Shift.
+- Canonical Global Search fixture required `historicalShiftContexts:{}` for mocked Reports responses. Fixture updated without weakening the production response schema.
+- Current updated source still awaits CI full regression and browser/build, plus real signed-JWT role UAT. Neither original Preview nor Production has these changes.
