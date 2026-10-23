@@ -325,3 +325,17 @@ test('RC19 P0 Reports direct-table security gate matches revision RPC and report
   assert.doesNotMatch(sql,/grant execute on function public\.get_report_revisions\(text\) to anon/i)
   assert.doesNotMatch(sql,/alter table public\.reports disable row level security|grant select on public\.reports to anon/i)
 })
+
+test('RC19 #84 orphan live-image read policy fails closed without a linked report', () => {
+  const sql = readFileSync(
+    new URL('../supabase/migrations/20261024003000_rc19_p0_orphan_live_image_read_rls.sql', import.meta.url), 'utf8',
+  )
+  assert.match(sql, /create policy live_report_images_read[\s\S]*?for select to authenticated/i)
+  assert.match(sql, /\(select private\.current_business_user_is_active\(\)\)/i)
+  assert.match(sql, /and report_id is not null/i)
+  assert.match(sql, /from public\.reports report[\s\S]*?report\.id = live_report_images\.report_id/i)
+  assert.match(sql, /report\.deleted_at is null and report\.archived_at is null/i)
+  assert.match(sql, /private\.current_system_permission\(\)\) = 'admin'/i)
+  assert.doesNotMatch(sql, /report_id is null\) or|or \(report_id is null\)/i)
+  assert.doesNotMatch(sql, /grant select on public\.reports|delete from public\.|truncate public\./i)
+})
