@@ -51,7 +51,7 @@ function photoProvider() {
   // attendance when those server-only credentials are configured in runtime.
   // Health-check root ACLs after verifying the exact auth-mode prerequisites
   // so an absent credential is not misreported as a missing folder permission.
-  const env={...process.env,GOOGLE_DRIVE_ROOT_FOLDER_ID:root}
+  const env: Record<string,string|undefined>={...process.env,GOOGLE_DRIVE_ROOT_FOLDER_ID:root}
   const authMode=resolveGoogleDriveAuthMode(env)
   const credentialKeys=authMode==='oauth_refresh_token'
     ? ['GOOGLE_DRIVE_CLIENT_ID','GOOGLE_DRIVE_CLIENT_SECRET','GOOGLE_DRIVE_REFRESH_TOKEN']
