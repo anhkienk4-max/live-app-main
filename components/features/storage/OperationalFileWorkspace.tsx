@@ -40,6 +40,7 @@ type CatalogResponse = {
   categories: Category[]
   max_single_upload_bytes: number
   confidential_write_ready: boolean
+  active_route_count?: number | null
 }
 
 type ListResponse = { ok: boolean; total: number; page: number; pageSize: number; files?: Stored[]; error?: { code?: string } }
@@ -296,6 +297,12 @@ export function OperationalFileWorkspace() {
           <p className="text-sm text-muted-foreground">{translate("File trên Google Drive/OneDrive · Supabase chỉ lưu metadata. Dành cho Leader/Admin.")}</p>
         </div>
       </div>
+      {catalog?.active_route_count === 0 && <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        Chưa có Storage Route đang hoạt động. Admin cần xác minh folder gốc và quyền Drive/OneDrive tại Cấu hình Storage trước khi upload hoặc liên kết file. Không tự tạo folder thay thế.
+      </p>}
+      {catalog?.active_route_count == null && catalog && <p role="status" className="text-xs text-muted-foreground">
+        Chưa xác minh được trạng thái Storage Route từ hệ thống. Việc lưu file vẫn phải qua kiểm tra quyền và thư mục đích.
+      </p>}
       {catalog?.categories.some(item => item.id === 'system_export') &&
         <Link href="/storage/setup" className="inline-flex min-h-11 items-center rounded-md border px-3 py-2 text-sm hover:bg-muted">{translate("Admin: Kiểm tra và cấu hình Storage Routes")}</Link>}
 

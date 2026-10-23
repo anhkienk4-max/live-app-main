@@ -25,3 +25,10 @@ test('search does not auto-query each keystroke; reports real integrity wording,
  assert.match(view,/Tham chiếu provider, chưa xác minh checksum nội dung/)
  assert.match(api,/integrity_status: row\.integrity_status === 'sha256_verified'/)
 })
+
+test('Catalog exposes only active Storage Route count, not provider parent-folder metadata',()=>{
+ assert.match(api,/active_route_count: activeRouteCount\.error \? null : activeRouteCount\.count \?\? null/)
+ assert.match(api,/select\('id', \{ count: 'exact', head: true \}\)\.eq\('active', true\)/)
+ assert.match(view,/catalog\?\.active_route_count === 0/)
+ assert.match(view,/Không tự tạo folder thay thế/)
+})

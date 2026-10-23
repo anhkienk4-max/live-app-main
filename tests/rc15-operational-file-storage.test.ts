@@ -304,6 +304,8 @@ test('operational file lifecycle uses external object, no duplicate, metadata-on
   const cat = await admin.GET(new Request('https://example.test/api/operational-files?catalog=1'))
   const catalog = await cat.json() as { categories: Array<{ id: string }> }
   assert.ok(catalog.categories.some(entry => entry.id === 'payment_document'))
+  const routeCount = await admin.GET(new Request('https://example.test/api/operational-files?catalog=1'))
+  assert.equal((await routeCount.json() as {active_route_count:number}).active_route_count,0)
   const leaderCat = await leader.GET(new Request('https://example.test/api/operational-files?catalog=1'))
   const leaderCatalog = await leaderCat.json() as { categories: Array<{ id: string }> }
   assert.equal(leaderCatalog.categories.some(entry => entry.id === 'payment_document'), false)

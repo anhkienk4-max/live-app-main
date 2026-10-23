@@ -296,11 +296,13 @@ export function createOperationalFileRouteHandler(deps: {
         const params = new URL(request.url).searchParams
         const client = clientFactory()
         if (params.get('catalog') === '1') {
-          const [brands, platforms, campaigns] = await Promise.all([
+          const [brands, platforms, campaigns, activeRouteCount] = await Promise.all([
             client.from('brands').select('id,name').is('deleted_at', null).order('name', { ascending: true }),
             client.from('platforms').select('id,name').is('deleted_at', null).order('name', { ascending: true }),
             client.from('campaigns').select('id,name,brand_id,start_date,end_date,platform_ids,platform_source')
               .is('deleted_at', null).order('name', { ascending: true }),
+            client.from('operational_storage_routes')
+              .select('id', { count: 'exact', head: true }).eq('active', true),
           ])
           if (brands.error || platforms.error || campaigns.error) throw new Error('OPERATIONAL_FILE_SCOPE_LOOKUP_FAILED')
           return Response.json({
@@ -309,6 +311,7 @@ export function createOperationalFileRouteHandler(deps: {
             brands: brands.data ?? [], platforms: platforms.data ?? [], campaigns: campaigns.data ?? [],
             max_single_upload_bytes: MAX_OPERATIONAL_FILE_BYTES,
             confidential_write_ready: allowConfidentialWrites(),
+            active_route_count: activeRouteCount.error ? null : activeRouteCount.count ?? null,
           }, { headers: { 'Cache-Control': 'no-store' } })
         }
 
