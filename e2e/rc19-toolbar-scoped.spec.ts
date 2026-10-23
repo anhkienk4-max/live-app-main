@@ -66,7 +66,7 @@ test('Storage toolbar searches only applied text and never reuses filenames from
   await toolbar.getByRole('button',{name:'Tìm file'}).click()
   await expect.poll(()=>calls.some(c=>c.search==='100%')).toBe(true)
   await expect(page.getByText('Brand One 100% deal file.xlsx')).toBeVisible()
-  await page.getByRole('combobox',{name:'Brand',exact:true}).selectOption('brand-2')
+  await page.locator('select').filter({has:page.locator('option[value="brand-2"]')}).selectOption('brand-2')
   await expect(page.getByText('Brand Two 100% deal file.xlsx')).toBeVisible()
   await expect(page.getByText('Brand One 100% deal file.xlsx')).toHaveCount(0)
   expect(calls.some(c=>c.brand==='brand-2'&&c.search==='100%')).toBe(true)
