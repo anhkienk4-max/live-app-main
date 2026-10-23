@@ -7,6 +7,8 @@ export type PhotoRole = 'host' | 'support' | 'technical'
 
 export interface AttendancePhotoNamingInput {
   shiftDate: string
+  shiftId: string
+  studio?: string | null
   brand: string
   platform: string
   startTime: string
@@ -42,6 +44,8 @@ export function attendancePhotoFolder(role: PhotoRole, date: string) {
 }
 export function attendancePhotoName(input: AttendancePhotoNamingInput) {
   const {year,month,day}=checkedDate(input.shiftDate)
+  if(!input.shiftId.trim() || input.shiftId.length>120)
+    throw new Error('ATTENDANCE_PHOTO_SHIFT_ID_INVALID')
   const at=new Date(input.recordedAt)
   if(!Number.isFinite(at.getTime())||!/Z|[+-]\d{2}:\d{2}$/.test(input.recordedAt))
     throw new Error('ATTENDANCE_PHOTO_CAPTURE_TIME_INVALID')
@@ -51,7 +55,8 @@ export function attendancePhotoName(input: AttendancePhotoNamingInput) {
   const roles:Record<PhotoRole,string>={host:'HOST',support:'TRO',technical:'KY_THUAT'}
   return [
     `${year}${pad(month)}${pad(day)}`, SAFE(input.brand,24), SAFE(input.platform,16),
+    'PHONG_'+SAFE(input.studio?.trim() || 'CHUA_XEP',20),
     checkedTime(input.startTime)+'-'+checkedTime(input.endTime),roles[input.role],
-    SAFE(input.staffName,28),'CHECKIN',stamp,input.requestId.slice(0,8)
+    SAFE(input.staffName,28),'CA_'+SAFE(input.shiftId,12),'CHECKIN',stamp,input.requestId.slice(0,8)
   ].join('_')+'.'+input.extension
 }
