@@ -499,7 +499,9 @@ export function ReportDetailModal({
     platforms: new Map(platforms.map(platform => [platform.id, platform.name])),
   })
 
-  const canExport = !currentUser || hasPermission(currentUser, 'reports.export') || hasPermission(currentUser, 'reports.review') || hasPermission(currentUser, 'reports.submit') || report.submitted_by === currentUser?.id
+  // Fail closed without an actor. Members may export only reports they submitted;
+  // Leader/Admin use their explicit reports.export permission.
+  const canExport = Boolean(currentUser && (hasPermission(currentUser, 'reports.export') || report.submitted_by === currentUser.id))
 
   const rerunOcr = async () => {
     const platform = report.dashboard_platform || 'other'
