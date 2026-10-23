@@ -295,7 +295,7 @@ test('Admin Payroll shows one explicit, non-mutating Drive readiness action',()=
   assert.match(ui,/ATTENDANCE_DRIVE_NOT_CONFIGURED/)
   assert.match(ui,/ATTENDANCE_DRIVE_PERMISSION_DENIED/)
   assert.match(ui,/ATTENDANCE_DRIVE_ACL_PUBLIC/)
-  assert.match(ui,/Không được lưu ảnh nhân sự vào đây/)
+  assert.match(ui,/ATTENDANCE_DRIVE_ALLOW_PUBLIC_ACCESS/)
   assert.match(ui,/setBlockedReason/)
   assert.match(ui,/Cần cấu hình bảo mật trên Vercel/)
   assert.doesNotMatch(ui,/method:'POST'|\.upload\(|\.delete\(|new FormData\(/)
@@ -348,7 +348,32 @@ test('both upload and Admin read-only preflight block staff photos into publicly
   assert.match(acl,/drive\.permissions\.list\(\{/)
   assert.match(acl,/nextPageToken/)
   assert.match(acl,/all\.push\(\.\.\.data\.permissions\)/)
-  assert.match(acl,/assertPrivateAttendanceDrivePermissions\(all,complete\)/)
+  assert.match(acl,/assertPrivateAttendanceDrivePermissions\(all,complete,publicGrantApproved\)/)
   assert.match(guard,/permission\.type==='anyone' \|\| permission\.type==='domain'/)
   assert.doesNotMatch(acl,/permissions\.create\(|permissions\.delete\(|files\.create\(/)
+})
+
+
+test('public Drive sharing is allowed ONLY with explicit operator override; incomplete ACL still fails',async()=>{
+  const {assertPrivateAttendanceDrivePermissions,AttendanceDriveAclError}=
+    await import('../lib/utils/attendanceDriveAcl.ts')
+  const publicRoot=[{type:'user',role:'owner'},{type:'anyone',role:'writer'}]
+  assert.throws(()=>assertPrivateAttendanceDrivePermissions(publicRoot,true),
+    (error:unknown)=>error instanceof AttendanceDriveAclError&&error.code==='ATTENDANCE_DRIVE_ACL_PUBLIC')
+  assert.deepEqual(assertPrivateAttendanceDrivePermissions(publicRoot,true,true),{publicAccess:true})
+  assert.deepEqual(assertPrivateAttendanceDrivePermissions([{type:'user',role:'owner'}],true,true),{publicAccess:false})
+  assert.throws(()=>assertPrivateAttendanceDrivePermissions(publicRoot,false,true),/ATTENDANCE_DRIVE_ACL_UNVERIFIED/)
+  assert.throws(()=>assertPrivateAttendanceDrivePermissions([{type:'unknown',role:'writer'}],true,true),/ATTENDANCE_DRIVE_ACL_UNVERIFIED/)
+  assert.throws(()=>assertPrivateAttendanceDrivePermissions([{type:'anyone',role:'invalid'}],true,true),/ATTENDANCE_DRIVE_ACL_UNVERIFIED/)
+  const server=readFileSync(new URL('../lib/server/attendanceDriveAcl.ts',import.meta.url),'utf8')
+  const handler=readFileSync(new URL('../lib/server/selfAttendancePhotoHandler.ts',import.meta.url),'utf8')
+  const ui=readFileSync(new URL('../components/features/payroll/AttendanceDrivePreflight.tsx',import.meta.url),'utf8')
+  assert.match(server,/env\.ATTENDANCE_DRIVE_ALLOW_PUBLIC_ACCESS==='true'/)
+  assert.match(server,/assertPrivateAttendanceDrivePermissions\(all,complete,publicGrantApproved\)/)
+  assert.match(handler,/public_access:publicAccess/)
+  assert.match(handler,/public_access_approved:publicAccess&&process\.env\.ATTENDANCE_DRIVE_ALLOW_PUBLIC_ACCESS==='true'/)
+  assert.match(ui,/typeof result\.public_access!=='boolean'/)
+  assert.match(ui,/result\.public_access===true&&result\.public_access_approved!==true/)
+  assert.match(ui,/ảnh check-in và thông tin nhân sự trong file vẫn có thể bị người có liên kết Drive truy cập/)
+  assert.doesNotMatch(server,/\.permissions\.create\(|\.permissions\.delete\(/)
 })
