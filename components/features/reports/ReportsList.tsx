@@ -531,7 +531,38 @@ export function ReportsList() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredReports.map(report => {
             const shift = shiftById.get(report.shift_id)
-            if (!shift) return null
+            if (!shift) {
+              const context = historicalContexts[report.id]
+              if (!context) return <Card key={report.id} className="border-amber-300 p-4" data-testid="report-history-context-missing">
+                <p className="text-sm font-medium">Không thể tải ngữ cảnh lịch sử cho báo cáo này</p>
+                <p className="mt-1 text-xs text-muted-foreground">Mã báo cáo: {report.id}. Vui lòng tải lại danh sách, không mở quyền chỉnh sửa ca.</p>
+              </Card>
+              const historicalStatus = report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
+              const historicalRevenue = reportRevenue(report)
+              return <Card key={report.id} className="flex flex-col border-muted shadow-none" data-testid="report-historical-read-only">
+                <CardHeader className="p-4 pb-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Badge variant="secondary">{context.date}</Badge>
+                    <Badge variant="outline">Lịch sử · Chỉ xem</Badge>
+                  </div>
+                  <CardTitle className="mt-2 text-base">{nameById(brands,context.brand_id)}</CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    {nameById(platforms,context.platform_id)} · {nameById(campaigns,context.campaign_id??undefined)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{context.start_time.slice(0,5)}–{context.end_time.slice(0,5)}</p>
+                </CardHeader>
+                <CardContent className="flex flex-1 flex-col gap-3 p-4 pt-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Value label={t('revenue')} value={historicalRevenue==null?t('noData'):formatCurrency(historicalRevenue)} />
+                    <Value label={t('orders')} value={report.orders==null?t('noData'):report.orders.toLocaleString()} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Trạng thái: {historicalStatus}. Ca gốc không thuộc phạm vi chỉnh sửa hiện tại.</p>
+                  <Button type="button" size="sm" variant="outline" onClick={()=>setSelectedHistoricalReport(report)}>
+                    <FileText className="mr-2 h-4 w-4" />Xem chi tiết báo cáo lịch sử
+                  </Button>
+                </CardContent>
+              </Card>
+            }
             const reportStatus = report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
             const revenue = reportRevenue(report)
             const statusLabel = reportStatus === 'in_review' ? t('inReview') : t(reportStatus)
@@ -609,6 +640,45 @@ export function ReportsList() {
       </section>
 
       {showForm && <ReportFormModal open={showForm} onOpenChange={open => { if (!open) closeReportModal() }} initialReport={editingReport} initialShiftId={initialShiftId} completedShifts={formShifts} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onSuccess={() => { void loadData(); closeReportModal() }} />}
+      <Dialog open={Boolean(selectedHistoricalReport && loadedIdentity===identity &&
+        reports.some(report=>report.id===selectedHistoricalReport.id))}
+        onOpenChange={open=>{if(!open)setSelectedHistoricalReport(null)}}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto" data-testid="historical-report-detail-read-only">
+          <DialogHeader>
+            <DialogTitle>Báo cáo lịch sử · Chỉ xem</DialogTitle>
+            <DialogDescription>Quyền xem báo cáo không cấp quyền sửa ca livestream gốc hoặc phân công nhân sự.</DialogDescription>
+          </DialogHeader>
+          {selectedHistoricalReport && historicalContexts[selectedHistoricalReport.id] && <div className="space-y-4 text-sm">
+            <dl className="grid grid-cols-2 gap-3">
+              <div><dt className="text-muted-foreground">Mã báo cáo</dt><dd className="break-all font-medium">{selectedHistoricalReport.id}</dd></div>
+              <div><dt className="text-muted-foreground">Ngày ca</dt><dd>{historicalContexts[selectedHistoricalReport.id].date}</dd></div>
+              <div><dt className="text-muted-foreground">Giờ live</dt><dd>{historicalContexts[selectedHistoricalReport.id].start_time.slice(0,5)}–{historicalContexts[selectedHistoricalReport.id].end_time.slice(0,5)}</dd></div>
+              <div><dt className="text-muted-foreground">Brand</dt><dd>{nameById(brands,historicalContexts[selectedHistoricalReport.id].brand_id)}</dd></div>
+              <div><dt className="text-muted-foreground">Platform</dt><dd>{nameById(platforms,historicalContexts[selectedHistoricalReport.id].platform_id)}</dd></div>
+              <div><dt className="text-muted-foreground">Trạng thái báo cáo</dt><dd>{selectedHistoricalReport.status||'draft'}</dd></div>
+            </dl>
+            <div className="grid grid-cols-2 gap-3 rounded-md border p-3">
+              <Value label={t('revenue')} value={reportRevenue(selectedHistoricalReport)==null?t('noData'):formatCurrency(reportRevenue(selectedHistoricalReport)!)} />
+              <Value label={t('orders')} value={selectedHistoricalReport.orders==null?t('noData'):selectedHistoricalReport.orders.toLocaleString()} />
+            </div>
+            <section className="space-y-2">
+              <h3 className="font-medium">Các chỉ số đã lưu</h3>
+              <pre className="max-h-44 overflow-auto rounded-md bg-muted/30 p-3 text-xs whitespace-pre-wrap break-words">{JSON.stringify({
+                normalized_metrics:selectedHistoricalReport.normalized_metrics??null,
+                platform_metrics:selectedHistoricalReport.platform_metrics??null,
+              },null,2)}</pre>
+            </section>
+            <section className="space-y-2">
+              <h3 className="font-medium">Nội dung tổng kết</h3>
+              <pre className="max-h-48 overflow-auto rounded-md bg-muted/30 p-3 text-xs whitespace-pre-wrap break-words">{JSON.stringify(selectedHistoricalReport.final_recap??null,null,2)}</pre>
+            </section>
+            {currentUser && hasPermission(currentUser,'reports.export') && <Button type="button" variant="outline"
+              onClick={()=>exportReportDetailToExcel(selectedHistoricalReport,exportContext)}>
+              <Download className="mr-2 h-4 w-4" />Xuất báo cáo lịch sử
+            </Button>}
+          </div>}
+        </DialogContent>
+      </Dialog>
       {selectedReport && modalShift && <ReportDetailModal open report={selectedReport} shift={modalShift} brands={brands} platforms={platforms} users={users} registrations={registrations} onOpenChange={open => { if (!open) closeReportModal() }} onUpdated={() => { void loadData(); closeReportModal() }} campaigns={campaigns} />}
       <LifecycleActionDialog open={Boolean(removeTarget)} onOpenChange={open => { if (!open) { setRemoveTarget(null); setRemoveImpact(null) } }} title={removeTarget?.metrics_confirmed ? t('archiveConfirmedReport') : t('deleteUnconfirmedReport')} impact={removeImpact} confirmText={removeTarget?.metrics_confirmed ? t('archive') : t('delete')} onConfirm={removeReport} />
     </div>
