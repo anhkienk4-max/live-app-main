@@ -900,6 +900,12 @@ export function downloadExcelTemplate(): void {
 }
 
 export type ReportExportContext = {
+  /** Minimal context for a report whose source Shift is RLS-hidden.
+   * It is not a substitute for an editable full Shift. */
+  historicalShiftContexts?: Record<string,{
+    date:string;start_time:string;end_time:string
+    brand_id:string;platform_id:string;campaign_id:string|null
+  }>
   shifts: Shift[]
   campaigns: Campaign[]
   users: User[]
@@ -994,8 +1000,13 @@ export const REPORT_CURRENCY_COLUMNS = [
 
 export const buildReportExportRows = (reports: Report[], context: ReportExportContext) => reports.map(report => {
   const shift = context.shifts.find(candidate => candidate.id === report.shift_id)
-  const resolved = shift ? resolveShiftDateTime(shift.date, shift.start_time, shift.end_time) : null
-  const campaign = context.campaigns.find(candidate => candidate.id === shift?.campaign_id)
+  const historical = shift ? undefined : context.historicalShiftContexts?.[report.id]
+  const date = shift?.date ?? historical?.date
+  const startTime = shift?.start_time ?? historical?.start_time
+  const endTime = shift?.end_time ?? historical?.end_time
+  const resolved = date && startTime && endTime
+    ? resolveShiftDateTime(date, startTime, endTime) : null
+  const campaign = context.campaigns.find(candidate => candidate.id === (shift?.campaign_id ?? historical?.campaign_id))
   const userName = (id?: string) => id ? context.users.find(user => user.id === id)?.full_name || id : ''
   const assignedNames = (role: 'host' | 'support' | 'technical', fallbackId?: string) => {
     const ids = new Set([
@@ -1048,12 +1059,12 @@ export const buildReportExportRows = (reports: Report[], context: ReportExportCo
     // 1. Shift & Schedule Metadata
     'Report ID': report.id,
     'Shift ID': report.shift_id,
-    'Start Date': shift?.date || '',
-    'End Date': resolved?.endDate || shift?.date || '',
-    Time: shift ? `${shift.start_time}-${shift.end_time}` : '',
+    'Start Date': date || '',
+    'End Date': resolved?.endDate || date || '',
+    Time: startTime && endTime ? `${startTime}-${endTime}` : '',
     'Shift Duration Minutes': resolved?.durationMinutes ?? '',
-    Brand: shift ? context.brands.get(shift.brand_id) || shift.brand_id : '',
-    Platform: shift ? context.platforms.get(shift.platform_id) || shift.platform_id : '',
+    Brand: context.brands.get(shift?.brand_id ?? historical?.brand_id ?? '') || shift?.brand_id || historical?.brand_id || '',
+    Platform: context.platforms.get(shift?.platform_id ?? historical?.platform_id ?? '') || shift?.platform_id || historical?.platform_id || '',
     Campaign: campaign?.name || '',
     Studio: shift?.studio || '',
     Host: assignedNames('host', shift?.host_id),
