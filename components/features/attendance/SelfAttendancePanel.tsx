@@ -59,6 +59,9 @@ export function SelfAttendancePanel({
   const checkedIn=rows.find(row=>row.event==='check_in')
   const checkedOut=rows.find(row=>row.event==='check_out')
   const nextAction:AttendanceEventKind|null=!ready?null:!checkedIn?'check_in':!checkedOut?'check_out':null
+  // Client flag controls visibility only. The server flag, actor, DB trigger
+  // and verified private Drive ACL are the actual security boundaries.
+  const photoFeatureReady=process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_PHOTO==='true'
 
   function selectPhoto(file:File|undefined,source:'camera'|'file_picker') {
     setWriteError(null)
@@ -77,6 +80,7 @@ export function SelfAttendancePanel({
 
   async function submit(kind:AttendanceEventKind){
     if(lock.current||!ready||kind!==nextAction)return
+    if(kind==='check_in'&&!photoFeatureReady){setWriteError('Lưu ảnh Drive chưa được kích hoạt cho môi trường này.');return}
     if(kind==='check_in'&&!photo){setWriteError('Cần chụp hoặc chọn ảnh check-in trước khi xác nhận.');return}
     lock.current=true;setBusy(true);setWriteError(null)
     requestIds.current[kind]??=crypto.randomUUID()
@@ -129,7 +133,10 @@ export function SelfAttendancePanel({
     </div>:null}
     {checkedIn?<p className="text-xs text-amber-700">Đang chờ quản lý đối chiếu và duyệt giờ công</p>:null}
 
-    {nextAction==='check_in'?<div className="space-y-2 rounded-md border p-3" data-testid="attendance-checkin-camera">
+    {nextAction==='check_in'&&!photoFeatureReady?<p role="status" className="text-xs text-amber-700">
+      Check-in ảnh đang chờ xác nhận quyền lưu trên Google Drive. Chưa thể ghi nhận check-in.
+    </p>:null}
+    {nextAction==='check_in'&&photoFeatureReady?<div className="space-y-2 rounded-md border p-3" data-testid="attendance-checkin-camera">
       <p className="text-xs font-medium">Ảnh check-in bắt buộc (JPG/PNG/WebP, tối đa 4 MB)</p>
       <p className="text-xs text-muted-foreground">Chụp ảnh tại phòng live để xác nhận có mặt. Ảnh sẽ được lưu tại Drive CHECK IN/OUT đúng tháng và vai trò.</p>
       <input ref={cameraRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment"
@@ -153,7 +160,7 @@ export function SelfAttendancePanel({
     {writeError?<p role="alert" className="text-xs text-red-600">{writeError}</p>:null}
     <div className="flex flex-wrap gap-2">
       <Button type="button" variant="outline" size="sm" disabled={busy} onClick={()=>setNonce(v=>v+1)}>Tải lại</Button>
-      {nextAction?<Button type="button" size="sm" disabled={busy||(nextAction==='check_in'&&!photo)}
+      {nextAction&& (nextAction!=='check_in'||photoFeatureReady)?<Button type="button" size="sm" disabled={busy||(nextAction==='check_in'&&!photo)}
         onClick={()=>void submit(nextAction)}>
         {busy?'Đang ghi nhận...':nextAction==='check_in'?'Tải ảnh và check-in':'Check-out'}
       </Button>:null}
