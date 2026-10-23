@@ -216,3 +216,21 @@ test('RC19 #84 invoker RPC resolves authenticated actor without privileged helpe
   assert.doesNotMatch(sql, /grant execute on function private\.require_report_actor/i)
   assert.doesNotMatch(sql, /update public\.|delete from public\.|truncate|drop table/i)
 })
+
+
+test('RC19 #77 historical report shift context is authorization-gated and minimal', () => {
+  const sql = readFileSync(
+    new URL('../supabase/migrations/20261023112000_rc19_report_authorized_shift_display_context.sql', import.meta.url), 'utf8',
+  )
+  assert.match(sql, /create or replace function private\.report_shift_display_context\(p_report_id text\)/i)
+  assert.match(sql, /language plpgsql[\s\S]*?stable[\s\S]*?security definer[\s\S]*?set search_path = ''/i)
+  assert.match(sql, /not private\.current_business_user_is_active\(\)/i)
+  assert.match(sql, /not private\.can_read_report\(p_report_id\)/i)
+  assert.match(sql, /where report\.id = p_report_id/i)
+  const keys = [...sql.matchAll(/'([a-z_]+)', shift\.[a-z_]+/g)].map(match => match[1])
+  assert.deepEqual(keys, ['date', 'start_time', 'end_time', 'brand_id', 'platform_id', 'campaign_id'])
+  assert.doesNotMatch(sql, /'host_id'|'support_id'|'technical_id'|'studio'|'product_notes'|'recording_url'/i)
+  assert.match(sql, /revoke all on function private\.report_shift_display_context\(text\)[\s\S]*?from public, anon, authenticated, service_role/i)
+  assert.match(sql, /grant execute on function private\.report_shift_display_context\(text\)[\s\S]*?to authenticated/i)
+  assert.doesNotMatch(sql, /create policy|alter policy|alter table public\.shifts|delete from|truncate|drop table/i)
+})
