@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
@@ -271,4 +272,19 @@ test('a stale AuthIdentityProvider cleanup cannot clear the newest mapped actor 
     process.env.NODE_ENV = previousNodeEnv
     process.env.NEXT_PUBLIC_USE_MOCK_DATA = previousMockFlag
   }
+})
+
+test('RC19 source guard: identity updates before a passive effect and logout stays revoked', () => {
+  // Static contract only. Authenticated multi-route/role UAT is still required.
+  const provider = readFileSync(
+    new URL('../lib/auth/AuthIdentityProvider.tsx', import.meta.url), 'utf8',
+  )
+  assert.match(provider, /snapshot\.sourceIdentity !== initialIdentity \|\| snapshot\.sourceBusinessUser !== initialBusinessUser/)
+  assert.match(provider, /setSnapshot\(\{[\s\S]*?sourceIdentity: initialIdentity,[\s\S]*?identity: initialIdentity,[\s\S]*?businessUser: initialBusinessUser/)
+  assert.doesNotMatch(provider, /React\.useEffect\(\(\) => \{[\s\S]*?setIdentity\(initialIdentity\)/)
+  assert.match(provider, /React\.useLayoutEffect\(\(\) => \{[\s\S]*?bindAuthenticatedUser\(businessUser\)/)
+  assert.match(provider, /setSnapshot\(previous => \(\{ \.\.\.previous, identity: null, businessUser: null \}\)\)/)
+  const list = readFileSync(new URL('../lib/services/operationsPageService.ts', import.meta.url), 'utf8')
+  assert.match(list, /body\.ownerKey !== owner/)
+  assert.match(list, /owner !== await browserOwner\(\)/)
 })
