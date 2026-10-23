@@ -11,7 +11,7 @@ const active=[{id:'r1',deleted_at:null,archived_at:null},{id:'r2',deleted_at:nul
 const archived=[{id:'r3',deleted_at:null,archived_at:'2026-10-01'}]
 const env={RC19_STAGING_URL:STAGING_ORIGIN,RC19_STAGING_PUBLISHABLE_KEY:KEY,
   RC19_MEMBER_JWT:fakeToken('member'),RC19_LEADER_JWT:fakeToken('leader'),RC19_ADMIN_JWT:fakeToken('admin')}
-function transport({leak=false,wrongRpc=false,wrongRole=false,anonLeak=false}={}) {
+function transport({leak=false,wrongRpc=false,wrongRole=false,anonLeak=false,denyForeign=false}={}) {
   return async (url,options)=>{
     assert.equal(options.redirect,'error')
     assert.equal(options.cache,'no-store')
@@ -42,12 +42,14 @@ function transport({leak=false,wrongRpc=false,wrongRole=false,anonLeak=false}={}
     if(table==='reports'){
       if(location.searchParams.has('id')){
         if(leak&&role==='member')return response(200,[{id:'r2'}])
+        if(denyForeign&&role==='member')return response(403,{code:'42501'})
         visible=visible.filter(r=>r.id===location.searchParams.get('id')?.replace(/^eq\./,''))
       }
       return response(200,visible.map(r=>location.searchParams.get('select')==='id'?{id:r.id}:r))
     }
     if(['report_revisions','report_images','live_report_images'].includes(table)){
       const id=location.searchParams.get('report_id')?.replace(/^eq\./,'')
+      if(denyForeign&&role==='member'&&id==='r2')return response(403,{code:'42501'})
       return response(200,role==='member'&&id==='r1'&&table==='report_revisions'
         ?[{report_id:'r1'}]:[])
     }
@@ -82,6 +84,10 @@ test('signed JWT HTTP contract passes mocked positive and negative reads',async(
   assert.equal(outcome.checks[0].foreignTables,4)
   assert.equal(outcome.checks[0].ownPositive,true)
   assert.ok(!JSON.stringify(outcome).includes(fakeToken('member')))
+})
+test('explicit 403 denials protect foreign reports and images',async()=>{
+  const outcome=await runSignedJwtGate(env,transport({denyForeign:true}))
+  assert.equal(outcome.result,'RC19_STAGING_SIGNED_JWT_HTTP_PASS')
 })
 test('foreign report or history disclosure is a hard gate failure',async()=>{
   await assert.rejects(runSignedJwtGate(env,transport({leak:true})),/RC19_FOREIGN_TABLE_LEAK_REPORTS/)
