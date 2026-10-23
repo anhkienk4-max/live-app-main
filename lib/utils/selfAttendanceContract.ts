@@ -8,6 +8,7 @@ export interface SelfAttendanceEvent {
   event: AttendanceEventKind
   recorded_at: string
   verification_status: 'pending_verification'
+  photo_available?: boolean
   replayed?: boolean
 }
 export function decodeSelfAttendanceEvent(data: unknown): SelfAttendanceEvent {
@@ -18,6 +19,7 @@ export function decodeSelfAttendanceEvent(data: unknown): SelfAttendanceEvent {
       !['check_in','check_out'].includes(v.event as string) ||
       v.verification_status !== 'pending_verification' ||
       !Number.isFinite(Date.parse(v.recorded_at as string)) ||
+      (v.photo_available!==undefined && typeof v.photo_available!=='boolean') ||
       (v.replayed!==undefined && typeof v.replayed!=='boolean')) throw new Error('ATTENDANCE_RESPONSE_INVALID')
   return v as unknown as SelfAttendanceEvent
 }
