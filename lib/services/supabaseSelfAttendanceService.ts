@@ -44,3 +44,27 @@ export async function writeSelfAttendancePhotoCheckIn(
     ||event.photo_available!==true)throw new Error('ATTENDANCE_PHOTO_RESPONSE_INVALID')
   return event
 }
+
+
+/** Resume a server-verified photo reservation after reload or network failure.
+ * This deliberately sends no image bytes, Drive IDs, staff ID or provider path. */
+export async function recoverSelfAttendancePhotoCheckIn(
+  shiftId:string,role:AttendanceRole,requestId:string,
+) {
+  const form=new FormData()
+  form.set('shift_id',shiftId)
+  form.set('role',role)
+  form.set('request_id',requestId)
+  form.set('recover_only','true')
+  const response=await fetch('/api/workforce/self-attendance-photo',{
+    method:'POST',body:form,credentials:'same-origin',cache:'no-store',
+  })
+  const payload=await response.json()
+  if(!response.ok||payload?.ok!==true)
+    throw new Error(payload?.error?.code||'ATTENDANCE_PHOTO_RECOVERY_FAILED')
+  const event=decodeSelfAttendanceEvent(payload.event)
+  if(event.shift_id!==shiftId||event.role!==role||event.event!=='check_in'
+    ||event.photo_available!==true)
+    throw new Error('ATTENDANCE_PHOTO_RESPONSE_INVALID')
+  return event
+}
