@@ -90,3 +90,30 @@ After applying both migrations, `public.get_report_revisions(text)` has:
 - No change to `public.shifts` RLS, `private.can_read_shift`, `public.reports` policies, provider ACL, or Production. Remaining design gate: query scoped reports under caller RLS, apply supported shift filters via minimal authorized context, return a separate typed display context and explicitly read-only historical UI state. Do not fabricate full Shift objects or enable editing/reassignment on hidden shifts. Verify complete pagination and XLSX parity as separate gates.
 
 **Release verdict unchanged: NO-GO pending real signed-token API negative checks, authenticated UAT, full UI integration and the owner-approved consolidated Preview.**
+
+
+## RC19 #77: History-aware Reports pagination & read-only card (source/Staging only)
+
+**Canonical source migrations**
+- `supabase/migrations/20261023153500_rc19_reports_historical_pagination_v2.sql`: additive `public.get_report_list_with_history(page,pageSize,filters)` RPC, **SECURITY INVOKER**, with original `public.reports` RLS as the authoritative list scope. No change to `public.shifts` RLS, no artificial complete Shift. Scoped `private.report_shift_display_context(report_id)` yields six fields only, per-report, for historical rows whose linked shift is RLS-hidden. Existing Analytics RPC continues unchanged. Private boolean-only staff filter helper requires `private.can_read_report`.
+- `supabase/migrations/20261023155000_rc19_reports_history_validate_filters_v2.sql`: separate corrective migration. Force-shift filter validation before query execution, because empty matching sets could skip the lazy canonical CTE and silently accept unknown filter keys. Added type guards for `search`, report status and metric arrays. Never change already-applied migration source history.
+
+**Staging migrations** were applied only to `amagnzebmmuqiptmrjmc`, via managed aliases
+`rc19_reports_historical_pagination_v2_from_20261023153500` and
+`rc19_reports_history_validate_filters_v2_from_20261023155000`.
+No Production schema changes.
+
+**Read-only role simulation, in rolled-back transactions**
+- 9 active identities: 2 Admin, 2 Leader and 5 Member.
+- History-aware list `total` equaled the exact direct `public.reports` RLS authorized total for **every actor**: Admin 6/6, Leader 6/6, Member 3,0,1,1,0. All selected report IDs and returned history-context keys were bounded to the same actor's RLS rows. **29 authorized row reads, 7 minimal historical contexts** across 9 actor lookups; each entry is bounded to six non-PII attributes.
+- The first filter probe found an unsupported key could be accepted when zero matching rows. Patched before wiring into UI; after patch **45/45 negative inputs (five invalid filters across nine actors) were rejected**. Brand filter checked against real minimal context in 7 role cases; metrics confirmed and future date filters also passed.
+- Existing positive/negative permissions of `get_report_revisions` remain independent and unchanged.
+
+**Application code**
+- `lib/server/operationsCollectionHandler.ts` routes `reports` to new history RPC, preserves `analytics_reports` route, and guards that historical-context keys map only to returned report IDs.
+- `lib/services/operationsPageService.ts` validates the exact six-key context schema, returning `REPORT_HISTORY_RESPONSE_INVALID` on malformed/unexpected context. `dataService` preserves contexts across bounded, identity-stable Excel export.
+- `ReportsList` shows historical rows read-only with date/brand/platform/session, a separate read-only detail containing the report's own metrics and recap, and export; **does not fake a full Shift or expose staffing, edit, archive, assignment or other Shift actions**.
+- Excel exporter populates only authorized six-field shift context. Host/Support/Technical and Studio remain intentionally blank if Shift is RLS-hidden; overnight date calculations are retained. Existing Global Search mock fixture was brought into sync without weakening response validation.
+- Tests added to `tests/report-history-access.test.ts` (existing canonical test file). No unmanifested test path was added.
+
+**Status:** Staging role+filter SQL PASS; final HEAD CI and real authenticated Preview UI/XLSX QC still pending. As owner directed, do not QC before the remaining RC19 source issues are finished. The one already-created Preview remains pinned to old SHA `ae0fe7d0` and does **not** contain these changes. Never create per-module Preview; Production **NO-GO**.
