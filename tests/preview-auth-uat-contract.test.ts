@@ -19,5 +19,12 @@ test('manual Preview auth UAT is bounded, deployment-specific, and read-only', a
   assert.match(workflow, /cookiesOrStorageStateWritten: false/)
   assert.match(workflow, /page\.locator\('\[data-testid="email-input"\]'\)/)
   assert.match(workflow, /page\.locator\('\[data-testid="password-input"\]'\)/)
+  // Reports must be tested against authenticated API responses on the one approved Preview,
+  // not only against the mocked CI UI or successful sign-in.
+  assert.match(workflow, /verifyReportsReadOnly\(page, role, trace\)/)
+  assert.match(workflow, /REPORTS_FILTERED_API_SCOPE_OR_ENVELOPE_INVALID/)
+  assert.match(workflow, /reports_authenticated_filter_api_and_chips_pass/)
+  assert.match(workflow, /for \(const width of \[320, 390, 768, 1440\]\)/)
+  assert.match(workflow, /api\/operations\/collection/)
   assert.doesNotMatch(workflow, /page\.pause\(|storageState\s*\(/)
 })
