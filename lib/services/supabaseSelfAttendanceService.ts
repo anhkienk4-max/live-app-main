@@ -18,3 +18,29 @@ export async function writeSelfAttendance(shiftId:string,role:AttendanceRole,kin
   if(event.shift_id!==shiftId||event.role!==role||event.event!==kind)throw new Error('ATTENDANCE_SCOPE_INVALID')
   return event
 }
+
+
+/** Browser posts the photo to our authenticated server endpoint. Never upload
+ * with a public Drive key or send base64 through Supabase RPC/SQL. */
+export async function writeSelfAttendancePhotoCheckIn(
+  shiftId:string,role:AttendanceRole,requestId:string,
+  photo:File,captureSource:'camera'|'file_picker'
+) {
+  if(photo.size<1||photo.size>4*1024*1024)throw new Error('Ảnh phải nhỏ hơn 4 MB.')
+  const data=new FormData()
+  data.set('shift_id',shiftId)
+  data.set('role',role)
+  data.set('request_id',requestId)
+  data.set('capture_source',captureSource)
+  data.set('file',photo)
+  const response=await fetch('/api/workforce/self-attendance-photo',{
+    method:'POST',body:data,credentials:'same-origin',cache:'no-store',
+  })
+  const payload=await response.json()
+  if(!response.ok||payload?.ok!==true)
+    throw new Error(payload?.error?.code || 'ATTENDANCE_PHOTO_UPLOAD_FAILED')
+  const event=decodeSelfAttendanceEvent(payload.event)
+  if(event.shift_id!==shiftId||event.role!==role||event.event!=='check_in'
+    ||event.photo_available!==true)throw new Error('ATTENDANCE_PHOTO_RESPONSE_INVALID')
+  return event
+}
