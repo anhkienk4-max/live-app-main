@@ -21,7 +21,7 @@ import { useTranslation, type TranslationKey } from '@/lib/i18n'
 import { downloadSwapRequestTemplate, exportSwapsToExcel } from '@/lib/utils/excelUtils'
 import { getSwapUiActions, getSwapStatusPresentation } from '@/lib/utils/swapUi'
 import { deriveSwapAttention } from '@/lib/ui/operational-attention'
-import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { formatShiftTimeRange, getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { ActionBar } from '@/components/ui/action-bar'
 import { buildSwapActions } from '@/lib/ui/action-priority'
@@ -81,7 +81,14 @@ export function SwapRequestList() {
     const request = ++formRequestRef.current
     setFormShifts([])
     setFormFetchState({ ownerId, status: 'loading' })
-    void shiftService.getAllFiltered({ assignedUserIds: [ownerId], statuses: ['scheduled'] })
+    // Limit the initial source picker to current/future business days.
+    // Historical assigned shifts are not actionable swap sources and make
+    // complete-collection reads slower as the app accumulates old shifts.
+    void shiftService.getAllFiltered({
+      assignedUserIds: [ownerId],
+      statuses: ['scheduled'],
+      from: getCurrentBusinessDate(),
+    })
       .then(items => {
         if (request !== formRequestRef.current) return
         setFormShifts(items)
