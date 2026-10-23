@@ -7,6 +7,7 @@ import { requireUser, requireRole, authorizationErrorResponse, isAuthorizationEr
 import { createClient as createSessionClient } from '@/lib/supabase/server'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { createGoogleDriveFileProvider } from '@/lib/server/googleDriveFileProvider'
+import { resolveGoogleDriveAuthMode } from '@/lib/server/googleDriveAuth'
 import { createFileStorageService } from '@/lib/services/fileStorageService'
 import { readFormDataBody, RequestBodyError, consumeRateLimit, rateLimitResponse } from '@/lib/server/apiSecurity'
 import { attendancePhotoFolder, attendancePhotoName, type PhotoRole } from '@/lib/utils/attendancePhotoNaming'
@@ -43,12 +44,23 @@ function hasExactOrigin(request:Request) {
 }
 function photoProvider() {
   const root=process.env.GOOGLE_DRIVE_ATTENDANCE_FOLDER_ID?.trim()
-  if(!root||!/^[a-zA-Z0-9_-]{12,120}$/.test(root)) throw new Error('ATTENDANCE_DRIVE_FOLDER_NOT_CONFIGURED')
+  if(!root||!/^[a-zA-Z0-9_-]{12,120}$/.test(root))
+    throw new Error('ATTENDANCE_DRIVE_FOLDER_NOT_CONFIGURED')
+  // Use the same OAuth/service-account identity that the operational report
+  // provider already uses. No dedicated token or secret is required solely for
+  // attendance when those server-only credentials are configured in runtime.
+  // Health-check root ACLs after verifying the exact auth-mode prerequisites
+  // so an absent credential is not misreported as a missing folder permission.
+  const env={...process.env,GOOGLE_DRIVE_ROOT_FOLDER_ID:root}
+  const authMode=resolveGoogleDriveAuthMode(env)
+  const credentialKeys=authMode==='oauth_refresh_token'
+    ? ['GOOGLE_DRIVE_CLIENT_ID','GOOGLE_DRIVE_CLIENT_SECRET','GOOGLE_DRIVE_REFRESH_TOKEN']
+    : ['GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL','GOOGLE_DRIVE_PRIVATE_KEY']
+  if(!credentialKeys.every(key=>Boolean(env[key]?.trim())))
+    throw new Error('ATTENDANCE_DRIVE_NOT_CONFIGURED')
   // Isolate attendance photos from the operational report root. This MUST be
   // the operator-verified existing CHECK IN/OUT root with private Drive ACLs.
-  return {root,drive:createGoogleDriveFileProvider({env:{
-    ...process.env,GOOGLE_DRIVE_ROOT_FOLDER_ID:root,
-  }})}
+  return {root,drive:createGoogleDriveFileProvider({env})}
 }
 function contextSnapshot(info:z.infer<typeof contextSchema>) {
   return {shift_id:info.shift_id,shift_date:info.date,live_start:info.start_at,
@@ -66,7 +78,9 @@ export async function POST(request:Request) {
       return failed('ATTENDANCE_PHOTO_FEATURE_DISABLED',503)
     // Respect the global operational file-storage kill switch as well as the
     // separate sensitive photo-evidence flag. One must not bypass the other.
-    if(process.env.FILE_STORAGE_ENABLED==='false')
+    // Unlike optional legacy read paths, employee photo writes require an
+    // explicitly enabled global file-storage switch, not a missing/default.
+    if(process.env.FILE_STORAGE_ENABLED!=='true')
       return failed('ATTENDANCE_FILE_STORAGE_DISABLED',503)
     if(!hasExactOrigin(request))return failed('ATTENDANCE_PHOTO_ORIGIN_INVALID',403)
     const actor=await requireUser(request)
