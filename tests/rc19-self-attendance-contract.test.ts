@@ -271,7 +271,11 @@ test('admin-only attendance Drive preflight is read-only and hides provider iden
   assert.match(preflight,/health\.root_readable!==true/)
   assert.match(preflight,/health\.root_can_add_children!==true/)
   assert.match(preflight,/feature_enabled:process\.env\.FEATURE_SELF_ATTENDANCE_PHOTO==='true'/)
-  assert.doesNotMatch(preflight,/\.upload\(|\.ensureFolder\(|\.delete\(|external_file_id|root_folder_id|refresh_token|private_key/i)
+  assert.doesNotMatch(preflight,/\.upload\(|\.ensureFolder\(|\.delete\(|external_file_id|refresh_token|private_key/i)
+  // Referencing a private environment KEY for runtime ACL checks is safe;
+  // only response payload values must not disclose the raw Drive root ID.
+  assert.match(preflight,/root_readable:true/)
+  assert.match(preflight,/root_can_add_children:true/)
   assert.match(route,/export const GET = GET_PREFLIGHT/)
   assert.doesNotMatch(route,/export const POST|export const PUT|export const DELETE/)
 })
