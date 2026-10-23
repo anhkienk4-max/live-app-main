@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import type { Report, Shift, User } from '../lib/types/database.types.ts'
+import { canExportReportDetail } from '../lib/permissions.ts'
 import { clearReportShiftQuery, initialReportShift, loadReportTarget, reportShiftHref } from '../lib/utils/reportTarget.ts'
 import { limitReportCandidates } from '../lib/utils/reportQueue.ts'
 import { deriveReportAttention } from '../lib/ui/operational-attention.ts'
@@ -136,4 +137,23 @@ test('desktop/mobile Calendar and report page wire exact targets without an eage
   assert.match(form, /initialReportShift\(completedShiftsRef\.current, initialReport, initialShiftId\)/)
   assert.match(form, /disabled=\{explicitShiftId !== undefined\}/)
   assert.match(form, /targetUnavailable && <p role="alert"/)
+})
+
+test('Report detail export is fail-closed and respects Member submitter ownership', () => {
+  const leader = { id: 'leader', role: 'leader', system_permission: 'leader' } as User
+  assert.equal(canExportReportDetail(null, 'member'), false)
+  assert.equal(canExportReportDetail(undefined, undefined), false)
+  assert.equal(canExportReportDetail(member, undefined), false)
+  assert.equal(canExportReportDetail(member, null), false)
+  assert.equal(canExportReportDetail(member, 'other-member'), false)
+  assert.equal(canExportReportDetail(member, member.id), true)
+  assert.equal(canExportReportDetail(leader, 'other-member'), true)
+  assert.equal(canExportReportDetail(admin, 'other-member'), true)
+})
+
+test('Report detail modal delegates Excel visibility to centralized export authorization', () => {
+  const source = readFileSync(new URL('../components/features/reports/ReportDetailModal.tsx', import.meta.url), 'utf8')
+  assert.match(source, /const canExport = canExportReportDetail\(currentUser, report\.submitted_by\)/)
+  assert.doesNotMatch(source, /const canExport = !currentUser/)
+  assert.doesNotMatch(source, /hasPermission\(currentUser, 'reports\.submit'\).*report\.submitted_by/)
 })
