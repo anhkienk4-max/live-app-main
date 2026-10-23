@@ -32,5 +32,13 @@ test('manual Preview auth UAT is bounded, deployment-specific, and read-only', a
   assert.match(workflow, /reports_readonly_detail_verified/)
   assert.match(workflow, /new Set\(ids\)\.size !== source\.total/)
   assert.match(workflow, /readFile\(await download\.path\(\)\)/)
+  // Preview must be explicitly Staging-backed: read-only revision RPC requires
+  // one verified path and must not open a general POST allowlist.
+  assert.match(workflow, /url\.hostname === 'amagnzebmmuqiptmrjmc\.supabase\.co'/)
+  assert.match(workflow, /url\.hostname\.endsWith\('\.supabase\.co'\) && !stagingHost/)
+  assert.match(workflow, /readOnlyReportRevisionRpc/)
+  assert.match(workflow, /url\.pathname === '\/rest\/v1\/rpc\/get_report_revisions'/)
+  assert.match(workflow, /\|\| authPath \|\| readOnlyReportRevisionRpc/)
+
   assert.doesNotMatch(workflow, /page\.pause\(|storageState\s*\(/)
 })
