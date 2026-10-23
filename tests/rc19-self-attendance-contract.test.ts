@@ -122,15 +122,16 @@ test('Drive attendance image names retain shift date, brand, platform, live wind
   assert.deepEqual(attendancePhotoFolder('support','2026-11-01'),['TRỢ','THÁNG 11 - 2026'])
   assert.deepEqual(attendancePhotoFolder('technical','2026-10-23'),['KỸ THUẬT','THÁNG 10 - 2026'])
   const name=attendancePhotoName({
-    shiftDate:'2026-10-23',brand:'OPELLA',platform:'TikTok',
+    shiftDate:'2026-10-23',shiftId:'shift-ADA-12',studio:'Phòng Live A',
+    brand:'OPELLA',platform:'TikTok',
     startTime:'23:45:00',endTime:'01:45:00',role:'support',staffName:'Trợ Live',
     recordedAt:'2026-10-23T13:20:31Z',
     requestId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',extension:'jpg',
   })
-  assert.equal(name,'20261023_OPELLA_TikTok_2345-0145_TRO_Tro_Live_CHECKIN_20261023_132031Z_aaaaaaaa.jpg')
+  assert.equal(name,'20261023_OPELLA_TikTok_PHONG_Phong_Live_A_2345-0145_TRO_Tro_Live_CA_shift_ADA_12_CHECKIN_20261023_132031Z_aaaaaaaa.jpg')
   assert.throws(()=>attendancePhotoFolder('host','2026-02-30'),/DATE_INVALID/)
   assert.throws(()=>attendancePhotoName({
-    shiftDate:'2026-10-23',brand:'Brand',platform:'TikTok',
+    shiftDate:'2026-10-23',shiftId:'shift-123',studio:null,brand:'Brand',platform:'TikTok',
     startTime:'99:99',endTime:'10:00',role:'host',staffName:'Staff',
     recordedAt:'2026-10-23T13:20:31Z',
     requestId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',extension:'jpg',
