@@ -58,6 +58,57 @@ async function saveLoginEvidence(page: Page, role: Role, suffix: string) {
   }
 }
 
+// The existing login-only checks are insufficient to sign off Reports #77.
+// This workflow exercises the real authenticated API, not the mocked CI fixtures.
+// Deliberately avoid saving report rows, response bodies, tokens, or screenshots of business data.
+async function verifyReportsReadOnly(page: Page, role: Role, trace: Array<{ at: string; action: string; role?: Role; detail?: string }>) {
+  await page.goto('/reports', { waitUntil: 'domcontentloaded' })
+  if (new URL(page.url()).pathname !== '/reports') throw new Error('REPORTS_AUTHENTICATED_ROUTE_REDIRECTED')
+  const toolbar = page.getByTestId('command-toolbar')
+  await expect(toolbar).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByTestId('reports-progressive-shell')).toHaveCount(0)
+  trace.push({ at: new Date().toISOString(), action: 'reports_authenticated_loaded', role })
+
+  const searchNeedle = '__RC19_AUTH_UAT_NO_MATCH_20261023__'
+  const search = toolbar.locator('input').first()
+  await search.fill(searchNeedle)
+  const applyButton = page.getByTestId('reports-apply-filters')
+  await expect(applyButton).toBeEnabled()
+  const matchingResponse = page.waitForResponse(response => {
+    try {
+      const url = new URL(response.url())
+      if (url.pathname !== '/api/operations/collection' || url.searchParams.get('entity') !== 'reports') return false
+      const filters = JSON.parse(url.searchParams.get('filters') || '{}')
+      return filters.search === searchNeedle
+    } catch {
+      return false
+    }
+  }, { timeout: 30_000 })
+  await applyButton.click()
+  const apiResponse = await matchingResponse
+  if (!apiResponse.ok()) throw new Error('REPORTS_FILTERED_API_HTTP_' + apiResponse.status())
+  const responseData = await apiResponse.json() as { items?: unknown; total?: unknown; ownerKey?: unknown }
+  if (!Array.isArray(responseData.items) || responseData.items.length !== 0 || responseData.total !== 0 || typeof responseData.ownerKey !== 'string') {
+    throw new Error('REPORTS_FILTERED_API_SCOPE_OR_ENVELOPE_INVALID')
+  }
+  const chips = page.getByTestId('reports-applied-filter-chips')
+  await expect(chips).toBeVisible({ timeout: 30_000 })
+  await expect(chips).toContainText('Tìm kiếm')
+  await chips.getByRole('button', { name: /Bỏ lọc/ }).first().click()
+  await expect(chips).toHaveCount(0)
+  await expect(toolbar).toBeVisible()
+  trace.push({ at: new Date().toISOString(), action: 'reports_authenticated_filter_api_and_chips_pass', role })
+
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expect(toolbar).toBeVisible()
+    const overflows = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)
+    if (overflows) throw new Error('REPORTS_HORIZONTAL_OVERFLOW_' + width)
+  }
+  trace.push({ at: new Date().toISOString(), action: 'reports_authenticated_responsive_pass', role })
+  await page.setViewportSize({ width: 1440, height: 1024 })
+}
+
 test('manual authenticated Preview UAT for Admin, Leader, and Member', async ({ page }, testInfo) => {
   test.setTimeout(8 * 60_000)
   await mkdir(outputDir, { recursive: true })
@@ -194,8 +245,15 @@ test('manual authenticated Preview UAT for Admin, Leader, and Member', async ({ 
         results.push({ role, status: 'FAIL', reason: `Authenticated profile role did not match requested ${role}.` })
         trace.push({ at: new Date().toISOString(), action: 'role_mismatch', role })
       } else {
-        results.push({ role, status: 'PASS' })
         trace.push({ at: new Date().toISOString(), action: 'role_verified', role })
+        try {
+          await verifyReportsReadOnly(page, role, trace)
+          results.push({ role, status: 'PASS' })
+        } catch (error) {
+          results.push({ role, status: 'FAIL', reason: 'Reports authenticated UAT: ' + safeText(error instanceof Error ? error.message : String(error)) })
+          trace.push({ at: new Date().toISOString(), action: 'reports_authenticated_failed', role })
+        }
+        await page.setViewportSize({ width: 1440, height: 1024 })
       }
 
       const menu = page.getByTestId('user-menu-btn')
