@@ -160,6 +160,13 @@ export async function POST(request:Request) {
       if(uploaded.asset.provider!=='google_drive'||uploaded.asset.external_parent_id!==parentId
         ||uploaded.asset.size_bytes!==cleanBytes.length||!uploadedId)
         throw new Error('ATTENDANCE_PHOTO_PROVIDER_MISMATCH')
+      // Verify a real, readable provider object before accepting any metadata
+      // as check-in proof. Provider upload ACK alone is insufficient evidence.
+      const persisted=await drive.read(uploadedId)
+      if(persisted.byteLength!==cleanBytes.length||
+        mimeFromBytes(persisted)?.mime!=='image/jpeg'||
+        createHash('sha256').update(persisted).digest('hex')!==hash)
+        throw new Error('ATTENDANCE_PHOTO_PROVIDER_INTEGRITY_FAILED')
       const saved=await admin.from('self_attendance_photo_evidence').insert({
         request_id:requestId,shift_id:shiftId,staff_id:actor.businessUserId,
         operational_role:kind,provider:'google_drive',external_file_id:uploadedId,
