@@ -183,8 +183,9 @@ export async function POST(request:Request) {
       if(!health.ok||health.root_readable!==true||
         health.root_can_add_children!==true)
         return failed('ATTENDANCE_DRIVE_PERMISSION_DENIED',503)
-      // Staff evidence must NEVER be written to a link-public or domain-wide
-      // folder. canAddChildren is not a privacy guarantee.
+      // A public Drive ACL is operator-accepted ONLY with the explicit
+      // attendance-specific runtime opt-in. It remains externally accessible;
+      // never confuse this flag with employee privacy or permission to write.
       try {
         await assertPrivateAttendanceDriveRoot(root,{
           ...process.env,GOOGLE_DRIVE_ROOT_FOLDER_ID:root,
@@ -346,10 +347,12 @@ export async function GET_PREFLIGHT(request:Request) {
     } catch {
       return failed('ATTENDANCE_DRIVE_PERMISSION_DENIED',503)
     }
+    let publicAccess=false
     try {
-      await assertPrivateAttendanceDriveRoot(root,{
+      const acl=await assertPrivateAttendanceDriveRoot(root,{
         ...process.env,GOOGLE_DRIVE_ROOT_FOLDER_ID:root,
       })
+      publicAccess=acl.publicAccess
     } catch(error) {
       if(error instanceof AttendanceDriveAclError)
         return failed(error.code,error.code==='ATTENDANCE_DRIVE_ACL_PUBLIC'?409:503)
@@ -360,6 +363,8 @@ export async function GET_PREFLIGHT(request:Request) {
       provider:'google_drive',
       root_readable:true,
       root_can_add_children:true,
+      public_access:publicAccess,
+      public_access_approved:publicAccess&&process.env.ATTENDANCE_DRIVE_ALLOW_PUBLIC_ACCESS==='true',
       feature_enabled:process.env.FEATURE_SELF_ATTENDANCE_PHOTO==='true',
     },{headers:ERROR_HEADERS})
   }catch(error) {
