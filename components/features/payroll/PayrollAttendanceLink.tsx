@@ -10,6 +10,7 @@ import {
 import { reviewRoomAttendance, type RoomAttendanceReview } from '@/lib/workforce/adaRoomAttendanceReview'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { AttendanceDrivePreflight } from './AttendanceDrivePreflight'
 
 export interface LinkedRoomAttendance {
   shiftId: string
@@ -125,6 +126,7 @@ export function PayrollAttendanceLink({
       </div>
       <Link className="text-xs font-medium text-blue-700 underline underline-offset-2" href="/workforce">Mở chấm công & Workforce</Link>
     </div>
+    <AttendanceDrivePreflight />
     <div className="flex flex-wrap items-end gap-2">
       <label className="flex min-w-44 flex-col gap-1 text-xs font-medium">Ngày ca
         <Input aria-label="Ngày ca chấm công" type="date" value={date}
