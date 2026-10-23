@@ -250,7 +250,7 @@ test('RC19 #77 new paginated Reports RPC is RLS invoker, validates before lazy C
   assert.match(guard,/RC19_HISTORY_VALIDATE_ALL_FILTERS/)
   assert.match(guard,/perform 1 from private\.filtered_shift_ids\('all'/i)
   assert.match(guard,/LIST_FILTER_INVALID/)
-  assert.match(guard,/security invoker/i)
+  assert.doesNotMatch(guard,/security definer/i)
 })
 
 test('Reports history is listed read-only without fabricated shifts; XLSX includes six-field context',async()=>{
