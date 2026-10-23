@@ -339,3 +339,23 @@ test('RC19 #84 orphan live-image read policy fails closed without a linked repor
   assert.doesNotMatch(sql, /report_id is null\) or|or \(report_id is null\)/i)
   assert.doesNotMatch(sql, /grant select on public\.reports|delete from public\.|truncate public\./i)
 })
+
+test('RC19 #84 replay script requires seven read-only, rollback-only actor cases', () => {
+  const sql = readFileSync(
+    new URL('../scripts/uat/rc19-reports-rls-role-simulation.sql', import.meta.url), 'utf8',
+  )
+  assert.equal((sql.match(/BEGIN READ ONLY;/g) ?? []).length, 7)
+  assert.equal((sql.match(/^ROLLBACK;$/gm) ?? []).length, 7)
+  assert.equal((sql.match(/-- Member #[1-5]:/g) ?? []).length, 5)
+  assert.match(sql, /-- leader: active reports/)
+  assert.match(sql, /-- admin: active reports/)
+  assert.match(sql, /NOT genuine Supabase HTTP requests/)
+  assert.match(sql, /RC19_MEMBER_FOREIGN_READ_LEAK/)
+  assert.match(sql, /RC19_MEMBER_FOREIGN_RPC_LEAK/)
+  assert.match(sql, /RC19_MEMBER_OWN_RPC_MISMATCH/)
+  assert.match(sql, /public\.get_report_revisions/)
+  for (const table of ['reports', 'report_revisions', 'report_images', 'live_report_images']) {
+    assert.ok(sql.includes('public.' + table))
+  }
+  assert.doesNotMatch(sql, /^\s*(insert|update|delete|truncate|alter|drop|create)\s+(into\s+|from\s+|table\s+|policy\s+|function\s+)?public\./gim)
+})
