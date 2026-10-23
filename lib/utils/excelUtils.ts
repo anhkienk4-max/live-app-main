@@ -1005,7 +1005,7 @@ export const buildReportExportRows = (reports: Report[], context: ReportExportCo
   const startTime = shift?.start_time ?? historical?.start_time
   const endTime = shift?.end_time ?? historical?.end_time
   const resolved = date && startTime && endTime
-    ? resolveShiftDateTime(date, startTime, endTime) : null
+    ? resolveShiftDateTime(date, startTime.slice(0,5), endTime.slice(0,5)) : null
   const campaign = context.campaigns.find(candidate => candidate.id === (shift?.campaign_id ?? historical?.campaign_id))
   const userName = (id?: string) => id ? context.users.find(user => user.id === id)?.full_name || id : ''
   const assignedNames = (role: 'host' | 'support' | 'technical', fallbackId?: string) => {
