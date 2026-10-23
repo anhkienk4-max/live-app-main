@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import {
   invalidatePageCache, pageCacheKey, readCachedListPage, readPageCache,
   writePageCache, prefetchNextListPage,
@@ -143,4 +144,15 @@ test('RC19 #71 in-flight actor drift invalidates existing actor cache pages', as
     console.warn = previousWarning
     invalidatePageCache()
   }
+})
+
+test('RC19 #71 every usePagedList render goes through verified actor cache reads', () => {
+  const hook = readFileSync(new URL('../lib/hooks/usePagedList.ts', import.meta.url), 'utf8')
+  // Synchronous readPageCache could directly render old private rows without
+  // passing the stillSameActor guard. Only readCachedListPage may return them.
+  assert.doesNotMatch(hook, /\breadPageCache\b/)
+  assert.doesNotMatch(hook, /\bpageCacheKey\b/)
+  assert.match(hook, /readCachedListPage\(service, identity, prefix, currentQuery, controller\.signal, stillSameActor\)/)
+  assert.match(hook, /const result = active \? state\.result : undefined/)
+  assert.match(hook, /if \(request !== version\.current \|\| controller\.signal\.aborted\) return/)
 })
