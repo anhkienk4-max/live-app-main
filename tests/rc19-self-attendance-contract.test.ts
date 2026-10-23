@@ -311,3 +311,38 @@ test('attendance evidence uses the operational file gateway contract, not direct
   assert.match(handler,/FILE_STORAGE_ENABLED!=='true'/)
   assert.doesNotMatch(handler,/FILE_STORAGE_ENABLED:'true'/)
 })
+
+
+test('sensitive check-in photos reject link-public and domain-wide Google Drive folder permissions',async()=>{
+  const {assertPrivateAttendanceDrivePermissions,AttendanceDriveAclError}=
+    await import('../lib/utils/attendanceDriveAcl.ts')
+  assert.doesNotThrow(()=>assertPrivateAttendanceDrivePermissions([
+    {type:'user',role:'owner'},{type:'user',role:'writer'},{type:'group',role:'reader'},
+  ],true))
+  for(const type of ['anyone','domain']){
+    for(const role of ['writer','reader']){
+      assert.throws(()=>assertPrivateAttendanceDrivePermissions([
+        {type:'user',role:'owner'},{type,role},
+      ],true),(error:unknown)=>error instanceof AttendanceDriveAclError&&error.code==='ATTENDANCE_DRIVE_ACL_PUBLIC')
+    }
+  }
+  assert.throws(()=>assertPrivateAttendanceDrivePermissions([],true),/ATTENDANCE_DRIVE_ACL_UNVERIFIED/)
+  assert.throws(()=>assertPrivateAttendanceDrivePermissions([{type:'user',role:'owner'}],false),/ATTENDANCE_DRIVE_ACL_UNVERIFIED/)
+  assert.throws(()=>assertPrivateAttendanceDrivePermissions([{type:'anyone',role:null}],true),/ATTENDANCE_DRIVE_ACL_UNVERIFIED/)
+})
+
+test('both upload and Admin read-only preflight block staff photos into publicly shared Drive root',()=>{
+  const handler=readFileSync(new URL('../lib/server/selfAttendancePhotoHandler.ts',import.meta.url),'utf8')
+  const acl=readFileSync(new URL('../lib/server/attendanceDriveAcl.ts',import.meta.url),'utf8')
+  const guard=readFileSync(new URL('../lib/utils/attendanceDriveAcl.ts',import.meta.url),'utf8')
+  assert.match(handler,/await assertPrivateAttendanceDriveRoot\(root,/g)
+  assert.equal((handler.match(/await assertPrivateAttendanceDriveRoot\(root,/g)??[]).length,2)
+  assert.match(handler,/ATTENDANCE_DRIVE_ACL_PUBLIC/)
+  assert.match(handler,/return failed\(error\.code,error\.code==='ATTENDANCE_DRIVE_ACL_PUBLIC'\?409:503\)/)
+  assert.match(acl,/drive\.permissions\.list\(\{/)
+  assert.match(acl,/nextPageToken/)
+  assert.match(acl,/all\.push\(\.\.\.data\.permissions\)/)
+  assert.match(acl,/assertPrivateAttendanceDrivePermissions\(all,complete\)/)
+  assert.match(guard,/permission\.type==='anyone' \|\| permission\.type==='domain'/)
+  assert.doesNotMatch(acl,/permissions\.create\(|permissions\.delete\(|files\.create\(/)
+})
