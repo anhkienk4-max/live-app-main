@@ -10,7 +10,7 @@ type Result = 'idle'|'checking'|'ready'|'blocked'
 export function AttendanceDrivePreflight() {
   const [status,setStatus] = React.useState<Result>('idle')
   const [enabled,setEnabled] = React.useState(false)
-  const [blockedReason,setBlockedReason] = React.useState<'credentials'|'permission'|'unknown'>('unknown')
+  const [blockedReason,setBlockedReason] = React.useState<'credentials'|'permission'|'public'|'unknown'>('unknown')
   const lock = React.useRef(false)
 
   async function verify() {
@@ -35,7 +35,8 @@ export function AttendanceDrivePreflight() {
           }
         } catch {/* Return generic safe status for invalid payloads. */}
         setBlockedReason(code==='ATTENDANCE_DRIVE_NOT_CONFIGURED'?'credentials':
-          code==='ATTENDANCE_DRIVE_PERMISSION_DENIED'?'permission':'unknown')
+          code==='ATTENDANCE_DRIVE_PERMISSION_DENIED'?'permission':
+          code==='ATTENDANCE_DRIVE_ACL_PUBLIC'?'public':'unknown')
         setStatus('blocked')
         return
       }
@@ -76,7 +77,9 @@ export function AttendanceDrivePreflight() {
           ? 'Ứng dụng thiếu kết nối OAuth Google Drive trên môi trường này. Cần cấu hình bảo mật trên Vercel trước khi bật check-in ảnh.'
           : blockedReason==='permission'
             ? 'OAuth chưa có quyền tạo file trong thư mục CHECK IN/OUT. Kiểm tra quyền Writer của tài khoản ứng dụng.'
-            : 'Chưa xác nhận được quyền Drive của ứng dụng. Giữ khóa check-in ảnh và kiểm tra cấu hình Admin.'}
+            : blockedReason==='public'
+              ? 'Cảnh báo riêng tư: thư mục CHECK IN/OUT đang cho phép truy cập công khai hoặc trên toàn domain. Không được lưu ảnh nhân sự vào đây. Admin cần thu hẹp quyền chia sẻ hoặc chọn một thư mục riêng tư trước khi kích hoạt.'
+              : 'Chưa xác nhận được quyền Drive của ứng dụng. Giữ khóa check-in ảnh và kiểm tra cấu hình Admin.'}
       </span>}
     </div>
   </div>
