@@ -82,13 +82,30 @@ export async function POST(request:Request) {
 
     const admin=createSupabaseAdminClient()
     const existing=await admin.from('self_attendance_photo_evidence')
-      .select('request_id,shift_id,staff_id,operational_role')
+      .select('request_id,shift_id,staff_id,operational_role,external_file_id,external_parent_id,file_name,mime_type,size_bytes,checksum_sha256')
       .eq('request_id',requestId).maybeSingle()
     if(existing.error) return failed('ATTENDANCE_PHOTO_STORAGE_UNAVAILABLE',503)
     if(existing.data&&
       (existing.data.staff_id!==actor.businessUserId||
        existing.data.shift_id!==shiftId||existing.data.operational_role!==kind))
       return failed('ATTENDANCE_PHOTO_REQUEST_REUSED',409)
+
+    // A retry must not finalize check-in if the previously reserved Drive
+    // image was removed, replaced or moved after the first upload.
+    if(existing.data) {
+      const {drive:priorDrive}=photoProvider()
+      const stored=await priorDrive.getMetadata(existing.data.external_file_id)
+      if(stored.id!==existing.data.external_file_id ||
+        stored.parent_ids?.[0]!==existing.data.external_parent_id ||
+        stored.name!==existing.data.file_name ||
+        stored.size_bytes!==existing.data.size_bytes)
+        return failed('ATTENDANCE_PHOTO_RETRY_INTEGRITY_FAILED',409)
+      const priorBytes=await priorDrive.read(existing.data.external_file_id)
+      if(priorBytes.byteLength!==existing.data.size_bytes ||
+        createHash('sha256').update(priorBytes).digest('hex')!==existing.data.checksum_sha256 ||
+        mimeFromBytes(priorBytes)?.mime!==existing.data.mime_type)
+        return failed('ATTENDANCE_PHOTO_RETRY_INTEGRITY_FAILED',409)
+    }
 
     const session=await createSessionClient()
     let prepared: z.infer<typeof contextSchema>|null=null
@@ -184,13 +201,14 @@ export async function GET(request:Request) {
       if(visible.error||!visible.data)return failed('PERMISSION_DENIED',403)
     }
     const metadata=await admin.from('self_attendance_photo_evidence')
-      .select('external_file_id,mime_type,size_bytes')
+      .select('external_file_id,mime_type,size_bytes,checksum_sha256')
       .eq('request_id',event.data.request_id).maybeSingle()
     if(metadata.error||!metadata.data)return failed('ATTENDANCE_PHOTO_NOT_FOUND',404)
     const {drive}=photoProvider()
     const bytes=await drive.read(metadata.data.external_file_id)
     if(bytes.byteLength!==metadata.data.size_bytes||
-      mimeFromBytes(bytes)?.mime!==metadata.data.mime_type)
+      mimeFromBytes(bytes)?.mime!==metadata.data.mime_type ||
+      createHash('sha256').update(bytes).digest('hex')!==metadata.data.checksum_sha256)
       return failed('ATTENDANCE_PHOTO_INTEGRITY_FAILED',409)
     return new Response(Buffer.from(bytes),{status:200,headers:{
       ...ERROR_HEADERS,'Content-Type':metadata.data.mime_type,
