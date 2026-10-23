@@ -291,3 +291,15 @@ test('Reports history is listed read-only without fabricated shifts; XLSX includ
   assert.equal(rows[0]['Support'],'')
   assert.equal(rows[0]['Technical'],'')
 })
+
+
+test('RC19 #77 hidden historical Shift staffing cannot be inferred by ID probe filters',()=>{
+  const privacy=readFileSync(new URL('../supabase/migrations/20261023160500_rc19_reports_history_staff_filter_privacy.sql',import.meta.url),'utf8')
+  assert.match(privacy,/create or replace function private\.report_historical_staff_filters_match/i)
+  assert.match(privacy,/private\.can_read_report\(p_report_id\)/)
+  assert.match(privacy,/jsonb_array_length\(coalesce\(p_filters->'hostIds'/)
+  assert.match(privacy,/jsonb_array_length\(coalesce\(p_filters->'supportIds'/)
+  assert.match(privacy,/jsonb_array_length\(coalesce\(p_filters->'technicalIds'/)
+  assert.doesNotMatch(privacy,/from public\.shifts|from public\.shift_registrations|host_id in|support_id in|technical_id in/i)
+  assert.doesNotMatch(privacy,/grant select on public\.shifts|alter policy|create policy/i)
+})
