@@ -234,3 +234,60 @@ test('RC19 #77 historical report shift context is authorization-gated and minima
   assert.match(sql, /grant execute on function private\.report_shift_display_context\(text\)[\s\S]*?to authenticated/i)
   assert.doesNotMatch(sql, /create policy|alter policy|alter table public\.shifts|delete from|truncate|drop table/i)
 })
+
+
+test('RC19 #77 new paginated Reports RPC is RLS invoker, validates before lazy CTEs and cannot widen Shift',()=>{
+  const initial=readFileSync(new URL('../supabase/migrations/20261023153500_rc19_reports_historical_pagination_v2.sql',import.meta.url),'utf8')
+  const guard=readFileSync(new URL('../supabase/migrations/20261023155000_rc19_reports_history_validate_filters_v2.sql',import.meta.url),'utf8')
+  assert.match(initial,/create or replace function public\.get_report_list_with_history/i)
+  assert.match(initial,/security invoker/i)
+  assert.match(initial,/from public\.reports r/i)
+  assert.match(initial,/private\.report_shift_display_context\(r\.id\)/i)
+  assert.match(initial,/historicalShiftContexts/i)
+  assert.match(initial,/private\.can_read_report\(p_report_id\)/i)
+  assert.match(initial,/revoke all on function public\.get_report_list_with_history\(integer,integer,jsonb\)/i)
+  assert.doesNotMatch(initial,/create policy|alter policy|alter table public\.shifts|grant select on public\.shifts|truncate public\./i)
+  assert.match(guard,/RC19_HISTORY_VALIDATE_ALL_FILTERS/)
+  assert.match(guard,/perform 1 from private\.filtered_shift_ids\('all'/i)
+  assert.match(guard,/LIST_FILTER_INVALID/)
+  assert.match(guard,/security invoker/i)
+})
+
+test('Reports history is listed read-only without fabricated shifts; XLSX includes six-field context',async()=>{
+  const api=readFileSync(new URL('../lib/server/operationsCollectionHandler.ts',import.meta.url),'utf8')
+  const frontend=readFileSync(new URL('../components/features/reports/ReportsList.tsx',import.meta.url),'utf8')
+  const paging=readFileSync(new URL('../lib/services/operationsPageService.ts',import.meta.url),'utf8')
+  const exportService=readFileSync(new URL('../lib/services/dataService.ts',import.meta.url),'utf8')
+  const exportUtils=readFileSync(new URL('../lib/utils/excelUtils.ts',import.meta.url),'utf8')
+  assert.match(api,/entity === 'reports'[\s\S]*?get_report_list_with_history/)
+  assert.match(api,/historicalShiftContexts/)
+  assert.match(frontend,/data-testid="report-historical-read-only"/)
+  assert.match(frontend,/data-testid="historical-report-detail-read-only"/)
+  assert.match(frontend,/Lịch sử · Chỉ xem/)
+  assert.match(frontend,/getAllFilteredWithHistoricalContext/)
+  assert.match(paging,/REPORT_HISTORY_RESPONSE_INVALID/)
+  assert.match(exportService,/getAllFilteredWithHistoricalContext/)
+  assert.match(exportUtils,/historicalShiftContexts\?: Record/)
+  assert.doesNotMatch(frontend,/if \(!shift\) return null/)
+  const {buildReportExportRows}=await import('../lib/utils/excelUtils.ts')
+  const rows=buildReportExportRows([{
+    ...draft,id:'history-only',shift_id:'hidden-shift',status:'confirmed',
+    metrics_confirmed:true,orders:3,
+  }],{
+    shifts:[],campaigns:[],users:[],brands:new Map([['brand-a','Brand A']]),
+    platforms:new Map([['tt','TikTok']]),
+    historicalShiftContexts:{'history-only':{
+      date:'2026-10-23',start_time:'23:45:00',end_time:'01:45:00',
+      brand_id:'brand-a',platform_id:'tt',campaign_id:null,
+    }},
+  })
+  assert.equal(rows.length,1)
+  assert.equal(rows[0]['Report ID'],'history-only')
+  assert.equal(rows[0]['Start Date'],'2026-10-23')
+  assert.equal(rows[0]['End Date'],'2026-10-24')
+  assert.equal(rows[0]['Brand'],'Brand A')
+  assert.equal(rows[0]['Platform'],'TikTok')
+  assert.equal(rows[0]['Host'],'')
+  assert.equal(rows[0]['Support'],'')
+  assert.equal(rows[0]['Technical'],'')
+})
