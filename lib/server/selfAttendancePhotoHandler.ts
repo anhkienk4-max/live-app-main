@@ -206,6 +206,11 @@ export async function GET(request:Request) {
   try {
     const actor=await requireUser(request)
     if(!actor.businessUserId)return failed('ATTENDANCE_BUSINESS_ACTOR_REQUIRED',403)
+    // Photo bytes are personal evidence. Check current DB actor activity on
+    // every image read, not just the auth cookie's existence.
+    const session=await createSessionClient()
+    const active=await session.rpc('get_my_self_attendance',{p_shift_id:null,p_limit:1})
+    if(active.error)return failed('PERMISSION_DENIED',403)
     const eventId=UUID.parse(new URL(request.url).searchParams.get('event_id'))
     const admin=createSupabaseAdminClient()
     const event=await admin.from('self_attendance_events')
@@ -216,7 +221,6 @@ export async function GET(request:Request) {
       if(!['leader','admin'].includes(actor.systemPermission))
         return failed('PERMISSION_DENIED',403)
       // Non-owner reviewers must also be entitled to this shift under DB RLS.
-      const session=await createSessionClient()
       const visible=await session.from('shifts').select('id').eq('id',event.data.shift_id).maybeSingle()
       if(visible.error||!visible.data)return failed('PERMISSION_DENIED',403)
     }
