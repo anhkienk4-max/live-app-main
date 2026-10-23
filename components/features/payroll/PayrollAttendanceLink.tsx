@@ -102,11 +102,15 @@ export function PayrollAttendanceLink({
   } : null
   const segments: ActualSegment[] = attendance?.segments??[]
   const rawAttendance = attendance?.attendance_events ?? []
-  const sourceRecords = new Map<string,{staffId:string;role:string;checkin:string|null;checkout:string|null}>()
+  const sourceRecords = new Map<string,{staffId:string;role:string;checkin:string|null;checkout:string|null;checkinEventId:string|null;photoAvailable:boolean}>()
   for(const entry of rawAttendance){
     const key=entry.staff_id+':'+entry.operational_role
-    const row=sourceRecords.get(key)??{staffId:entry.staff_id,role:entry.operational_role,checkin:null,checkout:null}
-    if(entry.event_kind==='check_in')row.checkin=entry.recorded_at
+    const row=sourceRecords.get(key)??{staffId:entry.staff_id,role:entry.operational_role,checkin:null,checkout:null,checkinEventId:null,photoAvailable:false}
+    if(entry.event_kind==='check_in'){
+      row.checkin=entry.recorded_at
+      row.checkinEventId=entry.id
+      row.photoAvailable=entry.photo_available===true
+    }
     if(entry.event_kind==='check_out')row.checkout=entry.recorded_at
     sourceRecords.set(key,row)
   }
@@ -150,7 +154,8 @@ export function PayrollAttendanceLink({
     {selected&&attendance&&<>
       <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900" role="note">
         <strong>Phân biệt hai bằng chứng:</strong> giờ bắt đầu thực tế của Workforce chỉ xác nhận giờ làm việc khi đã duyệt.
-        Chưa có liên kết timestamp tin nhắn check-in/check-out group, ảnh outfit hoặc hình report Drive.
+        Ảnh check-in trong ứng dụng chỉ là bằng chứng bổ sung, không tự chứng minh ảnh outfit đúng quy định.
+        Chưa tích hợp timestamp tin nhắn group hoặc hình report Drive, nên vẫn cần người quản lý đối chiếu.
         Vì vậy KHÔNG tự xác nhận đi trễ, thiếu ảnh hay áp dụng tiền phạt.
       </div>
       <p className="text-xs text-slate-600">
@@ -166,6 +171,12 @@ export function PayrollAttendanceLink({
         {pendingAppAttendance.length===0?<p>Chưa có bản ghi check-in ứng dụng, không kết luận vắng mặt.</p>:null}
         {pendingAppAttendance.map(item=><div key={item.staffId+':'+item.role} className="border-t pt-2">
           {item.role} · {item.staffId.slice(0,8)}… · Check-in: {fmt(item.checkin)} · Check-out: {fmt(item.checkout)}
+          {item.photoAvailable&&item.checkinEventId?
+            <a className="ml-2 text-blue-700 underline" target="_blank" rel="noopener noreferrer"
+              href={'/api/workforce/self-attendance-photo?event_id='+encodeURIComponent(item.checkinEventId)}>
+              Xem ảnh check-in Drive (chờ xác minh)
+            </a>:
+            <span className="ml-2 text-amber-700">Chưa có ảnh check-in hợp lệ</span>}
         </div>)}
       </div>}
       <div className="grid gap-2 lg:grid-cols-2">
