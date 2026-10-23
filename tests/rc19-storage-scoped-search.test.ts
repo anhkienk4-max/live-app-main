@@ -21,7 +21,7 @@ test('search does not auto-query each keystroke; reports real integrity wording,
  assert.match(view,/const applySearch = \(\) =>/)
  assert.match(view,/value=\{searchDraft\}/)
  assert.match(view,/onClick=\{applySearch\}/)
- assert.match(view,/Đang xác minh và tải danh sách file theo ngữ cảnh/)
+ assert.match(view,/Đang xác minh danh sách file/)
  assert.match(view,/Tham chiếu provider, chưa xác minh checksum nội dung/)
  assert.match(api,/integrity_status: row\.integrity_status === 'sha256_verified'/)
 })
