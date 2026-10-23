@@ -96,3 +96,40 @@ test('member list ignores stale same-user provider cleanup but rejects a foreign
     else Reflect.deleteProperty(globalThis, 'window')
   }
 })
+
+test('RC19 role switch during in-flight Member request rejects the stale owner', async () => {
+  const previousFetch = globalThis.fetch
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  const previousNodeEnv = process.env.NODE_ENV
+  const previousMockFlag = process.env.NEXT_PUBLIC_USE_MOCK_DATA
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: {} })
+  process.env.NODE_ENV = 'production'
+  process.env.NEXT_PUBLIC_USE_MOCK_DATA = 'true'
+  const member = { ...actor, id: 'stable-business-id', role: 'staff', system_permission: 'member' } as User
+  try {
+    currentUserService.bindAuthenticatedUser(member)
+    globalThis.fetch = async () => {
+      // A legitimate privilege change cannot reuse the response from the old role.
+      currentUserService.bindAuthenticatedUser({
+        ...member, role: 'leader', system_permission: 'leader',
+      })
+      return new Response(JSON.stringify({
+        items: [{ id: 'sensitive-old-row' }], total: 1, page: 1, pageSize: 10,
+        ownerKey: 'stable-business-id:member',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+    await assert.rejects(
+      getCollectionPage('my_shifts', query),
+      (error: unknown) => error instanceof OperationsListError
+        && error.code === 'LIST_IDENTITY_CHANGED'
+        && error.status === 409,
+    )
+  } finally {
+    currentUserService.clearAuthenticatedUser()
+    globalThis.fetch = previousFetch
+    process.env.NODE_ENV = previousNodeEnv
+    process.env.NEXT_PUBLIC_USE_MOCK_DATA = previousMockFlag
+    if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow)
+    else Reflect.deleteProperty(globalThis, 'window')
+  }
+})
