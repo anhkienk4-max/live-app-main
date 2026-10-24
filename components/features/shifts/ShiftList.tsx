@@ -9,7 +9,7 @@ import { getOperationalReferences } from '@/lib/services/operationalReferences'
 import { shiftService, shiftRegistrationService, getShiftRoleCapacities } from '@/lib/services/dataService'
 import { templateService } from '@/lib/services/templateService'
 import { Shift, Brand, Platform, Campaign, User, DeletionImpact, ShiftRegistration } from '@/lib/types/database.types'
-import { formatShiftTimeRange, ShiftTemplate } from '@/lib/utils/shiftUtils'
+import { businessLocalDate, formatShiftTimeRange, ShiftTemplate } from '@/lib/utils/shiftUtils'
 import { shiftDateWindowFilters } from '@/lib/utils/shiftDateWindow'
 import { ActionBar } from '@/components/ui/action-bar'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
@@ -34,13 +34,48 @@ import { hasPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { resolveStaffingLabelsForRole } from '@/lib/utils/staffingResolver'
-import { readShiftListUrlState, shiftListUrlValues } from '@/lib/utils/shiftListUrlState'
+import { readShiftListUrlState, shiftListUrlValues, type ShiftListUrlState } from '@/lib/utils/shiftListUrlState'
+import type { ShiftDateWindow } from '@/lib/utils/shiftDateWindow'
 
 const statusVariants: Record<string, 'default' | 'secondary' | 'destructive'> = {
   scheduled: 'secondary',
   live: 'destructive',
   completed: 'default',
   cancelled: 'secondary'
+}
+
+function ShiftDateFilter({ state, onApply, t, mobile = false }: { state: ShiftListUrlState; onApply: (state: ShiftListUrlState) => void; t: (key: string) => string; mobile?: boolean }) {
+  const { language } = useTranslation()
+  const [mode, setMode] = React.useState<ShiftDateWindow>(state.dateWindow)
+  const [month, setMonth] = React.useState(state.month || businessLocalDate().slice(0, 7))
+  const [from, setFrom] = React.useState(state.from || shiftDateWindowFilters('recent').from || '')
+  const [to, setTo] = React.useState(state.to || businessLocalDate())
+  let valid = true
+  try { shiftDateWindowFilters(mode, new Date(), month, from, to) }
+  catch { valid = false }
+  const changeMode = (next: ShiftDateWindow) => {
+    setMode(next)
+    if (next !== 'month' && next !== 'custom') onApply({ ...state, dateWindow: next, month: '', from: '', to: '' })
+  }
+  return <div className={mobile ? 'contents' : 'flex flex-wrap items-center gap-2'}>
+    <label className={mobile ? 'min-w-0' : 'flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600'}>
+      <span className={mobile ? 'sr-only' : ''}>{t('dateRange')}</span>
+      <select aria-label={t('dateRange')} value={mode} onChange={event => changeMode(event.target.value as ShiftDateWindow)} data-testid={mobile ? 'shifts-mobile-date-mode' : 'shifts-desktop-date-mode'}
+        className={mobile ? 'h-11 w-full min-w-0 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800' : 'max-w-40 bg-transparent font-medium text-slate-800 outline-none'}>
+        <option value="recent">{t('last30Days')}</option>
+        <option value="upcoming">{t('upcoming')}</option>
+        <option value="all">{t('all')}</option>
+        <option value="month">{t('month')}</option>
+        <option value="custom">{t('customRange')}</option>
+      </select>
+    </label>
+    {mode === 'month' && <Input type="month" aria-label={t('month')} value={month} onChange={event => setMonth(event.target.value)} data-testid="shifts-month-input" className={mobile ? 'col-span-2 h-11' : 'w-40'} />}
+    {mode === 'custom' && <>
+      <Input type="date" aria-label={t('startDate')} value={from} onChange={event => setFrom(event.target.value)} data-testid="shifts-from-input" className={mobile ? 'col-span-2 h-11' : 'w-40'} />
+      <Input type="date" aria-label={t('endDate')} value={to} onChange={event => setTo(event.target.value)} data-testid="shifts-to-input" className={mobile ? 'col-span-2 h-11' : 'w-40'} />
+    </>}
+    {(mode === 'month' || mode === 'custom') && <Button type="button" variant="outline" disabled={!valid} onClick={() => onApply({ ...state, dateWindow: mode, month, from, to })} data-testid="shifts-date-apply" className={mobile ? 'col-span-2 h-11' : ''}>{language === 'vi' ? 'Áp dụng' : 'Apply'}</Button>}
+  </div>
 }
 
 export function ShiftList() {
@@ -66,28 +101,6 @@ export function ShiftList() {
   
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
   const [showBulkActions, setShowBulkActions] = React.useState(false)
-  const [visibleShifts, setVisibleShifts] = React.useState<Shift[]>([])
-  const [filteredTableShifts, setFilteredTableShifts] = React.useState<Shift[]>([])
-  const [tableFilterInitialized, setTableFilterInitialized] = React.useState(false)
-
-  const handleVisibleDataChange = React.useCallback((next: Shift[]) => {
-    setVisibleShifts(prev => {
-      if (prev.length === next.length && prev.every((s, i) => s.id === next[i]?.id)) {
-        return prev
-      }
-      return next
-    })
-  }, [])
-
-  const handleFilteredDataChange = React.useCallback((next: Shift[]) => {
-    setTableFilterInitialized(true)
-    setFilteredTableShifts(prev => {
-      if (prev.length === next.length && prev.every((s, i) => s.id === next[i]?.id)) {
-        return prev
-      }
-      return next
-    })
-  }, [])
 
   const { toast } = useToast()
   const { t, translate } = useTranslation()
@@ -106,7 +119,8 @@ export function ShiftList() {
   const searchParams = useSearchParams()
   const urlState = readShiftListUrlState(searchParams)
   const { dateWindow, status: statusFilter, search: searchQuery, descending: sortDescending } = urlState
-  const listFilters = { ...shiftDateWindowFilters(dateWindow), search: searchQuery, statuses: statusFilter === 'all' ? [] : [statusFilter], descending: sortDescending }
+  const listFilters = { ...shiftDateWindowFilters(dateWindow, new Date(), urlState.month, urlState.from, urlState.to), search: searchQuery, statuses: statusFilter === 'all' ? [] : [statusFilter], descending: sortDescending }
+  const dateFilterKey = [dateWindow, urlState.month, urlState.from, urlState.to].join(':')
   const list = usePagedList(shiftService, 'shifts', listFilters)
   useShiftChangeRefresh(list.reload)
   const { items: shifts, loading } = list
@@ -169,7 +183,7 @@ export function ShiftList() {
   const handleSearchQueryChange = (search: string) => updateFilters({ ...urlState, search }, true)
 
   const requestDelete = async (ids: string[]) => {
-    if (!canDelete) return
+    if (!canDelete || ids.length === 0 || ids.some(id => !shifts.some(shift => shift.id === id))) return
     const impacts = (await Promise.all(ids.map(id => shiftService.getDeletionImpact(id)))).filter((impact): impact is DeletionImpact => Boolean(impact))
     if (impacts.length === 0) return
     setDeleteIds(ids)
@@ -188,6 +202,7 @@ export function ShiftList() {
   const handleDelete = async (reason: string) => {
     if (!currentUser || !canDelete) return
     try {
+      if (deleteIds.some(id => !shifts.some(shift => shift.id === id))) throw new Error('SHIFT_SELECTION_CHANGED')
       for (const id of deleteIds) {
         await shiftService.remove(id, currentUser.id, reason, shifts.find(shift => shift.id === id)?.version)
       }
@@ -235,6 +250,7 @@ export function ShiftList() {
   }
 
   const toggleSelect = (id: string) => {
+    if (!sortedShifts.some(shift => shift.id === id)) return
     const newSet = new Set(selectedIds)
     if (newSet.has(id)) {
       newSet.delete(id)
@@ -245,58 +261,20 @@ export function ShiftList() {
     setShowBulkActions(newSet.size > 0)
   }
 
-  // Active filtered shifts on desktop:
-  // - If table filter is initialized: strictly filteredTableShifts (which is [] when 0 results match)
-  // - If table filter is not yet initialized: sortedShifts
-  const currentTableFilteredShifts = React.useMemo(() => {
-    if (tableFilterInitialized) {
-      return filteredTableShifts
-    }
-    return sortedShifts
-  }, [tableFilterInitialized, filteredTableShifts, sortedShifts])
-
-  // Reconcile selectedIds during render when filtered table data changes:
-  // Prunes any previously selected IDs that no longer exist in currentTableFilteredShifts.
-  const [prevFilteredShifts, setPrevFilteredShifts] = React.useState<Shift[]>(filteredTableShifts)
-  if (filteredTableShifts !== prevFilteredShifts) {
-    setPrevFilteredShifts(filteredTableShifts)
-    if (selectedIds.size > 0 && tableFilterInitialized) {
-      const validIdSet = new Set(filteredTableShifts.map(s => s.id))
-      const next = new Set<string>()
-      selectedIds.forEach(id => {
-        if (validIdSet.has(id)) next.add(id)
-      })
-      if (next.size !== selectedIds.size) {
-        setSelectedIds(next)
-        if (next.size === 0) {
-          setShowBulkActions(false)
-        }
-      }
-    }
-  }
-
-  // Only shifts that are currently selected AND in currentTableFilteredShifts
-  const selectedFilteredShifts = React.useMemo(() => {
-    if (tableFilterInitialized && filteredTableShifts.length === 0) {
-      return []
-    }
-    const pool = currentTableFilteredShifts
-    const validIds = new Set(pool.map(s => s.id))
-    return pool.filter(s => selectedIds.has(s.id) && validIds.has(s.id))
-  }, [tableFilterInitialized, filteredTableShifts, currentTableFilteredShifts, selectedIds])
-
-  const allPageSelected = visibleShifts.length > 0 && visibleShifts.every(s => selectedIds.has(s.id))
-  const somePageSelected = visibleShifts.some(s => selectedIds.has(s.id)) && !allPageSelected
+  // A server page is the only selectable scope for both table and mobile cards.
+  const selectedFilteredShifts = sortedShifts.filter(shift => selectedIds.has(shift.id))
+  const allPageSelected = sortedShifts.length > 0 && sortedShifts.every(shift => selectedIds.has(shift.id))
+  const somePageSelected = sortedShifts.some(shift => selectedIds.has(shift.id)) && !allPageSelected
 
   const toggleSelectPage = () => {
     if (allPageSelected) {
       const next = new Set(selectedIds)
-      visibleShifts.forEach(s => next.delete(s.id))
+      sortedShifts.forEach(s => next.delete(s.id))
       setSelectedIds(next)
       setShowBulkActions(next.size > 0)
     } else {
       const next = new Set(selectedIds)
-      visibleShifts.forEach(s => next.add(s.id))
+      sortedShifts.forEach(s => next.add(s.id))
       setSelectedIds(next)
       setShowBulkActions(true)
     }
@@ -391,14 +369,12 @@ export function ShiftList() {
   ]
 
   if (loadError || list.error) return <PageLoadError error={loadError || list.error} onRetry={() => { setLoadError(null); void loadData() }} />
-  if (loading) return <div className="text-center py-12">{t('loading')}</div>
-
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">{translate('Shift Management')}</h1>
-          <p className="mt-1 text-xs text-muted-foreground">{list.total} {t('totalShifts')}</p>
+          <p className="mt-1 text-xs text-muted-foreground" role={loading ? 'status' : undefined}>{loading ? t('loading') : `${list.total} ${t('totalShifts')}`}</p>
         </div>
         <div className="flex gap-2">
           {canImportExport && (
@@ -423,11 +399,11 @@ export function ShiftList() {
         </div>
       </div>
 
-      {showBulkActions && <p className="text-xs text-muted-foreground">{t('currentPage')} · {t('selectedCount',{count:selectedIds.size})}</p>}
+      {showBulkActions && selectedFilteredShifts.length > 0 && <p className="text-xs text-muted-foreground">{t('currentPage')} · {t('selectedCount',{count:selectedFilteredShifts.length})}</p>}
       {showBulkActions && selectedFilteredShifts.length > 0 && (
         <BulkActionsToolbar
           selectedCount={selectedFilteredShifts.length}
-          totalFilteredCount={currentTableFilteredShifts.length}
+          totalFilteredCount={sortedShifts.length}
           onBulkDelete={() => void requestDelete(selectedFilteredShifts.map(s => s.id))}
           onDeselectAll={() => { setSelectedIds(new Set()); setShowBulkActions(false) }}
           shifts={selectedFilteredShifts}
@@ -444,28 +420,18 @@ export function ShiftList() {
           columns={columns}
           search={searchQuery}
           onSearch={handleSearchQueryChange}
-          pagination={{ loading: list.refreshing, page: list.page, pageSize: list.pageSize, total: list.total,
+          pagination={{ loading: loading || list.refreshing, page: list.page, pageSize: list.pageSize, total: list.total,
             onPageChange: value => { clearSelection(); list.setPage(value) },
             onPageSizeChange: value => { clearSelection(); list.setPageSize(value) } }}
-          onVisibleDataChange={handleVisibleDataChange}
-          onFilteredDataChange={handleFilteredDataChange}
           searchPlaceholder={t('search')}
           filterComponent={
             <div className="flex flex-wrap items-center gap-2">
-              <label className="flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600">
-                <span>{t('dateRange')}</span>
-                <select aria-label={t('dateRange')} value={dateWindow}
-                  onChange={event => updateFilters({ ...urlState, dateWindow: event.target.value as typeof dateWindow })}
-                  className="max-w-40 bg-transparent font-medium text-slate-800 outline-none">
-                  <option value="recent">{t('last30Days')}</option>
-                  <option value="upcoming">{t('upcoming')}</option>
-                  <option value="all">{t('all')}</option>
-                </select>
-              </label>
+              <ShiftDateFilter key={'desktop:' + dateFilterKey} state={urlState} onApply={updateFilters} t={t} />
               <label className="flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600">
                 <span>{t('status')}</span>
                 <select
                   aria-label={t('status')}
+                  data-testid="shifts-desktop-status-filter"
                   value={statusFilter}
                   onChange={event => handleStatusFilterChange(event.target.value as Shift['status'] | 'all')}
                   className="max-w-40 bg-transparent font-medium text-slate-800 outline-none"
@@ -483,6 +449,7 @@ export function ShiftList() {
                 size="sm"
                 onClick={() => updateFilters({ ...urlState, descending: !sortDescending })}
                 aria-label={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`}
+                data-testid="shifts-desktop-sort"
                 title={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`}
               >
                 <ArrowDownUp className="mr-1.5 h-4 w-4" />
@@ -490,7 +457,7 @@ export function ShiftList() {
               </Button>
             </div>
           }
-          emptyMessage={t('noData')}
+          emptyMessage={loading ? t('loading') : t('noData')}
         />
       </div>
 
@@ -510,13 +477,7 @@ export function ShiftList() {
             />
           </div>
           <div className="grid min-w-0 grid-cols-2 gap-2">
-            <select aria-label={t('dateRange')} value={dateWindow}
-              onChange={event => updateFilters({ ...urlState, dateWindow: event.target.value as typeof dateWindow })}
-              className="h-11 min-w-0 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none">
-              <option value="recent">{t('last30Days')}</option>
-              <option value="upcoming">{t('upcoming')}</option>
-              <option value="all">{t('all')}</option>
-            </select>
+            <ShiftDateFilter key={'mobile:' + dateFilterKey} state={urlState} onApply={updateFilters} t={t} mobile />
             <select
               aria-label={t('status')}
               value={statusFilter}
@@ -537,6 +498,7 @@ export function ShiftList() {
               className="col-span-2 min-h-11 w-full px-2.5 text-xs"
               onClick={() => updateFilters({ ...urlState, descending: !sortDescending })}
               aria-label={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`}
+              data-testid="shifts-mobile-sort"
             >
               <ArrowDownUp className="mr-1 h-3.5 w-3.5" />
               {t('date')} {sortDescending ? '↓' : '↑'}
@@ -547,7 +509,7 @@ export function ShiftList() {
         {/* Compact Cards List */}
         {mobilePaginatedShifts.length === 0 ? (
           <div className="rounded-lg border border-dashed border-slate-200 p-8 text-center text-xs text-muted-foreground" data-testid="shifts-mobile-empty-state">
-            {t('noData')}
+            {loading ? t('loading') : t('noData')}
           </div>
         ) : (
           <div className="space-y-2">
@@ -826,7 +788,7 @@ export function ShiftList() {
               <Button
                 size="sm"
                 data-testid="confirm-bulk-status-btn"
-                disabled={isBulkUpdating}
+                disabled={isBulkUpdating || selectedFilteredShifts.length === 0 || loading}
                 onClick={async () => {
                   setIsBulkUpdating(true)
                   try {
