@@ -43,7 +43,7 @@ test('Calendar uses bounded windows, on-demand reports and abort guards', () => 
   assert.match(source, /setLoadingMore\(true\)/)
   assert.match(source, /setWindowComplete\(false\)/)
   assert.match(source, /setWindowComplete\(true\)/)
-  assert.match(source, /disabled=\{bulkApprovalLoading \|\| loadingMore \|\| !windowComplete\}/)
+  assert.match(source, /disabled=\{bulkApprovalLoading \|\| loadingMore \|\| !windowComplete \|\| loadedKey !== requestKey\}/)
   assert.doesNotMatch(source, /shiftService\.getAllComplete\(\)|shiftRegistrationService\.getAll\(\)/)
 })
 
