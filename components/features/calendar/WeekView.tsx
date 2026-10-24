@@ -98,7 +98,7 @@ export function WeekView({
         style={{ scrollbarWidth: "thin" }}
       >
         {shifts.length === 0 && (
-          <div className="absolute inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm min-h-[400px]">
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/80 backdrop-blur-sm min-h-[400px]">
             <div className="text-center p-6 bg-background rounded-xl border shadow-sm max-w-sm">
               <p className="text-lg font-medium text-foreground mb-4">
                 {hasActiveFilters ? "No shifts match these filters." : "No shifts scheduled this week."}
