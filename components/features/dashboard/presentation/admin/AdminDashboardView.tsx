@@ -61,7 +61,7 @@ export interface AdminDashboardViewModel {
   liveCount: number
   todaysShiftsCount: number
   missingStaffCount: number | null
-  pendingCount: number
+  pendingCount: number | null
   dqAttention: AttentionItem[]
   liveShifts: LiveShiftItem[]
   todaysOperations: OperationRowItem[]
@@ -227,7 +227,7 @@ export function AdminDashboardView({
         <KpiCard icon={<Radio className="w-5 h-5 text-red-600" />} iconBg="bg-red-50" title="LIVE NOW" value={liveCount.toString()} subtitle="Active sessions" />
         <KpiCard icon={<Calendar className="w-5 h-5 text-blue-600" />} iconBg="bg-blue-50" title="TODAY'S SHIFTS" value={todaysShiftsCount.toString()} subtitle="Scheduled today" />
         <KpiCard icon={<Users className="w-5 h-5 text-amber-500" />} iconBg="bg-amber-50" title="MISSING STAFF" value={missingStaffCount !== null ? missingStaffCount.toString() : '—'} subtitle="Needs resolution" />
-        <KpiCard icon={<FileText className="w-5 h-5 text-purple-600" />} iconBg="bg-purple-50" title="PENDING" value={pendingCount.toString()} subtitle="Need review" />
+        <KpiCard icon={<FileText className="w-5 h-5 text-purple-600" />} iconBg="bg-purple-50" title="PENDING" value={pendingCount !== null ? pendingCount.toString() : '—'} subtitle="Need review" />
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-6">

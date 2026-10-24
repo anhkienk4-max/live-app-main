@@ -52,7 +52,7 @@ export interface LeaderDashboardViewModel {
   todaysShiftsCount: number
   /** null = unavailable */
   missingStaffCount: number | null
-  pendingCount: number
+  pendingCount: number | null
   /** null = source unavailable; [] = loaded, verified empty */
   decisions: DecisionItem[] | null
   todaysSchedule: ScheduleItem[]
@@ -165,7 +165,7 @@ export function LeaderDashboardView({
         <KpiCard icon={<Calendar className="w-5 h-5 text-blue-600" />} iconBg="bg-blue-50" title="TEAM SHIFTS" value={todaysShiftsCount.toString()} subtitle="Today" />
         <KpiCard icon={<Radio className="w-5 h-5 text-red-600" />} iconBg="bg-red-50" title="LIVE" value={liveCount.toString()} subtitle="Active now" />
         <KpiCard icon={<Users className="w-5 h-5 text-amber-500" />} iconBg="bg-amber-50" title="MISSING STAFF" value={missingStaffCount !== null ? missingStaffCount.toString() : '—'} subtitle="Resolve today" />
-        <KpiCard icon={<FileText className="w-5 h-5 text-purple-600" />} iconBg="bg-purple-50" title="PENDING" value={pendingCount.toString()} subtitle="Need review" />
+        <KpiCard icon={<FileText className="w-5 h-5 text-purple-600" />} iconBg="bg-purple-50" title="PENDING" value={pendingCount !== null ? pendingCount.toString() : '—'} subtitle="Need review" />
       </div>
 
       {/* ROW 2: SCHEDULE (7/12) + DECISIONS (5/12) */}

@@ -18,7 +18,7 @@ import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { resolveSystemPermission } from '@/lib/permissions'
 import { getSwapUiActions } from '@/lib/utils/swapUi'
 import { getMemberAssignedShifts, getLeaderPendingRegistrations, getLeaderPendingReports, getLeaderPendingSwaps } from '@/lib/ui/dashboard-role-data'
-import { deriveLeaderAttention, deriveDataQualityAttention } from '@/lib/ui/operational-attention'
+import { deriveDataQualityAttention } from '@/lib/ui/operational-attention'
 import { getAllIssues } from '@/lib/utils/dataQuality'
 import { ShiftDetailModal } from '@/components/features/shifts/ShiftDetailModal'
 import { AdminDashboardView } from './presentation/admin/AdminDashboardView'
@@ -40,7 +40,23 @@ const rangeFor = (preset: Exclude<Preset, 'custom'>) => {
 }
 const initialFilters = (): Filters => ({ preset: '30d', ...rangeFor('30d'), brandIds: [], platformIds: [], campaignIds: [], hostIds: [], supportIds: [], technicalIds: [] })
 
-type DashboardDataset = Pick<CommonProps, 'shifts' | 'reports' | 'brands' | 'platforms' | 'campaigns' | 'users' | 'registrations' | 'swapRequests'>
+type WidgetErrors = {
+  reports?: boolean
+  swaps?: boolean
+  registrations?: boolean
+}
+
+type DashboardDataset = {
+  shifts: Shift[]
+  reports: Report[] | null
+  brands: Brand[]
+  platforms: Platform[]
+  campaigns: Campaign[]
+  users: User[]
+  registrations: ShiftRegistration[] | null
+  swapRequests: SwapRequest[] | null
+  widgetErrors?: WidgetErrors
+}
 
 export function calculateAggregate(reports: Array<Record<string, unknown>>, key: 'revenue' | 'orders'): number | null {
   const numeric = reports.map(r => r[key]).filter((v): v is number => typeof v === 'number')
@@ -165,6 +181,9 @@ export function DashboardOverview() {
   const [loadError,setLoadError] = React.useState<unknown>(null)
   const [filters,setFilters]=React.useState<Filters|null>(()=>initialFilters())
   const sequence=React.useRef(0)
+  const lastLoadedKey = React.useRef<string | null>(null)
+  const lastLoadedFilters = React.useRef<Filters | null>(null)
+
   const identity = currentUser ? operationalReferenceIdentity(currentUser) : ''
   const filterKey = JSON.stringify(filters)
   const viewKey = identity + ':' + filterKey
@@ -174,12 +193,22 @@ export function DashboardOverview() {
     const request = ++sequence.current
     if (!reuseCache) invalidatePageCache()
 
-    // Smooth revalidation: do not wipe existing data if already present
-    setData(current => {
-      if (!current) setLoading(true)
-      else setIsRefreshing(true)
-      return current
-    })
+    // Strict time-boundary & actor-boundary check:
+    // Only use Stale-While-Revalidate if querying the exact same actor and date range!
+    const isSameActor = lastLoadedKey.current && lastLoadedKey.current.startsWith(identity + ':')
+    const isSameFilter = lastLoadedFilters.current &&
+      lastLoadedFilters.current.start === filters.start &&
+      lastLoadedFilters.current.end === filters.end &&
+      lastLoadedFilters.current.preset === filters.preset
+
+    if (isSameActor && isSameFilter && data) {
+      setIsRefreshing(true)
+    } else {
+      // Date range or actor changed: MUST clear stale data so old range is not shown as new range!
+      setData(null)
+      setLoading(true)
+      setIsRefreshing(false)
+    }
     setLoadError(null)
 
     try {
@@ -195,31 +224,59 @@ export function DashboardOverview() {
           if (request === sequence.current) setEarly({key:viewKey, items:visible.items})
         }).catch(() => { /* The full read handles errors authoritatively. */ })
 
-        // Fetch independent sources with resilient graceful fallbacks
-        const [rangeShifts,reports,refs,future,swapPage,scopeSwaps]=await Promise.all([
+        let reportsError = false
+        let swapPageError = false
+        let scopeSwapsError = false
+
+        // Fetch independent sources, capturing partial errors cleanly
+        const [rangeShifts,reportsResult,refs,future,swapPageResult,scopeSwapsResult]=await Promise.all([
           shiftService.getAllFiltered({from,to}),
           reportService.getAllFiltered({from,to}).catch(err => {
-            console.warn('Dashboard reportService fallback', err)
-            return [] as Report[]
+            console.warn('Dashboard reportService error', err)
+            reportsError = true
+            return null
           }),
           getOperationalReferences(currentUser),
           upcoming,
           swapRequestService.getPage({page:1,pageSize:10,filters:{statuses:['pending','accepted']}}).catch(err => {
-            console.warn('Dashboard swapPage fallback', err)
-            return { items: [] as SwapRequest[], total: 0, page: 1, pageSize: 10 }
+            console.warn('Dashboard swapPage error', err)
+            swapPageError = true
+            return null
           }),
           swapRequestService.getAllFiltered({from,to}).catch(err => {
-            console.warn('Dashboard scopeSwaps fallback', err)
-            return [] as SwapRequest[]
+            console.warn('Dashboard scopeSwaps error', err)
+            scopeSwapsError = true
+            return null
           }),
         ])
 
-        const previewIds=[...new Set(swapPage.items.flatMap(swap=>[swap.shift_id,swap.target_shift_id].filter((id):id is string=>!!id)))]
+        const previewIds=[...new Set((swapPageResult?.items ?? []).flatMap(swap=>[swap.shift_id,swap.target_shift_id].filter((id):id is string=>!!id)))]
         const related=previewIds.length?await shiftService.getAllFiltered({shiftIds:previewIds}).catch(() => [] as Shift[]):[]
         const shifts=[...new Map([...rangeShifts,...future.items,...related].map(shift=>[shift.id,shift])).values()]
-        const registrations=await shiftRegistrationService.getForShifts(shifts.map(shift=>shift.id)).catch(() => [] as ShiftRegistration[])
 
-        return {shifts,reports,...refs,registrations,swapRequests:[...new Map([...scopeSwaps,...swapPage.items].map(swap=>[swap.id,swap])).values()]} satisfies DashboardDataset
+        let registrationsError = false
+        const registrationsResult = await shiftRegistrationService.getForShifts(shifts.map(shift=>shift.id)).catch(err => {
+          console.warn('Dashboard registrations error', err)
+          registrationsError = true
+          return null
+        })
+
+        const swapRequests = (swapPageError && scopeSwapsError) ? null : [
+          ...new Map([...(scopeSwapsResult ?? []), ...(swapPageResult?.items ?? [])].map(swap=>[swap.id,swap])).values()
+        ]
+
+        return {
+          shifts,
+          reports: reportsError ? null : reportsResult,
+          ...refs,
+          registrations: registrationsError ? null : registrationsResult,
+          swapRequests,
+          widgetErrors: {
+            reports: reportsError,
+            swaps: swapPageError || scopeSwapsError,
+            registrations: registrationsError,
+          },
+        } satisfies DashboardDataset
       }, async () => {
         if (getAuthMode() !== 'supabase') return true
         const actor=await currentUserService.getCurrent()
@@ -230,13 +287,13 @@ export function DashboardOverview() {
       try {
         result = await readDashboard()
       } catch (error) {
-        // A simultaneous shift mutation can invalidate an in-flight cache read.
-        // Retry only this recoverable generation change, never identity/permission errors.
         if (!(error instanceof Error && error.message === 'CACHE_INVALIDATED' && request === sequence.current)) throw error
         result = await readDashboard()
       }
       if (request !== sequence.current) return
       setData(result)
+      lastLoadedKey.current = viewKey
+      lastLoadedFilters.current = filters
     } catch(error) {
       if (request === sequence.current) setLoadError(error)
     } finally {
@@ -245,7 +302,34 @@ export function DashboardOverview() {
         setIsRefreshing(false)
       }
     }
-  },[currentUser,filters,identity,filterKey,viewKey])
+  },[currentUser,filters,identity,filterKey,viewKey,data])
+
+  // Widget retry handler: retry individual failed queries without reloading the whole dashboard
+  const retryWidget = React.useCallback(async (widget: 'reports' | 'swaps' | 'registrations') => {
+    if (!currentUser || !filters) return
+    const today = getCurrentBusinessDate()
+    const from = filters.start < today ? filters.start : today
+    const to = filters.end > today ? filters.end : today
+    try {
+      if (widget === 'reports') {
+        const fetched = await reportService.getAllFiltered({ from, to })
+        setData(cur => cur ? { ...cur, reports: fetched, widgetErrors: { ...cur.widgetErrors, reports: false } } : cur)
+      } else if (widget === 'swaps') {
+        const [page, list] = await Promise.all([
+          swapRequestService.getPage({ page: 1, pageSize: 10, filters: { statuses: ['pending', 'accepted'] } }),
+          swapRequestService.getAllFiltered({ from, to }),
+        ])
+        const combined = [...new Map([...list, ...page.items].map(s => [s.id, s])).values()]
+        setData(cur => cur ? { ...cur, swapRequests: combined, widgetErrors: { ...cur.widgetErrors, swaps: false } } : cur)
+      } else if (widget === 'registrations') {
+        if (!data) return
+        const regs = await shiftRegistrationService.getForShifts(data.shifts.map(s => s.id))
+        setData(cur => cur ? { ...cur, registrations: regs, widgetErrors: { ...cur.widgetErrors, registrations: false } } : cur)
+      }
+    } catch (err) {
+      console.error(`Retry ${widget} failed:`, err)
+    }
+  }, [currentUser, filters, data])
 
   useShiftChangeRefresh(() => loadData(false))
   React.useEffect(()=>{
@@ -282,13 +366,34 @@ export function DashboardOverview() {
           </span>
         </div>
       )}
-      <DashboardWorkspace data={data} currentUser={currentUser} onUpdate={() => loadData(false)} filterState={filters} onFilterChange={setFilters} />
+      <DashboardWorkspace
+        data={data}
+        currentUser={currentUser}
+        onUpdate={() => loadData(false)}
+        filterState={filters}
+        onFilterChange={setFilters}
+        onRetryWidget={retryWidget}
+      />
     </div>
   )
 }
 
 // Presentation accepts typed data; only the visual-QA route supplies fixture data.
-export function DashboardWorkspace({data,currentUser,onUpdate,filterState,onFilterChange}: {data:DashboardDataset;currentUser:User;onUpdate:()=>void | Promise<void>;filterState?:Filters|null;onFilterChange?:React.Dispatch<React.SetStateAction<Filters|null>>}) {
+export function DashboardWorkspace({
+  data,
+  currentUser,
+  onUpdate,
+  filterState,
+  onFilterChange,
+  onRetryWidget,
+}: {
+  data: DashboardDataset
+  currentUser: User
+  onUpdate: () => void | Promise<void>
+  filterState?: Filters | null
+  onFilterChange?: React.Dispatch<React.SetStateAction<Filters | null>>
+  onRetryWidget?: (widget: 'reports' | 'swaps' | 'registrations') => void
+}) {
   const {t} = useTranslation()
   const [localFilters,setLocalFilters] = React.useState<Filters | null>(null)
   const filters=filterState??localFilters
@@ -299,24 +404,36 @@ export function DashboardWorkspace({data,currentUser,onUpdate,filterState,onFilt
   if (!filters) return <ContentSkeleton />
   const role = resolveSystemPermission(currentUser)
   const setPreset = (preset:Preset)=>setFilters(current=>current ? {...current,preset,...(preset==='custom'?{}:rangeFor(preset))} : current)
-  const props = {...data,filters,setFilters,showFilters,setShowFilters,currentUser,t,setPreset,setSelectedShift}
+  const props: CommonProps = {
+    ...data,
+    filters,
+    setFilters,
+    showFilters,
+    setShowFilters,
+    currentUser,
+    t,
+    setPreset,
+    setSelectedShift,
+    widgetErrors: data.widgetErrors,
+    onRetryWidget,
+  }
   return <div>
     {role==='admin' && <AdminDashboard {...props} />}
     {role==='leader' && <LeaderDashboard {...props} />}
     {role==='member' && <MemberDashboard {...props} />}
-    {selectedShift && <ShiftDetailModal open shift={selectedShift} brands={data.brands} platforms={data.platforms} campaigns={data.campaigns} users={data.users} allRegistrations={data.registrations} onOpenChange={open=>!open&&setSelectedShift(null)} onUpdate={onUpdate} onDelete={()=>{setSelectedShift(null);void onUpdate()}} />}
+    {selectedShift && <ShiftDetailModal open shift={selectedShift} brands={data.brands} platforms={data.platforms} campaigns={data.campaigns} users={data.users} allRegistrations={data.registrations ?? []} onOpenChange={open=>!open&&setSelectedShift(null)} onUpdate={onUpdate} onDelete={()=>{setSelectedShift(null);void onUpdate()}} />}
   </div>
 }
 
 type CommonProps = {
   shifts: Shift[]
-  reports: Report[]
+  reports: Report[] | null
   brands: Brand[]
   platforms: Platform[]
   campaigns: Campaign[]
   users: User[]
-  registrations: ShiftRegistration[]
-  swapRequests: SwapRequest[]
+  registrations: ShiftRegistration[] | null
+  swapRequests: SwapRequest[] | null
   filters: Filters
   setFilters: React.Dispatch<React.SetStateAction<Filters | null>>
   showFilters: boolean
@@ -325,6 +442,8 @@ type CommonProps = {
   t: (key: string) => string
   setPreset: (preset: Preset) => void
   setSelectedShift: (shift: Shift | null) => void
+  widgetErrors?: WidgetErrors
+  onRetryWidget?: (widget: 'reports' | 'swaps' | 'registrations') => void
 }
 
 const nameFor = (items: { id: string; name?: string; full_name?: string }[], id: string): string =>
@@ -345,7 +464,7 @@ const shiftStatusLabel = (status: string): string => {
 }
 
 function AdminDashboard(props: CommonProps) {
-  const { shifts, reports, brands, platforms, users, registrations, filters } = props
+  const { shifts, reports, brands, platforms, users, registrations, filters, widgetErrors, onRetryWidget } = props
   const filteredShifts = shifts.filter(shift => shift.date >= filters.start && shift.date <= filters.end)
   const shiftIds = new Set(filteredShifts.map(shift => shift.id))
 
@@ -353,9 +472,9 @@ function AdminDashboard(props: CommonProps) {
   const todaysShifts = filteredShifts.filter(s => s.date === today)
   const liveCount = filteredShifts.filter(shift => shift.status === 'live').length
 
-  const scopedReports = reports.filter(report => shiftIds.has(report.shift_id))
-  const scopedRegistrations = registrations.filter(reg => shiftIds.has(reg.shift_id))
-  const pendingCount = scopedRegistrations.filter(r => r.status === 'pending').length
+  const scopedReports = reports ? reports.filter(report => shiftIds.has(report.shift_id)) : []
+  const scopedRegistrations = registrations ? registrations.filter(reg => shiftIds.has(reg.shift_id)) : []
+  const pendingCount = registrations !== null ? scopedRegistrations.filter(r => r.status === 'pending').length : null
 
   // Derive attention using existing domain helpers
   const dqIssues = getAllIssues({ shifts: filteredShifts, reports: scopedReports, registrations: scopedRegistrations })
@@ -393,22 +512,41 @@ function AdminDashboard(props: CommonProps) {
   }))
 
   return (
-    <AdminDashboardView
-      liveCount={liveCount}
-      todaysShiftsCount={todaysShifts.length}
-      missingStaffCount={null}
-      pendingCount={pendingCount}
-      dqAttention={dqAttentionForView}
-      liveShifts={liveShifts}
-      todaysOperations={todaysOperations}
-      performance={null}
-      activityLog={null}
-    />
+    <div className="relative">
+      {widgetErrors && (widgetErrors.reports || widgetErrors.registrations || widgetErrors.swaps) && (
+        <div className="mx-4 sm:mx-8 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center justify-between">
+          <span>Một số dữ liệu thứ cấp (báo cáo hoặc đăng ký ca) tải không thành công.</span>
+          {onRetryWidget && (
+            <button
+              onClick={() => {
+                if (widgetErrors.reports) onRetryWidget('reports')
+                if (widgetErrors.registrations) onRetryWidget('registrations')
+                if (widgetErrors.swaps) onRetryWidget('swaps')
+              }}
+              className="px-2.5 py-1 bg-amber-600 text-white rounded font-medium hover:bg-amber-700 transition"
+            >
+              Thử lại
+            </button>
+          )}
+        </div>
+      )}
+      <AdminDashboardView
+        liveCount={liveCount}
+        todaysShiftsCount={todaysShifts.length}
+        missingStaffCount={null}
+        pendingCount={pendingCount}
+        dqAttention={dqAttentionForView}
+        liveShifts={liveShifts}
+        todaysOperations={todaysOperations}
+        performance={null}
+        activityLog={null}
+      />
+    </div>
   )
 }
 
 function LeaderDashboard(props: CommonProps) {
-  const { shifts, reports, brands, platforms, campaigns, users, registrations, filters, swapRequests } = props
+  const { shifts, reports, brands, platforms, campaigns, users, registrations, filters, swapRequests, widgetErrors, onRetryWidget } = props
   const filteredShifts = shifts.filter(shift => shift.date >= filters.start && shift.date <= filters.end)
   const shiftIds = new Set(filteredShifts.map(shift => shift.id))
 
@@ -416,84 +554,81 @@ function LeaderDashboard(props: CommonProps) {
   const todaysShifts = filteredShifts.filter(shift => shift.date === today)
   const liveCount = filteredShifts.filter(s => s.status === 'live').length
 
-  const pendingRegistrations = getLeaderPendingRegistrations(registrations, shiftIds)
-  const pendingReports = getLeaderPendingReports(reports, shiftIds)
-  const pendingSwaps = getLeaderPendingSwaps(swapRequests, shiftIds)
+  const pendingRegistrations = registrations ? getLeaderPendingRegistrations(registrations, shiftIds) : null
+  const pendingReports = reports ? getLeaderPendingReports(reports, shiftIds) : null
+  const pendingSwaps = swapRequests ? getLeaderPendingSwaps(swapRequests, shiftIds) : null
 
-  // Derive action counts via existing swap UI helpers
   let actionableSwapCount = 0
-  let waitingSwapCount = 0
-  pendingSwaps.forEach(s => {
-    const actions = getSwapUiActions(s, props.currentUser)
-    if (actions.showAccept || actions.showCounterpartReject || actions.showApprove || actions.showReviewerReject) {
-      actionableSwapCount++
-    } else {
-      waitingSwapCount++
-    }
-  })
+    if (pendingSwaps) {
+    pendingSwaps.forEach(s => {
+      const actions = getSwapUiActions(s, props.currentUser)
+      if (actions.showAccept || actions.showCounterpartReject || actions.showApprove || actions.showReviewerReject) {
+        actionableSwapCount++
+      } else {
+        // waiting swap count omitted
+      }
+    })
+  }
 
   const dqIssues = getAllIssues({
     shifts: filteredShifts,
-    reports: reports.filter(r => shiftIds.has(r.shift_id)),
-    registrations: registrations.filter(r => shiftIds.has(r.shift_id)),
+    reports: reports ? reports.filter(r => shiftIds.has(r.shift_id)) : [],
+    registrations: registrations ? registrations.filter(r => shiftIds.has(r.shift_id)) : [],
   })
   const dqErrorCount = dqIssues.filter(i => i.severity === 'error').length
 
-  const attention = deriveLeaderAttention({
-    pendingRegistrationCount: pendingRegistrations.length,
-    actionableSwapCount,
-    waitingSwapCount,
-    pendingReportCount: pendingReports.length,
-    dqErrorCount,
-  })
+  const pendingCount = (pendingRegistrations !== null && pendingSwaps !== null)
+    ? pendingRegistrations.length + actionableSwapCount
+    : (pendingRegistrations !== null ? pendingRegistrations.length : null)
 
-  const totalPending = pendingRegistrations.length + actionableSwapCount
-
-  // Build decision queue from real actionable items
-  const decisions: import('./presentation/leader/LeaderDashboardView').DecisionItem[] = []
-  if (pendingRegistrations.length > 0) {
-    decisions.push({
-      key: 'reg',
-      type: 'registration',
-      title: `${pendingRegistrations.length} đăng ký chờ duyệt`,
-      subtitle: 'Nhân sự chờ xếp ca',
-      time: 'Cần xử lý',
-      action: 'Xem',
-      iconBg: 'bg-emerald-50',
-    })
-  }
-  if (actionableSwapCount > 0) {
-    decisions.push({
-      key: 'swap',
-      type: 'swap',
-      title: `${actionableSwapCount} yêu cầu đổi ca cần phê duyệt`,
-      subtitle: 'Chờ phản hồi của bạn',
-      time: 'Cần xử lý',
-      action: 'Xem',
-      iconBg: 'bg-amber-50',
-    })
-  }
-  if (pendingReports.length > 0) {
-    decisions.push({
-      key: 'report',
-      type: 'report',
-      title: `${pendingReports.length} báo cáo chưa hoàn thành`,
-      subtitle: 'Báo cáo nháp / đang xem xét',
-      time: 'Cần xử lý',
-      action: 'Xem',
-      iconBg: 'bg-blue-50',
-    })
-  }
-  if (dqErrorCount > 0) {
-    decisions.push({
-      key: 'dq',
-      type: 'dq',
-      title: `${dqErrorCount} lỗi chất lượng dữ liệu`,
-      subtitle: 'Cần kiểm tra và sửa',
-      time: 'Cần xử lý',
-      action: 'Xem',
-      iconBg: 'bg-red-50',
-    })
+  // Build decision queue: null if all sources unavailable; list if at least one available
+  let decisions: import('./presentation/leader/LeaderDashboardView').DecisionItem[] | null = null
+  if (pendingRegistrations !== null || pendingSwaps !== null || pendingReports !== null) {
+    decisions = []
+    if (pendingRegistrations && pendingRegistrations.length > 0) {
+      decisions.push({
+        key: 'reg',
+        type: 'registration',
+        title: `${pendingRegistrations.length} đăng ký chờ duyệt`,
+        subtitle: 'Nhân sự chờ xếp ca',
+        time: 'Cần xử lý',
+        action: 'Xem',
+        iconBg: 'bg-emerald-50',
+      })
+    }
+    if (pendingSwaps && actionableSwapCount > 0) {
+      decisions.push({
+        key: 'swap',
+        type: 'swap',
+        title: `${actionableSwapCount} yêu cầu đổi ca cần phê duyệt`,
+        subtitle: 'Chờ phản hồi của bạn',
+        time: 'Cần xử lý',
+        action: 'Xem',
+        iconBg: 'bg-amber-50',
+      })
+    }
+    if (pendingReports && pendingReports.length > 0) {
+      decisions.push({
+        key: 'report',
+        type: 'report',
+        title: `${pendingReports.length} báo cáo chưa hoàn thành`,
+        subtitle: 'Báo cáo nháp / đang xem xét',
+        time: 'Cần xử lý',
+        action: 'Xem',
+        iconBg: 'bg-blue-50',
+      })
+    }
+    if (dqErrorCount > 0) {
+      decisions.push({
+        key: 'dq',
+        type: 'dq',
+        title: `${dqErrorCount} lỗi chất lượng dữ liệu`,
+        subtitle: 'Cần kiểm tra và sửa',
+        time: 'Cần xử lý',
+        action: 'Xem',
+        iconBg: 'bg-red-50',
+      })
+    }
   }
 
   const todaysSchedule = todaysShifts.map(s => ({
@@ -506,7 +641,6 @@ function LeaderDashboard(props: CommonProps) {
     staffing: null,
   }))
 
-  // Upcoming live: first scheduled shift today
   const upcomingShifts = todaysShifts.filter(s => s.status === 'scheduled').sort((a, b) => a.start_time.localeCompare(b.start_time))
   const nextUp = upcomingShifts[0]
   let upcomingLive: import('./presentation/leader/LeaderDashboardView').UpcomingLiveItem | null = null
@@ -523,27 +657,44 @@ function LeaderDashboard(props: CommonProps) {
     }
   }
 
-  void attention
-
   return (
-    <LeaderDashboardView
-      liveCount={liveCount}
-      todaysShiftsCount={todaysShifts.length}
-      missingStaffCount={null}
-      pendingCount={totalPending}
-      decisions={decisions.length > 0 ? decisions : []}
-      todaysSchedule={todaysSchedule}
-      staffingHealth={null}
-      upcomingLive={upcomingLive}
-      activityLog={null}
-    />
+    <div className="relative">
+      {widgetErrors && (widgetErrors.reports || widgetErrors.registrations || widgetErrors.swaps) && (
+        <div className="mx-4 sm:mx-8 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center justify-between">
+          <span>Một số dữ liệu thứ cấp (báo cáo, đăng ký ca hoặc yêu cầu đổi ca) tải không thành công.</span>
+          {onRetryWidget && (
+            <button
+              onClick={() => {
+                if (widgetErrors.reports) onRetryWidget('reports')
+                if (widgetErrors.registrations) onRetryWidget('registrations')
+                if (widgetErrors.swaps) onRetryWidget('swaps')
+              }}
+              className="px-2.5 py-1 bg-amber-600 text-white rounded font-medium hover:bg-amber-700 transition"
+            >
+              Thử lại
+            </button>
+          )}
+        </div>
+      )}
+      <LeaderDashboardView
+        liveCount={liveCount}
+        todaysShiftsCount={todaysShifts.length}
+        missingStaffCount={null}
+        pendingCount={pendingCount}
+        decisions={decisions}
+        todaysSchedule={todaysSchedule}
+        staffingHealth={null}
+        upcomingLive={upcomingLive}
+        activityLog={null}
+      />
+    </div>
   )
 }
 
 function MemberDashboard(props: CommonProps) {
-  const { shifts, brands, platforms, currentUser, swapRequests, registrations } = props
+  const { shifts, brands, platforms, currentUser, swapRequests, registrations, widgetErrors, onRetryWidget } = props
   const today = getCurrentBusinessDate()
-  const myAssignedShifts = getMemberAssignedShifts(shifts, currentUser.id, registrations)
+  const myAssignedShifts = getMemberAssignedShifts(shifts, currentUser.id, registrations ?? [])
     .sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`))
 
   const upcomingShifts = myAssignedShifts.filter(s => s.date >= today)
@@ -571,42 +722,62 @@ function MemberDashboard(props: CommonProps) {
     role: s.host_id === currentUser.id ? 'Host' : s.support_id === currentUser.id ? 'Support' : 'Technical',
   }))
 
-  // myActions: use existing actionable swap data for member
-  const myActionableSwaps = swapRequests.filter(s => {
-    if (s.status !== 'pending' && s.status !== 'accepted') return false
-    const actions = getSwapUiActions(s, currentUser)
-    return actions.showAccept || actions.showCounterpartReject
-  })
-
-  const myActions: import('./presentation/member/MemberDashboardView').ActionEntry[] = myActionableSwaps.map(s => ({
-    type: 'swap' as const,
-    title: 'Yêu cầu đổi ca',
-    time: s.created_at ? new Date(s.created_at).toLocaleDateString('vi-VN') : '—',
-    description: 'Bạn có yêu cầu đổi ca cần phản hồi.',
-  }))
-
-  // myRequests: pending member registrations + member swap requests
-  const myPendingRegs = registrations.filter(r => r.user_id === currentUser.id && r.status === 'pending')
-  const mySwapRequests = swapRequests.filter(s => s.requester_id === currentUser.id || s.counterpart_id === currentUser.id)
-
-  const myRequests: import('./presentation/member/MemberDashboardView').RequestEntry[] = [
-    ...myPendingRegs.map(() => ({ type: 'registration' as const, title: 'Đăng ký ca', status: 'pending' as const })),
-    ...mySwapRequests.filter(s => s.status === 'pending' || s.status === 'accepted').map(() => ({
+  let myActions: import('./presentation/member/MemberDashboardView').ActionEntry[] | null = null
+  if (swapRequests !== null) {
+    const myActionableSwaps = swapRequests.filter(s => {
+      if (s.status !== 'pending' && s.status !== 'accepted') return false
+      const actions = getSwapUiActions(s, currentUser)
+      return actions.showAccept || actions.showCounterpartReject
+    })
+    myActions = myActionableSwaps.map(s => ({
       type: 'swap' as const,
       title: 'Yêu cầu đổi ca',
-      status: 'pending' as const,
-    })),
-  ]
+      time: s.created_at ? new Date(s.created_at).toLocaleDateString('vi-VN') : '—',
+      description: 'Bạn có yêu cầu đổi ca cần phản hồi.',
+    }))
+  }
+
+  let myRequests: import('./presentation/member/MemberDashboardView').RequestEntry[] | null = null
+  if (registrations !== null || swapRequests !== null) {
+    const myPendingRegs = registrations ? registrations.filter(r => r.user_id === currentUser.id && r.status === 'pending') : []
+    const mySwapRequests = swapRequests ? swapRequests.filter(s => s.requester_id === currentUser.id || s.counterpart_id === currentUser.id) : []
+    myRequests = [
+      ...myPendingRegs.map(() => ({ type: 'registration' as const, title: 'Đăng ký ca', status: 'pending' as const })),
+      ...mySwapRequests.filter(s => s.status === 'pending' || s.status === 'accepted').map(() => ({
+        type: 'swap' as const,
+        title: 'Yêu cầu đổi ca',
+        status: 'pending' as const,
+      })),
+    ]
+  }
 
   return (
-    <MemberDashboardView
-      onOpenNextShift={nextUp ? () => props.setSelectedShift(nextUp) : undefined}
-      nextShift={nextShift}
-      mySchedule={mySchedule}
-      myActions={myActions}
-      openShifts={null}
-      myRequests={myRequests}
-      notifications={null}
-    />
+    <div className="relative">
+      {widgetErrors && (widgetErrors.registrations || widgetErrors.swaps) && (
+        <div className="mx-4 sm:mx-8 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center justify-between">
+          <span>Một số dữ liệu yêu cầu hoặc đổi ca tải không thành công.</span>
+          {onRetryWidget && (
+            <button
+              onClick={() => {
+                if (widgetErrors.registrations) onRetryWidget('registrations')
+                if (widgetErrors.swaps) onRetryWidget('swaps')
+              }}
+              className="px-2.5 py-1 bg-amber-600 text-white rounded font-medium hover:bg-amber-700 transition"
+            >
+              Thử lại
+            </button>
+          )}
+        </div>
+      )}
+      <MemberDashboardView
+        onOpenNextShift={nextUp ? () => props.setSelectedShift(nextUp) : undefined}
+        nextShift={nextShift}
+        mySchedule={mySchedule}
+        myActions={myActions}
+        openShifts={null}
+        myRequests={myRequests}
+        notifications={null}
+      />
+    </div>
   )
 }
