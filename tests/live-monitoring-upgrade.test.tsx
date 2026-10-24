@@ -67,6 +67,19 @@ test('Live Monitoring: Dashboard source satisfies regression contracts and area-
   assert.match(source, /testId="live-status-filter"/, 'Must provide live-status-filter testId')
 })
 
+test('Live Monitoring: KPI cards explicitly declare page-local scope and isolate scope changes', () => {
+  const source = readFileSync('components/features/live/LiveMonitoringDashboard.tsx', 'utf8')
+
+  // KPI scope clarity: page-local count is not presented as system total
+  assert.match(source, /scope="Trong trang hiện tại"/, 'KPI metric cards must declare page-local scope')
+  assert.match(source, /Chỉ số tính trong trang hiện tại/, 'Must display page-local clarification in metrics header')
+
+  // Scope change detection: prevents displaying old data under new filter/page/actor
+  assert.match(source, /isScopeChanged/, 'Must detect scope change between lastLoadedScope and scopeKey')
+  assert.match(source, /setShifts\(\[\]\)/, 'Must clear stale shifts when scope changes')
+  assert.match(source, /scopeKey = identity \+ ':' \+ encodedFilters \+ ':' \+ page \+ ':' \+ pageSize/, 'Must compute composite scopeKey')
+})
+
 test('Live Monitoring: Console source renders operating personnel and live status indicators', () => {
   const source = readFileSync('components/features/live/LiveOperationsConsole.tsx', 'utf8')
 

@@ -93,6 +93,7 @@ export function LiveMonitoringDashboard() {
   const { currentUser } = useCurrentUser()
   const identity = currentUser ? operationalReferenceIdentity(currentUser) : ''
   const [loadedIdentity, setLoadedIdentity] = React.useState('')
+  const lastLoadedScope = React.useRef('')
   const [shifts, setShifts] = React.useState<Shift[]>([])
   const [refreshVersion, setRefreshVersion] = React.useState(0)
   const [updates, setUpdates] = React.useState<Record<string, DashboardUpdate[]>>({})
@@ -138,6 +139,7 @@ export function LiveMonitoringDashboard() {
   }, [])
 
 
+
   // Static directories are fetched once per identity.
   React.useEffect(() => {
     let active = true
@@ -160,8 +162,9 @@ export function LiveMonitoringDashboard() {
     const controller = new AbortController()
     liveController.current = controller
     const request = ++sequence.current
-    const isNewActor = loadedIdentity !== '' && identity !== loadedIdentity
-    if (isNewActor) {
+    const scopeKey = identity + ':' + encodedFilters + ':' + page + ':' + pageSize
+    const isScopeChanged = (loadedIdentity !== '' && identity !== loadedIdentity) || (lastLoadedScope.current !== '' && lastLoadedScope.current !== scopeKey)
+    if (isScopeChanged) {
       setHasEverLoaded(false)
       setShifts([])
       setUpdates({})
@@ -177,6 +180,7 @@ export function LiveMonitoringDashboard() {
       const result = await shiftService.getLivePage({ page, pageSize, filters: JSON.parse(encodedFilters) }, controller.signal)
       if (request !== sequence.current || controller.signal.aborted) return
       setLoadedIdentity(identity)
+      lastLoadedScope.current = scopeKey
       setShifts(result.items)
       setTotal(result.total)
       setHasEverLoaded(true)
@@ -331,6 +335,7 @@ export function LiveMonitoringDashboard() {
             onClick={() => setShowFilters(!showFilters)}
             aria-expanded={showFilters}
             aria-controls="live-filter-panel"
+            data-testid="live-filter-toggle"
             className="h-8"
           >
             <Filter className="mr-1.5 h-3.5 w-3.5" />
@@ -404,34 +409,49 @@ export function LiveMonitoringDashboard() {
         /* Loaded Content */
         <div className="space-y-4">
           {/* 3. Metric / Status Strip */}
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-5">
-            <Metric
-              title={t('liveInProgress')}
-              value={filtered.filter(shift => shift.status === 'live').length.toString()}
-              icon={<Radio className="h-5 w-5 text-red-600" />}
-              intent="danger"
-            />
-            <Metric
-              title={t('updatesMissing')}
-              value={filtered.filter(shift => shift.status === 'live' && !latestUpdate(shift.id)).length.toString()}
-              icon={<AlertCircle className="h-5 w-5 text-amber-600" />}
-              intent="warning"
-            />
-            <Metric
-              title={t('revenue')}
-              value={totalRevenue === null ? '—' : formatCurrency(totalRevenue)}
-              icon={<DollarSign className="h-5 w-5 text-green-600" />}
-            />
-            <Metric
-              title={t('orders')}
-              value={totalOrders === null ? '—' : totalOrders.toLocaleString()}
-              icon={<TrendingUp className="h-5 w-5 text-blue-600" />}
-            />
-            <Metric
-              title={t('needsReview')}
-              value={filtered.filter(shift => shift.status === 'completed').length.toString()}
-              icon={<FileText className="h-5 w-5 text-muted-foreground" />}
-            />
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] text-muted-foreground px-0.5">
+              <span>Chỉ số tính trong trang hiện tại ({filtered.length} phiên · tổng {total} phiên toàn hệ thống)</span>
+              {total > pageSize && (
+                <span className="rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-blue-700 font-medium">
+                  Trang {page} / {Math.max(1, Math.ceil(total / pageSize))}
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-5">
+              <Metric
+                title={t('liveInProgress')}
+                value={filtered.filter(shift => shift.status === 'live').length.toString()}
+                icon={<Radio className="h-5 w-5 text-red-600" />}
+                intent="danger"
+                scope="Trong trang hiện tại"
+              />
+              <Metric
+                title={t('updatesMissing')}
+                value={filtered.filter(shift => shift.status === 'live' && !latestUpdate(shift.id)).length.toString()}
+                icon={<AlertCircle className="h-5 w-5 text-amber-600" />}
+                intent="warning"
+                scope="Trong trang hiện tại"
+              />
+              <Metric
+                title={t('revenue')}
+                value={totalRevenue === null ? '—' : formatCurrency(totalRevenue)}
+                icon={<DollarSign className="h-5 w-5 text-green-600" />}
+                scope="Trong trang hiện tại"
+              />
+              <Metric
+                title={t('orders')}
+                value={totalOrders === null ? '—' : totalOrders.toLocaleString()}
+                icon={<TrendingUp className="h-5 w-5 text-blue-600" />}
+                scope="Trong trang hiện tại"
+              />
+              <Metric
+                title={t('needsReview')}
+                value={filtered.filter(shift => shift.status === 'completed').length.toString()}
+                icon={<FileText className="h-5 w-5 text-muted-foreground" />}
+                scope="Trong trang hiện tại"
+              />
+            </div>
           </div>
 
           {/* 4. Session Selector Cards */}
@@ -542,16 +562,19 @@ function FilterSelect({ label, value, options, onChange }: { label: string; valu
   return <MultiSelectFilter label={label} value={value} onChange={onChange} options={options.map(option => ({ value: option.id, label: option.name }))} />
 }
 
-function Metric({ title, value, icon, intent = 'default' }: { title: string; value: string; icon: React.ReactNode; intent?: 'default' | 'danger' | 'warning' }) {
+function Metric({ title, value, icon, intent = 'default', scope }: { title: string; value: string; icon: React.ReactNode; intent?: 'default' | 'danger' | 'warning'; scope?: string }) {
   const intentStyles = {
     default: 'bg-card',
     danger: 'bg-red-50/50 border-red-200 dark:bg-red-950/20 dark:border-red-900',
     warning: 'bg-amber-50/50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900',
   }
   return (
-    <div className={`flex items-center justify-between gap-2 rounded-md border px-3 py-2 ${intentStyles[intent]}`}>
-      <p className="text-[10px] font-semibold uppercase text-muted-foreground">{title}</p>
-      <div className="flex items-center gap-2">
+    <div className={`flex flex-col justify-between rounded-md border px-3 py-2 ${intentStyles[intent]}`}>
+      <div className="flex items-center justify-between gap-1">
+        <p className="text-[10px] font-semibold uppercase text-muted-foreground truncate">{title}</p>
+        {scope && <span className="text-[9px] text-slate-400 font-normal shrink-0">({scope})</span>}
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-2">
         <span className="text-sm font-bold">{value}</span>
         {icon}
       </div>
