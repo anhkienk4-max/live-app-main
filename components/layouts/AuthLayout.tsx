@@ -14,11 +14,11 @@ export function AuthLayout({ children, title, subtitle }: { children: ReactNode;
   const { t } = useTranslation()
 
   return (
-    <main className="flex min-h-dvh w-full min-w-0 items-start justify-center bg-gradient-to-br from-[#eef4fb] via-[#f7f9fc] to-white px-3 py-4 text-slate-900 sm:px-6 sm:py-8 lg:items-center lg:px-8 lg:py-10">
+    <main className="flex min-h-dvh w-full min-w-0 items-start justify-center bg-gradient-to-br from-[#eef4fb] via-[#f7f9fc] to-white px-3 py-4 text-slate-900 sm:px-6 sm:py-8 lg:items-center lg:px-8 lg:py-10 xl:items-start xl:py-[11dvh]">
       <a href="#auth-content" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-white focus:px-4 focus:py-2 focus:text-blue-800 focus:shadow-lg">{title}</a>
 
-      <div data-testid="auth-layout-card" className="grid w-full min-w-0 max-w-[720px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_18px_60px_-28px_rgba(8,39,67,0.22)] sm:rounded-3xl lg:min-h-[620px] lg:max-w-[1180px] lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)] xl:min-h-[680px] min-[1800px]:max-w-[min(86vw,1720px)] min-[1800px]:min-h-[min(78dvh,1200px)]">
-        <aside className="relative hidden min-w-0 flex-col justify-between overflow-hidden bg-[#082743] px-9 py-10 text-white lg:flex xl:px-12 xl:py-12" aria-label={t('operationsCenter')}>
+      <div data-testid="auth-layout-card" className="grid w-full min-w-0 max-w-[720px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_18px_60px_-28px_rgba(8,39,67,0.22)] sm:rounded-3xl lg:max-w-none lg:w-[86vw] xl:min-h-[78dvh] xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)]">
+        <aside className="relative hidden min-w-0 flex-col justify-between overflow-hidden bg-[#082743] px-9 py-10 text-white xl:flex xl:px-12 xl:py-12" aria-label={t('operationsCenter')}>
           <div aria-hidden="true" className="pointer-events-none absolute -right-28 -top-28 h-80 w-80 rounded-full bg-blue-500/20 blur-3xl" />
           <div aria-hidden="true" className="pointer-events-none absolute -bottom-36 -left-20 h-80 w-80 rounded-full bg-cyan-400/10 blur-3xl" />
 
@@ -43,7 +43,7 @@ export function AuthLayout({ children, title, subtitle }: { children: ReactNode;
         </aside>
 
         <section className="flex min-w-0 w-full items-center justify-center px-5 py-9 sm:px-10 sm:py-11 lg:px-12 lg:py-14 xl:px-16" data-testid="auth-form-panel">
-          <PageShell archetype="auth" id="auth-content" tabIndex={-1} aria-labelledby="auth-title" className="min-w-0 w-full max-w-[460px] min-[1800px]:max-w-[700px]">
+          <PageShell archetype="auth" id="auth-content" tabIndex={-1} aria-labelledby="auth-title" className="min-w-0 w-full">
             <div className="mb-10 flex items-center gap-3 text-base font-semibold text-[#082743] lg:hidden">
               <span className="flex size-10 items-center justify-center rounded-xl bg-blue-600 text-white"><Video className="size-5" aria-hidden="true" /></span>
               <span>LiveStream Ops</span>

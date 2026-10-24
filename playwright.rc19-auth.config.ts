@@ -13,7 +13,7 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   webServer: {
-    command: 'node node_modules/next/dist/bin/next dev --webpack -p 3111',
+    command: 'node --import ./tests/typescript-alias-loader.mjs scripts/check-runtime-environment.ts development && corepack pnpm exec next dev --webpack -p 3111',
     url: 'http://127.0.0.1:3111',
     reuseExistingServer: !process.env.CI,
     timeout: 180000,
