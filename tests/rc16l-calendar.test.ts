@@ -55,6 +55,26 @@ for (const total of [0, 1, 50, 117, 1001]) test(`bounded Calendar window reads $
   try { const result = await readCalendarWindow({ from: '2026-10-01', to: '2026-10-31' }); assert.equal(result.items.length, total); assert.equal(calls.length, Math.max(1, Math.ceil(total / 50))) }
   finally { shiftService.getCalendarPage = original }
 })
+
+test('Calendar reveals the first page, then reads three pages at a time in order', async () => {
+  const original = shiftService.getCalendarPage
+  const pending = new Map<number, () => void>()
+  const snapshots: number[] = []
+  shiftService.getCalendarPage = async query => {
+    if (query.page > 1) await new Promise<void>(resolve => pending.set(query.page, resolve))
+    return { items: Array.from({ length: 50 }, (_, index) => ({ id: String((query.page - 1) * 50 + index) })), total: 200, page: query.page, pageSize: 50, registrations: [], ownerKey: 'admin' } as ShiftListPage
+  }
+  try {
+    const reading = readCalendarWindow({ from: '2026-10-01', to: '2026-10-31' }, undefined, first => snapshots.push(first.items.length))
+    await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(snapshots, [50])
+    assert.deepEqual([...pending.keys()], [2, 3, 4])
+    for (const page of [4, 3, 2]) pending.get(page)!()
+    const result = await reading
+    assert.equal(result.items.length, result.total)
+    assert.deepEqual(result.items.map(item => item.id), Array.from({ length: 200 }, (_, index) => String(index)))
+  } finally { shiftService.getCalendarPage = original }
+})
 test('Calendar abort and changed owner/count fail closed', async () => {
   const controller = new AbortController(); controller.abort()
   await assert.rejects(readCalendarWindow({ from: '2026-10-01', to: '2026-10-31' }, controller.signal), /aborted/i)

@@ -332,6 +332,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
             if (version !== requestVersion.current || controller.signal.aborted) return
             setShifts(first.items)
             setRegistrations(first.registrations)
+            setListTotal(first.total)
             setLoadedIdentity(identity)
             setLoadedKey(requestKey)
             setLoading(false)
@@ -348,7 +349,13 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       setLoadedIdentity(identity)
       setLoadedKey(requestKey)
     } catch (error: unknown) {
-      if (version === requestVersion.current && !controller.signal.aborted) setLoadError(error)
+      if (version === requestVersion.current && !controller.signal.aborted) {
+        setShifts([])
+        setRegistrations([])
+        setLoadedKey('')
+        setWindowComplete(false)
+        setLoadError(error)
+      }
     } finally {
       if (version === requestVersion.current) {
         setLoading(false)
@@ -425,7 +432,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     }, 0)
     return () => { active = false; window.clearTimeout(timer) }
   }, [dayReportIds, t, toast])
-  const listShifts = view === 'list' ? shifts : EMPTY_SHIFTS
+  const listShifts = view === 'list' && loadedKey === requestKey ? shifts : EMPTY_SHIFTS
   const [selectionScope, setSelectionScope] = React.useState(listShifts)
   if (selectionScope !== listShifts) {
     setSelectionScope(listShifts)
@@ -450,8 +457,8 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   )
 
   const calendarScopeShifts = React.useMemo(
-    () => shiftsInCalendarScope(view === 'list' ? listShifts : filteredShifts, view, currentDate),
-    [currentDate, filteredShifts, listShifts, view],
+    () => loadedKey === requestKey ? shiftsInCalendarScope(view === 'list' ? listShifts : filteredShifts, view, currentDate) : EMPTY_SHIFTS,
+    [currentDate, filteredShifts, listShifts, loadedKey, requestKey, view],
   )
   const pendingStaffingRegistrations = React.useMemo(
     () => pendingRegistrationsInScope(registrations, calendarScopeShifts),
@@ -459,7 +466,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   )
   const pendingStaffingCount = calendarScopeShifts.reduce((count, shift) => count + (shift.staffing_summary?.reduce((total, role) => total + role.pending, 0) ?? pendingStaffingRegistrations.filter(row => row.shift_id === shift.id).length), 0)
   const openBulkStaffingApproval = async () => {
-    if (bulkApprovalLoading || loadingMore || !windowComplete) return
+    if (bulkApprovalLoading || loadingMore || !windowComplete || loadedKey !== requestKey) return
     const version = requestVersion.current
     setBulkApprovalLoading(true)
     try {
@@ -728,7 +735,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                   size="sm"
                   className="h-9"
                   onClick={() => void openBulkStaffingApproval()}
-                  disabled={bulkApprovalLoading || loadingMore || !windowComplete}
+                  disabled={bulkApprovalLoading || loadingMore || !windowComplete || loadedKey !== requestKey}
                   data-testid="open-bulk-staffing-approval"
                 >
                   <UserCheck className="mr-2 h-4 w-4" />
@@ -749,10 +756,10 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
 
       {!!loadError && <PageLoadError error={loadError} onRetry={() => { void loadData(); void loadReferenceData().catch(setLoadError) }} />}
       {/* Calendar Views */}
-      <Card className="min-w-0 overflow-hidden gap-0 py-0" aria-busy={loading}>
+      <Card className="min-w-0 overflow-hidden gap-0 py-0" aria-busy={loading || loadingMore || loadedKey !== requestKey}>
         {loadedKey !== requestKey && <ContentSkeleton />}
         {loading && loadedKey === requestKey && <div role="status" className="px-3 py-1 text-xs text-muted-foreground">{t('loading')}</div>}
-         {loadingMore && loadedKey === requestKey && <div role="status" data-testid="calendar-progressive-loading" className="px-3 py-1 text-xs text-muted-foreground">Đang tải thêm ca trong khoảng thời gian đang xem…</div>}
+         {loadingMore && loadedKey === requestKey && <div role="status" data-testid="calendar-progressive-loading" className="px-3 py-1 text-xs text-muted-foreground">{language === 'vi' ? `Đang tải ca trong kỳ: ${shifts.length}/${listTotal}. Dữ liệu chưa đầy đủ.` : `Loading shifts in range: ${shifts.length}/${listTotal}. Data is incomplete.`}</div>}
         {loadedKey === requestKey && <>
         {view === 'month' && <>
           <div className="hidden max-w-full overflow-x-auto lg:block" role="region" aria-label={t('month')} tabIndex={0}><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onShiftClick={setPreviewShift} onDayClick={setSelectedDay} /></div></div>

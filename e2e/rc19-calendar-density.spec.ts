@@ -19,6 +19,7 @@ for (const width of [390, 768, 1440]) {
       await expect(monthEvent).toBeVisible({ timeout: 30_000 })
       await expect(monthEvent).toHaveClass(/h-7/)
       await expect(monthEvent).toHaveAttribute('title', /.+/)
+      if (width === 1440) await page.screenshot({ path: 'docs/handoffs/evidence/rc19-u03-calendar-after-desktop.png', caret: 'initial' })
       await monthEvent.click()
       await expect(page.getByRole('dialog')).toBeVisible()
       await page.keyboard.press('Escape')
@@ -27,6 +28,7 @@ for (const width of [390, 768, 1440]) {
       await expect(page.getByTestId('calendar-mobile-agenda')).toBeVisible({timeout:30_000})
       await expect(page.getByTestId('calendar-agenda-date')).toBeVisible()
       await expect(page.locator('[data-testid^="calendar-event-"]:visible')).toHaveCount(0)
+      if (width === 390) await page.screenshot({ path: 'docs/handoffs/evidence/rc19-u03-calendar-after-mobile.png', caret: 'initial' })
     }
     await expect.poll(() => page.evaluate(() =>
       document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
