@@ -111,8 +111,9 @@ export function DashboardOverview() {
   },[currentUser,filters,identity,filterKey,viewKey])
   useShiftChangeRefresh(() => loadData(false))
   React.useEffect(()=>{
-    const frame=requestAnimationFrame(()=>{if(currentUser) void loadData(true)})
-    return ()=>{cancelAnimationFrame(frame);sequence.current++}
+    const seq = sequence;
+    const frame = requestAnimationFrame(()=>{if(currentUser) void loadData(true)});
+    return ()=>{cancelAnimationFrame(frame); seq.current++;}
   },[currentUser,loadData])
   if (loadError) return <PageLoadError error={loadError} onRetry={()=>void loadData()} />
   if (loading || !data || !currentUser) {

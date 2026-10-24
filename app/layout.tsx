@@ -2,6 +2,7 @@
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/toast";
 import { LanguageProvider } from "@/lib/i18n";
+import { QueryProvider } from "@/components/providers/QueryProvider";
 
 export const metadata: Metadata = {
   title: "LiveStream Operations Management",
@@ -16,9 +17,11 @@ export default function RootLayout({
   return (
     <html lang="vi" className="h-full">
       <body className="min-h-full bg-background font-sans antialiased">
+        <QueryProvider>
         <LanguageProvider defaultLanguage="vi">
           <ToastProvider>{children}</ToastProvider>
         </LanguageProvider>
+      </QueryProvider>
       </body>
     </html>
   );

@@ -155,7 +155,7 @@ export function OperationalFileWorkspace() {
         key:listKey,message:err instanceof Error ? err.message : 'Không tải được file',
       })
     } finally { if(version===requestVersion.current)setBusy(false) }
-  }, [requestKey, shiftId, brandId, platformId, periodDate, page, pageSize, filter, providerFilter, appliedSearch, listKey, navigate, actorKey, canView])
+  }, [requestKey, shiftId, brandId, platformId, periodDate, page, pageSize, filter, providerFilter, appliedSearch, listKey, navigate, canView])
 
   React.useEffect(() => {
     const versionRef = requestVersion

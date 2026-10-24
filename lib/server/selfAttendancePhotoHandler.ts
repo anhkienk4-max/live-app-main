@@ -12,7 +12,7 @@ import { assertPrivateAttendanceDriveRoot } from '@/lib/server/attendanceDriveAc
 import { AttendanceDriveAclError } from '@/lib/utils/attendanceDriveAcl'
 import { createFileStorageService } from '@/lib/services/fileStorageService'
 import { readFormDataBody, RequestBodyError, consumeRateLimit, rateLimitResponse } from '@/lib/server/apiSecurity'
-import { attendancePhotoFolder, attendancePhotoName, type PhotoRole } from '@/lib/utils/attendancePhotoNaming'
+import { attendancePhotoFolder, attendancePhotoName } from '@/lib/utils/attendancePhotoNaming'
 import { decodeSelfAttendanceEvent } from '@/lib/utils/selfAttendanceContract'
 
 const LIMIT=4*1024*1024

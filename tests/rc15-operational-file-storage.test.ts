@@ -562,7 +562,7 @@ test('confidential Finance writes fail closed until separately approved, includi
     allowConfidentialWrites: () => approved,
     resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
     storage: {
-      async upload(input: FileUploadInput) {
+      async upload(_input: FileUploadInput) {
         uploads += 1
         return { asset: { external_file_id: 'finance-drive-' + uploads, provider_metadata: {} } }
       },

@@ -86,7 +86,7 @@ export async function getCollectionPage<T>(entity: OperationsList, query: ListQu
     throw new OperationsListError('LIST_IDENTITY_CHANGED', 409)
   }
   if (!response.ok) throw new OperationsListError(body?.error?.code ?? 'LIST_READ_FAILED', response.status)
-  if (typeof window !== 'undefined' && body?.ownerKey !== owner) {
+  if (typeof window !== 'undefined' && body.ownerKey !== owner) {
     console.warn('OPS_LIST_IDENTITY_DIAGNOSTIC', {
       entity, stage: body?.ownerKey === undefined ? 'server_owner_missing' : 'server_owner_mismatch',
       httpStatus: response.status,

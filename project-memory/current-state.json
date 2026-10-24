@@ -9,10 +9,10 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "integration/global-stabilization-20261021",
-    "head": "c2b7b56626266523be2f2ca4a4c17d888558233a",
-    "origin_main": "b96dcb6e1842e59f43170a1a8b15da712ee8a8e0",
-    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-global-stabilization"
+    "branch": "feat/ops-full-app-upgrade-rc19",
+    "head": "505bc1b60c5c514b488f9c1f9faf7f9d9993d843",
+    "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f",
+    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-full-upgrade"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -64,6 +64,8 @@
       "app/api/auth/providers/route.ts",
       "app/api/file-sources/ingest/route.ts",
       "app/api/internal/file-provider-diagnostics/route.ts",
+      "app/api/media/jwks/route.ts",
+      "app/api/media/viewer-grant/route.ts",
       "app/api/ocr/route.ts",
       "app/api/ocr/vision/route.ts",
       "app/api/operational-files/route.ts",
@@ -78,9 +80,12 @@
       "app/api/workforce/actual/route.ts",
       "app/api/workforce/attendance-import/route.ts",
       "app/api/workforce/capabilities/route.ts",
+      "app/api/workforce/my-payslip/route.ts",
       "app/api/workforce/overview/route.ts",
       "app/api/workforce/payroll/route.ts",
       "app/api/workforce/performance/route.ts",
+      "app/api/workforce/self-attendance-photo/preflight/route.ts",
+      "app/api/workforce/self-attendance-photo/route.ts",
       "app/auth/auth-code-error/page.tsx",
       "app/auth/confirm/route.ts",
       "app/forgot-password/page.tsx",
@@ -91,14 +96,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 62,
-        "components": 155,
-        "lib": 229,
-        "scripts": 19,
-        "supabase": 95,
-        "tests": 225
+        "app": 67,
+        "components": 170,
+        "lib": 250,
+        "scripts": 26,
+        "supabase": 108,
+        "tests": 260
       },
-      "total": 785
+      "total": 881
     },
     "tests": {
       "files": [
@@ -113,12 +118,16 @@
         "tests/account-request-phase3.test.ts",
         "tests/account-request-provisioning-boundary-hardening.test.ts",
         "tests/account-request-provisioning-composite.test.ts",
+        "tests/ada-hls-player.test.ts",
+        "tests/ada-hls-security.test.ts",
+        "tests/analytics-actor-key.test.ts",
         "tests/auth-confirm-route.test.ts",
         "tests/auth-identity-bridge.test.tsx",
         "tests/auth-session-foundation.test.ts",
         "tests/bulk-staffing-approval.test.ts",
         "tests/calendar-all-time-completeness.test.ts",
         "tests/calendar-bulk-delete.test.ts",
+        "tests/calendar-business-month-contract.test.ts",
         "tests/calendar-filters.test.ts",
         "tests/calendar-range-fetching.test.ts",
         "tests/calendar-role-filter.test.ts",
@@ -166,6 +175,10 @@
         "tests/lifecycle-action-dialog.test.ts",
         "tests/live-dashboard-persistence.test.ts",
         "tests/live-report-images.test.tsx",
+        "tests/media-poc-config-contract.test.ts",
+        "tests/media-preview-isolation.test.ts",
+        "tests/media-viewer-authorization.test.ts",
+        "tests/media-viewer-handler.test.ts",
         "tests/memory-validator-contract.test.ts",
         "tests/mock-auth-and-staffing.test.ts",
         "tests/multi-platform-ocr-pipeline.test.ts",
@@ -184,6 +197,8 @@
         "tests/operations-page-cache.test.ts",
         "tests/p1c-import-idempotency.test.ts",
         "tests/p3-uat-export-collapse.test.tsx",
+        "tests/payroll-rate-locked-export.test.ts",
+        "tests/payroll-scope-completeness.test.ts",
         "tests/perf-p0-scoped-refresh.test.ts",
         "tests/perf-p0-skeleton.test.ts",
         "tests/persistent-audit.test.ts",
@@ -229,9 +244,28 @@
         "tests/rc17c-attendance-atomic-rpc-boundary.test.ts",
         "tests/rc17c-historical-attendance-importer.test.ts",
         "tests/rc17d-responsive-auth.test.ts",
+        "tests/rc18-ada-attendance-link.test.ts",
+        "tests/rc18-browser-owner-contract.test.ts",
+        "tests/rc18-owner-contract-server.test.ts",
+        "tests/rc18-payroll-ada-rulebook.test.ts",
         "tests/rc18a-shift-change-subscription.test.ts",
         "tests/rc18a-shift-date-window.test.ts",
         "tests/rc18a-shift-list-url-state.test.ts",
+        "tests/rc19-auth-responsive-layout.test.tsx",
+        "tests/rc19-command-toolbar.test.tsx",
+        "tests/rc19-my-payslip.test.ts",
+        "tests/rc19-report-apply-filters.test.ts",
+        "tests/rc19-reports-app-router-wiring.test.ts",
+        "tests/rc19-self-attendance-contract.test.ts",
+        "tests/rc19-staffing-availability-sql.test.ts",
+        "tests/rc19-staffing-candidate-contract.test.ts",
+        "tests/rc19-staffing-candidates.test.ts",
+        "tests/rc19-staffing-failclosed.test.ts",
+        "tests/rc19-staffing-refresh-contract.test.ts",
+        "tests/rc19-storage-scoped-search.test.ts",
+        "tests/rc19-swap-exchange-page.test.ts",
+        "tests/rc19-swap-source-picker.test.ts",
+        "tests/rc19-u13-navigation-account-menu.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
         "tests/registration-board-performance.test.ts",
         "tests/report-history-access.test.ts",
@@ -289,7 +323,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 186
+      "count": 215
     },
     "migrations": {
       "files": [
@@ -367,10 +401,23 @@
         "supabase/migrations/20261020164351_rc18a_publish_shifts_realtime.sql",
         "supabase/migrations/20261021000000_rc17c_attendance_import_foundation.sql",
         "supabase/migrations/20261021034515_shift_automatic_status_scheduling_and_read_safety.sql",
+        "supabase/migrations/20261021064611_media_viewer_acl_exact_shift_v1.sql",
         "supabase/migrations/20261021120000_global_report_obligation_page.sql",
-        "supabase/migrations/20261021190000_global_report_notification_transition_keys.sql"
+        "supabase/migrations/20261021190000_global_report_notification_transition_keys.sql",
+        "supabase/migrations/20261022165004_rc19_1b2_staffing_candidate_availability.sql",
+        "supabase/migrations/20261022165655_rc19_1b3_staffing_candidate_page_before_conflict.sql",
+        "supabase/migrations/20261022185140_rc19_p2_04_member_attendance_event_journal.sql",
+        "supabase/migrations/20261023093000_rc19_p0_report_read_ownership_and_revisions.sql",
+        "supabase/migrations/20261023102000_rc19_p0_report_revision_rpc_invoker.sql",
+        "supabase/migrations/20261023103500_rc19_p0_report_revision_invoker_identity_fix.sql",
+        "supabase/migrations/20261023112000_rc19_report_authorized_shift_display_context.sql",
+        "supabase/migrations/20261023144000_rc19_p2_04b_drive_photo_checkin.sql",
+        "supabase/migrations/20261023153500_rc19_reports_historical_pagination_v2.sql",
+        "supabase/migrations/20261023155000_rc19_reports_history_validate_filters_v2.sql",
+        "supabase/migrations/20261023160500_rc19_reports_history_staff_filter_privacy.sql",
+        "supabase/migrations/20261024003000_rc19_p0_orphan_live_image_read_rls.sql"
       ],
-      "count": 76
+      "count": 89
     }
   },
   "verification": {
@@ -384,5 +431,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-21T15:14:09+07:00"
+  "synced_at": "2026-10-24T18:35:30+07:00"
 }

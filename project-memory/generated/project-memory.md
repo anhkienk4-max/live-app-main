@@ -2,14 +2,14 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-21T15:14:09+07:00
+Generated at: 2026-10-24T18:35:30+07:00
 
 ## Repository
 
-- Branch: `integration/global-stabilization-20261021`
-- HEAD: `c2b7b56626266523be2f2ca4a4c17d888558233a`
-- origin/main: `b96dcb6e1842e59f43170a1a8b15da712ee8a8e0`
-- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-global-stabilization`
+- Branch: `feat/ops-full-app-upgrade-rc19`
+- HEAD: `505bc1b60c5c514b488f9c1f9faf7f9d9993d843`
+- origin/main: `9b5f3889b243f9ee795e4466a18f24cd896c162f`
+- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-full-upgrade`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
 ## Hardening
@@ -21,10 +21,10 @@ Generated at: 2026-10-21T15:14:09+07:00
 
 ## Inventory
 
-- Routes: 58
-- Source files in tracked inventory roots: 785
-- Tests: 186
-- Migrations: 76
+- Routes: 63
+- Source files in tracked inventory roots: 881
+- Tests: 215
+- Migrations: 89
 
 ## Modules
 
