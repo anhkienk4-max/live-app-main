@@ -285,7 +285,7 @@ test('RC19 source guard: identity updates before a passive effect and logout sta
   assert.match(provider, /React\.useLayoutEffect\(\(\) => \{[\s\S]*?bindAuthenticatedUser\(businessUser\)/)
   assert.match(provider, /setSnapshot\(previous => \(\{ \.\.\.previous, identity: null, businessUser: null \}\)\)/)
   const list = readFileSync(new URL('../lib/services/operationsPageService.ts', import.meta.url), 'utf8')
-  assert.match(list, /body\.ownerKey !== owner/)
+  assert.match(list, /body\?\.ownerKey !== owner/)
   assert.match(list, /const ownerAfterResponse = await browserOwner\(\)/)
   assert.match(list, /owner !== ownerAfterResponse/)
   assert.match(list, /stage: 'actor_changed_during_request'/)
