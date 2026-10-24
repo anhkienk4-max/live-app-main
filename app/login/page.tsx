@@ -183,7 +183,7 @@ function LoginPageContent() {
               onChange={(event) => setEmail(event.target.value)}
               required
               disabled={loading}
-              className="h-12 rounded-lg border-slate-300 px-3.5 text-base shadow-none focus-visible:ring-blue-500"
+              className="h-12 rounded-lg border-slate-300 px-3.5 text-base md:text-base shadow-none focus-visible:ring-blue-500"
               data-testid="email-input"
             />
           </div>
@@ -204,7 +204,7 @@ function LoginPageContent() {
                 onChange={(event) => setPassword(event.target.value)}
                 required
                 disabled={loading}
-                className="h-12 rounded-lg border-slate-300 px-3.5 pr-12 text-base shadow-none focus-visible:ring-blue-500"
+                className="h-12 rounded-lg border-slate-300 px-3.5 pr-12 text-base md:text-base shadow-none focus-visible:ring-blue-500"
                 data-testid="password-input"
               />
               <Button type="button" variant="ghost" size="icon-sm" className="absolute right-1 top-1 h-10 w-10 rounded-md" aria-label={showPassword ? t('hidePassword') : t('showPassword')} onClick={() => setShowPassword(value => !value)}>
