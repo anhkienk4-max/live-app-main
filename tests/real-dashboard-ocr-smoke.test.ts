@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
@@ -63,8 +64,14 @@ const fixtures = [
   },
 ]
 
+const defaultFixturePaths: Record<string, string> = {
+  SHOPEE_SCREENSHOT: 'e2e/fixtures/shopee-dashboard.jpg',
+  TIKTOK_SCREENSHOT: 'e2e/fixtures/tiktok-dashboard.jpg',
+}
+
 for (const fixture of fixtures) {
-  const imagePath = process.env[fixture.environmentPath]
+  const fallback = defaultFixturePaths[fixture.environmentPath]
+  const imagePath = process.env[fixture.environmentPath] || (fallback && existsSync(fallback) ? fallback : undefined)
   test(`real ${fixture.platform} screenshot reaches spatial OCR metrics`, {
     skip: imagePath ? false : `${fixture.environmentPath} is not configured`,
     timeout: 300_000,

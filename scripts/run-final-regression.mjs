@@ -10,14 +10,12 @@ const optionalStagingChecks = new Set([
   'Account Request Phase 2 staging runtime contract',
   'existing Auth identity provisions one linked member Staff row without FK failure',
   'real staging API enforces Member privacy and preserves privileged reads/revision history',
-  'real shopee_live screenshot reaches spatial OCR metrics',
-  'real tiktok_shop screenshot reaches spatial OCR metrics',
 ])
 const hasSkippedTests = output => {
   const skipped = [...output.matchAll(/^ok \d+ - (.*?) # SKIP(.*)$/gm)]
   const count = Number(output.match(/^# skipped (\d+)$/m)?.[1] || 0)
   return skipped.length !== count || skipped.some(([, name, reason]) =>
-    !optionalStagingChecks.has(name) || !/staging|is not configured/i.test(reason))
+    !optionalStagingChecks.has(name) || !/staging/i.test(reason))
 }
 assert.equal(hasSkippedTests('# skipped 0'), false)
 assert.equal(hasSkippedTests('# skipped 3'), true)

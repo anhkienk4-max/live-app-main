@@ -1,4 +1,4 @@
-﻿import { defineConfig, globalIgnores } from "eslint/config";
+import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
@@ -6,17 +6,12 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
+    // TanStack Virtual uses mutable functions on its virtualizer instance.
+    // Restrict this override strictly to the EnterpriseDataTable component.
+    files: ["components/ui/enterprise-data-table.tsx"],
     rules: {
-      "@typescript-eslint/no-unused-vars": [
-        "warn",
-        {
-          argsIgnorePattern: "^_",
-          varsIgnorePattern: "^_",
-          caughtErrorsIgnorePattern: "^_"
-        }
-      ],
-      "react-hooks/incompatible-library": "off"
-    }
+      "react-hooks/incompatible-library": "off",
+    },
   },
   // Override default ignores of eslint-config-next.
   globalIgnores([
