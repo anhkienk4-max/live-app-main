@@ -211,6 +211,7 @@
     "tests/swaps-filter-regression.test.ts",
     "tests/tiktok-layout-independent-ocr.test.ts",
     "tests/timezone-contract.test.ts",
+    "tests/u02-dashboard-progressive.test.tsx",
     "tests/ux-import-01.test.tsx",
     "tests/ux-w1-shifts-and-nav-capability.test.ts",
     "tests/vision-ocr-phase-a.test.ts",

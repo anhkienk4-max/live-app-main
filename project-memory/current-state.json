@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "931802abfe4a74a0f183157b8d1a913ca1e4cc02",
+    "head": "9cd71c52c2ce6b25fe54fa4600d03424891f85a2",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-full-upgrade"
   },
@@ -101,9 +101,9 @@
         "lib": 250,
         "scripts": 26,
         "supabase": 108,
-        "tests": 260
+        "tests": 261
       },
-      "total": 881
+      "total": 882
     },
     "tests": {
       "files": [
@@ -315,6 +315,7 @@
         "tests/swaps-filter-regression.test.ts",
         "tests/tiktok-layout-independent-ocr.test.ts",
         "tests/timezone-contract.test.ts",
+        "tests/u02-dashboard-progressive.test.tsx",
         "tests/ux-import-01.test.tsx",
         "tests/ux-w1-shifts-and-nav-capability.test.ts",
         "tests/vision-ocr-phase-a.test.ts",
@@ -323,7 +324,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 215
+      "count": 216
     },
     "migrations": {
       "files": [
@@ -431,5 +432,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-24T23:33:43+07:00"
+  "synced_at": "2026-10-25T00:09:23+07:00"
 }
