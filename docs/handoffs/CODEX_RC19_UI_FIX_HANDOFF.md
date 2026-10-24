@@ -72,3 +72,57 @@ git cherry-pick 3e945ccca40f9df67c84f50c695c69c11a86955e
 ```
 
 If Wave 1 changed the same auth layout or `PageShell` contract, port only the U01 width/breakpoint changes and keep the test/assertion updates. Do not merge either worktree automatically.
+
+## U03–U05 Calendar and Shift List fixes (2026-10-25)
+
+- Branch: `fix/rc19-u03-u05-calendar-shifts`
+- Base: pushed U01 `f030cbfc1e1645ffe39f3615875e04f719ec0aa5`
+- U03: `45a52ed738100ff928ec2fb96afc4433b8fb8de5`
+- U04: `33aebff5de3697750817889019d713b0f3858960`
+- U05: `9246d8e0e5ae3a20a781d3795008e97d06b44862`
+- No U02 Dashboard, Design System, Supabase schema/RLS, Production, Gemini worktree, or RC12 stash changes. Pre-existing untracked `.commandcode/` was left untouched.
+
+### U03 — Calendar window completeness
+
+Changed `lib/services/calendarWindow.ts`, `components/features/calendar/CalendarView.tsx`, `tests/rc16l-calendar.test.ts`, `tests/calendar-range-fetching.test.ts`, and `e2e/rc19-calendar-density.spec.ts`.
+
+- First page is marked as incomplete with an actual loaded/total count. A later page error clears the partial window; no partial result enters the cache or bulk approval.
+- Remaining 50-row pages are fetched in batches of at most three. Page order, total, ownerKey, duplicate IDs, and exact final count remain checked. A 232-row window takes three sequential network rounds instead of five if each batch runs in parallel; this is a request-round calculation, not a measured network latency claim.
+- Page content and bulk selection are hidden for a stale request key during month/filter transitions. The existing business-local date, one-day authority margin for overnight shifts, account/permission cache key, and server-side RLS checks remain in place.
+- Focused tests: 25 PASS. Browser layout: 3 PASS at 390/768/1440 px. TypeScript, scoped ESLint, and guarded build: PASS.
+- Evidence: [desktop after](evidence/rc19-u03-calendar-after-desktop.png), [mobile after](evidence/rc19-u03-calendar-after-mobile.png). A U03 before screenshot was not captured before the first edit; do not present these images as a before/after pair. The 232-row completeness check uses a known fixture. Authenticated staging/Production month totals were not queried.
+
+### U04 — Calendar filter workflow
+
+Changed `components/features/calendar/CalendarView.tsx`, `components/features/calendar/WeekView.tsx`, `tests/calendar-filters.test.ts`, `e2e/rc19-calendar-filter-apply.spec.ts`, and `playwright.rc19-calendar.config.ts`.
+
+- Existing Brand, Platform, Campaign, Studio, Status, Host, Support, Technical, time, Operational Role, Staffing, Registration, and imported-staffing controls now live in one responsive dialog. Edits stay in a draft until Apply; Reset edits the draft, Close/Escape discards it. Applied filters remain in URL state and chips across month/view navigation; each chip and Clear All can remove applied filters.
+- The empty WeekView overlay was lowered below the dialog so it no longer intercepts filter actions. Existing search, export, staffing actions, and permission gates remain.
+- Focused tests: 21 PASS. Browser: 5 PASS for layout and VI mobile/EN desktop Apply, Reset, chip removal, month/view URL persistence; one additional desktop rerun PASS for empty WeekView. TypeScript, scoped ESLint, and guarded build: PASS.
+- Before U04: [desktop](evidence/rc19-u03-calendar-after-desktop.png), [mobile](evidence/rc19-u03-calendar-after-mobile.png). After U04: [desktop dialog](evidence/rc19-u04-filter-after-1440.png), [mobile drawer](evidence/rc19-u04-filter-after-390.png). These are local mock screenshots.
+
+### U05 — Shift List date, page and selection
+
+Changed `components/features/shifts/ShiftList.tsx`, `lib/utils/shiftDateWindow.ts`, `lib/utils/shiftListUrlState.ts`, `tests/rc18a-shift-date-window.test.ts`, `tests/rc18a-shift-list-url-state.test.ts`, `e2e/rc19-shifts-list.spec.ts`, and `playwright.rc19-shifts.config.ts`.
+
+- Recent 30 Days, Upcoming and All remain. Month and validated custom date range now use the existing server `from`/`to` filters; invalid shared URL dates fall back to Recent. Date changes reset page but preserve status/search/sort and unrelated URL parameters.
+- Toolbar and search stay mounted during server requests, so typing retains focus. Desktop table and mobile cards render the same bounded server page; pagination clamps to a valid page. Selection and delete/bulk actions are limited to rows on the current page, with a second check before deletion.
+- Focused tests: 22 PASS. Browser VI mobile/EN desktop: 2 PASS plus 1 desktop selection rerun PASS, covering date modes, URL, typed search, total vs rendered rows, page clamp, status, sort, and selection clearing. TypeScript, scoped ESLint, and guarded build: PASS.
+- Evidence: [mobile before](evidence/rc19-u05-shifts-before-390.png) / [mobile after](evidence/rc19-u05-shifts-after-390.png); [desktop before](evidence/rc19-u05-shifts-before-1440.png) / [desktop after](evidence/rc19-u05-shifts-after-1440.png). These use local seeded shifts, not Production data.
+
+### Shared verification and integration
+
+- Full release regression on U05 HEAD with the Shopee and TikTok OCR fixtures: **1,981 PASS / 0 FAIL / 3 SKIP**. The three skips are the manifest's named optional staging checks. Local log: `test_reports/rc19-u03-u05-full-regression.tap` (ignored from Git).
+- Repository ESLint: **0 errors, 32 warnings**, all in unchanged files. Build on each ticket: **PASS**, with `[ENV GUARD] local: credential_free_build`. No environment guard was disabled.
+- Browser evidence is local mock mode. Authenticated Supabase role/RLS UAT, real server month totals, and deployed SHA verification remain separate release gates; no Production deployment was performed.
+- Wave 1 conflict candidates: `CalendarView.tsx`, `WeekView.tsx`, `ShiftList.tsx`, `calendarWindow.ts`, and the date/URL helpers if Gemini touched their data hooks or table integration. `ShiftList` deliberately keeps the existing `DataTable`; no EnterpriseDataTable or QueryProvider changes are included.
+
+Cherry-pick the ticket commits in order after U01 is present in the integration branch:
+
+```text
+git cherry-pick 45a52ed738100ff928ec2fb96afc4433b8fb8de5
+git cherry-pick 33aebff5de3697750817889019d713b0f3858960
+git cherry-pick 9246d8e0e5ae3a20a781d3795008e97d06b44862
+```
+
+If Wave 1 changed the same Calendar or Shift List surfaces, port these focused diffs and their regression/browser tests against the merged source. Do not merge either worktree automatically.
