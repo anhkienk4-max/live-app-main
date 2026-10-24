@@ -2,14 +2,14 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-21T15:14:09+07:00
+Generated at: 2026-10-24T23:13:31+07:00
 
 ## Repository
 
-- Branch: `integration/global-stabilization-20261021`
-- HEAD: `c2b7b56626266523be2f2ca4a4c17d888558233a`
-- origin/main: `b96dcb6e1842e59f43170a1a8b15da712ee8a8e0`
-- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-global-stabilization`
+- Branch: `fix/rc19-u01-zoom-codex`
+- HEAD: `3e945ccca40f9df67c84f50c695c69c11a86955e`
+- origin/main: `9b5f3889b243f9ee795e4466a18f24cd896c162f`
+- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-main`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
 ## Hardening
@@ -21,10 +21,10 @@ Generated at: 2026-10-21T15:14:09+07:00
 
 ## Inventory
 
-- Routes: 58
-- Source files in tracked inventory roots: 785
-- Tests: 186
-- Migrations: 76
+- Routes: 63
+- Source files in tracked inventory roots: 895
+- Tests: 215
+- Migrations: 89
 
 ## Modules
 
