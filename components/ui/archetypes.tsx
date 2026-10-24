@@ -26,7 +26,7 @@ export function PageShell({ archetype, className, children, ...props }: PageShel
       case 'configuration':
         return 'max-w-[1280px]' // focused workspace
       case 'auth':
-        return 'max-w-md'
+        return 'max-w-full'
       default:
         return 'max-w-7xl'
     }

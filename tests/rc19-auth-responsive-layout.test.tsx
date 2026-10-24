@@ -32,18 +32,11 @@ test('U01 responsive layout makes auth form readable at phone, tablet and deskto
     React.createElement(AuthLayout, { title: 'Sign in', subtitle: 'My workspace' }, 'Credentials'),
   ))
   assert.match(markup, /min-h-dvh w-full min-w-0 items-start justify-center/)
-  assert.match(markup, /sm:px-6 sm:py-8 lg:items-center/)
-  assert.match(markup, /lg:grid-cols-\[minmax\(0,0\.9fr\)_minmax\(0,1fr\)\]/)
+  assert.match(markup, /lg:items-center lg:px-8 lg:py-10 xl:items-start xl:py-\[11dvh\]/)
   assert.match(markup, /max-w-\[720px\]/)
-  assert.match(markup, /lg:max-w-\[1180px\]/)
-  assert.match(markup, /max-w-\[460px\]/)
-  // At Edge 50% zoom a 1010px browser becomes about 2020 CSS px wide.
-  // Fixed 1180px card / 460px form caps made both appear physically tiny.
-  // Responsive wide-viewport caps preserve occupied space without undoing
-  // the user's chosen zoom or using JS/browser-dependent scale hacks.
-  assert.match(markup, /min-\[1800px\]:max-w-\[min\(86vw,1720px\)\]/)
-  assert.match(markup, /min-\[1800px\]:min-h-\[min\(78dvh,1200px\)\]/)
-  assert.match(markup, /min-\[1800px\]:max-w-\[700px\]/)
+  assert.match(markup, /lg:max-w-none lg:w-\[86vw\] xl:min-h-\[78dvh\] xl:grid-cols-\[minmax\(0,0\.9fr\)_minmax\(0,1fr\)\]/)
+  assert.match(markup, /max-w-full/)
+  assert.doesNotMatch(markup, /min-\[1800px\]|max-w-\[(?:1180|1720|460|700)px\]/)
   assert.match(markup, /break-words text-3xl/)
   assert.match(markup, /data-testid="auth-form-panel"/)
   assert.ok(!markup.includes('overflow-x-auto'))
