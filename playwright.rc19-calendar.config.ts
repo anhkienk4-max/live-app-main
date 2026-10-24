@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: ['rc19-calendar-density.spec.ts'],
+  testMatch: ['rc19-calendar-density.spec.ts', 'rc19-calendar-filter-apply.spec.ts'],
   workers: 1,
   timeout: 90_000,
   expect: { timeout: 20_000 },
