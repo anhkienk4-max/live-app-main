@@ -2,12 +2,12 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-24T23:19:17+07:00
+Generated at: 2026-10-25T00:21:58+07:00
 
 ## Repository
 
-- Branch: `fix/rc19-u01-zoom-codex`
-- HEAD: `f9f19737bb82da32557e40d9b876a4bf3d02341d`
+- Branch: `fix/rc19-u03-u05-calendar-shifts`
+- HEAD: `8f5bd9c97b07351073020dd0cdbbf8060b946fde`
 - origin/main: `9b5f3889b243f9ee795e4466a18f24cd896c162f`
 - Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-main`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
