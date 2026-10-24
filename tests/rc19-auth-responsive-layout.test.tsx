@@ -37,6 +37,13 @@ test('U01 responsive layout makes auth form readable at phone, tablet and deskto
   assert.match(markup, /max-w-\[720px\]/)
   assert.match(markup, /lg:max-w-\[1180px\]/)
   assert.match(markup, /max-w-\[460px\]/)
+  // At Edge 50% zoom a 1010px browser becomes about 2020 CSS px wide.
+  // Fixed 1180px card / 460px form caps made both appear physically tiny.
+  // Responsive wide-viewport caps preserve occupied space without undoing
+  // the user's chosen zoom or using JS/browser-dependent scale hacks.
+  assert.match(markup, /min-\[1800px\]:max-w-\[min\(86vw,1720px\)\]/)
+  assert.match(markup, /min-\[1800px\]:min-h-\[min\(78dvh,1200px\)\]/)
+  assert.match(markup, /min-\[1800px\]:max-w-\[700px\]/)
   assert.match(markup, /break-words text-3xl/)
   assert.match(markup, /data-testid="auth-form-panel"/)
   assert.ok(!markup.includes('overflow-x-auto'))
