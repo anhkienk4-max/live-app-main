@@ -153,106 +153,128 @@ function LoginPageContent() {
 
   return (
     <AuthLayout title={t('signIn')} subtitle={t('loginSubtitle')}>
-      <div className="space-y-5">
-        {mockMode && <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700">{t('demoModeHelp')}</p>}
-          {(mockMode || googleEnabled) && (
-            <>
-              <Button
-                onClick={handleGoogleLogin}
-                disabled={loading}
-                variant="outline"
-                className="w-full h-12 text-base font-medium hover:bg-gray-50 transition-all"
-                data-testid="google-login-btn"
-              >
-                <Globe className="mr-2 h-5 w-5" />
-                {t('continueWithGoogle')}
-              </Button>
-
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <Separator className="w-full" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-white px-4 text-gray-500 font-medium">
-                    {t('continueWithEmail')}
-                  </span>
-                </div>
-              </div>
-            </>
-          )}
-
-          {!mockMode && !googleEnabled && <p role="status" className="text-sm leading-relaxed text-slate-500" data-testid="google-unavailable">{t('googleUnavailable')}</p>}
-          {(notice || recoveryNotice) && (
-            <div className="text-sm text-green-700 bg-green-50 p-3 rounded-lg border border-green-100" data-testid="login-notice">
-              {notice || recoveryNotice}
-            </div>
-          )}
-
-          <form onSubmit={handleEmailLogin} className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="email" className="text-sm font-medium text-gray-700">
-                {t('email')}
-              </label>
-              <Input
-                id="email"
-                autoComplete="username"
-                type="email"
-                placeholder="name@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="h-11"
-                data-testid="email-input"
-              />
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="password" className="text-sm font-medium text-gray-700">
-                {t('password')}
-              </label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  autoComplete="current-password"
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="h-11 pr-11"
-                  data-testid="password-input"
-                />
-                <Button type="button" variant="ghost" size="icon-sm" className="absolute right-0 top-0 h-11 w-11" aria-label={showPassword ? t('hidePassword') : t('showPassword')} onClick={() => setShowPassword(value => !value)}>
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </Button>
-              </div>
-            </div>
-            {(error || (!hasSubmitted && recoveryMessage)) && (
-              <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg border border-red-100" data-testid="login-error" role="alert">
-                {error || recoveryMessage}
-              </div>
-            )}
-            <Button
-              type="submit"
-              disabled={loading}
-              className="w-full h-11 text-sm font-semibold bg-blue-600 hover:bg-blue-700"
-              data-testid="email-login-btn"
-            >
-              {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t('signingIn')}</> : t('signIn')}
-            </Button>
-          </form>
-          <div className="space-y-3 text-center text-sm">
-            <Link className="inline-flex min-h-11 items-center text-blue-700 hover:underline" href="/forgot-password">{t('forgotPassword')}</Link>
-            <p className="text-muted-foreground">{t('noAccount')} <Link className="inline-flex min-h-11 items-center font-semibold text-blue-700 hover:underline" href="/register">{t(mockMode ? 'signUp' : 'accountRequestTitle')}</Link></p>
+      <div className="min-w-0 space-y-6">
+        {mockMode && (
+          <p role="status" className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-relaxed text-blue-800">
+            {t('demoModeHelp')}
+          </p>
+        )}
+        {(notice || recoveryNotice) && (
+          <div role="status" aria-live="polite" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-relaxed text-emerald-800" data-testid="login-notice">
+            {notice || recoveryNotice}
           </div>
+        )}
+        {(error || (!hasSubmitted && recoveryMessage)) && (
+          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-relaxed text-red-800" data-testid="login-error">
+            {error || recoveryMessage}
+          </div>
+        )}
+
+        <form onSubmit={handleEmailLogin} className="space-y-5" aria-busy={loading}>
+          <div className="space-y-2">
+            <label htmlFor="email" className="block text-sm font-semibold text-slate-800">{t('email')}</label>
+            <Input
+              id="email"
+              autoComplete="username"
+              inputMode="email"
+              type="email"
+              placeholder="name@company.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+              disabled={loading}
+              className="h-12 rounded-lg border-slate-300 px-3.5 text-base shadow-none focus-visible:ring-blue-500"
+              data-testid="email-input"
+            />
+          </div>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+              <label htmlFor="password" className="text-sm font-semibold text-slate-800">{t('password')}</label>
+              <Link className="inline-flex min-h-9 items-center text-sm font-medium text-blue-700 underline-offset-4 hover:underline focus-visible:rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600" href="/forgot-password">
+                {t('forgotPassword')}
+              </Link>
+            </div>
+            <div className="relative">
+              <Input
+                id="password"
+                autoComplete="current-password"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="••••••••"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+                disabled={loading}
+                className="h-12 rounded-lg border-slate-300 px-3.5 pr-12 text-base shadow-none focus-visible:ring-blue-500"
+                data-testid="password-input"
+              />
+              <Button type="button" variant="ghost" size="icon-sm" className="absolute right-1 top-1 h-10 w-10 rounded-md" aria-label={showPassword ? t('hidePassword') : t('showPassword')} onClick={() => setShowPassword(value => !value)}>
+                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              </Button>
+            </div>
+          </div>
+          <Button
+            type="submit"
+            disabled={loading}
+            className="mt-2 h-12 w-full rounded-lg bg-blue-600 text-base font-semibold shadow-sm shadow-blue-900/10 transition-colors hover:bg-blue-700"
+            data-testid="email-login-btn"
+          >
+            {loading ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" aria-hidden="true" />{t('signingIn')}</> : t('signIn')}
+          </Button>
+        </form>
+
+        {(mockMode || googleEnabled) && (
+          <div className="space-y-4">
+            <div className="relative flex items-center justify-center">
+              <Separator className="absolute inset-x-0 top-1/2" />
+              <span className="relative bg-white px-3 text-xs font-medium text-slate-500">{t('continueWithEmail')}</span>
+            </div>
+            <Button type="button" onClick={handleGoogleLogin} disabled={loading} variant="outline" className="h-12 w-full rounded-lg border-slate-300 text-sm font-semibold hover:bg-slate-50" data-testid="google-login-btn">
+              <Globe className="mr-2 h-5 w-5" aria-hidden="true" />
+              {t('continueWithGoogle')}
+            </Button>
+          </div>
+        )}
+
+        <div className="space-y-3 border-t border-slate-100 pt-5 text-center text-sm">
+          <p className="leading-relaxed text-slate-600">
+            {t('noAccount')}{' '}
+            <Link href="/register" className="inline-flex min-h-9 items-center font-semibold text-blue-700 underline-offset-4 hover:underline">
+              {t(mockMode ? 'signUp' : 'accountRequestTitle')}
+            </Link>
+          </p>
+          {!mockMode && !googleEnabled && (
+            <p role="status" className="text-xs leading-relaxed text-slate-500" data-testid="google-unavailable">
+              {t('googleUnavailable')}
+            </p>
+          )}
+        </div>
+        <div className="flex justify-center">
           <Button
             type="button"
             variant="ghost"
-            className="h-11 w-full"
+            className="min-h-11 rounded-lg px-4 text-sm text-slate-600"
+            aria-label={t('language')}
             onClick={() => setLanguage(language === 'en' ? 'vi' : 'en')}
           >
-            <Globe className="mr-2 h-4 w-4" />
+            <Globe className="mr-2 h-4 w-4" aria-hidden="true" />
             {language === 'en' ? t('vietnamese') : t('english')}
           </Button>
+        </div>
+      </div>
+    </AuthLayout>
+  )
+}
+
+function LoginPagePending() {
+  const { t } = useTranslation()
+  return (
+    <AuthLayout title={t('signIn')} subtitle={t('loginSubtitle')}>
+      <div role="status" aria-busy="true" aria-label={t('loading')} data-testid="login-pending" className="space-y-5">
+        <div className="h-4 w-20 animate-pulse rounded bg-slate-100 motion-reduce:animate-none" />
+        <div className="h-12 w-full animate-pulse rounded-lg bg-slate-100 motion-reduce:animate-none" />
+        <div className="h-4 w-24 animate-pulse rounded bg-slate-100 motion-reduce:animate-none" />
+        <div className="h-12 w-full animate-pulse rounded-lg bg-slate-100 motion-reduce:animate-none" />
+        <div className="h-12 w-full animate-pulse rounded-lg bg-blue-100 motion-reduce:animate-none" />
       </div>
     </AuthLayout>
   )
@@ -260,7 +282,7 @@ function LoginPageContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<LoginPagePending />}>
       <LoginPageContent />
     </Suspense>
   )
