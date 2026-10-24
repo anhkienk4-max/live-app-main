@@ -4,7 +4,7 @@
 
 - Branch: `fix/rc19-u01-zoom-codex`
 - Base SHA: `505bc1b60c5c514b488f9c1f9faf7f9d9993d843`
-- Regression assertion commit: `4a41fa5e257cbcab10d13d93df52bbfaee3a638f`
+- Regression assertion commit: `4a41fa51b704609d69164a929c7bc2f19a575b7e`
 - U01 commit: `3e945ccca40f9df67c84f50c695c69c11a86955e`
 - U01 source is committed. The pre-existing `.commandcode/` directory remains untouched; the handoff, baseline screenshots, and canonical memory projection are pending a documentation/metadata commit.
 
@@ -67,7 +67,7 @@ No before/after U02 performance measurements were taken because Gemini is editin
 After reviewing this handoff, Gemini can cherry-pick the independent commits in order:
 
 ```text
-git cherry-pick 4a41fa5e257cbcab10d13d93df52bbfaee3a638f
+git cherry-pick 4a41fa51b704609d69164a929c7bc2f19a575b7e
 git cherry-pick 3e945ccca40f9df67c84f50c695c69c11a86955e
 ```
 
