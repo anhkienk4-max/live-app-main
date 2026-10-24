@@ -9,8 +9,8 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "fix/rc19-u03-u05-calendar-shifts",
-    "head": "8f5bd9c97b07351073020dd0cdbbf8060b946fde",
+    "branch": "fix/rc19-u07-swap-workflow",
+    "head": "2fa3b16bd3788059319a2c745e174111c73d5a2c",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-main"
   },
@@ -431,5 +431,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-25T00:21:58+07:00"
+  "synced_at": "2026-10-25T01:12:04+07:00"
 }
