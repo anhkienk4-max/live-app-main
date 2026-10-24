@@ -224,10 +224,7 @@ function LoginPageContent() {
 
         {(mockMode || googleEnabled) && (
           <div className="space-y-4">
-            <div className="relative flex items-center justify-center">
-              <Separator className="absolute inset-x-0 top-1/2" />
-              <span className="relative bg-white px-3 text-xs font-medium text-slate-500">{t('continueWithEmail')}</span>
-            </div>
+            <Separator className="w-full" />
             <Button type="button" onClick={handleGoogleLogin} disabled={loading} variant="outline" className="h-12 w-full rounded-lg border-slate-300 text-sm font-semibold hover:bg-slate-50" data-testid="google-login-btn">
               <Globe className="mr-2 h-5 w-5" aria-hidden="true" />
               {t('continueWithGoogle')}
