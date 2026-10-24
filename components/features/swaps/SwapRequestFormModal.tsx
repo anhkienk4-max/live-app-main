@@ -1,568 +1,244 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import {
-  isStaffedRegistration,
-  shiftRegistrationService,
-  swapRequestService,
-} from "@/lib/services/dataService";
-import {
-  Shift,
-  UserDirectoryEntry,
-  Brand,
-  Platform,
-  OperationalRole,
-} from "@/lib/types/database.types";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
-import { searchEligibleSwapShifts } from "@/lib/utils/swapEligibleShiftPicker";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useToast } from "@/components/ui/toast";
-import { Loader2 } from "lucide-react";
-import { format } from "date-fns";
-import { useCurrentUser } from "@/lib/hooks/useCurrentUser";
-import { useTranslation } from "@/lib/i18n";
-import { formatShiftTimeRange } from "@/lib/utils/shiftUtils";
+import * as React from 'react'
+import { addDays, format, parseISO } from 'date-fns'
+import { Loader2 } from 'lucide-react'
+import { isStaffedRegistration, shiftRegistrationService, shiftService, swapRequestService, userService } from '@/lib/services/dataService'
+import type { Brand, OperationalRole, Platform, Shift, ShiftRegistration, SwapExchangeCandidate, UserDirectoryEntry } from '@/lib/types/database.types'
+import { formatShiftTimeRange, getCurrentBusinessDate, resolveShiftDateTime } from '@/lib/utils/shiftUtils'
+import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useTranslation } from '@/lib/i18n'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { useToast } from '@/components/ui/toast'
 
-const EMPTY_REGISTERED_ROLES: Record<string, OperationalRole[]> = {};
-const EMPTY_REGISTRATION_IDS: Record<string, string> = {};
+type Mode = 'replacement' | 'exchange'
+type SourcePage = { key: string; items: Shift[]; registrations: ShiftRegistration[]; total: number; page: number; error: string | null }
+type ShiftPage = { key: string; items: Shift[]; total: number; page: number; error: string | null }
+const pageSize = 20
 
-interface SwapRequestFormModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  shifts: Shift[];
-  sourceShiftsReady: boolean;
-  sourceShiftsError: string | null;
-  onRetrySourceShifts: () => void;
-  users: UserDirectoryEntry[];
-  brands: Brand[];
-  platforms: Platform[];
-  onSuccess: () => void;
-}
+export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, onSuccess }: {
+  open: boolean; onOpenChange: (open: boolean) => void; brands: Brand[]; platforms: Platform[]; onSuccess: () => void
+}) {
+  const { currentUser } = useCurrentUser()
+  const { language, t } = useTranslation()
+  const { toast } = useToast()
+  const copy = React.useCallback((vi: string, en: string) => language === 'vi' ? vi : en, [language])
+  const owner = currentUser?.id ?? ''
+  const [mode, setMode] = React.useState<Mode>('replacement')
+  const [sourcePage, setSourcePage] = React.useState(1)
+  const [sourceSearchDraft, setSourceSearchDraft] = React.useState('')
+  const [sourceSearch, setSourceSearch] = React.useState('')
+  const [from, setFrom] = React.useState(getCurrentBusinessDate)
+  const [to, setTo] = React.useState('')
+  const [brandId, setBrandId] = React.useState('')
+  const [platformId, setPlatformId] = React.useState('')
+  const [sourceRevision, setSourceRevision] = React.useState(0)
+  const [sourceSnapshot, setSourceSnapshot] = React.useState<SourcePage | null>(null)
+  const [sourceId, setSourceId] = React.useState('')
+  const [role, setRole] = React.useState<OperationalRole | ''>('')
+  const [directorySnapshot, setDirectorySnapshot] = React.useState<{ owner: string; items: UserDirectoryEntry[]; error: string | null } | null>(null)
+  const [staffSearch, setStaffSearch] = React.useState('')
+  const [replacementId, setReplacementId] = React.useState('')
+  const [conflictSnapshot, setConflictSnapshot] = React.useState<{ key: string; reason: string | null; error: string | null } | null>(null)
+  const [targetPage, setTargetPage] = React.useState(1)
+  const [targetSearchDraft, setTargetSearchDraft] = React.useState('')
+  const [targetSearch, setTargetSearch] = React.useState('')
+  const [targetRevision, setTargetRevision] = React.useState(0)
+  const [targetSnapshot, setTargetSnapshot] = React.useState<ShiftPage | null>(null)
+  const [targetId, setTargetId] = React.useState('')
+  const [counterpartSnapshot, setCounterpartSnapshot] = React.useState<{ key: string; items: SwapExchangeCandidate[]; error: string | null } | null>(null)
+  const [counterpartId, setCounterpartId] = React.useState('')
+  const [reason, setReason] = React.useState('')
+  const [busy, setBusy] = React.useState(false)
+  const submitLock = React.useRef(false)
 
-interface FormData {
-  shift_id: string;
-  requester_id: string;
-  operational_role: OperationalRole | "";
-  replacement_staff_id: string;
-  reason: string;
-}
+  const sourceKey = JSON.stringify([owner, sourcePage, sourceSearch, from, to, brandId, platformId, sourceRevision])
+  const source = open && sourceSnapshot?.key === sourceKey ? sourceSnapshot : null
+  const sourceRows = source?.items.filter(shift => source.registrations.some(reg => reg.shift_id === shift.id && reg.user_id === owner && isStaffedRegistration(reg))) ?? []
+  const selectedSource = sourceRows.find(shift => shift.id === sourceId)
+  const assigned = source?.registrations.filter(reg => reg.shift_id === sourceId && reg.user_id === owner && isStaffedRegistration(reg)) ?? []
+  const sourceRegistration = assigned.find(reg => reg.operational_role === role)
+  const targetKey = JSON.stringify([owner, sourceId, targetPage, targetSearch, targetRevision])
+  const target = open && mode === 'exchange' && targetSnapshot?.key === targetKey ? targetSnapshot : null
+  const targetRows = target?.items.filter(shift => shift.id !== sourceId && shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at) ?? []
+  const selectedTarget = targetRows.find(shift => shift.id === targetId)
+  const counterpartKey = JSON.stringify([owner, sourceId, role, targetId])
+  const counterparts = open && selectedTarget && counterpartSnapshot?.key === counterpartKey ? counterpartSnapshot : null
+  const directory = open && directorySnapshot?.owner === owner ? directorySnapshot : null
+  const conflictKey = JSON.stringify([owner, sourceId, replacementId])
+  const conflict = open && conflictSnapshot?.key === conflictKey ? conflictSnapshot : null
 
-export function SwapRequestFormModal({
-  open,
-  onOpenChange,
-  shifts,
-  sourceShiftsReady,
-  sourceShiftsError,
-  onRetrySourceShifts,
-  users,
-  brands,
-  platforms,
-  onSuccess,
-}: SwapRequestFormModalProps) {
-  const [formData, setFormData] = React.useState<FormData>({
-    shift_id: "",
-    requester_id: "",
-    operational_role: "",
-    replacement_staff_id: "",
-    reason: "",
-  });
-  const [submitting, setSubmitting] = React.useState(false);
-  const [errors, setErrors] = React.useState<
-    Partial<Record<keyof FormData, string>>
-  >({});
-  const [registrationLoad, setRegistrationLoad] = React.useState<{
-    ownerId: string;
-    roles: Record<string, OperationalRole[]>;
-    ids: Record<string, string>;
-    error: string | null;
-  } | null>(null);
-  const [shiftSearch, setShiftSearch] = React.useState("");
-  const submitLock = React.useRef(false);
-  const { toast } = useToast();
-  const { currentUser } = useCurrentUser();
-  const { t } = useTranslation();
-  const tr = t as unknown as (key: string) => string;
-
-  const currentUserId = currentUser?.id;
-  // A response for an earlier actor must never authorize the new actor's form.
-  const registrationReady = Boolean(open && currentUserId && registrationLoad && registrationLoad.ownerId === currentUserId && registrationLoad.error === null);
-  const registeredRoles = registrationReady && registrationLoad ? registrationLoad.roles : EMPTY_REGISTERED_ROLES;
-  const registrationIds = registrationReady && registrationLoad ? registrationLoad.ids : EMPTY_REGISTRATION_IDS;
-  const registrationError = open && registrationLoad && registrationLoad.ownerId === currentUserId ? registrationLoad.error : null;
-  const formReady = registrationReady && sourceShiftsReady;
-
-  // A. Form initialization
   React.useEffect(() => {
-    if (!open || !currentUserId) return;
-    const frame = requestAnimationFrame(() => {
-      setFormData({
-        shift_id: "",
-        requester_id: currentUserId,
-        operational_role: "",
-        replacement_staff_id: "",
-        reason: "",
-      });
-      setErrors({});
-      setShiftSearch("");
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [open, currentUserId]);
+    if (!open || !owner || !from || (to && to < from)) return
+    let active = true
+    void shiftService.getRegistrationPage('mine', { page: sourcePage, pageSize, filters: {
+      statuses: ['scheduled'], registrationStatuses: ['approved', 'manually_assigned'], from,
+      ...(to ? { to } : {}), ...(sourceSearch ? { search: sourceSearch } : {}),
+      ...(brandId ? { brandIds: [brandId] } : {}), ...(platformId ? { platformIds: [platformId] } : {}),
+    } }).then(result => {
+      if (active) setSourceSnapshot({ key: sourceKey, items: result.items, registrations: result.registrations.filter(reg => reg.user_id === owner), total: result.total, page: result.page, error: null })
+    }).catch(error => {
+      if (active) setSourceSnapshot({ key: sourceKey, items: [], registrations: [], total: 0, page: sourcePage, error: error instanceof Error ? error.message : 'SOURCE_LOAD_FAILED' })
+    })
+    return () => { active = false }
+  }, [open, owner, sourceKey, sourcePage, sourceSearch, from, to, brandId, platformId])
 
-  // B. Canonical registration loading: fail closed on fetch error or identity switch.
   React.useEffect(() => {
-    if (!open || !currentUserId) return;
-    let active = true;
-    void shiftRegistrationService.getForUser(currentUserId).then((registrations) => {
-      if (!active) return;
-      if (!Array.isArray(registrations)) throw new Error("REGISTRATION_RESPONSE_INVALID");
-      const roles: Record<string, OperationalRole[]> = {};
-      const ids: Record<string, string> = {};
-      for (const registration of registrations.filter(isStaffedRegistration)) {
-        (roles[registration.shift_id] ??= []).push(registration.operational_role);
-        ids[`${registration.shift_id}:${registration.operational_role}`] = registration.id;
-      }
-      setRegistrationLoad({ ownerId: currentUserId, roles, ids, error: null });
-    }).catch((error: unknown) => {
-      if (!active) return;
-      setRegistrationLoad({
-        ownerId: currentUserId,
-        roles: {},
-        ids: {},
-        error: error instanceof Error ? error.message : "REGISTRATION_LOAD_FAILED",
-      });
-    });
-    return () => { active = false };
-  }, [open, currentUserId]);
+    if (!open || !owner || mode !== 'replacement') return
+    let active = true
+    void userService.getDirectory().then(items => {
+      if (active) setDirectorySnapshot({ owner, items, error: null })
+    }).catch(error => {
+      if (active) setDirectorySnapshot({ owner, items: [], error: error instanceof Error ? error.message : 'DIRECTORY_LOAD_FAILED' })
+    })
+    return () => { active = false }
+  }, [open, owner, mode])
 
-  const byRole = (role: "host" | "support" | "technical") =>
-    users.filter(
-      (u) =>
-        u.operational_roles?.includes(role),
-    );
+  React.useEffect(() => {
+    if (!open || mode !== 'replacement' || !selectedSource || !replacementId) return
+    let active = true
+    const sourceTime = resolveShiftDateTime(selectedSource.date, selectedSource.start_time, selectedSource.end_time, selectedSource.timezone)
+    if (!sourceTime?.valid) return
+    void shiftService.getPage({ page: 1, pageSize: 50, filters: {
+      assignedUserIds: [replacementId], from: format(addDays(parseISO(selectedSource.date), -1), 'yyyy-MM-dd'), to: sourceTime.endDate,
+    } }).then(result => {
+      if (!active) return
+      const assignedHere = result.items.some(shift => shift.id === selectedSource.id)
+      const overlap = result.items.some(shift => {
+        if (shift.id === selectedSource.id) return false
+        const other = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
+        return other?.valid && other.startAt < sourceTime.endAt && other.endAt > sourceTime.startAt
+      })
+      setConflictSnapshot({ key: conflictKey, reason: assignedHere ? copy('Đã được phân công vào ca này', 'Already assigned to this shift') : overlap ? copy('Trùng lịch với ca khác', 'Overlaps another shift') : null,
+        error: result.total > 50 ? copy('Chưa kiểm tra đủ lịch; hệ thống sẽ xác minh khi gửi', 'Schedule check incomplete; verified on submit') : null })
+    }).catch(() => {
+      if (active) setConflictSnapshot({ key: conflictKey, reason: null, error: copy('Chưa kiểm tra được lịch; hệ thống sẽ xác minh khi gửi', 'Schedule unavailable; verified on submit') })
+    })
+    return () => { active = false }
+  }, [open, owner, mode, selectedSource, replacementId, conflictKey, copy])
 
-  const validateForm = (): boolean => {
-    const newErrors: Partial<Record<keyof FormData, string>> = {};
+  React.useEffect(() => {
+    if (!open || !owner || mode !== 'exchange' || !selectedSource || !role) return
+    let active = true
+    void shiftService.getPage({ page: targetPage, pageSize, filters: { statuses: ['scheduled'], from: getCurrentBusinessDate(), ...(targetSearch ? { search: targetSearch } : {}) } }).then(result => {
+      if (active) setTargetSnapshot({ key: targetKey, items: result.items, total: result.total, page: result.page, error: null })
+    }).catch(error => {
+      if (active) setTargetSnapshot({ key: targetKey, items: [], total: 0, page: targetPage, error: error instanceof Error ? error.message : 'TARGET_LOAD_FAILED' })
+    })
+    return () => { active = false }
+  }, [open, owner, mode, selectedSource, role, targetKey, targetPage, targetSearch])
 
-    if (!formReady || formData.requester_id !== currentUserId)
-      newErrors.shift_id = "Không thể xác minh ca được phân công. Hãy tải lại danh sách.";
-    if (!formData.shift_id || !registeredRoles[formData.shift_id]?.length)
-      newErrors.shift_id =
-        tr("selectAssignedShift") || "Select one of your assigned shifts";
-    if (!formData.operational_role)
-      newErrors.operational_role =
-        tr("selectRoleToReplace") || "Select the role you want replaced";
-    if (!formData.replacement_staff_id)
-      newErrors.replacement_staff_id =
-        tr("selectReplacementPerson") || "Select a replacement person";
+  React.useEffect(() => {
+    if (!open || mode !== 'exchange' || !selectedTarget || !role) return
+    let active = true
+    void shiftRegistrationService.getExchangeCandidates(selectedTarget.id, role).then(items => {
+      if (active) setCounterpartSnapshot({ key: counterpartKey, items: items.filter(item => item.user_id !== owner), error: null })
+    }).catch(error => {
+      if (active) setCounterpartSnapshot({ key: counterpartKey, items: [], error: error instanceof Error ? error.message : 'CANDIDATE_LOAD_FAILED' })
+    })
+    return () => { active = false }
+  }, [open, mode, selectedTarget, role, counterpartKey, owner])
 
-    if (formData.replacement_staff_id && formData.operational_role) {
-      const eligible = byRole(formData.operational_role);
-      if (!eligible.find((u) => u.id === formData.replacement_staff_id)) {
-        newErrors.replacement_staff_id =
-          tr("replacementRoleEligibilityError") ||
-          "Replacement must be eligible for the selected role";
-      }
+  const clearSource = () => { setSourceId(''); setRole(''); setReplacementId(''); setTargetId(''); setCounterpartId('') }
+  const shiftLabel = (shift: Shift) => `${shift.date} · ${formatShiftTimeRange(shift)} · ${shift.title} · ${brands.find(item => item.id === shift.brand_id)?.name ?? '—'} / ${platforms.find(item => item.id === shift.platform_id)?.name ?? '—'}`
+  const staff = directory?.items.filter(item => !staffSearch.trim() || item.full_name.toLocaleLowerCase().includes(staffSearch.trim().toLocaleLowerCase())).slice(0, 50) ?? []
+  const chosenStaff = directory?.items.find(item => item.id === replacementId)
+  const eligibleStaff = Boolean(chosenStaff && chosenStaff.id !== owner && role && chosenStaff.operational_roles?.includes(role))
+  const validCandidate = mode === 'replacement' ? eligibleStaff && !directory?.error && Boolean(conflict) && !conflict?.reason
+    : Boolean(selectedTarget && counterparts && !counterparts.error && counterparts.items.some(item => item.registration_id === counterpartId))
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (submitLock.current || busy) return
+    if (!owner || currentUser?.id !== owner || !source || source.error || !selectedSource || selectedSource.status !== 'scheduled' || !sourceRegistration || !validCandidate || reason.trim().length < 10) {
+      toast({ title: t('validationError'), description: copy('Chọn ca, vai trò, người nhận hợp lệ và nhập lý do ít nhất 10 ký tự.', 'Select a valid shift, role and recipient, then enter a reason of at least 10 characters.'), variant: 'destructive' })
+      return
     }
-
-    if (!formData.reason.trim() || formData.reason.trim().length < 10) {
-      newErrors.reason =
-        tr("reasonRequiredLengthError") ||
-        "Reason must be at least 10 characters";
-    }
-
-    setErrors(newErrors);
-    if (Object.keys(newErrors).length > 0) {
-      toast({
-        title: tr("validationError") || "Validation Error",
-        description: Object.values(newErrors)[0] as string,
-        variant: "destructive",
-      });
-      return false;
-    }
-    return true;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (submitLock.current || !formReady) return;
-    if (!validateForm()) return;
-
-    submitLock.current = true;
-    setSubmitting(true);
-
+    submitLock.current = true
+    setBusy(true)
     try {
-      const operationalRole = formData.operational_role as OperationalRole;
-      const sourceRegistrationId =
-        registrationIds[`${formData.shift_id}:${operationalRole}`];
-      if (!sourceRegistrationId)
-        throw new Error(
-          tr("activeSourceRegistrationRequired") ||
-            "An active source registration is required.",
-        );
-      const replacementStaffId = formData.replacement_staff_id;
-      const selectedShift = shifts.find(
-        (shift) => shift.id === formData.shift_id,
-      );
-      const originalStaffId =
-        operationalRole === "host"
-          ? selectedShift?.host_id
-          : operationalRole === "support"
-            ? selectedShift?.support_id
-            : selectedShift?.technical_id;
-      if (!currentUser || currentUser.id !== formData.requester_id)
-        throw new Error(t("permissionDenied"));
-      await swapRequestService.create({
-        shift_id: formData.shift_id,
-        requester_id: formData.requester_id,
-        operational_role: operationalRole,
-        original_staff_id: originalStaffId,
-        replacement_staff_id: replacementStaffId,
-        new_host_id:
-          operationalRole === "host" ? replacementStaffId : undefined,
-        new_support_id:
-          operationalRole === "support" ? replacementStaffId : undefined,
-        new_technical_id:
-          operationalRole === "technical" ? replacementStaffId : undefined,
-        reason: formData.reason.trim(),
-        source_registration_id: sourceRegistrationId,
-        mode: "replacement",
-      });
-
-      toast({
-        title: tr("requestSubmitted") || "Request Submitted",
-        description:
-          tr("swapRequestSubmittedHelp") ||
-          "Your swap request has been submitted for approval",
-        variant: "success",
-      });
-
-      onSuccess();
+      if (mode === 'replacement') {
+        await swapRequestService.create({ shift_id: selectedSource.id, requester_id: owner, operational_role: sourceRegistration.operational_role,
+          source_registration_id: sourceRegistration.id, replacement_staff_id: replacementId, reason: reason.trim(), mode } as never)
+      } else {
+        await swapRequestService.create({ shift_id: selectedSource.id, requester_id: owner, operational_role: sourceRegistration.operational_role,
+          source_registration_id: sourceRegistration.id, target_shift_id: targetId, counterpart_registration_id: counterpartId, reason: reason.trim(), mode } as never)
+      }
+      toast({ title: t('success'), description: copy('Đã gửi yêu cầu', 'Request submitted'), variant: 'success' })
+      onSuccess()
     } catch (error) {
-      toast({
-        title: tr("submissionFailed") || "Submission Failed",
-        description:
-          error instanceof Error
-            ? error.message
-            : tr("swapRequestFailedHelp") ||
-              "Failed to submit swap request. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      submitLock.current = false;
-      setSubmitting(false);
-    }
-  };
+      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+    } finally { submitLock.current = false; setBusy(false) }
+  }
 
-  const getBrandName = (brandId: string) =>
-    brands.find((b) => b.id === brandId)?.name ||
-    tr("unknownBrand") ||
-    "Unknown";
-  const getPlatformName = (platformId: string) =>
-    platforms.find((p) => p.id === platformId)?.name ||
-    tr("unknownPlatform") ||
-    "Unknown";
-
-  const eligibleShifts = React.useMemo(
-    () => searchEligibleSwapShifts(shifts, registeredRoles, shiftSearch, brands, platforms),
-    [shifts, registeredRoles, shiftSearch, brands, platforms],
-  );
-  const selectedShift = shifts.find((s) => s.id === formData.shift_id);
-
-  const availableRoles = React.useMemo(() => {
-    if (!selectedShift || !currentUser) return [];
-    return registeredRoles[selectedShift.id] || [];
-  }, [currentUser, registeredRoles, selectedShift]);
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="lg" className="overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            {tr("requestShiftSwap") || "Request Shift Swap"}
-          </DialogTitle>
-          <DialogDescription>
-            {tr("requestShiftSwapHelp") ||
-              "Request to swap your assigned shift with another host. Requires approval from team leader or admin."}
-          </DialogDescription>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Shift Selection */}
-          <div>
-            <label className="text-sm font-medium mb-2 block">
-              {tr("selectYourShift") || "Select Your Shift"}{" "}
-              <span className="text-red-500">*</span>
-            </label>
-            <Input
-              aria-label="Tìm ca được phân công"
-              value={shiftSearch}
-              onChange={(event) => setShiftSearch(event.target.value)}
-              placeholder="Tìm theo ngày, giờ, brand, nền tảng..."
-              className="mb-2"
-              disabled={!formReady}
-            />
-            {!sourceShiftsReady && !sourceShiftsError && <p role="status" className="mb-2 text-xs text-slate-500">Đang tải ca được phân công...</p>}
-            {sourceShiftsError && <div role="alert" className="mb-2 flex items-center gap-2 text-xs text-red-600">
-              <span>Không tải được ca: {sourceShiftsError}</span>
-              <Button type="button" variant="outline" size="sm" onClick={onRetrySourceShifts}>Thử lại</Button>
-            </div>}
-            {registrationError && <p role="alert" className="mb-2 text-xs text-red-600">
-              Không tải được ca đã phân công: {registrationError}
-            </p>}
-            {!registrationReady && !registrationError && <p role="status" className="mb-2 text-xs text-slate-500">
-              Đang kiểm tra các ca bạn được phân công...
-            </p>}
-            {registrationReady && eligibleShifts.length === 0 && <p role="status" className="mb-2 text-xs text-slate-500">
-              Không có ca phù hợp. Hãy thử từ khóa khác.
-            </p>}
-            <Select
-              value={formData.shift_id}
-              disabled={!formReady || eligibleShifts.length === 0}
-              onValueChange={(value) => {
-                const roles = registeredRoles[value] || [];
-                setFormData({
-                  ...formData,
-                  shift_id: value,
-                  operational_role: roles.length === 1 ? roles[0] : "",
-                  replacement_staff_id: "",
-                });
-              }}
-            >
-              <SelectTrigger
-                className={errors.shift_id ? "border-red-500" : ""}
-              >
-                <SelectValue
-                  placeholder={tr("chooseShift") || "Choose a shift..."}
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {eligibleShifts.map((shift) => (
-                  <SelectItem key={shift.id} value={shift.id}>
-                    {getBrandName(shift.brand_id)} -{" "}
-                    {getPlatformName(shift.platform_id)}(
-                    {format(new Date(`${shift.date}T00:00:00`), "MMM d")},{" "}
-                    {formatShiftTimeRange(shift)})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.shift_id && (
-              <div className="text-xs text-red-500 mt-1">{errors.shift_id}</div>
-            )}
+  return <Dialog open={open} onOpenChange={busy ? undefined : onOpenChange}>
+    <DialogContent size="lg" className="max-h-[90vh] overflow-y-auto">
+      <DialogHeader><DialogTitle>{copy('Tạo yêu cầu PASS / Đổi ca', 'Create pass / exchange request')}</DialogTitle>
+        <DialogDescription>{copy('Chọn ca được phân công, người nhận và lý do. Người nhận xác nhận trước khi quản lý duyệt.', 'Choose an assigned shift, recipient and reason. The recipient accepts before manager approval.')}</DialogDescription></DialogHeader>
+      <form onSubmit={submit} className="space-y-5">
+        <fieldset disabled={busy} className="space-y-3"><legend className="font-semibold">1. {copy('Ca của tôi', 'My assigned shift')}</legend>
+          <div className="flex flex-wrap gap-2" role="group" aria-label={copy('Loại yêu cầu', 'Request type')}>
+            {(['replacement', 'exchange'] as Mode[]).map(value => <Button key={value} type="button" variant={mode === value ? 'default' : 'outline'} aria-pressed={mode === value}
+              onClick={() => { setMode(value); setReplacementId(''); setTargetId(''); setCounterpartId('') }}>{value === 'replacement' ? 'PASS' : copy('Đổi ca', 'Exchange')}</Button>)}
           </div>
-
-          {/* Shift Details Preview */}
-          {selectedShift && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="text-sm font-medium text-blue-900 mb-2">
-                {tr("selectedShiftDetails") || "Selected Shift Details"}
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <span className="text-blue-700">{tr("brand")}:</span>
-                  <span className="font-medium ml-2">
-                    {getBrandName(selectedShift.brand_id)}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-blue-700">{tr("platform")}:</span>
-                  <span className="font-medium ml-2">
-                    {getPlatformName(selectedShift.platform_id)}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-blue-700">{tr("date")}:</span>
-                  <span className="font-medium ml-2">
-                    {format(new Date(selectedShift.date), "MMMM d, yyyy")}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-blue-700">{tr("time")}:</span>
-                  <span className="font-medium ml-2">
-                    {formatShiftTimeRange(selectedShift)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Role and Replacement selection */}
-          {formData.shift_id && availableRoles.length > 0 && (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  {tr("roleToReplace") || "Role to Replace"}{" "}
-                  <span className="text-red-500">*</span>
-                </label>
-                <Select
-                  value={formData.operational_role || "none"}
-                  onValueChange={(value) =>
-                    setFormData({
-                      ...formData,
-                      operational_role:
-                        value === "none" ? "" : (value as OperationalRole),
-                      replacement_staff_id: "",
-                    })
-                  }
-                >
-                  <SelectTrigger
-                    className={errors.operational_role ? "border-red-500" : ""}
-                  >
-                    <SelectValue
-                      placeholder={tr("selectRole") || "Select role..."}
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">—</SelectItem>
-                    {availableRoles.map((role) => (
-                      <SelectItem key={role} value={role}>
-                        {t(role)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.operational_role && (
-                  <div className="text-xs text-red-500 mt-1">
-                    {errors.operational_role}
-                  </div>
-                )}
-              </div>
-
-              {formData.operational_role && (
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    {tr("replacementPerson") || "Replacement Person"}{" "}
-                    <span className="text-red-500">*</span>
-                  </label>
-                  <Select
-                    value={formData.replacement_staff_id || "none"}
-                    onValueChange={(value) =>
-                      setFormData({
-                        ...formData,
-                        replacement_staff_id: value === "none" ? "" : value,
-                      })
-                    }
-                  >
-                    <SelectTrigger
-                      className={
-                        errors.replacement_staff_id ? "border-red-500" : ""
-                      }
-                    >
-                      <SelectValue
-                        placeholder={
-                          tr("selectReplacement") || "Select replacement..."
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">—</SelectItem>
-                      {byRole(formData.operational_role as OperationalRole)
-                        .filter((user) => user.id !== currentUser?.id)
-                        .map((user) => (
-                          <SelectItem key={user.id} value={user.id}>
-                            {user.full_name}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.replacement_staff_id && (
-                    <div className="text-xs text-red-500 mt-1">
-                      {errors.replacement_staff_id}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-          {formData.shift_id && availableRoles.length === 0 && (
-            <p className="text-sm text-muted-foreground">{t("noMyShifts")}</p>
-          )}
-
-          {/* Reason */}
-          <div>
-            <label className="text-sm font-medium mb-2 block">
-              {tr("reasonForSwapRequest") || "Reason for Swap Request"}{" "}
-              <span className="text-red-500">*</span>
-            </label>
-            <Textarea
-              placeholder={
-                tr("reasonPlaceholder") ||
-                "Please provide a detailed explanation for your swap request (e.g., personal emergency, scheduling conflict, health issue)..."
-              }
-              value={formData.reason}
-              onChange={(e) =>
-                setFormData({ ...formData, reason: e.target.value })
-              }
-              rows={5}
-              className={errors.reason ? "border-red-500" : ""}
-            />
-            {errors.reason && (
-              <div className="text-xs text-red-500 mt-1">{errors.reason}</div>
-            )}
-            <div className="text-xs text-gray-600 mt-1">
-              {formData.reason.length} / 500 {tr("characters") || "characters"}
-            </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="text-xs">{copy('Từ ngày', 'From date')}<Input type="date" value={from} onChange={event => { setFrom(event.target.value); setSourcePage(1); clearSource() }} /></label>
+            <label className="text-xs">{copy('Đến ngày', 'To date')}<Input type="date" min={from} value={to} onChange={event => { setTo(event.target.value); setSourcePage(1); clearSource() }} /></label>
+            <label className="text-xs">Brand<select className="mt-1 h-9 w-full rounded-md border bg-background px-2" value={brandId} onChange={event => { setBrandId(event.target.value); setSourcePage(1); clearSource() }}><option value="">{t('all')}</option>{brands.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+            <label className="text-xs">Platform<select className="mt-1 h-9 w-full rounded-md border bg-background px-2" value={platformId} onChange={event => { setPlatformId(event.target.value); setSourcePage(1); clearSource() }}><option value="">{t('all')}</option>{platforms.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           </div>
-
-          {/* Important Note */}
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <div className="text-sm font-medium text-yellow-900 mb-1">
-              {tr("important") || "Important"}
-            </div>
-            <ul className="text-xs text-yellow-800 space-y-1 list-disc list-inside">
-              <li>
-                {tr("swapApprovalHelp") ||
-                  "Swap requests require approval from team leader or admin"}
-              </li>
-              <li>
-                {tr("swapReplacementHelp") ||
-                  "The proposed replacement must be available and qualified"}
-              </li>
-              <li>
-                {tr("swapNotifyHelp") ||
-                  "You will be notified once your request is reviewed"}
-              </li>
-              <li>
-                {tr("swapEmergencyHelp") ||
-                  "Emergency swaps may be prioritized"}
-              </li>
-            </ul>
+          <div className="flex gap-2"><Input aria-label={copy('Tìm ca', 'Search shifts')} value={sourceSearchDraft} onChange={event => setSourceSearchDraft(event.target.value)} placeholder={copy('Tên ca, Brand, Platform, Studio', 'Shift, brand, platform or studio')} />
+            <Button type="button" variant="outline" onClick={() => { setSourceSearch(sourceSearchDraft.trim()); setSourcePage(1); clearSource() }}>{t('search')}</Button></div>
+          {to && to < from && <p role="alert" className="text-xs text-red-600">{copy('Ngày kết thúc phải sau ngày bắt đầu', 'End date must follow start date')}</p>}
+          {!from && <p role="alert" className="text-xs text-red-600">{copy('Chọn ngày bắt đầu', 'Choose a start date')}</p>}
+          {!source && from && !(to && to < from) && <p role="status" className="text-xs text-muted-foreground">{t('loading')}</p>}
+          {source?.error && <p role="alert" className="text-xs text-red-600">{source.error} <Button type="button" size="sm" variant="outline" onClick={() => setSourceRevision(n => n + 1)}>{copy('Thử lại', 'Retry')}</Button></p>}
+          {source && !source.error && sourceRows.length === 0 && <p role="status" className="text-xs text-muted-foreground">{copy('Không có ca được phân công phù hợp', 'No matching assigned shifts')}</p>}
+          <div role="group" aria-label={copy('Chọn ca được phân công', 'Choose assigned shift')} className="max-h-44 space-y-1 overflow-y-auto">
+            {sourceRows.map(shift => <button key={shift.id} type="button" aria-pressed={sourceId === shift.id} onClick={() => { setSourceId(shift.id); setRole(''); setReplacementId(''); setTargetId(''); setCounterpartId('') }}
+              className={`w-full rounded-md border p-2 text-left text-xs focus-visible:ring-2 focus-visible:ring-primary ${sourceId === shift.id ? 'border-primary bg-primary/5' : 'hover:bg-muted'}`}>
+              {shiftLabel(shift)} · {t(shift.status)} · {source?.registrations.filter(reg => reg.shift_id === shift.id && reg.user_id === owner && isStaffedRegistration(reg)).map(reg => t(reg.operational_role)).join(', ')}
+            </button>)}
           </div>
-
-          {/* Actions */}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={submitting}
-            >
-              {tr("cancel") || "Cancel"}
-            </Button>
-            <Button type="submit" disabled={submitting || !formReady}>
-              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {tr("submitRequest") || "Submit Request"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
+          {source && source.total > pageSize && <div className="flex items-center justify-between text-xs"><Button type="button" size="sm" variant="outline" disabled={source.page <= 1} onClick={() => { setSourcePage(source.page - 1); clearSource() }}>{copy('Trước', 'Previous')}</Button>
+            <span>{source.page}/{Math.ceil(source.total / pageSize)} · {source.total}</span><Button type="button" size="sm" variant="outline" disabled={source.page * pageSize >= source.total} onClick={() => { setSourcePage(source.page + 1); clearSource() }}>{copy('Sau', 'Next')}</Button></div>}
+          {selectedSource && <label className="block text-xs">{copy('Vai trò trong ca', 'Assigned role')}<select className="mt-1 h-9 w-full rounded-md border bg-background px-2" value={role} onChange={event => { setRole(event.target.value as OperationalRole); setReplacementId(''); setTargetId(''); setCounterpartId('') }}>
+            <option value="">{copy('Chọn vai trò', 'Choose role')}</option>{assigned.map(reg => <option key={reg.id} value={reg.operational_role}>{t(reg.operational_role)}</option>)}</select></label>}
+        </fieldset>
+        {sourceRegistration && selectedSource && <fieldset disabled={busy} className="space-y-2"><legend className="font-semibold">2. {mode === 'replacement' ? copy('Người nhận PASS', 'Pass recipient') : copy('Ca và người đổi chéo', 'Exchange shift and counterpart')}</legend>
+          {mode === 'replacement' ? <>
+            <Input aria-label={copy('Tìm nhân sự', 'Search staff')} value={staffSearch} onChange={event => setStaffSearch(event.target.value)} placeholder={copy('Tìm theo tên', 'Search by name')} />
+            {!directory && <p role="status" className="text-xs">{t('loading')}</p>}
+            {directory?.error && <p role="alert" className="text-xs text-red-600">{directory.error}</p>}
+            {directory && !directory.error && staff.length === 0 && <p role="status" className="text-xs">{copy('Không tìm thấy ứng viên', 'No candidates found')}</p>}
+            <div role="group" aria-label={copy('Chọn người nhận', 'Choose recipient')} className="max-h-40 space-y-1 overflow-y-auto">{staff.map(item => {
+              const why = item.id === owner ? copy('Không thể chọn chính mình', 'Cannot choose yourself') : !item.operational_roles?.includes(sourceRegistration.operational_role) ? copy('Không đúng vai trò', 'Role mismatch') : ''
+              return <button type="button" key={item.id} disabled={Boolean(why)} aria-pressed={replacementId === item.id} onClick={() => setReplacementId(item.id)}
+                className={`w-full rounded-md border p-2 text-left text-xs focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 ${replacementId === item.id ? 'border-primary bg-primary/5' : 'hover:bg-muted'}`}>{item.full_name}{why ? ` · ${why}` : ''}</button>
+            })}</div>
+            {replacementId && !conflict && <p role="status" className="text-xs">{copy('Đang kiểm tra lịch...', 'Checking schedule...')}</p>}
+            {conflict?.reason && <p role="alert" className="text-xs text-red-600">{conflict.reason}</p>}
+            {conflict?.error && <p role="status" className="text-xs text-amber-700">{conflict.error}</p>}
+            {replacementId && !conflict?.reason && <p className="text-xs text-muted-foreground">{copy('Điều kiện cuối cùng được kiểm tra lại khi gửi và khi duyệt.', 'Final eligibility is rechecked on submit and approval.')}</p>}
+          </> : <>
+            <div className="flex gap-2"><Input aria-label={copy('Tìm ca đổi chéo', 'Search exchange shifts')} value={targetSearchDraft} onChange={event => setTargetSearchDraft(event.target.value)} placeholder={copy('Tên ca, Studio', 'Shift or studio')} />
+              <Button type="button" variant="outline" onClick={() => { setTargetSearch(targetSearchDraft.trim()); setTargetPage(1); setTargetId(''); setCounterpartId('') }}>{t('search')}</Button></div>
+            {!target && <p role="status" className="text-xs">{t('loading')}</p>}
+            {target?.error && <p role="alert" className="text-xs text-red-600">{target.error} <Button type="button" size="sm" variant="outline" onClick={() => setTargetRevision(n => n + 1)}>{copy('Thử lại', 'Retry')}</Button></p>}
+            {target && !target.error && targetRows.length === 0 && <p role="status" className="text-xs">{copy('Không có ca đổi phù hợp', 'No matching exchange shifts')}</p>}
+            <div role="group" aria-label={copy('Chọn ca đổi', 'Choose exchange shift')} className="max-h-36 space-y-1 overflow-y-auto">{targetRows.map(shift => <button type="button" key={shift.id} aria-pressed={targetId === shift.id} onClick={() => { setTargetId(shift.id); setCounterpartId('') }} className={`w-full rounded-md border p-2 text-left text-xs focus-visible:ring-2 focus-visible:ring-primary ${targetId === shift.id ? 'border-primary bg-primary/5' : 'hover:bg-muted'}`}>{shiftLabel(shift)}</button>)}</div>
+            {target && target.total > pageSize && <div className="flex items-center justify-between text-xs"><Button type="button" size="sm" variant="outline" disabled={target.page <= 1} onClick={() => { setTargetPage(target.page - 1); setTargetId(''); setCounterpartId('') }}>{copy('Trước', 'Previous')}</Button><span>{target.page}/{Math.ceil(target.total / pageSize)} · {target.total}</span><Button type="button" size="sm" variant="outline" disabled={target.page * pageSize >= target.total} onClick={() => { setTargetPage(target.page + 1); setTargetId(''); setCounterpartId('') }}>{copy('Sau', 'Next')}</Button></div>}
+            {selectedTarget && <>{!counterparts && <p role="status" className="text-xs">{copy('Đang kiểm tra người đổi ca...', 'Checking counterparts...')}</p>}{counterparts?.error && <p role="alert" className="text-xs text-red-600">{counterparts.error}</p>}{counterparts && !counterparts.error && counterparts.items.length === 0 && <p role="status" className="text-xs">{copy('Không có người được phân công đúng vai trò', 'No assigned counterpart for this role')}</p>}
+              <div role="group" aria-label={copy('Chọn người đổi chéo', 'Choose counterpart')} className="space-y-1">{counterparts?.items.map(item => <button type="button" key={item.registration_id} aria-pressed={counterpartId === item.registration_id} onClick={() => setCounterpartId(item.registration_id)} className={`w-full rounded-md border p-2 text-left text-xs focus-visible:ring-2 focus-visible:ring-primary ${counterpartId === item.registration_id ? 'border-primary bg-primary/5' : 'hover:bg-muted'}`}>{item.full_name} · {t(sourceRegistration.operational_role)}</button>)}</div></>}
+          </>}
+        </fieldset>}
+        <label className="block text-sm font-medium">3. {copy('Lý do', 'Reason')}<Textarea className="mt-1" value={reason} onChange={event => setReason(event.target.value)} maxLength={500} rows={3} required minLength={10} /></label>
+        <DialogFooter><Button type="button" variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>{t('cancel')}</Button>
+          <Button type="submit" disabled={busy || !sourceRegistration || !validCandidate || reason.trim().length < 10}>{busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{copy('Gửi yêu cầu', 'Submit request')}</Button></DialogFooter>
+      </form>
+    </DialogContent>
+  </Dialog>
 }

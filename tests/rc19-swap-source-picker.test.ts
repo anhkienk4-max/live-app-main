@@ -36,21 +36,31 @@ test('large directories are bounded and missing owner assignments return empty',
   assert.equal(searchEligibleSwapShifts(many,all,'',brands,platforms,3).length,3)
 })
 
-test('swap request opens immediately and failed source fetch is retried inside modal rather than failing whole page', () => {
+test('swap request opens immediately and source page errors are retried inside modal', () => {
   const parent = readFileSync(fileURLToPath(new URL('../components/features/swaps/SwapRequestList.tsx', import.meta.url)), 'utf8')
   const modal = readFileSync(fileURLToPath(new URL('../components/features/swaps/SwapRequestFormModal.tsx', import.meta.url)), 'utf8')
-  const before = parent.indexOf('setShowForm(true)')
-  const after = parent.indexOf('loadFormShifts(currentUser.id)', before)
-  assert.ok(before >= 0 && after > before, 'opening the modal must not wait for shift API response')
-  assert.match(parent, /sourceShiftsReady=\{Boolean\(formFetchState/)
-  assert.match(parent, /onRetrySourceShifts=/)
-  assert.match(modal, /disabled=\{submitting \|\| !formReady\}/)
+  assert.match(parent, /setShowForm\(true\)/)
+  assert.doesNotMatch(parent, /getAllFiltered\(\{[\s\S]*?assignedUserIds/)
+  assert.match(modal, /getRegistrationPage\('mine'/)
+  assert.match(modal, /setSourceRevision\(n => n \+ 1\)/)
+  assert.match(modal, /disabled=\{busy \|\| !sourceRegistration \|\| !validCandidate/)
 })
 
-test('RC19 source shift query excludes historical business dates without broadening actor scope', () => {
-  const parent = readFileSync(fileURLToPath(new URL('../components/features/swaps/SwapRequestList.tsx', import.meta.url)), 'utf8')
-  assert.match(parent, /import \{ formatShiftTimeRange, getCurrentBusinessDate \} from '@\/lib\/utils\/shiftUtils'/)
-  assert.match(parent, /shiftService\.getAllFiltered\(\{[\s\S]*?assignedUserIds: \[ownerId\],[\s\S]*?statuses: \['scheduled'\],[\s\S]*?from: getCurrentBusinessDate\(\),[\s\S]*?\}\)/)
-  assert.match(parent, /if \(request !== formRequestRef\.current\) return/)
-  assert.match(parent, /sourceShiftsReady=\{Boolean\(formFetchState/)
+test('source picker pages only staffed registrations for current actor and filters on server', () => {
+  const modal = readFileSync(fileURLToPath(new URL('../components/features/swaps/SwapRequestFormModal.tsx', import.meta.url)), 'utf8')
+  assert.match(modal, /getRegistrationPage\('mine', \{ page: sourcePage, pageSize, filters:/)
+  assert.match(modal, /registrationStatuses: \['approved', 'manually_assigned'\], from/)
+  assert.match(modal, /brandIds: \[brandId\]/)
+  assert.match(modal, /platformIds: \[platformId\]/)
+  assert.match(modal, /reg\.user_id === owner && isStaffedRegistration\(reg\)/)
+  assert.match(modal, /sourceSnapshot\?\.key === sourceKey/)
+  assert.match(modal, /return \(\) => \{ active = false \}/)
+  assert.match(modal, /submitLock\.current/)
+})
+
+test('swap detail and cancel actions are rebound to the current actor page', () => {
+  const list = readFileSync(fileURLToPath(new URL('../components/features/swaps/SwapRequestList.tsx', import.meta.url)), 'utf8')
+  assert.match(list, /activeSelectedSwap = identity === loadedIdentity && selectedSwap \? swaps\.find/)
+  assert.match(list, /activeCancelTarget = identity === loadedIdentity && cancelTarget \? swaps\.find/)
+  assert.match(list, /!swaps\.some\(row => row\.id === swap\.id\)/)
 })
