@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "1972efd70bda77c6ce62f31fcbc795b60f7da13e",
+    "head": "d135ab643d0ef3270b4b7397c8f6712f04bde48f",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-full-upgrade"
   },
@@ -101,9 +101,9 @@
         "lib": 250,
         "scripts": 26,
         "supabase": 108,
-        "tests": 261
+        "tests": 262
       },
-      "total": 882
+      "total": 883
     },
     "tests": {
       "files": [
@@ -174,6 +174,7 @@
         "tests/leaked-password-protection.test.ts",
         "tests/lifecycle-action-dialog.test.ts",
         "tests/live-dashboard-persistence.test.ts",
+        "tests/live-monitoring-upgrade.test.tsx",
         "tests/live-report-images.test.tsx",
         "tests/media-poc-config-contract.test.ts",
         "tests/media-preview-isolation.test.ts",
@@ -324,7 +325,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 216
+      "count": 217
     },
     "migrations": {
       "files": [
@@ -432,5 +433,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-25T00:10:50+07:00"
+  "synced_at": "2026-10-25T00:28:00+07:00"
 }

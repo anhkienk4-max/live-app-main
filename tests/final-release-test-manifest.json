@@ -70,6 +70,7 @@
     "tests/leaked-password-protection.test.ts",
     "tests/lifecycle-action-dialog.test.ts",
     "tests/live-dashboard-persistence.test.ts",
+    "tests/live-monitoring-upgrade.test.tsx",
     "tests/live-report-images.test.tsx",
     "tests/media-poc-config-contract.test.ts",
     "tests/media-preview-isolation.test.ts",
