@@ -38,6 +38,7 @@ import {
   ShieldAlert,
   Plus,
   Sparkles,
+  Lock,
 } from 'lucide-react'
 import { businessLocalDate } from '@/lib/utils/shiftUtils'
 import { cn } from '@/lib/utils'
@@ -127,30 +128,42 @@ export function OperationalFileWorkspace() {
   const requestedCategory = search.get('category')
   const requestedCampaignId = search.get('campaignId')
   const requestedShiftId = search.get('shiftId')
-  const {currentUser,loading:userLoading}=useCurrentUser()
-  const actorKey=currentUser?currentUser.id+':'+resolveSystemPermission(currentUser):''
-  const canView=!!currentUser&&resolveSystemPermission(currentUser)!=='member'
+  const { currentUser, loading: userLoading } = useCurrentUser()
+  const permission = currentUser ? resolveSystemPermission(currentUser) : 'member'
+  const actorKey = currentUser ? currentUser.id + ':' + permission : ''
+  const canView = !!currentUser && permission !== 'member'
+  const canWrite = !!currentUser && ['admin', 'leader'].includes(permission)
+  const canExport = !!currentUser && permission === 'admin'
+  const canDeleteFile = React.useCallback((itemCategory: string) => {
+    if (!currentUser) return false
+    if (permission === 'admin') return true
+    if (permission === 'leader') {
+      return !['payment_document', 'system_export'].includes(itemCategory)
+    }
+    return false
+  }, [currentUser, permission])
+
   const [shiftId, setShiftId] = React.useState(search.get('shiftId') || '')
   const [campaignId, setCampaignId] = React.useState(search.get('campaignId') || '')
-  const [catalogState,setCatalogState]=React.useState<{owner:string;value:CatalogResponse}|null>(null)
-  const catalog=catalogState?.owner===actorKey?catalogState.value:null
+  const [catalogState, setCatalogState] = React.useState<{ owner: string; value: CatalogResponse } | null>(null)
+  const catalog = catalogState?.owner === actorKey ? catalogState.value : null
   const [brandId, setBrandId] = React.useState('')
   const [platformId, setPlatformId] = React.useState('')
   const [periodDate, setPeriodDate] = React.useState('')
   const [executionSource, setExecutionSource] = React.useState<'internal' | 'agency'>('internal')
   const [category, setCategory] = React.useState(search.get('category') || 'schedule_source')
   const confidentialBlocked = ['payment_document', 'system_export'].includes(category)
-    && catalog?.confidential_write_ready !== true
+    && (catalog?.confidential_write_ready !== true || permission !== 'admin')
   const [provider, setProvider] = React.useState<'google_drive' | 'onedrive'>('google_drive')
   const [file, setFile] = React.useState<File | null>(null)
   const [files, setFiles] = React.useState<Stored[]>([])
-  const [loadedKey,setLoadedKey]=React.useState('')
-  const [listError,setListError]=React.useState<{key:string;message:string}|null>(null)
+  const [loadedKey, setLoadedKey] = React.useState('')
+  const [listError,setListError] = React.useState<{ key: string; message: string } | null>(null)
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
   const [notice, setNotice] = React.useState('')
   const [filter, setFilter] = React.useState('all')
-  const [providerFilter, setProviderFilter] = React.useState<'all'|'google_drive'|'onedrive'>('all')
+  const [providerFilter, setProviderFilter] = React.useState<'all' | 'google_drive' | 'onedrive'>('all')
   const [searchDraft, setSearchDraft] = React.useState('')
   const [appliedSearch, setAppliedSearch] = React.useState('')
   const pagination = useListPagination('storage', 10)
@@ -171,12 +184,47 @@ export function OperationalFileWorkspace() {
   const [scopeTab, setScopeTab] = React.useState<'hierarchy' | 'campaign' | 'shift'>('hierarchy')
   const [expandedBrands, setExpandedBrands] = React.useState<Record<string, boolean>>({})
 
-  const currentYear = periodDate ? periodDate.split('-')[0] : '2026'
-  const currentMonth = periodDate ? periodDate.split('-')[1] : '10'
-  const isOpellaOrMars = React.useMemo(() => {
-    const brandName = catalog?.brands.find(b => b.id === brandId)?.name?.toLowerCase() || ''
-    return brandName.includes('opella') || brandName.includes('mars')
-  }, [catalog, brandId])
+  // Date parsing without hardcoding fake periods
+  const dateParts = React.useMemo(() => {
+    if (!periodDate) return null
+    const match = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/u.exec(periodDate.trim())
+    if (!match) return null
+    return { year: match[1], month: match[2], day: match[3] || null }
+  }, [periodDate])
+
+  // Clear scope-dependent data when switching Brand, Platform, or Shift
+  const handleBrandChange = (newBrandId: string) => {
+    setBrandId(newBrandId)
+    setFiles([])
+    setLoadedKey('')
+    setInspectItem(null)
+    setFolderPath('')
+    setFolderUrl('')
+    setError('')
+    setNotice('')
+  }
+  const handlePlatformChange = (newPlatformId: string) => {
+    setPlatformId(newPlatformId)
+    setFiles([])
+    setLoadedKey('')
+    setInspectItem(null)
+    setFolderPath('')
+    setFolderUrl('')
+    setError('')
+    setNotice('')
+  }
+  const handleDateChange = (newDate: string) => {
+    setPeriodDate(newDate)
+    setFiles([])
+    setLoadedKey('')
+    setInspectItem(null)
+    setFolderPath('')
+    setFolderUrl('')
+    setError('')
+    setNotice('')
+  }
+
+  const maxUploadBytes = catalog?.max_single_upload_bytes || 4 * 1024 * 1024
 
   const requestKey = shiftId.trim()
     ? 'shift_id=' + encodeURIComponent(shiftId.trim())
@@ -259,6 +307,7 @@ export function OperationalFileWorkspace() {
   })
 
   const providerAction = async (action: 'prepare_folder' | 'attach_existing') => {
+    if (!canWrite) return
     setBusy(true)
     setError('')
     setNotice('')
@@ -296,7 +345,7 @@ export function OperationalFileWorkspace() {
   }
 
   const generateSystemExport = async () => {
-    if (shiftId.trim() || campaignId || !brandId || !platformId || busy) return
+    if (!canExport || shiftId.trim() || campaignId || !brandId || !platformId || busy) return
     setBusy(true)
     setError('')
     setExportCounts(null)
@@ -323,7 +372,7 @@ export function OperationalFileWorkspace() {
   }
 
   const upload = async () => {
-    if (!file || busy || confidentialBlocked) return
+    if (!canWrite || !file || busy || confidentialBlocked) return
     setBusy(true)
     setError('')
     setNotice('')
@@ -354,6 +403,10 @@ export function OperationalFileWorkspace() {
   }
 
   const remove = async (item: Stored) => {
+    if (!canDeleteFile(item.category)) {
+      setError('Bạn không có quyền xóa file thuộc danh mục này.')
+      return
+    }
     if (!window.confirm('Chuyển file này vào Trash của provider và soft-delete metadata?')) return
     setBusy(true)
     setError('')
@@ -381,6 +434,9 @@ export function OperationalFileWorkspace() {
   const selectedPlatform = catalog?.platforms.find(p => p.id === platformId)
   const selectedCategory = catalog?.categories.find(c => c.id === filter)
 
+  // Scope verification indicator: whether folder path was verified from metadata or provider prepare
+  const verifiedFolderPath = files[0]?.folder_path || folderPath || ''
+
   if(userLoading||!currentUser)return <p className="p-4">{t('loading')}</p>
   if(currentUser&&!canView)return <p className="p-4 text-sm" role="alert">Bạn không có quyền truy cập kho file.</p>
   return (
@@ -399,51 +455,62 @@ export function OperationalFileWorkspace() {
 
         {/* Provider Connectivity Status Pills & Actions */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1.5 rounded-full border bg-muted/40 px-3 py-1 text-xs font-medium text-foreground" title="Google Drive API Gateway Sẵn sàng">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <HardDrive className="h-3.5 w-3.5 text-blue-600" />
-            <span>Google Drive</span>
+          {/* Honest status indicator: Not hardcoded green, distinguishes runtime health-check from CSDL */}
+          <div className="flex items-center gap-1.5 rounded-full border bg-muted/30 px-3 py-1 text-xs font-medium text-muted-foreground" title="Chưa có health-check runtime cho Google Drive. Không tự ý ghi để test.">
+            <span className="h-2 w-2 rounded-full bg-slate-400" />
+            <HardDrive className="h-3.5 w-3.5 text-slate-500" />
+            <span>Google Drive: Chưa xác minh</span>
           </div>
-          <div className="flex items-center gap-1.5 rounded-full border bg-muted/40 px-3 py-1 text-xs font-medium text-foreground" title="OneDrive Graph Gateway Hoạt động">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            <Cloud className="h-3.5 w-3.5 text-sky-600" />
-            <span>OneDrive</span>
+          <div className="flex items-center gap-1.5 rounded-full border bg-muted/30 px-3 py-1 text-xs font-medium text-muted-foreground" title="Chưa có health-check runtime cho OneDrive. Không tự ý ghi để test.">
+            <span className="h-2 w-2 rounded-full bg-slate-400" />
+            <Cloud className="h-3.5 w-3.5 text-slate-500" />
+            <span>OneDrive: Chưa xác minh</span>
           </div>
           {catalog?.active_route_count != null && (
-            <div className={cn("flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium", catalog.active_route_count > 0 ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-amber-50 text-amber-800 border-amber-200")}>
+            <div className={cn("flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium", catalog.active_route_count > 0 ? "bg-slate-50 text-slate-700 border-slate-200" : "bg-amber-50 text-amber-800 border-amber-200")} title="Tổng số Storage Routes đang active trong database">
               <Layers className="h-3.5 w-3.5" />
-              <span>{catalog.active_route_count} Storage Routes</span>
+              <span>Storage Routes: {catalog.active_route_count} route(s) CSDL</span>
             </div>
           )}
-          <button
-            type="button"
-            onClick={() => setShowUploadModal(true)}
-            disabled={catalog?.active_route_count === 0}
-            className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium shadow-sm hover:bg-primary/90 disabled:opacity-50 inline-flex items-center gap-1.5 transition-colors"
-          >
-            <Upload className="h-3.5 w-3.5" />
-            <span>Tải file lên</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowAttachModal(true)}
-            disabled={catalog?.active_route_count === 0}
-            className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50 inline-flex items-center gap-1.5 transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>Chuẩn bị / Gắn link</span>
-          </button>
-          {catalog?.categories.some(item => item.id === 'system_export') && (
+
+          {canWrite && (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowUploadModal(true)}
+                disabled={catalog?.active_route_count === 0 || !hasCompleteScope}
+                className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium shadow-sm hover:bg-primary/90 disabled:opacity-50 inline-flex items-center gap-1.5 transition-colors"
+                title={!hasCompleteScope ? "Chọn đủ Brand, Platform và Ngày trước khi upload" : "Tải file lên hệ thống"}
+              >
+                <Upload className="h-3.5 w-3.5" />
+                <span>Tải file lên</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAttachModal(true)}
+                disabled={catalog?.active_route_count === 0 || !hasCompleteScope}
+                className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50 inline-flex items-center gap-1.5 transition-colors"
+                title={!hasCompleteScope ? "Chọn đủ Brand, Platform và Ngày trước khi chuẩn bị folder" : "Chuẩn bị folder hoặc gắn file đã upload"}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Chuẩn bị / Gắn link</span>
+              </button>
+            </>
+          )}
+
+          {canExport && catalog?.categories.some(item => item.id === 'system_export') && (
             <button
               type="button"
               onClick={() => setShowExportModal(true)}
+              disabled={catalog?.active_route_count === 0 || Boolean(shiftId.trim()) || Boolean(campaignId) || !brandId || !platformId}
               className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50 inline-flex items-center gap-1.5 transition-colors"
             >
               <Sparkles className="h-3.5 w-3.5 text-purple-600" />
               <span>System Export</span>
             </button>
           )}
-          {catalog?.categories.some(item => item.id === 'system_export') && (
+
+          {permission === 'admin' && catalog?.categories.some(item => item.id === 'system_export') && (
             <Link href="/storage/setup" className="inline-flex min-h-8 items-center rounded-md border px-2.5 py-1 text-xs hover:bg-muted text-muted-foreground hover:text-foreground">
               {translate("Admin: Kiểm tra và cấu hình Storage Routes")}
             </Link>
@@ -473,12 +540,12 @@ export function OperationalFileWorkspace() {
           {selectedBrand?.name || 'Chưa chọn Brand'}
         </span>
         <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />
-        <span className="font-medium text-foreground">
-          {currentYear}
+        <span className={cn("font-medium", dateParts?.year ? "text-foreground" : "italic text-muted-foreground")}>
+          {dateParts?.year ? dateParts.year : 'Chưa chọn năm'}
         </span>
         <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />
-        <span className="font-medium text-foreground">
-          {isOpellaOrMars ? `P${currentMonth}` : `Tháng ${currentMonth}`}
+        <span className={cn("font-medium", dateParts?.month ? "text-foreground" : "italic text-muted-foreground")}>
+          {dateParts?.month ? `Tháng ${Number(dateParts.month)}` : 'Chưa chọn tháng'}
         </span>
         <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />
         <span className={cn("font-medium truncate max-w-[130px]", selectedPlatform ? "text-foreground" : "text-muted-foreground")}>
@@ -514,7 +581,7 @@ export function OperationalFileWorkspace() {
                 <FolderOpen className="h-4 w-4 text-primary" />
                 <h2 className="font-semibold text-sm">{translate("Ngữ cảnh lưu trữ")}</h2>
               </div>
-              <span className="text-[11px] text-muted-foreground">Cây thư mục</span>
+              <span className="text-[11px] text-muted-foreground">Phân cấp Scope</span>
             </div>
 
             {/* Scope Navigation Tabs */}
@@ -552,12 +619,12 @@ export function OperationalFileWorkspace() {
                     setCampaignId(next)
                     const chosen = catalog?.campaigns.find(item => item.id === next)
                     if (chosen) {
-                      setBrandId(chosen.brand_id)
-                      setPeriodDate(chosen.start_date)
+                      handleBrandChange(chosen.brand_id)
+                      handleDateChange(chosen.start_date)
                       const valid = catalog?.platforms.find(platform =>
                         (chosen.platform_ids?.length ? chosen.platform_ids.includes(platform.id)
                           : !chosen.platform_source || platform.name.trim().toLowerCase() === chosen.platform_source.trim().toLowerCase()))
-                      setPlatformId(valid?.id || '')
+                      handlePlatformChange(valid?.id || '')
                     }
                   }}>
                   <option value="">{translate("Không gắn với chiến dịch")}</option>
@@ -578,12 +645,15 @@ export function OperationalFileWorkspace() {
               </label>
             )}
 
-            {/* Directory Tree View (Client Group → Brand → Year → Month/Period → Platform → Category) */}
-            <div className="space-y-1 rounded-lg border bg-muted/20 p-2 text-xs font-mono max-h-80 overflow-y-auto" role="tree" aria-label="Directory Tree">
+            {/* Directory Tree View (Client Group → Brand → Year → Month/Period → Platform) */}
+            <div className="space-y-1 rounded-lg border bg-muted/20 p-2.5 text-xs font-mono max-h-80 overflow-y-auto" role="tree" aria-label="Directory Tree">
               {/* Root Node: Client Group */}
-              <div className="flex items-center gap-1.5 font-semibold text-foreground py-1 px-1.5 rounded hover:bg-muted/50">
-                <Building className="h-3.5 w-3.5 text-primary" />
-                <span>ADA Client Group</span>
+              <div className="flex items-center justify-between font-semibold text-foreground py-1 px-1.5 rounded hover:bg-muted/50">
+                <div className="flex items-center gap-1.5 truncate">
+                  <Building className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="truncate">ADA Client Group</span>
+                </div>
+                <span className="text-[10px] text-muted-foreground font-sans">Logic Scope</span>
               </div>
 
               {/* Brands Hierarchy */}
@@ -596,7 +666,7 @@ export function OperationalFileWorkspace() {
                       <button
                         type="button"
                         onClick={() => {
-                          setBrandId(b.id)
+                          handleBrandChange(b.id)
                           setExpandedBrands(prev => ({ ...prev, [b.id]: !prev[b.id] }))
                         }}
                         className={cn(
@@ -616,39 +686,45 @@ export function OperationalFileWorkspace() {
                       {/* Brand Children: Year → Month → Platforms */}
                       {isExpanded && (
                         <div className="pl-3 border-l border-border/40 ml-2 space-y-0.5 py-0.5">
-                          {/* Year Node */}
-                          <div className="flex items-center gap-1 text-muted-foreground py-0.5 px-1">
-                            <Calendar className="h-3 w-3 text-muted-foreground/70" />
-                            <span>{currentYear}</span>
-                          </div>
-
-                          {/* Month Node */}
-                          <div className="pl-2.5 border-l border-border/40 ml-1.5 space-y-0.5">
-                            <div className="text-[11px] font-medium text-foreground/80 py-0.5 px-1">
-                              📂 {isOpellaOrMars ? `Period ${currentMonth}` : `Tháng ${currentMonth}`}
+                          {dateParts?.year ? (
+                            <div className="flex items-center gap-1 text-muted-foreground py-0.5 px-1">
+                              <Calendar className="h-3 w-3 text-muted-foreground/70" />
+                              <span>{dateParts.year}</span>
                             </div>
+                          ) : (
+                            <div className="text-[10px] text-muted-foreground italic py-0.5 px-1">
+                              (Chưa chọn ngày)
+                            </div>
+                          )}
 
-                            {/* Platforms */}
+                          {dateParts?.month && (
                             <div className="pl-2.5 border-l border-border/40 ml-1.5 space-y-0.5">
-                              {(catalog?.platforms || []).map(p => {
-                                const isPlatformActive = platformId === p.id
-                                return (
-                                  <button
-                                    key={p.id}
-                                    type="button"
-                                    onClick={() => setPlatformId(p.id)}
-                                    className={cn(
-                                      "w-full flex items-center gap-1.5 text-left py-0.5 px-1 rounded transition-colors text-[11px]",
-                                      isPlatformActive ? "bg-primary/15 text-primary font-semibold" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                                    )}
-                                  >
-                                    <span className={cn("h-1.5 w-1.5 rounded-full", isPlatformActive ? "bg-primary" : "bg-muted-foreground/50")} />
-                                    <span className="truncate">{p.name}</span>
-                                  </button>
-                                )
-                              })}
+                              <div className="text-[11px] font-medium text-foreground/80 py-0.5 px-1">
+                                📂 Tháng {Number(dateParts.month)}
+                              </div>
+
+                              {/* Platforms */}
+                              <div className="pl-2.5 border-l border-border/40 ml-1.5 space-y-0.5">
+                                {(catalog?.platforms || []).map(p => {
+                                  const isPlatformActive = platformId === p.id
+                                  return (
+                                    <button
+                                      key={p.id}
+                                      type="button"
+                                      onClick={() => handlePlatformChange(p.id)}
+                                      className={cn(
+                                        "w-full flex items-center gap-1.5 text-left py-0.5 px-1 rounded transition-colors text-[11px]",
+                                        isPlatformActive ? "bg-primary/15 text-primary font-semibold" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                      )}
+                                    >
+                                      <span className={cn("h-1.5 w-1.5 rounded-full", isPlatformActive ? "bg-primary" : "bg-muted-foreground/50")} />
+                                      <span className="truncate">{p.name}</span>
+                                    </button>
+                                  )
+                                })}
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -657,20 +733,38 @@ export function OperationalFileWorkspace() {
               </div>
             </div>
 
+            {/* Scope Folder Verification Indicator */}
+            <div className="rounded-lg border bg-muted/15 p-2.5 text-[11px] space-y-1">
+              <span className="font-semibold block text-foreground">Trạng thái thư mục:</span>
+              {verifiedFolderPath ? (
+                <div className="space-y-0.5">
+                  <span className="inline-flex items-center gap-1 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-medium">
+                    <ShieldCheck className="h-2.5 w-2.5" />
+                    Thư mục đã xác minh từ metadata
+                  </span>
+                  <p className="font-mono text-muted-foreground break-all text-[10px] pt-0.5">{verifiedFolderPath}</p>
+                </div>
+              ) : (
+                <p className="text-muted-foreground">
+                  Cấu trúc logic theo Brand/Platform. Chưa xác nhận folder vật lý trên Drive/OneDrive cho đến khi chuẩn bị folder hoặc tải file.
+                </p>
+              )}
+            </div>
+
             {/* Scope Form Inputs */}
             <div className="space-y-3 pt-2 border-t text-xs">
               <div className="grid grid-cols-2 gap-2">
                 <label className="block">
                   <span className="mb-1 block font-medium">{translate("Brand")}</span>
                   <select className={fieldClass} value={brandId} disabled={Boolean(shiftId.trim() || campaignId)}
-                    onChange={event => setBrandId(event.target.value)}>
+                    onChange={event => handleBrandChange(event.target.value)}>
                     {(catalog?.brands || []).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
                   </select>
                 </label>
                 <label className="block">
                   <span className="mb-1 block font-medium">{translate("Platform")}</span>
                   <select className={fieldClass} value={platformId} disabled={Boolean(shiftId.trim())}
-                    onChange={event => setPlatformId(event.target.value)}>
+                    onChange={event => handlePlatformChange(event.target.value)}>
                     {(catalog?.platforms || []).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
                   </select>
                 </label>
@@ -682,7 +776,7 @@ export function OperationalFileWorkspace() {
                   <input className={fieldClass} type="date" value={periodDate} disabled={Boolean(shiftId.trim())}
                     min={campaignId ? catalog?.campaigns.find(item => item.id === campaignId)?.start_date : undefined}
                     max={campaignId ? catalog?.campaigns.find(item => item.id === campaignId)?.end_date : undefined}
-                    onChange={event => setPeriodDate(event.target.value)} />
+                    onChange={event => handleDateChange(event.target.value)} />
                 </label>
                 <label className="block">
                   <span className="mb-1 block font-medium">{translate("Nguồn vận hành")}</span>
@@ -846,26 +940,34 @@ export function OperationalFileWorkspace() {
                                 >
                                   <Info className="h-4 w-4" />
                                 </button>
-                                <a
-                                  className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-primary transition-colors"
-                                  href={item.access_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  title="Tải file an toàn"
-                                  aria-label={'Tải ' + item.file_name}
-                                >
-                                  <Download className="h-4 w-4" />
-                                </a>
-                                <button
-                                  className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive transition-colors disabled:opacity-50"
-                                  type="button"
-                                  disabled={busy}
-                                  onClick={() => void remove(item)}
-                                  title="Xóa file"
-                                  aria-label={'Xóa ' + item.file_name}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
+                                {item.access_url && (item.access_url.startsWith('/api/operational-files') || item.access_url.startsWith('https://')) && (
+                                  <a
+                                    className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-primary transition-colors"
+                                    href={item.access_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title="Tải file an toàn qua URL được xác minh"
+                                    aria-label={'Tải ' + item.file_name}
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </a>
+                                )}
+                                {canDeleteFile(item.category) ? (
+                                  <button
+                                    className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive transition-colors disabled:opacity-50"
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={() => void remove(item)}
+                                    title="Xóa file"
+                                    aria-label={'Xóa ' + item.file_name}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                ) : (
+                                  <span className="p-1.5 text-muted-foreground/40" title="Không có quyền xóa">
+                                    <Lock className="h-3.5 w-3.5" />
+                                  </span>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -945,26 +1047,30 @@ export function OperationalFileWorkspace() {
                         <div className="flex items-center justify-between pt-2 border-t text-[11px] text-muted-foreground">
                           <span>{new Date(item.created_at).toLocaleDateString('vi-VN')}</span>
                           <div className="flex items-center gap-1.5">
-                            <a
-                              className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted hover:text-primary transition-colors inline-flex items-center gap-1"
-                              href={item.access_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              aria-label={'Tải ' + item.file_name}
-                            >
-                              <Download className="h-3.5 w-3.5" />
-                              <span>Tải</span>
-                            </a>
-                            <button
-                              className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted hover:text-destructive transition-colors disabled:opacity-50 inline-flex items-center gap-1"
-                              type="button"
-                              disabled={busy}
-                              onClick={() => void remove(item)}
-                              aria-label={'Xóa ' + item.file_name}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              <span>Xóa</span>
-                            </button>
+                            {item.access_url && (item.access_url.startsWith('/api/operational-files') || item.access_url.startsWith('https://')) && (
+                              <a
+                                className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted hover:text-primary transition-colors inline-flex items-center gap-1"
+                                href={item.access_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label={'Tải ' + item.file_name}
+                              >
+                                <Download className="h-3.5 w-3.5" />
+                                <span>Tải</span>
+                              </a>
+                            )}
+                            {canDeleteFile(item.category) && (
+                              <button
+                                className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted hover:text-destructive transition-colors disabled:opacity-50 inline-flex items-center gap-1"
+                                type="button"
+                                disabled={busy}
+                                onClick={() => void remove(item)}
+                                aria-label={'Xóa ' + item.file_name}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                <span>Xóa</span>
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1078,22 +1184,24 @@ export function OperationalFileWorkspace() {
               >
                 Đóng
               </button>
-              <a
-                href={inspectItem.access_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium shadow-sm hover:bg-primary/90 inline-flex items-center gap-1.5"
-              >
-                <Download className="h-3.5 w-3.5" />
-                <span>Mở / Tải file</span>
-              </a>
+              {inspectItem.access_url && (inspectItem.access_url.startsWith('/api/operational-files') || inspectItem.access_url.startsWith('https://')) && (
+                <a
+                  href={inspectItem.access_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium shadow-sm hover:bg-primary/90 inline-flex items-center gap-1.5"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Mở / Tải file</span>
+                </a>
+              )}
             </div>
           </div>
         </div>
       )}
 
       {/* Modal B: Upload Modal */}
-      {showUploadModal && (
+      {showUploadModal && canWrite && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto" role="dialog" aria-modal="true">
           <div className="max-w-lg w-full rounded-2xl border bg-background p-6 shadow-2xl space-y-4 animate-in fade-in-50 zoom-in-95">
             <div className="flex items-center justify-between border-b pb-3">
@@ -1150,12 +1258,12 @@ export function OperationalFileWorkspace() {
                 </div>
 
                 <p className="text-[11px] text-muted-foreground">
-                  {translate("File <= 4MB tải trực tiếp qua hệ thống. Với video hoặc file lớn, khuyến nghị chuẩn bị folder và gắn link file đã tải lên Drive.")}
+                  {translate(`File <= ${formatBytes(maxUploadBytes)} tải trực tiếp qua hệ thống. Với video hoặc file lớn, khuyến nghị chuẩn bị folder và gắn link file đã tải lên Drive.`)}
                 </p>
 
                 {confidentialBlocked && (
                   <p role="alert" className="text-[11px] text-red-600 font-medium">
-                    {translate("Loại file này yêu cầu quyền phê duyệt lưu trữ bảo mật trước khi tải.")}
+                    {translate("Loại file này yêu cầu quyền phê duyệt lưu trữ bảo mật (Admin) trước khi tải.")}
                   </p>
                 )}
               </div>
@@ -1180,7 +1288,7 @@ export function OperationalFileWorkspace() {
       )}
 
       {/* Modal C: Prepare Folder & Attach Existing File Modal */}
-      {showAttachModal && (
+      {showAttachModal && canWrite && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto" role="dialog" aria-modal="true">
           <div className="max-w-lg w-full rounded-2xl border bg-background p-6 shadow-2xl space-y-4 animate-in fade-in-50 zoom-in-95">
             <div className="flex items-center justify-between border-b pb-3">
@@ -1254,7 +1362,7 @@ export function OperationalFileWorkspace() {
       )}
 
       {/* Modal D: System Export Modal */}
-      {showExportModal && catalog?.categories.some(item => item.id === 'system_export') && (
+      {showExportModal && canExport && catalog?.categories.some(item => item.id === 'system_export') && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto" role="dialog" aria-modal="true">
           <div className="max-w-lg w-full rounded-2xl border bg-background p-6 shadow-2xl space-y-4 animate-in fade-in-50 zoom-in-95">
             <div className="flex items-center justify-between border-b pb-3">
