@@ -273,6 +273,7 @@ export interface WorkforceOverviewResponse {
   role: WorkforceRole
   team: WorkforceTeamOverview
   staff: WorkforcePerformanceSummary[]
+  staff_pagination?: Pagination
   leaderboard: LeaderboardEntry[]
   leaderboard_policy_configured: boolean
   unmatched_approved_segments: number
@@ -761,13 +762,31 @@ export const workforceService = {
   async getWorkforceOverview(params: {
     period: string
     role: WorkforceRole
+    page?: number
+    pageSize?: number
+    search?: string
+    staffId?: string
+    record?: 'complete' | 'incomplete'
+    sort?: 'name' | 'assigned' | 'approved_minutes' | 'punctuality'
+    direction?: 'asc' | 'desc'
+    signal?: AbortSignal
   }): Promise<WorkforceOverviewResponse> {
     const q = new URLSearchParams()
     q.set('period', params.period)
     q.set('role', params.role)
+    if (params.page && params.pageSize) {
+      q.set('page', String(params.page))
+      q.set('page_size', String(params.pageSize))
+    }
+    if (params.search) q.set('search', params.search)
+    if (params.staffId) q.set('staff_id', params.staffId)
+    if (params.record) q.set('record', params.record)
+    if (params.sort) q.set('sort', params.sort)
+    if (params.direction) q.set('direction', params.direction)
 
     return requestJson<WorkforceOverviewResponse>(
-      `/api/workforce/overview?${q.toString()}`
+      `/api/workforce/overview?${q.toString()}`,
+      { signal: params.signal }
     )
   },
 }
