@@ -18,6 +18,7 @@ export interface AttendancePhotoNamingInput {
   recordedAt: string
   requestId: string
   extension: 'jpg' | 'png' | 'webp'
+  eventKind?: 'check_in' | 'check_out'
 }
 const pad = (value: number) => String(value).padStart(2, '0')
 const SAFE = (raw: string, max: number) => raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -57,6 +58,6 @@ export function attendancePhotoName(input: AttendancePhotoNamingInput) {
     `${year}${pad(month)}${pad(day)}`, SAFE(input.brand,24), SAFE(input.platform,16),
     'PHONG_'+SAFE(input.studio?.trim() || 'CHUA_XEP',20),
     checkedTime(input.startTime)+'-'+checkedTime(input.endTime),roles[input.role],
-    SAFE(input.staffName,28),'CA_'+SAFE(input.shiftId,12),'CHECKIN',stamp,input.requestId.slice(0,8)
+    SAFE(input.staffName,28),'CA_'+SAFE(input.shiftId,12),(input.eventKind==='check_out'?'CHECKOUT':'CHECKIN'),stamp,input.requestId.slice(0,8)
   ].join('_')+'.'+input.extension
 }
