@@ -23,7 +23,7 @@ CREATE OR REPLACE FUNCTION private.reject_self_attendance_mutation()
 AS $function$
 begin
  raise exception using errcode='42501', message='ATTENDANCE_EVENTS_IMMUTABLE';
-end $function$
+end $function$;
 
 drop trigger if exists self_attendance_immutable on public.self_attendance_events;
 create trigger self_attendance_immutable before update or delete on public.self_attendance_events
@@ -150,7 +150,7 @@ begin
      'staff_id',v_existing.staff_id,'role',v_existing.operational_role,
      'event',v_existing.event_kind,'recorded_at',v_existing.recorded_at,
      'verification_status',v_existing.verification_status,'replayed',false);
-end $function$
+end $function$;
 
 CREATE OR REPLACE FUNCTION public.get_my_self_attendance(p_shift_id text DEFAULT NULL::text, p_limit integer DEFAULT 50)
  RETURNS jsonb
@@ -173,7 +173,7 @@ begin
    and (p_shift_id is null or shift_id=p_shift_id)
    order by recorded_at desc,id limit p_limit) ev;
  return v_events;
-end $function$
+end $function$;
 
 revoke all on function public.self_attendance_record(text,text,text,uuid,text) from public,anon,authenticated;
 revoke all on function public.get_my_self_attendance(text,integer) from public,anon,authenticated;
