@@ -84,3 +84,23 @@ test('U06 missing columns and ambiguous dates stay visible before matching', asy
   await manager.getByRole('button', { name: 'Continue' }).click()
   await expect(manager.getByRole('button', { name: 'Run matching' })).toBeVisible()
 })
+
+test('U06 uploaded CSV uses its real name and blocks missing mapped columns', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('livestream-ops-current-user', '1')
+    localStorage.setItem('livestream-ops-language', 'en')
+  })
+  await page.goto('/staffing?tab=attendance')
+  const manager = page.getByTestId('attendance-source-manager')
+  await expect(manager).toBeVisible({ timeout: 30_000 })
+  await manager.locator('input[type="file"]').setInputFiles({
+    name: 'actual-attendance.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from('MyDate,Khung giờ,Host\n10/10/2026,09:00 - 13:00,Sample Staff'),
+  })
+  await expect(manager.getByText(/actual-attendance\.csv/).first()).toBeVisible()
+  await manager.getByRole('button', { name: 'Continue' }).click()
+  await manager.getByRole('button', { name: 'Continue' }).click()
+  await expect(manager.getByRole('alert')).toContainText('Missing columns')
+  await expect(manager.getByRole('alert')).toContainText('Ngày (MM/DD/YYYY)')
+})
