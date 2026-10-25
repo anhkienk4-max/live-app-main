@@ -432,21 +432,27 @@ export function DashboardAnalytics() {
               <div className="flex items-center gap-1.5 text-xs">
                 <span className="font-medium text-slate-500 hidden sm:inline">{tr('metric', 'Chỉ số', 'Metric')}:</span>
                 <select
-                  aria-label={tr('metric', 'Chỉ số', 'Metric')}
+                  aria-label={tr('metric', 'Ch\u1EC9 s\u1ED1', 'Metric')}
                   value={selectedMetric}
-                  onChange={e => setSelectedMetric(e.target.value as MetricKey)}
+                  onChange={e => {
+                    const nextMetric = e.target.value as MetricKey
+                    setSelectedMetric(nextMetric)
+                    if ((nextMetric === 'ctr' || nextMetric === 'cvr') && selectedChartType === 'pie') {
+                      setSelectedChartType('bar')
+                    }
+                  }}
                   className="h-8 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 >
                   <option value="revenue">{t('revenue')}</option>
-                  <option value="orders">{t('orders')}</option>
-                  <option value="gmv">GMV</option>
-                  <option value="viewers">{t('viewers')}</option>
-                  <option value="productClicks">{t('productClicks')}</option>
-                  <option value="ctr">CTR (%)</option>
-                  <option value="cvr">CVR (%)</option>
-                  <option value="averageOrderValue">{t('averageOrderValue')}</option>
-                  <option value="liveDuration">{t('liveDuration')}</option>
-                  <option value="reportCount">{t('reportCount')}</option>
+                  <option value="orders" disabled={selectedDimension === 'host'}>{t('orders')}{selectedDimension === 'host' ? ' (' + tr('unsupportedForHost', 'Ch\u01B0a h\u1ED7 tr\u1EE3 cho Host', 'Unsupported for Host') + ')' : ''}</option>
+                  <option value="gmv" disabled={selectedDimension === 'host'}>GMV{selectedDimension === 'host' ? ' (' + tr('unsupportedForHost', 'Ch\u01B0a h\u1ED7 tr\u1EE3 cho Host', 'Unsupported for Host') + ')' : ''}</option>
+                  <option value="viewers" disabled={selectedDimension === 'host'}>{t('viewers')}{selectedDimension === 'host' ? ' (' + tr('unsupportedForHost', 'Ch\u01B0a h\u1ED7 tr\u1EE3 cho Host', 'Unsupported for Host') + ')' : ''}</option>
+                  <option value="productClicks" disabled={selectedDimension === 'host'}>{t('productClicks')}{selectedDimension === 'host' ? ' (' + tr('unsupportedForHost', 'Ch\u01B0a h\u1ED7 tr\u1EE3 cho Host', 'Unsupported for Host') + ')' : ''}</option>
+                  <option value="ctr" disabled={selectedDimension === 'host'}>CTR (%){selectedDimension === 'host' ? ' (' + tr('unsupportedForHost', 'Ch\u01B0a h\u1ED7 tr\u1EE3 cho Host', 'Unsupported for Host') + ')' : ''}</option>
+                  <option value="cvr" disabled={selectedDimension === 'host'}>CVR (%){selectedDimension === 'host' ? ' (' + tr('unsupportedForHost', 'Ch\u01B0a h\u1ED7 tr\u1EE3 cho Host', 'Unsupported for Host') + ')' : ''}</option>
+                  <option value="averageOrderValue" disabled={selectedDimension === 'host'}>{t('averageOrderValue')}{selectedDimension === 'host' ? ' (' + tr('unsupportedForHost', 'Ch\u01B0a h\u1ED7 tr\u1EE3 cho Host', 'Unsupported for Host') + ')' : ''}</option>
+                  <option value="liveDuration" disabled={selectedDimension === 'host'}>{t('liveDuration')}{selectedDimension === 'host' ? ' (' + tr('unsupportedForHost', 'Ch\u01B0a h\u1ED7 tr\u1EE3 cho Host', 'Unsupported for Host') + ')' : ''}</option>
+                  <option value="reportCount" disabled={selectedDimension === 'host'}>{t('reportCount')}{selectedDimension === 'host' ? ' (' + tr('unsupportedForHost', 'Ch\u01B0a h\u1ED7 tr\u1EE3 cho Host', 'Unsupported for Host') + ')' : ''}</option>
                 </select>
               </div>
 
@@ -459,7 +465,12 @@ export function DashboardAnalytics() {
                   onChange={e => {
                     const nextDim = e.target.value as AnalyticsDimension
                     setSelectedDimension(nextDim)
-                    if (nextDim !== 'time' && (selectedChartType === 'line' || selectedChartType === 'area')) {
+                    if (nextDim === 'host' && selectedMetric !== 'revenue') {
+                      setSelectedMetric('revenue')
+                    }
+                    if (nextDim === 'time' && selectedChartType === 'pie') {
+                      setSelectedChartType('line')
+                    } else if (nextDim !== 'time' && (selectedChartType === 'line' || selectedChartType === 'area')) {
                       setSelectedChartType('bar')
                     }
                   }}
@@ -477,37 +488,11 @@ export function DashboardAnalytics() {
               <div className="inline-flex h-8 items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs font-medium">
                 <button
                   type="button"
-                  onClick={() => setSelectedChartType('area')}
-                  title="Biểu đồ Miền (Area Chart)"
-                  aria-label="Area Chart"
-                  className={cn("rounded-md px-2 py-1 transition-all", selectedChartType === 'area' ? "bg-white text-indigo-600 shadow-sm font-semibold" : "text-slate-600 hover:text-slate-900")}
-                >
-                  Area
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedChartType('line')}
-                  title="Biểu đồ Đường (Line Chart)"
-                  aria-label="Line Chart"
-                  className={cn("rounded-md px-2 py-1 transition-all", selectedChartType === 'line' ? "bg-white text-indigo-600 shadow-sm font-semibold" : "text-slate-600 hover:text-slate-900")}
-                >
-                  Line
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedChartType('bar')}
-                  title="Biểu đồ Cột (Bar Chart)"
-                  aria-label="Bar Chart"
-                  className={cn("rounded-md px-2 py-1 transition-all", selectedChartType === 'bar' ? "bg-white text-indigo-600 shadow-sm font-semibold" : "text-slate-600 hover:text-slate-900")}
-                >
-                  Bar
-                </button>
-                <button
-                  type="button"
+                  disabled={selectedDimension === 'time' || selectedMetric === 'ctr' || selectedMetric === 'cvr'}
                   onClick={() => setSelectedChartType('pie')}
-                  title="Biểu đồ Tròn (Pie / Donut Chart)"
+                  title={selectedDimension === 'time' ? tr('pieNoTime', 'Bi\u1EC3u \u0111\u1ED3 tr\u00F2n kh\u00F4ng \u00E1p d\u1EE5ng cho chu\u1ED7i th\u1EDDi gian', 'Pie chart not applicable for time series') : (selectedMetric === 'ctr' || selectedMetric === 'cvr') ? tr('pieNoRatio', 'Bi\u1EC3u \u0111\u1ED3 tr\u00F2n kh\u00F4ng \u00E1p d\u1EE5ng cho t\u1EF7 l\u1EC7 ph\u1EA7n tr\u0103m', 'Pie chart not applicable for ratio/percentage') : 'Pie / Donut Chart'}
                   aria-label="Pie Chart"
-                  className={cn("rounded-md px-2 py-1 transition-all", selectedChartType === 'pie' ? "bg-white text-indigo-600 shadow-sm font-semibold" : "text-slate-600 hover:text-slate-900")}
+                  className={cn("rounded-md px-2 py-1 transition-all", selectedChartType === 'pie' ? "bg-white text-indigo-600 shadow-sm font-semibold" : "text-slate-600 hover:text-slate-900", (selectedDimension === 'time' || selectedMetric === 'ctr' || selectedMetric === 'cvr') ? "opacity-40 cursor-not-allowed hover:text-slate-600" : "")}
                 >
                   Pie
                 </button>

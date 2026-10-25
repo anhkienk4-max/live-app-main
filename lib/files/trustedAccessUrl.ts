@@ -21,7 +21,7 @@ export function isTrustedAccessUrl(url: string | null | undefined, expectedProvi
   }
 
   // Internal relative API endpoints are backend-verified and trusted
-  if (trimmed.startsWith('/api/operational-files')) {
+  if (trimmed.startsWith('/api/operational-files') || trimmed.startsWith('/api/report-artifacts')) {
     return true
   }
 
@@ -50,6 +50,8 @@ export function isTrustedAccessUrl(url: string | null | undefined, expectedProvi
     // Microsoft OneDrive / SharePoint trusted domains
     const isOneDriveDomain =
       hostname === 'onedrive.live.com' ||
+      hostname === 'onedrive.com' ||
+      hostname.endsWith('.onedrive.com') ||
       hostname === '1drv.ms' ||
       hostname.endsWith('.sharepoint.com') ||
       hostname.endsWith('.onedrive.live.com')

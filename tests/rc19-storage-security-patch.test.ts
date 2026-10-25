@@ -34,6 +34,7 @@ test('RC19 U08 Security: isTrustedAccessUrl accepts internal API routes and veri
   // Accepts internal backend API routes
   assert.equal(isTrustedAccessUrl('/api/operational-files?file_id=123'), true)
   assert.equal(isTrustedAccessUrl('/api/operational-files/download?id=abc'), true)
+  assert.equal(isTrustedAccessUrl('/api/report-artifacts?file_id=456'), true)
 
   // Accepts Google Drive domains
   assert.equal(isTrustedAccessUrl('https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view'), true)
@@ -44,6 +45,7 @@ test('RC19 U08 Security: isTrustedAccessUrl accepts internal API routes and veri
   // Accepts Microsoft OneDrive & SharePoint domains
   assert.equal(isTrustedAccessUrl('https://acme-my.sharepoint.com/:x:/r/personal/user/Documents/report.xlsx', 'onedrive'), true)
   assert.equal(isTrustedAccessUrl('https://onedrive.live.com/?id=root&cid=123', 'onedrive'), true)
+  assert.equal(isTrustedAccessUrl('https://onedrive.com/view.aspx?id=123', 'onedrive'), true)
   assert.equal(isTrustedAccessUrl('https://1drv.ms/u/s!ApyZxyz', 'onedrive'), true)
   // But rejects OneDrive link when expecting Google Drive
   assert.equal(isTrustedAccessUrl('https://1drv.ms/u/s!ApyZxyz', 'google_drive'), false)
