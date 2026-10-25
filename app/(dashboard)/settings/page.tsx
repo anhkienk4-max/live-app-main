@@ -38,6 +38,7 @@ export default function SettingsPage() {
   const [savingTab, setSavingTab] = React.useState<SettingsTab | null>(null)
   const [settingsLoading, setSettingsLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
+
   const showMockSwitcher = getAuthMode() === 'mock'
     && process.env.NEXT_PUBLIC_ENABLE_MOCK_USER_SWITCHER === 'true'
 
@@ -46,7 +47,7 @@ export default function SettingsPage() {
       setSettingsLoading(false)
       return
     }
-    setActiveTab(hasPermission(currentUser, 'settings.admin') ? 'team' : 'personal')
+    setActiveTab(hasPermission(currentUser, 'settings.leader') ? 'team' : 'personal')
     setSettingsLoading(true)
     setLoadError(null)
     try {
@@ -55,7 +56,7 @@ export default function SettingsPage() {
         settingsService.getOperational(),
         settingsService.getSystem(),
       ])
-      const localizedPersonal = { ...loadedPersonal, language }
+      const localizedPersonal = { ...loadedPersonal, language: loadedPersonal.language || 'vi' }
       setPersonal(localizedPersonal)
       setSavedPersonal(localizedPersonal)
       setOperational(loadedOperational)
@@ -67,7 +68,7 @@ export default function SettingsPage() {
     } finally {
       setSettingsLoading(false)
     }
-  }, [currentUser, language])
+  }, [currentUser])
 
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => { void loadSettings() })
@@ -102,12 +103,18 @@ export default function SettingsPage() {
 
   const savePersonal = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (!currentUser || !personal || !personal.timezone || !personal.date_format) return
+    if (!currentUser || !personal) return
+    if (!personal.timezone || !personal.date_format) {
+      toast({ title: t('error'), description: t('validationError'), variant: 'destructive' })
+      return
+    }
     setSavingTab('personal')
     try {
       const saved = await settingsService.updatePersonal(currentUser.id, personal)
       setSavedPersonal(saved)
-      setLanguage(saved.language)
+      if (saved.language && saved.language !== language) {
+        setLanguage(saved.language)
+      }
       toast({ title: t('success'), description: t('settingsSaved'), variant: 'success' })
     } catch {
       toast({ title: t('error'), description: t('settingsSaveFailed'), variant: 'destructive' })
@@ -122,8 +129,14 @@ export default function SettingsPage() {
       toast({ title: t('error'), description: t('permissionDenied'), variant: 'destructive' })
       return
     }
-    const counts = [operational.registration_cutoff_hours, operational.report_reminder_hours, operational.default_host_count, operational.default_support_count, operational.default_technical_count]
-    if (counts.some(value => !Number.isInteger(value) || value < 0)) {
+    const counts = [
+      operational.registration_cutoff_hours,
+      operational.report_reminder_hours,
+      operational.default_host_count,
+      operational.default_support_count,
+      operational.default_technical_count
+    ]
+    if (counts.some(value => !Number.isInteger(value) || value < 0) || operational.registration_cutoff_hours > 168) {
       toast({ title: t('error'), description: t('validationError'), variant: 'destructive' })
       return
     }
@@ -178,7 +191,17 @@ export default function SettingsPage() {
   }
 
   if (loading || settingsLoading || !currentUser) {
-    return <div className="py-12 text-center">{t('loading')}</div>
+    return (
+      <PageShell archetype="configuration" className="min-w-0 space-y-4 p-4" data-testid="settings-loading-shell">
+        <div className="flex items-center gap-3">
+          <div className="h-6 w-32 animate-pulse rounded bg-slate-200" />
+        </div>
+        <div className="rounded-lg border bg-white p-12 text-center">
+          <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent mb-2" />
+          <p className="text-xs text-muted-foreground">{t('loading')}</p>
+        </div>
+      </PageShell>
+    )
   }
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { void loadSettings() }} />
   if (!personal || !operational || !system || !savedPersonal || !savedOperational || !savedSystem) {
@@ -193,138 +216,742 @@ export default function SettingsPage() {
     ? mockVisionAvailable
     : false
 
-  return <PageShell archetype="configuration" className="min-w-0 space-y-3 p-4" data-testid="settings-page">
-    <PageHeader>
-      <PageHeaderContent>
-        <h1 className="text-lg font-semibold">{t('settings')}</h1>
-        <p className="mt-1 text-xs text-muted-foreground">{t('settingsSubtitle')}</p>
-      </PageHeaderContent>
-    </PageHeader>
+  return (
+    <PageShell archetype="configuration" className="min-w-0 space-y-3 p-3 sm:p-4" data-testid="settings-page">
+      <PageHeader>
+        <PageHeaderContent>
+          <h1 className="text-lg font-semibold">{t('settings')}</h1>
+          <p className="mt-1 text-xs text-muted-foreground">{t('settingsSubtitle')}</p>
+        </PageHeaderContent>
+      </PageHeader>
 
-    {showMockSwitcher && (
-      <Card className="border-dashed"><CardHeader><CardTitle className="text-base">{t('developerTools')}</CardTitle><CardDescription>{t('mockMode')}</CardDescription></CardHeader><CardContent><label className="text-sm font-medium">{t('currentProfile')}<Select value={currentUser.id} onValueChange={value => void setCurrentUser(value)}><SelectTrigger className="mt-1 max-w-md"><SelectValue /></SelectTrigger><SelectContent>{users.filter(user => user.status === 'active').map(user => <SelectItem key={user.id} value={user.id}>{user.full_name} · {resolveSystemPermission(user)}</SelectItem>)}</SelectContent></Select></label></CardContent></Card>
-    )}
+      {showMockSwitcher && (
+        <Card className="border-dashed">
+          <CardHeader>
+            <CardTitle className="text-base">{t('developerTools')}</CardTitle>
+            <CardDescription>{t('mockMode')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <label className="text-sm font-medium">
+              {t('currentProfile')}
+              <Select value={currentUser.id} onValueChange={value => void setCurrentUser(value)}>
+                <SelectTrigger className="mt-1 max-w-md">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {users.filter(user => user.status === 'active').map(user => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.full_name} &middot; {resolveSystemPermission(user)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          </CardContent>
+        </Card>
+      )}
 
-    <Tabs value={activeTab} onValueChange={value => changeTab(value as SettingsTab)} className="min-w-0">
-      <div className="max-w-full overflow-x-auto pb-1">
-        <TabsList className="h-auto w-max flex-nowrap rounded-none border-b bg-transparent p-0">
-          {isLeader && <TabsTrigger className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none" value="team">{t('teamSettings')}{operationalDirty ? ' •' : ''}</TabsTrigger>}
-          {isLeader && <TabsTrigger disabled={!isAdmin} title={!isAdmin?t('permissionDenied'):undefined} className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none" value="system">{t('systemSettings')}{systemDirty ? ' •' : ''}</TabsTrigger>}
-          {isLeader && <TabsTrigger disabled={!isAdmin} title={!isAdmin?t('permissionDenied'):undefined} className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none" value="integrations">{t('integrations')}</TabsTrigger>}
-          <TabsTrigger className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none" value="personal">{t('personalSettings')}{personalDirty ? ' •' : ''}</TabsTrigger>
-          {isAdmin && <TabsTrigger className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none" value="audit">{t('audit')}</TabsTrigger>}
-        </TabsList>
-      </div>
-
-      {activeTab !== 'team' && <p className="rounded-md border bg-slate-50 p-3 text-xs text-muted-foreground" role="note">These preferences are stored in this browser session. They do not change server configuration or report integration health.</p>}
-      <TabsContent value="personal">
-        <form onSubmit={savePersonal}>
-          <Card><CardHeader><CardTitle className="flex items-center gap-2"><UserCog className="h-5 w-5" />{t('personalSettings')}</CardTitle><CardDescription>{currentUser.email}</CardDescription></CardHeader><CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2">
-              <SettingSelect label={t('language')} value={personal.language} options={[{ id: 'en', name: t('english') }, { id: 'vi', name: t('vietnamese') }]} onChange={value => setPersonal(current => current && ({ ...current, language: value as 'en' | 'vi' }))} />
-              <SettingSelect label={t('timezone')} value={personal.timezone} options={[{ id: 'Asia/Ho_Chi_Minh', name: 'Asia/Ho_Chi_Minh' }, { id: 'UTC', name: 'UTC' }, { id: 'Asia/Singapore', name: 'Asia/Singapore' }]} onChange={value => setPersonal(current => current && ({ ...current, timezone: value }))} />
-              <SettingSelect label={t('dateFormat')} value={personal.date_format} options={[{ id: 'dd/MM/yyyy', name: 'DD/MM/YYYY' }, { id: 'MM/dd/yyyy', name: 'MM/DD/YYYY' }, { id: 'yyyy-MM-dd', name: 'YYYY-MM-DD' }]} onChange={value => setPersonal(current => current && ({ ...current, date_format: value }))} />
-              <SettingSelect label={t('defaultCalendarView')} value={personal.default_calendar_view} options={['month','week','day','list'].map(value => ({ id: value, name: t(value as 'month' | 'week' | 'day' | 'list') }))} onChange={value => setPersonal(current => current && ({ ...current, default_calendar_view: value as PersonalSettings['default_calendar_view'] }))} />
-              <ToggleSetting label={t('notifications')} checked={personal.notifications_enabled} onChange={checked => setPersonal(current => current && ({ ...current, notifications_enabled: checked }))} />
-            </div>
-            <div><p className="mb-2 text-sm font-medium">{t('registrationPreferences')}</p><div className="flex flex-wrap gap-2">{roles.map(role => { const active = personal.preferred_roles.includes(role); return <Button type="button" key={role} variant={active ? 'default' : 'outline'} onClick={() => setPersonal(current => current && ({ ...current, preferred_roles: active ? current.preferred_roles.filter(item => item !== role) : [...current.preferred_roles, role] }))}>{t(role)}</Button> })}</div></div>
-            <Actions dirty={personalDirty} saving={savingTab === 'personal'} onReset={() => setPersonal(savedPersonal)} />
-          </CardContent></Card>
-        </form>
-      </TabsContent>
-
-      {isLeader && <TabsContent value="team"><form onSubmit={saveOperational} className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-muted-foreground">{t('teamSettings')} / {t('approvalPreferences')}</p><Actions dirty={operationalDirty} saving={savingTab === 'team'} onReset={() => setOperational(savedOperational)} /></div>
-        <div className="grid items-start gap-4 lg:grid-cols-2">
-          <Card><CardHeader className="border-b p-4"><CardTitle className="flex items-center gap-2 text-sm"><SlidersHorizontal className="h-4 w-4 text-blue-600" />{t('approvalPreferences')}</CardTitle></CardHeader><CardContent className="space-y-4 p-4">
-            <NumberSetting label={`${t('registrationCutoff')} (hours)`} value={operational.registration_cutoff_hours} onChange={value => setOperational(current => current && ({ ...current, registration_cutoff_hours: value }))} />
-            <ToggleSetting label={t('approvalPreferences')} checked={operational.require_registration_approval} onChange={checked => setOperational(current => current && ({ ...current, require_registration_approval: checked }))} />
-            <ToggleSetting label={t('lockShift')} checked={operational.auto_lock_filled_shifts} onChange={checked => setOperational(current => current && ({ ...current, auto_lock_filled_shifts: checked }))} />
-          </CardContent></Card>
-          <Card><CardHeader className="border-b p-4"><CardTitle className="flex items-center gap-2 text-sm"><UserCog className="h-4 w-4 text-purple-600" />{t('staffingDefaults')}</CardTitle></CardHeader><CardContent className="space-y-4 p-4">
-            <div className="grid gap-3 sm:grid-cols-3"><CountInput label={t('host')} value={operational.default_host_count} onChange={value => setOperational(current => current && ({ ...current, default_host_count: value }))} /><CountInput label={t('support')} value={operational.default_support_count} onChange={value => setOperational(current => current && ({ ...current, default_support_count: value }))} /><CountInput label={t('technical')} value={operational.default_technical_count} onChange={value => setOperational(current => current && ({ ...current, default_technical_count: value }))} /></div>
-            <ToggleSetting label={t('multiRoleBlocked')} checked={!operational.allow_multi_role_per_shift} onChange={checked => setOperational(current => current && ({ ...current, allow_multi_role_per_shift: !checked }))} />
-            <ReadOnlySetting label="Host role binding (read only)" value={operational.strict_host_role_binding === undefined ? t('visionOcrUnavailable') : String(operational.strict_host_role_binding)} />
-          </CardContent></Card>
-          <Card><CardHeader className="border-b p-4"><CardTitle className="flex items-center gap-2 text-sm"><ShieldCheck className="h-4 w-4 text-emerald-600" />{t('swapRules')}</CardTitle></CardHeader><CardContent className="space-y-3 p-4">
-            <ReadOnlySetting label={t('swapRules')} value={t('visionOcrUnavailable')} />
-            <ReadOnlySetting label="Capacity validation (read only)" value={operational.require_shift_capacity_validation === undefined ? t('visionOcrUnavailable') : String(operational.require_shift_capacity_validation)} />
-            <ReadOnlySetting label="Time overlap validation (read only)" value={operational.require_time_overlap_validation === undefined ? t('visionOcrUnavailable') : String(operational.require_time_overlap_validation)} />
-          </CardContent></Card>
-          <Card><CardHeader className="border-b p-4"><CardTitle className="flex items-center gap-2 text-sm"><Bell className="h-4 w-4 text-orange-600" />{t('reportReminders')}</CardTitle></CardHeader><CardContent className="space-y-3 p-4">
-            <ReadOnlySetting label={t('reportOcrReview')} value={t('visionOcrUnavailable')} />
-            <ReadOnlySetting label={t('reportReminders')} value={t('visionOcrUnavailable')} />
-            <ReadOnlySetting label="Leader schedule editing (read only)" value={operational.allow_leader_schedule_edit === undefined ? t('visionOcrUnavailable') : String(operational.allow_leader_schedule_edit)} />
-            <ReadOnlySetting label={t('teamNotifications')} value={t('visionOcrUnavailable')} />
-          </CardContent></Card>
+      <Tabs value={activeTab} onValueChange={value => changeTab(value as SettingsTab)} className="min-w-0">
+        <div className="max-w-full overflow-x-auto pb-1">
+          <TabsList className="h-auto w-max flex-nowrap rounded-none border-b bg-transparent p-0">
+            {isLeader && (
+              <TabsTrigger
+                data-testid="settings-team-tab"
+                className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs font-medium data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none"
+                value="team"
+              >
+                {t('teamSettings')}{operationalDirty ? ' \u2022' : ''}
+              </TabsTrigger>
+            )}
+            {isLeader && (
+              <TabsTrigger
+                data-testid="settings-system-tab"
+                disabled={!isAdmin}
+                title={!isAdmin ? t('permissionDenied') : undefined}
+                className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs font-medium data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none disabled:opacity-50"
+                value="system"
+              >
+                {t('systemSettings')}{systemDirty ? ' \u2022' : ''}
+              </TabsTrigger>
+            )}
+            {isLeader && (
+              <TabsTrigger
+                data-testid="settings-integrations-tab"
+                disabled={!isAdmin}
+                title={!isAdmin ? t('permissionDenied') : undefined}
+                className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs font-medium data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none disabled:opacity-50"
+                value="integrations"
+              >
+                {t('integrations')}
+              </TabsTrigger>
+            )}
+            <TabsTrigger
+              data-testid="settings-personal-tab"
+              className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs font-medium data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none"
+              value="personal"
+            >
+              {t('personalSettings')}{personalDirty ? ' \u2022' : ''}
+            </TabsTrigger>
+            {isAdmin && (
+              <TabsTrigger
+                data-testid="settings-audit-tab"
+                className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs font-medium data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none"
+                value="audit"
+              >
+                {t('audit')}
+              </TabsTrigger>
+            )}
+          </TabsList>
         </div>
-      </form></TabsContent>}
 
-      {isAdmin && <TabsContent value="system"><form onSubmit={saveSystem}>
-        <Card><CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5" />{t('systemSettings')}</CardTitle><CardDescription>{t('credentialsSafe')}</CardDescription></CardHeader><CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
-            <ToggleSetting label={t('exportSettings')} checked={Boolean(system.export_include_metadata)} onChange={checked => setSystem(current => current && ({ ...current, export_include_metadata: checked }))} />
-            <ToggleSetting label={t('importSettings')} checked={Boolean(system.import_duplicate_warning)} onChange={checked => setSystem(current => current && ({ ...current, import_duplicate_warning: checked }))} />
-            <ToggleSetting label={t('publicCsvImport')} checked={Boolean(system.import_allow_public_csv)} onChange={checked => setSystem(current => current && ({ ...current, import_allow_public_csv: checked }))} />
-            <ToggleSetting label={t('maintenanceTools')} checked={Boolean(system.maintenance_mode)} onChange={checked => setSystem(current => current && ({ ...current, maintenance_mode: checked }))} />
-            <SettingSelect label={t('exportFileFormat')} value={String(system.export_file_format)} options={[{ id: 'xlsx', name: 'XLSX' }]} onChange={value => setSystem(current => current && ({ ...current, export_file_format: value }))} />
-            <SettingSelect label={t('brandDefaults')} value={String(system.brand_default_status)} options={[{ id: 'active', name: t('active') }, { id: 'draft', name: t('draft') }]} onChange={value => setSystem(current => current && ({ ...current, brand_default_status: value }))} />
-            <SettingSelect label={t('platformDefaults')} value={String(system.platform_default_status)} options={[{ id: 'active', name: t('active') }, { id: 'draft', name: t('draft') }]} onChange={value => setSystem(current => current && ({ ...current, platform_default_status: value }))} />
-            <SettingSelect label={t('campaignDefaults')} value={String(system.campaign_default_status)} options={[{ id: 'draft', name: t('draft') }, { id: 'active', name: t('active') }]} onChange={value => setSystem(current => current && ({ ...current, campaign_default_status: value }))} />
-            <SettingSelect label={t('localizationSettings')} value={String(system.localization_default)} options={[{ id: 'en', name: t('english') }, { id: 'vi', name: t('vietnamese') }]} onChange={value => setSystem(current => current && ({ ...current, localization_default: value }))} />
-            <ReadOnlySetting label={t('ocrConfiguration')} value={String(system.ocr_provider)} />
-          </div>
-          <div><h3 className="mb-3 font-semibold">{t('systemPermissions')}</h3><div className="grid gap-3 md:grid-cols-3">{(['member','leader','admin'] as const).map(level => <div key={level} className="rounded-lg border p-3"><p className="font-medium">{t(level)}</p><p className="mt-1 text-xs text-muted-foreground">{permissionMatrix[level].size} {t('permissions')}</p></div>)}</div></div>
-          <div><h3 className="mb-3 font-semibold">{t('operationalRoles')}</h3><div className="grid gap-3 md:grid-cols-3">{roles.map(role => <div className="rounded-lg border p-3" key={role}><p className="text-sm font-medium">{t(role)}</p><Badge className="mt-2 bg-green-100 text-green-800">{t('active')}</Badge></div>)}</div></div>
-          <Actions dirty={systemDirty} saving={savingTab === 'system'} onReset={() => setSystem(savedSystem)} />
-        </CardContent></Card>
-      </form></TabsContent>}
+        {activeTab !== 'team' && (
+          <p className="mt-2 rounded-md border bg-slate-50 p-2.5 text-xs text-muted-foreground" role="note">
+            These preferences are stored in this browser session. They do not change server configuration or report integration health.
+          </p>
+        )}
 
-      {isAdmin && <TabsContent value="integrations"><form onSubmit={event => void saveSystem(event, 'integrations')}>
-        <Card><CardHeader><CardTitle className="flex items-center gap-2"><Plug className="h-5 w-5" />{t('integrations')}</CardTitle><CardDescription>{t('credentialsSafe')}</CardDescription></CardHeader><CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3"><ReadOnlySetting label={t('integrationSettings')} value={getAuthMode() === 'supabase' ? t('visionOcrUnavailable') : String(system.integration_mode)} /><ReadOnlySetting label={t('supabaseStatus')} value={getAuthMode() === 'supabase' ? t('visionOcrUnavailable') : String(system.supabase_connection_status)} /><ReadOnlySetting label={t('ocrConfiguration')} value={String(system.ocr_provider)} /></div>
-          <section className="space-y-4 rounded-lg border p-4" data-testid="vision-ocr-admin-settings">
-            <div><h3 className="flex items-center gap-2 font-semibold"><Bot className="h-5 w-5" />{t('visionOcrSettings')}</h3><p className="mt-1 text-sm text-muted-foreground">{t('visionOcrSettingsHelp')}</p></div>
-            <div className="grid gap-4 md:grid-cols-3">
-              <ToggleSetting label={t('visionOcrEnabled')} checked={Boolean(system.vision_ocr_enabled)} onChange={checked => setSystem(current => current && ({ ...current, vision_ocr_enabled: checked }))} />
-              <SettingSelect label={t('visionOcrProvider')} value={visionProvider} options={[{ id: 'disabled', name: t('visionOcrDisabled') }, ...(mockVisionAvailable ? [{ id: 'mock', name: 'Mock' }] : []), { id: 'openai', name: 'OpenAI' }]} onChange={value => setSystem(current => current && ({ ...current, vision_ocr_provider: value, vision_ocr_provider_configured: value === 'mock' && mockVisionAvailable }))} />
-              <ReadOnlySetting label={t('visionOcrProviderState')} value={visionProviderConfigured ? t('visionOcrConfigured') : t('visionOcrNotConfiguredState')} />
-              <SettingSelect label={t('visionOcrDefaultMode')} value={String(system.vision_ocr_default_mode || 'local')} options={[{ id: 'local', name: t('visionOcrQuickScan') }, { id: 'ai', name: t('visionOcrAiScan') }, { id: 'compare', name: t('visionOcrCompareScan') }]} onChange={value => setSystem(current => current && ({ ...current, vision_ocr_default_mode: value }))} />
-              <label className="text-sm font-medium">{t('visionOcrModelIdentifier')}<Input className="mt-1" value={String(system.vision_ocr_model || '')} maxLength={120} onChange={event => setSystem(current => current && ({ ...current, vision_ocr_model: event.target.value }))} /></label>
-              <NumberSetting label={t('visionOcrTimeoutMs')} min={1000} value={finiteNumber(system.vision_ocr_timeout_ms, 30000)} onChange={value => setSystem(current => current && ({ ...current, vision_ocr_timeout_ms: value }))} />
-              <NumberSetting label={t('visionOcrRetryCount')} value={finiteNumber(system.vision_ocr_retry_count, 0)} onChange={value => setSystem(current => current && ({ ...current, vision_ocr_retry_count: Math.min(1, value) }))} />
-              <NumberSetting label={t('visionOcrDailyLimit')} min={1} value={finiteNumber(system.vision_ocr_daily_request_limit, 25)} onChange={value => setSystem(current => current && ({ ...current, vision_ocr_daily_request_limit: value }))} />
-              <NumberSetting label={t('visionOcrMonthlyLimit')} min={1} value={finiteNumber(system.vision_ocr_monthly_request_limit, 500)} onChange={value => setSystem(current => current && ({ ...current, vision_ocr_monthly_request_limit: value }))} />
-              <ToggleSetting label={t('visionOcrAllowTikTok')} checked={Boolean(system.vision_ocr_allow_tiktok)} onChange={checked => setSystem(current => current && ({ ...current, vision_ocr_allow_tiktok: checked }))} />
-              <ToggleSetting label={t('visionOcrAllowShopee')} checked={Boolean(system.vision_ocr_allow_shopee)} onChange={checked => setSystem(current => current && ({ ...current, vision_ocr_allow_shopee: checked }))} />
-              <ToggleSetting label={t('visionOcrDiagnosticsRetention')} checked={Boolean(system.vision_ocr_diagnostics_retention)} onChange={checked => setSystem(current => current && ({ ...current, vision_ocr_diagnostics_retention: checked }))} />
-            </div>
-            <p className="text-sm text-muted-foreground">{t('visionOcrMockDevelopmentOnly')}</p>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" disabled={!mockVisionAvailable || visionProvider !== 'mock'} onClick={() => toast({ title: t('visionOcrTestMock'), description: t('visionOcrConfigured'), variant: 'success' })}>{t('visionOcrTestMock')}</Button>
-              <Button type="button" variant="outline" onClick={() => setSystem(current => current && ({ ...current, vision_ocr_enabled: false, vision_ocr_provider: 'disabled', vision_ocr_provider_configured: false, vision_ocr_default_mode: 'local' }))}>{t('visionOcrDisable')}</Button>
-              <Button type="button" variant="outline" onClick={() => setSystem(current => current && ({ ...current, vision_ocr_provider: 'disabled', vision_ocr_provider_configured: false, vision_ocr_model: 'openai-not-configured' }))}>{t('visionOcrClearConfiguration')}</Button>
-            </div>
-          </section>
-          <p className="text-sm text-muted-foreground">{t('integrationSecretsNotice')}</p>
-          <Actions dirty={systemDirty} saving={savingTab === 'integrations'} onReset={() => setSystem(savedSystem)} />
-        </CardContent></Card>
-      </form></TabsContent>}
+        <TabsContent value="personal" className="mt-3">
+          <form onSubmit={savePersonal}>
+            <Card>
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <UserCog className="h-5 w-5 text-indigo-600" />
+                  {t('personalSettings')}
+                </CardTitle>
+                <CardDescription>{currentUser.email}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 p-4 sm:p-6 pt-0">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <SettingSelect
+                    label={t('language')}
+                    value={personal.language}
+                    options={[
+                      { id: 'en', name: t('english') },
+                      { id: 'vi', name: t('vietnamese') },
+                    ]}
+                    onChange={value => setPersonal(current => current && ({ ...current, language: value as 'en' | 'vi' }))}
+                  />
+                  <SettingSelect
+                    label={t('timezone')}
+                    value={personal.timezone}
+                    options={[
+                      { id: 'Asia/Ho_Chi_Minh', name: 'Asia/Ho_Chi_Minh' },
+                      { id: 'UTC', name: 'UTC' },
+                      { id: 'Asia/Singapore', name: 'Asia/Singapore' },
+                    ]}
+                    onChange={value => setPersonal(current => current && ({ ...current, timezone: value }))}
+                  />
+                  <SettingSelect
+                    label={t('dateFormat')}
+                    value={personal.date_format}
+                    options={[
+                      { id: 'dd/MM/yyyy', name: 'DD/MM/YYYY' },
+                      { id: 'MM/dd/yyyy', name: 'MM/DD/YYYY' },
+                      { id: 'yyyy-MM-dd', name: 'YYYY-MM-DD' },
+                    ]}
+                    onChange={value => setPersonal(current => current && ({ ...current, date_format: value }))}
+                  />
+                  <SettingSelect
+                    label={t('defaultCalendarView')}
+                    value={personal.default_calendar_view}
+                    options={['month', 'week', 'day', 'list'].map(value => ({
+                      id: value,
+                      name: t(value as 'month' | 'week' | 'day' | 'list'),
+                    }))}
+                    onChange={value =>
+                      setPersonal(current => current && ({
+                        ...current,
+                        default_calendar_view: value as PersonalSettings['default_calendar_view'],
+                      }))
+                    }
+                  />
+                  <ToggleSetting
+                    label={t('notifications')}
+                    checked={personal.notifications_enabled}
+                    onChange={checked => setPersonal(current => current && ({ ...current, notifications_enabled: checked }))}
+                  />
+                </div>
+                <div>
+                  <p className="mb-2 text-sm font-medium">{t('registrationPreferences')}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {roles.map(role => {
+                      const active = personal.preferred_roles.includes(role)
+                      return (
+                        <Button
+                          type="button"
+                          key={role}
+                          size="sm"
+                          variant={active ? 'default' : 'outline'}
+                          onClick={() =>
+                            setPersonal(current => current && ({
+                              ...current,
+                              preferred_roles: active
+                                ? current.preferred_roles.filter(item => item !== role)
+                                : [...current.preferred_roles, role],
+                            }))
+                          }
+                        >
+                          {t(role)}
+                        </Button>
+                      )
+                    })}
+                  </div>
+                </div>
+                <Actions dirty={personalDirty} saving={savingTab === 'personal'} onReset={() => setPersonal(savedPersonal)} />
+              </CardContent>
+            </Card>
+          </form>
+        </TabsContent>
 
-      {isAdmin && <TabsContent value="audit"><form onSubmit={event => void saveSystem(event, 'audit')}>
-        <Card><CardHeader><CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5" />{t('audit')}</CardTitle><CardDescription>{t('auditSettings')}</CardDescription></CardHeader><CardContent className="space-y-4"><div className="grid gap-4 md:grid-cols-2"><ToggleSetting label={t('auditEnabled')} checked={Boolean(system.audit_enabled)} onChange={checked => setSystem(current => current && ({ ...current, audit_enabled: checked }))} /><NumberSetting label={t('auditRetentionDays')} min={1} value={finiteNumber(system.audit_retention_days, 90)} onChange={value => setSystem(current => current && ({ ...current, audit_retention_days: value }))} /></div><div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">{t('auditMockNotice')}</div><Actions dirty={systemDirty} saving={savingTab === 'audit'} onReset={() => setSystem(savedSystem)} /></CardContent></Card>
-      </form></TabsContent>}
-    </Tabs>
-  </PageShell>
+        {isLeader && (
+          <TabsContent value="team" className="mt-3">
+            <form onSubmit={saveOperational} className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground">
+                  {t('teamSettings')} / {t('approvalPreferences')}
+                </p>
+                <Actions dirty={operationalDirty} saving={savingTab === 'team'} onReset={() => setOperational(savedOperational)} />
+              </div>
+              <div className="grid items-start gap-4 lg:grid-cols-2">
+                <Card>
+                  <CardHeader className="border-b p-4">
+                    <CardTitle className="flex items-center gap-2 text-sm">
+                      <SlidersHorizontal className="h-4 w-4 text-blue-600" />
+                      {t('approvalPreferences')}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 p-4">
+                    <NumberSetting
+                      label={`${t('registrationCutoff')} (hours)`}
+                      value={operational.registration_cutoff_hours}
+                      onChange={value => setOperational(current => current && ({ ...current, registration_cutoff_hours: value }))}
+                    />
+                    <ToggleSetting
+                      label={t('approvalPreferences')}
+                      checked={operational.require_registration_approval}
+                      onChange={checked => setOperational(current => current && ({ ...current, require_registration_approval: checked }))}
+                    />
+                    <ToggleSetting
+                      label={t('lockShift')}
+                      checked={operational.auto_lock_filled_shifts}
+                      onChange={checked => setOperational(current => current && ({ ...current, auto_lock_filled_shifts: checked }))}
+                    />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="border-b p-4">
+                    <CardTitle className="flex items-center gap-2 text-sm">
+                      <UserCog className="h-4 w-4 text-purple-600" />
+                      {t('staffingDefaults')}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 p-4">
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <CountInput
+                        label={t('host')}
+                        value={operational.default_host_count}
+                        onChange={value => setOperational(current => current && ({ ...current, default_host_count: value }))}
+                      />
+                      <CountInput
+                        label={t('support')}
+                        value={operational.default_support_count}
+                        onChange={value => setOperational(current => current && ({ ...current, default_support_count: value }))}
+                      />
+                      <CountInput
+                        label={t('technical')}
+                        value={operational.default_technical_count}
+                        onChange={value => setOperational(current => current && ({ ...current, default_technical_count: value }))}
+                      />
+                    </div>
+                    <ToggleSetting
+                      label={t('multiRoleBlocked')}
+                      checked={!operational.allow_multi_role_per_shift}
+                      onChange={checked => setOperational(current => current && ({ ...current, allow_multi_role_per_shift: !checked }))}
+                    />
+                    <ReadOnlySetting
+                      label="Host role binding (read only)"
+                      value={operational.strict_host_role_binding === undefined ? t('visionOcrUnavailable') : String(operational.strict_host_role_binding)}
+                    />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="border-b p-4">
+                    <CardTitle className="flex items-center gap-2 text-sm">
+                      <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                      {t('swapRules')}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 p-4">
+                    <ReadOnlySetting label={t('swapRules')} value={t('visionOcrUnavailable')} />
+                    <ReadOnlySetting
+                      label="Capacity validation (read only)"
+                      value={operational.require_shift_capacity_validation === undefined ? t('visionOcrUnavailable') : String(operational.require_shift_capacity_validation)}
+                    />
+                    <ReadOnlySetting
+                      label="Time overlap validation (read only)"
+                      value={operational.require_time_overlap_validation === undefined ? t('visionOcrUnavailable') : String(operational.require_time_overlap_validation)}
+                    />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="border-b p-4">
+                    <CardTitle className="flex items-center gap-2 text-sm">
+                      <Bell className="h-4 w-4 text-orange-600" />
+                      {t('reportReminders')}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 p-4">
+                    <ReadOnlySetting label={t('reportOcrReview')} value={t('visionOcrUnavailable')} />
+                    <ReadOnlySetting label={t('reportReminders')} value={t('visionOcrUnavailable')} />
+                    <ReadOnlySetting
+                      label="Leader schedule editing (read only)"
+                      value={operational.allow_leader_schedule_edit === undefined ? t('visionOcrUnavailable') : String(operational.allow_leader_schedule_edit)}
+                    />
+                    <ReadOnlySetting label={t('teamNotifications')} value={t('visionOcrUnavailable')} />
+                  </CardContent>
+                </Card>
+              </div>
+              <div className="flex justify-end pt-2">
+                <Actions dirty={operationalDirty} saving={savingTab === 'team'} onReset={() => setOperational(savedOperational)} />
+              </div>
+            </form>
+          </TabsContent>
+        )}
+
+        {isAdmin && <TabsContent value="system">
+            <form onSubmit={saveSystem}>
+              <Card>
+                <CardHeader className="p-4 sm:p-6">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <ShieldCheck className="h-5 w-5 text-blue-600" />
+                    {t('systemSettings')}
+                  </CardTitle>
+                  <CardDescription>{t('credentialsSafe')}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4 p-4 sm:p-6 pt-0">
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <ToggleSetting
+                      label={t('exportSettings')}
+                      checked={Boolean(system.export_include_metadata)}
+                      onChange={checked => setSystem(current => current && ({ ...current, export_include_metadata: checked }))}
+                    />
+                    <ToggleSetting
+                      label={t('importSettings')}
+                      checked={Boolean(system.import_duplicate_warning)}
+                      onChange={checked => setSystem(current => current && ({ ...current, import_duplicate_warning: checked }))}
+                    />
+                    <ToggleSetting
+                      label={t('publicCsvImport')}
+                      checked={Boolean(system.import_allow_public_csv)}
+                      onChange={checked => setSystem(current => current && ({ ...current, import_allow_public_csv: checked }))}
+                    />
+                    <ToggleSetting
+                      label={t('maintenanceTools')}
+                      checked={Boolean(system.maintenance_mode)}
+                      onChange={checked => setSystem(current => current && ({ ...current, maintenance_mode: checked }))}
+                    />
+                    <SettingSelect
+                      label={t('exportFileFormat')}
+                      value={String(system.export_file_format)}
+                      options={[{ id: 'xlsx', name: 'XLSX' }]}
+                      onChange={value => setSystem(current => current && ({ ...current, export_file_format: value }))}
+                    />
+                    <SettingSelect
+                      label={t('brandDefaults')}
+                      value={String(system.brand_default_status)}
+                      options={[
+                        { id: 'active', name: t('active') },
+                        { id: 'draft', name: t('draft') },
+                      ]}
+                      onChange={value => setSystem(current => current && ({ ...current, brand_default_status: value }))}
+                    />
+                    <SettingSelect
+                      label={t('platformDefaults')}
+                      value={String(system.platform_default_status)}
+                      options={[
+                        { id: 'active', name: t('active') },
+                        { id: 'draft', name: t('draft') },
+                      ]}
+                      onChange={value => setSystem(current => current && ({ ...current, platform_default_status: value }))}
+                    />
+                    <SettingSelect
+                      label={t('campaignDefaults')}
+                      value={String(system.campaign_default_status)}
+                      options={[
+                        { id: 'draft', name: t('draft') },
+                        { id: 'active', name: t('active') },
+                      ]}
+                      onChange={value => setSystem(current => current && ({ ...current, campaign_default_status: value }))}
+                    />
+                    <SettingSelect
+                      label={t('localizationSettings')}
+                      value={String(system.localization_default)}
+                      options={[
+                        { id: 'en', name: t('english') },
+                        { id: 'vi', name: t('vietnamese') },
+                      ]}
+                      onChange={value => setSystem(current => current && ({ ...current, localization_default: value }))}
+                    />
+                    <ReadOnlySetting label={t('ocrConfiguration')} value={String(system.ocr_provider)} />
+                  </div>
+                  <div>
+                    <h3 className="mb-3 font-semibold text-sm">{t('systemPermissions')}</h3>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      {(['member', 'leader', 'admin'] as const).map(level => (
+                        <div key={level} className="rounded-lg border p-3">
+                          <p className="font-medium text-sm">{t(level)}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {permissionMatrix[level].size} {t('permissions')}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="mb-3 font-semibold text-sm">{t('operationalRoles')}</h3>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      {roles.map(role => (
+                        <div className="rounded-lg border p-3" key={role}>
+                          <p className="text-sm font-medium">{t(role)}</p>
+                          <Badge className="mt-2 bg-green-100 text-green-800">{t('active')}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <Actions dirty={systemDirty} saving={savingTab === 'system'} onReset={() => setSystem(savedSystem)} />
+                </CardContent>
+              </Card>
+            </form>
+          </TabsContent>}
+
+        {isAdmin && <TabsContent value="integrations">
+            <form onSubmit={event => void saveSystem(event, 'integrations')}>
+              <Card>
+                <CardHeader className="p-4 sm:p-6">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Plug className="h-5 w-5 text-indigo-600" />
+                    {t('integrations')}
+                  </CardTitle>
+                  <CardDescription>{t('credentialsSafe')}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4 p-4 sm:p-6 pt-0">
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <ReadOnlySetting
+                      label={t('integrationSettings')}
+                      value={getAuthMode() === 'supabase' ? t('visionOcrUnavailable') : String(system.integration_mode)}
+                    />
+                    <ReadOnlySetting
+                      label={t('supabaseStatus')}
+                      value={getAuthMode() === 'supabase' ? t('visionOcrUnavailable') : String(system.supabase_connection_status)}
+                    />
+                    <ReadOnlySetting label={t('ocrConfiguration')} value={String(system.ocr_provider)} />
+                  </div>
+                  <section className="space-y-4 rounded-lg border p-4" data-testid="vision-ocr-admin-settings">
+                    <div>
+                      <h3 className="flex items-center gap-2 font-semibold text-sm">
+                        <Bot className="h-5 w-5 text-primary" />
+                        {t('visionOcrSettings')}
+                      </h3>
+                      <p className="mt-1 text-xs text-muted-foreground">{t('visionOcrSettingsHelp')}</p>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      <ToggleSetting
+                        label={t('visionOcrEnabled')}
+                        checked={Boolean(system.vision_ocr_enabled)}
+                        onChange={checked => setSystem(current => current && ({ ...current, vision_ocr_enabled: checked }))}
+                      />
+                      <SettingSelect
+                        label={t('visionOcrProvider')}
+                        value={visionProvider}
+                        options={[
+                          { id: 'disabled', name: t('visionOcrDisabled') },
+                          ...(mockVisionAvailable ? [{ id: 'mock', name: 'Mock' }] : []),
+                          { id: 'openai', name: 'OpenAI' },
+                        ]}
+                        onChange={value =>
+                          setSystem(current => current && ({
+                            ...current,
+                            vision_ocr_provider: value,
+                            vision_ocr_provider_configured: value === 'mock' && mockVisionAvailable,
+                          }))
+                        }
+                      />
+                      <ReadOnlySetting
+                        label={t('visionOcrProviderState')}
+                        value={visionProviderConfigured ? t('visionOcrConfigured') : t('visionOcrNotConfiguredState')}
+                      />
+                      <SettingSelect
+                        label={t('visionOcrDefaultMode')}
+                        value={String(system.vision_ocr_default_mode || 'local')}
+                        options={[
+                          { id: 'local', name: t('visionOcrQuickScan') },
+                          { id: 'ai', name: t('visionOcrAiScan') },
+                          { id: 'compare', name: t('visionOcrCompareScan') },
+                        ]}
+                        onChange={value => setSystem(current => current && ({ ...current, vision_ocr_default_mode: value }))}
+                      />
+                      <label className="text-sm font-medium">
+                        {t('visionOcrModelIdentifier')}
+                        <Input
+                          className="mt-1"
+                          value={String(system.vision_ocr_model || '')}
+                          maxLength={120}
+                          onChange={event => setSystem(current => current && ({ ...current, vision_ocr_model: event.target.value }))}
+                        />
+                      </label>
+                      <NumberSetting
+                        label={t('visionOcrTimeoutMs')}
+                        min={1000}
+                        value={finiteNumber(system.vision_ocr_timeout_ms, 30000)}
+                        onChange={value => setSystem(current => current && ({ ...current, vision_ocr_timeout_ms: value }))}
+                      />
+                      <NumberSetting
+                        label={t('visionOcrRetryCount')}
+                        value={finiteNumber(system.vision_ocr_retry_count, 0)}
+                        onChange={value => setSystem(current => current && ({ ...current, vision_ocr_retry_count: Math.min(1, value) }))}
+                      />
+                      <NumberSetting
+                        label={t('visionOcrDailyLimit')}
+                        min={1}
+                        value={finiteNumber(system.vision_ocr_daily_request_limit, 25)}
+                        onChange={value => setSystem(current => current && ({ ...current, vision_ocr_daily_request_limit: value }))}
+                      />
+                      <NumberSetting
+                        label={t('visionOcrMonthlyLimit')}
+                        min={1}
+                        value={finiteNumber(system.vision_ocr_monthly_request_limit, 500)}
+                        onChange={value => setSystem(current => current && ({ ...current, vision_ocr_monthly_request_limit: value }))}
+                      />
+                      <ToggleSetting
+                        label={t('visionOcrAllowTikTok')}
+                        checked={Boolean(system.vision_ocr_allow_tiktok)}
+                        onChange={checked => setSystem(current => current && ({ ...current, vision_ocr_allow_tiktok: checked }))}
+                      />
+                      <ToggleSetting
+                        label={t('visionOcrAllowShopee')}
+                        checked={Boolean(system.vision_ocr_allow_shopee)}
+                        onChange={checked => setSystem(current => current && ({ ...current, vision_ocr_allow_shopee: checked }))}
+                      />
+                      <ToggleSetting
+                        label={t('visionOcrDiagnosticsRetention')}
+                        checked={Boolean(system.vision_ocr_diagnostics_retention)}
+                        onChange={checked => setSystem(current => current && ({ ...current, vision_ocr_diagnostics_retention: checked }))}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">{t('visionOcrMockDevelopmentOnly')}</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={!mockVisionAvailable || visionProvider !== 'mock'}
+                        onClick={() => toast({ title: t('visionOcrTestMock'), description: t('visionOcrConfigured'), variant: 'success' })}
+                      >
+                        {t('visionOcrTestMock')}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setSystem(current => current && ({
+                            ...current,
+                            vision_ocr_enabled: false,
+                            vision_ocr_provider: 'disabled',
+                            vision_ocr_provider_configured: false,
+                            vision_ocr_default_mode: 'local',
+                          }))
+                        }
+                      >
+                        {t('visionOcrDisable')}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setSystem(current => current && ({
+                            ...current,
+                            vision_ocr_provider: 'disabled',
+                            vision_ocr_provider_configured: false,
+                            vision_ocr_model: 'openai-not-configured',
+                          }))
+                        }
+                      >
+                        {t('visionOcrClearConfiguration')}
+                      </Button>
+                    </div>
+                  </section>
+                  <p className="text-xs text-muted-foreground">{t('integrationSecretsNotice')}</p>
+                  <Actions dirty={systemDirty} saving={savingTab === 'integrations'} onReset={() => setSystem(savedSystem)} />
+                </CardContent>
+              </Card>
+            </form>
+          </TabsContent>}
+
+        {isAdmin && <TabsContent value="audit">
+            <form onSubmit={event => void saveSystem(event, 'audit')}>
+              <Card>
+                <CardHeader className="p-4 sm:p-6">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Bell className="h-5 w-5 text-indigo-600" />
+                    {t('audit')}
+                  </CardTitle>
+                  <CardDescription>{t('auditSettings')}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4 p-4 sm:p-6 pt-0">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <ToggleSetting
+                      label={t('auditEnabled')}
+                      checked={Boolean(system.audit_enabled)}
+                      onChange={checked => setSystem(current => current && ({ ...current, audit_enabled: checked }))}
+                    />
+                    <NumberSetting
+                      label={t('auditRetentionDays')}
+                      min={1}
+                      value={finiteNumber(system.audit_retention_days, 90)}
+                      onChange={value => setSystem(current => current && ({ ...current, audit_retention_days: value }))}
+                    />
+                  </div>
+                  <div className="rounded-lg border border-dashed p-4 text-xs text-muted-foreground">
+                    {t('auditMockNotice')}
+                  </div>
+                  <Actions dirty={systemDirty} saving={savingTab === 'audit'} onReset={() => setSystem(savedSystem)} />
+                </CardContent>
+              </Card>
+            </form>
+          </TabsContent>}
+      </Tabs>
+    </PageShell>
+  )
 }
 
 function Actions({ dirty, saving, onReset }: { dirty: boolean; saving: boolean; onReset: () => void }) {
   const { t } = useTranslation()
-  return <div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="outline" disabled={!dirty || saving} onClick={onReset}><RotateCcw className="mr-2 h-4 w-4" />{t('reset')}</Button><Button type="submit" disabled={!dirty || saving}>{saving ? t('loading') : t('saveSettings')}</Button></div>
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      <Button
+        type="button"
+        data-testid="settings-reset-button"
+        variant="outline"
+        size="sm"
+        disabled={!dirty || saving}
+        onClick={onReset}
+        className="h-8 text-xs font-medium"
+      >
+        <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+        {t('reset')}
+      </Button>
+      <Button
+        type="submit"
+        data-testid="settings-save-button"
+        size="sm"
+        disabled={!dirty || saving}
+        className="h-8 text-xs font-semibold"
+      >
+        {saving ? t('loading') : t('saveSettings')}
+      </Button>
+    </div>
+  )
 }
-function SettingSelect({ label, value, options, onChange }: { label: string; value: string; options: Array<{ id: string; name: string }>; onChange: (value: string) => void }) { return <label className="text-sm font-medium">{label}<Select value={value} onValueChange={onChange}><SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger><SelectContent>{options.map(option => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}</SelectContent></Select></label> }
-function ToggleSetting({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) { return <div className="flex items-center justify-between gap-3 rounded-lg border p-3"><span className="text-sm font-medium">{label}</span><Switch checked={checked} onCheckedChange={onChange} /></div> }
-function NumberSetting({ label, value, onChange, min = 0 }: { label: string; value: number; onChange: (value: number) => void; min?: number }) { return <label className="text-sm font-medium">{label}<Input className="mt-1" type="number" min={min} step="1" value={value} onChange={event => onChange(Number(event.target.value))} /></label> }
-function CountInput({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) { return <NumberSetting label={label} value={value} onChange={onChange} /> }
-function ReadOnlySetting({ label, value }: { label: string; value: string }) { return <div className="flex items-center justify-between gap-3 rounded-lg border p-3"><p className="text-sm font-medium">{label}</p><Badge variant="outline" className="shrink-0">{value}</Badge></div> }
-function finiteNumber(value: unknown, fallback: number) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : fallback }
+
+function SettingSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: string
+  options: Array<{ id: string; name: string }>
+  onChange: (value: string) => void
+}) {
+  return (
+    <label className="text-sm font-medium">
+      {label}
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="mt-1 w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map(option => (
+            <SelectItem key={option.id} value={option.id}>
+              {option.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </label>
+  )
+}
+
+function ToggleSetting({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+      <span className="text-sm font-medium">{label}</span>
+      <Switch checked={checked} onCheckedChange={onChange} />
+    </div>
+  )
+}
+
+function NumberSetting({
+  label,
+  value,
+  onChange,
+  min = 0,
+}: {
+  label: string
+  value: number
+  onChange: (value: number) => void
+  min?: number
+}) {
+  return (
+    <label className="text-sm font-medium">
+      {label}
+      <Input
+        className="mt-1"
+        type="number"
+        min={min}
+        step="1"
+        value={value}
+        onChange={event => onChange(Number(event.target.value))}
+      />
+    </label>
+  )
+}
+
+function CountInput({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: number
+  onChange: (value: number) => void
+}) {
+  return <NumberSetting label={label} value={value} onChange={onChange} />
+}
+
+function ReadOnlySetting({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+      <p className="text-sm font-medium">{label}</p>
+      <Badge variant="outline" className="shrink-0">
+        {value}
+      </Badge>
+    </div>
+  )
+}
+
+function finiteNumber(value: unknown, fallback: number) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
