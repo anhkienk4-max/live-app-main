@@ -165,6 +165,7 @@
     "tests/rc19-swap-source-picker.test.ts",
     "tests/rc19-u12-settings-contract.test.ts",
     "tests/rc19-u13-navigation-account-menu.test.ts",
+    "tests/rc19-u15-ux-quality.test.ts",
     "tests/real-dashboard-ocr-smoke.test.ts",
     "tests/registration-board-performance.test.ts",
     "tests/report-history-access.test.ts",
