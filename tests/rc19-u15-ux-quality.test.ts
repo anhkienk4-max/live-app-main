@@ -25,3 +25,13 @@ test('U15 loading UX: Storage workspaces render structured skeleton shells inste
   assert.ok(setupWs.includes('data-testid="storage-setup-loading"'), 'OperationalStorageSetupWorkspace must render structured loading shell')
   assert.ok(!setupWs.includes("if(userLoading)return <p className=\"p-6\">{t('loading')}</p>"), 'Must not return bare p tag during userLoading')
 })
+
+test('U15 loading UX: Notifications and Profile pages render structured skeleton shells instead of bare text centers', () => {
+  const notif = readFileSync(new URL('../app/(dashboard)/notifications/page.tsx', import.meta.url), 'utf8')
+  assert.ok(notif.includes('data-testid="notifications-loading-shell"'), 'Notifications must render structured loading shell')
+  assert.ok(!notif.includes("if (loading || userLoading) return <div role=\"status\" className=\"p-12 text-center\">{t('loading')}</div>"))
+
+  const profile = readFileSync(new URL('../app/(dashboard)/profile/page.tsx', import.meta.url), 'utf8')
+  assert.ok(profile.includes('data-testid="profile-loading-shell"'), 'Profile must render structured loading shell')
+  assert.ok(!profile.includes("if (loading || !currentUser) return <div className=\"py-12 text-center\">{t('loading')}</div>"))
+})

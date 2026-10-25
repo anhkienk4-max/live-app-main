@@ -47,7 +47,20 @@ export default function ProfilePage() {
     return () => cancelAnimationFrame(frame)
   }, [currentUser])
 
-  if (loading || !currentUser) return <div className="py-12 text-center">{t('loading')}</div>
+  if (loading || !currentUser) {
+    return (
+      <div className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6 animate-pulse" data-testid="profile-loading-shell">
+        <div className="flex items-center gap-4">
+          <div className="h-16 w-16 rounded-full bg-slate-200" />
+          <div className="space-y-2">
+            <div className="h-6 w-40 rounded bg-slate-200" />
+            <div className="h-4 w-60 rounded bg-slate-100" />
+          </div>
+        </div>
+        <div className="h-72 rounded-lg border border-slate-200 bg-white p-6" />
+      </div>
+    )
+  }
 
   const canEdit = hasPermission(currentUser, 'profile.edit_own')
   const initials = currentUser.full_name.split(' ').map(part => part[0]).join('').toUpperCase()

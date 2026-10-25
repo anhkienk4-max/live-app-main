@@ -101,7 +101,26 @@ export default function NotificationsPage() {
   const pageItems = items
   const notificationGroups = pageItems.reduce((groups,item)=>{const day=format(new Date(item.created_at),'yyyy-MM-dd');groups.set(day,[...(groups.get(day)||[]),item]);return groups},new Map<string,AppNotification[]>())
   const selected = items.find(item => item.id === selectedId)
-  if (loading || userLoading) return <div role="status" className="p-12 text-center">{t('loading')}</div>
+  if (loading || userLoading) {
+    return (
+      <div className="space-y-3 p-4 md:p-6 animate-pulse" data-testid="notifications-loading-shell">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="space-y-1">
+            <div className="h-6 w-36 rounded bg-slate-200" />
+            <div className="h-3 w-48 rounded bg-slate-100" />
+          </div>
+          <div className="flex gap-2">
+            <div className="h-8 w-24 rounded bg-slate-200" />
+            <div className="h-8 w-28 rounded bg-slate-200" />
+          </div>
+        </div>
+        <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1.05fr)_minmax(320px,.95fr)]">
+          <div className="h-96 rounded-lg border border-slate-200 bg-white p-4" />
+          <div className="h-96 rounded-lg border border-slate-200 bg-white p-4" />
+        </div>
+      </div>
+    )
+  }
   if (error && !items.length) return <PageLoadError error={error} onRetry={() => void load()} />
   return <div className="space-y-3 p-4 md:p-6">
     <header className="flex flex-wrap items-center justify-between gap-2"><div><h1 className="text-lg font-semibold">Thông báo</h1><p className="mt-1 text-xs text-muted-foreground">{counts.all} {t('all')} · {unread} {t('unread')}</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" className="max-md:!h-11" onClick={() => void load()}><RefreshCw className="mr-2 h-4 w-4" />{t('refresh')}</Button><Button variant="outline" size="sm" className="max-md:!h-11" disabled={!unread || busy} onClick={() => void markRead()}>{t('markAllRead')}</Button><Button variant="outline" size="sm" className="max-md:!h-11" onClick={() => router.push('/settings')}>{t('settings')}</Button></div></header>
