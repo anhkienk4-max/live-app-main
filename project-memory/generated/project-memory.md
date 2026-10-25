@@ -2,12 +2,12 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-25T14:34:52+07:00
+Generated at: 2026-10-25T20:23:30+07:00
 
 ## Repository
 
-- Branch: `fix/rc19-u06-attendance-import`
-- HEAD: `ac0eb30d861ead5bb948e33d2830f757862959a2`
+- Branch: `fix/rc19-u10-workforce-performance`
+- HEAD: `3401ab0a2fb56e2f9ba5950d27abdc97e2e2e799`
 - origin/main: `9b5f3889b243f9ee795e4466a18f24cd896c162f`
 - Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-main`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
