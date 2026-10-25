@@ -268,6 +268,21 @@ test('RC1.7C: Identical import content produces deterministic SHA-256 fingerprin
   assert.notEqual(hashA, hashC, 'Distinct content must produce distinct hash')
 })
 
+test('RC19 U06: selected date order reaches import preview without changing source profile', () => {
+  const options = {
+    sourceProfileId: 'opella_t10' as const,
+    sourceType: 'excel_upload' as const,
+    sourceName: 'actual-upload.xlsx',
+    rawRows: [{ rowNumber: 1, date: '02/10/2026', timeRange: '09:00 - 13:00', hostName: mockStaff[0].fullName, checkIn: '09:00', checkOut: '13:00' }],
+    shifts: [] as ShiftReference[],
+    staffList: mockStaff,
+  }
+  const monthFirst = previewAttendanceImport({ ...options, dateOrder: 'month-first' })
+  const dayFirst = previewAttendanceImport({ ...options, dateOrder: 'day-first' })
+  assert.equal(monthFirst.results[0].segment.parsedDate, '2026-02-10')
+  assert.equal(dayFirst.results[0].segment.parsedDate, '2026-10-02')
+})
+
 // -------------------------------------------------------------
 // TEST SUITE 7: End-to-End Batch Preview & Draft Promotion
 // -------------------------------------------------------------

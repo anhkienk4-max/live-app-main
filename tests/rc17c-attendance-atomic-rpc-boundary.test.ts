@@ -62,6 +62,18 @@ function postBody(action: string, extra: Record<string, unknown>) {
   })
 }
 
+test('preview rejects missing source identity and invalid date order before database reads', async () => {
+  const ctx = guardedClient()
+  const handler = makeHandler(ctx.client)
+  const missing = await handler.POST(postBody('preview', { rawRows: [] }))
+  assert.equal(missing.status, 400)
+  assert.equal((await missing.json()).error.code, 'SOURCE_NAME_REQUIRED')
+  const invalid = await handler.POST(postBody('preview', { sourceName: 'real.csv', dateOrder: 'guess', rawRows: [] }))
+  assert.equal(invalid.status, 400)
+  assert.equal((await invalid.json()).error.code, 'INVALID_DATE_ORDER')
+  assert.equal(ctx.getWrites(), 0)
+})
+
 test('confirmation fails closed without an atomic RPC and does not touch tables', async () => {
   const ctx = guardedClient()
   const response = await makeHandler(ctx.client).POST(postBody('confirm_drafts', {

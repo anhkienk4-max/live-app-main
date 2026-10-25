@@ -4,6 +4,7 @@ import {
   RawAttendanceInputRow,
   ControlTimesheetRow,
   SourceProfileId,
+  DateOrderOption,
 } from './historicalAttendanceTypes'
 import {
   parseRawAttendanceRow,
@@ -20,6 +21,7 @@ import {
 export interface PreviewAttendanceImportOptions {
   batchId?: string
   sourceProfileId?: SourceProfileId
+  dateOrder?: DateOrderOption
   sourceType: 'google_sheets' | 'excel_upload' | 'csv_upload' | 'shift_manager_control'
   sourceName: string
   rawRows?: RawAttendanceInputRow[]
@@ -47,6 +49,7 @@ export function previewAttendanceImport(
   const {
     batchId = `batch-${Date.now()}`,
     sourceProfileId = 'opella_t10',
+    dateOrder,
     sourceType,
     sourceName,
     rawRows = [],
@@ -57,7 +60,8 @@ export function previewAttendanceImport(
     existingSegments = [],
   } = options
 
-  const profile = SOURCE_PROFILES[sourceProfileId] || SOURCE_PROFILES.opella_t10
+  const sourceProfile = SOURCE_PROFILES[sourceProfileId] || SOURCE_PROFILES.opella_t10
+  const profile = dateOrder ? { ...sourceProfile, dateOrder } : sourceProfile
   const payloadString = JSON.stringify(controlRows.length > 0 ? controlRows : rawRows)
   const sourceFingerprint = createSourceFingerprint(payloadString)
 

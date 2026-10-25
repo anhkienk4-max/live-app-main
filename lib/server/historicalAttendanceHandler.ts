@@ -25,6 +25,7 @@ import {
   ControlTimesheetRow,
   AttendanceMatchResult,
 } from '@/lib/workforce/historicalAttendanceTypes'
+import { SOURCE_PROFILES } from '@/lib/workforce/historicalAttendanceParser'
 
 const noStore = { 'Cache-Control': 'no-store' }
 const fail = (code: string, status: number, detail?: string) =>
@@ -145,6 +146,7 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
         const body = (await readJsonBody(req, 10 * 1024 * 1024)) as {
           action?: string
           sourceProfileId?: SourceProfileId
+          dateOrder?: 'month-first' | 'day-first' | 'iso'
           sourceName?: string
           sourceType?: 'google_sheets' | 'excel_upload' | 'csv_upload' | 'shift_manager_control'
           rawRows?: RawAttendanceInputRow[]
@@ -162,12 +164,17 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
         if (action === 'preview') {
           const {
             sourceProfileId = 'opella_t10',
-            sourceName = 'attendance_upload.xlsx',
+            dateOrder,
+            sourceName,
             sourceType = 'google_sheets',
             rawRows = [],
             controlRows = [],
             brandName,
           } = body
+          if (dateOrder && !['month-first', 'day-first', 'iso'].includes(dateOrder)) {
+            return fail('INVALID_DATE_ORDER', 400)
+          }
+          if (!sourceName?.trim()) return fail('SOURCE_NAME_REQUIRED', 400)
 
           // Fetch completed shifts from DB to match against (Schema Parity: date DATE, start_time/end_time TIME WITHOUT TIME ZONE)
           const { data: shiftsData, error: shiftsErr } = await client
@@ -259,7 +266,7 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
             sourceType,
             sourceName,
             sourceProfileId: sourceProfileId || 'default',
-            mappingVersion: 1,
+            mappingVersion: dateOrder && dateOrder !== SOURCE_PROFILES[sourceProfileId]?.dateOrder ? `1:${dateOrder}` : 1,
             revision: body.revision || 1,
             payload: controlRows.length > 0 ? controlRows : rawRows,
           })
@@ -280,6 +287,7 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
           const preview = previewAttendanceImport({
             batchId,
             sourceProfileId: sourceProfileId as SourceProfileId,
+            dateOrder,
             sourceType,
             sourceName,
             rawRows,
@@ -327,6 +335,7 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
             p_brand_id: null,
             p_metadata: {
               sourceProfileId,
+              dateOrder: dateOrder || SOURCE_PROFILES[sourceProfileId]?.dateOrder,
               revision: body.revision || 1,
               exceptionsSummary: preview.summary.exceptionsSummary,
             },
