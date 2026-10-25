@@ -1,11 +1,11 @@
 import { createClient } from '@/lib/supabase/client'
 import { decodeSelfAttendanceEvent, decodeSelfAttendanceHistory, type AttendanceRole, type AttendanceEventKind } from '@/lib/utils/selfAttendanceContract'
 
-export async function readMySelfAttendance(shiftId: string) {
+export async function readMySelfAttendance(shiftId: string, actorId?: string) {
   const { data,error }=await createClient().rpc('get_my_self_attendance',{p_shift_id:shiftId,p_limit:10})
   if(error)throw new Error(error.message || 'ATTENDANCE_READ_FAILED')
   const events=decodeSelfAttendanceHistory(data)
-  if(events.some(e=>e.shift_id!==shiftId))throw new Error('ATTENDANCE_SCOPE_INVALID')
+  if(events.some(e=>e.shift_id!==shiftId||(actorId && e.staff_id!==actorId)))throw new Error('ATTENDANCE_SCOPE_INVALID')
   return events
 }
 
