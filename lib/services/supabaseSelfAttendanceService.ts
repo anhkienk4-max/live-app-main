@@ -19,17 +19,17 @@ export async function writeSelfAttendance(shiftId:string,role:AttendanceRole,kin
   return event
 }
 
-
 /** Browser posts the photo to our authenticated server endpoint. Never upload
  * with a public Drive key or send base64 through Supabase RPC/SQL. */
-export async function writeSelfAttendancePhotoCheckIn(
-  shiftId:string,role:AttendanceRole,requestId:string,
+export async function writeSelfAttendancePhoto(
+  shiftId:string,role:AttendanceRole,kind:AttendanceEventKind,requestId:string,
   photo:File,captureSource:'camera'|'file_picker'
 ) {
   if(photo.size<1||photo.size>4*1024*1024)throw new Error('Ảnh phải nhỏ hơn 4 MB.')
   const data=new FormData()
   data.set('shift_id',shiftId)
   data.set('role',role)
+  data.set('event_kind',kind)
   data.set('request_id',requestId)
   data.set('capture_source',captureSource)
   data.set('file',photo)
@@ -40,20 +40,34 @@ export async function writeSelfAttendancePhotoCheckIn(
   if(!response.ok||payload?.ok!==true)
     throw new Error(payload?.error?.code || 'ATTENDANCE_PHOTO_UPLOAD_FAILED')
   const event=decodeSelfAttendanceEvent(payload.event)
-  if(event.shift_id!==shiftId||event.role!==role||event.event!=='check_in'
+  if(event.shift_id!==shiftId||event.role!==role||event.event!==kind
     ||event.photo_available!==true)throw new Error('ATTENDANCE_PHOTO_RESPONSE_INVALID')
   return event
 }
 
+export async function writeSelfAttendancePhotoCheckIn(
+  shiftId:string,role:AttendanceRole,requestId:string,
+  photo:File,captureSource:'camera'|'file_picker'
+) {
+  return writeSelfAttendancePhoto(shiftId,role,'check_in',requestId,photo,captureSource)
+}
+
+export async function writeSelfAttendancePhotoCheckOut(
+  shiftId:string,role:AttendanceRole,requestId:string,
+  photo:File,captureSource:'camera'|'file_picker'
+) {
+  return writeSelfAttendancePhoto(shiftId,role,'check_out',requestId,photo,captureSource)
+}
 
 /** Resume a server-verified photo reservation after reload or network failure.
  * This deliberately sends no image bytes, Drive IDs, staff ID or provider path. */
-export async function recoverSelfAttendancePhotoCheckIn(
-  shiftId:string,role:AttendanceRole,requestId:string,
+export async function recoverSelfAttendancePhoto(
+  shiftId:string,role:AttendanceRole,kind:AttendanceEventKind,requestId:string,
 ) {
   const form=new FormData()
   form.set('shift_id',shiftId)
   form.set('role',role)
+  form.set('event_kind',kind)
   form.set('request_id',requestId)
   form.set('recover_only','true')
   const response=await fetch('/api/workforce/self-attendance-photo',{
@@ -63,8 +77,20 @@ export async function recoverSelfAttendancePhotoCheckIn(
   if(!response.ok||payload?.ok!==true)
     throw new Error(payload?.error?.code||'ATTENDANCE_PHOTO_RECOVERY_FAILED')
   const event=decodeSelfAttendanceEvent(payload.event)
-  if(event.shift_id!==shiftId||event.role!==role||event.event!=='check_in'
+  if(event.shift_id!==shiftId||event.role!==role||event.event!==kind
     ||event.photo_available!==true)
     throw new Error('ATTENDANCE_PHOTO_RESPONSE_INVALID')
   return event
+}
+
+export async function recoverSelfAttendancePhotoCheckIn(
+  shiftId:string,role:AttendanceRole,requestId:string,
+) {
+  return recoverSelfAttendancePhoto(shiftId,role,'check_in',requestId)
+}
+
+export async function recoverSelfAttendancePhotoCheckOut(
+  shiftId:string,role:AttendanceRole,requestId:string,
+) {
+  return recoverSelfAttendancePhoto(shiftId,role,'check_out',requestId)
 }

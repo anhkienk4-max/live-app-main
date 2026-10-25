@@ -75,6 +75,7 @@ export async function POST(request:Request) {
   let uploadedId:string|null=null
   let committedMetadata=false
   let drive:ReturnType<typeof createGoogleDriveFileProvider>|null=null
+  let currentEventKind:'check_in'|'check_out'='check_in'
   try {
     if(process.env.FEATURE_SELF_ATTENDANCE_PHOTO!=='true')
       return failed('ATTENDANCE_PHOTO_FEATURE_DISABLED',503)
@@ -92,6 +93,8 @@ export async function POST(request:Request) {
     const form=await readFormDataBody(request,LIMIT+8192)
     const shiftId=id.parse(form.get('shift_id'))
     const kind=role.parse(form.get('role'))
+    const eventKind=z.enum(['check_in','check_out']).parse(form.get('event_kind')??'check_in')
+    currentEventKind=eventKind
     const requestId=UUID.parse(form.get('request_id'))
     const recoverOnly=form.get('recover_only')==='true'
     // The client may retry after a browser reload with no original image in
@@ -106,19 +109,20 @@ export async function POST(request:Request) {
       return failed('ATTENDANCE_PHOTO_REQUIRED',file instanceof File?413:400)
 
     const admin=createSupabaseAdminClient()
-    const evidenceColumns='request_id,shift_id,staff_id,operational_role,external_file_id,external_parent_id,file_name,mime_type,size_bytes,checksum_sha256'
+    const evidenceColumns='request_id,shift_id,staff_id,operational_role,event_kind,external_file_id,external_parent_id,file_name,mime_type,size_bytes,checksum_sha256'
     const [byRequest,byAssignment]=await Promise.all([
       admin.from('self_attendance_photo_evidence')
         .select(evidenceColumns).eq('request_id',requestId).maybeSingle(),
       admin.from('self_attendance_photo_evidence')
         .select(evidenceColumns).eq('shift_id',shiftId)
-        .eq('staff_id',actor.businessUserId).eq('operational_role',kind).maybeSingle(),
+        .eq('staff_id',actor.businessUserId).eq('operational_role',kind).eq('event_kind',eventKind).maybeSingle(),
     ])
     if(byRequest.error||byAssignment.error)
       return failed('ATTENDANCE_PHOTO_STORAGE_UNAVAILABLE',503)
     if(byRequest.data&&
       (byRequest.data.staff_id!==actor.businessUserId||
-       byRequest.data.shift_id!==shiftId||byRequest.data.operational_role!==kind))
+       byRequest.data.shift_id!==shiftId||byRequest.data.operational_role!==kind||
+       (byRequest.data.event_kind && byRequest.data.event_kind!==eventKind)))
       return failed('ATTENDANCE_PHOTO_REQUEST_REUSED',409)
     // Recover a reserved photo after a page reload/network timeout. The server
     // reuses the original request UUID without accepting a client-supplied
@@ -166,7 +170,7 @@ export async function POST(request:Request) {
       if(cleanBytes.byteLength<1||cleanBytes.byteLength>LIMIT)
         return failed('ATTENDANCE_PHOTO_TOO_LARGE',413)
       const preflight=await session.rpc('get_self_attendance_photo_context',{
-        p_shift_id:shiftId,p_operational_role:kind,
+        p_shift_id:shiftId,p_operational_role:kind,p_event_kind:eventKind,
       })
       if(preflight.error)return failed('ATTENDANCE_PHOTO_SHIFT_NOT_ELIGIBLE',403)
       const parsed=contextSchema.safeParse(preflight.data)
@@ -206,6 +210,7 @@ export async function POST(request:Request) {
         startTime:prepared.start_time,endTime:prepared.end_time,
         staffName:prepared.staff_name,role:kind,
         recordedAt:new Date().toISOString(),requestId,extension:'jpg',
+        eventKind,
       })
       const hash=createHash('sha256').update(cleanBytes).digest('hex')
       // Use the SAME checked file-storage gateway used by operational report
@@ -236,7 +241,7 @@ export async function POST(request:Request) {
         throw new Error('ATTENDANCE_PHOTO_PROVIDER_INTEGRITY_FAILED')
       const saved=await admin.from('self_attendance_photo_evidence').insert({
         request_id:requestId,shift_id:shiftId,staff_id:actor.businessUserId,
-        operational_role:kind,provider:'google_drive',external_file_id:uploadedId,
+        operational_role:kind,event_kind:eventKind,provider:'google_drive',external_file_id:uploadedId,
         external_parent_id:parentId,file_name:fileName,mime_type:'image/jpeg',
         size_bytes:cleanBytes.byteLength,checksum_sha256:hash,
         shift_context:contextSnapshot(prepared),capture_source:captureSource,
@@ -247,14 +252,19 @@ export async function POST(request:Request) {
     }
 
     const recorded=await session.rpc('self_attendance_record',{
-      p_shift_id:shiftId,p_operational_role:kind,p_event_kind:'check_in',
+      p_shift_id:shiftId,p_operational_role:kind,p_event_kind:eventKind,
       p_request_id:committedRequestId,p_evidence_note:null,
     })
-    if(recorded.error)return failed('ATTENDANCE_PHOTO_CHECKIN_PENDING_RECONCILIATION',409)
+    if(recorded.error) {
+      const code=eventKind==='check_out'?'ATTENDANCE_PHOTO_CHECKOUT_PENDING_RECONCILIATION':'ATTENDANCE_PHOTO_CHECKIN_PENDING_RECONCILIATION'
+      return failed(code,409)
+    }
     const event=decodeSelfAttendanceEvent(recorded.data)
     if(event.staff_id!==actor.businessUserId||event.shift_id!==shiftId||
-      event.role!==kind||event.event!=='check_in')
-      return failed('ATTENDANCE_PHOTO_CHECKIN_RESPONSE_MISMATCH',409)
+      event.role!==kind||event.event!==eventKind) {
+      const code=eventKind==='check_out'?'ATTENDANCE_PHOTO_CHECKOUT_RESPONSE_MISMATCH':'ATTENDANCE_PHOTO_CHECKIN_RESPONSE_MISMATCH'
+      return failed(code,409)
+    }
     return Response.json({ok:true,event:{...event,photo_available:true}},
       {headers:ERROR_HEADERS})
   } catch(error) {
@@ -264,7 +274,7 @@ export async function POST(request:Request) {
     if(isAuthorizationError(error))return authorizationErrorResponse(error)
     if(error instanceof RequestBodyError)return failed(error.code,error.status)
     if(error instanceof z.ZodError)return failed('ATTENDANCE_PHOTO_REQUEST_INVALID',400)
-    console.error('ATTENDANCE_PHOTO_CHECKIN_FAILED')
+    console.error(currentEventKind==='check_out'?'ATTENDANCE_PHOTO_CHECKOUT_FAILED':'ATTENDANCE_PHOTO_CHECKIN_FAILED')
     return failed('ATTENDANCE_PHOTO_UPLOAD_FAILED',503)
   }
 }
@@ -282,7 +292,7 @@ export async function GET(request:Request) {
     const admin=createSupabaseAdminClient()
     const event=await admin.from('self_attendance_events')
       .select('request_id,shift_id,staff_id,event_kind').eq('id',eventId).maybeSingle()
-    if(event.error||!event.data||event.data.event_kind!=='check_in')
+    if(event.error||!event.data||!['check_in','check_out'].includes(event.data.event_kind))
       return failed('ATTENDANCE_PHOTO_NOT_FOUND',404)
     if(event.data.staff_id!==actor.businessUserId) {
       if(!['leader','admin'].includes(actor.systemPermission))
