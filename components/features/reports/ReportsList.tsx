@@ -8,7 +8,7 @@ import { getOperationalReferences, operationalReferenceIdentity } from '@/lib/se
 import { readTransientData } from '@/lib/services/transientDataCache'
 import { invalidatePageCache } from '@/lib/services/operationsPageCache'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { DollarSign, Download, FileImage, FileSpreadsheet, FileText, Filter, Plus, RotateCcw, Search, TrendingUp, Trash2 } from 'lucide-react'
+import { DollarSign, Download, FileImage, FileSpreadsheet, FileText, Filter, Plus, RotateCcw, Search, TrendingUp, Trash2, LayoutGrid, Table as TableIcon } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import {
   reportImageService,
@@ -106,7 +106,24 @@ export function ReportsList() {
   const [candidateShifts, setCandidateShifts] = React.useState<Shift[]>([])
   const [candidateReports, setCandidateReports] = React.useState<Report[]>([])
   const [queueTotal, setQueueTotal] = React.useState(0)
-  const [filters, setFilters] = React.useState<Filters>(emptyFilters)
+  const [createdViewMode, setCreatedViewMode] = React.useState<'table' | 'cards'>('cards')
+  const [filters, setFilters] = React.useState<Filters>(() => {
+    if (typeof window === 'undefined' || !window.location || !window.location.search) return emptyFilters
+    const p = new URLSearchParams(window.location.search)
+    return {
+      search: p.get('search') || '',
+      start: p.get('start') || '',
+      end: p.get('end') || '',
+      brandIds: p.get('brandIds')?.split(',').filter(Boolean) || [],
+      platformIds: p.get('platformIds')?.split(',').filter(Boolean) || [],
+      campaignIds: p.get('campaignIds')?.split(',').filter(Boolean) || [],
+      hostIds: p.get('hostIds')?.split(',').filter(Boolean) || [],
+      supportIds: p.get('supportIds')?.split(',').filter(Boolean) || [],
+      technicalIds: p.get('technicalIds')?.split(',').filter(Boolean) || [],
+      reportStatuses: p.get('reportStatuses')?.split(',').filter(Boolean) || [],
+      metricsStatuses: p.get('metricsStatuses')?.split(',').filter(Boolean) || [],
+    }
+  })
   const [draftFilters, setDraftFilters] = React.useState<Filters>(emptyFilters)
   const [showFilters, setShowFilters] = React.useState(false)
   const [selectedReport, setSelectedReport] = React.useState<Report | null>(null)
@@ -525,9 +542,159 @@ export function ReportsList() {
         </Card>
       </section>
 
-      <section aria-labelledby="created-reports-heading" className="space-y-3">
-        <h2 id="created-reports-heading" className="text-lg font-semibold">{t('createdReports')}</h2>
+      <section aria-labelledby="created-reports-heading" className="space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b pb-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 id="created-reports-heading" className="text-lg font-semibold tracking-tight">{t('createdReports')}</h2>
+              <Badge variant="secondary" className="font-semibold">{reportTotal} báo cáo</Badge>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">Danh sách các báo cáo livestream đã lập, cập nhật chỉ số hoặc lưu trữ theo quyền phân cấp.</p>
+          </div>
+          <div className="flex items-center gap-1.5 self-start sm:self-auto">
+            <Button
+              type="button"
+              variant={createdViewMode === 'cards' ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={() => setCreatedViewMode('cards')}
+              className="h-8 gap-1.5 text-xs font-medium"
+              title="Chế độ thẻ"
+              aria-label="Chế độ thẻ"
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Chế độ thẻ</span>
+            </Button>
+            <Button
+              type="button"
+              variant={createdViewMode === 'table' ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={() => setCreatedViewMode('table')}
+              className="h-8 gap-1.5 text-xs font-medium"
+              title="Chế độ bảng"
+              aria-label="Chế độ bảng"
+            >
+              <TableIcon className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Chế độ bảng</span>
+            </Button>
+          </div>
+        </div>
       {filteredReports.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noReports')}</CardContent></Card> : (
+        createdViewMode === 'table' ? (
+          <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-muted/50 text-muted-foreground border-b uppercase text-[10px] tracking-wider font-semibold">
+                <tr>
+                  <th className="px-3.5 py-2.5">Thời gian</th>
+                  <th className="px-3.5 py-2.5">Brand</th>
+                  <th className="px-3.5 py-2.5">Nền tảng</th>
+                  <th className="px-3.5 py-2.5">Chiến dịch</th>
+                  <th className="px-3.5 py-2.5">Nhân sự ca</th>
+                  <th className="px-3.5 py-2.5 text-right">Doanh thu</th>
+                  <th className="px-3.5 py-2.5 text-right">Đơn hàng</th>
+                  <th className="px-3.5 py-2.5 text-center">Trạng thái</th>
+                  <th className="px-3.5 py-2.5 text-right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {filteredReports.map(report => {
+                  const shift = shiftById.get(report.shift_id)
+                  if (!shift) {
+                    const context = historicalContexts[report.id]
+                    if (!context) return (
+                      <tr key={report.id} className="bg-amber-500/5" data-testid="report-history-context-missing">
+                        <td colSpan={9} className="px-3.5 py-2 text-xs text-amber-700">
+                          Không thể tải ngữ cảnh lịch sử cho báo cáo {report.id}. Ca gốc không thuộc phạm vi hiện tại.
+                        </td>
+                      </tr>
+                    )
+                    const historicalStatus = report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
+                    const historicalRevenue = reportRevenue(report)
+                    return (
+                      <tr key={report.id} className="hover:bg-muted/20" data-testid="report-historical-read-only">
+                        <td className="px-3.5 py-2.5 font-medium whitespace-nowrap">{context.date} <span className="text-[10px] text-muted-foreground block">{context.start_time.slice(0,5)}–{context.end_time.slice(0,5)}</span></td>
+                        <td className="px-3.5 py-2.5 font-medium">{nameById(brands, context.brand_id)}</td>
+                        <td className="px-3.5 py-2.5 text-muted-foreground">{nameById(platforms, context.platform_id)}</td>
+                        <td className="px-3.5 py-2.5 text-muted-foreground">{nameById(campaigns, context.campaign_id ?? undefined)}</td>
+                        <td className="px-3.5 py-2.5 text-muted-foreground text-[11px]">—</td>
+                        <td className="px-3.5 py-2.5 text-right font-medium">{historicalRevenue == null ? t('noData') : formatCurrency(historicalRevenue)}</td>
+                        <td className="px-3.5 py-2.5 text-right font-medium">{report.orders == null ? t('noData') : report.orders.toLocaleString()}</td>
+                        <td className="px-3.5 py-2.5 text-center"><Badge variant="outline" className="text-[10px]" title={"Trạng thái: " + historicalStatus}>Lịch sử · Chỉ xem</Badge></td>
+                        <td className="px-3.5 py-2.5 text-right">
+                          <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedHistoricalReport(report)} className="h-7 px-2 text-xs">
+                            <FileText className="mr-1 h-3.5 w-3.5" />Chi tiết
+                          </Button>
+                        </td>
+                      </tr>
+                    )
+                  }
+                  const reportStatus = report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
+                  const revenue = reportRevenue(report)
+                  const statusLabel = reportStatus === 'in_review' ? t('inReview') : t(reportStatus)
+                  const isEditableDraft = reportStatus === 'draft' || reportStatus === 'reopened'
+                  const canRemove = Boolean(currentUser && (hasPermission(currentUser, 'reports.review') || report.submitted_by === currentUser.id))
+                  const canArchive = Boolean(currentUser && hasPermission(currentUser, 'audit.restore'))
+
+                  return (
+                    <tr key={report.id} className="hover:bg-muted/20">
+                      <td className="px-3.5 py-2.5 font-medium whitespace-nowrap">{shift.date} <span className="text-[10px] text-muted-foreground block">{shift.start_time.slice(0,5)}–{shift.end_time.slice(0,5)}</span></td>
+                      <td className="px-3.5 py-2.5 font-semibold text-foreground">{nameById(brands, shift.brand_id)}</td>
+                      <td className="px-3.5 py-2.5 text-muted-foreground">{nameById(platforms, shift.platform_id)}</td>
+                      <td className="px-3.5 py-2.5 text-muted-foreground truncate max-w-[140px]">{nameById(campaigns, shift.campaign_id)}</td>
+                      <td className="px-3.5 py-2.5 text-muted-foreground text-[11px] truncate max-w-[150px]">{roleNames(shift, 'host')}</td>
+                      <td className="px-3.5 py-2.5 text-right font-medium">{revenue == null ? t('noData') : formatCurrency(revenue)}</td>
+                      <td className="px-3.5 py-2.5 text-right font-medium">{report.orders == null ? t('noData') : report.orders.toLocaleString()}</td>
+                      <td className="px-3.5 py-2.5 text-center whitespace-nowrap">
+                        <Badge variant={report.metrics_confirmed ? 'default' : 'secondary'} className={report.metrics_confirmed ? 'bg-green-600/10 text-green-700 hover:bg-green-600/20 text-[10px]' : 'bg-amber-600/10 text-amber-700 hover:bg-amber-600/20 text-[10px]'}>
+                          {statusLabel}
+                        </Badge>
+                      </td>
+                      <td className="px-3.5 py-2.5 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={isEditableDraft ? 'secondary' : 'ghost'}
+                            className="h-7 px-2 text-xs"
+                            onClick={() => {
+                              if (isEditableDraft) { setEditingReport(report); setShowForm(true) }
+                              else setSelectedReport(report)
+                            }}
+                          >
+                            {isEditableDraft ? t('continueReport') : t('viewDetails')}
+                          </Button>
+                          {currentUser && hasPermission(currentUser, 'reports.export') && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0"
+                              title={t('exportExcel')}
+                              onClick={() => exportReportDetailToExcel(report, exportContext)}
+                            >
+                              <Download className="h-3.5 w-3.5 text-muted-foreground" />
+                            </Button>
+                          )}
+                          {Boolean((!report.metrics_confirmed && canRemove) || (report.metrics_confirmed && canArchive)) && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                              title={report.metrics_confirmed ? t('archiveReport') : t('deleteDraftReport')}
+                              onClick={() => void requestRemove(report)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredReports.map(report => {
             const shift = shiftById.get(report.shift_id)
@@ -635,6 +802,7 @@ export function ReportsList() {
             )
           })}
         </div>
+        )
       )}
       <HistoryPagination page={reportPage} pageSize={reportPageSize} total={reportTotal} onPageChange={setReportPage} onPageSizeChange={size => { setReportPageSize(size); setReportPage(1) }} />
       </section>
