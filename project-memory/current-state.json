@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "fix/rc19-u06-attendance-import",
-    "head": "5e21ad4d24bf4211367d6b7efe39e4ff6472b7e1",
+    "head": "ac0eb30d861ead5bb948e33d2830f757862959a2",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-main"
   },
@@ -431,5 +431,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-25T14:33:22+07:00"
+  "synced_at": "2026-10-25T14:34:52+07:00"
 }
