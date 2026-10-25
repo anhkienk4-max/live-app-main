@@ -511,6 +511,8 @@ export function ShiftDetailModal({
   const [busy, setBusy] = React.useState(false)
   const [staffingLoading, setStaffingLoading] = React.useState(false)
   const [staffingError, setStaffingError] = React.useState(false)
+  const [staffingActorId, setStaffingActorId] = React.useState<string | undefined>()
+  const staffingRead = React.useRef(0)
   const [deleteImpact, setDeleteImpact] = React.useState<DeletionImpact | null>(null)
   const [registrationPage, setRegistrationPage] = React.useState(1)
   const [registrationPageSize, setRegistrationPageSize] = React.useState(20)
@@ -525,7 +527,10 @@ export function ShiftDetailModal({
     safeRegistrationPage * registrationPageSize,
   )
 
+  const actorId = currentUser?.id
   const loadStaffing = React.useCallback(async () => {
+    const sequence = ++staffingRead.current
+    setStaffingActorId(undefined)
     setStaffingLoading(true)
     setStaffingError(false)
     try {
@@ -534,19 +539,25 @@ export function ShiftDetailModal({
         shiftRegistrationService.getCapacity(shift.id),
         shiftService.getById(shift.id),
       ])
+      if (sequence !== staffingRead.current) return
       setRegistrations(loadedRegistrations)
+      setStaffingActorId(actorId)
       setCapacities(loadedCapacities)
       setIsLocked(Boolean(updatedShift?.registration_locked))
     } catch {
-      setStaffingError(true)
+      if (sequence === staffingRead.current) setStaffingError(true)
     } finally {
-      setStaffingLoading(false)
+      if (sequence === staffingRead.current) setStaffingLoading(false)
     }
-  }, [shift.id])
+  }, [shift.id, actorId])
 
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- required immediate staffing refresh contract
     if (open) void loadStaffing()
+    return () => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- this sequence is intentionally invalidated in cleanup
+      staffingRead.current++
+    }
   }, [loadStaffing, open])
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- required immediate shift-state reconciliation contract
@@ -555,7 +566,11 @@ export function ShiftDetailModal({
   }, [shift.id, shift.registration_locked])
 
 
-  const myRegistration = React.useMemo(() => registrations.find(r => r.user_id === currentUser?.id && r.shift_id === shift.id && isStaffedRegistration(r)), [registrations, currentUser?.id, shift.id])
+  const myRegistration = staffingActorId === currentUser?.id && currentUser
+    ? registrations.find(r => r.user_id === currentUser.id && r.shift_id === shift.id && isStaffedRegistration(r)) : undefined
+  const myAttendanceRegistration = myRegistration ?? (staffingActorId === currentUser?.id && currentUser
+    ? registrations.find(r => r.user_id === currentUser.id && r.shift_id === shift.id) : undefined)
+  const attendanceShiftEligible = !shift.deleted_at && !shift.archived_at && ['scheduled', 'preparing', 'live', 'paused', 'completed'].includes(shift.status)
   const registrationContext = allRegistrations ?? registrations
   const canRequestSwap = Boolean(myRegistration && shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at)
   const dateTime = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
@@ -771,11 +786,12 @@ export function ShiftDetailModal({
           </DialogHeader>
 
           <DialogBody className="mx-0 pb-1 bg-muted/5 p-0 overflow-y-auto">
-            <Tabs defaultValue="overview" className="min-w-0">
-              <TabsList className="mx-4 mt-4 grid group-data-[orientation=horizontal]/tabs:h-auto w-auto grid-cols-4 sm:mx-6">
+            <Tabs key={`${shift.id}:${currentUser?.id ?? ''}`} defaultValue="overview" className="min-w-0">
+              <TabsList className={`mx-4 mt-4 grid group-data-[orientation=horizontal]/tabs:h-auto w-auto grid-cols-2 sm:mx-6 ${myAttendanceRegistration && capabilities?.actual_staffing ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="overview">{t('shiftOverview')}</TabsTrigger>
+                {myAttendanceRegistration && <TabsTrigger className="min-h-11 min-w-0 whitespace-normal px-2 text-xs sm:text-sm" value="self-attendance">Check-in / Check-out</TabsTrigger>}
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="staffing">{t('staffing')}</TabsTrigger>
-                {capabilities?.actual_staffing && <TabsTrigger className="min-h-11 min-w-0 whitespace-normal px-2 text-xs sm:text-sm" value="actual">Chấm công thực tế</TabsTrigger>}
+                {capabilities?.actual_staffing && <TabsTrigger className="min-h-11 min-w-0 whitespace-normal px-2 text-xs sm:text-sm" value="actual">{language === 'en' ? 'Actual staffing' : 'Chấm công thực tế'}</TabsTrigger>}
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="details">{t('additionalInfo')}</TabsTrigger>
               </TabsList>
 
@@ -823,6 +839,22 @@ export function ShiftDetailModal({
                   </aside>
                 </div>
               </TabsContent>
+
+              {myAttendanceRegistration && <TabsContent value="self-attendance" className="min-w-0 p-4 sm:p-6">
+                {process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE === 'true' && myRegistration && attendanceShiftEligible ? (
+                  <SelfAttendancePanel key={shift.id + ':' + currentUser?.id + ':' + myRegistration.operational_role}
+                    actorId={currentUser!.id} shiftId={shift.id} role={myRegistration.operational_role}
+                    shiftContext={{
+                      date:shift.date,start_time:shift.start_time,end_time:shift.end_time,
+                      brand:brand?.name??shift.brand_id,platform:platform?.name??shift.platform_id,
+                      title:shift.title,studio:shift.studio,crossesMidnight:dateTime?.valid && dateTime.crossesMidnight,
+                    }} />
+                ) : <div role="status" className="rounded-md border bg-muted/30 p-4 text-sm" data-testid="self-attendance-unavailable">
+                  {!myRegistration ? (language === 'en' ? 'Check-in / Check-out is unavailable until your shift assignment is approved.' : 'Chưa thể check-in / check-out khi ca chưa được phân công chính thức.')
+                    : !attendanceShiftEligible ? (language === 'en' ? 'This shift is not eligible for check-in / check-out.' : 'Ca này không đủ điều kiện check-in / check-out.')
+                    : (language === 'en' ? 'Check-in / Check-out is not available in this environment.' : 'Check-in / Check-out chưa khả dụng trong môi trường này.')}
+                </div>}
+              </TabsContent>}
 
               {capabilities?.actual_staffing && <TabsContent value="actual" className="min-w-0 p-4 sm:p-6">
                 <ActualStaffingPanel shift={shift} currentUser={currentUser} />
@@ -941,15 +973,6 @@ export function ShiftDetailModal({
                       shift={shift}
                     />
 
-                    {process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE === 'true' && myRegistration && (
-                      <SelfAttendancePanel key={shift.id + ':' + currentUser?.id + ':' + myRegistration.operational_role}
-                        shiftId={shift.id} role={myRegistration.operational_role}
-                        shiftContext={{
-                          date:shift.date,start_time:shift.start_time,end_time:shift.end_time,
-                          brand:brand?.name??shift.brand_id,platform:platform?.name??shift.platform_id,
-                          title:shift.title,studio:shift.studio,
-                        }} />
-                    )}
                     {canRequestSwap && myRegistration && (
                       <Card><CardContent className="pt-5 flex justify-end"><Button variant="outline" onClick={() => setShowSwapDialog(true)}>Đổi ca</Button></CardContent></Card>
                     )}
