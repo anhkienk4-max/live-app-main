@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "d488aceb24a44b1de4bfa5d33db004de8524c43a",
+    "head": "e6163f9d9a317fadefdb4c6bae883562cd3d5fe4",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f",
     "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-full-upgrade"
   },
@@ -100,10 +100,10 @@
         "components": 170,
         "lib": 251,
         "scripts": 26,
-        "supabase": 108,
+        "supabase": 109,
         "tests": 265
       },
-      "total": 887
+      "total": 888
     },
     "tests": {
       "files": [
@@ -420,9 +420,10 @@
         "supabase/migrations/20261023153500_rc19_reports_historical_pagination_v2.sql",
         "supabase/migrations/20261023155000_rc19_reports_history_validate_filters_v2.sql",
         "supabase/migrations/20261023160500_rc19_reports_history_staff_filter_privacy.sql",
-        "supabase/migrations/20261024003000_rc19_p0_orphan_live_image_read_rls.sql"
+        "supabase/migrations/20261024003000_rc19_p0_orphan_live_image_read_rls.sql",
+        "supabase/migrations/20261025180000_rc19_u14_1_mandatory_checkout_photo.sql"
       ],
-      "count": 89
+      "count": 90
     }
   },
   "verification": {
@@ -436,5 +437,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-25T23:33:38+07:00"
+  "synced_at": "2026-10-26T00:20:40+07:00"
 }
