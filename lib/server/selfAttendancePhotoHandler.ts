@@ -213,6 +213,17 @@ export async function POST(request:Request) {
         eventKind,
       })
       const hash=createHash('sha256').update(cleanBytes).digest('hex')
+      const oppositeEventKind=eventKind==='check_in'?'check_out':'check_in'
+      const oppositeEvidence=await admin.from('self_attendance_photo_evidence')
+        .select('checksum_sha256')
+        .eq('shift_id',shiftId)
+        .eq('staff_id',actor.businessUserId)
+        .eq('operational_role',kind)
+        .eq('event_kind',oppositeEventKind)
+        .maybeSingle()
+      if(oppositeEvidence.data&&oppositeEvidence.data.checksum_sha256===hash) {
+        return failed('ATTENDANCE_PHOTO_DUPLICATE_ACROSS_EVENTS',409)
+      }
       // Use the SAME checked file-storage gateway used by operational report
       // images and data files. Its metadata/MIME/size contract applies even
       // though attendance has a separate authorized Drive root and photo flag.
