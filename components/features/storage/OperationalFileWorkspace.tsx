@@ -439,7 +439,30 @@ export function OperationalFileWorkspace() {
   // Scope verification indicator: whether folder path was verified from metadata or provider prepare
   const verifiedFolderPath = files[0]?.folder_path || folderPath || ''
 
-  if(userLoading||!currentUser)return <p className="p-4">{t('loading')}</p>
+  if (userLoading || !currentUser) {
+    return (
+      <div className="mx-auto max-w-7xl space-y-5 px-3 py-4 sm:px-6 animate-pulse" data-testid="operational-file-workspace-loading">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b pb-4">
+          <div className="flex items-center gap-3">
+            <div className="h-11 w-11 rounded-xl bg-slate-200 shrink-0" />
+            <div className="space-y-1.5">
+              <div className="h-7 w-48 rounded bg-slate-200" />
+              <div className="h-4 w-72 rounded bg-slate-100" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <div className="h-9 w-28 rounded bg-slate-200" />
+            <div className="h-9 w-32 rounded bg-slate-200" />
+          </div>
+        </div>
+        <div className="h-10 w-full rounded-md bg-slate-100" />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <div className="h-96 rounded-lg border border-slate-200 bg-white p-4 lg:col-span-4" />
+          <div className="h-96 rounded-lg border border-slate-200 bg-white p-4 lg:col-span-8" />
+        </div>
+      </div>
+    )
+  }
   if(currentUser&&!canView)return <p className="p-4 text-sm" role="alert">Bạn không có quyền truy cập kho file.</p>
   return (
     <div className="mx-auto max-w-7xl space-y-5 px-3 py-4 sm:px-6" data-testid="operational-file-workspace">

@@ -15,3 +15,13 @@ test('U15 loading UX: PageLoader uses responsive grid breakpoints to prevent mob
   assert.ok(code.includes('grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'), 'PageLoader must use responsive column scaling')
   assert.ok(!code.includes('grid grid-cols-4 gap-4'), 'PageLoader must not use rigid 4-column layout on mobile')
 })
+
+test('U15 loading UX: Storage workspaces render structured skeleton shells instead of bare text paragraphs', () => {
+  const filesWs = readFileSync(new URL('../components/features/storage/OperationalFileWorkspace.tsx', import.meta.url), 'utf8')
+  assert.ok(filesWs.includes('data-testid="operational-file-workspace-loading"'), 'OperationalFileWorkspace must render structured loading shell')
+  assert.ok(!filesWs.includes("if(userLoading||!currentUser)return <p className=\"p-4\">{t('loading')}</p>"), 'Must not return bare p tag during userLoading')
+
+  const setupWs = readFileSync(new URL('../components/features/storage/OperationalStorageSetupWorkspace.tsx', import.meta.url), 'utf8')
+  assert.ok(setupWs.includes('data-testid="storage-setup-loading"'), 'OperationalStorageSetupWorkspace must render structured loading shell')
+  assert.ok(!setupWs.includes("if(userLoading)return <p className=\"p-6\">{t('loading')}</p>"), 'Must not return bare p tag during userLoading')
+})
