@@ -90,7 +90,7 @@ test('RC19 U12 Settings: Operational settings boundary validation rules', () => 
       settings.default_support_count,
       settings.default_technical_count,
     ]
-    if (counts.some(value => !Number.isInteger(value) || value < 0) || settings.registration_cutoff_hours > 168) {
+    if (counts.some(value => !Number.isInteger(value) || value < 0)) {
       return false
     }
     return true
@@ -102,8 +102,8 @@ test('RC19 U12 Settings: Operational settings boundary validation rules', () => 
   assert.equal(validateOperational({ ...validSettings, default_host_count: -1 }), false)
   // Rejects non-integer values
   assert.equal(validateOperational({ ...validSettings, default_support_count: 1.5 }), false)
-  // Rejects cutoff hours exceeding 168h (1 week)
-  assert.equal(validateOperational({ ...validSettings, registration_cutoff_hours: 200 }), false)
+  // Accepts valid non-negative integer cutoff hours according to backend check (registration_cutoff_hours >= 0)
+  assert.equal(validateOperational({ ...validSettings, registration_cutoff_hours: 200 }), true)
 })
 
 test('RC19 U12 Settings: Personal settings validation requires timezone and date format', () => {

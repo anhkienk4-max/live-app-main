@@ -136,7 +136,7 @@ export default function SettingsPage() {
       operational.default_support_count,
       operational.default_technical_count
     ]
-    if (counts.some(value => !Number.isInteger(value) || value < 0) || operational.registration_cutoff_hours > 168) {
+    if (counts.some(value => !Number.isInteger(value) || value < 0)) {
       toast({ title: t('error'), description: t('validationError'), variant: 'destructive' })
       return
     }
