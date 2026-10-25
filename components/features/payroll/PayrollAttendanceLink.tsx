@@ -103,16 +103,39 @@ export function PayrollAttendanceLink({
   } : null
   const segments: ActualSegment[] = attendance?.segments??[]
   const rawAttendance = attendance?.attendance_events ?? []
-  const sourceRecords = new Map<string,{staffId:string;role:string;checkin:string|null;checkout:string|null;checkinEventId:string|null;photoAvailable:boolean}>()
+  interface AppAttendanceRecord {
+    staffId: string
+    role: string
+    checkin: string | null
+    checkout: string | null
+    checkinEventId: string | null
+    checkinPhotoAvailable: boolean
+    checkoutEventId: string | null
+    checkoutPhotoAvailable: boolean
+  }
+  const sourceRecords = new Map<string, AppAttendanceRecord>()
   for(const entry of rawAttendance){
     const key=entry.staff_id+':'+entry.operational_role
-    const row=sourceRecords.get(key)??{staffId:entry.staff_id,role:entry.operational_role,checkin:null,checkout:null,checkinEventId:null,photoAvailable:false}
+    const row=sourceRecords.get(key)??{
+      staffId:entry.staff_id,
+      role:entry.operational_role,
+      checkin:null,
+      checkout:null,
+      checkinEventId:null,
+      checkinPhotoAvailable:false,
+      checkoutEventId:null,
+      checkoutPhotoAvailable:false,
+    }
     if(entry.event_kind==='check_in'){
       row.checkin=entry.recorded_at
       row.checkinEventId=entry.id
-      row.photoAvailable=entry.photo_available===true
+      row.checkinPhotoAvailable=entry.photo_available===true
     }
-    if(entry.event_kind==='check_out')row.checkout=entry.recorded_at
+    if(entry.event_kind==='check_out'){
+      row.checkout=entry.recorded_at
+      row.checkoutEventId=entry.id
+      row.checkoutPhotoAvailable=entry.photo_available===true
+    }
     sourceRecords.set(key,row)
   }
   const pendingAppAttendance=[...sourceRecords.values()]
@@ -171,14 +194,35 @@ export function PayrollAttendanceLink({
         <strong>Check-in / Check-out trong ứng dụng · Chờ đối chiếu</strong>
         <p className="text-slate-600">Nhật ký server, chưa phải giờ công đã duyệt. Không dùng làm căn cứ trừ lương tự động.</p>
         {pendingAppAttendance.length===0?<p>Chưa có bản ghi check-in ứng dụng, không kết luận vắng mặt.</p>:null}
-        {pendingAppAttendance.map(item=><div key={item.staffId+':'+item.role} className="border-t pt-2">
-          {item.role} · {item.staffId.slice(0,8)}… · Check-in: {fmt(item.checkin)} · Check-out: {fmt(item.checkout)}
-          {item.photoAvailable&&item.checkinEventId?
-            <a className="ml-2 text-blue-700 underline" target="_blank" rel="noopener noreferrer"
-              href={'/api/workforce/self-attendance-photo?event_id='+encodeURIComponent(item.checkinEventId)}>
-              Xem ảnh check-in Drive (chờ xác minh)
-            </a>:
-            <span className="ml-2 text-amber-700">Chưa có ảnh check-in hợp lệ</span>}
+        {pendingAppAttendance.map(item=><div key={item.staffId+':'+item.role} className="border-t pt-2 space-y-1" data-testid="pending-app-attendance-item">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-medium text-slate-800">
+              {item.role==='host'?'Host':item.role==='support'?'Trợ live':'Kỹ thuật'} · {item.staffId.slice(0,8)}…
+            </span>
+            <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900" data-testid="attendance-pending-badge">
+              Chờ duyệt
+            </span>
+          </div>
+          <div className="text-slate-600">
+            Check-in: {fmt(item.checkin)}
+            {item.checkinPhotoAvailable&&item.checkinEventId?
+              <a className="ml-2 text-blue-700 underline" target="_blank" rel="noopener noreferrer"
+                data-testid="view-checkin-photo-link"
+                href={'/api/workforce/self-attendance-photo?event_id='+encodeURIComponent(item.checkinEventId)}>
+                Xem ảnh check-in Drive (chờ xác minh)
+              </a>:
+              <span className="ml-2 text-amber-700">Chưa có ảnh check-in</span>}
+          </div>
+          <div className="text-slate-600">
+            Check-out: {fmt(item.checkout)}
+            {item.checkoutPhotoAvailable&&item.checkoutEventId?
+              <a className="ml-2 text-blue-700 underline" target="_blank" rel="noopener noreferrer"
+                data-testid="view-checkout-photo-link"
+                href={'/api/workforce/self-attendance-photo?event_id='+encodeURIComponent(item.checkoutEventId)}>
+                Xem ảnh check-out Drive (chờ xác minh)
+              </a>:
+              <span className="ml-2 text-amber-700">Chưa có ảnh check-out</span>}
+          </div>
         </div>)}
       </div>}
       <div className="grid gap-2 lg:grid-cols-2">
