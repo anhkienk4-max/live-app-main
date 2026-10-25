@@ -83,35 +83,57 @@ test('flag ON: a pending registration cannot check in', async ({ page }) => {
 
 test('flag ON: failed check-out retries with one request ID and double click writes once', async ({ page }) => {
   await member(page, 'en')
+  await page.addInitScript(() => {
+    localStorage.setItem('livestream-ops-feature-photo', 'true')
+  })
   const events = [checkIn]
   await page.route('**/rest/v1/rpc/get_my_self_attendance', route => route.fulfill({ json: events }))
   const ids: string[] = []
   let release: (() => void) | undefined
-  await page.route('**/rest/v1/rpc/self_attendance_record', async route => {
-    const body = route.request().postDataJSON() as { p_request_id: string; p_event_kind: string }
-    expect(body.p_event_kind).toBe('check_out')
-    ids.push(body.p_request_id)
+  await page.route('**/api/workforce/self-attendance-photo', async route => {
+    const postData = route.request().postData() ?? ''
+    const match = /name="request_id"\r?\n\r?\n([a-f0-9-]+)/.exec(postData)
+    const reqId = match ? match[1] : 'unknown-id'
+    ids.push(reqId)
     if (ids.length === 1) {
       await new Promise<void>(resolve => { release = resolve })
-      return route.fulfill({ status: 503, json: { message: 'Temporary API error', code: '503' } })
+      return route.fulfill({ status: 503, json: { ok: false, error: { code: 'Temporary API error' } } })
     }
     const checkedOut = { ...checkIn, event_id: 'checkout-3', event: 'check_out',
-      recorded_at: '2026-10-25T06:00:00Z', photo_available: false }
+      recorded_at: '2026-10-25T06:00:00Z', photo_available: true }
     events.push(checkedOut)
-    return route.fulfill({ json: checkedOut })
+    return route.fulfill({ json: { ok: true, event: checkedOut } })
   })
   await openShift(page, 's1')
   await page.getByRole('tab', { name: 'Check-in / Check-out' }).click()
   await expect(page.getByTestId('self-attendance-status')).toContainText('Checked in')
-  await page.getByRole('button', { name: 'Check-out' }).evaluate(button => { (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click() })
+  await expect(page.getByTestId('attendance-checkout-camera')).toBeVisible()
+
+  // Verify check-out button is disabled until photo is provided
+  const checkoutBtn = page.getByRole('button', { name: 'Upload photo and check-out', exact: true })
+  await expect(checkoutBtn).toBeDisabled()
+
+  // Select valid check-out photo
+  await page.locator('input[type="file"][accept*="image"]').first().setInputFiles({
+    name: 'checkout.jpg',
+    mimeType: 'image/jpeg',
+    buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]),
+  })
+  await expect(checkoutBtn).toBeEnabled()
+
+  // Double click debounce check
+  await checkoutBtn.evaluate(button => { (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click() })
   await expect.poll(() => ids.length).toBe(1)
   release?.()
   await expect(page.getByRole('alert')).toContainText('Temporary API error')
-  await page.getByRole('button', { name: 'Check-out' }).click()
+
+  // Retry with same photo sends identical request id
+  await checkoutBtn.click()
   await expect(page.getByTestId('self-attendance-status')).toHaveText('Checked out')
   expect(ids).toHaveLength(2)
   expect(ids[0]).toBe(ids[1])
-  await expect(page.getByRole('button', { name: 'Check-out' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Upload photo and check-out', exact: true })).toHaveCount(0)
+  await expect(page.getByTestId('attendance-checkout-evidence')).toBeVisible()
 })
 
 test('flag ON: API read retry and account switch do not show stale actor events', async ({ page }) => {

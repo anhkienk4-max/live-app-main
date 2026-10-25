@@ -149,6 +149,15 @@ test('Drive attendance image names retain shift date, brand, platform, live wind
     recordedAt:'2026-10-23T13:20:31Z',
     requestId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',extension:'jpg',
   }),/TIME_INVALID/)
+  const checkoutName=attendancePhotoName({
+    shiftDate:'2026-10-23',shiftId:'shift-ADA-12',studio:'Phòng Live A',
+    brand:'OPELLA',platform:'TikTok',
+    startTime:'23:45:00',endTime:'01:45:00',role:'support',staffName:'Trợ Live',
+    recordedAt:'2026-10-24T01:45:10Z',
+    requestId:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',extension:'jpg',
+    eventKind:'check_out',
+  })
+  assert.equal(checkoutName,'20261023_OPELLA_TikTok_PHONG_Phong_Live_A_2345-0145_TRO_Tro_Live_CA_shift_ADA_12_CHECKOUT_20261024_014510Z_bbbbbbbb.jpg')
 })
 
 test('check-in photo SQL is immutable, private, matched to actor and excludes binary',()=>{
@@ -254,7 +263,8 @@ test('recovery after page reload requires existing actor-scoped Drive proof and 
   assert.match(client,/form\.set\('recover_only','true'\)/)
   assert.doesNotMatch(client.slice(client.indexOf('export async function recoverSelfAttendancePhotoCheckIn')),/form\.set\('file'/)
   assert.match(panel,/Khôi phục check-in đã gửi ảnh/)
-  assert.match(panel,/if\(lock\.current\|\|!ready\|\|nextAction!=='check_in'\|\|!photoFeatureReady\)return/)
+  assert.match(client,/export async function recoverSelfAttendancePhotoCheckOut/)
+  assert.match(panel,/if\s*\(lock\.current\s*\|\|\s*!ready\s*\|\|\s*kind\s*!==\s*nextAction\s*\|\|\s*!photoFeatureReady\)\s*return/)
 })
 
 
@@ -376,4 +386,42 @@ test('public Drive sharing is allowed ONLY with explicit operator override; inco
   assert.match(ui,/result\.public_access===true&&result\.public_access_approved!==true/)
   assert.match(ui,/ảnh check-in và thông tin nhân sự trong file vẫn có thể bị người có liên kết Drive truy cập/)
   assert.doesNotMatch(server,/\.permissions\.create\(|\.permissions\.delete\(/)
+})
+
+test('U14.1 migration mandates separate check-in and check-out photo evidence with trigger and unique constraint',()=>{
+  const migration=readFileSync(new URL('../supabase/migrations/20261025180000_rc19_u14_1_mandatory_checkout_photo.sql',import.meta.url),'utf8')
+  assert.match(migration,/add column if not exists event_kind text not null default 'check_in'/i)
+  assert.match(migration,/check \(event_kind in \('check_in', 'check_out'\)\)/i)
+  assert.match(migration,/unique \(shift_id, staff_id, operational_role, event_kind\)/i)
+  assert.match(migration,/create or replace function private\.require_self_attendance_photo\(\)/i)
+  assert.match(migration,/new\.event_kind = 'check_out' and not exists/i)
+  assert.match(migration,/ATTENDANCE_CHECKIN_REQUIRED/i)
+  assert.match(migration,/new\.event_kind in \('check_in', 'check_out'\)/i)
+  assert.match(migration,/ATTENDANCE_PHOTO_REQUIRED/i)
+  assert.match(migration,/get_self_attendance_photo_context/i)
+  assert.match(migration,/p_event_kind text default 'check_in'/i)
+  assert.match(migration,/ATTENDANCE_NOT_ASSIGNED/i)
+})
+
+test('U14.1 self attendance photo handler enforces separate check-out photo, rejects reuse, and serves GET for both events',()=>{
+  const handler=readFileSync(new URL('../lib/server/selfAttendancePhotoHandler.ts',import.meta.url),'utf8')
+  assert.match(handler,/z\.enum\(\['check_in','check_out'\]\)\.parse\(form\.get\('event_kind'\)\?\?'check_in'\)/)
+  assert.match(handler,/\.eq\('event_kind',eventKind\)/)
+  assert.match(handler,/byRequest\.data\.event_kind && byRequest\.data\.event_kind!==eventKind/)
+  assert.match(handler,/ATTENDANCE_PHOTO_REQUEST_REUSED/)
+  assert.match(handler,/p_event_kind:eventKind/)
+  assert.match(handler,/ATTENDANCE_PHOTO_CHECKOUT_PENDING_RECONCILIATION/)
+  assert.match(handler,/ATTENDANCE_PHOTO_CHECKOUT_RESPONSE_MISMATCH/)
+  assert.match(handler,/!\['check_in','check_out'\]\.includes\(event\.data\.event_kind\)/)
+})
+
+test('U14.1 UI renders distinct camera, preview, and evidence for both check-in and check-out',()=>{
+  const panel=readFileSync(new URL('../components/features/attendance/SelfAttendancePanel.tsx',import.meta.url),'utf8')
+  assert.match(panel,/attendance-checkin-camera/)
+  assert.match(panel,/attendance-checkout-camera/)
+  assert.match(panel,/data-testid="attendance-checkin-evidence"/)
+  assert.match(panel,/data-testid="attendance-checkout-evidence"/)
+  assert.match(panel,/disabled=\{busy \|\| !photo\}/)
+  assert.match(panel,/writeSelfAttendancePhotoCheckIn/)
+  assert.match(panel,/writeSelfAttendancePhotoCheckOut/)
 })
