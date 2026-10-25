@@ -160,6 +160,7 @@
     "tests/rc19-staffing-failclosed.test.ts",
     "tests/rc19-staffing-refresh-contract.test.ts",
     "tests/rc19-storage-scoped-search.test.ts",
+    "tests/rc19-storage-security-patch.test.ts",
     "tests/rc19-swap-exchange-page.test.ts",
     "tests/rc19-swap-source-picker.test.ts",
     "tests/rc19-u13-navigation-account-menu.test.ts",

@@ -10,10 +10,12 @@ import { CommandToolbar } from '@/components/ui/command-toolbar'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useTranslation } from '@/lib/i18n'
+import { isTrustedAccessUrl } from '@/lib/files/trustedAccessUrl'
 import {
   FolderArchive,
   Folder,
   FolderOpen,
+  FolderTree,
   ChevronRight,
   ChevronDown,
   Upload,
@@ -467,9 +469,20 @@ export function OperationalFileWorkspace() {
             <span>OneDrive: Chưa xác minh</span>
           </div>
           {catalog?.active_route_count != null && (
-            <div className={cn("flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium", catalog.active_route_count > 0 ? "bg-slate-50 text-slate-700 border-slate-200" : "bg-amber-50 text-amber-800 border-amber-200")} title="Tổng số Storage Routes đang active trong database">
+            <div className={cn("flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium", catalog.active_route_count > 0 ? "bg-slate-50 text-slate-700 border-slate-200" : "bg-amber-50 text-amber-800 border-amber-200")} title="Tổng số Storage Routes kích hoạt trong CSDL toàn hệ thống">
               <Layers className="h-3.5 w-3.5" />
-              <span>Storage Routes: {catalog.active_route_count} route(s) CSDL</span>
+              <span>Routes hệ thống: {catalog.active_route_count} route CSDL</span>
+            </div>
+          )}
+          {hasCompleteScope ? (
+            <div className={cn("flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium", folderPath ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-amber-50 text-amber-800 border-amber-200")} title="Trạng thái xác minh route theo scope (Brand/Platform/Period). Backend là nơi quyết định cuối cùng.">
+              <FolderTree className="h-3.5 w-3.5" />
+              <span>Route scope: {folderPath ? "Đã xác nhận từ backend" : "Chưa xác minh (Fail-closed)"}</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 rounded-full border bg-muted/30 px-3 py-1 text-xs font-medium text-muted-foreground" title="Cần chọn đủ Brand, Platform và Ngày để xác định route">
+              <FolderTree className="h-3.5 w-3.5" />
+              <span>Route scope: Chưa đủ ngữ cảnh</span>
             </div>
           )}
 
@@ -940,7 +953,7 @@ export function OperationalFileWorkspace() {
                                 >
                                   <Info className="h-4 w-4" />
                                 </button>
-                                {item.access_url && (item.access_url.startsWith('/api/operational-files') || item.access_url.startsWith('https://')) && (
+                                {item.access_url && isTrustedAccessUrl(item.access_url, item.provider) ? (
                                   <a
                                     className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-primary transition-colors"
                                     href={item.access_url}
@@ -951,7 +964,15 @@ export function OperationalFileWorkspace() {
                                   >
                                     <Download className="h-4 w-4" />
                                   </a>
-                                )}
+                                ) : item.access_url ? (
+                                  <span
+                                    className="rounded p-1.5 text-amber-600/60 cursor-not-allowed inline-flex"
+                                    title="URL file không an toàn hoặc chưa được nhà cung cấp xác minh (bị chặn)"
+                                    aria-label={'URL không an toàn: ' + item.file_name}
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </span>
+                                ) : null}
                                 {canDeleteFile(item.category) ? (
                                   <button
                                     className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive transition-colors disabled:opacity-50"
@@ -1047,7 +1068,7 @@ export function OperationalFileWorkspace() {
                         <div className="flex items-center justify-between pt-2 border-t text-[11px] text-muted-foreground">
                           <span>{new Date(item.created_at).toLocaleDateString('vi-VN')}</span>
                           <div className="flex items-center gap-1.5">
-                            {item.access_url && (item.access_url.startsWith('/api/operational-files') || item.access_url.startsWith('https://')) && (
+                            {item.access_url && isTrustedAccessUrl(item.access_url, item.provider) ? (
                               <a
                                 className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted hover:text-primary transition-colors inline-flex items-center gap-1"
                                 href={item.access_url}
@@ -1058,7 +1079,15 @@ export function OperationalFileWorkspace() {
                                 <Download className="h-3.5 w-3.5" />
                                 <span>Tải</span>
                               </a>
-                            )}
+                            ) : item.access_url ? (
+                              <span
+                                className="rounded-md border border-border px-2 py-1 text-xs font-medium text-amber-600/60 cursor-not-allowed inline-flex items-center gap-1"
+                                title="URL file không an toàn hoặc chưa được nhà cung cấp xác minh (bị chặn)"
+                              >
+                                <Download className="h-3.5 w-3.5" />
+                                <span>Tải (Chặn)</span>
+                              </span>
+                            ) : null}
                             {canDeleteFile(item.category) && (
                               <button
                                 className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted hover:text-destructive transition-colors disabled:opacity-50 inline-flex items-center gap-1"
@@ -1184,7 +1213,7 @@ export function OperationalFileWorkspace() {
               >
                 Đóng
               </button>
-              {inspectItem.access_url && (inspectItem.access_url.startsWith('/api/operational-files') || inspectItem.access_url.startsWith('https://')) && (
+              {inspectItem.access_url && isTrustedAccessUrl(inspectItem.access_url, inspectItem.provider) ? (
                 <a
                   href={inspectItem.access_url}
                   target="_blank"
@@ -1194,7 +1223,15 @@ export function OperationalFileWorkspace() {
                   <Download className="h-3.5 w-3.5" />
                   <span>Mở / Tải file</span>
                 </a>
-              )}
+              ) : inspectItem.access_url ? (
+                <span
+                  className="rounded-md bg-muted text-muted-foreground px-3 py-1.5 text-xs font-medium cursor-not-allowed inline-flex items-center gap-1.5"
+                  title="URL file không thuộc domain cloud provider đáng tin cậy"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>URL không an toàn (Chặn)</span>
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1319,7 +1356,7 @@ export function OperationalFileWorkspace() {
                   >
                     {translate("Tạo / mở folder lưu trữ")}
                   </button>
-                  {folderUrl && (
+                  {folderUrl && isTrustedAccessUrl(folderUrl, provider) && (
                     <p className="text-xs break-all pt-1.5">
                       {translate("Folder:")}
                       <a className="inline-flex min-h-8 items-center break-all text-primary underline font-medium ml-1" href={folderUrl} target="_blank" rel="noopener noreferrer">
