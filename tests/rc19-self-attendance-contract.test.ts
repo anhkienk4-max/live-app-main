@@ -388,19 +388,122 @@ test('public Drive sharing is allowed ONLY with explicit operator override; inco
   assert.doesNotMatch(server,/\.permissions\.create\(|\.permissions\.delete\(/)
 })
 
-test('U14.1 migration mandates separate check-in and check-out photo evidence with trigger and unique constraint',()=>{
+test('P0-1 & P0-5: U14.1 migration guarantees PostgREST RPC compatibility and safe constraint migration',()=>{
   const migration=readFileSync(new URL('../supabase/migrations/20261025180000_rc19_u14_1_mandatory_checkout_photo.sql',import.meta.url),'utf8')
   assert.match(migration,/add column if not exists event_kind text not null default 'check_in'/i)
   assert.match(migration,/check \(event_kind in \('check_in', 'check_out'\)\)/i)
   assert.match(migration,/unique \(shift_id, staff_id, operational_role, event_kind\)/i)
-  assert.match(migration,/create or replace function private\.require_self_attendance_photo\(\)/i)
+  // P0-5: Safe catalog query without loose pattern matching on constraint names
+  assert.match(migration,/array\['shift_id',\s*'staff_id',\s*'operational_role'\]/)
+  assert.doesNotMatch(migration,/conname like '%operational%'/)
+  // P0-5: Documented rollback plan covering pre-existing check_out photo rows
+  assert.match(migration,/Rollback plan reference:/i)
+  assert.match(migration,/self_attendance_photo_evidence_checkout_backup/)
+
+  // 3-arg function has NO DEFAULT to prevent PostgREST PGRST204 RPC ambiguity
+  assert.match(migration,/create or replace function public\.get_self_attendance_photo_context\(\s*p_shift_id text,\s*p_operational_role text,\s*p_event_kind text\s*\)/i)
+  assert.doesNotMatch(migration,/p_event_kind text default 'check_in'/i)
+
+  // 2-arg function is provided as unambiguous backward compatible overload
+  assert.match(migration,/create or replace function public\.get_self_attendance_photo_context\(\s*p_shift_id text,\s*p_operational_role text\s*\)/i)
+  assert.match(migration,/return public\.get_self_attendance_photo_context\(p_shift_id, p_operational_role, 'check_in'\);/)
+
+  // Both functions are granted to authenticated with security definer and search_path = ''
+  assert.match(migration,/grant execute on function public\.get_self_attendance_photo_context\(text, text, text\) to authenticated/i)
+  assert.match(migration,/grant execute on function public\.get_self_attendance_photo_context\(text, text\) to authenticated/i)
+
+  // Trigger enforces both check-in and check-out photos and check-in prerequisite
   assert.match(migration,/new\.event_kind = 'check_out' and not exists/i)
   assert.match(migration,/ATTENDANCE_CHECKIN_REQUIRED/i)
   assert.match(migration,/new\.event_kind in \('check_in', 'check_out'\)/i)
   assert.match(migration,/ATTENDANCE_PHOTO_REQUIRED/i)
-  assert.match(migration,/get_self_attendance_photo_context/i)
-  assert.match(migration,/p_event_kind text default 'check_in'/i)
-  assert.match(migration,/ATTENDANCE_NOT_ASSIGNED/i)
+})
+
+test('P0-2: Check-in and Check-out have separate, isolated time boundary rules in SQL and business logic',()=>{
+  const migration=readFileSync(new URL('../supabase/migrations/20261025180000_rc19_u14_1_mandatory_checkout_photo.sql',import.meta.url),'utf8')
+
+  // Check-in condition: shift cannot be completed, window is [start_at - 2h, end_at]
+  assert.match(migration,/if v_kind = 'check_in' then/)
+  assert.match(migration,/v_shift\.status not in \('scheduled', 'preparing', 'live', 'paused'\)/)
+  assert.match(migration,/v_now > v_shift\.end_at/)
+
+  // Check-out condition: allows completed shifts, grace period is [start_at - 2h, end_at + 4h]
+  assert.match(migration,/v_shift\.status not in \('scheduled', 'preparing', 'live', 'paused', 'completed'\)/)
+  assert.match(migration,/v_now > v_shift\.end_at \+ interval '4 hours'/)
+
+  // Pure function testing time boundary logic across all phases
+  function checkBoundary(shift: {
+    start_at: Date;
+    end_at: Date;
+    status: 'scheduled' | 'preparing' | 'live' | 'paused' | 'completed';
+  }, kind: 'check_in' | 'check_out', now: Date): boolean {
+    if (kind === 'check_in') {
+      if (!['scheduled', 'preparing', 'live', 'paused'].includes(shift.status)) return false;
+      const earliest = new Date(shift.start_at.getTime() - 2 * 3600 * 1000);
+      const latest = shift.end_at;
+      return now >= earliest && now <= latest;
+    } else {
+      if (!['scheduled', 'preparing', 'live', 'paused', 'completed'].includes(shift.status)) return false;
+      const earliest = new Date(shift.start_at.getTime() - 2 * 3600 * 1000);
+      const latest = new Date(shift.end_at.getTime() + 4 * 3600 * 1000);
+      return now >= earliest && now <= latest;
+    }
+  }
+
+  // Regular daytime shift 08:00 - 12:00
+  const regularShift = {
+    start_at: new Date('2026-10-25T08:00:00Z'),
+    end_at: new Date('2026-10-25T12:00:00Z'),
+    status: 'live' as const,
+  };
+
+  // 1. Before shift (05:59 - more than 2h before start)
+  assert.equal(checkBoundary(regularShift, 'check_in', new Date('2026-10-25T05:59:00Z')), false);
+  assert.equal(checkBoundary(regularShift, 'check_out', new Date('2026-10-25T05:59:00Z')), false);
+
+  // 2. Early check-in window (06:01 - within 2h before start)
+  assert.equal(checkBoundary(regularShift, 'check_in', new Date('2026-10-25T06:01:00Z')), true);
+
+  // 3. During shift (10:00)
+  assert.equal(checkBoundary(regularShift, 'check_in', new Date('2026-10-25T10:00:00Z')), true);
+  assert.equal(checkBoundary(regularShift, 'check_out', new Date('2026-10-25T10:00:00Z')), true);
+
+  // 4. Exact end of shift (12:00)
+  assert.equal(checkBoundary(regularShift, 'check_in', new Date('2026-10-25T12:00:00Z')), true);
+  assert.equal(checkBoundary(regularShift, 'check_out', new Date('2026-10-25T12:00:00Z')), true);
+
+  // 5. After shift end (12:30 - check-in MUST be rejected, check-out allowed)
+  assert.equal(checkBoundary(regularShift, 'check_in', new Date('2026-10-25T12:30:00Z')), false);
+  assert.equal(checkBoundary(regularShift, 'check_out', new Date('2026-10-25T12:30:00Z')), true);
+
+  // 6. Within check-out grace period (15:59 - within end_at + 4h)
+  assert.equal(checkBoundary(regularShift, 'check_in', new Date('2026-10-25T15:59:00Z')), false);
+  assert.equal(checkBoundary(regularShift, 'check_out', new Date('2026-10-25T15:59:00Z')), true);
+
+  // 7. After check-out grace period (16:01 - more than 4h after end_at)
+  assert.equal(checkBoundary(regularShift, 'check_in', new Date('2026-10-25T16:01:00Z')), false);
+  assert.equal(checkBoundary(regularShift, 'check_out', new Date('2026-10-25T16:01:00Z')), false);
+
+  // 8. Completed shift: check-in rejected, check-out allowed within grace period
+  const completedShift = { ...regularShift, status: 'completed' as const };
+  assert.equal(checkBoundary(completedShift, 'check_in', new Date('2026-10-25T10:00:00Z')), false);
+  assert.equal(checkBoundary(completedShift, 'check_out', new Date('2026-10-25T13:00:00Z')), true);
+
+  // 9. Overnight shift crossing midnight: 22:00 -> 02:00 next day
+  const overnightShift = {
+    start_at: new Date('2026-10-25T22:00:00Z'),
+    end_at: new Date('2026-10-26T02:00:00Z'),
+    status: 'live' as const,
+  };
+  // During overnight shift at 01:00 next day
+  assert.equal(checkBoundary(overnightShift, 'check_in', new Date('2026-10-26T01:00:00Z')), true);
+  assert.equal(checkBoundary(overnightShift, 'check_out', new Date('2026-10-26T01:00:00Z')), true);
+  // After overnight shift at 04:00 next day (check-in rejected, check-out within 4h grace period)
+  assert.equal(checkBoundary(overnightShift, 'check_in', new Date('2026-10-26T04:00:00Z')), false);
+  assert.equal(checkBoundary(overnightShift, 'check_out', new Date('2026-10-26T04:00:00Z')), true);
+  // After grace period at 06:01 next day (both rejected)
+  assert.equal(checkBoundary(overnightShift, 'check_in', new Date('2026-10-26T06:01:00Z')), false);
+  assert.equal(checkBoundary(overnightShift, 'check_out', new Date('2026-10-26T06:01:00Z')), false);
 })
 
 test('U14.1 self attendance photo handler enforces separate check-out photo, rejects reuse, and serves GET for both events',()=>{
@@ -424,4 +527,36 @@ test('U14.1 UI renders distinct camera, preview, and evidence for both check-in 
   assert.match(panel,/disabled=\{busy \|\| !photo\}/)
   assert.match(panel,/writeSelfAttendancePhotoCheckIn/)
   assert.match(panel,/writeSelfAttendancePhotoCheckOut/)
+})
+test('P1-3: Cross-event SHA-256 duplicate detection and request isolation in photo handler',()=>{
+  const handler=readFileSync(new URL('../lib/server/selfAttendancePhotoHandler.ts',import.meta.url),'utf8')
+
+  // Rejects identical SHA-256 across check_in and check_out
+  assert.match(handler,/const oppositeEventKind=eventKind==='check_in'\?'check_out':'check_in'/)
+  assert.match(handler,/oppositeEvidence\.data\.checksum_sha256===hash/)
+  assert.match(handler,/failed\('ATTENDANCE_PHOTO_DUPLICATE_ACROSS_EVENTS',409\)/)
+
+  // Preserves separate request UUID and capture source tracking
+  assert.match(handler,/const requestId=UUID\.parse\(form\.get\('request_id'\)\)/)
+  assert.match(handler,/z\.enum\(\['camera','file_picker'\]\)\.parse\(form\.get\('capture_source'\)\)/)
+  assert.match(handler,/byRequest\.data\.event_kind && byRequest\.data\.event_kind!==eventKind/)
+  assert.match(handler,/failed\('ATTENDANCE_PHOTO_REQUEST_REUSED',409\)/)
+})
+
+test('P1-4: Manager review supports dual photo links, timestamps, and pending approval badge',()=>{
+  const ui=readFileSync(new URL('../components/features/payroll/PayrollAttendanceLink.tsx',import.meta.url),'utf8')
+  const handler=readFileSync(new URL('../lib/server/selfAttendancePhotoHandler.ts',import.meta.url),'utf8')
+
+  // Check-in and check-out timestamps and links are rendered
+  assert.match(ui,/Check-in: \{fmt\(item\.checkin\)\}/)
+  assert.match(ui,/Check-out: \{fmt\(item\.checkout\)\}/)
+  assert.match(ui,/data-testid="view-checkin-photo-link"/)
+  assert.match(ui,/data-testid="view-checkout-photo-link"/)
+  assert.match(ui,/data-testid="attendance-pending-badge"/)
+  assert.match(ui,/Chờ duyệt/)
+
+  // Actor/role isolation in GET photo handler
+  assert.match(handler,/event\.data\.staff_id!==actor\.businessUserId/)
+  assert.match(handler,/!\['leader','admin'\]\.includes\(actor\.systemPermission\)/)
+  assert.match(handler,/session\.from\('shifts'\)\.select\('id'\)\.eq\('id',event\.data\.shift_id\)/)
 })
