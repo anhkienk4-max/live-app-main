@@ -95,7 +95,7 @@ function StaffingContent() {
       {activeTab === 'registration' ? (
         <RegistrationReviewWorkspace />
       ) : activeTab === 'attendance' ? (
-        <AttendanceSourceManager />
+        <AttendanceSourceManager key={currentUser?.id ?? 'anonymous'} />
       ) : (
         canReview ? <StaffingWorkspace /> : <ShiftRegistrationBoard mode="open" />
       )}
