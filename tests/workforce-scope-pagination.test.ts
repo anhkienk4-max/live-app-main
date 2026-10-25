@@ -82,18 +82,21 @@ test('shift-scoped reads reject duplicate evidence across independent chunks',as
   )
 })
 
-function largeScopeFixture(){
-  const shifts=Array.from({length:1205},(_,i)=>({
+function largeScopeFixture(staffCount=1, shiftsPerStaff=1205, approved=false){
+  const shifts=Array.from({length:staffCount*shiftsPerStaff},(_,i)=>({
     id:'shift-'+String(i).padStart(5,'0'),
     date:'2026-05-10',start_at:'2026-05-10T02:00:00Z',status:'completed',
-    host_id:'staff-1',support_id:null,technical_id:null,
+    host_id:`staff-${Math.floor(i/shiftsPerStaff)+1}`,support_id:null,technical_id:null,
     deleted_at:null,
   }))
   const data:Record<string,RecordRow[]>={
     shifts,
-    business_users:[{id:'staff-1',full_name:'Verified member',department:'Livestream',status:'active',deleted_at:null}],
+    business_users:Array.from({length:staffCount},(_,i)=>({id:`staff-${i+1}`,full_name:`Verified member ${i+1}`,department:'Livestream',status:'active',deleted_at:null})),
     shift_registrations:[],
-    workforce_actual_segments:[],
+    workforce_actual_segments:approved?shifts.flatMap((shift,i)=>[
+      {id:`actual-${i}`,shift_id:shift.id,staff_id:shift.host_id,operational_role:'host',event_kind:'worked',review_status:'approved',actual_start_at:'2026-05-10T02:00:00Z',actual_end_at:'2026-05-10T03:00:00Z'},
+      {id:`draft-${i}`,shift_id:shift.id,staff_id:shift.host_id,operational_role:'host',event_kind:'worked',review_status:'draft',actual_start_at:'2026-05-10T02:00:00Z',actual_end_at:'2026-05-10T12:00:00Z'},
+    ]):[],
   }
   const seenChunks:number[]=[]
   const createClient=()=>({
@@ -158,4 +161,37 @@ test('year-long Team KPI includes 1,205 shifts with no inferred verified attenda
   assert.equal(result.team.verifiedShifts,0)
   assert.equal(result.team.unknownAttendanceShifts,1205)
   assert.ok(db.seenChunks.every(n=>n<=WORKFORCE_SHIFT_ID_CHUNK_SIZE))
+})
+
+test('team staff pages filter and sort server-side while ranking uses the complete approved scope',async()=>{
+  const db=largeScopeFixture(25,1,true)
+  const handler=createWorkforceOverviewHandler({
+    createClient:db.createClient as never,resolveUser:admin,
+    isEnabled:()=>true,grace:()=>10,leaderboardMin:()=>1,
+  })
+  const response=await handler.GET(new Request(
+    'https://example.test/api/workforce/overview?period=2026-05&role=host&page=2&page_size=10&sort=name&direction=asc',
+  ))
+  assert.equal(response.status,200,JSON.stringify(await response.clone().json()))
+  const body=await response.json() as {
+    team:{staffCount:number;actualMinutes:number};
+    staff:Array<{staffId:string}>;
+    staff_pagination:{page:number;total_count:number;total_pages:number};
+    leaderboard:Array<{rank:number}>;
+  }
+  assert.equal(body.team.staffCount,25)
+  assert.equal(body.team.actualMinutes,25*60)
+  assert.equal(body.staff.length,10)
+  assert.deepEqual(body.staff_pagination,{page:2,page_size:10,total_count:25,total_pages:3,has_next:true,has_previous:true})
+  assert.equal(body.leaderboard.length,25)
+  assert.equal(body.leaderboard.at(-1)?.rank,25)
+
+  const filtered=await handler.GET(new Request(
+    'https://example.test/api/workforce/overview?period=2026-05&role=host&page=9&page_size=10&staff_id=staff-3',
+  ))
+  assert.equal(filtered.status,200)
+  const selected=await filtered.json() as {staff:Array<{staffId:string}>;staff_pagination:{page:number;total_count:number}}
+  assert.deepEqual(selected.staff.map(staff=>staff.staffId),['staff-3'])
+  assert.equal(selected.staff_pagination.page,1)
+  assert.equal(selected.staff_pagination.total_count,1)
 })

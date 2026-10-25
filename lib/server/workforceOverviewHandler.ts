@@ -18,7 +18,15 @@ const query=z.object({
   period:z.string().regex(/^\d{4}(?:-(0[1-9]|1[0-2]))?$/u).optional(),
   month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/u).optional(),
   role:z.enum(['host','support','technical']),
+  page:z.coerce.number().int().min(1).max(100000).optional(),
+  page_size:z.coerce.number().int().min(1).max(50).optional(),
+  search:z.string().max(100).optional(),
+  staff_id:z.string().max(128).optional(),
+  record:z.enum(['complete','incomplete']).optional(),
+  sort:z.enum(['name','assigned','approved_minutes','punctuality']).optional(),
+  direction:z.enum(['asc','desc']).optional(),
 }).strict().refine(input=>Boolean(input.period||input.month)&&!(input.period&&input.month))
+  .refine(input=>Boolean(input.page)===Boolean(input.page_size))
 const fail=(code:string,status:number)=>Response.json({ok:false,error:{code}},
   {status,headers:{'Cache-Control':'no-store'}})
 type Options={createClient?:()=>SupabaseClient;resolveUser?:ServerUserResolver,
@@ -137,9 +145,29 @@ export function createWorkforceOverviewHandler(options:Options={}) {
       const knownPairs=new Set(pairKeys)
       const unmatched=evidence.filter(e=>!knownPairs.has(
         e.shiftId+':'+e.staffId+':'+e.role)).length
+      const search=input.search?.trim().toLocaleLowerCase()??''
+      const matching=results.filter(s=>(!input.staff_id||s.staffId===input.staff_id)
+        &&(!input.record||(input.record==='complete'?s.isComplete:!s.isComplete))
+        &&(!search||[s.staffId,s.name,s.department].some(value=>value?.toLocaleLowerCase().includes(search))))
+      if(input.page_size){
+        const sign=input.direction==='desc'?-1:1
+        matching.sort((a,b)=>{
+          const compared=input.sort==='assigned'?a.assignedShifts-b.assignedShifts
+            :input.sort==='approved_minutes'?a.approvedActualMinutes-b.approvedActualMinutes
+            :input.sort==='punctuality'?(a.punctualityPct??-1)-(b.punctualityPct??-1)
+            :(a.name||a.staffId).localeCompare(b.name||b.staffId)
+          return sign*compared||a.staffId.localeCompare(b.staffId)
+        })
+      }
+      const totalPages=input.page_size?Math.max(1,Math.ceil(matching.length/input.page_size)):1
+      const page=input.page_size?Math.min(input.page??1,totalPages):1
+      const staff=input.page_size?matching.slice((page-1)*input.page_size,page*input.page_size):matching
       return Response.json({
         ok:true,period,...(period.includes('-')?{month:period}:{year:period}),role:input.role,team:aggregateWorkforceTeam(results),
-        staff:results,leaderboard,
+        staff,staff_pagination:input.page_size?{
+          page,page_size:input.page_size,total_count:matching.length,total_pages:totalPages,
+          has_next:page<totalPages,has_previous:page>1,
+        }:undefined,leaderboard,
         leaderboard_policy_configured:leaderboardPolicy!==null,
         unmatched_approved_segments:unmatched,
         gmv_per_hour:null,orders_per_hour:null,
