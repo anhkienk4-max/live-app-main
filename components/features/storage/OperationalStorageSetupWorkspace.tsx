@@ -64,7 +64,7 @@ function parsePeriodOverrides(raw: string): Record<string, { default: string }> 
 }
 
 export function OperationalStorageSetupWorkspace() {
-  const { t, translate } = useTranslation()
+  const { translate } = useTranslation()
   const {currentUser,loading:userLoading}=useCurrentUser()
   const canManage=!!currentUser&&resolveSystemPermission(currentUser)==='admin'
   const [data, setData] = React.useState<Inventory | null>(null)
