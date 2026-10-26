@@ -99,6 +99,16 @@ export function verifyWeekdayMatches(dateStr: string, weekdayStr?: string): bool
 }
 
 /**
+ * Calendar validation before generating any attendance timestamps.
+ * JS Date rollover would otherwise accept e.g. 2026-02-31.
+ */
+function isRealCalendarDate(year: number, month: number, day: number): boolean {
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return false
+  if (year < 1000 || year > 9999 || month < 1 || month > 12 || day < 1) return false
+  return day <= new Date(Date.UTC(year, month, 0)).getUTCDate()
+}
+
+/**
  * Parses date string in DD/MM/YYYY, MM/DD/YYYY, or YYYY-MM-DD.
  * Respects source-specific date order ('month-first', 'day-first', 'iso').
  * If ambiguous and dateOrder is unknown, returns error flag.
@@ -126,6 +136,7 @@ export function parseCanonicalDateWithOrder(
     const y = isoMatch[1]
     const m = isoMatch[2].padStart(2, '0')
     const d = isoMatch[3].padStart(2, '0')
+    if (!isRealCalendarDate(Number(y), Number(m), Number(d))) return { date: null, isAmbiguous: false }
     return { date: `${y}-${m}-${d}`, isAmbiguous: false }
   }
 
@@ -167,7 +178,7 @@ export function parseCanonicalDateWithOrder(
       }
     }
 
-    if (month < 1 || month > 12 || day < 1 || day > 31) {
+    if (!isRealCalendarDate(Number(y), month, day)) {
       return { date: null, isAmbiguous: false }
     }
     return {

@@ -67,6 +67,10 @@ export function previewAttendanceImport(
 
   const matchResults: AttendanceMatchResult[] = []
   const parseErrors: string[] = []
+  // Only compare already matched intervals of the same shift/staff/role in this batch.
+  // Half-open [start, end) intervals allow adjacent legitimate split work segments.
+  // Keep source fingerprints and existing database/RPC idempotence unchanged.
+  const seenMatchedSegments = new Map<string, Array<{ rowNumber: number; startMs: number; endMs: number }>>()
 
   const exceptionCounters = {
     SHIFT_NOT_FOUND: 0,
@@ -80,6 +84,37 @@ export function previewAttendanceImport(
     AMBIGUOUS_DATE_ORDER: 0,
     WEEKDAY_MISMATCH: 0,
     INVALID_CONTROL_STRUCTURE: 0,
+  }
+
+  const appendMatch = (match: AttendanceMatchResult) => {
+    let result = match
+    if (match.status === 'matched' && match.matchedShiftId && match.matchedStaffId) {
+      const segment = match.segment
+      const key = JSON.stringify([match.matchedShiftId, match.matchedStaffId, segment.operationalRole])
+      const startMs = Date.parse(segment.startAtIso)
+      const endMs = Date.parse(segment.endAtIso)
+      const priorIntervals = seenMatchedSegments.get(key) || []
+      const conflicting = priorIntervals.find(prior => startMs < prior.endMs && prior.startMs < endMs)
+      if (conflicting) {
+        const exactDuplicate = startMs === conflicting.startMs && endMs === conflicting.endMs
+        result = {
+          ...match,
+          status: 'exception',
+          exceptionCode: 'OVERLAP_CONFLICT',
+          exceptionDetail: exactDuplicate
+            ? `DUPLICATE_SOURCE_ROW: Trùng ca / nhân sự / vai trò / giờ thực tế với dòng #${conflicting.rowNumber} của nguồn nhập`
+            : `INTRA_BATCH_OVERLAP: Khoảng giờ thực tế chồng lấn dòng #${conflicting.rowNumber} (cùng ca / nhân sự / vai trò)`,
+        }
+      } else {
+        priorIntervals.push({ rowNumber: match.rowNumber, startMs, endMs })
+        seenMatchedSegments.set(key, priorIntervals)
+      }
+    }
+
+    matchResults.push(result)
+    if (result.status === 'exception' && result.exceptionCode) {
+      exceptionCounters[result.exceptionCode] = (exceptionCounters[result.exceptionCode] || 0) + 1
+    }
   }
 
   // 1. Process CONTROL TIMESHEETS rows if provided
@@ -124,10 +159,7 @@ export function previewAttendanceImport(
         staffList,
         existingSegments,
       })
-      matchResults.push(match)
-      if (match.status === 'exception' && match.exceptionCode) {
-        exceptionCounters[match.exceptionCode] = (exceptionCounters[match.exceptionCode] || 0) + 1
-      }
+      appendMatch(match)
     }
   } else {
     // 2. Process Standard Raw Rows (Opella, PepsiCo, etc.)
@@ -172,10 +204,7 @@ export function previewAttendanceImport(
           existingSegments,
         })
 
-        matchResults.push(match)
-        if (match.status === 'exception' && match.exceptionCode) {
-          exceptionCounters[match.exceptionCode] = (exceptionCounters[match.exceptionCode] || 0) + 1
-        }
+        appendMatch(match)
       }
     }
   }
