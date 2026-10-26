@@ -161,11 +161,13 @@ export async function POST(request:Request) {
       // Normalize photo and strip EXIF/GPS/device metadata before Drive upload.
       let cleanBytes:Uint8Array
       try{
-        const sharp = (await import('sharp')).default
+        const sharpModule = await import('sharp')
+        const sharp = (sharpModule.default || sharpModule) as unknown as typeof sharpModule.default
         cleanBytes=new Uint8Array(await sharp(bytes,{limitInputPixels:24_000_000,failOn:'error'})
           .rotate().resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true})
           .flatten({background:'#ffffff'}).jpeg({quality:82,mozjpeg:true}).toBuffer())
-      }catch{
+      }catch(err){
+        console.error('[SHARP_FATAL_ERROR]', err)
         return failed('ATTENDANCE_PHOTO_IMAGE_INVALID',415)
       }
       if(cleanBytes.byteLength<1||cleanBytes.byteLength>LIMIT)
