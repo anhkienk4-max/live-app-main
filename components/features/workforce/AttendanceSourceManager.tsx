@@ -280,6 +280,14 @@ export function AttendanceSourceManager() {
       }
       const worksheet = workbook.Sheets[firstSheetName]
       const jsonRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: '' })
+      // Keep the workbook selectable even when the first sheet is a blank cover/instructions tab.
+      uploadedWorkbookRef.current = workbook
+      setAvailableTabs(workbook.SheetNames)
+      setSelectedTab(firstSheetName)
+      setSourceRows(jsonRows)
+      setUploadedFileName(file.name)
+      setSourceName(file.name)
+      setSourceType(file.name.toLowerCase().endsWith('.csv') ? 'csv_upload' : 'excel_upload')
 
       if (jsonRows.length === 0) {
         setError(en ? 'The file has no data rows.' : 'Tệp không có dòng dữ liệu.')
@@ -291,13 +299,6 @@ export function AttendanceSourceManager() {
         return
       }
 
-      uploadedWorkbookRef.current = workbook
-      setAvailableTabs(workbook.SheetNames)
-      setSelectedTab(firstSheetName)
-      setSourceRows(jsonRows)
-      setUploadedFileName(file.name)
-      setSourceName(file.name)
-      setSourceType(file.name.toLowerCase().endsWith('.csv') ? 'csv_upload' : 'excel_upload')
       setError('')
 
       if (selectedProfile === 'control_timesheets') {
