@@ -311,7 +311,7 @@ async function handleAdminDriveMaintenance(action: string) {
       }).catch(e => ({ error: (e as Error).message }))
       const rootPerms = await googleClient.permissions.list({
         fileId: currentAttendanceRoot,
-        fields: 'permissions(id, type, role, inherited, inheritedFrom)',
+        fields: 'permissions(id, type, role)',
         supportsAllDrives: true,
       }).catch(e => ({ error: (e as Error).message }))
 
@@ -322,7 +322,7 @@ async function handleAdminDriveMaintenance(action: string) {
       }).catch(e => ({ error: (e as Error).message }))
       const periodPerms = await googleClient.permissions.list({
         fileId: '1PUBnV9Y0Dia8xG7UA53KEv8dVCIEWtn0',
-        fields: 'permissions(id, type, role, inherited, inheritedFrom)',
+        fields: 'permissions(id, type, role)',
         supportsAllDrives: true,
       }).catch(e => ({ error: (e as Error).message }))
 
@@ -336,7 +336,7 @@ async function handleAdminDriveMaintenance(action: string) {
         }).catch(e => ({ error: (e as Error).message }))
         const fPerms = await googleClient.permissions.list({
           fileId: fId,
-          fields: 'permissions(id, type, role, inherited, inheritedFrom)',
+          fields: 'permissions(id, type, role)',
           supportsAllDrives: true,
         }).catch(e => ({ error: (e as Error).message }))
         photoAudits.push({ fileId: fId, metadata: fMeta, permissions: fPerms })
@@ -460,7 +460,7 @@ async function handleAdminDriveMaintenance(action: string) {
 
         const afterPerms = await googleClient.permissions.list({
           fileId,
-          fields: 'permissions(id, type, role, inherited)',
+          fields: 'permissions(id, type, role)',
           supportsAllDrives: true,
         })
         const hasAnyoneRemaining = (afterPerms.data.permissions || []).some(p => p.type === 'anyone' || p.type === 'domain')
@@ -495,7 +495,7 @@ async function handleAdminDriveMaintenance(action: string) {
     return failed('ATTENDANCE_PHOTO_REQUEST_INVALID', 400)
   } catch (error) {
     console.error('Admin Drive maintenance error:', error)
-    return failed('ATTENDANCE_DRIVE_MAINTENANCE_FAILED', 500)
+    return Response.json({ ok: false, error: { code: 'ATTENDANCE_DRIVE_MAINTENANCE_FAILED', message: (error as Error).message, stack: (error as Error).stack } }, { status: 500, headers: ERROR_HEADERS })
   }
 }
 
