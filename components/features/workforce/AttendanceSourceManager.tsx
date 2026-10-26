@@ -60,9 +60,13 @@ function mapJsonRowsToRawRows(
       return ''
     }
 
+    const dateHeaders = [mapping.dateCol, 'ngày', 'date', 'ngay'].map(h => h.toLowerCase().trim())
+    const rawDateEntry = Object.entries(row).find(([key, value]) =>
+      dateHeaders.includes(key.toLowerCase().trim()) && value !== null && value !== undefined && String(value).trim() !== ''
+    )
     return {
       rowNumber: idx + 1,
-      date: findVal(mapping.dateCol, ['ngày', 'date', 'ngay']),
+      date: typeof rawDateEntry?.[1] === 'number' ? rawDateEntry[1] : findVal(mapping.dateCol, ['ngày', 'date', 'ngay']),
       timeRange: findVal(mapping.timeCol, ['khung giờ', 'khung gio', 'time', 'ca live', 'gio']),
       brand: findVal('Thương hiệu', ['nhãn hàng', 'brand', 'brand_name']) || defaultBrand,
       hostName: findVal(mapping.hostCol, ['host', 'mc']),
@@ -158,16 +162,28 @@ export function AttendanceSourceManager() {
     }
   })
   const [uploadedFileName, setUploadedFileName] = React.useState<string | null>(null)
+  const [availableTabs, setAvailableTabs] = React.useState<string[]>([])
+  const [selectedTab, setSelectedTab] = React.useState('')
+  const [pastedTabName, setPastedTabName] = React.useState('')
+  const uploadedWorkbookRef = React.useRef<XLSX.WorkBook | null>(null)
   const parsedRawRows = React.useMemo(() => selectedProfile === 'control_timesheets' ? [] : mapJsonRowsToRawRows(sourceRows, columnMapping, brandName), [sourceRows, columnMapping, brandName, selectedProfile])
   const parsedControlRows = React.useMemo(() => selectedProfile === 'control_timesheets' ? mapJsonRowsToControlRows(sourceRows) : [], [sourceRows, selectedProfile])
 
-  const sourceIdentity = React.useMemo(() => JSON.stringify({ selectedProfile, sourceName, sourceType, dateOrder, brandName, columnMapping, sourceRows, validateWeekday }), [selectedProfile, sourceName, sourceType, dateOrder, brandName, columnMapping, sourceRows, validateWeekday])
+  const sourceIdentity = React.useMemo(() => JSON.stringify({ selectedProfile, sourceName, sourceType, dateOrder, brandName, columnMapping, sourceRows, validateWeekday, selectedTab, pastedTabName }), [selectedProfile, sourceName, sourceType, dateOrder, brandName, columnMapping, sourceRows, validateWeekday, selectedTab, pastedTabName])
   const identityRef = React.useRef(sourceIdentity)
   React.useEffect(() => { identityRef.current = sourceIdentity }, [sourceIdentity])
   const previewSummary = previewIdentity === sourceIdentity ? stagedSummary : null
   const previewResults = previewIdentity === sourceIdentity ? stagedResults : []
   const confirmedCount = previewIdentity === sourceIdentity ? stagedConfirmedCount : null
   const unclearDates = selectedProfile === 'control_timesheets' ? 0 : parsedRawRows.filter(row => !parseCanonicalDateWithOrder(row.date ?? '', dateOrder).date).length
+  const sourcePeriod = React.useMemo(() => {
+    const dates = selectedProfile === 'control_timesheets'
+      ? parsedControlRows.map(row => row.ActualStartLocal.slice(0, 10)).filter(value => /^\d{4}-\d{2}-\d{2}$/.test(value))
+      : parsedRawRows.map(row => parseCanonicalDateWithOrder(row.date ?? '', dateOrder).date).filter((value): value is string => Boolean(value))
+    if (dates.length === 0) return '—'
+    dates.sort()
+    return dates[0] === dates[dates.length - 1] ? dates[0] : dates[0] + ' → ' + dates[dates.length - 1]
+  }, [selectedProfile, parsedControlRows, parsedRawRows, dateOrder])
 
   // Profile selection changes defaults
   const handleProfileChange = (profileId: SourceProfileId) => {
@@ -258,6 +274,10 @@ export function AttendanceSourceManager() {
       const arrayBuffer = await file.arrayBuffer()
       const workbook = XLSX.read(arrayBuffer, { type: 'array' })
       const firstSheetName = workbook.SheetNames[0]
+      if (!firstSheetName) {
+        setError(en ? 'Workbook has no worksheets.' : 'Tệp Excel không có sheet dữ liệu.')
+        return
+      }
       const worksheet = workbook.Sheets[firstSheetName]
       const jsonRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: '' })
 
@@ -271,6 +291,9 @@ export function AttendanceSourceManager() {
         return
       }
 
+      uploadedWorkbookRef.current = workbook
+      setAvailableTabs(workbook.SheetNames)
+      setSelectedTab(firstSheetName)
       setSourceRows(jsonRows)
       setUploadedFileName(file.name)
       setSourceName(file.name)
@@ -300,8 +323,23 @@ export function AttendanceSourceManager() {
     }
   }
 
+  // Profile is a mapping preset; this selector switches a real workbook tab.
+  const handleWorksheetChange = (name: string) => {
+    const sheet = uploadedWorkbookRef.current?.Sheets[name]
+    if (!sheet || !availableTabs.includes(name)) return
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
+    setSelectedTab(name)
+    setSourceRows(rows)
+    setError(rows.length ? '' : (en ? 'Selected worksheet has no data rows.' : 'Sheet đã chọn không có dòng dữ liệu.'))
+  }
+
   // Real Google Sheets Paste Table Parser (TSV format from clipboard)
   const handleParsePastedData = () => {
+    if (/^\s*https?:\/\/(?:docs\.google\.com\/spreadsheets\/|drive\.google\.com\/)/i.test(pasteText)) {
+      setSourceRows([])
+      setError(en ? 'Google Sheets URLs cannot be imported. Copy cells including headers instead.' : 'Không hỗ trợ nhập URL Google Sheets. Hãy sao chép các ô kèm hàng tiêu đề.')
+      return
+    }
     if (!pasteText.trim()) {
       toast({
         title: en ? 'No pasted data' : 'Chưa có nội dung dán',
@@ -338,6 +376,9 @@ export function AttendanceSourceManager() {
 
     setSourceRows(jsonRows)
     setSourceType('google_sheets')
+    setAvailableTabs([])
+    setSelectedTab('')
+    uploadedWorkbookRef.current = null
     setUploadedFileName(null)
     setError('')
 
