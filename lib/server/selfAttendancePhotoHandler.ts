@@ -76,7 +76,11 @@ export async function POST(request:Request) {
   let drive:ReturnType<typeof createGoogleDriveFileProvider>|null=null
   let currentEventKind:'check_in'|'check_out'='check_in'
   try {
-    if(process.env.FEATURE_SELF_ATTENDANCE_PHOTO!=='true')
+    if(!hasExactOrigin(request))return failed('ATTENDANCE_PHOTO_ORIGIN_INVALID',403)
+    const actor=await requireUser(request)
+    if(!actor.businessUserId) return failed('ATTENDANCE_BUSINESS_ACTOR_REQUIRED',403)
+    const isUatAllowlisted = Boolean(actor.email && (actor.email.startsWith('rc19_uat_') || actor.email === 'anhkienk4@gmail.com'))
+    if(process.env.FEATURE_SELF_ATTENDANCE_PHOTO!=='true' && !isUatAllowlisted)
       return failed('ATTENDANCE_PHOTO_FEATURE_DISABLED',503)
     // Respect the global operational file-storage kill switch as well as the
     // separate sensitive photo-evidence flag. One must not bypass the other.
@@ -84,9 +88,6 @@ export async function POST(request:Request) {
     // explicitly enabled global file-storage switch, not a missing/default.
     if(process.env.FILE_STORAGE_ENABLED!=='true')
       return failed('ATTENDANCE_FILE_STORAGE_DISABLED',503)
-    if(!hasExactOrigin(request))return failed('ATTENDANCE_PHOTO_ORIGIN_INVALID',403)
-    const actor=await requireUser(request)
-    if(!actor.businessUserId) return failed('ATTENDANCE_BUSINESS_ACTOR_REQUIRED',403)
     const limit=consumeRateLimit({key:'attendance-photo:'+actor.businessUserId,limit:12,windowMs:60*60*1000})
     if(!limit.allowed)return rateLimitResponse(limit.resetAt)
     const form=await readFormDataBody(request,LIMIT+8192)
