@@ -41,7 +41,7 @@ export function Sidebar() {
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-blue-600 text-white"><BarChart3 className="h-4 w-4" /></span>
         <div><div className="text-[15px] font-semibold tracking-tight text-white">LiveStream Ops</div></div>
       </div>
-      <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-5" aria-label={t('navMain')}>
+      <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-5" style={{ scrollbarWidth: 'thin', scrollbarColor: '#64748b transparent' }} aria-label={t('navMain')}>
         {groupNavigation(navigation).map(group => {
           const expanded = preferencesKey !== storageKey || !collapsed.includes(group.id)
           return <section key={group.id} className="mb-3">
