@@ -51,3 +51,42 @@ test('ATT-01 never converts missing actual punches to approved attendance', () =
   assert.equal(result.segments[0].durationMinutes, 0)
   assert.equal(result.segments[0].startAtIso, '')
 })
+
+test('ATT-01 duplicate source rows stay exceptions and cannot create two DRAFTs', async () => {
+  const { previewAttendanceImport, buildActualSegmentsFromMatches } = await import('../lib/workforce/historicalAttendanceService')
+  const samePunch = {
+    date: '10/10/2026', timeRange: '09:00 - 13:00',
+    hostName: 'Ada Host', checkIn: '09:00', checkOut: '13:00',
+  }
+  const preview = previewAttendanceImport({
+    batchId: 'test-batch',
+    sourceProfileId: 'opella_t10',
+    sourceType: 'google_sheets',
+    sourceName: 'exact-row-replay',
+    brandName: 'Opella',
+    rawRows: [
+      { rowNumber: 1, ...samePunch },
+      { rowNumber: 2, ...samePunch },
+    ],
+    shifts: [{
+      id: 'shift-1', date: '2026-10-10', startTime: '09:00:00', endTime: '13:00:00',
+      status: 'completed', brandName: 'Opella', hostId: 'staff-1',
+    }],
+    staffList: [{
+      id: 'staff-1', fullName: 'Ada Host', systemPermission: 'member', status: 'active',
+    }],
+  })
+  assert.equal(preview.summary.totalRows, 2)
+  assert.equal(preview.summary.matchedRows, 1)
+  assert.equal(preview.summary.exceptionRows, 1)
+  assert.equal(preview.summary.exceptionsSummary.OVERLAP_CONFLICT, 1)
+  assert.equal(preview.results[0].status, 'matched')
+  assert.equal(preview.results[1].status, 'exception')
+  assert.equal(preview.results[1].exceptionCode, 'OVERLAP_CONFLICT')
+  assert.match(preview.results[1].exceptionDetail || '', /^DUPLICATE_SOURCE_ROW:/)
+  const drafts = buildActualSegmentsFromMatches({
+    matchedResults: preview.results, creatorId: 'admin-1', batchId: preview.batchId,
+  })
+  assert.equal(drafts.length, 1)
+  assert.equal(drafts[0].review_status, 'draft')
+})
