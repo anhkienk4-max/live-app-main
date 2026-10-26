@@ -1,7 +1,6 @@
 import 'server-only'
 
 import { createHash } from 'node:crypto'
-import sharp from 'sharp'
 import { z } from 'zod'
 import { requireUser, requireRole, authorizationErrorResponse, isAuthorizationError } from '@/lib/server/authGuards'
 import { createClient as createSessionClient } from '@/lib/supabase/server'
@@ -161,6 +160,7 @@ export async function POST(request:Request) {
       // Normalize photo and strip EXIF/GPS/device metadata before Drive upload.
       let cleanBytes:Uint8Array
       try{
+        const sharp = (await import('sharp')).default
         cleanBytes=new Uint8Array(await sharp(bytes,{limitInputPixels:24_000_000,failOn:'error'})
           .rotate().resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true})
           .flatten({background:'#ffffff'}).jpeg({quality:82,mozjpeg:true}).toBuffer())
