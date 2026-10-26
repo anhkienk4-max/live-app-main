@@ -18,6 +18,13 @@ import { useToast } from '@/components/ui/toast'
 type Mode = 'replacement' | 'exchange'
 type SourcePage = { key: string; items: Shift[]; registrations: ShiftRegistration[]; total: number; page: number; error: string | null }
 type ShiftPage = { key: string; items: Shift[]; total: number; page: number; error: string | null }
+export type ConflictVerificationStatus = 'idle' | 'checking' | 'verified_clear' | 'conflict' | 'unverified'
+export type ConflictSnapshot = {
+  key: string
+  status: 'verified_clear' | 'conflict' | 'unverified'
+  reason: string | null
+  error: string | null
+}
 const pageSize = 20
 
 export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, onSuccess }: {
@@ -44,7 +51,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
   const [staffSearch, setStaffSearch] = React.useState('')
   const [staffOnlyEligible, setStaffOnlyEligible] = React.useState(true)
   const [replacementId, setReplacementId] = React.useState('')
-  const [conflictSnapshot, setConflictSnapshot] = React.useState<{ key: string; reason: string | null; error: string | null } | null>(null)
+  const [conflictSnapshot, setConflictSnapshot] = React.useState<ConflictSnapshot | null>(null)
   const [targetPage, setTargetPage] = React.useState(1)
   const [targetSearchDraft, setTargetSearchDraft] = React.useState('')
   const [targetSearch, setTargetSearch] = React.useState('')
@@ -53,7 +60,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
   const [targetId, setTargetId] = React.useState('')
   const [counterpartSnapshot, setCounterpartSnapshot] = React.useState<{ key: string; items: SwapExchangeCandidate[]; error: string | null } | null>(null)
   const [counterpartId, setCounterpartId] = React.useState('')
-  const [exchangeConflictSnapshot, setExchangeConflictSnapshot] = React.useState<{ key: string; reason: string | null } | null>(null)
+  const [exchangeConflictSnapshot, setExchangeConflictSnapshot] = React.useState<ConflictSnapshot | null>(null)
   const [reason, setReason] = React.useState('')
   const [busy, setBusy] = React.useState(false)
   const submitLock = React.useRef(false)
@@ -73,9 +80,19 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
   const directory = open && directorySnapshot?.owner === owner ? directorySnapshot : null
   const conflictKey = JSON.stringify([owner, sourceId, replacementId])
   const conflict = open && conflictSnapshot?.key === conflictKey ? conflictSnapshot : null
+  const replacementCheckStatus: ConflictVerificationStatus = !open || mode !== 'replacement' || !selectedSource || !replacementId
+    ? 'idle'
+    : !conflict
+      ? 'checking'
+      : conflict.status
+
   const exchangeConflictKey = JSON.stringify([owner, sourceId, targetId, counterpartId])
   const exchangeConflict = open && mode === 'exchange' && selectedSource && selectedTarget && counterpartId && exchangeConflictSnapshot?.key === exchangeConflictKey ? exchangeConflictSnapshot : null
-  const exchangeChecking = open && mode === 'exchange' && Boolean(selectedSource && selectedTarget && counterpartId) && exchangeConflictSnapshot?.key !== exchangeConflictKey
+  const exchangeCheckStatus: ConflictVerificationStatus = !open || mode !== 'exchange' || !selectedSource || !selectedTarget || !counterpartId
+    ? 'idle'
+    : !exchangeConflict
+      ? 'checking'
+      : exchangeConflict.status
 
   React.useEffect(() => {
     if (!open || !owner || (from && to && to < from)) return
@@ -120,10 +137,42 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
         const other = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
         return other?.valid && other.startAt < sourceTime.endAt && other.endAt > sourceTime.startAt
       })
-      setConflictSnapshot({ key: conflictKey, reason: assignedHere ? copy('Đã được phân công vào ca này', 'Already assigned to this shift') : overlap ? copy('Trùng lịch với ca khác', 'Overlaps another shift') : null,
-        error: result.total > 50 ? copy('Chưa kiểm tra đủ lịch; hệ thống sẽ xác minh khi gửi', 'Schedule check incomplete; verified on submit') : null })
+      if (assignedHere) {
+        setConflictSnapshot({
+          key: conflictKey,
+          status: 'conflict',
+          reason: copy('Đã được phân công vào ca này', 'Already assigned to this shift'),
+          error: null,
+        })
+      } else if (overlap) {
+        setConflictSnapshot({
+          key: conflictKey,
+          status: 'conflict',
+          reason: copy('Trùng lịch với ca khác', 'Overlaps another shift'),
+          error: null,
+        })
+      } else if (result.total > result.items.length) {
+        setConflictSnapshot({
+          key: conflictKey,
+          status: 'unverified',
+          reason: null,
+          error: copy('Chưa kiểm tra hết toàn bộ lịch; hệ thống sẽ xác minh khi gửi', 'Schedule check incomplete; server will verify on submit'),
+        })
+      } else {
+        setConflictSnapshot({
+          key: conflictKey,
+          status: 'verified_clear',
+          reason: null,
+          error: null,
+        })
+      }
     }).catch(() => {
-      if (active) setConflictSnapshot({ key: conflictKey, reason: null, error: copy('Chưa kiểm tra được lịch; hệ thống sẽ xác minh khi gửi', 'Schedule unavailable; verified on submit') })
+      if (active) setConflictSnapshot({
+        key: conflictKey,
+        status: 'unverified',
+        reason: null,
+        error: copy('Không thể kiểm tra trước lịch; hệ thống sẽ xác minh khi gửi', 'Schedule check unavailable; server will verify on submit'),
+      })
     })
     return () => { active = false }
   }, [open, owner, mode, selectedSource, replacementId, conflictKey, copy])
@@ -194,18 +243,39 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
       if (requesterConflict) {
         setExchangeConflictSnapshot({
           key: exchangeConflictKey,
+          status: 'conflict',
           reason: copy('Bạn đã có ca khác trùng giờ với ca đổi chéo', 'You have another shift overlapping the target shift'),
+          error: null,
         })
       } else if (counterpartConflict) {
         setExchangeConflictSnapshot({
           key: exchangeConflictKey,
-          reason: copy(`${counterpartCandidate.full_name} đã có ca khác trùng giờ với ca của bạn`, `${counterpartCandidate.full_name} has another shift overlapping your shift`),
+          status: 'conflict',
+          reason: copy('Đối ứng có ca khác trùng giờ với ca của bạn', 'Counterpart has another shift overlapping your shift'),
+          error: null,
+        })
+      } else if (requesterShifts.total > requesterShifts.items.length || counterpartShifts.total > counterpartShifts.items.length) {
+        setExchangeConflictSnapshot({
+          key: exchangeConflictKey,
+          status: 'unverified',
+          reason: null,
+          error: copy('Chưa kiểm tra hết toàn bộ lịch; hệ thống sẽ xác minh khi gửi', 'Schedule check incomplete; server will verify on submit'),
         })
       } else {
-        setExchangeConflictSnapshot({ key: exchangeConflictKey, reason: null })
+        setExchangeConflictSnapshot({
+          key: exchangeConflictKey,
+          status: 'verified_clear',
+          reason: null,
+          error: null,
+        })
       }
     }).catch(() => {
-      if (active) setExchangeConflictSnapshot({ key: exchangeConflictKey, reason: null })
+      if (active) setExchangeConflictSnapshot({
+        key: exchangeConflictKey,
+        status: 'unverified',
+        reason: null,
+        error: copy('Không thể kiểm tra trước lịch; hệ thống sẽ xác minh khi gửi', 'Schedule check unavailable; server will verify on submit'),
+      })
     })
 
     return () => { active = false }
@@ -259,8 +329,14 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
   const chosenStaff = directory?.items.find(item => item.id === replacementId)
   const eligibleStaff = Boolean(chosenStaff && chosenStaff.id !== owner && role && chosenStaff.operational_roles?.includes(role))
   const validCandidate = mode === 'replacement'
-    ? eligibleStaff && !directory?.error && Boolean(conflict) && !conflict?.reason
-    : Boolean(selectedTarget && counterparts && !counterparts.error && counterparts.items.some(item => item.registration_id === counterpartId) && (!exchangeConflict || !exchangeConflict.reason))
+    ? eligibleStaff && !directory?.error && (replacementCheckStatus === 'verified_clear' || replacementCheckStatus === 'unverified')
+    : Boolean(
+        selectedTarget &&
+        counterparts &&
+        !counterparts.error &&
+        counterparts.items.some(item => item.registration_id === counterpartId) &&
+        (exchangeCheckStatus === 'verified_clear' || exchangeCheckStatus === 'unverified')
+      )
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -413,6 +489,10 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
                 <div className="text-[11px] text-muted-foreground max-w-md mx-auto space-y-1 text-left">
                   <p>• {copy('Chỉ ca có trạng thái Được duyệt (Approved) hoặc Phân công (Manually Assigned) mới có thể tạo yêu cầu đổi ca.', 'Only shifts with status Approved or Manually Assigned can be passed or exchanged.')}</p>
                   <p>• {copy('Các ca đã hoàn thành, ca đã qua hoặc đang có yêu cầu đổi ca chưa xử lý sẽ không hiển thị.', 'Completed shifts, past shifts, or shifts with pending swap requests are excluded.')}</p>
+                  <p className="text-muted-foreground">
+                    • {copy('Nếu ca chỉ mới được gán tên trực tiếp (Host/Trợ trì) mà chưa có phiếu phân công chính thức: Quản trị viên/Leader cần vào trang Điều phối ca (Staffing) để duyệt hoặc phân công ca cho nhân sự. Hệ thống tuân thủ hợp đồng backend và không cho phép đổi ca khi thiếu registration được duyệt.',
+                      'If a shift only has a legacy name assignment without an official registration: an Admin or Leader must approve or assign the shift in Staffing. The system enforces backend safety and disallows swaps without an approved registration.')}
+                  </p>
                   {(brandId || platformId || sourceSearch) && (
                     <p className="text-amber-600 dark:text-amber-400 font-medium">
                       • {copy('Bộ lọc Brand, Platform hoặc từ khóa tìm kiếm đang thu hẹp kết quả.', 'Current Brand, Platform, or search filters may be restricting results.')}
@@ -635,28 +715,34 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
                   </div>
 
                   {/* Schedule Conflict Status */}
-                  {replacementId && !conflict && (
+                  {replacementId && replacementCheckStatus === 'checking' && (
                     <div role="status" className="flex items-center gap-2 py-1.5 text-xs text-muted-foreground">
                       <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
                       <span>{copy('Đang kiểm tra lịch nhân sự...', 'Checking schedule...')}</span>
                     </div>
                   )}
-                  {conflict?.reason && (
-                    <div role="alert" className="p-2.5 rounded-md bg-destructive/10 border border-destructive/20 text-xs text-destructive flex items-center gap-2">
+                  {replacementCheckStatus === 'conflict' && conflict?.reason && (
+                    <div role="alert" className="p-2.5 rounded-md bg-destructive/10 border border-destructive/20 text-xs text-destructive flex items-center gap-2 font-medium">
                       <AlertCircle className="h-4 w-4 shrink-0" />
                       <span>{conflict.reason}</span>
                     </div>
                   )}
-                  {conflict?.error && (
-                    <p role="status" className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                      {conflict.error}
-                    </p>
+                  {replacementCheckStatus === 'unverified' && (
+                    <div className="p-2.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2 font-medium">
+                      <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                      <span>{conflict?.error || copy('Chưa kiểm tra hết toàn bộ lịch; hệ thống sẽ xác minh khi gửi', 'Schedule check incomplete; server will verify on submit')}</span>
+                    </div>
                   )}
-                  {replacementId && conflict && !conflict.reason && !conflict.error && (
+                  {replacementCheckStatus === 'verified_clear' && (
                     <div className="p-2 rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2 font-medium">
                       <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
                       <span>{copy('Lịch trống - đủ điều kiện nhận ca', 'Schedule available - recipient is eligible')}</span>
                     </div>
+                  )}
+                  {replacementId && replacementCheckStatus !== 'conflict' && (
+                    <p className="text-xs text-muted-foreground pt-0.5">
+                      {copy('Điều kiện cuối cùng được kiểm tra lại khi gửi và khi duyệt.', 'Final eligibility is rechecked on submit and approval.')}
+                    </p>
                   )}
                 </div>
               ) : (
@@ -792,23 +878,34 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
                       </div>
 
                       {/* Two-sided conflict checking feedback */}
-                      {counterpartId && exchangeChecking && (
+                      {counterpartId && exchangeCheckStatus === 'checking' && (
                         <div role="status" className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
                           <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
                           <span>{copy('Đang kiểm tra trùng lịch hai phía...', 'Checking two-sided schedule conflicts...')}</span>
                         </div>
                       )}
-                      {counterpartId && exchangeConflict?.reason && (
-                        <div role="alert" className="p-2.5 rounded-md bg-destructive/10 border border-destructive/20 text-xs text-destructive flex items-center gap-2">
+                      {exchangeCheckStatus === 'conflict' && exchangeConflict?.reason && (
+                        <div role="alert" className="p-2.5 rounded-md bg-destructive/10 border border-destructive/20 text-xs text-destructive flex items-center gap-2 font-medium">
                           <AlertCircle className="h-4 w-4 shrink-0" />
                           <span>{exchangeConflict.reason}</span>
                         </div>
                       )}
-                      {counterpartId && !exchangeChecking && !exchangeConflict?.reason && (
+                      {exchangeCheckStatus === 'unverified' && (
+                        <div className="p-2.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2 font-medium">
+                          <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                          <span>{exchangeConflict?.error || copy('Chưa kiểm tra hết toàn bộ lịch; hệ thống sẽ xác minh khi gửi', 'Schedule check incomplete; server will verify on submit')}</span>
+                        </div>
+                      )}
+                      {exchangeCheckStatus === 'verified_clear' && (
                         <div className="p-2 rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2 font-medium">
                           <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
                           <span>{copy('Lịch hai bên hợp lệ - sẵn sàng gửi yêu cầu đổi chéo', 'Both schedules valid - ready for exchange')}</span>
                         </div>
+                      )}
+                      {counterpartId && exchangeCheckStatus !== 'conflict' && (
+                        <p className="text-xs text-muted-foreground pt-0.5">
+                          {copy('Điều kiện cuối cùng được kiểm tra lại khi gửi và khi duyệt.', 'Final eligibility is rechecked on submit and approval.')}
+                        </p>
                       )}
                     </div>
                   )}

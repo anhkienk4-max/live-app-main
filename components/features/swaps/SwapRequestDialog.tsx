@@ -1,7 +1,7 @@
 'use client'
 import * as React from 'react'
 import { addDays, format, parseISO } from 'date-fns'
-import { Calendar, Clock, Moon, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Calendar, Clock, Moon, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
 import type { Shift, ShiftRegistration, User, UserDirectoryEntry, SwapExchangeCandidate } from '@/lib/types/database.types'
 import { userService, shiftRegistrationService, shiftService, swapRequestService } from '@/lib/services/dataService'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,13 @@ import { formatShiftTimeRange, resolveShiftDateTime } from '@/lib/utils/shiftUti
 const EMPTY_SHIFT_ROWS: Shift[] = []
 
 type CreatableSwapMode = 'replacement' | 'exchange'
+export type ConflictVerificationStatus = 'idle' | 'checking' | 'verified_clear' | 'conflict' | 'unverified'
+export type ConflictSnapshot = {
+  key: string
+  status: 'verified_clear' | 'conflict' | 'unverified'
+  reason: string | null
+  error: string | null
+}
 
 export function SwapRequestDialog({
   open,
@@ -42,10 +49,16 @@ export function SwapRequestDialog({
   const [targetShiftId, setTargetShiftId] = React.useState('')
   const [counterpartId, setCounterpartId] = React.useState('')
   const [replacementId, setReplacementId] = React.useState('')
-  const [conflictSnapshot, setConflictSnapshot] = React.useState<{key: string; reason: string | null} | null>(null)
+  const [conflictSnapshot, setConflictSnapshot] = React.useState<ConflictSnapshot | null>(null)
   const replacementConflictKey = [currentUser.id, sourceShift.id, replacementId].join(':')
-  const conflictReason = open && mode === 'replacement' && replacementId && conflictSnapshot?.key === replacementConflictKey ? conflictSnapshot.reason : null
-  const checkingConflict = open && mode === 'replacement' && Boolean(replacementId) && conflictSnapshot?.key !== replacementConflictKey
+  const conflict = open && mode === 'replacement' && replacementId && conflictSnapshot?.key === replacementConflictKey
+    ? conflictSnapshot : null
+  const conflictReason = conflict?.status === 'conflict' ? conflict.reason : null
+  const replacementCheckStatus: ConflictVerificationStatus = !open || mode !== 'replacement' || !replacementId
+    ? 'idle'
+    : !conflict
+      ? 'checking'
+      : conflict.status
   const [reason, setReason] = React.useState('')
   const [busy, setBusy] = React.useState(false)
   const submitLock = React.useRef(false)
@@ -62,6 +75,17 @@ export function SwapRequestDialog({
     ? counterpartSnapshot : null
   const targetRegistrations = currentCandidate?.rows ?? []
   const targetCandidatesLoading = mode === 'exchange' && Boolean(targetShiftId) && !currentCandidate
+
+  const [exchangeConflictSnapshot, setExchangeConflictSnapshot] = React.useState<ConflictSnapshot | null>(null)
+  const exchangeConflictKey = [currentUser.id, sourceShift.id, targetShiftId, counterpartId].join(':')
+  const exchangeConflict = open && mode === 'exchange' && targetShiftId && counterpartId && exchangeConflictSnapshot?.key === exchangeConflictKey
+    ? exchangeConflictSnapshot : null
+  const exchangeConflictReason = exchangeConflict?.status === 'conflict' ? exchangeConflict.reason : null
+  const exchangeCheckStatus: ConflictVerificationStatus = !open || mode !== 'exchange' || !targetShiftId || !counterpartId
+    ? 'idle'
+    : !exchangeConflict
+      ? 'checking'
+      : exchangeConflict.status
 
   const [directorySnapshot, setDirectorySnapshot] = React.useState<{ownerId: string; users: UserDirectoryEntry[]; error: string | null} | null>(null)
   const [staffSearch, setStaffSearch] = React.useState('')
@@ -145,15 +169,76 @@ export function SwapRequestDialog({
         const other = resolveShiftDateTime(s.date, s.start_time, s.end_time, s.timezone)
         return other?.valid && other.startAt < sourceTime.endAt && other.endAt > sourceTime.startAt
       })
-      setConflictSnapshot({
-        key: replacementConflictKey,
-        reason: assignedHere ? 'Nhân sự đã được phân công vào ca này' : overlap ? 'Nhân sự có ca khác trùng giờ' : null,
-      })
+      if (assignedHere) {
+        setConflictSnapshot({ key: replacementConflictKey, status: 'conflict', reason: 'Nhân sự đã được phân công vào ca này', error: null })
+      } else if (overlap) {
+        setConflictSnapshot({ key: replacementConflictKey, status: 'conflict', reason: 'Nhân sự có ca khác trùng giờ', error: null })
+      } else if (result.total > result.items.length) {
+        setConflictSnapshot({ key: replacementConflictKey, status: 'unverified', reason: null, error: 'Chưa kiểm tra hết toàn bộ lịch; hệ thống sẽ xác minh khi gửi' })
+      } else {
+        setConflictSnapshot({ key: replacementConflictKey, status: 'verified_clear', reason: null, error: null })
+      }
     }).catch(() => {
-      if (active) setConflictSnapshot({ key: replacementConflictKey, reason: null })
+      if (active) setConflictSnapshot({ key: replacementConflictKey, status: 'unverified', reason: null, error: 'Không thể kiểm tra trước lịch; hệ thống sẽ xác minh khi gửi' })
     })
     return () => { active = false }
   }, [open, mode, replacementId, sourceShift, replacementConflictKey])
+
+  // Two-sided conflict checking for Exchange in Dialog
+  React.useEffect(() => {
+    if (!open || mode !== 'exchange' || !targetShiftId || !counterpartId) return
+    const counterpartCandidate = currentCandidate?.rows.find(item => item.registration_id === counterpartId)
+    const targetShift = targetShifts.find(s => s.id === targetShiftId)
+    if (!counterpartCandidate || !targetShift) return
+
+    let active = true
+    const sourceTime = resolveShiftDateTime(sourceShift.date, sourceShift.start_time, sourceShift.end_time, sourceShift.timezone)
+    const targetTime = resolveShiftDateTime(targetShift.date, targetShift.start_time, targetShift.end_time, targetShift.timezone)
+    if (!sourceTime?.valid || !targetTime?.valid) return
+
+    Promise.all([
+      shiftService.getPage({
+        page: 1, pageSize: 50, filters: {
+          assignedUserIds: [currentUser.id],
+          from: format(addDays(parseISO(targetShift.date), -1), 'yyyy-MM-dd'),
+          to: format(addDays(parseISO(targetTime.endDate), 1), 'yyyy-MM-dd'),
+        },
+      }),
+      shiftService.getPage({
+        page: 1, pageSize: 50, filters: {
+          assignedUserIds: [counterpartCandidate.user_id],
+          from: format(addDays(parseISO(sourceShift.date), -1), 'yyyy-MM-dd'),
+          to: format(addDays(parseISO(sourceTime.endDate), 1), 'yyyy-MM-dd'),
+        },
+      }),
+    ]).then(([requesterShifts, counterpartShifts]) => {
+      if (!active) return
+      const requesterConflict = requesterShifts.items.some(shift => {
+        if (shift.id === sourceShift.id || shift.id === targetShift.id) return false
+        const other = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
+        return other?.valid && other.startAt < targetTime.endAt && other.endAt > targetTime.startAt
+      })
+      const counterpartConflict = counterpartShifts.items.some(shift => {
+        if (shift.id === targetShift.id || shift.id === sourceShift.id) return false
+        const other = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
+        return other?.valid && other.startAt < sourceTime.endAt && other.endAt > sourceTime.startAt
+      })
+
+      if (requesterConflict) {
+        setExchangeConflictSnapshot({ key: exchangeConflictKey, status: 'conflict', reason: 'Bạn đã có ca khác trùng giờ với ca đổi chéo', error: null })
+      } else if (counterpartConflict) {
+        setExchangeConflictSnapshot({ key: exchangeConflictKey, status: 'conflict', reason: 'Đối ứng có ca khác trùng giờ với ca của bạn', error: null })
+      } else if (requesterShifts.total > requesterShifts.items.length || counterpartShifts.total > counterpartShifts.items.length) {
+        setExchangeConflictSnapshot({ key: exchangeConflictKey, status: 'unverified', reason: null, error: 'Chưa kiểm tra hết toàn bộ lịch; hệ thống sẽ xác minh khi gửi' })
+      } else {
+        setExchangeConflictSnapshot({ key: exchangeConflictKey, status: 'verified_clear', reason: null, error: null })
+      }
+    }).catch(() => {
+      if (active) setExchangeConflictSnapshot({ key: exchangeConflictKey, status: 'unverified', reason: null, error: 'Không thể kiểm tra trước lịch; hệ thống sẽ xác minh khi gửi' })
+    })
+
+    return () => { active = false }
+  }, [open, mode, targetShiftId, counterpartId, currentCandidate, targetShifts, sourceShift, currentUser.id, exchangeConflictKey])
 
   const submit = async () => {
     if (submitLock.current) return
@@ -165,7 +250,8 @@ export function SwapRequestDialog({
         if (!replacementId || directoryError || directoryLoading || !directory.some(user =>
           user.id === replacementId && user.id !== currentUser.id && user.operational_roles?.includes(sourceRegistration.operational_role)
         )) throw new Error('Chưa xác minh nhân sự thay thế phù hợp')
-        if (conflictReason) throw new Error(conflictReason)
+        if (replacementCheckStatus === 'checking') throw new Error('Đang kiểm tra lịch nhân sự thay thế')
+        if (replacementCheckStatus === 'conflict') throw new Error(conflictReason ?? 'Nhân sự bị trùng lịch')
         await swapRequestService.create({
           shift_id: sourceShift.id,
           requester_id: currentUser.id,
@@ -181,6 +267,8 @@ export function SwapRequestDialog({
             !currentCandidate.rows.some(candidate => candidate.registration_id === counterpartId)) {
           throw new Error('Chưa xác minh được ca và người đổi chéo. Vui lòng tải lại.')
         }
+        if (exchangeCheckStatus === 'checking') throw new Error('Đang kiểm tra lịch đổi ca hai bên')
+        if (exchangeCheckStatus === 'conflict') throw new Error(exchangeConflictReason ?? 'Xung đột lịch ca đổi chéo')
         await swapRequestService.create({
           requester_id: currentUser.id,
           operational_role: sourceRegistration.operational_role,
@@ -260,20 +348,34 @@ export function SwapRequestDialog({
                 </SelectContent>
               </Select>
               </label>
-              {replacementId && checkingConflict && (
-                <p role="status" className="text-xs text-muted-foreground">Đang kiểm tra lịch nhân sự...</p>
+              {replacementId && replacementCheckStatus === 'checking' && (
+                <p role="status" className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                  Đang kiểm tra lịch nhân sự...
+                </p>
               )}
-              {replacementId && conflictReason && (
-                <div role="alert" className="p-2 rounded bg-destructive/10 border border-destructive/20 text-xs text-destructive flex items-center gap-1.5">
+              {replacementCheckStatus === 'conflict' && conflict?.reason && (
+                <div role="alert" className="p-2 rounded bg-destructive/10 border border-destructive/20 text-xs text-destructive flex items-center gap-1.5 font-medium">
                   <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                  <span>{conflictReason}</span>
+                  <span>{conflict.reason}</span>
                 </div>
               )}
-              {replacementId && !checkingConflict && !conflictReason && (
+              {replacementCheckStatus === 'unverified' && (
+                <div className="p-2 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-1.5 font-medium">
+                  <AlertCircle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                  <span>{conflict?.error || 'Chưa kiểm tra hết toàn bộ lịch; hệ thống sẽ xác minh khi gửi'}</span>
+                </div>
+              )}
+              {replacementCheckStatus === 'verified_clear' && (
                 <div className="p-2 rounded bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5 font-medium">
                   <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
                   <span>Lịch trống - sẵn sàng nhận ca</span>
                 </div>
+              )}
+              {replacementId && replacementCheckStatus !== 'conflict' && (
+                <p className="text-xs text-muted-foreground">
+                  Điều kiện cuối cùng được kiểm tra lại khi gửi và khi duyệt.
+                </p>
               )}
             </div>
           ) : (
@@ -323,13 +425,63 @@ export function SwapRequestDialog({
                   </Select>
                 </label>
               )}
+              {counterpartId && exchangeCheckStatus === 'checking' && (
+                <p role="status" className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                  Đang kiểm tra trùng lịch hai phía...
+                </p>
+              )}
+              {exchangeCheckStatus === 'conflict' && exchangeConflict?.reason && (
+                <div role="alert" className="p-2 rounded bg-destructive/10 border border-destructive/20 text-xs text-destructive flex items-center gap-1.5 font-medium">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                  <span>{exchangeConflict.reason}</span>
+                </div>
+              )}
+              {exchangeCheckStatus === 'unverified' && (
+                <div className="p-2 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-1.5 font-medium">
+                  <AlertCircle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                  <span>{exchangeConflict?.error || 'Chưa kiểm tra hết toàn bộ lịch; hệ thống sẽ xác minh khi gửi'}</span>
+                </div>
+              )}
+              {exchangeCheckStatus === 'verified_clear' && (
+                <div className="p-2 rounded bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5 font-medium">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>Lịch hai bên hợp lệ - đã xác minh không trùng giờ</span>
+                </div>
+              )}
+              {counterpartId && exchangeCheckStatus !== 'conflict' && (
+                <p className="text-xs text-muted-foreground">
+                  Điều kiện cuối cùng được kiểm tra lại khi gửi và khi duyệt.
+                </p>
+              )}
             </>
           )}
           <label className="text-xs font-medium block">Lý do đổi ca <span className="text-destructive">*</span>
             <Textarea className="mt-1 text-xs" value={reason} onChange={e=>setReason(e.target.value)} placeholder="Nhập lý do chi tiết (tối thiểu 10 ký tự)..." />
           </label>
-          <Button onClick={submit} disabled={busy || (mode === 'replacement' && (directoryLoading || Boolean(directoryError) || !replacementId || Boolean(conflictReason))) ||
-            (mode === 'exchange' && (!targetIsOnPage || !currentCandidate || Boolean(currentCandidate.error) || !counterpartId)) || reason.trim().length < 10} className="w-full">
+          <Button
+            onClick={submit}
+            disabled={
+              busy ||
+              reason.trim().length < 10 ||
+              (mode === 'replacement' && (
+                directoryLoading ||
+                Boolean(directoryError) ||
+                !replacementId ||
+                replacementCheckStatus === 'checking' ||
+                replacementCheckStatus === 'conflict'
+              )) ||
+              (mode === 'exchange' && (
+                !targetIsOnPage ||
+                !currentCandidate ||
+                Boolean(currentCandidate.error) ||
+                !counterpartId ||
+                exchangeCheckStatus === 'checking' ||
+                exchangeCheckStatus === 'conflict'
+              ))
+            }
+            className="w-full"
+          >
             {busy ? 'Đang gửi...' : 'Gửi yêu cầu'}
           </Button>
         </DialogBody>
