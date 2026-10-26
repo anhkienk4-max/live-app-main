@@ -60,13 +60,21 @@ function mapJsonRowsToRawRows(
       return ''
     }
 
-    const dateHeaders = [mapping.dateCol, 'ngày', 'date', 'ngay'].map(h => h.toLowerCase().trim())
-    const rawDateEntry = Object.entries(row).find(([key, value]) =>
-      dateHeaders.includes(key.toLowerCase().trim()) && value !== null && value !== undefined && String(value).trim() !== ''
-    )
+    // Respect the selected mapping first; worksheet key order must not override it.
+    // Preserve numeric Excel serial dates through to the attendance date parser.
+    const dateHeaders = [mapping.dateCol, 'ngày', 'date', 'ngay']
+    let selectedDate: string | number = ''
+    for (const header of dateHeaders) {
+      const key = Object.keys(row).find(candidate => candidate.trim().toLowerCase() === header.trim().toLowerCase())
+      if (!key) continue
+      const value = row[key]
+      if (value === null || value === undefined || String(value).trim() === '') continue
+      selectedDate = typeof value === 'number' ? value : String(value).trim()
+      break
+    }
     return {
       rowNumber: idx + 1,
-      date: typeof rawDateEntry?.[1] === 'number' ? rawDateEntry[1] : findVal(mapping.dateCol, ['ngày', 'date', 'ngay']),
+      date: selectedDate,
       timeRange: findVal(mapping.timeCol, ['khung giờ', 'khung gio', 'time', 'ca live', 'gio']),
       brand: findVal('Thương hiệu', ['nhãn hàng', 'brand', 'brand_name']) || defaultBrand,
       hostName: findVal(mapping.hostCol, ['host', 'mc']),
@@ -504,8 +512,10 @@ export function AttendanceSourceManager() {
     }
   }
 
-  const duplicateSourceCount = previewResults.filter(r => r.exceptionDetail?.startsWith('DUPLICATE_SOURCE_ROW:')).length
-  const overlapConflictCount = Math.max(0, (previewSummary?.exceptionsSummary?.OVERLAP_CONFLICT || 0) - duplicateSourceCount)
+  const intraBatchOverlapCount = previewResults.filter(r =>
+    r.exceptionDetail?.startsWith('DUPLICATE_SOURCE_ROW:') || r.exceptionDetail?.startsWith('INTRA_BATCH_OVERLAP:')
+  ).length
+  const overlapConflictCount = Math.max(0, (previewSummary?.exceptionsSummary?.OVERLAP_CONFLICT || 0) - intraBatchOverlapCount)
 
   const filteredResults = previewResults.filter(r => {
     if (activeFilter === 'matched') return r.status === 'matched'
@@ -890,8 +900,8 @@ export function AttendanceSourceManager() {
 
           {/* Duplicate source rows are rejected before Confirm DRAFT */}
           <div className="rounded-lg border border-rose-900/50 bg-rose-950/30 p-3 text-center">
-            <p className="text-xs text-rose-400 font-medium">{en ? 'Duplicate rows' : 'Dòng nguồn trùng'}</p>
-            <p className="text-xl font-bold text-rose-400 mt-1">{duplicateSourceCount}</p>
+            <p className="text-xs text-rose-400 font-medium">{en ? 'Duplicate / overlapping rows' : 'Dòng nguồn trùng/chồng'}</p>
+            <p className="text-xl font-bold text-rose-400 mt-1">{intraBatchOverlapCount}</p>
           </div>
 
           {/* Tile 5: Invalid Format / Times */}
@@ -917,7 +927,7 @@ export function AttendanceSourceManager() {
       )}
 
       {step >= 3 && previewSummary && <p className="text-xs text-slate-400">
-        {en ? 'Duplicate rows within this import are excluded from DRAFT. Overlap conflicts with existing attendance are counted separately.' : 'Dòng trùng trong cùng đợt nhập được loại khỏi DRAFT. Xung đột chồng giờ với chấm công hiện có được đếm riêng.'}
+        {en ? 'Duplicate or overlapping rows within this import are excluded from DRAFT. Conflicts with existing attendance are counted separately.' : 'Dòng trùng hoặc chồng giờ trong cùng đợt nhập được loại khỏi DRAFT. Xung đột với chấm công hiện có được đếm riêng.'}
       </p>}
       {/* 3. RECONCILIATION & EXCEPTION QUEUE TABLE */}
       {step >= 3 && step <= 4 && previewResults.length > 0 && (

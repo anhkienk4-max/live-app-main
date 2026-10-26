@@ -90,3 +90,61 @@ test('ATT-01 duplicate source rows stay exceptions and cannot create two DRAFTs'
   assert.equal(drafts.length, 1)
   assert.equal(drafts[0].review_status, 'draft')
 })
+
+test('ATT-01 flags non-identical and nested interval overlap within the same shift/staff/role', async () => {
+  const { previewAttendanceImport, buildActualSegmentsFromMatches } = await import('../lib/workforce/historicalAttendanceService')
+  const base = {
+    batchId: 'overlap-batch', sourceProfileId: 'opella_t10' as const,
+    sourceType: 'excel_upload' as const, sourceName: 'overlap-scenario', brandName: 'Opella',
+    shifts: [{ id: 'shift-1', date: '2026-10-10', startTime: '09:00:00', endTime: '13:00:00', status: 'completed' as const, brandName: 'Opella', hostId: 'staff-1' }],
+    staffList: [{ id: 'staff-1', fullName: 'Ada Host', systemPermission: 'member', status: 'active' as const }],
+  }
+  const row = (rowNumber: number, checkIn: string, checkOut: string) => ({
+    rowNumber, shiftCode: 'shift-1', date: '10/10/2026',
+    timeRange: checkIn + ' - ' + checkOut, hostName: 'Ada Host', checkIn, checkOut,
+  })
+  for (const [secondStart, secondEnd] of [['09:05', '13:00'], ['10:00', '12:00'], ['09:00', '12:50']]) {
+    const preview = previewAttendanceImport({ ...base, rawRows: [row(1, '09:00', '13:00'), row(2, secondStart, secondEnd)] })
+    assert.deepEqual(preview.results.map(result => result.status), ['matched', 'exception'])
+    assert.equal(preview.results[1].exceptionCode, 'OVERLAP_CONFLICT')
+    assert.match(preview.results[1].exceptionDetail || '', /^INTRA_BATCH_OVERLAP:.*#1/)
+    assert.equal(preview.summary.matchedRows, 1)
+    assert.equal(preview.summary.exceptionsSummary.OVERLAP_CONFLICT, 1)
+    assert.equal(buildActualSegmentsFromMatches({ matchedResults: preview.results, batchId: preview.batchId, creatorId: 'reviewer' }).length, 1)
+  }
+})
+
+test('ATT-01 accepts touching nonoverlapping intervals of one shift/staff/role', async () => {
+  const { previewAttendanceImport, buildActualSegmentsFromMatches } = await import('../lib/workforce/historicalAttendanceService')
+  const preview = previewAttendanceImport({
+    batchId: 'adjacent-batch', sourceType: 'csv_upload', sourceName: 'adjacent-scenario', sourceProfileId: 'opella_t10', brandName: 'Opella',
+    rawRows: [
+      { rowNumber: 1, date: '10/10/2026', shiftCode: 'shift-1', timeRange: '09:00 - 11:00', hostName: 'Ada Host', checkIn: '09:00', checkOut: '11:00' },
+      { rowNumber: 2, date: '10/10/2026', shiftCode: 'shift-1', timeRange: '11:00 - 13:00', hostName: 'Ada Host', checkIn: '11:00', checkOut: '13:00' },
+    ],
+    shifts: [{ id: 'shift-1', date: '2026-10-10', startTime: '09:00:00', endTime: '13:00:00', status: 'completed', brandName: 'Opella', hostId: 'staff-1' }],
+    staffList: [{ id: 'staff-1', fullName: 'Ada Host', systemPermission: 'member', status: 'active' }],
+  })
+  assert.deepEqual(preview.results.map(result => result.status), ['matched', 'matched'])
+  assert.equal(preview.summary.exceptionsSummary.OVERLAP_CONFLICT, 0)
+  assert.equal(buildActualSegmentsFromMatches({ matchedResults: preview.results, batchId: preview.batchId, creatorId: 'reviewer' }).length, 2)
+})
+
+test('ATT-01 isolates overlapping intervals by staff and operational role', async () => {
+  const { previewAttendanceImport } = await import('../lib/workforce/historicalAttendanceService')
+  const preview = previewAttendanceImport({
+    batchId: 'separate-staff-batch', sourceType: 'excel_upload', sourceName: 'independent-staff', sourceProfileId: 'opella_t10', brandName: 'Opella',
+    rawRows: [
+      { rowNumber: 1, date: '10/10/2026', shiftCode: 'shift-1', timeRange: '09:00 - 13:00', hostName: 'Ada Host', checkIn: '09:00', checkOut: '13:00' },
+      { rowNumber: 2, date: '10/10/2026', shiftCode: 'shift-1', timeRange: '09:05 - 13:00', hostName: 'Other Host', checkIn: '09:05', checkOut: '13:00' },
+      { rowNumber: 3, date: '10/10/2026', shiftCode: 'shift-1', timeRange: '09:00 - 13:00', assistantName: 'Ada Host', checkIn: '09:00', checkOut: '13:00' },
+    ],
+    shifts: [{ id: 'shift-1', date: '2026-10-10', startTime: '09:00:00', endTime: '13:00:00', status: 'completed', brandName: 'Opella', hostId: 'staff-1', supportId: 'staff-1' }],
+    staffList: [
+      { id: 'staff-1', fullName: 'Ada Host', systemPermission: 'member', status: 'active' },
+      { id: 'staff-2', fullName: 'Other Host', systemPermission: 'member', status: 'active' },
+    ],
+  })
+  assert.deepEqual(preview.results.map(result => result.status), ['matched', 'matched', 'matched'])
+  assert.equal(preview.summary.exceptionsSummary.OVERLAP_CONFLICT, 0)
+})

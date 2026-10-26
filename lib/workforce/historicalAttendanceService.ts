@@ -67,9 +67,10 @@ export function previewAttendanceImport(
 
   const matchResults: AttendanceMatchResult[] = []
   const parseErrors: string[] = []
-  // Intra-file duplicates must be exceptions before any DRAFT can be confirmed.
+  // Only compare already matched intervals of the same shift/staff/role in this batch.
+  // Half-open [start, end) intervals allow adjacent legitimate split work segments.
   // Keep source fingerprints and existing database/RPC idempotence unchanged.
-  const seenMatchedSegments = new Map<string, number>()
+  const seenMatchedSegments = new Map<string, Array<{ rowNumber: number; startMs: number; endMs: number }>>()
 
   const exceptionCounters = {
     SHIFT_NOT_FOUND: 0,
@@ -89,23 +90,24 @@ export function previewAttendanceImport(
     let result = match
     if (match.status === 'matched' && match.matchedShiftId && match.matchedStaffId) {
       const segment = match.segment
-      const key = JSON.stringify([
-        match.matchedShiftId,
-        match.matchedStaffId,
-        segment.operationalRole,
-        segment.startAtIso,
-        segment.endAtIso,
-      ])
-      const firstRow = seenMatchedSegments.get(key)
-      if (firstRow !== undefined) {
+      const key = JSON.stringify([match.matchedShiftId, match.matchedStaffId, segment.operationalRole])
+      const startMs = Date.parse(segment.startAtIso)
+      const endMs = Date.parse(segment.endAtIso)
+      const priorIntervals = seenMatchedSegments.get(key) || []
+      const conflicting = priorIntervals.find(prior => startMs < prior.endMs && prior.startMs < endMs)
+      if (conflicting) {
+        const exactDuplicate = startMs === conflicting.startMs && endMs === conflicting.endMs
         result = {
           ...match,
           status: 'exception',
           exceptionCode: 'OVERLAP_CONFLICT',
-          exceptionDetail: `DUPLICATE_SOURCE_ROW: Trùng ca / nhân sự / giờ thực tế với dòng #${firstRow} của nguồn nhập`,
+          exceptionDetail: exactDuplicate
+            ? `DUPLICATE_SOURCE_ROW: Trùng ca / nhân sự / vai trò / giờ thực tế với dòng #${conflicting.rowNumber} của nguồn nhập`
+            : `INTRA_BATCH_OVERLAP: Khoảng giờ thực tế chồng lấn dòng #${conflicting.rowNumber} (cùng ca / nhân sự / vai trò)`,
         }
       } else {
-        seenMatchedSegments.set(key, match.rowNumber)
+        priorIntervals.push({ rowNumber: match.rowNumber, startMs, endMs })
+        seenMatchedSegments.set(key, priorIntervals)
       }
     }
 

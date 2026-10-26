@@ -161,3 +161,41 @@ test('ATT-01 chooses the real worksheet, not the preset, in a multi-tab Excel fi
   await expect(context).toContainText('2026-10-11')
   await expect(context).toContainText('opella-attendance.xlsx')
 })
+
+test('ATT-01 prioritizes selected date mapping over earlier numeric Excel column', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('livestream-ops-current-user', '1')
+    localStorage.setItem('livestream-ops-language', 'en')
+  })
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([
+    { 'Ngày': 46300, 'Actual Date': '10/10/2026', 'Khung giờ': '09:00 - 13:00', Host: 'Sample Staff', 'Check-in': '09:00', 'Check-out': '13:00' },
+    { 'Ngày': 46300, 'Actual Date': '', 'Khung giờ': '09:00 - 13:00', Host: 'Sample Staff', 'Check-in': '09:00', 'Check-out': '13:00' },
+  ]), 'Attendance')
+  const buffer = Buffer.from(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }))
+  await page.goto('/staffing?tab=attendance')
+  const manager = page.getByTestId('attendance-source-manager')
+  await expect(manager).toBeVisible({ timeout: 30_000 })
+  await manager.locator('input[type="file"]').setInputFiles({
+    name: 'competing-date-columns.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer,
+  })
+  await manager.getByRole('button', { name: 'Continue' }).click()
+  const dateMapping = manager.getByRole('textbox', { name: 'Date column mapping' })
+  await dateMapping.fill(' actual date ')
+  const context = manager.getByRole('region', { name: 'Selected import context' })
+  await expect(context).toContainText('2026-10-10')
+  const received: Array<string | number | undefined> = []
+  await page.route('**/api/workforce/attendance-import', async route => {
+    const body = route.request().postDataJSON()
+    if (body.action !== 'preview') return route.fulfill({ status: 400, body: '{}' })
+    received.push(...body.rawRows.map((row: { date?: string | number }) => row.date))
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      ok: true, summary: { batchId: 'date-columns', totalRows: 2, matchedRows: 0, exceptionRows: 2, exceptionsSummary: {} }, results: [],
+    }) })
+  })
+  await manager.getByRole('button', { name: 'Continue' }).click()
+  await manager.getByRole('button', { name: 'Run matching' }).click()
+  await expect(manager.getByTestId('reconciliation-tiles')).toBeVisible()
+  expect(received).toEqual(['10/10/2026', 46300])
+})
