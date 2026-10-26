@@ -127,14 +127,14 @@ export function WeekView({
           style={{ gridTemplateColumns: `${TIME_COLUMN_WIDTH}px repeat(7, minmax(140px, 1fr))` }}
         >
           {/* Header Row */}
-          <div className="sticky top-0 z-30 bg-background border-b border-border border-r"></div>
+          <div className="bg-background border-b border-border border-r"></div>
           {weekDays.map((day) => {
             const isToday = isSameDay(day, today);
             const dayShifts = getShiftsForDate(day);
             return (
               <div
                 key={`header-${day.toString()}`}
-                className={`sticky top-0 z-30 bg-background flex flex-col items-center gap-1 py-2 px-1 border-b border-r last:border-r-0 ${isToday ? "border-primary/40 bg-primary/[0.02]" : "border-border"}`}
+                className={`bg-background flex flex-col items-center gap-1 py-2 px-1 border-b border-r last:border-r-0 ${isToday ? "border-primary/40 bg-primary/[0.02]" : "border-border"}`}
               >
                 <span
                   className={`text-[10px] uppercase tracking-wider font-semibold ${isToday ? "text-primary" : "text-muted-foreground"}`}
