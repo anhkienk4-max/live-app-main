@@ -56,12 +56,6 @@ export function SelfAttendancePanel({
   const [photoSource, setPhotoSource] = React.useState<'camera' | 'file_picker'>('camera')
   const [photoPreview, setPhotoPreview] = React.useState<string | null>(null)
   const [photoFeatureReady] = React.useState(() => {
-    if (typeof window !== 'undefined' && window.localStorage.getItem('livestream-ops-feature-photo') === 'true') {
-      return true
-    }
-    if (shiftContext.title?.includes('RC19_UAT')) {
-      return true
-    }
     return process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_PHOTO==='true'
   })
   const cameraRef = React.useRef<HTMLInputElement>(null)
