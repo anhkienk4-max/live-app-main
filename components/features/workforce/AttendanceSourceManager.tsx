@@ -503,6 +503,9 @@ export function AttendanceSourceManager() {
     }
   }
 
+  const duplicateSourceCount = previewResults.filter(r => r.exceptionDetail?.startsWith('DUPLICATE_SOURCE_ROW:')).length
+  const overlapConflictCount = Math.max(0, (previewSummary?.exceptionsSummary?.OVERLAP_CONFLICT || 0) - duplicateSourceCount)
+
   const filteredResults = previewResults.filter(r => {
     if (activeFilter === 'matched') return r.status === 'matched'
     if (activeFilter === 'exception') return r.status === 'exception'
@@ -852,7 +855,7 @@ export function AttendanceSourceManager() {
 
       {/* 2. RECONCILIATION SUMMARY TILES: 6 CORE RECONCILIATION METRICS */}
       {step >= 3 && previewSummary && (
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3" data-testid="reconciliation-tiles">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3" data-testid="reconciliation-tiles">
           {/* Tile 1: Matched */}
           <div className="rounded-lg border border-emerald-900/50 bg-emerald-950/30 p-3 text-center">
             <p className="text-xs text-emerald-400 font-medium">{en ? 'Matched' : 'Hợp lệ'}</p>
@@ -880,8 +883,14 @@ export function AttendanceSourceManager() {
           <div className="rounded-lg border border-rose-900/50 bg-rose-950/30 p-3 text-center">
             <p className="text-xs text-rose-400 font-medium">{en ? 'Overlap conflicts' : 'Xung đột chồng giờ'}</p>
             <p className="text-xl font-bold text-rose-400 mt-1">
-              {previewSummary.exceptionsSummary?.OVERLAP_CONFLICT || 0}
+              {overlapConflictCount}
             </p>
+          </div>
+
+          {/* Duplicate source rows are rejected before Confirm DRAFT */}
+          <div className="rounded-lg border border-rose-900/50 bg-rose-950/30 p-3 text-center">
+            <p className="text-xs text-rose-400 font-medium">{en ? 'Duplicate rows' : 'Dòng nguồn trùng'}</p>
+            <p className="text-xl font-bold text-rose-400 mt-1">{duplicateSourceCount}</p>
           </div>
 
           {/* Tile 5: Invalid Format / Times */}
@@ -907,7 +916,7 @@ export function AttendanceSourceManager() {
       )}
 
       {step >= 3 && previewSummary && <p className="text-xs text-slate-400">
-        {en ? 'Overlap conflicts are counted. Exact duplicate source rows are not separately classified by the matching API.' : 'Có thống kê xung đột chồng giờ. API đối chiếu hiện chưa phân loại riêng số dòng nguồn trùng lặp chính xác.'}
+        {en ? 'Duplicate rows within this import are excluded from DRAFT. Overlap conflicts with existing attendance are counted separately.' : 'Dòng trùng trong cùng đợt nhập được loại khỏi DRAFT. Xung đột chồng giờ với chấm công hiện có được đếm riêng.'}
       </p>}
       {/* 3. RECONCILIATION & EXCEPTION QUEUE TABLE */}
       {step >= 3 && step <= 4 && previewResults.length > 0 && (
