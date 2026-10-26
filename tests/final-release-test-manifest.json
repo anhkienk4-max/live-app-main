@@ -148,6 +148,7 @@
     "tests/rc18a-shift-change-subscription.test.ts",
     "tests/rc18a-shift-date-window.test.ts",
     "tests/rc18a-shift-list-url-state.test.ts",
+    "tests/rc19-att01-date-source-contract.test.ts",
     "tests/rc19-auth-responsive-layout.test.tsx",
     "tests/rc19-command-toolbar.test.tsx",
     "tests/rc19-my-payslip.test.ts",
