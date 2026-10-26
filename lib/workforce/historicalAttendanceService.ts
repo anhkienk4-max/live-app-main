@@ -67,6 +67,9 @@ export function previewAttendanceImport(
 
   const matchResults: AttendanceMatchResult[] = []
   const parseErrors: string[] = []
+  // Intra-file duplicates must be exceptions before any DRAFT can be confirmed.
+  // Keep source fingerprints and existing database/RPC idempotence unchanged.
+  const seenMatchedSegments = new Map<string, number>()
 
   const exceptionCounters = {
     SHIFT_NOT_FOUND: 0,
@@ -80,6 +83,36 @@ export function previewAttendanceImport(
     AMBIGUOUS_DATE_ORDER: 0,
     WEEKDAY_MISMATCH: 0,
     INVALID_CONTROL_STRUCTURE: 0,
+  }
+
+  const appendMatch = (match: AttendanceMatchResult) => {
+    let result = match
+    if (match.status === 'matched' && match.matchedShiftId && match.matchedStaffId) {
+      const segment = match.segment
+      const key = JSON.stringify([
+        match.matchedShiftId,
+        match.matchedStaffId,
+        segment.operationalRole,
+        segment.startAtIso,
+        segment.endAtIso,
+      ])
+      const firstRow = seenMatchedSegments.get(key)
+      if (firstRow !== undefined) {
+        result = {
+          ...match,
+          status: 'exception',
+          exceptionCode: 'OVERLAP_CONFLICT',
+          exceptionDetail: `DUPLICATE_SOURCE_ROW: Trùng ca / nhân sự / giờ thực tế với dòng #${firstRow} của nguồn nhập`,
+        }
+      } else {
+        seenMatchedSegments.set(key, match.rowNumber)
+      }
+    }
+
+    matchResults.push(result)
+    if (result.status === 'exception' && result.exceptionCode) {
+      exceptionCounters[result.exceptionCode] = (exceptionCounters[result.exceptionCode] || 0) + 1
+    }
   }
 
   // 1. Process CONTROL TIMESHEETS rows if provided
@@ -124,10 +157,7 @@ export function previewAttendanceImport(
         staffList,
         existingSegments,
       })
-      matchResults.push(match)
-      if (match.status === 'exception' && match.exceptionCode) {
-        exceptionCounters[match.exceptionCode] = (exceptionCounters[match.exceptionCode] || 0) + 1
-      }
+      appendMatch(match)
     }
   } else {
     // 2. Process Standard Raw Rows (Opella, PepsiCo, etc.)
@@ -172,10 +202,7 @@ export function previewAttendanceImport(
           existingSegments,
         })
 
-        matchResults.push(match)
-        if (match.status === 'exception' && match.exceptionCode) {
-          exceptionCounters[match.exceptionCode] = (exceptionCounters[match.exceptionCode] || 0) + 1
-        }
+        appendMatch(match)
       }
     }
   }
