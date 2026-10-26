@@ -140,6 +140,7 @@ test('ATT-01 chooses the real worksheet, not the preset, in a multi-tab Excel fi
   const makeSheet = (date: string) => XLSX.utils.json_to_sheet([
     { 'Ngày (MM/DD/YYYY)': date, 'Khung giờ': '09:00 - 13:00', Host: 'Sample Staff', 'Check-in': '09:00', 'Check-out': '13:00' },
   ])
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([['Instructions only']]), 'Cover')
   XLSX.utils.book_append_sheet(workbook, makeSheet('10/01/2026'), 'Plan')
   XLSX.utils.book_append_sheet(workbook, makeSheet('10/11/2026'), 'Actuals')
   const buffer = Buffer.from(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }))
@@ -152,6 +153,8 @@ test('ATT-01 chooses the real worksheet, not the preset, in a multi-tab Excel fi
   const tabPicker = manager.getByRole('combobox', { name: 'Excel worksheet' })
   await expect(tabPicker).toBeVisible()
   const context = manager.getByRole('region', { name: 'Selected import context' })
+  await expect(context).toContainText('Cover')
+  await tabPicker.selectOption('Plan')
   await expect(context).toContainText('2026-10-01')
   await tabPicker.selectOption('Actuals')
   await expect(context).toContainText('Actuals')
