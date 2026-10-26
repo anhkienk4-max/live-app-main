@@ -598,10 +598,11 @@ export function AttendanceSourceManager() {
           {step === 1 && <div className="space-y-1.5">
             <label className="text-slate-300 font-medium flex items-center gap-1.5">
               <Sliders className="h-3.5 w-3.5 text-slate-400" />
-              {en ? 'Source profile' : 'Nguồn / Tab dữ liệu'}
+              {en ? 'Mapping preset (not a worksheet)' : 'Mẫu ánh xạ (không phải tab dữ liệu)'}
             </label>
             <select
               value={selectedProfile}
+              aria-label={en ? 'Mapping preset' : 'Mẫu ánh xạ'}
               onChange={e => handleProfileChange(e.target.value as SourceProfileId)}
               className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
             >
@@ -651,14 +652,14 @@ export function AttendanceSourceManager() {
               <div className="flex gap-1">
                 <button
                   type="button"
-                  onClick={() => { if (importMethod !== 'upload') { setImportMethod('upload'); setSourceRows([]); setUploadedFileName(null); setSourceName('') } }}
+                  onClick={() => { if (importMethod !== 'upload') { setImportMethod('upload'); setSourceRows([]); setUploadedFileName(null); setSourceName(''); setAvailableTabs([]); setSelectedTab(''); uploadedWorkbookRef.current = null } }}
                   className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${importMethod === 'upload' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
                 >
                   File
                 </button>
                 <button
                   type="button"
-                  onClick={() => { if (importMethod !== 'paste') { setImportMethod('paste'); setSourceRows([]); setUploadedFileName(null); setSourceName('') } }}
+                  onClick={() => { if (importMethod !== 'paste') { setImportMethod('paste'); setSourceRows([]); setUploadedFileName(null); setSourceName(''); setAvailableTabs([]); setSelectedTab(''); uploadedWorkbookRef.current = null } }}
                   className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${importMethod === 'paste' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
                 >
                   {en ? 'Paste Sheets' : 'Dán Sheets'}
@@ -674,6 +675,13 @@ export function AttendanceSourceManager() {
                   onChange={handleFileUpload}
                   className="w-full text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-[11px] file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer"
                 />
+                {availableTabs.length > 1 && <label className="block space-y-1 text-[11px] text-slate-300">
+                  <span>{en ? 'Excel worksheet (actual tab)' : 'Sheet Excel (tab dữ liệu thật)'}</span>
+                  <select aria-label={en ? 'Excel worksheet' : 'Sheet Excel'} value={selectedTab} onChange={e => handleWorksheetChange(e.target.value)}
+                    className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-white">
+                    {availableTabs.map(name => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </label>}
                 {uploadedFileName && (
                   <span className="text-[10px] text-indigo-400 block truncate font-medium">
                     {en ? 'Loaded' : 'Đã nạp'}: {uploadedFileName} ({parsedRawRows.length || parsedControlRows.length} {en ? 'rows' : 'dòng'})
@@ -684,6 +692,10 @@ export function AttendanceSourceManager() {
               <div className="space-y-1">
                 <input type="text" value={sourceName} onChange={e => setSourceName(e.target.value)}
                   aria-label={en ? 'Source name' : 'Tên nguồn'} placeholder={en ? 'Source name' : 'Tên nguồn dữ liệu'}
+                  className="w-full rounded border border-slate-700 bg-slate-950 p-2 text-xs text-white" />
+                <input type="text" value={pastedTabName} onChange={e => setPastedTabName(e.target.value)}
+                  aria-label={en ? 'Copied worksheet tab name' : 'Tên tab đã sao chép'}
+                  placeholder={en ? 'Worksheet name (for review)' : 'Tên tab nguồn (để đối chiếu)'}
                   className="w-full rounded border border-slate-700 bg-slate-950 p-2 text-xs text-white" />
                 <textarea
                   value={pasteText}
@@ -711,10 +723,16 @@ export function AttendanceSourceManager() {
           <div className="border-t border-slate-800/60 bg-amber-950/20 px-4 py-2 text-[11px] text-amber-300 flex items-center gap-2">
             <AlertCircle className="h-4 w-4 shrink-0 text-amber-400" />
             <span>
-              {en ? 'Direct Google Sheets API access requires an authorized service account. Paste rows here or upload an exported Excel file.' : 'Tính năng tự động đọc trực tiếp từ Google Sheets API yêu cầu cấu hình Service Account đã cấp quyền. Hiện tại bạn có thể copy-paste toàn bộ bảng dữ liệu vào đây hoặc tải lên file Excel xuất từ Google Sheets.'}
+              {en ? 'No Google Sheets URL sync. Copy cells including the header row, not the URL, or export an Excel/CSV file.' : 'Không có đồng bộ bằng link Google Sheets. Sao chép các ô kèm hàng tiêu đề (không dán URL) hoặc xuất file Excel/CSV.'}
             </span>
           </div>
         )}
+
+        {step === 1 && <div className="border-t border-slate-800 px-4 py-3 text-xs text-slate-300 space-y-1">
+          <p>{en ? 'Required example columns' : 'Ví dụ cột cần có'}: <code className="text-slate-100">{selectedProfile === 'control_timesheets' ? 'ShiftID | StaffEmail | WorkRole | ActualStartLocal | ActualEndLocal' : 'Ngày (MM/DD/YYYY) | Khung giờ | Host | Trợ live | Check-in | Check-out'}</code></p>
+          <p>{en ? 'File means Excel/CSV upload. Paste Sheets means copied cells only; neither method auto-syncs a Google Sheet URL.' : 'File là tải Excel/CSV. Dán Sheets chỉ đọc ô đã sao chép; không có đồng bộ tự động URL Google Sheets.'}</p>
+          <p>{en ? 'Use actual check-in/out evidence. Overnight 22:00 - 02:00 is supported.' : 'Cần giờ check-in/out thực tế. Hỗ trợ ca qua đêm 22:00 - 02:00.'}</p>
+        </div>}
 
         {/* EXPANDABLE COLUMN MAPPING PROFILE */}
         {step === 2 && showMapping && (
@@ -811,6 +829,13 @@ export function AttendanceSourceManager() {
         )}
       </Card>}
 
+      {step <= 2 && <section aria-label={en ? 'Selected import context' : 'Thông tin nguồn nhập'} className="grid grid-cols-1 gap-2 rounded border border-slate-700 bg-slate-900/70 p-3 text-xs text-slate-200 sm:grid-cols-2 lg:grid-cols-5">
+        <p>{en ? 'Brand' : 'Nhãn hàng'}: <strong>{brandName || '—'}</strong></p>
+        <p>{en ? 'Source name' : 'Tên nguồn'}: <strong className="break-all">{sourceName || '—'}</strong></p>
+        <p>{en ? 'Worksheet / tab' : 'Sheet / tab'}: <strong>{(importMethod === 'upload' ? selectedTab : pastedTabName) || '—'}</strong></p>
+        <p>{en ? 'Detected date range' : 'Kỳ ngày nhận diện'}: <strong>{sourcePeriod}</strong></p>
+        <p>{en ? 'Date order' : 'Thứ tự ngày tháng'}: <strong>{dateOrder === 'month-first' ? 'MM/DD/YYYY' : dateOrder === 'day-first' ? 'DD/MM/YYYY' : 'YYYY-MM-DD'}</strong></p>
+      </section>}
       {step === 2 && <div className="rounded border border-slate-700 bg-slate-900 p-4 text-sm text-slate-200">
         <p className="mb-2 font-medium">{en ? 'Read rows' : 'Dữ liệu đã đọc'}: {sourceRows.length}</p>
         {unclearDates > 0 && <p role="status" className="mb-2 text-amber-300">{unclearDates} {en ? 'rows have invalid or ambiguous dates; matching will show them as exceptions.' : 'dòng có ngày sai hoặc mơ hồ; bước đối chiếu sẽ liệt kê thành ngoại lệ.'}</p>}
@@ -853,7 +878,7 @@ export function AttendanceSourceManager() {
 
           {/* Tile 4: Duplicate / Overlap */}
           <div className="rounded-lg border border-rose-900/50 bg-rose-950/30 p-3 text-center">
-            <p className="text-xs text-rose-400 font-medium">{en ? 'Duplicate / overlap' : 'Trùng / Chồng giờ'}</p>
+            <p className="text-xs text-rose-400 font-medium">{en ? 'Overlap conflicts' : 'Xung đột chồng giờ'}</p>
             <p className="text-xl font-bold text-rose-400 mt-1">
               {previewSummary.exceptionsSummary?.OVERLAP_CONFLICT || 0}
             </p>
@@ -881,6 +906,9 @@ export function AttendanceSourceManager() {
         </div>
       )}
 
+      {step >= 3 && previewSummary && <p className="text-xs text-slate-400">
+        {en ? 'Overlap conflicts are counted. Exact duplicate source rows are not separately classified by the matching API.' : 'Có thống kê xung đột chồng giờ. API đối chiếu hiện chưa phân loại riêng số dòng nguồn trùng lặp chính xác.'}
+      </p>}
       {/* 3. RECONCILIATION & EXCEPTION QUEUE TABLE */}
       {step >= 3 && step <= 4 && previewResults.length > 0 && (
         <Card className="border-slate-800 bg-slate-900/60 shadow-xl">
