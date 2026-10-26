@@ -765,15 +765,8 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         {loadedKey === requestKey && <>
         {view === 'month' && <>
           <div className="hidden max-w-full overflow-x-auto lg:block" role="region" aria-label={t('month')} tabIndex={0}><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onShiftClick={setPreviewShift} onDayClick={setSelectedDay} /></div></div>
-          <section className="min-w-0 lg:hidden" data-testid="calendar-mobile-agenda">
-            <label className="block p-3 text-sm font-medium">{t('date')}
-              <Input type="date" data-testid="calendar-agenda-date" value={format(currentDate, 'yyyy-MM-dd')} onChange={event => {
-                const value = event.target.value
-                const parsed = new Date(value + 'T12:00:00')
-                if (Number.isFinite(parsed.getTime()) && format(parsed, 'yyyy-MM-dd') === value) setCurrentDate(parsed)
-              }} className="mt-2" />
-            </label>
-            <DayView currentDate={currentDate} shifts={filteredShifts} allShifts={shifts} onRegister={registerForShift} registrations={registrations} currentUser={currentUser} brands={brands} platforms={platforms} users={users} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} />
+          <section className="min-w-0 lg:hidden" data-testid="calendar-compact-month-view">
+            <MonthView compact complete={windowComplete} currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onDayClick={setSelectedDay} />
           </section>
         </>}
         {view === 'week' && <div className="w-full"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} users={users} registrations={registrations} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} currentUser={currentUser} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} /></div>}
