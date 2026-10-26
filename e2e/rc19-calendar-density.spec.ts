@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 // Responsive visual behavior only. Uses local seeded mock shifts, no Production API
 // and no credentials. Authenticated Production Calendar UAT is separate.
 for (const width of [390, 768, 1440]) {
-  test('Month cards do not overflow and Week scroll is contained at '+width+'px', async ({ page }) => {
+  test('Month cards do not overflow and Week scroll is contained at '+width+'px', async ({ page }, info) => {
     await page.setViewportSize({ width, height: 900 })
     await page.addInitScript(() => {
       localStorage.setItem('livestream-ops-current-user', '1')
@@ -14,21 +14,20 @@ for (const width of [390, 768, 1440]) {
     // Visual regression of a grid containing many real-world ca labels.
     await page.getByRole('button', { name: 'Tháng', exact: true }).click()
     if (width >= 1024) {
-      // A real 7-column MonthView is desktop-only.
+      // Desktop keeps the full MonthView cards.
       const monthEvent = page.locator('[data-testid^="calendar-event-"]:visible').first()
       await expect(monthEvent).toBeVisible({ timeout: 30_000 })
       await expect(monthEvent).toHaveClass(/h-7/)
       await expect(monthEvent).toHaveAttribute('title', /.+/)
-      if (width === 1440) await page.screenshot({ path: 'docs/handoffs/evidence/rc19-u03-calendar-after-desktop.png', caret: 'initial' })
+      if (width === 1440) await page.screenshot({ path: info.outputPath('calendar-desktop.png'), caret: 'initial' })
       await monthEvent.click()
       await expect(page.getByRole('dialog')).toBeVisible()
       await page.keyboard.press('Escape')
     } else {
-      // CalendarView intentionally uses a DayView agenda at tablet and mobile.
-      await expect(page.getByTestId('calendar-mobile-agenda')).toBeVisible({timeout:30_000})
-      await expect(page.getByTestId('calendar-agenda-date')).toBeVisible()
+      await expect(page.getByTestId('calendar-compact-month-grid')).toBeVisible({timeout:30_000})
+      expect(await page.locator('[data-testid^="calendar-compact-day-"]:visible').count()).toBeGreaterThanOrEqual(28)
       await expect(page.locator('[data-testid^="calendar-event-"]:visible')).toHaveCount(0)
-      if (width === 390) await page.screenshot({ path: 'docs/handoffs/evidence/rc19-u03-calendar-after-mobile.png', caret: 'initial' })
+      if (width === 390) await page.screenshot({ path: info.outputPath('calendar-mobile.png'), caret: 'initial' })
     }
     await expect.poll(() => page.evaluate(() =>
       document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
