@@ -1,0 +1,55 @@
+name: ATT-01 selective Production-candidate source gate (NO DEPLOY)
+on:
+  push:
+    branches:
+      - release/att01-main-selective-gated-20261027
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  attendance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Whole-repository TypeScript
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: Whole-repository ESLint
+        run: pnpm run lint
+      - name: ATT-01 behavioral / role / atomic gates
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/att01-main-release-flag-contract.test.ts tests/rc19-att01-date-source-contract.test.ts tests/rc17c-historical-attendance-importer.test.ts tests/rc17c-attendance-atomic-rpc-boundary.test.ts tests/rc17c-attendance-api-integration.test.ts
+      - name: Main baseline full regression
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node scripts/run-final-regression.mjs
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Mock attendance UI only, flags OFF for server
+        run: pnpm exec playwright test --config playwright.rc19-attendance.config.ts --reporter=line
+      - name: Credential-free build with both feature flags OFF
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_ATTENDANCE_IMPORT: 'false'
+          NEXT_PUBLIC_FEATURE_ATTENDANCE_IMPORT: 'false'
+          FEATURE_ACTUAL_STAFFING: 'false'
+          FEATURE_PAYROLL: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm run build
+      - name: Provenance (NOT a release)
+        if: always()
+        run: |
+          echo "ATT-01 selective candidate SHA $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "NO deployment, production config change or DB migration. Live Vercel identity, SQL/RLS and real UAT remain separately gated." >> "$GITHUB_STEP_SUMMARY"
