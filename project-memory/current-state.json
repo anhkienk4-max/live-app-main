@@ -9,10 +9,10 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "c0d4d0f99010a7006f78f01c31db7c61c8dcc9fa",
+    "branch": "feat/rc19-sto02-resource-registry",
+    "head": "31f69aaf1fd6c1eec32902c7bd1e055b96ec3b35",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f",
-    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-full-upgrade"
+    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc19-sto01-storage-production"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -49,6 +49,7 @@
       "app/(dashboard)/staff/page.tsx",
       "app/(dashboard)/staffing/page.tsx",
       "app/(dashboard)/storage/page.tsx",
+      "app/(dashboard)/storage/resources/page.tsx",
       "app/(dashboard)/storage/setup/page.tsx",
       "app/(dashboard)/swaps/page.tsx",
       "app/(dashboard)/workforce/page.tsx",
@@ -77,6 +78,7 @@
       "app/api/report-artifacts/route.ts",
       "app/api/report-images/route.ts",
       "app/api/staff/invite/route.ts",
+      "app/api/storage-resources/route.ts",
       "app/api/workforce/actual/route.ts",
       "app/api/workforce/attendance-import/route.ts",
       "app/api/workforce/capabilities/route.ts",
@@ -96,14 +98,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 67,
-        "components": 170,
-        "lib": 251,
-        "scripts": 31,
+        "app": 69,
+        "components": 171,
+        "lib": 253,
+        "scripts": 29,
         "supabase": 110,
-        "tests": 265
+        "tests": 269
       },
-      "total": 894
+      "total": 901
     },
     "tests": {
       "files": [
@@ -263,6 +265,10 @@
         "tests/rc19-staffing-candidates.test.ts",
         "tests/rc19-staffing-failclosed.test.ts",
         "tests/rc19-staffing-refresh-contract.test.ts",
+        "tests/rc19-sto01-storage-seed-postgres17.test.ts",
+        "tests/rc19-sto01-storage-seed-preflight.test.ts",
+        "tests/rc19-sto02-resource-registry-postgres17.test.ts",
+        "tests/rc19-sto02-resource-validation.test.ts",
         "tests/rc19-storage-scoped-search.test.ts",
         "tests/rc19-storage-security-patch.test.ts",
         "tests/rc19-swap-exchange-page.test.ts",
@@ -328,7 +334,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 220
+      "count": 224
     },
     "migrations": {
       "files": [
@@ -421,9 +427,10 @@
         "supabase/migrations/20261023155000_rc19_reports_history_validate_filters_v2.sql",
         "supabase/migrations/20261023160500_rc19_reports_history_staff_filter_privacy.sql",
         "supabase/migrations/20261024003000_rc19_p0_orphan_live_image_read_rls.sql",
-        "supabase/migrations/20261025180000_rc19_u14_1_mandatory_checkout_photo.sql"
+        "supabase/migrations/20261025180000_rc19_u14_1_mandatory_checkout_photo.sql",
+        "supabase/migrations/20261027150000_rc19_sto02_resource_registry.sql"
       ],
-      "count": 90
+      "count": 91
     }
   },
   "verification": {
@@ -437,5 +444,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-27T01:50:25+07:00"
+  "synced_at": "2026-10-27T17:33:52+07:00"
 }
