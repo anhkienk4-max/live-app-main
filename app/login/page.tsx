@@ -119,7 +119,7 @@ function LoginPageContent() {
   }
 
   return (
-    <AuthLayout title={t('signIn')} subtitle={t('loginSubtitle')}>
+    <AuthLayout variant="login" title={language === 'vi' ? 'Chào mừng trở lại!' : 'Welcome back!'} subtitle={t('loginSubtitle')}>
       <div className="space-y-5">
         {mockMode && <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700">{t('demoModeHelp')}</p>}
           {mockMode && (

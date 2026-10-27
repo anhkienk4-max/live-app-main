@@ -11,7 +11,7 @@ export function ProductionAppShell({ children, user }: { children: ReactNode; us
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header user={user} />
-        <main data-testid="production-main-content" className="ada-pwa-content min-w-0 flex-1 overflow-y-auto pb-24 md:pb-4">{children}</main>
+        <main data-testid="production-main-content" className="ada-pwa-content min-w-0 flex-1 overflow-y-auto pb-24 lg:pb-4">{children}</main>
         <BottomNav />
       </div>
     </div>

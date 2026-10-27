@@ -5,8 +5,28 @@ import { useTranslation } from '@/lib/i18n'
 import { PageShell } from '@/components/ui/archetypes'
 import { AdaBrand } from '@/components/branding/AdaBrand'
 
-export function AuthLayout({ children, title, subtitle }: { children: React.ReactNode; title: string; subtitle: string }) {
+export function AuthLayout({ children, title, subtitle, variant = 'default' }: { children: React.ReactNode; title: string; subtitle: string; variant?: 'default' | 'login' }) {
   const { t } = useTranslation()
+
+  if (variant === 'login') return (
+    <div data-testid="ada-reference-login" className="ada-login-reference relative isolate flex min-h-dvh flex-col overflow-hidden bg-white">
+      <div className="ada-login-reference__top" aria-hidden="true" />
+      <div className="ada-login-reference__bottom" aria-hidden="true" />
+      <main className="relative z-10 mx-auto flex w-full max-w-[432px] flex-1 flex-col px-6 pb-12 pt-[clamp(70px,12dvh,120px)] sm:px-9">
+        <div className="flex flex-col items-center">
+          <AdaBrand className="ada-login-reference__logo" />
+          <p className="mt-3 text-center text-[9px] font-bold tracking-[.24em] text-[#122155]">
+            ADA GLOBAL · LIVESTREAM OPERATIONS
+          </p>
+        </div>
+        <section className="mt-[clamp(56px,9dvh,95px)] w-full">
+          <h1 className="text-center text-[25px] font-extrabold tracking-tight text-[#07183B]">{title}</h1>
+          <p className="mt-2 text-center text-sm text-slate-500">{subtitle}</p>
+          <div className="mt-7">{children}</div>
+        </section>
+      </main>
+    </div>
+  )
 
   return (
     <div className="ada-auth flex min-h-dvh flex-col overflow-x-hidden bg-[#F8FAFF] md:flex-row">

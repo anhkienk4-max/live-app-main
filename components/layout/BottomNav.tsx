@@ -1,126 +1,78 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { resolveActiveNavigation } from './shellConfig'
-import { Bell, Menu, Settings2, UserRound } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { LayoutGrid, Ellipsis, Bell, Settings2, UserRound } from 'lucide-react'
 import { useTranslation } from '@/lib/i18n'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { resolveSystemPermission } from '@/lib/permissions'
 import { getNavigationForRole, filterNav } from '@/lib/ui/role-ux'
 import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
 import { filterWorkforceNavigation } from '@/lib/ui/workforceNavigation'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { resolveActiveNavigation } from './shellConfig'
 
 export function BottomNav() {
   const pathname = usePathname()
   const search = useSearchParams()
   const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
-
-  const rawNav = getNavigationForRole(resolveSystemPermission(currentUser))
   const { capabilities } = useWorkforceCapabilities()
-  const roleNav = filterWorkforceNavigation(filterNav(rawNav, currentUser), capabilities)
-  const activeHref = resolveActiveNavigation(roleNav, pathname, search)
-
-  // At 390px: up to 4 primary slots + 1 overflow trigger (5th col)
-  // Prioritize the four destinations shown in the approved mobile reference,
-  // but never reveal links that the existing role and capabilities filters hide.
-  const preferred = ['/', '/calendar', '/reports', '/payroll']
-  const pinned = preferred
-    .map(path => roleNav.find(item => path === '/' ? item.href === '/' : item.href.split('?')[0] === path))
-    .filter((item): item is typeof roleNav[number] => Boolean(item))
-  const orderedNav = [...pinned, ...roleNav.filter(item => !pinned.includes(item))]
-  const hasOverflow = orderedNav.length > 4
-  const primaryNav = hasOverflow ? orderedNav.slice(0, 4) : orderedNav
-  const overflowNav = hasOverflow ? orderedNav.slice(4) : []
-  const overflowActive = overflowNav.some(item => item.href === activeHref)
-
-  const getLabel = (item: typeof roleNav[number]) =>
-    item.labelKey
+  const [open, setOpen] = useState(false)
+  const nav = filterWorkforceNavigation(filterNav(getNavigationForRole(resolveSystemPermission(currentUser)), currentUser), capabilities)
+  const activeHref = resolveActiveNavigation(nav, pathname, search)
+  const preferred = ['/', '/calendar', '/reports', '/payroll', '/workforce']
+  const selected = preferred.map(path => nav.find(item => path === '/' ? item.href === '/' : item.href.split('?')[0] === path)).filter((item): item is typeof nav[number] => Boolean(item)).slice(0, 4)
+  const primary = selected
+  const other = nav.filter(item => !selected.includes(item))
+  const label = (item: typeof nav[number]) => item.shortLabelKey
+    ? t(item.shortLabelKey as Parameters<typeof t>[0])
+    : item.labelKey
       ? t(item.labelKey as Parameters<typeof t>[0])
-      : t(item.name.toLowerCase() as Parameters<typeof t>[0])
+      : item.name
 
   return (
-    <nav
-      data-testid="production-bottom-nav"
-      className="ada-bottom-nav fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white pb-safe text-slate-500 shadow-[0_-6px_24px_rgba(7,24,59,.06)] md:hidden"
-      aria-label={t('navMain')}
-    >
-      <div className="grid h-16 grid-cols-5">
-        {primaryNav.map((item) => {
-          const isActive = activeHref === item.href
+    <nav data-testid="production-bottom-nav" className="ada-bottom-nav fixed inset-x-0 bottom-0 z-50 border-t border-[#E6EBF8] bg-white/95 text-slate-500 shadow-[0_-5px_20px_rgba(15,32,80,.06)] backdrop-blur-lg lg:hidden" aria-label={t('navMain')}>
+      {open && (
+        <>
+          <button type="button" aria-label="Đóng menu" className="fixed inset-0 z-40 bg-slate-900/20" onClick={() => setOpen(false)} />
+          <div data-testid="pwa-more-panel" className="absolute bottom-[calc(74px+env(safe-area-inset-bottom))] left-3 right-3 z-50 max-h-[min(58dvh,490px)] overflow-y-auto rounded-[18px] border border-[#E0E7F8] bg-white p-3 shadow-[0_24px_70px_rgba(9,21,64,.19)]">
+            <p className="px-2 pb-2 text-[11px] font-bold uppercase tracking-[.14em] text-slate-400">Tất cả chức năng</p>
+            {other.map(item => {
+              const Icon = item.icon
+              return <Link href={item.href} key={item.name} onClick={() => setOpen(false)} className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-[13px] font-medium text-[#10234B] hover:bg-blue-50">
+                <Icon className="h-[18px] w-[18px] text-[#2563EB]" />{label(item)}
+              </Link>
+            })}
+            <div className="my-2 h-px bg-[#EDF1F8]" />
+            {[
+              { href: '/profile', name: 'Cá nhân', icon: UserRound },
+              { href: '/notifications', name: 'Thông báo', icon: Bell },
+              { href: '/settings', name: 'Cài đặt', icon: Settings2 },
+            ].map(item => {
+              const Icon = item.icon
+              return <Link href={item.href} key={item.href} onClick={() => setOpen(false)} className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-[13px] font-medium text-[#10234B] hover:bg-blue-50">
+                <Icon className="h-[18px] w-[18px] text-[#2563EB]" />{item.name}
+              </Link>
+            })}
+          </div>
+        </>
+      )}
+      <div className="relative z-50 grid h-[64px] grid-cols-5" data-testid="ada-reference-tabs">
+        {primary.map(item => {
           const Icon = item.icon
-          return (
-            <Link
-              key={item.name}
-              href={item.href}
-              aria-current={isActive ? 'page' : undefined}
-              className={cn(
-                'ada-bottom-nav__item flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 transition-colors focus-visible:outline-2 focus-visible:outline-blue-600',
-                isActive ? 'ada-bottom-nav__item--active font-semibold text-[#2563EB]' : 'text-slate-500 hover:bg-blue-50'
-              )}
-              data-testid={`nav-${item.name.toLowerCase()}`}
-            >
-              <Icon className="h-5 w-5" />
-              <span className="text-[10px] sm:text-xs font-medium text-center leading-tight px-0.5 line-clamp-1">{getLabel(item)}</span>
-            </Link>
-          )
+          const active = item.href === activeHref || (item.href.split('?')[0] === pathname && item.href !== '/')
+          return <Link key={item.name} href={item.href} aria-current={active ? 'page' : undefined} onClick={() => setOpen(false)} className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-0.5 focus-visible:outline-2 focus-visible:outline-blue-600 ${active ? 'font-semibold text-[#1359EC]' : 'text-slate-500'}`}>
+            <Icon className="h-[20px] w-[20px]" aria-hidden="true" />
+            <span className="max-w-full truncate text-[10px]">{label(item)}</span>
+          </Link>
         })}
-
-        {hasOverflow && (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              className={cn(
-                'ada-bottom-nav__item flex flex-col items-center justify-center gap-1 transition-colors',
-                'outline-none cursor-pointer min-h-11 px-1 rounded-xl focus-visible:outline-2 focus-visible:outline-blue-600',
-                overflowActive ? 'ada-bottom-nav__item--active text-[#2563EB]' : 'text-slate-500 hover:bg-blue-50'
-              )}
-              data-testid="nav-menu-more"
-              aria-label={t('moreMenu')}
-            >
-              <Menu className="h-5 w-5" />
-              <span className="text-[10px] sm:text-xs font-medium text-center leading-tight px-0.5 line-clamp-1">{t('moreMenu')}</span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 mb-2">
-              {overflowNav.map((item) => {
-                const Icon = item.icon
-                return (
-                  <DropdownMenuItem key={item.name} render={
-                    <Link
-                      href={item.href}
-                      className={cn(
-                        'flex items-center gap-3 py-2 cursor-pointer w-full',
-                        activeHref === item.href ? 'text-primary font-medium bg-primary/5' : ''
-                      )}
-                    />
-                  }>
-                    <Icon className="h-4 w-4" />
-                    {getLabel(item)}
-                  </DropdownMenuItem>
-                )
-              })}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem render={<Link href="/profile" className="flex items-center gap-3 py-2 cursor-pointer w-full" />}>
-                <UserRound className="h-4 w-4" />{t('profile')}
-              </DropdownMenuItem>
-              <DropdownMenuItem render={<Link href="/notifications" className="flex items-center gap-3 py-2 cursor-pointer w-full" />}>
-                <Bell className="h-4 w-4" />{t('navNotifications')}
-              </DropdownMenuItem>
-              <DropdownMenuItem render={<Link href="/settings" className="flex items-center gap-3 py-2 cursor-pointer w-full" />}>
-                <Settings2 className="h-4 w-4" />{t('settings')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+        <button data-testid="nav-menu-more" type="button" aria-label={t('moreMenu')} aria-expanded={open} onClick={() => setOpen(value => !value)} className={`flex flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] focus-visible:outline-2 focus-visible:outline-blue-600 ${open ? 'text-[#155BEC]' : 'text-slate-500'}`}>
+          <Ellipsis className="h-[21px] w-[21px]" aria-hidden="true" />
+          <span>Thêm</span>
+        </button>
       </div>
+      <div style={{ height: 'env(safe-area-inset-bottom)' }} aria-hidden="true" />
     </nav>
   )
 }

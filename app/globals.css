@@ -437,3 +437,54 @@
   .ada-auth__card { padding-left: 1.15rem; padding-right: 1.15rem; }
   .ada-auth__brand .ada-brand__name { font-size: 41px; }
 }
+
+/* ADA OPS 2026 reference-board mobile sign-in.
+ * Mobile target: white canvas, central wordmark, blue/violet waves at edges.
+ * Credentials, submit and recovery remain provided by the existing login component. */
+.ada-login-reference {
+  background: linear-gradient(180deg, #ffffff 0%, #ffffff 72%, #f5f8ff 100%);
+}
+.ada-login-reference__top {
+  position: absolute; z-index: -1; inset: 0 0 auto;
+  height: clamp(145px, 25dvh, 230px);
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at -10% -30%, #0663f2 20%, transparent 75%),
+    radial-gradient(ellipse at 98% -8%, rgba(124,58,237,.82), transparent 61%);
+  clip-path: ellipse(88% 66% at 50% 0%);
+}
+.ada-login-reference__bottom {
+  position: absolute; z-index: -1; inset: auto 0 0;
+  height: clamp(115px, 20dvh, 210px);
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 85% 100% at -10% 120%, #3056e8 5%, transparent 85%),
+    radial-gradient(ellipse 80% 105% at 105% 125%, #7c3aed 0%, transparent 84%),
+    linear-gradient(95deg, #e9efff 0%, #c4d5fa 45%, #eef0ff 100%);
+  clip-path: ellipse(95% 72% at 50% 100%);
+}
+.ada-login-reference__logo { gap: .3rem; flex-direction: column; }
+.ada-login-reference__logo .ada-brand__symbol { display: none; }
+.ada-login-reference__logo .ada-brand__name { font-size: clamp(56px,15vw,78px); font-weight: 900; letter-spacing: -.11em; }
+.ada-login-reference__logo .ada-brand__ops { display: block; margin: .12rem 0 0; text-align: center; font-size: .24em; letter-spacing: .12em; }
+.ada-login-reference__logo .ada-brand__type { align-items: center; }
+.ada-login-reference__logo .ada-brand__descriptor { margin-top: .28rem; font-size: 10px; letter-spacing: .22em; }
+.ada-login-reference form input { background: #f4f6fb; border: 1px solid #e5eaf5; border-radius: 10px; }
+.ada-login-reference form input:focus-visible { background: #fff; border-color: #2563eb; }
+.ada-login-reference form button[type="submit"] { min-height: 46px; border-radius: 10px; background: #1559ef; }
+@media (min-width: 768px) {
+  .ada-login-reference { justify-content: center; }
+  .ada-login-reference__top { height: 220px; }
+  .ada-login-reference__bottom { height: 185px; }
+}
+@media (max-height: 740px) {
+  .ada-login-reference > main { padding-top: 45px; padding-bottom: 24px; }
+  .ada-login-reference main section { margin-top: 36px; }
+}
+
+/* Navy mobile title bar continues until the desktop sidebar is visible. */
+@media (max-width: 1023px) {
+  .ada-header { background: linear-gradient(115deg, #06183c, #092455 75%, #0c2967); border-bottom-color: rgba(255,255,255,.09); }
+  .ada-header button:not([data-slot="dropdown-menu-trigger"]) { color: #fff; }
+  .ada-header button:hover { background: rgba(255,255,255,.09); }
+}

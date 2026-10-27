@@ -168,18 +168,26 @@ export function Header({ user }: HeaderProps) {
     .toUpperCase() || displayUser?.email?.[0].toUpperCase() || 'U'
 
   return (
-    <header data-testid="production-topbar" className="ada-header sticky top-0 z-40 h-[60px] shrink-0 border-b border-slate-200 bg-white sm:h-[56px]">
+    <header data-testid="production-topbar" className="ada-header sticky top-0 z-40 h-[68px] shrink-0 border-b border-white/10 bg-[#081C49] text-white lg:h-[56px] lg:border-slate-200 lg:bg-white lg:text-slate-900">
       <div className="px-3 sm:px-6">
-        <div className="flex h-[59px] items-center justify-between gap-2 sm:h-[55px] sm:gap-3">
+        <div className="flex h-[67px] items-center justify-between gap-2 lg:h-[55px] sm:gap-3">
 
-          {/* Left: wordmark (mobile only — desktop shows sidebar wordmark) */}
-          <div className="flex min-w-0 items-center lg:hidden">
-            <MobileNavMenu />
-            <AdaBrand inverse compact />
+          {/* Reference-board mobile greeting; account identity is always sourced from session. */}
+          <div className="flex min-w-0 flex-1 items-center gap-2.5 lg:hidden">
+            <div className="hidden md:block"><MobileNavMenu /></div>
+            <Avatar className="h-9 w-9 shrink-0 border border-white/15">
+              {avatarUrl && <AvatarImage src={avatarUrl} alt={displayUser?.user_metadata?.full_name || displayUser?.email || 'User'} />}
+              <AvatarFallback className="bg-[#3678f8] text-[11px] font-bold text-white">{initials}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <span className="block text-[10px] text-blue-200">Xin chào,</span>
+              <span className="block max-w-[185px] truncate text-[12px] font-bold text-white">{displayUser?.user_metadata?.full_name || displayUser?.email || 'User'}</span>
+              <span className="block text-[10px] capitalize text-blue-200">{resolveSystemPermission(currentUser)}</span>
+            </div>
           </div>
 
           {/* One responsive search instance preserves the shared keyboard shortcut. */}
-          <div className="min-w-0 flex-1"><GlobalSearch /></div>
+          <div className="hidden min-w-0 flex-1 lg:block"><GlobalSearch /></div>
 
           {/* Right: actions cluster */}
           <div className="flex items-center gap-1.5">
@@ -192,7 +200,7 @@ export function Header({ user }: HeaderProps) {
               size="sm"
               onClick={() => setLanguage(language === 'en' ? 'vi' : 'en')}
               aria-label={t('language')}
-              className="h-8 w-8 px-0 text-xs font-medium text-muted-foreground"
+              className="hidden h-8 w-8 px-0 text-xs font-medium text-muted-foreground md:inline-flex"
             >
               {language === 'en' ? 'VI' : 'EN'}
             </Button>
@@ -200,7 +208,7 @@ export function Header({ user }: HeaderProps) {
             {/* User menu */}
             <DropdownMenu>
               <DropdownMenuTrigger
-                render={<Button variant="ghost" className="h-9 max-w-48 gap-2 rounded-md px-1.5" data-testid="user-menu-btn" />}
+                render={<Button variant="ghost" className="hidden h-9 max-w-48 gap-2 rounded-md px-1.5 lg:inline-flex" data-testid="user-menu-btn" />}
               >
                 <Avatar className="h-7 w-7">
                   {avatarUrl && <AvatarImage src={avatarUrl} alt={displayUser?.user_metadata?.full_name || displayUser?.email || 'User'} />}
