@@ -35,3 +35,11 @@ There is no service worker or offline cache in this version. Authenticated API r
 4. Test installation and standalone navigation on physical iOS Safari and Android Chrome devices.
 5. Verify Supabase auth session, role restrictions and upload/download, without production data mutations.
 6. Owner review before merge or prod deploy. Do not migrate database.
+
+## Proxy compatibility verification
+
+The auth proxy matcher MUST bypass `/manifest.webmanifest`, `/icon1`, `/icon2`, `/icon3`, and `/apple-icon`, while keeping operational routes behind auth. This prevents manifest/icon requests from being redirected to login.
+
+Run the independent route contract test: `node --test tests/pwa-route-matcher.test.mjs`.
+
+Preview infrastructure note (October 27, 2026): the Vercel project `live-app-full-upgrade` shows ERROR deployments across unrelated branches; avoid attributing the PWA preview failure to the PWA implementation without reading actual build logs. This does not authorize modifying Vercel production settings.
