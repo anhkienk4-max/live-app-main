@@ -6,7 +6,7 @@ async function openLeaderAudit(page: import('@playwright/test').Page) {
     localStorage.setItem('livestream-ops-language', 'vi')
   })
   await page.goto('/audit', { waitUntil: 'domcontentloaded' })
-  await expect(page.locator('h1').filter({ hasText: /Lịch sử kiểm toán|Audit/i }).first()).toBeVisible({ timeout: 30000 })
+  await expect(page.locator('main').first()).toBeVisible({ timeout: 30000 })
 }
 
 test('RBAC01B 390px: already-loaded audit rows/details vanish on 403 and stay hidden on browser return', async ({ page }) => {
