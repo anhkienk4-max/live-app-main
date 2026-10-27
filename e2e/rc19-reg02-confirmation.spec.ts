@@ -11,7 +11,7 @@ async function openHostRegistration(page: Page) {
   await page.getByRole('button', { name: /Card view|Dạng thẻ/, exact: true }).click()
   await page.getByTestId('open-shift-detail-card-s6').click()
   await expect(page.getByTestId('shift-detail-modal')).toBeVisible()
-  await page.getByTestId('open-registration-roles-s6').click()
+  await page.getByTestId('shift-detail-modal').getByTestId('open-registration-roles-s6').click()
   await page.getByTestId('register-shift-s6-host').click()
   const confirm = page.getByTestId('registration-confirm-dialog-s6')
   await expect(confirm).toBeVisible()
