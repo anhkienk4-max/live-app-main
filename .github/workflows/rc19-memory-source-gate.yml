@@ -90,4 +90,4 @@ jobs:
           CI: 'true'
 
       - name: Declare no deployment
-        run: echo "NO DEPLOYMENT: source checks only; no Vercel or Production actions are configured in this workflow."
+        run: 'echo "NO DEPLOYMENT: source checks only; no Vercel or Production actions are configured in this workflow."'
