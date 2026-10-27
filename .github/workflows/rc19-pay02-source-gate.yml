@@ -1,0 +1,56 @@
+name: RC19 PAY-02 Source Gate
+
+on:
+  push:
+    branches:
+      - fix/rc19-pay02-room-rules-workflow
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pay02-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - name: Pin package manager
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Install reviewed lockfile
+        run: pnpm install --frozen-lockfile
+      - name: Verify exact source SHA
+        run: |
+          actual="$(git rev-parse HEAD)"
+          echo "Checked out SHA: $actual" >> "$GITHUB_STEP_SUMMARY"
+          echo "Event SHA: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          test "$actual" = "$GITHUB_SHA"
+      - name: TypeScript
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: ESLint changed PAY-02 files
+        run: pnpm exec eslint components/features/payroll/PayrollAttendanceLink.tsx components/features/payroll/PayrollRoomRules.tsx components/features/payroll/PayrollRoomRulesCatalog.tsx tests/rc18-payroll-ada-rulebook.test.ts e2e/rc18-payroll-room-rules.spec.ts
+      - name: Focused PAY-02 and existing Payroll regressions
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc18-payroll-ada-rulebook.test.ts tests/rc18-ada-attendance-link.test.ts tests/rc16-workforce-payroll.test.ts tests/rc17b-payroll-autocalc.test.ts
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Payroll browser 390/1440 (mock-only)
+        run: pnpm exec playwright test --config playwright.rc18-payroll-rules.config.ts --reporter=line
+      - name: Guarded production build without Production credentials
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_ACTUAL_STAFFING: 'false'
+          FEATURE_PAYROLL: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm run build
+
