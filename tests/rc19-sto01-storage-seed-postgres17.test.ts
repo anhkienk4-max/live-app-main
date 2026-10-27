@@ -7,9 +7,33 @@ import { Client } from 'pg'
 const SEED_SQL_PATH = path.resolve(process.cwd(), 'scripts/storage/seed-v1-production-routes.sql')
 const rawSeedSql = fs.readFileSync(SEED_SQL_PATH, 'utf8')
 
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/postgres'
+const DATABASE_URL = process.env.DATABASE_URL
+const DISPOSABLE_DATABASE = 'rc19_sto01_disposable'
 
 async function getPostgresClient(): Promise<Client | null> {
+  if (!DATABASE_URL) {
+    if (process.env.CI) throw new Error('[POSTGRES-17] DATABASE_URL is required in CI')
+    return null
+  }
+
+  let databaseUrl: URL
+  try {
+    databaseUrl = new URL(DATABASE_URL)
+  } catch {
+    throw new Error('[POSTGRES-17] DATABASE_URL must identify the dedicated disposable PostgreSQL test database')
+  }
+
+  const host = databaseUrl.hostname.toLowerCase()
+  const database = decodeURIComponent(databaseUrl.pathname.slice(1))
+  if (
+    !['postgres:', 'postgresql:'].includes(databaseUrl.protocol) ||
+    !['localhost', '127.0.0.1', '::1', '[::1]'].includes(host) ||
+    database !== DISPOSABLE_DATABASE ||
+    process.env.RC19_STO01_DISPOSABLE_TEST_DATABASE !== 'I_UNDERSTAND'
+  ) {
+    throw new Error('[POSTGRES-17] Refusing destructive schema setup: require the explicitly confirmed local rc19_sto01_disposable database')
+  }
+
   const client = new Client({
     connectionString: DATABASE_URL,
     connectionTimeoutMillis: 3000,
@@ -17,12 +41,14 @@ async function getPostgresClient(): Promise<Client | null> {
 
   try {
     await client.connect()
-    return client
-  } catch (err: unknown) {
-    if (process.env.CI || process.env.DATABASE_URL) {
-      throw new Error(`[POSTGRES-17] Required PostgreSQL 17 server connection failed on ${DATABASE_URL}: ${(err as Error).message}`)
+    const result = await client.query('SELECT current_database() AS database')
+    if (result.rows[0]?.database !== DISPOSABLE_DATABASE) {
+      throw new Error('[POSTGRES-17] Connected database name did not match the disposable test database')
     }
-    return null
+    return client
+  } catch {
+    await client.end().catch(() => undefined)
+    throw new Error('[POSTGRES-17] Required disposable PostgreSQL 17 server connection failed')
   }
 }
 
@@ -210,9 +236,11 @@ test('PostgreSQL 17 Server: Preflight fails closed when no release approver is p
       }
     )
 
+    await client.query('ROLLBACK')
     const res = await client.query('SELECT count(*)::int AS count FROM public.operational_storage_routes')
     assert.equal(res.rows[0].count, 0, 'No routes should be inserted')
   } finally {
+    await client.query('ROLLBACK').catch(() => undefined)
     await client.end()
   }
 })
@@ -239,9 +267,11 @@ test('PostgreSQL 17 Server: Preflight fails closed when approver does not exist 
       }
     )
 
+    await client.query('ROLLBACK')
     const res = await client.query('SELECT count(*)::int AS count FROM public.operational_storage_routes')
     assert.equal(res.rows[0].count, 0)
   } finally {
+    await client.query('ROLLBACK').catch(() => undefined)
     await client.end()
   }
 })

@@ -39,8 +39,8 @@ jobs:
       postgres17:
         image: postgres:17-alpine
         env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: rc19_sto01_disposable
         ports:
           - 5432:5432
         options: >-
@@ -85,7 +85,8 @@ jobs:
 
       - name: Run PostgreSQL 17 server integration test suite
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          DATABASE_URL: postgresql://postgres@localhost:5432/rc19_sto01_disposable
+          RC19_STO01_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
         run: |
           node --import ./tests/typescript-alias-loader.mjs --test \
             tests/rc19-sto01-storage-seed-postgres17.test.ts
