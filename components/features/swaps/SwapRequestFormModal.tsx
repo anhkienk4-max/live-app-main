@@ -125,14 +125,34 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
     let active = true
     const sourceTime = resolveShiftDateTime(selectedSource.date, selectedSource.start_time, selectedSource.end_time, selectedSource.timezone)
     if (!sourceTime?.valid) return
-    void shiftService.getPage({ page: 1, pageSize: 50, filters: {
+    const filters = {
       assignedUserIds: [replacementId],
       from: format(addDays(parseISO(selectedSource.date), -1), 'yyyy-MM-dd'),
       to: format(addDays(parseISO(sourceTime.endDate), 1), 'yyyy-MM-dd'),
-    } }).then(result => {
+    }
+    void shiftService.getPage({ page: 1, pageSize: 50, filters }).then(async result => {
       if (!active) return
-      const assignedHere = result.items.some(shift => shift.id === selectedSource.id)
-      const overlap = result.items.some(shift => {
+
+      let allItems = result.items
+      let complete = true
+
+      if (result.total > result.items.length) {
+        if (result.total <= 250) {
+          const totalPages = Math.ceil(result.total / 50)
+          const remaining = await Promise.all(
+            Array.from({ length: totalPages - 1 }, (_, i) =>
+              shiftService.getPage({ page: i + 2, pageSize: 50, filters })
+            )
+          )
+          if (!active) return
+          allItems = [...result.items, ...remaining.flatMap(p => p.items)]
+        } else {
+          complete = false
+        }
+      }
+
+      const assignedHere = allItems.some(shift => shift.id === selectedSource.id)
+      const overlap = allItems.some(shift => {
         if (shift.id === selectedSource.id) return false
         const other = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
         return other?.valid && other.startAt < sourceTime.endAt && other.endAt > sourceTime.startAt
@@ -151,12 +171,12 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
           reason: copy('Trùng lịch với ca khác', 'Overlaps another shift'),
           error: null,
         })
-      } else if (result.total > result.items.length) {
+      } else if (!complete) {
         setConflictSnapshot({
           key: conflictKey,
           status: 'unverified',
           reason: null,
-          error: copy('Chưa kiểm tra hết toàn bộ lịch; hệ thống sẽ xác minh khi gửi', 'Schedule check incomplete; server will verify on submit'),
+          error: copy('Lịch ca vượt quá giới hạn kiểm tra tự động; vui lòng liên hệ Quản lý/Leader để xác nhận trước khi gửi.', 'Shift count exceeds automatic check limit; please contact Manager/Leader to verify before submitting.'),
         })
       } else {
         setConflictSnapshot({
@@ -171,7 +191,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
         key: conflictKey,
         status: 'unverified',
         reason: null,
-        error: copy('Không thể kiểm tra trước lịch; hệ thống sẽ xác minh khi gửi', 'Schedule check unavailable; server will verify on submit'),
+        error: copy('Không thể kiểm tra lịch do lỗi kết nối; vui lòng thử lại hoặc liên hệ Quản lý/Leader.', 'Cannot check schedule due to connection error; please retry or contact Manager/Leader.'),
       })
     })
     return () => { active = false }
@@ -212,29 +232,66 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
 
     if (!sourceTime?.valid || !targetTime?.valid) return
 
+    const requesterFilters = {
+      assignedUserIds: [owner],
+      from: format(addDays(parseISO(selectedTarget.date), -1), 'yyyy-MM-dd'),
+      to: format(addDays(parseISO(targetTime.endDate), 1), 'yyyy-MM-dd'),
+    }
+    const counterpartFilters = {
+      assignedUserIds: [counterpartCandidate.user_id],
+      from: format(addDays(parseISO(selectedSource.date), -1), 'yyyy-MM-dd'),
+      to: format(addDays(parseISO(sourceTime.endDate), 1), 'yyyy-MM-dd'),
+    }
+
     Promise.all([
       // Check requester schedule against target shift
-      shiftService.getPage({ page: 1, pageSize: 50, filters: {
-        assignedUserIds: [owner],
-        from: format(addDays(parseISO(selectedTarget.date), -1), 'yyyy-MM-dd'),
-        to: format(addDays(parseISO(targetTime.endDate), 1), 'yyyy-MM-dd'),
-      } }),
+      shiftService.getPage({ page: 1, pageSize: 50, filters: requesterFilters }),
       // Check counterpart schedule against source shift
-      shiftService.getPage({ page: 1, pageSize: 50, filters: {
-        assignedUserIds: [counterpartCandidate.user_id],
-        from: format(addDays(parseISO(selectedSource.date), -1), 'yyyy-MM-dd'),
-        to: format(addDays(parseISO(sourceTime.endDate), 1), 'yyyy-MM-dd'),
-      } }),
-    ]).then(([requesterShifts, counterpartShifts]) => {
+      shiftService.getPage({ page: 1, pageSize: 50, filters: counterpartFilters }),
+    ]).then(async ([requesterShifts, counterpartShifts]) => {
       if (!active) return
 
-      const requesterConflict = requesterShifts.items.some(shift => {
+      let allRequesterItems = requesterShifts.items
+      let allCounterpartItems = counterpartShifts.items
+      let complete = true
+
+      if (requesterShifts.total > requesterShifts.items.length) {
+        if (requesterShifts.total <= 250) {
+          const totalPages = Math.ceil(requesterShifts.total / 50)
+          const remaining = await Promise.all(
+            Array.from({ length: totalPages - 1 }, (_, i) =>
+              shiftService.getPage({ page: i + 2, pageSize: 50, filters: requesterFilters })
+            )
+          )
+          if (!active) return
+          allRequesterItems = [...requesterShifts.items, ...remaining.flatMap(p => p.items)]
+        } else {
+          complete = false
+        }
+      }
+
+      if (counterpartShifts.total > counterpartShifts.items.length) {
+        if (counterpartShifts.total <= 250) {
+          const totalPages = Math.ceil(counterpartShifts.total / 50)
+          const remaining = await Promise.all(
+            Array.from({ length: totalPages - 1 }, (_, i) =>
+              shiftService.getPage({ page: i + 2, pageSize: 50, filters: counterpartFilters })
+            )
+          )
+          if (!active) return
+          allCounterpartItems = [...counterpartShifts.items, ...remaining.flatMap(p => p.items)]
+        } else {
+          complete = false
+        }
+      }
+
+      const requesterConflict = allRequesterItems.some(shift => {
         if (shift.id === selectedSource.id || shift.id === selectedTarget.id) return false
         const other = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
         return other?.valid && other.startAt < targetTime.endAt && other.endAt > targetTime.startAt
       })
 
-      const counterpartConflict = counterpartShifts.items.some(shift => {
+      const counterpartConflict = allCounterpartItems.some(shift => {
         if (shift.id === selectedTarget.id || shift.id === selectedSource.id) return false
         const other = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
         return other?.valid && other.startAt < sourceTime.endAt && other.endAt > sourceTime.startAt
@@ -254,12 +311,12 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
           reason: copy('Đối ứng có ca khác trùng giờ với ca của bạn', 'Counterpart has another shift overlapping your shift'),
           error: null,
         })
-      } else if (requesterShifts.total > requesterShifts.items.length || counterpartShifts.total > counterpartShifts.items.length) {
+      } else if (!complete) {
         setExchangeConflictSnapshot({
           key: exchangeConflictKey,
           status: 'unverified',
           reason: null,
-          error: copy('Chưa kiểm tra hết toàn bộ lịch; hệ thống sẽ xác minh khi gửi', 'Schedule check incomplete; server will verify on submit'),
+          error: copy('Lịch ca vượt quá giới hạn kiểm tra tự động; vui lòng liên hệ Quản lý/Leader để xác nhận trước khi gửi.', 'Shift count exceeds automatic check limit; please contact Manager/Leader to verify before submitting.'),
         })
       } else {
         setExchangeConflictSnapshot({
@@ -274,7 +331,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
         key: exchangeConflictKey,
         status: 'unverified',
         reason: null,
-        error: copy('Không thể kiểm tra trước lịch; hệ thống sẽ xác minh khi gửi', 'Schedule check unavailable; server will verify on submit'),
+        error: copy('Không thể kiểm tra lịch do lỗi kết nối; vui lòng thử lại hoặc liên hệ Quản lý/Leader.', 'Cannot check schedule due to connection error; please retry or contact Manager/Leader.'),
       })
     })
 
@@ -730,7 +787,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
                   {replacementCheckStatus === 'unverified' && (
                     <div role="alert" className="p-2.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2 font-medium">
                       <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
-                      <span>{conflict?.error || copy('Chưa kiểm tra hết toàn bộ lịch; hệ thống sẽ xác minh khi gửi', 'Schedule check incomplete; server will verify on submit')}</span>
+                      <span>{conflict?.error || copy('Chưa thể xác minh lịch ca; vui lòng thử lại hoặc liên hệ Quản lý/Leader để xác nhận trước khi gửi.', 'Schedule could not be verified; please retry or contact Manager/Leader to verify before submitting.')}</span>
                     </div>
                   )}
                   {replacementCheckStatus === 'verified_clear' && (
@@ -739,7 +796,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
                       <span>{copy('Lịch trống - đủ điều kiện nhận ca', 'Schedule available - recipient is eligible')}</span>
                     </div>
                   )}
-                  {replacementId && replacementCheckStatus !== 'conflict' && (
+                  {replacementId && replacementCheckStatus === 'verified_clear' && (
                     <p className="text-xs text-muted-foreground pt-0.5">
                       {copy('Điều kiện cuối cùng được kiểm tra lại khi gửi và khi duyệt.', 'Final eligibility is rechecked on submit and approval.')}
                     </p>
@@ -893,7 +950,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
                       {exchangeCheckStatus === 'unverified' && (
                         <div role="alert" className="p-2.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2 font-medium">
                           <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
-                          <span>{exchangeConflict?.error || copy('Chưa kiểm tra hết toàn bộ lịch; hệ thống sẽ xác minh khi gửi', 'Schedule check incomplete; server will verify on submit')}</span>
+                          <span>{exchangeConflict?.error || copy('Chưa thể xác minh lịch ca; vui lòng thử lại hoặc liên hệ Quản lý/Leader để xác nhận trước khi gửi.', 'Schedule could not be verified; please retry or contact Manager/Leader to verify before submitting.')}</span>
                         </div>
                       )}
                       {exchangeCheckStatus === 'verified_clear' && (
@@ -902,7 +959,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
                           <span>{copy('Lịch hai bên hợp lệ - sẵn sàng gửi yêu cầu đổi chéo', 'Both schedules valid - ready for exchange')}</span>
                         </div>
                       )}
-                      {counterpartId && exchangeCheckStatus !== 'conflict' && (
+                      {counterpartId && exchangeCheckStatus === 'verified_clear' && (
                         <p className="text-xs text-muted-foreground pt-0.5">
                           {copy('Điều kiện cuối cùng được kiểm tra lại khi gửi và khi duyệt.', 'Final eligibility is rechecked on submit and approval.')}
                         </p>

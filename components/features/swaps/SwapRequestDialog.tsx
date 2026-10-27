@@ -156,16 +156,38 @@ export function SwapRequestDialog({
     let active = true
     const sourceTime = resolveShiftDateTime(sourceShift.date, sourceShift.start_time, sourceShift.end_time, sourceShift.timezone)
     if (!sourceTime?.valid) return
+    const from = format(addDays(parseISO(sourceShift.date), -1), 'yyyy-MM-dd')
+    const to = format(addDays(parseISO(sourceTime.endDate), 1), 'yyyy-MM-dd')
+    const filters = {
+      assignedUserIds: [replacementId],
+      from,
+      to,
+    }
     void shiftService.getPage({
-      page: 1, pageSize: 50, filters: {
-        assignedUserIds: [replacementId],
-        from: format(addDays(parseISO(sourceShift.date), -1), 'yyyy-MM-dd'),
-        to: format(addDays(parseISO(sourceTime.endDate), 1), 'yyyy-MM-dd'),
-      },
-    }).then(result => {
+      page: 1, pageSize: 50, filters,
+    }).then(async result => {
       if (!active) return
-      const assignedHere = result.items.some(s => s.id === sourceShift.id)
-      const overlap = result.items.some(s => {
+
+      let allItems = result.items
+      let complete = true
+
+      if (result.total > result.items.length) {
+        if (result.total <= 250) {
+          const totalPages = Math.ceil(result.total / 50)
+          const remaining = await Promise.all(
+            Array.from({ length: totalPages - 1 }, (_, i) =>
+              shiftService.getPage({ page: i + 2, pageSize: 50, filters })
+            )
+          )
+          if (!active) return
+          allItems = [...result.items, ...remaining.flatMap(p => p.items)]
+        } else {
+          complete = false
+        }
+      }
+
+      const assignedHere = allItems.some(s => s.id === sourceShift.id)
+      const overlap = allItems.some(s => {
         if (s.id === sourceShift.id) return false
         const other = resolveShiftDateTime(s.date, s.start_time, s.end_time, s.timezone)
         return other?.valid && other.startAt < sourceTime.endAt && other.endAt > sourceTime.startAt
@@ -174,13 +196,13 @@ export function SwapRequestDialog({
         setConflictSnapshot({ key: replacementConflictKey, status: 'conflict', reason: 'Nhân sự đã được phân công vào ca này', error: null })
       } else if (overlap) {
         setConflictSnapshot({ key: replacementConflictKey, status: 'conflict', reason: 'Nhân sự có ca khác trùng giờ', error: null })
-      } else if (result.total > result.items.length) {
-        setConflictSnapshot({ key: replacementConflictKey, status: 'unverified', reason: null, error: 'Chưa kiểm tra hết toàn bộ lịch; hệ thống sẽ xác minh khi gửi' })
+      } else if (!complete) {
+        setConflictSnapshot({ key: replacementConflictKey, status: 'unverified', reason: null, error: 'Lịch ca vượt quá giới hạn kiểm tra tự động; vui lòng liên hệ Quản lý/Leader để xác nhận trước khi gửi' })
       } else {
         setConflictSnapshot({ key: replacementConflictKey, status: 'verified_clear', reason: null, error: null })
       }
     }).catch(() => {
-      if (active) setConflictSnapshot({ key: replacementConflictKey, status: 'unverified', reason: null, error: 'Không thể kiểm tra trước lịch; hệ thống sẽ xác minh khi gửi' })
+      if (active) setConflictSnapshot({ key: replacementConflictKey, status: 'unverified', reason: null, error: 'Không thể kiểm tra lịch do lỗi kết nối; vui lòng thử lại hoặc liên hệ Quản lý/Leader' })
     })
     return () => { active = false }
   }, [open, mode, replacementId, sourceShift, replacementConflictKey])
@@ -197,29 +219,63 @@ export function SwapRequestDialog({
     const targetTime = resolveShiftDateTime(targetShift.date, targetShift.start_time, targetShift.end_time, targetShift.timezone)
     if (!sourceTime?.valid || !targetTime?.valid) return
 
+    const requesterFilters = {
+      assignedUserIds: [currentUser.id],
+      from: format(addDays(parseISO(targetShift.date), -1), 'yyyy-MM-dd'),
+      to: format(addDays(parseISO(targetTime.endDate), 1), 'yyyy-MM-dd'),
+    }
+    const counterpartFilters = {
+      assignedUserIds: [counterpartCandidate.user_id],
+      from: format(addDays(parseISO(sourceShift.date), -1), 'yyyy-MM-dd'),
+      to: format(addDays(parseISO(sourceTime.endDate), 1), 'yyyy-MM-dd'),
+    }
+
     Promise.all([
-      shiftService.getPage({
-        page: 1, pageSize: 50, filters: {
-          assignedUserIds: [currentUser.id],
-          from: format(addDays(parseISO(targetShift.date), -1), 'yyyy-MM-dd'),
-          to: format(addDays(parseISO(targetTime.endDate), 1), 'yyyy-MM-dd'),
-        },
-      }),
-      shiftService.getPage({
-        page: 1, pageSize: 50, filters: {
-          assignedUserIds: [counterpartCandidate.user_id],
-          from: format(addDays(parseISO(sourceShift.date), -1), 'yyyy-MM-dd'),
-          to: format(addDays(parseISO(sourceTime.endDate), 1), 'yyyy-MM-dd'),
-        },
-      }),
-    ]).then(([requesterShifts, counterpartShifts]) => {
+      shiftService.getPage({ page: 1, pageSize: 50, filters: requesterFilters }),
+      shiftService.getPage({ page: 1, pageSize: 50, filters: counterpartFilters }),
+    ]).then(async ([requesterShifts, counterpartShifts]) => {
       if (!active) return
-      const requesterConflict = requesterShifts.items.some(shift => {
+
+      let allRequesterItems = requesterShifts.items
+      let allCounterpartItems = counterpartShifts.items
+      let complete = true
+
+      if (requesterShifts.total > requesterShifts.items.length) {
+        if (requesterShifts.total <= 250) {
+          const totalPages = Math.ceil(requesterShifts.total / 50)
+          const remaining = await Promise.all(
+            Array.from({ length: totalPages - 1 }, (_, i) =>
+              shiftService.getPage({ page: i + 2, pageSize: 50, filters: requesterFilters })
+            )
+          )
+          if (!active) return
+          allRequesterItems = [...requesterShifts.items, ...remaining.flatMap(p => p.items)]
+        } else {
+          complete = false
+        }
+      }
+
+      if (counterpartShifts.total > counterpartShifts.items.length) {
+        if (counterpartShifts.total <= 250) {
+          const totalPages = Math.ceil(counterpartShifts.total / 50)
+          const remaining = await Promise.all(
+            Array.from({ length: totalPages - 1 }, (_, i) =>
+              shiftService.getPage({ page: i + 2, pageSize: 50, filters: counterpartFilters })
+            )
+          )
+          if (!active) return
+          allCounterpartItems = [...counterpartShifts.items, ...remaining.flatMap(p => p.items)]
+        } else {
+          complete = false
+        }
+      }
+
+      const requesterConflict = allRequesterItems.some(shift => {
         if (shift.id === sourceShift.id || shift.id === targetShift.id) return false
         const other = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
         return other?.valid && other.startAt < targetTime.endAt && other.endAt > targetTime.startAt
       })
-      const counterpartConflict = counterpartShifts.items.some(shift => {
+      const counterpartConflict = allCounterpartItems.some(shift => {
         if (shift.id === targetShift.id || shift.id === sourceShift.id) return false
         const other = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
         return other?.valid && other.startAt < sourceTime.endAt && other.endAt > sourceTime.startAt
@@ -229,13 +285,13 @@ export function SwapRequestDialog({
         setExchangeConflictSnapshot({ key: exchangeConflictKey, status: 'conflict', reason: 'Bạn đã có ca khác trùng giờ với ca đổi chéo', error: null })
       } else if (counterpartConflict) {
         setExchangeConflictSnapshot({ key: exchangeConflictKey, status: 'conflict', reason: 'Đối ứng có ca khác trùng giờ với ca của bạn', error: null })
-      } else if (requesterShifts.total > requesterShifts.items.length || counterpartShifts.total > counterpartShifts.items.length) {
-        setExchangeConflictSnapshot({ key: exchangeConflictKey, status: 'unverified', reason: null, error: 'Chưa kiểm tra hết toàn bộ lịch; hệ thống sẽ xác minh khi gửi' })
+      } else if (!complete) {
+        setExchangeConflictSnapshot({ key: exchangeConflictKey, status: 'unverified', reason: null, error: 'Lịch ca vượt quá giới hạn kiểm tra tự động; vui lòng liên hệ Quản lý/Leader để xác nhận trước khi gửi' })
       } else {
         setExchangeConflictSnapshot({ key: exchangeConflictKey, status: 'verified_clear', reason: null, error: null })
       }
     }).catch(() => {
-      if (active) setExchangeConflictSnapshot({ key: exchangeConflictKey, status: 'unverified', reason: null, error: 'Không thể kiểm tra trước lịch; hệ thống sẽ xác minh khi gửi' })
+      if (active) setExchangeConflictSnapshot({ key: exchangeConflictKey, status: 'unverified', reason: null, error: 'Không thể kiểm tra lịch do lỗi kết nối; vui lòng thử lại hoặc liên hệ Quản lý/Leader' })
     })
 
     return () => { active = false }
@@ -383,7 +439,7 @@ export function SwapRequestDialog({
               {replacementCheckStatus === 'unverified' && (
                 <div className="p-2 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-1.5 font-medium">
                   <AlertCircle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                  <span>{conflict?.error || 'Chưa kiểm tra hết toàn bộ lịch; hệ thống sẽ xác minh khi gửi'}</span>
+                  <span>{conflict?.error || 'Chưa thể xác minh lịch ca; vui lòng thử lại hoặc liên hệ Quản lý/Leader để xác nhận'}</span>
                 </div>
               )}
               {replacementCheckStatus === 'verified_clear' && (
@@ -392,7 +448,7 @@ export function SwapRequestDialog({
                   <span>Lịch trống - sẵn sàng nhận ca</span>
                 </div>
               )}
-              {replacementId && replacementCheckStatus !== 'conflict' && (
+              {replacementId && replacementCheckStatus === 'verified_clear' && (
                 <p className="text-xs text-muted-foreground">
                   Điều kiện cuối cùng được kiểm tra lại khi gửi và khi duyệt.
                 </p>
@@ -460,7 +516,7 @@ export function SwapRequestDialog({
               {exchangeCheckStatus === 'unverified' && (
                 <div className="p-2 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-1.5 font-medium">
                   <AlertCircle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                  <span>{exchangeConflict?.error || 'Chưa kiểm tra hết toàn bộ lịch; hệ thống sẽ xác minh khi gửi'}</span>
+                  <span>{exchangeConflict?.error || 'Chưa thể xác minh lịch ca; vui lòng thử lại hoặc liên hệ Quản lý/Leader để xác nhận'}</span>
                 </div>
               )}
               {exchangeCheckStatus === 'verified_clear' && (
@@ -469,7 +525,7 @@ export function SwapRequestDialog({
                   <span>Lịch hai bên hợp lệ - đã xác minh không trùng giờ</span>
                 </div>
               )}
-              {counterpartId && exchangeCheckStatus !== 'conflict' && (
+              {counterpartId && exchangeCheckStatus === 'verified_clear' && (
                 <p className="text-xs text-muted-foreground">
                   Điều kiện cuối cùng được kiểm tra lại khi gửi và khi duyệt.
                 </p>

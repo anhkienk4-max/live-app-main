@@ -73,16 +73,22 @@ test('SWAP-01: 4-State Conflict Verification Contract in Modal & Dialog (VERIFIE
   assert.match(dialogSource, /exchangeCheckStatus === 'verified_clear'/)
 })
 
-test('SWAP-01: API failure or incomplete page never reports verified clear', () => {
-  // Result page incomplete check: result.total > result.items.length
+test('SWAP-01: API failure or incomplete page never reports verified clear and has no misleading submit copy', () => {
+  // Result page incomplete check: result.total > result.items.length and bounded up to 250
   assert.match(modalSource, /result\.total > result\.items\.length/)
   assert.match(dialogSource, /result\.total > result\.items\.length/)
+  assert.match(modalSource, /result\.total <= 250/)
+  assert.match(dialogSource, /result\.total <= 250/)
 
   // API catch handles unverified status with informative message
   assert.match(modalSource, /status: 'unverified'/)
   assert.match(dialogSource, /status: 'unverified'/)
   assert.match(modalSource, /Không thể kiểm tra.*lịch/)
   assert.match(dialogSource, /Không thể kiểm tra.*lịch/)
+
+  // FIX-01: Never promise server verification on submit while submit button is disabled
+  assert.doesNotMatch(modalSource, /hệ thống sẽ xác minh khi gửi/)
+  assert.doesNotMatch(dialogSource, /hệ thống sẽ xác minh khi gửi/)
 })
 
 test('SWAP-01: Candidate is strictly invalid unless verified_clear and submission is disabled', () => {
@@ -171,7 +177,7 @@ test('BEHAVIORAL: API error transitions to unverified, blocks submit, and suppre
       }
       return { status: 'verified_clear' as const, error: null }
     } catch {
-      return { status: 'unverified' as const, error: 'Không thể kiểm tra trước lịch; hệ thống sẽ xác minh khi gửi' }
+      return { status: 'unverified' as const, error: 'Không thể kiểm tra lịch do lỗi kết nối; vui lòng thử lại hoặc liên hệ Quản lý/Leader' }
     }
   }
 
@@ -180,7 +186,7 @@ test('BEHAVIORAL: API error transitions to unverified, blocks submit, and suppre
   const outcome = await runConflictCheck(failingFetcher)
 
   assert.equal(outcome.status, 'unverified')
-  assert.ok(outcome.error)
+  assert.match(outcome.error ?? '', /Không thể kiểm tra lịch do lỗi kết nối/)
   assert.notEqual(outcome.status, 'verified_clear', 'Must NEVER report verified_clear on API failure')
 
   // Candidate validation must reject unverified
@@ -206,23 +212,57 @@ test('BEHAVIORAL: Conflict check in-flight (checking) blocks submit and shows lo
   assert.equal(isSubmitDisabled(inFlightStatus, 20), true, 'Submit MUST be disabled while check is in flight')
 })
 
-test('BEHAVIORAL: Incomplete page results (total > items.length) result in unverified status', async () => {
-  const checkPagination = (itemsCount: number, totalCount: number) => {
-    if (totalCount > itemsCount) {
-      return { status: 'unverified' as const, isClear: false }
+test('BEHAVIORAL: Bounded multi-page check verifies up to 250 shifts and fails-closed when exceeded or failed', async () => {
+  const checkBoundedPagination = async (
+    firstPage: { items: Array<{ id: string; start: number; end: number }>; total: number },
+    fetchRemainingPages: (totalPages: number) => Promise<Array<{ items: Array<{ id: string; start: number; end: number }> }>>
+  ) => {
+    let allItems = firstPage.items
+    let complete = true
+
+    if (firstPage.total > firstPage.items.length) {
+      if (firstPage.total <= 250) {
+        const totalPages = Math.ceil(firstPage.total / 50)
+        try {
+          const remaining = await fetchRemainingPages(totalPages)
+          allItems = [...firstPage.items, ...remaining.flatMap(p => p.items)]
+        } catch {
+          return { status: 'unverified' as const, error: 'Không thể kiểm tra lịch do lỗi kết nối', allItems: [] }
+        }
+      } else {
+        complete = false
+      }
     }
-    return { status: 'verified_clear' as const, isClear: true }
+
+    if (!complete) {
+      return { status: 'unverified' as const, error: 'Lịch ca vượt quá giới hạn kiểm tra tự động (tối đa 250 ca)', allItems }
+    }
+    return { status: 'verified_clear' as const, error: null, allItems }
   }
 
-  // First page with 50 items out of 75 total
-  const partialResult = checkPagination(50, 75)
-  assert.equal(partialResult.status, 'unverified')
-  assert.equal(partialResult.isClear, false, 'Incomplete page must NOT assert schedule is clear')
+  // 1. Within bound (75 shifts = page 1 with 50 + page 2 with 25): loads and verifies clean
+  const withinBound = await checkBoundedPagination(
+    { items: Array.from({ length: 50 }, (_, i) => ({ id: `s_${i}`, start: i * 10, end: i * 10 + 5 })), total: 75 },
+    async () => [{ items: Array.from({ length: 25 }, (_, i) => ({ id: `s_${i + 50}`, start: (i + 50) * 10, end: (i + 50) * 10 + 5 })) }]
+  )
+  assert.equal(withinBound.status, 'verified_clear')
+  assert.equal(withinBound.allItems.length, 75)
 
-  // Full page (50 items out of 50 total)
-  const fullResult = checkPagination(50, 50)
-  assert.equal(fullResult.status, 'verified_clear')
-  assert.equal(fullResult.isClear, true)
+  // 2. Exceeds safe limit (300 shifts > 250): fail-closed to unverified
+  const exceedsBound = await checkBoundedPagination(
+    { items: Array.from({ length: 50 }, (_, i) => ({ id: `s_${i}`, start: 0, end: 1 })), total: 300 },
+    async () => []
+  )
+  assert.equal(exceedsBound.status, 'unverified')
+  assert.match(exceedsBound.error ?? '', /vượt quá giới hạn/)
+
+  // 3. Network error on remaining pages: fail-closed to unverified
+  const networkError = await checkBoundedPagination(
+    { items: Array.from({ length: 50 }, (_, i) => ({ id: `s_${i}`, start: 0, end: 1 })), total: 75 },
+    async () => { throw new Error('FETCH_FAILED') }
+  )
+  assert.equal(networkError.status, 'unverified')
+  assert.match(networkError.error ?? '', /lỗi kết nối/)
 })
 
 test('BEHAVIORAL: Account switching invalidates cached verification snapshots and candidates', () => {
