@@ -36,6 +36,7 @@ import {
 import { WorkforceTeamOverview } from '@/components/features/workforce/WorkforceTeamOverview'
 import { WorkforceIndividualView } from '@/components/features/workforce/WorkforceIndividualView'
 import { WorkforceLeaderboard } from '@/components/features/workforce/WorkforceLeaderboard'
+import { AttendanceEvidenceReviewPanel } from '@/components/features/workforce/AttendanceEvidenceReviewPanel'
 import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { parseWorkforceYearDraft } from '@/lib/workforce/workforcePeriod'
 import { useListPagination } from '@/lib/hooks/useListPagination'
@@ -69,7 +70,8 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
   const roleParam = params.get('workforce_role')
   const role: WorkforceRole = roleParam === 'support' || roleParam === 'technical' ? roleParam : 'host'
   const viewParam = params.get('workforce_view')
-  const activeTab = viewParam === 'table' || viewParam === 'cards' || viewParam === 'individual' || viewParam === 'leaderboard' ? viewParam : 'team'
+  const canReviewAttendanceEvidence = process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_REVIEW === 'true'
+  const activeTab = viewParam === 'table' || viewParam === 'cards' || viewParam === 'individual' || viewParam === 'leaderboard' || (canReviewAttendanceEvidence && viewParam === 'attendance_reviews') ? viewParam : 'team'
   const search = params.get('workforce_search') || ''
   const staffFilter = params.get('workforce_staff_id') || ''
   const sortParam = params.get('workforce_sort')
@@ -87,7 +89,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
   const updateRole = (value: WorkforceRole) => updateQuery({ workforce_role: value }, true)
   const setActiveTab = (value: string) => updateQuery({ workforce_view: value === 'team' ? null : value })
   const selectedStaffId = staffFilter || currentUser.id
-  const needsOverview = isSupervisor && activeTab !== 'individual'
+  const needsOverview = isSupervisor && activeTab !== 'individual' && activeTab !== 'attendance_reviews'
 
   // Overview response state
   const [overviewState, setOverviewState] = React.useState<{ key: string; data?: WorkforceOverviewResponse; error?: string } | null>(null)
@@ -199,7 +201,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
         </div>
 
         {/* Global period and role controls for Team/Leaderboard */}
-        {activeTab !== 'individual' && (
+        {activeTab !== 'individual' && activeTab !== 'attendance_reviews' && (
           <div className="flex flex-wrap items-center gap-2">
             <div className="w-36">
               <Select value={role} onValueChange={(val: WorkforceRole) => updateRole(val)}>
@@ -271,7 +273,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid group-data-[orientation=horizontal]/tabs:h-auto w-full grid-cols-2 gap-1 bg-slate-100 p-1 rounded-lg sm:grid-cols-5">
+        <TabsList className={`grid group-data-[orientation=horizontal]/tabs:h-auto w-full grid-cols-2 gap-1 bg-slate-100 p-1 rounded-lg ${canReviewAttendanceEvidence ? "sm:grid-cols-6" : "sm:grid-cols-5"}`}>
           <TabsTrigger value="team" className="min-h-11 min-w-0 whitespace-normal px-2 py-1.5 text-xs font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <Users className="h-3.5 w-3.5 mr-1.5" />
             {en ? 'Overview' : 'Tổng quan'}
@@ -292,6 +294,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
             <Trophy className="h-3.5 w-3.5 mr-1.5" />
             {en ? 'Ranking' : 'Xếp hạng'}
           </TabsTrigger>
+          {canReviewAttendanceEvidence ? <TabsTrigger value="attendance_reviews" data-testid="attendance-evidence-review-tab">Photo review</TabsTrigger> : null}
         </TabsList>
 
         {(['team', 'table', 'cards'] as const).map(view => <TabsContent key={view} value={view} className="mt-0">
@@ -320,6 +323,8 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
             onPeriodChange={updatePeriod}
           />
         </TabsContent>
+
+        {canReviewAttendanceEvidence ? <TabsContent value="attendance_reviews" className="mt-0"><AttendanceEvidenceReviewPanel /></TabsContent> : null}
 
         {/* LEADERBOARD TAB */}
         <TabsContent value="leaderboard" className="mt-0">

@@ -1,0 +1,3 @@
+﻿# Design
+
+Use separate append-only review and supplemental-evidence tables so the existing unique evidence-per-event contract stays intact. Narrow authenticated RPCs derive the actor from the session, validate role/scope/activity, forbid self-review, and serialize decisions by locking the attendance event and checking expected review version. The HTTP layer uses session RPCs for writes and service-role reads only after constraining events to shifts visible through the session/RLS client. Review does not update attendance verification, staffing, or payroll state. The SQL remains a proposal under `supabase/proposals` and is exercised only by isolated PostgreSQL 17 CI.

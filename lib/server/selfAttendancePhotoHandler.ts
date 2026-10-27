@@ -315,18 +315,26 @@ export async function GET(request:Request) {
       const visible=await session.from('shifts').select('id').eq('id',event.data.shift_id).maybeSingle()
       if(visible.error||!visible.data)return failed('PERMISSION_DENIED',403)
     }
-    const metadata=await admin.from('self_attendance_photo_evidence')
+    const requestedId=url.searchParams.get('request_id')
+    const requestId=requestedId?UUID.parse(requestedId):event.data.request_id
+    const isBase=requestId===event.data.request_id
+    const baseMetadata=isBase?await admin.from('self_attendance_photo_evidence')
       .select('external_file_id,mime_type,size_bytes,checksum_sha256')
-      .eq('request_id',event.data.request_id).maybeSingle()
-    if(metadata.error||!metadata.data)return failed('ATTENDANCE_PHOTO_NOT_FOUND',404)
+      .eq('request_id',requestId).maybeSingle():{data:null,error:null}
+    const addendumMetadata=isBase?{data:null,error:null}:await admin.from('self_attendance_photo_evidence_addenda')
+      .select('external_file_id,mime_type,size_bytes,checksum_sha256,event_id')
+      .eq('request_id',requestId).maybeSingle()
+    if(baseMetadata.error||addendumMetadata.error)return failed('ATTENDANCE_PHOTO_STORAGE_UNAVAILABLE',503)
+    const metadata=baseMetadata.data??addendumMetadata.data
+    if(!metadata||('event_id' in metadata&&metadata.event_id!==eventId))return failed('ATTENDANCE_PHOTO_NOT_FOUND',404)
     const {drive}=photoProvider()
-    const bytes=await drive.read(metadata.data.external_file_id)
-    if(bytes.byteLength!==metadata.data.size_bytes||
-      mimeFromBytes(bytes)?.mime!==metadata.data.mime_type ||
-      createHash('sha256').update(bytes).digest('hex')!==metadata.data.checksum_sha256)
+    const bytes=await drive.read(metadata.external_file_id)
+    if(bytes.byteLength!==metadata.size_bytes||
+      mimeFromBytes(bytes)?.mime!==metadata.mime_type ||
+      createHash('sha256').update(bytes).digest('hex')!==metadata.checksum_sha256)
       return failed('ATTENDANCE_PHOTO_INTEGRITY_FAILED',409)
     return new Response(Buffer.from(bytes),{status:200,headers:{
-      ...ERROR_HEADERS,'Content-Type':metadata.data.mime_type,
+      ...ERROR_HEADERS,'Content-Type':metadata.mime_type,
       'X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'",
     }})
   }catch(e) {

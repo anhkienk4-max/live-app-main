@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -25,6 +25,18 @@ function psql(db, sql, allowFailure = false) {
   if (result.error) throw result.error
   if (!allowFailure) assert.equal(result.status, 0, `PostgreSQL command failed: ${result.stderr}`)
   return result
+}
+
+function psqlAsync(db, sql) {
+  return new Promise(resolve => {
+    const child = spawn('docker', ['exec', '-i', container, 'psql', '-X', '-U', 'postgres', '-d', db, '-v', 'ON_ERROR_STOP=1', '-A', '-t'])
+    let stdout = ''
+    let stderr = ''
+    child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk })
+    child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk })
+    child.on('close', status => resolve({ status, stdout, stderr }))
+    child.stdin.end(sql)
+  })
 }
 
 function expectSqlError(sql, message) {
@@ -116,6 +128,61 @@ try {
     rpc(staffId, shiftId, role, 'check_out', checkoutId)
   }
 
+  psql(database, `
+    create or replace function private.current_business_user_id() returns text language sql stable set search_path='' as $$ select nullif(current_setting('app.test_actor',true),'') $$;
+    create or replace function private.current_business_user_is_active() returns boolean language sql stable set search_path='' as $$ select exists(select 1 from public.business_users where id=private.current_business_user_id()) $$;
+    create or replace function private.current_system_permission() returns text language sql stable set search_path='' as $$ select coalesce(nullif(current_setting('app.test_permission',true),''),'member') $$;
+    create or replace function private.is_leader_or_admin() returns boolean language sql stable set search_path='' as $$ select private.current_system_permission() in ('leader','admin') $$;
+    create or replace function private.can_read_shift(p_shift_id text) returns boolean language sql stable set search_path='' as $$
+      select private.current_business_user_is_active() and (private.current_system_permission() in ('leader','admin') or exists(
+        select 1 from public.shifts s where s.id=p_shift_id and private.current_business_user_id() in (s.host_id,s.support_id,s.technical_id))) $$;
+    insert into public.business_users values ('review-admin','Admin'),('review-leader','Leader');`)
+  psql(database, readFileSync(path.join(root, 'supabase/proposals/20261028_rc19_attendance_evidence_review.sql'), 'utf8'))
+
+  const hostEvent = psql(database, `select id from public.self_attendance_events where request_id='${hostCheckin}'`).stdout.trim()
+  const supportCheckin = '20000000-0000-4000-8000-000000000003'
+  const supportEvent = psql(database, `select id from public.self_attendance_events where shift_id='shift-support' and event_kind='check_in'`).stdout.trim()
+  const review = (actor, permission, eventId, requestId, version, decision, reason) =>
+    psql(database, `begin; set local role authenticated; select set_config('app.test_actor','${actor}',true); select set_config('app.test_permission','${permission}',true); select public.review_self_attendance_photo_evidence('${eventId}','${requestId}',${version},'${decision}','${reason}'); commit;`)
+  const technicalCheckin='20000000-0000-4000-8000-000000000005'
+  const technicalCheckout='30000000-0000-4000-8000-000000000006'
+  const technicalEvent=psql(database,`select id from public.self_attendance_events where request_id='${technicalCheckin}'`).stdout.trim()
+  const technicalCheckoutEvent=psql(database,`select id from public.self_attendance_events where request_id='${technicalCheckout}'`).stdout.trim()
+  assert.match(review('review-admin','admin',technicalEvent,technicalCheckin,0,'rejected','please include the assigned role').stdout, /\"decision\": \"rejected\"/)
+  let lockOutput=''
+  let resolveLockReady
+  const lockReady=new Promise(resolve=>{resolveLockReady=resolve})
+  const blocker=spawn('docker',['exec','-i',container,'psql','-X','-U','postgres','-d',database,'-v','ON_ERROR_STOP=1','-A','-t'])
+  blocker.stdout.setEncoding('utf8').on('data',chunk=>{lockOutput+=chunk;if(lockOutput.includes(technicalCheckoutEvent))resolveLockReady()})
+  let blockerError=''
+  blocker.stderr.setEncoding('utf8').on('data',chunk=>{blockerError+=chunk})
+  const blockerDone=new Promise(resolve=>blocker.on('close',status=>resolve({status,error:blockerError})))
+  blocker.stdin.end(`begin; select id from public.self_attendance_events where id='${technicalCheckoutEvent}' for update; select pg_sleep(1); commit;`)
+  await lockReady
+  const contenders=await Promise.all([
+    psqlAsync(database,`begin; set local role authenticated; select set_config('app.test_actor','review-admin',true); select set_config('app.test_permission','admin',true); select public.review_self_attendance_photo_evidence('${technicalCheckoutEvent}','${technicalCheckout}',0,'approved','concurrent approval attempt'); commit;`),
+    psqlAsync(database,`begin; set local role authenticated; select set_config('app.test_actor','review-leader',true); select set_config('app.test_permission','leader',true); select public.review_self_attendance_photo_evidence('${technicalCheckoutEvent}','${technicalCheckout}',0,'rejected','concurrent rejection attempt'); commit;`),
+  ])
+  const blockerResult=await blockerDone
+  assert.equal(blockerResult.status,0,blockerResult.error)
+  assert.equal(contenders.filter(result=>result.status===0).length,1,'exactly one concurrent decision commits')
+  assert.ok(contenders.some(result=>result.stderr.includes('ATTENDANCE_REVIEW_VERSION_CONFLICT')),'losing concurrent review sees version conflict')
+  expectSqlError(`begin; set local role authenticated; select set_config('app.test_actor','staff-host',true); select set_config('app.test_permission','admin',true); select public.review_self_attendance_photo_evidence('${hostEvent}','${hostCheckin}',0,'approved','valid review reason'); commit;`, 'ATTENDANCE_REVIEW_SELF_REVIEW')
+  expectSqlError(`begin; set local role authenticated; select set_config('app.test_actor','other-staff',true); select set_config('app.test_permission','member',true); select public.review_self_attendance_photo_evidence('${hostEvent}','${hostCheckin}',0,'approved','valid review reason'); commit;`, 'ATTENDANCE_REVIEW_FORBIDDEN')
+  expectSqlError(`begin; set local role authenticated; select set_config('app.test_actor','review-leader',true); select set_config('app.test_permission','leader',true); select public.review_self_attendance_photo_evidence('${hostEvent}','${hostCheckin}',0,'approved','short'); commit;`, 'ATTENDANCE_REVIEW_INVALID')
+  assert.match(review('review-admin','admin',hostEvent,hostCheckin,0,'approved','photo matches live shift').stdout, /"review_version": 1/)
+  expectSqlError(`begin; set local role authenticated; select set_config('app.test_actor','review-leader',true); select set_config('app.test_permission','leader',true); select public.review_self_attendance_photo_evidence('${hostEvent}','${hostCheckin}',0,'rejected','review conflict reason'); commit;`, 'ATTENDANCE_REVIEW_VERSION_CONFLICT')
+  expectSqlError(`begin; set local role authenticated; select set_config('app.test_actor','review-leader',true); select set_config('app.test_permission','leader',true); select public.review_self_attendance_photo_evidence('${hostEvent}','${hostCheckin}',1,'rejected','duplicate review reason'); commit;`, 'ATTENDANCE_EVIDENCE_ALREADY_REVIEWED')
+  assert.match(review('review-leader','leader',supportEvent,supportCheckin,0,'correction_requested','please retake with room visible').stdout, /"review_version": 1/)
+  expectSqlError(`begin; set local role authenticated; select set_config('app.test_actor','other-staff',true); select set_config('app.test_permission','member',true); select public.attach_self_attendance_photo_evidence_addendum('70000000-0000-4000-8000-000000000001','${supportEvent}','${supportCheckin}','google_drive','provider-file-correction','attendance-root-0001','20261028_support_correction.jpg','image/jpeg',100,'${'f'.repeat(64)}','{}'::jsonb,'camera'); commit;`, 'ATTENDANCE_REVIEW_FORBIDDEN')
+  const supplementId='70000000-0000-4000-8000-000000000001'
+  const supplement=`begin; set local role authenticated; select set_config('app.test_actor','staff-support',true); select public.attach_self_attendance_photo_evidence_addendum('${supplementId}','${supportEvent}','${supportCheckin}','google_drive','provider-file-correction','attendance-root-0001','20261028_support_correction.jpg','image/jpeg',100,'${'f'.repeat(64)}','{}'::jsonb,'file_picker'); commit;`
+  assert.match(psql(database,supplement).stdout,/"revision_no": 1/)
+  assert.equal(psql(database,`select count(*) from public.self_attendance_photo_evidence where request_id='${supportCheckin}'`).stdout.trim(),'1','original evidence stays immutable')
+  assert.equal(psql(database,`select count(*) from public.self_attendance_photo_evidence_reviews where event_id='${supportEvent}'`).stdout.trim(),'1')
+  expectSqlError(`begin; set local role authenticated; update public.self_attendance_photo_evidence_reviews set reason='changed history' where event_id='${supportEvent}'; commit;`, 'permission denied|ATTENDANCE_EVENTS_IMMUTABLE')
+  expectSqlError(`begin; set local role authenticated; select set_config('app.test_actor','staff-support',true); select public.attach_self_attendance_photo_evidence_addendum('70000000-0000-4000-8000-000000000002','${supportEvent}','${supportCheckin}','google_drive','provider-file-correction-2','attendance-root-0001','20261028_support_correction2.jpg','image/jpeg',100,'${'a'.repeat(64)}','{}'::jsonb,'camera'); commit;`, 'ATTENDANCE_CORRECTION_ALREADY_SUBMITTED')
+  assert.equal(psql(database,`select count(*) from public.self_attendance_events where verification_status='pending_verification'`).stdout.trim(),'6','evidence review does not change attendance verification')
   expectSqlError(
     evidence({ requestId: '40000000-0000-4000-8000-000000000001', shiftId: 'shift-host', staffId: 'staff-host', role: 'host', event: 'check_in', suffix: 9 }),
     'duplicate key value violates unique constraint',
