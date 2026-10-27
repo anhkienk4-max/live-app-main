@@ -489,45 +489,45 @@ export function OperationalFileWorkspace() {
             className={cn(
               "flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
               catalog?.provider_availability?.google_drive
-                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                ? "bg-slate-50 text-slate-800 border-slate-300"
                 : "bg-muted/30 text-muted-foreground border-border"
             )}
             title={
               catalog?.provider_availability?.google_drive
-                ? "Google Drive: Đã cấu hình xác thực và sẵn sàng kết nối."
-                : "Google Drive: Chưa cấu hình thông tin xác thực."
+                ? "Google Drive: Cấp độ Configured (Credentials đã cấu hình trong biến môi trường. Chưa kết nối/ghi thực tế)."
+                : "Google Drive: Chưa cấu hình thông tin xác thực (cần GOOGLE_DRIVE_*)."
             }
           >
             <span
               className={cn(
                 "h-2 w-2 rounded-full",
-                catalog?.provider_availability?.google_drive ? "bg-emerald-500" : "bg-slate-400"
+                catalog?.provider_availability?.google_drive ? "bg-blue-500" : "bg-slate-400"
               )}
             />
-            <HardDrive className={cn("h-3.5 w-3.5", catalog?.provider_availability?.google_drive ? "text-emerald-600" : "text-slate-500")} />
-            <span>Google Drive: {catalog?.provider_availability?.google_drive ? "Sẵn sàng" : "Chưa cấu hình"}</span>
+            <HardDrive className={cn("h-3.5 w-3.5", catalog?.provider_availability?.google_drive ? "text-blue-600" : "text-slate-500")} />
+            <span>Google Drive: {catalog?.provider_availability?.google_drive ? "Đã cấu hình credentials" : "Chưa cấu hình"}</span>
           </div>
           <div
             className={cn(
               "flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
               catalog?.provider_availability?.onedrive
-                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                ? "bg-slate-50 text-slate-800 border-slate-300"
                 : "bg-muted/30 text-muted-foreground border-border"
             )}
             title={
               catalog?.provider_availability?.onedrive
-                ? "OneDrive: Đã cấu hình xác thực và sẵn sàng kết nối."
+                ? "OneDrive: Cấp độ Configured (Credentials đã cấu hình trong biến môi trường. Chưa kết nối/ghi thực tế)."
                 : "OneDrive: Chưa cấu hình (cần thông tin ONEDRIVE_*)."
             }
           >
             <span
               className={cn(
                 "h-2 w-2 rounded-full",
-                catalog?.provider_availability?.onedrive ? "bg-emerald-500" : "bg-slate-400"
+                catalog?.provider_availability?.onedrive ? "bg-blue-500" : "bg-slate-400"
               )}
             />
-            <Cloud className={cn("h-3.5 w-3.5", catalog?.provider_availability?.onedrive ? "text-emerald-600" : "text-slate-500")} />
-            <span>OneDrive: {catalog?.provider_availability?.onedrive ? "Sẵn sàng" : "Chưa cấu hình"}</span>
+            <Cloud className={cn("h-3.5 w-3.5", catalog?.provider_availability?.onedrive ? "text-blue-600" : "text-slate-500")} />
+            <span>OneDrive: {catalog?.provider_availability?.onedrive ? "Đã cấu hình credentials" : "Chưa cấu hình"}</span>
           </div>
           {catalog?.active_route_count != null && (
             <div className={cn("flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium", catalog.active_route_count > 0 ? "bg-slate-50 text-slate-700 border-slate-200" : "bg-amber-50 text-amber-800 border-amber-200")} title="Tổng số Storage Routes kích hoạt trong CSDL toàn hệ thống">
@@ -536,9 +536,33 @@ export function OperationalFileWorkspace() {
             </div>
           )}
           {hasCompleteScope ? (
-            <div className={cn("flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium", (folderPath || verifiedFolderPath) ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-amber-50 text-amber-800 border-amber-200")} title="Trạng thái xác minh route theo scope (Brand/Platform/Period). Backend là nơi quyết định cuối cùng.">
+            <div
+              className={cn(
+                "flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium",
+                folderPath
+                  ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                  : files[0]?.folder_path
+                    ? "bg-blue-50 text-blue-800 border-blue-200"
+                    : "bg-amber-50 text-amber-800 border-amber-200"
+              )}
+              title={
+                folderPath
+                  ? "Cấp độ: Verified physical path · Thư mục vật lý đã được xác nhận/tạo qua API metadata của provider."
+                  : files[0]?.folder_path
+                    ? "Cấp độ: Metadata CSDL · Đường dẫn ghi nhận từ file có sẵn trong CSDL, chưa xác minh vật lý qua provider."
+                    : "Cấp độ: Chưa xác thực folder vật lý (Fail-closed). Backend RPC là nguồn quyết định cuối cùng."
+              }
+            >
               <FolderTree className="h-3.5 w-3.5" />
-              <span>Route scope: {(folderPath || verifiedFolderPath) ? "Đã xác nhận từ backend" : "Chưa xác minh (Fail-closed)"}</span>
+              <span>
+                Route scope: {
+                  folderPath
+                    ? "Đã xác minh folder vật lý"
+                    : files[0]?.folder_path
+                      ? "Metadata CSDL"
+                      : "Chưa xác minh vật lý (Fail-closed)"
+                }
+              </span>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 rounded-full border bg-muted/30 px-3 py-1 text-xs font-medium text-muted-foreground" title="Cần chọn đủ Brand, Platform và Ngày để xác định route">
@@ -1419,12 +1443,17 @@ export function OperationalFileWorkspace() {
                 <div className="rounded-xl border p-3.5 bg-muted/20 space-y-2">
                   <span className="font-semibold block text-foreground">Bước 1: Chuẩn bị folder theo Storage Route</span>
                   <p className="text-muted-foreground text-[11px]">Hệ thống sẽ tạo hoặc định vị chính xác thư mục trên Google Drive / OneDrive theo quy chuẩn.</p>
-                  {verifiedFolderPath && (
+                  {folderPath ? (
                     <p className="text-[11px] text-muted-foreground">
-                      <span className="font-semibold text-foreground">Đường dẫn folder vật lý dự kiến: </span>
-                      <span className="font-mono break-all text-primary">{verifiedFolderPath}</span>
+                      <span className="font-semibold text-emerald-700">Đường dẫn folder vật lý đã xác minh qua provider: </span>
+                      <span className="font-mono break-all text-emerald-800">{folderPath}</span>
                     </p>
-                  )}
+                  ) : files[0]?.folder_path ? (
+                    <p className="text-[11px] text-muted-foreground">
+                      <span className="font-semibold text-foreground">Đường dẫn từ metadata CSDL (chưa xác minh vật lý): </span>
+                      <span className="font-mono break-all text-muted-foreground">{files[0].folder_path}</span>
+                    </p>
+                  ) : null}
                   <button
                     className={buttonClass}
                     type="button"
