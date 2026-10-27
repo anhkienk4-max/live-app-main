@@ -21,9 +21,9 @@ for (const { width, language } of [{ width: 390, language: 'vi' }, { width: 1440
     await expect(breadcrumb).toBeVisible()
     await expect(breadcrumb).toContainText('Client Group')
 
-    // 3. Provider Connection Status: Unverified badge
-    await expect(page.locator('text=Google Drive: Chưa xác minh').first()).toBeVisible()
-    await expect(page.locator('text=OneDrive: Chưa xác minh').first()).toBeVisible()
+    // 3. Provider status pills reflect credential configuration, not physical verification.
+    await expect(page.locator('[title^="Google Drive:"]').first()).toBeVisible()
+    await expect(page.locator('[title^="OneDrive:"]').first()).toBeVisible()
 
     // 4. Incomplete Scope Alert & Guidance
     const scopeWarning = page.locator('text=Chưa đủ ngữ cảnh').first()
