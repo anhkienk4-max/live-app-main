@@ -45,6 +45,7 @@ test('STO-02 registry migration enforces PostgreSQL 17 visibility, privacy, and 
       create table public.business_users(id text primary key, full_name text, system_permission text);
       insert into public.business_users values ('admin','Admin','admin'),('owner','Owner','member'),('member','Member','member');
       create table public.brands(id text primary key);
+      insert into public.brands values ('brand-a');
       create table public.campaigns(id text primary key);
       create table public.platforms(id text primary key);
       create table public.shifts(id text primary key);
