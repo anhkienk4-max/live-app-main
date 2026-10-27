@@ -645,7 +645,7 @@ export function ShiftDetailModal({
     }
   }
 
-  const runStaffingAction = async (action: () => Promise<unknown>, message: string) => {
+  const runStaffingAction = async (action: () => Promise<unknown>, message: string, throwAfterToast = false) => {
     if (!currentUser) return
     setBusy(true)
     try {
@@ -655,6 +655,7 @@ export function ShiftDetailModal({
       onUpdate()
     } catch (error) {
       toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+      if (throwAfterToast) throw error
     } finally {
       setBusy(false)
     }
@@ -703,6 +704,7 @@ export function ShiftDetailModal({
     await runStaffingAction(
       () => shiftRegistrationService.register(shift.id, currentUser.id, role),
       t('registrationPending'),
+      true,
     )
   }
 
@@ -967,6 +969,9 @@ export function ShiftDetailModal({
                  <section className="space-y-4">
                     <ShiftRegistrationActions
                       allShifts={allShifts ?? [shift]}
+                       brandName={brand?.name}
+                       platformName={platform?.name}
+                       disabled={busy}
                       currentUser={currentUser}
                       onRegister={registerForRole}
                       registrations={registrationContext}
