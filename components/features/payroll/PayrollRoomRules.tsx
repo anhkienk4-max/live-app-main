@@ -25,7 +25,7 @@ const cases: Array<{ value: RoomRuleCode; label: string }> = [
   {value:'cover_up',label:'Bao che vi phạm'},
 ]
 const statusLabels: Record<RoomRuleProposal['state'],string> = {
-  proposed:'Đề xuất cần phê duyệt', no_violation:'Không có vi phạm theo dữ liệu nhập',
+  proposed:'Ước tính theo dữ liệu nhập, chưa xác minh case', no_violation:'Không thấy vi phạm theo dữ liệu nhập, chưa kết luận case',
   needs_evidence:'Thiếu bằng chứng', outside_policy:'Ngoài thời hạn hiệu lực',
   manual_review:'Cần xử lý thủ công',
 }
@@ -111,8 +111,8 @@ export function PayrollRoomRules({ period }: { period: PayrollPeriod | null }) {
         <span className="rounded bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700">{ADA_ROOM_RULES_VERSION}</span>
       </div>
       <p className="mt-2 text-sm text-slate-600">
-        Hiệu lực {ADA_ROOM_RULES_EFFECTIVE_DATE}. Áp dụng cho Host và Trợ live;
-        Kỹ thuật xử lý theo quy định nội bộ riêng. {period
+        Hiệu lực từ {ADA_ROOM_RULES_EFFECTIVE_DATE} cho ca Daily và Campaign của Host, Trợ live;
+        không áp dụng hồi tố. Kỹ thuật xử lý theo quy định nội bộ riêng. {period
           ? 'Chu kỳ đang chọn: ' + period.period_start + ' → ' + period.period_end
           : 'Chưa chọn chu kỳ lương.'}
       </p>
@@ -121,6 +121,7 @@ export function PayrollRoomRules({ period }: { period: PayrollPeriod | null }) {
         <span>
           Đây là <strong>công cụ tính đề xuất để đối soát, không phải quyết định trừ tiền</strong>.
           Chưa tạo case trên database, chưa cập nhật Payroll Line, chưa tác động Net/CSV khóa sổ.
+          Đối soát, phê duyệt và khóa kỳ lương thực hiện trong các tab Payroll riêng theo quy trình hiện có.
           Với người lao động, phạt tiền hoặc cắt lương để xử lý kỷ luật bị cấm theo Điều 127 Bộ luật Lao động 2019.
           Chỉ thực hiện điều chỉnh thanh toán sau khi xác minh chứng cứ, tình trạng hợp đồng,
           căn cứ pháp lý và duyệt độc lập theo quy trình.
@@ -133,7 +134,9 @@ export function PayrollRoomRules({ period }: { period: PayrollPeriod | null }) {
 
     <div id="room-rule-calculator" className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
       <Card className="border-slate-200">
-        <CardHeader><CardTitle className="text-sm">Đánh giá một case</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-sm">Thử tình huống / rà soát một case</CardTitle>
+          <p className="text-xs text-slate-600">Mặc định chỉ là giả định. Liên kết ca chỉ cung cấp lịch và Actual đã duyệt; ngày, giờ group, loại ca, nhân sự hoặc trạng thái nhập tay chưa phải bằng chứng. Một kết quả chỉ dành cho case này, không áp dụng cho các ca khác.</p>
+        </CardHeader>
         {linked && <div className="mx-5 mb-2 rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900"
           data-testid="room-rule-linked-context">
           Ca đã liên kết: {linked.shiftId.slice(0,8)}… · Nhân sự {linked.staffId.slice(0,8)}… ·
@@ -209,13 +212,14 @@ export function PayrollRoomRules({ period }: { period: PayrollPeriod | null }) {
               Hồ sơ bất khả kháng đã được xác minh (chuyển duyệt thủ công)
             </label>
           </div>
-          <Button className="mt-4" onClick={evaluate} data-testid="evaluate-ada-rule">Tính đề xuất theo nội quy</Button>
+          <Button className="mt-4" onClick={evaluate} data-testid="evaluate-ada-rule">Xem ước tính cho tình huống này</Button>
         </CardContent>
       </Card>
       <Card className="border-slate-200">
         <CardHeader><CardTitle className="text-sm">Kết quả và bằng chứng</CardTitle></CardHeader>
         <CardContent className="space-y-3" data-testid="ada-rule-result">
           {proposal ? <>
+            <p className="text-xs text-amber-800">Chưa xác minh chứng cứ cho case này. Số tiền dưới đây chỉ là tham khảo, không phải quyết định phạt, thưởng hoặc điều chỉnh lương.</p>
             <div className="rounded-md bg-slate-50 p-3">
               <p className="text-xs text-slate-600">{statusLabels[proposal.state]}</p>
               <p className="mt-1 text-xl font-semibold text-slate-900">
@@ -234,7 +238,7 @@ export function PayrollRoomRules({ period }: { period: PayrollPeriod | null }) {
               {proposal.requiredEvidence.map(e=><li key={e}>{e}</li>)}
             </ul>
           </> : <p className="text-sm text-slate-500">
-            Chọn loại case, nhập dữ liệu có bằng chứng và bấm tính.
+            Chọn loại case, nhập dữ liệu để thử tình huống hoặc đối chiếu chứng cứ của một ca cụ thể.
             Không có khoản trừ tự động, không tạo dữ liệu giả.
           </p>}
         </CardContent>
