@@ -24,7 +24,11 @@ export function BottomNav() {
   const preferred = ['/', '/calendar', '/reports', '/payroll', '/workforce']
   const selected = preferred.map(path => nav.find(item => path === '/' ? item.href === '/' : item.href.split('?')[0] === path)).filter((item): item is typeof nav[number] => Boolean(item)).slice(0, 4)
   const primary = selected
-  const other = nav.filter(item => !selected.includes(item))
+  // Role filters can leave fewer than four shortcuts. Fill one slot with Profile
+  // when available and size the grid by rendered items, never by fixed columns.
+  const showProfileTab = Boolean(currentUser) && primary.length < 4
+  const visibleTabCount = primary.length + (showProfileTab ? 1 : 0) + 1 // + More
+  const other = nav.filter(item => !selected.includes(item) && !(showProfileTab && item.href === '/profile'))
   const label = (item: typeof nav[number]) => item.shortLabelKey
     ? t(item.shortLabelKey as Parameters<typeof t>[0])
     : item.labelKey
@@ -58,7 +62,7 @@ export function BottomNav() {
           </div>
         </>
       )}
-      <div className="relative z-50 grid h-[64px] grid-cols-5" data-testid="ada-reference-tabs">
+      <div className="relative z-50 grid h-[64px] w-full min-w-0" style={{ gridTemplateColumns: `repeat(${visibleTabCount}, minmax(0, 1fr))` }} data-testid="ada-reference-tabs">
         {primary.map(item => {
           const Icon = item.icon
           const active = item.href === activeHref || (item.href.split('?')[0] === pathname && item.href !== '/')
@@ -67,6 +71,15 @@ export function BottomNav() {
             <span className="max-w-full truncate text-[10px]">{label(item)}</span>
           </Link>
         })}
+        {showProfileTab && (
+          <Link href="/profile" aria-current={pathname === '/profile' ? 'page' : undefined}
+            onClick={() => setOpen(false)}
+            className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-0.5 focus-visible:outline-2 focus-visible:outline-blue-600 ${pathname === '/profile' ? 'font-semibold text-[#1359EC]' : 'text-slate-500'}`}
+          >
+            <UserRound className="h-[20px] w-[20px]" aria-hidden="true" />
+            <span className="max-w-full truncate text-[10px]">{t('profile')}</span>
+          </Link>
+        )}
         <button data-testid="nav-menu-more" type="button" aria-label={t('moreMenu')} aria-expanded={open} onClick={() => setOpen(value => !value)} className={`flex flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] focus-visible:outline-2 focus-visible:outline-blue-600 ${open ? 'text-[#155BEC]' : 'text-slate-500'}`}>
           <Ellipsis className="h-[21px] w-[21px]" aria-hidden="true" />
           <span>Thêm</span>

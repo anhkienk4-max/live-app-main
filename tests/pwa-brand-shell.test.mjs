@@ -147,3 +147,21 @@ test('Profile mobile panel preserves edit, access and sign-out security', () => 
   assert.ok(page.includes('id="profile-edit"'))
   assert.ok(page.includes("onClick={() => setLanguage("))
 })
+
+test('Mobile bottom bar never reserves a phantom fifth column', () => {
+  const nav = source('components/layout/BottomNav.tsx')
+  assert.ok(nav.includes('visibleTabCount = primary.length + (showProfileTab ? 1 : 0) + 1'))
+  assert.ok(nav.includes('gridTemplateColumns: `repeat(${visibleTabCount}, minmax(0, 1fr))`'))
+  assert.ok(!nav.includes('grid-cols-5'))
+  assert.ok(nav.includes('href="/profile"'))
+  assert.ok(nav.includes('filterWorkforceNavigation(filterNav('))
+})
+test('PWA login persistence still enforces Supabase session and business identity', () => {
+  const layout = source('app/(dashboard)/layout.tsx')
+  const session = source('lib/supabase/middleware.ts')
+  assert.ok(layout.includes('getVerifiedUser(() => supabase.auth.getUser())'))
+  assert.ok(layout.includes("redirect('/login?reason=session_expired')"))
+  assert.ok(layout.includes('businessUsers.getByAuthIdentity(identity)'))
+  assert.ok(session.includes('client.auth.getClaims()'))
+  assert.ok(session.includes("createLoginRedirect(request, 'session_expired'"))
+})

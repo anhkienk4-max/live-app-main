@@ -136,3 +136,14 @@ gradient, centered ADA OPS LIVESTREAM wordmark and bottom wave. Next metadata ad
 for compatible portrait iPhone 390x844 @3x, but platform/browser controls actual splash
 display. Android launch splash remains OS-managed from the manifest icon/theme. This does
 not introduce a timed Javascript loading overlay, which could break session/navigation.
+
+## Bottom tab layout and saved sign-in session
+The bottom navigation formerly used five fixed columns for only three authorized
+destinations plus More, leaving an empty slot. It now counts actual rendered items
+and offers Profile as an authorized fourth shortcut if fewer than four primary
+destinations are allowed. Payroll and Workforce remain filtered by RBAC/capabilities.
+
+Preview retains Supabase staging session continuity. Server protected layout
+validates getUser() plus business profile, and middleware validates claims.
+Opening the PWA directly while signed in is expected, not an auth bypass.
+To view login directly use /login; to test a new login sign out or use InPrivate.
