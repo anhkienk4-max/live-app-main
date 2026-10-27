@@ -97,6 +97,7 @@ $$;
 create trigger storage_resource_scopes_private_attendance
 before insert or update on public.storage_resource_scopes
 for each row execute function private.guard_storage_resource_scope();
+revoke all on function private.guard_storage_resource_scope() from public, anon, authenticated;
 
 create or replace function private.guard_storage_resource_attendance()
 returns trigger language plpgsql security definer set search_path = '' as $$
@@ -115,6 +116,7 @@ $$;
 create trigger storage_resources_private_attendance
 before update of resource_type, visibility on public.storage_resources
 for each row execute function private.guard_storage_resource_attendance();
+revoke all on function private.guard_storage_resource_attendance() from public, anon, authenticated;
 
 create or replace function private.audit_storage_resource_change()
 returns trigger language plpgsql security definer set search_path = '' as $$
@@ -144,6 +146,141 @@ create trigger storage_resource_scopes_audit after insert or update or delete on
 for each row execute function private.audit_storage_resource_change();
 create trigger storage_resource_grants_audit after insert or update or delete on public.storage_resource_user_grants
 for each row execute function private.audit_storage_resource_change();
+revoke all on function private.audit_storage_resource_change() from public, anon, authenticated;
+
+create or replace function private.current_user_has_storage_resource_grant(p_resource_id text)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1
+    from public.storage_resource_user_grants g
+    join public.storage_resources r on r.id = g.resource_id
+    where g.resource_id = p_resource_id
+      and g.user_id = private.current_business_user_id()
+      and g.revoked_at is null
+      and private.current_business_user_is_active()
+      and r.is_active
+      and r.visibility = 'granted_users'
+      and r.resource_type <> 'attendance_evidence'
+  )
+$$;
+revoke all on function private.current_user_has_storage_resource_grant(text) from public, anon;
+grant execute on function private.current_user_has_storage_resource_grant(text) to authenticated;
+
+create or replace function private.guard_storage_resource_grant()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  if new.revoked_at is null and not exists (
+    select 1 from public.storage_resources r
+    where r.id = new.resource_id
+      and r.visibility = 'granted_users'
+      and r.resource_type <> 'attendance_evidence'
+  ) then
+    raise exception using errcode = '23514', message = 'STORAGE_RESOURCE_GRANT_TARGET_NOT_GRANTABLE';
+  end if;
+  return new;
+end;
+$$;
+create trigger storage_resource_grants_target_guard
+before insert or update on public.storage_resource_user_grants
+for each row execute function private.guard_storage_resource_grant();
+revoke all on function private.guard_storage_resource_grant() from public, anon, authenticated;
+
+create or replace function public.storage_resource_registry_create(p_resource jsonb, p_scope jsonb default null)
+returns jsonb language plpgsql security invoker set search_path = '' as $$
+declare
+  actor_id text;
+  created_resource public.storage_resources;
+  created_scope public.storage_resource_scopes;
+begin
+  actor_id := private.current_business_user_id();
+  created_scope := null;
+  if not private.current_business_user_is_active() or not private.is_admin() then
+    raise exception using errcode = '42501', message = 'STORAGE_RESOURCE_ADMIN_REQUIRED';
+  end if;
+  if p_resource is null or jsonb_typeof(p_resource) is distinct from 'object'
+    or (p_scope is not null and jsonb_typeof(p_scope) is distinct from 'object') then
+    raise exception using errcode = '22023', message = 'STORAGE_RESOURCE_INPUT_INVALID';
+  end if;
+  if p_resource->>'resource_type' = 'attendance_evidence' and (
+    p_resource->>'visibility' is distinct from 'owner_only'
+    or coalesce(p_scope->>'brand_id', '') <> ''
+    or coalesce(p_scope->>'campaign_id', '') <> ''
+    or coalesce(p_scope->>'client_group_key', '') <> ''
+  ) then
+    raise exception using errcode = '23514', message = 'ATTENDANCE_RESOURCE_SCOPE_PRIVATE';
+  end if;
+
+  insert into public.storage_resources (
+    provider, canonical_id, canonical_url, title, resource_type, owner_id,
+    visibility, created_by, updated_by
+  ) values (
+    p_resource->>'provider', p_resource->>'canonical_id', p_resource->>'canonical_url',
+    p_resource->>'title', p_resource->>'resource_type', coalesce(p_resource->>'owner_id', actor_id),
+    p_resource->>'visibility', actor_id, actor_id
+  ) returning * into created_resource;
+
+  if p_scope is not null then
+    insert into public.storage_resource_scopes (
+      resource_id, brand_id, campaign_id, platform_id, shift_id, staff_id,
+      client_group_key, sku_key, year, month, created_by
+    ) values (
+      created_resource.id,
+      nullif(p_scope->>'brand_id', ''), nullif(p_scope->>'campaign_id', ''),
+      nullif(p_scope->>'platform_id', ''), nullif(p_scope->>'shift_id', ''),
+      nullif(p_scope->>'staff_id', ''), nullif(p_scope->>'client_group_key', ''),
+      nullif(p_scope->>'sku_key', ''), nullif(p_scope->>'year', '')::integer,
+      nullif(p_scope->>'month', '')::integer, actor_id
+    ) returning * into created_scope;
+  end if;
+  return jsonb_build_object('resource', to_jsonb(created_resource),
+    'scope', case when created_scope.id is null then null else to_jsonb(created_scope) end);
+end;
+$$;
+
+create or replace function public.storage_resource_registry_set_grant(
+  p_resource_id text, p_user_id text, p_active boolean
+)
+returns jsonb language plpgsql security invoker set search_path = '' as $$
+declare
+  actor_id text;
+  target public.storage_resources;
+  changed_grant public.storage_resource_user_grants;
+begin
+  actor_id := private.current_business_user_id();
+  changed_grant := null;
+  if not private.current_business_user_is_active() or not private.is_admin() then
+    raise exception using errcode = '42501', message = 'STORAGE_RESOURCE_ADMIN_REQUIRED';
+  end if;
+  if p_resource_id is null or p_user_id is null or p_active is null then
+    raise exception using errcode = '22023', message = 'STORAGE_RESOURCE_INPUT_INVALID';
+  end if;
+  select * into target from public.storage_resources where id = p_resource_id for update;
+  if not found then
+    raise exception using errcode = 'P0002', message = 'STORAGE_RESOURCE_NOT_FOUND';
+  end if;
+  if p_active then
+    if target.resource_type = 'attendance_evidence' then
+      raise exception using errcode = '23514', message = 'ATTENDANCE_RESOURCE_OWNER_ONLY';
+    end if;
+    update public.storage_resources set visibility = 'granted_users', updated_by = actor_id
+      where id = p_resource_id returning * into target;
+    insert into public.storage_resource_user_grants(resource_id, user_id, granted_by, revoked_at)
+      values (p_resource_id, p_user_id, actor_id, null)
+      on conflict (resource_id, user_id) do update set granted_by = excluded.granted_by, revoked_at = null
+      returning * into changed_grant;
+  else
+    update public.storage_resource_user_grants set revoked_at = statement_timestamp()
+      where resource_id = p_resource_id and user_id = p_user_id returning * into changed_grant;
+  end if;
+  return jsonb_build_object('resource', to_jsonb(target),
+    'grant', case when changed_grant.resource_id is null then null else to_jsonb(changed_grant) end);
+end;
+$$;
+
+revoke all on function public.storage_resource_registry_create(jsonb, jsonb) from public, anon;
+revoke all on function public.storage_resource_registry_set_grant(text, text, boolean) from public, anon;
+grant execute on function public.storage_resource_registry_create(jsonb, jsonb) to authenticated;
+grant execute on function public.storage_resource_registry_set_grant(text, text, boolean) to authenticated;
 
 alter table public.storage_resources enable row level security;
 alter table public.storage_resource_scopes enable row level security;
@@ -161,10 +298,7 @@ using (
   private.current_business_user_is_active() and (
     (private.is_admin())
     or (is_active and visibility in ('owner_only', 'granted_users') and owner_id = private.current_business_user_id())
-    or (is_active and visibility = 'granted_users' and exists (
-      select 1 from public.storage_resource_user_grants g
-      where g.resource_id = id and g.user_id = private.current_business_user_id() and g.revoked_at is null
-    ))
+    or (is_active and visibility = 'granted_users' and private.current_user_has_storage_resource_grant(id))
   )
 );
 create policy storage_resources_admin_insert on public.storage_resources for insert to authenticated
@@ -179,8 +313,8 @@ with check (private.is_admin() and created_by = private.current_business_user_id
 create policy storage_resource_scopes_admin_update on public.storage_resource_scopes for update to authenticated
 using (private.is_admin()) with check (private.is_admin());
 
-create policy storage_resource_grants_read_own_or_admin on public.storage_resource_user_grants for select to authenticated
-using (private.is_admin() or user_id = private.current_business_user_id());
+create policy storage_resource_grants_admin_read on public.storage_resource_user_grants for select to authenticated
+using (private.is_admin());
 create policy storage_resource_grants_admin_insert on public.storage_resource_user_grants for insert to authenticated
 with check (private.is_admin() and granted_by = private.current_business_user_id());
 create policy storage_resource_grants_admin_update on public.storage_resource_user_grants for update to authenticated

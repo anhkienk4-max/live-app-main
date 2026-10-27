@@ -6,6 +6,9 @@
 - Keep provider metadata verification distinct from user access. A resource readable to the server integration may still be unavailable to a user.
 - Never create folders or files during registry CRUD. Registry roots do not feed the placement resolver.
 - Store no binary content in Supabase. Store audit metadata and state transitions only.
+- Keep the schema SQL under `supabase/proposals/rc19-sto02-resource-registry/`, outside Supabase migration discovery. It is review-only and requires Owner approval and a separate release manifest before application.
+- Create plus initial scope attachment uses one `SECURITY INVOKER` RPC transaction. Grant plus visibility promotion uses a second invoker RPC transaction; constraint or database errors roll back the whole operation.
+- Grant rows are Admin-readable only. Resource visibility checks use a private current-user helper so scope association and direct grant-table reads cannot expose Admin-only or owner-only metadata.
 
 ## Verification
 

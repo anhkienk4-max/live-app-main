@@ -5,6 +5,7 @@ import { authorizationErrorResponse, isAuthorizationError, requireRole, requireU
 import { createClient } from '@/lib/supabase/server'
 import { fileStorageService } from '@/lib/services/fileStorageService'
 import { readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
+import { storageResourceRegistryDatabaseErrorResponse } from '@/lib/server/storageResourceRegistryErrorResponse'
 import { classifyResourceVerificationError, validateCanonicalResourceReference } from '@/lib/files/storageResourceValidation'
 
 const id = z.string().trim().min(1).max(180)
@@ -43,6 +44,8 @@ function responseError(error: unknown) {
   if (error instanceof Error && error.message.startsWith('RESOURCE_')) {
     return Response.json({ ok: false, error: error.message }, { status: 400 })
   }
+  const databaseResponse = storageResourceRegistryDatabaseErrorResponse(error)
+  if (databaseResponse) return databaseResponse
   return Response.json({ ok: false, error: 'STORAGE_RESOURCE_REQUEST_FAILED' }, { status: 500, headers: { 'Cache-Control': 'no-store' } })
 }
 
@@ -72,14 +75,18 @@ export function createStorageResourceRegistryHandler(resolveUser?: ServerUserRes
           if (input.resource_type === 'attendance_evidence' && (
             input.visibility !== 'owner_only' || input.scope?.brand_id || input.scope?.campaign_id || input.scope?.client_group_key
           )) return Response.json({ ok: false, error: 'ATTENDANCE_RESOURCE_SCOPE_PRIVATE' }, { status: 400 })
-          const { data: duplicate } = await supabase.from('storage_resources').select('id')
+          const { data: duplicate, error: duplicateLookupError } = await supabase.from('storage_resources').select('id')
             .eq('provider', input.provider).eq('canonical_id', input.canonical_id).maybeSingle()
+          if (duplicateLookupError) throw duplicateLookupError
           if (duplicate) return Response.json({ ok: false, error: 'RESOURCE_DUPLICATE', resource_id: duplicate.id }, { status: 409 })
-          const { data: resource, error } = await supabase.from('storage_resources').insert({
-            provider: input.provider, canonical_id: input.canonical_id, canonical_url: canonicalUrl,
-            title: input.title, resource_type: input.resource_type, owner_id: input.owner_id ?? actorId,
-            visibility: input.visibility, created_by: actorId, updated_by: actorId,
-          }).select().single()
+          const { data, error } = await supabase.rpc('storage_resource_registry_create', {
+            p_resource: {
+              provider: input.provider, canonical_id: input.canonical_id, canonical_url: canonicalUrl,
+              title: input.title, resource_type: input.resource_type, owner_id: input.owner_id ?? actorId,
+              visibility: input.visibility,
+            },
+            p_scope: input.scope ?? null,
+          })
           if (error?.code === '23505') {
             let { data: existing } = await supabase.from('storage_resources').select('id')
               .eq('provider', input.provider).eq('canonical_id', input.canonical_id).maybeSingle()
@@ -91,15 +98,9 @@ export function createStorageResourceRegistryHandler(resolveUser?: ServerUserRes
             return Response.json({ ok: false, error: 'RESOURCE_DUPLICATE', resource_id: existing?.id }, { status: 409 })
           }
           if (error) throw error
-          if (input.scope) {
-            const { error: scopeError } = await supabase.from('storage_resource_scopes').insert({
-              ...input.scope, resource_id: resource.id, created_by: actorId,
-            })
-            if (scopeError) {
-              return Response.json({ ok: true, resource, warning: 'RESOURCE_CREATED_SCOPE_NOT_ATTACHED' }, { status: 201, headers: { 'Cache-Control': 'no-store' } })
-            }
-          }
-          return Response.json({ ok: true, resource }, { status: 201, headers: { 'Cache-Control': 'no-store' } })
+          const result = data as { resource?: unknown } | null
+          if (!result?.resource) throw new Error('STORAGE_RESOURCE_CREATE_RESULT_MISSING')
+          return Response.json({ ok: true, resource: result?.resource }, { status: 201, headers: { 'Cache-Control': 'no-store' } })
         }
         if (input.action === 'update') {
           const existing = input.canonical_id !== undefined
@@ -120,26 +121,16 @@ export function createStorageResourceRegistryHandler(resolveUser?: ServerUserRes
           return Response.json({ ok: true, resource: data }, { headers: { 'Cache-Control': 'no-store' } })
         }
         if (input.action === 'attach_scope') {
-          const { data: resource, error: lookupError } = await supabase.from('storage_resources').select('resource_type').eq('id', input.resource_id).single()
-          if (lookupError) throw lookupError
-          if (resource.resource_type === 'attendance_evidence' && (
-            input.scope.brand_id || input.scope.campaign_id || input.scope.client_group_key
-          )) return Response.json({ ok: false, error: 'ATTENDANCE_RESOURCE_SCOPE_PRIVATE' }, { status: 400 })
           const { data, error } = await supabase.from('storage_resource_scopes').insert({ ...input.scope, resource_id: input.resource_id, created_by: actorId }).select().single()
           if (error?.code === '23505') return Response.json({ ok: false, error: 'RESOURCE_SCOPE_DUPLICATE' }, { status: 409 })
           if (error) throw error
           return Response.json({ ok: true, scope: data }, { status: 201, headers: { 'Cache-Control': 'no-store' } })
         }
         if (input.action === 'grant') {
-          const { data: target, error: targetError } = await supabase.from('storage_resources').select('resource_type').eq('id', input.resource_id).single()
-          if (targetError) throw targetError
-          if (target.resource_type === 'attendance_evidence') return Response.json({ ok: false, error: 'ATTENDANCE_RESOURCE_OWNER_ONLY' }, { status: 400 })
-          const grantResult = input.active
-            ? await supabase.from('storage_resource_user_grants').upsert({ resource_id: input.resource_id, user_id: input.user_id, granted_by: actorId, revoked_at: null }, { onConflict: 'resource_id,user_id' })
-            : await supabase.from('storage_resource_user_grants').update({ revoked_at: new Date().toISOString() }).eq('resource_id', input.resource_id).eq('user_id', input.user_id)
-          const { error } = grantResult
+          const { error } = await supabase.rpc('storage_resource_registry_set_grant', {
+            p_resource_id: input.resource_id, p_user_id: input.user_id, p_active: input.active,
+          })
           if (error) throw error
-          if (input.active) await supabase.from('storage_resources').update({ visibility: 'granted_users', updated_by: actorId }).eq('id', input.resource_id)
           return Response.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } })
         }
         const { data: resource, error: lookupError } = await supabase.from('storage_resources').select('provider, canonical_id').eq('id', input.resource_id).single()

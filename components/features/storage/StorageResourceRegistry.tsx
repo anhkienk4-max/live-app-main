@@ -19,6 +19,8 @@ export function StorageResourceRegistry() {
   const [resources, setResources] = useState<Resource[]>([])
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [messageIsError, setMessageIsError] = useState(false)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [duplicate, setDuplicate] = useState<{ id: string; scope?: Record<string, unknown> } | null>(null)
   const [filters, setFilters] = useState({ brand: '', campaign: '', platform: '', type: '', provider: '' })
   const [form, setForm] = useState({ provider: 'google_drive', canonical_id: '', canonical_url: '', title: '', resource_type: 'root_folder', visibility: 'admin_only', owner_id: '', brand_id: '', campaign_id: '', platform_id: '', client_group_key: '', sku_key: '', shift_id: '', staff_id: '', year: '', month: '' })
@@ -26,16 +28,26 @@ export function StorageResourceRegistry() {
   const refresh = useCallback(async () => {
     const response = await fetch('/api/storage-resources', { cache: 'no-store' })
     const body = await response.json()
-    if (!response.ok) throw new Error(body.error ?? 'Could not load resources')
+    if (!response.ok || body?.ok !== true) {
+      setLoadFailed(true)
+      throw new Error(body.error ?? 'Could not load resources')
+    }
     setResources(body.resources)
+    setLoadFailed(false)
   }, [])
   useEffect(() => {
     let active = true
     fetch('/api/storage-resources', { cache: 'no-store' }).then(async response => {
       const body = await response.json()
-      if (!response.ok) throw new Error(body.error ?? 'Could not load resources')
+      if (!response.ok || body?.ok !== true) throw new Error(body.error ?? 'Could not load resources')
       if (active) setResources(body.resources)
-    }).catch(error => { if (active) setMessage(error instanceof Error ? error.message : 'Could not load resources') })
+    }).catch(error => {
+      if (active) {
+        setLoadFailed(true)
+        setMessageIsError(true)
+        setMessage(error instanceof Error ? error.message : 'Could not load resources')
+      }
+    })
     return () => { active = false }
   }, [])
 
@@ -48,11 +60,11 @@ export function StorageResourceRegistry() {
   }), [resources, filters])
 
   async function send(action: Record<string, unknown>) {
-    setBusy(true); setMessage('')
+    setBusy(true); setMessage(''); setMessageIsError(false)
     try {
       const response = await fetch('/api/storage-resources', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(action) })
       const body = await response.json()
-      if (!response.ok) {
+      if (!response.ok || body?.ok !== true) {
         if (body.error === 'RESOURCE_DUPLICATE') setDuplicate({ id: body.resource_id, ...(action.scope ? { scope: action.scope as Record<string, unknown> } : {}) })
         throw new Error(body.error === 'RESOURCE_DUPLICATE' ? `This provider object is already registered (${body.resource_id}).` : body.error ?? 'Request failed')
       }
@@ -60,7 +72,10 @@ export function StorageResourceRegistry() {
       setDuplicate(null)
       await refresh()
       return body
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Request failed') }
+    } catch (error) {
+      setMessageIsError(true)
+      setMessage(error instanceof Error ? error.message : 'Request failed')
+    }
     finally { setBusy(false) }
   }
 
@@ -77,7 +92,7 @@ export function StorageResourceRegistry() {
       <div><h1 className="text-2xl font-semibold">Storage resources</h1><p className="text-sm text-muted-foreground">Metadata links only. Verification checks the server integration, not your personal access.</p></div>
       <Link className="rounded-md border px-3 py-2 text-sm" href="/storage">Operational files</Link>
     </header>
-    {message && <p role="status" className="rounded border p-3 text-sm">{message}</p>}
+    {message && <p role={messageIsError ? 'alert' : 'status'} className="rounded border p-3 text-sm">{message}</p>}
     {duplicate && <div className="flex flex-wrap items-center gap-3 rounded border p-3 text-sm"><span>Existing registry record: {duplicate.id}. Attaching a scope will not change its owner, visibility, provider ACL, or active state.</span>{duplicate.scope && <button className="rounded border px-3 py-1" onClick={() => send({ action: 'attach_scope', resource_id: duplicate.id, scope: duplicate.scope })}>Attach current scope</button>}<button className="rounded border px-3 py-1" onClick={() => setDuplicate(null)}>Close</button></div>}
     <section aria-label="Resource filters" className="grid gap-3 rounded-lg border p-4 sm:grid-cols-2 lg:grid-cols-5">
       <input aria-label="Filter Brand" className="rounded border px-3 py-2" placeholder="Brand ID" value={filters.brand} onChange={e => setFilters({ ...filters, brand: e.target.value })} />
@@ -123,7 +138,7 @@ export function StorageResourceRegistry() {
           {resource.visibility === 'granted_users' && <button disabled={busy} className="rounded border px-3 py-1 text-sm" onClick={() => { const user_id = window.prompt('Business user ID to revoke'); if (user_id?.trim()) send({ action: 'grant', resource_id: resource.id, user_id: user_id.trim(), active: false }) }}>Revoke user visibility</button>}
         </div>}
       </article>)}
-      {!visible.length && <p className="rounded border p-6 text-sm text-muted-foreground">No resources match these filters.</p>}
+      {!visible.length && !loadFailed && <p className="rounded border p-6 text-sm text-muted-foreground">No resources match these filters.</p>}
     </section>
   </main>
 }

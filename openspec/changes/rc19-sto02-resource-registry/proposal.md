@@ -11,4 +11,4 @@ Teams need to associate several existing Drive or OneDrive roots and resources w
 
 ## Impact
 
-This is additive. `operational_storage_routes`, `operational_files`, existing files, and provider ACLs are not changed. The migration is a proposal for review and must not be applied to Production as part of this change.
+This is additive. `operational_storage_routes`, `operational_files`, existing files, and provider ACLs are not changed. The SQL proposal lives outside Supabase migration discovery and must not be applied to any environment before Owner approval and a separate release decision.

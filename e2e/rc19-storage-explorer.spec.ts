@@ -112,3 +112,14 @@ test('Storage resource registry hides Admin controls for Member and rejects forg
   const forged = await request.post('/api/storage-resources', { data: { action: 'create' } })
   expect(forged.status()).toBe(401)
 })
+
+test('Storage resource registry reports an uninstalled schema without showing an empty success state', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('livestream-ops-current-user', '1'))
+  await page.route('**/api/storage-resources', route => route.fulfill({
+    status: 503,
+    json: { ok: false, error: 'STORAGE_RESOURCE_REGISTRY_NOT_INSTALLED' },
+  }))
+  await page.goto('/storage/resources')
+  await expect(page.getByRole('alert')).toHaveText('STORAGE_RESOURCE_REGISTRY_NOT_INSTALLED')
+  await expect(page.getByText('No resources match these filters.')).toHaveCount(0)
+})
