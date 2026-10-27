@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/lib/i18n'
 import {
@@ -9,6 +10,8 @@ import {
   writeSelfAttendancePhotoCheckOut,
   recoverSelfAttendancePhotoCheckIn,
   recoverSelfAttendancePhotoCheckOut,
+  readSelfAttendancePhotoReviewContext,
+  submitSelfAttendancePhotoCorrection,
 } from '@/lib/services/supabaseSelfAttendanceService'
 import type { AttendanceRole, AttendanceEventKind, SelfAttendanceEvent } from '@/lib/utils/selfAttendanceContract'
 
@@ -58,6 +61,7 @@ export function SelfAttendancePanel({
   const [photoFeatureReady] = React.useState(() => {
     return process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_PHOTO==='true'
   })
+  const reviewFeatureReady = process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_REVIEW === 'true'
   const cameraRef = React.useRef<HTMLInputElement>(null)
   const pickerRef = React.useRef<HTMLInputElement>(null)
   const lock = React.useRef(false)
@@ -396,6 +400,9 @@ export function SelfAttendancePanel({
         </p>
       ) : null}
 
+      {reviewFeatureReady && checkedIn ? <AttendanceCorrectionForm eventId={checkedIn.event_id} event="check_in" enabled={photoFeatureReady} /> : null}
+      {reviewFeatureReady && checkedOut ? <AttendanceCorrectionForm eventId={checkedOut.event_id} event="check_out" enabled={photoFeatureReady} /> : null}
+
       {/* Gated message when photo feature is OFF */}
       {nextAction && !photoFeatureReady ? (
         <p role="status" className="text-xs text-amber-700">
@@ -558,4 +565,28 @@ export function SelfAttendancePanel({
       </div>
     </section>
   )
+}
+
+
+function AttendanceCorrectionForm({eventId,event,enabled}:{eventId:string;event:AttendanceEventKind;enabled:boolean}) {
+  const [context,setContext]=React.useState<Awaited<ReturnType<typeof readSelfAttendancePhotoReviewContext>>|null>(null)
+  const [file,setFile]=React.useState<File|null>(null)
+  const [source,setSource]=React.useState<'camera'|'file_picker'>('camera')
+  const [preview,setPreview]=React.useState<string|null>(null)
+  const [busy,setBusy]=React.useState(false)
+  const [error,setError]=React.useState<string|null>(null)
+  React.useEffect(()=>{let active=true;void readSelfAttendancePhotoReviewContext(eventId).then(value=>{if(active)setContext(value)}).catch(reason=>{if(active)setError(reason instanceof Error?reason.message:'ATTENDANCE_REVIEW_CONTEXT_UNAVAILABLE')});return()=>{active=false}},[eventId])
+  if(!context?.can_submit_correction)return error?<p role="alert" className="text-xs text-red-600">{error}</p>:null
+  const choose=(next:File|undefined,capture:'camera'|'file_picker')=>{if(!next)return;setError(null);if(next.size<1||next.size>4*1024*1024||!['image/jpeg','image/png','image/webp'].includes(next.type)){setError('Choose a JPG, PNG or WebP image up to 4 MB.');return}setFile(next);setSource(capture);setPreview(URL.createObjectURL(next))}
+  return <section className="space-y-2 rounded-md border border-amber-300 p-3" data-testid={`attendance-correction-${event}`}>
+    <p className="text-sm font-medium">Supplement {event==='check_in'?'check-in':'check-out'} evidence</p>
+    <p className="text-xs text-muted-foreground">Requested correction: {context.reason}</p>
+    {error&&<p role="alert" className="text-xs text-red-600">{error}</p>}
+    <div className="flex flex-wrap gap-2">
+      <label className="cursor-pointer rounded-md border px-3 py-2 text-sm">Take correction photo<input className="sr-only" aria-label="Take a correction photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e=>choose(e.target.files?.[0],'camera')} /></label>
+      <label className="cursor-pointer rounded-md border px-3 py-2 text-sm">Choose correction photo<input className="sr-only" aria-label="Choose a correction photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>choose(e.target.files?.[0],'file_picker')} /></label>
+      <Button disabled={!enabled||busy||!file} onClick={()=>{if(!file)return;setBusy(true);const requestId=crypto.randomUUID();void submitSelfAttendancePhotoCorrection(eventId,requestId,file,source).then(()=>{setFile(null);setPreview(null);return readSelfAttendancePhotoReviewContext(eventId)}).then(setContext).catch(reason=>setError(reason instanceof Error?reason.message:'ATTENDANCE_PHOTO_CORRECTION_FAILED')).finally(()=>setBusy(false))}}>Submit correction photo</Button>
+    </div>
+    {preview&&<Image className="max-h-48 rounded-md border object-contain" src={preview} alt="Photo to upload for correction" width={640} height={480} unoptimized />}
+  </section>
 }
