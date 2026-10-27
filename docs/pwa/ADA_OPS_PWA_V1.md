@@ -113,3 +113,11 @@ While the authorized collection requests are in flight, phone/tablet clients see
 lightweight ADA mobile shell with actual early shift data (when available) instead of
 desktop-sized grey skeletons. The data retrieval, cache and auth logic remain unchanged.
 The new loader is not evidence that the slow fetch itself has been fixed.
+
+## Reference screen 4 and 5
+Calendar phone UI: seven-day strip and color-coded cards from the *real filtered shift dataset*;
+all existing controls remain accessible using "Hiển thị công cụ lịch đầy đủ"; shift cards open the
+existing preview drawer, and the registration link goes to the existing open-shift board.
+Report detail: mobile key/value session summary with real brand/platform/host/date information,
+reordered scrollable tabs, image and history actions. Permission-gated OCR and report mutations
+remain exactly as before. Do not invent status or synthetic data.

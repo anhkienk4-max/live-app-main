@@ -115,3 +115,19 @@ test('Reference loading state does not show legacy desktop skeleton on mobile', 
   assert.ok(dashboard.includes('className="hidden space-y-3 lg:block"'))
   assert.ok(dashboard.includes('early.items.slice(0, 3)'))
 })
+
+test('Calendar reference shows actual selected-day shifts while retaining advanced operations', () => {
+  const cal = source('components/features/calendar/CalendarView.tsx')
+  assert.ok(cal.includes('data-testid="ada-reference-calendar-mobile"'))
+  assert.ok(cal.includes('filteredShifts.filter(shift => shift.date === focusedDate)'))
+  assert.ok(cal.includes('setPreviewShift(shift)'))
+  assert.ok(cal.includes('setMobileAdvanced('))
+  assert.ok(cal.includes('<MonthView'))
+})
+test('Report mobile detail keeps existing review, image and version tabs', () => {
+  const detail = source('components/features/reports/ReportDetailModal.tsx')
+  assert.ok(detail.includes('data-testid="ada-reference-report-mobile"'))
+  for (const key of ['overview','insights','details','images','versions']) assert.ok(detail.includes('value="'+key+'"'))
+  assert.ok(detail.includes("setActiveTab('images')"))
+  assert.ok(detail.includes("setActiveTab('versions')"))
+})

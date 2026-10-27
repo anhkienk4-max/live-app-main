@@ -539,8 +539,77 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
 
   if (loadedIdentity && loadedIdentity !== identity) return <ContentSkeleton />
 
+  // Reference-board phone layout shares the existing authoritative calendar dataset.
+  // Advanced calendar controls remain available without changing any shift permissions.
+  const [mobileAdvanced, setMobileAdvanced] = React.useState(false)
+  const focusedDate = format(currentDate, 'yyyy-MM-dd')
+  const mobileWeek = Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(currentDate, { weekStartsOn: 1 }), index))
+  const mobileDayShifts = filteredShifts.filter(shift => shift.date === focusedDate)
+    .sort((left, right) => left.start_time.localeCompare(right.start_time))
+
   return (
     <div ref={calendarRoot} className="min-w-0 space-y-0">
+      <section data-testid="ada-reference-calendar-mobile" className="space-y-4 pb-4 lg:hidden">
+        <div className="rounded-[17px] border border-[#E4EBF8] bg-white p-3 shadow-sm">
+          <div className="flex items-center justify-between px-1 pb-3">
+            <button type="button" onClick={() => setCurrentDate(addMonths(currentDate, -1))} aria-label="Tháng trước" className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F2F5FC] text-[#153265]"><ChevronLeft className="h-4 w-4" /></button>
+            <h2 className="text-[14px] font-bold text-[#07183B]">{format(currentDate, 'MMMM yyyy', { locale: dateLocale })}</h2>
+            <button type="button" onClick={() => setCurrentDate(addMonths(currentDate, 1))} aria-label="Tháng sau" className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F2F5FC] text-[#153265]"><ChevronRight className="h-4 w-4" /></button>
+          </div>
+          <div className="grid grid-cols-7 gap-1">
+            {mobileWeek.map(day => {
+              const date = format(day, 'yyyy-MM-dd')
+              const chosen = focusedDate === date
+              return <button key={date} type="button" aria-pressed={chosen} onClick={() => setCurrentDate(day)}
+                className={`flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-[11px] ${chosen ? 'bg-[#155EF2] font-bold text-white shadow-[0_4px_12px_rgba(37,99,235,.2)]' : 'text-slate-500 hover:bg-[#F2F5FC]'}`}>
+                <span>{format(day, 'EEEEE', { locale: dateLocale })}</span>
+                <span className="text-[13px] font-bold tabular-nums">{format(day, 'd')}</span>
+              </button>
+            })}
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-[14px] font-bold text-[#07183B]">Ca ngày {format(currentDate, 'dd/MM')}</h3>
+          <span className="text-[11px] font-medium text-slate-500">{mobileDayShifts.length} ca</span>
+        </div>
+        {loadedKey !== requestKey || loading ? (
+          <div className="space-y-2" role="status" aria-label="Đang tải lịch ca">
+            {[0, 1, 2].map(n => <div key={n} className="h-[90px] animate-pulse rounded-[14px] bg-[#ECF1FB]" />)}
+          </div>
+        ) : mobileDayShifts.length === 0 ? (
+          <div className="rounded-[15px] border border-[#E4EBF8] bg-white p-6 text-center">
+            <CalendarIcon className="mx-auto h-7 w-7 text-[#2563EB]" />
+            <p className="mt-2 text-[13px] font-semibold text-[#07183B]">Chưa có ca trong ngày này</p>
+            <p className="mt-1 text-[11px] text-slate-500">Chọn ngày khác hoặc xem ca đang mở đăng ký.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {mobileDayShifts.map(shift => {
+              const brand = brands.find(item => item.id === shift.brand_id)?.name || shift.title
+              const platform = platforms.find(item => item.id === shift.platform_id)?.name || 'Nền tảng'
+              const tone = shift.status === 'live' ? 'bg-rose-500' : shift.status === 'completed' ? 'bg-emerald-500' : shift.status === 'cancelled' ? 'bg-slate-400' : 'bg-[#2563EB]'
+              return <button key={shift.id} type="button" onClick={() => setPreviewShift(shift)}
+                className="flex w-full overflow-hidden rounded-[14px] border border-[#E3E9F6] bg-white text-left shadow-sm focus-visible:outline-2 focus-visible:outline-blue-600">
+                <span className={`w-1 shrink-0 ${tone}`} aria-hidden="true" />
+                <span className="flex min-w-0 flex-1 flex-col gap-1 p-3.5">
+                  <span className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[12px] font-bold tabular-nums text-[#07183B]">{shift.start_time} – {shift.end_time}</span>
+                    <span className="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-semibold text-[#2563EB]">{shift.status === 'live' ? 'Đang LIVE' : shift.status === 'completed' ? 'Hoàn thành' : shift.status === 'cancelled' ? 'Đã hủy' : 'Xem ca'}</span>
+                  </span>
+                  <span className="truncate text-[12px] font-semibold text-[#122757]">{brand} · {platform}</span>
+                  <span className="truncate text-[11px] text-slate-500">{shift.title}</span>
+                </span>
+              </button>
+            })}
+          </div>
+        )}
+        <a href="/calendar?tab=open" className="flex min-h-11 items-center justify-center rounded-[11px] bg-[#155EF2] px-4 text-[12px] font-semibold text-white">+ Xem ca mở đăng ký</a>
+        <button type="button" aria-expanded={mobileAdvanced} onClick={() => setMobileAdvanced(current => !current)}
+          className="flex min-h-10 w-full items-center justify-center text-[12px] font-semibold text-[#2563EB]">
+          {mobileAdvanced ? 'Ẩn công cụ lịch nâng cao' : 'Hiển thị công cụ lịch đầy đủ'}
+        </button>
+      </section>
+      <div className={mobileAdvanced ? 'block' : 'hidden lg:block'}>
       {/* Unified Command Toolbar */}
       <div className="sticky top-0 z-30 flex flex-col bg-background pb-2">
           <ActiveFilterChips filters={filters} setFilters={setFilters} onClearAll={clearFilters} t={t} brands={brands} platforms={platforms} campaigns={campaigns} users={users} />
@@ -744,6 +813,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         {view === 'list' && <HistoryPagination page={listPage} pageSize={listSize} total={listTotal} onPageChange={listPagination.setPage} onPageSizeChange={listPagination.setPageSize} />}
         </>}
       </Card>
+      </div>
 
       <CalendarExportDialog open={exportOpen} onOpenChange={setExportOpen} selectedIds={[...selectedVisibleShiftIdSet]} filters={JSON.parse(listQuery)} />
       {/* Modals */}

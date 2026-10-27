@@ -730,11 +730,11 @@ export function ReportDetailModal({
 
   return (<>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="full" className="h-[calc(100vh-1rem)] grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden sm:h-[92vh]">
+      <DialogContent size="full" className="ada-reference-report-detail h-[100dvh] min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden rounded-none sm:h-[92vh] sm:rounded-2xl">
         <DialogHeader>
           <div className="flex flex-col gap-3 pr-8 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <DialogTitle className="text-2xl">{getBrandName(shift.brand_id)} - {t('finalReport')}</DialogTitle>
+              <DialogTitle className="text-[19px] font-extrabold tracking-tight text-[#07183B] sm:text-2xl">{getBrandName(shift.brand_id)} - {t('finalReport')}</DialogTitle>
               <div className="text-sm text-gray-600 mt-1">
                 {format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} · {formatShiftTimeRange(shift)}
               </div>
@@ -748,7 +748,28 @@ export function ReportDetailModal({
           <div className="flex flex-wrap gap-2">{report.metrics_confirmed && currentUser && hasPermission(currentUser, 'reports.review') && <Button variant="outline" size="sm" onClick={() => setShowReopen(true)}><LockOpen className="mr-2 h-4 w-4" />{t('reopenReport')}</Button>}{canExport && <Button variant="outline" size="sm" onClick={exportDetail} data-testid="export-report-detail"><Download className="mr-2 h-4 w-4" />{t('exportReportDetail')}</Button>}</div>
         </div>
 
-        <DialogBody className="space-y-4 pb-1">
+        <DialogBody className="min-w-0 space-y-4 overflow-x-hidden pb-1">
+        <section data-testid="ada-reference-report-mobile" className="rounded-[16px] border border-[#E5EBF8] bg-white p-4 shadow-sm lg:hidden">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-[13px] font-bold text-[#07183B]">Thông tin phiên livestream</h3>
+            <span className={`rounded-md px-2 py-1 text-[10px] font-semibold ${report.metrics_confirmed ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{report.metrics_confirmed ? 'Đã duyệt' : 'Cần rà soát'}</span>
+          </div>
+          <dl className="space-y-2 text-[12px]">
+            {[
+              ['Brand', getBrandName(shift.brand_id)],
+              ['Nền tảng', platforms.find(item => item.id === shift.platform_id)?.name || '—'],
+              ['Host', users.find(item => item.id === shift.host_id)?.full_name || '—'],
+              ['Thời gian', formatShiftTimeRange(shift)],
+              ['Ngày', format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')],
+            ].map(([label, value]) => <div key={label} className="flex items-start justify-between gap-4 border-b border-[#EDF1F8] py-1.5 last:border-0">
+              <dt className="text-slate-500">{label}</dt><dd className="min-w-0 text-right font-semibold text-[#142650]">{value}</dd>
+            </div>)}
+          </dl>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <Button type="button" size="sm" onClick={() => setActiveTab('images')} className="min-h-10 bg-[#155EF2] text-[11px] text-white">Xem hình ảnh</Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => setActiveTab('versions')} className="min-h-10 border-[#D6E0F3] text-[11px] text-[#155EF2]">Lịch sử chỉnh sửa</Button>
+          </div>
+        </section>
         {!report.metrics_confirmed && currentUser && hasPermission(currentUser, 'reports.review') && (
           <Card className="border-amber-200">
             <CardContent className="space-y-4 pt-5">
@@ -796,13 +817,15 @@ export function ReportDetailModal({
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="min-w-0">
           <div className="sticky top-0 z-20 bg-popover pb-3">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5">
-            <TabsTrigger value="overview">{t('reportOverview')}</TabsTrigger>
-            <TabsTrigger value="insights">{t('reportInsights')}</TabsTrigger>
-            <TabsTrigger value="details">{t('reportDetails')}</TabsTrigger>
-            <TabsTrigger value="images">{t('reportImages')}</TabsTrigger>
-            <TabsTrigger value="versions">{t('reportVersions')}</TabsTrigger>
-          </TabsList>
+          <div className="min-w-0 overflow-x-auto">
+            <TabsList className="flex h-11 w-max min-w-full flex-nowrap justify-start gap-1 rounded-[11px] bg-[#F3F6FD] p-1">
+              <TabsTrigger className="min-w-[95px] flex-none text-[11px] data-[state=active]:bg-white data-[state=active]:text-[#155EF2]" value="overview">{t('reportOverview')}</TabsTrigger>
+              <TabsTrigger className="min-w-[95px] flex-none text-[11px] data-[state=active]:bg-white data-[state=active]:text-[#155EF2]" value="images">{t('reportImages')}</TabsTrigger>
+              <TabsTrigger className="min-w-[95px] flex-none text-[11px] data-[state=active]:bg-white data-[state=active]:text-[#155EF2]" value="details">{t('reportDetails')}</TabsTrigger>
+              <TabsTrigger className="min-w-[95px] flex-none text-[11px] data-[state=active]:bg-white data-[state=active]:text-[#155EF2]" value="insights">{t('reportInsights')}</TabsTrigger>
+              <TabsTrigger className="min-w-[95px] flex-none text-[11px] data-[state=active]:bg-white data-[state=active]:text-[#155EF2]" value="versions">{t('reportVersions')}</TabsTrigger>
+            </TabsList>
+            </div>
           </div>
 
           <TabsContent value="overview" className="space-y-6">
