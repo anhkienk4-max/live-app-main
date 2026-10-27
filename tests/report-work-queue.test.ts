@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import type { Report, Shift } from '../lib/types/database.types.ts'
-import { isFinalizedReport, limitReportCandidates, reportQueueState, sortReportableShifts } from '../lib/utils/reportQueue.ts'
+import { isFinalizedReport, limitReportCandidates, reportQueueState, reportQueueDisplayState, reportQueuePageRange, sortReportableShifts } from '../lib/utils/reportQueue.ts'
 import { reportMetricState, serializeFinalReportMetricState } from '../lib/utils/ocrMetricSerialization.ts'
 
 const shift = (id: string, startAt: string, status: Shift['status'] = 'completed'): Shift => ({
@@ -101,4 +101,30 @@ test('draft continuation opens the editable form and hydrates the existing repor
   assert.match(formSource, /setMetricValues\(initialReport \? reportMetricState\(initialReport\) : \{\}\)/)
   assert.match(formSource, /reportService\.update\(\s*existingReport\.id,\s*payload,\s*existingReport\.version_number,\s*currentUser\.id,\s*'Saved report draft',\s*'save',\s*\)/)
   assert.match(formSource, /serializeFinalReportMetricState\(dashboardPlatform, metricValues\)/)
+})
+
+test('REPORT-02 queue page count does not impersonate global total for 0, 1, 20, 101 or 864', () => {
+  assert.deepEqual(reportQueuePageRange(0, 1, 20, 0), { start: 0, end: 0 })
+  assert.deepEqual(reportQueuePageRange(1, 1, 20, 1), { start: 1, end: 1 })
+  assert.deepEqual(reportQueuePageRange(20, 1, 20, 20), { start: 1, end: 20 })
+  assert.deepEqual(reportQueuePageRange(101, 1, 20, 20), { start: 1, end: 20 })
+  assert.deepEqual(reportQueuePageRange(101, 6, 20, 1), { start: 101, end: 101 })
+  assert.deepEqual(reportQueuePageRange(864, 1, 20, 20), { start: 1, end: 20 })
+})
+test('REPORT-02 states: not started, Draft, In Review, Reopened, Unconfirmed, Confirmed', () => {
+  assert.equal(reportQueueDisplayState(undefined), 'not_started')
+  assert.equal(reportQueueDisplayState(report('draft')), 'draft')
+  assert.equal(reportQueueDisplayState(report('in_review')), 'in_review')
+  assert.equal(reportQueueDisplayState(report('reopened')), 'reopened')
+  assert.equal(reportQueueDisplayState(report('confirmed', false)), 'unconfirmed')
+  assert.equal(reportQueueDisplayState(report('confirmed', true)), 'confirmed')
+})
+test('REPORT-02 confirmed financial KPI is page scoped and excludes Draft/Unconfirmed', () => {
+  const list = readFileSync(new URL('../components/features/reports/ReportsList.tsx', import.meta.url),'utf8')
+  assert.match(list, /report\.status === 'confirmed' && report\.metrics_confirmed === true/)
+  assert.match(list, /confirmedOrders > 0 \? totalRevenue \/ confirmedOrders : null/)
+  assert.match(list, /Doanh thu đã xác nhận · trang này/)
+  assert.match(list, /Báo cáo chưa xác nhận · trang này/)
+  assert.match(list, /readOnlyQueueItem \? t\('viewDetails'\)/)
+  assert.match(list, /reportQueueDisplayState\(report\)/)
 })
