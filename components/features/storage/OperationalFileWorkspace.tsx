@@ -75,6 +75,10 @@ type CatalogResponse = {
   max_single_upload_bytes: number
   confidential_write_ready: boolean
   active_route_count?: number | null
+  provider_availability?: {
+    google_drive?: boolean
+    onedrive?: boolean
+  }
 }
 
 type ListResponse = { ok: boolean; total: number; page: number; pageSize: number; files?: Stored[]; error?: { code?: string } }
@@ -480,16 +484,50 @@ export function OperationalFileWorkspace() {
 
         {/* Provider Connectivity Status Pills & Actions */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Honest status indicator: Not hardcoded green, distinguishes runtime health-check from CSDL */}
-          <div className="flex items-center gap-1.5 rounded-full border bg-muted/30 px-3 py-1 text-xs font-medium text-muted-foreground" title="Chưa có health-check runtime cho Google Drive. Không tự ý ghi để test.">
-            <span className="h-2 w-2 rounded-full bg-slate-400" />
-            <HardDrive className="h-3.5 w-3.5 text-slate-500" />
-            <span>Google Drive: Chưa xác minh</span>
+          {/* Provider Connectivity Status Pills: Distinct status for each provider */}
+          <div
+            className={cn(
+              "flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+              catalog?.provider_availability?.google_drive
+                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                : "bg-muted/30 text-muted-foreground border-border"
+            )}
+            title={
+              catalog?.provider_availability?.google_drive
+                ? "Google Drive: Đã cấu hình xác thực và sẵn sàng kết nối."
+                : "Google Drive: Chưa cấu hình thông tin xác thực."
+            }
+          >
+            <span
+              className={cn(
+                "h-2 w-2 rounded-full",
+                catalog?.provider_availability?.google_drive ? "bg-emerald-500" : "bg-slate-400"
+              )}
+            />
+            <HardDrive className={cn("h-3.5 w-3.5", catalog?.provider_availability?.google_drive ? "text-emerald-600" : "text-slate-500")} />
+            <span>Google Drive: {catalog?.provider_availability?.google_drive ? "Sẵn sàng" : "Chưa cấu hình"}</span>
           </div>
-          <div className="flex items-center gap-1.5 rounded-full border bg-muted/30 px-3 py-1 text-xs font-medium text-muted-foreground" title="Chưa có health-check runtime cho OneDrive. Không tự ý ghi để test.">
-            <span className="h-2 w-2 rounded-full bg-slate-400" />
-            <Cloud className="h-3.5 w-3.5 text-slate-500" />
-            <span>OneDrive: Chưa xác minh</span>
+          <div
+            className={cn(
+              "flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+              catalog?.provider_availability?.onedrive
+                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                : "bg-muted/30 text-muted-foreground border-border"
+            )}
+            title={
+              catalog?.provider_availability?.onedrive
+                ? "OneDrive: Đã cấu hình xác thực và sẵn sàng kết nối."
+                : "OneDrive: Chưa cấu hình (cần thông tin ONEDRIVE_*)."
+            }
+          >
+            <span
+              className={cn(
+                "h-2 w-2 rounded-full",
+                catalog?.provider_availability?.onedrive ? "bg-emerald-500" : "bg-slate-400"
+              )}
+            />
+            <Cloud className={cn("h-3.5 w-3.5", catalog?.provider_availability?.onedrive ? "text-emerald-600" : "text-slate-500")} />
+            <span>OneDrive: {catalog?.provider_availability?.onedrive ? "Sẵn sàng" : "Chưa cấu hình"}</span>
           </div>
           {catalog?.active_route_count != null && (
             <div className={cn("flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium", catalog.active_route_count > 0 ? "bg-slate-50 text-slate-700 border-slate-200" : "bg-amber-50 text-amber-800 border-amber-200")} title="Tổng số Storage Routes kích hoạt trong CSDL toàn hệ thống">
@@ -498,9 +536,9 @@ export function OperationalFileWorkspace() {
             </div>
           )}
           {hasCompleteScope ? (
-            <div className={cn("flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium", folderPath ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-amber-50 text-amber-800 border-amber-200")} title="Trạng thái xác minh route theo scope (Brand/Platform/Period). Backend là nơi quyết định cuối cùng.">
+            <div className={cn("flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium", (folderPath || verifiedFolderPath) ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-amber-50 text-amber-800 border-amber-200")} title="Trạng thái xác minh route theo scope (Brand/Platform/Period). Backend là nơi quyết định cuối cùng.">
               <FolderTree className="h-3.5 w-3.5" />
-              <span>Route scope: {folderPath ? "Đã xác nhận từ backend" : "Chưa xác minh (Fail-closed)"}</span>
+              <span>Route scope: {(folderPath || verifiedFolderPath) ? "Đã xác nhận từ backend" : "Chưa xác minh (Fail-closed)"}</span>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 rounded-full border bg-muted/30 px-3 py-1 text-xs font-medium text-muted-foreground" title="Cần chọn đủ Brand, Platform và Ngày để xác định route">
@@ -1283,6 +1321,12 @@ export function OperationalFileWorkspace() {
                 <div className="rounded-lg border bg-muted/20 p-2.5 text-muted-foreground space-y-1">
                   <span className="font-medium block text-foreground">Ngữ cảnh tải lên hiện tại:</span>
                   <p className="font-mono">{selectedBrand?.name || brandId} · {selectedPlatform?.name || platformId} · {periodDate} ({executionSource})</p>
+                  {verifiedFolderPath && (
+                    <p className="text-[11px] text-muted-foreground pt-1">
+                      <span className="font-semibold text-foreground">Đường dẫn folder vật lý dự kiến: </span>
+                      <span className="font-mono break-all text-primary">{verifiedFolderPath}</span>
+                    </p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -1295,8 +1339,12 @@ export function OperationalFileWorkspace() {
                   <label className="block">
                     <span className="mb-1 block font-medium">{translate("Nguồn lưu trữ")}</span>
                     <select className={fieldClass} value={provider} onChange={event => setProvider(event.target.value as 'google_drive' | 'onedrive')}>
-                      <option value="google_drive">Google Drive</option>
-                      <option value="onedrive">OneDrive</option>
+                      <option value="google_drive" disabled={catalog?.provider_availability?.google_drive === false}>
+                        Google Drive{catalog?.provider_availability?.google_drive === false ? ' (Chưa cấu hình)' : ''}
+                      </option>
+                      <option value="onedrive" disabled={catalog?.provider_availability?.onedrive === false}>
+                        OneDrive{catalog?.provider_availability?.onedrive === false ? ' (Chưa cấu hình)' : ''}
+                      </option>
                     </select>
                   </label>
                 </div>
@@ -1371,6 +1419,12 @@ export function OperationalFileWorkspace() {
                 <div className="rounded-xl border p-3.5 bg-muted/20 space-y-2">
                   <span className="font-semibold block text-foreground">Bước 1: Chuẩn bị folder theo Storage Route</span>
                   <p className="text-muted-foreground text-[11px]">Hệ thống sẽ tạo hoặc định vị chính xác thư mục trên Google Drive / OneDrive theo quy chuẩn.</p>
+                  {verifiedFolderPath && (
+                    <p className="text-[11px] text-muted-foreground">
+                      <span className="font-semibold text-foreground">Đường dẫn folder vật lý dự kiến: </span>
+                      <span className="font-mono break-all text-primary">{verifiedFolderPath}</span>
+                    </p>
+                  )}
                   <button
                     className={buttonClass}
                     type="button"
