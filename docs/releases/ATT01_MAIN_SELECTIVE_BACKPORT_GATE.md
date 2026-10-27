@@ -8,7 +8,7 @@ Upstream dependent PRs: #46 (RC17C Importer, unmerged) and #54 (atomic RPC, clos
 
 No full RC19 branch, no unrelated feature migrations and no Production deployment.
 Server `FEATURE_ATTENDANCE_IMPORT` and browser `NEXT_PUBLIC_FEATURE_ATTENDANCE_IMPORT` MUST **both** equal `true` to expose functionality. Defaults OFF. Admin/Leader require authenticated `requireRole`; Member may not preview/confirm.
-The source migration is included *unchanged* for review. It is **not executed** as part of CI or this PR.
+The RC17C source migration is **NOT copied** into this release candidate. It is available for read-only comparison in upstream PR #46 / RC19. Production has already recorded an equivalent-named migration under a different version, so including the historical .sql file under `supabase/migrations/` could trigger accidental reapplication on a later main deployment. No SQL is executed by this PR.
 
 ## Dependency matrix
 
@@ -17,7 +17,7 @@ The source migration is included *unchanged* for review. It is **not executed** 
 | CSV/Excel/copied Sheets mapping and UI | REQUIRED | ATT-01 | Correct selected date precedence, numeric Excel serial, source tab selection |
 | Historical parser/types/matcher/service | REQUIRED | ATT-01 | Actual evidence, strict dates, exact duplicate and intra-batch overlapping intervals |
 | Import route / server handler | REQUIRED | ATT-01 | Admin/Leader auth, atomic RPC-only Confirm DRAFT, fingerprint, provenance |
-| RC17C migration: batch/row tables + RLS + stage/confirm RPC | REQUIRED; LIVE METADATA SEEN; SEMANTIC PARITY BLOCKED | RC17C #46 | Production already has schema/RPC with renamed ledger version `20261021101021`; no DDL should be reapplied without hash/diff review |
+| RC17C DB contract: batch/row tables + RLS + stage/confirm RPC | REQUIRED; LIVE METADATA SEEN; SEMANTIC PARITY BLOCKED | Production DB + PR #46 | Production records `20261021101021` for RC17C under a different version, so migration SQL is excluded from this candidate; do not reapply before a reviewed definition diff |
 | Auth guard, admin client, shifts, staff, Workforce Actual, payroll base | ALREADY IN MAIN (source) | main | Reused, not overwritten; Production metadata confirms Actual/Payroll tables exist with RLS ON; full schema parity unverified |
 | Self-service photo check-in and enhanced Payroll room rules | OPTIONAL | RC19 | Not needed for historical import |
 | Reports, Storage, Swaps, Analytics, staff candidate filtering and other RC19 deltas | UNRELATED | RC19 | Excluded |
@@ -31,7 +31,8 @@ The source migration is included *unchanged* for review. It is **not executed** 
 - Exact duplicate rows and overlapping nonidentical times are exception-only; adjacent nonoverlapping splits are valid. The original fingerprint and atomic Confirm RPC are unchanged.
 - **Read-only Supabase Production catalog evidence, 2026-10-27**: tables `workforce_attendance_import_batches`, `workforce_attendance_import_rows`, `workforce_actual_segments`, payroll periods/lines exist and have RLS ON; `stage_attendance_import_batch` and `confirm_attendance_import_batch` are SECURITY DEFINER, EXECUTE allowed to service_role but not anon/authenticated. Admin/Leader and service-role policies exist for import tables. Production migration ledger has a renamed entry `20261021101021` (`rc17c_attendance_import_foundation_production`). **Do not apply the included historical migration automatically or infer function body equivalence from matching names.**
 - **Open technical risk requiring live gate**: verify actual Production function definitions/constraints against repo, effective actor policy behavior, concurrent replay and rollback evidence. Source tests and catalog metadata do not prove complete real role UAT.
-- Do not apply any SQL in this PR. Do not delete past attendance records or historical audit rows.
+- Production fingerprint index is **non-unique** according to read-only `pg_indexes` metadata; row-level locks/replay checks alone do not prove race-free first-import staging across concurrent requests. Independent parallel/replay UAT and, if required, separately authorized hardening remain **BLOCKED** before turning the flags ON. Never silently alter this schema in the selective PR.
+- No migration file is part of this candidate; do not apply any SQL. Do not delete past attendance records or historical audit rows.
 - Require authorized deployment mapping `ops5729.top → livestream-ops-demo → deployment ID → exact commit` and verified rollback ID prior to release approval.
 
 ## Release gates (not inferred from upstream SHA)
