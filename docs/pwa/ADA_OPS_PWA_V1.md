@@ -164,3 +164,14 @@ blue/violet top waves, restrained ADA centered lockup, shorter spacing and a com
 Google CTA. The screen preserves existing email/password login, forgot-password, registration,
 language toggle, error states, and reduced-motion preference. This is a visual implementation,
 not photo-verified pixel-perfect match yet.
+
+## Login reference fidelity V3
+Compared the actual Preview screenshot with screen #2 of the approved ADA Global board.
+Main gaps were overly narrow max-width:432px within Edge's zoomed viewport, 50% sized
+logo, and vertical content concentrated at the top. The login now uses viewport-scaled
+form width, enlarged ADA wordmark, 390px-reference top/bottom SVG waves, no extra visible
+tagline beneath the logo, and responsive typographic sizing at tablet-width/zoom.
+A separate small-height rule protects the Google OAuth option and form from collisions.
+The real email/password and Google sign-in flows are unmodified. No fake remember-device
+checkbox was added; persistent login is governed by the existing Supabase session policy.
+Pixel-level screenshot/device QA is still required, as source assertions are not visual QA.

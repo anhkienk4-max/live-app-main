@@ -182,8 +182,24 @@ test('Login reference matches board proportions instead of oversized blank gap',
   const auth = source('components/layouts/AuthLayout.tsx')
   assert.ok(auth.includes('ada-login-top-gradient'))
   assert.ok(auth.includes('ada-login-bottom-gradient'))
-  assert.ok(auth.includes('mt-[clamp(22px,3.4dvh,34px)]'))
-  assert.ok(auth.includes('pt-[clamp(110px,16dvh,146px)]'))
+  assert.ok(auth.includes('ada-login-reference__identity'))
+  assert.ok(auth.includes('ada-login-reference__fields'))
+  assert.ok(!auth.includes('ADA GLOBAL · LIVESTREAM OPERATIONS') || auth.indexOf('ADA GLOBAL · LIVESTREAM OPERATIONS') > auth.indexOf('  return ('))
+  assert.ok(auth.includes('className="sr-only"'))
   const css = source('app/globals.css')
   assert.ok(css.includes('.ada-login-reference .ada-google-login'))
+});
+
+test('Login V3 matches phone reference proportions and narrow Edge zoom width', () => {
+  const css = source('app/globals.css')
+  const auth = source('components/layouts/AuthLayout.tsx')
+  assert.ok(css.includes('width: min(88vw, 760px)'))
+  assert.ok(css.includes('font-size: clamp(84px, 22vw, 135px)'))
+  assert.ok(css.includes('.ada-login-reference__top'))
+  assert.ok(css.includes('.ada-login-reference__bottom'))
+  assert.ok(css.includes('@media (min-width: 768px) and (max-width: 1023px)'))
+  assert.ok(auth.includes('ada-login-reference__content'))
+  assert.ok(auth.includes('<AdaBrand className="ada-login-reference__logo" />'))
+  assert.ok(auth.includes('{children}'))
+  assert.ok(source('app/login/page.tsx').includes('data-testid="google-login-btn"'))
 });

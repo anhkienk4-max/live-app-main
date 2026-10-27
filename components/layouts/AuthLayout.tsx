@@ -10,28 +10,40 @@ export function AuthLayout({ children, title, subtitle, variant = 'default' }: {
 
   if (variant === 'login') return (
     <div data-testid="ada-reference-login" className="ada-login-reference relative isolate flex min-h-dvh flex-col overflow-hidden bg-white">
-      <svg className="ada-login-reference__top" viewBox="0 0 390 170" preserveAspectRatio="none" aria-hidden="true">
-        <defs><linearGradient id="ada-login-top-gradient" x1="0" y1="0" x2="1" y2="0.8"><stop offset="0%" stopColor="#0874F6"/><stop offset="54%" stopColor="#1F5EE8"/><stop offset="100%" stopColor="#9E66ED"/></linearGradient></defs>
-        <path d="M0 0 H390 V48 C314 62 282 124 182 91 C100 64 56 87 0 109 Z" fill="url(#ada-login-top-gradient)"/>
-        <path d="M0 0 H390 V33 C285 24 240 71 155 63 C68 55 37 78 0 85 Z" fill="#6BC4FF" opacity=".26"/>
+      <svg className="ada-login-reference__top" viewBox="0 0 390 200" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="ada-login-top-gradient" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#075EF4" />
+            <stop offset="55%" stopColor="#114EDC" />
+            <stop offset="100%" stopColor="#8656F2" />
+          </linearGradient>
+        </defs>
+        <path d="M0 0 H390 V76 C329 61 311 135 237 116 C150 89 128 163 0 119 Z" fill="url(#ada-login-top-gradient)" />
+        <path d="M0 0 H390 V40 C311 40 254 94 176 82 C99 68 40 104 0 96 Z" fill="#6DC6FF" opacity=".32" />
+        <path d="M296 0 H390 V58 C360 71 349 109 297 118 C338 70 340 38 296 0 Z" fill="#C6BBFF" opacity=".55" />
       </svg>
-      <svg className="ada-login-reference__bottom" viewBox="0 0 390 170" preserveAspectRatio="none" aria-hidden="true">
-        <defs><linearGradient id="ada-login-bottom-gradient" x1="0" y1="0" x2="1" y2="0.35"><stop offset="0%" stopColor="#2A6CF0"/><stop offset="60%" stopColor="#8AB9FF"/><stop offset="100%" stopColor="#A28CF4"/></linearGradient></defs>
-        <path d="M0 90 C96 50 132 133 229 69 C300 21 358 68 390 92 V170 H0 Z" fill="#E0EAFF"/>
-        <path d="M0 125 C78 45 168 113 226 105 C311 93 340 120 390 91 V170 H0 Z" fill="url(#ada-login-bottom-gradient)" opacity=".83"/>
-        <path d="M0 165 C115 85 188 166 290 126 C340 106 358 135 390 140 V170 H0 Z" fill="#F7FAFF" opacity=".76"/>
+
+      <svg className="ada-login-reference__bottom" viewBox="0 0 390 200" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="ada-login-bottom-gradient" x1="0" y1="0" x2="1" y2=".72">
+            <stop offset="0%" stopColor="#0756DF" />
+            <stop offset="55%" stopColor="#3383F6" />
+            <stop offset="100%" stopColor="#8260EF" />
+          </linearGradient>
+        </defs>
+        <path d="M0 83 C100 22 158 146 274 56 C338 7 372 52 390 64 V200 H0 Z" fill="#E1EAFF" />
+        <path d="M0 128 C102 41 192 156 291 111 C331 94 365 74 390 98 V200 H0 Z" fill="url(#ada-login-bottom-gradient)" />
+        <path d="M0 168 C96 121 153 160 226 154 C291 147 339 129 390 146 V200 H0 Z" fill="#143C98" opacity=".42" />
       </svg>
-      <main className="relative z-10 mx-auto flex w-full max-w-[432px] flex-1 flex-col px-6 pb-8 pt-[clamp(110px,16dvh,146px)] sm:px-9">
-        <div className="flex flex-col items-center">
+
+      <main className="ada-login-reference__content relative z-10 mx-auto flex w-full flex-1 flex-col">
+        <div className="ada-login-reference__identity flex flex-col items-center">
           <AdaBrand className="ada-login-reference__logo" />
-          <p className="mt-3 text-center text-[9px] font-bold tracking-[.24em] text-[#122155]">
-            ADA GLOBAL · LIVESTREAM OPERATIONS
-          </p>
         </div>
-        <section className="mt-[clamp(22px,3.4dvh,34px)] w-full">
-          <h1 className="text-center text-[23px] font-extrabold tracking-tight text-[#07183B]">{title}</h1>
-          <p className="mt-2 text-center text-sm text-slate-500">{subtitle}</p>
-          <div className="mt-4">{children}</div>
+        <section className="ada-login-reference__form w-full">
+          <h1 className="text-center font-extrabold tracking-tight text-[#07183B]">{title}</h1>
+          <p className="sr-only">{subtitle}</p>
+          <div className="ada-login-reference__fields">{children}</div>
         </section>
       </main>
     </div>
