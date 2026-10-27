@@ -45,7 +45,7 @@ test('RBAC01B 768px: 500 network error fails closed, retry restores only after n
   code = 500
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   await expect(page.getByText('Mock audit record', { exact: false })).toHaveCount(0)
-  await expect(page.getByRole('alert')).toBeVisible()
+  await expect(page.getByRole('alert').filter({hasText:'AUDIT_TEAM_CAPABILITY_UNAVAILABLE'}).first()).toBeVisible()
   code = 200
   await page.getByRole('button', {name:/Try again|Thử lại/i}).first().click()
   await expect(page.getByText('Mock audit record', { exact: false }).first()).toBeVisible({timeout:30000})
