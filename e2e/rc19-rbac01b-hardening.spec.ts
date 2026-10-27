@@ -6,7 +6,7 @@ async function openLeaderAudit(page: import('@playwright/test').Page) {
     localStorage.setItem('livestream-ops-language', 'vi')
   })
   await page.goto('/audit', { waitUntil: 'domcontentloaded' })
-  await expect(page.getByText(/Audit|Nhật ký|Lịch sử/i).first()).toBeVisible({ timeout: 30000 })
+  await expect(page.locator('h1').filter({ hasText: /Lịch sử kiểm toán|Audit/i }).first()).toBeVisible({ timeout: 30000 })
 }
 
 test('RBAC01B 390px: already-loaded audit rows/details vanish on 403 and stay hidden on browser return', async ({ page }) => {
@@ -74,4 +74,25 @@ test('RBAC01B 1440px: stale capability ALLOW cannot override later denied reques
   await expect(page.getByRole('alert').or(page.getByText(/không có quyền|Access denied|từ chối/i)).first()).toBeVisible()
   await page.waitForTimeout(800)
   await expect(page.getByText('Mock audit record', {exact:false})).toHaveCount(0)
+})
+
+test('RBAC01B user/role switch: previous Leader audit rows/details do not survive Member identity', async ({ page }) => {
+  await page.setViewportSize({width: 390, height: 844})
+  await page.route('**/api/audit/team-capability', async route => {
+    await route.fulfill({status:200, contentType:'application/json',body:JSON.stringify({ok:true,allowed:true})})
+  })
+  await openLeaderAudit(page)
+  await expect(page.getByText('Mock audit record', {exact:false}).first()).toBeVisible({timeout:30000})
+  await page.locator('tbody tr').first().click()
+  await page.evaluate(() => {
+    localStorage.setItem('livestream-ops-current-user','3')
+    window.dispatchEvent(new Event('livestream-ops-current-user-change'))
+  })
+  await expect(page.getByText('Mock audit record', {exact:false})).toHaveCount(0)
+  await expect(page.getByText(/không có quyền|Access denied|từ chối/i).first()).toBeVisible({timeout:30000})
+  await page.evaluate(() => {
+    localStorage.setItem('livestream-ops-current-user','2')
+    window.dispatchEvent(new Event('livestream-ops-current-user-change'))
+  })
+  await expect(page.getByText('Mock audit record', {exact:false}).first()).toBeVisible({timeout:30000})
 })
