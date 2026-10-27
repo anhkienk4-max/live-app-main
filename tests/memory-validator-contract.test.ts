@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import test from 'node:test'
 
 const repositoryRoot = process.cwd()
@@ -29,7 +30,7 @@ function createRepository() {
   runGit(root, ['config', 'user.email', 'memory-validator@example.test'])
   runGit(root, ['config', 'user.name', 'Memory Validator'])
   writeFileSync(path.join(root, 'source.txt'), 'source snapshot\n')
-  runGit(root, ['add', 'source.txt', 'project-memory'])
+  runGit(root, ['add', 'source.txt', 'project-memory', 'scripts'])
   runGit(root, ['commit', '-qm', 'source snapshot'])
   const sourceSnapshot = runGit(root, ['rev-parse', 'HEAD'])
   runGit(root, ['update-ref', 'refs/remotes/origin/main', sourceSnapshot])
@@ -102,6 +103,17 @@ test('a feature checkout can sync against the canonical branch without replacing
   }
 })
 
+test('the source inventory includes Git-tracked files and ignores untracked workspace files', async () => {
+  const { root } = createRepository()
+  try {
+    writeFileSync(path.join(root, 'scripts', 'local-only.mjs'), 'export {}\n')
+    const { deriveInventory } = await import(pathToFileURL(path.join(root, 'scripts', 'project-memory-lib.mjs')).href)
+    assert.equal(deriveInventory().source_files.roots.scripts, 3)
+  } finally {
+    closeRepository(root)
+  }
+})
+
 test('detached pull-request CI validates against the canonical base branch', () => {
   const { root } = createRepository()
   try {
@@ -140,6 +152,16 @@ test('memory sync refuses to rewrite canonical state from a detached checkout', 
   try {
     runGit(root, ['checkout', '--detach', 'HEAD'])
     assert.throws(() => sync(root), /requires a named local branch/)
+  } finally {
+    closeRepository(root)
+  }
+})
+
+test('memory sync refuses to snapshot uncommitted source or untracked files', () => {
+  const { root } = createRepository()
+  try {
+    writeFileSync(path.join(root, 'source.txt'), 'uncommitted source change\n')
+    assert.throws(() => sync(root), /requires a clean worktree/)
   } finally {
     closeRepository(root)
   }

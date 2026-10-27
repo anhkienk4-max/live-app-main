@@ -23,19 +23,12 @@ export function git(args) {
 }
 
 function walk(relativeRoot, predicate) {
-  const absoluteRoot = path.join(ROOT, relativeRoot)
-  if (!fs.existsSync(absoluteRoot)) return []
-  const result = []
-  const visit = (directory) => {
-    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-      if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === '.next' || entry.name === '.serena') continue
-      const absolute = path.join(directory, entry.name)
-      if (entry.isDirectory()) visit(absolute)
-      else if (predicate(entry.name, absolute)) result.push(normalizePath(path.relative(ROOT, absolute)))
-    }
-  }
-  visit(absoluteRoot)
-  return result.sort()
+  return git(['ls-files', '--', relativeRoot])
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .filter((file) => predicate(path.basename(file), path.join(ROOT, file)))
+    .map(normalizePath)
+    .sort()
 }
 
 export function deriveInventory() {

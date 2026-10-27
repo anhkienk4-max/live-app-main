@@ -6,6 +6,9 @@ const live = deriveRepository()
 if (process.env.GITHUB_ACTIONS === 'true' || live.branch === 'DETACHED') {
   throw new Error('Memory sync requires a named local branch; CI and detached checkouts may validate but must not rewrite canonical state.')
 }
+if (git(['status', '--porcelain', '--untracked-files=all'])) {
+  throw new Error('Memory sync requires a clean worktree; commit source changes before synchronizing project memory.')
+}
 
 const canonicalRef = `refs/remotes/origin/${state.repository.branch}`
 const canonicalHead = git(['rev-parse', '--verify', `${canonicalRef}^{commit}`])
