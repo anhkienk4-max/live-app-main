@@ -94,6 +94,30 @@ test('unlocked periods are never shown; invalid query parameters are rejected',a
   assert.equal((await handler.GET(request('?staff_id=someone-else'))).status,400)
   assert.equal((await handler.GET(request('?year=bad'))).status,400)
 })
+
+test('voided lines, other actors, and other years never become a statement',async()=>{
+  for (const options of [
+    {lines:[{...line,voided_at:'2026-11-01T00:00:00Z'}]},
+    {lines:[{...line,staff_id:'staff-two'}]},
+    {periods:[{...locked,period_start:'2025-10-01',period_end:'2025-10-31'}]},
+  ]) {
+    const db=fakeDb(options)
+    const handler=createMyPayslipHandler({createClient:db.client as never,resolveUser:person('staff-one'),isEnabled:()=>true})
+    const response=await handler.GET(request('?year=2026'))
+    assert.equal(response.status,200)
+    assert.equal(response.headers.get('cache-control'),'private, no-store')
+    assert.deepEqual((await response.json()).statements,[])
+  }
+})
+
+test('client cannot choose an actor, including under alternate parameter names',async()=>{
+  const db=fakeDb()
+  const handler=createMyPayslipHandler({createClient:db.client as never,resolveUser:person('staff-one'),isEnabled:()=>true})
+  for(const query of ['?staff_id=staff-two','?user_id=staff-two','?owner=staff-two','?period_id=period-1']) {
+    assert.equal((await handler.GET(request(query))).status,400)
+  }
+  assert.equal(db.calls.length,0)
+})
 test('DB failure never returns partial income, cap overflow is rejected',async()=>{
   const failed=fakeDb({errors:['workforce_payroll_lines']})
   const errorHandler=createMyPayslipHandler({createClient:failed.client as never,resolveUser:person('staff-one'),isEnabled:()=>true})
