@@ -2,14 +2,14 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-27T01:50:25+07:00
+Generated at: 2026-10-27T17:33:52+07:00
 
 ## Repository
 
-- Branch: `feat/ops-full-app-upgrade-rc19`
-- HEAD: `c0d4d0f99010a7006f78f01c31db7c61c8dcc9fa`
+- Branch: `feat/rc19-sto02-resource-registry`
+- HEAD: `31f69aaf1fd6c1eec32902c7bd1e055b96ec3b35`
 - origin/main: `9b5f3889b243f9ee795e4466a18f24cd896c162f`
-- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-full-upgrade`
+- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc19-sto01-storage-production`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
 ## Hardening
@@ -21,10 +21,10 @@ Generated at: 2026-10-27T01:50:25+07:00
 
 ## Inventory
 
-- Routes: 63
-- Source files in tracked inventory roots: 894
-- Tests: 220
-- Migrations: 90
+- Routes: 65
+- Source files in tracked inventory roots: 901
+- Tests: 224
+- Migrations: 91
 
 ## Modules
 

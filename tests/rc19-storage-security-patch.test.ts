@@ -60,7 +60,7 @@ test('RC19 U08 Storage Route: Workspace differentiates system-wide routes from s
   // Verifies separation of system route count from scope route status
   assert.match(content, /Routes hệ thống:.*?route CSDL/i, 'Workspace must clearly label system-wide routes')
   assert.match(content, /Route scope:/i, 'Workspace must explicitly indicate scope route status')
-  assert.match(content, /Chưa xác minh \(Fail-closed\)/i, 'Workspace must remain fail-closed when scope route is unverified')
+  assert.match(content, /Chưa xác minh(?: vật lý)? \(Fail-closed\)/i, 'Workspace must remain fail-closed when scope route is unverified')
   assert.match(content, /Chưa đủ ngữ cảnh/i, 'Workspace must indicate incomplete scope')
 
   // Verifies isTrustedAccessUrl is imported and used for download and folder links
