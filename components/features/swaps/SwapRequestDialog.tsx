@@ -3,7 +3,7 @@ import * as React from 'react'
 import { addDays, format, parseISO } from 'date-fns'
 import { Calendar, Clock, Moon, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
 import type { Shift, ShiftRegistration, User, UserDirectoryEntry, SwapExchangeCandidate } from '@/lib/types/database.types'
-import { userService, shiftRegistrationService, shiftService, swapRequestService } from '@/lib/services/dataService'
+import { userService, shiftRegistrationService, shiftService, swapRequestService, isStaffedRegistration } from '@/lib/services/dataService'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -45,6 +45,7 @@ export function SwapRequestDialog({
 }) {
   const { t } = useTranslation()
   const { toast } = useToast()
+  const isStaffed = isStaffedRegistration(sourceRegistration)
   const [mode, setMode] = React.useState<CreatableSwapMode>('replacement')
   const [targetShiftId, setTargetShiftId] = React.useState('')
   const [counterpartId, setCounterpartId] = React.useState('')
@@ -242,6 +243,10 @@ export function SwapRequestDialog({
 
   const submit = async () => {
     if (submitLock.current) return
+    if (!isStaffed) {
+      toast({ title: t('error'), description: 'Ca trực chưa có lượt đăng ký được duyệt (approved/manually_assigned)', variant: 'destructive' })
+      return
+    }
     if (!reason.trim()) { toast({ title: t('error'), description: 'Cần nhập lý do đổi ca', variant: 'destructive' }); return }
     submitLock.current = true
     setBusy(true)
@@ -252,6 +257,7 @@ export function SwapRequestDialog({
         )) throw new Error('Chưa xác minh nhân sự thay thế phù hợp')
         if (replacementCheckStatus === 'checking') throw new Error('Đang kiểm tra lịch nhân sự thay thế')
         if (replacementCheckStatus === 'conflict') throw new Error(conflictReason ?? 'Nhân sự bị trùng lịch')
+        if (replacementCheckStatus !== 'verified_clear') throw new Error(conflict?.error ?? 'Chưa xác minh được lịch trống của nhân sự thay thế')
         await swapRequestService.create({
           shift_id: sourceShift.id,
           requester_id: currentUser.id,
@@ -269,6 +275,7 @@ export function SwapRequestDialog({
         }
         if (exchangeCheckStatus === 'checking') throw new Error('Đang kiểm tra lịch đổi ca hai bên')
         if (exchangeCheckStatus === 'conflict') throw new Error(exchangeConflictReason ?? 'Xung đột lịch ca đổi chéo')
+        if (exchangeCheckStatus !== 'verified_clear') throw new Error(exchangeConflict?.error ?? 'Chưa xác minh được lịch không trùng ca của hai bên')
         await swapRequestService.create({
           requester_id: currentUser.id,
           operational_role: sourceRegistration.operational_role,
@@ -318,12 +325,25 @@ export function SwapRequestDialog({
             </div>
           </div>
 
+          {!isStaffed && (
+            <div role="alert" className="p-3 rounded-md bg-destructive/10 border border-destructive/20 text-xs text-destructive space-y-1.5">
+              <div className="flex items-center gap-2 font-semibold">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>Ca trực chưa có lượt đăng ký được duyệt</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                Chỉ ca trực có trạng thái được duyệt (Approved) hoặc phân công chính thức (Manually Assigned) mới đủ điều kiện tạo yêu cầu PASS/Đổi ca.
+                Với ca trực chỉ gán Host/Support trực tiếp qua trường dữ liệu cũ, Quản lý hoặc Leader cần vào mục Phân ca (Staffing) để duyệt đăng ký hợp lệ trước khi thực hiện.
+              </p>
+            </div>
+          )}
+
           <label className="text-xs font-medium block">Hình thức đổi ca
             <Select value={mode} onValueChange={v => { setMode(v as CreatableSwapMode); setCounterpartId(''); setTargetShiftId(''); setTargetPage(1) }}>
               <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="replacement">PASS (Nhờ người làm thay)</SelectItem>
-                <SelectItem value="exchange">Đổi chéo (Đổi ca với đồng nghiệp)</SelectItem>
+                <SelectItem value="replacement">Thế ca</SelectItem>
+                <SelectItem value="exchange">Đổi chéo</SelectItem>
               </SelectContent>
             </Select>
           </label>
@@ -463,21 +483,20 @@ export function SwapRequestDialog({
             onClick={submit}
             disabled={
               busy ||
+              !isStaffed ||
               reason.trim().length < 10 ||
               (mode === 'replacement' && (
                 directoryLoading ||
                 Boolean(directoryError) ||
                 !replacementId ||
-                replacementCheckStatus === 'checking' ||
-                replacementCheckStatus === 'conflict'
+                replacementCheckStatus !== 'verified_clear'
               )) ||
               (mode === 'exchange' && (
                 !targetIsOnPage ||
                 !currentCandidate ||
                 Boolean(currentCandidate.error) ||
                 !counterpartId ||
-                exchangeCheckStatus === 'checking' ||
-                exchangeCheckStatus === 'conflict'
+                exchangeCheckStatus !== 'verified_clear'
               ))
             }
             className="w-full"

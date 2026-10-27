@@ -329,13 +329,13 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
   const chosenStaff = directory?.items.find(item => item.id === replacementId)
   const eligibleStaff = Boolean(chosenStaff && chosenStaff.id !== owner && role && chosenStaff.operational_roles?.includes(role))
   const validCandidate = mode === 'replacement'
-    ? eligibleStaff && !directory?.error && (replacementCheckStatus === 'verified_clear' || replacementCheckStatus === 'unverified')
+    ? eligibleStaff && !directory?.error && replacementCheckStatus === 'verified_clear'
     : Boolean(
         selectedTarget &&
         counterparts &&
         !counterparts.error &&
         counterparts.items.some(item => item.registration_id === counterpartId) &&
-        (exchangeCheckStatus === 'verified_clear' || exchangeCheckStatus === 'unverified')
+        exchangeCheckStatus === 'verified_clear'
       )
 
   const submit = async (event: React.FormEvent) => {
@@ -728,7 +728,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
                     </div>
                   )}
                   {replacementCheckStatus === 'unverified' && (
-                    <div className="p-2.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2 font-medium">
+                    <div role="alert" className="p-2.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2 font-medium">
                       <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
                       <span>{conflict?.error || copy('Chưa kiểm tra hết toàn bộ lịch; hệ thống sẽ xác minh khi gửi', 'Schedule check incomplete; server will verify on submit')}</span>
                     </div>
@@ -891,7 +891,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
                         </div>
                       )}
                       {exchangeCheckStatus === 'unverified' && (
-                        <div className="p-2.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2 font-medium">
+                        <div role="alert" className="p-2.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2 font-medium">
                           <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
                           <span>{exchangeConflict?.error || copy('Chưa kiểm tra hết toàn bộ lịch; hệ thống sẽ xác minh khi gửi', 'Schedule check incomplete; server will verify on submit')}</span>
                         </div>

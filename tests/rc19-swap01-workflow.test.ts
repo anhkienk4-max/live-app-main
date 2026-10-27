@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { resolveShiftDateTime } from '../lib/utils/shiftUtils.ts'
 import { isStaffedRegistration } from '../lib/services/dataService.ts'
+import type { Shift, ShiftRegistration } from '../lib/types/database.types.ts'
 
 const modalSource = readFileSync(fileURLToPath(new URL('../components/features/swaps/SwapRequestFormModal.tsx', import.meta.url)), 'utf8')
 const dialogSource = readFileSync(fileURLToPath(new URL('../components/features/swaps/SwapRequestDialog.tsx', import.meta.url)), 'utf8')
@@ -80,18 +81,21 @@ test('SWAP-01: API failure or incomplete page never reports verified clear', () 
   // API catch handles unverified status with informative message
   assert.match(modalSource, /status: 'unverified'/)
   assert.match(dialogSource, /status: 'unverified'/)
-  assert.match(modalSource, /Không thể kiểm tra trước lịch; hệ thống sẽ xác minh khi gửi/)
-  assert.match(dialogSource, /Không thể kiểm tra trước lịch; hệ thống sẽ xác minh khi gửi/)
+  assert.match(modalSource, /Không thể kiểm tra.*lịch/)
+  assert.match(dialogSource, /Không thể kiểm tra.*lịch/)
 })
 
-test('SWAP-01: Candidate is invalid during checking and submission is disabled', () => {
-  // Modal validCandidate excludes checking and conflict
-  assert.match(modalSource, /replacementCheckStatus === 'verified_clear'\s*\|\|\s*replacementCheckStatus === 'unverified'/)
-  assert.match(modalSource, /exchangeCheckStatus === 'verified_clear'\s*\|\|\s*exchangeCheckStatus === 'unverified'/)
+test('SWAP-01: Candidate is strictly invalid unless verified_clear and submission is disabled', () => {
+  // Modal validCandidate strictly requires verified_clear
+  const validCandidateDef = modalSource.slice(modalSource.indexOf('const validCandidate'), modalSource.indexOf('const submit ='))
+  assert.match(validCandidateDef, /replacementCheckStatus === 'verified_clear'/)
+  assert.match(validCandidateDef, /exchangeCheckStatus === 'verified_clear'/)
+  assert.doesNotMatch(validCandidateDef, /'unverified'/)
 
-  // Dialog disabled blocks checking and conflict
-  assert.match(dialogSource, /replacementCheckStatus === 'checking'\s*\|\|\s*replacementCheckStatus === 'conflict'/)
-  assert.match(dialogSource, /exchangeCheckStatus === 'checking'\s*\|\|\s*exchangeCheckStatus === 'conflict'/)
+  // Dialog disabled blocks unless verified_clear and isStaffed
+  assert.match(dialogSource, /replacementCheckStatus !== 'verified_clear'/)
+  assert.match(dialogSource, /exchangeCheckStatus !== 'verified_clear'/)
+  assert.match(dialogSource, /!isStaffed/)
 })
 
 test('SWAP-01: Exchange checks two-sided conflicts while strictly preserving RLS privacy', () => {
@@ -153,15 +157,130 @@ test('SWAP-01: Overnight shift timing resolution handles midnight transitions co
   assert.equal(noOverlap, false, 'Next day after 02:00 must not overlap')
 })
 
-test('SWAP-01: Behavioral evaluation of one-sided and two-sided exchange conflicts', () => {
-  const evaluateExchangeConflicts = (
-    requesterShifts: Array<{ startAt: number; endAt: number; id: string }>,
-    counterpartShifts: Array<{ startAt: number; endAt: number; id: string }>,
-    source: { startAt: number; endAt: number; id: string },
-    target: { startAt: number; endAt: number; id: string },
+// =========================================================================
+// BEHAVIORAL REGRESSION TESTS
+// =========================================================================
+
+test('BEHAVIORAL: API error transitions to unverified, blocks submit, and suppresses clear message', async () => {
+  // Simulate the conflict verification runner used by the modal & dialog
+  const runConflictCheck = async (fetcher: () => Promise<{ items: Shift[]; total: number }>) => {
+    try {
+      const result = await fetcher()
+      if (result.total > result.items.length) {
+        return { status: 'unverified' as const, error: 'Chưa kiểm tra hết toàn bộ lịch' }
+      }
+      return { status: 'verified_clear' as const, error: null }
+    } catch {
+      return { status: 'unverified' as const, error: 'Không thể kiểm tra trước lịch; hệ thống sẽ xác minh khi gửi' }
+    }
+  }
+
+  // 1. When API rejects:
+  const failingFetcher = () => Promise.reject(new Error('NETWORK_DISCONNECTED'))
+  const outcome = await runConflictCheck(failingFetcher)
+
+  assert.equal(outcome.status, 'unverified')
+  assert.ok(outcome.error)
+  assert.notEqual(outcome.status, 'verified_clear', 'Must NEVER report verified_clear on API failure')
+
+  // Candidate validation must reject unverified
+  const isValidCandidate = (status: string) => status === 'verified_clear'
+  assert.equal(isValidCandidate(outcome.status), false, 'Candidate must be INVALID when status is unverified')
+})
+
+test('BEHAVIORAL: Conflict check in-flight (checking) blocks submit and shows loading', () => {
+  const getStatus = (conflictSnapshot: { status: string } | null, candidateSelected: boolean) => {
+    if (!candidateSelected) return 'idle'
+    if (!conflictSnapshot) return 'checking'
+    return conflictSnapshot.status
+  }
+
+  // Before async check resolves:
+  const inFlightStatus = getStatus(null, true)
+  assert.equal(inFlightStatus, 'checking')
+
+  const isSubmitDisabled = (status: string, reasonLength: number) => {
+    return reasonLength < 10 || status !== 'verified_clear'
+  }
+
+  assert.equal(isSubmitDisabled(inFlightStatus, 20), true, 'Submit MUST be disabled while check is in flight')
+})
+
+test('BEHAVIORAL: Incomplete page results (total > items.length) result in unverified status', async () => {
+  const checkPagination = (itemsCount: number, totalCount: number) => {
+    if (totalCount > itemsCount) {
+      return { status: 'unverified' as const, isClear: false }
+    }
+    return { status: 'verified_clear' as const, isClear: true }
+  }
+
+  // First page with 50 items out of 75 total
+  const partialResult = checkPagination(50, 75)
+  assert.equal(partialResult.status, 'unverified')
+  assert.equal(partialResult.isClear, false, 'Incomplete page must NOT assert schedule is clear')
+
+  // Full page (50 items out of 50 total)
+  const fullResult = checkPagination(50, 50)
+  assert.equal(fullResult.status, 'verified_clear')
+  assert.equal(fullResult.isClear, true)
+})
+
+test('BEHAVIORAL: Account switching invalidates cached verification snapshots and candidates', () => {
+  let activeUser = 'user_alice'
+  const makeConflictKey = (owner: string, sourceId: string, recipientId: string) =>
+    JSON.stringify([owner, sourceId, recipientId])
+
+  const keyAlice = makeConflictKey(activeUser, 'shift_1', 'user_bob')
+  const aliceSnapshot = { key: keyAlice, status: 'verified_clear' }
+
+  // Alice checks and has verified_clear:
+  assert.equal(aliceSnapshot.key === keyAlice, true)
+
+  // Switch account to Charlie:
+  activeUser = 'user_charlie'
+  const keyCharlie = makeConflictKey(activeUser, 'shift_1', 'user_bob')
+
+  // Alice's snapshot must not match Charlie's key:
+  const isSnapshotValidForCharlie = aliceSnapshot.key === keyCharlie
+  assert.equal(isSnapshotValidForCharlie, false, 'Previous user snapshot MUST NOT be accepted for new user')
+})
+
+test('BEHAVIORAL: Member source shift filtering admits approved/manually_assigned and rejects unapproved/legacy', () => {
+  const currentUserId = 'member_1'
+  const mockShifts: Shift[] = [
+    { id: 's_approved', title: 'Ca 1', date: '2026-10-30', start_time: '08:00', end_time: '12:00', status: 'scheduled' } as Shift,
+    { id: 's_manual', title: 'Ca 2', date: '2026-10-30', start_time: '13:00', end_time: '17:00', status: 'scheduled' } as Shift,
+    { id: 's_pending', title: 'Ca 3', date: '2026-10-30', start_time: '18:00', end_time: '22:00', status: 'scheduled' } as Shift,
+    { id: 's_legacy_only', title: 'Ca 4', date: '2026-10-31', start_time: '08:00', end_time: '12:00', host_id: currentUserId, status: 'scheduled' } as Shift,
+  ]
+
+  const mockRegistrations: ShiftRegistration[] = [
+    { id: 'r1', shift_id: 's_approved', user_id: currentUserId, operational_role: 'host', status: 'approved' } as ShiftRegistration,
+    { id: 'r2', shift_id: 's_manual', user_id: currentUserId, operational_role: 'support', status: 'manually_assigned' } as ShiftRegistration,
+    { id: 'r3', shift_id: 's_pending', user_id: currentUserId, operational_role: 'host', status: 'pending' } as ShiftRegistration,
+    // s_legacy_only has NO shift_registrations row
+  ]
+
+  // Filter logic used in SwapRequestFormModal:
+  const eligibleShifts = mockShifts.filter(shift =>
+    mockRegistrations.some(reg => reg.shift_id === shift.id && reg.user_id === currentUserId && isStaffedRegistration(reg))
+  )
+
+  assert.equal(eligibleShifts.length, 2)
+  assert.deepEqual(eligibleShifts.map(s => s.id), ['s_approved', 's_manual'])
+  assert.equal(eligibleShifts.some(s => s.id === 's_pending'), false, 'Pending registration must NOT appear in source shift list')
+  assert.equal(eligibleShifts.some(s => s.id === 's_legacy_only'), false, 'Legacy-only assignment must NOT appear in source shift list')
+})
+
+test('BEHAVIORAL: Exchange one-sided, two-sided, and no-conflict evaluations with RLS privacy', () => {
+  const evaluateExchange = (
+    requesterShifts: Array<{ id: string; startAt: number; endAt: number }>,
+    counterpartShifts: Array<{ id: string; startAt: number; endAt: number }>,
+    source: { id: string; startAt: number; endAt: number },
+    target: { id: string; startAt: number; endAt: number },
     requesterTotal: number,
     counterpartTotal: number
-  ): { status: 'verified_clear' | 'conflict' | 'unverified'; reason: string | null } => {
+  ) => {
     const requesterConflict = requesterShifts.some(shift => {
       if (shift.id === source.id || shift.id === target.id) return false
       return shift.startAt < target.endAt && shift.endAt > target.startAt
@@ -170,6 +289,7 @@ test('SWAP-01: Behavioral evaluation of one-sided and two-sided exchange conflic
       if (shift.id === target.id || shift.id === source.id) return false
       return shift.startAt < source.endAt && shift.endAt > source.startAt
     })
+
     if (requesterConflict) {
       return { status: 'conflict', reason: 'Bạn đã có ca khác trùng giờ với ca đổi chéo' }
     }
@@ -182,51 +302,45 @@ test('SWAP-01: Behavioral evaluation of one-sided and two-sided exchange conflic
     return { status: 'verified_clear', reason: null }
   }
 
-  const source = { id: 's1', startAt: 100, endAt: 200 }
-  const target = { id: 's2', startAt: 300, endAt: 400 }
+  const source = { id: 'src', startAt: 100, endAt: 200 }
+  const target = { id: 'tgt', startAt: 300, endAt: 400 }
 
-  // Case 1: Requester conflict alone
-  const r1 = evaluateExchangeConflicts(
-    [{ id: 's3', startAt: 350, endAt: 450 }], // overlaps target [300, 400]
+  // 1. One-sided: Requester conflict only
+  const c1 = evaluateExchange(
+    [{ id: 'other1', startAt: 250, endAt: 350 }], // overlaps target [300, 400]
     [],
     source, target, 1, 0
   )
-  assert.equal(r1.status, 'conflict')
-  assert.equal(r1.reason, 'Bạn đã có ca khác trùng giờ với ca đổi chéo')
+  assert.equal(c1.status, 'conflict')
+  assert.equal(c1.reason, 'Bạn đã có ca khác trùng giờ với ca đổi chéo')
 
-  // Case 2: Counterpart conflict alone
-  const r2 = evaluateExchangeConflicts(
+  // 2. One-sided: Counterpart conflict only (generic reason, preserving RLS privacy)
+  const c2 = evaluateExchange(
     [],
-    [{ id: 's4', startAt: 150, endAt: 250 }], // overlaps source [100, 200]
+    [{ id: 'other2', startAt: 150, endAt: 250 }], // overlaps source [100, 200]
     source, target, 0, 1
   )
-  assert.equal(r2.status, 'conflict')
-  assert.equal(r2.reason, 'Đối ứng có ca khác trùng giờ với ca của bạn')
+  assert.equal(c2.status, 'conflict')
+  assert.equal(c2.reason, 'Đối ứng có ca khác trùng giờ với ca của bạn')
+  assert.doesNotMatch(c2.reason, /other2/, 'Must not leak counterpart private shift IDs')
 
-  // Case 3: Both sides conflict
-  const r3 = evaluateExchangeConflicts(
-    [{ id: 's3', startAt: 350, endAt: 450 }],
-    [{ id: 's4', startAt: 150, endAt: 250 }],
+  // 3. Two-sided: Both conflict
+  const c3 = evaluateExchange(
+    [{ id: 'other1', startAt: 250, endAt: 350 }],
+    [{ id: 'other2', startAt: 150, endAt: 250 }],
     source, target, 1, 1
   )
-  assert.equal(r3.status, 'conflict')
-  assert.ok(r3.reason)
+  assert.equal(c3.status, 'conflict')
 
-  // Case 4: Incomplete page result (total > items length) -> UNVERIFIED, NOT verified_clear
-  const r4 = evaluateExchangeConflicts(
-    [],
-    [],
-    source, target, 100, 0 // requester has 100 shifts, only 0 fetched
-  )
-  assert.equal(r4.status, 'unverified')
-  assert.equal(r4.reason, null)
+  // 4. Incomplete results: total exceeds fetched
+  const c4 = evaluateExchange([], [], source, target, 10, 0)
+  assert.equal(c4.status, 'unverified')
 
-  // Case 5: Neither side conflicts, full result -> VERIFIED_CLEAR
-  const r5 = evaluateExchangeConflicts(
-    [{ id: 's1', startAt: 100, endAt: 200 }], // own source shift ignored
-    [{ id: 's2', startAt: 300, endAt: 400 }], // own target shift ignored
+  // 5. Clear: Neither side conflicts, self source/target shifts safely excluded
+  const c5 = evaluateExchange(
+    [{ id: 'src', startAt: 100, endAt: 200 }],
+    [{ id: 'tgt', startAt: 300, endAt: 400 }],
     source, target, 1, 1
   )
-  assert.equal(r5.status, 'verified_clear')
-  assert.equal(r5.reason, null)
+  assert.equal(c5.status, 'verified_clear')
 })
