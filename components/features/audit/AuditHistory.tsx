@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Eye, Filter, History, RotateCcw, ShieldAlert } from 'lucide-react'
 import { AuditAction, AuditLog, AuditModule, DeletionImpact } from '@/lib/types/database.types'
 import { auditService } from '@/lib/services/auditService'
+import { getAuthMode } from '@/lib/auth/authMode'
 import { ArchivedEntitySummary, lifecycleService } from '@/lib/services/dataService'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasAnyPermission, hasPermission, resolveSystemPermission } from '@/lib/permissions'
@@ -61,6 +62,7 @@ export function AuditHistory() {
   const [showFilters, setShowFilters] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
+  const [teamCapabilityDenied, setTeamCapabilityDenied] = React.useState(false)
 
   const canView = Boolean(currentUser && hasAnyPermission(currentUser, ['audit.view', 'audit.view_team']))
   const isAdmin = Boolean(currentUser && hasPermission(currentUser, 'audit.view'))
@@ -90,6 +92,30 @@ export function AuditHistory() {
     setLoading(true)
     setLoadError(null)
     try {
+      // RBAC-01B: Leader permission check must precede every audit data request.
+      // Signed server preflight is no-store; DB RLS guards direct REST/RPC independently.
+      if (getAuthMode() === 'supabase' && resolveSystemPermission(currentUser) === 'leader'
+        && process.env.NEXT_PUBLIC_FEATURE_RBAC01B_AUDIT_TEAM_ENFORCEMENT === 'true') {
+        const capability = await fetch('/api/audit/team-capability', {
+          method: 'GET', cache: 'no-store', credentials: 'same-origin',
+        })
+        if (!isCurrent(request)) return
+        if (capability.status === 403) {
+          setTeamCapabilityDenied(true)
+          setLogs([])
+          setSelected(null)
+          setTotal(0)
+          setActors([])
+          setLoadedIdentity(identity)
+          return
+        }
+        if (!capability.ok) throw new Error('AUDIT_TEAM_CAPABILITY_UNAVAILABLE')
+        const result: unknown = await capability.json()
+        if (!result || typeof result !== 'object' || !('allowed' in result) || result.allowed !== true)
+          throw new Error('AUDIT_TEAM_CAPABILITY_UNAVAILABLE')
+      }
+      if (!isCurrent(request)) return
+      setTeamCapabilityDenied(false)
       const [visible, deleted] = await Promise.all([
         auditService.getAuditLogs({ user: currentUser, page, pageSize, filters: { ...filters, actor: filters.actorIds, role: filters.roles, module: filters.modules, action: filters.actions, status: filters.statuses, source: filters.sources }, sort }),
         isAdmin ? lifecycleService.getArchivedPage(currentUser.id,{page:archivedPage,pageSize:archivedPageSize as 10|20|50}) : Promise.resolve({items:[],total:0,page:1}),
@@ -115,7 +141,7 @@ export function AuditHistory() {
   }, [load,invalidate])
 
   if (userLoading || loading || canView&&identity!==loadedIdentity) return <p className="text-sm text-muted-foreground">{t('loading')}</p>
-  if (!currentUser || !canView) {
+  if (!currentUser || !canView || teamCapabilityDenied) {
     return <Card><CardContent className="flex min-h-64 flex-col items-center justify-center text-center"><ShieldAlert className="mb-3 h-10 w-10 text-amber-600" /><h2 className="font-semibold">{t('accessDenied')}</h2><p className="mt-1 text-sm text-muted-foreground">{t('auditAccessDeniedHelp')}</p></CardContent></Card>
   }
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { void load() }} />

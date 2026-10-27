@@ -38,7 +38,7 @@ export const ROLE_DEFAULTS_CATALOG: readonly RoleDefaultsCatalogItem[] = [
   item('settings.member', 'settings', 'view'), item('settings.leader', 'settings', 'view'),
   item('settings.admin', 'settings', 'manage', 'Bootstrap privilege locked'),
   item('permissions.manage', 'settings', 'manage', 'Bootstrap privilege locked; no self-escalation'),
-  item('audit.view', 'audit', 'view'), item('audit.view_team', 'audit', 'view'),
+  item('audit.view', 'audit', 'view'), { ...item('audit.view_team', 'audit', 'view'), locked: false },
   item('audit.restore', 'audit', 'restore', 'Audit integrity boundary locked'), item('audit.review', 'audit', 'approve', 'Audit approval boundary locked'),
   item('data.force_delete', 'data', 'delete', 'Destructive capability locked'),
 ] as const
@@ -65,7 +65,7 @@ export function previewRoleDefaults(
     result[entry.permission] = {
       legacy,
       // Never unlock new privilege. Locked permissions stay exactly RC19.
-      allowed: entry.locked ? legacy : (decision === 'deny' ? false : legacy),
+      allowed: legacy, // Preview NEVER changes effective access before independently approved DB enforcement
       decision,
       locked: entry.locked,
       proposedAllowed: decision === 'deny' ? false : legacy,
@@ -88,6 +88,7 @@ export function validateRoleDefaultProposal(
     // while the DB/server enforcement attestation gate remains disabled.
     if (entry.reason && value === 'deny') return { ok: false, code: 'SECURITY_BOUNDARY_LOCKED' }
     if (value === 'allow' && !permissionMatrix[role].has(permission)) return { ok: false, code: 'PRIVILEGE_ESCALATION_DENIED' }
+    if (value === 'allow') return { ok: false, code: 'RBAC01_APPROVAL_BLOCKED' }
     if (value === 'deny' && !permissionMatrix[role].has(permission)) return { ok: false, code: 'NOT_A_LEGACY_GRANT' }
   }
   return { ok: true }
