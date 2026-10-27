@@ -106,6 +106,35 @@ export function DashboardOverview() {
   if (loadError) return <PageLoadError error={loadError} onRetry={()=>void loadData()} />
   if (loading || !data || !currentUser) {
     return <div className="space-y-3" data-testid="dashboard-progressive-shell">
+      <div className="space-y-4 bg-[#F8FAFF] p-4 lg:hidden" data-testid="ada-mobile-dashboard-loading" aria-live="polite">
+        <section className="relative overflow-hidden rounded-[16px] border border-[#E6ECF8] bg-white p-4 shadow-sm">
+          <div className="absolute right-0 top-0 h-10 w-20 rounded-bl-[35px] bg-gradient-to-br from-blue-500 to-violet-600" aria-hidden="true" />
+          <p className="text-[12px] font-bold text-[#07183B]">Ca livestream sắp tới</p>
+          <p className="mt-1 text-[11px] text-slate-500">Đang đồng bộ dữ liệu vận hành</p>
+          {early?.key===viewKey && early.items.length > 0 ? (
+            <ul className="mt-3 divide-y divide-[#EEF1F8]">
+              {early.items.slice(0, 3).map(shift => <li key={shift.id} className="flex items-center justify-between gap-3 py-2 text-[12px]">
+                <span className="min-w-0 truncate font-semibold text-[#10234B]">{shift.title}</span>
+                <span className="shrink-0 text-[11px] text-slate-500">{shift.start_time}–{shift.end_time}</span>
+              </li>)}
+            </ul>
+          ) : <div className="mt-4 h-12 animate-pulse rounded-lg bg-[#EDF2FC]" aria-hidden="true" />}
+        </section>
+        <div className="grid grid-cols-4 gap-2" aria-label="Truy cập nhanh">
+          {['Lịch ca', 'Báo cáo', 'Hiệu suất', 'Cá nhân'].map(label => <div key={label} className="flex min-w-0 flex-col items-center gap-2 rounded-xl border border-[#E6ECF8] bg-white px-1 py-3">
+            <span className="h-9 w-9 animate-pulse rounded-xl bg-[#E9EFFC]" aria-hidden="true" />
+            <span className="text-[10px] font-semibold text-slate-500">{label}</span>
+          </div>)}
+        </div>
+        <section className="space-y-3">
+          <h2 className="text-[15px] font-bold text-[#07183B]">Công việc cần xử lý</h2>
+          <div className="space-y-3 rounded-[16px] border border-[#E7ECF8] bg-white p-4">
+            <div className="h-12 animate-pulse rounded-lg bg-[#EDF2FC]" />
+            <div className="h-12 animate-pulse rounded-lg bg-[#EDF2FC]" />
+          </div>
+        </section>
+      </div>
+      <div className="hidden space-y-3 lg:block">
       {early?.key===viewKey && <section className="rounded-lg border bg-card p-4" data-testid="dashboard-visible-first">
         <h2 className="text-sm font-semibold">Ca livestream sắp tới</h2>
         <p className="mt-1 text-xs text-muted-foreground">Đang tải số liệu tổng hợp. Danh sách ca được xác nhận từ server.</p>
@@ -114,6 +143,7 @@ export function DashboardOverview() {
         </ul> : <p className="mt-3 text-sm text-muted-foreground">Không có ca sắp tới trong trang đầu.</p>}
       </section>}
       <ContentSkeleton />
+      </div>
     </div>
   }
   return <DashboardWorkspace data={data} currentUser={currentUser} onUpdate={() => loadData(false)} filterState={filters} onFilterChange={setFilters} />

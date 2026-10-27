@@ -108,3 +108,10 @@ test('Login reference uses white page and blue-violet waves while preserving Sup
   assert.ok(login.includes('variant="login"'))
   assert.ok(login.includes('establishPasswordSession('))
 })
+
+test('Reference loading state does not show legacy desktop skeleton on mobile', () => {
+  const dashboard = source('components/features/dashboard/DashboardOverview.tsx')
+  assert.ok(dashboard.includes('data-testid="ada-mobile-dashboard-loading"'))
+  assert.ok(dashboard.includes('className="hidden space-y-3 lg:block"'))
+  assert.ok(dashboard.includes('early.items.slice(0, 3)'))
+})

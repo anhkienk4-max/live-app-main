@@ -107,3 +107,9 @@ only on Admin dashboard because the existing payroll route is Admin-only.
 Login and five-tab navigation were rebuilt in the previous commit.
 Full-size visual screenshot QA and detailed Calendar/Report/Payroll redesign
 are still outstanding.
+
+## Dashboard progressive-state presentation W7
+While the authorized collection requests are in flight, phone/tablet clients see a
+lightweight ADA mobile shell with actual early shift data (when available) instead of
+desktop-sized grey skeletons. The data retrieval, cache and auth logic remain unchanged.
+The new loader is not evidence that the slow fetch itself has been fixed.
