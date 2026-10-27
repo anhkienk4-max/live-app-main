@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 for (const { width, language } of [{ width: 390, language: 'vi' }, { width: 1440, language: 'en' }]) {
-  test(`Shift List date, search and server page at ${width}px (${language})`, async ({ page }) => {
+  test(`Shift List date, search and server page at ${width}px (${language})`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 900 })
     await page.addInitScript(language => {
       localStorage.setItem('livestream-ops-current-user', '1')
@@ -22,7 +22,7 @@ for (const { width, language } of [{ width: 390, language: 'vi' }, { width: 1440
       const rendered = await (width < 768 ? page.locator('[data-testid^="shift-mobile-card-"]') : page.locator('[data-testid^="data-table-row-"]')).count()
       return total > 0 && rendered === total
     }).toBe(true)
-    await page.screenshot({ path: `docs/handoffs/evidence/rc19-u05-shifts-after-${width}.png`, caret: 'initial' })
+    await page.screenshot({ path: info.outputPath(`shifts-${width}.png`), caret: 'initial' })
 
     await mode.selectOption('custom')
     await page.getByTestId('shifts-from-input').filter({ visible: true }).fill('2026-10-24')
