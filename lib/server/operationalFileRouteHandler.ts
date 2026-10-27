@@ -19,12 +19,15 @@ import { resolveOperationalStorageRoutingMode, type OperationalStorageRoutingMod
 import { createOperationalStorageFolderMaterializer } from '@/lib/server/operationalStorageFolderMaterializer'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { fileStorageService, createFileStorageService } from '@/lib/services/fileStorageService'
+import type { FileProviderAvailability } from '@/lib/server/fileProviderRegistry'
 import { requireRole, authorizationErrorResponse, isAuthorizationError, type ServerUserResolver } from '@/lib/server/authGuards'
 import { readFormDataBody, readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
 import { loadOperationalSystemExport, encodeOperationalSystemExport } from '@/lib/server/operationalSystemExport'
 
 type Provider = 'google_drive' | 'onedrive'
-type StorageGateway = Pick<ReturnType<typeof createFileStorageService>, 'upload' | 'read' | 'delete' | 'ensureFolder' | 'getMetadata' | 'getViewUrl'>
+type StorageGateway = Pick<ReturnType<typeof createFileStorageService>, 'upload' | 'read' | 'delete' | 'ensureFolder' | 'getMetadata' | 'getViewUrl'> & {
+  providerAvailability?: FileProviderAvailability
+}
 type ScopeInput = {
   shift_id?: string
   campaign_id?: string
@@ -305,6 +308,9 @@ export function createOperationalFileRouteHandler(deps: {
               .select('id', { count: 'exact', head: true }).eq('active', true),
           ])
           if (brands.error || platforms.error || campaigns.error) throw new Error('OPERATIONAL_FILE_SCOPE_LOOKUP_FAILED')
+          const providerAvailability = (deps.storage && 'providerAvailability' in deps.storage && deps.storage.providerAvailability)
+            ? deps.storage.providerAvailability
+            : fileStorageService.providerAvailability
           return Response.json({
             ok: true,
             categories: OPERATIONAL_FILE_CATEGORIES.filter(id => actor.systemPermission === 'admin' || !restrictedCategories.has(id)).map(id => ({ id, label: OPERATIONAL_FILE_CATEGORY_LABELS[id] })),
@@ -312,6 +318,7 @@ export function createOperationalFileRouteHandler(deps: {
             max_single_upload_bytes: MAX_OPERATIONAL_FILE_BYTES,
             confidential_write_ready: allowConfidentialWrites(),
             active_route_count: activeRouteCount.error ? null : activeRouteCount.count ?? null,
+            provider_availability: providerAvailability,
           }, { headers: { 'Cache-Control': 'no-store' } })
         }
 
