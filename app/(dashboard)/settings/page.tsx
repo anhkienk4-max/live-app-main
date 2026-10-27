@@ -5,6 +5,7 @@ import { Bell, Bot, Plug, RotateCcw, ShieldCheck, SlidersHorizontal, UserCog } f
 import { settingsService } from '@/lib/services/dataService'
 import { OperationalRole, OperationalSettings, PersonalSettings } from '@/lib/types/database.types'
 import { hasPermission, permissionMatrix, resolveSystemPermission } from '@/lib/permissions'
+import { RoleDefaultsPanel } from '@/components/features/staff/RoleDefaultsPanel'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
 import { Badge } from '@/components/ui/badge'
@@ -607,6 +608,7 @@ export default function SettingsPage() {
                       ))}
                     </div>
                   </div>
+                  {isAdmin && <RoleDefaultsPanel />}
                   <div>
                     <h3 className="mb-3 font-semibold text-sm">{t('operationalRoles')}</h3>
                     <div className="grid gap-3 sm:grid-cols-3">
