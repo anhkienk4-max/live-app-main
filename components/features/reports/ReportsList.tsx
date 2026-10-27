@@ -714,7 +714,7 @@ export function ReportsList() {
                 </Button>)}
             </div>
             {calendarLoading && <p role="status" className="rounded-md border p-5 text-sm text-muted-foreground">Đang tải đủ dữ liệu lịch theo phạm vi quyền và khoảng ngày…</p>}
-            {!calendarLoading && calendarError && <div role="alert" className="space-y-2 rounded-md border border-destructive/40 p-4">
+            {!calendarLoading && Boolean(calendarError) && <div role="alert" className="space-y-2 rounded-md border border-destructive/40 p-4">
               <p className="text-sm">Không thể tải đầy đủ dữ liệu lịch. Không hiển thị dữ liệu phân trang một phần.</p>
               <Button type="button" variant="outline" onClick={() => setCalendarReload(v => v + 1)}>Thử lại</Button>
             </div>}
