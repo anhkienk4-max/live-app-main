@@ -53,7 +53,7 @@ function validate(root: string, extraEnv: NodeJS.ProcessEnv = {}) {
       cwd: root,
       encoding: 'utf8',
       stdio: 'pipe',
-      env: { ...process.env, ...extraEnv },
+      env: { ...localProcessEnv(), ...extraEnv },
     })
     return { passed: true, output }
   } catch (error) {
