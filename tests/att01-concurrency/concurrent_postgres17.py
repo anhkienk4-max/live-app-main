@@ -132,6 +132,12 @@ def confirm_replay_and_rollback():
     assert value(db, "SELECT count(*) FROM public.workforce_actual_segments") == "1"
     assert confirm(db, "single")["code"] == "BATCH_ALREADY_CONFIRMED"
     assert value(db, "SELECT count(*) FROM public.workforce_actual_segments") == "1"
+    replay_stage = stage(db, "attempt-after-confirm", "replay-fp")
+    assert replay_stage["ok"] is False and replay_stage["code"] == "BATCH_ALREADY_CONFIRMED", replay_stage
+    assert value(db, "SELECT count(*) FROM public.workforce_attendance_import_batches WHERE source_fingerprint='replay-fp'") == "1"
+    assert value(db, "SELECT count(*) FROM public.workforce_actual_segments WHERE review_status='draft' AND reviewed_by IS NULL") == "1"
+    assert value(db, "SELECT count(*) FROM public.workforce_attendance_import_rows WHERE batch_id='single' AND status='drafted' AND resulting_segment_id IS NOT NULL") == "1"
+    print("PATCHED replay after Confirm: historical confirmed batch and DRAFT provenance preserved")
     print("PATCHED confirm replay: exactly one DRAFT; duplicate confirmation rejected")
 
     db = "att01_patched_atomic"
