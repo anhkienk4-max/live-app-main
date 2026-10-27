@@ -49,7 +49,10 @@ test('Reference module surfaces remain real routes with original business logic'
 
 test('Member mobile dashboard displays real view-model data with links to existing routes', () => {
   const view = source('components/features/dashboard/presentation/member/MemberDashboardMobile.tsx')
-  for (const marker of ['mySchedule.length', 'myActions.length', 'nextShift', 'openShifts', 'href="/calendar"', 'href="/reports"', 'href="/workforce"', 'href="/swaps"']) assert.ok(view.includes(marker))
+  for (const marker of ['mySchedule.length', 'myActions.length', 'nextShift', 'openShifts']) assert.ok(view.includes(marker), marker)
+  for (const route of ['/calendar', '/reports', '/workforce', '/swaps']) {
+    assert.ok(view.includes("href: '" + route + "'") || view.includes('href="' + route + '"'), route)
+  }
   const base = source('components/features/dashboard/presentation/member/MemberDashboardView.tsx')
   assert.ok(base.includes('<MemberDashboardMobile'))
   assert.ok(base.includes('md:flex'))
