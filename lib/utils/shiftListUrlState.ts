@@ -7,6 +7,8 @@ export type ShiftListUrlState = {
   from: string
   to: string
   status: Shift['status'] | 'all'
+  brandId: string
+  platformId: string
   search: string
   descending: boolean
 }
@@ -32,6 +34,8 @@ export function readShiftListUrlState(params: Pick<URLSearchParams, 'get'>): Shi
     from: dateWindow === 'custom' ? from : '',
     to: dateWindow === 'custom' ? to : '',
     status: status && shiftStatuses.includes(status) ? status : 'all',
+    brandId: params.get('shifts_brand') ?? '',
+    platformId: params.get('shifts_platform') ?? '',
     search: params.get('shifts_search') ?? '',
     descending: params.get('shifts_sort') !== 'asc',
   }
@@ -44,6 +48,8 @@ export function shiftListUrlValues(state: ShiftListUrlState) {
     shifts_from: state.dateWindow === 'custom' ? state.from : null,
     shifts_to: state.dateWindow === 'custom' ? state.to : null,
     shifts_status: state.status === 'all' ? null : state.status,
+    shifts_brand: state.brandId || null,
+    shifts_platform: state.platformId || null,
     shifts_search: state.search || null,
     shifts_sort: state.descending ? null : 'asc',
     shifts_page: null,

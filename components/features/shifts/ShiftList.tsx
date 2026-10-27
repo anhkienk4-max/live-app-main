@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import * as React from 'react'
 import { useSearchParams } from 'next/navigation'
 import { usePagedList } from '@/lib/hooks/usePagedList'
-import { getOperationalReferences } from '@/lib/services/operationalReferences'
+import { getOperationalReferences, operationalReferenceIdentity } from '@/lib/services/operationalReferences'
 import { shiftService, shiftRegistrationService, getShiftRoleCapacities } from '@/lib/services/dataService'
 import { templateService } from '@/lib/services/templateService'
 import { Shift, Brand, Platform, Campaign, User, DeletionImpact, ShiftRegistration } from '@/lib/types/database.types'
@@ -78,6 +78,22 @@ function ShiftDateFilter({ state, onApply, t, mobile = false }: { state: ShiftLi
   </div>
 }
 
+function ShiftEntityFilter({ label, name, value, options, onChange, all, unavailable, mobile = false }: {
+  label: string; name: 'brand' | 'platform'; value: string; options: Array<{ id: string; name: string }>
+  onChange: (value: string) => void; all: string; unavailable: string; mobile?: boolean
+}) {
+  return <label className={mobile ? 'min-w-0' : 'flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600'}>
+    <span className={mobile ? 'sr-only' : ''}>{label}</span>
+    <select aria-label={label} data-testid={`shifts-${mobile ? 'mobile' : 'desktop'}-${name}-filter`} value={value}
+      onChange={event => onChange(event.target.value)}
+      className={mobile ? 'h-11 min-w-0 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800' : 'max-w-40 bg-transparent font-medium text-slate-800 outline-none'}>
+      <option value="">{mobile ? `${label}: ${all}` : all}</option>
+      {value && !options.some(option => option.id === value) && <option value={value}>{unavailable}</option>}
+      {options.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
+    </select>
+  </label>
+}
+
 export function ShiftList() {
   const [brands, setBrands] = React.useState<Brand[]>([])
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
@@ -99,11 +115,8 @@ export function ShiftList() {
   const [isFormOpen, setIsFormOpen] = React.useState(false)
   const [isImportExportOpen, setIsImportExportOpen] = React.useState(false)
   
-  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
-  const [showBulkActions, setShowBulkActions] = React.useState(false)
-
   const { toast } = useToast()
-  const { t, translate } = useTranslation()
+  const { t, translate, language } = useTranslation()
   const { currentUser } = useCurrentUser()
 
   // Granular capability gating (UX-P1-01)
@@ -119,9 +132,23 @@ export function ShiftList() {
   const searchParams = useSearchParams()
   const urlState = readShiftListUrlState(searchParams)
   const { dateWindow, status: statusFilter, search: searchQuery, descending: sortDescending } = urlState
-  const listFilters = { ...shiftDateWindowFilters(dateWindow, new Date(), urlState.month, urlState.from, urlState.to), search: searchQuery, statuses: statusFilter === 'all' ? [] : [statusFilter], descending: sortDescending }
+  const listFilters = { ...shiftDateWindowFilters(dateWindow, new Date(), urlState.month, urlState.from, urlState.to), search: searchQuery, statuses: statusFilter === 'all' ? [] : [statusFilter], brandIds: urlState.brandId ? [urlState.brandId] : [], platformIds: urlState.platformId ? [urlState.platformId] : [], descending: sortDescending }
   const dateFilterKey = [dateWindow, urlState.month, urlState.from, urlState.to].join(':')
   const list = usePagedList(shiftService, 'shifts', listFilters)
+  const referenceKey = currentUser ? operationalReferenceIdentity(currentUser) : ''
+  const currentReferenceKey = React.useRef(referenceKey)
+  React.useEffect(() => { currentReferenceKey.current = referenceKey }, [referenceKey])
+  const [loadedReferenceKey, setLoadedReferenceKey] = React.useState('')
+  const selectionScope = JSON.stringify([referenceKey, list.page, list.pageSize, listFilters])
+  const [previousSelectionScope, setPreviousSelectionScope] = React.useState(selectionScope)
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
+  const [showBulkActions, setShowBulkActions] = React.useState(false)
+  if (previousSelectionScope !== selectionScope) {
+    setPreviousSelectionScope(selectionScope)
+    setSelectedIds(new Set())
+    setShowBulkActions(false)
+    setPendingBulkStatus(null)
+  }
   useShiftChangeRefresh(list.reload)
   const { items: shifts, loading } = list
   const sortedShifts = shifts
@@ -152,13 +179,15 @@ export function ShiftList() {
     setLoadError(null)
     try {
       const [refs, templatesData] = await Promise.all([getOperationalReferences(currentUser), templateService.getAll()])
+      if (currentReferenceKey.current !== operationalReferenceIdentity(currentUser)) return
       const { brands: brandsData, platforms: platformsData, campaigns: campaignsData, users: usersData } = refs
       setBrands(brandsData)
       setPlatforms(platformsData)
       setCampaigns(campaignsData)
       setUsers(usersData)
       setTemplates(templatesData)
-    } catch (error) { setLoadError(error) }
+      setLoadedReferenceKey(operationalReferenceIdentity(currentUser))
+    } catch (error) { if (currentReferenceKey.current === operationalReferenceIdentity(currentUser)) setLoadError(error) }
   }, [currentUser])
 
   React.useEffect(() => {
@@ -181,6 +210,10 @@ export function ShiftList() {
   }
   const handleStatusFilterChange = (status: Shift['status'] | 'all') => updateFilters({ ...urlState, status })
   const handleSearchQueryChange = (search: string) => updateFilters({ ...urlState, search }, true)
+  const resetEntities = () => updateFilters({ ...urlState, brandId: '', platformId: '' })
+  const availableBrands = loadedReferenceKey === referenceKey ? brands : []
+  const availablePlatforms = loadedReferenceKey === referenceKey ? platforms : []
+  const resetEntityLabel = language === 'vi' ? 'Đặt lại thương hiệu và nền tảng' : 'Reset brand and platform'
 
   const requestDelete = async (ids: string[]) => {
     if (!canDelete || ids.length === 0 || ids.some(id => !shifts.some(shift => shift.id === id))) return
@@ -425,8 +458,11 @@ export function ShiftList() {
             onPageSizeChange: value => { clearSelection(); list.setPageSize(value) } }}
           searchPlaceholder={t('search')}
           filterComponent={
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
               <ShiftDateFilter key={'desktop:' + dateFilterKey} state={urlState} onApply={updateFilters} t={t} />
+              <ShiftEntityFilter label={t('brand')} name="brand" value={urlState.brandId} options={availableBrands} onChange={brandId => updateFilters({ ...urlState, brandId })} all={t('all')} unavailable={t('notUpdated')} />
+              <ShiftEntityFilter label={t('platform')} name="platform" value={urlState.platformId} options={availablePlatforms} onChange={platformId => updateFilters({ ...urlState, platformId })} all={t('all')} unavailable={t('notUpdated')} />
+              <Button variant="outline" size="sm" onClick={resetEntities} disabled={!urlState.brandId && !urlState.platformId}>{resetEntityLabel}</Button>
               <label className="flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600">
                 <span>{t('status')}</span>
                 <select
@@ -478,6 +514,9 @@ export function ShiftList() {
           </div>
           <div className="grid min-w-0 grid-cols-2 gap-2">
             <ShiftDateFilter key={'mobile:' + dateFilterKey} state={urlState} onApply={updateFilters} t={t} mobile />
+            <ShiftEntityFilter mobile label={t('brand')} name="brand" value={urlState.brandId} options={availableBrands} onChange={brandId => updateFilters({ ...urlState, brandId })} all={t('all')} unavailable={t('notUpdated')} />
+            <ShiftEntityFilter mobile label={t('platform')} name="platform" value={urlState.platformId} options={availablePlatforms} onChange={platformId => updateFilters({ ...urlState, platformId })} all={t('all')} unavailable={t('notUpdated')} />
+            <Button variant="outline" size="sm" className="col-span-2 min-h-11" onClick={resetEntities} disabled={!urlState.brandId && !urlState.platformId}>{resetEntityLabel}</Button>
             <select
               aria-label={t('status')}
               value={statusFilter}
