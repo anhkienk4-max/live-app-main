@@ -131,3 +131,19 @@ test('Report mobile detail keeps existing review, image and version tabs', () =>
   assert.ok(detail.includes("setActiveTab('images')"))
   assert.ok(detail.includes("setActiveTab('versions')"))
 })
+
+test('Admin payroll mobile panel reuses existing period lines and admin gate', () => {
+  const page = source('app/(dashboard)/payroll/page.tsx')
+  assert.ok(page.includes('data-testid="ada-reference-payroll-mobile"'))
+  assert.ok(page.includes("resolveSystemPermission(currentUser) !== 'admin'"))
+  assert.ok(page.includes('line.net_vnd'))
+  assert.ok(page.includes('!line.voided_at'))
+})
+test('Profile mobile panel preserves edit, access and sign-out security', () => {
+  const page = source('app/(dashboard)/profile/page.tsx')
+  assert.ok(page.includes('data-testid="ada-reference-profile-mobile"'))
+  assert.ok(page.includes("clearLocalSession(createClient())"))
+  assert.ok(page.includes("userService.update("))
+  assert.ok(page.includes('id="profile-edit"'))
+  assert.ok(page.includes("onClick={() => setLanguage("))
+})

@@ -26,6 +26,7 @@ import {
   type PayrollAudit,
 } from '@/lib/services/workforceService'
 import { PayrollOverview } from '@/components/features/payroll/PayrollOverview'
+import { formatCurrency } from '@/lib/utils/currency'
 import { PayrollPeriodManager } from '@/components/features/payroll/PayrollPeriodManager'
 import { PayrollRateManager } from '@/components/features/payroll/PayrollRateManager'
 import { PayrollDraftWorkspace } from '@/components/features/payroll/PayrollDraftWorkspace'
@@ -168,6 +169,46 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
       </div>
 
       {readError && <p role="alert">{readError}</p>}
+      <section data-testid="ada-reference-payroll-mobile" className="space-y-4 lg:hidden">
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-[#E6ECF8] bg-white px-3 py-3">
+          <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-[#2563EB]" /><span className="text-[12px] font-semibold text-[#142650]">{selectedPeriod ? `${selectedPeriod.period_start} – ${selectedPeriod.period_end}` : 'Chưa chọn chu kỳ lương'}</span></div>
+          <button type="button" onClick={() => setActiveTab('periods')} className="shrink-0 text-[11px] font-bold text-[#2563EB]">Chọn kỳ</button>
+        </div>
+        {selectedPeriod ? (
+          <div className="overflow-hidden rounded-[16px] bg-gradient-to-br from-[#091C49] via-[#0C285E] to-[#07142E] p-5 text-white shadow-[0_8px_22px_rgba(8,25,61,.14)]">
+            <p className="text-[11px] text-blue-100">Tổng giá trị quyết toán · {selectedPeriod.status}</p>
+            <p className="mt-3 text-[27px] font-extrabold tabular-nums tracking-tight">{loadingDetails ? 'Đang tải...' : formatCurrency(lines.filter(line => !line.voided_at).reduce((sum, line) => sum + line.net_vnd, 0))}</p>
+            <div className="mt-4 border-t border-white/15 pt-3 text-[11px] text-blue-100">
+              {lines.filter(line => !line.voided_at).length} phân đoạn ca trong kỳ · Chỉ dành cho Admin
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-[16px] border border-dashed border-[#CBD7ED] bg-white p-5 text-center">
+            <Banknote className="mx-auto h-7 w-7 text-[#2563EB]" />
+            <p className="mt-2 text-[13px] font-semibold text-[#07183B]">Chọn kỳ lương để xem số liệu</p>
+            <p className="mt-1 text-[11px] text-slate-500">Không hiển thị số tiền khi chưa có kỳ quyết toán.</p>
+          </div>
+        )}
+        {selectedPeriod && !loadingDetails && (
+          <div className="space-y-3">
+            <h2 className="text-[14px] font-bold text-[#07183B]">Chi tiết theo ca</h2>
+            {lines.filter(line => !line.voided_at).length === 0 ? (
+              <p className="rounded-xl border border-[#E7ECF8] bg-white p-4 text-[12px] text-slate-500">Kỳ này chưa có phân đoạn ca đối soát.</p>
+            ) : (
+              <div className="divide-y divide-[#EDF1F8] overflow-hidden rounded-[15px] border border-[#E7ECF8] bg-white">
+                {lines.filter(line => !line.voided_at).slice(0, 5).map(line => <div key={line.id} className="flex items-center gap-3 px-3 py-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#2563EB]"><Banknote className="h-[17px] w-[17px]" /></span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[12px] font-semibold text-[#12234C]">{line.operational_role} · {line.payable_minutes} phút</p>
+                    <p className="truncate text-[10px] text-slate-500">Mã phân đoạn: {line.segment_id}</p>
+                  </div>
+                  <span className="shrink-0 text-[12px] font-bold tabular-nums text-[#0C2454]">{formatCurrency(line.net_vnd)}</span>
+                </div>)}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as typeof activeTab)} className="space-y-4">
         <TabsList className="grid group-data-[orientation=horizontal]/tabs:h-auto w-full grid-cols-3 bg-slate-100 p-1 rounded-lg">

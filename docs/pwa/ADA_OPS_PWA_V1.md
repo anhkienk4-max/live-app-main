@@ -121,3 +121,11 @@ existing preview drawer, and the registration link goes to the existing open-shi
 Report detail: mobile key/value session summary with real brand/platform/host/date information,
 reordered scrollable tabs, image and history actions. Permission-gated OCR and report mutations
 remain exactly as before. Do not invent status or synthetic data.
+
+## Reference screen 6 and 7
+Payroll mobile summary is admin-only and derives net total and line details from existing
+`PayrollPeriod` and non-voided `PayrollLine` records. It never imitates a member salary
+statement that would violate present RBAC. The periods/rates/reconciliation controls remain
+available below. Profile mobile menu uses the current user's real identity and navigates to
+existing profile, notifications and settings. Language toggles the real i18n provider;
+sign out uses the same clearLocalSession flow as the header; the edit form is retained.
