@@ -8,6 +8,13 @@ import test from 'node:test'
 
 const repositoryRoot = process.cwd()
 const runGit = (root: string, args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim()
+const localProcessEnv = () => {
+  const env = { ...process.env }
+  delete env.GITHUB_ACTIONS
+  delete env.GITHUB_EVENT_NAME
+  delete env.GITHUB_BASE_REF
+  return env
+}
 
 function createRepository() {
   const root = mkdtempSync(path.join(os.tmpdir(), 'memory-validator-'))
@@ -34,7 +41,7 @@ function createRepository() {
   runGit(root, ['commit', '-qm', 'source snapshot'])
   const sourceSnapshot = runGit(root, ['rev-parse', 'HEAD'])
   runGit(root, ['update-ref', 'refs/remotes/origin/main', sourceSnapshot])
-  execFileSync(process.execPath, [path.join(scripts, 'memory-sync.mjs')], { cwd: root, encoding: 'utf8' })
+  execFileSync(process.execPath, [path.join(scripts, 'memory-sync.mjs')], { cwd: root, encoding: 'utf8', env: localProcessEnv() })
   runGit(root, ['add', 'project-memory', 'PROJECT_STATE.md'])
   runGit(root, ['commit', '-qm', 'memory snapshot'])
   return { root, sourceSnapshot }
@@ -56,7 +63,7 @@ function validate(root: string, extraEnv: NodeJS.ProcessEnv = {}) {
 }
 
 function sync(root: string) {
-  execFileSync(process.execPath, [path.join(root, 'scripts', 'memory-sync.mjs')], { cwd: root, encoding: 'utf8' })
+  execFileSync(process.execPath, [path.join(root, 'scripts', 'memory-sync.mjs')], { cwd: root, encoding: 'utf8', env: localProcessEnv() })
 }
 
 function setStoredHead(root: string, head: string) {
