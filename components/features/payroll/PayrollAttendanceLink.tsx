@@ -144,7 +144,7 @@ export function PayrollAttendanceLink({
   return <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4" data-testid="payroll-attendance-link">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div>
-        <h3 className="text-sm font-semibold text-slate-900">Liên kết Chấm công → Nội quy → Payroll</h3>
+        <h3 className="text-sm font-semibold text-slate-900">Tham chiếu ca và chấm công để rà soát case</h3>
         <p className="mt-1 text-xs text-slate-600">Dữ liệu đọc trực tiếp từ lịch ca và Workforce Actual Staffing, không tạo lỗi hoặc trừ lương.</p>
       </div>
       <Link className="text-xs font-medium text-blue-700 underline underline-offset-2" href="/workforce">Mở chấm công & Workforce</Link>

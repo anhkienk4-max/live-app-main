@@ -18,9 +18,9 @@ export function PayrollRoomRulesCatalog() {
     className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h3 id="ada-rulebook-title" className="text-sm font-semibold text-slate-900">Tra cứu đầy đủ nội quy phòng livestream</h3>
+        <h3 id="ada-rulebook-title" className="text-sm font-semibold text-slate-900">Danh mục nội quy phòng livestream</h3>
         <p className="mt-1 text-xs text-slate-600">
-          6 mục I–VI; ban hành 21/10/2026, hiệu lực 22/10/2026. Mở từng mục để đọc quy định, ngưỡng và công việc.
+          Phiên bản ADA-LIVE-2026-10-22, 6 mục I–VI; ban hành 21/10/2026, hiệu lực từ 22/10/2026. Mức đánh giá case dành cho Host và Trợ live trong ca Daily/Campaign từ ngày hiệu lực; Kỹ thuật theo quy định riêng. Mở từng mục để xem phạm vi và điều khoản.
         </p>
       </div>
       <div className="w-full sm:w-64">
