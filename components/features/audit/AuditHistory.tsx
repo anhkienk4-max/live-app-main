@@ -152,7 +152,7 @@ export function AuditHistory() {
 
   React.useEffect(() => {
     if (process.env.NEXT_PUBLIC_FEATURE_RBAC01B_AUDIT_TEAM_ENFORCEMENT !== 'true') return
-    if (resolveSystemPermission(currentUser ?? { role: 'member' }) !== 'leader') return
+    if (!currentUser || resolveSystemPermission(currentUser) !== 'leader') return
     // Revalidate on tab/window return. This is NOT push invalidation while tab stays open.
     const onReturn = () => { void load() }
     const onVisibility = () => {
