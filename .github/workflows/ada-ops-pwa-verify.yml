@@ -1,0 +1,36 @@
+name: ADA OPS PWA Verify
+
+on:
+  push:
+    branches:
+      - feat/ada-ops-pwa-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pwa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364dda2a7 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify PWA contract
+        run: node --test tests/pwa-route-matcher.test.mjs
+      - name: Typecheck
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: Lint PWA files
+        run: pnpm exec eslint app/manifest.ts app/layout.tsx app/icon.tsx app/icon1/route.ts app/icon2/route.ts app/icon3/route.ts app/apple-icon.tsx lib/pwa
+      - name: Production build
+        run: pnpm build

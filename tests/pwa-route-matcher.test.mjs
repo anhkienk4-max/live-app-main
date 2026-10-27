@@ -1,42 +1,55 @@
-import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { test } from 'node:test';
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { test } from "node:test";
 
-const source = readFileSync(new URL('../proxy.ts', import.meta.url), 'utf8');
-const match = source.match(/matcher:\s*\[\s*'([^']+)'/);
+const root = new URL("../", import.meta.url);
+const read = (path) => readFileSync(new URL(path, root), "utf8");
 
-test('PWA assets bypass Supabase auth proxy', () => {
-  assert.ok(match, 'proxy.ts must declare a matcher');
-  // Decode backslash escapes from the single-quoted TypeScript matcher literal.
-  const matcherPattern = match[1].replaceAll('\\\\', '\\');
-  const matcher = new RegExp('^' + matcherPattern + '$');
-  for (const route of [
-    '/manifest.webmanifest', '/icon1', '/icon2', '/icon3',
-    '/apple-icon', '/favicon.ico', '/api/health', '/_next/static/chunk.js',
-    '/brand/icon.png',
+function matcher() {
+  const source = read("proxy.ts");
+  const match = source.match(/matcher:\s*\[\s*'([^']+)'/);
+  assert.ok(match, "proxy.ts must declare a matcher");
+  const decoded = match[1].replaceAll("\\\\", "\\");
+  return new RegExp("^" + decoded + "$");
+}
+
+test("PWA images and manifest are publicly readable", () => {
+  const matches = matcher();
+  for (const path of [
+    "/manifest.webmanifest", "/icon", "/icon1", "/icon2", "/icon3",
+    "/apple-icon", "/favicon.ico", "/api/health", "/_next/static/chunk.js",
   ]) {
-    assert.equal(matcher.test(route), false, route + ' must bypass the proxy');
+    assert.equal(matches.test(path), false, path + " should bypass auth proxy");
   }
 });
 
-test('operational pages remain subject to the auth proxy', () => {
-  assert.ok(match, 'proxy.ts must declare a matcher');
-  const matcherPattern = match[1].replaceAll('\\\\', '\\');
-  const matcher = new RegExp('^' + matcherPattern + '$');
-  for (const route of [
-    '/', '/login', '/calendar', '/shifts', '/reports', '/storage',
-    '/workforce', '/payroll', '/settings',
+test("business pages still pass through authentication", () => {
+  const matches = matcher();
+  for (const path of [
+    "/", "/login", "/calendar", "/shifts", "/reports", "/payroll",
+    "/storage", "/workforce", "/settings",
   ]) {
-    assert.equal(matcher.test(route), true, route + ' must remain protected by the proxy');
+    assert.equal(matches.test(path), true, path + " must not bypass auth");
   }
 });
 
-test('PWA manifest stays same-origin and uses standalone display', () => {
-  const manifest = readFileSync(new URL('../app/manifest.ts', import.meta.url), 'utf8');
-  assert.match(manifest, /start_url:\s*["']\/["']/);
-  assert.match(manifest, /scope:\s*["']\/["']/);
-  assert.match(manifest, /display:\s*["']standalone["']/);
-  for (const route of ['/icon1', '/icon2', '/icon3']) {
-    assert.ok(manifest.includes(route), 'manifest icon ' + route + ' missing');
+test("manifest points at real Next.js route handlers", () => {
+  const m = read("app/manifest.ts");
+  assert.match(m, /start_url:\s*["']\/["']/);
+  assert.match(m, /scope:\s*["']\/["']/);
+  assert.match(m, /display:\s*["']standalone["']/);
+  for (const [name, px, maskable] of [["icon1", 192, false], ["icon2", 512, false], ["icon3", 512, true]]) {
+    assert.ok(m.includes('"/' + name + '"'), "missing manifest reference " + name);
+    const source = read("app/" + name + "/route.ts");
+    assert.ok(source.includes("export function GET()"), "missing GET route for " + name);
+    assert.ok(source.includes("createAdaOpsIconResponse(" + px + (maskable ? ", true" : "") + ")"), "wrong image dimensions " + name);
   }
+  assert.ok(read("app/icon.tsx").includes("export default function Icon()"));
+  assert.ok(read("app/apple-icon.tsx").includes("export default function Icon()"));
+});
+
+test("PWA uses the current site, not another backend or offline cache", () => {
+  const m = read("app/manifest.ts");
+  assert.ok(!m.includes("https://"), "manifest must use same-origin URLs");
+  assert.ok(!read("app/layout.tsx").includes("serviceWorker"));
 });

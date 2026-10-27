@@ -43,3 +43,11 @@ The auth proxy matcher MUST bypass `/manifest.webmanifest`, `/icon1`, `/icon2`, 
 Run the independent route contract test: `node --test tests/pwa-route-matcher.test.mjs`.
 
 Preview infrastructure note (October 27, 2026): the Vercel project `live-app-full-upgrade` shows ERROR deployments across unrelated branches; avoid attributing the PWA preview failure to the PWA implementation without reading actual build logs. This does not authorize modifying Vercel production settings.
+
+## PWA icon routes (compatibility fix)
+The generated icon metadata convention supports `app/icon.tsx` and `app/apple-icon.tsx`.
+The numbered dynamic files `app/icon1.tsx` etc. were replaced by explicit
+`app/icon1/route.ts`, `app/icon2/route.ts`, and `app/icon3/route.ts`
+serving valid PNG responses, while keeping manifest URLs stable.
+PWA checks run independently of Vercel deployment via
+`.github/workflows/ada-ops-pwa-verify.yml` on this branch.
