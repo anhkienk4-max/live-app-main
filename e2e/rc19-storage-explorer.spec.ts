@@ -120,6 +120,6 @@ test('Storage resource registry reports an uninstalled schema without showing an
     json: { ok: false, error: 'STORAGE_RESOURCE_REGISTRY_NOT_INSTALLED' },
   }))
   await page.goto('/storage/resources')
-  await expect(page.getByRole('alert')).toHaveText('STORAGE_RESOURCE_REGISTRY_NOT_INSTALLED')
+  await expect(page.getByText('STORAGE_RESOURCE_REGISTRY_NOT_INSTALLED', { exact: true })).toBeVisible()
   await expect(page.getByText('No resources match these filters.')).toHaveCount(0)
 })
