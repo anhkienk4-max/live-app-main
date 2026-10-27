@@ -55,7 +55,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f docs/rbac01/RC19_RBAC01_REVIEW_ONLY.sql
           psql -X -v ON_ERROR_STOP=1 -f docs/rbac01/RC19_RBAC01B_AUDIT_TEAM_REVIEW_ONLY.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/rbac01b/pg17_assertions.sql
-      - name: PostgreSQL policy bypass negative: refuse a second permissive SELECT policy
+      - name: "PostgreSQL policy bypass negative: refuse a second permissive SELECT policy"
         env:
           PGHOST: 127.0.0.1
           PGPORT: '5432'
