@@ -27,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Verify PWA contract
-        run: node --test tests/pwa-route-matcher.test.mjs
+        run: node --test tests/pwa-route-matcher.test.mjs tests/pwa-brand-shell.test.mjs
       - name: Typecheck
         run: pnpm exec tsc --noEmit --incremental false
       - name: Lint PWA files
