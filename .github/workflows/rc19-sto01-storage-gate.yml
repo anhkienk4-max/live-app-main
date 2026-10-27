@@ -20,6 +20,7 @@ on:
       - 'tests/rc15-*.test.ts'
       - 'tests/operational-storage-placement.test.ts'
       - 'tests/rc19-sto01-storage-seed-preflight.test.ts'
+      - 'tests/rc19-sto01-storage-seed-postgres17.test.ts'
   push:
     branches:
       - fix/rc19-sto01-storage-production
@@ -68,7 +69,7 @@ jobs:
       - name: Install pinned pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@10.29.1 --activate
+          corepack prepare pnpm@10.26.0 --activate
 
       - name: Verify package lock consistency
         run: |
@@ -76,13 +77,20 @@ jobs:
 
       - name: Verify TypeScript types (tsc --noEmit)
         run: |
-          pnpm run typecheck
+          pnpm run type-check
 
       - name: Verify ESLint code quality
         run: |
           pnpm run lint
 
-      - name: Run isolated PostgreSQL 17 preflight and storage test suite
+      - name: Run PostgreSQL 17 server integration test suite
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-sto01-storage-seed-postgres17.test.ts
+
+      - name: Run isolated PGlite storage regression test suite
         run: |
           node --import ./tests/typescript-alias-loader.mjs --test \
             tests/rc15-operational-file-storage.test.ts \

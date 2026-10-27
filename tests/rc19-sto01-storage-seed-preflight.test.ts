@@ -11,6 +11,9 @@ import {
 const SEED_SQL_PATH = path.resolve(process.cwd(), 'scripts/storage/seed-v1-production-routes.sql')
 const seedSql = fs.readFileSync(SEED_SQL_PATH, 'utf8')
 
+const ROLLBACK_SQL_PATH = path.resolve(process.cwd(), 'scripts/storage/proposal-rc19-agency-storage-profile-rollback.sql')
+const rollbackSql = fs.readFileSync(ROLLBACK_SQL_PATH, 'utf8')
+
 async function createProductionEquivalentDb(): Promise<PGlite> {
   const db = new PGlite()
 
@@ -19,6 +22,12 @@ async function createProductionEquivalentDb(): Promise<PGlite> {
     CREATE TABLE public.business_users (
       id text PRIMARY KEY,
       email text NOT NULL,
+      system_permission text NOT NULL DEFAULT 'admin',
+      role text NOT NULL DEFAULT 'admin',
+      status text NOT NULL DEFAULT 'active',
+      account_status text NOT NULL DEFAULT 'active',
+      archived_at timestamptz NULL,
+      deleted_at timestamptz NULL,
       created_at timestamptz DEFAULT statement_timestamp()
     );
 
@@ -101,10 +110,48 @@ async function seedPrerequisiteData(
     omitBrandName?: string
     omitPlatformName?: string
     omitApprovedUser?: boolean
+    approvedUserId?: string
+    approverStatus?: string
+    approverAccountStatus?: string
+    approverArchived?: boolean
+    approverDeleted?: boolean
+    approverPermission?: string
+    approverRole?: string
+    useTempTable?: boolean
+    skipSessionSetting?: boolean
   } = {}
 ) {
+  const approverId = options.approvedUserId ?? 'usr-verified-admin'
   if (!options.omitApprovedUser) {
-    await db.query(`INSERT INTO public.business_users (id, email) VALUES ($1, $2)`, ['usr-admin', 'admin@example.com'])
+    await db.query(`
+      INSERT INTO public.business_users (
+        id, email, system_permission, role, status, account_status, archived_at, deleted_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `, [
+      approverId,
+      'admin@example.com',
+      options.approverPermission ?? 'admin',
+      options.approverRole ?? 'admin',
+      options.approverStatus ?? 'active',
+      options.approverAccountStatus ?? 'active',
+      options.approverArchived ? new Date().toISOString() : null,
+      options.approverDeleted ? new Date().toISOString() : null,
+    ])
+  }
+
+  if (!options.skipSessionSetting) {
+    if (options.useTempTable) {
+      await db.exec(`
+        CREATE TEMP TABLE IF NOT EXISTS temp_release_approval_session (
+          approver_id text NOT NULL,
+          release_id text NOT NULL,
+          approval_notes text
+        );
+        INSERT INTO temp_release_approval_session VALUES ('${approverId}', 'REL-RC19-STO01-001', 'Approved by Operations Admin');
+      `)
+    } else {
+      await db.exec(`SET app.release_approver_id = '${approverId}'; SET app.release_id = 'REL-RC19-STO01-001';`)
+    }
   }
 
   const brands = [
@@ -127,7 +174,7 @@ async function seedPrerequisiteData(
 }
 
 // 1. Missing Brand
-test('PostgreSQL 17 isolated test: Preflight fails closed when required brand is missing', async () => {
+test('PGlite preflight: Fails closed when required brand is missing', async () => {
   const db = await createProductionEquivalentDb()
   await seedPrerequisiteData(db, { omitBrandName: 'ASM AI Livestream' })
 
@@ -147,7 +194,7 @@ test('PostgreSQL 17 isolated test: Preflight fails closed when required brand is
 })
 
 // 2. Missing Platform
-test('PostgreSQL 17 isolated test: Preflight fails closed when required platform is missing', async () => {
+test('PGlite preflight: Fails closed when required platform is missing', async () => {
   const db = await createProductionEquivalentDb()
   await seedPrerequisiteData(db, { omitPlatformName: 'TikTok Shop' })
 
@@ -166,17 +213,37 @@ test('PostgreSQL 17 isolated test: Preflight fails closed when required platform
   assert.equal(routesCount.rows[0].count, 0, 'No routes should be inserted on preflight failure')
 })
 
-// 3. Actor Approval Metadata Verification
-test('PostgreSQL 17 isolated test: Preflight fails closed when approval actor is missing from public.business_users', async () => {
+// 3. Approval Actor - Missing Session Setting & Temp Table (Fail-closed)
+test('PGlite preflight: Fails closed when no approver is provided in session or temp table', async () => {
   const db = await createProductionEquivalentDb()
-  await seedPrerequisiteData(db, { omitApprovedUser: true })
+  await seedPrerequisiteData(db, { skipSessionSetting: true })
 
   await assert.rejects(
     async () => {
       await db.exec(seedSql)
     },
     (err: Error) => {
-      assert.match(err.message, /PREFLIGHT FAIL-CLOSED: Required route approval actor \(approved_by = usr-admin\) does not exist in public\.business_users/)
+      assert.match(err.message, /PREFLIGHT FAIL-CLOSED: No release approval actor provided/)
+      return true
+    }
+  )
+
+  try { await db.exec('ROLLBACK;') } catch {}
+  const routesCount = await db.query(`SELECT count(*)::int AS count FROM public.operational_storage_routes`)
+  assert.equal(routesCount.rows[0].count, 0, 'No routes should be inserted when approver is missing')
+})
+
+// 4. Approval Actor - Non-existent Approver ID in public.business_users
+test('PGlite preflight: Fails closed when approval actor does not exist in public.business_users', async () => {
+  const db = await createProductionEquivalentDb()
+  await seedPrerequisiteData(db, { omitApprovedUser: true, approvedUserId: 'usr-nonexistent' })
+
+  await assert.rejects(
+    async () => {
+      await db.exec(seedSql)
+    },
+    (err: Error) => {
+      assert.match(err.message, /PREFLIGHT FAIL-CLOSED: Required route approval actor \(approved_by = usr-nonexistent\) does not exist in public\.business_users/)
       return true
     }
   )
@@ -186,8 +253,64 @@ test('PostgreSQL 17 isolated test: Preflight fails closed when approval actor is
   assert.equal(routesCount.rows[0].count, 0, 'No routes should be inserted when approval actor is missing')
 })
 
-// 4. Brand storage_profile Policy Conflict
-test('PostgreSQL 17 isolated test: Preflight fails closed when brand has conflicting reviewed storage_profile', async () => {
+// 5. Approval Actor - Inactive Approver
+test('PGlite preflight: Fails closed when approval actor status is inactive', async () => {
+  const db = await createProductionEquivalentDb()
+  await seedPrerequisiteData(db, { approverStatus: 'inactive' })
+
+  await assert.rejects(
+    async () => {
+      await db.exec(seedSql)
+    },
+    (err: Error) => {
+      assert.match(err.message, /PREFLIGHT FAIL-CLOSED: Route approval actor .* is not active or has been archived\/deleted/)
+      return true
+    }
+  )
+
+  try { await db.exec('ROLLBACK;') } catch {}
+  const routesCount = await db.query(`SELECT count(*)::int AS count FROM public.operational_storage_routes`)
+  assert.equal(routesCount.rows[0].count, 0)
+})
+
+// 6. Approval Actor - Soft-deleted Approver
+test('PGlite preflight: Fails closed when approval actor is soft-deleted', async () => {
+  const db = await createProductionEquivalentDb()
+  await seedPrerequisiteData(db, { approverDeleted: true })
+
+  await assert.rejects(
+    async () => {
+      await db.exec(seedSql)
+    },
+    (err: Error) => {
+      assert.match(err.message, /PREFLIGHT FAIL-CLOSED: Route approval actor .* is not active or has been archived\/deleted/)
+      return true
+    }
+  )
+
+  try { await db.exec('ROLLBACK;') } catch {}
+})
+
+// 7. Approval Actor - Non-Admin Authority
+test('PGlite preflight: Fails closed when approval actor lacks Admin authority', async () => {
+  const db = await createProductionEquivalentDb()
+  await seedPrerequisiteData(db, { approverPermission: 'member', approverRole: 'staff' })
+
+  await assert.rejects(
+    async () => {
+      await db.exec(seedSql)
+    },
+    (err: Error) => {
+      assert.match(err.message, /PREFLIGHT FAIL-CLOSED: Route approval actor .* lacks Admin authority/)
+      return true
+    }
+  )
+
+  try { await db.exec('ROLLBACK;') } catch {}
+})
+
+// 8. Brand storage_profile Policy Conflict
+test('PGlite preflight: Fails closed when brand has conflicting reviewed storage_profile', async () => {
   const db = await createProductionEquivalentDb()
   await seedPrerequisiteData(db)
 
@@ -195,7 +318,7 @@ test('PostgreSQL 17 isolated test: Preflight fails closed when brand has conflic
   await db.query(`
     UPDATE public.brands 
     SET storage_profile = 'CANONICAL_V1',
-        storage_profile_reviewed_by = 'usr-admin',
+        storage_profile_reviewed_by = 'usr-verified-admin',
         storage_profile_reviewed_at = statement_timestamp()
     WHERE name = 'Mars Snacking'
   `)
@@ -215,8 +338,8 @@ test('PostgreSQL 17 isolated test: Preflight fails closed when brand has conflic
   assert.equal(routesCount.rows[0].count, 0, 'No routes should be inserted when brand profile conflicts')
 })
 
-// 5. Conflicting Route Contract Preflight (base_folder_id conflict)
-test('PostgreSQL 17 isolated test: Preflight fails closed when existing active route has base_folder_id conflict', async () => {
+// 9. Conflicting Route Contract Preflight (base_folder_id conflict)
+test('PGlite preflight: Fails closed when existing active route has base_folder_id conflict', async () => {
   const db = await createProductionEquivalentDb()
   await seedPrerequisiteData(db)
 
@@ -235,7 +358,7 @@ test('PostgreSQL 17 isolated test: Preflight fails closed when existing active r
       'conflicting_fake_folder_id_123',
       '{"dashboard":"DASHBOARD","live_visual_internal":"VISIBILITY","data_report":["DATA","REPORT"],"data_source":["DATA","SOURCE"]}'::jsonb,
       'THANG_M_DASH_YEAR',
-      true, 'usr-admin', statement_timestamp()
+      true, 'usr-verified-admin', statement_timestamp()
     )
   `)
 
@@ -252,117 +375,11 @@ test('PostgreSQL 17 isolated test: Preflight fails closed when existing active r
   try { await db.exec('ROLLBACK;') } catch {}
 })
 
-// 6. Conflicting Route Contract Preflight (storage_profile conflict)
-test('PostgreSQL 17 isolated test: Preflight fails closed when existing active route has storage_profile conflict', async () => {
+// 10. Atomic Rollback Verification
+test('PGlite preflight: Atomic rollback guarantees 0 state mutation when an error occurs mid-script', async () => {
   const db = await createProductionEquivalentDb()
   await seedPrerequisiteData(db)
 
-  // Insert a conflicting active route for ASM AI Livestream with differing profile
-  await db.query(`
-    INSERT INTO public.operational_storage_routes (
-      provider, execution_source, brand_id, platform_id, subbrand_key,
-      storage_profile, root_folder_id, base_folder_id, folder_labels,
-      period_naming_style, active, approved_by, approved_at
-    ) VALUES (
-      'google_drive', 'internal',
-      (SELECT id FROM public.brands WHERE name = 'ASM AI Livestream'),
-      NULL, NULL,
-      'LEGACY_CATEGORY_PERIOD',
-      '1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm',
-      '1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm',
-      '{}'::jsonb,
-      'THANG_M_DOT_YEAR',
-      true, 'usr-admin', statement_timestamp()
-    )
-  `)
-
-  await assert.rejects(
-    async () => {
-      await db.exec(seedSql)
-    },
-    (err: Error) => {
-      assert.match(err.message, /PREFLIGHT FAIL-CLOSED: Conflicting active route configuration detected.*profile mismatch/)
-      return true
-    }
-  )
-
-  try { await db.exec('ROLLBACK;') } catch {}
-})
-
-// 7. Conflicting Route Contract Preflight (folder_labels conflict)
-test('PostgreSQL 17 isolated test: Preflight fails closed when existing active route has folder_labels conflict', async () => {
-  const db = await createProductionEquivalentDb()
-  await seedPrerequisiteData(db)
-
-  await db.query(`
-    INSERT INTO public.operational_storage_routes (
-      provider, execution_source, brand_id, platform_id, subbrand_key,
-      storage_profile, root_folder_id, base_folder_id, folder_labels,
-      period_naming_style, active, approved_by, approved_at
-    ) VALUES (
-      'google_drive', 'internal',
-      (SELECT id FROM public.brands WHERE name = 'Mars Snacking'),
-      NULL, NULL,
-      'LEGACY_CATEGORY_PERIOD',
-      '1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm',
-      '1SuQhXZsNr7eArHVwf9NMTqR1TEHYqOC5',
-      '{"dashboard":"WRONG_LABEL"}'::jsonb,
-      'THANG_M_DASH_YEAR',
-      true, 'usr-admin', statement_timestamp()
-    )
-  `)
-
-  await assert.rejects(
-    async () => {
-      await db.exec(seedSql)
-    },
-    (err: Error) => {
-      assert.match(err.message, /PREFLIGHT FAIL-CLOSED: Conflicting active route configuration detected.*folder_labels mismatch/)
-      return true
-    }
-  )
-
-  try { await db.exec('ROLLBACK;') } catch {}
-})
-
-// 8. Unsupported profile (CHECK constraint rejection)
-test('PostgreSQL 17 isolated test: Fails closed on TEMP_AGENCY_BRAND_PERIOD_CATEGORY due to CHECK constraint', async () => {
-  const db = await createProductionEquivalentDb()
-  await seedPrerequisiteData(db)
-
-  await assert.rejects(
-    async () => {
-      await db.query(`
-        INSERT INTO public.operational_storage_routes (
-          provider, execution_source, brand_id, platform_id, subbrand_key,
-          storage_profile, root_folder_id, base_folder_id, folder_labels,
-          period_naming_style, active, approved_by, approved_at
-        ) VALUES (
-          'google_drive', 'agency',
-          (SELECT id FROM public.brands WHERE name = 'ASTROMAN'),
-          NULL, NULL,
-          'TEMP_AGENCY_BRAND_PERIOD_CATEGORY',
-          '1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm',
-          '1MXerAY2WdViTsVCO8G92vOepS-6BxYBC',
-          '{}'::jsonb,
-          'THANG_M_DOT_YEAR',
-          true, 'usr-admin', statement_timestamp()
-        )
-      `)
-    },
-    (err: Error) => {
-      assert.match(err.message, /violates check constraint "operational_storage_routes_storage_profile_check"/)
-      return true
-    }
-  )
-})
-
-// 9. Atomic Rollback Verification
-test('PostgreSQL 17 isolated test: Atomic rollback guarantees 0 state mutation when an error occurs mid-script', async () => {
-  const db = await createProductionEquivalentDb()
-  await seedPrerequisiteData(db)
-
-  // Synthesize a script with an error injected after 1st route
   const failingScript = seedSql.replace(
     /-- Route 2:/,
     `RAISE EXCEPTION 'SYNTHETIC FAILURE INJECTED FOR ROLLBACK TEST';\n-- Route 2:`
@@ -383,10 +400,10 @@ test('PostgreSQL 17 isolated test: Atomic rollback guarantees 0 state mutation w
   assert.equal(countRes.rows[0].count, 0, 'Atomic rollback MUST leave 0 rows in operational_storage_routes')
 })
 
-// 10. Preflight and Seed Succeed for 14 Schema-Valid Routes with Approval Metadata
-test('PostgreSQL 17 isolated test: Preflight and seed succeed for 14 schema-valid routes with approval metadata', async () => {
+// 11. Preflight and Seed Succeed for 14 Schema-Valid Routes via temp_release_approval_session
+test('PGlite preflight: Preflight and seed succeed for 14 routes using temp_release_approval_session', async () => {
   const db = await createProductionEquivalentDb()
-  await seedPrerequisiteData(db)
+  await seedPrerequisiteData(db, { useTempTable: true })
 
   await db.exec(seedSql)
 
@@ -403,7 +420,7 @@ test('PostgreSQL 17 isolated test: Preflight and seed succeed for 14 schema-vali
   assert.equal(routesResult.rows.length, 14, 'Exactly 14 schema-valid routes should be activated')
 
   for (const row of routesResult.rows) {
-    assert.equal(row.approved_by, 'usr-admin', 'approved_by must be set to verified operator')
+    assert.equal(row.approved_by, 'usr-verified-admin', 'approved_by must be set to verified operator')
     assert.ok(row.approved_at, 'approved_at must be populated')
   }
 
@@ -414,8 +431,8 @@ test('PostgreSQL 17 isolated test: Preflight and seed succeed for 14 schema-vali
   assert.equal(brandsWithProfile.rows[0].count, 0, 'public.brands.storage_profile must NOT be modified by route seed')
 })
 
-// 11. Idempotency on Re-run
-test('PostgreSQL 17 isolated test: Seed script is idempotent and preserves identical active routes without duplication', async () => {
+// 12. Idempotency on Re-run
+test('PGlite preflight: Seed script is idempotent and preserves identical active routes without duplication', async () => {
   const db = await createProductionEquivalentDb()
   await seedPrerequisiteData(db)
 
@@ -430,7 +447,82 @@ test('PostgreSQL 17 isolated test: Seed script is idempotent and preserves ident
   assert.equal(secondCount.rows[0].count, 14, 'Re-running seed must NOT create duplicates (idempotent)')
 })
 
-// 12. Placement Contract Verification
+// 13. Rollback Preflight Check: Fails closed on INACTIVE routes with TEMP_AGENCY_BRAND_PERIOD_CATEGORY
+test('PGlite rollback: Fails closed when an inactive route still carries TEMP_AGENCY_BRAND_PERIOD_CATEGORY', async () => {
+  const db = await createProductionEquivalentDb()
+  await seedPrerequisiteData(db)
+
+  // Update constraint to allow profile temporarily
+  await db.exec(`
+    ALTER TABLE public.operational_storage_routes DROP CONSTRAINT IF EXISTS operational_storage_routes_storage_profile_check;
+    ALTER TABLE public.operational_storage_routes ADD CONSTRAINT operational_storage_routes_storage_profile_check
+      CHECK (storage_profile IN ('CANONICAL_V1', 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY'));
+  `)
+
+  // Insert an INACTIVE route with the new profile
+  await db.query(`
+    INSERT INTO public.operational_storage_routes (
+      provider, execution_source, brand_id, platform_id, subbrand_key,
+      storage_profile, root_folder_id, base_folder_id, folder_labels,
+      period_naming_style, active, approved_by, approved_at
+    ) VALUES (
+      'google_drive', 'agency',
+      (SELECT id FROM public.brands WHERE name = 'Mars Snacking'),
+      NULL, NULL,
+      'TEMP_AGENCY_BRAND_PERIOD_CATEGORY',
+      '1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm',
+      '1MXerAY2WdViTsVCO8G92vOepS-6BxYBC',
+      '{}'::jsonb,
+      'THANG_M_DOT_YEAR',
+      false, 'usr-verified-admin', statement_timestamp()
+    )
+  `)
+
+  await assert.rejects(
+    async () => {
+      await db.exec(rollbackSql)
+    },
+    (err: Error) => {
+      assert.match(err.message, /ROLLBACK FAIL-CLOSED: 1 route record\(s\) \(including inactive rows\) still contain storage_profile = 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY'/)
+      return true
+    }
+  )
+
+  try { await db.exec('ROLLBACK;') } catch {}
+})
+
+// 14. Rollback Preflight Check: Fails closed on SOFT-DELETED brands with TEMP_AGENCY_BRAND_PERIOD_CATEGORY
+test('PGlite rollback: Fails closed when a soft-deleted brand still carries TEMP_AGENCY_BRAND_PERIOD_CATEGORY', async () => {
+  const db = await createProductionEquivalentDb()
+  await seedPrerequisiteData(db)
+
+  // Update constraint to allow profile temporarily
+  await db.exec(`
+    ALTER TABLE public.brands DROP CONSTRAINT IF EXISTS brands_storage_profile_check;
+    ALTER TABLE public.brands ADD CONSTRAINT brands_storage_profile_check
+      CHECK (storage_profile IN ('CANONICAL_V1', 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY'));
+  `)
+
+  // Insert a soft-deleted brand with the new profile
+  await db.query(`
+    INSERT INTO public.brands (id, name, storage_profile, deleted_at)
+    VALUES ('brand_deleted_agency', 'Deleted Brand', 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY', statement_timestamp())
+  `)
+
+  await assert.rejects(
+    async () => {
+      await db.exec(rollbackSql)
+    },
+    (err: Error) => {
+      assert.match(err.message, /ROLLBACK FAIL-CLOSED: 1 brand record\(s\) \(including soft-deleted rows\) still contain storage_profile = 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY'/)
+      return true
+    }
+  )
+
+  try { await db.exec('ROLLBACK;') } catch {}
+})
+
+// 15. Placement Contract Verification
 test('Folder structure verification: CANONICAL_V1 vs EXISTING_BRAND_YEAR_PERIOD_PLATFORM vs LEGACY profiles', () => {
   // 1. CANONICAL_V1 generates [Brand, Platform, Period, Category]
   const canonicalRoute: OperationalStorageRoute = {

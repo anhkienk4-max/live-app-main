@@ -96,6 +96,9 @@ Bổ sung profile `'TEMP_AGENCY_BRAND_PERIOD_CATEGORY'` vào CHECK constraint c�
 
 BEGIN;
 
+-- Lock safety: Fast fail if table lock cannot be acquired within 2s
+SET LOCAL lock_timeout = '2s';
+
 -- 1. Update public.brands constraint
 ALTER TABLE public.brands
   DROP CONSTRAINT IF EXISTS brands_storage_profile_check;
@@ -143,31 +146,36 @@ COMMIT;
 -- PROPOSED ROLLBACK: 20261028000000_rc19_agency_storage_profile_rollback.sql
 -- Description: Revert storage_profile CHECK constraints back to original 7 profiles
 -- Target: Supabase Production (egdjnpmoasarrttvhgds)
--- Safety: Fails closed if any active route or brand currently uses the new profile
+-- Safety: Fails closed if ANY record (active, inactive, or soft-deleted) uses the new profile
 -- ==============================================================================
 
 BEGIN;
 
--- 1. Safety check: ensure no active routes use TEMP_AGENCY_BRAND_PERIOD_CATEGORY
+-- Lock safety: Fast fail if table lock cannot be acquired within 2s
+SET LOCAL lock_timeout = '2s';
+
+-- 1. Safety check: ensure NO records whatsoever (active, inactive, or soft-deleted) use TEMP_AGENCY_BRAND_PERIOD_CATEGORY
+-- Reason: PostgreSQL ALTER TABLE ... ADD CONSTRAINT performs a sequential table scan validating every row.
+-- Any existing row with this profile will violate the reverted check constraint and cause the statement to abort.
 DO $rollback_preflight$
 DECLARE
-  v_active_agency_routes integer;
-  v_active_agency_brands integer;
+  v_agency_routes_count integer;
+  v_agency_brands_count integer;
 BEGIN
-  SELECT count(*) INTO v_active_agency_routes
+  SELECT count(*) INTO v_agency_routes_count
   FROM public.operational_storage_routes
-  WHERE storage_profile = 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY' AND active = true;
+  WHERE storage_profile = 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY';
 
-  IF v_active_agency_routes > 0 THEN
-    RAISE EXCEPTION 'ROLLBACK FAIL-CLOSED: % active route(s) still use TEMP_AGENCY_BRAND_PERIOD_CATEGORY. Deactivate them first.', v_active_agency_routes;
+  IF v_agency_routes_count > 0 THEN
+    RAISE EXCEPTION 'ROLLBACK FAIL-CLOSED: % route record(s) (including inactive rows) still contain storage_profile = ''TEMP_AGENCY_BRAND_PERIOD_CATEGORY''. Any existing row with this profile will violate the reverted check constraint. Delete or reassign these routes before rolling back.', v_agency_routes_count;
   END IF;
 
-  SELECT count(*) INTO v_active_agency_brands
+  SELECT count(*) INTO v_agency_brands_count
   FROM public.brands
-  WHERE storage_profile = 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY' AND deleted_at IS NULL;
+  WHERE storage_profile = 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY';
 
-  IF v_active_agency_brands > 0 THEN
-    RAISE EXCEPTION 'ROLLBACK FAIL-CLOSED: % brand(s) still use TEMP_AGENCY_BRAND_PERIOD_CATEGORY. Clear brand profile first.', v_active_agency_brands;
+  IF v_agency_brands_count > 0 THEN
+    RAISE EXCEPTION 'ROLLBACK FAIL-CLOSED: % brand record(s) (including soft-deleted rows) still contain storage_profile = ''TEMP_AGENCY_BRAND_PERIOD_CATEGORY''. Any existing brand with this profile will violate the reverted check constraint. Update or clear brand storage_profile before rolling back.', v_agency_brands_count;
   END IF;
 END
 $rollback_preflight$;
@@ -206,6 +214,24 @@ ALTER TABLE public.brands
 
 COMMIT;
 ```
+
+### 4.2. Đánh giá Tác động Khóa (Lock Impact) & Khả năng Rollback
+
+1. **Lock Impact Analysis:**
+   - Cả hai lệnh `ALTER TABLE public.brands ADD CONSTRAINT` và `ALTER TABLE public.operational_storage_routes ADD CONSTRAINT` yêu cầu khóa **`ACCESS EXCLUSIVE`** trên hai bảng này trong quá trình xác thực constraint.
+   - Khi có khóa `ACCESS EXCLUSIVE`, mọi câu lệnh `SELECT`, `INSERT`, `UPDATE`, `DELETE` trên bảng đều bị chặn chờ.
+   - **Biện pháp phòng ngừa:**
+     - Thiết lập `SET LOCAL lock_timeout = '2s';` ngay đầu transaction. Nếu không thể lấy khóa trong vòng 2 giây (do có transaction khác đang giữ lock), lệnh sẽ lập tức báo lỗi và rollback, không xếp hàng dài làm treo connection pooler.
+     - Dung lượng bảng `brands` (~12-50 dòng) và `operational_storage_routes` (~0-50 dòng) rất nhỏ, thời gian table scan chỉ mất < 5ms. Do đó, thời gian giữ lock thực tế < 10ms.
+
+2. **Rollback Feasibility (Khả thi phục hồi):**
+   - **Hành vi Table Scan của PostgreSQL:** Khi thêm lại constraint cũ (7 profiles), PostgreSQL bắt buộc phải quét **toàn bộ dữ liệu** của bảng.
+   - Nếu tồn tại bất kỳ bản ghi nào có `storage_profile = 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY'` (dù là bản ghi `active = false` hoặc brand bị `deleted_at IS NOT NULL`), PostgreSQL sẽ báo lỗi `violates check constraint` và rollback toàn bộ.
+   - Preflight của script rollback đã được thiết kế **fail-closed trên toàn bộ bảng** (không lọc theo `active = true` hay `deleted_at IS NULL`), buộc người vận hành phải dọn sạch hoặc chuyển đổi toàn bộ bản ghi trước khi thu hồi constraint.
+
+3. **Migration Versioning:**
+   - Forward migration: `scripts/storage/proposal-rc19-agency-storage-profile.sql` (Canonical Version: `20261028000000_rc19_agency_storage_profile.sql`).
+   - Rollback migration: `scripts/storage/proposal-rc19-agency-storage-profile-rollback.sql` (Canonical Version: `20261028000000_rc19_agency_storage_profile_rollback.sql`).
 
 ---
 

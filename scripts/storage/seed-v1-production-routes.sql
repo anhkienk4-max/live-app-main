@@ -6,13 +6,30 @@
 --   docs/storage/PROPOSAL_RC19_AGENCY_STORAGE_PROFILE_MIGRATION.md
 -- Root Folder: 1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm (Google Drive)
 --
+-- APPROVAL PROTOCOL (P0 FAIL-CLOSED):
+-- This script contains NO hardcoded approver ID.
+-- The release operator MUST supply a verified, active Admin approver ID via:
+--   Option A: Session setting (psql / direct connection):
+--     SET LOCAL app.release_approver_id = '<VERIFIED_ADMIN_BUSINESS_USER_ID>';
+--     SET LOCAL app.release_id = 'RC19-STO01-V1-RELEASE';
+--   Option B: Temporary session table (compatible across SQL clients):
+--     CREATE TEMP TABLE temp_release_approval_session (
+--       approver_id text NOT NULL,
+--       release_id text NOT NULL,
+--       approval_notes text
+--     );
+--     INSERT INTO temp_release_approval_session VALUES ('<VERIFIED_ADMIN_BUSINESS_USER_ID>', 'RC19-STO01-V1-RELEASE', 'Approved by Operations Admin');
+--
 -- SAFETY & INTEGRITY RULES:
--- 1. NO silent skip: Preflight validates ALL contract parameters against existing active routes.
+-- 1. NO hardcoded approver: Approver ID is dynamically supplied in controlled release context.
+-- 2. Actor validation: Approver must exist in public.business_users, be active (not archived/deleted),
+--    and possess Admin authority (system_permission = 'admin' OR role = 'admin').
+-- 3. Fail-Closed: If approval actor is missing or invalid, preflight aborts immediately.
+-- 4. NO silent skip: Preflight validates ALL contract parameters against existing active routes.
 --    If an active route has ANY differing field, preflight FAILS CLOSED before insert.
--- 2. ON CONFLICT DO NOTHING applies ONLY to 100% verified identical routes (strict idempotency).
--- 3. Actor approval verification: approved_by MUST reference an existing public.business_user.
--- 4. Brand storage_profile check: Brands with reviewed storage_profile must match route profile.
--- 5. Atomic transaction: Any failure rolls back completely, leaving 0 partial state.
+-- 5. ON CONFLICT DO NOTHING applies ONLY to 100% verified identical routes (strict idempotency).
+-- 6. Brand storage_profile check: Brands with reviewed storage_profile must match route profile.
+-- 7. Atomic transaction: Any failure rolls back completely, leaving 0 partial state.
 -- ==============================================================================
 
 BEGIN;
@@ -24,17 +41,93 @@ DO $preflight$
 DECLARE
   v_missing_brands text[];
   v_missing_platforms text[];
-  v_approved_by text := 'usr-admin';
+  v_approved_by text;
+  v_release_id text;
   v_approver_exists boolean;
+  v_approver_active boolean;
+  v_approver_is_admin boolean;
   v_conflict_detail text;
 BEGIN
-  -- 1. Verify existence of approved operator in public.business_users
+  -- 0. Retrieve approver ID and release ID from session setting or temp table
+  BEGIN
+    v_approved_by := nullif(current_setting('app.release_approver_id', true), '');
+  EXCEPTION WHEN OTHERS THEN
+    v_approved_by := NULL;
+  END;
+
+  IF v_approved_by IS NULL THEN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.tables 
+      WHERE table_type = 'LOCAL TEMPORARY' AND table_name = 'temp_release_approval_session'
+    ) THEN
+      BEGIN
+        EXECUTE 'SELECT approver_id FROM temp_release_approval_session LIMIT 1' INTO v_approved_by;
+      EXCEPTION WHEN OTHERS THEN
+        v_approved_by := NULL;
+      END;
+    END IF;
+  END IF;
+
+  BEGIN
+    v_release_id := nullif(current_setting('app.release_id', true), '');
+  EXCEPTION WHEN OTHERS THEN
+    v_release_id := NULL;
+  END;
+
+  IF v_release_id IS NULL THEN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.tables 
+      WHERE table_type = 'LOCAL TEMPORARY' AND table_name = 'temp_release_approval_session'
+    ) THEN
+      BEGIN
+        EXECUTE 'SELECT release_id FROM temp_release_approval_session LIMIT 1' INTO v_release_id;
+      EXCEPTION WHEN OTHERS THEN
+        v_release_id := NULL;
+      END;
+    END IF;
+  END IF;
+
+  -- 1. Validate approver ID is present (Fail-closed if missing)
+  IF v_approved_by IS NULL OR trim(v_approved_by) = '' THEN
+    RAISE EXCEPTION 'PREFLIGHT FAIL-CLOSED: No release approval actor provided. You must set app.release_approver_id (e.g., SET LOCAL app.release_approver_id = ''...'') or populate temp_release_approval_session before executing.';
+  END IF;
+
+  -- 2. Verify approver existence in public.business_users
   SELECT EXISTS(SELECT 1 FROM public.business_users WHERE id = v_approved_by)
   INTO v_approver_exists;
 
   IF NOT v_approver_exists THEN
     RAISE EXCEPTION 'PREFLIGHT FAIL-CLOSED: Required route approval actor (approved_by = %) does not exist in public.business_users.', v_approved_by;
   END IF;
+
+  -- 3. Verify approver is active, not archived, not deleted
+  SELECT EXISTS(
+    SELECT 1 FROM public.business_users 
+    WHERE id = v_approved_by 
+      AND coalesce(status, 'active') = 'active'
+      AND coalesce(account_status, 'active') = 'active'
+      AND archived_at IS NULL 
+      AND deleted_at IS NULL
+  )
+  INTO v_approver_active;
+
+  IF NOT v_approver_active THEN
+    RAISE EXCEPTION 'PREFLIGHT FAIL-CLOSED: Route approval actor (approved_by = %) is not active or has been archived/deleted.', v_approved_by;
+  END IF;
+
+  -- 4. Verify approver has Admin authority
+  SELECT EXISTS(
+    SELECT 1 FROM public.business_users 
+    WHERE id = v_approved_by 
+      AND (coalesce(system_permission, '') = 'admin' OR coalesce(role, '') = 'admin')
+  )
+  INTO v_approver_is_admin;
+
+  IF NOT v_approver_is_admin THEN
+    RAISE EXCEPTION 'PREFLIGHT FAIL-CLOSED: Route approval actor (approved_by = %) lacks Admin authority (system_permission or role must be admin).', v_approved_by;
+  END IF;
+
+  RAISE NOTICE 'APPROVAL VERIFIED: Approver ID: %, Release ID: %', v_approved_by, coalesce(v_release_id, 'UNSPECIFIED');
 
   -- 2. Verify existence of all 12 expected brands
   SELECT array_agg(expected.name)
@@ -176,8 +269,31 @@ $preflight$;
 -- ------------------------------------------------------------------------------
 DO $seed$
 DECLARE
-  v_approved_by text := 'usr-admin';
+  v_approved_by text;
 BEGIN
+  -- Retrieve approver ID from session setting or temp table
+  BEGIN
+    v_approved_by := nullif(current_setting('app.release_approver_id', true), '');
+  EXCEPTION WHEN OTHERS THEN
+    v_approved_by := NULL;
+  END;
+
+  IF v_approved_by IS NULL THEN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.tables 
+      WHERE table_type = 'LOCAL TEMPORARY' AND table_name = 'temp_release_approval_session'
+    ) THEN
+      BEGIN
+        EXECUTE 'SELECT approver_id FROM temp_release_approval_session LIMIT 1' INTO v_approved_by;
+      EXCEPTION WHEN OTHERS THEN
+        v_approved_by := NULL;
+      END;
+    END IF;
+  END IF;
+
+  IF v_approved_by IS NULL OR trim(v_approved_by) = '' THEN
+    RAISE EXCEPTION 'SEED FAIL-CLOSED: Route approval actor is missing at seed execution step.';
+  END IF;
 -- Route 1: ASM AI Livestream (All Platforms) [internal] -> CANONICAL_V1
 INSERT INTO public.operational_storage_routes (
   provider, execution_source, brand_id, platform_id, subbrand_key,

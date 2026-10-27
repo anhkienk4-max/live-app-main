@@ -8,6 +8,9 @@
 
 BEGIN;
 
+-- Lock safety: Fast fail if table lock cannot be acquired within 2s
+SET LOCAL lock_timeout = '2s';
+
 -- 1. Update public.brands constraint
 ALTER TABLE public.brands
   DROP CONSTRAINT IF EXISTS brands_storage_profile_check;

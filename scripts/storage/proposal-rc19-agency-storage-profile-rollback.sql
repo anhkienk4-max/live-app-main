@@ -7,26 +7,31 @@
 
 BEGIN;
 
--- 1. Safety check: ensure no active routes use TEMP_AGENCY_BRAND_PERIOD_CATEGORY
+-- Lock safety: Fast fail if table lock cannot be acquired within 2s
+SET LOCAL lock_timeout = '2s';
+
+-- 1. Safety check: ensure NO records whatsoever (active, inactive, or soft-deleted) use TEMP_AGENCY_BRAND_PERIOD_CATEGORY
+-- Reason: PostgreSQL ALTER TABLE ... ADD CONSTRAINT performs a table scan validating every row in the table.
+-- Any row with the newer profile will cause the ADD CONSTRAINT statement to throw an exception.
 DO $rollback_preflight$
 DECLARE
-  v_active_agency_routes integer;
-  v_active_agency_brands integer;
+  v_agency_routes_count integer;
+  v_agency_brands_count integer;
 BEGIN
-  SELECT count(*) INTO v_active_agency_routes
+  SELECT count(*) INTO v_agency_routes_count
   FROM public.operational_storage_routes
-  WHERE storage_profile = 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY' AND active = true;
+  WHERE storage_profile = 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY';
 
-  IF v_active_agency_routes > 0 THEN
-    RAISE EXCEPTION 'ROLLBACK FAIL-CLOSED: % active route(s) still use TEMP_AGENCY_BRAND_PERIOD_CATEGORY. Deactivate them first.', v_active_agency_routes;
+  IF v_agency_routes_count > 0 THEN
+    RAISE EXCEPTION 'ROLLBACK FAIL-CLOSED: % route record(s) (including inactive rows) still contain storage_profile = ''TEMP_AGENCY_BRAND_PERIOD_CATEGORY''. Any existing row with this profile will violate the reverted check constraint. Delete or reassign these routes before rolling back.', v_agency_routes_count;
   END IF;
 
-  SELECT count(*) INTO v_active_agency_brands
+  SELECT count(*) INTO v_agency_brands_count
   FROM public.brands
-  WHERE storage_profile = 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY' AND deleted_at IS NULL;
+  WHERE storage_profile = 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY';
 
-  IF v_active_agency_brands > 0 THEN
-    RAISE EXCEPTION 'ROLLBACK FAIL-CLOSED: % brand(s) still use TEMP_AGENCY_BRAND_PERIOD_CATEGORY. Clear brand profile first.', v_active_agency_brands;
+  IF v_agency_brands_count > 0 THEN
+    RAISE EXCEPTION 'ROLLBACK FAIL-CLOSED: % brand record(s) (including soft-deleted rows) still contain storage_profile = ''TEMP_AGENCY_BRAND_PERIOD_CATEGORY''. Any existing brand with this profile will violate the reverted check constraint. Update or clear brand storage_profile before rolling back.', v_agency_brands_count;
   END IF;
 END
 $rollback_preflight$;
