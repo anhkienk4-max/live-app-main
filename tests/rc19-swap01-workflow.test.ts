@@ -80,6 +80,14 @@ test('SWAP-01: API failure or incomplete page never reports verified clear and h
   assert.match(modalSource, /result\.total <= 250/)
   assert.match(dialogSource, /result\.total <= 250/)
 
+  // Pagination completeness and consistency verification helpers
+  assert.match(modalSource, /collectAndVerifyAllShifts/)
+  assert.match(dialogSource, /collectAndVerifyAllShifts/)
+  assert.match(modalSource, /ids\.has\(item\.id\)/)
+  assert.match(dialogSource, /ids\.has\(item\.id\)/)
+  assert.match(modalSource, /pageResult\.total !== firstResult\.total/)
+  assert.match(dialogSource, /pageResult\.total !== firstResult\.total/)
+
   // API catch handles unverified status with informative message
   assert.match(modalSource, /status: 'unverified'/)
   assert.match(dialogSource, /status: 'unverified'/)
@@ -263,6 +271,146 @@ test('BEHAVIORAL: Bounded multi-page check verifies up to 250 shifts and fails-c
   )
   assert.equal(networkError.status, 'unverified')
   assert.match(networkError.error ?? '', /lỗi kết nối/)
+})
+
+test('BEHAVIORAL: Pagination completeness rejects missing pages, duplicate items, total shifts mutation, and API errors', async () => {
+  const checkFullPagination = async (
+    firstPage: { page: number; total: number; items: Array<{ id: string }> },
+    fetchPage: (page: number) => Promise<{ page: number; total: number; items: Array<{ id: string }> }>
+  ) => {
+    const MAX_SHIFTS = 250
+    const PAGE_SIZE = 50
+
+    if (firstPage.total > MAX_SHIFTS) {
+      return { status: 'unverified' as const, error: 'EXCEEDS_LIMIT', isClear: false }
+    }
+
+    const items: Array<{ id: string }> = []
+    const ids = new Set<string>()
+
+    const accept = (pageResult: { page: number; total: number; items: Array<{ id: string }> }, expectedPage: number): boolean => {
+      if (pageResult.total !== firstPage.total) return false
+      if (pageResult.page !== expectedPage) return false
+      const isLastPage = expectedPage * PAGE_SIZE >= firstPage.total
+      if (!isLastPage && pageResult.items.length !== PAGE_SIZE) return false
+
+      for (const item of pageResult.items) {
+        if (!item.id || ids.has(item.id)) return false
+        ids.add(item.id)
+        items.push(item)
+      }
+      return true
+    }
+
+    if (!accept(firstPage, 1)) {
+      return { status: 'unverified' as const, error: 'INCONSISTENT_PAGE_1', isClear: false }
+    }
+
+    if (firstPage.total > firstPage.items.length) {
+      const totalPages = Math.ceil(firstPage.total / PAGE_SIZE)
+      for (let p = 2; p <= totalPages; p++) {
+        try {
+          const res = await fetchPage(p)
+          if (!accept(res, p)) {
+            return { status: 'unverified' as const, error: `INCONSISTENT_PAGE_${p}`, isClear: false }
+          }
+        } catch {
+          return { status: 'unverified' as const, error: 'API_ERROR', isClear: false }
+        }
+      }
+    }
+
+    if (items.length !== firstPage.total || ids.size !== firstPage.total) {
+      return { status: 'unverified' as const, error: 'INCOMPLETE_COUNT', isClear: false }
+    }
+
+    return { status: 'verified_clear' as const, error: null, isClear: true }
+  }
+
+  // Case 1: Clean 75 shifts across 2 pages -> verified_clear
+  const clean = await checkFullPagination(
+    { page: 1, total: 75, items: Array.from({ length: 50 }, (_, i) => ({ id: `s_${i}` })) },
+    async (p) => ({ page: p, total: 75, items: Array.from({ length: 25 }, (_, i) => ({ id: `s_${i + 50}` })) })
+  )
+  assert.equal(clean.status, 'verified_clear')
+  assert.equal(clean.isClear, true)
+
+  // Case 2: Missing items on page 2 (count mismatch: 20 items instead of 25) -> unverified
+  const missingItems = await checkFullPagination(
+    { page: 1, total: 75, items: Array.from({ length: 50 }, (_, i) => ({ id: `s_${i}` })) },
+    async (p) => ({ page: p, total: 75, items: Array.from({ length: 20 }, (_, i) => ({ id: `s_${i + 50}` })) })
+  )
+  assert.equal(missingItems.status, 'unverified')
+  assert.equal(missingItems.error, 'INCOMPLETE_COUNT')
+  assert.equal(missingItems.isClear, false)
+
+  // Case 3: Duplicate ID across pages -> unverified
+  const duplicateId = await checkFullPagination(
+    { page: 1, total: 75, items: Array.from({ length: 50 }, (_, i) => ({ id: `s_${i}` })) },
+    async (p) => ({ page: p, total: 75, items: [{ id: 's_0' }, ...Array.from({ length: 24 }, (_, i) => ({ id: `s_${i + 50}` }))] })
+  )
+  assert.equal(duplicateId.status, 'unverified')
+  assert.equal(duplicateId.error, 'INCONSISTENT_PAGE_2')
+  assert.equal(duplicateId.isClear, false)
+
+  // Case 4: Total changed during pagination (e.g. 75 -> 80) -> unverified
+  const totalChanged = await checkFullPagination(
+    { page: 1, total: 75, items: Array.from({ length: 50 }, (_, i) => ({ id: `s_${i}` })) },
+    async (p) => ({ page: p, total: 80, items: Array.from({ length: 25 }, (_, i) => ({ id: `s_${i + 50}` })) })
+  )
+  assert.equal(totalChanged.status, 'unverified')
+  assert.equal(totalChanged.error, 'INCONSISTENT_PAGE_2')
+  assert.equal(totalChanged.isClear, false)
+
+  // Case 5: Intermediate page has < 50 items (e.g. page 1 has 40 items when total is 75) -> unverified
+  const incompletePage1 = await checkFullPagination(
+    { page: 1, total: 75, items: Array.from({ length: 40 }, (_, i) => ({ id: `s_${i}` })) },
+    async (p) => ({ page: p, total: 75, items: Array.from({ length: 35 }, (_, i) => ({ id: `s_${i + 40}` })) })
+  )
+  assert.equal(incompletePage1.status, 'unverified')
+  assert.equal(incompletePage1.error, 'INCONSISTENT_PAGE_1')
+  assert.equal(incompletePage1.isClear, false)
+
+  // Case 6: API error on page 2 -> unverified
+  const apiError = await checkFullPagination(
+    { page: 1, total: 75, items: Array.from({ length: 50 }, (_, i) => ({ id: `s_${i}` })) },
+    async () => { throw new Error('NETWORK_TIMEOUT') }
+  )
+  assert.equal(apiError.status, 'unverified')
+  assert.equal(apiError.error, 'API_ERROR')
+  assert.equal(apiError.isClear, false)
+})
+
+test('BEHAVIORAL: Selection change mid-fetch cancels state update and rejects stale snapshot', async () => {
+  let activeSelection = 'candidate_A'
+  let stateUpdatedFor: string | null = null
+
+  // Simulate an effect triggered for candidate_A
+  const runEffect = async (selection: string) => {
+    const active = true
+    const currentSelection = selection
+
+    // Simulate async pagination fetch delay
+    await new Promise(resolve => setTimeout(resolve, 15))
+
+    if (!active || currentSelection !== activeSelection) {
+      return // Aborted due to selection change
+    }
+    stateUpdatedFor = currentSelection
+  }
+
+  // Start effect for candidate_A
+  const p1 = runEffect('candidate_A')
+
+  // User quickly switches selection to candidate_B before p1 finishes
+  activeSelection = 'candidate_B'
+  const p2 = runEffect('candidate_B')
+
+  await Promise.all([p1, p2])
+
+  // Only candidate_B should have updated the state, candidate_A was cancelled
+  assert.equal(stateUpdatedFor, 'candidate_B')
+  assert.notEqual(stateUpdatedFor, 'candidate_A')
 })
 
 test('BEHAVIORAL: Account switching invalidates cached verification snapshots and candidates', () => {

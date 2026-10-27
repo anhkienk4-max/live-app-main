@@ -25,6 +25,62 @@ export type ConflictSnapshot = {
   error: string | null
 }
 
+async function collectAndVerifyAllShifts(
+  firstResult: { page: number; total: number; items: Shift[] },
+  filters: { assignedUserIds: string[]; from: string; to: string },
+  isActive: () => boolean,
+): Promise<{ items: Shift[]; complete: boolean }> {
+  const MAX_SHIFTS = 250
+  const PAGE_SIZE = 50
+
+  if (firstResult.total > MAX_SHIFTS) {
+    return { items: firstResult.items, complete: false }
+  }
+
+  const items: Shift[] = []
+  const ids = new Set<string>()
+
+  const accept = (pageResult: { page: number; total: number; items: Shift[] }, expectedPage: number): boolean => {
+    if (pageResult.total !== firstResult.total) return false
+    if (pageResult.page !== expectedPage) return false
+    const isLastPage = expectedPage * PAGE_SIZE >= firstResult.total
+    if (!isLastPage && pageResult.items.length !== PAGE_SIZE) return false
+
+    for (const item of pageResult.items) {
+      if (!item.id || ids.has(item.id)) return false
+      ids.add(item.id)
+      items.push(item)
+    }
+    return true
+  }
+
+  if (!accept(firstResult, 1)) {
+    return { items: [], complete: false }
+  }
+
+  if (firstResult.total > firstResult.items.length) {
+    const totalPages = Math.ceil(firstResult.total / PAGE_SIZE)
+    const remaining = await Promise.all(
+      Array.from({ length: totalPages - 1 }, (_, i) =>
+        shiftService.getPage({ page: i + 2, pageSize: PAGE_SIZE, filters })
+      )
+    )
+    if (!isActive()) return { items: [], complete: false }
+
+    for (let i = 0; i < remaining.length; i++) {
+      if (!accept(remaining[i], i + 2)) {
+        return { items: [], complete: false }
+      }
+    }
+  }
+
+  if (items.length !== firstResult.total || ids.size !== firstResult.total) {
+    return { items: [], complete: false }
+  }
+
+  return { items, complete: true }
+}
+
 export function SwapRequestDialog({
   open,
   onOpenChange,
@@ -173,17 +229,18 @@ export function SwapRequestDialog({
 
       if (result.total > result.items.length) {
         if (result.total <= 250) {
-          const totalPages = Math.ceil(result.total / 50)
-          const remaining = await Promise.all(
-            Array.from({ length: totalPages - 1 }, (_, i) =>
-              shiftService.getPage({ page: i + 2, pageSize: 50, filters })
-            )
-          )
+          const verified = await collectAndVerifyAllShifts(result, filters, () => active)
           if (!active) return
-          allItems = [...result.items, ...remaining.flatMap(p => p.items)]
+          allItems = verified.items
+          complete = verified.complete
         } else {
           complete = false
         }
+      } else {
+        const verified = await collectAndVerifyAllShifts(result, filters, () => active)
+        if (!active) return
+        allItems = verified.items
+        complete = verified.complete
       }
 
       const assignedHere = allItems.some(s => s.id === sourceShift.id)
@@ -197,7 +254,7 @@ export function SwapRequestDialog({
       } else if (overlap) {
         setConflictSnapshot({ key: replacementConflictKey, status: 'conflict', reason: 'Nhân sự có ca khác trùng giờ', error: null })
       } else if (!complete) {
-        setConflictSnapshot({ key: replacementConflictKey, status: 'unverified', reason: null, error: 'Lịch ca vượt quá giới hạn kiểm tra tự động; vui lòng liên hệ Quản lý/Leader để xác nhận trước khi gửi' })
+        setConflictSnapshot({ key: replacementConflictKey, status: 'unverified', reason: null, error: 'Lịch ca vượt quá giới hạn kiểm tra tự động hoặc dữ liệu không nhất quán; vui lòng liên hệ Quản lý/Leader để xác nhận trước khi gửi' })
       } else {
         setConflictSnapshot({ key: replacementConflictKey, status: 'verified_clear', reason: null, error: null })
       }
@@ -242,32 +299,34 @@ export function SwapRequestDialog({
 
       if (requesterShifts.total > requesterShifts.items.length) {
         if (requesterShifts.total <= 250) {
-          const totalPages = Math.ceil(requesterShifts.total / 50)
-          const remaining = await Promise.all(
-            Array.from({ length: totalPages - 1 }, (_, i) =>
-              shiftService.getPage({ page: i + 2, pageSize: 50, filters: requesterFilters })
-            )
-          )
+          const verified = await collectAndVerifyAllShifts(requesterShifts, requesterFilters, () => active)
           if (!active) return
-          allRequesterItems = [...requesterShifts.items, ...remaining.flatMap(p => p.items)]
+          allRequesterItems = verified.items
+          if (!verified.complete) complete = false
         } else {
           complete = false
         }
+      } else {
+        const verified = await collectAndVerifyAllShifts(requesterShifts, requesterFilters, () => active)
+        if (!active) return
+        allRequesterItems = verified.items
+        if (!verified.complete) complete = false
       }
 
       if (counterpartShifts.total > counterpartShifts.items.length) {
         if (counterpartShifts.total <= 250) {
-          const totalPages = Math.ceil(counterpartShifts.total / 50)
-          const remaining = await Promise.all(
-            Array.from({ length: totalPages - 1 }, (_, i) =>
-              shiftService.getPage({ page: i + 2, pageSize: 50, filters: counterpartFilters })
-            )
-          )
+          const verified = await collectAndVerifyAllShifts(counterpartShifts, counterpartFilters, () => active)
           if (!active) return
-          allCounterpartItems = [...counterpartShifts.items, ...remaining.flatMap(p => p.items)]
+          allCounterpartItems = verified.items
+          if (!verified.complete) complete = false
         } else {
           complete = false
         }
+      } else {
+        const verified = await collectAndVerifyAllShifts(counterpartShifts, counterpartFilters, () => active)
+        if (!active) return
+        allCounterpartItems = verified.items
+        if (!verified.complete) complete = false
       }
 
       const requesterConflict = allRequesterItems.some(shift => {
@@ -286,7 +345,7 @@ export function SwapRequestDialog({
       } else if (counterpartConflict) {
         setExchangeConflictSnapshot({ key: exchangeConflictKey, status: 'conflict', reason: 'Đối ứng có ca khác trùng giờ với ca của bạn', error: null })
       } else if (!complete) {
-        setExchangeConflictSnapshot({ key: exchangeConflictKey, status: 'unverified', reason: null, error: 'Lịch ca vượt quá giới hạn kiểm tra tự động; vui lòng liên hệ Quản lý/Leader để xác nhận trước khi gửi' })
+        setExchangeConflictSnapshot({ key: exchangeConflictKey, status: 'unverified', reason: null, error: 'Lịch ca vượt quá giới hạn kiểm tra tự động hoặc dữ liệu không nhất quán; vui lòng liên hệ Quản lý/Leader để xác nhận trước khi gửi' })
       } else {
         setExchangeConflictSnapshot({ key: exchangeConflictKey, status: 'verified_clear', reason: null, error: null })
       }
