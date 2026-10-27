@@ -10,9 +10,8 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "c0d4d0f99010a7006f78f01c31db7c61c8dcc9fa",
-    "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f",
-    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-full-upgrade"
+    "head": "5e69e49198354746f3dab879ef1cc46cbceeb934",
+    "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -97,13 +96,13 @@
     "source_files": {
       "roots": {
         "app": 67,
-        "components": 170,
-        "lib": 251,
-        "scripts": 31,
-        "supabase": 110,
-        "tests": 265
+        "components": 171,
+        "lib": 252,
+        "scripts": 26,
+        "supabase": 109,
+        "tests": 268
       },
-      "total": 894
+      "total": 893
     },
     "tests": {
       "files": [
@@ -256,6 +255,7 @@
         "tests/rc19-command-toolbar.test.tsx",
         "tests/rc19-my-payslip.test.ts",
         "tests/rc19-report-apply-filters.test.ts",
+        "tests/rc19-report01-multiview.test.ts",
         "tests/rc19-reports-app-router-wiring.test.ts",
         "tests/rc19-self-attendance-contract.test.ts",
         "tests/rc19-staffing-availability-sql.test.ts",
@@ -328,7 +328,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 220
+      "count": 221
     },
     "migrations": {
       "files": [
@@ -437,5 +437,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-27T01:50:25+07:00"
+  "synced_at": "2026-10-27T23:31:57+07:00"
 }
