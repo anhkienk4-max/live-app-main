@@ -10,19 +10,28 @@ export function AuthLayout({ children, title, subtitle, variant = 'default' }: {
 
   if (variant === 'login') return (
     <div data-testid="ada-reference-login" className="ada-login-reference relative isolate flex min-h-dvh flex-col overflow-hidden bg-white">
-      <div className="ada-login-reference__top" aria-hidden="true" />
-      <div className="ada-login-reference__bottom" aria-hidden="true" />
-      <main className="relative z-10 mx-auto flex w-full max-w-[432px] flex-1 flex-col px-6 pb-12 pt-[clamp(70px,12dvh,120px)] sm:px-9">
+      <svg className="ada-login-reference__top" viewBox="0 0 390 170" preserveAspectRatio="none" aria-hidden="true">
+        <defs><linearGradient id="ada-login-top-gradient" x1="0" y1="0" x2="1" y2="0.8"><stop offset="0%" stopColor="#0874F6"/><stop offset="54%" stopColor="#1F5EE8"/><stop offset="100%" stopColor="#9E66ED"/></linearGradient></defs>
+        <path d="M0 0 H390 V48 C314 62 282 124 182 91 C100 64 56 87 0 109 Z" fill="url(#ada-login-top-gradient)"/>
+        <path d="M0 0 H390 V33 C285 24 240 71 155 63 C68 55 37 78 0 85 Z" fill="#6BC4FF" opacity=".26"/>
+      </svg>
+      <svg className="ada-login-reference__bottom" viewBox="0 0 390 170" preserveAspectRatio="none" aria-hidden="true">
+        <defs><linearGradient id="ada-login-bottom-gradient" x1="0" y1="0" x2="1" y2="0.35"><stop offset="0%" stopColor="#2A6CF0"/><stop offset="60%" stopColor="#8AB9FF"/><stop offset="100%" stopColor="#A28CF4"/></linearGradient></defs>
+        <path d="M0 90 C96 50 132 133 229 69 C300 21 358 68 390 92 V170 H0 Z" fill="#E0EAFF"/>
+        <path d="M0 125 C78 45 168 113 226 105 C311 93 340 120 390 91 V170 H0 Z" fill="url(#ada-login-bottom-gradient)" opacity=".83"/>
+        <path d="M0 165 C115 85 188 166 290 126 C340 106 358 135 390 140 V170 H0 Z" fill="#F7FAFF" opacity=".76"/>
+      </svg>
+      <main className="relative z-10 mx-auto flex w-full max-w-[432px] flex-1 flex-col px-6 pb-8 pt-[clamp(110px,16dvh,146px)] sm:px-9">
         <div className="flex flex-col items-center">
           <AdaBrand className="ada-login-reference__logo" />
           <p className="mt-3 text-center text-[9px] font-bold tracking-[.24em] text-[#122155]">
             ADA GLOBAL · LIVESTREAM OPERATIONS
           </p>
         </div>
-        <section className="mt-[clamp(56px,9dvh,95px)] w-full">
-          <h1 className="text-center text-[25px] font-extrabold tracking-tight text-[#07183B]">{title}</h1>
+        <section className="mt-[clamp(22px,3.4dvh,34px)] w-full">
+          <h1 className="text-center text-[23px] font-extrabold tracking-tight text-[#07183B]">{title}</h1>
           <p className="mt-2 text-center text-sm text-slate-500">{subtitle}</p>
-          <div className="mt-7">{children}</div>
+          <div className="mt-4">{children}</div>
         </section>
       </main>
     </div>

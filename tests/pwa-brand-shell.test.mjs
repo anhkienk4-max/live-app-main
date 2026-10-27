@@ -165,3 +165,25 @@ test('PWA login persistence still enforces Supabase session and business identit
   assert.ok(session.includes('client.auth.getClaims()'))
   assert.ok(session.includes("createLoginRedirect(request, 'session_expired'"))
 })
+
+test('Google sign-in is visible in Supabase mode and uses the PKCE callback', () => {
+  const login = source('app/login/page.tsx')
+  const callback = source('app/api/auth/callback/route.ts')
+  assert.ok(login.includes('data-testid="google-login-option"'))
+  assert.ok(login.includes("provider: 'google'"))
+  assert.ok(login.includes("signInWithOAuth({"))
+  assert.ok(login.includes("skipBrowserRedirect: true"))
+  assert.ok(login.includes("new URL('/api/auth/callback', window.location.origin)"))
+  assert.ok(login.includes("safeLocalRedirect(searchParams.get('next'))"))
+  assert.ok(callback.includes("safeLocalRedirect(searchParams.get('next'))"))
+  assert.ok(login.includes("establishPasswordSession(createClient(), email, password)"))
+});
+test('Login reference matches board proportions instead of oversized blank gap', () => {
+  const auth = source('components/layouts/AuthLayout.tsx')
+  assert.ok(auth.includes('ada-login-top-gradient'))
+  assert.ok(auth.includes('ada-login-bottom-gradient'))
+  assert.ok(auth.includes('mt-[clamp(22px,3.4dvh,34px)]'))
+  assert.ok(auth.includes('pt-[clamp(110px,16dvh,146px)]'))
+  const css = source('app/globals.css')
+  assert.ok(css.includes('.ada-login-reference .ada-google-login'))
+});

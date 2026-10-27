@@ -147,3 +147,20 @@ Preview retains Supabase staging session continuity. Server protected layout
 validates getUser() plus business profile, and middleware validates claims.
 Opening the PWA directly while signed in is expected, not an auth bypass.
 To view login directly use /login; to test a new login sign out or use InPrivate.
+
+## Google OAuth and faithful login layout
+The Google button was previously mock-only, and the Supabase code path explicitly returned
+authServiceUnavailable. Login now exposes a standard Google OAuth button in real Supabase mode,
+using `signInWithOAuth({provider:'google'})` and a same-origin PKCE callback
+`/api/auth/callback`. The existing redirect is constrained to a local pathname; protected
+dashboard identity and business user checks remain unchanged, so new Google identities do NOT
+automatically receive operational permissions. Staging currently contains one Google auth
+identity, but this does not prove Google provider or allowed callback URL is configured for the
+PWA Preview. Manually verify the provider and redirect allowlist before marking end-to-end OAuth
+PASS. No provider secrets or database settings are modified in this branch.
+
+The login reference was re-composed into balanced phone-size proportions with layered SVG
+blue/violet top waves, restrained ADA centered lockup, shorter spacing and a compact secondary
+Google CTA. The screen preserves existing email/password login, forgot-password, registration,
+language toggle, error states, and reduced-motion preference. This is a visual implementation,
+not photo-verified pixel-perfect match yet.
