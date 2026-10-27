@@ -399,9 +399,13 @@ export function ReportsList() {
     if (createdViewMode !== 'calendar' || !currentUser || userLoading) return
     const controller = new AbortController()
     let active = true
-    setCalendarLoading(true)
-    setCalendarError(null)
-    setCalendarData(null)
+    // Schedule loading state outside the synchronous effect body (React 19 effect rule).
+    void Promise.resolve().then(() => {
+      if (!active) return
+      setCalendarLoading(true)
+      setCalendarError(null)
+      setCalendarData(null)
+    })
     void collectAuthorizedReportCalendar(calendarDate, calendarScale, appliedCalendarFilters, {
       getQueuePage: (query, signal) => getReportObligationPage(query, signal),
       getReportsPage: (query, signal) => reportService.getFilteredPage(query, signal),
