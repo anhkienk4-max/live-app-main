@@ -15,6 +15,11 @@ function createRepository() {
   mkdirSync(scripts)
   mkdirSync(hooks)
   cpSync(path.join(repositoryRoot, 'project-memory'), path.join(root, 'project-memory'), { recursive: true })
+  const statePath = path.join(root, 'project-memory', 'current-state.json')
+  const state = JSON.parse(readFileSync(statePath, 'utf8'))
+  state.repository = { ...state.repository, branch: 'main' }
+  delete state.repository.worktree
+  writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n')
   for (const name of ['memory-sync.mjs', 'memory-validate.mjs', 'project-memory-lib.mjs']) {
     cpSync(path.join(repositoryRoot, 'scripts', name), path.join(scripts, name))
   }
@@ -34,12 +39,13 @@ function createRepository() {
   return { root, sourceSnapshot }
 }
 
-function validate(root: string) {
+function validate(root: string, extraEnv: NodeJS.ProcessEnv = {}) {
   try {
     const output = execFileSync(process.execPath, [path.join(root, 'scripts', 'memory-validate.mjs')], {
       cwd: root,
       encoding: 'utf8',
       stdio: 'pipe',
+      env: { ...process.env, ...extraEnv },
     })
     return { passed: true, output }
   } catch (error) {
@@ -77,6 +83,63 @@ test('a memory-only reconciliation commit passes from the source snapshot', () =
   const { root } = createRepository()
   try {
     assert.equal(validate(root).passed, true)
+  } finally {
+    closeRepository(root)
+  }
+})
+
+test('a feature checkout can sync against the canonical branch without replacing it with a local branch name', () => {
+  const { root } = createRepository()
+  try {
+    runGit(root, ['switch', '-q', '-c', 'integration/worktree'])
+    sync(root)
+    const state = JSON.parse(readFileSync(path.join(root, 'project-memory', 'current-state.json'), 'utf8'))
+    assert.equal(state.repository.branch, 'main')
+    assert.equal(state.repository.head, runGit(root, ['rev-parse', 'HEAD']))
+    assert.equal('worktree' in state.repository, false)
+  } finally {
+    closeRepository(root)
+  }
+})
+
+test('detached pull-request CI validates against the canonical base branch', () => {
+  const { root } = createRepository()
+  try {
+    sync(root)
+    runGit(root, ['checkout', '--detach', 'HEAD'])
+    const result = validate(root, {
+      GITHUB_ACTIONS: 'true',
+      GITHUB_EVENT_NAME: 'pull_request',
+      GITHUB_BASE_REF: 'main',
+    })
+    assert.equal(result.passed, true, result.output)
+  } finally {
+    closeRepository(root)
+  }
+})
+
+test('detached pull-request CI rejects a different canonical base branch', () => {
+  const { root } = createRepository()
+  try {
+    sync(root)
+    runGit(root, ['checkout', '--detach', 'HEAD'])
+    const result = validate(root, {
+      GITHUB_ACTIONS: 'true',
+      GITHUB_EVENT_NAME: 'pull_request',
+      GITHUB_BASE_REF: 'integration/other',
+    })
+    assert.equal(result.passed, false)
+    assert.match(result.output, /does not match the CI target branch/)
+  } finally {
+    closeRepository(root)
+  }
+})
+
+test('memory sync refuses to rewrite canonical state from a detached checkout', () => {
+  const { root } = createRepository()
+  try {
+    runGit(root, ['checkout', '--detach', 'HEAD'])
+    assert.throws(() => sync(root), /requires a named local branch/)
   } finally {
     closeRepository(root)
   }
