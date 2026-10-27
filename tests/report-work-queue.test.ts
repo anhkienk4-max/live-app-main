@@ -128,3 +128,13 @@ test('REPORT-02 confirmed financial KPI is page scoped and excludes Draft/Unconf
   assert.match(list, /readOnlyQueueItem \? t\('viewDetails'\)/)
   assert.match(list, /reportQueueDisplayState\(report\)/)
 })
+
+test('REPORT-02: a confirmed report unexpectedly present in queue stays read-only, never Draft', () => {
+  const list = readFileSync(new URL('../components/features/reports/ReportsList.tsx', import.meta.url), 'utf8')
+  assert.equal(reportQueueDisplayState(report('confirmed', true)), 'confirmed')
+  assert.match(list, /const readOnlyQueueItem = state === 'in_review' \|\| state === 'unconfirmed' \|\| state === 'confirmed'/)
+  assert.match(list, /state === 'confirmed' \? t\('confirmed'\)/)
+  assert.match(list, /if \(report && readOnlyQueueItem\) \{ setSelectedReport\(report\); setShowForm\(false\) \}/)
+  assert.match(list, /readOnlyQueueItem \? t\('viewDetails'\)/)
+  assert.doesNotMatch(list, /state === 'confirmed' \? t\('draft'\)/)
+})
