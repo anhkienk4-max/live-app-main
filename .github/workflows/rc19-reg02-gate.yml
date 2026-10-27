@@ -1,0 +1,98 @@
+name: RC19 REG-02 targeted registration security gate (NO DEPLOY)
+
+on:
+  push:
+    branches:
+      - feat/rc19-reg02-multi-applicant-registration
+  pull_request:
+    branches:
+      - feat/ops-full-app-upgrade-rc19
+    paths:
+      - 'supabase/migrations/20261028010000_rc19_reg02_multi_applicant_approval.sql'
+      - 'components/features/calendar/ShiftRegistrationActions.tsx'
+      - 'components/features/calendar/ShiftRegistrationBoard.tsx'
+      - 'components/features/shifts/ShiftDetailModal.tsx'
+      - 'lib/services/supabaseShiftRegistrationService.ts'
+      - 'tests/rc19-reg02-*'
+      - 'tests/fixtures/rc19_reg02_pg17_base.sql'
+      - 'e2e/rc19-reg02-confirmation.spec.ts'
+      - 'playwright.rc19-reg02.config.ts'
+      - '.github/workflows/rc19-reg02-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reg02-source-only-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  reg02:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Start actual PostgreSQL 17 isolated
+        run: |
+          docker run --detach --rm --name ada-reg02-pg17 --network none \
+            -e POSTGRES_PASSWORD=synthetic-only postgres:17.11-bookworm
+          for i in $(seq 1 45); do
+            if docker exec ada-reg02-pg17 pg_isready -U postgres -d postgres >/dev/null 2>&1; then exit 0; fi
+            sleep 2
+          done
+          docker logs ada-reg02-pg17
+          exit 1
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - name: Pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Baseline regression and REG-02 source contract
+        run: |
+          node --test tests/rc19-reg02-contract.test.mjs
+          node --import ./tests/typescript-alias-loader.mjs --test tests/shift-registration-eligibility.test.ts tests/supabase-shift-registration-runtime.test.ts tests/bulk-staffing-approval.test.ts
+      - name: PostgreSQL 17 real SQL/RPC/role/CAS/concurrent test
+        env:
+          REG02_PG_CONTAINER: ada-reg02-pg17
+        run: node tests/rc19-reg02-postgres.integration.mjs
+      - name: TypeScript
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: Full ESLint
+        run: pnpm run lint
+      - name: Full source regression
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node scripts/run-final-regression.mjs
+      - name: Install mock-browser Chromium
+        run: pnpm exec playwright install chromium
+      - name: Mock 390/768/1440 confirm/cancel and manual approval UI
+        run: pnpm exec playwright test --config playwright.rc19-reg02.config.ts --reporter=line
+      - name: Guarded production-equivalent build (NO DEPLOY)
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_ACTUAL_STAFFING: 'false'
+          FEATURE_PAYROLL: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm run build
+      - name: Provenance and constraints
+        if: always()
+        run: |
+          echo "REG-02 exact source SHA $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Synthetic PostgreSQL only. No Production SQL, flags, Vercel Preview or Production deployment initiated by this workflow." >> "$GITHUB_STEP_SUMMARY"
+          echo "Signed real-user Production UAT remains BLOCKED." >> "$GITHUB_STEP_SUMMARY"
+      - name: Stop disposable PostgreSQL
+        if: always()
+        run: docker stop ada-reg02-pg17 || true
