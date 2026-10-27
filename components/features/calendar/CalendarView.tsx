@@ -537,11 +537,12 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     }
   }
 
+  // Hook order must be stable even while account identity/loading state changes.
+  const [mobileAdvanced, setMobileAdvanced] = React.useState(false)
   if (loadedIdentity && loadedIdentity !== identity) return <ContentSkeleton />
 
   // Reference-board phone layout shares the existing authoritative calendar dataset.
   // Advanced calendar controls remain available without changing any shift permissions.
-  const [mobileAdvanced, setMobileAdvanced] = React.useState(false)
   const focusedDate = format(currentDate, 'yyyy-MM-dd')
   const mobileWeek = Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(currentDate, { weekStartsOn: 1 }), index))
   const mobileDayShifts = filteredShifts.filter(shift => shift.date === focusedDate)
