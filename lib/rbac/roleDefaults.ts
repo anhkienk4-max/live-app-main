@@ -39,7 +39,7 @@ export const ROLE_DEFAULTS_CATALOG: readonly RoleDefaultsCatalogItem[] = [
   item('settings.admin', 'settings', 'manage', 'Bootstrap privilege locked'),
   item('permissions.manage', 'settings', 'manage', 'Bootstrap privilege locked; no self-escalation'),
   item('audit.view', 'audit', 'view'), item('audit.view_team', 'audit', 'view'),
-  item('audit.restore', 'audit', 'restore'), item('audit.review', 'audit', 'approve'),
+  item('audit.restore', 'audit', 'restore', 'Audit integrity boundary locked'), item('audit.review', 'audit', 'approve', 'Audit approval boundary locked'),
   item('data.force_delete', 'data', 'delete', 'Destructive capability locked'),
 ] as const
 
@@ -88,6 +88,7 @@ export function validateRoleDefaultProposal(
     // while the DB/server enforcement attestation gate remains disabled.
     if (entry.reason && value === 'deny') return { ok: false, code: 'SECURITY_BOUNDARY_LOCKED' }
     if (value === 'allow' && !permissionMatrix[role].has(permission)) return { ok: false, code: 'PRIVILEGE_ESCALATION_DENIED' }
+    if (value === 'deny' && !permissionMatrix[role].has(permission)) return { ok: false, code: 'NOT_A_LEGACY_GRANT' }
   }
   return { ok: true }
 }

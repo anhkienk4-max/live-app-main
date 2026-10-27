@@ -38,6 +38,8 @@ test('RBAC-01 rejects escalation, service role injection, admin bootstrap and un
  assert.deepEqual(validateRoleDefaultProposal('member',{'staff.manage':'allow'}),{ok:false,code:'PRIVILEGE_ESCALATION_DENIED'})
  assert.deepEqual(validateRoleDefaultProposal('member',{'service_role':'allow'}),{ok:false,code:'PERMISSION_INVALID'})
  assert.deepEqual(validateRoleDefaultProposal('admin',{'permissions.manage':'deny'}),{ok:false,code:'SECURITY_BOUNDARY_LOCKED'})
+ assert.deepEqual(validateRoleDefaultProposal('admin',{'audit.restore':'deny'}),{ok:false,code:'SECURITY_BOUNDARY_LOCKED'})
+ assert.deepEqual(validateRoleDefaultProposal('member',{'brands.manage':'deny'}),{ok:false,code:'NOT_A_LEGACY_GRANT'})
  assert.deepEqual(validateRoleDefaultProposal('admin',{'settings.admin':'deny'}),{ok:false,code:'SECURITY_BOUNDARY_LOCKED'})
  assert.deepEqual(validateRoleDefaultProposal('leader',{'shifts.view_assigned':'deny'}),{ok:true})
 })
