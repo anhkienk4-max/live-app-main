@@ -50,7 +50,7 @@ import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import { HistoryPagination } from '@/components/ui/history-pagination'
-import { reportQueueState, sortReportableShifts } from '@/lib/utils/reportQueue'
+import { reportQueueDisplayState, reportQueuePageRange, sortReportableShifts } from '@/lib/utils/reportQueue'
 import { clearReportShiftQuery, loadReportTarget, type ReportTarget } from '@/lib/utils/reportTarget'
 
 type Filters = {
@@ -124,7 +124,7 @@ export function ReportsList() {
       metricsStatuses: p.get('metricsStatuses')?.split(',').filter(Boolean) || [],
     }
   })
-  const [draftFilters, setDraftFilters] = React.useState<Filters>(emptyFilters)
+  const [draftFilters, setDraftFilters] = React.useState<Filters>(filters)
   const [showFilters, setShowFilters] = React.useState(false)
   const [selectedReport, setSelectedReport] = React.useState<Report | null>(null)
   const [showForm, setShowForm] = React.useState(false)
@@ -371,8 +371,17 @@ export function ReportsList() {
 
   const filteredReports = reports
 
-  const confirmed = filteredReports.filter(report => report.metrics_confirmed)
+  // Page-scoped financial KPIs only use reports with fully confirmed status AND metrics.
+  const confirmed = filteredReports.filter(report => report.status === 'confirmed' && report.metrics_confirmed === true)
   const totalRevenue = confirmed.reduce((sum, report) => sum + (reportRevenue(report) ?? 0), 0)
+  const confirmedOrders = confirmed.reduce((sum, report) => sum + (report.orders ?? 0), 0)
+  const averageOrderValue = confirmedOrders > 0 ? totalRevenue / confirmedOrders : null
+  const queueRange = reportQueuePageRange(queueTotal, queuePage, queuePageSize, pagedQueue.length)
+  const queueScope = [
+    filters.start || filters.end ? `Ngày ca: ${filters.start || 'không giới hạn'} đến ${filters.end || 'không giới hạn'}` : 'Ngày ca: toàn bộ thời gian',
+    currentUser?.system_permission === 'member' ? 'Phạm vi: ca được phân công hoặc báo cáo do bạn gửi' : 'Phạm vi: theo quyền tài khoản',
+    appliedFilterChips.length ? `${appliedFilterChips.length} bộ lọc đang áp dụng` : 'Không áp dụng bộ lọc bổ sung',
+  ].join(' · ')
   const exportContext = {
     historicalShiftContexts:historicalContexts,
     shifts,
@@ -411,19 +420,19 @@ export function ReportsList() {
     <div className="space-y-6">
       {currentUser && hasPermission(currentUser, 'reports.submit') && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
-          <div><p className="font-semibold">{t('finalReportWorkflow')}</p><p className="text-sm text-muted-foreground">{completedShifts.length ? t('reportDraftReady', { count: completedShifts.length }) : t('noReportDraftReady')}</p></div>
+          <div><p className="font-semibold">{t('finalReportWorkflow')}</p><p className="text-sm text-muted-foreground">{completedShifts.length ? `${completedShifts.length} ca đang hiển thị trong trang hàng đợi, không phải tổng ca có thể tạo Draft` : t('noReportDraftReady')}</p></div>
           <Button onClick={() => setShowForm(true)} disabled={!completedShifts.length} data-testid="open-final-report-modal"><Plus className="mr-2 h-4 w-4" />{t('createFinalReport')}</Button>
         </div>
       )}
-      <p className="text-xs text-muted-foreground">{t('currentPage')}</p>
+      <p className="text-xs text-muted-foreground">KPI tài chính và báo cáo chưa xác nhận: trang Báo cáo hiện tại · {queueScope}. Tổng báo cáo và tổng ca chờ xử lý: mọi trang theo bộ lọc.</p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric title={t('reportCount')} value={reportTotal.toLocaleString()} icon={<FileText className="h-5 w-5 text-blue-600" />} />
-        <Metric title={t('confirmedRevenue')} value={formatCurrency(totalRevenue)} icon={<DollarSign className="h-5 w-5 text-green-600" />} />
-        <Metric title={t('averageOrderValue')} value={formatCurrency(confirmed.reduce((sum, report) => sum + (typeof report.normalized_metrics?.average_order_value === 'number' ? report.normalized_metrics.average_order_value : report.average_order_value ?? (report.orders ? (reportRevenue(report) ?? 0) / report.orders : 0)), 0))} icon={<TrendingUp className="h-5 w-5 text-purple-600" />} />
-        <Metric title={t('needsReview')} value={filteredReports.filter(report => !report.metrics_confirmed).length.toLocaleString()} icon={<FileText className="h-5 w-5 text-amber-600" />} />
+        <Metric title="Tổng báo cáo theo bộ lọc" value={reportTotal.toLocaleString()} icon={<FileText className="h-5 w-5 text-blue-600" />} />
+        <Metric title="Doanh thu đã xác nhận · trang này" value={confirmed.length ? formatCurrency(totalRevenue) : '—'} icon={<DollarSign className="h-5 w-5 text-green-600" />} />
+        <Metric title="Giá trị đơn trung bình · trang này" value={averageOrderValue === null ? '—' : formatCurrency(averageOrderValue)} icon={<TrendingUp className="h-5 w-5 text-purple-600" />} />
+        <Metric title="Báo cáo chưa xác nhận · trang này" value={filteredReports.filter(report => report.metrics_confirmed !== true || report.status !== 'confirmed').length.toLocaleString()} icon={<FileText className="h-5 w-5 text-amber-600" />} />
       </div>
 
-      {completedShifts.length > 0 && <Card className="border-orange-200 bg-orange-50"><CardContent className="pt-5"><p className="font-semibold text-orange-900">{t('reportDraftCandidates', { count: completedShifts.length })}</p><p className="text-sm text-orange-700">{t('reportDraftPolicy')}</p></CardContent></Card>}
+      {completedShifts.length > 0 && <Card className="border-orange-200 bg-orange-50"><CardContent className="pt-5"><p className="font-semibold text-orange-900">Đang hiển thị {completedShifts.length} ca trong trang hàng đợi, không phải toàn bộ ca chưa có báo cáo</p><p className="text-sm text-orange-700">{t('reportDraftPolicy')}</p></CardContent></Card>}
 
       <CommandToolbar label={t('filters')} className="flex flex-col gap-3 rounded-lg border bg-card p-3 shadow-none">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -502,9 +511,11 @@ export function ReportsList() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 id="needs-report-heading" className="text-lg font-semibold">{t('needsReport')}</h2>
-            <p className="text-sm text-muted-foreground">{t('reportDraftPolicy')}</p>
+            <p className="text-sm text-muted-foreground">{t('reportDraftPolicy')} · Gồm ca chưa lập báo cáo, Draft, In Review hoặc Reopened chưa hoàn tất. Đơn vị: ca, không phải bản ghi.</p>
+            <p className="text-xs text-muted-foreground" data-testid="report02-queue-scope">{queueScope}</p>
+            <p className="text-xs text-muted-foreground" data-testid="report02-queue-page-range">{queueTotal ? `Hiển thị ca ${queueRange.start}–${queueRange.end} trong tổng ${queueTotal} ca` : 'Không có ca chờ xử lý trong phạm vi'}</p>
           </div>
-          <Badge variant="secondary">{queueTotal}</Badge>
+          <Badge variant="secondary" aria-label="Tổng ca chờ xử lý theo bộ lọc">{queueTotal}</Badge>
         </div>
         <Card className="overflow-hidden shadow-none">
           {pagedQueue.length === 0 ? (
@@ -519,18 +530,26 @@ export function ReportsList() {
               </div>
               {pagedQueue.map(shift => {
                 const report = reportByShift.get(shift.id)
-                const state = reportQueueState(report)
+                const state = reportQueueDisplayState(report)
+                const readOnlyQueueItem = state === 'in_review' || state === 'unconfirmed' || state === 'confirmed'
+                const stateLabel = state === 'not_started' ? t('notStarted')
+                  : state === 'in_review' ? t('inReview')
+                  : state === 'reopened' ? t('reopened')
+                  : state === 'unconfirmed' ? 'Chưa xác nhận'
+                  : state === 'confirmed' ? t('confirmed')
+                  : t('draft')
                 return <div key={shift.id} className="grid gap-3 border-b px-4 py-3 last:border-b-0 md:grid-cols-7 md:items-center">
                   <div><p className="font-medium">{shift.date}</p><p className="text-xs text-muted-foreground">{shift.start_time}–{shift.end_time}</p></div>
                   <span className="truncate">{nameById(brands, shift.brand_id)}</span>
                   <span className="truncate">{nameById(campaigns, shift.campaign_id)}</span>
                   <span className="truncate">{nameById(platforms, shift.platform_id)}</span>
                   <Badge variant="outline" className="w-fit">{t(shift.status)}</Badge>
-                  <Badge variant="secondary" className="w-fit">{state === 'draft' ? t('draft') : t('notStarted')}</Badge>
-                  <Button type="button" size="sm" variant={state === 'draft' ? 'secondary' : 'default'} onClick={() => {
-                    if (report) { setEditingReport(report); setShowForm(true) }
+                  <div className="flex flex-col gap-1"><Badge variant="secondary" className="w-fit">{stateLabel}</Badge>{report && report.metrics_confirmed !== true && <span className="text-xs text-muted-foreground">Số liệu chưa xác nhận</span>}</div>
+                  <Button type="button" size="sm" variant={state === 'not_started' ? 'default' : 'secondary'} onClick={() => {
+                    if (report && readOnlyQueueItem) { setSelectedReport(report); setShowForm(false) }
+                    else if (report) { setEditingReport(report); setShowForm(true) }
                     else { setInitialShiftId(shift.id); setShowForm(true) }
-                  }}>{state === 'draft' ? t('continueReport') : t('createFinalReport')}</Button>
+                  }}>{readOnlyQueueItem ? t('viewDetails') : state === 'not_started' ? t('createFinalReport') : t('continueReport')}</Button>
                 </div>
               })}
               <HistoryPagination page={queuePage} pageSize={queuePageSize} total={queueTotal} onPageChange={setQueuePage} onPageSizeChange={size => {
