@@ -74,3 +74,8 @@ repository: the real /payroll page has an Admin-only security boundary. Do not r
 that boundary to match the picture. Bottom-nav overflow links include personal Profile,
 Notifications and Settings, with each destination enforcing its existing permissions.
 Icon rendition now includes the gradient A mark shown on the supplied board.
+
+## W3 — Mobile member dashboard reference
+Adds a task-first mobile member dashboard fed exclusively by the existing MemberDashboardViewModel
+(nextShift, mySchedule, myActions, openShifts). Desktop original remains visible at md+.
+No placeholder KPIs, no fake wages, no bypass of payroll or other RBAC. Links point to existing routes.

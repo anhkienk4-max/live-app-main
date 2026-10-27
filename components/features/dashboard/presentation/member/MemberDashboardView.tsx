@@ -1,4 +1,5 @@
 ﻿import React from 'react'
+import { MemberDashboardMobile } from './MemberDashboardMobile'
 import {
   Calendar, CheckCircle, Clock, MapPin, ArrowRight,
   ArrowLeftRight, FileText, AlertTriangle,
@@ -162,7 +163,9 @@ export function MemberDashboardView({
   nextShift, mySchedule, myActions, openShifts, myRequests, notifications,
 }: MemberDashboardViewModel) {
   return (
-    <main className="p-8 flex flex-col gap-6 overflow-y-auto">
+    <>
+      <MemberDashboardMobile nextShift={nextShift} mySchedule={mySchedule} myActions={myActions} openShifts={openShifts} myRequests={myRequests} notifications={notifications} />
+      <main className="hidden p-8 flex-col gap-6 overflow-y-auto md:flex">
       <div className="flex flex-col gap-1 mb-1">
         <h1 className="text-[26px] font-bold tracking-tight text-slate-900 leading-tight">My Workspace</h1>
         <p className="text-[14px] text-slate-500 font-medium">Welcome back! Ready for your upcoming shifts today?</p>
@@ -298,6 +301,7 @@ export function MemberDashboardView({
         </div>
       </div>
     <nav aria-label="Xem tất cả" className="flex flex-wrap gap-4 text-sm"><a className="underline underline-offset-4" href="/calendar">Xem tất cả: Lịch</a><a className="underline underline-offset-4" href="/reports">Xem tất cả: Báo cáo</a><a className="underline underline-offset-4" href="/notifications">Xem tất cả: Thông báo</a></nav>
-    </main>
+      </main>
+    </>
   )
 }
