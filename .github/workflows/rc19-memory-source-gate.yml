@@ -1,0 +1,93 @@
+name: RC19 Memory source gate
+
+on:
+  push:
+    branches:
+      - fix/rc19-project-memory-validation
+  pull_request:
+    branches:
+      - feat/ops-full-app-upgrade-rc19
+
+permissions:
+  contents: read
+
+jobs:
+  source-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact source with full history
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact SHA and checkout identity
+        env:
+          EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          EXPECTED_BASE: feat/ops-full-app-upgrade-rc19
+          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            test "$GITHUB_BASE_REF" = "$EXPECTED_BASE"
+            test "$(git rev-parse "origin/$EXPECTED_BASE")" = "$EXPECTED_BASE_SHA"
+          else
+            test "$GITHUB_REF_NAME" = "fix/rc19-project-memory-validation"
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.23.3
+
+      - name: Enable repository-pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate canonical memory and generated projections
+        run: pnpm run memory:validate
+
+      - name: Run focused Memory contract tests
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/memory-validator-contract.test.ts
+
+      - name: TypeScript
+        run: pnpm run type-check
+
+      - name: Full repository ESLint
+        run: pnpm exec eslint .
+
+      - name: Check exact source diff
+        run: |
+          git diff --check
+          git diff --check "origin/feat/ops-full-app-upgrade-rc19...$EXPECTED_SHA"
+        env:
+          EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Full repository regression
+        run: node scripts/run-final-regression.mjs
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+
+      - name: Guarded production-equivalent build
+        run: pnpm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          NEXT_PUBLIC_USE_MOCK_DATA: 'false'
+          FEATURE_ACTUAL_STAFFING: 'false'
+          FEATURE_PAYROLL: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+          CI: 'true'
+
+      - name: Declare no deployment
+        run: 'echo "NO DEPLOYMENT: source checks only; no Vercel or Production actions are configured in this workflow."'

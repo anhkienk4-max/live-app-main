@@ -3,10 +3,18 @@ import { execFileSync } from 'node:child_process'
 import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import test from 'node:test'
 
 const repositoryRoot = process.cwd()
 const runGit = (root: string, args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim()
+const localProcessEnv = () => {
+  const env = { ...process.env }
+  delete env.GITHUB_ACTIONS
+  delete env.GITHUB_EVENT_NAME
+  delete env.GITHUB_BASE_REF
+  return env
+}
 
 function createRepository() {
   const root = mkdtempSync(path.join(os.tmpdir(), 'memory-validator-'))
@@ -15,6 +23,11 @@ function createRepository() {
   mkdirSync(scripts)
   mkdirSync(hooks)
   cpSync(path.join(repositoryRoot, 'project-memory'), path.join(root, 'project-memory'), { recursive: true })
+  const statePath = path.join(root, 'project-memory', 'current-state.json')
+  const state = JSON.parse(readFileSync(statePath, 'utf8'))
+  state.repository = { ...state.repository, branch: 'main' }
+  delete state.repository.worktree
+  writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n')
   for (const name of ['memory-sync.mjs', 'memory-validate.mjs', 'project-memory-lib.mjs']) {
     cpSync(path.join(repositoryRoot, 'scripts', name), path.join(scripts, name))
   }
@@ -24,22 +37,23 @@ function createRepository() {
   runGit(root, ['config', 'user.email', 'memory-validator@example.test'])
   runGit(root, ['config', 'user.name', 'Memory Validator'])
   writeFileSync(path.join(root, 'source.txt'), 'source snapshot\n')
-  runGit(root, ['add', 'source.txt', 'project-memory'])
+  runGit(root, ['add', 'source.txt', 'project-memory', 'scripts'])
   runGit(root, ['commit', '-qm', 'source snapshot'])
   const sourceSnapshot = runGit(root, ['rev-parse', 'HEAD'])
   runGit(root, ['update-ref', 'refs/remotes/origin/main', sourceSnapshot])
-  execFileSync(process.execPath, [path.join(scripts, 'memory-sync.mjs')], { cwd: root, encoding: 'utf8' })
+  execFileSync(process.execPath, [path.join(scripts, 'memory-sync.mjs')], { cwd: root, encoding: 'utf8', env: localProcessEnv() })
   runGit(root, ['add', 'project-memory', 'PROJECT_STATE.md'])
   runGit(root, ['commit', '-qm', 'memory snapshot'])
   return { root, sourceSnapshot }
 }
 
-function validate(root: string) {
+function validate(root: string, extraEnv: NodeJS.ProcessEnv = {}) {
   try {
     const output = execFileSync(process.execPath, [path.join(root, 'scripts', 'memory-validate.mjs')], {
       cwd: root,
       encoding: 'utf8',
       stdio: 'pipe',
+      env: { ...localProcessEnv(), ...extraEnv },
     })
     return { passed: true, output }
   } catch (error) {
@@ -49,7 +63,7 @@ function validate(root: string) {
 }
 
 function sync(root: string) {
-  execFileSync(process.execPath, [path.join(root, 'scripts', 'memory-sync.mjs')], { cwd: root, encoding: 'utf8' })
+  execFileSync(process.execPath, [path.join(root, 'scripts', 'memory-sync.mjs')], { cwd: root, encoding: 'utf8', env: localProcessEnv() })
 }
 
 function setStoredHead(root: string, head: string) {
@@ -77,6 +91,84 @@ test('a memory-only reconciliation commit passes from the source snapshot', () =
   const { root } = createRepository()
   try {
     assert.equal(validate(root).passed, true)
+  } finally {
+    closeRepository(root)
+  }
+})
+
+test('a feature checkout can sync against the canonical branch without replacing it with a local branch name', () => {
+  const { root } = createRepository()
+  try {
+    runGit(root, ['switch', '-q', '-c', 'integration/worktree'])
+    sync(root)
+    const state = JSON.parse(readFileSync(path.join(root, 'project-memory', 'current-state.json'), 'utf8'))
+    assert.equal(state.repository.branch, 'main')
+    assert.equal(state.repository.head, runGit(root, ['rev-parse', 'HEAD']))
+    assert.equal('worktree' in state.repository, false)
+  } finally {
+    closeRepository(root)
+  }
+})
+
+test('the source inventory includes Git-tracked files and ignores untracked workspace files', async () => {
+  const { root } = createRepository()
+  try {
+    writeFileSync(path.join(root, 'scripts', 'local-only.mjs'), 'export {}\n')
+    const { deriveInventory } = await import(pathToFileURL(path.join(root, 'scripts', 'project-memory-lib.mjs')).href)
+    assert.equal(deriveInventory().source_files.roots.scripts, 3)
+  } finally {
+    closeRepository(root)
+  }
+})
+
+test('detached pull-request CI validates against the canonical base branch', () => {
+  const { root } = createRepository()
+  try {
+    sync(root)
+    runGit(root, ['checkout', '--detach', 'HEAD'])
+    const result = validate(root, {
+      GITHUB_ACTIONS: 'true',
+      GITHUB_EVENT_NAME: 'pull_request',
+      GITHUB_BASE_REF: 'main',
+    })
+    assert.equal(result.passed, true, result.output)
+  } finally {
+    closeRepository(root)
+  }
+})
+
+test('detached pull-request CI rejects a different canonical base branch', () => {
+  const { root } = createRepository()
+  try {
+    sync(root)
+    runGit(root, ['checkout', '--detach', 'HEAD'])
+    const result = validate(root, {
+      GITHUB_ACTIONS: 'true',
+      GITHUB_EVENT_NAME: 'pull_request',
+      GITHUB_BASE_REF: 'integration/other',
+    })
+    assert.equal(result.passed, false)
+    assert.match(result.output, /does not match the CI target branch/)
+  } finally {
+    closeRepository(root)
+  }
+})
+
+test('memory sync refuses to rewrite canonical state from a detached checkout', () => {
+  const { root } = createRepository()
+  try {
+    runGit(root, ['checkout', '--detach', 'HEAD'])
+    assert.throws(() => sync(root), /requires a named local branch/)
+  } finally {
+    closeRepository(root)
+  }
+})
+
+test('memory sync refuses to snapshot uncommitted source or untracked files', () => {
+  const { root } = createRepository()
+  try {
+    writeFileSync(path.join(root, 'source.txt'), 'uncommitted source change\n')
+    assert.throws(() => sync(root), /requires a clean worktree/)
   } finally {
     closeRepository(root)
   }

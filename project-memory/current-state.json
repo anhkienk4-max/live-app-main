@@ -10,9 +10,8 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "c0d4d0f99010a7006f78f01c31db7c61c8dcc9fa",
-    "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f",
-    "worktree": "C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-full-upgrade"
+    "head": "45f1637aa2273a1d60fa334ec778d4913e208787",
+    "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
     "main_sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5",
@@ -99,11 +98,11 @@
         "app": 67,
         "components": 170,
         "lib": 251,
-        "scripts": 31,
-        "supabase": 110,
+        "scripts": 26,
+        "supabase": 109,
         "tests": 265
       },
-      "total": 894
+      "total": 888
     },
     "tests": {
       "files": [
@@ -437,5 +436,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-27T01:50:25+07:00"
+  "synced_at": "2026-10-28T00:00:43+07:00"
 }
