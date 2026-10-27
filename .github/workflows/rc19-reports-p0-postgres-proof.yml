@@ -1,0 +1,79 @@
+name: RC19 Reports P0 scoped security proof (NO DEPLOY)
+on:
+  push:
+    branches:
+      - fix/rc19-reports-member-access-p0
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reports-p0-source-and-postgres17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: RC19 TypeScript
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: RC19 ESLint
+        run: pnpm run lint
+      - name: Focused Reports security and historical access
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/f10-report-active-user-rls.test.ts tests/report-storage-security.test.ts tests/report-history-access.test.ts tests/rc14-report-artifact-storage.test.ts
+      - name: Full repository regression
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node scripts/run-final-regression.mjs
+      - name: Read-only role-equivalent SQL on disposable PostgreSQL 17
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGDATABASE: postgres
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          psql -X -v ON_ERROR_STOP=1 -c "SELECT current_setting('server_version_num');"
+          psql -X -v ON_ERROR_STOP=1 -f tests/reports-p0/reports-rls-synthetic-fixture.sql > /dev/null
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261023093000_rc19_p0_report_read_ownership_and_revisions.sql > /dev/null
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261023102000_rc19_p0_report_revision_rpc_invoker.sql > /dev/null
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261023103500_rc19_p0_report_revision_invoker_identity_fix.sql > /dev/null
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261024003000_rc19_p0_orphan_live_image_read_rls.sql > /dev/null
+          psql -X -v ON_ERROR_STOP=1 -f tests/reports-p0/rc19-reports-role-simulation.sql
+      - name: Guarded code build, flags OFF and no credentials
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_ATTENDANCE_IMPORT: 'false'
+          NEXT_PUBLIC_FEATURE_ATTENDANCE_IMPORT: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm run build
+      - name: Report release identity, NO DEPLOY
+        if: always()
+        run: |
+          echo "RC19 Reports #84 isolated source tests SHA $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Synthetic PostgreSQL role simulation only, NOT signed JWT or Production UAT. No Production DB or Vercel changes." >> "$GITHUB_STEP_SUMMARY"
