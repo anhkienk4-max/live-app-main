@@ -91,13 +91,11 @@ try {
   asMember('staff-host', `select public.get_self_attendance_photo_context('shift-host','host','check_out')`)
   psql(database, evidence({ requestId: hostCheckout, shiftId: 'shift-host', staffId: 'staff-host', role: 'host', event: 'check_out', suffix: 2, capture: 'file_picker' }))
   rpc('staff-host', 'shift-host', 'host', 'check_out', hostCheckout)
+  const replay = rpc('staff-host', 'shift-host', 'host', 'check_out', hostCheckout)
+  assert.match(replay.stdout, /"replayed": true/)
   expectSqlError(
-    `begin; set local role authenticated; select set_config('app.test_actor','staff-host',true); select public.self_attendance_record('shift-host','host','check_out','70000000-0000-4000-8000-000000000001',null); commit;`,
+    `begin; set local role authenticated; select set_config('app.test_actor','staff-host',true); select public.get_self_attendance_photo_context('shift-host','host','check_out'); commit;`,
     'ATTENDANCE_ALREADY_RECORDED',
-  )
-  expectSqlError(
-    `begin; set local role authenticated; select set_config('app.test_actor','staff-host',true); select public.self_attendance_record('shift-host','host','check_out','${hostCheckin}',null); commit;`,
-    'ATTENDANCE_REQUEST_ID_REUSED',
   )
 
   for (const [role, staffId, shiftId, suffix] of [
@@ -120,6 +118,10 @@ try {
 
   expectSqlError(
     evidence({ requestId: '40000000-0000-4000-8000-000000000001', shiftId: 'shift-host', staffId: 'staff-host', role: 'host', event: 'check_in', suffix: 9 }),
+    'duplicate key value violates unique constraint',
+  )
+  expectSqlError(
+    evidence({ requestId: hostCheckin, shiftId: 'shift-support', staffId: 'staff-support', role: 'support', event: 'check_in', suffix: 10 }),
     'duplicate key value violates unique constraint',
   )
   expectSqlError(
