@@ -43,7 +43,7 @@ test('Reference module surfaces remain real routes with original business logic'
   }
   const nav = source('components/layout/BottomNav.tsx')
   for (const route of ['/profile','/notifications','/settings']) {
-    assert.ok(nav.includes('href="'+route+'"'))
+    assert.ok(nav.includes("href: '" + route + "'") || nav.includes('href="'+route+'"'))
   }
 })
 
@@ -55,7 +55,7 @@ test('Member mobile dashboard displays real view-model data with links to existi
   }
   const base = source('components/features/dashboard/presentation/member/MemberDashboardView.tsx')
   assert.ok(base.includes('<MemberDashboardMobile'))
-  assert.ok(base.includes('md:flex'))
+  assert.ok(base.includes('lg:flex'))
 })
 
 test('Auth tablet landscape uses a two-panel layout and mobile remains scrollable', () => {
@@ -80,4 +80,31 @@ test('Tablet navigation expands using ordinary links instead of a popup portal',
   assert.ok(header.includes('filterWorkforceNavigation(filterNav('))
   const part = header.slice(header.indexOf('function MobileNavMenu()'), header.indexOf('interface HeaderProps'))
   assert.ok(!part.includes('<DropdownMenu'), 'tablet menu must not use popup primitives')
+})
+
+test('Dashboard reference mobile is role-aware, not restricted to Member only', () => {
+  const admin = source('components/features/dashboard/presentation/admin/AdminDashboardView.tsx')
+  const leader = source('components/features/dashboard/presentation/leader/LeaderDashboardView.tsx')
+  const member = source('components/features/dashboard/presentation/member/MemberDashboardView.tsx')
+  for (const component of [admin, leader]) {
+    assert.ok(component.includes('<OperationsMobileHome'))
+    assert.ok(component.includes('lg:flex'), 'existing desktop layout must remain')
+  }
+  assert.ok(member.includes('<MemberDashboardMobile'))
+  const shared = source('components/features/dashboard/presentation/OperationsMobileHome.tsx')
+  assert.ok(shared.includes('todaysShifts') || shared.includes('today: number'))
+  assert.ok(shared.includes('pending: number'))
+  assert.ok(shared.includes('/payroll'))
+  assert.ok(shared.includes('admin ?'))
+  const bottom = source('components/layout/BottomNav.tsx')
+  assert.ok(bottom.includes('data-testid="ada-reference-tabs"'))
+  assert.ok(bottom.includes('aria-expanded={open}'))
+})
+test('Login reference uses white page and blue-violet waves while preserving Supabase sign-in', () => {
+  const auth = source('components/layouts/AuthLayout.tsx')
+  const login = source('app/login/page.tsx')
+  assert.ok(auth.includes('ada-login-reference__top'))
+  assert.ok(auth.includes('ada-login-reference__bottom'))
+  assert.ok(login.includes('variant="login"'))
+  assert.ok(login.includes('establishPasswordSession('))
 })

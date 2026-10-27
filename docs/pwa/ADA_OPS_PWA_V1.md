@@ -96,3 +96,14 @@ Clicking any link or the backdrop closes the panel. No data APIs or auth code ch
 An Edge "This page couldn't load" surface may also indicate browser/webview failure;
 runtime browser logs were unavailable, so the screenshot is not proof of a specific JS exception.
 Dashboard progressive loading in another screenshot is still under investigation.
+
+## Reference-fidelity mobile screens W6
+The former member-only blue-gradient hero has been replaced by the screenshot's
+white, compact next-shift card and four quick actions. Admin and Leader now use
+a role-specific mobile operations home with genuine today/live/pending metrics,
+schedule rows and actions sourced from their existing view-models. Large desktop
+presentations remain at lg+; no fixture data is used. Payroll shortcut appears
+only on Admin dashboard because the existing payroll route is Admin-only.
+Login and five-tab navigation were rebuilt in the previous commit.
+Full-size visual screenshot QA and detailed Calendar/Report/Payroll redesign
+are still outstanding.

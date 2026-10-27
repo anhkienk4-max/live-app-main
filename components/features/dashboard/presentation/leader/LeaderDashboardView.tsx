@@ -1,4 +1,5 @@
 ﻿import React from 'react'
+import { OperationsMobileHome } from '../OperationsMobileHome'
 import {
   Radio, Users, Calendar, FileText, ArrowRight, CheckCircle,
   AlertTriangle, Clock, ArrowLeftRight, FolderCheck, ArrowUp,
@@ -147,7 +148,16 @@ export function LeaderDashboardView({
   decisions, todaysSchedule, staffingHealth, upcomingLive, activityLog,
 }: LeaderDashboardViewModel) {
   return (
-    <main className="p-8 flex flex-col gap-6 overflow-y-auto">
+    <>
+      <OperationsMobileHome
+        roleLabel="Điều phối đội ngũ"
+        today={todaysShiftsCount}
+        live={liveCount}
+        pending={pendingCount}
+        schedule={todaysSchedule.map((item, index) => ({ id: String(index), title: item.brand + ' · ' + item.platform, subtitle: item.time, status: item.status }))}
+        actions={decisions === null ? null : decisions.map(item => ({ id: item.key, title: item.title, subtitle: item.subtitle, status: item.action, tone: item.type === 'dq' ? 'red' : item.type === 'swap' ? 'amber' : 'blue' }))}
+      />
+      <main className="hidden flex-col gap-6 overflow-y-auto p-8 lg:flex">
       <div className="flex items-start justify-between mb-1">
         <div className="flex flex-col gap-1">
           <h1 className="text-[26px] font-bold tracking-tight text-slate-900 leading-tight">Leader Dashboard</h1>
@@ -307,6 +317,7 @@ export function LeaderDashboardView({
         </div>
       </div>
     <nav aria-label="Xem tất cả" className="flex flex-wrap gap-4 text-sm"><a className="underline underline-offset-4" href="/calendar">Xem tất cả: Lịch</a><a className="underline underline-offset-4" href="/reports">Xem tất cả: Báo cáo</a><a className="underline underline-offset-4" href="/notifications">Xem tất cả: Thông báo</a><a className="underline underline-offset-4" href="/data-quality">Xem tất cả: Chất lượng dữ liệu</a></nav>
-    </main>
+      </main>
+    </>
   )
 }

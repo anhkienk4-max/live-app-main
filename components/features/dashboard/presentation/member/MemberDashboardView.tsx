@@ -165,7 +165,7 @@ export function MemberDashboardView({
   return (
     <>
       <MemberDashboardMobile nextShift={nextShift} mySchedule={mySchedule} myActions={myActions} openShifts={openShifts} myRequests={myRequests} notifications={notifications} />
-      <main className="hidden p-8 flex-col gap-6 overflow-y-auto md:flex">
+      <main className="hidden p-8 flex-col gap-6 overflow-y-auto lg:flex">
       <div className="flex flex-col gap-1 mb-1">
         <h1 className="text-[26px] font-bold tracking-tight text-slate-900 leading-tight">My Workspace</h1>
         <p className="text-[14px] text-slate-500 font-medium">Welcome back! Ready for your upcoming shifts today?</p>
