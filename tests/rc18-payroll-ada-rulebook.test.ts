@@ -20,6 +20,16 @@ test('ADA room policy is effective 22 Oct 2026, never retroactively', () => {
   assert.equal(rule().payrollApplied,false)
 })
 
+test('case estimates do not establish evidence or apply to unsupported roles and dates', () => {
+  const hypothetical=rule({rule:'general'})
+  assert.equal(hypothetical.state,'proposed')
+  assert.ok(hypothetical.requiredEvidence.length>0)
+  assert.equal(hypothetical.payrollApplied,false)
+  assert.equal(rule({role:'technical' as RoomRuleProposalInput['role']}).state,'manual_review')
+  assert.equal(rule({role:'support'}).payrollApplied,false)
+  assert.equal(rule({shiftDate:'2026-10-21'}).state,'outside_policy')
+})
+
 test('Host Daily lateness brackets calculate from 15-minute early check-in deadline, no 10-minute grace', () => {
   for(const [arrived,percentage] of [
     ['09:45:00',0],['09:45:01',10],['09:50:00',10],
