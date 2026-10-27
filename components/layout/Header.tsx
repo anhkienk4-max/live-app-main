@@ -40,37 +40,62 @@ function MobileNavMenu() {
   const { capabilities } = useWorkforceCapabilities()
   const roleNav = filterWorkforceNavigation(filterNav(rawNav, currentUser), capabilities)
   const activeHref = resolveActiveNavigation(roleNav, pathname, search)
+  const [open, setOpen] = useState(false)
+  const menuId = 'ada-tablet-navigation'
 
+  // Close when a link is selected, or when the route changes via a different control.
+  // The menu remains an ordinary React-controlled panel; no popup portal is mounted.
   return (
-    <div className="hidden md:flex lg:hidden mr-2">
-      <DropdownMenu>
-        <DropdownMenuTrigger render={
-          <Button variant="ghost" size="icon" className="h-8 w-8 px-0">
-            <Menu className="h-5 w-5" />
-            <span className="sr-only">Toggle menu</span>
-          </Button>
-        }>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-56">
-          <DropdownMenuLabel className="font-normal text-xs text-muted-foreground uppercase tracking-wider">{t('navMain')}</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuGroup>
+    <div className="relative mr-2 hidden md:flex lg:hidden">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        aria-label={t('navMain')}
+        aria-expanded={open}
+        aria-controls={menuId}
+        data-testid="tablet-nav-toggle"
+        className="h-9 w-9 px-0"
+        onClick={() => setOpen(value => !value)}
+      >
+        <Menu className="h-5 w-5" />
+      </Button>
+      {open && (
+        <>
+          <button
+            type="button"
+            aria-label={t('close')}
+            className="fixed inset-0 z-40 cursor-default bg-slate-900/10"
+            onClick={() => setOpen(false)}
+          />
+          <nav
+            id={menuId}
+            aria-label={t('navMain')}
+            data-testid="tablet-nav-panel"
+            className="absolute left-0 top-11 z-50 max-h-[min(68dvh,560px)] w-64 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 text-slate-900 shadow-xl"
+          >
             {roleNav.map(item => {
-              const isActive = activeHref === item.href
               const Icon = item.icon
-              const label = item.labelKey ? t(item.labelKey as Parameters<typeof t>[0]) : t(item.name.toLowerCase() as Parameters<typeof t>[0]) || item.name
+              const active = activeHref === item.href
+              const label = item.labelKey
+                ? t(item.labelKey as Parameters<typeof t>[0])
+                : t(item.name.toLowerCase() as Parameters<typeof t>[0]) || item.name
               return (
-                <DropdownMenuItem key={item.name} render={
-                  <Link href={item.href} className={`flex items-center gap-2 ${isActive ? 'bg-primary/10 text-primary font-medium' : ''}`}>
-                    <Icon className={`h-4 w-4 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} />
-                    <span>{label}</span>
-                  </Link>
-                } />
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  aria-current={active ? 'page' : undefined}
+                  onClick={() => setOpen(false)}
+                  className={`flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-blue-600 ${active ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'}`}
+                >
+                  <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span className="min-w-0 truncate">{label}</span>
+                </Link>
               )
             })}
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          </nav>
+        </>
+      )}
     </div>
   )
 }

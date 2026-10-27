@@ -87,3 +87,12 @@ switches to the existing desktop split layout at 768px, while keeping the stacke
 gradient-hero and overlapping white card on narrow mobile devices. Visual-only changes:
 no login code, auth state, environment variables, roles or Supabase queries changed.
 Final screenshot-based QA on tablet and physical phones remains pending.
+
+## Tablet menu regression W5
+A user screenshot reported failure when pressing the expandable navigation at 768-1023px.
+The topbar tablet dropdown menu is now a React-controlled, non-portal panel that uses
+the same RBAC + workforce-capabilities filtered nav and standard Next Links.
+Clicking any link or the backdrop closes the panel. No data APIs or auth code changed.
+An Edge "This page couldn't load" surface may also indicate browser/webview failure;
+runtime browser logs were unavailable, so the screenshot is not proof of a specific JS exception.
+Dashboard progressive loading in another screenshot is still under investigation.

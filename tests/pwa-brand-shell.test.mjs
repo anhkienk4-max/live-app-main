@@ -70,3 +70,14 @@ test('Auth tablet landscape uses a two-panel layout and mobile remains scrollabl
   const login = source('app/login/page.tsx')
   assert.ok(login.includes('establishPasswordSession('), 'authentication logic must remain unchanged')
 })
+
+test('Tablet navigation expands using ordinary links instead of a popup portal', () => {
+  const header = source('components/layout/Header.tsx')
+  assert.ok(header.includes('data-testid="tablet-nav-toggle"'))
+  assert.ok(header.includes('data-testid="tablet-nav-panel"'))
+  assert.ok(header.includes('aria-expanded={open}'))
+  assert.ok(header.includes('onClick={() => setOpen(false)}'))
+  assert.ok(header.includes('filterWorkforceNavigation(filterNav('))
+  const part = header.slice(header.indexOf('function MobileNavMenu()'), header.indexOf('interface HeaderProps'))
+  assert.ok(!part.includes('<DropdownMenu'), 'tablet menu must not use popup primitives')
+})
