@@ -53,3 +53,14 @@ test("PWA uses the current site, not another backend or offline cache", () => {
   assert.ok(!m.includes("https://"), "manifest must use same-origin URLs");
   assert.ok(!read("app/layout.tsx").includes("serviceWorker"));
 });
+
+test('iPhone reference splash remains public and belongs to supported startup dimensions', () => {
+  const proxy = read("proxy.ts")
+  assert.ok(proxy.includes('pwa-splash(?:/|$)'))
+  const route = read("app/pwa-splash/route.tsx")
+  assert.ok(route.includes('new ImageResponse('))
+  assert.ok(route.includes('width: 1170, height: 2532'))
+  const layout = read("app/layout.tsx")
+  assert.ok(layout.includes('startupImage:'))
+  assert.ok(layout.includes('url: "/pwa-splash"'))
+})

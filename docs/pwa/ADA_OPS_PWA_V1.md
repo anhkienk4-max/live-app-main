@@ -129,3 +129,10 @@ statement that would violate present RBAC. The periods/rates/reconciliation cont
 available below. Profile mobile menu uses the current user's real identity and navigates to
 existing profile, notifications and settings. Language toggles the real i18n provider;
 sign out uses the same clearLocalSession flow as the header; the edit form is retained.
+
+## Reference screen 1: launch splash
+The dynamic image route `/pwa-splash` produces 1170x2532 PNG artwork with ADA navy-blue
+gradient, centered ADA OPS LIVESTREAM wordmark and bottom wave. Next metadata advertises it
+for compatible portrait iPhone 390x844 @3x, but platform/browser controls actual splash
+display. Android launch splash remains OS-managed from the manifest icon/theme. This does
+not introduce a timed Javascript loading overlay, which could break session/navigation.

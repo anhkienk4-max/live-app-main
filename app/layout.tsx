@@ -12,6 +12,7 @@ export const metadata: Metadata = {
     capable: true,
     title: "ADA OPS",
     statusBarStyle: "default",
+    startupImage: [{ url: "/pwa-splash", media: "(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" }],
   },
 };
 
