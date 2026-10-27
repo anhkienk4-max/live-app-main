@@ -55,11 +55,30 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f docs/rbac01/RC19_RBAC01_REVIEW_ONLY.sql
           psql -X -v ON_ERROR_STOP=1 -f docs/rbac01/RC19_RBAC01B_AUDIT_TEAM_REVIEW_ONLY.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/rbac01b/pg17_assertions.sql
+      - name: PostgreSQL policy bypass negative: refuse a second permissive SELECT policy
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGDATABASE: postgres
+          PGUSER: postgres
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -c "CREATE POLICY rbac01b_test_bypass ON public.audit_logs FOR SELECT TO authenticated USING (true)"
+          if psql -X -v ON_ERROR_STOP=1 -f docs/rbac01/RC19_RBAC01B_AUDIT_TEAM_REVIEW_ONLY.sql > /tmp/rbac01b-policy-guard.log 2>&1; then
+            echo "SECURITY ERROR: Patch accepted a second permissive SELECT policy"
+            exit 1
+          fi
+          grep -q RBAC01B_UNEXPECTED_AUDIT_SELECT_POLICIES /tmp/rbac01b-policy-guard.log
+          psql -X -v ON_ERROR_STOP=1 -c "DROP POLICY rbac01b_test_bypass ON public.audit_logs"
+          echo "RBAC01B_ADDITIONAL_SELECT_POLICY_REJECTED: PASS"
       - name: Full repository regression
         env:
           SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
           TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
         run: node scripts/run-final-regression.mjs
+      - name: Install Chromium for mock-only revocation UX
+        run: pnpm exec playwright install --with-deps chromium
+      - name: AuditHistory revocation mock at 390, 768 and 1440px
+        run: pnpm exec playwright test --config playwright.rc19-rbac01b-hardening.config.ts --reporter=line
       - name: Guarded build, flags OFF and no credentials
         env:
           NEXT_PUBLIC_SUPABASE_URL: ''

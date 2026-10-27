@@ -9,7 +9,11 @@ CREATE OR REPLACE FUNCTION private.rbac01b_audit_team_allowed()
 RETURNS boolean
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $fn$
-DECLARE v_role text; v_decision text;
+DECLARE
+  v_role text;
+  v_version record;
+  v_decision text;
+  v_audit_ok boolean;
 BEGIN
   SELECT u.system_permission INTO v_role
   FROM public.business_users u
@@ -20,13 +24,47 @@ BEGIN
   -- Existing Admin permission and scope are immutable; Member gets no new rights.
   IF v_role = 'admin' THEN RETURN true; END IF;
   IF v_role <> 'leader' THEN RETURN false; END IF;
-  SELECT versions.decisions->>'audit.view_team' INTO v_decision
-  FROM private.rbac01_role_default_versions versions
-  WHERE versions.role = 'leader' AND versions.status = 'approved'
-  ORDER BY versions.version DESC LIMIT 1;
-  -- Deny is the ONLY possible effective override in this slice. Any unknown
-  -- value behaves as inherit, never ALLOW beyond existing role+RLS constraints.
-  RETURN v_decision IS DISTINCT FROM 'deny';
+  -- DELTA SEMANTICS: every approved version carries only changed keys.
+  -- Missing audit.view_team in a newer delta must NOT silently erase an older DENY.
+  -- Unverifiable provenance or invalid payload fails closed before any grant.
+  FOR v_version IN
+    SELECT v.id,v.role,v.version,v.decisions,v.proposed_by,v.proposed_at,
+           v.approved_by,v.approved_at
+    FROM private.rbac01_role_default_versions v
+    WHERE v.role = 'leader' AND v.status = 'approved'
+    ORDER BY v.version DESC
+  LOOP
+    SELECT EXISTS (
+      SELECT 1 FROM private.rbac01_audit_events a
+      WHERE a.version_id = v_version.id AND a.role = v_version.role
+        AND a.action = 'approve' AND a.actor_business_user_id = v_version.approved_by
+        AND a.after_state->>'status' = 'approved'
+        AND a.after_state->>'version' = v_version.version::text
+        AND a.at >= v_version.proposed_at
+        AND a.at <= v_version.approved_at + interval '1 second'
+    ) INTO v_audit_ok;
+    IF NOT coalesce(v_audit_ok,false)
+      OR nullif(btrim(v_version.proposed_by),'') IS NULL
+      OR nullif(btrim(v_version.approved_by),'') IS NULL
+      OR v_version.proposed_by = v_version.approved_by
+      OR v_version.approved_at IS NULL
+      OR v_version.approved_at < v_version.proposed_at
+      OR v_version.approved_at > clock_timestamp()
+      OR v_version.decisions IS NULL
+      OR jsonb_typeof(v_version.decisions) IS DISTINCT FROM 'object'
+    THEN RETURN false; END IF;
+    -- Older DENY remains binding when the newest approved delta concerns
+    -- another permission or contains no key for this slice.
+    IF v_version.decisions ? 'audit.view_team' THEN
+      v_decision := v_version.decisions->>'audit.view_team';
+      IF v_decision = 'deny' THEN RETURN false; END IF;
+      IF v_decision = 'inherit' THEN RETURN true; END IF;
+      -- allow, null, garbage or a non-string value MUST NEVER grant.
+      RETURN false;
+    END IF;
+  END LOOP;
+  -- No approved explicit decision for this permission: exact legacy fallback.
+  RETURN true;
 END;
 $fn$;
 
@@ -47,6 +85,57 @@ $fn$;
 REVOKE ALL ON FUNCTION public.rbac01_effective_permission(text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.rbac01_effective_permission(text) TO authenticated;
 
+-- SECURITY DEFINER OWNER ATTESTATION: forced-RLS private tables are only readable
+-- by a properly privileged function owner. A migration under an arbitrary role
+-- must STOP rather than silently inheriting unsafe behavior.
+DO $owner_attestation$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_proc f
+    JOIN pg_catalog.pg_roles r ON r.oid=f.proowner
+    WHERE f.oid='private.rbac01b_audit_team_allowed()'::regprocedure
+      AND f.prosecdef
+      AND (r.rolbypassrls OR r.rolsuper)
+  )
+  OR NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_proc f
+    WHERE f.oid='public.rbac01_effective_permission(text)'::regprocedure
+      AND f.prosecdef
+  )
+  THEN RAISE EXCEPTION 'RBAC01B_UNSAFE_SECURITY_DEFINER_OWNER' USING ERRCODE='42501'; END IF;
+END;
+$owner_attestation$;
+
+-- This patch assumes precisely the single known permissive SELECT policy.
+-- Fail instead of silently letting a second permissive SELECT policy bypass DENY.
+DO $preflight$
+DECLARE v_owner oid;
+BEGIN
+  IF (SELECT count(*) FROM pg_catalog.pg_policies
+      WHERE schemaname='public' AND tablename='audit_logs'
+        AND cmd IN ('SELECT','ALL')) <> 1
+     OR NOT EXISTS (
+       SELECT 1 FROM pg_catalog.pg_policies
+       WHERE schemaname='public' AND tablename='audit_logs'
+         AND policyname='audit_logs_read' AND permissive='PERMISSIVE'
+         AND cmd='SELECT'
+     )
+  THEN RAISE EXCEPTION 'RBAC01B_UNEXPECTED_AUDIT_SELECT_POLICIES' USING ERRCODE='42501'; END IF;
+  IF NOT (SELECT c.relrowsecurity FROM pg_catalog.pg_class c
+          WHERE c.oid='public.audit_logs'::regclass)
+     OR NOT (SELECT c.relrowsecurity AND c.relforcerowsecurity
+          FROM pg_catalog.pg_class c
+          WHERE c.oid='private.rbac01_role_default_versions'::regclass)
+  THEN RAISE EXCEPTION 'RBAC01B_RLS_PRECONDITION_FAILED' USING ERRCODE='42501'; END IF;
+  SELECT c.relowner INTO v_owner
+    FROM pg_catalog.pg_class c WHERE c.oid='private.rbac01_role_default_versions'::regclass;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_roles r
+    WHERE r.oid = v_owner AND (r.rolbypassrls OR r.rolsuper)
+  ) THEN RAISE EXCEPTION 'RBAC01B_PRIVATE_OWNER_CANNOT_READ_FORCED_RLS' USING ERRCODE='42501'; END IF;
+END;
+$preflight$;
+
 -- Exact legacy SELECT scope preserved; one additional restrictive leader predicate.
 DROP POLICY IF EXISTS audit_logs_read ON public.audit_logs;
 CREATE POLICY audit_logs_read ON public.audit_logs FOR SELECT TO authenticated
@@ -58,6 +147,15 @@ USING (
     AND (SELECT private.rbac01b_audit_team_allowed())
   )
 );
+
+DO $postflight$
+BEGIN
+  IF (SELECT count(*) FROM pg_catalog.pg_policies
+      WHERE schemaname='public' AND tablename='audit_logs'
+        AND cmd IN ('SELECT','ALL')) <> 1
+  THEN RAISE EXCEPTION 'RBAC01B_SELECT_POLICY_BYPASS' USING ERRCODE='42501'; END IF;
+END;
+$postflight$;
 
 -- SECURITY INVOKER RPC: original shape, filters and pagination unchanged.
 -- Explicit revoked-Leader guard ensures direct RPC is denied (not only empty data).

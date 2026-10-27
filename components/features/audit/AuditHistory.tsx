@@ -6,7 +6,6 @@ import Link from 'next/link'
 import { Eye, Filter, History, RotateCcw, ShieldAlert } from 'lucide-react'
 import { AuditAction, AuditLog, AuditModule, DeletionImpact } from '@/lib/types/database.types'
 import { auditService } from '@/lib/services/auditService'
-import { getAuthMode } from '@/lib/auth/authMode'
 import { ArchivedEntitySummary, lifecycleService } from '@/lib/services/dataService'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasAnyPermission, hasPermission, resolveSystemPermission } from '@/lib/permissions'
@@ -63,6 +62,11 @@ export function AuditHistory() {
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
   const [teamCapabilityDenied, setTeamCapabilityDenied] = React.useState(false)
+  // Authorization-related refreshes must never retain old rows or open details.
+  const clearAuditSurface = React.useCallback(() => {
+    setLogs([]); setSelected(null); setTotal(0); setActors([])
+    setArchived([]); setArchivedTotal(0); setRestoreTarget(null)
+  }, [])
 
   const canView = Boolean(currentUser && hasAnyPermission(currentUser, ['audit.view', 'audit.view_team']))
   const isAdmin = Boolean(currentUser && hasPermission(currentUser, 'audit.view'))
@@ -84,28 +88,29 @@ export function AuditHistory() {
   const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role):''
   const [loadedIdentity,setLoadedIdentity]=React.useState('')
   const load = React.useCallback(async () => {
+    const request=next() // Sign-out and role changes invalidate old in-flight requests.
+    setLoading(true)
+    setLoadError(null)
+    clearAuditSurface()
     if (!currentUser || !canView) {
+      setTeamCapabilityDenied(true)
+      setLoadedIdentity(identity)
       setLoading(false)
       return
     }
-    const request=next()
-    setLoading(true)
-    setLoadError(null)
+    setTeamCapabilityDenied(false)
     try {
       // RBAC-01B: Leader permission check must precede every audit data request.
       // Signed server preflight is no-store; DB RLS guards direct REST/RPC independently.
-      if (getAuthMode() === 'supabase' && resolveSystemPermission(currentUser) === 'leader'
+      if (resolveSystemPermission(currentUser) === 'leader'
         && process.env.NEXT_PUBLIC_FEATURE_RBAC01B_AUDIT_TEAM_ENFORCEMENT === 'true') {
+        // E2E mock can intercept this capability; Production uses signed server verification.
         const capability = await fetch('/api/audit/team-capability', {
           method: 'GET', cache: 'no-store', credentials: 'same-origin',
         })
         if (!isCurrent(request)) return
-        if (capability.status === 403) {
+        if (capability.status === 401 || capability.status === 403) {
           setTeamCapabilityDenied(true)
-          setLogs([])
-          setSelected(null)
-          setTotal(0)
-          setActors([])
           setLoadedIdentity(identity)
           return
         }
@@ -129,16 +134,40 @@ export function AuditHistory() {
       if (visible.page !== page) setPage(visible.page)
       setArchived(deleted.items);setArchivedTotal(deleted.total);setArchivedPage(deleted.page)
     } catch (error) {
-      if(isCurrent(request))setLoadError(error)
+      if(isCurrent(request)){
+        clearAuditSurface() // 500/network errors must fail closed without exposing old data.
+        setTeamCapabilityDenied(false)
+        setLoadedIdentity(identity)
+        setLoadError(error)
+      }
     } finally {
       if(isCurrent(request))setLoading(false)
     }
-  }, [canView, currentUser, filters, isAdmin, page, pageSize, sort,archivedPage,archivedPageSize,identity,next,isCurrent])
+  }, [canView, currentUser, filters, isAdmin, page, pageSize, sort,archivedPage,archivedPageSize,identity,next,isCurrent,clearAuditSurface])
 
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => { void load() })
-    return () => cancelAnimationFrame(frame)
+    return () => { cancelAnimationFrame(frame); invalidate() }
   }, [load,invalidate])
+
+  React.useEffect(() => {
+    if (process.env.NEXT_PUBLIC_FEATURE_RBAC01B_AUDIT_TEAM_ENFORCEMENT !== 'true') return
+    if (resolveSystemPermission(currentUser ?? { role: 'member' }) !== 'leader') return
+    // Revalidate on tab/window return. This is NOT push invalidation while tab stays open.
+    const onReturn = () => { void load() }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') onReturn()
+    }
+    window.addEventListener('focus', onReturn)
+    window.addEventListener('pageshow', onReturn)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('focus', onReturn)
+      window.removeEventListener('pageshow', onReturn)
+      document.removeEventListener('visibilitychange', onVisibility)
+      invalidate()
+    }
+  }, [currentUser, load, invalidate])
 
   if (userLoading || loading || canView&&identity!==loadedIdentity) return <p className="text-sm text-muted-foreground">{t('loading')}</p>
   if (!currentUser || !canView || teamCapabilityDenied) {

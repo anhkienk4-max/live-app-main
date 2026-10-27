@@ -51,9 +51,16 @@ END $test$;
 ROLLBACK;
 
 -- Test-only seed of independent approver. The real approval RPC remains always-deny.
-INSERT INTO private.rbac01_role_default_versions
-(role,version,decisions,status,proposed_by,approved_by,approved_at)
-VALUES ('leader',1,'{"audit.view_team":"deny"}','approved','admin-a','admin-b',clock_timestamp());
+WITH approved AS (
+ INSERT INTO private.rbac01_role_default_versions
+ (role,version,decisions,status,proposed_by,approved_by,approved_at)
+ VALUES ('leader',1,'{"audit.view_team":"deny"}','approved','admin-a','admin-b',clock_timestamp())
+ RETURNING *
+)
+INSERT INTO private.rbac01_audit_events(version_id,role,action,actor_business_user_id,at,after_state)
+SELECT id,role,'approve',approved_by,approved_at,
+       jsonb_build_object('status','approved','version',version)
+FROM approved;
 
 -- B. New request/session resolves most recent approved version immediately.
 BEGIN;
@@ -68,6 +75,24 @@ BEGIN
  BEGIN PERFORM public.get_audit_actor_page(1,20);
  EXCEPTION WHEN insufficient_privilege THEN blocked:=true; END;
  IF NOT blocked THEN RAISE EXCEPTION 'REVOKED_DIRECT_RPC_BYPASS'; END IF;
+END $test$;
+ROLLBACK;
+
+-- B2. APPROVED DELTA for another permission MUST NOT override older audit DENY.
+WITH approved AS (
+ INSERT INTO private.rbac01_role_default_versions
+ (role,version,decisions,status,proposed_by,approved_by,approved_at)
+ VALUES ('leader',2,'{"shifts.view_open":"deny"}','approved','admin-a','admin-b',clock_timestamp())
+ RETURNING *
+)
+INSERT INTO private.rbac01_audit_events(version_id,role,action,actor_business_user_id,at,after_state)
+SELECT id,role,'approve',approved_by,approved_at,jsonb_build_object('status','approved','version',version) FROM approved;
+BEGIN; SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000002',true);
+DO $test$ BEGIN
+ IF public.rbac01_effective_permission('audit.view_team') IS DISTINCT FROM false
+ OR (SELECT count(*) FROM public.audit_logs)<>0
+ THEN RAISE EXCEPTION 'DELTA_LOST_PRIOR_DENY'; END IF;
 END $test$;
 ROLLBACK;
 
@@ -105,10 +130,46 @@ DO $test$ BEGIN
 END $test$;
 ROLLBACK;
 
--- E. Simulate independent approved version rollback-to-inherit; same JWT id, new SQL request.
+-- E. Missing approval provenance is DENY, even for an apparent INHERIT.
 INSERT INTO private.rbac01_role_default_versions
 (role,version,decisions,status,proposed_by,approved_by,approved_at,source_version)
-VALUES ('leader',2,'{"audit.view_team":"inherit"}','approved','admin-a','admin-b',clock_timestamp(),1);
+VALUES ('leader',3,'{"audit.view_team":"inherit"}','approved','admin-a','admin-b',clock_timestamp(),1);
+BEGIN; SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000002',true);
+DO $test$ BEGIN
+ IF public.rbac01_effective_permission('audit.view_team') IS DISTINCT FROM false
+ OR (SELECT count(*) FROM public.audit_logs)<>0
+ THEN RAISE EXCEPTION 'MISSING_APPROVAL_PROVENANCE_GRANTED'; END IF;
+END $test$;
+ROLLBACK;
+
+-- F. Invalid decision is DENY, never silently inherit/allow.
+WITH approved AS (
+ INSERT INTO private.rbac01_role_default_versions
+ (role,version,decisions,status,proposed_by,approved_by,approved_at)
+ VALUES ('leader',4,'{"audit.view_team":"unexpected_allow"}','approved','admin-a','admin-b',clock_timestamp())
+ RETURNING *
+)
+INSERT INTO private.rbac01_audit_events(version_id,role,action,actor_business_user_id,at,after_state)
+SELECT id,role,'approve',approved_by,approved_at,jsonb_build_object('status','approved','version',version) FROM approved;
+BEGIN; SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000002',true);
+DO $test$ BEGIN
+ IF public.rbac01_effective_permission('audit.view_team') IS DISTINCT FROM false
+ OR (SELECT count(*) FROM public.audit_logs)<>0
+ THEN RAISE EXCEPTION 'INVALID_DECISION_WAS_GRANTED'; END IF;
+END $test$;
+ROLLBACK;
+
+-- G. Explicit independently approved INHERIT restores legacy scope.
+WITH approved AS (
+ INSERT INTO private.rbac01_role_default_versions
+ (role,version,decisions,status,proposed_by,approved_by,approved_at,source_version)
+ VALUES ('leader',5,'{"audit.view_team":"inherit"}','approved','admin-a','admin-b',clock_timestamp(),1)
+ RETURNING *
+)
+INSERT INTO private.rbac01_audit_events(version_id,role,action,actor_business_user_id,at,after_state)
+SELECT id,role,'approve',approved_by,approved_at,jsonb_build_object('status','approved','version',version) FROM approved;
 
 BEGIN;
 SET LOCAL ROLE authenticated;
