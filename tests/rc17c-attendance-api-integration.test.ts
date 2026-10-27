@@ -133,7 +133,7 @@ async function setupIsolatedPostgresDb() {
   `)
 
   // Canonical Migration Execution for RC1.7C attendance import foundation
-  const migrationPath = path.resolve(process.cwd(), 'supabase/migrations/20261021000000_rc17c_attendance_import_foundation.sql')
+  const migrationPath = path.resolve(process.cwd(), 'tests/fixtures/att01_rc17c_foundation.sql')
   const migrationSql = fs.readFileSync(migrationPath, 'utf-8')
   await db.exec(migrationSql)
 

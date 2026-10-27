@@ -8,7 +8,7 @@ Upstream dependent PRs: #46 (RC17C Importer, unmerged) and #54 (atomic RPC, clos
 
 No full RC19 branch, no unrelated feature migrations and no Production deployment.
 Server `FEATURE_ATTENDANCE_IMPORT` and browser `NEXT_PUBLIC_FEATURE_ATTENDANCE_IMPORT` MUST **both** equal `true` to expose functionality. Defaults OFF. Admin/Leader require authenticated `requireRole`; Member may not preview/confirm.
-The RC17C source migration is **NOT copied** into this release candidate. It is available for read-only comparison in upstream PR #46 / RC19. Production has already recorded an equivalent-named migration under a different version, so including the historical .sql file under `supabase/migrations/` could trigger accidental reapplication on a later main deployment. No SQL is executed by this PR.
+The RC17C source migration is **NOT copied** into this release candidate. It is available for read-only comparison in upstream PR #46 / RC19. Production has already recorded an equivalent-named migration under a different version, so including the historical .sql file under `supabase/migrations/` could trigger accidental reapplication on a later main deployment. The test-only copy at `tests/fixtures/att01_rc17c_foundation.sql` is loaded into an isolated in-memory PGlite database by integration tests; it is not a deployable migration and is never applied to live Production. No SQL is executed against Production by this PR.
 
 ## Dependency matrix
 
