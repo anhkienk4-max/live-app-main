@@ -365,3 +365,50 @@
 @media (prefers-reduced-motion: reduce) {
   .ada-pwa-shell *, .ada-auth * { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* ADA reference W2: surface styling only. Never substitute mock content for live data. */
+.ada-pwa-shell :is(.ada-calendar-page,.ada-reports-page,.ada-payroll-page,.ada-profile-page) h1 {
+  color: #07183B;
+  font-weight: 750;
+  letter-spacing: -.025em;
+}
+.ada-pwa-shell :is(.ada-calendar-page,.ada-reports-page,.ada-payroll-page,.ada-profile-page)
+:is([data-slot="card"],.shadow-sm.bg-white) {
+  border-color: #E7ECF7;
+  border-radius: 16px;
+  box-shadow: 0 6px 20px rgba(14, 39, 83, .045);
+}
+.ada-pwa-shell :is(.ada-calendar-page,.ada-reports-page,.ada-payroll-page,.ada-profile-page)
+:is(button,a) {
+  -webkit-tap-highlight-color: transparent;
+}
+.ada-pwa-shell :is(.ada-calendar-page,.ada-reports-page,.ada-payroll-page,.ada-profile-page)
+:is(button,a):active {
+  transition: transform .12s ease;
+}
+.ada-pwa-shell .ada-profile-page > div:first-child h1 { font-size: 1.5rem; }
+.ada-pwa-shell .ada-profile-page [data-slot="card"] { overflow: hidden; }
+.ada-pwa-shell .ada-reports-page > header { border-bottom: 1px solid #E8EDF8; padding-bottom: .8rem; }
+.ada-pwa-shell .ada-reports-page > header h1 { font-size: 1.5rem; }
+.ada-pwa-shell .ada-payroll-page [data-slot="tabs-list"] {
+  max-width: 100%;
+  overflow-x: auto;
+}
+@media (max-width: 639px) {
+  .ada-pwa-shell :is(.ada-calendar-page,.ada-reports-page,.ada-payroll-page,.ada-profile-page) {
+    min-width: 0;
+    padding: 1rem;
+  }
+  .ada-pwa-shell :is(.ada-calendar-page,.ada-reports-page,.ada-payroll-page,.ada-profile-page) [role="tablist"] {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .ada-pwa-shell :is(.ada-calendar-page,.ada-reports-page,.ada-payroll-page,.ada-profile-page) [role="tab"] {
+    flex-shrink: 0;
+  }
+  .ada-pwa-shell .ada-payroll-page > div:first-child {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+}

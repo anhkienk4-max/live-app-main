@@ -124,7 +124,7 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
   }
 
   return (
-    <PageShell archetype="command" className="space-y-6 p-4 md:p-6">
+    <PageShell archetype="command" className="ada-payroll-page space-y-6 p-4 md:p-6" data-testid="payroll-page">
       {/* Page Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-4">
         <div>

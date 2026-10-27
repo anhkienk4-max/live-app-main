@@ -4,7 +4,7 @@ import { ToastProvider } from "@/components/ui/toast";
 import { LanguageProvider } from "@/lib/i18n";
 
 export const metadata: Metadata = {
-  title: "LiveStream Operations Management",
+  title: "ADA OPS Livestream",
   description: "Internal live stream operations management system",
   applicationName: "ADA OPS",
   manifest: "/manifest.webmanifest",

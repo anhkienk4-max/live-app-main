@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { resolveActiveNavigation } from './shellConfig'
-import { Menu } from 'lucide-react'
+import { Bell, Menu, Settings2, UserRound } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
@@ -15,6 +15,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
@@ -106,6 +107,16 @@ export function BottomNav() {
                   </DropdownMenuItem>
                 )
               })}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem render={<Link href="/profile" className="flex items-center gap-3 py-2 cursor-pointer w-full" />}>
+                <UserRound className="h-4 w-4" />{t('profile')}
+              </DropdownMenuItem>
+              <DropdownMenuItem render={<Link href="/notifications" className="flex items-center gap-3 py-2 cursor-pointer w-full" />}>
+                <Bell className="h-4 w-4" />{t('navNotifications')}
+              </DropdownMenuItem>
+              <DropdownMenuItem render={<Link href="/settings" className="flex items-center gap-3 py-2 cursor-pointer w-full" />}>
+                <Settings2 className="h-4 w-4" />{t('settings')}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}

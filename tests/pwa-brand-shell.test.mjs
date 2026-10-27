@@ -28,3 +28,21 @@ test('Login retains user-provided children and no mock passwords or data', () =>
   assert.ok(auth.includes('<AdaBrand inverse'))
   assert.ok(source('components/branding/AdaBrand.tsx').includes('ada-brand'))
 })
+
+test('Reference module surfaces remain real routes with original business logic', () => {
+  const calendar = source('app/(dashboard)/calendar/page.tsx')
+  const reports = source('app/(dashboard)/reports/page.tsx')
+  const payroll = source('app/(dashboard)/payroll/page.tsx')
+  const profile = source('app/(dashboard)/profile/page.tsx')
+  assert.ok(calendar.includes('<CalendarWorkspace />'))
+  assert.ok(reports.includes('<LazyReportsList />'))
+  assert.ok(payroll.includes("permission !== 'admin'"))
+  assert.ok(profile.includes('userService.update('))
+  for (const css of ['ada-calendar-page', 'ada-reports-page', 'ada-payroll-page', 'ada-profile-page']) {
+    assert.ok(source('app/globals.css').includes(css))
+  }
+  const nav = source('components/layout/BottomNav.tsx')
+  for (const route of ['/profile','/notifications','/settings']) {
+    assert.ok(nav.includes('href="'+route+'"'))
+  }
+})

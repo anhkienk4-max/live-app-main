@@ -66,3 +66,11 @@ Follow-up W2 is a dedicated layout pass for Calendar, Report detail, Payroll, Pr
 verified empty/loading/success states. Never copy the board's mock names or figures as app data.
 The generated ADA wordmark is a temporary visual rendition; use ADA Global's official asset
 before branding signoff. No artificial animated splash intercept is installed.
+
+## Reference styling W2
+Styling wrappers now cover Calendar, Reports, Payroll and Profile without changing business data/API
+or RBAC. The reference's member payroll view is NOT available to all staff in this
+repository: the real /payroll page has an Admin-only security boundary. Do not remove
+that boundary to match the picture. Bottom-nav overflow links include personal Profile,
+Notifications and Settings, with each destination enforcing its existing permissions.
+Icon rendition now includes the gradient A mark shown on the supplied board.

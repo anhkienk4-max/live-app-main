@@ -137,7 +137,7 @@ export default function ProfilePage() {
     }
   }
 
-  return <div className="space-y-6">
+  return <div className="ada-profile-page space-y-6 p-4 sm:p-6" data-testid="profile-page">
     <div><h1 className="text-3xl font-bold">{t('profile')}</h1><p className="mt-1 text-muted-foreground">{t('accountDetails')}</p></div>
     <form onSubmit={save}>
       <div className="grid gap-6 lg:grid-cols-3">
