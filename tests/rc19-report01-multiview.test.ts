@@ -104,7 +104,7 @@ test('REPORT-01 URL views share applied filters; existing Table/Cards and REPORT
   const ui=readFileSync(new URL('../components/features/reports/ReportsList.tsx',import.meta.url),'utf8')
   const component=readFileSync(new URL('../components/features/reports/ReportsMultiView.tsx',import.meta.url),'utf8')
   assert.match(ui,/modeParam = searchParams\.get\('reports_view'\)/)
-  assert.match(ui,/calendarScale.*searchParams\.get\('reports_calendar_scale'\)/s)
+  assert.match(ui,/scaleParam = searchParams\.get\('reports_calendar_scale'\)/)
   assert.match(ui,/reports_calendar_date/)
   assert.match(ui,/createdViewMode === 'list'/)
   assert.match(ui,/createdViewMode === 'calendar'/)
