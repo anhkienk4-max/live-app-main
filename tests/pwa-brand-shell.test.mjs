@@ -57,3 +57,16 @@ test('Member mobile dashboard displays real view-model data with links to existi
   assert.ok(base.includes('<MemberDashboardMobile'))
   assert.ok(base.includes('md:flex'))
 })
+
+test('Auth tablet landscape uses a two-panel layout and mobile remains scrollable', () => {
+  const auth = source('components/layouts/AuthLayout.tsx')
+  assert.ok(auth.includes('md:flex-row'), 'tablet must use two-panel auth layout')
+  assert.ok(auth.includes('md:min-h-dvh'), 'both tablet panels must occupy viewport height')
+  assert.ok(auth.includes('md:mt-0'), 'auth card must not overlap brand on tablet')
+  assert.ok(auth.includes('{children}'), 'preserve login and recovery form content')
+  const css = source('app/globals.css')
+  assert.ok(css.includes('min-height: clamp(245px, 32dvh, 300px)'), 'mobile hero must be bounded')
+  assert.ok(css.includes('env(safe-area-inset-bottom)'), 'mobile safe area must remain supported')
+  const login = source('app/login/page.tsx')
+  assert.ok(login.includes('establishPasswordSession('), 'authentication logic must remain unchanged')
+})

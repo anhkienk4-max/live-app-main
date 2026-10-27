@@ -412,3 +412,28 @@
     flex-wrap: wrap;
   }
 }
+
+/* Auth responsive calibration for narrow desktop/tablet and mobile PWA.
+   Avoids the tall empty area when the viewport is 768–1023px wide. */
+.ada-auth__form { min-width: 0; }
+.ada-auth__card { min-width: 0; }
+@media (min-width: 768px) {
+  .ada-auth__hero { min-height: 100dvh; }
+  .ada-auth__form { min-height: 100dvh; }
+  .ada-auth__card { margin-top: 0; }
+}
+@media (max-width: 767px) {
+  .ada-auth__hero {
+    min-height: clamp(245px, 32dvh, 300px);
+    padding-top: max(2.25rem, env(safe-area-inset-top));
+  }
+  .ada-auth__card {
+    margin-top: -2.5rem;
+    margin-bottom: env(safe-area-inset-bottom);
+  }
+  .ada-auth__form { background: var(--ada-surface); }
+}
+@media (max-width: 360px) {
+  .ada-auth__card { padding-left: 1.15rem; padding-right: 1.15rem; }
+  .ada-auth__brand .ada-brand__name { font-size: 41px; }
+}

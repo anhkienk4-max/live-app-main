@@ -79,3 +79,11 @@ Icon rendition now includes the gradient A mark shown on the supplied board.
 Adds a task-first mobile member dashboard fed exclusively by the existing MemberDashboardViewModel
 (nextShift, mySchedule, myActions, openShifts). Desktop original remains visible at md+.
 No placeholder KPIs, no fake wages, no bypass of payroll or other RBAC. Links point to existing routes.
+
+## Responsive Auth W4 (2026-10-28)
+User screenshot exposed a 768-1023px tablet/desktop-width viewport rendered with the mobile
+stacked layout, leaving an oversized blank region below the login form. AuthLayout now
+switches to the existing desktop split layout at 768px, while keeping the stacked
+gradient-hero and overlapping white card on narrow mobile devices. Visual-only changes:
+no login code, auth state, environment variables, roles or Supabase queries changed.
+Final screenshot-based QA on tablet and physical phones remains pending.
