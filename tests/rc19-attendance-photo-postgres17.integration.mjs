@@ -145,9 +145,10 @@ try {
   const review = (actor, permission, eventId, requestId, version, decision, reason) =>
     psql(database, `begin; set local role authenticated; select set_config('app.test_actor','${actor}',true); select set_config('app.test_permission','${permission}',true); select public.review_self_attendance_photo_evidence('${eventId}','${requestId}',${version},'${decision}','${reason}'); commit;`)
   const technicalCheckin='20000000-0000-4000-8000-000000000005'
-  const technicalCheckout='30000000-0000-4000-8000-000000000006'
+  const technicalCheckout='30000000-0000-4000-8000-000000000005'
   const technicalEvent=psql(database,`select id from public.self_attendance_events where request_id='${technicalCheckin}'`).stdout.trim()
   const technicalCheckoutEvent=psql(database,`select id from public.self_attendance_events where request_id='${technicalCheckout}'`).stdout.trim()
+  assert.match(technicalCheckoutEvent,/^[0-9a-f-]{36}$/i,'concurrency fixture must resolve a real check-out event')
   assert.match(review('review-admin','admin',technicalEvent,technicalCheckin,0,'rejected','please include the assigned role').stdout, /\"decision\": \"rejected\"/)
   let lockOutput=''
   let resolveLockReady
