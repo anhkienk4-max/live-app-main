@@ -531,11 +531,12 @@ export function ReportsList() {
               {pagedQueue.map(shift => {
                 const report = reportByShift.get(shift.id)
                 const state = reportQueueDisplayState(report)
-                const readOnlyQueueItem = state === 'in_review' || state === 'unconfirmed'
+                const readOnlyQueueItem = state === 'in_review' || state === 'unconfirmed' || state === 'confirmed'
                 const stateLabel = state === 'not_started' ? t('notStarted')
                   : state === 'in_review' ? t('inReview')
                   : state === 'reopened' ? t('reopened')
                   : state === 'unconfirmed' ? 'Chưa xác nhận'
+                  : state === 'confirmed' ? t('confirmed')
                   : t('draft')
                 return <div key={shift.id} className="grid gap-3 border-b px-4 py-3 last:border-b-0 md:grid-cols-7 md:items-center">
                   <div><p className="font-medium">{shift.date}</p><p className="text-xs text-muted-foreground">{shift.start_time}–{shift.end_time}</p></div>
