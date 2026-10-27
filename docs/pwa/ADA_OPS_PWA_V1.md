@@ -51,3 +51,18 @@ The numbered dynamic files `app/icon1.tsx` etc. were replaced by explicit
 serving valid PNG responses, while keeping manifest URLs stable.
 PWA checks run independently of Vercel deployment via
 `.github/workflows/ada-ops-pwa-verify.yml` on this branch.
+
+## Visual reference implementation W1
+
+The uploaded ADA Global style board is the visual target (concept, not pixel-perfect screenshot replica).
+Reference palette: #2563EB blue, #7C3AED violet, #06B6D4 cyan, #F8FAFF neutral,
+#10B981 success, #F59E0B warning, #EF4444 danger, #EC4899 live.
+
+W1 changes only the auth layout, persistent desktop/sidebar/topbar/bottom navigation shell,
+brand lockup and mobile dashboard responsive composition. Role menu filtering, routes,
+authentication, server data, dashboards and reports business logic remain unchanged.
+
+Follow-up W2 is a dedicated layout pass for Calendar, Report detail, Payroll, Profile and
+verified empty/loading/success states. Never copy the board's mock names or figures as app data.
+The generated ADA wordmark is a temporary visual rendition; use ADA Global's official asset
+before branding signoff. No artificial animated splash intercept is installed.

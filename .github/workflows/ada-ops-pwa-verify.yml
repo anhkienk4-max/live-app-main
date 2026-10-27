@@ -31,6 +31,6 @@ jobs:
       - name: Typecheck
         run: pnpm exec tsc --noEmit --incremental false
       - name: Lint PWA files
-        run: pnpm exec eslint app/manifest.ts app/layout.tsx app/icon.tsx app/icon1/route.ts app/icon2/route.ts app/icon3/route.ts app/apple-icon.tsx lib/pwa
+        run: pnpm exec eslint app/manifest.ts app/layout.tsx app/icon.tsx app/icon1/route.ts app/icon2/route.ts app/icon3/route.ts app/apple-icon.tsx lib/pwa components/branding/AdaBrand.tsx components/layout/BottomNav.tsx components/layout/Header.tsx components/layout/Sidebar.tsx components/layout/ProductionAppShell.tsx components/layouts/AuthLayout.tsx
       - name: Production build
         run: pnpm build

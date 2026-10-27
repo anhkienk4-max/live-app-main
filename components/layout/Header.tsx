@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { AdaBrand } from '@/components/branding/AdaBrand'
 import { LogOut } from 'lucide-react'
 import {
   DropdownMenu,
@@ -142,21 +143,14 @@ export function Header({ user }: HeaderProps) {
     .toUpperCase() || displayUser?.email?.[0].toUpperCase() || 'U'
 
   return (
-    <header data-testid="production-topbar" className="sticky top-0 z-40 h-[56px] shrink-0 border-b border-slate-200 bg-white">
+    <header data-testid="production-topbar" className="ada-header sticky top-0 z-40 h-[60px] shrink-0 border-b border-slate-200 bg-white sm:h-[56px]">
       <div className="px-3 sm:px-6">
-        <div className="flex h-[55px] items-center justify-between gap-2 sm:gap-3">
+        <div className="flex h-[59px] items-center justify-between gap-2 sm:h-[55px] sm:gap-3">
 
           {/* Left: wordmark (mobile only — desktop shows sidebar wordmark) */}
-          <div className="flex items-center lg:hidden">
+          <div className="flex min-w-0 items-center lg:hidden">
             <MobileNavMenu />
-            <div className="w-6 h-6 bg-primary rounded-md flex items-center justify-center flex-shrink-0">
-              <svg className="w-3.5 h-3.5 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <span className="ml-2 text-sm font-semibold text-foreground tracking-tight whitespace-nowrap">
-              LiveStream Ops
-            </span>
+            <AdaBrand inverse compact />
           </div>
 
           {/* One responsive search instance preserves the shared keyboard shortcut. */}

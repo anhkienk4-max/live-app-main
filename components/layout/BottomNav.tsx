@@ -30,9 +30,17 @@ export function BottomNav() {
   const activeHref = resolveActiveNavigation(roleNav, pathname, search)
 
   // At 390px: up to 4 primary slots + 1 overflow trigger (5th col)
-  const hasOverflow = roleNav.length > 4
-  const primaryNav = hasOverflow ? roleNav.slice(0, 4) : roleNav
-  const overflowNav = hasOverflow ? roleNav.slice(4) : []
+  // Prioritize the four destinations shown in the approved mobile reference,
+  // but never reveal links that the existing role and capabilities filters hide.
+  const preferred = ['/', '/calendar', '/reports', '/payroll']
+  const pinned = preferred
+    .map(path => roleNav.find(item => path === '/' ? item.href === '/' : item.href.split('?')[0] === path))
+    .filter((item): item is typeof roleNav[number] => Boolean(item))
+  const orderedNav = [...pinned, ...roleNav.filter(item => !pinned.includes(item))]
+  const hasOverflow = orderedNav.length > 4
+  const primaryNav = hasOverflow ? orderedNav.slice(0, 4) : orderedNav
+  const overflowNav = hasOverflow ? orderedNav.slice(4) : []
+  const overflowActive = overflowNav.some(item => item.href === activeHref)
 
   const getLabel = (item: typeof roleNav[number]) =>
     item.labelKey
@@ -42,10 +50,10 @@ export function BottomNav() {
   return (
     <nav
       data-testid="production-bottom-nav"
-      className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-[#082743] pb-safe text-slate-200 md:hidden"
+      className="ada-bottom-nav fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white pb-safe text-slate-500 shadow-[0_-6px_24px_rgba(7,24,59,.06)] md:hidden"
       aria-label={t('navMain')}
     >
-      <div className="grid grid-cols-5 h-16">
+      <div className="grid h-16 grid-cols-5">
         {primaryNav.map((item) => {
           const isActive = activeHref === item.href
           const Icon = item.icon
@@ -53,9 +61,10 @@ export function BottomNav() {
             <Link
               key={item.name}
               href={item.href}
+              aria-current={isActive ? 'page' : undefined}
               className={cn(
-                'flex flex-col items-center justify-center gap-1 transition-colors',
-                isActive ? 'bg-blue-600 text-white' : 'text-slate-200 hover:bg-white/10'
+                'ada-bottom-nav__item flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 transition-colors focus-visible:outline-2 focus-visible:outline-blue-600',
+                isActive ? 'ada-bottom-nav__item--active font-semibold text-[#2563EB]' : 'text-slate-500 hover:bg-blue-50'
               )}
               data-testid={`nav-${item.name.toLowerCase()}`}
             >
@@ -69,8 +78,9 @@ export function BottomNav() {
           <DropdownMenu>
             <DropdownMenuTrigger
               className={cn(
-                'flex flex-col items-center justify-center gap-1 transition-colors',
-                'text-slate-200 hover:bg-white/10 outline-none cursor-pointer min-h-11 px-1'
+                'ada-bottom-nav__item flex flex-col items-center justify-center gap-1 transition-colors',
+                'outline-none cursor-pointer min-h-11 px-1 rounded-xl focus-visible:outline-2 focus-visible:outline-blue-600',
+                overflowActive ? 'ada-bottom-nav__item--active text-[#2563EB]' : 'text-slate-500 hover:bg-blue-50'
               )}
               data-testid="nav-menu-more"
               aria-label={t('moreMenu')}

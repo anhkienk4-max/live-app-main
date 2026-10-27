@@ -211,3 +211,157 @@
     -moz-osx-font-smoothing: grayscale;
   }
 }
+
+/* ADA OPS PWA Visual W1: scoped to app shell/auth. Reference: ADA Global mobile brand board. */
+:root {
+  --ada-blue: #2563EB;
+  --ada-violet: #7C3AED;
+  --ada-cyan: #06B6D4;
+  --ada-navy: #07183B;
+  --ada-surface: #F8FAFF;
+  --ada-green: #10B981;
+  --ada-amber: #F59E0B;
+  --ada-red: #EF4444;
+  --ada-live: #EC4899;
+}
+
+.ada-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  min-width: 0;
+  color: var(--ada-navy);
+  vertical-align: middle;
+}
+.ada-brand--inverse { color: #fff; }
+.ada-brand__symbol {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 37px;
+  height: 37px;
+  flex: none;
+  border-radius: 11px;
+  background: linear-gradient(150deg, #0E62EE 7%, #4F31C8 96%);
+  box-shadow: 0 5px 15px rgba(31, 59, 180, .16);
+}
+.ada-brand__symbol-svg { width: 27px; height: 27px; }
+.ada-brand__type { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; line-height: 1; }
+.ada-brand__name { font-size: 24px; font-weight: 850; letter-spacing: -.085em; white-space: nowrap; }
+.ada-brand__ops { display: inline-block; margin-left: .35rem; font-size: .43em; font-weight: 850; letter-spacing: .08em; vertical-align: middle; }
+.ada-brand__descriptor { margin-top: .26rem; font-size: 8px; font-weight: 800; letter-spacing: .2em; }
+.ada-brand--compact { gap: .45rem; }
+.ada-brand--compact .ada-brand__symbol { width: 29px; height: 29px; border-radius: 9px; }
+.ada-brand--compact .ada-brand__symbol-svg { width: 21px; height: 21px; }
+.ada-brand--compact .ada-brand__name { font-size: 18px; }
+.ada-brand--compact .ada-brand__descriptor { font-size: 6px; }
+
+.ada-sidebar {
+  background: linear-gradient(165deg, #081A43 0%, #07152F 100%);
+}
+.ada-pwa-shell {
+  background: var(--ada-surface);
+}
+.ada-pwa-content {
+  background: var(--ada-surface);
+  overscroll-behavior-y: contain;
+}
+.ada-pwa-shell :is(button, a, input, select, textarea):focus-visible,
+.ada-auth :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--ada-blue);
+  outline-offset: 2px;
+}
+.ada-pwa-shell [data-testid="dashboard-page"] :is(.bg-white, .bg-card) {
+  border-radius: 14px;
+}
+.ada-bottom-nav {
+  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+}
+.ada-bottom-nav__item {
+  position: relative;
+}
+.ada-bottom-nav__item--active:before {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 31%;
+  right: 31%;
+  height: 3px;
+  border-radius: 0 0 5px 5px;
+  background: var(--ada-blue);
+}
+.ada-bottom-nav__item--active svg {
+  filter: drop-shadow(0 1px 3px rgba(37, 99, 235, .12));
+}
+
+.ada-auth__hero {
+  isolation: isolate;
+  background: linear-gradient(160deg, #075BF2 4%, #194FDE 46%, #080F50 100%);
+}
+.ada-auth__hero:before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: .72;
+  background: radial-gradient(ellipse 70% 65% at 100% 0%, #8E40EE 0%, transparent 70%);
+}
+.ada-auth__wave {
+  pointer-events: none;
+  position: absolute;
+  z-index: 0;
+  width: 125%;
+  height: 115px;
+  left: -12%;
+  bottom: -45px;
+  border-radius: 50% 50% 0 0;
+  transform: rotate(-9deg);
+  background: linear-gradient(90deg, #0D8CFF 0%, #4869F2 55%, #ACB7FF 100%);
+}
+.ada-auth__wave--second {
+  bottom: -73px;
+  left: 8%;
+  transform: rotate(8deg);
+  background: rgba(255,255,255,.64);
+}
+.ada-auth__brand .ada-brand__symbol {
+  width: 58px;
+  height: 58px;
+  border-radius: 17px;
+}
+.ada-auth__brand .ada-brand__symbol-svg { width: 42px; height: 42px; }
+.ada-auth__brand .ada-brand__name { font-size: 52px; }
+.ada-auth__brand .ada-brand__descriptor { font-size: 10px; }
+.ada-auth__card [data-testid="email-login-btn"] {
+  min-height: 46px;
+  background: var(--ada-blue);
+  border-radius: 11px;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, .16);
+}
+.ada-auth__card input { border-radius: 11px; background: #F8FAFF; }
+.ada-auth__card input:focus-visible { background: #fff; }
+
+@media (max-width: 639px) {
+  .ada-header {
+    background: linear-gradient(100deg, #091B43 0%, #081A3B 100%);
+    border-bottom-color: rgba(255,255,255,.08);
+  }
+  .ada-header :is(button, span):not([role="status"]) { color: #fff; }
+  .ada-header button:hover { background: rgba(255,255,255,.10); }
+  .ada-header [data-testid="user-menu-btn"] { padding-inline: 0; }
+  .ada-pwa-content { padding-bottom: calc(5.7rem + env(safe-area-inset-bottom)) !important; }
+  .ada-pwa-shell [data-testid="dashboard-page"] main { padding: 1rem; gap: .95rem; }
+  .ada-pwa-shell [data-testid="dashboard-page"] .grid-cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
+  .ada-pwa-shell [data-testid="dashboard-page"] .grid-cols-4 > div { min-width: 0; padding: .9rem; }
+  .ada-pwa-shell [data-testid="dashboard-page"] .grid-cols-12 { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  .ada-pwa-shell [data-testid="dashboard-page"] .grid-cols-12 > [class*="col-span-"] { grid-column: 1 / -1; min-width: 0; }
+  .ada-pwa-shell [data-testid="dashboard-page"] .grid-cols-12 table { min-width: 500px; }
+  .ada-pwa-shell [data-testid="dashboard-page"] .grid-cols-12 .overflow-hidden:has(table) { overflow-x: auto; }
+}
+@media (min-width: 1024px) {
+  .ada-auth__hero .ada-auth__brand .ada-brand__name { font-size: 58px; }
+  .ada-auth__wave { height: 200px; bottom: -110px; }
+  .ada-auth__wave--second { bottom: -150px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ada-pwa-shell *, .ada-auth * { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
