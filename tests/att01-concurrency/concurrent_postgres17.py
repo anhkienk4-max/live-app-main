@@ -195,6 +195,7 @@ def reversed_multistaff_confirm():
           f"wait_seconds={[round(a['elapsed'],2), round(b['elapsed'],2)]} "
           f"drafts={drafts} staged={staged} confirmed={confirmed}", flush=True)
     assert a["ok"] and b["ok"], "DEADLOCK/LOCK ERROR in reversed multi-staff Confirm"
+    assert max(a["elapsed"], b["elapsed"]) < 10, "Exceeded 10-second concurrent Confirm completion budget"
     assert a["response"]["ok"] and b["response"]["ok"]
     assert sorted([a["response"]["created_count"], b["response"]["created_count"]]) == [0, 2]
     assert drafts == 2 and staged == 0 and confirmed == 2

@@ -188,6 +188,7 @@ declare
   v_reconciled_count integer := 0;
   v_skipped_count integer := 0;
   v_has_overlap boolean;
+  v_staff_lock_id text;
 begin
   -- 1. Verify actor permissions
   select * into v_actor from public.business_users
@@ -224,6 +225,20 @@ begin
   if p_expected_version is not null and v_batch.version <> p_expected_version then
     raise exception using errcode = 'P0001', message = 'BATCH_VERSION_MISMATCH';
   end if;
+
+  -- Acquire all relevant staff advisory locks BEFORE processing any matched row.
+  -- DISTINCT and stable lexical ordering prevent X->Y / Y->X deadlocks across batches.
+  -- The batch FOR UPDATE and optimistic-version check above remain unchanged.
+  for v_staff_lock_id in
+    select distinct matched_staff_id
+    from public.workforce_attendance_import_rows
+    where batch_id = p_batch_id
+      and status = 'matched'
+      and matched_staff_id is not null
+    order by matched_staff_id
+  loop
+    perform pg_advisory_xact_lock(hashtextextended('att01:staff:' || v_staff_lock_id, 0));
+  end loop;
 
   -- 5. Atomic Row-by-Row Re-verification and Insert
   for v_row in
@@ -263,9 +278,6 @@ begin
       v_skipped_count := v_skipped_count + 1;
       continue;
     end if;
-
-    -- Other batches have different batch row locks; serialize by staff before overlap check.
-    perform pg_advisory_xact_lock(hashtextextended('att01:staff:' || v_row.matched_staff_id, 0));
 
     -- 5c. Overlap Check with existing actual segments
     select exists (
