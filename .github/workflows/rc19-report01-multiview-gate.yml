@@ -1,0 +1,61 @@
+name: RC19 REPORT-01 Multi-View Source Gate (NO DEPLOY)
+on:
+  push:
+    branches:
+      - fix/rc19-report01-multiview
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  report01:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: TypeScript
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: ESLint
+        run: pnpm run lint
+      - name: REPORT-01 and REPORT-02 focused regression
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc19-report01-multiview.test.ts tests/report-work-queue.test.ts tests/rc19-report-apply-filters.test.ts tests/report-history-access.test.ts
+      - name: Full repository regression
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node scripts/run-final-regression.mjs
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Reports four-view browser mock at 390/768/1440px (NOT Production UAT)
+        run: pnpm exec playwright test --config playwright.rc19-report01.config.ts --reporter=line
+      - name: Before/After Reports UI Screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc19-report01-before-after
+          path: test-results/report01-*.png
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Guarded source build, both Attendance flags OFF
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_ATTENDANCE_IMPORT: 'false'
+          NEXT_PUBLIC_FEATURE_ATTENDANCE_IMPORT: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm run build
+      - name: SHA source proof, NO DEPLOY
+        if: always()
+        run: |
+          echo "RC19 REPORT-01 candidate $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Only local mock browser screenshots. This run is NOT Production or signed-user UAT; do not merge, deploy or modify DB." >> "$GITHUB_STEP_SUMMARY"
