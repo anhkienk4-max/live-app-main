@@ -9,6 +9,7 @@ import os
 import pathlib
 import subprocess
 import threading
+import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "tests/fixtures/att01_rc17c_foundation.sql"
@@ -162,6 +163,47 @@ FOR EACH ROW EXECUTE FUNCTION att01_abort_second_insert();""")
     print("PATCHED mid-batch failure: transaction rolled back; zero partial DRAFTs")
 
 
+def reversed_multistaff_confirm():
+    """Two batches with opposite worker ordering: a deadlock means FAIL."""
+    db = "att01_patched_reverse"
+    prepare(db, True)
+    assert stage(db, "reverse-a", "reverse-fp-a", [row(1, "worker-1"), row(2, "worker-2")])["ok"]
+    assert stage(db, "reverse-b", "reverse-fp-b", [row(1, "worker-2"), row(2, "worker-1")])["ok"]
+
+    def run(batch):
+        # One independent PostgreSQL backend per request; measure lock wait including RPC.
+        sql = ("SET deadlock_timeout='200ms'; SET lock_timeout='10000ms'; "
+               "SET statement_timeout='15000ms'; "
+               f"SELECT public.confirm_attendance_import_batch('{batch}', 'admin-1', 1)::text;")
+        cmd = ["psql", "-X", "-q", "-A", "-t", "-v", "ON_ERROR_STOP=1", "-v", "VERBOSITY=verbose", "-d", db, "-c", sql]
+        started = time.monotonic()
+        result = subprocess.run(cmd, env=PG, capture_output=True, text=True, check=False, timeout=20)
+        elapsed = time.monotonic() - started
+        if result.returncode:
+            return {"ok": False, "deadlock": "40P01" in result.stderr,
+                    "elapsed": elapsed, "code": "40P01" if "40P01" in result.stderr else "OTHER"}
+        rows = [x for x in result.stdout.splitlines() if x.startswith("{")]
+        assert len(rows) == 1, result.stdout[-300:]
+        return {"ok": True, "response": json.loads(rows[0]), "elapsed": elapsed}
+
+    a, b = parallel(lambda: run("reverse-a"), lambda: run("reverse-b"))
+    drafts = int(value(db, "SELECT count(*) FROM public.workforce_actual_segments"))
+    staged = int(value(db, "SELECT count(*) FROM public.workforce_attendance_import_batches WHERE status='staged'"))
+    confirmed = int(value(db, "SELECT count(*) FROM public.workforce_attendance_import_batches WHERE status='confirmed'"))
+    print(f"REVERSED multi-staff: A={a['code'] if not a['ok'] else 'OK'} "
+          f"B={b['code'] if not b['ok'] else 'OK'} "
+          f"wait_seconds={[round(a['elapsed'],2), round(b['elapsed'],2)]} "
+          f"drafts={drafts} staged={staged} confirmed={confirmed}", flush=True)
+    assert a["ok"] and b["ok"], "DEADLOCK/LOCK ERROR in reversed multi-staff Confirm"
+    assert a["response"]["ok"] and b["response"]["ok"]
+    assert sorted([a["response"]["created_count"], b["response"]["created_count"]]) == [0, 2]
+    assert drafts == 2 and staged == 0 and confirmed == 2
+    assert value(db, "SELECT count(*) FROM public.workforce_actual_segments WHERE review_status='draft' AND reviewed_by IS NULL") == "2"
+    assert value(db, "SELECT count(*) FROM public.workforce_attendance_import_rows WHERE status='drafted' AND resulting_segment_id IS NOT NULL") == "2"
+    assert value(db, "SELECT count(*) FROM public.workforce_attendance_import_rows WHERE status='exception' AND exception_code='OVERLAP_CONFLICT'") == "2"
+    print("REVERSED multi-staff: PASS no deadlock, two DRAFT, two overlap exceptions", flush=True)
+
+
 def main():
     psql("postgres", """DO $$
 BEGIN
@@ -174,6 +216,7 @@ END $$;""")
         stage_race(phase, patched)
         cross_batch_confirm_race(phase, patched)
     confirm_replay_and_rollback()
+    reversed_multistaff_confirm()
     print("POSTGRESQL-17-ISOLATED-ATT01-CONCURRENCY: PASS")
 
 
