@@ -203,3 +203,13 @@ test('Login V3 matches phone reference proportions and narrow Edge zoom width', 
   assert.ok(auth.includes('{children}'))
   assert.ok(source('app/login/page.tsx').includes('data-testid="google-login-btn"'))
 });
+
+test('Login visual QA defines both screenshot viewports and width contract', () => {
+  const config = source('playwright.pwa.config.ts')
+  const test = source('e2e/pwa-login-visual.spec.ts')
+  assert.ok(config.includes('next start -p 3101'))
+  assert.ok(test.includes("name: 'iphone-390x844'"))
+  assert.ok(test.includes("name: 'tablet-edge-900x1100'"))
+  assert.ok(test.includes('formWidth / measure.width'))
+  assert.ok(test.includes('page.screenshot('))
+})

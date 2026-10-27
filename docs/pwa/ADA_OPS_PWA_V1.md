@@ -175,3 +175,12 @@ A separate small-height rule protects the Google OAuth option and form from coll
 The real email/password and Google sign-in flows are unmodified. No fake remember-device
 checkbox was added; persistent login is governed by the existing Supabase session policy.
 Pixel-level screenshot/device QA is still required, as source assertions are not visual QA.
+
+## Objective login visual QA gate
+`e2e/pwa-login-visual.spec.ts` renders the real Next.js Login page via Playwright
+in two viewports: 390x844 (iPhone reference) and 900x1100 (Edge narrow window CSS
+viewport). It measures content width ratio, wordmark font size, form vertical
+position, input width, presence of Google OAuth and page overflow. Screenshots
+are uploaded to the GitHub Actions artifact `ada-ops-pwa-login-visual-evidence`.
+The test does not submit credentials or access Production data. A CI PASS is a
+layout contract, not proof of pixel-perfect typography or official-logo accuracy.
