@@ -522,7 +522,12 @@ export function ShiftDetailModal({
   const canAssignStaff = Boolean(currentUser && hasPermission(currentUser, 'shifts.assign_staff'))
   const registrationTotalPages = Math.max(1, Math.ceil(registrations.length / registrationPageSize))
   const safeRegistrationPage = Math.min(registrationPage, registrationTotalPages)
-  const visibleRegistrations = registrations.slice(
+  const sortedRegistrations = [...registrations].sort((left, right) =>
+    operationalRoles.indexOf(left.operational_role) - operationalRoles.indexOf(right.operational_role) ||
+    left.requested_at.localeCompare(right.requested_at) ||
+    left.id.localeCompare(right.id),
+  )
+  const visibleRegistrations = sortedRegistrations.slice(
     (safeRegistrationPage - 1) * registrationPageSize,
     safeRegistrationPage * registrationPageSize,
   )
@@ -1046,8 +1051,16 @@ export function ShiftDetailModal({
                         </div>
                         <div className="p-0">
                           <div className="max-h-[400px] overflow-auto p-2 space-y-2">
-                            {visibleRegistrations.map(registration => (
-                              <div key={registration.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-muted/50 bg-background p-3 hover:bg-muted/10 transition-colors">
+                            {visibleRegistrations.map((registration, index) => (
+                              <React.Fragment key={registration.id}>
+                              {(index === 0 || visibleRegistrations[index - 1].operational_role !== registration.operational_role) && (
+                                <div className="rounded-md bg-muted/30 px-3 py-2 text-xs font-semibold" data-testid={`reg02-role-group-${registration.operational_role}`}>
+                                  {t(registration.operational_role)} · Định biên {capacities.find(item => item.role === registration.operational_role)?.required ?? 0}
+                                  {' / Đã duyệt '}{capacities.find(item => item.role === registration.operational_role)?.approved ?? 0}
+                                  {' / Chờ duyệt '}{capacities.find(item => item.role === registration.operational_role)?.pending ?? 0}
+                                </div>
+                              )}
+                              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-muted/50 bg-background p-3 hover:bg-muted/10 transition-colors">
                                 <div className="min-w-0">
                                   <p className="break-words font-medium text-sm text-foreground">
                                     {userName(registration.user_id)}
@@ -1067,12 +1080,13 @@ export function ShiftDetailModal({
                                   </Badge>
                                   {registration.status === 'pending' && currentUser && hasPermission(currentUser, 'shifts.approve_registration') ? (
                                     <>
-                                      <Button size="sm" variant="outline" className="h-7 text-xs border-green-200 text-green-700 hover:bg-green-50" disabled={busy} onClick={() => runStaffingAction(() => shiftRegistrationService.approve(registration.id, currentUser.id, undefined, registration.version), t('registrationApproved'))}><Check className="mr-1 h-3 w-3" />{t('approve')}</Button>
-                                      <Button size="sm" variant="outline" className="h-7 text-xs border-red-200 text-red-700 hover:bg-red-50" disabled={busy} onClick={() => runStaffingAction(() => shiftRegistrationService.reject(registration.id, currentUser.id, undefined, registration.version), t('rejected'))}><X className="mr-1 h-3 w-3" />{t('reject')}</Button>
+                                      <Button size="sm" variant="outline" className="h-7 text-xs border-green-200 text-green-700 hover:bg-green-50" disabled={busy} onClick={() => { if (window.confirm(`Xác nhận duyệt ${userName(registration.user_id)} cho vai trò ${t(registration.operational_role)}?`)) void runStaffingAction(() => shiftRegistrationService.approve(registration.id, currentUser.id, undefined, registration.version), t('registrationApproved')) }}><Check className="mr-1 h-3 w-3" />{t('approve')}</Button>
+                                      <Button size="sm" variant="outline" className="h-7 text-xs border-red-200 text-red-700 hover:bg-red-50" disabled={busy} onClick={() => { if (window.confirm(`Xác nhận từ chối ${userName(registration.user_id)} cho vai trò ${t(registration.operational_role)}?`)) void runStaffingAction(() => shiftRegistrationService.reject(registration.id, currentUser.id, undefined, registration.version), t('rejected')) }}><X className="mr-1 h-3 w-3" />{t('reject')}</Button>
                                     </>
                                   ) : null}
                                 </div>
                               </div>
+                              </React.Fragment>
                             ))}
                           </div>
                           {registrations.length > registrationPageSize && (
