@@ -17,6 +17,14 @@ const shiftStatuses: readonly (Shift['status'] | 'all')[] = [
   'all', 'scheduled', 'preparing', 'live', 'paused', 'completed', 'cancelled',
 ]
 
+export function invalidShiftListEntityFilters(params: Pick<URLSearchParams, 'getAll'>) {
+  const invalid = (key: string) => {
+    const values = params.getAll(key)
+    return values.length > 1 || values.some(value => !value || value.length > 128 || /[\u0000-\u001f\u007f\ufffd]/u.test(value))
+  }
+  return { brand: invalid('shifts_brand'), platform: invalid('shifts_platform') }
+}
+
 export function readShiftListUrlState(params: Pick<URLSearchParams, 'get'>): ShiftListUrlState {
   const range = params.get('shifts_range')
   const status = params.get('shifts_status') as Shift['status'] | 'all' | null

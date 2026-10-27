@@ -95,6 +95,34 @@ test('switching mock accounts removes the previous actor rows and selection', as
   await expect(page.locator('h1').first().locator('..').locator('p')).toContainText('0')
 })
 
+test('invalid URL filters fail closed and explicit recovery preserves other parameters', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 900 })
+  await page.addInitScript(() => {
+    localStorage.setItem('livestream-ops-current-user', '1')
+    localStorage.setItem('livestream-ops-language', 'en')
+  })
+  for (const invalid of [`shifts_brand=${'x'.repeat(129)}`, 'shifts_brand=%E0%A4', 'shifts_brand=b1&shifts_brand=b2', 'shifts_brand=']) {
+    await page.goto(`/shifts?shifts_range=all&${invalid}&shifts_platform=p1&keep=shared`)
+    await expect(page.getByTestId('shifts-invalid-entity-filter')).toBeVisible()
+    await expect(page.locator('[data-testid^="shift-mobile-card-"]')).toHaveCount(0)
+    await expect(page.getByTestId('import-export-btn')).toHaveCount(0)
+    expect(new URL(page.url()).searchParams.getAll('shifts_brand').length).toBeGreaterThan(0)
+    await page.getByRole('button', { name: 'Clear invalid filters' }).click()
+    await expect(page.getByTestId('shifts-invalid-entity-filter')).toHaveCount(0)
+    await expect(page.getByTestId('shifts-mobile-platform-filter')).toHaveValue('p1')
+    expect(new URL(page.url()).searchParams.get('keep')).toBe('shared')
+    expect(new URL(page.url()).searchParams.has('shifts_brand')).toBe(false)
+  }
+  await page.goto('/shifts?shifts_range=all&shifts_brand=deleted-or-unknown&keep=shared')
+  await expect(page.getByTestId('shifts-invalid-entity-filter')).toHaveCount(0)
+  await expect(page.getByTestId('shifts-mobile-brand-filter')).toHaveValue('deleted-or-unknown')
+  await expect(page.getByTestId('shifts-mobile-empty-state')).toHaveText(/No data/i)
+  expect(new URL(page.url()).searchParams.get('shifts_brand')).toBe('deleted-or-unknown')
+  await page.goto('/shifts?shifts_range=all&shifts_brand=%ZZ')
+  await expect(page.getByTestId('shifts-mobile-brand-filter')).toHaveValue('%ZZ')
+  await expect(page.getByTestId('shifts-mobile-empty-state')).toHaveText(/No data/i)
+})
+
 test('combined filters keep all matching rows across page sizes', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.addInitScript(() => {

@@ -34,7 +34,8 @@ import { hasPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { resolveStaffingLabelsForRole } from '@/lib/utils/staffingResolver'
-import { readShiftListUrlState, shiftListUrlValues, type ShiftListUrlState } from '@/lib/utils/shiftListUrlState'
+import { invalidShiftListEntityFilters, readShiftListUrlState, shiftListUrlValues, type ShiftListUrlState } from '@/lib/utils/shiftListUrlState'
+import type { ListQuery } from '@/lib/services/operationsPageService'
 import type { ShiftDateWindow } from '@/lib/utils/shiftDateWindow'
 
 const statusVariants: Record<string, 'default' | 'secondary' | 'destructive'> = {
@@ -42,6 +43,10 @@ const statusVariants: Record<string, 'default' | 'secondary' | 'destructive'> = 
   live: 'destructive',
   completed: 'default',
   cancelled: 'secondary'
+}
+
+const invalidFilterService = {
+  getPage: async (query: ListQuery) => ({ items: [] as Shift[], total: 0, page: query.page, pageSize: query.pageSize }),
 }
 
 function ShiftDateFilter({ state, onApply, t, mobile = false }: { state: ShiftListUrlState; onApply: (state: ShiftListUrlState) => void; t: (key: string) => string; mobile?: boolean }) {
@@ -131,10 +136,12 @@ export function ShiftList() {
   const statusValues = ['scheduled', 'preparing', 'live', 'paused', 'completed', 'cancelled'] as const
   const searchParams = useSearchParams()
   const urlState = readShiftListUrlState(searchParams)
+  const invalidEntities = invalidShiftListEntityFilters(searchParams)
+  const invalidEntityFilter = invalidEntities.brand || invalidEntities.platform
   const { dateWindow, status: statusFilter, search: searchQuery, descending: sortDescending } = urlState
   const listFilters = { ...shiftDateWindowFilters(dateWindow, new Date(), urlState.month, urlState.from, urlState.to), search: searchQuery, statuses: statusFilter === 'all' ? [] : [statusFilter], brandIds: urlState.brandId ? [urlState.brandId] : [], platformIds: urlState.platformId ? [urlState.platformId] : [], descending: sortDescending }
   const dateFilterKey = [dateWindow, urlState.month, urlState.from, urlState.to].join(':')
-  const list = usePagedList(shiftService, 'shifts', listFilters)
+  const list = usePagedList(invalidEntityFilter ? invalidFilterService : shiftService, 'shifts', listFilters)
   const referenceKey = currentUser ? operationalReferenceIdentity(currentUser) : ''
   const currentReferenceKey = React.useRef(referenceKey)
   React.useEffect(() => { currentReferenceKey.current = referenceKey }, [referenceKey])
@@ -401,6 +408,12 @@ export function ShiftList() {
     }
   ]
 
+  if (invalidEntityFilter) return <div role="alert" className="space-y-3 rounded-lg border p-4" data-testid="shifts-invalid-entity-filter">
+    <p>{language === 'vi' ? 'Bộ lọc thương hiệu hoặc nền tảng trong URL không hợp lệ. Không hiển thị ca cho đến khi sửa bộ lọc.' : 'The brand or platform filter in the URL is invalid. No shifts are shown until it is corrected.'}</p>
+    <Button type="button" variant="outline" onClick={() => updateFilters({ ...urlState, brandId: invalidEntities.brand ? '' : urlState.brandId, platformId: invalidEntities.platform ? '' : urlState.platformId })}>
+      {language === 'vi' ? 'Xóa bộ lọc không hợp lệ' : 'Clear invalid filters'}
+    </Button>
+  </div>
   if (loadError || list.error) return <PageLoadError error={loadError || list.error} onRetry={() => { setLoadError(null); void loadData() }} />
   return (
     <>
