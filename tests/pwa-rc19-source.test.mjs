@@ -36,3 +36,25 @@ test('Active Reports route keeps RC19 data loader and mobile cards', () => {
   assert.ok(source('components/features/reports/ReportsView.tsx').includes('data-testid="pwa-reports-cards"'))
   assert.ok(source('components/layout/BottomNav.tsx').includes('getSharedNavigation'))
 })
+
+test('RC19 dashboard presents actual admin, leader, member view models in the PWA mobile layout', () => {
+  const sourceCode = source('components/features/dashboard/presentation/OpsMobileHome.tsx')
+  const overview = source('components/features/dashboard/DashboardOverview.tsx')
+  const admin = source('components/features/dashboard/presentation/admin/AdminDashboardView.tsx')
+  const leader = source('components/features/dashboard/presentation/leader/LeaderDashboardView.tsx')
+  const member = source('components/features/dashboard/presentation/member/MemberDashboardView.tsx')
+  assert.ok(sourceCode.includes('data-testid="ada-reference-mobile-home"'))
+  assert.ok(sourceCode.includes('data-testid="ada-mobile-home-shift"'))
+  assert.ok(sourceCode.includes('data-testid="ada-mobile-home-quick-links"'))
+  assert.ok(sourceCode.includes('pendingCount === null'))
+  assert.ok(sourceCode.includes("attention === null"))
+  for (const text of ["role=\"admin\"", "role=\"leader\"", "role=\"member\""]) {
+    assert.ok([admin, leader, member].some(file => file.includes(text)))
+  }
+  assert.ok(overview.includes('userName={props.currentUser.full_name}'))
+  assert.ok(overview.includes('userName={currentUser.full_name}'))
+  assert.ok(admin.includes('liveCount={liveShifts.length}'))
+  assert.ok(leader.includes('onView: nextMobileShift.onView'))
+  assert.ok(member.includes('onOpenNextShift'))
+  assert.ok(admin.includes('md:flex'))
+});

@@ -18,3 +18,6 @@ Login screenshots run in local credential-free development mock; no access to
 Production or Staging database. Mobile Calendar/Payroll/Profile modules are RC19
 implementations and must be re-reviewed before claiming reference-board fidelity.
 No merge to main, production deploy, database migration, or RBAC bypass.
+
+## W12: Interior dashboard mobile parity
+The actual RC19 role-specific dashboard components now render `OpsMobileHome` at viewport `<768px` for admin/leader/member, preserving the existing desktop views at `md` and above. It reuses real typed view models and does not fabricate salary/metric/shift data. Day summary, 2x2 shortcuts, action list and real navigation are shown in Vietnamese and accessible controls; contextual controls use existing callbacks/links. Loading, permissions and session enforcement remain in RC19. This is not full app-wide redesign: Calendar, Payroll, Workforce and Storage still require their own reference-based mobile audits.
