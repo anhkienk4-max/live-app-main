@@ -225,3 +225,16 @@ and 412x915), covering:
 CI artifacts: `ada-ops-pwa-mobile-uat-evidence`. Source/mock UAT cannot establish
 auth, RBAC, staging-backed data, iOS Safari installation or true pixel fidelity. Those
 remain manual UAT requirements before merging to main.
+
+## W9 screenshot audit correction
+Actual Playwright images exposed that `/reports` uses
+`ReportsContainer -> ReportsView` (not the older `ReportsList`). That route kept
+five always-expanded filters and a 1060px table, making the phone viewport crowded.
+The current route now collapses quick filters by default **only below md** and
+adds real report cards with a direct 'View details' button. Desktop table/detail
+remain intact. This lets UAT capture the actual `ReportDetailModal` used in
+production instead of certifying only the reports index.
+
+Payroll mock screenshot initially showed only 'Verifying access'. E2E now waits
+for authorized/denied/disabled verdict, and emits explicit SKIP_PAYROLL_UNRESOLVED
+when the local fixture cannot establish access, never a false payroll PASS.

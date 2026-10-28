@@ -51,22 +51,23 @@ for (const size of sizes) {
     await page.goto('/reports', { waitUntil: 'domcontentloaded' })
     await expect(page.getByTestId('reports-page')).toBeVisible({ timeout: 45000 })
     await expect(page.getByTestId('production-bottom-nav')).toBeVisible()
-    const details = page.getByRole('button', { name: /xem chi tiết|view details/i })
+    await expect(page.getByTestId('pwa-reports-cards')).toBeVisible()
+    const quickFilters = page.getByTestId('pwa-report-quick-filters')
+    await expect(quickFilters).toBeHidden()
+    const details = page.getByTestId('pwa-report-view')
     if (await details.count()) {
+      await capture(page, `05-reports-${size.id}`)
       await details.first().click()
       const dialog = page.getByTestId('ada-reference-report-mobile')
-      if (await dialog.isVisible({ timeout: 6000 }).catch(() => false)) {
-        await expect(page.getByRole('button', { name: 'Xem hình ảnh' })).toBeVisible()
-        await expect(page.getByRole('button', { name: 'Lịch sử chỉnh sửa' })).toBeVisible()
-        await capture(page, `05-report-detail-${size.id}`)
-      } else {
-        test.info().annotations.push({ type: 'SKIP_DETAIL', description: 'No authorized detail dialog opened from the mock report row' })
-      }
+      await expect(dialog).toBeVisible({ timeout: 12000 })
+      await expect(page.getByRole('button', { name: 'Xem hình ảnh' })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Lịch sử chỉnh sửa' })).toBeVisible()
+      await capture(page, `05-report-detail-${size.id}`)
     } else {
-      test.info().annotations.push({ type: 'SKIP_DETAIL', description: 'No report detail action in local mock list; actual staging data requires authenticated UAT' })
+      test.info().annotations.push({ type: 'SKIP_DETAIL', description: 'No report in local fixture; staging authenticated UAT needed' })
+      await capture(page, `05-reports-${size.id}`)
     }
     await ensurePhoneLayout(page, size.width)
-    await capture(page, `05-reports-${size.id}`)
   })
 
   test(`payroll is guarded by Admin and feature flag: ${size.id}`, async ({ page }) => {
@@ -74,7 +75,13 @@ for (const size of sizes) {
     await page.goto('/payroll', { waitUntil: 'domcontentloaded' })
     await expect(page.locator('main').first()).toBeVisible({ timeout: 45000 })
     const payroll = page.getByTestId('ada-reference-payroll-mobile')
-    if (await payroll.isVisible({ timeout: 6000 }).catch(() => false)) {
+    // Wait for a decisive capability verdict; a loading screen is not an access-gate PASS.
+    const verdict = await Promise.race([
+      payroll.waitFor({ state: 'visible', timeout: 16000 }).then(() => 'authorized' as const).catch(() => 'unresolved' as const),
+      page.getByRole('alert').first().waitFor({ state: 'visible', timeout: 16000 }).then(() => 'denied' as const).catch(() => 'unresolved' as const),
+      page.getByText('Tính năng đang tắt.', { exact: false }).waitFor({ state: 'visible', timeout: 16000 }).then(() => 'disabled' as const).catch(() => 'unresolved' as const),
+    ])
+    if (verdict === 'authorized') {
       const advanced = page.getByTestId('pwa-payroll-advanced-toggle')
       await expect(advanced).toBeVisible()
       await advanced.click()
@@ -83,7 +90,7 @@ for (const size of sizes) {
       await expect(advanced).toHaveAttribute('aria-expanded', 'false')
       await capture(page, `06-payroll-${size.id}`)
     } else {
-      test.info().annotations.push({ type: 'SKIP_PAYROLL', description: 'Mock mode has no authorized payroll capability; no salary data or RBAC was bypassed' })
+      test.info().annotations.push({ type: verdict === 'unresolved' ? 'SKIP_PAYROLL_UNRESOLVED' : 'SKIP_PAYROLL', description: `Local mock payroll access verdict: ${verdict}; no financial data or RBAC was bypassed` })
       await capture(page, `06-payroll-access-gate-${size.id}`)
     }
     await ensurePhoneLayout(page, size.width)

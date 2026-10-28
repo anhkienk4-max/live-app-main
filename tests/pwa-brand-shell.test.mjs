@@ -262,3 +262,16 @@ test('Four-screen mobile UAT uses credential-free dev mock, never deployed auth 
   assert.ok(suite.includes("SKIP_PAYROLL"))
   assert.ok(suite.includes('No document-level horizontal overflow'))
 })
+
+test('Current lazy reports route uses compact mobile cards, not retired ReportsList', () => {
+  const lazy = source('lib/utils/lazyComponents.tsx')
+  const container = source('components/features/reports/ReportsContainer.tsx')
+  const view = source('components/features/reports/ReportsView.tsx')
+  assert.ok(lazy.includes("import('@/components/features/reports/ReportsContainer')"))
+  assert.ok(container.includes('data-testid="pwa-report-quick-filters"'))
+  assert.ok(container.includes("'hidden gap-2 md:grid"))
+  assert.ok(view.includes('data-testid="pwa-reports-cards"'))
+  assert.ok(view.includes('data-testid="pwa-report-view"'))
+  assert.ok(view.includes('className="hidden overflow-x-auto md:block"'))
+  assert.ok(source('e2e/pwa-mobile-ops.spec.ts').includes('05-report-detail-'))
+})
