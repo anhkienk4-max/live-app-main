@@ -1,0 +1,50 @@
+name: ADA OPS PWA RC19 Verify
+
+on:
+  push:
+    branches:
+      - feat/ada-ops-pwa-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pwa-rc19:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify latest RC19 and PWA contracts
+        run: node --test tests/pwa-rc19-source.test.mjs
+      - name: TypeScript
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: ESLint PWA integration
+        run: pnpm exec eslint app/manifest.ts app/layout.tsx app/login/page.tsx app/icon.tsx app/apple-icon.tsx app/icon1/route.ts app/icon2/route.ts app/icon3/route.ts app/pwa-splash/route.tsx lib/pwa components/branding/AdaBrand.tsx components/layout/BottomNav.tsx components/layout/ProductionAppShell.tsx components/layouts/AuthLayout.tsx components/features/reports/ReportsContainer.tsx components/features/reports/ReportsView.tsx
+      - name: Production build without credentials
+        run: pnpm build
+      - name: Install browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: PWA mobile login screenshots
+        run: pnpm exec playwright test --config=playwright.pwa.config.ts
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ada-ops-rc19-pwa-login-screenshots
+          path: |
+            test-results/pwa-visual/*.png
+            test-results/**/trace.zip
+            test-results/**/test-failed-*.png
+          if-no-files-found: warn
