@@ -58,6 +58,11 @@ test('source picker pages only staffed registrations for current actor and filte
   assert.match(modal, /submitLock\.current/)
 })
 
+test('PASS recipient is blocked when its conflict check is incomplete or fails', () => {
+  const modal = readFileSync(fileURLToPath(new URL('../components/features/swaps/SwapRequestFormModal.tsx', import.meta.url)), 'utf8')
+  assert.match(modal, /Boolean\(conflict\) && !conflict\?\.reason && !conflict\?\.error/)
+})
+
 test('swap detail and cancel actions are rebound to the current actor page', () => {
   const list = readFileSync(fileURLToPath(new URL('../components/features/swaps/SwapRequestList.tsx', import.meta.url)), 'utf8')
   assert.match(list, /activeSelectedSwap = identity === loadedIdentity && selectedSwap \? swaps\.find/)

@@ -147,7 +147,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
   const staff = directory?.items.filter(item => !staffSearch.trim() || item.full_name.toLocaleLowerCase().includes(staffSearch.trim().toLocaleLowerCase())).slice(0, 50) ?? []
   const chosenStaff = directory?.items.find(item => item.id === replacementId)
   const eligibleStaff = Boolean(chosenStaff && chosenStaff.id !== owner && role && chosenStaff.operational_roles?.includes(role))
-  const validCandidate = mode === 'replacement' ? eligibleStaff && !directory?.error && Boolean(conflict) && !conflict?.reason
+  const validCandidate = mode === 'replacement' ? eligibleStaff && !directory?.error && Boolean(conflict) && !conflict?.reason && !conflict?.error
     : Boolean(selectedTarget && counterparts && !counterparts.error && counterparts.items.some(item => item.registration_id === counterpartId))
 
   const submit = async (event: React.FormEvent) => {
