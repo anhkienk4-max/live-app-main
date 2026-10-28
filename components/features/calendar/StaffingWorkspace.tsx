@@ -58,6 +58,7 @@ export function StaffingWorkspace() {
   const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role):''
   const [loadedIdentity,setLoadedIdentity]=useState('')
   const [referenceIdentity,setReferenceIdentity]=useState('')
+  const [referenceReload,setReferenceReload]=useState(0)
   const activeFilterCount = Object.values(filters).reduce((sum, value) => sum + value.length, 0) + Number(Boolean(date)) + Number(gapsOnly)
   const openFilters = () => {
     setDraftFilters({ ...filters, brandIds: [...filters.brandIds], platformIds: [...filters.platformIds], campaignIds: [...filters.campaignIds], roles: [...filters.roles], statuses: [...filters.statuses] })
@@ -93,9 +94,9 @@ export function StaffingWorkspace() {
     let active=true
     const frame=requestAnimationFrame(()=>{if(currentUser)void loadReferences().then(reference=>{
       if(active){setData(prev=>({...prev,...reference}));setReferenceIdentity(identity)}
-    }).catch(error=>{if(active)setError(error)})})
+    }).catch(error=>{if(active){setReferenceIdentity(identity);setError(error)}})})
     return()=>{active=false;cancelAnimationFrame(frame)}
-  }, [currentUser,identity,loadReferences])
+  }, [currentUser,identity,loadReferences,referenceReload])
   const load=useCallback(async()=>{
     const request = next()
     setError(null)
@@ -106,7 +107,7 @@ export function StaffingWorkspace() {
       setData(prev => ({ ...prev, shifts: result.items, registrations: result.registrations }))
       setTotal(result.total)
       if (result.page !== page) navigate({ staffing_page: String(result.page) }, true)
-    } catch(failure) {if(isCurrent(request))setError(failure)} finally {if(isCurrent(request))setLoading(false)}
+    } catch(failure) {if(isCurrent(request)){setLoadedIdentity(identity);setError(failure)}} finally {if(isCurrent(request))setLoading(false)}
   },[encodedFilters,navigate,page,pageSize,identity,next,isCurrent])
   useShiftChangeRefresh(load)
   useEffect(()=>{const frame=requestAnimationFrame(()=>void load());return()=>{cancelAnimationFrame(frame);invalidate()}},[load,invalidate])
@@ -118,8 +119,8 @@ export function StaffingWorkspace() {
   const safePage=page
   const visible=filtered
   const selected=filtered.find(shift=>shift.id===selectedId)??visible[0]
+  if(error&&identity===loadedIdentity&&identity===referenceIdentity) return <PageLoadError error={error} onRetry={()=>{setError(null);setLoading(true);setLoadedIdentity('');setReferenceIdentity('');setReferenceReload(value=>value+1);void load()}} />
   if(loading||identity!==loadedIdentity||identity!==referenceIdentity) return <p className="p-8 text-center">{t('loading')}</p>
-  if(error) return <PageLoadError error={error} onRetry={()=>{setLoading(true);void load()}} />
   return <div className="min-w-0 space-y-4" data-testid="staffing-production-workspace">
     <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3">
       <div className="relative min-w-[200px] flex-1">
@@ -134,7 +135,7 @@ export function StaffingWorkspace() {
     </div>
     <div className="grid grid-cols-2 overflow-hidden rounded-lg border bg-card sm:grid-cols-4" aria-label="Tổng quan định biên của trang hiện tại">
       {[[t('totalShifts'),total],[t('staffingGapsOnly'),gapShiftCount],[t('pending'),pendingRegistrationCount],[t('fullyStaffed'),fullyStaffedCount]].map(([label,value],index)=>index===1
-        ? <button type="button" key={String(label)} data-testid="staffing-open-gaps" aria-pressed={gapsOnly} className={`min-w-0 border-r px-3 py-2 text-left transition-colors hover:bg-amber-50 focus-visible:ring-2 focus-visible:ring-primary ${gapsOnly?'bg-amber-50':''}`} onClick={()=>{setGapsOnly(true);setDraftGapsOnly(true);setSelectedId(null);setPage(1);setShowFilters(false)}}>
+        ? <button type="button" key={String(label)} data-testid="staffing-open-gaps" aria-pressed={gapsOnly} className={`min-w-0 border-r px-3 py-2 text-left transition-colors hover:bg-amber-50 focus-visible:ring-2 focus-visible:ring-primary ${gapsOnly?'bg-amber-50':''}`} onClick={()=>{setGapsOnly(true);setDraftGapsOnly(true);setSelectedId(null);setPage(1);navigate({staffing_page:null,gap:'missing'},true);setShowFilters(false)}}>
             <p className="text-[11px] text-amber-800">{label} · Xem ca thiếu →</p><p className="text-base font-semibold">{value}</p>
           </button>
         : <div key={String(label)} className="min-w-0 border-r px-3 py-2 last:border-r-0"><p className="text-[11px] text-muted-foreground">{label}</p><p className="text-base font-semibold">{value}</p></div>)}
