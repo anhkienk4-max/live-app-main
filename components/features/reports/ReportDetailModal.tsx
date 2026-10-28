@@ -303,6 +303,7 @@ export function ReportDetailModal({
   const [showReopen, setShowReopen] = React.useState(false)
   const [metricFilter, setMetricFilter] = React.useState<OcrMetricFilter>('data')
   const [metricsCollapsed, setMetricsCollapsed] = React.useState(false)
+  const [mobileReviewOpen, setMobileReviewOpen] = React.useState(false)
   const [activeTab, setActiveTab] = React.useState('overview')
   const [showConfirmWarning, setShowConfirmWarning] = React.useState(false)
   const [revisionPage, setRevisionPage] = React.useState(1)
@@ -752,7 +753,7 @@ export function ReportDetailModal({
         <section data-testid="ada-reference-report-mobile" className="rounded-[16px] border border-[#E5EBF8] bg-white p-4 shadow-sm lg:hidden">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-[13px] font-bold text-[#07183B]">Thông tin phiên livestream</h3>
-            <span className={`rounded-md px-2 py-1 text-[10px] font-semibold ${report.metrics_confirmed ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{report.metrics_confirmed ? 'Đã duyệt' : 'Cần rà soát'}</span>
+            <span className={`rounded-md px-2 py-1 text-[10px] font-semibold ${report.metrics_confirmed ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{report.status === 'reopened' ? 'Đã mở lại' : report.metrics_confirmed ? 'Đã duyệt' : 'Cần rà soát'}</span>
           </div>
           <dl className="space-y-2 text-[12px]">
             {[
@@ -771,7 +772,15 @@ export function ReportDetailModal({
           </div>
         </section>
         {!report.metrics_confirmed && currentUser && hasPermission(currentUser, 'reports.review') && (
-          <Card className="border-amber-200">
+          <>
+            <button type="button" data-testid="pwa-report-review-toggle"
+              aria-expanded={mobileReviewOpen} onClick={() => setMobileReviewOpen(value => !value)}
+              className="flex min-h-11 w-full items-center justify-between rounded-[12px] border border-amber-200 bg-amber-50 px-4 text-left text-[12px] font-semibold text-amber-800 lg:hidden">
+              <span>Kiểm duyệt OCR · {unresolvedCount} chỉ số cần xem</span>
+              {mobileReviewOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+            <div className={mobileReviewOpen ? 'block' : 'hidden lg:block'}>
+              <Card className="border-amber-200">
             <CardContent className="space-y-4 pt-5">
               <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2"><h3 className="font-semibold">{t('reportOcrReview')}</h3><Badge variant="outline">{reviewData.status === 'review_required' ? t('statusReviewRequired') : reviewData.status === 'confirmed' ? t('statusConfirmed') : reviewData.status === 'failed' ? t('error') : reviewData.status === 'processing' ? t('loading') : reviewData.status === 'unavailable' ? t('manualInput') : t('pending')}</Badge></div><p className="text-sm text-muted-foreground">{t('ocrReviewHelp')}</p></div><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => void resetExtracted()}><RotateCcw className="mr-2 h-4 w-4" />{t('resetResults')}</Button><Button type="button" variant="outline" onClick={() => setEditingMetrics(value => !value)}><Pencil className="mr-2 h-4 w-4" />{editingMetrics ? t('finishEditing') : t('editOcrMetrics')}</Button><Button type="button" variant="outline" disabled={reviewData.status === 'processing'} onClick={() => void rerunOcr()}><ScanText className="mr-2 h-4 w-4" />{t('rescanOcr')}</Button><Button type="button" variant="outline" size="sm" data-testid="toggle-review-metrics-collapse" onClick={() => setMetricsCollapsed(prev => !prev)}>{metricsCollapsed ? <ChevronDown className="mr-1.5 h-4 w-4" /> : <ChevronUp className="mr-1.5 h-4 w-4" />}{metricsCollapsed ? t('expandMetrics') : t('collapseMetrics')}</Button></div></div>
               {dashboardImage && (
@@ -812,7 +821,9 @@ export function ReportDetailModal({
               <label className="text-xs font-medium">{t('reviewNotes')}<Textarea className="mt-1" value={reviewNotes} onChange={event => setReviewNotes(event.target.value)} /></label>
               <div className="flex flex-wrap justify-end gap-2">{unresolvedCount > 0 && <Button variant="outline" onClick={confirmAllMetrics}><Check className="mr-2 h-4 w-4" />{t('confirmAllReviewed')}</Button>}<Button variant="outline" disabled={busy} onClick={() => void saveDraft()}><Pencil className="mr-2 h-4 w-4" />{t('saveDraftRevision')}</Button><Button variant="outline" disabled={busy} onClick={() => void rejectReport()}><X className="mr-2 h-4 w-4" />{t('rejectReport')}</Button><Button disabled={busy || reviewData.status === 'processing' || reviewData.status === 'failed'} onClick={() => void confirmReport()}><Check className="mr-2 h-4 w-4" />{t('confirmMetrics')}</Button></div>
             </CardContent>
-          </Card>
+              </Card>
+            </div>
+          </>
         )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="min-w-0">

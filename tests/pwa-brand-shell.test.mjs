@@ -119,7 +119,7 @@ test('Reference loading state does not show legacy desktop skeleton on mobile', 
 test('Calendar reference shows actual selected-day shifts while retaining advanced operations', () => {
   const cal = source('components/features/calendar/CalendarView.tsx')
   assert.ok(cal.includes('data-testid="ada-reference-calendar-mobile"'))
-  assert.ok(cal.includes('filteredShifts.filter(shift => shift.date === focusedDate)'))
+  assert.ok(cal.includes('.filter(shift => shift.date === focusedDate)'))
   assert.ok(cal.includes('setPreviewShift(shift)'))
   assert.ok(cal.includes('setMobileAdvanced('))
   assert.ok(cal.includes('<MonthView'))
@@ -237,4 +237,15 @@ test('Calendar my-shifts toggle uses authorized assignments and approved registr
   assert.ok(calendar.includes("'approved', 'manually_assigned'"))
   assert.ok(calendar.includes('shift.host_id === currentUser?.id'))
   assert.ok(calendar.includes('setMobileMyShifts('))
+})
+
+test('Mobile report prioritizes summary while retaining gated OCR review controls', () => {
+  const report = source('components/features/reports/ReportDetailModal.tsx')
+  assert.ok(report.includes('data-testid="pwa-report-review-toggle"'))
+  assert.ok(report.includes('mobileReviewOpen'))
+  assert.ok(report.includes("mobileReviewOpen ? 'block' : 'hidden lg:block'"))
+  assert.ok(report.includes("hasPermission(currentUser, 'reports.review')"))
+  assert.ok(report.includes("report.status === 'reopened' ? 'Đã mở lại'"))
+  assert.ok(report.includes("setActiveTab('images')"))
+  assert.ok(report.includes("setActiveTab('versions')"))
 })

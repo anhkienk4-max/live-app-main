@@ -197,3 +197,11 @@ layout contract, not proof of pixel-perfect typography or official-logo accuracy
   directly assigned shifts or approved/manual shift registrations for the current
   business user when "Ca của tôi" is selected. No mutation to registration status.
 These changes do not touch the approved Login UI, authentication, Storage or database.
+
+## W8 report mobile refinement
+Report detail #5 maintains the overview card, actual shift metadata and five existing
+tabs. The OCR review editor (when the account has reports.review) is collapsed by
+default only on mobile to preserve the reference board's compact detail screen.
+The editor's mutation handlers and permission checks are unchanged and still rendered
+when expanded. Reopened reports now show a distinct reopened state in the mobile
+summary instead of being mislabeled 'Đã duyệt'.
