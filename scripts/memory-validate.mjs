@@ -49,6 +49,31 @@ const commitExists = (sha) => {
   }
 }
 
+const expectedOriginRepository = 'anhkienk4-max/live-app-main'
+const originIsExpectedRepository = () => {
+  try {
+    const remote = git(['remote', 'get-url', 'origin'])
+    const scp = /^(?:git@github\.com:)(.+?)(?:\.git)?$/i.exec(remote)
+    const url = scp ? null : new URL(remote)
+    const repository = scp?.[1] || (url && ['https:', 'ssh:'].includes(url.protocol) && url.hostname.toLowerCase() === 'github.com'
+      ? url.pathname.replace(/^\//, '').replace(/\.git$/i, '')
+      : '')
+    return repository?.toLowerCase() === expectedOriginRepository
+  } catch {
+    return false
+  }
+}
+
+const originBranchCommit = (branch) => {
+  if (typeof branch !== 'string' || !branch || branch.startsWith('-')) return null
+  try {
+    if (git(['check-ref-format', '--branch', branch]) !== branch) return null
+    return git(['rev-parse', '--verify', `refs/remotes/origin/${branch}^{commit}`])
+  } catch {
+    return null
+  }
+}
+
 const isAncestor = (ancestor, descendant) => {
   try {
     git(['merge-base', '--is-ancestor', ancestor, descendant])
@@ -82,10 +107,30 @@ if (state) {
       const relevantChanges = changedPathsBetween(storedHead, live.head).filter((changedPath) => !memoryOnlyPaths.has(changedPath))
       if (relevantChanges.length) fail('current-state repository.head is stale; relevant changes since snapshot: ' + relevantChanges.join(', '))
     }
-    if (process.env.GITHUB_ACTIONS === 'true' && process.env.GITHUB_EVENT_NAME === 'pull_request') {
-      const ciTargetBranch = process.env.GITHUB_BASE_REF
-      if (!ciTargetBranch) fail('Pull request event does not identify a canonical base branch')
-      else if (state.repository.branch !== ciTargetBranch) fail('current-state repository.branch does not match the CI target branch')
+    if (process.env.GITHUB_ACTIONS === 'true') {
+      if (!originIsExpectedRepository()) {
+        fail('CI origin remote does not identify the expected repository')
+      } else {
+        const canonicalCommit = originBranchCommit(state.repository.branch)
+        if (!canonicalCommit) fail('canonical source branch does not resolve from the expected origin')
+
+        if (process.env.GITHUB_EVENT_NAME === 'pull_request') {
+          const targetBranch = process.env.GITHUB_BASE_REF
+          const targetCommit = originBranchCommit(targetBranch)
+          if (!targetCommit) fail('Pull request target branch does not resolve from the expected origin')
+          else if (canonicalCommit && !isAncestor(canonicalCommit, targetCommit)) fail('Pull request target does not descend from the canonical source branch')
+        } else if (['push', 'workflow_dispatch'].includes(process.env.GITHUB_EVENT_NAME)) {
+          const eventBranch = process.env.GITHUB_REF_TYPE === 'branch' ? process.env.GITHUB_REF_NAME : ''
+          const eventCommit = originBranchCommit(eventBranch)
+          const eventSha = process.env.GITHUB_SHA?.toLowerCase()
+          if (!eventCommit) fail('CI event branch does not resolve from the expected origin')
+          else if (!/^[a-f0-9]{40,64}$/.test(eventSha || '') || live.head !== eventSha || !isAncestor(eventSha, eventCommit)) {
+            fail('CI event ref does not match the checked-out source SHA')
+          }
+        } else {
+          fail('unrecognized GitHub Actions event for Memory validation')
+        }
+      }
     }
     if (state.repository.origin_main !== live.origin_main) fail('current-state repository.origin_main does not match live Git')
   } catch (error) {
