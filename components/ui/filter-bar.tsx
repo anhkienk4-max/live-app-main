@@ -7,7 +7,7 @@ import { Input } from "./input"
 
 export function FilterBar({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn("flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between", className)} {...props}>
+    <div className={cn("flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:justify-between", className)} {...props}>
       {children}
     </div>
   )
@@ -28,7 +28,7 @@ interface SearchFieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
 export const SearchField = React.forwardRef<HTMLInputElement, SearchFieldProps>(
   ({ className, onClear, value, ...props }, ref) => {
     return (
-      <div className={cn("relative", className)}>
+      <div className={cn("relative min-w-0 w-full md:w-auto", className)}>
         <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           ref={ref}
