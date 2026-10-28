@@ -27,6 +27,23 @@ for (const route of pages) {
       const workspace = page.locator('.ada-workspace-page').first()
       await expect(workspace).toBeVisible({ timeout: 60000 })
       await expect(page.getByTestId('production-bottom-nav')).toBeVisible()
+      // Do not sign off a screenshot of a spinner or auth-capability loading shell.
+      if (route.name === 'reports') {
+        await expect(page.getByTestId('pwa-report-quick-filters')).toBeAttached({ timeout: 45000 })
+      }
+      if (route.name === 'payroll' || route.name === 'workforce') {
+        await expect(page.getByText(/Đang xác minh phiên đăng nhập và quyền truy cập/)).toBeHidden({ timeout: 45000 })
+      }
+      if (route.name === 'calendar') {
+        const tabs = page.getByTestId('calendar-stable-tabs').locator('[data-slot="tabs-list"]')
+        await expect(tabs).toBeVisible({ timeout: 45000 })
+        const layout = await tabs.evaluate(element => ({
+          wrap: getComputedStyle(element).flexWrap,
+          height: element.getBoundingClientRect().height,
+        }))
+        expect(layout.wrap).toBe('nowrap')
+        expect(layout.height, 'Calendar tabs should occupy one row').toBeLessThanOrEqual(56)
+      }
       const metrics = await page.evaluate(() => {
         const root = document.querySelector('.ada-workspace-page')
         const h1 = root?.querySelector('h1')
