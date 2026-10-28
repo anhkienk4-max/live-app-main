@@ -58,3 +58,16 @@ test('RC19 dashboard presents actual admin, leader, member view models in the PW
   assert.ok(member.includes('onOpenNextShift'))
   assert.ok(admin.includes('md:flex'))
 });
+
+test('Dashboard visual QA runs actual responsive app and preserves mock/Production boundary', () => {
+ const conf = source('playwright.pwa-dashboard.config.ts')
+ const spec = source('e2e/pwa-dashboard-mobile.spec.ts')
+ const mobile = source('components/features/dashboard/presentation/OpsMobileHome.tsx')
+ assert.ok(conf.includes("NEXT_PUBLIC_USE_MOCK_DATA: 'true'"))
+ assert.ok(conf.includes("SUPABASE_SECRET_KEY: ''"))
+ assert.ok(conf.includes("VERCEL_ENV: ''"))
+ assert.ok(spec.includes("name: 'edge-narrow-620'"))
+ assert.ok(spec.includes("name: 'iphone-390'"))
+ assert.ok(spec.includes('ada-reference-mobile-home'))
+ assert.ok(mobile.includes('liveCount === null'))
+});

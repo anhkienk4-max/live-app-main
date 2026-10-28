@@ -21,7 +21,7 @@ export type OpsMobileHomeProps = {
   userName?: string
   shiftCount: number
   shiftLabel?: string
-  liveCount: number
+  liveCount: number | null
   pendingCount: number | null
   shift?: OpsMobileShift | null
   attention: OpsMobileAttention[] | null
@@ -58,14 +58,14 @@ export function OpsMobileHome({
       <div className="-mt-1 space-y-4 px-4 pt-4">
         <section aria-label="Tổng quan ca" className="relative overflow-hidden rounded-[18px] border border-[#E2E9F6] bg-white p-4 shadow-[0_7px_22px_rgba(13,42,100,.055)]">
           <div aria-hidden="true" className="pointer-events-none absolute right-0 top-0 h-[66px] w-[68px] rounded-bl-[55px] bg-[#7153F6]" />
-          <p className="relative text-[11px] font-medium text-[#51698F]">Quản trị vận hành · Hôm nay</p>
+          <p className="relative text-[11px] font-medium text-[#51698F]">{role === 'member' ? 'Lịch ca của tôi' : 'Quản trị vận hành'} · Hôm nay</p>
           <div className="relative mt-2 flex items-baseline gap-2 text-emerald-600">
             <strong className="text-[33px] font-extrabold leading-none tabular-nums">{shiftCount}</strong>
             <span className="text-[13px] font-semibold">ca</span>
           </div>
           <p className="relative mt-1 text-[11px] text-slate-500">{shiftLabel}</p>
           <div className="relative mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-[11px] font-medium">
-            <span className="flex items-center gap-1.5 text-[#2563EB]"><Radio className="size-3.5" aria-hidden="true" /> Đang live <strong className="tabular-nums">{liveCount}</strong></span>
+            <span className="flex items-center gap-1.5 text-[#2563EB]"><Radio className="size-3.5" aria-hidden="true" /> Đang live <strong className="tabular-nums">{liveCount === null ? '—' : liveCount}</strong></span>
             <span className="flex items-center gap-1.5 text-[#E48714]"><ClipboardList className="size-3.5" aria-hidden="true" /> Chờ xử lý <strong className="tabular-nums">{pendingCount === null ? '—' : pendingCount}</strong></span>
           </div>
           <div className="relative my-3 h-px bg-[#EDF1F8]" />

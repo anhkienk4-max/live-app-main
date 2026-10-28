@@ -174,7 +174,7 @@ export function MemberDashboardView({
     <>
     <OpsMobileHome
       role="member" userName={userName} shiftCount={mySchedule.length} shiftLabel="Ca trong lịch của tôi"
-      liveCount={0} pendingCount={myRequests === null ? null : myRequests.filter(item => item.status === 'pending').length}
+      liveCount={null} pendingCount={myRequests === null ? null : myRequests.filter(item => item.status === 'pending').length}
       attention={attention} shift={nextShift ? { key: nextShift.brand + nextShift.time, brand: nextShift.brand, platform: nextShift.platform, time: nextShift.time, status: nextShift.role, onView: onOpenNextShift } : null}
     />
     <main className="hidden min-w-0 flex-col gap-6 overflow-y-auto p-4 md:flex sm:p-8">

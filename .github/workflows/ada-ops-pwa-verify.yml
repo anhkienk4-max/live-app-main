@@ -38,6 +38,18 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
       - name: PWA mobile login screenshots
         run: pnpm exec playwright test --config=playwright.pwa.config.ts
+      - name: Capture actual RC19 mobile dashboard
+        run: pnpm exec playwright test --config=playwright.pwa-dashboard.config.ts
+      - name: Upload dashboard UAT screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ada-ops-pwa-dashboard-mobile
+          path: |
+            test-results/pwa-dashboard/*.png
+            test-results/**/trace.zip
+            test-results/**/test-failed-*.png
+          if-no-files-found: warn
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
