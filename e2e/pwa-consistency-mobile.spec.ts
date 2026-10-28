@@ -1,0 +1,58 @@
+import { test, expect } from '@playwright/test'
+import { mkdir } from 'node:fs/promises'
+
+// Local mock visual QA, never a replacement for three-role Staging UAT.
+const pages = [
+  { path: '/calendar', name: 'calendar' },
+  { path: '/reports', name: 'reports' },
+  { path: '/shifts', name: 'shifts' },
+  { path: '/staff', name: 'staff' },
+  { path: '/settings', name: 'settings' },
+  { path: '/profile', name: 'profile' },
+  { path: '/payroll', name: 'payroll' },
+  { path: '/workforce', name: 'workforce' },
+] as const
+
+for (const route of pages) {
+  for (const viewport of [
+    { width: 390, height: 844, name: 'iphone' },
+    { width: 620, height: 920, name: 'edge-narrow' },
+  ]) {
+    test('PWA consistency: ' + route.name + ' at ' + viewport.name, async ({ page }) => {
+      await page.setViewportSize(viewport)
+      await page.goto(route.path, { waitUntil: 'domcontentloaded' })
+      const workspace = page.locator('.ada-workspace-page').first()
+      await expect(workspace).toBeVisible({ timeout: 60000 })
+      await expect(page.getByTestId('production-bottom-nav')).toBeVisible()
+      const metrics = await page.evaluate(() => {
+        const root = document.querySelector('.ada-workspace-page')
+        const h1 = root?.querySelector('h1')
+        return {
+          documentWidth: document.documentElement.scrollWidth,
+          pageWidth: root?.getBoundingClientRect().width ?? 0,
+          headingSize: h1 ? Number.parseFloat(getComputedStyle(h1).fontSize) : null,
+        }
+      })
+      expect(metrics.documentWidth, route.name + ' viewport overflow').toBeLessThanOrEqual(viewport.width + 1)
+      expect(metrics.pageWidth).toBeGreaterThan(0)
+      if (metrics.headingSize !== null) {
+        expect(metrics.headingSize).toBeGreaterThanOrEqual(18)
+        expect(metrics.headingSize).toBeLessThanOrEqual(23)
+      }
+      if (viewport.width === 390 && ['calendar','reports','profile','payroll','workforce'].includes(route.name)) {
+        await mkdir('test-results/pwa-dashboard', { recursive: true })
+        await page.screenshot({
+          path: 'test-results/pwa-dashboard/consistency-' + route.name + '.png',
+          fullPage: true,
+          animations: 'disabled',
+        })
+      }
+    })
+  }
+  test('PWA desktop preserved: ' + route.name, async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 1100 })
+    await page.goto(route.path, { waitUntil: 'domcontentloaded' })
+    await expect(page.locator('.ada-workspace-page').first()).toBeVisible({ timeout: 60000 })
+    await expect(page.getByTestId('production-bottom-nav')).toBeHidden()
+  })
+}

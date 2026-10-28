@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test'
 /** Local mock only, no Supabase credentials or production mutations. */
 export default defineConfig({
   testDir: './e2e',
-  testMatch: /pwa-(?:dashboard|staff)-mobile\.spec\.ts/,
+  testMatch: /pwa-(?:dashboard|staff|consistency)-mobile\.spec\.ts/,
   timeout: 60000,
   retries: 0,
   workers: 1,
