@@ -62,7 +62,34 @@ export function ReportsView({ reports, shifts, brands, platforms, campaigns, use
         </div>
         {selected && <span className="hidden truncate text-xs text-slate-500 md:block">{selectedShift?.title ?? selected.id}</span>}
       </div>
-      <div className="overflow-x-auto">
+      <div data-testid="pwa-reports-cards" className="divide-y divide-[#EEF1F8] md:hidden">
+        {visible.map(report => {
+          const shift = shifts.find(item => item.id === report.shift_id)
+          const status = report.status ?? (report.metrics_confirmed ? 'confirmed' : 'draft')
+          const revenue = reportMetricValue(report, 'revenue')
+          return <article key={report.id} className="space-y-3 p-3.5" data-testid="pwa-report-card">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[12px] font-extrabold text-[#10254B]">{name(brands, shift?.brand_id)}</p>
+                <p className="mt-1 text-[11px] text-slate-500">{name(platforms, shift?.platform_id)}</p>
+              </div>
+              <Badge variant="secondary" className={report.metrics_confirmed ? 'shrink-0 bg-emerald-50 text-emerald-700' : 'shrink-0 bg-amber-50 text-amber-700'}>
+                {status === 'in_review' ? t('inReview') : t(status)}
+              </Badge>
+            </div>
+            <p className="text-[11px] text-slate-500">{shift?.date ?? '—'} · {shift ? formatShiftTimeRange(shift) : '—'}</p>
+            <p className="truncate text-[11px] text-slate-500">{shift?.title ?? report.id}</p>
+            <div className="flex items-center justify-between gap-2 border-t border-[#EDF1F8] pt-3">
+              <span className="text-[12px] font-bold tabular-nums text-[#10234B]">{revenue == null ? '—' : formatCurrency(revenue)}</span>
+              <Button type="button" size="sm" data-testid="pwa-report-view" onClick={() => onView(report)}
+                className="min-h-10 rounded-[10px] bg-[#155EF2] px-4 text-[12px] text-white">
+                <Eye className="mr-1.5 h-4 w-4" aria-hidden="true" />{t('viewDetails')}
+              </Button>
+            </div>
+          </article>
+        })}
+      </div>
+      <div className="hidden overflow-x-auto md:block">
         <table className="w-full min-w-[1060px] text-left text-xs">
           <thead className="border-b bg-slate-50 text-slate-500"><tr>
             {(['finalReport', 'brand', 'platform', 'revenue', 'orders', 'reportStatus', 'updatedAt', 'actions'] as const).map(key => <th className="whitespace-nowrap px-3 py-2 font-medium" key={key}>{t(key)}</th>)}
@@ -99,7 +126,7 @@ export function ReportsView({ reports, shifts, brands, platforms, campaigns, use
       <HistoryPagination page={safePage} pageSize={pageSize} total={reports.length} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1) }} />
     </section>
 
-    {selected && selectedShift && <section className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white" aria-label={t('reportDetails')}>
+    {selected && selectedShift && <section className="hidden min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white md:block" aria-label={t('reportDetails')}>
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2"><h2 className="text-base font-semibold text-slate-900">{selectedShift.title}</h2><Badge variant="secondary" className={selected.metrics_confirmed ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}>{selected.metrics_confirmed ? t('confirmed') : t('needsReview')}</Badge><span className="max-w-40 truncate text-xs text-slate-500" title={selected.id}>{selected.id}{selected.version_number ? ` · v${selected.version_number}` : ''}</span></div>
