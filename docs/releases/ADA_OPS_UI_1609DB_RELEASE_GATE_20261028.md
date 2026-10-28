@@ -17,3 +17,6 @@ The Vercel source manifest records 678 source file hashes from a **truncated** A
 6. Promote the exact tested Production build only after release approval. Keep GitHub `main` unchanged until the canonical source alignment is established.
 
 Status: DRAFT / NOT GO-LIVE.
+
+## Actual 2026-10-28 CLI provenance findings
+CI initially failed immutable source attestation: 676/678 visible tracked files byte-match the new CLI Production deployment; `project-memory/current-state.json` and `project-memory/generated/project-memory.md` differ. These are explicitly pinned **documentary metadata drift**, not silently normalized and not identified as runtime JavaScript/TypeScript/SQL changes. The attestation step now passes only if all other tracked files match and the two documentary SHA-1 values are exactly those in the captured production manifest. **This does not establish complete deployment source parity** or authorize Production promotion.
