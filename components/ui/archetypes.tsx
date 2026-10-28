@@ -33,7 +33,7 @@ export function PageShell({ archetype, className, children, ...props }: PageShel
   }, [archetype])
 
   return (
-    <div className={cn('w-full mx-auto', maxWidthClass, className)} {...props}>
+    <div className={cn('w-full min-w-0 mx-auto', archetype !== 'auth' && 'ada-workspace-page', maxWidthClass, className)} {...props}>
       <div className={cn('flex flex-col w-full', archetype === 'auth' ? '' : 'pt-2 pb-6')}>
         {children}
       </div>
@@ -47,7 +47,7 @@ export function PageShell({ archetype, className, children, ...props }: PageShel
 export function PageHeader({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn('mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between', className)}
+      className={cn('mb-4 flex min-w-0 flex-col gap-3 md:mb-6 md:flex-row md:items-center md:justify-between', className)}
       {...props}
     >
       {children}
@@ -138,7 +138,7 @@ export function WorkspacePane({ side = 'main', className, children, ...props }: 
  */
 export function MetricRegion({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6', className)} {...props}>
+    <div className={cn('grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-4 md:mb-6', className)} {...props}>
       {children}
     </div>
   )
