@@ -41,3 +41,12 @@ PASS means a real authenticated browser observed the expected UI, not that under
 
 ## Release gate
 No Production promotion or merge until all three-role read-only checks have passed with **zero skipped tests**, Payroll/Workforce are exercised with the intended flags, seed-data mutation UAT is approved and recorded, and the owner signs off on the exact release SHA.
+
+## PowerShell helper for the Windows operator
+Run from the repository root with an explicitly verified Preview and SHA:
+
+```powershell
+& ".\scripts\run-pwa-functional-uat.ps1" -PreviewUrl "https://livestream-ops-demo-<deployment>.vercel.app" -ExpectedSha "<full-40-character-sha>"
+```
+
+The helper prompts for three dedicated Staging emails and hidden passwords. Credentials are placed only in process-scoped environment variables while Playwright runs, then restored. Never use Production identities. The helper never takes a password argument and does not upload authenticated screenshots.
