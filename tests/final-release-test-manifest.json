@@ -17,6 +17,7 @@
     "tests/ada-hls-player.test.ts",
     "tests/ada-hls-security.test.ts",
     "tests/analytics-actor-key.test.ts",
+    "tests/att01-feature-off.test.ts",
     "tests/auth-confirm-route.test.ts",
     "tests/auth-identity-bridge.test.tsx",
     "tests/auth-session-foundation.test.ts",

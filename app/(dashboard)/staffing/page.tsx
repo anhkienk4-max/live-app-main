@@ -9,28 +9,29 @@ import { ShiftRegistrationBoard } from '@/components/features/calendar/ShiftRegi
 import { RegistrationReviewWorkspace } from '@/components/features/registration'
 import { AttendanceSourceManager } from '@/components/features/workforce/AttendanceSourceManager'
 import { hasPermission } from '@/lib/permissions'
-import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
 import { useTranslation } from '@/lib/i18n'
 
 function StaffingContent() {
   const { t, translate } = useTranslation()
   const searchParams = useSearchParams()
   const router = useRouter()
-  const { currentUser } = useCurrentUser()
+  const { currentUser, capabilities } = useWorkforceCapabilities()
+  const attendanceImportEnabled = capabilities?.attendance_import === true
   const tabParam = searchParams.get('tab')
 
   const canReview = currentUser ? hasPermission(currentUser, 'shifts.approve_registration') : false
   const activeTab =
     tabParam === 'registration' && canReview
       ? 'registration'
-      : tabParam === 'attendance' && canReview
+      : tabParam === 'attendance' && canReview && attendanceImportEnabled
       ? 'attendance'
       : 'staffing'
 
   const handleTabChange = (nextTab: 'staffing' | 'registration' | 'attendance') => {
     if (nextTab === 'registration') {
       router.push('/staffing?tab=registration')
-    } else if (nextTab === 'attendance') {
+    } else if (nextTab === 'attendance' && attendanceImportEnabled) {
       router.push('/staffing?tab=attendance')
     } else {
       router.push('/staffing')
@@ -49,7 +50,7 @@ function StaffingContent() {
 
             {/* TAB SELECTOR */}
             {canReview && (
-              <div className="grid w-full min-w-0 grid-cols-1 gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1 text-xs sm:w-auto sm:grid-cols-3">
+              <div className={`grid w-full min-w-0 grid-cols-1 gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1 text-xs sm:w-auto ${attendanceImportEnabled ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
                 <button
                   type="button"
                   onClick={() => handleTabChange('staffing')}
@@ -74,7 +75,7 @@ function StaffingContent() {
                   <UserCheck className="h-3.5 w-3.5" />
                   <span className="min-w-0 text-center leading-tight">Xét duyệt đăng ký (Registration)</span>
                 </button>
-                <button
+                {attendanceImportEnabled && <button
                   type="button"
                   onClick={() => handleTabChange('attendance')}
                   className={`flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-md px-3 py-2 font-medium transition-all ${
@@ -85,7 +86,7 @@ function StaffingContent() {
                 >
                   <FileSpreadsheet className="h-3.5 w-3.5" />
                   <span className="min-w-0 text-center leading-tight">Nhập chấm công (Attendance)</span>
-                </button>
+                </button>}
               </div>
             )}
           </div>
@@ -94,7 +95,7 @@ function StaffingContent() {
 
       {activeTab === 'registration' ? (
         <RegistrationReviewWorkspace />
-      ) : activeTab === 'attendance' ? (
+      ) : activeTab === 'attendance' && attendanceImportEnabled ? (
         <AttendanceSourceManager key={currentUser?.id ?? 'anonymous'} />
       ) : (
         canReview ? <StaffingWorkspace /> : <ShiftRegistrationBoard mode="open" />

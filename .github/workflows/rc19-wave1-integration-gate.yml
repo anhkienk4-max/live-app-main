@@ -4,8 +4,10 @@ on:
   push:
     branches:
       - integration/rc19-wave1-candidate
+      - integration/rc19-memory-proof
   pull_request:
     branches:
+      - integration/rc19-wave1-candidate
       - feat/ops-full-app-upgrade-rc19
 
 permissions:
@@ -33,6 +35,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -46,7 +49,12 @@ jobs:
       - name: Verify exact candidate SHA
         env:
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+        run: |
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+          echo "Verified candidate SHA: $actual" >> "$GITHUB_STEP_SUMMARY"
+      - name: Project Memory validation
+        run: pnpm run memory:validate
       - name: TypeScript
         run: pnpm exec tsc --noEmit --incremental false
       - name: Full repository ESLint
@@ -54,6 +62,9 @@ jobs:
       - name: Focused Reports and Payroll regressions
         run: >-
           node --import ./tests/typescript-alias-loader.mjs --test
+          tests/memory-validator-contract.test.ts
+          tests/f10-report-active-user-rls.test.ts
+          tests/report-storage-security.test.ts
           tests/report-work-queue.test.ts
           tests/rc19-report-apply-filters.test.ts
           tests/report-history-access.test.ts
@@ -102,3 +113,8 @@ jobs:
           FEATURE_PAYROLL: 'false'
           OPERATIONAL_STORAGE_ROUTING_MODE: database
         run: pnpm run build
+      - name: Gate provenance, NO DEPLOY
+        if: always()
+        run: |
+          echo "Combined RC19 source gate SHA $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "No Vercel Preview/Production deployment, Supabase SQL or data writes are performed by this workflow." >> "$GITHUB_STEP_SUMMARY"
