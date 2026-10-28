@@ -29,7 +29,9 @@ for (const route of pages) {
       await expect(page.getByTestId('production-bottom-nav')).toBeVisible()
       // Do not sign off a screenshot of a spinner or auth-capability loading shell.
       if (route.name === 'reports') {
-        await expect(page.getByTestId('pwa-report-quick-filters')).toBeAttached({ timeout: 45000 })
+        await expect(page.getByTestId('reports-apply-filters')).toBeAttached({ timeout: 45000 })
+        await expect(page.locator('#created-reports-heading')).toBeVisible()
+        await expect(page.getByTestId('reports-mobile-metrics')).toBeVisible()
       }
       if (route.name === 'payroll' || route.name === 'workforce') {
         await expect(page.getByText(/Đang xác minh phiên đăng nhập và quyền truy cập/)).toBeHidden({ timeout: 45000 })
