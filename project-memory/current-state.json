@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "f611ae808a075a36e3c87d7b7ff2fe44a9a785fa",
+    "head": "bcb361f79c7b843806100359764b0ca66ea341c6",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -100,9 +100,9 @@
         "lib": 252,
         "scripts": 26,
         "supabase": 109,
-        "tests": 268
+        "tests": 269
       },
-      "total": 893
+      "total": 894
     },
     "tests": {
       "files": [
@@ -120,6 +120,7 @@
         "tests/ada-hls-player.test.ts",
         "tests/ada-hls-security.test.ts",
         "tests/analytics-actor-key.test.ts",
+        "tests/att01-feature-off.test.ts",
         "tests/auth-confirm-route.test.ts",
         "tests/auth-identity-bridge.test.tsx",
         "tests/auth-session-foundation.test.ts",
@@ -328,7 +329,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 221
+      "count": 222
     },
     "migrations": {
       "files": [
@@ -437,5 +438,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-28T12:09:57+07:00"
+  "synced_at": "2026-10-28T10:47:12Z"
 }
