@@ -23,4 +23,5 @@ test('PWA shared visual system spans key workspaces without modifying authentica
   assert.ok(config.includes('consistency'))
   assert.ok(workflow.includes('tests/pwa-consistency-source.test.mjs'))
   assert.ok(source('e2e/pwa-consistency-mobile.spec.ts').includes('PWA desktop preserved'))
+  assert.ok(source('e2e/pwa-consistency-mobile.spec.ts').includes('BLOCKED: mock auth cannot verify Payroll/Workforce'))
 })
