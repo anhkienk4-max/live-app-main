@@ -2,14 +2,13 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-27T01:50:25+07:00
+Generated at: 2026-10-28T17:59:08+07:00
 
 ## Repository
 
-- Branch: `feat/ops-full-app-upgrade-rc19`
-- HEAD: `c0d4d0f99010a7006f78f01c31db7c61c8dcc9fa`
+- Canonical source branch: `feat/ops-full-app-upgrade-rc19`
+- Snapshot HEAD: `dc833b138642a2d106769cf983586106bd43dae0`
 - origin/main: `9b5f3889b243f9ee795e4466a18f24cd896c162f`
-- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-full-upgrade`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
 ## Hardening
@@ -22,7 +21,7 @@ Generated at: 2026-10-27T01:50:25+07:00
 ## Inventory
 
 - Routes: 63
-- Source files in tracked inventory roots: 894
+- Source files in tracked inventory roots: 888
 - Tests: 220
 - Migrations: 90
 
