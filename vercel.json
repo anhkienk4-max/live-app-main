@@ -5,7 +5,8 @@
       "feat/rc16-payroll-workforce-backend": false,
       "integration/rc14-rc15-rc16-prod": false,
       "feat/rc16k-ui-consistency-pagination": false,
-      "integration/rc19-memory-proof": false
+      "integration/rc19-memory-proof": false,
+      "fix/rc19-att01-feature-off-20261028": false
     }
   }
 }

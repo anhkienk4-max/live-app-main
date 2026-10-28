@@ -15,6 +15,7 @@ export function createWorkforceCapabilitiesHandler(options:{
       const supervisor=user.systemPermission==='admin'||user.systemPermission==='leader'
       return Response.json({ok:true,capabilities:{
         actual_staffing:workforce&&supervisor,
+        attendance_import:supervisor&&enabled('attendance_import'),
         team_performance:workforce&&supervisor,
         own_performance:workforce&&Boolean(user.businessUserId),
         payroll:user.systemPermission==='admin'&&enabled('payroll'),

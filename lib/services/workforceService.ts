@@ -296,6 +296,7 @@ export class WorkforceServiceError extends Error {
 
 export interface WorkforceCapabilities {
   actual_staffing: boolean
+  attendance_import?: boolean
   team_performance: boolean
   own_performance: boolean
   payroll: boolean
