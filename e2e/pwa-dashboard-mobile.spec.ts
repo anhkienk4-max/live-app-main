@@ -3,6 +3,7 @@ import { mkdir } from 'node:fs/promises'
 
 for (const viewport of [
   { width: 390, height: 844, name: 'iphone-390' },
+  { width: 412, height: 915, name: 'android-412' },
   { width: 620, height: 920, name: 'edge-narrow-620' },
 ]) {
   test('RC19 authenticated dashboard uses PWA design at ' + viewport.name, async ({ page }) => {

@@ -68,6 +68,7 @@ test('Dashboard visual QA runs actual responsive app and preserves mock/Producti
  assert.ok(conf.includes("VERCEL_ENV: ''"))
  assert.ok(spec.includes("name: 'edge-narrow-620'"))
  assert.ok(spec.includes("name: 'iphone-390'"))
+ assert.ok(spec.includes("name: 'android-412'"))
  assert.ok(spec.includes('ada-reference-mobile-home'))
  assert.ok(mobile.includes('liveCount === null'))
 });
