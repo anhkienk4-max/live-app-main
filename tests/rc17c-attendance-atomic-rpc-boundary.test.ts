@@ -79,11 +79,21 @@ test('attendance importer defaults OFF and rejects before RPC or table writes', 
   const original = process.env.FEATURE_IMPORT_BATCH
   delete process.env.FEATURE_IMPORT_BATCH
   const ctx = guardedClient()
-  const handler = createHistoricalAttendanceHandler({ client: () => ctx.client, resolveUser: actor })
+  let authCalls = 0
+  let clientCalls = 0
+  const handler = createHistoricalAttendanceHandler({
+    client: () => { clientCalls++; return ctx.client },
+    resolveUser: async () => { authCalls++; return actor() },
+  })
   try {
+    const getResponse = await handler.GET(new Request('http://localhost/api/workforce/attendance-import'))
+    assert.equal(getResponse.status, 404)
+    assert.equal((await getResponse.json()).error.code, 'WORKFORCE_FEATURE_DISABLED')
     const response = await handler.POST(postBody('confirm_drafts', { batchId: 'deferred-batch', version: 1 }))
     assert.equal(response.status, 404)
     assert.equal((await response.json()).error.code, 'WORKFORCE_FEATURE_DISABLED')
+    assert.equal(authCalls, 0)
+    assert.equal(clientCalls, 0)
     assert.equal(ctx.getRpcCalls(), 0)
     assert.equal(ctx.getWrites(), 0)
   } finally {

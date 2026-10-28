@@ -1,40 +1,36 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
-import { getNavigationForRole, getSharedNavigation, groupNavigation } from '../lib/ui/role-ux.ts'
+import { filterNav, getNavigationForRole, groupNavigation } from '../lib/ui/role-ux.ts'
 
 const fromSource = (path: string) => readFileSync(new URL('../' + path, import.meta.url), 'utf8')
 
-test('U13: one complete, stable sidebar destination catalogue for all actor roles', () => {
-  const shared = getSharedNavigation()
-  const hrefs = shared.map(item => item.href)
-  assert.equal(new Set(hrefs).size, hrefs.length, 'one primary sidebar entry per route')
-  for (const role of ['admin', 'leader', 'member'] as const) {
-    for (const item of getNavigationForRole(role)) {
-      const route = new URL(item.href, 'https://local.invalid').pathname
-      assert.ok(shared.some(entry => new URL(entry.href, 'https://local.invalid').pathname === route),
-        role + ' destination must remain reachable in the common navigation: ' + item.href)
-    }
+test('member and leader navigation omit Admin destinations while preserving personal workflows', () => {
+  const admin = getNavigationForRole('admin')
+  const leader = getNavigationForRole('leader')
+  const member = filterNav(getNavigationForRole('member'), { role: 'staff', system_permission: 'member' })
+  const paths = (items: typeof member) => items.map(item => new URL(item.href, 'https://local.invalid').pathname)
+  const restricted = ['/payroll', '/brands', '/platforms', '/campaigns', '/audit', '/settings']
+  for (const href of restricted) {
+    assert.ok(paths(admin).includes(href), 'Admin retains ' + href)
+    assert.ok(!paths(leader).includes(href), 'Leader does not inherit Admin-only destination ' + href)
+    assert.ok(!paths(member).includes(href), 'Member does not inherit Admin-only destination ' + href)
   }
-  for (const route of ['/', '/calendar', '/live', '/shifts', '/staffing',
-    '/swaps', '/storage', '/reports', '/workforce', '/analytics', '/payroll',
-    '/brands', '/platforms', '/campaigns', '/staff', '/audit', '/settings',
-    '/notifications', '/profile']) {
-    assert.ok(hrefs.includes(route), 'missing U13 sidebar destination ' + route)
+  for (const href of ['/calendar', '/shifts', '/swaps', '/reports', '/workforce']) {
+    assert.ok(paths(member).includes(href), 'Member retains personal workflow ' + href)
   }
-  assert.ok(groupNavigation(shared).every(group => group.items.length > 0))
-  assert.equal(shared, getSharedNavigation(), 'stable navigation reference across renders')
+  assert.ok(groupNavigation(member).every(group => group.items.length > 0))
 })
 
-test('U13: desktop, tablet, and mobile shell use same visible navigation, not permission filters', () => {
+test('desktop, tablet, and mobile navigation are derived from the signed-in role', () => {
   const shellSources = [
     fromSource('components/layout/Sidebar.tsx'),
     fromSource('components/layout/Header.tsx'),
     fromSource('components/layout/BottomNav.tsx'),
   ]
   for (const source of shellSources) {
-    assert.match(source, /getSharedNavigation\(\)/)
-    assert.doesNotMatch(source, /filterNav\(|filterWorkforceNavigation\(|getNavigationForRole\(/)
+    assert.match(source, /getNavigationForRole\(/)
+    assert.match(source, /filterNav\(/)
   }
   const permissions = fromSource('lib/permissions.ts')
   assert.match(permissions, /hasPermission/)

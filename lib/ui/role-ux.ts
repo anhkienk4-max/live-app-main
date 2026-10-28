@@ -128,24 +128,6 @@ const memberNav: NavItem[] = [
 ]
 
 /**
- * U13 navigation visibility contract: every signed-in role sees the same set
- * of destinations. This array is presentation-only. Never use it to authorize
- * a route, API, data query, report download, or write action.
- *
- * Keep the old role-specific lists and filterNav for other role-scoped UI.
- * AppShell (desktop / tablet / mobile) uses ONLY this common catalogue.
- */
-const sharedNavigation: NavItem[] = [
-  ...adminNav,
-  { ...navCatalogue.notifications },
-  { ...navCatalogue.profile },
-]
-
-export function getSharedNavigation(): NavItem[] {
-  return sharedNavigation
-}
-
-/**
  * Shared permission filter — single source of truth for Sidebar and BottomNav.
  * Only removes items whose requiredPermissions the user does not satisfy (class A items).
  * Class B/C items pass through unconditionally.

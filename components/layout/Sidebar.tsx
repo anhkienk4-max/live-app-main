@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { resolveSystemPermission } from '@/lib/permissions'
-import { getSharedNavigation, groupNavigation } from '@/lib/ui/role-ux'
+import { filterNav, getNavigationForRole, groupNavigation } from '@/lib/ui/role-ux'
 import { resolveActiveNavigation } from './shellConfig'
 import { AccountMenu } from './AccountMenu'
 
@@ -18,7 +18,7 @@ export function Sidebar() {
   const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
   const permission = resolveSystemPermission(currentUser)
-  const navigation = getSharedNavigation()
+  const navigation = filterNav(getNavigationForRole(permission), currentUser)
   const activeHref = resolveActiveNavigation(navigation, pathname, search)
   const [collapsed, setCollapsed] = useState<string[]>([])
   const [preferencesKey, setPreferencesKey] = useState('')

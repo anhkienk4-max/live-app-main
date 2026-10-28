@@ -425,7 +425,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
 
       {(mode === 'open' || mode === 'mine') && (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">{total} {mode === 'mine' ? t('myShifts').toLowerCase() : t('openShifts').toLowerCase()}</p>
+          <p aria-live="polite" aria-busy={loadedKey !== requestKey && !loadError} className="text-sm text-muted-foreground">{loadedKey === requestKey ? `${total} ${mode === 'mine' ? t('myShifts').toLowerCase() : t('openShifts').toLowerCase()}` : loadError ? t('error') : t('loading')}</p>
           <div className="inline-flex rounded-lg border bg-background p-1" aria-label={mode === 'mine' ? 'My shift view' : 'Open shift view'}>
             <ViewButton active={viewMode === 'card'} onClick={() => changeViewMode('card')} icon={<LayoutGrid className="h-4 w-4" />} label={t('cardView')} />
             <ViewButton active={viewMode === 'compact'} onClick={() => changeViewMode('compact')} icon={<List className="h-4 w-4" />} label={t('compactView')} />
