@@ -20,7 +20,18 @@ for (const viewport of [
       document: document.documentElement.scrollWidth,
     }))
     expect(width.document).toBeLessThanOrEqual(viewport.width + 1)
+    const firstCard = page.locator('[data-testid^="staff-mobile-card-"]').first()
+    await expect(firstCard).toBeVisible()
+    await firstCard.scrollIntoViewIfNeeded()
+    const cardBounds = await firstCard.boundingBox()
+    if (!cardBounds) throw new Error('Staff card has no visible bounding box')
+    expect(cardBounds.x).toBeGreaterThanOrEqual(-1)
+    expect(cardBounds.x + cardBounds.width).toBeLessThanOrEqual(viewport.width + 1)
     await mkdir('test-results/pwa-dashboard', { recursive: true })
+    await page.screenshot({
+      path: 'test-results/pwa-dashboard/staff-card-' + viewport.name + '.png',
+      animations: 'disabled',
+    })
     await page.screenshot({
       path: 'test-results/pwa-dashboard/staff-' + viewport.name + '.png',
       fullPage: true,
